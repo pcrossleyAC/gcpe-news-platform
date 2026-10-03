@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
+import type pg from "pg";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { OrgRecord, ReleaseRecord } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
@@ -7,6 +8,25 @@ import { createNewsTestDb } from "../test/helpers";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { applyOrg, applyRelease, applySiteContent, applyTerm, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
 import { listenForUpdates, notifyUpdate, type UpdateTarget } from "./updates/notify";
+
+/**
+ * Polls pg_stat_activity until some backend in this database is actually blocked waiting on a
+ * lock. Used instead of an arbitrary sleep so the race test's interleaving — issue the
+ * importer's write while a row lock is held, then release it — is guaranteed to occur, not
+ * just likely to occur within some fixed delay. `query` in pg_stat_activity holds a
+ * parameterized statement's placeholders, not its bound values, so this deliberately doesn't
+ * try to match the query text — on this throwaway, single-use test database, any backend
+ * blocked on a lock at this moment is the one the test is waiting for.
+ */
+async function waitUntilBlockedOnLock(pool: pg.Pool, timeoutMs = 5_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const { rows } = await pool.query("SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()");
+    if (rows.length > 0) return;
+    if (Date.now() > deadline) throw new Error("timed out waiting for a backend to block on a lock");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
 
 const org: OrgRecord = {
   key: "health", displayName: "Health", abbreviation: "HLTH", sortOrder: 5, isActive: true, parentKey: null, url: "http://gov.bc.ca/health",
@@ -51,6 +71,55 @@ describe("projections", () => {
   it("rejects an origin value outside 'legacy' | 'event' (posts_origin_check)", async () => {
     await tdb.db.transaction((tx) => applyRelease(tx, sampleRelease));
     await expect(tdb.pool.query("UPDATE posts SET origin = 'bogus' WHERE key = $1", [sampleRelease.key])).rejects.toThrow(/posts_origin_check/);
+  });
+
+  // Controller ruling P1-R22: findExistingPost is a plain read, so a check-then-write guard
+  // in application code would race against a concurrent NRMS write that commits in between —
+  // the importer would still clobber it and report success. The guard must be the SQL
+  // onConflictDoUpdate `setWhere`, re-evaluated against whatever row Postgres has actually
+  // locked at write time, not against this function's earlier read.
+  it("closes the check-then-write race: a concurrent event-origin commit mid-upsert still wins", async () => {
+    const KEY = "RACE-1";
+    // Starts out legacy-owned, so the importer's write below is a genuine UPDATE (a conflict),
+    // not a fresh INSERT — only the UPDATE path goes through setWhere.
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: KEY, summary: "legacy content" }, { origin: "legacy" }));
+
+    const txnA = await tdb.pool.connect();
+    try {
+      // 1. Transaction A applies an NRMS event for KEY (origin -> 'event', new content) and
+      // row-locks it, but does not commit yet.
+      await txnA.query("BEGIN");
+      await txnA.query("UPDATE posts SET origin = 'event', summary = $1 WHERE key = $2", ["NRMS content", KEY]);
+
+      // 2. Start the importer's applyRelease for KEY concurrently, on a different pool
+      // connection. findExistingPost (read-committed) still sees the pre-race row (origin
+      // 'legacy', uncommitted update from A is invisible to it), so it does NOT take the
+      // cheap pre-check's early exit — it reaches the real onConflictDoUpdate, whose UPDATE
+      // then blocks trying to acquire the row lock A is already holding.
+      const importerDone = tdb.db.transaction((tx) =>
+        applyRelease(tx, { ...sampleRelease, key: KEY, summary: "stale legacy content" }, { notify: false, origin: "legacy" }),
+      );
+
+      // Wait until Postgres actually reports the importer's backend blocked on a lock (never
+      // an arbitrary sleep) before committing A, so the interleaving above is guaranteed, not
+      // just likely.
+      await waitUntilBlockedOnLock(tdb.pool);
+
+      // 3. Commit A.
+      await txnA.query("COMMIT");
+
+      // 4. The importer's statement unblocks, re-evaluates setWhere against the now-committed
+      // row (origin = 'event'), and skips its UPDATE — RETURNING yields zero rows.
+      const result = await importerDone;
+      expect(result).toEqual({ skippedEventOwned: true });
+
+      // 5. NRMS's content wins; the importer never touched the row.
+      const [row] = await tdb.db.select().from(posts).where(eq(posts.key, KEY));
+      expect(row).toMatchObject({ origin: "event", summary: "NRMS content" });
+    } finally {
+      await txnA.query("ROLLBACK").catch(() => {});
+      txnA.release();
+    }
   });
 
   it("upserts a release across key casing without a unique violation", async () => {

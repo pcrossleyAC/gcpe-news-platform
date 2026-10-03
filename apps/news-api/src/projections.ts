@@ -59,20 +59,29 @@ export interface ApplyOptions {
    * Which pipeline is writing: 'legacy' (the importer) or 'event' (an NRMS
    * release.published/release.updated event). Default 'event'.
    *
-   * origin: "legacy" is not just a label — it's also a guard (ruling P1-R21). If the stored
-   * row already has origin "event" (NRMS has published or updated this key, even one the
-   * legacy importer originally created), a "legacy" write is refused entirely: no upsert, no
-   * notification, nothing changes. applyRelease returns `{ skippedEventOwned: true }` instead.
-   * Without this, the importer's full periodic reimport would otherwise revert the row's
-   * origin back to "legacy" and silently overwrite NRMS's current content with legacy's now-
-   * stale copy on its very next run. An "event" write always proceeds and always wins — NRMS
-   * is authoritative for any key once it has published to it.
+   * origin: "legacy" is not just a label — it's also a guard (ruling P1-R21/P1-R22). If the
+   * stored row already has origin "event" (NRMS has published or updated this key, even one
+   * the legacy importer originally created), a "legacy" write is refused entirely: no upsert,
+   * no notification, nothing changes. applyRelease returns `{ skippedEventOwned: true }`
+   * instead. Without this, the importer's full periodic reimport would otherwise revert the
+   * row's origin back to "legacy" and silently overwrite NRMS's current content with
+   * legacy's now-stale copy on its very next run.
+   *
+   * This is enforced atomically in SQL (`onConflictDoUpdate`'s `setWhere`, ruling P1-R22), not
+   * by reading the row first and deciding in application code — a read-then-write check would
+   * race against a concurrent NRMS event that commits in between, overwriting it anyway while
+   * still reporting success. An "event" write always proceeds unconditionally and always
+   * wins — NRMS is authoritative for any key once it has published to it.
    */
   origin?: "legacy" | "event";
 }
 
 export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions = {}): Promise<{ skippedEventOwned: boolean }> {
   const origin = opts.origin ?? "event";
+  // A plain read, used only to resolve the existing row's stored key casing (see
+  // findExistingPost) and as a cheap, OPTIONAL early-exit for the common case where the skip
+  // is already obviously correct. It is never what correctness rests on: between this read
+  // and the write below, a concurrent NRMS event can still commit — see the setWhere guard.
   const existing = await findExistingPost(tx, r.key);
   if (origin === "legacy" && existing?.origin === "event") {
     return { skippedEventOwned: true };
@@ -107,7 +116,23 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
     isPublished: true,
     timestamp: parseOffsetDateTime(r.timestamp),
   };
-  await tx.insert(posts).values(values).onConflictDoUpdate({ target: posts.key, set: values });
+  if (origin === "legacy") {
+    // Ruling P1-R22: the actual guard. If a concurrent transaction applying an NRMS event for
+    // this same key commits between our read above and this statement, this upsert's row
+    // lock blocks until that commit, then Postgres re-evaluates setWhere against the
+    // now-committed row — origin = 'event' — and skips the UPDATE instead of applying `set`.
+    // RETURNING then yields zero rows, which is what skippedEventOwned is actually derived
+    // from (never from the pre-check above). A fresh insert (no conflicting row at all) is
+    // unaffected by setWhere and always proceeds.
+    const written = await tx
+      .insert(posts)
+      .values(values)
+      .onConflictDoUpdate({ target: posts.key, set: values, setWhere: sql`${posts.origin} <> 'event'` })
+      .returning({ key: posts.key });
+    if (written.length === 0) return { skippedEventOwned: true };
+  } else {
+    await tx.insert(posts).values(values).onConflictDoUpdate({ target: posts.key, set: values });
+  }
   if (opts.notify !== false) await notifyUpdate(tx, "PostUpdate", [key]);
   return { skippedEventOwned: false };
 }
