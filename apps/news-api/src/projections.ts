@@ -50,6 +50,14 @@ export interface ApplyOptions {
    * SignalR broadcast per release (~100k) to every webapp client is the wrong behaviour.
    */
   notify?: boolean;
+  /**
+   * Which pipeline owns this post afterwards: 'legacy' (the importer) or 'event' (an NRMS
+   * release.published/release.updated event). Default 'event'. The importer's
+   * unpublish-missing step only considers 'legacy' rows, so once NRMS publishes a key — even
+   * one the legacy importer previously owned — this flips it to 'event' and a routine import
+   * can never unpublish it again.
+   */
+  origin?: "legacy" | "event";
 }
 
 export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions = {}): Promise<void> {
@@ -57,6 +65,7 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
   const values = {
     key,
     kind: r.kind,
+    origin: opts.origin ?? "event",
     reference: r.reference,
     atomId: r.atomId,
     publishDate: parseOffsetDateTime(r.publishDate),

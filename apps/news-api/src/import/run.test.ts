@@ -120,7 +120,9 @@ describe("importLegacyNews: an empty carousel never wipes slides", () => {
 
 // Final review M7(a): a full import makes the store match legacy's published set — a post
 // still published here but no longer published in legacy (unpublished/deactivated there
-// since the last import) is unpublished.
+// since the last import) is unpublished. Follow-up fix: only once NRMS (release.published /
+// release.updated events) hasn't claimed it — unpublish-missing only ever considers rows with
+// origin = 'legacy', so a routine import can never unpublish NRMS-owned content.
 describe("importLegacyNews: unpublishes posts missing from legacy's published set", () => {
   let tdb: TestDatabase;
   beforeAll(async () => {
@@ -131,13 +133,16 @@ describe("importLegacyNews: unpublishes posts missing from legacy's published se
   });
   beforeEach(async () => {
     await tdb.pool.query("TRUNCATE posts");
-    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "STALE-1", reference: "NEWS-STALE" }));
+    // origin: "legacy" — this row is owned by the legacy importer, so it's a candidate for
+    // unpublish-missing below (the default origin, "event", is NOT — see the tests further
+    // down for that side of the behaviour).
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "STALE-1", reference: "NEWS-STALE" }, { origin: "legacy" }));
   });
 
   const published = async () =>
     (await tdb.pool.query<{ key: string }>("SELECT key FROM posts WHERE is_published ORDER BY key")).rows.map((r) => r.key);
 
-  it("unpublishes them by default, keeping every imported post (matched case-insensitively) published", async () => {
+  it("unpublishes a legacy-origin post missing from legacy, keeping every imported post (matched case-insensitively) published", async () => {
     await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "2026tt0103-001121", reference: "NEWS-X" }));
     const result = await importLegacyNews(tdb.db, source);
     expect(result.unpublished).toBe(1);
@@ -160,6 +165,34 @@ describe("importLegacyNews: unpublishes posts missing from legacy's published se
     expect(await published()).toEqual(["STALE-1"]);
     expect(logs).toContain("[import] legacy returned no published releases; skipping unpublish of missing posts");
   });
+
+  // NRMS now publishes release.published/release.updated events directly (origin defaults to
+  // "event"); a routine legacy import that doesn't mention that key must never unpublish it.
+  it("never unpublishes an event-origin post missing from legacy's published set", async () => {
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "NRMS-1", reference: "NEWS-NRMS" }));
+    const result = await importLegacyNews(tdb.db, source);
+    // Only the legacy-origin STALE-1 row is a candidate; NRMS-1 (origin "event") survives.
+    expect(result.unpublished).toBe(1);
+    expect(await published()).toEqual(["2026TT0103-001121", "NRMS-1"]);
+    const { rows } = await tdb.pool.query("SELECT key, origin, is_published FROM posts WHERE key = 'NRMS-1'");
+    expect(rows).toEqual([{ key: "NRMS-1", origin: "event", is_published: true }]);
+  });
+
+  // Once NRMS publishes an update for a key the legacy importer used to own, that key is
+  // NRMS's from then on: the row flips to origin "event" and a later import missing it must
+  // not unpublish it, even though the importer originally created it.
+  it("a legacy-origin post later updated by an event becomes event-origin and survives a later import that omits it", async () => {
+    const before = await tdb.pool.query("SELECT origin FROM posts WHERE key = 'STALE-1'");
+    expect(before.rows).toEqual([{ origin: "legacy" }]);
+
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "STALE-1", reference: "NEWS-STALE", summary: "updated via NRMS" }));
+    const after = await tdb.pool.query("SELECT origin, summary FROM posts WHERE key = 'STALE-1'");
+    expect(after.rows).toEqual([{ origin: "event", summary: "updated via NRMS" }]);
+
+    const result = await importLegacyNews(tdb.db, source);
+    expect(result.unpublished).toBe(0);
+    expect(await published()).toEqual(["2026TT0103-001121", "STALE-1"]);
+  });
 });
 
 // Final review M7(b): an import of ~100k releases must not fire a PostUpdate NOTIFY (and
@@ -174,7 +207,8 @@ describe("importLegacyNews: no per-release notifications", () => {
   });
 
   it("emits no PostUpdate notifications, for imported or unpublished posts", async () => {
-    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "STALE-1", reference: "NEWS-STALE" }));
+    // origin: "legacy" so unpublish-missing (below) is actually exercised for this post.
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "STALE-1", reference: "NEWS-STALE" }, { origin: "legacy" }));
     const got: [UpdateTarget, string[]][] = [];
     const { stop } = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
     try {

@@ -45,7 +45,10 @@ export async function importLegacyNews(
       const contacts = releaseDocs.flatMap((d) => contactsByDoc.get(lower(d.DocumentId)) ?? []);
       const record = mapLegacyRelease(row, releaseDocs, contacts, indexes.get(id) ?? []);
       // No per-release PostUpdate: see ApplyOptions.notify and the README's import notes.
-      await db.transaction((tx) => applyRelease(tx, record, { notify: false }));
+      // origin: "legacy" marks this row as legacy-owned, so unpublish-missing below may later
+      // unpublish it if legacy stops publishing it. An NRMS event for the same key flips it
+      // to "event" (see ApplyOptions.origin) and this importer can never touch it again.
+      await db.transaction((tx) => applyRelease(tx, record, { notify: false, origin: "legacy" }));
       importedKeys.push(record.key);
       result.releases++;
     }
@@ -60,9 +63,13 @@ export async function importLegacyNews(
     } else {
       // One JSON parameter rather than one bind parameter per key (~100k keys would blow
       // Postgres's 65535-parameter limit). Also silent: no PostUpdate, as for the upserts.
+      // origin = 'legacy' only: an 'event' row is NRMS-owned (it published or was later
+      // re-published there even if legacy first created it), and legacy not listing it here
+      // must never unpublish it.
       const { rows } = await db.execute<{ key: string }>(sql`
         UPDATE posts SET is_published = false
         WHERE is_published
+          AND origin = 'legacy'
           AND lower(key) NOT IN (SELECT lower(value) FROM jsonb_array_elements_text(${JSON.stringify(importedKeys)}::jsonb))
         RETURNING key`);
       result.unpublished = rows.length;

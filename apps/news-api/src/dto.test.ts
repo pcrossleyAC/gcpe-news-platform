@@ -9,7 +9,7 @@ const post: PostRow = {
   publishDate: new Date("2026-10-01T22:10:00Z"), leadMinistryKey: "transportation-and-transit", summary: "s", socialMediaSummary: null,
   socialMediaHeadline: null, keywords: "", location: "Abbotsford", hasMediaAssets: false, hasTranslations: false, isNewsOnDemand: true,
   assetUrl: "", redirectUri: null, documents: [], ministryKeys: ["transportation-and-transit"], sectorKeys: [], tagKeys: [], themeKeys: [],
-  indexKeys: [], assets: null, translations: null, isPublished: true, timestamp: new Date("2026-10-01T22:10:28.037Z"),
+  indexKeys: [], assets: null, translations: null, isPublished: true, timestamp: new Date("2026-10-01T22:10:28.037Z"), origin: "event",
 };
 
 const ministry: CategoryRow = {

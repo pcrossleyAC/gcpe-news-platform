@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, customType, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { OrgRecord, ReleaseRecord } from "@gcpe/events";
 
 export * from "@gcpe/events/tables";
@@ -35,12 +35,21 @@ export const posts = pgTable(
     translations: jsonb("translations").$type<ReleaseRecord["translations"]>(),
     isPublished: boolean("is_published").notNull().default(true),
     timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),
+    /**
+     * 'legacy' | 'event'. Which pipeline currently owns this post: the legacy importer
+     * ('legacy') or an NRMS `release.published`/`release.updated` event ('event'). Once NRMS
+     * publishes a key, a later event flips a 'legacy' row to 'event' — the importer's
+     * unpublish-missing step only ever considers 'legacy' rows, so it can never unpublish
+     * content NRMS now owns (final review follow-up).
+     */
+    origin: text("origin").notNull().default("event").$type<"legacy" | "event">(),
   },
   (t) => [
     uniqueIndex("posts_key_lower_idx").on(sql`lower(${t.key})`),
     index("posts_reference_lower_idx").on(sql`lower(${t.reference})`),
     index("posts_publish_date_idx").on(t.publishDate.desc()),
     index("posts_index_keys_idx").using("gin", t.indexKeys),
+    check("posts_origin_check", sql`${t.origin} IN ('legacy', 'event')`),
   ],
 );
 
