@@ -103,19 +103,6 @@ function isPermanentRecipientRejection(e: unknown): boolean {
   return err?.command === "RCPT TO" || Array.isArray(err?.rejected);
 }
 
-/**
- * nodemailer's own client-side size check (the server advertised a SIZE limit in EHLO and this
- * message exceeds it) fails at the MAIL FROM step with no SMTP round trip at all — this
- * specific message can never fit, so it's permanent. This is deliberately narrower than "any
- * EMESSAGE": a DATA-stage EMESSAGE (the server rejecting an in-flight transfer, e.g. its own
- * size limit discovered mid-DATA) is left to retry below — losing a message outright is worse
- * than a few retries, and that rejection might not recur (e.g. a transient server-side limit).
- */
-function isOversizeForLocalLimit(e: unknown): boolean {
-  const err = e as { code?: unknown; command?: unknown } | null;
-  return err?.code === "EMESSAGE" && err?.command === "MAIL FROM";
-}
-
 const SMTP_CONFIG_ERROR_COMMANDS = new Set(["CONN", "MAIL FROM", "STARTTLS", "EHLO", "HELO", "LHLO"]);
 
 /** True for errors at the connection/greeting, EHLO/HELO/LHLO, authentication, sender, or
@@ -242,12 +229,14 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
 
     let error: string | null = null;
     let permanent = false;
+    let configError = false;
     try {
       await opts.transport.sendMail({ from: opts.from, to, subject, html, text, headers });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
-      permanent = isPermanentRecipientRejection(e) || isOversizeForLocalLimit(e);
-      if (!permanent && !loggedConfigError && isSmtpConfigError(e)) {
+      permanent = isPermanentRecipientRejection(e);
+      configError = !permanent && isSmtpConfigError(e);
+      if (configError && !loggedConfigError) {
         loggedConfigError = true;
         console.error(`[distribution] SMTP configuration error: ${error}`);
       }
@@ -264,11 +253,33 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
       continue;
     }
 
-    const attempts = row.attempts + 1;
     const lastError = truncateError(error);
+
+    // I2: a config/connection-stage error (the worker's own SMTP setup, not any particular
+    // recipient) means every remaining message in this batch would fail the exact same way —
+    // an outage, not a reason to spend down anyone's attempt budget. Back off without
+    // incrementing attempts (never reaches MAX_ATTEMPTS, so an outage can never drain the queue
+    // to failed) and stop this run so the rest of the claimed batch isn't attempted (and burned
+    // through retries) against a server that's still down; release it for the next run instead.
+    if (configError) {
+      const res = await opts.db
+        .update(messages)
+        .set({ nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(row.attempts)), lockedUntil: null, lastError, originalRecipient })
+        .where(where);
+      if (res.rowCount) result.retried++;
+      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockUntil);
+      break;
+    }
+
+    const attempts = row.attempts + 1;
     if (permanent || attempts >= MAX_ATTEMPTS) {
       const res = await opts.db.update(messages).set({ status: "failed", attempts, lockedUntil: null, lastError, originalRecipient }).where(where);
-      if (res.rowCount) result.failed++;
+      // I5: a message going failed is otherwise silent — logged once, only when this call
+      // actually made the write (the ownership-guarded `where` matched).
+      if (res.rowCount) {
+        result.failed++;
+        console.error(`[distribution] message ${row.id} failed after ${attempts} attempts: ${error}`);
+      }
     } else {
       const res = await opts.db
         .update(messages)

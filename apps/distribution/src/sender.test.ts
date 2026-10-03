@@ -154,11 +154,12 @@ describe("sendDue", () => {
     }
   });
 
-  it("retries a transient failure with backoff and does not resend before it's due", async () => {
+  it("retries a connection-refused (config-stage) failure with backoff and does not resend before it's due, without spending an attempt", async () => {
     const sink = await startSmtpSink();
     const port = sink.port;
     await sink.close(); // connection now refused
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port, secure: false, ignoreTLS: true, connectionTimeout: 2000 });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
@@ -168,7 +169,10 @@ describe("sendDue", () => {
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("pending");
-      expect(row!.attempts).toBe(1);
+      // I2: connection-refused is a config/connection-stage error (nodemailer tags it
+      // `command: "CONN"`), so this must not spend an attempt — an outage must never be able
+      // to drain the queue to failed via MAX_ATTEMPTS.
+      expect(row!.attempts).toBe(0);
       expect(row!.lastError).toBeTruthy();
       expect(row!.nextAttemptAt.getTime()).toBeGreaterThan(before.getTime());
 
@@ -176,6 +180,7 @@ describe("sendDue", () => {
       const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
       expect(second).toEqual({ sent: 0, retried: 0, failed: 0 });
     } finally {
+      errorSpy.mockRestore();
       await transport.close();
     }
   }, 15000);
@@ -198,7 +203,7 @@ describe("sendDue", () => {
     }
   });
 
-  it("retries (does not fail) when the server demands authentication that was never attempted (530), logging a configuration error once per call", async () => {
+  it("retries (does not fail, does not spend an attempt) when the server demands authentication that was never attempted (530), logging a configuration error once and stopping the run after the first one", async () => {
     const sink = await startSmtpSink({ requireAuth: true });
     // No `auth` configured: the client never sends AUTH, so the server's 530 fires at MAIL FROM.
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
@@ -211,12 +216,15 @@ describe("sendDue", () => {
         internalDomains,
       );
 
+      // I2: a config-stage error stops the run after the first row — the other 2 recipients
+      // are released, untouched, rather than also being attempted (and retried) against a
+      // server that's still misconfigured.
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 3, failed: 0 });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
 
       const rows = await tdb.db.select().from(messages);
-      expect(rows.every((r) => r.status === "pending" && r.attempts === 1)).toBe(true);
-      expect(rows.every((r) => r.nextAttemptAt.getTime() > Date.now())).toBe(true);
+      expect(rows.every((r) => r.status === "pending" && r.attempts === 0)).toBe(true);
+      expect(rows.filter((r) => r.lockedUntil === null)).toHaveLength(3);
 
       const configErrorCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].startsWith("[distribution] SMTP configuration error:"));
       expect(configErrorCalls).toHaveLength(1);
@@ -227,7 +235,7 @@ describe("sendDue", () => {
     }
   });
 
-  it("retries (does not fail) when authentication is rejected (535 wrong password)", async () => {
+  it("retries (does not fail, does not spend an attempt) when authentication is rejected (535 wrong password)", async () => {
     const sink = await startSmtpSink({ requireAuth: true });
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true, auth: { user: "svc", pass: "wrong" } });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -239,9 +247,80 @@ describe("sendDue", () => {
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("pending");
-      expect(row!.attempts).toBe(1);
+      expect(row!.attempts).toBe(0);
       expect(row!.nextAttemptAt.getTime()).toBeGreaterThan(Date.now() - 1000);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[distribution] SMTP configuration error:"));
+    } finally {
+      errorSpy.mockRestore();
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  // I2: the bug this fixes — config/connection-stage errors used to count toward MAX_ATTEMPTS
+  // (5), so a ~15-minute SMTP outage (a handful of 2s-apart sendDue calls) would drain the
+  // queue to permanently failed. Running the same CONN-error outage across 6+ calls (more than
+  // MAX_ATTEMPTS) must leave the message pending with attempts still at 0, never failed.
+  it("never fails, and never spends an attempt, across 6+ runs of a connection-stage SMTP outage", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stubTransport = {
+      sendMail: async () => {
+        throw Object.assign(new Error("connect ECONNREFUSED 127.0.0.1:2525"), { code: "ECONNREFUSED", command: "CONN" });
+      },
+    } as unknown as Transporter;
+    try {
+      let simulatedNow = Date.now();
+      for (let run = 0; run < 6; run++) {
+        const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(simulatedNow) });
+        expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+        // Advance well past this call's backoff so the message is due again on the next run,
+        // simulating repeated outage checks rather than one that never comes due.
+        simulatedNow += 3_600_000;
+      }
+
+      const [row] = await tdb.db.select().from(messages);
+      expect(row!.status).toBe("pending");
+      expect(row!.attempts).toBe(0);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  // I2: a genuine permanent recipient rejection (RCPT TO 5xx) is unaffected by the config-error
+  // carve-out above — it must still fail immediately, attempt-for-attempt as before.
+  it("still fails immediately on a permanent RCPT TO rejection even though config errors no longer do", async () => {
+    const sink = await startSmtpSink({ rejectRcpt: 550 });
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+
+      const [row] = await tdb.db.select().from(messages);
+      expect(row!.status).toBe("failed");
+      expect(row!.attempts).toBe(1);
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  // I5: a message going failed was otherwise silent — nothing else notices mail that stopped
+  // being delivered.
+  it("logs once (console.error) when a message goes failed", async () => {
+    const sink = await startSmtpSink({ rejectRcpt: 550 });
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      const [row] = await tdb.db.select().from(messages);
+
+      const failureCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].startsWith(`[distribution] message ${row!.id} failed after 1 attempts:`));
+      expect(failureCalls).toHaveLength(1);
     } finally {
       errorSpy.mockRestore();
       await transport.close();
@@ -473,33 +552,8 @@ describe("sendDue", () => {
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("pending");
+      expect(row!.attempts).toBe(0);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[distribution] SMTP configuration error:"));
-    } finally {
-      errorSpy.mockRestore();
-    }
-  });
-
-  it("fails immediately (no configuration-error log) when nodemailer rejects a message as too large for the server's advertised size limit", async () => {
-    // nodemailer raises this client-side, at the MAIL FROM step, with no SMTP round trip at
-    // all, once the server's advertised SIZE limit is known to be exceeded (code: "EMESSAGE",
-    // command: "MAIL FROM") — a stub transport reproduces that exact shape deterministically,
-    // the same way the EHLO test above does for a connection-stage failure.
-    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
-    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-    try {
-      const stubTransport = {
-        sendMail: async () => {
-          throw Object.assign(new Error("Message size larger than allowed 200"), { code: "EMESSAGE", command: "MAIL FROM" });
-        },
-      } as unknown as Transporter;
-
-      const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
-
-      const [row] = await tdb.db.select().from(messages);
-      expect(row!.status).toBe("failed");
-      expect(row!.attempts).toBe(1);
-      expect(errorSpy).not.toHaveBeenCalled();
     } finally {
       errorSpy.mockRestore();
     }
