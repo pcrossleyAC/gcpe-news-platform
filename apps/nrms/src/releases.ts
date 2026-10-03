@@ -1,7 +1,8 @@
+import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
-import { releaseRecordSchema } from "@gcpe/events";
+import { MAX_EVENT_BYTES, releaseRecordSchema, type ReleaseRecord } from "@gcpe/events";
 import { releases, type ReleaseContent, type ReleaseRow } from "./db/schema";
 
 export const releaseDraftSchema = releaseRecordSchema
@@ -12,6 +13,37 @@ export type ReleaseDraft = z.infer<typeof releaseDraftSchema>;
 export class ReleaseExistsError extends Error {}
 export class ReleaseNotFoundError extends Error {}
 export class ReleaseAlreadyPublishedError extends Error {}
+/** Thrown by {@link createDraft} when the release, once published, would produce an outbox
+ * envelope over {@link MAX_EVENT_BYTES} — rejected up front so it can never wedge the
+ * publisher (see publisher.ts's per-release isolation for the defence-in-depth backstop). */
+export class ReleaseTooLargeError extends Error {}
+
+/**
+ * Builds the record the release would publish as (with a placeholder date, since the real
+ * publishDate/timestamp aren't known until publishDue runs), validates it against
+ * releaseRecordSchema, and checks that a full envelope carrying it would fit under
+ * MAX_EVENT_BYTES — the same size enqueueEvent (packages/events/src/publisher.ts) enforces.
+ */
+function assertPublishable(key: string, kind: ReleaseDraft["kind"], content: ReleaseContent): void {
+  const placeholder = new Date(0).toISOString();
+  const record: ReleaseRecord = { ...content, key, kind, publishDate: placeholder, timestamp: placeholder, atomId: null, renditions: null };
+  releaseRecordSchema.parse(record);
+  const envelopeSized = {
+    id: randomUUID(),
+    type: "release.published",
+    version: 1,
+    source: "nrms",
+    aggregateId: key,
+    sequence: 1,
+    occurredAt: placeholder,
+    correlationId: randomUUID(),
+    data: record,
+  };
+  const bytes = Buffer.byteLength(JSON.stringify(envelopeSized), "utf8");
+  if (bytes > MAX_EVENT_BYTES) {
+    throw new ReleaseTooLargeError(`release ${key} would publish as ${bytes} bytes; the limit is MAX_EVENT_BYTES (${MAX_EVENT_BYTES})`);
+  }
+}
 
 const byKey = (key: string) => sql`lower(${releases.key}) = lower(${key})`;
 
@@ -22,6 +54,7 @@ export async function getRelease(db: Db, key: string): Promise<ReleaseRow | unde
 
 export async function createDraft(db: Db, draft: ReleaseDraft): Promise<void> {
   const { key, kind, ...content } = draft;
+  assertPublishable(key, kind, content satisfies ReleaseContent);
   try {
     await db.insert(releases).values({ key, kind, content: content satisfies ReleaseContent });
   } catch (e) {
@@ -34,11 +67,12 @@ export async function createDraft(db: Db, draft: ReleaseDraft): Promise<void> {
 }
 
 export async function scheduleRelease(db: Db, key: string, publishAt: Date): Promise<void> {
+  if (Number.isNaN(publishAt.getTime())) throw new RangeError(`publishAt is an invalid Date for release ${key}`);
   const row = await getRelease(db, key);
   if (!row) throw new ReleaseNotFoundError(key);
   const updated = await db
     .update(releases)
-    .set({ status: "scheduled", publishAt, updatedAt: new Date() })
+    .set({ status: "scheduled", publishAt, lastError: null, updatedAt: new Date() })
     .where(sql`${byKey(key)} AND ${releases.status} <> 'published'`)
     .returning({ key: releases.key });
   if (updated.length === 0) throw new ReleaseAlreadyPublishedError(key);
