@@ -6,14 +6,19 @@ export interface NewsApiClient {
 }
 
 export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch): NewsApiClient {
+  // A leading slash on the second argument to `new URL` makes it absolute relative to the
+  // origin, discarding any path prefix baseUrl carries (e.g. "http://host/news/" loses
+  // "/news"). Ensuring a trailing slash on the base and using relative paths (no leading
+  // slash) below makes `new URL` join onto the base path instead of replacing it.
+  const base = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   const get = async (path: string): Promise<unknown> => {
-    const res = await fetchImpl(new URL(path, baseUrl), { signal: AbortSignal.timeout(10_000) });
+    const res = await fetchImpl(new URL(path, base), { signal: AbortSignal.timeout(10_000) });
     if (!res.ok) throw new Error(`News API ${res.status} for ${path}`);
     const text = await res.text();
     return text.trim() === "" ? null : JSON.parse(text); // the v1 API answers "not found" with an empty 200
   };
   return {
-    getPost: async (key) => (await get(`/api/Posts/${encodeURIComponent(key)}?api-version=1.0`)) as PostDto | null,
-    latestHome: async (count) => ((await get(`/api/Posts/Latest/home/default?api-version=1.0&count=${count}`)) as PostDto[] | null) ?? [],
+    getPost: async (key) => (await get(`api/Posts/${encodeURIComponent(key)}?api-version=1.0`)) as PostDto | null,
+    latestHome: async (count) => ((await get(`api/Posts/Latest/home/default?api-version=1.0&count=${count}`)) as PostDto[] | null) ?? [],
   };
 }

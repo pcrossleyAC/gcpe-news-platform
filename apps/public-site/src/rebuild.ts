@@ -20,7 +20,17 @@ export function createRebuildHandler(deps: { newsApi: NewsApiClient; storage: Si
         continue;
       }
       const post = await deps.newsApi.getPost(key);
-      const path = `releases/${post?.key ?? key}/index.html`;
+      // The output path always uses the requested, validated `key` — never the API
+      // response's unvalidated post.key. A post.key of ".." or "a/b" would otherwise let a
+      // malicious/buggy News API response write outside releases/<key>/, and a casing
+      // difference between the write path and the unpublish path could leave a page live
+      // after its post was unpublished. Skip (no write, no remove) rather than throwing, so
+      // a bad response can't poison the event and force endless dispatcher retries.
+      if (post && post.key.toLowerCase() !== key.toLowerCase()) {
+        console.warn(`[public-site] skipping page post:${key}: News API returned a different key (${JSON.stringify(post.key)})`);
+        continue;
+      }
+      const path = `releases/${key}/index.html`;
       if (post) await deps.storage.write(path, renderPostPage(post, deps.site));
       else await deps.storage.remove(path);
     }

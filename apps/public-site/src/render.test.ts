@@ -24,6 +24,11 @@ describe("render", () => {
     expect(html).toContain('<link rel="canonical" href="https://news.example/releases/2026HLTH0001-000001">');
     expect(html.startsWith("<!doctype html>")).toBe(true);
   });
+  it("percent-encodes the key in the canonical link, like the home links (fix round 1, item 5)", () => {
+    const spaced: PostDto = { ...post, key: "2026HLTH0001-00000 1" };
+    const html = renderPostPage(spaced, site);
+    expect(html).toContain('<link rel="canonical" href="https://news.example/releases/2026HLTH0001-00000%201">');
+  });
   it("home lists posts linking to their pages", () => {
     const html = renderHomePage([post], site);
     expect(html).toContain('href="/releases/2026HLTH0001-000001"');

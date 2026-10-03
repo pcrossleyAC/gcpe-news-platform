@@ -59,7 +59,7 @@ ${d?.subheadline ? `<h2>${e(d.subheadline)}</h2>` : ""}
 ${d?.detailsHtml ?? ""}
 ${contacts ? `<section><h2>Contacts</h2><ul>\n${contacts}\n</ul></section>` : ""}
 </article>`;
-  return page(headline, site, `/releases/${p.key}`, body);
+  return page(headline, site, `/releases/${encodeURIComponent(p.key)}`, body);
 }
 
 export function renderHomePage(posts: PostDto[], site: SiteInfo): string {

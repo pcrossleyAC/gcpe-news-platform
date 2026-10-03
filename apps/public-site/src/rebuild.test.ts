@@ -79,6 +79,28 @@ describe("createRebuildHandler", () => {
     warn.mockRestore();
   });
 
+  it("ignores a post whose returned key doesn't match the requested key, leaving other files untouched (fix round 1, item 1)", async () => {
+    const storage = memoryStorage();
+    storage.files.set("index.html", "home-original");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => ({ ...post, key: ".." })), latestHome: vi.fn(async () => []) };
+    const handler = createRebuildHandler({ newsApi, storage, site });
+    await handler({} as Tx, envelope({ pages: ["post:K1"] }));
+    expect(storage.files.get("index.html")).toBe("home-original");
+    expect(storage.files.size).toBe(1); // nothing written for the post:K1 page
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("writes at the requested key's path (not the API response's casing) when the keys only differ by case (fix round 1, item 1)", async () => {
+    const storage = memoryStorage();
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => ({ ...post, key: "k1" })), latestHome: vi.fn(async () => []) };
+    const handler = createRebuildHandler({ newsApi, storage, site });
+    await handler({} as Tx, envelope({ pages: ["post:K1"] }));
+    expect(storage.files.has("releases/K1/index.html")).toBe(true);
+    expect(storage.files.has("releases/k1/index.html")).toBe(false);
+  });
+
   it("rejects when the News API is down, so the receiver 500s and the dispatcher retries", async () => {
     const storage = memoryStorage();
     const newsApi: NewsApiClient = {
