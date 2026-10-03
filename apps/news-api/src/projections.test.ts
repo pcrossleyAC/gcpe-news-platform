@@ -1,8 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type pg from "pg";
 import type { TestDatabase } from "@gcpe/db-kit";
-import type { OrgRecord, ReleaseRecord } from "@gcpe/events";
+import type { OrgRecord, ReleaseRecord, TermRecord } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNewsTestDb } from "../test/helpers";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
@@ -120,6 +120,49 @@ describe("projections", () => {
       await txnA.query("ROLLBACK").catch(() => {});
       txnA.release();
     }
+  });
+
+  // Concurrent first writes of one key in two casings: without the per-identity advisory lock
+  // both pre-checks see no row and the second insert raises 23505 on posts_key_lower_idx.
+  it("serialises concurrent first writes of a key that differ only by case", async () => {
+    let release!: () => void;
+    let signalWritten!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const written = new Promise<void>((r) => (signalWritten = r));
+    const first = tdb.db.transaction(async (tx) => {
+      await applyRelease(tx, { ...sampleRelease, key: "CASE-1", summary: "first" }, { notify: false });
+      signalWritten();
+      await gate; // hold the transaction open until the second writer is provably waiting
+    });
+    await written;
+    const second = tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "case-1", summary: "second" }, { notify: false }));
+    await waitUntilBlockedOnLock(tdb.pool);
+    release();
+    await first;
+    await expect(second).resolves.toEqual({ skippedEventOwned: false });
+    const rows = await tdb.db.select({ key: posts.key, summary: posts.summary }).from(posts).where(sql`lower(${posts.key}) = 'case-1'`);
+    expect(rows).toEqual([{ key: "CASE-1", summary: "second" }]);
+  });
+
+  it("serialises concurrent first writes of a category that differ only by case", async () => {
+    let release!: () => void;
+    let signalWritten!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const written = new Promise<void>((r) => (signalWritten = r));
+    const term: TermRecord = { kind: "sector", key: "Mining", displayName: "Mining", sortOrder: 0, isActive: true, social: org.social, updatedAt: "2026-10-02T00:00:00Z" };
+    const first = tdb.db.transaction(async (tx) => {
+      await applyTerm(tx, term);
+      signalWritten();
+      await gate;
+    });
+    await written;
+    const second = tdb.db.transaction((tx) => applyTerm(tx, { ...term, key: "MINING", displayName: "Mining 2" }));
+    await waitUntilBlockedOnLock(tdb.pool);
+    release();
+    await first;
+    await second;
+    const rows = await tdb.db.select({ key: categories.key, name: categories.name }).from(categories).where(sql`lower(${categories.key}) = 'mining'`);
+    expect(rows).toEqual([{ key: "Mining", name: "Mining 2" }]);
   });
 
   it("upserts a release across key casing without a unique violation", async () => {

@@ -24,6 +24,19 @@ export function indexKeysFor(r: Pick<ReleaseRecord, "ministryKeys" | "sectorKeys
 }
 
 /**
+ * Serialises writers of one case-insensitive identity for the rest of the transaction.
+ * findExistingPost/resolveCategoryKey are plain reads: two concurrent first writes of the
+ * same key in different casings ("CASE-1" vs "case-1") would both see no row, both insert
+ * with their own casing, and the loser would raise 23505 on the lower(key) unique index —
+ * the exact-key ON CONFLICT target can't absorb it. Taking this lock BEFORE the read means
+ * the second writer waits for the first to commit, and its read (a fresh read-committed
+ * snapshot) then sees and adopts the stored casing.
+ */
+async function lockIdentity(tx: Tx, scope: string, key: string): Promise<void> {
+  await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${scope} || ':' || lower(${key})))`);
+}
+
+/**
  * `posts.key` is the exact-match conflict target, but there's also a separate unique
  * index on `lower(key)` (Task 3). An incoming key that matches an existing row only by
  * case (e.g. "r1" vs the stored "R1") would hit that lower() index and raise a unique
@@ -82,6 +95,7 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
   // findExistingPost) and as a cheap, OPTIONAL early-exit for the common case where the skip
   // is already obviously correct. It is never what correctness rests on: between this read
   // and the write below, a concurrent NRMS event can still commit — see the setWhere guard.
+  await lockIdentity(tx, "posts", r.key);
   const existing = await findExistingPost(tx, r.key);
   if (origin === "legacy" && existing?.origin === "event") {
     return { skippedEventOwned: true };
@@ -158,6 +172,7 @@ async function withStoredParentKeys(tx: Tx, key: string, parents: (string | null
 }
 
 export async function applyOrg(tx: Tx, org: OrgRecord): Promise<void> {
+  await lockIdentity(tx, "categories:ministries", org.key);
   const key = await resolveCategoryKey(tx, "ministries", org.key);
   const [previous] = await tx
     .select({ ministry: categories.ministry })
@@ -194,6 +209,7 @@ export async function applyOrg(tx: Tx, org: OrgRecord): Promise<void> {
 export async function applyTerm(tx: Tx, term: TermRecord): Promise<void> {
   const kind = TERM_TO_CATEGORY[term.kind];
   if (!kind) return;
+  await lockIdentity(tx, `categories:${kind}`, term.key);
   const key = await resolveCategoryKey(tx, kind, term.key);
   const values = {
     kind,
