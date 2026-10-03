@@ -89,6 +89,8 @@ curl "http://localhost:3002/api/Posts/Latest/home/default?count=3&api-version=1.
 - Legacy import: `DATABASE_URL=… LEGACY_SQL_SERVER=… LEGACY_SQL_USER=… LEGACY_SQL_PASSWORD=… npm --workspace @gcpe/news-api run import:legacy`
 - Core reference data reaches the News API as events: configure Core's `EVENT_SUBSCRIBERS` with `{"name":"news-api","url":"http://<news-api>/events","secret":"<same as EVENT_SECRETS.core>","types":["*"]}` and call Core's `POST /api/admin/republish` once.
 
+- `/health/ready` returns 503 while the database is unreachable **or** the Postgres `LISTEN` connection that feeds `/updates` is down/reconnecting (that instance would silently miss pushes); `/health/live` stays 200.
+
 ### News API environment
 
 | Variable | Required | Default | Meaning |

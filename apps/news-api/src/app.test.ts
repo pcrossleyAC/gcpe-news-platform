@@ -61,3 +61,28 @@ describe("unmatched routes", () => {
     }
   });
 });
+
+// Final review M4: /health/ready reflects extra readiness checks (main.ts wires the LISTEN
+// connection's isListening() in here).
+describe("readiness", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("is 503 while a readiness check (LISTEN down) reports false, 200 once it recovers", async () => {
+    let listening = false;
+    const app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS, readinessChecks: [() => listening] });
+    const down = await request(app).get("/health/ready");
+    expect(down.status).toBe(503);
+    expect(down.body).toEqual({ status: "unavailable" });
+    expect((await request(app).get("/health/live")).status).toBe(200);
+    listening = true;
+    const up = await request(app).get("/health/ready");
+    expect(up.status).toBe(200);
+    expect(up.body).toEqual({ status: "ok" });
+  });
+});

@@ -64,6 +64,17 @@ export interface ListenForUpdatesOptions {
   onReconnect?: () => void;
 }
 
+export interface UpdatesListener {
+  /** Stops listening and releases the dedicated connection; resolves once it's released. */
+  stop: () => Promise<void>;
+  /**
+   * True only while the LISTEN connection is up. False while it's broken/reconnecting (when
+   * notifications are being lost) and after stop() — wired into /health/ready so the
+   * platform stops routing to an instance that can't push updates.
+   */
+  isListening: () => boolean;
+}
+
 const INITIAL_BACKOFF_MS = 100;
 const MAX_BACKOFF_MS = 5000;
 
@@ -80,7 +91,7 @@ export async function listenForUpdates(
   pool: pg.Pool,
   onUpdate: (target: UpdateTarget, keys: string[]) => void,
   opts: ListenForUpdatesOptions = {},
-): Promise<() => Promise<void>> {
+): Promise<UpdatesListener> {
   let client: pg.PoolClient | null = null;
   let stopped = false;
   let reconnecting = false;
@@ -161,7 +172,7 @@ export async function listenForUpdates(
 
   client = await connect();
 
-  return async () => {
+  async function stop(): Promise<void> {
     stopped = true;
     // Wait for any reconnect already in flight to settle — it may be about to acquire (or
     // may have just acquired) a client that nothing else knows about yet, and we need that
@@ -170,5 +181,7 @@ export async function listenForUpdates(
     const c = client;
     client = null;
     if (c) await cleanup(c);
-  };
+  }
+
+  return { stop, isListening: () => !stopped && client !== null };
 }

@@ -50,7 +50,7 @@ describe("notify", () => {
   it("chunks a large key list across multiple notifications, each under the payload limit", async () => {
     const keys = Array.from({ length: 2000 }, (_, i) => `very-long-release-key-${i}-${"x".repeat(40)}`);
     const got: [UpdateTarget, string[]][] = [];
-    const stop = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
+    const { stop } = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
 
     await tdb.db.transaction((tx) => notifyUpdate(tx, "PostUpdate", keys));
     await new Promise((r) => setTimeout(r, 300));
@@ -76,7 +76,7 @@ describe("notify", () => {
     async () => {
       const got: [UpdateTarget, string[]][] = [];
       let reconnected = 0;
-      const stop = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]), { onReconnect: () => reconnected++ });
+      const { stop } = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]), { onReconnect: () => reconnected++ });
 
       const pid = await findListenBackendPid(tdb);
       await tdb.pool.query("SELECT pg_terminate_backend($1)", [pid]);
@@ -93,12 +93,46 @@ describe("notify", () => {
     10_000,
   );
 
+  // Final review M4: readiness must report unavailable while the LISTEN connection is down.
+  it(
+    "isListening() is false while the LISTEN connection is down/reconnecting, true once back, false after stop()",
+    async () => {
+      const local = await createNewsTestDb();
+      try {
+        const listener = await listenForUpdates(local.pool, () => {});
+        expect(listener.isListening()).toBe(true);
+
+        // Hold the reconnect attempt open so the "down" window is observable deterministically.
+        let release!: () => void;
+        const gate = new Promise<void>((r) => (release = r));
+        const realConnect = local.pool.connect.bind(local.pool);
+        vi.spyOn(local.pool, "connect").mockImplementationOnce(async () => {
+          await gate;
+          return realConnect();
+        });
+
+        await findAndKillListenBackend(local.url);
+        await vi.waitFor(() => expect(listener.isListening()).toBe(false));
+
+        release();
+        await vi.waitFor(() => expect(listener.isListening()).toBe(true));
+
+        await listener.stop();
+        expect(listener.isListening()).toBe(false);
+      } finally {
+        vi.restoreAllMocks();
+        await local.drop();
+      }
+    },
+    10_000,
+  );
+
   it(
     "stop() after the connection breaks resolves without leaking a connection",
     async () => {
       const local = await createNewsTestDb();
       try {
-        const stop = await listenForUpdates(local.pool, () => {});
+        const { stop } = await listenForUpdates(local.pool, () => {});
 
         const pid = await findListenBackendPid(local);
         await local.pool.query("SELECT pg_terminate_backend($1)", [pid]);
@@ -121,7 +155,7 @@ describe("notify", () => {
     async () => {
       const local = await createNewsTestDb();
       try {
-        const stop = await listenForUpdates(local.pool, () => {});
+        const { stop } = await listenForUpdates(local.pool, () => {});
 
         // Induce the LISTEN query itself to fail on the next few reconnect attempts, so the
         // reconnect loop has to retry through connect()'s own failure path repeatedly — the
@@ -166,7 +200,7 @@ describe("notify", () => {
     async () => {
       const local = await createNewsTestDb();
       try {
-        const stop = await listenForUpdates(local.pool, () => {});
+        const { stop } = await listenForUpdates(local.pool, () => {});
 
         // Delay the next connect() call (the reconnect attempt) so stop() can reliably be
         // called while it's still in flight, rather than racing real connection timing.

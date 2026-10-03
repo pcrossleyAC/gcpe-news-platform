@@ -19,6 +19,8 @@ const getToken =
     ? createClientCredentialsProvider({ tokenUrl: env.NOD_TOKEN_URL, clientId: env.NOD_CLIENT_ID, clientSecret: env.NOD_CLIENT_SECRET, scope: env.NOD_SCOPE })
     : undefined;
 
+// Assigned once listenForUpdates() resolves below; until then readiness reports unavailable.
+let isListening = () => false;
 const hub = createUpdatesHub({
   negotiateRateLimitPerMinute: env.UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN,
   maxConnections: env.UPDATES_MAX_CONNECTIONS,
@@ -28,6 +30,8 @@ const app = createApp({
   timeZone: tenant.timeZone,
   eventSecrets: env.EVENT_SECRETS,
   hubRouter: hub.router,
+  // Not ready while the LISTEN connection is down: this instance would silently miss updates.
+  readinessChecks: [() => isListening()],
   subscribe: env.NOD_BASE_URL ? { baseUrl: env.NOD_BASE_URL, getToken, rateLimitPerMinute: env.SUBSCRIBE_RATE_LIMIT_PER_MIN } : undefined,
 });
 const server = createServer(app);
@@ -38,12 +42,13 @@ hub.attach(server);
 // client to reconnect (hub.disconnectAll(), ruling P1-R9) rather than try to replay what was
 // missed. gcpe-news-webapp clears its caches on reconnect, which is the cheap way to recover
 // from a gap whose size we can't otherwise know.
-const stopListening = await listenForUpdates(pool, (target, keys) => hub.broadcast(target, keys), {
+const listener = await listenForUpdates(pool, (target, keys) => hub.broadcast(target, keys), {
   onReconnect: () => hub.disconnectAll(),
 });
+isListening = listener.isListening;
 server.listen(env.PORT, () => console.log(`[news-api] listening on ${env.PORT} (${tenant.tenantId}, ${tenant.timeZone})`));
 
-const shutdown = createNewsApiShutdown({ hub, server, stopListening, pool, exit: process.exit });
+const shutdown = createNewsApiShutdown({ hub, server, stopListening: listener.stop, pool, exit: process.exit });
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => void shutdown());
 }

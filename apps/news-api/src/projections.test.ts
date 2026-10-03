@@ -91,7 +91,7 @@ describe("projections", () => {
     await tdb.db.transaction((tx) => applyOrg(tx, org)); // key "health", isActive: true
 
     const got: [UpdateTarget, string[]][] = [];
-    const stop = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
+    const { stop } = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
 
     // Missing key: no row changes, so no notification.
     await tdb.db.transaction((tx) => deactivateCategory(tx, "ministries", "does-not-exist"));
@@ -133,7 +133,7 @@ describe("projections", () => {
 
   it("notifies listeners only after commit", async () => {
     const got: [UpdateTarget, string[]][] = [];
-    const stop = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
+    const { stop } = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
     await expect(
       tdb.db.transaction(async (tx) => {
         await applyRelease(tx, { ...sampleRelease, key: "rolled-back" });
