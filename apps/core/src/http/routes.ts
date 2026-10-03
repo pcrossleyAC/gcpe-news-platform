@@ -16,8 +16,10 @@ function parseKind(req: Request, res: Response): TermKind | null {
   return parsed.data;
 }
 
-function badRequest(res: Response, e: unknown) {
-  res.status(400).json({ error: e instanceof ZodError ? e.issues : String(e) });
+function handleError(res: Response, e: unknown) {
+  if (e instanceof ZodError) return void res.status(400).json({ error: e.issues });
+  console.error("[core] request failed", e);
+  res.status(500).json({ error: "internal error" });
 }
 
 export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Router {
@@ -35,7 +37,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
       if (input.key !== req.params.key) return void res.status(400).json({ error: "body key must match path" });
       res.json((await upsertOrganization(db, input, subscribers)).record);
     } catch (e) {
-      badRequest(res, e);
+      handleError(res, e);
     }
   });
   r.post("/organizations/:key/deactivate", admin, async (req: Request<{ key: string }>, res) => {
@@ -60,7 +62,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
       if (input.kind !== kind || input.key !== req.params.key) return void res.status(400).json({ error: "body kind/key must match path" });
       res.json((await upsertTerm(db, input, subscribers)).record);
     } catch (e) {
-      badRequest(res, e);
+      handleError(res, e);
     }
   });
   r.post("/terms/:kind/:key/deactivate", admin, async (req: Request<{ kind: string; key: string }>, res) => {

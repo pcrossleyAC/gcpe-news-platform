@@ -1,9 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { createApp } from "../app";
+import * as organizationsService from "../services/organizations";
 
 const issuer = "https://login.microsoftonline.com/t/v2.0";
 const audience = "api://core";
@@ -58,6 +59,23 @@ describe("Core HTTP API", () => {
     expect((await request(app).put("/api/terms/tag/covid-19").set("authorization", `Bearer ${admin}`).send(term)).status).toBe(200);
     expect((await request(app).get("/api/terms/tag").set("authorization", `Bearer ${reader}`)).body).toHaveLength(1);
     expect((await request(app).get("/api/terms/planet").set("authorization", `Bearer ${reader}`)).status).toBe(404);
+  });
+
+  it("hides internal error details on unexpected failures", async () => {
+    const spy = vi
+      .spyOn(organizationsService, "upsertOrganization")
+      .mockRejectedValueOnce(new Error('duplicate key value violates unique constraint "organizations_pkey"'));
+    try {
+      const res = await request(app)
+        .put("/api/organizations/boom")
+        .set("authorization", `Bearer ${admin}`)
+        .send({ ...healthOrg, key: "boom" });
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({ error: "internal error" });
+      expect(JSON.stringify(res.body)).not.toContain("constraint");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("republish returns the number of enqueued events", async () => {

@@ -13,7 +13,7 @@ ENV NODE_ENV=production
 COPY --from=build /repo/package.json /repo/package-lock.json ./
 COPY --from=build /repo/apps/core/package.json ./apps/core/package.json
 COPY --from=build /repo/packages ./packages
-RUN npm ci --omit=dev --workspace @gcpe/core && rm -rf packages/*/src/**/*.test.ts
+RUN npm ci --omit=dev --workspace @gcpe/core && find packages -name '*.test.ts' -delete
 COPY --from=build /repo/apps/core/dist ./apps/core/dist
 COPY --from=build /repo/apps/core/migrations ./apps/core/migrations
 USER 1001

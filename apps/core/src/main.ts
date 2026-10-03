@@ -16,7 +16,7 @@ const env = parseEnv(
   }),
 );
 
-const { db } = createDb(env.DATABASE_URL);
+const { db, pool } = createDb(env.DATABASE_URL);
 await runMigrations(db, env.MIGRATIONS_FOLDER);
 const subscribers = parseSubscribers(env.EVENT_SUBSCRIBERS);
 const stopDispatcher = startDispatcher({ db, subscribers });
@@ -27,10 +27,14 @@ const app = createApp({
 });
 const server = app.listen(env.PORT, () => console.log(`[core] listening on ${env.PORT}`));
 
+let shuttingDown = false;
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, async () => {
-    server.close();
+    if (shuttingDown) return;
+    shuttingDown = true;
+    await new Promise((resolve) => server.close(resolve));
     await stopDispatcher();
+    await pool.end();
     process.exit(0);
   });
 }
