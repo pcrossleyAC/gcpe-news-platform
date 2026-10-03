@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, integer, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 // The event receiver (mounted in app.ts) needs inbox_events/inbox_positions to exist in this
 // app's own database, same as every other app that receives signed events.
@@ -65,7 +65,10 @@ export const sendJobs = pgTable(
     attempts: integer("attempts").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     lockedUntil: timestamp("locked_until", { withTimezone: true }),
-    batchId: uuid("batch_id"),
+    // Task 10 (P2-R15): a release can target more than Distribution's 20,000-recipient-per-
+    // request limit, so a job's recipients are sent as one or more chunked requests — every
+    // chunk's batchId is kept here instead of a single batch_id column.
+    batchIds: jsonb("batch_ids").$type<string[]>().notNull().default([]),
     lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
