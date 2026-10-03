@@ -188,6 +188,21 @@ describe("createEventReceiver", () => {
     }
   });
 
+  it("rejects an envelope whose source differs from the signed x-event-source with 400", async () => {
+    // Signed with core's secret, but claims to come from another producer.
+    const res = await post(app, { ...makeEvent(1, "org:spoof"), source: "news-api" });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "source mismatch" });
+    const inbox = await tdb.pool.query("SELECT 1 FROM inbox_events WHERE source = 'news-api'");
+    expect(inbox.rowCount).toBe(0);
+  });
+
+  it("rejects an unknown source with 401", async () => {
+    const res = await post(app, { ...makeEvent(1, "org:unknown"), source: "nobody" }, { source: "nobody" });
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: "invalid signature" });
+  });
+
   it("rejects a prototype-chain source like 'constructor' with 401 instead of 500", async () => {
     const res = await post(app, makeEvent(1, "org:proto"), { source: "constructor" });
     expect(res.status).toBe(401);
