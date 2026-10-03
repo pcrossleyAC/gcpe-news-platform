@@ -1,0 +1,61 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import type { TestDatabase } from "@gcpe/db-kit";
+import { outboxEvents, type SubscriberConfig } from "@gcpe/events";
+import { createCoreTestDb, healthOrg } from "../../test/helpers";
+import { deactivateOrganization, getOrganization, listOrganizations, upsertOrganization } from "./organizations";
+
+const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://x/events", secret: "s", types: ["*"] }];
+
+describe("organizations service", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createCoreTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE organizations, outbox_events, aggregate_sequences CASCADE");
+  });
+
+  it("inserts, returns the record, and emits org.upserted", async () => {
+    const { record, changed } = await upsertOrganization(tdb.db, healthOrg, subs);
+    expect(changed).toBe(true);
+    expect(record).toMatchObject(healthOrg);
+    const events = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:health"));
+    expect(events.map((e) => e.type)).toEqual(["org.upserted"]);
+    expect((events[0]!.envelope as { data: unknown }).data).toEqual(record);
+  });
+
+  it("does not emit when nothing changed", async () => {
+    await upsertOrganization(tdb.db, healthOrg, subs);
+    const again = await upsertOrganization(tdb.db, healthOrg, subs);
+    expect(again.changed).toBe(false);
+    const events = await tdb.db.select().from(outboxEvents);
+    expect(events).toHaveLength(1);
+  });
+
+  it("emits again when a field changes", async () => {
+    await upsertOrganization(tdb.db, healthOrg, subs);
+    await upsertOrganization(tdb.db, { ...healthOrg, displayName: "Health and Wellness" }, subs);
+    expect(await tdb.db.select().from(outboxEvents)).toHaveLength(2);
+    expect((await getOrganization(tdb.db, "health"))!.displayName).toBe("Health and Wellness");
+  });
+
+  it("deactivates and emits org.deactivated; unknown key returns false", async () => {
+    await upsertOrganization(tdb.db, healthOrg, subs);
+    expect(await deactivateOrganization(tdb.db, "health", subs)).toBe(true);
+    expect((await getOrganization(tdb.db, "health"))!.isActive).toBe(false);
+    expect(await deactivateOrganization(tdb.db, "nope", subs)).toBe(false);
+    const types = (await tdb.db.select().from(outboxEvents)).map((e) => e.type);
+    expect(types).toEqual(["org.upserted", "org.deactivated"]);
+  });
+
+  it("lists by sort order then key", async () => {
+    await upsertOrganization(tdb.db, { ...healthOrg, key: "b", sortOrder: 1 }, subs);
+    await upsertOrganization(tdb.db, { ...healthOrg, key: "a", sortOrder: 2 }, subs);
+    await upsertOrganization(tdb.db, { ...healthOrg, key: "c", sortOrder: 1 }, subs);
+    expect((await listOrganizations(tdb.db)).map((o) => o.key)).toEqual(["b", "c", "a"]);
+  });
+});
