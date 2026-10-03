@@ -27,3 +27,7 @@ jobs:
       - run: npm ci
       - run: npm run check
       - run: npm test
+      - name: Build Core bundle
+        run: npm --workspace @gcpe/core run build
+      - name: Build Core image
+        run: docker build -f apps/core/Dockerfile -t gcpe-core:ci .
