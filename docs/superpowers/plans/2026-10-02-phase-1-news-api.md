@@ -416,6 +416,8 @@ export function loadLiveFixtures(dir: string = DEFAULT_FIXTURE_DIR): Record<stri
 ```ts
 // Records public, read-only GET responses from the live BC Gov News API (1 request/second).
 // Slide `image` fields are truncated to 400 base64 chars to keep fixtures small (still valid base64).
+// Personal contact details (ministry contactUser/secondContactUser) are replaced with fictional
+// placeholders so the committed fixtures contain no staff names, phone numbers or emails.
 import { mkdirSync, writeFileSync } from "node:fs";
 import { DEFAULT_FIXTURE_DIR, type LiveFixture } from "../src/dev/fixtures";
 
@@ -423,11 +425,17 @@ const BASE = process.env.NEWS_API_LIVE_BASE ?? "https://api.news.gov.bc.ca";
 const V = "api-version=1.0";
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-function truncateImages(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(truncateImages);
+const PLACEHOLDER_CONTACT = { fullName: "Alex Example", phoneNumber: "250-555-0100", mobileNumber: "250-555-0100", emailAddress: "alex.example@gov.bc.ca" };
+
+function sanitize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(sanitize);
   if (value && typeof value === "object") {
     return Object.fromEntries(
-      Object.entries(value).map(([k, v]) => [k, k === "image" && typeof v === "string" ? v.slice(0, 400) : truncateImages(v)]),
+      Object.entries(value).map(([k, v]) => {
+        if (k === "image" && typeof v === "string") return [k, v.slice(0, 400)];
+        if ((k === "contactUser" || k === "secondContactUser") && v) return [k, PLACEHOLDER_CONTACT];
+        return [k, sanitize(v)];
+      }),
     );
   }
   return value;
@@ -439,7 +447,7 @@ async function record(name: string, path: string): Promise<LiveFixture> {
   let body: unknown = null;
   if (text.length > 0) {
     try {
-      body = truncateImages(JSON.parse(text));
+      body = sanitize(JSON.parse(text));
     } catch {
       body = text;
     }
