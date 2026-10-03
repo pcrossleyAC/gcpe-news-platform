@@ -25,4 +25,34 @@ describe("createShutdown", () => {
     expect(close).toHaveBeenCalledOnce();
     expect(exit).toHaveBeenCalledOnce();
   });
+
+  // Final review D9: a rejecting closer must not leave shutdown as an unhandled rejection
+  // with the process hanging — log it, still run the remaining closers, and exit(1).
+  it("logs a rejecting closer, still runs the rest, and exits 1", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const later = vi.fn();
+    const exit = vi.fn();
+    const shutdown = createShutdown({
+      logPrefix: "[test]",
+      closers: [
+        { name: "broken", close: async () => { throw new Error("boom"); } },
+        { name: "later", close: later },
+      ],
+      exit,
+    });
+    await expect(shutdown()).resolves.toBeUndefined();
+    expect(log).toHaveBeenCalledWith("[test] shutdown step failed: broken", expect.any(Error));
+    expect(later).toHaveBeenCalledOnce();
+    expect(exit).toHaveBeenCalledExactlyOnceWith(1);
+    log.mockRestore();
+  });
+
+  it("treats a synchronously throwing closer the same way", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const exit = vi.fn();
+    const shutdown = createShutdown({ closers: [{ name: "sync", close: () => { throw new Error("boom"); } }], exit });
+    await shutdown();
+    expect(exit).toHaveBeenCalledExactlyOnceWith(1);
+    log.mockRestore();
+  });
 });
