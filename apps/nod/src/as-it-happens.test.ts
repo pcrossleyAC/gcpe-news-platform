@@ -134,4 +134,70 @@ describe("renderAsItHappens", () => {
     const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
     expect(subject).toBe("NO-HEADLINE-1");
   });
+
+  // I4: a raw headline with embedded CR/LF/tabs or a real "{{manageUrl}}" would otherwise be
+  // sent to Distribution verbatim as the subject — Distribution 400s on line breaks (terminal,
+  // nobody mailed) and would substitute the headline's own placeholder.
+  it("collapses CR/LF/tabs in the subject to single spaces, trims, and neutralises '{{'", () => {
+    const release = {
+      ...sampleRelease,
+      documents: [{ ...sampleRelease.documents[0]!, headline: "  Highway 11\r\nclosure\tand {{manageUrl}} update  " }],
+    };
+    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
+    expect(subject).toBe("Highway 11 closure and { {manageUrl}} update");
+    expect(subject).not.toMatch(/[\r\n\t]/);
+  });
+
+  it("truncates a subject over 998 code points, ending in '…'", () => {
+    const longHeadline = "x".repeat(1200);
+    const release = { ...sampleRelease, documents: [{ ...sampleRelease.documents[0]!, headline: longHeadline }] };
+    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
+    expect(Array.from(subject)).toHaveLength(998);
+    expect(subject.endsWith("…")).toBe(true);
+    expect(subject.slice(0, 997)).toBe("x".repeat(997));
+  });
+
+  it("leaves a short, already-clean subject untouched (no truncation marker)", () => {
+    const release = { ...sampleRelease, documents: [{ ...sampleRelease.documents[0]!, headline: "Short clean headline" }] };
+    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
+    expect(subject).toBe("Short clean headline");
+  });
+});
+
+describe("createAsItHappensHandler at scale (I1)", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  // I1: the old implementation sent matched subscriber ids as JS-side bind params, 2 per row —
+  // past ~32,767 matched subscribers that blows Postgres's 65,535 bind-parameter limit and the
+  // whole insert throws (0 deliveries, the event effectively dead). 33,000 subscribers,
+  // inserted server-side via a single INSERT...SELECT...FROM generate_series (not one
+  // JS round-trip per row) so the test itself stays fast, proves the fix handles it.
+  it("delivers to more than 32,767 matching subscribers without hitting Postgres's bind-parameter limit", async () => {
+    await tdb.pool.query(`
+      INSERT INTO subscribers (email, manage_token, verified_at)
+      SELECT 'bulk' || gs || '@example.com', 'bulk-token-' || gs, now()
+        FROM generate_series(1, 33000) AS gs
+    `);
+    await tdb.pool.query(`
+      INSERT INTO subscriptions (subscriber_id, list_key)
+      SELECT id, '*' FROM subscribers WHERE email LIKE 'bulk%@example.com'
+    `);
+
+    const handler = createAsItHappensHandler({ publicSiteUrl: PUBLIC_SITE_URL, manageUrl: MANAGE_URL });
+    const release = { ...sampleRelease, key: "BULK-RELEASE-1", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+
+    await tdb.db.transaction((tx) => handler(tx, envelope("nrms", "release.published", release, release.key)));
+
+    const rows = (await tdb.pool.query(`SELECT count(*)::int FROM deliveries WHERE release_key = $1`, [release.key])).rows as { count: number }[];
+    expect(rows[0]!.count).toBe(33000);
+
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    expect(jobRows).toHaveLength(1);
+  }, 10_000);
 });

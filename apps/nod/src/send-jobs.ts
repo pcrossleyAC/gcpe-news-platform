@@ -9,6 +9,13 @@ import { deliveries, sendJobs, subscribers } from "./db/schema";
  * tests can shrink it (and so any other caller sizing a request knows the real limit). */
 export const MAX_RECIPIENTS_PER_CHUNK = 20_000;
 
+/** M3: Distribution's own body limit is 10mb (apps/distribution/src/app.ts), but a chunk sized
+ * only by recipient *count* (MAX_RECIPIENTS_PER_CHUNK) can still produce a request whose JSON
+ * payload is large if recipients carry sizeable per-recipient substitutions — so a chunk is
+ * also split further whenever its JSON payload would exceed this many bytes, independent of
+ * MAX_RECIPIENTS_PER_CHUNK. Exported so tests can shrink it. */
+export const MAX_CHUNK_BYTES = 8 * 1024 * 1024;
+
 const DEFAULT_BATCH_SIZE = 10;
 const DEFAULT_MAX_AGE_MS = 24 * 3_600_000;
 // Matches distribution-client.ts's DEFAULT_DISTRIBUTION_TIMEOUT_MS: the worst-case time a
@@ -36,6 +43,8 @@ export interface SendJobsOptions {
   /** Override for the per-chunk/per-token-fetch timeout used to size the claim lock, for
    * tests. Should match the distribution client's own `timeoutMs`. */
   perChunkMs?: number;
+  /** Override for {@link MAX_CHUNK_BYTES}, for tests. */
+  maxChunkBytes?: number;
 }
 
 type ClaimedJobRow = {
@@ -195,10 +204,12 @@ function manageLinkFor(manageUrl: string, token: string): string {
   return url.toString();
 }
 
-function buildMessageRequest(job: ClaimedJobRow, chunk: Recipient[], chunkIndex: number, manageUrl: string): MessageRequest {
+/** `key` is the chunk's own idempotency suffix — normally just its `chunk_index` (as a
+ * string), or `<chunk_index>.<part>` when {@link splitChunkByBytes} had to split it further. */
+function buildMessageRequest(job: ClaimedJobRow, chunk: Recipient[], key: string, manageUrl: string): MessageRequest {
   return {
     priority: "immediate",
-    idempotencyKey: `${job.id}:${chunkIndex}`,
+    idempotencyKey: `${job.id}:${key}`,
     subject: job.subject ?? "",
     html: job.html ?? "",
     text: job.text ?? undefined,
@@ -208,6 +219,39 @@ function buildMessageRequest(job: ClaimedJobRow, chunk: Recipient[], chunkIndex:
       substitutions: { manageUrl: manageLinkFor(manageUrl, r.manageToken) },
     })),
   };
+}
+
+function requestByteSize(req: MessageRequest): number {
+  return Buffer.byteLength(JSON.stringify(req), "utf8");
+}
+
+/**
+ * M3: a chunk sized only by recipient count (MAX_RECIPIENTS_PER_CHUNK) can still produce a
+ * request whose JSON payload is too big if recipients carry sizeable per-recipient
+ * substitutions — so split it further whenever its request would exceed `maxBytes`. Recipients
+ * are assumed roughly uniform in size (a manage link built the same way for everyone), so the
+ * first candidate split's measured size is representative of the rest: `n` only grows until one
+ * probe fits, rather than measuring every part. Each part keeps `chunkIndex`'s own identity in
+ * its key (`<chunkIndex>` when not split at all, `<chunkIndex>.<part>` otherwise) so retries
+ * address the same sub-parts (and the same Distribution idempotencyKey) every time.
+ */
+function splitChunkByBytes(job: ClaimedJobRow, recipients: Recipient[], chunkIndex: number, manageUrl: string, maxBytes: number): { key: string; request: MessageRequest }[] {
+  let n = 1;
+  while (n < recipients.length) {
+    const size = Math.ceil(recipients.length / n);
+    const probe = buildMessageRequest(job, recipients.slice(0, size), String(chunkIndex), manageUrl);
+    if (requestByteSize(probe) <= maxBytes) break;
+    n++;
+  }
+  if (n === 1) return [{ key: String(chunkIndex), request: buildMessageRequest(job, recipients, String(chunkIndex), manageUrl) }];
+
+  const partSize = Math.ceil(recipients.length / n);
+  const parts: { key: string; request: MessageRequest }[] = [];
+  for (let i = 0, part = 0; i < recipients.length; i += partSize, part++) {
+    const key = `${chunkIndex}.${part}`;
+    parts.push({ key, request: buildMessageRequest(job, recipients.slice(i, i + partSize), key, manageUrl) });
+  }
+  return parts;
 }
 
 /**
@@ -224,18 +268,21 @@ async function sendAllChunks(
   job: ClaimedJobRow,
   chunks: Map<number, Recipient[]>,
   manageUrl: string,
+  maxChunkBytes: number,
 ): Promise<{ batchIds: Record<string, string>; error?: DistributionError }> {
   const batchIds: Record<string, string> = {};
   for (const [chunkIndex, recipients] of chunks) {
-    try {
-      const { batchId } = await distribution.send(buildMessageRequest(job, recipients, chunkIndex, manageUrl));
-      batchIds[String(chunkIndex)] = batchId;
-    } catch (e) {
-      // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless
-      // distribution-client.ts itself deliberately classified it otherwise — an *unexpected*
-      // error (anything not already a DistributionError) must never permanently fail a job.
-      const error = e instanceof DistributionError ? e : new DistributionError(e instanceof Error ? e.message : String(e), true);
-      return { batchIds, error };
+    for (const { key, request } of splitChunkByBytes(job, recipients, chunkIndex, manageUrl, maxChunkBytes)) {
+      try {
+        const { batchId } = await distribution.send(request);
+        batchIds[key] = batchId;
+      } catch (e) {
+        // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless
+        // distribution-client.ts itself deliberately classified it otherwise — an *unexpected*
+        // error (anything not already a DistributionError) must never permanently fail a job.
+        const error = e instanceof DistributionError ? e : new DistributionError(e instanceof Error ? e.message : String(e), true);
+        return { batchIds, error };
+      }
     }
   }
   return { batchIds };
@@ -247,6 +294,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
   const maxAgeMs = opts.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
   const chunkSize = opts.chunkSize ?? MAX_RECIPIENTS_PER_CHUNK;
   const perChunkMs = opts.perChunkMs ?? DEFAULT_PER_CHUNK_MS;
+  const maxChunkBytes = opts.maxChunkBytes ?? MAX_CHUNK_BYTES;
 
   const result = { sent: 0, retried: 0, failed: 0 };
 
@@ -291,7 +339,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     // this call's lock were stolen mid-loop, a concurrent claimant would resend the exact same
     // chunks and Distribution would dedupe every one already accepted. The only write that
     // has to be ownership-checked is the terminal one below (`where`), which is.
-    const { batchIds: newBatchIds, error } = await sendAllChunks(opts.distribution, job, chunks, opts.manageUrl);
+    const { batchIds: newBatchIds, error } = await sendAllChunks(opts.distribution, job, chunks, opts.manageUrl, maxChunkBytes);
     // P2-R16: merge newly-accepted chunk ids into whatever this job already had recorded —
     // persisted below on every attempt, including one that ends in "failed" or "retried", so
     // a chunk accepted before a later chunk failed is never re-sent as if it were unknown.
@@ -310,13 +358,22 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     const age = finishedAt.getTime() - new Date(job.created_at).getTime();
     if (!error.retryable || age >= maxAgeMs) {
       const res = await opts.db.update(sendJobs).set({ status: "failed", attempts, batchIds, lockedUntil: null, lastError: error.message }).where(where);
-      if (res.rowCount) result.failed++;
+      // I5: a job going failed is otherwise silent — nothing else notices a release that
+      // stopped mailing. Logged once, only when this call actually made the write (the
+      // ownership-guarded `where` matched), not on every attempt that merely observes it.
+      if (res.rowCount) {
+        result.failed++;
+        console.error(`[nod] job ${job.id} release ${job.release_key} failed: ${error.message}`);
+      }
     } else {
       const res = await opts.db
         .update(sendJobs)
         .set({ attempts, batchIds, nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(attempts)), lockedUntil: null, lastError: error.message })
         .where(where);
-      if (res.rowCount) result.retried++;
+      if (res.rowCount) {
+        result.retried++;
+        console.warn(`[nod] job ${job.id} release ${job.release_key} retrying (attempt ${attempts}): ${error.message}`);
+      }
     }
   }
 

@@ -8,7 +8,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createTestDatabase } from "@gcpe/db-kit";
 import { DistributionError, distributionClient, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, sendJobs, subscribers } from "./db/schema";
-import { MAX_RECIPIENTS_PER_CHUNK, ensureChunksAssigned, sendDueJobs } from "./send-jobs";
+import { MAX_CHUNK_BYTES, MAX_RECIPIENTS_PER_CHUNK, ensureChunksAssigned, sendDueJobs } from "./send-jobs";
 
 const nodMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
 const MANAGE_URL = "https://news.example/subscribe/manage";
@@ -210,6 +210,44 @@ describe("sendDueJobs", () => {
     const row = (await tdb.db.select().from(sendJobs))[0]!;
     expect(row.status).toBe("failed");
     expect(row.lastError).toMatch(/HTTP 400/);
+  });
+
+  // I5: a job going failed/retrying was otherwise silent — nothing else notices a release that
+  // stopped mailing.
+  it("logs once (console.error) when a job goes failed", async () => {
+    const sub = await insertSubscriber(tdb.db, "logfail@example.com");
+    const job = await insertJob(tdb.db, "release-logfail");
+    await tdb.db.insert(deliveries).values([{ releaseKey: "release-logfail", subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockRejectedValue(new DistributionError("HTTP 400: invalid subject", false));
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(`[nod] job ${job.id} release release-logfail failed: HTTP 400`));
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("logs a warning (console.warn) when a job retries", async () => {
+    const sub = await insertSubscriber(tdb.db, "logretry@example.com");
+    const job = await insertJob(tdb.db, "release-logretry");
+    await tdb.db.insert(deliveries).values([{ releaseKey: "release-logretry", subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockRejectedValue(new DistributionError("HTTP 503", true));
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`[nod] job ${job.id} release release-logretry retrying (attempt 1): HTTP 503`));
+    } finally {
+      warnSpy.mockRestore();
+    }
   });
 
   // Fix 8 (P2-R16): a chunk accepted before a later chunk fails the job must still be
@@ -500,6 +538,69 @@ describe("sendDueJobs", () => {
 describe("MAX_RECIPIENTS_PER_CHUNK", () => {
   it("is Distribution's own per-request recipient limit", () => {
     expect(MAX_RECIPIENTS_PER_CHUNK).toBe(20_000);
+  });
+});
+
+describe("MAX_CHUNK_BYTES", () => {
+  it("is 8 MB", () => {
+    expect(MAX_CHUNK_BYTES).toBe(8 * 1024 * 1024);
+  });
+});
+
+describe("sendDueJobs chunk byte-splitting (M3)", () => {
+  let tdb: TestDatabase;
+
+  beforeAll(async () => {
+    tdb = await createTestDatabase({ migrationsFolder: nodMigrations });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE TABLE send_jobs, deliveries, subscribers CASCADE");
+  });
+
+  // M3: a chunk under MAX_RECIPIENTS_PER_CHUNK can still produce an oversized JSON payload.
+  // With a tiny maxChunkBytes override, even a 4-recipient chunk must be split into several
+  // smaller requests, each addressed by its own stable sub-key (so retries target the same
+  // Distribution idempotencyKey every time).
+  it("splits a single chunk into several smaller requests when its payload would exceed maxChunkBytes", async () => {
+    const subs = await Promise.all(Array.from({ length: 4 }, (_, i) => insertSubscriber(tdb.db, `big${i}@example.com`, { id: lowId(i) })));
+    const job = await insertJob(tdb.db, "release-bytes");
+    await tdb.db.insert(deliveries).values(subs.map((s) => ({ releaseKey: "release-bytes", subscriberId: s.id })));
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "b" });
+
+    // Small enough that a single recipient's own request already exceeds it, forcing a split
+    // all the way down to one recipient per request (4 recipients -> 4 requests).
+    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, maxChunkBytes: 50 });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+
+    expect(distribution.send).toHaveBeenCalledTimes(4);
+    const keys = distribution.send.mock.calls.map((c) => (c[0] as MessageRequest).idempotencyKey).sort();
+    expect(keys).toEqual([`${job.id}:0.0`, `${job.id}:0.1`, `${job.id}:0.2`, `${job.id}:0.3`]);
+    for (const call of distribution.send.mock.calls) {
+      expect((call[0] as MessageRequest).recipients).toHaveLength(1);
+    }
+
+    const row = (await tdb.db.select().from(sendJobs))[0]!;
+    expect(row.status).toBe("sent");
+    expect(Object.keys(row.batchIds).sort()).toEqual(["0.0", "0.1", "0.2", "0.3"]);
+  });
+
+  it("does not split a chunk whose payload fits within the default maxChunkBytes", async () => {
+    const subs = await Promise.all(Array.from({ length: 4 }, (_, i) => insertSubscriber(tdb.db, `small${i}@example.com`, { id: lowId(i) })));
+    const job = await insertJob(tdb.db, "release-nobytes");
+    await tdb.db.insert(deliveries).values(subs.map((s) => ({ releaseKey: "release-nobytes", subscriberId: s.id })));
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "b" });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+    expect(distribution.send).toHaveBeenCalledTimes(1);
+    expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0`);
   });
 });
 
