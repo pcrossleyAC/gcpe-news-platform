@@ -25,9 +25,19 @@ function payloadBytes(target: UpdateTarget, keys: string[]): number {
   return Buffer.byteLength(JSON.stringify({ target, keys }), "utf8");
 }
 
-/** Splits `keys` into chunks that each keep the serialised notification under the payload limit. */
+/**
+ * Splits `keys` into chunks that each keep the serialised notification under the payload
+ * limit. Checks every key up front, before sending anything, and throws if a single key's
+ * own payload can never fit — chunking can't help there, and sending it anyway would mean
+ * an oversized NOTIFY that Postgres rejects, after any earlier chunks already went out.
+ */
 function chunkKeys(target: UpdateTarget, keys: string[]): string[][] {
   if (keys.length === 0) return [[]];
+  for (const key of keys) {
+    if (payloadBytes(target, [key]) > MAX_PAYLOAD_BYTES) {
+      throw new Error(`notify payload for one key exceeds ${MAX_PAYLOAD_BYTES} bytes`);
+    }
+  }
   const chunks: string[][] = [];
   let current: string[] = [];
   for (const key of keys) {
@@ -58,7 +68,12 @@ const INITIAL_BACKOFF_MS = 100;
 const MAX_BACKOFF_MS = 5000;
 
 async function sleep(ms: number): Promise<void> {
-  await new Promise((resolve) => setTimeout(resolve, ms));
+  await new Promise<void>((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    // A pending backoff timer would otherwise keep the event loop alive, delaying process
+    // exit for up to MAX_BACKOFF_MS after everything else is done.
+    timer.unref();
+  });
 }
 
 export async function listenForUpdates(
@@ -69,6 +84,9 @@ export async function listenForUpdates(
   let client: pg.PoolClient | null = null;
   let stopped = false;
   let reconnecting = false;
+  // Tracks the currently in-flight reconnect attempt (if any), so stop() can wait for it to
+  // fully settle — and release whatever client it ends up with — before resolving.
+  let reconnectPromise: Promise<void> | null = null;
 
   function onNotification(msg: pg.Notification): void {
     if (msg.channel !== UPDATES_CHANNEL || !msg.payload) return;
@@ -77,14 +95,16 @@ export async function listenForUpdates(
   }
 
   // Releases a client we're done with (whether because we're stopping, or because we
-  // reconnected while a stop() was already in flight). UNLISTEN best-effort: if the
-  // connection is already broken, release(err) tells the pool to discard rather than
-  // recycle the client, same as the error path below.
+  // reconnected while a stop() was already in flight). This dedicated LISTEN connection
+  // isn't meant to be recycled for ad-hoc queries elsewhere, so it's always discarded
+  // outright rather than returned to the pool as idle: release(true) forces removal on the
+  // happy path, the same as release(err) does when UNLISTEN itself fails on an
+  // already-broken connection.
   async function cleanup(c: pg.PoolClient): Promise<void> {
     c.removeAllListeners();
     try {
       await c.query(`UNLISTEN ${UPDATES_CHANNEL}`);
-      c.release();
+      c.release(true);
     } catch (e) {
       c.release(e as Error);
     }
@@ -95,7 +115,16 @@ export async function listenForUpdates(
     c.on("notification", onNotification);
     c.on("error", (e) => onBroken(c, e));
     c.on("end", () => onBroken(c, new Error("LISTEN connection ended")));
-    await c.query(`LISTEN ${UPDATES_CHANNEL}`);
+    try {
+      await c.query(`LISTEN ${UPDATES_CHANNEL}`);
+    } catch (e) {
+      // LISTEN itself failed on an otherwise freshly-checked-out client. Nobody else has a
+      // reference to it, so if we don't release it here it's checked out forever as far as
+      // the pool is concerned — a leak on every failed (re)connect attempt.
+      c.removeAllListeners();
+      c.release(e as Error);
+      throw e;
+    }
     return c;
   }
 
@@ -127,13 +156,17 @@ export async function listenForUpdates(
     client = null;
     broken.removeAllListeners();
     broken.release(err);
-    void reconnectLoop();
+    reconnectPromise = reconnectLoop();
   }
 
   client = await connect();
 
   return async () => {
     stopped = true;
+    // Wait for any reconnect already in flight to settle — it may be about to acquire (or
+    // may have just acquired) a client that nothing else knows about yet, and we need that
+    // client released before we can truthfully say we're done.
+    if (reconnectPromise) await reconnectPromise;
     const c = client;
     client = null;
     if (c) await cleanup(c);
