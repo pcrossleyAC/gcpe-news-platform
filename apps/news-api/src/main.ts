@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
 import { createClientCredentialsProvider } from "@gcpe/auth";
-import { loadTenantConfig, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
@@ -12,6 +12,9 @@ import { listenForUpdates } from "./updates/notify";
 const env = parseEnv(newsApiEnvSchema);
 
 const tenant = loadTenantConfig(env.TENANT_CONFIG);
+// P2-R17: fail fast, loudly, before anything else starts, if this runtime's tzdata disagrees
+// with the tenant's pinned (at, expectedOffset) self-check.
+assertTimeZoneRules(tenant);
 const { db, pool } = createDb(env.DATABASE_URL);
 await runMigrations(db, env.MIGRATIONS_FOLDER);
 

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, parseEnv } from "@gcpe/config";
 import { closeServer, createShutdown } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createApp } from "./app";
@@ -14,6 +14,10 @@ import { fsStorage } from "./storage";
 const { TENANT_CONFIG: tenantConfigPath } = parseEnv(z.object({ TENANT_CONFIG: tenantConfigPathSchema }));
 const tenantConfigWasExplicit = typeof process.env.TENANT_CONFIG === "string" && process.env.TENANT_CONFIG.length > 0;
 const tenantConfig = resolveTenantConfig({ tenantConfigPath, wasExplicit: tenantConfigWasExplicit });
+// P2-R17: only when a tenant config actually loaded (resolveTenantConfig can silently return
+// undefined for a missing *default* — see its own doc comment) — fail fast if this runtime's
+// tzdata disagrees with the pinned self-check.
+if (tenantConfig) assertTimeZoneRules(tenantConfig);
 
 const env = parseEnv(publicSiteEnvSchema(tenantConfig));
 
