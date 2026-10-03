@@ -72,3 +72,44 @@ Legacy import (requires network access to a legacy SQL Server copy):
 DATABASE_URL=postgres://localhost:5432/core LEGACY_SQL_SERVER=<host> LEGACY_SQL_USER=<user> LEGACY_SQL_PASSWORD=<pw> \
 npm --workspace @gcpe/core run import:legacy
 ```
+
+## News API (`apps/news-api`)
+
+Drop-in replacement for the BC Gov News API v1 (minus newsletters), including the SignalR `/updates` hub used by `gcpe-news-webapp`.
+
+```bash
+createdb news_api_dev
+DATABASE_URL=postgres://localhost:5432/news_api_dev npm --workspace @gcpe/news-api run seed:fixtures   # recorded live data
+DATABASE_URL=postgres://localhost:5432/news_api_dev EVENT_SECRETS='{"core":"dev","nrms":"dev"}' npm --workspace @gcpe/news-api run dev
+curl "http://localhost:3002/api/Posts/Latest/home/default?count=3&api-version=1.0"
+```
+
+- Re-record live fixtures: `npm --workspace @gcpe/news-api run record:fixtures` (public read-only GETs, 1 req/s). The compatibility suite (`apps/news-api/test/compat.test.ts`) must stay green.
+- Legacy import: `DATABASE_URL=… LEGACY_SQL_SERVER=… LEGACY_SQL_USER=… LEGACY_SQL_PASSWORD=… npm --workspace @gcpe/news-api run import:legacy`
+- Core reference data reaches the News API as events: configure Core's `EVENT_SUBSCRIBERS` with `{"name":"news-api","url":"http://<news-api>/events","secret":"<same as EVENT_SECRETS.core>","types":["*"]}` and call Core's `POST /api/admin/republish` once.
+
+### News API environment
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `DATABASE_URL` | yes | | Postgres connection string |
+| `PORT` | no | `3002` | HTTP port (the Docker healthcheck follows it) |
+| `TENANT_CONFIG` | no | `config/tenants/bc.json` (resolved next to the bundle) | Tenant config path, see `packages/config` |
+| `EVENT_SECRETS` | no | `{}` | JSON object of event source → shared HMAC secret, e.g. `{"core":"…","nrms":"…"}` |
+| `NOD_BASE_URL` | no | | Base URL of the News-on-Demand subscriptions API; omitted means `/api/Subscribe/*` returns 503 |
+| `NOD_TOKEN_URL` | no | | OAuth2 client-credentials token endpoint for `NOD_BASE_URL` |
+| `NOD_CLIENT_ID` | no | | Client ID for the client-credentials grant |
+| `NOD_CLIENT_SECRET` | no | | Client secret for the client-credentials grant |
+| `NOD_SCOPE` | no | | OAuth2 scope requested for the client-credentials grant |
+| `SUBSCRIBE_RATE_LIMIT_PER_MIN` | no | `300` | Rate limit applied to the `/api/Subscribe/*` proxy |
+| `MIGRATIONS_FOLDER` | no | `apps/news-api/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/news-api/migrations` |
+
+`NOD_BASE_URL` can be set without the `NOD_TOKEN_URL`/`NOD_CLIENT_ID`/`NOD_CLIENT_SECRET`/`NOD_SCOPE` quartet (the subscribe proxy then forwards unauthenticated); the client-credentials provider is only built when all four are present.
+
+### Manual check with the existing .NET public site
+
+Requires the .NET 5 SDK. This is not automated.
+
+1. `git clone https://github.com/bcgov/gcpe-news-webapp && cd gcpe-news-webapp/Gov.News.WebApp`
+2. Set `NewsApi` to `http://localhost:3002/` in `appsettings.Development.json` and run `dotnet run`.
+3. Open the home page, a release page, and a ministry page. Confirm they render, and that the log shows `SignalR Client Started`.

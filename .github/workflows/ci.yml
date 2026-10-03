@@ -31,3 +31,7 @@ jobs:
         run: npm --workspace @gcpe/core run build
       - name: Build Core image
         run: docker build -f apps/core/Dockerfile -t gcpe-core:ci .
+      - name: Build News API bundle
+        run: npm --workspace @gcpe/news-api run build
+      - name: Build News API image
+        run: docker build -f apps/news-api/Dockerfile -t gcpe-news-api:ci .
