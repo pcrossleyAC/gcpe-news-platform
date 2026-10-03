@@ -1,12 +1,15 @@
 import { sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import { sqlNow, type Db, type TestClock } from "@gcpe/db-kit";
 import { enqueueEvent, type ReleaseRecord, type SubscriberConfig } from "@gcpe/events";
 import { releases, type ReleaseRow } from "./db/schema";
 
 export interface PublishOptions {
   db: Db;
   subscribers: SubscriberConfig[];
-  now?: () => Date;
+  /** Test hook: when given, its value stands in for SQL `now()` in every statement this call
+   * makes (the due check and the published_at/updated_at stamps). Production omits it and the
+   * database's clock is used — see {@link publishDue}. */
+  now?: TestClock;
   limit?: number;
 }
 
@@ -31,9 +34,13 @@ const MAX_LAST_ERROR_LENGTH = 500;
  * and the loop continues to the next release. Only a failure during the claim query itself
  * (no key was ever claimed — e.g. the database is unreachable) propagates, since there is
  * nothing per-release to isolate it to.
+ *
+ * Clock (P2-R22 D1): "is it due" and the published_at stamp both use the database's clock
+ * (`now()` — inside each release's transaction, that transaction's start), never a JS Date
+ * compared against `publish_at`. published_at is truncated to milliseconds so the event's
+ * publishDate (an ISO string built from it) states exactly what the column holds.
  */
 export async function publishDue(opts: PublishOptions): Promise<{ published: string[]; failed: string[] }> {
-  const now = (opts.now ?? (() => new Date()))();
   const limit = opts.limit ?? 50;
   const published: string[] = [];
   const failed: string[] = [];
@@ -42,20 +49,22 @@ export async function publishDue(opts: PublishOptions): Promise<{ published: str
     let key: string | null;
     try {
       key = await opts.db.transaction(async (tx) => {
+        const now = sqlNow(opts.now);
         const claimed = await tx.execute<{ key: string }>(sql`
           SELECT key FROM ${releases}
-          WHERE status = 'scheduled' AND publish_at <= ${now.toISOString()}::timestamptz
+          WHERE status = 'scheduled' AND publish_at <= ${now}
           ORDER BY publish_at, key
           FOR UPDATE SKIP LOCKED LIMIT 1`);
         const k = claimed.rows[0]?.key;
         if (!k) return null;
         claimedKey = k;
+        const publishedAt = sql`date_trunc('milliseconds', ${now})`;
         const [row] = await tx
           .update(releases)
-          .set({ status: "published", publishedAt: now, updatedAt: now })
+          .set({ status: "published", publishedAt, updatedAt: publishedAt })
           .where(sql`${releases.key} = ${k}`)
           .returning();
-        await enqueueEvent(tx, { type: "release.published", source: "nrms", aggregateId: row!.key, data: toReleaseRecord(row!, now) }, opts.subscribers);
+        await enqueueEvent(tx, { type: "release.published", source: "nrms", aggregateId: row!.key, data: toReleaseRecord(row!, row!.publishedAt!) }, opts.subscribers);
         return row!.key;
       });
     } catch (e) {
@@ -64,7 +73,7 @@ export async function publishDue(opts: PublishOptions): Promise<{ published: str
       const lastError = message.slice(0, MAX_LAST_ERROR_LENGTH);
       await opts.db
         .update(releases)
-        .set({ status: "failed", lastError, updatedAt: now })
+        .set({ status: "failed", lastError, updatedAt: sqlNow(opts.now) })
         .where(sql`${releases.key} = ${claimedKey} AND ${releases.status} = 'scheduled'`);
       console.error(`[nrms] publish failed for ${claimedKey}: ${message}`);
       failed.push(claimedKey);

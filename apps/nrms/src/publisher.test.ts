@@ -36,6 +36,22 @@ describe("publishDue", () => {
     expect(env.data).toMatchObject({ key: sampleDraft.key, kind: "releases", publishDate: NOW.toISOString(), timestamp: NOW.toISOString(), atomId: null, renditions: null });
   });
 
+  // P2-R22 D1: with no test clock, "due" and published_at come from the database's clock, and
+  // the event's publishDate states exactly the instant stored in published_at (not a rounded
+  // or JS-clock copy of it).
+  it("publishes by the database clock, and the event's publishDate equals the stored published_at exactly", async () => {
+    await createDraft(tdb.db, sampleDraft);
+    await scheduleRelease(tdb.db, sampleDraft.key, new Date("2026-10-03T17:00:00Z"));
+    expect(await publishDue({ db: tdb.db, subscribers })).toEqual({ published: [sampleDraft.key], failed: [] });
+    const { rows } = await tdb.pool.query<{ same: boolean }>(
+      `SELECT r.published_at = (e.envelope->'data'->>'publishDate')::timestamptz AS same
+         FROM releases r JOIN outbox_events e ON e.aggregate_id = r.key
+        WHERE r.key = $1`,
+      [sampleDraft.key],
+    );
+    expect(rows).toEqual([{ same: true }]);
+  });
+
   it("leaves drafts and future releases alone", async () => {
     await createDraft(tdb.db, sampleDraft);
     await createDraft(tdb.db, { ...sampleDraft, key: "FUTURE-1" });
