@@ -203,45 +203,49 @@ describe("sendDue", () => {
     }
   });
 
-  // R1: nodemailer's transport.verify() only attempts AUTH when the transport itself is
-  // *configured* with credentials (see smtp-transport's verify(): no configured auth -> no
-  // login attempt -> finalize() succeeds regardless of what the server would actually demand
-  // at MAIL FROM). A transport with no `auth` block at all therefore can't be told apart from
-  // a poison message by verify() — this specific misconfiguration (missing credentials) is
-  // genuinely indistinguishable from "this message is bad" without literally sending mail,
-  // which is exactly what already happened. So it's treated as the message's fault: every
-  // recipient in the batch is attempted (the run does NOT stop), each spends an attempt, and
-  // each is logged as a transient error rather than a stopped-run deferral.
-  it("treats 'auth required but none configured' (530) as a transient per-message error, not a stopped-run deferral, since verify() can't exercise a missing-credentials gap", async () => {
+  // R24: MAIL FROM and AUTH* are never ambiguous — the envelope sender and the transport's
+  // configured credentials are the same for every message a run sends, so a rejection at
+  // either stage can't be specific to whichever message happened to be claimed first. This is
+  // the gap the R1 wave's own doc comment flagged: a transport with no `auth` block at all
+  // can't have "needs auth but none configured" exercised by transport.verify() (verify()
+  // only attempts AUTH when the transport is configured with credentials), which used to
+  // misclassify this exact scenario as the message's fault — spending an attempt per message
+  // and, over enough runs, draining the whole queue to failed via MAX_ATTEMPTS (the original
+  // I2 bug, back for this one misconfiguration). Classified directly as sender-level now, with
+  // no verify() call at all: deferred, no attempt spent, run stopped, deferrals escalating —
+  // proven across 6+ runs (more than MAX_ATTEMPTS) to show it can never drain to failed.
+  it("treats 'auth required but none configured' (530 at MAIL FROM) as a sender-level config error — deferred without spending an attempt, across 6+ runs, no verify() needed", async () => {
     const sink = await startSmtpSink({ requireAuth: true });
-    // No `auth` configured: the client never sends AUTH, so the server's 530 fires at MAIL FROM
-    // — and transport.verify() (which only attempts AUTH when configured) reports healthy.
+    // No `auth` configured: the client never sends AUTH, so the server's 530 fires at MAIL FROM.
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      await createBatch(
-        tdb.db,
-        "app",
-        { ...sampleMessageRequest, recipients: [{ email: "a@example.com", substitutions: {} }, { email: "b@example.com", substitutions: {} }, { email: "c@example.com", substitutions: {} }] },
-        internalDomains,
-      );
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
-      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
-      expect(result).toEqual({ sent: 0, retried: 3, failed: 0 });
+      let simulatedNow = Date.now();
+      for (let run = 0; run < 6; run++) {
+        const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(simulatedNow) });
+        expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+        const [row] = await tdb.db.select().from(messages);
+        // Advance well past this run's deferral backoff so the message is due again.
+        simulatedNow = row!.nextAttemptAt.getTime() + 1000;
+      }
 
-      const rows = await tdb.db.select().from(messages);
-      expect(rows.every((r) => r.status === "pending" && r.attempts === 1 && r.deferrals === 0)).toBe(true);
+      const [row] = await tdb.db.select().from(messages);
+      expect(row!.status).toBe("pending");
+      expect(row!.attempts).toBe(0);
+      expect(row!.deferrals).toBe(6);
 
-      const transientCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].includes("transient error:"));
-      expect(transientCalls).toHaveLength(3);
       const serverDownCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].startsWith("[distribution] SMTP server unavailable/misconfigured:"));
-      expect(serverDownCalls).toHaveLength(0);
+      expect(serverDownCalls.length).toBeGreaterThan(0);
+      const transientCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].includes("transient error:"));
+      expect(transientCalls).toHaveLength(0);
     } finally {
       errorSpy.mockRestore();
       await transport.close();
       await sink.close();
     }
-  });
+  }, 15000);
 
   it("retries (does not fail, does not spend an attempt) when authentication is rejected (535 wrong password) — verify() fails the same way, so this stays a server/config problem", async () => {
     const sink = await startSmtpSink({ requireAuth: true });

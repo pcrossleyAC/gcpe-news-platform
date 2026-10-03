@@ -120,16 +120,31 @@ function isPermanentRecipientRejection(e: unknown): boolean {
   return err?.command === "RCPT TO" || Array.isArray(err?.rejected);
 }
 
-const SMTP_CONFIG_ERROR_COMMANDS = new Set(["CONN", "MAIL FROM", "STARTTLS", "EHLO", "HELO", "LHLO"]);
+/** R1(a): the connection/greeting/STARTTLS stage is genuinely ambiguous by command alone —
+ * nodemailer tags both "the server is down" and "this one message stalled/reset mid-DATA
+ * against an otherwise-healthy server" (a poison message) as `command: "CONN"` (and EHLO
+ * stalls similarly at the greeting stage). `transport.verify()` discriminates those two cases
+ * — see isTransportHealthy. */
+const CONNECTION_LEVEL_COMMANDS = new Set(["CONN", "EHLO", "HELO", "LHLO", "STARTTLS"]);
 
-/** True for errors at the connection/greeting, EHLO/HELO/LHLO, authentication, sender, or
- * STARTTLS stage — i.e. everything nodemailer tags with a `command` other than a per-recipient
- * one (and other than the oversize-message case above, which is permanent, not a config
- * problem). These mean the worker's own SMTP setup is wrong, not that any particular message is
- * undeliverable. */
-function isSmtpConfigError(e: unknown): boolean {
+function isConnectionLevelError(e: unknown): boolean {
   const command = (e as { command?: unknown } | null)?.command;
-  return typeof command === "string" && (SMTP_CONFIG_ERROR_COMMANDS.has(command) || command.startsWith("AUTH"));
+  return typeof command === "string" && CONNECTION_LEVEL_COMMANDS.has(command);
+}
+
+/**
+ * R24: unlike a connection-level error, a MAIL FROM or AUTH* failure is *never* ambiguous —
+ * the envelope sender (`opts.from`) and the transport's configured credentials are the same
+ * for every message a given `sendDue` call sends, so a rejection at either stage can't be
+ * specific to whichever message happened to be claimed first. It's a server/config error by
+ * construction, every time, with no need (and no safe way — see isTransportHealthy's own
+ * known gap: verify() only attempts AUTH when the transport is configured with credentials, so
+ * a transport with none at all can't have "needs auth but none configured" exercised by
+ * verify()) to ask `transport.verify()` first.
+ */
+function isSenderLevelError(e: unknown): boolean {
+  const command = (e as { command?: unknown } | null)?.command;
+  return command === "MAIL FROM" || (typeof command === "string" && command.startsWith("AUTH"));
 }
 
 type ClaimedRow = {
@@ -280,13 +295,15 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
 
     let error: string | null = null;
     let permanent = false;
-    let configError = false;
+    let senderLevel = false;
+    let connectionLevel = false;
     try {
       await opts.transport.sendMail({ from: opts.from, to, subject, html, text, headers });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       permanent = isPermanentRecipientRejection(e);
-      configError = !permanent && isSmtpConfigError(e);
+      senderLevel = !permanent && isSenderLevelError(e);
+      connectionLevel = !permanent && !senderLevel && isConnectionLevelError(e);
     }
 
     const finishedAt = clock();
@@ -317,17 +334,40 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
       continue;
     }
 
-    // I2/R1(a): a config/connection-stage error (`CONN`, `MAIL FROM`, `EHLO`/`HELO`/`LHLO`,
-    // `STARTTLS`, `AUTH*`) is ambiguous by command alone — nodemailer tags both "the server is
-    // genuinely down" AND "this message stalled/reset mid-DATA against an otherwise-healthy
-    // server" (a poison message) the same way (`command: "CONN"`). `transport.verify()`
-    // discriminates: if the server itself can't answer a lightweight check, it's an outage —
-    // defer every remaining claimed row without spending an attempt (so an outage can never
-    // drain the queue to failed) and stop this run. If the server verifies healthy, this
-    // specific message is to blame: treat it exactly like a normal transient error (spends an
-    // attempt, standard backoff, eventually fails and is logged) and keep going — unlike an
-    // outage, one poison message must never stop the rest of the batch from sending.
-    if (configError) {
+    // R24: a sender-level error (MAIL FROM, AUTH*) is a server/config problem unconditionally
+    // — see isSenderLevelError's doc comment — so it's deferred immediately, with no
+    // transport.verify() round trip at all (and none of verify()'s own blind spots: a
+    // misconfigured-but-no-credentials transport would otherwise verify "healthy" and this
+    // would be misclassified as the message's fault, which is exactly the I2 drain coming
+    // back for that specific misconfiguration).
+    if (senderLevel) {
+      const deferrals = row.deferrals + 1;
+      const res = await opts.db
+        .update(messages)
+        .set({ deferrals, nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(deferrals)), lockedUntil: null, lastError, originalRecipient })
+        .where(where);
+      if (res.rowCount) {
+        result.retried++;
+        if (!loggedConfigError) {
+          loggedConfigError = true;
+          console.error(`[distribution] SMTP server unavailable/misconfigured: ${error}`);
+        }
+      }
+      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockUntil);
+      break;
+    }
+
+    // I2/R1(a): a connection-level error (`CONN`, `EHLO`/`HELO`/`LHLO`, `STARTTLS`) is
+    // ambiguous by command alone — nodemailer tags both "the server is genuinely down" AND
+    // "this message stalled/reset mid-DATA against an otherwise-healthy server" (a poison
+    // message) the same way (`command: "CONN"`). `transport.verify()` discriminates: if the
+    // server itself can't answer a lightweight check, it's an outage — defer every remaining
+    // claimed row without spending an attempt (so an outage can never drain the queue to
+    // failed) and stop this run. If the server verifies healthy, this specific message is to
+    // blame: treat it exactly like a normal transient error (spends an attempt, standard
+    // backoff, eventually fails and is logged) and keep going — unlike an outage, one poison
+    // message must never stop the rest of the batch from sending.
+    if (connectionLevel) {
       const serverHealthy = await isTransportHealthy(opts.transport, verifyTimeoutMs);
       if (!serverHealthy) {
         const deferrals = row.deferrals + 1;
