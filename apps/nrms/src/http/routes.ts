@@ -60,6 +60,9 @@ export function apiRoutes(db: Db): Router {
 
   r.get(
     "/releases/:key",
+    // M1: unpublished drafts are embargoed — this must not be readable by any valid token,
+    // only an editor.
+    requireRole("NRMS.Editor"),
     run<{ key: string }>(async (req, res) => {
       const row = await releasesService.getRelease(db, req.params.key);
       if (!row) return void res.status(404).json({ error: "not found" });

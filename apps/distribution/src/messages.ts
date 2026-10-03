@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { priorityFor } from "./priority";
@@ -122,8 +122,11 @@ export async function createBatch(
 /**
  * One query: a LEFT JOIN from `batches` so an unknown id returns zero rows (undefined)
  * rather than a zero-count row, while a batch with no messages yet still counts as 0/0/0/0.
+ *
+ * M2: scoped to `appId` — another app's batch id must 404, not leak that batch's status, the
+ * same way it would if it simply didn't exist.
  */
-export async function batchStatus(db: Db, id: string): Promise<BatchStatus | undefined> {
+export async function batchStatus(db: Db, id: string, appId: string): Promise<BatchStatus | undefined> {
   const [row] = await db
     .select({
       total: sql<string>`count(${messages.id})::int`,
@@ -133,7 +136,7 @@ export async function batchStatus(db: Db, id: string): Promise<BatchStatus | und
     })
     .from(batches)
     .leftJoin(messages, eq(messages.batchId, batches.id))
-    .where(eq(batches.id, id))
+    .where(and(eq(batches.id, id), eq(batches.appId, appId)))
     .groupBy(batches.id);
   if (!row) return undefined;
   return { id, total: Number(row.total), pending: Number(row.pending), sent: Number(row.sent), failed: Number(row.failed) };

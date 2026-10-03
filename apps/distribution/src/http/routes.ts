@@ -51,7 +51,9 @@ export function apiRoutes(db: Db, internalDomains: string[]): Router {
     run<{ id: string }>(async (req, res) => {
       // Reject a non-uuid id before it ever reaches the database.
       if (!uuidSchema.safeParse(req.params.id).success) return void res.status(404).json({ error: "not found" });
-      const status = await messagesService.batchStatus(db, req.params.id);
+      // M2: scoped to the caller's own appId — another app's batch id must 404, not leak that
+      // batch's status.
+      const status = await messagesService.batchStatus(db, req.params.id, appIdFrom(req));
       if (!status) return void res.status(404).json({ error: "not found" });
       res.json(status);
     }),

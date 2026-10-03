@@ -119,23 +119,33 @@ describe("NRMS HTTP API", () => {
     expect(res.body).toEqual({ error: "release already published" });
   });
 
-  it("gets a release by key (any valid token) with lastError present, and 404s an unknown key", async () => {
+  it("gets a release by key (NRMS.Editor only) with lastError present, and 404s an unknown key", async () => {
     const key = "GET-1";
     await request(app).post("/api/releases").set("authorization", `Bearer ${editor}`).send({ ...sampleDraft, key });
-    const res = await request(app).get(`/api/releases/${key}`).set("authorization", `Bearer ${reader}`);
+    const res = await request(app).get(`/api/releases/${key}`).set("authorization", `Bearer ${editor}`);
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({ key, status: "draft", lastError: null });
 
-    const notFound = await request(app).get("/api/releases/nope").set("authorization", `Bearer ${reader}`);
+    const notFound = await request(app).get("/api/releases/nope").set("authorization", `Bearer ${editor}`);
     expect(notFound.status).toBe(404);
     expect(notFound.body).toEqual({ error: "not found" });
+  });
+
+  // M1: an unpublished draft is embargoed — GET must require NRMS.Editor like every other
+  // route, not be readable by any valid token.
+  it("requires a token, and NRMS.Editor role, to get a release", async () => {
+    const key = "GET-AUTH-1";
+    await request(app).post("/api/releases").set("authorization", `Bearer ${editor}`).send({ ...sampleDraft, key });
+
+    expect((await request(app).get(`/api/releases/${key}`)).status).toBe(401);
+    expect((await request(app).get(`/api/releases/${key}`).set("authorization", `Bearer ${reader}`)).status).toBe(403);
   });
 
   it("hides internal error details on unexpected failures", async () => {
     const spy = vi.spyOn(releasesService, "getRelease").mockRejectedValueOnce(new Error("secret db detail at /srv/x.ts:1"));
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const res = await request(app).get("/api/releases/whatever").set("authorization", `Bearer ${reader}`);
+      const res = await request(app).get("/api/releases/whatever").set("authorization", `Bearer ${editor}`);
       expect(res.status).toBe(500);
       expect(res.body).toEqual({ error: "internal error" });
       expect(res.text).not.toContain("secret");

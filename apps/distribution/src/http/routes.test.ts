@@ -106,6 +106,17 @@ describe("Distribution HTTP API", () => {
     expect(badHeader.status).toBe(400);
   });
 
+  // M3: the body limit was raised from 5mb to 10mb (apps/distribution/src/app.ts) so a batch
+  // whose JSON payload is over the old limit but under the new one is no longer rejected.
+  it("accepts a request body over the old 5mb limit but under the new 10mb one", async () => {
+    const html = `<p>${"x".repeat(7 * 1024 * 1024)}</p>`;
+    const res = await request(app)
+      .post("/api/messages")
+      .set("authorization", `Bearer ${sender}`)
+      .send({ ...sampleMessageRequest, idempotencyKey: "big-body-1", html });
+    expect(res.status).toBe(202);
+  });
+
   it("two posts with no idempotencyKey each create their own batch", async () => {
     const { idempotencyKey: _ignored, ...withoutKey } = sampleMessageRequest as typeof sampleMessageRequest & { idempotencyKey?: string };
     const first = await request(app).post("/api/messages").set("authorization", `Bearer ${sender}`).send(withoutKey);
@@ -132,6 +143,13 @@ describe("Distribution HTTP API", () => {
 
     const notUuid = await request(app).get("/api/batches/not-a-uuid").set("authorization", `Bearer ${sender}`);
     expect(notUuid.status).toBe(404);
+  });
+
+  // M2: a batch belonging to a different app must 404, not leak its status.
+  it("404s GET /api/batches/:id for a batch belonging to a different app", async () => {
+    const res = await request(app).get(`/api/batches/${firstBatchId}`).set("authorization", `Bearer ${otherAppSender}`);
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "not found" });
   });
 
   it("two concurrent posts with the same idempotencyKey produce exactly one batch row", async () => {

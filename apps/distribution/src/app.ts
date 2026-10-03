@@ -17,7 +17,7 @@ export function createApp(deps: {
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`)]));
   if (deps.loginRouter) app.use(deps.loginRouter);
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.
-  app.use("/api", requireBearer(deps.auth), express.json({ limit: "5mb" }), apiRoutes(deps.db, deps.internalDomains));
+  app.use("/api", requireBearer(deps.auth), express.json({ limit: "10mb" }), apiRoutes(deps.db, deps.internalDomains));
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
   // escape stay JSON instead of finalhandler's default HTML.
   app.use(jsonErrorHandler({ logPrefix: "[distribution]" }));
