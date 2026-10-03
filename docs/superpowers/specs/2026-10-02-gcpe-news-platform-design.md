@@ -353,7 +353,7 @@ Ported from the `nrms` prototype (NestJS/Prisma → Express/Drizzle per §3.4) a
 - PII: subscriber emails stored only in NoD and Distribution; PII columns encrypted at rest; admin access audited; embeddings never include subscriber data; staff-side AI over unpublished drafts behind a feature flag, **off by default**, pending PIA.
 - Internet-facing: News API and static site only. All other apps internal.
 - Non-prod mail redirect on by default.
-- **Local admin (test environments only):** `LOCAL_ADMIN_ENABLED=true` enables one admin account (username + scrypt password hash) that signs in at `POST /auth/local/token` and receives an 8-hour HS256 token (issuer/audience `gcpe-local`) carrying all admin roles. It is off by default and must never be enabled in production; Entra remains the only production identity provider.
+- **Local admin (test environments only):** `LOCAL_ADMIN_ENABLED=true` enables one admin account (username + scrypt password hash) that signs in at `POST /auth/local/token` and receives an 8-hour HS256 token (issuer/audience `gcpe-local`) carrying all admin roles. It is off by default and must never be enabled in production; Entra remains the only production identity provider. `LOCAL_ADMIN_ENABLED=true` is refused when `NODE_ENV=production` unless `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`.
 
 ### 10.2 Testing
 

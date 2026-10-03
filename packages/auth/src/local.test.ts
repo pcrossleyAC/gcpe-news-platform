@@ -1,10 +1,10 @@
 import express from "express";
 import request from "supertest";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
-import { beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 import { requireBearer, requireRole } from "./bearer";
-import { ADMIN_ROLES, LOCAL_AUDIENCE, LOCAL_ISSUER, localLoginRouter, mintLocalToken } from "./local";
-import { hashPassword } from "./password";
+import { ADMIN_ROLES, LOCAL_AUDIENCE, LOCAL_ISSUER, localKey, localLoginRouter, mintLocalToken } from "./local";
+import { hashPassword, verifyPassword } from "./password";
 
 const secret = "a".repeat(32) + "-local-test-secret";
 const entra = { issuer: "https://login.microsoftonline.com/t/v2.0", audience: "api://core" };
@@ -52,6 +52,16 @@ describe("local admin auth", () => {
     expect(statuses.at(-1)).toBe(429);
   });
 
+  // Fix round 1, Important #2: the hash comparison must run exactly once per attempt --
+  // not skipped for an unknown username (which would reveal valid usernames by timing) and
+  // not run twice (which would double the per-request scrypt cost for no reason).
+  it("checks the password hash exactly once, even for an unknown username", async () => {
+    const verify = vi.fn(verifyPassword);
+    const app = appWith({ local: { secret } }, localLoginRouter({ username: "admin", passwordHash, secret }, { verify }));
+    await request(app).post("/auth/local/token").send({ username: "nobody", password: "whatever" });
+    expect(verify).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects a login body over the 1kb limit with 413", async () => {
     const app = appWith({ local: { secret } }, localLoginRouter({ username: "admin", passwordHash, secret }));
     const res = await request(app)
@@ -88,5 +98,43 @@ describe("local admin auth", () => {
     const t = await new SignJWT({ roles: ["Core.Admin"] }).setProtectedHeader({ alg: "RS256", kid: "k" })
       .setIssuer(entra.issuer).setAudience(entra.audience).setSubject("svc").setExpirationTime("5m").sign(rsa.privateKey);
     expect((await request(appWith({ ...entra, keys, local: { secret } })).get("/api/x").set("authorization", `Bearer ${t}`)).body).toEqual({ sub: "svc" });
+  });
+
+  // Fix round 1, Minor #5: a local token must carry exp/iat/sub, and iat can't be older
+  // than the mint TTL (8h) even if exp itself is still in the future -- otherwise a token
+  // could be kept "fresh" indefinitely by signing it with a far-future exp alone.
+  it("rejects an HS256 token with no exp claim", async () => {
+    const app = appWith({ local: { secret } });
+    const now = Math.floor(Date.now() / 1000);
+    const noExp = await new SignJWT({ roles: ["Core.Admin"] })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuer(LOCAL_ISSUER)
+      .setAudience(LOCAL_AUDIENCE)
+      .setSubject("admin")
+      .setIssuedAt(now)
+      .sign(localKey(secret));
+    expect((await request(app).get("/api/x").set("authorization", `Bearer ${noExp}`)).status).toBe(401);
+  });
+
+  it("rejects an HS256 token whose iat is older than maxTokenAge, even with a future exp", async () => {
+    const app = appWith({ local: { secret } });
+    const now = Math.floor(Date.now() / 1000);
+    const stale = await new SignJWT({ roles: ["Core.Admin"] })
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuer(LOCAL_ISSUER)
+      .setAudience(LOCAL_AUDIENCE)
+      .setSubject("admin")
+      .setIssuedAt(now - 9 * 60 * 60)
+      .setExpirationTime(now + 60 * 60)
+      .sign(localKey(secret));
+    expect((await request(app).get("/api/x").set("authorization", `Bearer ${stale}`)).status).toBe(401);
+  });
+
+  it("requireBearer throws at construction for a local secret shorter than 32 characters", () => {
+    expect(() => requireBearer({ local: { secret: "too-short" } })).toThrow(/32 characters/);
+  });
+
+  it("mintLocalToken rejects a secret shorter than 32 characters", async () => {
+    await expect(mintLocalToken({ secret: "too-short", subject: "admin", roles: [...ADMIN_ROLES] })).rejects.toThrow(/32 characters/);
   });
 });

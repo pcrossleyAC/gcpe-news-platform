@@ -14,6 +14,7 @@ export function createApp(deps: {
 }): express.Express {
   const app = express();
   app.disable("x-powered-by");
+  app.set("trust proxy", 1); // one hop: OpenShift router / SiteGround nginx
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`)]));
   if (deps.loginRouter) app.use(deps.loginRouter);
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.

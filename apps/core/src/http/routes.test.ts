@@ -181,4 +181,31 @@ describe("Core HTTP API", () => {
       .send({ ...healthOrg, key: "local-login" });
     expect(put.status).toBe(200);
   });
+
+  // Fix round 1, Minor #4: "trust proxy" must be set so the login rate limiter keys on the
+  // real client IP (from X-Forwarded-For) behind the OpenShift router / SiteGround nginx,
+  // not on the one loopback address every request arrives from in-process. Without it, two
+  // different clients would share one rate-limit budget.
+  it("rate-limits local login per real client IP (trust proxy honours X-Forwarded-For)", async () => {
+    const secret = "w".repeat(40) + "-trust-proxy-test";
+    const passwordHash = await hashPassword("trust-proxy-pass");
+    const ipApp = createApp({
+      db: tdb.db,
+      subscribers: [],
+      auth: { local: { secret } },
+      loginRouter: localLoginRouter({ username: "admin", passwordHash, secret }),
+    });
+    const attempt = (ip: string) =>
+      request(ipApp).post("/auth/local/token").set("X-Forwarded-For", ip).send({ username: "admin", password: "wrong" });
+
+    const ipA = "203.0.113.10";
+    const ipB = "203.0.113.20";
+    const ipAStatuses: number[] = [];
+    for (let i = 0; i < 10; i++) ipAStatuses.push((await attempt(ipA)).status);
+    expect(ipAStatuses.every((s) => s === 401)).toBe(true);
+    expect((await attempt(ipA)).status).toBe(429); // ipA's 11th request: budget exhausted
+
+    // A different client IP must still have its own, unexhausted budget.
+    expect((await attempt(ipB)).status).toBe(401);
+  });
 });

@@ -1,6 +1,6 @@
 import type { RequestHandler } from "express";
 import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
-import { LOCAL_AUDIENCE, LOCAL_ISSUER, localKey } from "./local";
+import { assertSecretStrength, LOCAL_AUDIENCE, LOCAL_ISSUER, localKey } from "./local";
 
 export interface AuthContext {
   subject: string;
@@ -33,7 +33,12 @@ export interface BearerOptions {
 }
 
 export function requireBearer(opts: BearerOptions): RequestHandler {
-  const entra = opts.issuer && opts.audience && opts.keys ? { issuer: opts.issuer, audience: opts.audience, keys: opts.keys } : null;
+  const entraFieldsGiven = [opts.issuer, opts.audience, opts.keys].filter((v) => v !== undefined).length;
+  if (entraFieldsGiven > 0 && entraFieldsGiven < 3) {
+    throw new Error("requireBearer: issuer, audience and keys must all be provided together, or all omitted");
+  }
+  const entra = entraFieldsGiven === 3 ? { issuer: opts.issuer!, audience: opts.audience!, keys: opts.keys! } : null;
+  if (opts.local) assertSecretStrength(opts.local.secret);
   const local = opts.local ? { key: localKey(opts.local.secret) } : null;
   return async (req, res, next) => {
     const header = req.header("authorization");
@@ -46,7 +51,16 @@ export function requireBearer(opts: BearerOptions): RequestHandler {
       const { alg } = decodeProtectedHeader(token);
       let payload: JWTPayload;
       if (alg === "HS256" && local) {
-        ({ payload } = await jwtVerify(token, local.key, { issuer: LOCAL_ISSUER, audience: LOCAL_AUDIENCE, algorithms: ["HS256"] }));
+        ({ payload } = await jwtVerify(token, local.key, {
+          issuer: LOCAL_ISSUER,
+          audience: LOCAL_AUDIENCE,
+          algorithms: ["HS256"],
+          // A local token is only ever meant to be short-lived (mintLocalToken's default is
+          // 8h); requiring exp/iat/sub and bounding age by maxTokenAge means a token can't be
+          // crafted to omit exp or to stay "fresh" forever on a far-future expiry alone.
+          requiredClaims: ["exp", "iat", "sub"],
+          maxTokenAge: "8h",
+        }));
       } else if (entra) {
         ({ payload } = await jwtVerify(token, entra.keys, { issuer: entra.issuer, audience: entra.audience, algorithms: ["RS256"] }));
       } else {

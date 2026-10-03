@@ -2,16 +2,20 @@ import type { Router } from "express";
 import { z } from "zod";
 import { entraIssuer, entraJwks, type BearerOptions } from "./bearer";
 import { localLoginRouter, type LocalAuthConfig } from "./local";
-import { PASSWORD_HASH_FORMAT } from "./password";
+import { isValidPasswordHash } from "./password";
+
+const boolString = z
+  .enum(["true", "false"])
+  .default("false")
+  .transform((v) => v === "true");
 
 const schema = z
   .object({
+    NODE_ENV: z.string().optional(),
     ENTRA_TENANT_ID: z.string().min(1).optional(),
     AUTH_AUDIENCE: z.string().min(1).optional(),
-    LOCAL_ADMIN_ENABLED: z
-      .enum(["true", "false"])
-      .default("false")
-      .transform((v) => v === "true"),
+    LOCAL_ADMIN_ENABLED: boolString,
+    LOCAL_ADMIN_ALLOW_IN_PRODUCTION: boolString,
     LOCAL_ADMIN_USERNAME: z.string().min(1).default("admin"),
     LOCAL_ADMIN_PASSWORD_HASH: z.string().optional(),
     LOCAL_AUTH_SECRET: z.string().optional(),
@@ -20,10 +24,15 @@ const schema = z
     if (Boolean(e.ENTRA_TENANT_ID) !== Boolean(e.AUTH_AUDIENCE))
       ctx.addIssue({ code: "custom", message: "set both ENTRA_TENANT_ID and AUTH_AUDIENCE, or neither" });
     if (e.LOCAL_ADMIN_ENABLED) {
-      if (!e.LOCAL_ADMIN_PASSWORD_HASH || !PASSWORD_HASH_FORMAT.test(e.LOCAL_ADMIN_PASSWORD_HASH))
+      if (!e.LOCAL_ADMIN_PASSWORD_HASH || !isValidPasswordHash(e.LOCAL_ADMIN_PASSWORD_HASH))
         ctx.addIssue({ code: "custom", message: "LOCAL_ADMIN_PASSWORD_HASH must be the output of `npm run auth:hash-password`" });
       if (!e.LOCAL_AUTH_SECRET || e.LOCAL_AUTH_SECRET.length < 32)
         ctx.addIssue({ code: "custom", message: "LOCAL_AUTH_SECRET must be at least 32 characters" });
+      if (e.NODE_ENV === "production" && !e.LOCAL_ADMIN_ALLOW_IN_PRODUCTION)
+        ctx.addIssue({
+          code: "custom",
+          message: "LOCAL_ADMIN_ENABLED is refused when NODE_ENV=production unless LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true — Entra remains the only production identity provider",
+        });
     }
     if (!e.ENTRA_TENANT_ID && !e.LOCAL_ADMIN_ENABLED)
       ctx.addIssue({ code: "custom", message: "configure ENTRA_TENANT_ID + AUTH_AUDIENCE, or LOCAL_ADMIN_ENABLED=true (test environments)" });
