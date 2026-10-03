@@ -822,7 +822,8 @@ describe("sendDue", () => {
     const timing = { batchSize: 1, perMessageMs: 1_000, verifyTimeoutMs: 60_000 };
     try {
       const first = sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], ...timing });
-      await firstVerifyStarted;
+      // Fail fast (rather than hang) if the first run ends without ever reaching verify().
+      await Promise.race([firstVerifyStarted, first.then(() => Promise.reject(new Error("first run finished without reaching verify()")))]);
       // A second replica polls 45s into the first run's verify (simulated with a test clock):
       // past a send-only lock (1s + 30s), well inside one that also budgets the 60s verify.
       const t = (await dbClock(tdb.db)).getTime();
