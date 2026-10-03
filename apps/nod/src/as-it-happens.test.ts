@@ -5,7 +5,7 @@ import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb, envelope } from "../test/helpers";
 import { deliveries, sendJobs, subscribers, subscriptions } from "./db/schema";
 import { addSubscriber } from "./subscribers";
-import { createAsItHappensHandler, renderAsItHappens } from "./as-it-happens";
+import { createAsItHappensHandler, neutralizeHtml, neutralizeText, renderAsItHappens } from "./as-it-happens";
 
 const PUBLIC_SITE_URL = "https://news.gov.bc.ca";
 const MANAGE_URL = "https://news.gov.bc.ca/manage";
@@ -146,6 +146,38 @@ describe("renderAsItHappens", () => {
 
     expect(text.match(/\{\{manageUrl\}\}/g)).toEqual(["{{manageUrl}}"]);
     expect(text).toContain("{ {manageUrl}}");
+  });
+
+  // P2-R25 item 2: replacing each `{{` pair once left a bypass — `{{{manageUrl}}` became
+  // `{ {{manageUrl}}`, whose tail is a live placeholder again. Every `{` next to another `{` is
+  // now broken up, so no `{{name}}` can survive in release text, however many braces lead it.
+  // (Distribution matches /\{\{([A-Za-z0-9_]+)\}\}/ — apps/distribution/src/substitute.ts.)
+  const livePlaceholders = (s: string) => s.match(/\{\{([A-Za-z0-9_]+)\}\}/g) ?? [];
+
+  it.each([
+    ["{{{manageUrl}}", "{ { {manageUrl}}", "{&#123;&#123;manageUrl}}"],
+    ["{{{{manageUrl}}}}", "{ { { {manageUrl}}}}", "{&#123;&#123;&#123;manageUrl}}}}"],
+    ["{ {manageUrl}}", "{ {manageUrl}}", "{ {manageUrl}}"],
+  ])("neutralises %j in release text so only the footer placeholder is live", (raw, expectedText, expectedHtml) => {
+    const release = { ...sampleRelease, summary: raw, documents: [{ ...sampleRelease.documents[0]!, headline: raw }] };
+    const { subject, html, text } = renderAsItHappens(release, "https://news.gov.bc.ca");
+
+    expect(livePlaceholders(text)).toEqual(["{{manageUrl}}"]);
+    expect(livePlaceholders(html)).toEqual(["{{manageUrl}}"]);
+    expect(livePlaceholders(subject)).toEqual([]);
+    expect(text.startsWith(`${expectedText}\n\n${expectedText}\n\n`)).toBe(true);
+    expect(html).toContain(`<h1>${expectedHtml}</h1>`);
+    expect(subject).toBe(expectedText);
+  });
+
+  it("neutralising is idempotent: neutralised text passes through a second time unchanged, and never contains '{{'", () => {
+    for (const raw of ["{{{x}}", "{{{{x}}}}", "{ {x}}", "a {{b}} c"]) {
+      expect(neutralizeText(neutralizeText(raw))).toBe(neutralizeText(raw));
+      expect(neutralizeText(raw)).not.toContain("{{");
+      // neutralizeHtml also HTML-escapes (which is never idempotent: & -> &amp;), so only its
+      // brace-breaking is checked here.
+      expect(neutralizeHtml(raw)).not.toContain("{{");
+    }
   });
 
   it("falls back to the release key when there is no English headline", () => {

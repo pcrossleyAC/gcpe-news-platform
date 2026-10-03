@@ -10,11 +10,17 @@ const ENGLISH_LANGUAGE_ID = 4105;
  * Distribution (Task 7) substitutes `{{name}}` placeholders in a single pass over the final
  * html/text, after this module has done its own escaping — so an escaped "{{manageUrl}}"
  * sitting in release text would still read as a live placeholder to Distribution's regex.
- * Breaking the brace pair (one half becomes an HTML entity in html, or gets a space in text)
- * stops that match, while the one REAL `{{manageUrl}}` — the footer link below — is untouched.
+ * Breaking up every pair of adjacent braces stops that match, while the one REAL
+ * `{{manageUrl}}` — the footer link below — is untouched.
+ *
+ * P2-R25 item 2: *every* `{` next to another `{` is broken up — not each `{{` match once, which
+ * let `{{{manageUrl}}` through as `{ {{manageUrl}}` — so the output never contains `{{` at all,
+ * and running it again changes nothing (idempotent). In html, each `{` that follows a `{`
+ * becomes the entity `&#123;` (renders identically); in text, each `{` followed by a `{` gets a
+ * space after it. Exported for tests.
  */
-const neutralizeHtml = (s: string): string => escapeHtml(s).replace(/\{\{/g, "{&#123;");
-const neutralizeText = (s: string): string => s.replace(/\{\{/g, "{ {");
+export const neutralizeHtml = (s: string): string => escapeHtml(s).replace(/(?<=\{)\{/g, "&#123;");
+export const neutralizeText = (s: string): string => s.replace(/\{(?=\{)/g, "{ ");
 
 // I4/R2 fix: Distribution rejects (400, terminal) a subject containing CR/LF or longer than
 // 998 characters (apps/distribution/src/messages.ts's `z.string().max(998)`, which — like
