@@ -3,6 +3,7 @@ import request from "supertest";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
+import { MAX_EVENT_BYTES } from "@gcpe/events";
 import { createApp } from "../app";
 import * as organizationsService from "../services/organizations";
 
@@ -76,6 +77,23 @@ describe("Core HTTP API", () => {
     } finally {
       spy.mockRestore();
     }
+  });
+
+  it("rejects admin bodies over MAX_EVENT_BYTES with 413", async () => {
+    const big = { ...healthOrg, key: "big", minister: { ...healthOrg.minister, detailsHtml: "x".repeat(MAX_EVENT_BYTES) } };
+    const res = await request(app).put("/api/organizations/big").set("authorization", `Bearer ${admin}`).send(big);
+    expect(res.status).toBe(413);
+  });
+
+  it("413 when the body fits but the resulting event envelope would not", async () => {
+    // Body under the limit, but the envelope adds metadata (ids, timestamps, updatedAt) on top.
+    const pad = MAX_EVENT_BYTES - JSON.stringify({ ...healthOrg, key: "edge" }).length - 20;
+    const edge = { ...healthOrg, key: "edge", minister: { ...healthOrg.minister, detailsHtml: "x".repeat(pad) } };
+    expect(JSON.stringify(edge).length).toBeLessThanOrEqual(MAX_EVENT_BYTES);
+    const res = await request(app).put("/api/organizations/edge").set("authorization", `Bearer ${admin}`).send(edge);
+    expect(res.status).toBe(413);
+    expect(res.body).toEqual({ error: "record too large to publish" });
+    expect((await request(app).get("/api/organizations/edge").set("authorization", `Bearer ${reader}`)).status).toBe(404);
   });
 
   it("republish returns the number of enqueued events", async () => {

@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
 import { parseEvent } from "./catalogue";
-import type { EventEnvelope } from "./envelope";
+import { EventTooLargeError, MAX_EVENT_BYTES, type EventEnvelope } from "./envelope";
 import { subscribersFor, type SubscriberConfig } from "./subscribers";
 import { aggregateSequences, outboxDeliveries, outboxEvents } from "./tables";
 
@@ -31,6 +31,8 @@ export async function enqueueEvent(
     correlationId: input.correlationId ?? randomUUID(),
     data: input.data,
   });
+  const bytes = Buffer.byteLength(JSON.stringify(envelope), "utf8");
+  if (bytes > MAX_EVENT_BYTES) throw new EventTooLargeError(envelope.type, envelope.aggregateId, bytes);
 
   await tx.insert(outboxEvents).values({
     id: envelope.id,

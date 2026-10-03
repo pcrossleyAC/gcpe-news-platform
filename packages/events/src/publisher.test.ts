@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
+import { EventTooLargeError, MAX_EVENT_BYTES } from "./envelope";
 import { enqueueEvent } from "./publisher";
 import { parseSubscribers } from "./subscribers";
 import { outboxDeliveries, outboxEvents } from "./tables";
@@ -44,6 +45,23 @@ describe("enqueueEvent", () => {
     ).rejects.toThrow();
     const rows = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:d"));
     expect(rows).toHaveLength(0);
+  });
+
+  it("rejects an envelope larger than MAX_EVENT_BYTES and writes nothing", async () => {
+    expect(MAX_EVENT_BYTES).toBe(1_000_000);
+    const key = "x".repeat(MAX_EVENT_BYTES);
+    const err = await tdb.db
+      .transaction((tx) => enqueueEvent(tx, { type: "org.deactivated", source: "core", aggregateId: "org:big", data: { key } }, subs))
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(EventTooLargeError);
+    expect((err as Error).message).toMatch(/org\.deactivated for org:big is \d+ bytes; the limit is MAX_EVENT_BYTES \(1000000\)/);
+    const rows = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:big"));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("accepts an envelope just under MAX_EVENT_BYTES", async () => {
+    const env = await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: "org:fits", data: { key: "x".repeat(MAX_EVENT_BYTES - 1_000) } }, subs);
+    expect(Buffer.byteLength(JSON.stringify(env))).toBeLessThanOrEqual(MAX_EVENT_BYTES);
   });
 });
 

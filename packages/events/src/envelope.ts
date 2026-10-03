@@ -13,3 +13,21 @@ export const eventEnvelopeSchema = z.object({
 });
 
 export type EventEnvelope<T = unknown> = Omit<z.infer<typeof eventEnvelopeSchema>, "data"> & { data: T };
+
+/**
+ * Largest serialised envelope a producer may enqueue and a receiver will accept, in bytes.
+ * Producers and receivers share this constant so an event that was accepted for the outbox
+ * can always be delivered.
+ */
+export const MAX_EVENT_BYTES = 1_000_000;
+
+export class EventTooLargeError extends Error {
+  constructor(
+    readonly type: string,
+    readonly aggregateId: string,
+    readonly bytes: number,
+  ) {
+    super(`event ${type} for ${aggregateId} is ${bytes} bytes; the limit is MAX_EVENT_BYTES (${MAX_EVENT_BYTES})`);
+    this.name = "EventTooLargeError";
+  }
+}

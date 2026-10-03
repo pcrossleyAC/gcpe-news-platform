@@ -4,6 +4,7 @@ import request from "supertest";
 import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
+import { MAX_EVENT_BYTES } from "./envelope";
 import { createEventReceiver } from "./receiver";
 import { signPayload } from "./signing";
 
@@ -160,6 +161,16 @@ describe("createEventReceiver", () => {
       onAppliedShouldThrow = false;
       errSpy.mockRestore();
     }
+  });
+
+  it("accepts bodies up to MAX_EVENT_BYTES and rejects larger ones with 413", async () => {
+    const fits = { ...makeEvent(1, "big:fits", "future.thing"), data: { pad: "" } };
+    fits.data.pad = "x".repeat(MAX_EVENT_BYTES - JSON.stringify(fits).length);
+    expect(JSON.stringify(fits).length).toBe(MAX_EVENT_BYTES);
+    expect((await post(app, fits)).body).toEqual({ outcome: "ignored" });
+
+    const tooBig = { ...makeEvent(1, "big:over", "future.thing"), data: { pad: "x".repeat(MAX_EVENT_BYTES) } };
+    expect((await post(app, tooBig)).status).toBe(413);
   });
 
   it("rejects a prototype-chain source like 'constructor' with 401 instead of 500", async () => {

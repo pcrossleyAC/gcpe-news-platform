@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import type { JWTVerifyGetKey } from "jose";
 import type { Db } from "@gcpe/db-kit";
 import { requireBearer } from "@gcpe/auth";
-import type { SubscriberConfig } from "@gcpe/events";
+import { MAX_EVENT_BYTES, type SubscriberConfig } from "@gcpe/events";
 import { apiRoutes } from "./http/routes";
 
 export function createApp(deps: {
@@ -22,6 +22,6 @@ export function createApp(deps: {
       res.status(503).json({ status: "unavailable" });
     }
   });
-  app.use("/api", express.json({ limit: "2mb" }), requireBearer(deps.auth), apiRoutes(deps.db, deps.subscribers));
+  app.use("/api", express.json({ limit: MAX_EVENT_BYTES }), requireBearer(deps.auth), apiRoutes(deps.db, deps.subscribers));
   return app;
 }

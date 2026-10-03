@@ -2,7 +2,7 @@ import express, { type Request, type Response } from "express";
 import { ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { requireRole } from "@gcpe/auth";
-import { termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
+import { EventTooLargeError, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
 import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
@@ -18,6 +18,7 @@ function parseKind(req: Request, res: Response): TermKind | null {
 
 function handleError(res: Response, e: unknown) {
   if (e instanceof ZodError) return void res.status(400).json({ error: e.issues });
+  if (e instanceof EventTooLargeError) return void res.status(413).json({ error: "record too large to publish" });
   console.error("[core] request failed", e);
   res.status(500).json({ error: "internal error" });
 }

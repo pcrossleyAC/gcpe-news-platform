@@ -2,7 +2,7 @@ import express from "express";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
 import { parseEvent } from "./catalogue";
-import type { EventEnvelope } from "./envelope";
+import { MAX_EVENT_BYTES, type EventEnvelope } from "./envelope";
 import { verifySignature } from "./signing";
 import { inboxEvents, inboxPositions } from "./tables";
 
@@ -20,7 +20,7 @@ type Outcome = "applied" | "ignored" | "stale" | "duplicate";
 
 export function createEventReceiver(opts: ReceiverOptions): express.Router {
   const router = express.Router();
-  router.post("/events", express.text({ type: "application/json", limit: "1mb" }), async (req, res) => {
+  router.post("/events", express.text({ type: "application/json", limit: MAX_EVENT_BYTES }), async (req, res) => {
     const body = typeof req.body === "string" ? req.body : "";
     const source = req.header("x-event-source");
     const secret = source && Object.hasOwn(opts.secrets, source) ? opts.secrets[source] : undefined;
