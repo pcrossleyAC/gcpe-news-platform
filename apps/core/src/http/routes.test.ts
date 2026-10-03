@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
+import { hashPassword, localLoginRouter } from "@gcpe/auth";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { MAX_EVENT_BYTES } from "@gcpe/events";
 import { createApp } from "../app";
@@ -157,5 +158,27 @@ describe("Core HTTP API", () => {
     const res = await request(app).post("/api/admin/republish").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(202);
     expect(res.body.enqueued).toBe(2);
+  });
+
+  // Task 3: local admin login, end to end on the Core reference app — later apps copy this wiring.
+  it("local admin login: logging in and using the token for an admin write succeeds", async () => {
+    const secret = "z".repeat(40) + "-core-local-test";
+    const passwordHash = await hashPassword("local-test-pass");
+    const localApp = createApp({
+      db: tdb.db,
+      subscribers: [],
+      auth: { local: { secret } },
+      loginRouter: localLoginRouter({ username: "admin", passwordHash, secret }),
+    });
+
+    const login = await request(localApp).post("/auth/local/token").send({ username: "admin", password: "local-test-pass" });
+    expect(login.status).toBe(200);
+    expect(login.body).toMatchObject({ token_type: "Bearer" });
+
+    const put = await request(localApp)
+      .put("/api/organizations/local-login")
+      .set("authorization", `Bearer ${login.body.access_token}`)
+      .send({ ...healthOrg, key: "local-login" });
+    expect(put.status).toBe(200);
   });
 });

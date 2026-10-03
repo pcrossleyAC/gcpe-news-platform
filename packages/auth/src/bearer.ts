@@ -1,5 +1,6 @@
 import type { RequestHandler } from "express";
-import { createRemoteJWKSet, jwtVerify, type JWTVerifyGetKey } from "jose";
+import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload, type JWTVerifyGetKey } from "jose";
+import { LOCAL_AUDIENCE, LOCAL_ISSUER, localKey } from "./local";
 
 export interface AuthContext {
   subject: string;
@@ -24,16 +25,33 @@ export function entraIssuer(tenantId: string): string {
   return `https://login.microsoftonline.com/${tenantId}/v2.0`;
 }
 
-export function requireBearer(opts: { issuer: string; audience: string; keys: JWTVerifyGetKey }): RequestHandler {
+export interface BearerOptions {
+  issuer?: string;
+  audience?: string;
+  keys?: JWTVerifyGetKey;
+  local?: { secret: string };
+}
+
+export function requireBearer(opts: BearerOptions): RequestHandler {
+  const entra = opts.issuer && opts.audience && opts.keys ? { issuer: opts.issuer, audience: opts.audience, keys: opts.keys } : null;
+  const local = opts.local ? { key: localKey(opts.local.secret) } : null;
   return async (req, res, next) => {
     const header = req.header("authorization");
     if (!header?.startsWith("Bearer ")) return void res.status(401).json({ error: "missing bearer token" });
+    const token = header.slice(7);
     try {
-      const { payload } = await jwtVerify(header.slice(7), opts.keys, {
-        issuer: opts.issuer,
-        audience: opts.audience,
-        algorithms: ["RS256"],
-      });
+      // Branch on the token's own alg header, but always verify against the
+      // pinned algorithm list for that branch — never let the header pick
+      // which secret/keyset governs the check.
+      const { alg } = decodeProtectedHeader(token);
+      let payload: JWTPayload;
+      if (alg === "HS256" && local) {
+        ({ payload } = await jwtVerify(token, local.key, { issuer: LOCAL_ISSUER, audience: LOCAL_AUDIENCE, algorithms: ["HS256"] }));
+      } else if (entra) {
+        ({ payload } = await jwtVerify(token, entra.keys, { issuer: entra.issuer, audience: entra.audience, algorithms: ["RS256"] }));
+      } else {
+        throw new Error("no verifier configured for this token");
+      }
       req.auth = {
         subject: String(payload.sub),
         roles: Array.isArray(payload.roles) ? payload.roles.map(String) : [],
@@ -41,6 +59,7 @@ export function requireBearer(opts: { issuer: string; audience: string; keys: JW
       };
       next();
     } catch {
+      // decodeProtectedHeader throws on malformed tokens too — same 401, not a 500.
       res.status(401).json({ error: "invalid token" });
     }
   };

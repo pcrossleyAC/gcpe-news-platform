@@ -130,7 +130,7 @@ Each app: own `Dockerfile`, own Drizzle schema + migrations, own OpenShift Deplo
 
 - Node 20+, TypeScript, **Express**, **Drizzle ORM + drizzle-zod**, **zod** validation
 - React 18 + Vite + Tailwind (Radix primitives) for staff UIs
-- Auth: `openid-client` against **Entra ID** only; stateless HMAC-signed cookies (no cross-request `req.session` state; multiple replicas)
+- Auth: `openid-client` against **Entra ID** only; stateless HMAC-signed cookies (no cross-request `req.session` state; multiple replicas) — plus an optional local admin account for test environments (§10.1)
 - PostgreSQL 16 with **pgvector**
 - Email: nodemailer via SMTP relay; Mailpit locally
 - Tests: vitest; Playwright for E2E
@@ -353,6 +353,7 @@ Ported from the `nrms` prototype (NestJS/Prisma → Express/Drizzle per §3.4) a
 - PII: subscriber emails stored only in NoD and Distribution; PII columns encrypted at rest; admin access audited; embeddings never include subscriber data; staff-side AI over unpublished drafts behind a feature flag, **off by default**, pending PIA.
 - Internet-facing: News API and static site only. All other apps internal.
 - Non-prod mail redirect on by default.
+- **Local admin (test environments only):** `LOCAL_ADMIN_ENABLED=true` enables one admin account (username + scrypt password hash) that signs in at `POST /auth/local/token` and receives an 8-hour HS256 token (issuer/audience `gcpe-local`) carrying all admin roles. It is off by default and must never be enabled in production; Entra remains the only production identity provider.
 
 ### 10.2 Testing
 

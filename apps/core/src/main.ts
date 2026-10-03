@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { entraIssuer, entraJwks } from "@gcpe/auth";
+import { authFromEnv } from "@gcpe/auth";
 import { parseEnv } from "@gcpe/config";
 import { closeServer, createShutdown } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
@@ -11,13 +11,12 @@ const env = parseEnv(
   z.object({
     DATABASE_URL: z.string().url(),
     PORT: z.coerce.number().int().default(3001),
-    ENTRA_TENANT_ID: z.string().min(1),
-    AUTH_AUDIENCE: z.string().min(1),
     EVENT_SUBSCRIBERS: z.string().optional(),
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   }),
 );
 
+const auth = authFromEnv(process.env);
 const { db, pool } = createDb(env.DATABASE_URL);
 await runMigrations(db, env.MIGRATIONS_FOLDER);
 const subscribers = parseSubscribers(env.EVENT_SUBSCRIBERS);
@@ -25,7 +24,8 @@ const stopDispatcher = startDispatcher({ db, subscribers });
 const app = createApp({
   db,
   subscribers,
-  auth: { issuer: entraIssuer(env.ENTRA_TENANT_ID), audience: env.AUTH_AUDIENCE, keys: entraJwks(env.ENTRA_TENANT_ID) },
+  auth: auth.bearer,
+  loginRouter: auth.loginRouter,
 });
 const server = app.listen(env.PORT, () => console.log(`[core] listening on ${env.PORT}`));
 

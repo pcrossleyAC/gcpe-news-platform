@@ -51,6 +51,11 @@ describe("requireBearer / requireRole", () => {
     expect(res.status).toBe(403);
   });
 
+  it("401 (not 500) for a malformed token that isn't even a JWT", async () => {
+    const res = await request(app).get("/read").set("authorization", "Bearer not-a-jwt-at-all");
+    expect(res.status).toBe(401);
+  });
+
   it("401 for a token signed with a different algorithm (HS256)", async () => {
     const hsToken = await new SignJWT({})
       .setProtectedHeader({ alg: "HS256" })
