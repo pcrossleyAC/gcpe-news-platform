@@ -23,4 +23,31 @@ describe("createClientCredentialsProvider", () => {
     const get = createClientCredentialsProvider({ tokenUrl: "https://x/token", clientId: "c", clientSecret: "s", scope: "x", fetchImpl });
     await expect(get()).rejects.toThrow(/400/);
   });
+
+  it("single-flights concurrent requests on a cold cache", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls++;
+      return new Response(JSON.stringify({ access_token: "shared-token", expires_in: 3600 }), { status: 200 });
+    }) as typeof fetch;
+    const get = createClientCredentialsProvider({ tokenUrl: "https://x/token", clientId: "c", clientSecret: "s", scope: "x", fetchImpl });
+    const results = await Promise.all([get(), get(), get(), get(), get()]);
+    expect(calls).toBe(1);
+    expect(results).toEqual(["shared-token", "shared-token", "shared-token", "shared-token", "shared-token"]);
+  });
+
+  it("does not cache a failure: concurrent waiters all reject, and the next call retries", async () => {
+    let calls = 0;
+    const fetchImpl = (async () => {
+      calls++;
+      if (calls === 1) return new Response("no", { status: 400 });
+      return new Response(JSON.stringify({ access_token: "t-retry", expires_in: 3600 }), { status: 200 });
+    }) as typeof fetch;
+    const get = createClientCredentialsProvider({ tokenUrl: "https://x/token", clientId: "c", clientSecret: "s", scope: "x", fetchImpl });
+    const outcomes = await Promise.allSettled([get(), get(), get()]);
+    expect(calls).toBe(1);
+    for (const outcome of outcomes) expect(outcome.status).toBe("rejected");
+    expect(await get()).toBe("t-retry");
+    expect(calls).toBe(2);
+  });
 });

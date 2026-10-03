@@ -50,4 +50,17 @@ describe("requireBearer / requireRole", () => {
     const res = await request(app).get("/admin").set("authorization", `Bearer ${await token({ roles: ["Core.Read"] })}`);
     expect(res.status).toBe(403);
   });
+
+  it("401 for a token signed with a different algorithm (HS256)", async () => {
+    const hsToken = await new SignJWT({})
+      .setProtectedHeader({ alg: "HS256" })
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setSubject("user-1")
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(new TextEncoder().encode("some-arbitrary-secret-value"));
+    const res = await request(app).get("/read").set("authorization", `Bearer ${hsToken}`);
+    expect(res.status).toBe(401);
+  });
 });

@@ -29,7 +29,11 @@ export function requireBearer(opts: { issuer: string; audience: string; keys: JW
     const header = req.header("authorization");
     if (!header?.startsWith("Bearer ")) return void res.status(401).json({ error: "missing bearer token" });
     try {
-      const { payload } = await jwtVerify(header.slice(7), opts.keys, { issuer: opts.issuer, audience: opts.audience });
+      const { payload } = await jwtVerify(header.slice(7), opts.keys, {
+        issuer: opts.issuer,
+        audience: opts.audience,
+        algorithms: ["RS256"],
+      });
       req.auth = {
         subject: String(payload.sub),
         roles: Array.isArray(payload.roles) ? payload.roles.map(String) : [],
