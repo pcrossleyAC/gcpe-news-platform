@@ -46,7 +46,7 @@ export interface LegacyIndexRow extends Record<string, unknown> {
   IndexKey: string;
 }
 
-export function splitContact(information: string): { title: string | null; details: string | null } {
+export function splitContact(information: string): { title: string; details: string } {
   const [title = "", ...rest] = information.split(/\r?\n/);
   return { title, details: rest.join("\n") };
 }

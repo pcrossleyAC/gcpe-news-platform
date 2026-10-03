@@ -16,7 +16,7 @@ function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
 export async function importLegacyNews(
   db: Db,
   source: LegacySource,
-  opts: { timeZone?: string; log?: (msg: string) => void } = {},
+  opts: { log?: (msg: string) => void; allowEmptySlides?: boolean } = {},
 ): Promise<{ releases: number; slides: number; resourceLinks: number; features: number }> {
   const log = opts.log ?? (() => {});
   const result = { releases: 0, slides: 0, resourceLinks: 0, features: 0 };
@@ -59,7 +59,9 @@ export async function importLegacyNews(
     await db.transaction((tx) =>
       applySiteContent(tx, { entity: "categoryFeatures", kind: f.Kind, key: f.Key, topPostKey: keyFor(f.TopReleaseId), featurePostKey: keyFor(f.FeatureReleaseId) }),
     );
-    result.features++;
+    // Every Ministry/Sector/Theme row is applied (so a pointer legacy cleared clears ours
+    // too), but the reported count only reflects rows that actually carry a feature.
+    if (f.TopReleaseId !== null || f.FeatureReleaseId !== null) result.features++;
   }
 
   const slideRows = await source.query<{
@@ -73,24 +75,31 @@ export async function importLegacyNews(
     Justify: number | null;
     Timestamp: Date;
   }>(Q_CURRENT_SLIDES);
-  await db.transaction((tx) =>
-    applySiteContent(tx, {
-      entity: "slides",
-      slides: slideRows.map((s) => ({
-        id: lower(s.Id),
-        sortIndex: s.SortIndex,
-        headline: s.Headline,
-        summary: s.Summary,
-        actionLabel: null,
-        actionUri: s.ActionUrl,
-        imageBase64: s.Image ? s.Image.toString("base64") : null,
-        imageType: imageTypeFromBytes(s.Image),
-        facebookPostUri: s.FacebookPostUrl,
-        justify: justifyFromLegacy(s.Justify),
-        timestamp: s.Timestamp.toISOString(),
-      })),
-    }),
-  );
+  // An empty result just means "no carousel is currently live" (e.g. between
+  // carousels), not "delete every slide" — applySiteContent("slides") replaces the
+  // whole table, so skip it rather than wipe existing slides on a transient gap.
+  if (slideRows.length > 0 || opts.allowEmptySlides === true) {
+    await db.transaction((tx) =>
+      applySiteContent(tx, {
+        entity: "slides",
+        slides: slideRows.map((s) => ({
+          id: lower(s.Id),
+          sortIndex: s.SortIndex,
+          headline: s.Headline,
+          summary: s.Summary,
+          actionLabel: null,
+          actionUri: s.ActionUrl,
+          imageBase64: s.Image ? s.Image.toString("base64") : null,
+          imageType: imageTypeFromBytes(s.Image),
+          facebookPostUri: s.FacebookPostUrl,
+          justify: justifyFromLegacy(s.Justify),
+          timestamp: s.Timestamp.toISOString(),
+        })),
+      }),
+    );
+  } else {
+    log("[import] no current carousel slides found; existing slides kept");
+  }
   result.slides = slideRows.length;
 
   const links = await source.query<{ SortIndex: number; LinkText: string; LinkUrl: string }>(Q_RESOURCE_LINKS);

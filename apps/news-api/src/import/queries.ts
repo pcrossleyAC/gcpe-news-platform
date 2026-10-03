@@ -40,9 +40,9 @@ export const Q_APP_SETTINGS = `-- name: appSettings
 SELECT SettingName, SettingValue FROM dbo.ApplicationSetting WHERE SettingName IN ('HomeTopReleaseId', 'HomeFeatureReleaseId', 'granville')`;
 
 export const Q_CATEGORY_FEATURES = `-- name: categoryFeatures
-SELECT 'ministries' AS Kind, [Key], TopReleaseId, FeatureReleaseId FROM dbo.Ministry WHERE TopReleaseId IS NOT NULL OR FeatureReleaseId IS NOT NULL
-UNION ALL SELECT 'sectors', [Key], TopReleaseId, FeatureReleaseId FROM dbo.Sector WHERE TopReleaseId IS NOT NULL OR FeatureReleaseId IS NOT NULL
-UNION ALL SELECT 'themes', [Key], TopReleaseId, FeatureReleaseId FROM dbo.Theme WHERE TopReleaseId IS NOT NULL OR FeatureReleaseId IS NOT NULL`;
+SELECT 'ministries' AS Kind, [Key], TopReleaseId, FeatureReleaseId FROM dbo.Ministry
+UNION ALL SELECT 'sectors', [Key], TopReleaseId, FeatureReleaseId FROM dbo.Sector
+UNION ALL SELECT 'themes', [Key], TopReleaseId, FeatureReleaseId FROM dbo.Theme`;
 
 export const Q_CURRENT_SLIDES = `-- name: currentSlides
 SELECT s.Id, cs.SortIndex, s.Headline, s.Summary, s.ActionUrl, s.Image, s.FacebookPostUrl, s.Justify, s.[Timestamp]
