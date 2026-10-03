@@ -107,10 +107,13 @@ curl "http://localhost:3002/api/Posts/Latest/home/default?count=3&api-version=1.
 | `NOD_CLIENT_ID` | no | | Client ID for the client-credentials grant |
 | `NOD_CLIENT_SECRET` | no | | Client secret for the client-credentials grant |
 | `NOD_SCOPE` | no | | OAuth2 scope requested for the client-credentials grant |
-| `SUBSCRIBE_RATE_LIMIT_PER_MIN` | no | `300` | Rate limit applied to the `/api/Subscribe/*` proxy |
+| `SUBSCRIBE_RATE_LIMIT_PER_MIN` | no | `300` | Per-client rate limit applied to the `/api/Subscribe/*` proxy |
+| `SUBSCRIBE_CLIENT_IP_HEADER` | no | | Request header (e.g. `x-client-ip`) carrying the end user's IP, set by `gcpe-news-webapp`; when set, the subscribe rate limit is keyed on it instead of the caller's IP (falls back to the caller's IP when the header is missing or not an IP). See below |
 | `UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN` | no | `120` | Per-IP rate limit on `POST /updates/negotiate` (429 past it) |
 | `UPDATES_MAX_CONNECTIONS` | no | `5000` | Cap on open `/updates` WebSockets; negotiate returns 503 at the cap. Outstanding negotiate tokens are capped at 10,000, oldest evicted first |
 | `MIGRATIONS_FOLDER` | no | `apps/news-api/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/news-api/migrations` |
+
+Behind `gcpe-news-webapp`, every subscriber's request arrives from the webapp's IP, so a per-IP subscribe limit collapses all users into one bucket — set `SUBSCRIBE_CLIENT_IP_HEADER` to the header the webapp forwards the user's IP in. Only do this when that header can be trusted: anyone who can reach the News API directly can set it, and rotating its value gives a fresh bucket per request. Either keep the News API reachable only by the webapp, or have the route/proxy in front of it strip or overwrite that header on public traffic.
 
 `NOD_BASE_URL` can be set without the `NOD_TOKEN_URL`/`NOD_CLIENT_ID`/`NOD_CLIENT_SECRET`/`NOD_SCOPE` quartet (the subscribe proxy then forwards unauthenticated); the client-credentials provider is only built when all four are present.
 

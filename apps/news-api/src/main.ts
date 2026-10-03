@@ -32,7 +32,7 @@ const app = createApp({
   hubRouter: hub.router,
   // Not ready while the LISTEN connection is down: this instance would silently miss updates.
   readinessChecks: [() => isListening()],
-  subscribe: env.NOD_BASE_URL ? { baseUrl: env.NOD_BASE_URL, getToken, rateLimitPerMinute: env.SUBSCRIBE_RATE_LIMIT_PER_MIN } : undefined,
+  subscribe: env.NOD_BASE_URL ? { baseUrl: env.NOD_BASE_URL, getToken, rateLimitPerMinute: env.SUBSCRIBE_RATE_LIMIT_PER_MIN, clientIpHeader: env.SUBSCRIBE_CLIENT_IP_HEADER } : undefined,
 });
 const server = createServer(app);
 hub.attach(server);

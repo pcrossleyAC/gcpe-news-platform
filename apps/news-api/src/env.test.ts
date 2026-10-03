@@ -50,3 +50,11 @@ describe("newsApiEnvSchema updates hub limits", () => {
     expect(env.UPDATES_MAX_CONNECTIONS).toBe(50);
   });
 });
+
+describe("newsApiEnvSchema SUBSCRIBE_CLIENT_IP_HEADER", () => {
+  it("is unset by default and passes through when configured", () => {
+    expect(parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv).SUBSCRIBE_CLIENT_IP_HEADER).toBeUndefined();
+    const env = parseEnv(newsApiEnvSchema, { ...BASE, SUBSCRIBE_CLIENT_IP_HEADER: "x-client-ip" } as unknown as NodeJS.ProcessEnv);
+    expect(env.SUBSCRIBE_CLIENT_IP_HEADER).toBe("x-client-ip");
+  });
+});

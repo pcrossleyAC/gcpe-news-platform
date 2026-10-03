@@ -52,6 +52,31 @@ describe("Subscribe proxy", () => {
     expect((await request(app(undefined)).get("/api/Subscribe/SubscriptionItems/x?api-version=1.0")).status).toBe(503);
   });
 
+  // Final review M8: behind gcpe-news-webapp every subscriber shares the webapp's IP, so the
+  // per-IP bucket collapses everyone into one. With SUBSCRIBE_CLIENT_IP_HEADER configured,
+  // the header the webapp sets is the bucket key instead.
+  it("keys the rate limit on the configured client-IP header when set", async () => {
+    const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 2, clientIpHeader: "x-client-ip" });
+    const get = (ip?: string) => {
+      const r = request(a).get("/api/Subscribe/SubscriptionItems/x");
+      return (ip ? r.set("x-client-ip", ip) : r).then((res) => res.status);
+    };
+    expect([await get("203.0.113.1"), await get("203.0.113.1"), await get("203.0.113.1")]).toEqual([200, 200, 429]);
+    // A different end user behind the same webapp IP has their own bucket.
+    expect([await get("203.0.113.2"), await get("203.0.113.2")]).toEqual([200, 200]);
+    // Requests without the header fall back to req.ip.
+    expect([await get(), await get(), await get()]).toEqual([200, 200, 429]);
+  });
+
+  it("ignores the client-IP header unless explicitly configured", async () => {
+    const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 2 });
+    const statuses: number[] = [];
+    for (const ip of ["203.0.113.1", "203.0.113.2", "203.0.113.3"]) {
+      statuses.push((await request(a).get("/api/Subscribe/SubscriptionItems/x").set("x-client-ip", ip)).status);
+    }
+    expect(statuses).toEqual([200, 200, 429]);
+  });
+
   it("rate limits per client", async () => {
     const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 2 });
     await request(a).get("/api/Subscribe/SubscriptionItems/x");

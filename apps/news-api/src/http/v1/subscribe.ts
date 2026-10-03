@@ -1,10 +1,18 @@
 import express, { Router } from "express";
-import { rateLimit } from "express-rate-limit";
+import { isIP } from "node:net";
+import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 
 export interface SubscribeProxyOptions {
   baseUrl: string;
   getToken?: () => Promise<string>;
   rateLimitPerMinute: number;
+  /**
+   * SUBSCRIBE_CLIENT_IP_HEADER: when set (e.g. "x-client-ip"), the rate-limit bucket is keyed
+   * on this request header — the end user's IP as forwarded by gcpe-news-webapp — instead of
+   * req.ip, which behind the webapp is the webapp's own IP for every subscriber. Only set it
+   * when the header can be trusted (see README). Unset: req.ip.
+   */
+  clientIpHeader?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -43,7 +51,23 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
     return r;
   }
   const doFetch = opts.fetchImpl ?? fetch;
-  r.use("/Subscribe", rateLimit({ windowMs: 60_000, limit: opts.rateLimitPerMinute, standardHeaders: "draft-8", legacyHeaders: false }));
+  const clientIpHeader = opts.clientIpHeader;
+  r.use(
+    "/Subscribe",
+    rateLimit({
+      windowMs: 60_000,
+      limit: opts.rateLimitPerMinute,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      keyGenerator: (req) => {
+        // A missing/malformed header falls back to req.ip; ipKeyGenerator groups IPv6
+        // addresses by subnet so one host can't rotate through its /64 for fresh buckets.
+        const forwarded = clientIpHeader ? req.get(clientIpHeader)?.split(",")[0]?.trim() : undefined;
+        const ip = forwarded && isIP(forwarded) ? forwarded : (req.ip ?? "");
+        return ipKeyGenerator(ip);
+      },
+    }),
+  );
 
   for (const [method, path] of ROUTES) {
     r[method](path, express.json({ limit: "100kb" }), async (req, res) => {
