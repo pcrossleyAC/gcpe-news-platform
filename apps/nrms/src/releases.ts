@@ -1,8 +1,7 @@
-import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
-import { MAX_EVENT_BYTES, releaseRecordSchema, type ReleaseRecord } from "@gcpe/events";
+import { envelopeByteLength, MAX_EVENT_BYTES, releaseRecordSchema, sizingEnvelope, type ReleaseRecord } from "@gcpe/events";
 import { releases, type ReleaseContent, type ReleaseRow } from "./db/schema";
 
 export const releaseDraftSchema = releaseRecordSchema
@@ -21,27 +20,17 @@ export class ReleaseTooLargeError extends Error {}
 /**
  * Builds the record the release would publish as (with a placeholder date, since the real
  * publishDate/timestamp aren't known until publishDue runs), validates it against
- * releaseRecordSchema, and checks that a full envelope carrying it would fit under
- * MAX_EVENT_BYTES — the same size enqueueEvent (packages/events/src/publisher.ts) enforces.
+ * releaseRecordSchema, and checks that the largest envelope carrying it — @gcpe/events'
+ * sizingEnvelope, the same sizing enqueueEvent's own check uses, with the not-yet-assigned
+ * sequence counted at its maximum width — fits under MAX_EVENT_BYTES.
  */
 function assertPublishable(key: string, kind: ReleaseDraft["kind"], content: ReleaseContent): void {
   const placeholder = new Date(0).toISOString();
   const record: ReleaseRecord = { ...content, key, kind, publishDate: placeholder, timestamp: placeholder, atomId: null, renditions: null };
   releaseRecordSchema.parse(record);
-  const envelopeSized = {
-    id: randomUUID(),
-    type: "release.published",
-    version: 1,
-    source: "nrms",
-    aggregateId: key,
-    sequence: 1,
-    occurredAt: placeholder,
-    correlationId: randomUUID(),
-    data: record,
-  };
-  const bytes = Buffer.byteLength(JSON.stringify(envelopeSized), "utf8");
+  const bytes = envelopeByteLength(sizingEnvelope({ type: "release.published", source: "nrms", aggregateId: key, data: record }));
   if (bytes > MAX_EVENT_BYTES) {
-    throw new ReleaseTooLargeError(`release ${key} would publish as ${bytes} bytes; the limit is MAX_EVENT_BYTES (${MAX_EVENT_BYTES})`);
+    throw new ReleaseTooLargeError(`release ${key} would publish as up to ${bytes} bytes; the limit is MAX_EVENT_BYTES (${MAX_EVENT_BYTES})`);
   }
 }
 

@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
+import { envelopeByteLength, MAX_EVENT_BYTES, sizingEnvelope } from "@gcpe/events";
 import { createNrmsTestDb, sampleDraft } from "../test/helpers";
 import { createDraft, getRelease, ReleaseAlreadyPublishedError, ReleaseExistsError, ReleaseNotFoundError, ReleaseTooLargeError, releaseDraftSchema, scheduleRelease } from "./releases";
 
@@ -44,6 +45,26 @@ describe("NRMS releases", () => {
     };
     await expect(createDraft(tdb.db, draft)).rejects.toBeInstanceOf(ReleaseTooLargeError);
     expect(await getRelease(tdb.db, draft.key)).toBeUndefined();
+  });
+
+  // P2-R22 D2: size against the largest sequence the release.published event could carry, not
+  // sequence 1 — a draft that only fits with a 1-digit sequence would otherwise be accepted
+  // here and then fail enqueueEvent's own check at publish time.
+  it("sizes the draft's event at the maximum sequence width, rejecting one that only fits at sequence 1", async () => {
+    const placeholder = new Date(0).toISOString();
+    const recordFor = (detailsHtml: string) => {
+      const { key, kind, ...content } = { ...sampleDraft, key: "EDGE-1", documents: [{ ...sampleDraft.documents[0]!, detailsHtml }] };
+      return { ...content, key, kind, publishDate: placeholder, timestamp: placeholder, atomId: null, renditions: null };
+    };
+    const envelopeAtSequence1 = (detailsHtml: string) => ({ ...sizingEnvelope({ type: "release.published", source: "nrms", aggregateId: "EDGE-1", data: recordFor(detailsHtml) }), sequence: 1 });
+    const padding = MAX_EVENT_BYTES - envelopeByteLength(envelopeAtSequence1(""));
+    expect(envelopeByteLength(envelopeAtSequence1("x".repeat(padding)))).toBe(MAX_EVENT_BYTES); // fits at sequence 1...
+
+    const draft = { ...sampleDraft, key: "EDGE-1", documents: [{ ...sampleDraft.documents[0]!, detailsHtml: "x".repeat(padding) }] };
+    await expect(createDraft(tdb.db, draft)).rejects.toBeInstanceOf(ReleaseTooLargeError); // ...but not at a 10-digit one
+
+    const fits = { ...draft, documents: [{ ...draft.documents[0]!, detailsHtml: "x".repeat(padding - 9) }] };
+    await expect(createDraft(tdb.db, fits)).resolves.toBeUndefined();
   });
 
   it("rejects scheduling with an invalid Date, even before checking whether the release exists", async () => {
