@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, readdir, symlink } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -41,5 +41,29 @@ describe("fsStorage", () => {
     const s = fsStorage(root);
     await expect(s.write("escape/index.html", "<p>a</p>")).rejects.toThrow(/outside/);
     expect(await readdir(outside)).toEqual([]);
+  });
+
+  // Fix round 2, item 1: remove() had no realpath protection at all — a symlink planted
+  // inside root (e.g. releases -> /outside) let remove() delete a file outside root.
+  it("refuses to remove through a symlink that escapes the root, leaving the outside file untouched", async () => {
+    const root = await mkdtemp(join(tmpdir(), "site-"));
+    const outside = await mkdtemp(join(tmpdir(), "outside-"));
+    await writeFile(join(outside, "victim.txt"), "do not delete me", "utf8");
+    await symlink(outside, join(root, "releases"));
+    const s = fsStorage(root);
+    await expect(s.remove("releases/victim.txt")).rejects.toThrow(/outside/);
+    expect(await readFile(join(outside, "victim.txt"), "utf8")).toBe("do not delete me");
+  });
+
+  // Fix round 2, item 2: write()'s pre-mkdir check (round 1) ran *after* mkdir(recursive),
+  // which follows a planted symlink and creates directories outside root before the
+  // post-mkdir realpath check ever gets a chance to run.
+  it("refuses to create directories through a symlink that escapes the root, before anything is created outside", async () => {
+    const root = await mkdtemp(join(tmpdir(), "site-"));
+    const outside = await mkdtemp(join(tmpdir(), "outside-"));
+    await symlink(outside, join(root, "releases"));
+    const s = fsStorage(root);
+    await expect(s.write("releases/K1/index.html", "<p>a</p>")).rejects.toThrow(/outside/);
+    expect(await readdir(outside)).toEqual([]); // no "K1" directory was created outside root
   });
 });
