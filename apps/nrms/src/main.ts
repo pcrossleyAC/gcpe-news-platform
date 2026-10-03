@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 const env = parseEnv(
   z.object({
     DATABASE_URL: z.string().url(),
-    PORT: z.coerce.number().int().default(3002),
+    PORT: z.coerce.number().int().default(3006),
     EVENT_SUBSCRIBERS: z.string().optional(),
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
     PUBLISH_INTERVAL_MS: z.coerce.number().int().default(60000),
