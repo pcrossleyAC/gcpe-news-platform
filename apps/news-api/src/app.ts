@@ -6,13 +6,10 @@ import { requireApiVersion } from "./http/errors";
 import { categoryRoutes } from "./http/v1/categories";
 import { postRoutes } from "./http/v1/posts";
 import { siteRoutes } from "./http/v1/site";
+import { subscribeRoutes, type SubscribeProxyOptions } from "./http/v1/subscribe";
 import { createProjectionHandlers } from "./projections";
 
-export interface SubscribeProxyOptions {
-  baseUrl: string;
-  getToken?: () => Promise<string>;
-  rateLimitPerMinute: number;
-}
+export type { SubscribeProxyOptions };
 
 export interface AppDeps {
   db: Db;
@@ -46,6 +43,7 @@ export function createApp(deps: AppDeps): express.Express {
     next();
   });
   api.use(requireApiVersion());
+  api.use(subscribeRoutes(deps.subscribe));
   api.use(categoryRoutes(deps.db, deps.timeZone));
   api.use(siteRoutes(deps.db, deps.timeZone));
   api.use(postRoutes(deps.db, deps.timeZone));
