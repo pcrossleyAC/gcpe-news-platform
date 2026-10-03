@@ -1838,60 +1838,81 @@ git commit -m "ci+docs: build and document the Phase 2 apps"
 
 ---
 
-### Task 13: SiteGround test deployment (gated by the probe)
+### SiteGround facts (probe + SSH, 2026-10-03) — binding for Tasks 13–15
 
-**What we know (2026-10-03):**
-- **Verified (SiteGround blog 2026-10-01, KB updated 2026-09-03):**
-  - Node.js Projects run on GrowBig (5 projects), GoGeek (10) and Cloud (unlimited). StartUp has none.
-  - Deployment is from GitHub (push to deploy) or a ZIP, with a configurable build command, Node version and env vars.
-  - "You can create MySQL and PostgreSQL databases right from Site Tools."
-- **Unknown, settled by `deploy/siteground-probe`:**
-  - which Node versions are offered (we need 22.12+);
-  - whether the process stays up while idle (our dispatcher, publisher and sender loops need that);
-  - whether WebSocket upgrades pass the proxy (the KB "no WebSockets" article dates from 2024, about custom ports, before Node projects);
-  - whether pgvector is installable (not needed until Phase 6; no current migration uses it);
-  - whether we can create several databases;
-  - LISTEN/NOTIFY.
+Verified on the owner's SiteGround GrowBig account (project `boxs.ca`, host giowm1258):
+- Node.js Projects: GrowBig allows 5. Node 24 is selectable (`/usr/local/bin/node-24`, v24.18.1, tzdata 2026b, BC −07:00 ✅). PORT is injected by the platform (observed 64321).
+- Build pipeline (`.nodeapp/<build>/build_script.sh`): sources `.env-local` (Site Tools env vars), **deletes package-lock.json**, runs `npm install` (npm 10.9.8, 300 s timeout), optional build command (300 s), then deploys. Runtime runs in a separate environment from the SSH user: runtime logs are NOT reachable via SSH.
+- Process is kept between requests but **killed after 30–60 s idle**; the next request cold-starts it.
+- nginx **caches GET responses that lack cache headers, ignoring the query string** (`x-proxy-cache: HIT`). POST is never cached.
+- **WebSocket upgrades are stripped**; Server-Sent Events work.
+- PostgreSQL 18.6 on `localhost:5432` (the public hostname is rejected by pg_hba). Our DB user cannot CREATE DATABASE or CREATE EXTENSION (pgvector 0.8.1 is installed but cannot be enabled). CREATE SCHEMA works. Session TimeZone UTC; OS tzdata 2026c.
+- Outbound HTTPS works; the filesystem under the project is writable.
 
-**Gate:** run the probe on SiteGround and record its JSON in `docs/deploy/siteground.md` before starting this task. Each probe result selects a branch below.
+Consequences: one Node project runs the whole platform (`apps/stack`); the deployable is a prebuilt, fully bundled artifact (nothing for `npm install` to resolve); background work is driven by an authenticated tick endpoint called every minute by an external scheduler (inbound `/events` POSTs also wake the process); every dynamic response is `Cache-Control: no-store`; the SignalR hub is disabled; databases are created by the owner in Site Tools.
 
-**Files:**
-- Create: `apps/stack/{package.json,src/main.ts,src/env.ts,src/mount.test.ts}`, `docs/deploy/siteground.md`
-- Modify: `scripts/build-app.mjs` (none expected; `apps/stack` builds like any app)
+---
 
-**Interfaces:**
-- `apps/stack` is a single Node process that serves every Phase 2 app on one `PORT`:
-  - the News API at `/` (it owns `/api/*`, `/updates`, `/events`);
-  - Core at `/core`, NRMS at `/nrms`, NoD at `/nod`, Distribution at `/distribution`, the site builder at `/site-builder`;
-  - the generated static site at `/site` (`express.static(OUTPUT_DIR)`).
-- It runs every app's background loops in-process: dispatchers, the NRMS publisher, the NoD job sender and the Distribution sender.
-- Why one process: six apps exceed GrowBig's five projects, and one process means one deploy. The apps keep their own databases and talk only over HTTP and events, so this changes no app code.
-- Event subscriber URLs point at the stack itself, e.g. `http://127.0.0.1:$PORT/nrms/events`.
-- `createApp` functions are reused unchanged. Each app's `main.ts` wiring moves into an exported `start<App>(env)` function returning `{ app, closers }`, so both `main.ts` and the stack call it.
-- env: one `DATABASE_URL_<APP>` per app; otherwise the union of the apps' env vars, with each app's name as a prefix where they clash (e.g. `NRMS_EVENT_SUBSCRIBERS`).
+### Task 13: `start<App>()` functions — one wiring path for main.ts and the stack
 
-**Probe-dependent branches:**
-- Node < 22.12 offered → stop; deployment there is blocked until SiteGround offers 22.12+, or use another host. Do not lower `engines`.
-- Process paused or killed while idle → add `GET /stack/tick` (protected by `TICK_TOKEN`) that runs one iteration of every loop, and document an external 1-minute pinger (e.g. an uptime monitor). The loops stay as-is for hosts that keep the process alive.
-- WebSocket upgrade blocked → `UPDATES_HUB_ENABLED=false` (the hub is already optional in `createApp`). The only consumer is gcpe-news-webapp's live cache refresh, which test use does not need. Document it.
-- Cannot create multiple databases → use one database with a schema per app. Set `search_path` per pool (`?options=-c%20search_path%3D<app>`), and give drizzle's migrations table a per-app schema (`migrationsSchema: "<app>_drizzle"`) so the apps' migration records don't collide. Add a db-kit test proving two apps migrate into one database without interference.
-- pgvector unavailable → nothing to do in Phase 2. Note it as a Phase 6 prerequisite: an external Postgres with pgvector, connected directly rather than through a transaction pooler, because LISTEN/NOTIFY and session advisory locks need session state.
+**Files:** each `apps/<app>/src/main.ts` (core, nrms, news-api, public-site, nod, distribution) split into `apps/<app>/src/start.ts` + a thin `main.ts`. Tests: `apps/<app>/src/start.test.ts` (one per app).
 
-- [ ] **Step 1:** Write `docs/deploy/siteground.md` from the probe results.
-- [ ] **Step 2:** Failing test `apps/stack/src/mount.test.ts`: build the stack with five test databases and assert:
-  - `GET /health/live`, `GET /nrms/health/live`, `GET /nod/health/live`, `GET /distribution/health/live` and `GET /api/Ministries?api-version=1.0` all answer;
-  - `POST /nrms/events` with a bad signature → 401 (the receiver is mounted);
-  - `/site/` serves a file written into `OUTPUT_DIR`.
-- [ ] **Step 3:** Refactor each app's `main.ts` into `start<App>(env)` plus a thin `main.ts`; implement `apps/stack`. All existing tests stay green.
-- [ ] **Step 4:** Implement the branches the probe selected, each with its own test.
-- [ ] **Step 5:** Deploy runbook in `docs/deploy/siteground.md`:
-  - create the project and databases;
-  - set the env vars (full list);
-  - set the build command `npm ci && npm --workspace @gcpe/stack run build` and the start command `node apps/stack/dist/main.js`;
-  - run the smoke test, which re-runs the E2E flow by hand with curl and checks the mail in Mailpit or a test inbox, with `MAIL_REDIRECT_TO` set.
-- [ ] **Step 6:** Commit.
-
-```bash
-git add apps/stack apps/*/src/main.ts apps/*/src/start.ts docs/deploy/siteground.md
-git commit -m "feat(stack): single-process deployment for SiteGround-style hosts"
+**Interfaces (produced):** each `start.ts` exports
+```ts
+export interface AppHandle {
+  app: express.Express;                 // fully wired Express app (health, receivers, login router, /api, error handler)
+  workers: Record<string, () => Promise<unknown>>; // ONE iteration of each background loop (e.g. { dispatch: () => dispatchOnce(...), publish: () => publishDue(...) })
+  startLoops(): void;                   // starts the interval loops exactly as main.ts does today
+  attach?(server: http.Server): void;   // optional, e.g. News API hub/LISTEN wiring that needs the server
+  closers: Closer[];                    // in today's shutdown order, excluding the http server itself
+}
+export async function start<App>(env: NodeJS.ProcessEnv, opts?: { hub?: boolean }): Promise<AppHandle>
 ```
+`main.ts` becomes: parse nothing new, `const h = await start<App>(process.env)`, create the server, `h.attach?.(server)`, `h.startLoops()`, listen on PORT, `createShutdown({ closers: [http server, ...h.closers] })`. Behaviour of every app's `main.ts` must be unchanged (same env vars, defaults, migrations at startup, tz self-check where present, logs, shutdown order).
+News API: `opts.hub` (default true) — when false, no SignalR hub router/attach and no LISTEN connection (readiness then doesn't depend on LISTEN).
+
+**Tests (per app, real test DB):** `start<App>(envForTestDb)` returns a handle whose `app` answers `/health/live` 200 and `/health/ready` 200; each `workers` entry runs once without throwing on an empty DB; closers close cleanly. For news-api also `{ hub: false }` → `/updates/negotiate` 404.
+
+**Commit:** `refactor: start<App>() wiring shared by main.ts and the stack`
+
+---
+
+### Task 14: `apps/stack` — the whole platform in one process
+
+**Files:** `apps/stack/{package.json,src/main.ts,src/stack.ts,src/env.ts,src/tick.ts,src/errors.ts,src/stack.test.ts}`
+
+**Behaviour:**
+- One Express server on `PORT`. Mounts: News API at `/` (owns `/api/*`, `/events`, health); Core at `/core`, NRMS at `/nrms`, NoD at `/nod`, Distribution at `/distribution`, site builder at `/site-builder`; the generated static site at `/site` via `express.static(OUTPUT_DIR)` (index.html served for directories). Mounting order: specific prefixes first, News API last.
+- Each app gets its own env view: the stack reads `<PREFIX>_<VAR>` (e.g. `NRMS_DATABASE_URL`, `NRMS_EVENT_SUBSCRIBERS`) and passes `{ ...shared, VAR: value }` to `start<App>()`; shared vars (`LOCAL_ADMIN_*`, `LOCAL_AUTH_SECRET`, `TENANT_CONFIG`, `NODE_ENV`) pass through to all. Prefixes: CORE, NRMS, NEWSAPI, SITE, NOD, DIST. Document the full list in `docs/deploy/siteground.md` (Task 15).
+- News API started with `{ hub: false }` when `UPDATES_HUB_ENABLED` is not `"true"` (default false in the stack).
+- `Cache-Control: no-store` on every response that doesn't already set Cache-Control **stricter or equal**; the static `/site` files get `Cache-Control: public, max-age=60`. Test both.
+- **Tick:** `POST /stack/tick` and `GET /stack/tick` (for schedulers that can only GET) authenticated by `Authorization: Bearer <TICK_TOKEN>` or `?token=` (constant-time compare; 401 otherwise; TICK_TOKEN ≥ 32 chars required at startup). Runs one iteration of every app's `workers`, sequentially in a fixed order (nrms publish → nrms dispatch → core dispatch → news-api dispatch → nod jobs → distribution send), each with its own try/catch; returns 200 JSON `{ ran: {name: "ok"|"error: <msg>"} , ms }`. Overlapping ticks are coalesced (a tick while one is running returns 202 `{ skipped: true }`). The interval loops still run while the process is alive (`STACK_LOOPS` default true).
+- **Recent errors:** `src/errors.ts` wraps `console.error` to keep the last 200 entries (timestamp + message, secrets never logged by apps); `GET /stack/errors` requires a local-admin or Entra bearer with role `Core.Admin` and returns them. Test.
+- `GET /stack/health` → each app's readiness.
+- Startup: `assertTimeZoneRules` once; each app runs its own migrations (advisory-locked); log total cold-start time.
+- Shutdown: http server → each app's closers (reverse mount order).
+
+**Tests:** build the stack against six test DBs: every health endpoint answers; `/nrms/events` with a bad signature → 401 (receiver mounted); `/site/` serves a file written into OUTPUT_DIR; tick without token → 401, with token → runs all workers (spy) and coalesces an overlapping call; no-store present on `/api/Home?api-version=1.0` and `/nrms/health/live`; `/stack/errors` needs the admin role. Plus a stack-level E2E: create+schedule a release through `/nrms/api`, call the tick (twice if needed), and assert the post page exists under `/site/releases/<key>/` and the SMTP sink got the email (reuse tests/e2e support).
+
+**Commit:** `feat(stack): run the whole platform in one process with a tick endpoint`
+
+---
+
+### Task 15: SiteGround artifact, deploy script, runbook
+
+**Files:** `scripts/build-siteground.mjs`, `scripts/deploy-siteground.sh`, `docs/deploy/siteground.md`, `scripts/siteground-env.mjs`, root `package.json` scripts.
+
+**Artifact (`npm run build:siteground`)** → `dist/siteground/`:
+- `stack.js` — esbuild bundle of `apps/stack/src/main.ts` with ALL dependencies bundled (platform node, format esm, target node24, `external: ["pg-native", "bufferutil", "utf-8-validate"]`, the createRequire banner), so `npm install` has nothing to fetch.
+- `package.json` — `{ "name": "gcpe-news-platform-siteground", "private": true, "type": "module", "engines": { "node": ">=24" }, "scripts": { "start": "node stack.js" } }` (no dependencies).
+- `migrations/<app>/…` copied for all six apps; `config/` (tenant files); `README.txt` pointing at docs/deploy/siteground.md.
+- Each app's MIGRATIONS_FOLDER default in the stack resolves relative to `stack.js` (`./migrations/<app>`).
+- Smoke test in the build script: run `node dist/siteground/stack.js --check` (a flag that loads config, resolves migrations folders and exits 0 without connecting) — fail the build if it doesn't.
+
+**Deploy (`scripts/deploy-siteground.sh`)**: builds the artifact, commits it to an orphan branch `deploy/siteground` (artifact only, commit message = source SHA), and **prints** the `git push --force origin deploy/siteground` command instead of running it (pushes need the owner's approval each time). SiteGround's GitHub deploy watches that branch.
+
+**Env helper (`node scripts/siteground-env.mjs`)**: generates `LOCAL_AUTH_SECRET`, `TICK_TOKEN`, per-pair event secrets, prompts for the admin password (hidden, via the auth CLI) and the six DB URLs, and prints the full `KEY=value` list to paste into Site Tools (EVENT_SUBSCRIBERS JSON pointing at `http://127.0.0.1:$PORT/<prefix>/events` is not possible — PORT is injected at runtime — so the stack must support `self:` URLs: subscriber URL `self:/nrms/events` resolved at runtime to `http://127.0.0.1:${PORT}/nrms/events`; implement that resolution in the stack before passing subscribers to apps, with a test).
+
+**Runbook (`docs/deploy/siteground.md`)**: one-time setup (Node 24 project, six PostgreSQL databases + one user, mailbox for SMTP or an external relay, env vars, GitHub deploy from `deploy/siteground` with no build command, an external every-minute scheduler such as cron-job.org calling `/stack/tick` with the bearer header), per-deploy steps, smoke test (curl health, login, create+schedule a release, tick, view `/site/…`, check the redirected email), where to look when it fails (`/stack/errors`, build log `.nodeapp/<build>/current` via SSH), known limits (no live updates, ≤ 1 min background latency, pgvector off).
+
+**Commit:** `feat(deploy): SiteGround artifact, deploy script and runbook`
