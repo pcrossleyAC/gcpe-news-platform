@@ -1,4 +1,10 @@
 // Loads the recorded fixture world into a local News API database (for manual testing with gcpe-news-webapp).
+//
+// DEV ONLY: this calls the projection handlers directly inside a transaction, bypassing the
+// /events receiver and its inbox entirely — no signature check, no inbox_events dedupe, no
+// inbox_positions sequence tracking (every event is sequence 1). Never point it at a shared
+// or production database: it overwrites projected data without leaving an inbox trail, and
+// later real events are ordered against positions this script never recorded.
 import { randomUUID } from "node:crypto";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { parseEvent } from "@gcpe/events";

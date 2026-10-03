@@ -12,11 +12,20 @@ export interface FixtureEvent {
 const asList = (fx: LiveFixture | undefined): Json[] => (Array.isArray(fx?.body) ? (fx!.body as Json[]) : fx?.body ? [fx.body as Json] : []);
 const isPost = (v: unknown): v is Json => !!v && typeof v === "object" && "atomId" in (v as object) && "documents" in (v as object);
 
-function emailFromHtml(html: string | null): string | null {
+/**
+ * Recovers the minister's address from the live API's `emailHtml` anchor. The href may use
+ * double or single quotes (and the live data has a space after "mailto:"); anything without
+ * a mailto link yields null rather than echoing the HTML back as if it were an address.
+ * "" stays "" (the live API's "no email" value).
+ */
+export function emailFromHtml(html: string | null): string | null {
   if (html === null) return null;
   if (html === "") return "";
-  return /mailto:\s*([^"]+)"/.exec(html)?.[1] ?? html;
+  return /mailto:\s*([^"'?\s>]+)/i.exec(html)?.[1] ?? null;
 }
+
+/** Epoch fallback so an empty resource-links fixture still yields a deterministic event. */
+const NO_TIMESTAMP = "1970-01-01T00:00:00Z";
 
 function social(c: Json) {
   return { twitterUsername: c.twitterFeedUsername, flickrUrl: c.flickrUri, youtubeUrl: c.youtubeUri, audioUrl: c.audioUri };
@@ -86,7 +95,13 @@ export function buildFixtureEvents(fx: Record<string, LiveFixture>): FixtureEven
   });
   events.push({
     source: "nrms", type: "site.content.changed", aggregateId: "site:resourceLinks",
-    data: { entity: "resourceLinks", links: asList(fx["resource-links"]).map((l, i) => ({ sortIndex: i, text: l.key, uri: l.uri })), timestamp: new Date().toISOString() },
+    data: {
+      entity: "resourceLinks",
+      links: asList(fx["resource-links"]).map((l, i) => ({ sortIndex: i, text: l.key, uri: l.uri })),
+      // The recorded list's own timestamp (not "now"), so the same fixtures always build the
+      // same events. The store keeps one timestamp per list; the first link's stands in.
+      timestamp: (asList(fx["resource-links"])[0]?.timestamp as string | undefined) ?? NO_TIMESTAMP,
+    },
   });
   return events;
 }
