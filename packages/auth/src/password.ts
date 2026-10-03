@@ -28,6 +28,11 @@ const MIN_P = 1;
 const MAX_P = 16;
 const MIN_SALT_BYTES = 16;
 const MIN_KEY_BYTES = 32;
+// N and r are each individually bounded above, but scrypt's memory cost is ~128*N*r bytes,
+// and the two bounds combine to allow up to 4 GiB (2^20 * 32). Cap the combination
+// explicitly: our own hashes need 128 * 16384 * 8 = 16 MiB, so 256 MiB leaves ample headroom
+// without letting a single verification demand gigabytes.
+const MAX_MEMORY_BYTES = 256 * 1024 * 1024;
 
 function isPowerOfTwo(n: number): boolean {
   return Number.isInteger(n) && n > 0 && (n & (n - 1)) === 0;
@@ -39,6 +44,8 @@ export interface ParsedPasswordHash {
   p: number;
   salt: Buffer;
   hash: Buffer;
+  /** 128 * n * r — the approximate scrypt memory cost in bytes; always <= MAX_MEMORY_BYTES. */
+  memoryBytes: number;
 }
 
 /**
@@ -56,11 +63,15 @@ export function parsePasswordHash(stored: string): ParsedPasswordHash | null {
   if (!isPowerOfTwo(n) || n < MIN_N || n > MAX_N) return null;
   if (!Number.isInteger(r) || r < MIN_R || r > MAX_R) return null;
   if (!Number.isInteger(p) || p < MIN_P || p > MAX_P) return null;
+  // N and r are each in range individually, but their product's memory cost might not be --
+  // e.g. N=2^20 and r=32 are both allowed alone, yet together demand ~4 GiB.
+  const memoryBytes = 128 * n * r;
+  if (memoryBytes > MAX_MEMORY_BYTES) return null;
   const salt = Buffer.from(saltB64!, "base64url");
   const hash = Buffer.from(hashB64!, "base64url");
   if (salt.length < MIN_SALT_BYTES) return null;
   if (hash.length < MIN_KEY_BYTES) return null;
-  return { n, r, p, salt, hash };
+  return { n, r, p, salt, hash, memoryBytes };
 }
 
 export function isValidPasswordHash(stored: string): boolean {
@@ -75,7 +86,9 @@ export async function verifyPassword(pw: string, stored: string): Promise<boolea
       N: parsed.n,
       r: parsed.r,
       p: parsed.p,
-      maxmem: Math.max(64 * 1024 * 1024, 128 * parsed.n * parsed.r + 1024 * 1024),
+      // Safe because parsePasswordHash already rejected anything whose memoryBytes exceeds
+      // this cap -- maxmem never needs to (and must not) be set any higher.
+      maxmem: MAX_MEMORY_BYTES,
     });
     return timingSafeEqual(actual, parsed.hash);
   } catch {

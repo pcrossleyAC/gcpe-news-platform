@@ -43,5 +43,22 @@ describe("password hashing", () => {
       parts[3] = "2048";
       expect(parsePasswordHash(parts.join("$"))).toBeNull();
     });
+
+    // Fix round 2, Minor #2: N and r are each in range individually (N=2^20 and r=32 are
+    // each within their own allowed bound), but together they'd demand ~4 GiB of scrypt
+    // memory (128 * 2^20 * 32). The combination must be capped, not just the two factors.
+    it("rejects N=2^20, r=32 even though each is individually in range, because 128*N*r exceeds the 256MiB memory cap", async () => {
+      const real = await hashPassword("whatever");
+      const parts = real.split("$");
+      parts[1] = String(2 ** 20);
+      parts[2] = "32";
+      expect(parsePasswordHash(parts.join("$"))).toBeNull();
+    });
+    it("hashPassword's own output still parses (its 16MiB memory cost is well under the cap)", async () => {
+      const real = await hashPassword("whatever");
+      const parsed = parsePasswordHash(real);
+      expect(parsed).not.toBeNull();
+      expect(parsed?.memoryBytes).toBe(128 * 16384 * 8);
+    });
   });
 });
