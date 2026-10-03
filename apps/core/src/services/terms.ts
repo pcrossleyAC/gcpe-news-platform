@@ -37,6 +37,14 @@ export async function upsertTerm(
     if (existing) {
       const { updatedAt: _u, ...current } = toTermRecord(existing);
       if (JSON.stringify(termInputSchema.parse(current)) === JSON.stringify(data)) {
+        if (opts.legacyId !== undefined && opts.legacyId !== existing.legacyId) {
+          const [row] = await tx
+            .update(terms)
+            .set({ legacyId: opts.legacyId })
+            .where(and(eq(terms.kind, data.kind), eq(terms.key, data.key)))
+            .returning();
+          return { record: toTermRecord(row!), changed: false };
+        }
         return { record: toTermRecord(existing), changed: false };
       }
     }

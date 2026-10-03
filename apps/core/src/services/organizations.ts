@@ -46,7 +46,17 @@ export async function upsertOrganization(
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, data.key)).for("update");
     if (existing) {
       const { updatedAt: _u, ...current } = toOrgRecord(existing);
-      if (sameContent(current, data)) return { record: toOrgRecord(existing), changed: false };
+      if (sameContent(current, data)) {
+        if (opts.legacyId !== undefined && opts.legacyId !== existing.legacyId) {
+          const [row] = await tx
+            .update(organizations)
+            .set({ legacyId: opts.legacyId })
+            .where(eq(organizations.key, data.key))
+            .returning();
+          return { record: toOrgRecord(row!), changed: false };
+        }
+        return { record: toOrgRecord(existing), changed: false };
+      }
     }
     const values = { ...data, legacyId: opts.legacyId ?? existing?.legacyId ?? null, updatedAt: new Date() };
     const [row] = await tx

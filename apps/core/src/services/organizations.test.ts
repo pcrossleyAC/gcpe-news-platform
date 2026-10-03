@@ -78,4 +78,26 @@ describe("organizations service", () => {
     const types = (await tdb.db.select().from(outboxEvents)).map((e) => e.type);
     expect(types).toEqual(["org.upserted", "org.deactivated"]);
   });
+
+  it("sets legacyId on an unchanged later call without emitting a second event", async () => {
+    const legacyId = "11111111-1111-1111-1111-111111111111";
+    await upsertOrganization(tdb.db, healthOrg, subs);
+    const second = await upsertOrganization(tdb.db, healthOrg, subs, { legacyId });
+    expect(second.changed).toBe(false);
+    const events = await tdb.db.select().from(outboxEvents);
+    expect(events).toHaveLength(1);
+    const { rows } = await tdb.pool.query("SELECT legacy_id FROM organizations WHERE key = 'health'");
+    expect(rows[0].legacy_id).toBe(legacyId);
+  });
+
+  it("preserves legacyId when a later unchanged call omits it", async () => {
+    const legacyId = "22222222-2222-2222-2222-222222222222";
+    await upsertOrganization(tdb.db, healthOrg, subs, { legacyId });
+    const second = await upsertOrganization(tdb.db, healthOrg, subs);
+    expect(second.changed).toBe(false);
+    const events = await tdb.db.select().from(outboxEvents);
+    expect(events).toHaveLength(1);
+    const { rows } = await tdb.pool.query("SELECT legacy_id FROM organizations WHERE key = 'health'");
+    expect(rows[0].legacy_id).toBe(legacyId);
+  });
 });

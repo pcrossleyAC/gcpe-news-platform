@@ -51,6 +51,28 @@ describe("terms service", () => {
     expect(types).toEqual(["sector.upserted", "sector.deactivated"]);
   });
 
+  it("sets legacyId on an unchanged later call without emitting a second event", async () => {
+    const legacyId = "33333333-3333-3333-3333-333333333333";
+    await upsertTerm(tdb.db, economy, subs);
+    const second = await upsertTerm(tdb.db, economy, subs, { legacyId });
+    expect(second.changed).toBe(false);
+    const events = await tdb.db.select().from(outboxEvents);
+    expect(events).toHaveLength(1);
+    const { rows } = await tdb.pool.query("SELECT legacy_id FROM terms WHERE kind = 'sector' AND key = 'economy'");
+    expect(rows[0].legacy_id).toBe(legacyId);
+  });
+
+  it("preserves legacyId when a later unchanged call omits it", async () => {
+    const legacyId = "44444444-4444-4444-4444-444444444444";
+    await upsertTerm(tdb.db, economy, subs, { legacyId });
+    const second = await upsertTerm(tdb.db, economy, subs);
+    expect(second.changed).toBe(false);
+    const events = await tdb.db.select().from(outboxEvents);
+    expect(events).toHaveLength(1);
+    const { rows } = await tdb.pool.query("SELECT legacy_id FROM terms WHERE kind = 'sector' AND key = 'economy'");
+    expect(rows[0].legacy_id).toBe(legacyId);
+  });
+
   it("republishAll emits one upserted event per org and term", async () => {
     await upsertOrganization(tdb.db, healthOrg, subs);
     await upsertTerm(tdb.db, economy, subs);
