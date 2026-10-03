@@ -4,6 +4,7 @@ import type { Db } from "@gcpe/db-kit";
 import { createEventReceiver } from "@gcpe/events";
 import { requireApiVersion } from "./http/errors";
 import { categoryRoutes } from "./http/v1/categories";
+import { postRoutes } from "./http/v1/posts";
 import { siteRoutes } from "./http/v1/site";
 import { createProjectionHandlers } from "./projections";
 
@@ -47,6 +48,7 @@ export function createApp(deps: AppDeps): express.Express {
   });
   api.use(categoryRoutes(deps.db, deps.timeZone));
   api.use(siteRoutes(deps.db, deps.timeZone));
+  api.use(postRoutes(deps.db, deps.timeZone));
   app.use("/api", api);
   return app;
 }
