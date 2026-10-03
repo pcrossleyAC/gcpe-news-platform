@@ -7,7 +7,7 @@ Node.js + PostgreSQL replatform of the GCPE news toolchain: Corporate Calendar �
 
 ## Prerequisites
 
-- Node 22 (`.nvmrc`), npm 10
+- Node ≥ 22.12 (`.nvmrc`; required by tedious/@azure and vite/rolldown), npm 10
 - PostgreSQL ≥ 14 with the `vector` extension available (Homebrew `postgresql@14` + `pgvector`, or `docker compose -f deploy/docker-compose.yml up postgres`)
 
 ## Setup
