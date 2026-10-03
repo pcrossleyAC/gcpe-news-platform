@@ -39,6 +39,7 @@ export const newsApiEnvSchema = z.object({
   SUBSCRIBE_CLIENT_IP_HEADER: z.string().min(1).optional(),
   UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(120),
   UPDATES_MAX_CONNECTIONS: z.coerce.number().int().positive().default(5000),
+  UPDATES_MAX_CONNECTIONS_PER_IP: z.coerce.number().int().positive().default(50),
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
 });
 

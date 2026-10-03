@@ -37,10 +37,11 @@ describe("newsApiEnvSchema EVENT_SECRETS", () => {
 });
 
 describe("newsApiEnvSchema updates hub limits", () => {
-  it("defaults negotiate rate limit to 120/min and max connections to 5000", () => {
+  it("defaults negotiate rate limit to 120/min, max connections to 5000, and per-IP max connections to 50", () => {
     const env = parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv);
     expect(env.UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN).toBe(120);
     expect(env.UPDATES_MAX_CONNECTIONS).toBe(5000);
+    expect(env.UPDATES_MAX_CONNECTIONS_PER_IP).toBe(50);
   });
 
   it("accepts overrides", () => {
@@ -48,9 +49,11 @@ describe("newsApiEnvSchema updates hub limits", () => {
       ...BASE,
       UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN: "10",
       UPDATES_MAX_CONNECTIONS: "50",
+      UPDATES_MAX_CONNECTIONS_PER_IP: "3",
     } as unknown as NodeJS.ProcessEnv);
     expect(env.UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN).toBe(10);
     expect(env.UPDATES_MAX_CONNECTIONS).toBe(50);
+    expect(env.UPDATES_MAX_CONNECTIONS_PER_IP).toBe(3);
   });
 });
 

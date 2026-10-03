@@ -10,6 +10,9 @@ const RS = "\u001e";
 async function start(hubOpts: Parameters<typeof createUpdatesHub>[0] = {}, port = 0) {
   const hub = createUpdatesHub(hubOpts);
   const app = express();
+  // Lets tests simulate distinct client IPs via X-Forwarded-For, same as the real app's
+  // "trust proxy" setting (app.ts) that req.ip (and the per-IP connection cap) relies on.
+  app.set("trust proxy", true);
   app.use(hub.router);
   const server = createServer(app);
   hub.attach(server);
@@ -17,15 +20,21 @@ async function start(hubOpts: Parameters<typeof createUpdatesHub>[0] = {}, port 
   return { hub, server, port: (server.address() as AddressInfo).port };
 }
 
-function client(port: number, serverTimeoutMs = 30_000): HubConnection {
-  const c = new HubConnectionBuilder().withUrl(`http://127.0.0.1:${port}/updates`).configureLogging(LogLevel.None).build();
+function client(port: number, serverTimeoutMs = 30_000, forwardedFor?: string): HubConnection {
+  const builder = new HubConnectionBuilder();
+  if (forwardedFor) builder.withUrl(`http://127.0.0.1:${port}/updates`, { headers: { "X-Forwarded-For": forwardedFor } });
+  else builder.withUrl(`http://127.0.0.1:${port}/updates`);
+  const c = builder.configureLogging(LogLevel.None).build();
   c.serverTimeoutInMilliseconds = serverTimeoutMs;
   return c;
 }
 
 /** Negotiates directly over HTTP and returns the token to open a raw WebSocket with. */
-async function negotiateToken(port: number): Promise<string> {
-  const res = await fetch(`http://127.0.0.1:${port}/updates/negotiate?negotiateVersion=1`, { method: "POST" });
+async function negotiateToken(port: number, forwardedFor?: string): Promise<string> {
+  const res = await fetch(`http://127.0.0.1:${port}/updates/negotiate?negotiateVersion=1`, {
+    method: "POST",
+    headers: forwardedFor ? { "X-Forwarded-For": forwardedFor } : undefined,
+  });
   const body = (await res.json()) as { connectionToken: string };
   return body.connectionToken;
 }
@@ -299,6 +308,29 @@ describe("SignalR updates hub", () => {
     await vi.waitFor(() => expect(hub.connectionCount()).toBe(0));
     const ok = await fetch(`http://127.0.0.1:${port}/updates/negotiate`, { method: "POST" });
     expect(ok.status).toBe(200);
+  });
+
+  // Follow-up fix: without a per-IP cap, one IP could hold up to maxConnections sockets and
+  // lock every other client out. maxConnectionsPerIp caps that, counted separately per IP
+  // (resolved the same way as the negotiate rate limiter: req.ip, honouring trust proxy).
+  it("returns 503 from negotiate once an IP reaches maxConnectionsPerIp, while another IP still connects", async () => {
+    const { hub, server, port } = await start({ maxConnectionsPerIp: 3 });
+    track(hub, server);
+    const sameIp = "10.0.0.1";
+    const conns = [client(port, 30_000, sameIp), client(port, 30_000, sameIp), client(port, 30_000, sameIp)];
+    for (const c of conns) track(hub, server, c);
+    await Promise.all(conns.map((c) => c.start()));
+    expect(hub.connectionCount()).toBe(3);
+
+    const full = await fetch(`http://127.0.0.1:${port}/updates/negotiate`, { method: "POST", headers: { "X-Forwarded-For": sameIp } });
+    expect(full.status).toBe(503);
+    expect(await full.json()).toEqual({ error: "too many connections" });
+
+    const otherIpConn = client(port, 30_000, "10.0.0.2");
+    track(hub, server, otherIpConn);
+    await otherIpConn.start();
+    expect(otherIpConn.state).toBe(HubConnectionState.Connected);
+    expect(hub.connectionCount()).toBe(4);
   });
 
   // Point 5: a connected client that goes silent (sends nothing, including no pings) for

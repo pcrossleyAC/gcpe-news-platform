@@ -42,6 +42,12 @@ export function createUpdatesHub(
     negotiateRateLimitPerMinute?: number;
     /** Cap on total open WebSocket sockets (handshaken or not); negotiate returns 503 at the cap. Default 5000. */
     maxConnections?: number;
+    /**
+     * Per-IP cap on open sockets (handshaken + outstanding negotiated-but-not-yet-connected
+     * tokens); negotiate returns 503 for an IP already at its cap. Default 50. Without this,
+     * one IP could hold up to `maxConnections` sockets and lock every other client out.
+     */
+    maxConnectionsPerIp?: number;
     /** A connected client silent for longer than this (tracked across received messages, checked on the ping tick) is terminated. */
     clientTimeoutMs?: number;
   } = {},
@@ -51,10 +57,40 @@ export function createUpdatesHub(
   const maxPending = opts.maxPending ?? 10_000;
   const clientTimeoutMs = opts.clientTimeoutMs ?? 30_000;
   const maxConnections = opts.maxConnections ?? 5000;
+  const maxConnectionsPerIp = opts.maxConnectionsPerIp ?? 50;
   const pending = new Map<string, NodeJS.Timeout>();
   const sockets = new Set<WebSocket>();
   const lastSeen = new Map<WebSocket, number>();
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
+
+  // Per-IP accounting for maxConnectionsPerIp: counts only outstanding negotiated tokens
+  // (pendingByIp) plus handshaken sockets (handshakenByIp) for that IP — never the brief
+  // upgraded-but-not-yet-handshaken window. The IP is resolved once, from req.ip at negotiate
+  // time (same trust-proxy resolution as the negotiate rate limiter), and carried forward
+  // via pendingIp since the raw http 'upgrade' event has no Express req.ip of its own.
+  const pendingIp = new Map<string, string>(); // token -> ip
+  const pendingByIp = new Map<string, number>(); // ip -> outstanding token count
+  const handshakenByIp = new Map<string, number>(); // ip -> handshaken socket count
+  const socketIp = new Map<WebSocket, string>(); // handshaken ws -> ip
+
+  function incr(map: Map<string, number>, ip: string) {
+    map.set(ip, (map.get(ip) ?? 0) + 1);
+  }
+  function decr(map: Map<string, number>, ip: string) {
+    const next = (map.get(ip) ?? 0) - 1;
+    if (next <= 0) map.delete(ip);
+    else map.set(ip, next);
+  }
+  function connectionsForIp(ip: string): number {
+    return (pendingByIp.get(ip) ?? 0) + (handshakenByIp.get(ip) ?? 0);
+  }
+  function releasePendingToken(token: string) {
+    const ip = pendingIp.get(token);
+    if (ip !== undefined) {
+      pendingIp.delete(token);
+      decr(pendingByIp, ip);
+    }
+  }
 
   const router = express.Router();
   const negotiateLimiter = rateLimit({
@@ -75,14 +111,30 @@ export function createUpdatesHub(
       res.status(503).json({ error: "too many connections" });
       return;
     }
+    // Same client-IP resolution as the subscribe proxy's rate limiter: req.ip, which honours
+    // the app's "trust proxy" setting (app.ts: one hop, the OpenShift router).
+    const ip = req.ip ?? "";
+    if (connectionsForIp(ip) >= maxConnectionsPerIp) {
+      res.status(503).json({ error: "too many connections" });
+      return;
+    }
     // Map iteration is insertion order, so the first key is the oldest outstanding token.
     while (pending.size >= maxPending) {
       const oldest = pending.keys().next().value as string;
       clearTimeout(pending.get(oldest));
       pending.delete(oldest);
+      releasePendingToken(oldest);
     }
     const token = randomUUID();
-    pending.set(token, setTimeout(() => pending.delete(token), opts.tokenTtlMs ?? 60_000).unref());
+    pending.set(
+      token,
+      setTimeout(() => {
+        pending.delete(token);
+        releasePendingToken(token);
+      }, opts.tokenTtlMs ?? 60_000).unref(),
+    );
+    pendingIp.set(token, ip);
+    incr(pendingByIp, ip);
     const transports = [{ transport: "WebSockets", transferFormats: ["Text", "Binary"] }];
     if (req.query.negotiateVersion === "1") {
       res.json({ negotiateVersion: 1, connectionId: randomUUID(), connectionToken: token, availableTransports: transports });
@@ -91,7 +143,7 @@ export function createUpdatesHub(
     }
   });
 
-  function onConnection(ws: WebSocket) {
+  function onConnection(ws: WebSocket, ip: string) {
     let handshaken = false;
     // SignalR frames are record-separator (\x1e) delimited, but nothing guarantees a frame
     // arrives whole in a single WebSocket message (or that a message holds only one frame) —
@@ -143,6 +195,8 @@ export function createUpdatesHub(
             handshaken = true;
             clearTimeout(handshakeTimer);
             sockets.add(ws);
+            socketIp.set(ws, ip);
+            incr(handshakenByIp, ip);
             lastSeen.set(ws, Date.now());
             ws.send("{}" + RS);
           } else if (m.type === 7) {
@@ -156,16 +210,18 @@ export function createUpdatesHub(
         ws.close(1003);
       }
     });
-    ws.on("close", () => {
+    const onClosed = () => {
       clearTimeout(handshakeTimer);
       sockets.delete(ws);
       lastSeen.delete(ws);
-    });
-    ws.on("error", () => {
-      clearTimeout(handshakeTimer);
-      sockets.delete(ws);
-      lastSeen.delete(ws);
-    });
+      // Only a handshaken socket was ever added to handshakenByIp/socketIp.
+      if (socketIp.has(ws)) {
+        decr(handshakenByIp, ip);
+        socketIp.delete(ws);
+      }
+    };
+    ws.on("close", onClosed);
+    ws.on("error", onClosed);
   }
 
   const pingTimer = setInterval(() => {
@@ -208,7 +264,12 @@ export function createUpdatesHub(
         }
         clearTimeout(pending.get(id));
         pending.delete(id);
-        wss.handleUpgrade(req, socket, head, onConnection);
+        // The token's IP (captured from req.ip at negotiate time) is consumed here rather
+        // than counted again: the socket isn't "pending" any more, and isn't "handshaken"
+        // yet either — see maxConnectionsPerIp's accounting comment above.
+        const ip = pendingIp.get(id) ?? "";
+        releasePendingToken(id);
+        wss.handleUpgrade(req, socket, head, (ws) => onConnection(ws, ip));
       });
     },
     broadcast(target, keys) {
@@ -223,11 +284,15 @@ export function createUpdatesHub(
       clearInterval(pingTimer);
       for (const t of pending.values()) clearTimeout(t);
       pending.clear();
+      pendingIp.clear();
+      pendingByIp.clear();
       // wss.clients includes every upgraded socket, handshaken or not — terminating only
       // `sockets` (handshaken clients) would leave pre-handshake sockets dangling forever.
       for (const s of wss.clients) s.terminate();
       sockets.clear();
       lastSeen.clear();
+      socketIp.clear();
+      handshakenByIp.clear();
       wss.close();
     },
   };

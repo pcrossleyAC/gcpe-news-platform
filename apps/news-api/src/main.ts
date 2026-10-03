@@ -24,6 +24,7 @@ let isListening = () => false;
 const hub = createUpdatesHub({
   negotiateRateLimitPerMinute: env.UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN,
   maxConnections: env.UPDATES_MAX_CONNECTIONS,
+  maxConnectionsPerIp: env.UPDATES_MAX_CONNECTIONS_PER_IP,
 });
 const app = createApp({
   db,
