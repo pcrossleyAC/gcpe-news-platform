@@ -9,11 +9,11 @@ export interface TestDatabase {
   drop(): Promise<void>;
 }
 
-function adminUrl(): string {
+export function adminUrl(): string {
   return process.env.TEST_DATABASE_ADMIN_URL ?? "postgres://localhost:5432/postgres";
 }
 
-async function withAdmin<T>(fn: (c: pg.Client) => Promise<T>): Promise<T> {
+export async function withAdmin<T>(fn: (c: pg.Client) => Promise<T>): Promise<T> {
   const client = new pg.Client({ connectionString: adminUrl() });
   await client.connect();
   try {

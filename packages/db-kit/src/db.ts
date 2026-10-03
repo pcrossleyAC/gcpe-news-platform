@@ -17,6 +17,29 @@ export function createDb(url: string, opts: { max?: number } = {}): { pool: pg.P
   return { pool, db };
 }
 
+// Two-int advisory keys live in a different lock space from the single-bigint keys used
+// for per-aggregate locks, so this can never collide with hashtext(aggregateId).
+const MIGRATION_LOCK = [0x67637065 /* "gcpe" */, 1] as const;
+
+/**
+ * Applies pending migrations while holding a session-level advisory lock on a dedicated
+ * connection, so replicas booting at the same time migrate one after another instead of
+ * racing on the same DDL. Later lock holders find nothing left to apply.
+ */
 export async function runMigrations(db: Db, migrationsFolder: string): Promise<void> {
-  await migrate(db, { migrationsFolder });
+  const client = (db as Db & { $client: pg.Pool | pg.Client }).$client;
+  const conn = client instanceof pg.Pool ? await client.connect() : client;
+  let broken = false;
+  try {
+    await conn.query("SELECT pg_advisory_lock($1, $2)", [...MIGRATION_LOCK]);
+    try {
+      await migrate(drizzle(conn), { migrationsFolder });
+    } finally {
+      await conn.query("SELECT pg_advisory_unlock($1, $2)", [...MIGRATION_LOCK]).catch(() => {
+        broken = true; // closing the connection releases the lock
+      });
+    }
+  } finally {
+    if ("release" in conn && typeof conn.release === "function") conn.release(broken);
+  }
 }
