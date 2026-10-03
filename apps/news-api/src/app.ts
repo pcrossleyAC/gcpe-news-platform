@@ -41,14 +41,22 @@ export function createApp(deps: AppDeps): express.Express {
   if (deps.hubRouter) app.use(deps.hubRouter);
 
   const api = express.Router();
-  api.use(requireApiVersion());
   api.use((_req, res, next) => {
     res.set("Cache-Control", "no-cache");
     next();
   });
+  api.use(requireApiVersion());
   api.use(categoryRoutes(deps.db, deps.timeZone));
   api.use(siteRoutes(deps.db, deps.timeZone));
   api.use(postRoutes(deps.db, deps.timeZone));
   app.use("/api", api);
+
+  // Keep DB/handler failures as JSON, never finalhandler's default HTML-with-stack.
+  app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
+    console.error("[news-api] request failed", err);
+    if (res.headersSent) return next(err);
+    res.status(500).json({ error: "internal error" });
+  });
+
   return app;
 }

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import express from "express";
 import request from "supertest";
-import type { TestDatabase } from "@gcpe/db-kit";
+import type { Db, TestDatabase } from "@gcpe/db-kit";
 import type { OrgRecord } from "@gcpe/events";
 import { createApp } from "../../app";
 import { problemNotFound } from "../errors";
@@ -37,6 +37,7 @@ describe("category and site endpoints", () => {
     const missing = await request(app).get("/api/Ministries");
     expect(missing.status).toBe(400);
     expect(missing.body).toEqual({ error: { code: "ApiVersionUnspecified", message: "An API version is required, but was not specified.", innerError: null } });
+    expect(missing.headers["cache-control"]).toBe("no-cache");
     const bad = await request(app).get("/api/Ministries?api-version=2.0");
     expect(bad.body.error.code).toBe("UnsupportedApiVersion");
     expect((await request(app).get("/api/Ministries?api-version=1")).status).toBe(200);
@@ -65,6 +66,28 @@ describe("category and site endpoints", () => {
     const home = await request(app).get(`/api/Home?${V}`);
     expect(home.body).toMatchObject({ kind: "home", key: "default", topPostKey: null });
     expect(home.headers["cache-control"]).toBe("no-cache");
+  });
+
+  it("returns empty 200 for a slide id that is 36 characters but not a valid UUID", async () => {
+    const res = await request(app).get(`/api/Slides/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa?${V}`);
+    expect(res.status).toBe(200);
+    expect(res.text).toBe("");
+  });
+});
+
+describe("error handling", () => {
+  it("returns 500 JSON without a stack when a route handler throws, and never bare HTML", async () => {
+    const brokenDb = {
+      select: () => {
+        throw new Error("boom");
+      },
+    } as unknown as Db;
+    const errApp = createApp({ db: brokenDb, timeZone: TZ, eventSecrets: EVENT_SECRETS });
+    const res = await request(errApp).get("/api/Ministries?api-version=1.0");
+    expect(res.status).toBe(500);
+    expect(res.headers["content-type"]).toMatch(/^application\/json/);
+    expect(res.body).toEqual({ error: "internal error" });
+    expect(res.text).not.toMatch(/at \S+ \(|\.ts:\d+:\d+/);
   });
 });
 
