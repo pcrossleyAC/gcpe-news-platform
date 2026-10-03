@@ -7,7 +7,7 @@ Node.js + PostgreSQL replatform of the GCPE news toolchain: Corporate Calendar �
 
 ## Prerequisites
 
-- Node ≥ 24 (`.nvmrc`; bumped from 22 so the bundled ICU/tzdata is new enough to know BC stays UTC−7 permanently from 2026-11-01 — Node 22's bundled ICU only has tzdata 2026a), npm 11 (Node 24 ships npm 11)
+- Node ≥ 24 (`.nvmrc`; bumped from 22 so the bundled ICU/tzdata is new enough to know BC stays UTC−7 permanently from 2026-11-01 — Node 22's bundled tzdata (2025b–2026a depending on patch release) predates that rule), npm 11 (Node 24 ships npm 11)
 - PostgreSQL ≥ 14 with the `vector` extension available (Homebrew `postgresql@14` + `pgvector`, or `docker compose -f deploy/docker-compose.yml up postgres`)
 
 ## Setup
@@ -370,9 +370,9 @@ Deferred by the Phase 2 final-review controller ruling (P2-R22) — tracked here
 
 - **Mixed clock sources**: job/message claim loops mix the JS process clock with Postgres's own `now()` in a few places (e.g. comparing a JS-side `Date.now()` against a `default now()`-stamped column). A follow-up refactor extracts a shared claim helper that reads the DB's clock consistently — planned for the next dispatch.
 - **NRMS failure-mark/sizing duplication**: the "mark this release/message failed" and "does this payload fit the event-size limit" logic is duplicated across NRMS and the events package rather than shared. A follow-up adds `assertEventFits` to `@gcpe/events` so every caller sizes payloads the same way.
-- **`escapeHtml` duplicated three times** (apps/nod, apps/public-site rendering paths, and one more call site) instead of a single shared helper. Follow-up: extract to a shared package once a natural home (`@gcpe/http-kit` or similar) is settled.
+- **`escapeHtml` duplicated three times** (`apps/nod/src/as-it-happens.ts`, `apps/public-site/src/render.ts`, and `apps/distribution/src/substitute.ts`) instead of a single shared helper. Follow-up: extract to a shared package once a natural home (`@gcpe/http-kit` or similar) is settled.
 - **`detailsHtml` is rendered unsanitised on the public site** (matches legacy behaviour; content is staff-authored, not public input) — a sanitiser is planned before Phase 6. Relatedly, the home page may briefly render an older list under concurrent rebuilds, and `site.content.changed` doesn't trigger a home-page rebuild on its own — both are Phase 6 work.
 - **Static URL casing**: the public site's generated URLs are case-sensitive, while the legacy IIS site treated them case-insensitively. Whether (and how) to normalize this is deferred to a Phase 6 decision.
-- **Docker builds are only verified in CI**, not locally as part of this fix wave (no local Docker daemon available here) — rebuild and smoke-test every changed image (`apps/distribution`, `apps/public-site`) in CI before relying on them. Separately, NoD's legacy array-shaped `batch_ids` column values are currently only exercised against dev databases, not a migrated-from-production fixture.
+- **Docker builds are only verified in CI**, not locally as part of this fix wave (no local Docker daemon available here) — rebuild and smoke-test the changed `apps/public-site` image in CI before relying on it. Separately, NoD's legacy array-shaped `batch_ids` column values are currently only exercised against dev databases, not a migrated-from-production fixture.
 
 Then start each app (`npm --workspace @gcpe/<app> run dev`) pointed at its own `createdb`'d database, wired together per [Event wiring](#event-wiring) and [Authentication](#authentication-entra-or-local-admin-login-test-environments-only) above. `tests/e2e/thin-slice.test.ts` is the automated version of this same chain (NRMS release → publish → News API → static page → NoD → Distribution → email), wired in-process over real HTTP instead of separate `npm run dev` processes.
