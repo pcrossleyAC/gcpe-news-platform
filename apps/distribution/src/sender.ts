@@ -1,5 +1,5 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import { ageMsOf, heldBy, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import type { Transporter } from "nodemailer";
 import { messages } from "./db/schema";
 import { substitute } from "./substitute";
@@ -12,8 +12,10 @@ export interface SendOptions {
    * recipient (the non-prod mail redirect safety rule). Empty only when an operator has
    * explicitly opted in to real delivery (enforced at the env layer, not here). */
   redirectTo: string[];
-  /** Clock override for tests; defaults to the wall clock. */
-  now?: () => Date;
+  /** Test hook: when given, its value stands in for SQL `now()` in every statement this call
+   * makes (claim, lock, backoff, sent_at, age). Production omits it and the database's clock is
+   * used throughout — see {@link sendDue}. */
+  now?: TestClock;
   batchSize?: number;
   /** Worst-case time a single message can take: the sum of the transport's connection,
    * greeting and socket timeouts. Used to size the default claim lock (see
@@ -21,8 +23,8 @@ export interface SendOptions {
    * own lock. Defaults to {@link DEFAULT_PER_MESSAGE_MS} (the env defaults' sum) when omitted. */
   perMessageMs?: number;
   lockMs?: number;
-  /** The "stop claiming more rows" threshold: a run stops once `now >= lockUntil -
-   * lockMarginMs`. Defaults to `perMessageMs` — the same worst-case-per-message bound used to
+  /** The "stop claiming more rows" threshold: a run stops once the time elapsed since its claim
+   * reaches `lockMs - lockMarginMs`. Defaults to `perMessageMs` — the same worst-case-per-message bound used to
    * size the default lock — so a run never starts a message it might not finish before its own
    * lock could, in the worst realistic case (every timeout hit), expire. Must be smaller than
    * the resolved `lockMs`, or every claimed row would be abandoned without ever being sent;
@@ -154,14 +156,19 @@ type ClaimedRow = {
   attempts: number;
   deferrals: number;
   priority: number;
-  next_attempt_at: Date;
+  /** Raw timestamptz text from the driver; only used to order the claimed rows for sending. */
+  next_attempt_at: string;
   subject: string | null;
   html: string | null;
   text: string | null;
   headers: Record<string, string> | null;
   // R1(b): messages have no creation timestamp of their own; every message in a batch is
-  // created at the same instant as its batch, so this is the age backstop's clock.
-  batch_created_at: Date;
+  // created at the same instant as its batch, so the batch's age (at claim time, by the
+  // database's clock) is the age backstop's clock.
+  batch_age_ms: number;
+  /** The exact locked_until this claim wrote — the ownership token (the same for every row of
+   * one claim: a statement's now() is constant). */
+  lock_token: LockToken;
 };
 
 /**
@@ -199,23 +206,32 @@ async function isTransportHealthy(transport: Transporter, timeoutMs: number): Pr
  * write: a row whose lock was already stolen by someone else simply won't match and is left
  * alone.
  */
-async function releaseUnreachedRows(db: Db, ids: string[], lockUntil: Date): Promise<void> {
+async function releaseUnreachedRows(db: Db, ids: string[], lockToken: LockToken): Promise<void> {
   if (ids.length === 0) return;
   await db
     .update(messages)
     .set({ lockedUntil: null })
-    .where(and(inArray(messages.id, ids), eq(messages.lockedUntil, lockUntil), eq(messages.status, "pending")));
+    .where(and(inArray(messages.id, ids), ownedPending(messages, lockToken)));
 }
 
+/**
+ * Clock (P2-R22 D1): every comparison and stamp uses the database's clock — the claim's due
+ * and lock predicates use `now()`, the lock is `now() + lockMs` and its exact value is returned
+ * as the ownership token, backoffs and `sent_at` are computed from `now()` at the terminal
+ * write, and a message's age is its batch's age at claim time (computed in SQL) plus the
+ * monotonic time elapsed since. The stop-margin check is likewise monotonic: a stopwatch
+ * started just before the claim is sent can only over-estimate time since the database
+ * evaluated the claim's `now()`, so "elapsed >= lockMs - lockMarginMs" stops no later than the
+ * DB-clock deadline would — with no wall-clock JS Date ever compared to a DB timestamp, and no
+ * extra round trip per message. `opts.now`, a test hook, replaces SQL `now()` with its value in
+ * every statement this call makes.
+ */
 export async function sendDue(opts: SendOptions): Promise<{ sent: number; retried: number; failed: number }> {
-  const clock = opts.now ?? (() => new Date());
-  const now = clock();
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
   const perMessageMs = opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS;
   const verifyTimeoutMs = opts.verifyTimeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
   const maxMessageAgeMs = opts.maxMessageAgeMs ?? DEFAULT_MAX_MESSAGE_AGE_MS;
   const { lockMs, lockMarginMs } = resolveLock({ batchSize, perMessageMs, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
-  const lockUntil = new Date(now.getTime() + lockMs);
   const redirect = opts.redirectTo.length > 0;
 
   // Phase 1: claim (a single statement, no network I/O while holding row locks). The `due` CTE
@@ -223,6 +239,8 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
   // batches for the template content so the claim and the read happen in one round trip. Postgres
   // doesn't promise UPDATE...RETURNING preserves the CTE's row order, so priority/next_attempt_at
   // are returned too and the claimed rows are re-sorted in JS below before they're sent.
+  const sinceClaim = stopwatch();
+  const now = sqlNow(opts.now);
   const claimed = await opts.db.execute<ClaimedRow>(sql`
     WITH due AS (
       SELECT id FROM messages
@@ -234,10 +252,11 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
        FOR UPDATE SKIP LOCKED
     )
     UPDATE messages m
-       SET locked_until = ${lockUntil}
+       SET locked_until = ${now} + ${sqlInterval(lockMs)}
       FROM batches b, due
      WHERE b.id = m.batch_id AND m.id = due.id
-    RETURNING m.id, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at, b.subject, b.html, b.text, b.headers, b.created_at AS batch_created_at`);
+    RETURNING m.id, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at,
+              b.subject, b.html, b.text, b.headers, ${ageMsOf(sql`b.created_at`, now)} AS batch_age_ms, ${lockTokenOf(sql`m.locked_until`)} AS lock_token`);
 
   const rows = claimed.rows.slice().sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
@@ -245,6 +264,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
     if (byDueTime !== 0) return byDueTime;
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
+  const lockToken = rows[0]?.lock_token ?? "";
 
   const result = { sent: 0, retried: 0, failed: 0 };
   let loggedConfigError = false;
@@ -253,8 +273,8 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
 
     // Give up on any rows not yet reached rather than risk still being mid-send when this
     // call's own lock expires — lockMarginMs matches the worst-case time a message can take.
-    if (opts.stopRequested?.() || clock().getTime() >= lockUntil.getTime() - lockMarginMs) {
-      await releaseUnreachedRows(opts.db, rows.slice(i).map((r) => r.id), lockUntil);
+    if (opts.stopRequested?.() || sinceClaim() >= lockMs - lockMarginMs) {
+      await releaseUnreachedRows(opts.db, rows.slice(i).map((r) => r.id), lockToken);
       break;
     }
 
@@ -266,17 +286,17 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
     // call's claim is abandoned (and released) too rather than racing it row by row.
     const stillOwned = await opts.db.execute<{ id: string }>(sql`
       UPDATE messages SET locked_until = locked_until
-       WHERE id = ${row.id} AND locked_until = ${lockUntil} AND status = 'pending'
+       WHERE id = ${row.id} AND ${heldBy(messages.lockedUntil, lockToken)} AND status = 'pending'
       RETURNING id`);
     if (stillOwned.rows.length === 0) {
-      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockUntil);
+      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
       break;
     }
 
-    // The lockUntil this call's claim set is this row's ownership token: a terminal write
-    // only counts if we still held the lock (status unchanged, locked_until still ours) at
-    // write time — mirrors packages/events/src/dispatcher.ts.
-    const where = and(eq(messages.id, row.id), eq(messages.status, "pending"), eq(messages.lockedUntil, lockUntil));
+    // The lock this call's claim set is this row's ownership token: a terminal write only
+    // counts if we still held the lock (status unchanged, locked_until still ours) at write
+    // time — mirrors packages/events/src/dispatcher.ts.
+    const where = and(eq(messages.id, row.id), ownedPending(messages, lockToken));
 
     const values = row.substitutions ?? {};
     const subject = substitute(row.subject ?? "", values, "header");
@@ -306,12 +326,11 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
       connectionLevel = !permanent && !senderLevel && isConnectionLevelError(e);
     }
 
-    const finishedAt = clock();
     const originalRecipient = redirect ? row.email : null;
     if (error === null) {
       const res = await opts.db
         .update(messages)
-        .set({ status: "sent", sentAt: finishedAt, lockedUntil: null, lastError: null, originalRecipient })
+        .set({ status: "sent", sentAt: sqlNow(opts.now), lockedUntil: null, lastError: null, originalRecipient })
         .where(where);
       if (res.rowCount) result.sent++;
       continue;
@@ -323,7 +342,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
     // is marked failed and logged — the net under every other path below, so nothing (a
     // server down forever, a message misclassified forever) can keep a message pending past
     // this.
-    const age = finishedAt.getTime() - new Date(row.batch_created_at).getTime();
+    const age = Number(row.batch_age_ms) + sinceClaim();
     if (age >= maxMessageAgeMs) {
       const attempts = row.attempts + 1;
       const res = await opts.db.update(messages).set({ status: "failed", attempts, lockedUntil: null, lastError, originalRecipient }).where(where);
@@ -344,7 +363,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
       const deferrals = row.deferrals + 1;
       const res = await opts.db
         .update(messages)
-        .set({ deferrals, nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(deferrals)), lockedUntil: null, lastError, originalRecipient })
+        .set({ deferrals, nextAttemptAt: sqlNowPlus(backoffMs(deferrals), opts.now), lockedUntil: null, lastError, originalRecipient })
         .where(where);
       if (res.rowCount) {
         result.retried++;
@@ -353,7 +372,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
           console.error(`[distribution] SMTP server unavailable/misconfigured: ${error}`);
         }
       }
-      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockUntil);
+      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
       break;
     }
 
@@ -373,7 +392,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
         const deferrals = row.deferrals + 1;
         const res = await opts.db
           .update(messages)
-          .set({ deferrals, nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(deferrals)), lockedUntil: null, lastError, originalRecipient })
+          .set({ deferrals, nextAttemptAt: sqlNowPlus(backoffMs(deferrals), opts.now), lockedUntil: null, lastError, originalRecipient })
           .where(where);
         if (res.rowCount) {
           result.retried++;
@@ -382,7 +401,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
             console.error(`[distribution] SMTP server unavailable/misconfigured: ${error}`);
           }
         }
-        await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockUntil);
+        await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
         break;
       }
       // Falls through to the normal transient-error handling below (attempts+1, standard
@@ -403,7 +422,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
     } else {
       const res = await opts.db
         .update(messages)
-        .set({ attempts, nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(attempts)), lockedUntil: null, lastError, originalRecipient })
+        .set({ attempts, nextAttemptAt: sqlNowPlus(backoffMs(attempts), opts.now), lockedUntil: null, lastError, originalRecipient })
         .where(where);
       if (res.rowCount) result.retried++;
     }
