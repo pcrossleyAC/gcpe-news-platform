@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { eq } from "drizzle-orm";
 import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
-import { backoffMs, dispatchOnce } from "./dispatcher";
+import { backoffMs, defaultLockMs, dispatchOnce } from "./dispatcher";
 import { enqueueEvent } from "./publisher";
 import { verifySignature } from "./signing";
 import type { SubscriberConfig } from "./subscribers";
@@ -115,6 +115,49 @@ describe("dispatchOnce", () => {
     expect(d!.attempts).toBe(0);
     expect(d!.lastError).toBeNull();
     expect(d!.lockedUntil?.getTime()).toBe(stolenLock.getTime());
+  });
+
+  it("default lock outlasts a batch slower than 60s, so a concurrent dispatcher does not re-POST", async () => {
+    respondDelayMs = 100;
+    for (let i = 0; i < 5; i++) {
+      await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: `org:slow${i}`, data: { key: `s${i}` } }, subs);
+    }
+    // Replica A works through the batch slowly (no lockMs given: the default applies).
+    const a = dispatchOnce({ db: tdb.db, subscribers: subs, batchSize: 5 });
+    while (received.length === 0) await new Promise((r) => setTimeout(r, 5));
+    // Replica B polls while A is still mid-batch, with a clock 61s ahead: A's batch has
+    // now been running longer than the old fixed 60s lock.
+    const b = await dispatchOnce({ db: tdb.db, subscribers: subs, batchSize: 5, now: () => new Date(Date.now() + 61_000) });
+    const resultA = await a;
+    expect(b).toEqual({ delivered: 0, retried: 0, dead: 0 });
+    expect(resultA.delivered).toBe(5);
+    expect(received).toHaveLength(5);
+    expect(new Set(received.map((r) => r.headers["x-event-id"])).size).toBe(5);
+  });
+
+  it("stamps retry times from when the attempt finished, not when the batch was claimed", async () => {
+    respondWith = 503;
+    respondDelayMs = 300;
+    const env = await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: "org:late", data: { key: "l" } }, subs);
+    const before = Date.now();
+    expect(await dispatchOnce({ db: tdb.db, subscribers: subs })).toEqual({ delivered: 0, retried: 1, dead: 0 });
+    const [d] = await tdb.db.select().from(outboxDeliveries).where(eq(outboxDeliveries.eventId, env.id));
+    expect(d!.nextAttemptAt.getTime()).toBeGreaterThanOrEqual(before + 250 + backoffMs(1));
+  });
+
+  it("stamps deliveredAt from when the delivery finished", async () => {
+    respondDelayMs = 300;
+    const env = await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: "org:late2", data: { key: "l" } }, subs);
+    const before = Date.now();
+    expect(await dispatchOnce({ db: tdb.db, subscribers: subs })).toEqual({ delivered: 1, retried: 0, dead: 0 });
+    const [d] = await tdb.db.select().from(outboxDeliveries).where(eq(outboxDeliveries.eventId, env.id));
+    expect(d!.deliveredAt!.getTime()).toBeGreaterThanOrEqual(before + 250);
+  });
+
+  it("derives the default lock from batchSize × timeoutMs", () => {
+    expect(defaultLockMs({ batchSize: 50, timeoutMs: 10_000 })).toBeGreaterThan(50 * 10_000);
+    expect(defaultLockMs({})).toBeGreaterThan(50 * 10_000);
+    expect(defaultLockMs({ batchSize: 2, timeoutMs: 1_000 })).toBeGreaterThan(2 * 1_000);
   });
 
   it("retries an unconfigured subscriber like any other failure, then dead-letters past maxAge", async () => {

@@ -9,11 +9,26 @@ export interface DispatchOptions {
   db: Db;
   subscribers: SubscriberConfig[];
   fetchImpl?: typeof fetch;
+  /** Clock override for tests; defaults to the wall clock. */
   now?: () => Date;
   batchSize?: number;
   maxAgeMs?: number;
+  /** How long a claim holds its rows. Defaults to {@link defaultLockMs}. */
   lockMs?: number;
   timeoutMs?: number;
+}
+
+const DEFAULT_BATCH_SIZE = 50;
+const DEFAULT_TIMEOUT_MS = 10_000;
+const LOCK_MARGIN_MS = 30_000;
+
+/**
+ * Deliveries in a batch run sequentially, so the claim must outlive the worst case of
+ * every delivery timing out; otherwise another replica reclaims rows mid-batch and
+ * POSTs them a second time.
+ */
+export function defaultLockMs(opts: { batchSize?: number; timeoutMs?: number }): number {
+  return (opts.batchSize ?? DEFAULT_BATCH_SIZE) * (opts.timeoutMs ?? DEFAULT_TIMEOUT_MS) + LOCK_MARGIN_MS;
 }
 
 export function backoffMs(attempts: number): number {
@@ -29,8 +44,9 @@ type ClaimedRow = {
 };
 
 export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: number; retried: number; dead: number }> {
-  const now = (opts.now ?? (() => new Date()))();
-  const lockUntil = new Date(now.getTime() + (opts.lockMs ?? 60_000));
+  const clock = opts.now ?? (() => new Date());
+  const now = clock();
+  const lockUntil = new Date(now.getTime() + (opts.lockMs ?? defaultLockMs(opts)));
   const maxAgeMs = opts.maxAgeMs ?? 24 * 3_600_000;
   const doFetch = opts.fetchImpl ?? fetch;
 
@@ -46,7 +62,7 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
                 AND next_attempt_at < ${new Date(now.getTime() + 1)}
                 AND (locked_until IS NULL OR locked_until < ${now})
               ORDER BY next_attempt_at
-              LIMIT ${opts.batchSize ?? 50}
+              LIMIT ${opts.batchSize ?? DEFAULT_BATCH_SIZE}
               FOR UPDATE SKIP LOCKED)
     RETURNING d.event_id, d.subscriber, d.attempts, e.envelope, e.created_at`);
 
@@ -82,7 +98,7 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
             "x-signature": signPayload(sub.secret, timestamp, body),
           },
           body,
-          signal: AbortSignal.timeout(opts.timeoutMs ?? 10_000),
+          signal: AbortSignal.timeout(opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
         });
         await res.body?.cancel();
         if (!res.ok) error = `HTTP ${res.status}`;
@@ -91,20 +107,23 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
       }
     }
 
+    // Stamp results with the time the attempt finished, not the batch's claim time:
+    // late rows in a slow batch would otherwise get a backoff that has already elapsed.
+    const finishedAt = clock();
     const attempts = row.attempts + 1;
     if (error === null) {
       const res = await opts.db
         .update(outboxDeliveries)
-        .set({ status: "delivered", attempts, deliveredAt: now, lockedUntil: null, lastError: null })
+        .set({ status: "delivered", attempts, deliveredAt: finishedAt, lockedUntil: null, lastError: null })
         .where(where);
       if (res.rowCount) result.delivered++;
-    } else if (now.getTime() - new Date(row.created_at).getTime() >= maxAgeMs) {
+    } else if (finishedAt.getTime() - new Date(row.created_at).getTime() >= maxAgeMs) {
       const res = await opts.db.update(outboxDeliveries).set({ status: "dead", attempts, lockedUntil: null, lastError: error }).where(where);
       if (res.rowCount) result.dead++;
     } else {
       const res = await opts.db
         .update(outboxDeliveries)
-        .set({ attempts, nextAttemptAt: new Date(now.getTime() + backoffMs(attempts)), lockedUntil: null, lastError: error })
+        .set({ attempts, nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(attempts)), lockedUntil: null, lastError: error })
         .where(where);
       if (res.rowCount) result.retried++;
     }
