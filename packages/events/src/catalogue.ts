@@ -61,6 +61,100 @@ export type TermRecord = z.infer<typeof termRecordSchema>;
 
 const termDeactivated = z.object({ kind: termKindSchema, key: z.string().min(1) });
 
+export const postKindSchema = z.enum(["releases", "stories", "factsheets", "updates", "advisories"]);
+export type PostKind = z.infer<typeof postKindSchema>;
+
+export const documentContactSchema = z.object({ title: z.string().nullable(), details: z.string().nullable() });
+
+export const releaseDocumentSchema = z.object({
+  pageTitle: z.string().nullable(),
+  languageId: z.number().int(),
+  headline: z.string().nullable(),
+  subheadline: z.string().nullable(),
+  detailsHtml: z.string().nullable(),
+  byline: z.string().nullable(),
+  contacts: z.array(documentContactSchema),
+});
+
+export const assetSchema = z.object({ key: z.string().nullable(), label: z.string().nullable(), length: z.number().int().nullable() });
+
+const offsetDateTime = z.string().datetime({ offset: true });
+
+export const releaseRecordSchema = z.object({
+  key: z.string().min(1),
+  kind: postKindSchema,
+  reference: z.string().nullable(),
+  atomId: z.string().nullable(),
+  publishDate: offsetDateTime,
+  leadMinistryKey: z.string().nullable(),
+  summary: z.string().nullable(),
+  socialMediaSummary: z.string().nullable(),
+  socialMediaHeadline: z.string().nullable(),
+  keywords: z.string().nullable(),
+  location: z.string().nullable(),
+  hasMediaAssets: z.boolean(),
+  hasTranslations: z.boolean(),
+  isNewsOnDemand: z.boolean(),
+  assetUrl: z.string().nullable(),
+  redirectUri: z.string().nullable(),
+  documents: z.array(releaseDocumentSchema),
+  ministryKeys: z.array(z.string()),
+  sectorKeys: z.array(z.string()),
+  tagKeys: z.array(z.string()),
+  themeKeys: z.array(z.string()),
+  assets: z.array(assetSchema).nullable(),
+  translations: z.array(assetSchema).nullable(),
+  publishFlags: z.object({ toWeb: z.boolean(), toSubscribers: z.boolean(), toMediaLists: z.boolean() }),
+  mediaListKeys: z.array(z.string()),
+  renditions: z.object({ htmlUrl: z.string().nullable(), textUrl: z.string().nullable(), pdfUrl: z.string().nullable() }).nullable(),
+  timestamp: offsetDateTime,
+});
+export type ReleaseRecord = z.infer<typeof releaseRecordSchema>;
+
+export const categoryKindSchema = z.enum(["ministries", "sectors", "themes", "tags"]);
+export type CategoryKind = z.infer<typeof categoryKindSchema>;
+
+export const slideRecordSchema = z.object({
+  id: z.string().uuid(),
+  sortIndex: z.number().int(),
+  headline: z.string().nullable(),
+  summary: z.string().nullable(),
+  actionLabel: z.string().nullable(),
+  actionUri: z.string().nullable(),
+  imageBase64: z.string().nullable(),
+  imageType: z.string().nullable(),
+  facebookPostUri: z.string().nullable(),
+  justify: z.string().nullable(),
+  timestamp: offsetDateTime,
+});
+export type SlideRecord = z.infer<typeof slideRecordSchema>;
+
+export const siteContentChangedSchema = z.discriminatedUnion("entity", [
+  z.object({
+    entity: z.literal("home"),
+    topPostKey: z.string().nullable(),
+    featurePostKey: z.string().nullable(),
+    liveWebcastFlashMediaManifestUrl: z.string().nullable(),
+    liveWebcastM3uPlaylist: z.string().nullable(),
+    granville: z.string().nullable(),
+    timestamp: offsetDateTime,
+  }),
+  z.object({ entity: z.literal("slides"), slides: z.array(slideRecordSchema) }),
+  z.object({
+    entity: z.literal("resourceLinks"),
+    links: z.array(z.object({ sortIndex: z.number().int(), text: z.string(), uri: z.string() })),
+    timestamp: offsetDateTime,
+  }),
+  z.object({
+    entity: z.literal("categoryFeatures"),
+    kind: categoryKindSchema,
+    key: z.string().min(1),
+    topPostKey: z.string().nullable(),
+    featurePostKey: z.string().nullable(),
+  }),
+]);
+export type SiteContentChanged = z.infer<typeof siteContentChangedSchema>;
+
 export const eventDataSchemas = {
   "org.upserted": orgRecordSchema,
   "org.deactivated": z.object({ key: z.string().min(1) }),
@@ -72,6 +166,10 @@ export const eventDataSchemas = {
   "tag.deactivated": termDeactivated,
   "service.upserted": termRecordSchema,
   "service.deactivated": termDeactivated,
+  "release.published": releaseRecordSchema,
+  "release.updated": releaseRecordSchema.extend({ notify: z.boolean() }),
+  "release.unpublished": z.object({ key: z.string().min(1) }),
+  "site.content.changed": siteContentChangedSchema,
 } as const;
 
 export type EventType = keyof typeof eventDataSchemas;

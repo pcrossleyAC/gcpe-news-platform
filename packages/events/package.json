@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts", "./tables": "./src/tables.ts" },
+  "exports": { ".": "./src/index.ts", "./tables": "./src/tables.ts", "./testing": "./src/testing.ts" },
   "dependencies": {
     "@gcpe/db-kit": "0.0.0",
     "drizzle-orm": "^0.45.2",
