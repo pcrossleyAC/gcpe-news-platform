@@ -38,6 +38,34 @@ DATABASE_URL=postgres://localhost:5432/core ENTRA_TENANT_ID=<tenant> AUTH_AUDIEN
 EVENT_SUBSCRIBERS='[]' npm --workspace @gcpe/core run dev
 ```
 
+### Core environment
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `DATABASE_URL` | yes | | Postgres connection string |
+| `ENTRA_TENANT_ID` | yes | | Entra (Azure AD) tenant whose tokens are accepted |
+| `AUTH_AUDIENCE` | yes | | Expected `aud` claim, e.g. `api://core` |
+| `PORT` | no | `3001` | HTTP port (the Docker healthcheck follows it) |
+| `MIGRATIONS_FOLDER` | no | `apps/core/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/core/migrations` |
+| `EVENT_SUBSCRIBERS` | no | `[]` | JSON array of webhook subscribers, see below |
+
+`EVENT_SUBSCRIBERS` is a JSON array; each entry receives the event types it lists (`"*"` means all), signed with its `secret`:
+
+```json
+[
+  {
+    "name": "news-api",
+    "url": "https://news-api.internal/events",
+    "secret": "<shared HMAC secret, also configured on the receiver>",
+    "types": ["org.upserted", "org.deactivated", "tag.upserted"]
+  }
+]
+```
+
+`name` identifies the subscriber in `outbox_deliveries`: after a rename, deliveries still queued under the old name fail as "not configured" and are dead-lettered after 24 h.
+
+Entra app registration: tokens are validated against the v2 issuer (`https://login.microsoftonline.com/<tenant>/v2.0`), so the Core API's app registration manifest must set `"accessTokenAcceptedVersion": 2` (the default `null`/`1` issues v1 tokens whose `iss` is `https://sts.windows.net/<tenant>/` and every request is rejected with 401).
+
 Legacy import (requires network access to a legacy SQL Server copy):
 
 ```bash
