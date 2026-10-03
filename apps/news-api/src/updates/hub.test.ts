@@ -171,6 +171,28 @@ describe("SignalR updates hub", () => {
     expect(conn.state).toBe(HubConnectionState.Connected);
   });
 
+  // Final review D6: a JSON array is not a SignalR frame either — the object check's comment
+  // already said so, but `typeof [] === "object"` let arrays through.
+  it("closes with 1003 on a JSON array, before or after the handshake", async () => {
+    const { hub, server, port } = await start();
+    track(hub, server);
+
+    const ws1 = new WebSocket(`ws://127.0.0.1:${port}/updates?id=${await negotiateToken(port)}`);
+    await waitOpen(ws1);
+    const closed1 = waitClose(ws1);
+    ws1.send("[]" + RS);
+    expect(await closed1).toBe(1003);
+
+    const ws2 = new WebSocket(`ws://127.0.0.1:${port}/updates?id=${await negotiateToken(port)}`);
+    await waitOpen(ws2);
+    const handshakeAck = new Promise<void>((resolve) => (ws2.onmessage = () => resolve()));
+    ws2.send(JSON.stringify({ protocol: "json", version: 1 }) + RS);
+    await handshakeAck;
+    const closed2 = waitClose(ws2);
+    ws2.send(JSON.stringify([{ type: 7 }]) + RS);
+    expect(await closed2).toBe(1003);
+  });
+
   // Point 2: a socket that never completes the JSON handshake is closed after
   // handshakeTimeoutMs, and close() reaches sockets that never handshook too.
   it("closes a socket that never completes the handshake", async () => {

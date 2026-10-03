@@ -129,7 +129,7 @@ export function createUpdatesHub(
           // array, a number, a bare string) is a protocol error — and, left unchecked, a
           // property access below would throw and crash the process for every other client
           // too, since this listener runs uncaught on the event loop.
-          if (typeof msg !== "object" || msg === null) {
+          if (typeof msg !== "object" || msg === null || Array.isArray(msg)) {
             ws.close(1003);
             return;
           }
