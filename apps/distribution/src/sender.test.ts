@@ -305,12 +305,12 @@ describe("sendDue", () => {
   // stays 0, deferrals becomes 1, and the run stops (the second row is released untouched
   // rather than also being attempted against a server that's still down).
   it("a genuinely down server (verify fails): attempts 0, deferrals 1, and the run stops before reaching the second row", async () => {
-    await createBatch(
-      tdb.db,
-      "app",
-      { ...sampleMessageRequest, recipients: [{ email: "first@example.com", substitutions: {} }, { email: "second@example.com", substitutions: {} }] },
-      internalDomains,
-    );
+    // Two separate batches at different priorities (rather than two recipients in one batch)
+    // so claim order is deterministic — `priority DESC, next_attempt_at, id` would otherwise
+    // break the tie between same-priority, same-batch rows on `id`, a random UUID, making
+    // "first"/"second" below a coin flip instead of a guarantee.
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, priority: "system", recipients: [{ email: "first@example.com", substitutions: {} }] }, internalDomains);
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, priority: "digest", recipients: [{ email: "second@example.com", substitutions: {} }] }, internalDomains);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const stubTransport = {
       sendMail: async () => {
