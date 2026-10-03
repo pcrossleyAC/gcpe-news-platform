@@ -13,6 +13,10 @@ ENV NODE_ENV=production
 COPY --from=build /repo/package.json /repo/package-lock.json ./
 COPY --from=build /repo/apps/core/package.json ./apps/core/package.json
 COPY --from=build /repo/packages ./packages
+# Known trade-off: this installs every production dependency of @gcpe/core, including
+# @gcpe/legacy-import's mssql/tedious/@azure stack. The server bundle never imports them
+# (only the import:legacy CLI does), so they are dead weight in the image. Accepted for
+# Phase 0; splitting the importer into its own optional install is a later clean-up.
 RUN npm ci --omit=dev --workspace @gcpe/core && find packages -name '*.test.ts' -delete
 COPY --from=build /repo/apps/core/dist ./apps/core/dist
 COPY --from=build /repo/apps/core/migrations ./apps/core/migrations
