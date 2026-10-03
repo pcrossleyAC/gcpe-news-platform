@@ -29,10 +29,16 @@ export async function createTestDatabase(opts: { migrationsFolder: string; exten
   const url = new URL(adminUrl());
   url.pathname = `/${name}`;
   const { pool, db } = createDb(url.toString(), { max: 5 });
-  for (const ext of opts.extensions ?? []) {
-    await pool.query(`CREATE EXTENSION IF NOT EXISTS "${ext}"`);
+  try {
+    for (const ext of opts.extensions ?? []) {
+      await pool.query(`CREATE EXTENSION IF NOT EXISTS "${ext}"`);
+    }
+    await runMigrations(db, opts.migrationsFolder);
+  } catch (err) {
+    await pool.end();
+    await withAdmin((c) => c.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`));
+    throw err;
   }
-  await runMigrations(db, opts.migrationsFolder);
   return {
     pool,
     db,
