@@ -83,7 +83,11 @@ describe("dto", () => {
   });
 
   it("serializes an absent home row as an all-null home at the epoch", () => {
-    expect(toHomeDto(undefined, tz)).toEqual({
+    const dto = toHomeDto(undefined, tz);
+    expect(Object.keys(dto)).toEqual([
+      "liveWebcastFlashMediaManifestUrl", "liveWebcastM3uPlaylist", "granville", "kind", "name", "topPostKey", "featurePostKey", "key", "timestamp",
+    ]);
+    expect(dto).toEqual({
       liveWebcastFlashMediaManifestUrl: null,
       liveWebcastM3uPlaylist: null,
       granville: null,
@@ -106,7 +110,11 @@ describe("dto", () => {
       granville: "g",
       timestamp: new Date("2026-10-02T17:34:49.085Z"),
     };
-    expect(toHomeDto(row, tz)).toEqual({
+    const dto = toHomeDto(row, tz);
+    expect(Object.keys(dto)).toEqual([
+      "liveWebcastFlashMediaManifestUrl", "liveWebcastM3uPlaylist", "granville", "kind", "name", "topPostKey", "featurePostKey", "key", "timestamp",
+    ]);
+    expect(dto).toEqual({
       liveWebcastFlashMediaManifestUrl: "https://stream/manifest.m3u8",
       liveWebcastM3uPlaylist: "https://stream/playlist.m3u8",
       granville: "g",
