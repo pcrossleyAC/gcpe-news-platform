@@ -44,7 +44,15 @@ async function resolveCategoryKey(tx: Tx, kind: CategoryKind, key: string): Prom
   return existing?.key ?? key;
 }
 
-export async function applyRelease(tx: Tx, r: ReleaseRecord): Promise<void> {
+export interface ApplyOptions {
+  /**
+   * false suppresses the PostUpdate NOTIFY. Only the bulk legacy import uses this: one
+   * SignalR broadcast per release (~100k) to every webapp client is the wrong behaviour.
+   */
+  notify?: boolean;
+}
+
+export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions = {}): Promise<void> {
   const key = await resolvePostKey(tx, r.key);
   const values = {
     key,
@@ -75,7 +83,7 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord): Promise<void> {
     timestamp: parseOffsetDateTime(r.timestamp),
   };
   await tx.insert(posts).values(values).onConflictDoUpdate({ target: posts.key, set: values });
-  await notifyUpdate(tx, "PostUpdate", [key]);
+  if (opts.notify !== false) await notifyUpdate(tx, "PostUpdate", [key]);
 }
 
 export async function unpublishRelease(tx: Tx, key: string): Promise<void> {

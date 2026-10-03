@@ -1,8 +1,11 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createFakeSource } from "@gcpe/legacy-import";
+import { sampleRelease } from "@gcpe/events/testing";
 import { createApp } from "../app";
+import { applyRelease } from "../projections";
+import { listenForUpdates, notifyUpdate, type UpdateTarget } from "../updates/notify";
 import { createNewsTestDb, EVENT_SECRETS, TZ } from "../../test/helpers";
 import { importLegacyNews } from "./run";
 
@@ -34,8 +37,8 @@ describe("importLegacyNews", () => {
   });
 
   it("imports posts and site content that the API then serves; re-running is idempotent", async () => {
-    expect(await importLegacyNews(tdb.db, source)).toEqual({ releases: 1, slides: 1, resourceLinks: 1, features: 1 });
-    expect(await importLegacyNews(tdb.db, source)).toEqual({ releases: 1, slides: 1, resourceLinks: 1, features: 1 });
+    expect(await importLegacyNews(tdb.db, source)).toEqual({ releases: 1, slides: 1, resourceLinks: 1, features: 1, unpublished: 0 });
+    expect(await importLegacyNews(tdb.db, source)).toEqual({ releases: 1, slides: 1, resourceLinks: 1, features: 1, unpublished: 0 });
     const app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS });
     const V = "api-version=1.0";
     expect((await request(app).get(`/api/Posts/2026TT0103-001121?${V}`)).body).toMatchObject({ publishDate: "2026-10-01T15:10:00-07:00", isNewsOnDemand: true });
@@ -112,5 +115,79 @@ describe("importLegacyNews: an empty carousel never wipes slides", () => {
 
     expect((await importLegacyNews(tdb.db, emptyCarousel, { allowEmptySlides: true })).slides).toBe(0);
     expect((await tdb.pool.query("SELECT count(*)::int AS n FROM slides")).rows[0].n).toBe(0);
+  });
+});
+
+// Final review M7(a): a full import makes the store match legacy's published set — a post
+// still published here but no longer published in legacy (unpublished/deactivated there
+// since the last import) is unpublished.
+describe("importLegacyNews: unpublishes posts missing from legacy's published set", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE posts");
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "STALE-1", reference: "NEWS-STALE" }));
+  });
+
+  const published = async () =>
+    (await tdb.pool.query<{ key: string }>("SELECT key FROM posts WHERE is_published ORDER BY key")).rows.map((r) => r.key);
+
+  it("unpublishes them by default, keeping every imported post (matched case-insensitively) published", async () => {
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "2026tt0103-001121", reference: "NEWS-X" }));
+    const result = await importLegacyNews(tdb.db, source);
+    expect(result.unpublished).toBe(1);
+    expect(await published()).toEqual(["2026tt0103-001121"]);
+    const { rows } = await tdb.pool.query("SELECT key, is_published FROM posts WHERE key = 'STALE-1'");
+    expect(rows).toEqual([{ key: "STALE-1", is_published: false }]);
+  });
+
+  it("leaves them alone with unpublishMissing: false", async () => {
+    const result = await importLegacyNews(tdb.db, source, { unpublishMissing: false });
+    expect(result.unpublished).toBe(0);
+    expect(await published()).toEqual(["2026TT0103-001121", "STALE-1"]);
+  });
+
+  it("never mass-unpublishes when legacy returned no published releases at all", async () => {
+    const logs: string[] = [];
+    const empty = createFakeSource({ releaseYears: [], releaseKeysById: [], appSettings: [], categoryFeatures: [], currentSlides: [], resourceLinks: [] });
+    const result = await importLegacyNews(tdb.db, empty, { log: (m) => logs.push(m) });
+    expect(result.unpublished).toBe(0);
+    expect(await published()).toEqual(["STALE-1"]);
+    expect(logs).toContain("[import] legacy returned no published releases; skipping unpublish of missing posts");
+  });
+});
+
+// Final review M7(b): an import of ~100k releases must not fire a PostUpdate NOTIFY (and
+// so a SignalR broadcast to every webapp client) per release.
+describe("importLegacyNews: no per-release notifications", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("emits no PostUpdate notifications, for imported or unpublished posts", async () => {
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "STALE-1", reference: "NEWS-STALE" }));
+    const got: [UpdateTarget, string[]][] = [];
+    const { stop } = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
+    try {
+      const result = await importLegacyNews(tdb.db, source);
+      expect(result).toMatchObject({ releases: 1, unpublished: 1 });
+      // NOTIFYs arrive in commit order: once this sentinel is in, everything before it is too.
+      await tdb.db.transaction((tx) => notifyUpdate(tx, "HomeUpdate", ["__sentinel"]));
+      await vi.waitFor(() => expect(got.at(-1)).toEqual(["HomeUpdate", ["__sentinel"]]));
+    } finally {
+      await stop();
+    }
+    expect(got.filter(([t]) => t === "PostUpdate")).toEqual([]);
+    // Site content is still announced (one notification per entity, not per release).
+    expect(got.map(([t]) => t)).toContain("HomeUpdate");
   });
 });

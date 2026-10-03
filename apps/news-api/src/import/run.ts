@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import type { CategoryKind } from "@gcpe/events";
 import type { LegacySource } from "@gcpe/legacy-import";
@@ -16,10 +17,20 @@ function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
 export async function importLegacyNews(
   db: Db,
   source: LegacySource,
-  opts: { log?: (msg: string) => void; allowEmptySlides?: boolean } = {},
-): Promise<{ releases: number; slides: number; resourceLinks: number; features: number }> {
+  opts: {
+    log?: (msg: string) => void;
+    allowEmptySlides?: boolean;
+    /**
+     * After importing, unpublish every post still published here whose key isn't in legacy's
+     * published set (it was unpublished/deactivated in legacy since the last import). Default
+     * true: the importer is always a full import. Skipped when legacy returned no releases.
+     */
+    unpublishMissing?: boolean;
+  } = {},
+): Promise<{ releases: number; slides: number; resourceLinks: number; features: number; unpublished: number }> {
   const log = opts.log ?? (() => {});
-  const result = { releases: 0, slides: 0, resourceLinks: 0, features: 0 };
+  const result = { releases: 0, slides: 0, resourceLinks: 0, features: 0, unpublished: 0 };
+  const importedKeys: string[] = [];
 
   const years = (await source.query<{ Year: number }>(Q_RELEASE_YEARS)).map((r) => r.Year).sort();
   for (const y of years) {
@@ -33,10 +44,30 @@ export async function importLegacyNews(
       const releaseDocs = docs.get(id) ?? [];
       const contacts = releaseDocs.flatMap((d) => contactsByDoc.get(lower(d.DocumentId)) ?? []);
       const record = mapLegacyRelease(row, releaseDocs, contacts, indexes.get(id) ?? []);
-      await db.transaction((tx) => applyRelease(tx, record));
+      // No per-release PostUpdate: see ApplyOptions.notify and the README's import notes.
+      await db.transaction((tx) => applyRelease(tx, record, { notify: false }));
+      importedKeys.push(record.key);
       result.releases++;
     }
     log(`year ${y}: ${releases.length} releases`);
+  }
+
+  if (opts.unpublishMissing !== false) {
+    if (importedKeys.length === 0) {
+      // An empty published set is far likelier to be a broken/empty source than legacy
+      // genuinely having nothing published — never let it unpublish the whole store.
+      log("[import] legacy returned no published releases; skipping unpublish of missing posts");
+    } else {
+      // One JSON parameter rather than one bind parameter per key (~100k keys would blow
+      // Postgres's 65535-parameter limit). Also silent: no PostUpdate, as for the upserts.
+      const { rows } = await db.execute<{ key: string }>(sql`
+        UPDATE posts SET is_published = false
+        WHERE is_published
+          AND lower(key) NOT IN (SELECT lower(value) FROM jsonb_array_elements_text(${JSON.stringify(importedKeys)}::jsonb))
+        RETURNING key`);
+      result.unpublished = rows.length;
+      log(`[import] unpublished ${rows.length} post(s) no longer published in legacy`);
+    }
   }
 
   const keyById = new Map((await source.query<{ Id: string; Key: string }>(Q_RELEASE_KEYS_BY_ID)).map((r) => [lower(r.Id), r.Key]));

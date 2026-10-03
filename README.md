@@ -87,6 +87,8 @@ curl "http://localhost:3002/api/Posts/Latest/home/default?count=3&api-version=1.
 
 - Re-record live fixtures: `npm --workspace @gcpe/news-api run record:fixtures` (public read-only GETs, 1 req/s). The compatibility suite (`apps/news-api/test/compat.test.ts`) must stay green.
 - Legacy import: `DATABASE_URL=… LEGACY_SQL_SERVER=… LEGACY_SQL_USER=… LEGACY_SQL_PASSWORD=… npm --workspace @gcpe/news-api run import:legacy`
+  - It is a full import: afterwards, any post still published here but absent from legacy's published set is unpublished (skipped if legacy returns no published releases at all).
+  - It sends **no** per-release `PostUpdate` notifications (a bulk import would otherwise broadcast once per release to every `/updates` client). Site-content updates (home, features, slides, resource links) are still announced. Connected `gcpe-news-webapp` instances therefore don't learn about imported/unpublished posts until their caches refresh: after an import against a live News API, restart the News API pods (clients reconnect and the webapp clears its caches on reconnect) or the webapp.
 - Core reference data reaches the News API as events: configure Core's `EVENT_SUBSCRIBERS` with `{"name":"news-api","url":"http://<news-api>/events","secret":"<same as EVENT_SECRETS.core>","types":["*"]}` and call Core's `POST /api/admin/republish` once.
 
 - `/health/ready` returns 503 while the database is unreachable **or** the Postgres `LISTEN` connection that feeds `/updates` is down/reconnecting (that instance would silently miss pushes); `/health/live` stays 200.
