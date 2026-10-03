@@ -1,6 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Tx } from "@gcpe/db-kit";
 import type { CategoryKind, EventEnvelope, EventHandler, OrgRecord, ReleaseRecord, SiteContentChanged, TermKind, TermRecord } from "@gcpe/events";
+import { indexKeysFor } from "@gcpe/events";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { parseOffsetDateTime } from "./time";
 import { notifyUpdate, type UpdateTarget } from "./updates/notify";
@@ -14,14 +15,7 @@ const CATEGORY_TARGET: Record<CategoryKind, UpdateTarget> = {
   tags: "TagUpdate",
 };
 
-export function indexKeysFor(r: Pick<ReleaseRecord, "ministryKeys" | "sectorKeys" | "tagKeys" | "themeKeys">): string[] {
-  return [
-    ...r.ministryKeys.map((k) => `ministries:${k}`),
-    ...r.sectorKeys.map((k) => `sectors:${k}`),
-    ...r.tagKeys.map((k) => `tags:${k}`),
-    ...r.themeKeys.map((k) => `themes:${k}`),
-  ].map((s) => s.toLowerCase());
-}
+export { indexKeysFor };
 
 /**
  * Serialises writers of one case-insensitive identity for the rest of the transaction.
@@ -336,7 +330,7 @@ export function createProjectionHandlers(): Record<string, EventHandler> {
  */
 export const SOURCE_EVENT_TYPES: Record<string, (type: string) => boolean> = {
   core: (type) => /^(org|sector|theme|tag|service)\./.test(type),
-  nrms: (type) => type.startsWith("release.") || type === "site.content.changed",
+  nrms: (type) => type.startsWith("release.") || type === "site.content.changed" || type === "site.rebuild_requested",
 };
 
 /** The receiver's handler lookup: `createProjectionHandlers()`, restricted by event.source. */
