@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { createClientCredentialsProvider } from "@gcpe/auth";
 import { loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
+import { parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
 import { newsApiEnvSchema } from "./env";
 import { createNewsApiShutdown } from "./shutdown";
@@ -13,6 +14,9 @@ const env = parseEnv(newsApiEnvSchema);
 const tenant = loadTenantConfig(env.TENANT_CONFIG);
 const { db, pool } = createDb(env.DATABASE_URL);
 await runMigrations(db, env.MIGRATIONS_FOLDER);
+
+const subscribers = parseSubscribers(env.EVENT_SUBSCRIBERS);
+const stopDispatcher = startDispatcher({ db, subscribers });
 
 const getToken =
   env.NOD_TOKEN_URL && env.NOD_CLIENT_ID && env.NOD_CLIENT_SECRET && env.NOD_SCOPE
@@ -30,6 +34,7 @@ const app = createApp({
   db,
   timeZone: tenant.timeZone,
   eventSecrets: env.EVENT_SECRETS,
+  subscribers,
   hubRouter: hub.router,
   // Not ready while the LISTEN connection is down: this instance would silently miss updates.
   readinessChecks: [() => isListening()],
@@ -49,7 +54,7 @@ const listener = await listenForUpdates(pool, (target, keys) => hub.broadcast(ta
 isListening = listener.isListening;
 server.listen(env.PORT, () => console.log(`[news-api] listening on ${env.PORT} (${tenant.tenantId}, ${tenant.timeZone})`));
 
-const shutdown = createNewsApiShutdown({ hub, server, stopListening: listener.stop, pool, exit: process.exit });
+const shutdown = createNewsApiShutdown({ hub, server, stopListening: listener.stop, stopDispatcher, pool, exit: process.exit });
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => void shutdown());
 }

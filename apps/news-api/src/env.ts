@@ -30,6 +30,7 @@ export const newsApiEnvSchema = z.object({
   PORT: z.coerce.number().int().default(3002),
   TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
   EVENT_SECRETS: eventSecrets,
+  EVENT_SUBSCRIBERS: z.string().optional(),
   NOD_BASE_URL: z.string().url().optional(),
   NOD_TOKEN_URL: z.string().url().optional(),
   NOD_CLIENT_ID: z.string().optional(),

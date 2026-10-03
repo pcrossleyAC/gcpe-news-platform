@@ -1,6 +1,18 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Tx } from "@gcpe/db-kit";
-import { indexKeysFor, type CategoryKind, type EventEnvelope, type EventHandler, type OrgRecord, type ReleaseRecord, type SiteContentChanged, type TermKind, type TermRecord } from "@gcpe/events";
+import {
+  enqueueEvent,
+  indexKeysFor,
+  type CategoryKind,
+  type EventEnvelope,
+  type EventHandler,
+  type OrgRecord,
+  type ReleaseRecord,
+  type SiteContentChanged,
+  type SubscriberConfig,
+  type TermKind,
+  type TermRecord,
+} from "@gcpe/events";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { parseOffsetDateTime } from "./time";
 import { notifyUpdate, type UpdateTarget } from "./updates/notify";
@@ -298,12 +310,41 @@ export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<v
   }
 }
 
-export function createProjectionHandlers(): Record<string, EventHandler> {
+export interface ProjectionOptions {
+  subscribers?: SubscriberConfig[];
+}
+
+/**
+ * Enqueues `site.rebuild_requested` for the post identified by `key`, in the same
+ * transaction as the projection write that triggered it (so the outbox row only exists if
+ * the projection write committed too).
+ *
+ * `aggregateId` is per post (`post:<lowercased key>`), not a single shared `site` aggregate:
+ * the receiver drops events whose sequence is lower than the last applied for that
+ * aggregate. With one shared aggregate, a retried rebuild for post A delivered after a
+ * newer one for post B would be dropped as stale, and A's page would never be rebuilt. Per
+ * post, a newer rebuild of the same post correctly supersedes an older one.
+ */
+async function requestRebuild(tx: Tx, key: string, correlationId: string, subscribers: SubscriberConfig[]): Promise<void> {
+  await enqueueEvent(
+    tx,
+    { type: "site.rebuild_requested", source: "news-api", aggregateId: `post:${key.toLowerCase()}`, data: { pages: ["home", `post:${key}`] }, correlationId },
+    subscribers,
+  );
+}
+
+export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<string, EventHandler> {
+  const subscribers = opts.subscribers ?? [];
   const termUpserted: EventHandler = (tx, e) => applyTerm(tx, e.data as TermRecord);
   const termDeactivated: EventHandler = async (tx, e) => {
     const d = e.data as { kind: TermKind; key: string };
     const kind = TERM_TO_CATEGORY[d.kind];
     if (kind) await deactivateCategory(tx, kind, d.key);
+  };
+  const releaseApplied: EventHandler = async (tx, e) => {
+    const r = e.data as ReleaseRecord;
+    await applyRelease(tx, r);
+    await requestRebuild(tx, r.key, e.correlationId, subscribers);
   };
   return {
     "org.upserted": (tx, e) => applyOrg(tx, e.data as OrgRecord),
@@ -314,9 +355,13 @@ export function createProjectionHandlers(): Record<string, EventHandler> {
     "sector.deactivated": termDeactivated,
     "theme.deactivated": termDeactivated,
     "tag.deactivated": termDeactivated,
-    "release.published": async (tx, e) => void (await applyRelease(tx, e.data as ReleaseRecord)),
-    "release.updated": async (tx, e) => void (await applyRelease(tx, e.data as ReleaseRecord)),
-    "release.unpublished": (tx, e) => unpublishRelease(tx, (e.data as { key: string }).key),
+    "release.published": releaseApplied,
+    "release.updated": releaseApplied,
+    "release.unpublished": async (tx, e) => {
+      const { key } = e.data as { key: string };
+      await unpublishRelease(tx, key);
+      await requestRebuild(tx, key, e.correlationId, subscribers);
+    },
     "site.content.changed": (tx, e) => applySiteContent(tx, e.data as SiteContentChanged),
   };
 }
@@ -334,8 +379,8 @@ export const SOURCE_EVENT_TYPES: Record<string, (type: string) => boolean> = {
 };
 
 /** The receiver's handler lookup: `createProjectionHandlers()`, restricted by event.source. */
-export function createSourceRestrictedHandlers(): (event: EventEnvelope) => EventHandler | undefined {
-  const handlers = createProjectionHandlers();
+export function createSourceRestrictedHandlers(opts: ProjectionOptions = {}): (event: EventEnvelope) => EventHandler | undefined {
+  const handlers = createProjectionHandlers(opts);
   return (event) => {
     const allowed = Object.hasOwn(SOURCE_EVENT_TYPES, event.source) ? SOURCE_EVENT_TYPES[event.source] : undefined;
     if (!allowed?.(event.type) || !Object.hasOwn(handlers, event.type)) return undefined;

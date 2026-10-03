@@ -1,7 +1,7 @@
 import express from "express";
 import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
-import { createEventReceiver } from "@gcpe/events";
+import { createEventReceiver, type SubscriberConfig } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler, type ReadinessCheck } from "@gcpe/http-kit";
 import { problemNotFound, requireApiVersion } from "./http/errors";
 import { categoryRoutes } from "./http/v1/categories";
@@ -16,6 +16,7 @@ export interface AppDeps {
   db: Db;
   timeZone: string;
   eventSecrets: Record<string, string>;
+  subscribers?: SubscriberConfig[];
   subscribe?: SubscribeProxyOptions;
   hubRouter?: express.Router;
   /** Extra /health/ready checks on top of the DB ping (e.g. the LISTEN connection being up). */
@@ -29,7 +30,7 @@ export function createApp(deps: AppDeps): express.Express {
 
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`), ...(deps.readinessChecks ?? [])]));
 
-  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: createSourceRestrictedHandlers() }));
+  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: createSourceRestrictedHandlers({ subscribers: deps.subscribers }) }));
   if (deps.hubRouter) app.use(deps.hubRouter);
 
   const api = express.Router();

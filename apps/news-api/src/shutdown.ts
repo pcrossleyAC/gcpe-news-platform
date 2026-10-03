@@ -5,6 +5,7 @@ export interface ShutdownDeps {
   hub: { close(): void };
   server: Server;
   stopListening: () => Promise<void>;
+  stopDispatcher: () => Promise<void>;
   pool: { end(): Promise<void> };
   /** `process.exit` in production; stubbed in tests so nothing actually terminates. */
   exit: (code: number) => void;
@@ -29,6 +30,7 @@ export function createNewsApiShutdown(deps: ShutdownDeps): () => Promise<void> {
       { name: "updates hub", close: () => deps.hub.close() },
       { name: "http server", close: () => closeServer(deps.server) },
       { name: "LISTEN connection", close: deps.stopListening },
+      { name: "event dispatcher", close: deps.stopDispatcher },
       { name: "db pool", close: () => deps.pool.end() },
     ],
   });

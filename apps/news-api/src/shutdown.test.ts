@@ -62,12 +62,14 @@ describe("createNewsApiShutdown", () => {
 
     const pool = { end: vi.fn(async () => {}) };
     const stopListening = vi.fn(async () => {});
+    const stopDispatcher = vi.fn(async () => {});
     const exit = vi.fn();
-    const shutdown = createNewsApiShutdown({ hub, server, stopListening, pool, exit });
+    const shutdown = createNewsApiShutdown({ hub, server, stopListening, stopDispatcher, pool, exit });
 
     const outcome = await withTimeout(shutdown(), 2000);
     expect(outcome).toBe("done");
     expect(stopListening).toHaveBeenCalledOnce();
+    expect(stopDispatcher).toHaveBeenCalledOnce();
     expect(pool.end).toHaveBeenCalledOnce();
     expect(exit).toHaveBeenCalledWith(0);
   });
@@ -76,11 +78,13 @@ describe("createNewsApiShutdown", () => {
     const { hub, server } = await start();
     const pool = { end: vi.fn(async () => {}) };
     const stopListening = vi.fn(async () => {});
+    const stopDispatcher = vi.fn(async () => {});
     const exit = vi.fn();
-    const shutdown = createNewsApiShutdown({ hub, server, stopListening, pool, exit });
+    const shutdown = createNewsApiShutdown({ hub, server, stopListening, stopDispatcher, pool, exit });
 
     await Promise.all([shutdown(), shutdown()]);
     expect(stopListening).toHaveBeenCalledOnce();
+    expect(stopDispatcher).toHaveBeenCalledOnce();
     expect(pool.end).toHaveBeenCalledOnce();
     expect(exit).toHaveBeenCalledOnce();
   });
