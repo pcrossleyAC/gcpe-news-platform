@@ -210,7 +210,19 @@ Schemas for every `type@version` live in `packages/events` as zod schemas, share
 
 ### 6.1 v1 compatibility contract
 
-Reproduce the 26 non-newsletter endpoints of the BC Gov News API swagger (saved copy committed at `docs/contracts/news-api-v1.swagger.json`) with identical paths, parameters and JSON shapes, including the `api-version` query parameter (accepted, ignored) and legacy field names (e.g. `azureAssets`, `azureTranslations`).
+Reproduce the 26 non-newsletter endpoints of the BC Gov News API swagger (saved copy committed at `docs/contracts/news-api-v1.swagger.json`) with identical paths, parameters and JSON shapes, including legacy field names (e.g. `azureAssets`, `azureTranslations`).
+
+**Observed live behaviour that is part of the contract** (probed 2026-10-02 against `api.news.gov.bc.ca`; amended after spec approval):
+
+- `api-version` is **required**: missing → `400 {"error":{"code":"ApiVersionUnspecified",…}}`; values other than `1.0`/`1` → `400 {"error":{"code":"UnsupportedApiVersion",…}}`.
+- Not-found semantics differ by endpoint: `Posts/{key}`, `Ministries/{key}`, `Posts/Keys/{reference}` → `200` with an empty body; `Posts/Latest|Keys/{indexKind}/{indexKey}` with a known kind (`home`, `ministries`, `sectors`, `tags`, `themes`) and unknown key → `404` RFC 7231 problem JSON; unknown kind → `200` empty body; `Posts/LatestMediaUri/{mediaType}` with no match → `204`.
+- `postKind` omitted (or `default`) → `releases` + `stories`; otherwise exact kind. `count` omitted → all matching posts. Ordering is `publishDate` descending.
+- `Posts/Latest/{indexKind}/{indexKey}` **excludes** that index's `topPostKey` and `featurePostKey`; `Posts/Keys/{indexKind}/{indexKey}` does **not** (verified: health's top `2026HLTH0085-001117` and feature `2026INF0034-001103` appear in Keys but not Latest).
+- `Posts?postKeys=` takes a **comma-separated** list (swagger default `csv`); results are returned in request order with unknown keys skipped; a repeated `postKeys` parameter uses only the first value.
+- `memoryCachable` (in the swagger) is never present in responses.
+- All key, index-key and reference lookups are **case-insensitive** (`Posts/2026tt0103-001121`, `Ministries/HEALTH`, `Posts/Keys/nEwS-34336` all resolve); responses keep the stored casing. The 404 problem JSON is served as `application/json; charset=utf-8`.
+- `childMinistryKey` is the key of the **active** organization whose parent is this one.
+- **SignalR hub at `{base}/updates`** (not in the swagger): `gcpe-news-webapp` (`Repository.cs:56-100`) connects with `Microsoft.AspNetCore.SignalR.Client` 5.0.9 and listens for `PostUpdate`, `MinisterUpdate`, `HomeUpdate`, `SlideUpdate`, `ResourceLinkUpdate`, `ThemeUpdate`, `TagUpdate`, `SectorUpdate`, `MinistryUpdate` (argument: array of keys). Without a connected hub the webapp never requests latest posts (`Repository.cs:567`), so the hub is required for success criterion 3.
 
 | Endpoints | Source |
 |---|---|
@@ -238,7 +250,7 @@ Behaviour of `indexKind`, `postKind`, sort order, and paging edge cases is **est
 
 ### 6.4 Import
 
-Legacy `dbo.NewsRelease*`, `Ministry*`, `Sector`, `Theme`, `Tag`, `Slide`/`Carousel*`, `ResourceLink`, `ApplicationSetting` (home/live feed/`granville`) → News API store directly (for Phase 1), preserving `Key` and `Reference`. Once NRMS exists, NRMS becomes the importer of record and the News API is rebuilt from NRMS events (replay).
+Reference data (`Ministry*`, `Sector`, `Theme`, `Tag`, `Service`) is imported into **Core** (Phase 0) and reaches the News API as Core events. The News API's own Phase 1 importer covers legacy `dbo.NewsRelease*` (published, committed, active only), `Slide`/`Carousel*`, `ResourceLink`, `ApplicationSetting` (`HomeTopReleaseId`, `HomeFeatureReleaseId`, `granville`) and per-category `TopReleaseId`/`FeatureReleaseId`, preserving `Key` and `Reference`. Once NRMS exists, NRMS becomes the importer of record and the News API is rebuilt from NRMS events (replay).
 
 ---
 
