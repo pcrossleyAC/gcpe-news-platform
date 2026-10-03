@@ -188,7 +188,7 @@ describe("News API rebuild requests", () => {
     const rows = await tdb.db.select().from(outboxEvents);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ type: "site.rebuild_requested", aggregateId: `post:${sampleRelease.key.toLowerCase()}` });
-    expect((rows[0]!.payload as { data: unknown; correlationId: string })).toMatchObject({
+    expect((rows[0]!.envelope as { data: unknown; correlationId: string })).toMatchObject({
       data: { pages: ["home", `post:${sampleRelease.key}`] },
       correlationId: "11111111-1111-4111-8111-111111111111",
     });
@@ -217,8 +217,6 @@ describe("News API rebuild requests", () => {
   });
 });
 ```
-
-Before writing the assertions on `outboxEvents` columns, open `packages/events/src/tables.ts` and use its actual column names (the envelope column may not be called `payload`; adjust the test to the real name, and keep the assertions themselves).
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -268,7 +266,7 @@ export function createSourceRestrictedHandlers(opts: ProjectionOptions = {}): (e
 }
 ```
 
-`enqueueEvent` with zero matching subscribers still writes the outbox event row and no deliveries — that is what the "no subscribers" test pins. If the existing `enqueueEvent` writes no row at all with zero subscribers, change the test's expectation to match the existing behaviour. Do not change `enqueueEvent`.
+`enqueueEvent` with zero matching subscribers writes the `outbox_events` row and no `outbox_deliveries` rows (verified in `packages/events/src/publisher.ts`) — that is what the "no subscribers" test pins. Do not change `enqueueEvent`.
 
 `app.ts`: add `subscribers?: SubscriberConfig[]` to `AppDeps` and call `createSourceRestrictedHandlers({ subscribers: deps.subscribers })`.
 
@@ -856,8 +854,7 @@ describe("publishDue", () => {
     expect(await publishDue({ db: tdb.db, subscribers, now: () => NOW })).toEqual({ published: [sampleDraft.key] });
     expect(await getRelease(tdb.db, sampleDraft.key)).toMatchObject({ status: "published", publishedAt: NOW });
     const [row] = await tdb.db.select().from(outboxEvents);
-    // Use the real envelope column from packages/events/src/tables.ts.
-    const env = parseEvent((row as Record<string, unknown>).payload);
+    const env = parseEvent(row!.envelope);
     expect(env).toMatchObject({ type: "release.published", source: "nrms", aggregateId: sampleDraft.key });
     expect(env.data).toMatchObject({ key: sampleDraft.key, kind: "releases", publishDate: NOW.toISOString(), timestamp: NOW.toISOString(), atomId: null, renditions: null });
   });
