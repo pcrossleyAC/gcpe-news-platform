@@ -106,6 +106,20 @@ describe("Distribution HTTP API", () => {
     expect(badHeader.status).toBe(400);
   });
 
+  it("two posts with no idempotencyKey each create their own batch", async () => {
+    const { idempotencyKey: _ignored, ...withoutKey } = sampleMessageRequest as typeof sampleMessageRequest & { idempotencyKey?: string };
+    const first = await request(app).post("/api/messages").set("authorization", `Bearer ${sender}`).send(withoutKey);
+    const second = await request(app).post("/api/messages").set("authorization", `Bearer ${sender}`).send(withoutKey);
+    expect(first.status).toBe(202);
+    expect(second.status).toBe(202);
+    expect(first.body.batchId).not.toBe(second.body.batchId);
+
+    const { rows } = await tdb.pool.query("SELECT count(*)::int FROM batches WHERE id = ANY($1) AND idempotency_key IS NULL", [
+      [first.body.batchId, second.body.batchId],
+    ]);
+    expect(rows[0].count).toBe(2);
+  });
+
   it("GET /api/batches/:id returns batch counts, 404s an unknown uuid and a non-uuid", async () => {
     const res = await request(app).get(`/api/batches/${firstBatchId}`).set("authorization", `Bearer ${sender}`);
     expect(res.status).toBe(200);

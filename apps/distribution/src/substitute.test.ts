@@ -11,6 +11,9 @@ describe("substitute", () => {
   it("strips CR/LF from header values", () => {
     expect(substitute("<{{u}}>", { u: "https://x\r\nBcc: evil@x.com" }, "header")).toBe("<https://xBcc: evil@x.com>");
   });
+  it("strips NUL from header values (defence in depth alongside CR/LF)", () => {
+    expect(substitute("<{{u}}>", { u: "x\0y" }, "header")).toBe("<xy>");
+  });
   it("does not re-expand placeholders that appear inside values", () => {
     expect(substitute("{{a}}", { a: "{{b}}", b: "boom" }, "text")).toBe("{{b}}");
   });

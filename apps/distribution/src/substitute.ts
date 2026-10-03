@@ -6,6 +6,6 @@ export function substitute(template: string, values: Record<string, string>, mod
   return template.replace(PLACEHOLDER, (whole, name: string) => {
     if (!Object.hasOwn(values, name)) return whole;
     const v = values[name]!;
-    return mode === "html" ? escapeHtml(v) : mode === "header" ? v.replace(/[\r\n]/g, "") : v;
+    return mode === "html" ? escapeHtml(v) : mode === "header" ? v.replace(/[\r\n\0]/g, "") : v;
   });
 }
