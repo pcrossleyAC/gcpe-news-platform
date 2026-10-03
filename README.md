@@ -94,6 +94,14 @@ curl "http://localhost:3002/api/Posts/Latest/home/default?count=3&api-version=1.
 
 - `/health/ready` returns 503 while the database is unreachable **or** the Postgres `LISTEN` connection that feeds `/updates` is down/reconnecting (that instance would silently miss pushes); `/health/live` stays 200.
 
+### Exposure: keep `/events` internal
+
+Only `/api/*`, `/updates` (+ `/updates/negotiate`) and `/health/*` belong on the public route. `POST /events` is the signed webhook that Core and NRMS push projection events to, and must be reachable **only on the internal service** (e.g. the OpenShift `Service`, with the public `Route` restricted to the paths above, or a separate internal-only route). Why:
+
+- It is a write path into the read model. HMAC signatures (`EVENT_SECRETS`) authenticate it, but a leaked or weak secret on a public endpoint would let anyone rewrite ministries, releases or site content — keeping it internal means a secret leak alone isn't enough.
+- Every request body is buffered (up to the 1 MB event limit, `MAX_EVENT_BYTES`) and HMAC-checked before it can be rejected; publicly reachable, that is free memory and CPU for any anonymous client to burn.
+- Nothing outside the cluster legitimately calls it: Core's dispatcher and NRMS are internal callers.
+
 ### News API environment
 
 | Variable | Required | Default | Meaning |
