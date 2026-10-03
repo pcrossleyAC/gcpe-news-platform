@@ -122,6 +122,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
       socketTimeout: 5_000,
       pool: true,
       maxConnections: 3,
+      maxRequeues: 0, // as apps/distribution/src/transport.ts
     });
 
     const localAuth = await localAuthEnv();
