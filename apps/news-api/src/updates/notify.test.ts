@@ -252,7 +252,8 @@ describe("notify", () => {
     async () => {
       const local = await createNewsTestDb();
       try {
-        const { stop } = await listenForUpdates(local.pool, () => {});
+        const listener = await listenForUpdates(local.pool, () => {});
+        const { stop } = listener;
 
         // Delay the next connect() call (the reconnect attempt) so stop() can reliably be
         // called while it's still in flight, rather than racing real connection timing.
@@ -265,10 +266,16 @@ describe("notify", () => {
 
         await findAndKillListenBackend(local.url);
 
-        // Give onBroken a moment to fire (releasing the old client) and kick off the
-        // now-delayed reconnect attempt, which hasn't acquired a new client yet.
-        await new Promise((r) => setTimeout(r, 50));
-        expect(local.pool.totalCount).toBe(0);
+        // Poll (rather than sleep a fixed 50ms) until onBroken has fired — releasing the old
+        // client and kicking off the now-delayed reconnect attempt, which hasn't acquired a
+        // new client yet. totalCount stays 0 for the whole RECONNECT_DELAY_MS window.
+        await vi.waitFor(
+          () => {
+            expect(listener.isListening()).toBe(false);
+            expect(local.pool.totalCount).toBe(0);
+          },
+          { timeout: 2000, interval: 5 },
+        );
 
         const before = Date.now();
         await stop();
