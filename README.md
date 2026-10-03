@@ -102,6 +102,8 @@ curl "http://localhost:3002/api/Posts/Latest/home/default?count=3&api-version=1.
 | `NOD_CLIENT_SECRET` | no | | Client secret for the client-credentials grant |
 | `NOD_SCOPE` | no | | OAuth2 scope requested for the client-credentials grant |
 | `SUBSCRIBE_RATE_LIMIT_PER_MIN` | no | `300` | Rate limit applied to the `/api/Subscribe/*` proxy |
+| `UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN` | no | `120` | Per-IP rate limit on `POST /updates/negotiate` (429 past it) |
+| `UPDATES_MAX_CONNECTIONS` | no | `5000` | Cap on open `/updates` WebSockets; negotiate returns 503 at the cap. Outstanding negotiate tokens are capped at 10,000, oldest evicted first |
 | `MIGRATIONS_FOLDER` | no | `apps/news-api/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/news-api/migrations` |
 
 `NOD_BASE_URL` can be set without the `NOD_TOKEN_URL`/`NOD_CLIENT_ID`/`NOD_CLIENT_SECRET`/`NOD_SCOPE` quartet (the subscribe proxy then forwards unauthenticated); the client-credentials provider is only built when all four are present.

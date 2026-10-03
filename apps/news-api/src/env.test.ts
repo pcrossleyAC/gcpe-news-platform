@@ -32,3 +32,21 @@ describe("newsApiEnvSchema EVENT_SECRETS", () => {
     );
   });
 });
+
+describe("newsApiEnvSchema updates hub limits", () => {
+  it("defaults negotiate rate limit to 120/min and max connections to 5000", () => {
+    const env = parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv);
+    expect(env.UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN).toBe(120);
+    expect(env.UPDATES_MAX_CONNECTIONS).toBe(5000);
+  });
+
+  it("accepts overrides", () => {
+    const env = parseEnv(newsApiEnvSchema, {
+      ...BASE,
+      UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN: "10",
+      UPDATES_MAX_CONNECTIONS: "50",
+    } as unknown as NodeJS.ProcessEnv);
+    expect(env.UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN).toBe(10);
+    expect(env.UPDATES_MAX_CONNECTIONS).toBe(50);
+  });
+});

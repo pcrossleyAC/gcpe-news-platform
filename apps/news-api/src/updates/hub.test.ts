@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import express from "express";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -219,14 +219,64 @@ describe("SignalR updates hub", () => {
     await closed;
   });
 
-  // Point 4: negotiate caps outstanding pending tokens and returns 503 past the cap.
-  it("returns 503 from negotiate once maxPending is reached", async () => {
-    const { hub, server, port } = await start({ maxPending: 1 });
+  // Final review I1: a full pending pool must not lock real clients out. Once maxPending
+  // tokens are outstanding, negotiate evicts the oldest pending token (Map insertion order)
+  // instead of answering 503 — so an anonymous flood only ever invalidates other flood tokens.
+  it("evicts the oldest pending token instead of returning 503 once maxPending is reached", async () => {
+    const { hub, server, port } = await start({ maxPending: 2 });
     track(hub, server);
-    const ok = await fetch(`http://127.0.0.1:${port}/updates/negotiate`, { method: "POST" });
-    expect(ok.status).toBe(200);
+    const t1 = await negotiateToken(port);
+    await negotiateToken(port);
+    const res = await fetch(`http://127.0.0.1:${port}/updates/negotiate?negotiateVersion=1`, { method: "POST" });
+    expect(res.status).toBe(200);
+    const { connectionToken: t3 } = (await res.json()) as { connectionToken: string };
+
+    const evicted = new WebSocket(`ws://127.0.0.1:${port}/updates?id=${t1}`);
+    const outcome = await new Promise((r) => {
+      evicted.onopen = () => r("open");
+      evicted.onerror = () => r("error");
+    });
+    expect(outcome).toBe("error");
+
+    const fresh = new WebSocket(`ws://127.0.0.1:${port}/updates?id=${t3}`);
+    cleanups.push(() => fresh.close());
+    await waitOpen(fresh);
+  });
+
+  it("a real SignalR client still connects after negotiate is flooded past maxPending", async () => {
+    const { hub, server, port } = await start({ maxPending: 5 });
+    const conn = client(port);
+    track(hub, server, conn);
+    for (let i = 0; i < 50; i++) {
+      const res = await fetch(`http://127.0.0.1:${port}/updates/negotiate?negotiateVersion=1`, { method: "POST" });
+      expect(res.status).toBe(200);
+    }
+    await conn.start();
+    expect(conn.state).toBe(HubConnectionState.Connected);
+    expect(hub.connectionCount()).toBe(1);
+  });
+
+  it("rate limits negotiate per IP (negotiateRateLimitPerMinute)", async () => {
+    const { hub, server, port } = await start({ negotiateRateLimitPerMinute: 3 });
+    track(hub, server);
+    const statuses: number[] = [];
+    for (let i = 0; i < 4; i++) {
+      statuses.push((await fetch(`http://127.0.0.1:${port}/updates/negotiate`, { method: "POST" })).status);
+    }
+    expect(statuses).toEqual([200, 200, 200, 429]);
+  });
+
+  it("returns 503 from negotiate once maxConnections sockets are open", async () => {
+    const { hub, server, port } = await start({ maxConnections: 1 });
+    const conn = client(port);
+    track(hub, server, conn);
+    await conn.start();
     const full = await fetch(`http://127.0.0.1:${port}/updates/negotiate`, { method: "POST" });
     expect(full.status).toBe(503);
+    await conn.stop();
+    await vi.waitFor(() => expect(hub.connectionCount()).toBe(0));
+    const ok = await fetch(`http://127.0.0.1:${port}/updates/negotiate`, { method: "POST" });
+    expect(ok.status).toBe(200);
   });
 
   // Point 5: a connected client that goes silent (sends nothing, including no pings) for

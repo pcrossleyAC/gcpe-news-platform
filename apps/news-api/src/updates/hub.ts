@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import express from "express";
+import { rateLimit } from "express-rate-limit";
 import { WebSocketServer, type WebSocket } from "ws";
 import type { UpdateTarget } from "./notify";
 
@@ -31,8 +32,16 @@ export function createUpdatesHub(
     tokenTtlMs?: number;
     /** How long an upgraded socket has to complete the SignalR JSON handshake before it's closed. */
     handshakeTimeoutMs?: number;
-    /** Cap on outstanding negotiated-but-not-yet-connected tokens; negotiate returns 503 past this. */
+    /**
+     * Cap on outstanding negotiated-but-not-yet-connected tokens. Past the cap, negotiate
+     * evicts the *oldest* pending token rather than refusing — an anonymous flood can only
+     * invalidate other stale tokens, never lock real clients out (final review I1).
+     */
     maxPending?: number;
+    /** Per-IP limit on POST {path}/negotiate per minute (429 past it). Default 120. */
+    negotiateRateLimitPerMinute?: number;
+    /** Cap on total open WebSocket sockets (handshaken or not); negotiate returns 503 at the cap. Default 5000. */
+    maxConnections?: number;
     /** A connected client silent for longer than this (tracked across received messages, checked on the ping tick) is terminated. */
     clientTimeoutMs?: number;
   } = {},
@@ -41,13 +50,20 @@ export function createUpdatesHub(
   const handshakeTimeoutMs = opts.handshakeTimeoutMs ?? 15_000;
   const maxPending = opts.maxPending ?? 10_000;
   const clientTimeoutMs = opts.clientTimeoutMs ?? 30_000;
+  const maxConnections = opts.maxConnections ?? 5000;
   const pending = new Map<string, NodeJS.Timeout>();
   const sockets = new Set<WebSocket>();
   const lastSeen = new Map<WebSocket, number>();
   const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD_BYTES });
 
   const router = express.Router();
-  router.post(`${path}/negotiate`, (req, res) => {
+  const negotiateLimiter = rateLimit({
+    windowMs: 60_000,
+    limit: opts.negotiateRateLimitPerMinute ?? 120,
+    standardHeaders: "draft-8",
+    legacyHeaders: false,
+  });
+  router.post(`${path}/negotiate`, negotiateLimiter, (req, res) => {
     // Each negotiate is a one-shot request immediately followed by a WebSocket upgrade, so
     // there's nothing to gain from keeping this HTTP/1.1 connection alive — and doing so is
     // actively harmful: a client-side fetch keep-alive pool can hand out this exact socket
@@ -55,9 +71,15 @@ export function createUpdatesHub(
     // restart reusing the same port), racing the socket's close against the pool's reuse and
     // failing with a generic "fetch failed". Telling the client not to pool it avoids that.
     res.setHeader("Connection", "close");
-    if (pending.size >= maxPending) {
-      res.status(503).json({ error: "too many pending connections" });
+    if (wss.clients.size >= maxConnections) {
+      res.status(503).json({ error: "too many connections" });
       return;
+    }
+    // Map iteration is insertion order, so the first key is the oldest outstanding token.
+    while (pending.size >= maxPending) {
+      const oldest = pending.keys().next().value as string;
+      clearTimeout(pending.get(oldest));
+      pending.delete(oldest);
     }
     const token = randomUUID();
     pending.set(token, setTimeout(() => pending.delete(token), opts.tokenTtlMs ?? 60_000).unref());

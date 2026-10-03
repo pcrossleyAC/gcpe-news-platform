@@ -19,7 +19,10 @@ const getToken =
     ? createClientCredentialsProvider({ tokenUrl: env.NOD_TOKEN_URL, clientId: env.NOD_CLIENT_ID, clientSecret: env.NOD_CLIENT_SECRET, scope: env.NOD_SCOPE })
     : undefined;
 
-const hub = createUpdatesHub();
+const hub = createUpdatesHub({
+  negotiateRateLimitPerMinute: env.UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN,
+  maxConnections: env.UPDATES_MAX_CONNECTIONS,
+});
 const app = createApp({
   db,
   timeZone: tenant.timeZone,
