@@ -867,6 +867,32 @@ describe("sendDue", () => {
     }
   });
 
+  // P2-R25 item 4 follow-on: with the pool's re-queue off (transport.ts maxRequeues: 0), a
+  // server that accepts TCP and then drops it before its greeting fails sendMail with
+  // code ECONNECTION and *no* `command` — the same outage-or-poison ambiguity as a CONN error,
+  // so it must go through the same verify() check rather than spend an attempt.
+  it("treats an ECONNECTION error with no command (connection closed before the greeting) as connection-level: verify() fails, so it's deferred without spending an attempt", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stubTransport = {
+      sendMail: async () => {
+        throw Object.assign(new Error("Reached maximum number of retries after connection was closed"), { code: "ECONNECTION" });
+      },
+      verify: async () => {
+        throw Object.assign(new Error("Connection closed unexpectedly"), { code: "ECONNECTION", command: "CONN" });
+      },
+    } as unknown as Transporter;
+    try {
+      const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      const [row] = await tdb.db.select().from(messages);
+      expect(row!.attempts).toBe(0);
+      expect(row!.deferrals).toBe(1);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("leaves a DATA-stage 5xx (e.g. a server-side size rejection mid-transfer) to retry, not fail", async () => {
     // Deliberate: unlike the MAIL-FROM-stage size check above (which never reaches the server),
     // a DATA-stage rejection means the message was already (partly) accepted — treating it as

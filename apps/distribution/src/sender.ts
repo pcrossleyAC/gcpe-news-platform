@@ -139,8 +139,13 @@ function isPermanentRecipientRejection(e: unknown): boolean {
 const CONNECTION_LEVEL_COMMANDS = new Set(["CONN", "EHLO", "HELO", "LHLO", "STARTTLS"]);
 
 function isConnectionLevelError(e: unknown): boolean {
-  const command = (e as { command?: unknown } | null)?.command;
-  return typeof command === "string" && CONNECTION_LEVEL_COMMANDS.has(command);
+  const err = e as { command?: unknown; code?: unknown } | null;
+  const command = err?.command;
+  if (typeof command === "string") return CONNECTION_LEVEL_COMMANDS.has(command);
+  // P2-R25 item 4: with the pool's re-queue off (transport.ts maxRequeues: 0), a connection
+  // closed before the server's greeting fails with code ECONNECTION and no command at all —
+  // the same outage-or-poison ambiguity, so it goes through the same verify() check.
+  return command === undefined && err?.code === "ECONNECTION";
 }
 
 /**
