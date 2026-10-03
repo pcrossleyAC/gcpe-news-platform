@@ -208,3 +208,30 @@ describe("createEventReceiver", () => {
     expect(res.status).toBe(401);
   });
 });
+
+describe("createEventReceiver with a handler resolver", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createTestDatabase({ migrationsFolder });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("asks the resolver with the whole envelope; undefined means ignored", async () => {
+    const seen: string[] = [];
+    const app = express();
+    app.use(
+      createEventReceiver({
+        db: tdb.db,
+        secrets: { core: "k", other: "o" },
+        handlers: (event) => (event.source === "core" ? async () => void seen.push(event.id) : undefined),
+      }),
+    );
+    const fromCore = makeEvent(1, "org:a");
+    expect((await post(app, fromCore)).body).toEqual({ outcome: "applied" });
+    const fromOther = { ...makeEvent(1, "org:b"), source: "other" };
+    expect((await post(app, fromOther, { source: "other", secret: "o" })).body).toEqual({ outcome: "ignored" });
+    expect(seen).toEqual([fromCore.id]);
+  });
+});

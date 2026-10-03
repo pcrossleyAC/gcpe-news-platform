@@ -8,10 +8,17 @@ import { inboxEvents, inboxPositions } from "./tables";
 
 export type EventHandler = (tx: Tx, event: EventEnvelope) => Promise<void>;
 
+/**
+ * Either a map of event type → handler, or a resolver that picks the handler for a whole
+ * (verified) envelope — e.g. to honour a type only from the source that owns it. No handler
+ * means the event is recorded with outcome "ignored".
+ */
+export type EventHandlers = Record<string, EventHandler> | ((event: EventEnvelope) => EventHandler | undefined);
+
 export interface ReceiverOptions {
   db: Db;
   secrets: Record<string, string>;
-  handlers: Record<string, EventHandler>;
+  handlers: EventHandlers;
   now?: () => number;
   onApplied?: (event: EventEnvelope) => void | Promise<void>;
 }
@@ -79,7 +86,7 @@ export function createEventReceiver(opts: ReceiverOptions): express.Router {
         if (pos && event.sequence <= pos.lastSequence) {
           outcome = "stale";
         } else {
-          const handler = opts.handlers[event.type];
+          const handler = typeof opts.handlers === "function" ? opts.handlers(event) : opts.handlers[event.type];
           if (handler) await handler(tx, event);
           outcome = handler ? "applied" : "ignored";
           await tx

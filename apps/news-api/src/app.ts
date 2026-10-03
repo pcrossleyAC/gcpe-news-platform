@@ -8,7 +8,7 @@ import { categoryRoutes } from "./http/v1/categories";
 import { postRoutes } from "./http/v1/posts";
 import { siteRoutes } from "./http/v1/site";
 import { subscribeRoutes, type SubscribeProxyOptions } from "./http/v1/subscribe";
-import { createProjectionHandlers } from "./projections";
+import { createSourceRestrictedHandlers } from "./projections";
 
 export type { SubscribeProxyOptions };
 
@@ -29,7 +29,7 @@ export function createApp(deps: AppDeps): express.Express {
 
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`), ...(deps.readinessChecks ?? [])]));
 
-  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: createProjectionHandlers() }));
+  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: createSourceRestrictedHandlers() }));
   if (deps.hubRouter) app.use(deps.hubRouter);
 
   const api = express.Router();

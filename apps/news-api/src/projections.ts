@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Tx } from "@gcpe/db-kit";
-import type { CategoryKind, EventHandler, OrgRecord, ReleaseRecord, SiteContentChanged, TermKind, TermRecord } from "@gcpe/events";
+import type { CategoryKind, EventEnvelope, EventHandler, OrgRecord, ReleaseRecord, SiteContentChanged, TermKind, TermRecord } from "@gcpe/events";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { parseOffsetDateTime } from "./time";
 import { notifyUpdate, type UpdateTarget } from "./updates/notify";
@@ -219,5 +219,26 @@ export function createProjectionHandlers(): Record<string, EventHandler> {
     "release.updated": (tx, e) => applyRelease(tx, e.data as ReleaseRecord),
     "release.unpublished": (tx, e) => unpublishRelease(tx, (e.data as { key: string }).key),
     "site.content.changed": (tx, e) => applySiteContent(tx, e.data as SiteContentChanged),
+  };
+}
+
+/**
+ * Which source may drive which event types (final review M1). Core owns reference data;
+ * NRMS owns releases and site content. A signed event of the wrong family from a source —
+ * e.g. an nrms-signed `org.deactivated` — is recorded as "ignored" rather than applied, so
+ * one source's credentials can't rewrite the other's data.
+ */
+export const SOURCE_EVENT_TYPES: Record<string, (type: string) => boolean> = {
+  core: (type) => /^(org|sector|theme|tag|service)\./.test(type),
+  nrms: (type) => type.startsWith("release.") || type === "site.content.changed",
+};
+
+/** The receiver's handler lookup: `createProjectionHandlers()`, restricted by event.source. */
+export function createSourceRestrictedHandlers(): (event: EventEnvelope) => EventHandler | undefined {
+  const handlers = createProjectionHandlers();
+  return (event) => {
+    const allowed = Object.hasOwn(SOURCE_EVENT_TYPES, event.source) ? SOURCE_EVENT_TYPES[event.source] : undefined;
+    if (!allowed?.(event.type) || !Object.hasOwn(handlers, event.type)) return undefined;
+    return handlers[event.type];
   };
 }

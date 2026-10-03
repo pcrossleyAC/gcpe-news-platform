@@ -106,3 +106,47 @@ describe("problemNotFound", () => {
     expect(res.body.traceId).toMatch(/^\|[0-9a-f]{8}-[0-9a-f]{8}\.$/);
   });
 });
+
+// Final review M1: event types are restricted by source — Core owns reference data, NRMS owns
+// releases and site content. A correctly-signed event of the other source's family is
+// recorded as "ignored", never applied.
+describe("event source restrictions", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  const V = "api-version=1.0";
+
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+    app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS });
+    expect((await sendEvent(app, envelope("core", "org.upserted", "org:health", org("health", 0, null)))).outcome).toBe("applied");
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("ignores an nrms-signed org.deactivated", async () => {
+    const res = await sendEvent(app, envelope("nrms", "org.deactivated", "org:health", { key: "health" }));
+    expect(res.outcome).toBe("ignored");
+    expect((await request(app).get(`/api/Ministries?${V}`)).body.map((m: { key: string }) => m.key)).toEqual(["health"]);
+  });
+
+  it("ignores an nrms-signed org.upserted / sector.upserted", async () => {
+    expect((await sendEvent(app, envelope("nrms", "org.upserted", "org:evil", org("evil", 0, null)))).outcome).toBe("ignored");
+    const sector = { kind: "sector", key: "evil", displayName: "Evil", sortOrder: 0, isActive: true, social: base.social, updatedAt: base.updatedAt };
+    expect((await sendEvent(app, envelope("nrms", "sector.upserted", "sector:evil", sector))).outcome).toBe("ignored");
+    expect((await request(app).get(`/api/Ministries/evil?${V}`)).text).toBe("");
+  });
+
+  it("ignores core-signed release and site-content events", async () => {
+    const site = { entity: "categoryFeatures", kind: "ministries", key: "health", topPostKey: "T", featurePostKey: "F" };
+    expect((await sendEvent(app, envelope("core", "site.content.changed", "site:feature:ministries:health", site))).outcome).toBe("ignored");
+    expect((await sendEvent(app, envelope("core", "release.unpublished", "release:x", { key: "x" }))).outcome).toBe("ignored");
+    expect((await request(app).get(`/api/Ministries/health?${V}`)).body.topPostKey).toBeNull();
+  });
+
+  it("still applies each source's own families", async () => {
+    const site = { entity: "categoryFeatures", kind: "ministries", key: "health", topPostKey: "T", featurePostKey: "F" };
+    expect((await sendEvent(app, envelope("nrms", "site.content.changed", "site:feature:ministries:health:2", site))).outcome).toBe("applied");
+    expect((await sendEvent(app, envelope("core", "org.deactivated", "org:health", { key: "health" }))).outcome).toBe("applied");
+  });
+});
