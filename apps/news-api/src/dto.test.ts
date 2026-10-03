@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { CategoryRow, PostRow } from "./db/schema";
-import { ministerEmailHtml, toCategoryDto, toMinisterDto, toMinistryDto, toPostDto, toSlideDto } from "./dto";
+import type { CategoryRow, HomeRow, PostRow, ResourceLinkRow } from "./db/schema";
+import { ministerEmailHtml, toCategoryDto, toHomeDto, toKeyValue, toMinisterDto, toMinistryDto, toPostDto, toResourceLinkDto, toSlideDto } from "./dto";
 
 const tz = "America/Vancouver";
 
@@ -72,5 +72,63 @@ describe("dto", () => {
     );
     expect(dto.image).toBe("iVBORw0KGgo=");
     expect(dto.key).toBe("f9adfdc2-5933-4c38-a390-a18077acb213");
+  });
+
+  it("serializes a slide with a null image as null", () => {
+    const dto = toSlideDto(
+      { id: "f9adfdc2-5933-4c38-a390-a18077acb213", sortIndex: 0, headline: "h", summary: "s", actionLabel: "READ MORE", actionUri: "u", image: null, imageType: null, facebookPostUri: null, justify: "right", timestamp: new Date("2026-09-09T23:31:07.521Z") },
+      tz,
+    );
+    expect(dto.image).toBeNull();
+  });
+
+  it("serializes an absent home row as an all-null home at the epoch", () => {
+    expect(toHomeDto(undefined, tz)).toEqual({
+      liveWebcastFlashMediaManifestUrl: null,
+      liveWebcastM3uPlaylist: null,
+      granville: null,
+      kind: "home",
+      name: null,
+      topPostKey: null,
+      featurePostKey: null,
+      key: "default",
+      timestamp: "1969-12-31T16:00:00-08:00",
+    });
+  });
+
+  it("serializes a home row, mapping every field", () => {
+    const row: HomeRow = {
+      key: "default",
+      topPostKey: "2026WLRS0034-001107",
+      featurePostKey: "2026HLTH0085-001117",
+      liveWebcastFlashMediaManifestUrl: "https://stream/manifest.m3u8",
+      liveWebcastM3uPlaylist: "https://stream/playlist.m3u8",
+      granville: "g",
+      timestamp: new Date("2026-10-02T17:34:49.085Z"),
+    };
+    expect(toHomeDto(row, tz)).toEqual({
+      liveWebcastFlashMediaManifestUrl: "https://stream/manifest.m3u8",
+      liveWebcastM3uPlaylist: "https://stream/playlist.m3u8",
+      granville: "g",
+      kind: "home",
+      name: null,
+      topPostKey: "2026WLRS0034-001107",
+      featurePostKey: "2026HLTH0085-001117",
+      key: "default",
+      timestamp: "2026-10-02T10:34:49.085-07:00",
+    });
+  });
+
+  it("maps a post to a key/value pair in key order", () => {
+    const kv = toKeyValue({ key: "K", kind: "stories" });
+    expect(Object.keys(kv)).toEqual(["key", "value"]);
+    expect(kv).toEqual({ key: "K", value: "stories" });
+  });
+
+  it("serializes a resource link in key order", () => {
+    const row: ResourceLinkRow = { sortIndex: 0, text: "Office of the Premier", uri: "/office-of-the-premier", timestamp: new Date("2026-10-03T08:27:16.941Z") };
+    const dto = toResourceLinkDto(row, tz);
+    expect(Object.keys(dto)).toEqual(["uri", "key", "timestamp"]);
+    expect(dto).toEqual({ uri: "/office-of-the-premier", key: "Office of the Premier", timestamp: "2026-10-03T01:27:16.941-07:00" });
   });
 });

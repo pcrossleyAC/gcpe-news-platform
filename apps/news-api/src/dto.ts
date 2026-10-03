@@ -120,7 +120,7 @@ export function toSlideDto(s: SlideRow, tz: string) {
     summary: s.summary,
     actionLabel: s.actionLabel,
     actionUri: s.actionUri,
-    image: s.image ? s.image.toString("base64") : null,
+    image: s.image === null ? null : s.image.toString("base64"),
     facebookPostUri: s.facebookPostUri,
     justify: s.justify,
     imageType: s.imageType,
