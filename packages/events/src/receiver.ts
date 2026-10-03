@@ -20,12 +20,12 @@ type Outcome = "applied" | "ignored" | "stale" | "duplicate";
 
 export function createEventReceiver(opts: ReceiverOptions): express.Router {
   const router = express.Router();
-  router.post("/events", express.text({ type: "application/json", limit: "25mb" }), async (req, res) => {
+  router.post("/events", express.text({ type: "application/json", limit: "1mb" }), async (req, res) => {
     const body = typeof req.body === "string" ? req.body : "";
     const source = req.header("x-event-source");
-    const secret = source ? opts.secrets[source] : undefined;
+    const secret = source && Object.hasOwn(opts.secrets, source) ? opts.secrets[source] : undefined;
     const valid =
-      secret !== undefined &&
+      typeof secret === "string" &&
       verifySignature({
         secret,
         timestamp: req.header("x-event-timestamp"),
@@ -52,6 +52,15 @@ export function createEventReceiver(opts: ReceiverOptions): express.Router {
           .returning({ id: inboxEvents.eventId });
         if (inserted.length === 0) return "duplicate";
 
+        // Ensure a position row exists before locking it: a bare SELECT ... FOR UPDATE
+        // locks nothing when no row exists yet, so two concurrent first-ever events for
+        // the same aggregate would both read "no prior position" and both apply out of
+        // order. Sequences start at 1, so lastSequence 0 means "no prior events".
+        await tx
+          .insert(inboxPositions)
+          .values({ source: event.source, aggregateId: event.aggregateId, lastSequence: 0 })
+          .onConflictDoNothing();
+
         const [pos] = await tx
           .select()
           .from(inboxPositions)
@@ -76,7 +85,13 @@ export function createEventReceiver(opts: ReceiverOptions): express.Router {
         await tx.update(inboxEvents).set({ outcome }).where(eq(inboxEvents.eventId, event.id));
         return outcome;
       });
-      if (outcome === "applied" && opts.onApplied) await opts.onApplied(event);
+      if (outcome === "applied" && opts.onApplied) {
+        try {
+          await opts.onApplied(event);
+        } catch (e) {
+          console.error("[events] onApplied failed", event.type, event.id, e);
+        }
+      }
       res.status(200).json({ outcome });
     } catch (e) {
       console.error("[events] handler failed", event.type, event.id, e);

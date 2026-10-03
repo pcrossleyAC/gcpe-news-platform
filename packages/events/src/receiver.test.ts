@@ -13,16 +13,20 @@ function makeEvent(seq: number, aggregateId = "org:health", type = "org.deactiva
   return { id: randomUUID(), type, version: 1, source: "core", aggregateId, sequence: seq, occurredAt: new Date().toISOString(), correlationId: randomUUID(), data: { key: "health" } };
 }
 
-function post(app: express.Express, event: object, opts: { secret?: string; timestamp?: string } = {}) {
+function post(app: express.Express, event: object, opts: { secret?: string; timestamp?: string; source?: string } = {}) {
   const body = JSON.stringify(event);
   const ts = opts.timestamp ?? new Date().toISOString();
   return request(app)
     .post("/events")
     .set("content-type", "application/json")
-    .set("x-event-source", "core")
+    .set("x-event-source", opts.source ?? "core")
     .set("x-event-timestamp", ts)
     .set("x-signature", signPayload(opts.secret ?? "k", ts, body))
     .send(body);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 describe("createEventReceiver", () => {
@@ -30,6 +34,9 @@ describe("createEventReceiver", () => {
   let app: express.Express;
   let applied: string[] = [];
   let failNext = false;
+  let raceOrder: number[] = [];
+  let onAppliedCalls: string[] = [];
+  let onAppliedShouldThrow = false;
 
   beforeAll(async () => {
     tdb = await createTestDatabase({ migrationsFolder });
@@ -41,6 +48,12 @@ describe("createEventReceiver", () => {
         secrets: { core: "k" },
         handlers: {
           "org.deactivated": async (tx, event) => {
+            if (event.aggregateId === "org:race") {
+              await sleep(300);
+              await tx.execute(sql`INSERT INTO side_effects (event_id) VALUES (${event.id})`);
+              raceOrder.push(event.sequence);
+              return;
+            }
             await tx.execute(sql`INSERT INTO side_effects (event_id) VALUES (${event.id})`);
             if (failNext) {
               failNext = false;
@@ -48,6 +61,10 @@ describe("createEventReceiver", () => {
             }
             applied.push(event.id);
           },
+        },
+        onApplied: async (event) => {
+          onAppliedCalls.push(event.id);
+          if (onAppliedShouldThrow) throw new Error("onApplied boom");
         },
       }),
     );
@@ -57,6 +74,9 @@ describe("createEventReceiver", () => {
   });
   beforeEach(() => {
     applied = [];
+    raceOrder = [];
+    onAppliedCalls = [];
+    onAppliedShouldThrow = false;
   });
 
   it("applies a valid event once and reports duplicates", async () => {
@@ -99,5 +119,51 @@ describe("createEventReceiver", () => {
 
   it("records events with no handler as ignored", async () => {
     expect((await post(app, makeEvent(1, "x:1", "future.thing"))).body).toEqual({ outcome: "ignored" });
+  });
+
+  it("concurrent first events for a new aggregate apply in sequence order, never out of order", async () => {
+    const seq5 = makeEvent(5, "org:race");
+    const seq3 = makeEvent(3, "org:race");
+    const [r5, r3] = await Promise.all([post(app, seq5), post(app, seq3)]);
+
+    if (raceOrder.length === 1) {
+      // Whichever request's transaction created the position row first serialized the
+      // other behind it; since 5 is the larger sequence, it can never be stale.
+      expect(raceOrder).toEqual([5]);
+      expect(r5.body.outcome).toBe("applied");
+      expect(r3.body.outcome).toBe("stale");
+    } else {
+      // Both applied only if 3 ran to completion (and committed its position) before 5
+      // started — the side effect for 3 must never land after 5's.
+      expect(raceOrder).toEqual([3, 5]);
+      expect(r5.body.outcome).toBe("applied");
+      expect(r3.body.outcome).toBe("applied");
+    }
+  });
+
+  it("onApplied throwing still returns 200 applied and does not block the duplicate check", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      onAppliedShouldThrow = true;
+      const e = makeEvent(1, "org:onapplied-fail");
+      const res = await post(app, e);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ outcome: "applied" });
+      expect(onAppliedCalls).toEqual([e.id]);
+      // The event is already committed as applied, so a retry is a duplicate — onApplied
+      // does not rerun just because it failed last time.
+      onAppliedShouldThrow = false;
+      const retry = await post(app, e);
+      expect(retry.body).toEqual({ outcome: "duplicate" });
+      expect(onAppliedCalls).toEqual([e.id]);
+    } finally {
+      onAppliedShouldThrow = false;
+      errSpy.mockRestore();
+    }
+  });
+
+  it("rejects a prototype-chain source like 'constructor' with 401 instead of 500", async () => {
+    const res = await post(app, makeEvent(1, "org:proto"), { source: "constructor" });
+    expect(res.status).toBe(401);
   });
 });
