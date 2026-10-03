@@ -7,8 +7,9 @@ import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
 import { MAX_EVENT_BYTES } from "./envelope";
 import { createEventReceiver } from "./receiver";
 import { signPayload } from "./signing";
+import { fileURLToPath } from "node:url";
 
-const migrationsFolder = new URL("../test/migrations", import.meta.url).pathname;
+const migrationsFolder = fileURLToPath(new URL("../test/migrations", import.meta.url));
 
 function makeEvent(seq: number, aggregateId = "org:health", type = "org.deactivated") {
   return { id: randomUUID(), type, version: 1, source: "core", aggregateId, sequence: seq, occurredAt: new Date().toISOString(), correlationId: randomUUID(), data: { key: "health" } };

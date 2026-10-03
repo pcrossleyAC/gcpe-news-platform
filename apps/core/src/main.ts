@@ -5,6 +5,7 @@ import { closeServer, createShutdown } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
+import { fileURLToPath } from "node:url";
 
 const env = parseEnv(
   z.object({
@@ -13,7 +14,7 @@ const env = parseEnv(
     ENTRA_TENANT_ID: z.string().min(1),
     AUTH_AUDIENCE: z.string().min(1),
     EVENT_SUBSCRIBERS: z.string().optional(),
-    MIGRATIONS_FOLDER: z.string().default(new URL("../migrations", import.meta.url).pathname),
+    MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   }),
 );
 

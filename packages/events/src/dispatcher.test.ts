@@ -8,8 +8,9 @@ import { enqueueEvent } from "./publisher";
 import { verifySignature } from "./signing";
 import type { SubscriberConfig } from "./subscribers";
 import { outboxDeliveries } from "./tables";
+import { fileURLToPath } from "node:url";
 
-const migrationsFolder = new URL("../test/migrations", import.meta.url).pathname;
+const migrationsFolder = fileURLToPath(new URL("../test/migrations", import.meta.url));
 
 describe("dispatchOnce", () => {
   let tdb: TestDatabase;

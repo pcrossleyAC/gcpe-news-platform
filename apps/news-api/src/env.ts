@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { fileURLToPath } from "node:url";
 
 // Parses and validates EVENT_SECRETS inside the schema itself (rather than leaving it as a
 // raw string for main.ts to JSON.parse later) so a malformed value — invalid JSON, or valid
@@ -27,7 +28,7 @@ const eventSecrets = z
 export const newsApiEnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   PORT: z.coerce.number().int().default(3002),
-  TENANT_CONFIG: z.string().default(new URL("../../../config/tenants/bc.json", import.meta.url).pathname),
+  TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
   EVENT_SECRETS: eventSecrets,
   NOD_BASE_URL: z.string().url().optional(),
   NOD_TOKEN_URL: z.string().url().optional(),
@@ -38,7 +39,7 @@ export const newsApiEnvSchema = z.object({
   SUBSCRIBE_CLIENT_IP_HEADER: z.string().min(1).optional(),
   UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(120),
   UPDATES_MAX_CONNECTIONS: z.coerce.number().int().positive().default(5000),
-  MIGRATIONS_FOLDER: z.string().default(new URL("../migrations", import.meta.url).pathname),
+  MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
 });
 
 export type NewsApiEnv = z.infer<typeof newsApiEnvSchema>;

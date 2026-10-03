@@ -1,3 +1,6 @@
+import { existsSync } from "node:fs";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { parseEnv } from "@gcpe/config";
 import { describe, expect, it } from "vitest";
 import { newsApiEnvSchema } from "./env";
@@ -56,5 +59,22 @@ describe("newsApiEnvSchema SUBSCRIBE_CLIENT_IP_HEADER", () => {
     expect(parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv).SUBSCRIBE_CLIENT_IP_HEADER).toBeUndefined();
     const env = parseEnv(newsApiEnvSchema, { ...BASE, SUBSCRIBE_CLIENT_IP_HEADER: "x-client-ip" } as unknown as NodeJS.ProcessEnv);
     expect(env.SUBSCRIBE_CLIENT_IP_HEADER).toBe("x-client-ip");
+  });
+});
+
+// Final review D2: path defaults are derived with fileURLToPath, not URL#pathname — the latter
+// leaves percent-encoding in place ("/a%20b/…" for a checkout under "/a b/"), producing a path
+// that doesn't exist.
+describe("newsApiEnvSchema path defaults", () => {
+  it("resolve to existing filesystem paths", () => {
+    const env = parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv);
+    expect(existsSync(env.TENANT_CONFIG)).toBe(true);
+    expect(existsSync(join(env.MIGRATIONS_FOLDER, "meta", "_journal.json"))).toBe(true);
+  });
+
+  it("fileURLToPath decodes what URL#pathname would leave percent-encoded", () => {
+    const url = new URL("../migrations", "file:///srv/my%20checkout/apps/news-api/src/env.ts");
+    expect(url.pathname).toBe("/srv/my%20checkout/apps/news-api/migrations");
+    expect(fileURLToPath(url)).toBe("/srv/my checkout/apps/news-api/migrations");
   });
 });

@@ -4,6 +4,7 @@ import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createMssqlSource } from "@gcpe/legacy-import";
 import { importOptionsEnvSchema, parseImportCliOptions } from "./options";
 import { importLegacyNews } from "./run";
+import { fileURLToPath } from "node:url";
 
 const env = parseEnv(
   z.object({
@@ -18,7 +19,7 @@ const env = parseEnv(
 const options = parseImportCliOptions(process.argv.slice(2), env);
 
 const { db, pool } = createDb(env.DATABASE_URL);
-await runMigrations(db, new URL("../../migrations", import.meta.url).pathname);
+await runMigrations(db, fileURLToPath(new URL("../../migrations", import.meta.url)));
 const source = await createMssqlSource({
   server: env.LEGACY_SQL_SERVER,
   database: env.LEGACY_SQL_DATABASE,

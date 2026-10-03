@@ -8,8 +8,9 @@ import { dispatchOnce } from "./dispatcher";
 import { enqueueEvent } from "./publisher";
 import { createEventReceiver } from "./receiver";
 import type { SubscriberConfig } from "./subscribers";
+import { fileURLToPath } from "node:url";
 
-const migrationsFolder = new URL("../test/migrations", import.meta.url).pathname;
+const migrationsFolder = fileURLToPath(new URL("../test/migrations", import.meta.url));
 
 describe("producer → consumer round trip", () => {
   let producer: TestDatabase;

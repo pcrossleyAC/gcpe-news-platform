@@ -3,10 +3,11 @@ import type express from "express";
 import request from "supertest";
 import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
 import { signPayload } from "@gcpe/events";
+import { fileURLToPath } from "node:url";
 
 export const TZ = "America/Vancouver";
 export const EVENT_SECRETS = { core: "core-secret", nrms: "nrms-secret" } as const;
-export const newsMigrations = new URL("../migrations", import.meta.url).pathname;
+export const newsMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
 
 export function createNewsTestDb(): Promise<TestDatabase> {
   return createTestDatabase({ migrationsFolder: newsMigrations });

@@ -3,6 +3,7 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadTenantConfig } from "./tenant";
+import { fileURLToPath } from "node:url";
 
 function writeTemp(content: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), "tenant-"));
@@ -23,7 +24,7 @@ const valid = {
 
 describe("loadTenantConfig", () => {
   it("loads the committed BC tenant file", () => {
-    const cfg = loadTenantConfig(new URL("../../../config/tenants/bc.json", import.meta.url).pathname);
+    const cfg = loadTenantConfig(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url)));
     expect(cfg.tenantId).toBe("bc");
     expect(cfg.timeZone).toBe("America/Vancouver");
   });

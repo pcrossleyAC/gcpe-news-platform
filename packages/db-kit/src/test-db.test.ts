@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { adminUrl, createTestDatabase, type TestDatabase } from "./test-db";
+import { fileURLToPath } from "node:url";
 
-const migrationsFolder = new URL("../test/migrations", import.meta.url).pathname;
-const badMigrationsFolder = new URL("../test/bad-migrations", import.meta.url).pathname;
+const migrationsFolder = fileURLToPath(new URL("../test/migrations", import.meta.url));
+const badMigrationsFolder = fileURLToPath(new URL("../test/bad-migrations", import.meta.url));
 
 async function countDatabasesWithPrefix(prefix: string): Promise<number> {
   const admin = new pg.Client({ connectionString: adminUrl() });

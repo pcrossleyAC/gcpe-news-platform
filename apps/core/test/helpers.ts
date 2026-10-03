@@ -1,7 +1,8 @@
 import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
 import type { OrgInput } from "../src/services/organizations";
+import { fileURLToPath } from "node:url";
 
-export const coreMigrations = new URL("../migrations", import.meta.url).pathname;
+export const coreMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
 
 export function createCoreTestDb(): Promise<TestDatabase> {
   return createTestDatabase({ migrationsFolder: coreMigrations });

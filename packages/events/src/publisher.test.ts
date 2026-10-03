@@ -5,8 +5,9 @@ import { EventTooLargeError, MAX_EVENT_BYTES } from "./envelope";
 import { enqueueEvent } from "./publisher";
 import { parseSubscribers } from "./subscribers";
 import { outboxDeliveries, outboxEvents } from "./tables";
+import { fileURLToPath } from "node:url";
 
-const migrationsFolder = new URL("../test/migrations", import.meta.url).pathname;
+const migrationsFolder = fileURLToPath(new URL("../test/migrations", import.meta.url));
 const subs = parseSubscribers(
   JSON.stringify([
     { name: "news-api", url: "http://news-api/events", secret: "a", types: ["org.upserted"] },

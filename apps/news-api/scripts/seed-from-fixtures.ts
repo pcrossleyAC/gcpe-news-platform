@@ -5,11 +5,12 @@ import { parseEvent } from "@gcpe/events";
 import { loadLiveFixtures } from "../src/dev/fixtures";
 import { buildFixtureEvents } from "../src/dev/fixture-world";
 import { createProjectionHandlers } from "../src/projections";
+import { fileURLToPath } from "node:url";
 
 const url = process.env.DATABASE_URL;
 if (!url) throw new Error("DATABASE_URL is required");
 const { db, pool } = createDb(url);
-await runMigrations(db, new URL("../migrations", import.meta.url).pathname);
+await runMigrations(db, fileURLToPath(new URL("../migrations", import.meta.url)));
 const handlers = createProjectionHandlers();
 let n = 0;
 for (const e of buildFixtureEvents(loadLiveFixtures())) {

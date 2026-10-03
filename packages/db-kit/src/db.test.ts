@@ -3,8 +3,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import pg from "pg";
 import { createDb, runMigrations } from "./db";
 import { adminUrl, withAdmin } from "./test-db";
+import { fileURLToPath } from "node:url";
 
-const migrationsFolder = new URL("../test/migrations", import.meta.url).pathname;
+const migrationsFolder = fileURLToPath(new URL("../test/migrations", import.meta.url));
 
 describe("runMigrations", () => {
   const name = `migrate_${randomUUID().replace(/-/g, "").slice(0, 16)}`;
