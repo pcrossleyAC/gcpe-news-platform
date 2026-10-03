@@ -1,0 +1,19 @@
+{
+  "name": "@gcpe/nrms",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "db:generate": "drizzle-kit generate",
+    "build": "node ../../scripts/build-app.mjs apps/nrms"
+  },
+  "dependencies": {
+    "@gcpe/db-kit": "0.0.0",
+    "@gcpe/events": "0.0.0",
+    "drizzle-orm": "^0.45.2",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.9"
+  }
+}
