@@ -644,6 +644,53 @@ describe("sendDue", () => {
     }
   });
 
+  // P2-R25 item 3: an outage deferral stops the run and releases the rest of its claim — so
+  // without pacing, the very next tick (2s later in production) claims the next row and hits
+  // the still-down server again, every tick, for as long as the outage lasts.
+  it("after an outage deferral, startSender pauses for that row's backoff instead of retrying the server every tick, then resumes", async () => {
+    await createBatch(
+      tdb.db,
+      "app",
+      { ...sampleMessageRequest, recipients: Array.from({ length: 5 }, (_, i) => ({ email: `outage${i}@example.com`, substitutions: {} })) },
+      internalDomains,
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let down = true;
+    let sendCalls = 0;
+    const stubTransport = {
+      sendMail: async () => {
+        sendCalls++;
+        if (down) throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED", command: "CONN" });
+        return {};
+      },
+      verify: async () => {
+        if (down) throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+        return true;
+      },
+    } as unknown as Transporter;
+    let fakeMonotonicMs = 0;
+    const stop = startSender({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], intervalMs: 10, cooldownClock: () => fakeMonotonicMs });
+    try {
+      await vi.waitFor(() => expect(sendCalls).toBe(1));
+      await sleep(200); // ~20 ticks: without pacing, each would claim and try another row
+      expect(sendCalls).toBe(1);
+
+      // The first deferral's backoff (60s) elapses and the server is back: sending resumes.
+      down = false;
+      fakeMonotonicMs += 60_000;
+      await vi.waitFor(async () => {
+        const rows = await tdb.db.select().from(messages);
+        expect(rows.filter((r) => r.status === "sent")).toHaveLength(4); // the deferred row isn't due for 60s yet
+      });
+      expect(sendCalls).toBe(5);
+    } finally {
+      await stop();
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
   it("skips rows whose ownership is stolen before their turn to send (the per-message re-assert)", async () => {
     // A stub transport (no real SMTP) so the "another worker reclaimed this row" race can be
     // simulated deterministically: its 2nd call reaches into the DB directly and reclaims every

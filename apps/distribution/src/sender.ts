@@ -235,7 +235,15 @@ async function releaseUnreachedRows(db: Db, ids: string[], lockToken: LockToken)
  * extra round trip per message. `opts.now`, a test hook, replaces SQL `now()` with its value in
  * every statement this call makes.
  */
-export async function sendDue(opts: SendOptions): Promise<{ sent: number; retried: number; failed: number }> {
+export async function sendDue(opts: SendOptions): Promise<SendResult> {
+  return (await runSend(opts)).result;
+}
+
+type SendResult = { sent: number; retried: number; failed: number };
+
+/** sendDue's body, also reporting (for startSender's outage pacing) the backoff given to a row
+ * deferred because the SMTP server/config itself was unavailable, if this run hit one. */
+async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageBackoffMs?: number }> {
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
   const perMessageMs = opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS;
   const verifyTimeoutMs = opts.verifyTimeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
@@ -276,6 +284,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
   const lockToken = rows[0]?.lock_token ?? "";
 
   const result = { sent: 0, retried: 0, failed: 0 };
+  let outageBackoffMs: number | undefined;
   let loggedConfigError = false;
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i]!;
@@ -371,6 +380,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
     // back for that specific misconfiguration).
     if (senderLevel) {
       const deferrals = row.deferrals + 1;
+      outageBackoffMs = backoffMs(deferrals);
       const res = await opts.db
         .update(messages)
         .set({ deferrals, nextAttemptAt: sqlNowPlus(backoffMs(deferrals), opts.now), lockedUntil: null, lastError, originalRecipient })
@@ -400,6 +410,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
       const serverHealthy = await isTransportHealthy(opts.transport, verifyTimeoutMs);
       if (!serverHealthy) {
         const deferrals = row.deferrals + 1;
+        outageBackoffMs = backoffMs(deferrals);
         const res = await opts.db
           .update(messages)
           .set({ deferrals, nextAttemptAt: sqlNowPlus(backoffMs(deferrals), opts.now), lockedUntil: null, lastError, originalRecipient })
@@ -437,10 +448,21 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
       if (res.rowCount) result.retried++;
     }
   }
-  return result;
+  return { result, outageBackoffMs };
 }
 
-export function startSender(opts: SendOptions & { intervalMs?: number }): () => Promise<void> {
+/**
+ * Runs sendDue every `intervalMs`, one run at a time.
+ *
+ * P2-R25 item 3, outage pacing: a run that defers a row because the SMTP server/config itself
+ * is unavailable stops and releases the rest of its claim — so without pacing, the next tick
+ * would claim the next row and hit the still-down server again, every tick, for the length of
+ * the outage. Instead, the sender then skips ticks for that row's deferral backoff (an
+ * in-memory cooldown, per process); any run that doesn't hit an outage — a successful one in
+ * particular — clears it. `cooldownClock` (monotonic ms, default `performance.now`) is a test
+ * hook.
+ */
+export function startSender(opts: SendOptions & { intervalMs?: number; cooldownClock?: () => number }): () => Promise<void> {
   // Validated eagerly, at call time: a misconfigured lockMs/lockMarginMs would otherwise only
   // surface once the first tick fires, inside the interval's own catch — logged and silently
   // retried forever rather than failing the process fast and loudly at startup.
@@ -452,12 +474,22 @@ export function startSender(opts: SendOptions & { intervalMs?: number }): () => 
     lockMarginMs: opts.lockMarginMs,
   });
 
+  const monotonicNow = opts.cooldownClock ?? (() => performance.now());
   let stopped = false;
   let running: Promise<unknown> | null = null;
+  let cooldownUntil = 0;
   const sendOpts: SendOptions = { ...opts, stopRequested: () => stopped };
   const timer = setInterval(() => {
-    if (stopped || running) return;
-    running = sendDue(sendOpts)
+    if (stopped || running || monotonicNow() < cooldownUntil) return;
+    running = runSend(sendOpts)
+      .then(({ outageBackoffMs }) => {
+        if (outageBackoffMs === undefined) {
+          cooldownUntil = 0;
+          return;
+        }
+        cooldownUntil = monotonicNow() + outageBackoffMs;
+        console.warn(`[distribution] SMTP unavailable: pausing sends for ${Math.round(outageBackoffMs / 1000)}s`);
+      })
       .catch((e) => console.error("[distribution] send failed", e))
       .finally(() => {
         running = null;
