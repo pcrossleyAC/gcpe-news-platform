@@ -162,3 +162,53 @@ describe("release offsets", () => {
     expect(res.body.publishDate).toBe("2026-10-01T10:00:00-07:00");
   });
 });
+
+// Final review D4: ordering ties (same publishDate) and a reference shared by several posts
+// must resolve deterministically, independent of the database's default collation.
+//
+// Local test DBs on this machine are created with datcollate "C" (and macOS libc's en_US
+// collation is effectively byte order too), so an un-collated `ORDER BY key` would happen to
+// match `collate "C"` here and the tests below couldn't tell them apart. To make them
+// discriminating anyway, posts.key is switched to the ICU en-US collation in this throwaway
+// DB, where "TIE-B" sorts after "tie-a" (C puts uppercase first).
+describe("deterministic ordering", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  const PD = "2026-10-01T10:00:00-07:00";
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+    await tdb.pool.query(`ALTER TABLE posts ALTER COLUMN key TYPE text COLLATE "en-US-x-icu"`);
+    app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS });
+    for (const r of [
+      rel("tie-a", PD),
+      rel("TIE-B", PD),
+      rel("tie-c", PD),
+      rel("ref-a", "2026-09-01T10:00:00-07:00", { reference: "NEWS-SHARED" }),
+      rel("REF-B", "2026-09-01T10:00:00-07:00", { reference: "NEWS-SHARED" }),
+      rel("ref-old", "2026-08-01T10:00:00-07:00", { reference: "NEWS-SHARED" }),
+    ]) {
+      await sendEvent(app, envelope("nrms", "release.published", `release:${r.key}`, r));
+    }
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("the ICU collation really does order these keys differently from C", async () => {
+    const { rows } = await tdb.pool.query<{ key: string }>("SELECT key FROM posts WHERE key ILIKE 'tie-%' ORDER BY key DESC");
+    expect(rows.map((r) => r.key)).toEqual(["tie-c", "TIE-B", "tie-a"]);
+  });
+
+  it("breaks same-publishDate ties by key, byte order (collate C) descending", async () => {
+    const res = await request(app).get(`/api/Posts/Keys/home/default?count=3&${V}`);
+    expect(res.body.map((p: { key: string }) => p.key)).toEqual(["tie-c", "tie-a", "TIE-B"]);
+    const latest = await request(app).get(`/api/Posts/Latest/home/default?count=3&${V}`);
+    expect(latest.body.map((p: { key: string }) => p.key)).toEqual(["tie-c", "tie-a", "TIE-B"]);
+  });
+
+  it("resolves a shared reference to the newest post, then the same key tie-break, every time", async () => {
+    for (let i = 0; i < 5; i++) {
+      expect((await request(app).get(`/api/Posts/Keys/news-shared?${V}`)).body).toEqual({ key: "ref-a", value: "releases" });
+    }
+  });
+});
