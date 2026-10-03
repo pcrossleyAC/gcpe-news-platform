@@ -16,6 +16,7 @@ describe("dispatchOnce", () => {
   let server: Server;
   let received: { headers: Record<string, string | string[] | undefined>; body: string }[] = [];
   let respondWith = 200;
+  let respondDelayMs = 0;
   let subs: SubscriberConfig[];
 
   beforeAll(async () => {
@@ -25,8 +26,12 @@ describe("dispatchOnce", () => {
       req.on("data", (c) => (body += c));
       req.on("end", () => {
         received.push({ headers: req.headers, body });
-        res.statusCode = respondWith;
-        res.end();
+        const send = () => {
+          res.statusCode = respondWith;
+          res.end();
+        };
+        if (respondDelayMs > 0) setTimeout(send, respondDelayMs);
+        else send();
       });
     });
     await new Promise<void>((r) => server.listen(0, r));
@@ -40,6 +45,7 @@ describe("dispatchOnce", () => {
   beforeEach(async () => {
     received = [];
     respondWith = 200;
+    respondDelayMs = 0;
     await tdb.pool.query("DELETE FROM outbox_events");
   });
 
@@ -88,6 +94,43 @@ describe("dispatchOnce", () => {
     expect(results.reduce((n, r) => n + r.delivered, 0)).toBe(10);
     expect(new Set(received.map((r) => r.headers["x-event-id"])).size).toBe(10);
     expect(received).toHaveLength(10);
+  });
+
+  it("does not overwrite a row whose lock was stolen by another replica mid-delivery", async () => {
+    respondDelayMs = 300;
+    const env = await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: "org:stolen", data: { key: "s" } }, subs);
+
+    const dispatchPromise = dispatchOnce({ db: tdb.db, subscribers: subs, timeoutMs: 5_000 });
+    // Give the claim UPDATE + outgoing fetch time to happen before we steal the lock.
+    await new Promise((r) => setTimeout(r, 100));
+    const stolenLock = new Date(Date.now() + 999_000);
+    await tdb.pool.query("UPDATE outbox_deliveries SET locked_until = $1 WHERE event_id = $2", [stolenLock, env.id]);
+
+    const result = await dispatchPromise;
+    expect(result).toEqual({ delivered: 0, retried: 0, dead: 0 });
+    expect(received).toHaveLength(1); // the HTTP request still went out
+
+    const [d] = await tdb.db.select().from(outboxDeliveries).where(eq(outboxDeliveries.eventId, env.id));
+    expect(d!.status).toBe("pending");
+    expect(d!.attempts).toBe(0);
+    expect(d!.lastError).toBeNull();
+    expect(d!.lockedUntil?.getTime()).toBe(stolenLock.getTime());
+  });
+
+  it("retries an unconfigured subscriber like any other failure, then dead-letters past maxAge", async () => {
+    const ghost: SubscriberConfig = { name: "ghost", url: "http://127.0.0.1:1/events", secret: "k", types: ["*"] };
+    const env = await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: "org:ghost", data: { key: "g" } }, [ghost]);
+
+    const now = new Date();
+    expect(await dispatchOnce({ db: tdb.db, subscribers: [], now: () => now })).toEqual({ delivered: 0, retried: 1, dead: 0 });
+    const [d] = await tdb.db.select().from(outboxDeliveries).where(eq(outboxDeliveries.eventId, env.id));
+    expect(d!.status).toBe("pending");
+    expect(d!.attempts).toBe(1);
+    expect(d!.nextAttemptAt.getTime()).toBe(now.getTime() + backoffMs(1));
+    expect(d!.lastError).toMatch(/not configured/);
+
+    const later = new Date(now.getTime() + 25 * 3_600_000);
+    expect(await dispatchOnce({ db: tdb.db, subscribers: [], now: () => later })).toEqual({ delivered: 0, retried: 0, dead: 1 });
   });
 
   it("computes capped exponential backoff", () => {

@@ -43,7 +43,7 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
        AND (d.event_id, d.subscriber) IN (
              SELECT event_id, subscriber FROM outbox_deliveries
               WHERE status = 'pending'
-                AND date_trunc('milliseconds', next_attempt_at) <= ${now}
+                AND next_attempt_at < ${new Date(now.getTime() + 1)}
                 AND (locked_until IS NULL OR locked_until < ${now})
               ORDER BY next_attempt_at
               LIMIT ${opts.batchSize ?? 50}
@@ -52,7 +52,17 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
 
   const result = { delivered: 0, retried: 0, dead: 0 };
   for (const row of claimed.rows) {
-    const where = and(eq(outboxDeliveries.eventId, row.event_id), eq(outboxDeliveries.subscriber, row.subscriber));
+    // The lockUntil this call's claim set is this row's ownership token: a terminal
+    // write only counts if we still held the lock (status unchanged, locked_until
+    // still ours) at write time. If another replica reclaimed the row in between
+    // (its lock expired mid-delivery), this update affects 0 rows and we defer to
+    // whatever that replica writes instead of overwriting it.
+    const where = and(
+      eq(outboxDeliveries.eventId, row.event_id),
+      eq(outboxDeliveries.subscriber, row.subscriber),
+      eq(outboxDeliveries.status, "pending"),
+      eq(outboxDeliveries.lockedUntil, lockUntil),
+    );
     const sub = opts.subscribers.find((s) => s.name === row.subscriber);
     let error: string | null = null;
     if (!sub) {
@@ -74,6 +84,7 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
           body,
           signal: AbortSignal.timeout(opts.timeoutMs ?? 10_000),
         });
+        await res.body?.cancel();
         if (!res.ok) error = `HTTP ${res.status}`;
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
@@ -82,17 +93,20 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
 
     const attempts = row.attempts + 1;
     if (error === null) {
-      await opts.db.update(outboxDeliveries).set({ status: "delivered", attempts, deliveredAt: now, lockedUntil: null, lastError: null }).where(where);
-      result.delivered++;
-    } else if (!sub || now.getTime() - new Date(row.created_at).getTime() >= maxAgeMs) {
-      await opts.db.update(outboxDeliveries).set({ status: "dead", attempts, lockedUntil: null, lastError: error }).where(where);
-      result.dead++;
+      const res = await opts.db
+        .update(outboxDeliveries)
+        .set({ status: "delivered", attempts, deliveredAt: now, lockedUntil: null, lastError: null })
+        .where(where);
+      if (res.rowCount) result.delivered++;
+    } else if (now.getTime() - new Date(row.created_at).getTime() >= maxAgeMs) {
+      const res = await opts.db.update(outboxDeliveries).set({ status: "dead", attempts, lockedUntil: null, lastError: error }).where(where);
+      if (res.rowCount) result.dead++;
     } else {
-      await opts.db
+      const res = await opts.db
         .update(outboxDeliveries)
         .set({ attempts, nextAttemptAt: new Date(now.getTime() + backoffMs(attempts)), lockedUntil: null, lastError: error })
         .where(where);
-      result.retried++;
+      if (res.rowCount) result.retried++;
     }
   }
   return result;
