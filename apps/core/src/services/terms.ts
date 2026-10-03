@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { enqueueEvent, termEventType, termRecordSchema, type SubscriberConfig, type TermKind, type TermRecord } from "@gcpe/events";
 import { terms } from "../db/schema";
@@ -28,6 +28,7 @@ export async function upsertTerm(
 ): Promise<{ record: TermRecord; changed: boolean }> {
   const data = termInputSchema.parse(input);
   return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${data.kind}:${data.key}`}))`);
     const [existing] = await tx
       .select()
       .from(terms)
@@ -57,12 +58,18 @@ export async function upsertTerm(
 
 export async function deactivateTerm(db: Db, kind: TermKind, key: string, subscribers: SubscriberConfig[]): Promise<boolean> {
   return db.transaction(async (tx) => {
-    const rows = await tx
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${kind}:${key}`}))`);
+    const [existing] = await tx
+      .select()
+      .from(terms)
+      .where(and(eq(terms.kind, kind), eq(terms.key, key)))
+      .for("update");
+    if (!existing) return false;
+    if (!existing.isActive) return true;
+    await tx
       .update(terms)
       .set({ isActive: false, updatedAt: new Date() })
-      .where(and(eq(terms.kind, kind), eq(terms.key, key)))
-      .returning({ key: terms.key });
-    if (rows.length === 0) return false;
+      .where(and(eq(terms.kind, kind), eq(terms.key, key)));
     await enqueueEvent(tx, { type: termEventType(kind, "deactivated"), source: "core", aggregateId: `${kind}:${key}`, data: { kind, key } }, subscribers);
     return true;
   });

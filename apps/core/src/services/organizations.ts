@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { enqueueEvent, orgRecordSchema, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
 import { organizations } from "../db/schema";
@@ -42,6 +42,7 @@ export async function upsertOrganization(
 ): Promise<{ record: OrgRecord; changed: boolean }> {
   const data = orgInputSchema.parse(input);
   return db.transaction(async (tx) => {
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`org:${data.key}`}))`);
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, data.key)).for("update");
     if (existing) {
       const { updatedAt: _u, ...current } = toOrgRecord(existing);
@@ -61,12 +62,11 @@ export async function upsertOrganization(
 
 export async function deactivateOrganization(db: Db, key: string, subscribers: SubscriberConfig[]): Promise<boolean> {
   return db.transaction(async (tx) => {
-    const rows = await tx
-      .update(organizations)
-      .set({ isActive: false, updatedAt: new Date() })
-      .where(eq(organizations.key, key))
-      .returning({ key: organizations.key });
-    if (rows.length === 0) return false;
+    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`org:${key}`}))`);
+    const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
+    if (!existing) return false;
+    if (!existing.isActive) return true;
+    await tx.update(organizations).set({ isActive: false, updatedAt: new Date() }).where(eq(organizations.key, key));
     await enqueueEvent(tx, { type: "org.deactivated", source: "core", aggregateId: `org:${key}`, data: { key } }, subscribers);
     return true;
   });

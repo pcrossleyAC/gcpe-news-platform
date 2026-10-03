@@ -43,6 +43,14 @@ describe("terms service", () => {
     expect((await getTerm(tdb.db, "sector", "economy"))!.isActive).toBe(false);
   });
 
+  it("deactivating an already-inactive term is idempotent", async () => {
+    await upsertTerm(tdb.db, economy, subs);
+    expect(await deactivateTerm(tdb.db, "sector", "economy", subs)).toBe(true);
+    expect(await deactivateTerm(tdb.db, "sector", "economy", subs)).toBe(true);
+    const types = (await tdb.db.select().from(outboxEvents)).map((e) => e.type);
+    expect(types).toEqual(["sector.upserted", "sector.deactivated"]);
+  });
+
   it("republishAll emits one upserted event per org and term", async () => {
     await upsertOrganization(tdb.db, healthOrg, subs);
     await upsertTerm(tdb.db, economy, subs);

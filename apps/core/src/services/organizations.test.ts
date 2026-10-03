@@ -58,4 +58,24 @@ describe("organizations service", () => {
     await upsertOrganization(tdb.db, { ...healthOrg, key: "c", sortOrder: 1 }, subs);
     expect((await listOrganizations(tdb.db)).map((o) => o.key)).toEqual(["b", "c", "a"]);
   });
+
+  it("concurrent upserts of a brand-new key emit exactly once and preserve legacyId", async () => {
+    const legacyId = "11111111-1111-1111-1111-111111111111";
+    await Promise.all([
+      upsertOrganization(tdb.db, { ...healthOrg, key: "concurrent" }, subs, { legacyId }),
+      upsertOrganization(tdb.db, { ...healthOrg, key: "concurrent" }, subs),
+    ]);
+    const events = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:concurrent"));
+    expect(events).toHaveLength(1);
+    const { rows } = await tdb.pool.query("SELECT legacy_id FROM organizations WHERE key = 'concurrent'");
+    expect(rows[0].legacy_id).toBe(legacyId);
+  });
+
+  it("deactivating an already-inactive org is idempotent", async () => {
+    await upsertOrganization(tdb.db, healthOrg, subs);
+    expect(await deactivateOrganization(tdb.db, "health", subs)).toBe(true);
+    expect(await deactivateOrganization(tdb.db, "health", subs)).toBe(true);
+    const types = (await tdb.db.select().from(outboxEvents)).map((e) => e.type);
+    expect(types).toEqual(["org.upserted", "org.deactivated"]);
+  });
 });
