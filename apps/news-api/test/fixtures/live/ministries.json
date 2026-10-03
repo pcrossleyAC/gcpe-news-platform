@@ -1,0 +1,2249 @@
+{
+  "name": "ministries",
+  "path": "/api/Ministries?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "childMinistryKey": "local-governments-and-rural-communities",
+      "parentMinistryKey": null,
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [],
+      "serviceLinks": [],
+      "newsletterLinks": [],
+      "ministerName": "Premier David Eby",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72177720303248906",
+      "youtubeUri": "https://youtube.com/playlist?list=PLbER4Sxdn0R6L8Zsya0On_hDD9gzdeA0o&feature=shared",
+      "audioUri": "https://soundcloud.com/bcgov/sets/premier-1",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Office of the Premier",
+      "topPostKey": "2026PREM0034-001089",
+      "featurePostKey": "2026PREM0034-001088",
+      "key": "office-of-the-premier",
+      "timestamp": "2026-09-18T11:51:34.03-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": "office-of-the-premier",
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [],
+      "serviceLinks": [],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Brittny Anderson",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": null,
+      "youtubeUri": "http://www.youtube.com/ProvinceofBC",
+      "audioUri": null,
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Minister of State for Local Governments and Rural Communities",
+      "topPostKey": null,
+      "featurePostKey": null,
+      "key": "local-governments-and-rural-communities",
+      "timestamp": "2025-01-24T17:15:20.04-08:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "https://gov.bc.ca/af",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://buybc.gov.bc.ca/",
+          "key": "Buy BC",
+          "timestamp": "2026-08-18T05:08:10.4991783-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/agriculture-seafood/growbc-feedbc-buybc/feed-bc-and-the-bc-food-hub-network",
+          "key": "Feed BC",
+          "timestamp": "2026-08-18T05:08:10.4996326-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/agriculture-seafood/animals-and-crops",
+          "key": "Animals and Crops",
+          "timestamp": "2026-08-18T05:08:10.4996455-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/agriculture-seafood/food-safety",
+          "key": "Food Safety",
+          "timestamp": "2026-08-18T05:08:10.4996485-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/agriculture-seafood/business-market-development/emergency-management",
+          "key": "Emergency Management",
+          "timestamp": "2026-08-18T05:08:10.4996516-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/agriculture-seafood/programs",
+          "key": "Agriculture and Seafood Programs",
+          "timestamp": "2026-08-18T05:08:10.5002252-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/agriculture-seafood/agriservice-bc",
+          "key": "AgriService BC",
+          "timestamp": "2026-08-18T05:08:10.5002435-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/agriculture-seafood/animals-and-crops/animal-health/animal-health-centre",
+          "key": "Animal Health Centre",
+          "timestamp": "2026-08-18T05:08:10.5002465-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Lana Popham",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@FoodsBC",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157686374361546",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R54G1KM_1v6U8AJvaurXFdC",
+      "audioUri": "https://soundcloud.com/bcgov/sets/agriculture",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Agriculture and Food",
+      "topPostKey": "2026AF0018-000958",
+      "featurePostKey": "2026AF0017-000863",
+      "key": "agriculture-and-food",
+      "timestamp": "2026-08-17T15:28:52.35-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/ag",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/justice/about-bcs-justice-system",
+          "key": "About B.C.'s Justice System",
+          "timestamp": "2026-10-03T01:26:41.3904412-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/justice",
+          "key": "Law, Crime and Justice",
+          "timestamp": "2026-10-03T01:26:41.3904461-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/justice/about-bcs-justice-system/justice-reform-initiatives",
+          "key": "Justice Transformation",
+          "timestamp": "2026-10-03T01:26:41.3904484-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/justice/about-bcs-justice-system/legislation-policy",
+          "key": "Legislation and Policy",
+          "timestamp": "2026-10-03T01:26:41.3904503-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/justice/about-bcs-justice-system/justice-reform-initiatives/systemic-review",
+          "key": "Gender and intimate partner violence",
+          "timestamp": "2026-10-03T01:26:41.3904526-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://takebackyourimages.gov.bc.ca/",
+          "key": "Take Back Your Images",
+          "timestamp": "2026-10-03T01:26:41.3904579-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/justice/courthouse-services",
+          "key": "Courthouse Services",
+          "timestamp": "2026-10-03T01:26:41.3904602-07:00"
+        },
+        {
+          "uri": "https://bcfnjc.com/indigenous-justice-centres/",
+          "key": "Indigenous Justice Centres",
+          "timestamp": "2026-10-03T01:26:41.3904621-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Niki Sharma",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "RoadSafetyBC",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683819329953",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R5jLNOVK5s4XLC8TAFDgR2X",
+      "audioUri": "https://soundcloud.com/bcgov/sets/justice-attorney-general",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Attorney General",
+      "topPostKey": "2026AG0067-001105",
+      "featurePostKey": "2026AG0066-001096",
+      "key": "attorney-general",
+      "timestamp": "2026-10-02T15:00:25.07-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [],
+      "serviceLinks": [],
+      "newsletterLinks": [],
+      "ministerName": "tbd",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": null,
+      "youtubeUri": null,
+      "audioUri": null,
+      "isActive": false,
+      "kind": "ministries",
+      "name": "Attorney General-ARCHIVE",
+      "topPostKey": null,
+      "featurePostKey": null,
+      "key": "56429306-8C3E-4991-AEB2-1CC86F20BFDD",
+      "timestamp": "2010-01-01T00:00:00-08:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/cfd",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/safety/public-safety/protecting-children/reporting-child-abuse",
+          "key": "Call Provincial Centralized Screening",
+          "timestamp": "2026-09-18T16:56:22.316717-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/indigenous-people/supporting-communities/child-family-development",
+          "key": "Indigenous Child & Family Development",
+          "timestamp": "2026-09-18T16:56:22.3167258-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/managing-your-health/child-behaviour-development/support-needs",
+          "key": "Children & Youth with Support Needs",
+          "timestamp": "2026-09-18T16:56:22.3167292-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/life-events/birth-adoption/adoptions",
+          "key": "Adoption",
+          "timestamp": "2026-09-18T16:56:22.3167322-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/family-social-supports/fostering",
+          "key": "Foster care",
+          "timestamp": "2026-09-18T16:56:22.3167356-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/safety/public-safety/protecting-children",
+          "key": "Protecting Children",
+          "timestamp": "2026-09-18T16:56:22.3167429-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/managing-your-health/mental-health-substance-use/child-teen-mental-health",
+          "key": "Child & Youth Mental Health",
+          "timestamp": "2026-09-18T16:56:22.3167463-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/family-social-supports/youth-and-family-services",
+          "key": "Youth & Family Services",
+          "timestamp": "2026-09-18T16:56:22.3167493-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Jodie Wickens",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/sets/72157686374387076",
+      "youtubeUri": "https://www.youtube.com/user/ProvinceofBC",
+      "audioUri": "https://soundcloud.com/bcgov",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Children and Family Development",
+      "topPostKey": "2026CFD0005-000834",
+      "featurePostKey": "2026CFD0004-000701",
+      "key": "children-and-family-development",
+      "timestamp": "2026-09-18T16:12:00.567-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/citz",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/connectivity-in-bc",
+          "key": "Connectivity in B.C.",
+          "timestamp": "2026-09-17T11:56:30.0161032-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/ministries-organizations/ministries/citizens-services/servicebc",
+          "key": "Service BC",
+          "timestamp": "2026-09-17T11:56:30.0161135-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/government-id/bc-services-card",
+          "key": "BC Services Card",
+          "timestamp": "2026-09-17T11:56:30.0161176-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/ministries-organizations/central-government-agencies/csbc",
+          "key": "Connected Services BC",
+          "timestamp": "2026-09-17T11:56:30.0161211-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/data/policy-standards/legislation/anti-racism-data-act",
+          "key": "Anti-Racism Data Act",
+          "timestamp": "2026-09-17T11:56:30.0161271-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/home/get-help-with-government-services",
+          "key": "Service BC's Contact Centre",
+          "timestamp": "2026-09-17T11:56:30.0161378-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/bc-procurement-resources/bc-bid-resources",
+          "key": "BC Bid",
+          "timestamp": "2026-09-17T11:56:30.0161431-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/ministries-organizations/ministries/citizens-services/bc-registries-online-services",
+          "key": "BC Registry Services",
+          "timestamp": "2026-09-17T11:56:30.0161473-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Diana Gibson",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683727508584",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R5cYJNao4EtkjphmTWi18SO",
+      "audioUri": "https://soundcloud.com/bcgov/sets/citizens-services",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Citizens' Services",
+      "topPostKey": "2026CITZ0009-001073",
+      "featurePostKey": "2026CITZ0008-001057",
+      "key": "citizens-services",
+      "timestamp": "2026-09-17T09:35:51.837-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "https://gov.bc.ca/ecc",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/early-learning/teach/training-and-professional-development/become-an-early-childhood-educator",
+          "key": "Work in Early Childhood Education",
+          "timestamp": "2026-10-03T01:26:41.3905176-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/k-12/teach",
+          "key": "Teaching in B.C.",
+          "timestamp": "2026-10-03T01:26:41.3905198-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/family-social-supports/caring-for-young-children",
+          "key": "Child Care in B.C.",
+          "timestamp": "2026-10-03T01:26:41.3905221-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/indigenous-education",
+          "key": "Indigenous education",
+          "timestamp": "2026-10-03T01:26:41.390524-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/program-management/ai-in-education",
+          "key": "AI in education",
+          "timestamp": "2026-10-03T01:26:41.3905263-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/k-12/support/graduation",
+          "key": "Certificates",
+          "timestamp": "2026-10-03T01:26:41.390529-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/k-12/support/pen-services",
+          "key": "Personal Education Number",
+          "timestamp": "2026-10-03T01:26:41.3905313-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/erase",
+          "key": "erase",
+          "timestamp": "2026-10-03T01:26:41.3905339-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Lisa Beare  ",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@bcgovnews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683978450851",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R6udaVDvTgslpvgf64If670",
+      "audioUri": "https://soundcloud.com/bcgov/sets/education-1",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Education and Child Care",
+      "topPostKey": "2026ECC0025-001034",
+      "featurePostKey": "2026ECC0024-001031",
+      "key": "education-and-child-care",
+      "timestamp": "2026-10-02T16:00:03.423-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "https://gov.bc.ca/emcr",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www.emergencyinfobc.gov.bc.ca/",
+          "key": "EmergencyInfoBC",
+          "timestamp": "2026-10-03T01:26:41.3905442-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/safety/emergency-management/preparedbc",
+          "key": "PreparedBC",
+          "timestamp": "2026-10-03T01:26:41.3905461-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/safety/emergency-management",
+          "key": "Emergency Management",
+          "timestamp": "2026-10-03T01:26:41.390548-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/safety/public-safety/emergency-alerts",
+          "key": "Emergency Alerts",
+          "timestamp": "2026-10-03T01:26:41.3905503-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/safety/emergency-management/local-emergency-programs/bc-disaster-mitigation",
+          "key": "Disaster mitigation programs",
+          "timestamp": "2026-10-03T01:26:41.3905522-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://ess.gov.bc.ca/",
+          "key": "Emergency Support Services (ESS)",
+          "timestamp": "2026-10-03T01:26:41.3905548-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Kelly Greene",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "250-880-6430",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72177720304423311",
+      "youtubeUri": "https://www.youtube.com/playlist?list=PLbER4Sxdn0R7291bavun3pLmAT6GM4ieR",
+      "audioUri": null,
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Emergency Management and Climate Readiness",
+      "topPostKey": "2026WLRS0034-001107",
+      "featurePostKey": "2026EMCR0040-001035",
+      "key": "emergency-management-and-climate-readiness",
+      "timestamp": "2026-10-02T16:15:27.443-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/ecs",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/electricity-alternative-energy",
+          "key": "Electricity & Alternative Energy",
+          "timestamp": "2026-09-22T09:56:00.038714-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/electricity-alternative-energy/energy-efficiency-conservation",
+          "key": "Energy Conservation, Efficiency and Rebates",
+          "timestamp": "2026-09-22T09:56:00.0387208-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/electricity-alternative-energy/community-energy-solutions",
+          "key": "Community Energy Systems",
+          "timestamp": "2026-09-22T09:56:00.0387231-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/electricity-alternative-energy/transportation-energies/renewable-low-carbon-fuels",
+          "key": "Renewable Energy & Low Carbon Fuels",
+          "timestamp": "2026-09-22T09:56:00.038725-07:00"
+        },
+        {
+          "uri": "https://www.sitecproject.com/",
+          "key": "Site C Clean Energy Project",
+          "timestamp": "2026-09-22T09:56:00.0387288-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/climate-change/industry/bc-output-based-pricing-system",
+          "key": "B.C. Output-Based Pricing System",
+          "timestamp": "2026-09-22T09:56:00.0387334-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/climate-change/data/provincial-inventory",
+          "key": "Greenhouse Gas Emissions",
+          "timestamp": "2026-09-22T09:56:00.0387357-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/climate-change/industry/cleanbc-industry-fund",
+          "key": "CleanBC Industry Fund",
+          "timestamp": "2026-09-22T09:56:00.0387376-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Adrian Dix",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157686374277226",
+      "youtubeUri": "http://www.youtube.com/ProvinceofBC",
+      "audioUri": "https://soundcloud.com/bcgov/sets/energy-mines-petroleum",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Energy and Climate Solutions",
+      "topPostKey": "2026ECS0056-001118",
+      "featurePostKey": "2026ECS0055-001114",
+      "key": "energy-and-climate-solutions",
+      "timestamp": "2026-09-22T09:55:39.437-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/env",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://bcparks.ca/",
+          "key": "BC Parks",
+          "timestamp": "2026-10-03T01:26:41.3905917-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/natural-resource-stewardship/natural-resource-law-enforcement/conservation-officer-service",
+          "key": "Conservation Officer Service",
+          "timestamp": "2026-10-03T01:26:41.3905936-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/natural-resource-stewardship/environmental-assessments",
+          "key": "Environmental Assessment Office",
+          "timestamp": "2026-10-03T01:26:41.3905955-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/air-land-water/air",
+          "key": "Air Quality",
+          "timestamp": "2026-10-03T01:26:41.390597-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment",
+          "key": "Environmental Protection and Sustainability",
+          "timestamp": "2026-10-03T01:26:41.3905989-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/natural-resource-stewardship/natural-resource-law-enforcement/conservation-officer-service/cos-rapp",
+          "key": "Report All Polluters & Poachers",
+          "timestamp": "2026-10-03T01:26:41.3906016-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/air-land-water/spills-environmental-emergencies/report-a-spill",
+          "key": "Report a Spill",
+          "timestamp": "2026-10-03T01:26:41.3906039-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/air-land-water/site-remediation",
+          "key": "Site Remediation",
+          "timestamp": "2026-10-03T01:26:41.3906058-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Tamara Davidson",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157686374290736",
+      "youtubeUri": "http://www.youtube.com/ProvinceofBC",
+      "audioUri": "https://soundcloud.com/bcgov/sets/environment-climate-change",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Environment and Parks",
+      "topPostKey": "2026ENV0037-001067",
+      "featurePostKey": "2026ENV0038-001110",
+      "key": "environment-and-parks",
+      "timestamp": "2026-10-01T13:45:14.637-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/fin",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www.bcbudget.gov.bc.ca/",
+          "key": "BC Budget",
+          "timestamp": "2026-10-03T01:26:41.390616-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/taxes/speculation-vacancy-tax",
+          "key": "Speculation and Vacancy Tax",
+          "timestamp": "2026-10-03T01:26:41.3906183-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/taxes/property-taxes/annual-property-tax/home-owner-grant",
+          "key": "Home Owner Grant",
+          "timestamp": "2026-10-03T01:26:41.3906198-07:00"
+        },
+        {
+          "uri": "https://www.bcassessment.ca/",
+          "key": "BC Assessment",
+          "timestamp": "2026-10-03T01:26:41.3906217-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/finances/public-accounts",
+          "key": "Public Accounts",
+          "timestamp": "2026-10-03T01:26:41.3906236-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/taxes/etaxbc",
+          "key": "eTaxBC online services",
+          "timestamp": "2026-10-03T01:26:41.3906263-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/taxes/sales-taxes/pst/exemptions",
+          "key": "Provincial Sales Tax Exemptions",
+          "timestamp": "2026-10-03T01:26:41.3906282-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/taxes/income-taxes/personal/credits",
+          "key": "Personal tax credits",
+          "timestamp": "2026-10-03T01:26:41.3906297-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Josie Osborne",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157686475007105",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R4zdio616uAo9mu5ea4qh2_",
+      "audioUri": "https://soundcloud.com/bcgov/sets/finance",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Finance",
+      "topPostKey": "2026PREM0034-001089",
+      "featurePostKey": "2026FIN0031-001066",
+      "key": "finance",
+      "timestamp": "2026-10-02T16:20:10.093-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "https://gov.bc.ca/for",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/forestry",
+          "key": "Forestry",
+          "timestamp": "2026-09-22T09:55:00.0538922-07:00"
+        },
+        {
+          "uri": "https://engage.gov.bc.ca/oldgrowth",
+          "key": "Old Forests",
+          "timestamp": "2026-09-22T09:55:00.0539013-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/forestry/competitive-forest-industry/softwood-lumber-trade-with-the-u-s",
+          "key": "Softwood Lumber Dispute",
+          "timestamp": "2026-09-22T09:55:00.0539036-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/natural-resource-use/archaeology",
+          "key": "Archaeology in B.C.",
+          "timestamp": "2026-09-22T09:55:00.0539055-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/natural-resource-use/resource-roads",
+          "key": "Resource Roads",
+          "timestamp": "2026-09-22T09:55:00.0539074-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://wildfiresituation.nrs.gov.bc.ca/map",
+          "key": "BC Wildfire Service Updates",
+          "timestamp": "2026-09-22T09:55:00.0539135-07:00"
+        },
+        {
+          "uri": "https://portal.nrs.gov.bc.ca/web/client/home",
+          "key": "Natural Resource Online Services",
+          "timestamp": "2026-09-22T09:55:00.0539154-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/forestry/supports-for-forestry-workers",
+          "key": "Supports for Forestry Workers",
+          "timestamp": "2026-09-22T09:55:00.0539173-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Ravi Parmar",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "bcgovfireinfo",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157686474934255/",
+      "youtubeUri": "https://www.youtube.com/playlist?list=PLbER4Sxdn0R4ydodFs81ajG9j_HU4rH4S",
+      "audioUri": "https://soundcloud.com/bcgov/sets/forests-lands-natural-resource ",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Forests",
+      "topPostKey": "2026WLRS0034-001107",
+      "featurePostKey": "2026FOR0047-001063",
+      "key": "forests",
+      "timestamp": "2026-09-22T09:54:49.06-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": "forests",
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [],
+      "serviceLinks": [],
+      "newsletterLinks": [],
+      "ministerName": "TBD",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": null,
+      "youtubeUri": null,
+      "audioUri": null,
+      "isActive": false,
+      "kind": "ministries",
+      "name": "Minister of State for Sustainable Forestry Innovation",
+      "topPostKey": null,
+      "featurePostKey": null,
+      "key": "sustainable-forestry-innovation",
+      "timestamp": "2024-11-18T19:16:39.553-08:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/health",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/theme.page?id=607861D37A414CA69E916798F39A09E9",
+          "key": "Accessing Health Care",
+          "timestamp": "2026-10-03T01:26:41.3906601-07:00"
+        },
+        {
+          "uri": "https://www.healthlinkbc.ca/find-care/health-connect-registry",
+          "key": "Health Connect Registry",
+          "timestamp": "2026-10-03T01:26:41.390662-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/managing-your-health/immunizations",
+          "key": "Get immunized",
+          "timestamp": "2026-10-03T01:26:41.3906639-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/strengthening-health-care",
+          "key": "Strengthening Health Care",
+          "timestamp": "2026-10-03T01:26:41.3906658-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/mental-health-and-addictions/building-better-mental-health-and-addictions-care",
+          "key": "Mental health and addictions care",
+          "timestamp": "2026-10-03T01:26:41.3906685-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www.healthlinkbc.ca/",
+          "key": "HealthLink BC",
+          "timestamp": "2026-10-03T01:26:41.3906711-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/health-drug-coverage/msp",
+          "key": "Medical Services Plan",
+          "timestamp": "2026-10-03T01:26:41.390673-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/health-drug-coverage/pharmacare-for-bc-residents",
+          "key": "BC PharmaCare",
+          "timestamp": "2026-10-03T01:26:41.390675-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Ravi Kahlon",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683819304073",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R7Sef9_eWi-RNOnsZ0IP_6c",
+      "audioUri": "https://soundcloud.com/bcgov/sets/health",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Health",
+      "topPostKey": "2026HLTH0085-001117",
+      "featurePostKey": "2026INF0034-001103",
+      "key": "health",
+      "timestamp": "2026-10-02T16:46:05.527-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/hma",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://gov.bc.ca/AHIHeatherlands",
+          "key": "Attainable Housing Initiative",
+          "timestamp": "2026-09-18T16:56:22.3589426-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/housing-tenancy/more-homes-for-people",
+          "key": "Homes for People",
+          "timestamp": "2026-09-18T16:56:22.3589506-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/local-governments/governance-powers/general-local-elections",
+          "key": "2026 Local Elections",
+          "timestamp": "2026-09-18T16:56:22.3589551-07:00"
+        },
+        {
+          "uri": "https://www.bchousing.org/home",
+          "key": "BC Housing",
+          "timestamp": "2026-09-18T16:56:22.3589585-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/housing-tenancy/residential-tenancies",
+          "key": "Residential Tenancy Branch",
+          "timestamp": "2026-09-18T16:56:22.3589616-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www.bchousing.org/housing-assistance/rental-assistance-programs/SAFER",
+          "key": "Shelter Aid for Elderly Renters",
+          "timestamp": "2026-09-18T16:56:22.358968-07:00"
+        },
+        {
+          "uri": "https://www.bchousing.org/housing-assistance/rental-assistance-programs/RAP",
+          "key": "Rental Assistance Program",
+          "timestamp": "2026-09-18T16:56:22.3589718-07:00"
+        },
+        {
+          "uri": "https://host.shorttermrental.registry.gov.bc.ca/en-CA/auth/login",
+          "key": "Short-term Rental Registry",
+          "timestamp": "2026-09-18T16:56:22.3589749-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Christine Boyle",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72177720304421130",
+      "youtubeUri": "http://www.youtube.com/ProvinceofBC",
+      "audioUri": null,
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Housing and Municipal Affairs",
+      "topPostKey": "2026HMA0090-001081",
+      "featurePostKey": "2026HMA0089-001049",
+      "key": "housing-and-municipal-affairs",
+      "timestamp": "2026-09-18T11:53:45-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/irr",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/indigenous-people/new-relationship/united-nations-declaration-on-the-rights-of-indigenous-peoples",
+          "key": "Declaration on the Rights of Indigenous Peoples Act",
+          "timestamp": "2026-09-22T09:54:00.0658354-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/natural-resource-stewardship/consulting-with-first-nations/first-nations-negotiations/reconciliation-other-agreements",
+          "key": "Reconciliation",
+          "timestamp": "2026-09-22T09:54:00.065843-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/indigenous-people",
+          "key": "Indigenous People",
+          "timestamp": "2026-09-22T09:54:00.0658453-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/indigenous-people/supporting-communities/urban-off-reserve-aboriginal-people",
+          "key": "Urban and Off-Reserve Indigenous People",
+          "timestamp": "2026-09-22T09:54:00.0658472-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/natural-resource-stewardship/consulting-with-first-nations/first-nations-negotiations",
+          "key": "First Nations Negotiations",
+          "timestamp": "2026-09-22T09:54:00.0658498-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/indigenous-people/guide-to-indigenous-organization-and-services",
+          "key": "Indigenous Organizations and Services",
+          "timestamp": "2026-09-22T09:54:00.0658548-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/indigenous-people/supporting-communities/elders",
+          "key": "Elder Services",
+          "timestamp": "2026-09-22T09:54:00.0658571-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/indigenous-people/supporting-communities/aboriginal-youth",
+          "key": "Youth Services",
+          "timestamp": "2026-09-22T09:54:00.065859-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Spencer Chandra Herbert",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683727946094",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R7_s66XdbRkR_7AdmdfL9dy",
+      "audioUri": "https://soundcloud.com/bcgov/sets/indigenous-relations",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Indigenous Relations and Reconciliation",
+      "topPostKey": "2026IRR0033-000987",
+      "featurePostKey": "2026ENV0029-000836",
+      "key": "indigenous-relations-and-reconciliation",
+      "timestamp": "2026-09-22T09:53:41.197-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/inf",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/accessing-health-care/capital-projects",
+          "key": "Health Capital Projects",
+          "timestamp": "2026-09-22T09:53:30.5868687-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/k-12/administration/capital",
+          "key": "School Capital Management for K-12",
+          "timestamp": "2026-09-22T09:53:30.5868771-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/post-secondary-education/institution-resources-administration/capital-planning",
+          "key": "Capital Planning for Post-Secondary",
+          "timestamp": "2026-09-22T09:53:30.5868805-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/services-for-government/real-estate-space",
+          "key": "Real Estate Services for the Public Sector",
+          "timestamp": "2026-09-22T09:53:30.5868824-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/ministries-organizations/crown-corporations/infrastructure-bc",
+          "key": "Infrastructure BC",
+          "timestamp": "2026-09-22T09:53:30.5868881-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/ministries-organizations/crown-corporations/bc-infrastructure-benefits",
+          "key": "BC Infrastructure Benefits",
+          "timestamp": "2026-09-22T09:53:30.5868904-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Bowinn Ma",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@TranBC",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72177720322031318/",
+      "youtubeUri": "http://www.youtube.com/ProvinceofBC",
+      "audioUri": "https://soundcloud.com/bcgov/sets/transportation-infrastructure",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Infrastructure",
+      "topPostKey": "2026INF0055-001104",
+      "featurePostKey": "2026INF0056-001108",
+      "key": "infrastructure",
+      "timestamp": "2026-09-22T09:53:18.383-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/office-of-the-premier/intergovernmental-relations-secretariat",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "http://www.orderofbc.gov.bc.ca/",
+          "key": "Honours: Order of British Columbia",
+          "timestamp": "2026-09-22T09:53:00.0573706-07:00"
+        },
+        {
+          "uri": "https://www.canadaspremiers.ca/",
+          "key": "Council of the Federation",
+          "timestamp": "2026-09-22T09:53:00.0573813-07:00"
+        },
+        {
+          "uri": "http://www.cmfc-mccf.ca/",
+          "key": "Ministers Council on the Francophonie",
+          "timestamp": "2026-09-22T09:53:00.0573832-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/office-of-the-premier/intergovernmental-relations-secretariat/protocol/consular-corps",
+          "key": "Consular Corps",
+          "timestamp": "2026-09-22T09:53:00.0573854-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content?id=6E45FAF9FD754DD49C9E50E0815AC4F9",
+          "key": "Honours and Awards",
+          "timestamp": "2026-09-22T09:53:00.0573923-07:00"
+        },
+        {
+          "uri": "https://www.protocolapplications.gov.bc.ca/CMSForm",
+          "key": "Send Congratulatory Messages",
+          "timestamp": "2026-09-22T09:53:00.0573946-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Premier David Eby",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/sets/72157627006522862/",
+      "youtubeUri": "https://www.youtube.com/playlist?list=PLbER4Sxdn0R6Ejy8SOinm459lSg1fG3Sn",
+      "audioUri": null,
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Intergovernmental Relations Secretariat",
+      "topPostKey": "2026IGRS0032-000997",
+      "featurePostKey": "2026IGRS0030-000875",
+      "key": "intergovernmental-relations-secretariat",
+      "timestamp": "2026-09-22T09:52:49.42-07:00"
+    },
+    {
+      "childMinistryKey": "ai-and-new-technologies",
+      "parentMinistryKey": null,
+      "ministryUrl": "https://gov.bc.ca/jedi",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/employment-business/look-west-strategy",
+          "key": "Look West",
+          "timestamp": "2026-10-03T01:26:41.3907487-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/employment-business/tariffs",
+          "key": "U.S. tariffs",
+          "timestamp": "2026-10-03T01:26:41.3907506-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/employment-business/rural-initiative",
+          "key": "Rural Initiative",
+          "timestamp": "2026-10-03T01:26:41.3907525-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/employment-business/strong-economy",
+          "key": "Building B.C.’s Economy",
+          "timestamp": "2026-10-03T01:26:41.390754-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/employment-business/economic-development",
+          "key": "Economic Development",
+          "timestamp": "2026-10-03T01:26:41.3907559-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www.bcbizpal.ca/?b=59",
+          "key": "BizPaL",
+          "timestamp": "2026-10-03T01:26:41.390759-07:00"
+        },
+        {
+          "uri": "https://www.britishcolumbia.ca/",
+          "key": "Trade and Invest British Columbia",
+          "timestamp": "2026-10-03T01:26:41.3907609-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Brenda Bailey",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157686474955275",
+      "youtubeUri": "https://www.youtube.com/playlist?list=PLbER4Sxdn0R5_S4yN6dtGEtoLB6ecAdze",
+      "audioUri": "https://soundcloud.com/bcgov/sets/jobs-trade-technology",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Jobs and Economic Growth",
+      "topPostKey": "2026JEG0065-001111",
+      "featurePostKey": "2026PREM0034-001088",
+      "key": "jobs-and-economic-growth",
+      "timestamp": "2026-10-01T11:37:01.007-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": "jobs-and-economic-growth",
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [],
+      "serviceLinks": [],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Rick Glumac",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": null,
+      "youtubeUri": null,
+      "audioUri": null,
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Minister of State for AI and New Technologies",
+      "topPostKey": null,
+      "featurePostKey": null,
+      "key": "ai-and-new-technologies",
+      "timestamp": "2025-08-12T11:59:34.393-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/lbr",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/GigWorkers",
+          "key": "App-Based Ride-Hail and Delivery Services Workers",
+          "timestamp": "2026-09-29T13:56:23.600373-07:00"
+        },
+        {
+          "uri": "https://engage.gov.bc.ca/govtogetherbc/engagement/labour-relations-code-review",
+          "key": "Labour Relations Code Review",
+          "timestamp": "2026-09-29T13:56:23.6003844-07:00"
+        },
+        {
+          "uri": "https://news.gov.bc.ca/releases/2025LBR0041-001106",
+          "key": "Sick Notes Regulation",
+          "timestamp": "2026-09-29T13:56:23.6003886-07:00"
+        },
+        {
+          "uri": "https://news.gov.bc.ca/releases/2025LBR0042-001180",
+          "key": "Job Protected Medical Leave",
+          "timestamp": "2026-09-29T13:56:23.600392-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/employment-business/employment-standards-advice/employment-standards/wages/minimum-wage",
+          "key": "Minimum Wage",
+          "timestamp": "2026-09-29T13:56:23.6003951-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/employment-business/employment-standards-advice/employment-standards",
+          "key": "Employment Standards Branch",
+          "timestamp": "2026-09-29T13:56:23.6004099-07:00"
+        },
+        {
+          "uri": "http://www.lrb.bc.ca/",
+          "key": "BC Labour Relations Board",
+          "timestamp": "2026-09-29T13:56:23.6004137-07:00"
+        },
+        {
+          "uri": "https://www.worksafebc.com/en",
+          "key": "WorkSafeBC",
+          "timestamp": "2026-09-29T13:56:23.6004167-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Jennifer Whiteside",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157686474623705",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R5CLx77KFChhNqexidbwHSE",
+      "audioUri": "https://soundcloud.com/bcgov/sets/labour",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Labour",
+      "topPostKey": "2026LBR0027-001029",
+      "featurePostKey": "2026PREM0034-001001",
+      "key": "labour",
+      "timestamp": "2026-09-29T13:04:28.197-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/mmha",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/managing-your-health/mental-health-substance-use/virtual-mental-health-supports",
+          "key": "Virtual Mental Health",
+          "timestamp": "2026-02-06T18:46:17.929485-08:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/about-the-bc-government/mental-health-and-addictions-strategy",
+          "key": "A Pathway to Hope",
+          "timestamp": "2026-02-06T18:46:17.9294968-08:00"
+        },
+        {
+          "uri": "https://helpstartshere.gov.bc.ca/",
+          "key": "HelpStartsHere",
+          "timestamp": "2026-02-06T18:46:17.9295006-08:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/health/managing-your-health/mental-health-substance-use/child-teen-mental-health",
+          "key": "Children and Youth Mental Health",
+          "timestamp": "2026-02-06T18:46:17.9295036-08:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/overdose",
+          "key": "Overdose Prevention and Response",
+          "timestamp": "2026-02-06T18:46:17.9295074-08:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://crisiscentre.bc.ca/",
+          "key": "Crisis Centre",
+          "timestamp": "2026-02-06T18:46:17.9295147-08:00"
+        },
+        {
+          "uri": "https://kidshelpphone.ca/",
+          "key": "Kids Help Phone",
+          "timestamp": "2026-02-06T18:46:17.9295177-08:00"
+        },
+        {
+          "uri": "https://www.stopoverdose.gov.bc.ca/get-informed#naloxone-saves-lives",
+          "key": "Know the Risks and Signs of an Overdose",
+          "timestamp": "2026-02-06T18:46:17.9295208-08:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Jennifer Whiteside",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683818917533",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R7q7FTsBRMCWjYpAerIkTTb",
+      "audioUri": "https://soundcloud.com/bcgov/sets/mental-health-addictions",
+      "isActive": false,
+      "kind": "ministries",
+      "name": "Mental Health and Addictions",
+      "topPostKey": "2024PREM0043-001532",
+      "featurePostKey": "2024MMHA0049-001515",
+      "key": "mental-health-and-addictions",
+      "timestamp": "2026-01-21T12:01:40.897-08:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/mcm",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/mineral-exploration-mining/british-columbia-geological-survey/criticalminerals",
+          "key": "Critical Minerals",
+          "timestamp": "2026-09-22T09:52:00.0452168-07:00"
+        },
+        {
+          "uri": "https://www.britishcolumbia.ca/industries/mining-critical-minerals/",
+          "key": "Meeting a Global Demand for Critical Minerals",
+          "timestamp": "2026-09-22T09:52:00.0452247-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/mineral-exploration-mining",
+          "key": "Mineral Exploration and Mining",
+          "timestamp": "2026-09-22T09:52:00.045227-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/mineral-exploration-mining/health-safety",
+          "key": "Mining Health and Safety",
+          "timestamp": "2026-09-22T09:52:00.0452289-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/mineral-exploration-mining/mining-legislation",
+          "key": "Mining Legislation",
+          "timestamp": "2026-09-22T09:52:00.0452312-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/mineral-exploration-mining/british-columbia-geological-survey/mapplace",
+          "key": "MapPlace",
+          "timestamp": "2026-09-22T09:52:00.0452365-07:00"
+        },
+        {
+          "uri": "https://www.mtonline.gov.bc.ca/mtov/home.do",
+          "key": "Mineral Titles Online",
+          "timestamp": "2026-09-22T09:52:00.0452388-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/mineral-exploration-mining/british-columbia-geological-survey/mineral-development-office",
+          "key": "Mineral Development Office",
+          "timestamp": "2026-09-22T09:52:00.0452407-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Jagrup Brar",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72177720322031338/",
+      "youtubeUri": "http://www.youtube.com/ProvinceofBC",
+      "audioUri": null,
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Mining and Critical Minerals",
+      "topPostKey": "2026MCM0031-001120",
+      "featurePostKey": "2026IRR0033-000987",
+      "key": "mining-and-critical-minerals",
+      "timestamp": "2026-09-22T09:51:56.33-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "https://gov.bc.ca/muni",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/sports-culture/gambling-fundraising/gaming-grants/community-gaming-grants",
+          "key": "Community Gaming Grants",
+          "timestamp": "2026-03-23T15:14:30.0583853-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/transportation/funding-engagement-permits/funding-grants/investing-in-canada-infrastructure-program",
+          "key": "Investing in Canada Insfrastructure Program - British Columbia",
+          "timestamp": "2026-03-23T15:14:30.0583922-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/about-the-bc-government/local-election-reform",
+          "key": "Local Election Reform",
+          "timestamp": "2026-03-23T15:14:30.0583944-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/local-governments/grants-transfers",
+          "key": "Local Government Grants",
+          "timestamp": "2026-03-23T15:14:30.0583963-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/local-governments/facts-framework/statistics",
+          "key": "Local Government Statistics",
+          "timestamp": "2026-03-23T15:14:30.0583986-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/local-governments/grants-transfers",
+          "key": "Local Government Grants",
+          "timestamp": "2026-03-23T15:14:30.058404-07:00"
+        },
+        {
+          "uri": "https://www.welcomebc.ca/Immigrate-to-B-C/B-C-Provincial-Nominee-Program",
+          "key": "BC Provincial Nominee Program",
+          "timestamp": "2026-03-23T15:14:30.0584062-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/sports-culture/arts-culture/public-libraries",
+          "key": "Public Libraries",
+          "timestamp": "2026-03-23T15:14:30.0584081-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Anne Kang",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157684225350070",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R42sWk0YSnJ69pSswUAZoyq",
+      "audioUri": "https://soundcloud.com/bcgov/sets/municipal-affairs-housing",
+      "isActive": false,
+      "kind": "ministries",
+      "name": "Municipal Affairs",
+      "topPostKey": "mabel-lake-sewer-lift-station-generator-project",
+      "featurePostKey": "bcs-growing-communities-fund-supporting-pitt-meadows-athletic-park-expansion",
+      "key": "municipal-affairs",
+      "timestamp": "2026-03-23T15:14:01.327-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "https://www2.gov.bc.ca/gov/content/governments/organizational-structure/ministries-organizations/ministries/post-secondary-education-and-future-skills",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/post-secondary-education/aboriginal-education-training",
+          "key": "Indigenous Education Programs",
+          "timestamp": "2026-10-03T01:26:41.3908441-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/adult-education",
+          "key": "Adult Education",
+          "timestamp": "2026-10-03T01:26:41.390846-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/post-secondary-education",
+          "key": "Post-Secondary Education",
+          "timestamp": "2026-10-03T01:26:41.3908479-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/post-secondary-education/institution-resources-administration/education-quality-assurance",
+          "key": "Education Quality Assurance",
+          "timestamp": "2026-10-03T01:26:41.3916402-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/post-secondary-education/micro-credentials",
+          "key": "Micro-credentials",
+          "timestamp": "2026-10-03T01:26:41.3916546-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/education-training/post-secondary-education/find-a-program-or-institution/find-an-institution",
+          "key": "Find a Post-Secondary Institution",
+          "timestamp": "2026-10-03T01:26:41.3916633-07:00"
+        },
+        {
+          "uri": "https://studentaidbc.ca/sabc-home-page",
+          "key": "StudentAid BC",
+          "timestamp": "2026-10-03T01:26:41.3916656-07:00"
+        },
+        {
+          "uri": "https://skilledtradesbc.ca/",
+          "key": "SkilledTradesBC",
+          "timestamp": "2026-10-03T01:26:41.3916675-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Jessie Sunner",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "250-889-1217",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683727867224",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R4CPDc94kDE8U1_KqzOOz_u",
+      "audioUri": "https://soundcloud.com/bcgov/sets/advanced-education-skills",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Post-Secondary Education and Future Skills",
+      "topPostKey": "2026PSFS0044-001080",
+      "featurePostKey": "2026PSFS0043-001052",
+      "key": "post-secondary-education-and-future-skills",
+      "timestamp": "2026-10-02T09:20:21.17-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": "post-secondary-education-and-future-skills",
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [],
+      "serviceLinks": [],
+      "newsletterLinks": [],
+      "ministerName": ".",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": null,
+      "youtubeUri": null,
+      "audioUri": null,
+      "isActive": false,
+      "kind": "ministries",
+      "name": "Minister of State for Workforce Development",
+      "topPostKey": null,
+      "featurePostKey": null,
+      "key": "workforce-development",
+      "timestamp": "2024-04-11T21:31:14-07:00"
+    },
+    {
+      "childMinistryKey": "community-safety-and-integrated-services",
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/pssg",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/life-events/death/coroners-service",
+          "key": "BC Coroners Service",
+          "timestamp": "2026-10-03T01:26:41.3917044-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/justice/criminal-justice/corrections",
+          "key": "BC Corrections",
+          "timestamp": "2026-10-03T01:26:41.3917082-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/justice/criminal-justice/bcs-criminal-justice-system/if-you-are-a-victim-of-a-crime",
+          "key": "Crime Victims",
+          "timestamp": "2026-10-03T01:26:41.3917101-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/sports-culture/gambling-fundraising/gambling-in-bc",
+          "key": "Gaming Policy and Enforcement Branch",
+          "timestamp": "2026-10-03T01:26:41.391712-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/employment-business/business/liquor-regulation-licensing",
+          "key": "Liquor and Cannabis Regulation",
+          "timestamp": "2026-10-03T01:26:41.3917139-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/justice/criminal-justice/victims-of-crime/victimlinkbc",
+          "key": "VictimLinkBC",
+          "timestamp": "2026-10-03T01:26:41.3917173-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/employment-business/business/security-services/security-industry-licensing",
+          "key": "Security Industry Licencing",
+          "timestamp": "2026-10-03T01:26:41.3917192-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/transportation/driving-and-cycling/roadsafetybc/medical-fitness",
+          "key": "Driver medical fitness reports",
+          "timestamp": "2026-10-03T01:26:41.3917215-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Nina Krieger",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683728015364",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R6-J64KR8zInKbcBzbSMver",
+      "audioUri": "https://soundcloud.com/bcgov/sets/public-safety-solicitor",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Public Safety and Solicitor General",
+      "topPostKey": "2026PSSG0070-001101",
+      "featurePostKey": "2026PSSG0067-001010",
+      "key": "public-safety-and-solicitor-general",
+      "timestamp": "2026-10-02T08:40:43.61-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": "public-safety-and-solicitor-general",
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [],
+      "serviceLinks": [],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Terry Yung",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": null,
+      "youtubeUri": "http://www.youtube.com/ProvinceofBC",
+      "audioUri": null,
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Minister of State for Community Safety and Integrated Services",
+      "topPostKey": null,
+      "featurePostKey": null,
+      "key": "community-safety-and-integrated-services",
+      "timestamp": "2026-04-16T11:43:19.78-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/sdpr",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/family-social-supports/income-assistance/payment-dates",
+          "key": "Payment dates",
+          "timestamp": "2026-10-03T01:26:41.3917398-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/family-social-supports/services-for-people-with-disabilities",
+          "key": "Services for people with disabilities",
+          "timestamp": "2026-10-03T01:26:41.3917424-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/governments/about-the-bc-government/strategies/poverty-reduction-strategy",
+          "key": "B.C. Poverty Reduction",
+          "timestamp": "2026-10-03T01:26:41.3917447-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/family-social-supports/income-assistance/access-services",
+          "key": "Access services",
+          "timestamp": "2026-10-03T01:26:41.3917466-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/family-social-supports/seniors/financial-legal-matters/income-security-programs/seniors-supplement",
+          "key": "Senior’s Supplement",
+          "timestamp": "2026-10-03T01:26:41.3917481-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www.workbc.ca/",
+          "key": "WorkBC",
+          "timestamp": "2026-10-03T01:26:41.3917512-07:00"
+        },
+        {
+          "uri": "https://myselfserve.gov.bc.ca/",
+          "key": "My Self Serve",
+          "timestamp": "2026-10-03T01:26:41.3917531-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/family-social-supports/income-assistance",
+          "key": "Income assistance",
+          "timestamp": "2026-10-03T01:26:41.391755-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Sheila Malcolmson",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157684225364560",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R6W41ilUqfZaVhhcVc2M8RA",
+      "audioUri": "https://soundcloud.com/bcgov/sets/social-development-poverty",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Social Development and Poverty Reduction",
+      "topPostKey": "2026SDPR0042-001087",
+      "featurePostKey": "2026SDPR0041-001051",
+      "key": "social-development-and-poverty-reduction",
+      "timestamp": "2026-10-01T13:22:59.757-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/tacs",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/tourism-immigration/tourism-resources",
+          "key": "Tourism Resources",
+          "timestamp": "2026-09-28T08:56:16.7815398-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/natural-resource-use/resort-development",
+          "key": "Mountain Resorts",
+          "timestamp": "2026-09-28T08:56:16.7815505-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/sports-culture/arts-culture",
+          "key": "Arts and Culture",
+          "timestamp": "2026-09-28T08:56:16.7815554-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/sports-culture/arts-culture/creative-sector",
+          "key": "Creative Industries",
+          "timestamp": "2026-09-28T08:56:16.7815588-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/sports-culture/gambling-fundraising/gaming-grants",
+          "key": "Community Gaming Grants",
+          "timestamp": "2026-09-28T08:56:16.7815619-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www.supernaturalbc.com/",
+          "key": "DestinationBC",
+          "timestamp": "2026-09-28T08:56:16.7815695-07:00"
+        },
+        {
+          "uri": "https://www.indigenousbc.com/",
+          "key": "Indigenous Tourism BC",
+          "timestamp": "2026-09-28T08:56:16.7815729-07:00"
+        },
+        {
+          "uri": "http://www.creativebc.com/",
+          "key": "CreativeBC",
+          "timestamp": "2026-09-28T08:56:16.7815755-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Anne Kang",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683818957773",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R6IPhPxXSWHo6reWZgOQN0l",
+      "audioUri": "https://soundcloud.com/bcgov/sets/tourism-arts-culture",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Tourism, Arts, Culture and Sport",
+      "topPostKey": "2026TACS0036-001086",
+      "featurePostKey": "2026IGRS0030-000875",
+      "key": "tourism-arts-culture-and-sport",
+      "timestamp": "2026-09-28T08:42:10.333-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "http://gov.bc.ca/tt",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www.drivebc.ca/",
+          "key": "DriveBC",
+          "timestamp": "2026-10-03T01:26:41.3917827-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/transportation/passenger-travel/water-travel/inland-ferries",
+          "key": "Inland ferries",
+          "timestamp": "2026-10-03T01:26:41.391785-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/transportation-projects",
+          "key": "Transportation projects",
+          "timestamp": "2026-10-03T01:26:41.3917869-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/transportation/transportation-infrastructure/engineering-standards-guidelines",
+          "key": "Engineering standards and guidelines",
+          "timestamp": "2026-10-03T01:26:41.3917888-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/transportation/transportation-reports-and-reference",
+          "key": "Transportation reports and reference",
+          "timestamp": "2026-10-03T01:26:41.3917907-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/transportation/funding-engagement-permits/permits",
+          "key": "Transportation permits & approvals",
+          "timestamp": "2026-10-03T01:26:41.3917937-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/transportation/vehicle-safety-enforcement",
+          "key": "Vehicle safety and enforcement",
+          "timestamp": "2026-10-03T01:26:41.3917956-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/transportation/transportation-infrastructure/contracting-to-transportation",
+          "key": "Contracting with the ministry",
+          "timestamp": "2026-10-03T01:26:41.3917975-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Mike Farnworth",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "250-356-8241",
+      "twitterFeedUsername": "@TranBC",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683219327092",
+      "youtubeUri": "https://www.youtube.com/@MinistryofTranBC",
+      "audioUri": "https://soundcloud.com/bcgov/sets/transportation-infrastructure",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Transportation and Transit",
+      "topPostKey": "2026TT0102-001115",
+      "featurePostKey": "2026TT0101-001113",
+      "key": "transportation-and-transit",
+      "timestamp": "2026-10-02T15:55:32.29-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": "https://gov.bc.ca/wlrs",
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://droughtportal.gov.bc.ca/",
+          "key": "B.C. Drought Information Portal",
+          "timestamp": "2026-09-24T17:56:18.6445305-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/air-land-water/water/drought-flooding-dikes-dams/river-forecast-centre",
+          "key": "B.C. River Forecast Centre",
+          "timestamp": "2026-09-24T17:56:18.6445438-07:00"
+        },
+        {
+          "uri": "https://planninginpartnership.ca/",
+          "key": "Land Use Planning",
+          "timestamp": "2026-09-24T17:56:18.6445503-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/plants-animals-ecosystems/wildlife/wildlife-conservation/wildlife-health/chronic-wasting-disease",
+          "key": "Chronic Wasting Disease",
+          "timestamp": "2026-09-24T17:56:18.6445556-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/natural-resource-stewardship/consulting-with-first-nations/first-nations-negotiations/reconciliation-other-agreements",
+          "key": "Reconciliation",
+          "timestamp": "2026-09-24T17:56:18.6445609-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/industry/natural-resource-use/natural-resource-permits/permit-connect-bc/permit-connect-bc-housing",
+          "key": "Permit Connect B.C. – Housing",
+          "timestamp": "2026-09-24T17:56:18.6445735-07:00"
+        },
+        {
+          "uri": "https://pcns-prod-master.apps.silver.devops.gov.bc.ca/",
+          "key": "Permit Connect Navigator Service",
+          "timestamp": "2026-09-24T17:56:18.6445815-07:00"
+        },
+        {
+          "uri": "https://www2.gov.bc.ca/gov/content/environment/air-land-water/water/water-licensing-rights",
+          "key": "Water licensing and rights",
+          "timestamp": "2026-09-24T17:56:18.6445891-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "Honourable Randene Neill",
+      "contactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "secondContactUser": {
+        "fullName": "Alex Example",
+        "phoneNumber": "250-555-0100",
+        "mobileNumber": "250-555-0100",
+        "emailAddress": "alex.example@gov.bc.ca"
+      },
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "bcgovfireinfo",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72177720297962602/",
+      "youtubeUri": "https://www.youtube.com/playlist?list=PLbER4Sxdn0R5Rvqa5h01tTipP6bN8xlHT",
+      "audioUri": "https://soundcloud.com/bcgov/sets/forests-lands-natural-resource ",
+      "isActive": true,
+      "kind": "ministries",
+      "name": "Water, Land and Resource Stewardship",
+      "topPostKey": "2026WLRS0034-001107",
+      "featurePostKey": "2026FOR0034-001069",
+      "key": "water-land-and-resource-stewardship",
+      "timestamp": "2026-09-24T15:35:47.62-07:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "http://engage.gov.bc.ca/lnginbc/",
+          "key": "LNG in BC",
+          "timestamp": "2025-07-31T16:10:53.2718125-07:00"
+        },
+        {
+          "uri": "http://www.empr.gov.bc.ca/OG/NGS/Pages/default.aspx",
+          "key": "Natural Gas Strategy",
+          "timestamp": "2025-07-31T16:10:53.2718227-07:00"
+        },
+        {
+          "uri": "http://www2.gov.bc.ca/gov/content/industry/natural-gas-oil",
+          "key": "Natural gas and oil",
+          "timestamp": "2025-07-31T16:10:53.2718254-07:00"
+        },
+        {
+          "uri": "https://www.bcogc.ca/",
+          "key": "BC Oil and Gas Commission",
+          "timestamp": "2025-07-31T16:10:53.2718284-07:00"
+        },
+        {
+          "uri": "http://safetyauthority.ca/",
+          "key": "BC Safety Authority",
+          "timestamp": "2025-07-31T16:10:53.2718307-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "http://www2.gov.bc.ca/gov/content/industry/natural-gas-oil/petroleum-natural-gas-tenure",
+          "key": "Get a petroleum or natural gas tenure",
+          "timestamp": "2025-07-31T16:10:53.2718383-07:00"
+        },
+        {
+          "uri": "http://www2.gov.bc.ca/gov/content?id=7C7BE7CA747846F3BBCE3393C6ED63BA",
+          "key": "Apply for royalty programs",
+          "timestamp": "2025-07-31T16:10:53.2718421-07:00"
+        },
+        {
+          "uri": "https://www.bcogc.ca/",
+          "key": "Apply for oil and gas permits",
+          "timestamp": "2025-07-31T16:10:53.2718448-07:00"
+        }
+      ],
+      "newsletterLinks": [
+        {
+          "uri": "/newsletters/lng-in-bc",
+          "key": "LNG in BC",
+          "timestamp": "2025-07-31T16:10:53.2717395-07:00"
+        }
+      ],
+      "ministerName": "-",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": "http://www.flickr.com/photos/bcgovphotos/sets/72157634049014795/",
+      "youtubeUri": "https://www.youtube.com/playlist?list=PLbER4Sxdn0R7g2lsootxHtIQubcGejR1G",
+      "audioUri": "https://soundcloud.com/bcgov/sets/ministry-of-natural-gas",
+      "isActive": false,
+      "kind": "ministries",
+      "name": "ARCHIVED: Natural Gas Development",
+      "topPostKey": "2017MNGD0072-001159",
+      "featurePostKey": "2017PREM0023-000326",
+      "key": "natural-gas-development",
+      "timestamp": "2018-02-13T19:04:53-08:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [
+        {
+          "uri": "https://www.smallbusinessroundtable.ca/Home.aspx",
+          "key": "Small Business Roundtable",
+          "timestamp": "2025-07-31T16:10:53.2825791-07:00"
+        },
+        {
+          "uri": "http://www2.gov.bc.ca/gov/content/employment-business/business/small-business/bc-small-business-accord",
+          "key": "Small Business Accord",
+          "timestamp": "2025-07-31T16:10:53.2825909-07:00"
+        },
+        {
+          "uri": "http://www2.gov.bc.ca/gov/content/employment-business/business/small-business/resources",
+          "key": "Small Business Resources",
+          "timestamp": "2025-07-31T16:10:53.2825935-07:00"
+        },
+        {
+          "uri": "http://www2.gov.bc.ca/gov/content/employment-business/business/small-business/mobile-business-licence-program",
+          "key": "Mobile Business Licence",
+          "timestamp": "2025-07-31T16:10:53.2825958-07:00"
+        },
+        {
+          "uri": "http://www2.gov.bc.ca/gov/content/governments/about-the-bc-government/regulatory-reform",
+          "key": "Regulatory reform",
+          "timestamp": "2025-07-31T16:10:53.2825981-07:00"
+        }
+      ],
+      "serviceLinks": [
+        {
+          "uri": "http://www.smallbusinessbc.ca/",
+          "key": "Small Business BC",
+          "timestamp": "2025-07-31T16:10:53.2826084-07:00"
+        },
+        {
+          "uri": "http://www.bcbizpal.ca/?b=59",
+          "key": "BizPaL",
+          "timestamp": "2025-07-31T16:10:53.282611-07:00"
+        },
+        {
+          "uri": "http://www2.gov.bc.ca/gov/content/employment-business/business/small-business/resources/starting-a-restaurant-in-bc",
+          "key": "Starting a Restaurant in B.C.",
+          "timestamp": "2025-07-31T16:10:53.2826133-07:00"
+        }
+      ],
+      "newsletterLinks": [],
+      "ministerName": "-",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "",
+      "flickrUri": null,
+      "youtubeUri": null,
+      "audioUri": null,
+      "isActive": false,
+      "kind": "ministries",
+      "name": "ARCHIVED: Small Business and Red Tape Reduction",
+      "topPostKey": "2017SBRT0003-000121",
+      "featurePostKey": "2017SBRT0015-000704",
+      "key": "small-business-and-red-tape-reduction",
+      "timestamp": "2018-02-13T19:04:05-08:00"
+    },
+    {
+      "childMinistryKey": null,
+      "parentMinistryKey": null,
+      "ministryUrl": null,
+      "displayAdditionalName": null,
+      "topicLinks": [],
+      "serviceLinks": [],
+      "newsletterLinks": [],
+      "ministerName": "-",
+      "contactUser": null,
+      "secondContactUser": null,
+      "weekendContactNumber": "",
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683220355762",
+      "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R6DJf5Z_Wcjpr4NlgO8yrVV",
+      "audioUri": "https://soundcloud.com/bcgov/sets/child-care",
+      "isActive": false,
+      "kind": "ministries",
+      "name": "Minister of State for Child Care and Children and Youth with Support Needs",
+      "topPostKey": "2020CFD0038-001325",
+      "featurePostKey": "2019CFD0075-001298",
+      "key": "child-care",
+      "timestamp": "2024-12-11T13:39:48-08:00"
+    }
+  ]
+}

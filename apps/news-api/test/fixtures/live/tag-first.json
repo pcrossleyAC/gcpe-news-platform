@@ -1,0 +1,19 @@
+{
+  "name": "tag-first",
+  "path": "/api/Tags/bc-coroners-service?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": {
+    "twitterFeedUsername": null,
+    "flickrUri": null,
+    "youtubeUri": null,
+    "audioUri": null,
+    "isActive": false,
+    "kind": "tags",
+    "name": "BC Coroners Service",
+    "topPostKey": null,
+    "featurePostKey": null,
+    "key": "bc-coroners-service",
+    "timestamp": "2025-07-31T16:10:56.9592466-07:00"
+  }
+}

@@ -1,0 +1,60 @@
+{
+  "name": "sectors",
+  "path": "/api/Sectors?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "http://www.flickr.com/photos/bcgovphotos/sets/72157624539046324/",
+      "youtubeUri": "http://www.youtube.com/user/ProvinceofBC#grid/user/B9EDD9BFFA3B9097",
+      "audioUri": "http://soundcloud.com/bcgov/sets/economy/",
+      "isActive": true,
+      "kind": "sectors",
+      "name": "Economy",
+      "topPostKey": "2021PREM0006-000153",
+      "featurePostKey": "2020FLNRO0064-002087",
+      "key": "economy",
+      "timestamp": "2021-01-28T09:57:13.37-08:00"
+    },
+    {
+      "twitterFeedUsername": "",
+      "flickrUri": null,
+      "youtubeUri": null,
+      "audioUri": null,
+      "isActive": true,
+      "kind": "sectors",
+      "name": "Government Operations",
+      "topPostKey": "2021PREM0005-000119",
+      "featurePostKey": "2021HLTH0006-000178",
+      "key": "government-operations",
+      "timestamp": "2021-01-29T16:35:27.11-08:00"
+    },
+    {
+      "twitterFeedUsername": "@BCGovNews",
+      "flickrUri": "http://www.flickr.com//photos/bcgovphotos/sets/72157626170835601/show/",
+      "youtubeUri": "http://www.youtube.com/user/ProvinceofBC#grid/user/F3FB808DB9CA78C6",
+      "audioUri": "http://soundcloud.com/bcgov/sets/multiculturalism/",
+      "isActive": true,
+      "kind": "sectors",
+      "name": "Multiculturalism",
+      "topPostKey": "2021AG0002-000051",
+      "featurePostKey": "2020TAC0023-000944",
+      "key": "multiculturalism",
+      "timestamp": "2021-01-15T13:25:57.473-08:00"
+    },
+    {
+      "twitterFeedUsername": "",
+      "flickrUri": "http://www.flickr.com/photos/bcgovphotos/sets/72157626188545988/show/",
+      "youtubeUri": "http://www.youtube.com/user/ProvinceofBC#grid/user/4F3DCD71F23DF924",
+      "audioUri": "http://soundcloud.com/bcgov/sets/families/",
+      "isActive": true,
+      "kind": "sectors",
+      "name": "Services",
+      "topPostKey": "2021FLNRO0006-000156",
+      "featurePostKey": "2021AEST0004-000103",
+      "key": "services",
+      "timestamp": "2021-01-28T14:48:08.083-08:00"
+    }
+  ]
+}

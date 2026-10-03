@@ -1,0 +1,7 @@
+{
+  "name": "post-unknown",
+  "path": "/api/Posts/zz-unknown-key?api-version=1.0",
+  "status": 200,
+  "contentType": null,
+  "body": null
+}

@@ -1,0 +1,61 @@
+{
+  "name": "latest-home-factsheets",
+  "path": "/api/Posts/Latest/home/default?postKind=factsheets&count=1&api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "kind": "factsheets",
+      "atomId": "uuid:61836a1e-4e28-42be-a83d-d565478b13bc",
+      "summary": "Mining Month is an important opportunity to highlight the growth of B.C.’s mining and exploration sector and the many people who make it a strong contributor to our economy.  ",
+      "socialMediaSummary": null,
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2026-05-13T11:00:00-07:00",
+      "leadMinistryKey": "mining-and-critical-minerals",
+      "hasMediaAssets": false,
+      "hasTranslations": false,
+      "isNewsOnDemand": false,
+      "assetUrl": "",
+      "location": "Victoria",
+      "documents": [
+        {
+          "pageTitle": "Opinion-Editorial",
+          "languageId": 4105,
+          "headline": "Mining investment creating jobs, building B.C. economy",
+          "subheadline": "",
+          "detailsHtml": "<p>Mining Month is&nbsp;an important opportunity&nbsp;to&nbsp;highlight the growth of B.C.&rsquo;s mining and exploration sector and the many people who&nbsp;make it a strong contributor to our economy.&nbsp;&nbsp;</p><p>The work our government is undertaking is strengthening our position as one of the best places in the world to invest in, creating jobs and building sustainable mining projects the right way. We are accomplishing this by working with First Nations, communities, workers and industry, because lasting success must be built on respect, collaboration and shared benefits.&nbsp;</p><p>Mining in B.C. is about far more than what comes out of the ground. For many, a steady paycheque in the mining sector means building a good life or providing careers for young people wanting to work in a dynamic industry close to home.&nbsp;</p><p>Today, more than&nbsp;40,000 people&nbsp;work directly in B.C.&rsquo;s mining sector, earning an average annual salary of $130,000 in careers ranging from heavy equipment operators to engineers, health and safety specialists, and skilled trades. These are good family-supporting jobs that also support local businesses, such as restaurants, shops and trucking&nbsp;companies. In short, these jobs support and strengthen whole communities.</p><p>Mining in British Columbia is earning global attention. In 2025, B.C. saw nearly $751 million in mineral-exploration spending, a historic high according to a recent EY report, alongside projected mineral production value of&nbsp;more than $16 billion, a 36% annual increase. Investment in mineral-resource development has grown from approximately $2 billion&nbsp;in 2017 to&nbsp;more than $5 billion&nbsp;in 2024.&nbsp;</p><p>Over the past year, permits were approved for six major mining projects, this is a pace that we have never seen before in B.C., and that no other jurisdiction can match. Mining projects such as Eskay Creek, Highland Valley Copper, Copper Mountain and Mt. Milligan are attracting investment, creating&nbsp;jobs&nbsp;and strengthening regional economies, with 187 companies active in 301 projects&nbsp;provincewide.&nbsp;&nbsp;</p><p>Global demand is rising for the metals and minerals needed for cleaner energy,&nbsp;new technology&nbsp;and modern infrastructure, and British Columbia has&nbsp;an important role&nbsp;to play. We are Canada&rsquo;s largest producer of copper and the country&rsquo;s only producer of molybdenum. The work underway ensures that B.C. is here to support that global demand, and the people of B.C. will see those benefits, through direct and indirect jobs, direct community benefits and through increased provincial revenue that we can invest in our future.</p><p>Workers need&nbsp;certainty,&nbsp;communities need projects moving ahead, and companies need clear, predictable processes. This year, B.C. introduced fixed timelines for mineral exploration permits, a first in Canada, with applications processed in as little as 40 days&nbsp;while&nbsp;maintaining&nbsp;environmental protections and First Nations consultation. Budget 2026 includes $3 million to support permitting improvements, including hiring new staff to strengthen capacity. We are building on the success of major mine application review timeline reductions of 35%.&nbsp;</p><p>Mining helped build British Columbia and will help build our future.</p><p>During Mining Month, I want to&nbsp;sincerely thank&nbsp;workers on mine sites, contractors, First Nations leaders<strong>, </strong>local&nbsp;businesses&nbsp;and industry leaders. Because of your hard work and dedication, British Columbia is among the top mining&nbsp;jurisdictions&nbsp;in the world.&nbsp;</p>",
+          "byline": "By Jagrup Brar \nMinister of Mining and Critical Minerals  \nMay 13, 2026\n521 words",
+          "contacts": [
+            {
+              "title": "Ministry of Mining and Critical Minerals ",
+              "details": "Media Relations \n250-361-8136"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-33743",
+      "redirectUri": null,
+      "ministryKeys": [
+        "mining-and-critical-minerals"
+      ],
+      "sectorKeys": [
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [
+        "look-west-strategy",
+        "natural-resources"
+      ],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "employment-business-and-economic-development",
+        "environmental-protection-and-sustainability"
+      ],
+      "azureAssets": null,
+      "azureTranslations": null,
+      "key": "mining-investment-creating-jobs-building-bc-economy",
+      "timestamp": "2026-05-13T11:00:18.5246134-07:00"
+    }
+  ]
+}

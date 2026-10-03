@@ -1,0 +1,57 @@
+{
+  "name": "latest-home-stories",
+  "path": "/api/Posts/Latest/home/default?postKind=stories&count=1&api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "kind": "stories",
+      "atomId": "uuid:0eb08539-fe8b-461d-9447-66f8a8541029",
+      "summary": "From Fraser Health: https://www.fraserhealth.ca/news/2026/Aug/New-energy-centre-will-power-the-future-of-health-care-in-Delta",
+      "socialMediaSummary": null,
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2026-08-17T12:20:00-07:00",
+      "leadMinistryKey": "infrastructure",
+      "hasMediaAssets": false,
+      "hasTranslations": false,
+      "isNewsOnDemand": false,
+      "assetUrl": "",
+      "location": "Delta",
+      "documents": [
+        {
+          "pageTitle": "Story",
+          "languageId": 4105,
+          "headline": "New energy centre will power the future of health care in Delta",
+          "subheadline": "",
+          "detailsHtml": "<p>From Fraser Health: <a href=\"https://www.fraserhealth.ca/news/2026/Aug/New-energy-centre-will-power-the-future-of-health-care-in-Delta\">https://www.fraserhealth.ca/news/2026/Aug/New-energy-centre-will-power-the-future-of-health-care-in-Delta</a></p><p>Design and pre-construction work is now underway for a new $24.4-million energy centre at Delta Hospital which will bolster its power systems while meeting the needs of the hospital and future projects such as the Beedie Long-Term Care Centre and installation of an MRI at the site.</p><p>With Delta&rsquo;s population expected to grow by 31,000 people over the next 20 years, the new energy centre will increase electrical capacity at the site and provide the infrastructure needed to support future hospital expansion, including modern services and equipment planned for the years ahead.</p><p>&ldquo;Our government continues to invest in Delta to support modernized health care to serve a growing and aging population,&rdquo; said Ravi Kahlon, MLA for Delta North. &ldquo;This important project will play a key role in delivering the Beedie Long-Term Care Centre project as well as the hospital&rsquo;s MRI and other significant future projects.&rdquo;</p><p>Energy centres, which house generators, transformers, switchgears and other equipment, also play an important role in disaster-proofing hospital campuses so they can remain operational during events like power outages, floods and earthquakes.</p><p>&ldquo;As our communities grow, it&rsquo;s important that our hospitals are ready to grow with them,&rdquo; said Sharat Chandra, Vice President, Planning, Transformation and Infrastructure, Fraser Health. &ldquo;The new energy centre is an investment in the future of Delta Hospital. It provides the reliable infrastructure needed to support future expansion, new technology and the services people will rely on for years to come. We&rsquo;re proud to work with our partners to build a hospital that&rsquo;s ready to meet the needs of this growing community.&rdquo;</p><p>The project follows other recent, substantial investments to health services in Delta including the opening of the South Delta After-Hours Urgent and Primary Care Centre; the hiring of emergency physicians and nurses to help stabilize Delta Hospital&rsquo;s Emergency Department; and work now underway to install an MRI and build a new, purpose-built space for the hospital&rsquo;s endoscopy program &mdash; both projects fully funded by the Delta Hospital and Community Health Foundation.</p><p>&ldquo;The Delta Hospital and Community Health Foundation has been proud to invest in transformative projects at the Delta Hospital campus, including the Beedie Long-Term Care Centre, expanded endoscopy services and our soon-to-be MRI unit,&rdquo; said Lisa Hoglund, CEO, Delta Hospital and Community Health Foundation. &ldquo;This new energy centre will ensure Delta Hospital has the capacity and resilience required to accommodate other new technologies, additional services and future growth in our community, enabling our residents to access more care, closer to home. We are proud to partner with Fraser Health and the Province to help create a stronger health-care system for the people of Delta.&rdquo;</p><p>Construction of the energy centre is starting in summer 2027 and expected to complete in spring 2028. Pre-construction and design work is currently underway.</p><p>&ldquo;This infrastructure investment is another important step forward in strengthening health care for our community,&rdquo; said George Harvie, Mayor, City of Delta. &ldquo;As Delta continues to grow, it&rsquo;s critical that our hospital has the infrastructure needed to support expanded services, future projects, and emergency preparedness. I want to thank the Province, Fraser Health, and the Delta Hospital and Community Health Foundation for their continued partnership and commitment to providing Delta residents with access to high-quality health care close to home.&rdquo;</p>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Fraser Health ",
+              "details": "Media Relations\nMedia@fraserhealth.ca \n604-613-0794"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-34172",
+      "redirectUri": null,
+      "ministryKeys": [
+        "infrastructure"
+      ],
+      "sectorKeys": [
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [],
+      "themeKeys": [
+        "employment-business-and-economic-development",
+        "health"
+      ],
+      "azureAssets": null,
+      "azureTranslations": null,
+      "key": "new-energy-centre-will-power-the-future-of-health-care-in-delta",
+      "timestamp": "2026-08-24T11:10:39.1337697-07:00"
+    }
+  ]
+}

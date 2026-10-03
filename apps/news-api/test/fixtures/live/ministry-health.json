@@ -1,0 +1,77 @@
+{
+  "name": "ministry-health",
+  "path": "/api/Ministries/health?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": {
+    "childMinistryKey": null,
+    "parentMinistryKey": null,
+    "ministryUrl": "http://gov.bc.ca/health",
+    "displayAdditionalName": null,
+    "topicLinks": [
+      {
+        "uri": "https://www2.gov.bc.ca/gov/theme.page?id=607861D37A414CA69E916798F39A09E9",
+        "key": "Accessing Health Care",
+        "timestamp": "2026-10-03T01:26:40.3573791-07:00"
+      },
+      {
+        "uri": "https://www.healthlinkbc.ca/find-care/health-connect-registry",
+        "key": "Health Connect Registry",
+        "timestamp": "2026-10-03T01:26:40.3573917-07:00"
+      },
+      {
+        "uri": "https://www2.gov.bc.ca/gov/content/health/managing-your-health/immunizations",
+        "key": "Get immunized",
+        "timestamp": "2026-10-03T01:26:40.357394-07:00"
+      },
+      {
+        "uri": "https://www2.gov.bc.ca/gov/content/health/strengthening-health-care",
+        "key": "Strengthening Health Care",
+        "timestamp": "2026-10-03T01:26:40.3573959-07:00"
+      },
+      {
+        "uri": "https://www2.gov.bc.ca/gov/content/health/mental-health-and-addictions/building-better-mental-health-and-addictions-care",
+        "key": "Mental health and addictions care",
+        "timestamp": "2026-10-03T01:26:40.3573978-07:00"
+      }
+    ],
+    "serviceLinks": [
+      {
+        "uri": "https://www.healthlinkbc.ca/",
+        "key": "HealthLink BC",
+        "timestamp": "2026-10-03T01:26:40.3574042-07:00"
+      },
+      {
+        "uri": "https://www2.gov.bc.ca/gov/content/health/health-drug-coverage/msp",
+        "key": "Medical Services Plan",
+        "timestamp": "2026-10-03T01:26:40.3574061-07:00"
+      },
+      {
+        "uri": "https://www2.gov.bc.ca/gov/content/health/health-drug-coverage/pharmacare-for-bc-residents",
+        "key": "BC PharmaCare",
+        "timestamp": "2026-10-03T01:26:40.357408-07:00"
+      }
+    ],
+    "newsletterLinks": [],
+    "ministerName": "Honourable Ravi Kahlon",
+    "contactUser": {
+      "fullName": "Alex Example",
+      "phoneNumber": "250-555-0100",
+      "mobileNumber": "250-555-0100",
+      "emailAddress": "alex.example@gov.bc.ca"
+    },
+    "secondContactUser": null,
+    "weekendContactNumber": "",
+    "twitterFeedUsername": "",
+    "flickrUri": "https://www.flickr.com/photos/bcgovphotos/albums/72157683819304073",
+    "youtubeUri": "https://www.youtube.com/playlist?playnext=1&list=PLbER4Sxdn0R7Sef9_eWi-RNOnsZ0IP_6c",
+    "audioUri": "https://soundcloud.com/bcgov/sets/health",
+    "isActive": true,
+    "kind": "ministries",
+    "name": "Health",
+    "topPostKey": "2026HLTH0085-001117",
+    "featurePostKey": "2026INF0034-001103",
+    "key": "health",
+    "timestamp": "2026-10-02T16:46:05.527-07:00"
+  }
+}

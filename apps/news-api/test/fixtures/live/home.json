@@ -1,0 +1,17 @@
+{
+  "name": "home",
+  "path": "/api/Home?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": {
+    "liveWebcastFlashMediaManifestUrl": null,
+    "liveWebcastM3uPlaylist": null,
+    "granville": null,
+    "kind": "home",
+    "name": null,
+    "topPostKey": "2026WLRS0034-001107",
+    "featurePostKey": "2026HLTH0085-001117",
+    "key": "default",
+    "timestamp": "2026-10-02T10:34:49.0859062-07:00"
+  }
+}

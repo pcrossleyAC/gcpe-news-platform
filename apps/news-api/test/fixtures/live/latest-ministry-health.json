@@ -1,0 +1,243 @@
+{
+  "name": "latest-ministry-health",
+  "path": "/api/Posts/Latest/ministries/health?count=4&api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "kind": "releases",
+      "atomId": "uuid:de225936-65d0-4dfa-91ff-dde870f57819",
+      "summary": "Building permits have been approved, people one step closer to primary care closer to home",
+      "socialMediaSummary": "",
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2026-09-21T12:45:00-07:00",
+      "leadMinistryKey": "health",
+      "hasMediaAssets": false,
+      "hasTranslations": false,
+      "isNewsOnDemand": true,
+      "assetUrl": "",
+      "location": "Sooke",
+      "documents": [
+        {
+          "pageTitle": "News Release",
+          "languageId": 4105,
+          "headline": "New urgent and primary care centre coming to Sooke",
+          "subheadline": "Building permits have been approved, people one step closer to primary care closer to home",
+          "detailsHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>People in Sooke are one step closer to&nbsp;a new urgent and primary care centre (UPCC), thanks to an innovative partnership between the District of Sooke, Catalyst Community Development, Island Health and BC Housing&rsquo;s BC Builds program</em></li>\n\t<li><em>Patients can expect urgent access to primary care services from a team&nbsp;including doctors, nurses and allied health professionals</em></li>\n\t<li><em>The Sooke UPCC will be owned and operated by Island Health</em></li>\n\t<li><em>Construction of&nbsp;the building, which will include the UPCC and residential space</em>, is expected to start&nbsp;in 2026, with s<em>ite clearing and early works starting soon</em></li>\n</ul><p>__________</p><p>People in Sooke and surrounding communities will benefit from a new urgent and primary care centre (UPCC) closer to home, as building permits have been approved for a new development that will combine health services and housing.</p><p>&ldquo;With the building permits now approved, we are one step further to deliver on our commitment to ensure people in Sooke get primary care services close to home,&rdquo; said Ravi Kahlon, Minister of Health. &ldquo;This is part of our promise to improve primary care for everyone in the province. Since 2018, we&rsquo;ve opened 48 UPCCs, including 12 on Vancouver Island.&rdquo;</p><p>The UPCC will be&nbsp;at 2101 Sitka Court, formerly 6651 Wadams Way,&nbsp;in a six-storey building, which will include residential housing. The building, which is being developed by Catalyst Community Developments, will be constructed on land provided by the District of Sooke.</p><p>&ldquo;The Sooke Region is experiencing continual growth and we need to ensure that we match the increasing needs for health care services close to home,&rdquo; said Dana Lajeunesse, MLA for Juan de Fuca-Malahat. &ldquo;Once open, the UPCC will complement the exemplary services already in place, thanks to the team at West Coast Family Medical Clinic, and will bring meaningful change to the thousands of residents of the region who do not have timely access to primary care.&rdquo;</p><p>Construction on the building is expected to start&nbsp;in 2026. Site clearing and early works will be starting soon. When open, patients can expect to receive urgent access to primary care services from a team, including doctors, Island Health-employed nurses and allied health professionals.</p><p>The UPCC is estimated to cost approximately $8 million in capital funding.</p><p>This is part of the Province&rsquo;s commitment to improve access to primary care for people throughout B.C. Since the first UPCC opened in 2018, people in B.C. have primary care access available closer to home with the 48 UPCCs that are&nbsp;open.</p><p>As well, government is growing B.C.&rsquo;s health workforce, so more health-care professionals can provide health-care services, including primary care, to more people in the province. As part of a U.S. recruitment campaign by the Province, more than 700 U.S. health-care providers have accepted jobs&nbsp;in B.C. They include 171 physicians, 445 nurses, 78 nurse practitioners and 44 allied health professionals.</p><p><strong>Quotes: </strong></p><p style=\"margin-left:.05pt\"><strong>Stephanie Higginson, parliamentary secretary for primary care &ndash;</strong></p><p style=\"margin-left:.05pt\">&ldquo;The advancement to open a new UPCC in Sooke reflects our progress in building a stronger, more integrated primary‑care system that put people first. Our commitment remains to ensure people can rely on high-quality care that meets their people&rsquo;s needs, when they need them.&rdquo;&nbsp;</p><p style=\"margin-left:.05pt\"><strong>Leah Hollins, board chair, Island Health &ndash;</strong></p><p>&ldquo;This new urgent and primary care centre will make it easier for people in Sooke and surrounding communities to access the care they need closer to home. By bringing together physicians, nurses and allied health professionals in one location, we can help patients receive timely, team-based care and strengthen access to primary care in a growing community.&rdquo;&nbsp;</p><p><strong>Maja Tait, mayor of Sooke -</strong></p><p>&ldquo;This project is moving from plans on paper to work on the ground. By bringing health care and housing together on one site, we are creating a community asset shaped by needs. This milestone reflects years of patience, advocacy and partnership. It will help residents access care closer to home while providing rental homes for people and families. We have carried this vision with unwavering commitment, and now we are ready to build.&rdquo;&nbsp;</p><p><strong>Quick Facts:</strong></p><ul>\n\t<li>UPCCs are a partnership between the Ministry of Health, health authorities and partners such as Doctors of BC, Divisions of Family Practice and Nurses and Nurse Practitioners of BC.</li>\n\t<li>UPCCs are part of the primary care networks&nbsp;being established through B.C.&rsquo;s primary care strategy.</li>\n\t<li>Together, the UPCCs&nbsp;have had almost five million visits, representing approximately&nbsp;22,000 visits each week.</li>\n\t<li>Since the launch of the primary care strategy in 2018, one million people have been connected to a family doctor or nurse practitioner in B.C.</li>\n</ul><p><strong>Learn More:</strong></p><ul>\n\t<li>To sign up to be matched with a family doctor or nurse practitioner on the Health Connect Registry, visit:<br />\n\t<a href=\"https://www.healthlinkbc.ca/health-connect-registry\">https://www.healthlinkbc.ca/health-connect-registry</a></li>\n\t<li>To learn more about the Province&rsquo;s primary-care strategy, visit:<br />\n\t<a href=\"https://news.gov.bc.ca/releases/2018PREM0034-001010\">https://news.gov.bc.ca/releases/2018PREM0034-001010</a></li>\n</ul>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Ministry of Health",
+              "details": "Media Relations\n250-952-1887"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-34321",
+      "redirectUri": null,
+      "ministryKeys": [
+        "health"
+      ],
+      "sectorKeys": [
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "family-and-social-supports",
+        "health"
+      ],
+      "azureAssets": null,
+      "azureTranslations": null,
+      "key": "2026HLTH0084-001106",
+      "timestamp": "2026-09-22T09:54:52.036499-07:00"
+    },
+    {
+      "kind": "releases",
+      "atomId": "uuid:3c614d7c-198a-45ce-a2b6-8bfd0398ae1b",
+      "summary": "Province investing $20 million to help build Willow House",
+      "socialMediaSummary": "",
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2026-09-19T13:45:00-07:00",
+      "leadMinistryKey": "health",
+      "hasMediaAssets": false,
+      "hasTranslations": false,
+      "isNewsOnDemand": true,
+      "assetUrl": "",
+      "location": "Vancouver",
+      "documents": [
+        {
+          "pageTitle": "News Release",
+          "languageId": 4105,
+          "headline": "Breaking down barriers for families to focus on children’s health",
+          "subheadline": "Province investing $20 million to help build Willow House",
+          "detailsHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>The Province is investing $20 million to help </em><em>more families remain together at Ronald McDonald House BC &amp; Yukon and close to their children while they are receiving specialized treatment at BC Children&rsquo;s Hospital</em></li>\n\t<li><em>By doubling housing capacity at the new Willow House in Vancouver, the investment will remove financial and logistical barriers so families can focus on the health and well-being of their children for as long as treatment is needed</em></li>\n\t<li><em>The provincial investment adds to the collective financial support from all levels of government, community, and health-care&nbsp;and philanthropic partners committed to building Willow House for future generations</em></li>\n</ul><p>__________</p><p>The Province is breaking down financial barriers with a $20-million contribution to Ronald McDonald House BC &amp; Yukon that will double housing spaces for families travelling to Vancouver for their children&rsquo;s specialized care.</p><p>&ldquo;We want patients accessing care close to home, but when they can&rsquo;t, we need to make sure they are well-supported,&rdquo; said Ravi Kahlon, Minister of Health. &ldquo;With our investment, we&rsquo;re removing financial and logistical barriers so families can focus on their children&rsquo;s health and well-being for as long as they need to without being separated.&rdquo;</p><p>The provincial investment will go toward adding 75 self-contained studio, one-bedroom and two-bedroom suites designed for longer stays and larger families, along with community and support spaces.</p><p>&ldquo;Public investments are about being there for people when they need most support,&rdquo; said Josie Osborne, Minister of Finance. &ldquo;When your child needs specialized care far from home, the last thing you should have to worry about is finding a place to stay or managing added costs. This investment will help ease some of that stress, so more families can stay together and focus on the well-being of their child.&rdquo;</p><p>In 2025, Ronald McDonald House BC &amp; Yukon supported more than 1,700 families from more than 145 communities throughout British Columbia. Families travelled an average of 498 kilometers to access care, including 33% from the Interior, 26% from northern B.C. and 21% from Vancouver Island.</p><p>&ldquo;With this investment, families, especially those living in rural and remote communities, will be able to stay with their children for as long as they need to&nbsp;without worrying about paying for housing in Vancouver,&rdquo; said Brittny Anderson, Minister of State for Local Governments and Rural Communities. &ldquo;This will take a big financial burden off the shoulders of families, allowing them to focus on their children&rsquo;s well-being.&rdquo;</p><p>Construction is expected to begin in three to four months. Willow House will start welcoming families in early 2029.</p><p>&ldquo;Ronald McDonald House makes a world of a difference for families who must travel from across the province to BC Children&rsquo;s Hospital for their children&#39;s medical care,&rdquo; said Christine Boyle, MLA for Vancouver-Little Mountain. &ldquo;I am proud to support this investment that will help double the capacity of housing spaces for families in Vancouver.&rdquo;</p><p>The provincial investment adds to the collective financial support from all levels of government, community, and health-care and philanthropic partners committed to building Willow House for future generations.</p><p>&ldquo;This investment means the Province understands that when a child needs specialized care in Vancouver, the impact is felt by an entire family and by the community they call home,&rdquo; said Richard Pass, CEO, Ronald McDonald House BC &amp; Yukon. &ldquo;We are grateful to the Province for their commitment to supporting families across B.C. and look forward to continuing our work with the Province and our donors and partners to bring this important project to life.&rdquo;</p><p>In 1983, Ronald McDonald House BC &amp; Yukon opened its doors in Shaughnessy. The original 13-bedroom house provided support for sick kids and families needing to travel long distances to receive specialized care only found in Vancouver. Over the years, the demand for the essential service quickly grew beyond what the house could offer. Ronald McDonald House BC &amp; Yukon now exists as a 73-bedroom house in Vancouver, as well as family rooms in Surrey, Kamloops and Prince George, with even more services available for families. It is built on the belief that keeping the family together is an essential part of healing children with serious illnesses.</p><p><strong>Learn More:</strong></p><ul>\n\t<li>To learn more about B.C.&rsquo;s actions to strengthen health care, visit:&nbsp;<a href=\"https://strongerbc.gov.bc.ca/health-care\">https://strongerbc.gov.bc.ca/health-care</a></li>\n\t<li>To learn about Ronald McDonald House BC &amp; Yukon, visit: <a href=\"https://ronaldmcdonaldhousebcy.ca\">https://ronaldmcdonaldhousebcy.ca</a>&nbsp;&nbsp;</li>\n</ul>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Ministry Of Health",
+              "details": "Media Relations\n250-952-1887 (media line)"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-34313",
+      "redirectUri": null,
+      "ministryKeys": [
+        "health"
+      ],
+      "sectorKeys": [
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [
+        "housing-affordability"
+      ],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "education-and-training",
+        "family-and-social-supports",
+        "health"
+      ],
+      "azureAssets": null,
+      "azureTranslations": null,
+      "key": "2026HLTH0082-001098",
+      "timestamp": "2026-09-19T13:45:52.9815592-07:00"
+    },
+    {
+      "kind": "releases",
+      "atomId": "uuid:597edbe4-75a2-461a-973a-d1a68681d611",
+      "summary": "Delivering urgent rare-disease therapy while building a platform for future patients",
+      "socialMediaSummary": "",
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2026-09-19T12:15:00-07:00",
+      "leadMinistryKey": "health",
+      "hasMediaAssets": false,
+      "hasTranslations": true,
+      "isNewsOnDemand": true,
+      "assetUrl": "",
+      "location": "Vancouver",
+      "documents": [
+        {
+          "pageTitle": "News Release",
+          "languageId": 4105,
+          "headline": "Advancing treatment for children with rare genetic diseases",
+          "subheadline": "Delivering urgent rare-disease therapy while building a platform for future patients",
+          "detailsHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>The Province is partnering with leading research universities to</em> <em>develop personalized gene-editing therapy for Gurmoh Gill, </em><em>a B.C. child living with hereditary spastic paraplegia type 4, a rare neurodegenerative disease</em></li>\n\t<li><em>At the same time, Gurmoh&rsquo;s experience will be used to shape how other children with rare diseases and their families navigate from diagnosis to potential treatment</em></li>\n\t<li><em>While supporting Gurmoh, the diagnosis-to-treatment pathway</em> <em>has the potential to support patients across a broad range of rare genetic conditions</em></li>\n\t<li><em>It contributes to B.C.&rsquo;s status as a leader in advancing research and innovation in rare genetic therapy and strengthens B.C.&rsquo;s competitiveness as a destination for health research and investment</em></li>\n</ul><p>__________</p><p>People living with rare genetic diseases, including children, will have improved access to emerging treatment opportunities as the Province partners with two of Canada&rsquo;s leading research institutions to create a new pathway that helps patients and their families move from diagnosis to potential therapy sooner.</p><p>&ldquo;Learning that your child has a rare genetic disease is stressful enough, so navigating what comes next should be as simple as possible,&rdquo; said Ravi Kahlon, Minister of Health. &ldquo;Every diagnosis should be an opportunity, not an end point. By investing in cutting-edge gene-editing research and creating a first-of-its-kind diagnosis-to-therapy pathway in British Columbia, we&rsquo;re helping families access potential treatment opportunities sooner while building a system that can benefit children, as well as adults, with rare genetic diseases long into the future.&rdquo;</p><p>The Provincial Health Services Authority (PHSA) and BC Children&rsquo;s Hospital are partnering with the University of British Columbia and McGill University&rsquo;s Montreal Neurological Institute-Hospital (The Neuro) to establish a pathway from diagnosis to potential therapy for people with rare genetic diseases.</p><p>The partnership is motivated by the experience of Gurmoh Gill, a B.C. child living with hereditary spastic paraplegia type 4 (SPG4), a rare neurodegenerative disease. His experience highlighted a challenge faced by many families affected by rare diseases: not knowing where to turn when a diagnosis is made but no established treatment exists.</p><p>While advances in genomic medicine mean more children are receiving diagnoses for rare genetic diseases, families are often left wondering what comes next. In many cases, there is no co-ordinated process to determine whether treatment opportunities exist, how they should be evaluated or where they can be accessed. Gurmoh&rsquo;s case will help set the foundation for the pathway so children with rare diseases and their families don&rsquo;t have to start from scratch.</p><p>&ldquo;When we first received Gurmoh&rsquo;s diagnosis, we didn&rsquo;t know if there was any hope,&rdquo; said Stalin and Navpreet Gill, parents of Gurmoh Gill. &ldquo;Today, we are deeply grateful to the provincial government, clinicians, researchers and everyone who have come together to support Gurmoh and explore a potential treatment. This work gives our family hope for the future, and we are especially thankful that Gurmoh&rsquo;s journey could give hope for other children and families facing rare diseases.&rdquo;</p><p>Researchers at The Neuro will work with partners in British Columbia to develop personalized gene-editing therapy for Gurmoh. The work includes therapeutic design, laboratory testing, safety and efficacy studies, regulatory review and preparation for clinical trials.</p><p><strong>Investing in advancing gene editing</strong></p><p>British Columbia already has strong capacity in genomic medicine, including advanced sequencing, diagnostic and data-analysis infrastructure at PHSA with Canada&rsquo;s Michael Smith Genome Sciences Centre and specialized clinical expertise at B.C. Children&rsquo;s Hospital. However, there is no clear way for families to go from diagnosis to treatment, which can make it difficult for them to determine whether treatment is possible, navigate research and regulatory processes, and access treatment. &nbsp;</p><p>Gene editing is one of the fastest-moving health-research areas, and new discoveries are emerging around the world. B.C. needs the expertise and processes to identify promising opportunities and determine how they could be translated into therapies for patients in B.C.</p><p>That is why BC&nbsp;Children&rsquo;s Hospital, as part of&nbsp;PHSA, is working with the University of British Columbia to establish a co-ordinated approach for evaluating and advancing potential therapies for rare genetic diseases. The work will build on B.C.&rsquo;s existing strengths in genomics, clinical care and research while connecting patients to expertise beyond the province when needed.</p><p>&ldquo;Genomic diagnosis is increasingly giving us answers for children with rare diseases,&rdquo; said Dr. Federica Di Palma, chief health genomic officer, PHSA. &ldquo;The next challenge is turning those answers into opportunities for treatment. By combining British Columbia&rsquo;s genomic and clinical capabilities with specialized therapy-development expertise, we can create a pathway that begins with one child but is designed to help many more families in the future.&rdquo;</p><p>The work will apply to patients across a broad range of rare genetic conditions, including neurological, immunological, metabolic, hematological, cardiac, pulmonary and gastrointestinal disorders.</p><p>The project will create a system that helps evaluate whether therapies may be possible for newly diagnosed patients, supports the research needed to understand how rare diseases work, improves readiness for clinical trials and helps connect families with treatment opportunities in British Columbia, throughout Canada and around the world.</p><p><strong>Supporting life sciences through Look West</strong></p><p>The work also supports the Province&rsquo;s Look West strategy by strengthening British Columbia&rsquo;s position as a leader in life sciences, precision medicine and advanced genetic therapies.</p><p>&ldquo;British Columbia has the expertise, talent and research capacity to help lead the future of precision medicine and rare-disease treatment,&rdquo; said Adrian Dix, acting Minister of Jobs and Economic Growth. &ldquo;Through the Look West strategy, we&rsquo;re supporting made-in-B.C. innovation that helps turn scientific discoveries into real treatment opportunities for patients and families while strengthening our life-sciences sector.&rdquo;</p><p>The Look West strategy identifies life sciences as one of B.C.&rsquo;s fastest-growing strategic sectors, with more than 2,000 companies, almost 27,000 jobs and strong investment opportunities. The strategy aims to increase employment in the sector to 40,000 jobs and grow its economic impact by 75% over the next decade.</p><p><strong>Quote:</strong></p><p><strong>Dr. Ziv Gan-Or, director of clinical and translational research,​The Neuro &ndash; </strong></p><p>&ldquo;Thanks to PHSA and BC&nbsp;Children&rsquo;s Hospital, we will be able to move forward with this project, which has the potential to change the lives of thousands of people living with rare diseases. It is very inspiring to see the work and dedication of the Gill family are having a real impact in the quest for better neurological-disease treatments.&rdquo;</p><p><strong>Quick Facts:</strong></p><ul>\n\t<li>Only a small number of gene-editing therapies have been developed and tested globally, and none have been developed specifically for SPG4.</li>\n\t<li>PHSA will lead the work as part of the National Strategy for Drugs for Rare Diseases.</li>\n\t<li>British Columbia was the first province to sign an agreement with the federal government under the strategy in 2024.</li>\n</ul><p><strong>Learn More:</strong></p><ul>\n\t<li>To learn more about Look West: Jobs and Prosperity for BC and Canada, visit: <a href=\"https://gov.bc.ca/LookWest\">https://gov.bc.ca/LookWest</a></li>\n\t<li>To learn more about the National Strategy for Drugs for Rare Diseases, visit: <a href=\"https://www.canada.ca/en/health-canada/services/health-services-benefits/strategy-drugs-rare-diseases.html\">https://www.canada.ca/en/health-canada/services/health-services-benefits/strategy-drugs-rare-diseases.html</a></li>\n</ul>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Ministry of Health",
+              "details": "Media Relations\n250-952-1887"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-34315",
+      "redirectUri": null,
+      "ministryKeys": [
+        "health"
+      ],
+      "sectorKeys": [
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [
+        "covid-19"
+      ],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "family-and-social-supports",
+        "health"
+      ],
+      "azureAssets": null,
+      "azureTranslations": [],
+      "key": "2026HLTH0083-001100",
+      "timestamp": "2026-09-19T12:15:25.8392453-07:00"
+    },
+    {
+      "kind": "releases",
+      "atomId": "uuid:4b8a616b-eedf-4074-88b3-68890390b899",
+      "summary": "Government actions reduce wait time, improve services in hospital, community",
+      "socialMediaSummary": "",
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2026-09-18T09:45:00-07:00",
+      "leadMinistryKey": "health",
+      "hasMediaAssets": false,
+      "hasTranslations": true,
+      "isNewsOnDemand": true,
+      "assetUrl": "",
+      "location": "Surrey",
+      "documents": [
+        {
+          "pageTitle": "News Release",
+          "languageId": 4105,
+          "headline": "Improving health care for people in Surrey",
+          "subheadline": "Government actions reduce wait time, improve services in hospital, community",
+          "detailsHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>Investing more than $33 million so people in Surrey can get quality health care quicker and closer to home</em></li>\n\t<li><em>People will soon have better access to emergency care and medical imaging at Surrey Memorial Hospital</em></li>\n\t<li><em>In addition, government is expanding community day and overnight services for seniors and their families</em></li>\n</ul><p>__________</p><p>People&nbsp;in Surrey will soon get faster access to care closer to home after&nbsp;an investment of more than $33 million to improve access to emergency care and diagnostics at Surrey Memorial Hospital and to increase community services for seniors.</p><p>&ldquo;Surrey is one of B.C.&rsquo;s faster-growing communities and we need to ensure that our health-care system keeps up,&rdquo; said Ravi Kahlon, Minister of Health. &ldquo;These investments will help people get through the emergency room faster, get their imaging and diagnosis more rapidly and help move people into more appropriate care.&rdquo;</p><p><strong>Making emergency care work better</strong></p><p>Government and Fraser Health will establish a dedicated front-door triage team at Surrey Memorial Hospital to assess and prioritize patients earlier and will create an ED satellite centre that will focus on patients with less urgent needs. Laboratory and X-ray services will be available at the centre, making it the first government-funded centre of its kind in the region.</p><p>Surrey Hospitals Foundation has committed to launching a campaign that will help to fund essential equipment and help realize this&nbsp;opportunity to strengthen emergency care at Surrey Memorial Hospital and support the new centre.</p><p>&ldquo;People in Surrey deserve health-care facilities and services that keep pace with the needs of their growing community,&rdquo; said Bowinn Ma, Minister of Infrastructure.&nbsp;&ldquo;We&rsquo;re investing in modern medical imaging, additional capacity&nbsp;and flexible health-care spaces to help ensure people can get the care they need, when they need it.&rdquo;</p><p>Care will be available for patients with less urgent, non-life-threatening conditions, such as sprains, minor cuts requiring stitches and minor pains. It will operate as an extension of the emergency department and will be fully integrated with services and health-care workers already at the hospital.</p><p>The front-door team will rapidly assess patients as they arrive. Patients with less serious needs will be guided to appropriate alternatives, such as the newly created ED satellite centre, urgent and primary care centres, virtual care and pharmacies. The team will include a registered nurse with experience in emergency care, as well as clerical support and a porter.</p><p>The team is expected to be operational in January 2027.&nbsp;Construction will be underway for the satellite centre in the next six months.</p><p><strong>Improving access to medical imaging services</strong></p><p>Government is also investing in new and replacement medical imaging equipment, so people in Surrey can get their CT scans done sooner.</p><p>Government will make access to diagnostic services at Surrey Memorial Hospital better by replacing the current&nbsp;12-year-old CT scanner and adding a second one to support the busiest emergency department in the province. These scanners will help improve emergency, trauma, stroke, and inpatient access, while increasing service resiliency and adding capacity in Surrey. For patients, it means getting appointments quicker&nbsp;and in their community.</p><p>Replacing the&nbsp;scanner will take as long as 10 months to complete.&nbsp;Adding a second scanner will take approximately 18 months to install.</p><p><strong>Increasing community services for seniors</strong></p><p>In addition to supporting patients at Surrey Memorial Hospital, government is also expanding services in the community.</p><p>During the next nine months, government in partnership with Fraser Health will focus on improving access to adult day programs and overnight respite services for the communities. These services are expected to benefit as many as&nbsp;200 individuals and their families annually.</p><p>Adult day programs offer structured social, recreational,and health-related activities in a safe and supportive setting. Overnight respite services provide seniors with short-term, supervised care, while giving family and other unpaid caregivers a temporary break.</p><p><strong>Quotes:</strong></p><p><strong>Garry Begg, parliamentary secretary for Surrey Infrastructure&nbsp;&ndash;</strong></p><p>&ldquo;Families across Surrey need timely access to health-care services where and when they need it. These innovative improvements will strengthen health-care services for our fast-growing community by providing faster and better emergency and diagnostic care for people in Surrey and the surrounding communities.&rdquo;</p><p><strong>Amna Shah, MLA for Surrey City Centre &ndash; </strong></p><p>&ldquo;I hear from people in Surrey about the importance of having timely, quality health care every day. These investments will make a real difference for people and families in our community, with faster access to emergency and diagnostic care and more support for seniors and their caregivers.&rdquo;</p><p><strong>Dermot Kelly, president and CEO,&nbsp;Fraser Health &ndash; </strong></p><p>&ldquo;Today&rsquo;s investments are about making it easier for people in Surrey to get the care they need, when and where they need it. By bringing together faster assessment, better access to diagnostic services and stronger community supports, we are improving how people experience care and helping them return home safely sooner. I want to thank our staff, medical staff, leaders and the Surrey Hospitals Foundation for their partnership and commitment to strengthening health care for people and families across Surrey.&rdquo;</p><p><strong>Nicole Robson, president and CEO, Surrey Hospitals Foundation&nbsp;&ndash;</strong></p><p>&ldquo;Surrey&rsquo;s growth calls for new approaches and investments in care that respond to the needs of patients and families. Surrey Hospitals Foundation is proud to work alongside Fraser Health and government partners on these important initiatives. Our donors have been looking for meaningful ways to support solutions that improve access to care. By mobilizing philanthropic support for priority equipment and innovation, the foundation can help enhance the care experience and strengthen Surrey&rsquo;s health-care system.&rdquo;</p><p><strong>Quick Facts:</strong></p><ul>\n\t<li>Government is opening a new CT scanner opened at Kitimat General Hospital in April 2026, followed by a new CT scanner at Squamish General Hospital in July 2026.</li>\n\t<li>The Province has opened a new renal hemodialysis building and cardiac catheterization as well as interventional radiology suites at Surrey Memorial Hospital.</li>\n\t<li>Work is underway for a new Surrey Hospital and BC Cancer Centre.</li>\n\t<li>The SFU Stephens Family School of Medicine recently opened in Surrey, welcoming its first class of 48 students this year.</li>\n</ul><p><strong>Learn More:</strong></p><ul>\n\t<li>To learn about health infrastructure across B.C., visit: <a href=\"https://www2.gov.bc.ca/gov/content/health/accessing-health-care/capital-projects\">https://www2.gov.bc.ca/gov/content/health/accessing-health-care/capital-projects</a></li>\n\t<li>To learn about B.C.&rsquo;s actions to strengthen health care, visit: <a href=\"https://strongerbc.gov.bc.ca/health-care\">https://strongerbc.gov.bc.ca/health-care</a></li>\n\t<li>For information about health-care investments at Surrey Memorial Hospital, visit: <a href=\"https://fraserhealth.ca/capital-projects/projects/Surrey/Surrey-priority-projects\">https://fraserhealth.ca/capital-projects/projects/Surrey/Surrey-priority-projects</a></li>\n</ul>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Ministry of Health",
+              "details": "Media Relations\n250-952-1887 (media line)"
+            },
+            {
+              "title": "Ministry of Infrastructure",
+              "details": "Media Relations\n778-587-3237"
+            },
+            {
+              "title": "Fraser Health ",
+              "details": "Media@fraserhealth.ca\n604-613-0794 (media line)"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-34300",
+      "redirectUri": null,
+      "ministryKeys": [
+        "health",
+        "infrastructure"
+      ],
+      "sectorKeys": [
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "employment-business-and-economic-development",
+        "health"
+      ],
+      "azureAssets": null,
+      "azureTranslations": [
+        {
+          "key": "releases/2026HLTH0034-001085/SurreyProjects_Chinese(traditional).pdf",
+          "label": "SurreyProjects_Chinese(traditional).pdf",
+          "length": 506219
+        },
+        {
+          "key": "releases/2026HLTH0034-001085/SurreyProjects_French.pdf",
+          "label": "SurreyProjects_French.pdf",
+          "length": 388961
+        },
+        {
+          "key": "releases/2026HLTH0034-001085/SurreyProjects_Punjabi.pdf",
+          "label": "SurreyProjects_Punjabi.pdf",
+          "length": 194984
+        },
+        {
+          "key": "releases/2026HLTH0034-001085/Surreyprojects_Chinese(simplified).pdf",
+          "label": "Surreyprojects_Chinese(simplified).pdf",
+          "length": 458748
+        }
+      ],
+      "key": "2026HLTH0034-001085",
+      "timestamp": "2026-09-18T11:53:46.0134482-07:00"
+    }
+  ]
+}

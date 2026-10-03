@@ -1,0 +1,53 @@
+{
+  "name": "latest-home-updates",
+  "path": "/api/Posts/Latest/home/default?postKind=updates&count=1&api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "kind": "updates",
+      "atomId": "uuid:de7f762c-3b54-44fe-9f8c-4754ed4cd137",
+      "summary": "The BCTESG helps kick-start your savings for your children’s future education with an additional $1,200 towards post-secondary education. Children born in 2006 or later who are residents of British Columbia are eligible to apply between their child’s sixth and ninth birthday.",
+      "socialMediaSummary": null,
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2017-03-27T15:00:00-07:00",
+      "leadMinistryKey": "education-and-child-care",
+      "hasMediaAssets": false,
+      "hasTranslations": false,
+      "isNewsOnDemand": true,
+      "assetUrl": "",
+      "location": "",
+      "documents": [
+        {
+          "pageTitle": "BC Gov Update",
+          "languageId": 4105,
+          "headline": "Are you eligible for the B.C. Training and Education Savings Grant (BCTESG)?",
+          "subheadline": "",
+          "detailsHtml": "<p>The BCTESG helps kick-start your savings for your children&rsquo;s future education with an additional $1,200 towards post-secondary education. Children born in 2006 or later who are residents of British Columbia are eligible to apply between their child&rsquo;s sixth and ninth birthday.</p>",
+          "byline": "",
+          "contacts": []
+        }
+      ],
+      "reference": "NEWS-14458",
+      "redirectUri": "http://ow.ly/fmKg30aelfb",
+      "ministryKeys": [
+        "education-and-child-care"
+      ],
+      "sectorKeys": [
+        "economy",
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "education-and-training"
+      ],
+      "azureAssets": null,
+      "azureTranslations": null,
+      "key": "are-you-eligible-for-the-bc-training-and-education-savings-grant-bctesg",
+      "timestamp": "2017-03-27T14:41:11.5959415-07:00"
+    }
+  ]
+}

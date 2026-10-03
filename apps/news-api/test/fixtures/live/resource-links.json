@@ -1,0 +1,53 @@
+{
+  "name": "resource-links",
+  "path": "/api/ResourceLinks?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "uri": "/office-of-the-premier",
+      "key": "Office of the Premier",
+      "timestamp": "2026-10-03T01:27:16.9416451-07:00"
+    },
+    {
+      "uri": "/contacts",
+      "key": "Media Contacts",
+      "timestamp": "2026-10-03T01:27:16.9416611-07:00"
+    },
+    {
+      "uri": "/factsheets",
+      "key": "Factsheets",
+      "timestamp": "2026-10-03T01:27:16.9416634-07:00"
+    },
+    {
+      "uri": "https://www2.gov.bc.ca/gov/content/data/about-data-management/bc-stats",
+      "key": "BC Stats",
+      "timestamp": "2026-10-03T01:27:16.9416664-07:00"
+    },
+    {
+      "uri": "http://www.leg.bc.ca/",
+      "key": "Legislative Assembly",
+      "timestamp": "2026-10-03T01:27:16.9416687-07:00"
+    },
+    {
+      "uri": "https://archive.news.gov.bc.ca/",
+      "key": "News Archive",
+      "timestamp": "2026-10-03T01:27:16.9416706-07:00"
+    },
+    {
+      "uri": "http://www.emergencyinfobc.gov.bc.ca/",
+      "key": "Emergency Info BC",
+      "timestamp": "2026-10-03T01:27:16.9416729-07:00"
+    },
+    {
+      "uri": "https://www.flickr.com/photos/bcgovphotos/",
+      "key": "BC Government Photos",
+      "timestamp": "2026-10-03T01:27:16.9416748-07:00"
+    },
+    {
+      "uri": "http://www.youtube.com/ProvinceofBC",
+      "key": "BC Government Videos",
+      "timestamp": "2026-10-03T01:27:16.9416767-07:00"
+    }
+  ]
+}

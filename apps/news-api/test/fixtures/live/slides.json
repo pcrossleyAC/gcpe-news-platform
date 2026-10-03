@@ -1,0 +1,56 @@
+{
+  "name": "slides",
+  "path": "/api/Slides?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "headline": "Get vaccinated",
+      "summary": "Find out where you and your family can get vaccinated.",
+      "actionLabel": "READ MORE",
+      "actionUri": "https://www.healthlinkbc.ca/health-library/immunizations/schedules/where-get-immunized",
+      "image": "iVBORw0KGgoAAAANSUhEUgAAB9AAAAJYCAYAAAA6431rAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAE3WlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSfvu78nIGlkPSdXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQnPz4KPHg6eG1wbWV0YSB4bWxuczp4PSdhZG9iZTpuczptZXRhLyc+CjxyZGY6UkRGIHhtbG5zOnJkZj0naHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyc+CgogPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9JycKICB4bWxuczpBdHRyaWI9J2h0dHA6Ly9ucy5h",
+      "facebookPostUri": null,
+      "justify": "right",
+      "imageType": "image/png",
+      "key": "f9adfdc2-5933-4c38-a390-a18077acb213",
+      "timestamp": "2026-09-09T16:31:07.5216222-07:00"
+    },
+    {
+      "headline": "EmergencyInfoBC",
+      "summary": "Find current and verified information during emergencies in B.C.",
+      "actionLabel": "READ MORE",
+      "actionUri": "https://www.emergencyinfobc.gov.bc.ca",
+      "image": "/9j/4QC8RXhpZgAASUkqAAgAAAAGABIBAwABAAAAAQAAABoBBQABAAAAVgAAABsBBQABAAAAXgAAACgBAwABAAAAAgAAABMCAwABAAAAAQAAAGmHBAABAAAAZgAAAAAAAABgAAAAAQAAAGAAAAABAAAABgAAkAcABAAAADAyMTABkQcABAAAAAECAwAAoAcABAAAADAxMDABoAMAAQAAAP//AAACoAQAAQAAANAHAAADoAQAAQAAAFgCAAAAAAAA/+EO82h0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8APD94cGFja2V0IGJlZ2luPSfvu78nIGlkPSdXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQnPz4KPHg6eG1wbWV0YSB4bWxuczp4PSdh",
+      "facebookPostUri": null,
+      "justify": "right",
+      "imageType": "image/jpeg",
+      "key": "96c841e4-c0ab-42f2-a12c-870193fc15c8",
+      "timestamp": "2026-09-09T16:29:58.4422388-07:00"
+    },
+    {
+      "headline": "Emergency Support Services",
+      "summary": "Evacuations can happen quickly. Pre-register for Emergency Support Services before you need help. ",
+      "actionLabel": "READ MORE",
+      "actionUri": "https://ess.gov.bc.ca",
+      "image": "/9j/4QC8RXhpZgAASUkqAAgAAAAGABIBAwABAAAAAQAAABoBBQABAAAAVgAAABsBBQABAAAAXgAAACgBAwABAAAAAgAAABMCAwABAAAAAQAAAGmHBAABAAAAZgAAAAAAAABgAAAAAQAAAGAAAAABAAAABgAAkAcABAAAADAyMTABkQcABAAAAAECAwAAoAcABAAAADAxMDABoAMAAQAAAP//AAACoAQAAQAAANAHAAADoAQAAQAAAFgCAAAAAAAA/+EO+2h0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8APD94cGFja2V0IGJlZ2luPSfvu78nIGlkPSdXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQnPz4KPHg6eG1wbWV0YSB4bWxuczp4PSdh",
+      "facebookPostUri": null,
+      "justify": "right",
+      "imageType": "image/jpeg",
+      "key": "7a1ed7ad-f4e0-4420-9720-adb2b1fc5e33",
+      "timestamp": "2026-09-24T16:05:20.8181323-07:00"
+    },
+    {
+      "headline": "Drought in B.C. ",
+      "summary": "Help prevent water scarcity by using less water. ",
+      "actionLabel": "READ MORE",
+      "actionUri": "https://www2.gov.bc.ca/gov/content/drought",
+      "image": "/9j/4QC8RXhpZgAASUkqAAgAAAAGABIBAwABAAAAAQAAABoBBQABAAAAVgAAABsBBQABAAAAXgAAACgBAwABAAAAAgAAABMCAwABAAAAAQAAAGmHBAABAAAAZgAAAAAAAABgAAAAAQAAAGAAAAABAAAABgAAkAcABAAAADAyMTABkQcABAAAAAECAwAAoAcABAAAADAxMDABoAMAAQAAAP//AAACoAQAAQAAANAHAAADoAQAAQAAAFgCAAAAAAAA/+EO9Wh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC8APD94cGFja2V0IGJlZ2luPSfvu78nIGlkPSdXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQnPz4KPHg6eG1wbWV0YSB4bWxuczp4PSdh",
+      "facebookPostUri": null,
+      "justify": "right",
+      "imageType": "image/jpeg",
+      "key": "41160bf2-bd7c-41a0-b722-830fe17a396a",
+      "timestamp": "2026-09-09T16:29:58.4462407-07:00"
+    }
+  ]
+}

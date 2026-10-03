@@ -1,0 +1,36 @@
+{
+  "name": "@gcpe/news-api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "db:generate": "drizzle-kit generate",
+    "record:fixtures": "tsx scripts/record-live-fixtures.ts",
+    "seed:fixtures": "tsx scripts/seed-from-fixtures.ts",
+    "import:legacy": "tsx src/import/cli.ts",
+    "build": "node ../../scripts/build-app.mjs apps/news-api"
+  },
+  "dependencies": {
+    "@gcpe/auth": "0.0.0",
+    "@gcpe/config": "0.0.0",
+    "@gcpe/db-kit": "0.0.0",
+    "@gcpe/events": "0.0.0",
+    "@gcpe/legacy-import": "0.0.0",
+    "drizzle-orm": "^0.45.2",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
+    "pg": "^8.16.3",
+    "ws": "^8.18.3",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@microsoft/signalr": "^10.0.11",
+    "@types/express": "^5.0.6",
+    "@types/pg": "^8.23.1",
+    "@types/supertest": "^7.2.1",
+    "@types/ws": "^8.18.2",
+    "drizzle-kit": "^0.31.9",
+    "supertest": "^7.1.0"
+  }
+}

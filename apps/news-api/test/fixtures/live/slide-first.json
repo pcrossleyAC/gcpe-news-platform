@@ -1,0 +1,18 @@
+{
+  "name": "slide-first",
+  "path": "/api/Slides/F9ADFDC2-5933-4C38-A390-A18077ACB213?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": {
+    "headline": "Get vaccinated",
+    "summary": "Find out where you and your family can get vaccinated.",
+    "actionLabel": "READ MORE",
+    "actionUri": "https://www.healthlinkbc.ca/health-library/immunizations/schedules/where-get-immunized",
+    "image": "iVBORw0KGgoAAAANSUhEUgAAB9AAAAJYCAYAAAA6431rAAAACXBIWXMAAA7EAAAOxAGVKw4bAAAE3WlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSfvu78nIGlkPSdXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQnPz4KPHg6eG1wbWV0YSB4bWxuczp4PSdhZG9iZTpuczptZXRhLyc+CjxyZGY6UkRGIHhtbG5zOnJkZj0naHR0cDovL3d3dy53My5vcmcvMTk5OS8wMi8yMi1yZGYtc3ludGF4LW5zIyc+CgogPHJkZjpEZXNjcmlwdGlvbiByZGY6YWJvdXQ9JycKICB4bWxuczpBdHRyaWI9J2h0dHA6Ly9ucy5h",
+    "facebookPostUri": null,
+    "justify": "right",
+    "imageType": "image/png",
+    "key": "f9adfdc2-5933-4c38-a390-a18077acb213",
+    "timestamp": "2026-09-09T16:31:07.5216222-07:00"
+  }
+}
