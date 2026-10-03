@@ -6,6 +6,8 @@ import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { MAX_EVENT_BYTES } from "@gcpe/events";
 import { createApp } from "../app";
 import * as organizationsService from "../services/organizations";
+import * as republishService from "../services/republish";
+import * as termsService from "../services/terms";
 
 const issuer = "https://login.microsoftonline.com/t/v2.0";
 const audience = "api://core";
@@ -76,6 +78,31 @@ describe("Core HTTP API", () => {
       expect(JSON.stringify(res.body)).not.toContain("constraint");
     } finally {
       spy.mockRestore();
+    }
+  });
+
+  it.each([
+    ["GET /api/organizations", organizationsService, "listOrganizations", "get", "/api/organizations"],
+    ["GET /api/organizations/:key", organizationsService, "getOrganization", "get", "/api/organizations/health"],
+    ["POST /api/organizations/:key/deactivate", organizationsService, "deactivateOrganization", "post", "/api/organizations/health/deactivate"],
+    ["GET /api/terms/:kind", termsService, "listTerms", "get", "/api/terms/tag"],
+    ["GET /api/terms/:kind/:key", termsService, "getTerm", "get", "/api/terms/tag/x"],
+    ["PUT /api/terms/:kind/:key", termsService, "upsertTerm", "put", "/api/terms/tag/x"],
+    ["POST /api/terms/:kind/:key/deactivate", termsService, "deactivateTerm", "post", "/api/terms/tag/x/deactivate"],
+    ["POST /api/admin/republish", republishService, "republishAll", "post", "/api/admin/republish"],
+  ] as const)("%s returns a generic 500 without leaking the error", async (_name, mod, fn, method, path) => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const spy = vi.spyOn(mod as Record<string, (...a: unknown[]) => unknown>, fn).mockRejectedValueOnce(new Error("secret db detail at /srv/x.ts:1"));
+    try {
+      const term = { kind: "tag", key: "x", displayName: "X", sortOrder: 0, isActive: true, social: healthOrg.social };
+      const res = await request(app)[method](path).set("authorization", `Bearer ${admin}`).send(method === "put" ? term : undefined);
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({ error: "internal error" });
+      expect(res.text).not.toContain("secret");
+      expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+      errSpy.mockRestore();
     }
   });
 
