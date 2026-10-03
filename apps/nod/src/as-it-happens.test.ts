@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb, envelope } from "../test/helpers";
@@ -17,6 +17,7 @@ describe("createAsItHappensHandler", () => {
   let b: string; // ministries:health, verified
   let c: string; // sectors:mining, verified
   let d: string; // all news, unverified
+  let e: string; // BOTH '*' and ministries:health, verified — must still get exactly one delivery
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
@@ -26,6 +27,7 @@ describe("createAsItHappensHandler", () => {
     b = (await addSubscriber(tdb.db, { email: "b.health@example.com", lists: ["ministries:Health"] })).id;
     c = (await addSubscriber(tdb.db, { email: "c.mining@example.com", lists: ["sectors:Mining"] })).id;
     d = (await addSubscriber(tdb.db, { email: "d.all.unverified@example.com", lists: "all" })).id;
+    e = (await addSubscriber(tdb.db, { email: "e.all-and-health@example.com", lists: ["*", "ministries:Health"] })).id;
     await tdb.db.update(subscribers).set({ verifiedAt: null }).where(eq(subscribers.id, d));
   });
   afterAll(async () => {
@@ -42,12 +44,23 @@ describe("createAsItHappensHandler", () => {
     await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
 
     const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
-    expect(deliveryRows.map((r) => r.subscriberId).sort()).toEqual([a, b].sort());
+    expect(deliveryRows.map((r) => r.subscriberId).sort()).toEqual([a, b, e].sort());
 
     const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
     expect(jobRows).toHaveLength(1);
     expect(jobRows[0]!.subject).toBe(release.documents[0]!.headline);
     expect(jobRows[0]!.kind).toBe("as_it_happens");
+  });
+
+  it("a subscriber on two matching lists ('*' and 'ministries:health') still gets exactly one delivery", async () => {
+    const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
+
+    const eDeliveries = await tdb.db.select().from(deliveries).where(and(eq(deliveries.releaseKey, release.key), eq(deliveries.subscriberId, e)));
+    expect(eDeliveries).toHaveLength(1);
+
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    expect(jobRows).toHaveLength(1);
   });
 
   it("is idempotent: applying the same release again adds no new deliveries and no new send job", async () => {
@@ -56,7 +69,7 @@ describe("createAsItHappensHandler", () => {
     await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
 
     const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
-    expect(deliveryRows).toHaveLength(2);
+    expect(deliveryRows).toHaveLength(3);
 
     const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
     expect(jobRows).toHaveLength(1);

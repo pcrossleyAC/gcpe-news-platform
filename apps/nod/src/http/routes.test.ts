@@ -5,7 +5,7 @@ import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb, envelope, sendEvent } from "../../test/helpers";
-import { deliveries, sendJobs } from "../db/schema";
+import { deliveries, sendJobs, subscriptions } from "../db/schema";
 import { createApp } from "../app";
 
 const issuer = "https://login.microsoftonline.com/t/v2.0";
@@ -65,6 +65,18 @@ describe("NoD HTTP API", () => {
       .set("authorization", `Bearer ${admin}`)
       .send({ email: "Alex.Example@Example.com", lists: "all" });
     expect(dup.status).toBe(409);
+  });
+
+  it("dedupes list keys that differ only by casing into a single subscription row", async () => {
+    const created = await request(app)
+      .post("/api/subscribers")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ email: "dupe-lists@example.com", lists: ["ministries:Health", "ministries:health"] });
+    expect(created.status).toBe(201);
+
+    const rows = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, created.body.id));
+    expect(rows).toHaveLength(1);
+    expect(rows[0]!.listKey).toBe("ministries:health");
   });
 
   it("400s an invalid email and an invalid list key", async () => {

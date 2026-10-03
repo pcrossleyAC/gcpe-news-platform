@@ -20,6 +20,9 @@ const neutralizeHtml = (s: string): string => escapeHtml(s).replace(/\{\{/g, "{&
 const neutralizeText = (s: string): string => s.replace(/\{\{/g, "{ {");
 
 export function renderAsItHappens(r: ReleaseRecord, publicSiteUrl: string): { subject: string; html: string; text: string } {
+  // Deliberate fallback chain: English document, then whatever document exists, then the
+  // release key itself — this subject line must never be empty, even for a release without
+  // (yet) an English document.
   const doc = r.documents.find((d) => d.languageId === ENGLISH_LANGUAGE_ID) ?? r.documents[0];
   const headline = doc?.headline || r.key;
   const summary = r.summary ?? "";

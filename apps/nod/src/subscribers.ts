@@ -16,10 +16,15 @@ export interface AddSubscriberInput {
  * for the double opt-in journey that arrives in Phase 4 — so this sets verifiedAt immediately.
  * List keys are lowercased here (the receiver compares against indexKeysFor's lowercased
  * output); validating their shape ('<kind>:<key>') is the HTTP layer's job (routes.ts).
+ * Deduped after lowercasing: two input keys that only differ by casing (e.g.
+ * "ministries:Health" and "ministries:health") would otherwise collide on the
+ * (subscriberId, listKey) primary key mid-insert — and since the catch below maps ANY 23505
+ * in this transaction to SubscriberExistsError, a brand-new email would wrongly 409 instead
+ * of 201ing.
  */
 export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<{ id: string }> {
   const manageToken = randomBytes(32).toString("base64url");
-  const listKeys = input.lists === "all" ? ["*"] : input.lists.map((key) => key.toLowerCase());
+  const listKeys = input.lists === "all" ? ["*"] : [...new Set(input.lists.map((key) => key.toLowerCase()))];
   try {
     return await db.transaction(async (tx) => {
       const [row] = await tx
