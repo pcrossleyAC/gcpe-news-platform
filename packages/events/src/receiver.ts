@@ -18,9 +18,17 @@ export interface ReceiverOptions {
 
 type Outcome = "applied" | "ignored" | "stale" | "duplicate";
 
+const MOUNTED_AFTER_PARSER = "[events] receiver must be mounted before body parsers";
+
 export function createEventReceiver(opts: ReceiverOptions): express.Router {
   const router = express.Router();
   router.post("/events", express.text({ type: "application/json", limit: MAX_EVENT_BYTES }), async (req, res) => {
+    // Signatures cover the raw bytes, so an upstream express.json()/raw() that already
+    // consumed the body makes every event fail verification. Say so instead of 401ing.
+    if (req.body !== undefined && req.body !== null && typeof req.body === "object") {
+      console.error(MOUNTED_AFTER_PARSER);
+      return void res.status(500).json({ error: MOUNTED_AFTER_PARSER });
+    }
     const body = typeof req.body === "string" ? req.body : "";
     const source = req.header("x-event-source");
     const secret = source && Object.hasOwn(opts.secrets, source) ? opts.secrets[source] : undefined;

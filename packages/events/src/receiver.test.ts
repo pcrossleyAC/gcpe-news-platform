@@ -173,6 +173,21 @@ describe("createEventReceiver", () => {
     expect((await post(app, tooBig)).status).toBe(413);
   });
 
+  it("fails loudly with 500 when mounted behind a body parser that already consumed the body", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const misMounted = express();
+      misMounted.use(express.json());
+      misMounted.use(createEventReceiver({ db: tdb.db, secrets: { core: "k" }, handlers: {} }));
+      const res = await post(misMounted, makeEvent(1, "org:mismounted"));
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({ error: "[events] receiver must be mounted before body parsers" });
+      expect(errSpy).toHaveBeenCalledWith("[events] receiver must be mounted before body parsers");
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
   it("rejects a prototype-chain source like 'constructor' with 401 instead of 500", async () => {
     const res = await post(app, makeEvent(1, "org:proto"), { source: "constructor" });
     expect(res.status).toBe(401);
