@@ -131,6 +131,11 @@ Behind `gcpe-news-webapp`, every subscriber's request arrives from the webapp's 
 
 `NOD_BASE_URL` can be set without the `NOD_TOKEN_URL`/`NOD_CLIENT_ID`/`NOD_CLIENT_SECRET`/`NOD_SCOPE` quartet (the subscribe proxy then forwards unauthenticated); the client-credentials provider is only built when all four are present.
 
+### News API operator notes
+
+- `UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN` applies per *egress* IP (`req.ip`, honouring the app's `trust proxy` setting), with a fixed 60 s window that isn't configurable. Several `gcpe-news-webapp` instances sharing one outbound NAT all land in the same bucket, as does any one instance that calls `hub.disconnectAll()` (the Postgres `LISTEN` reconnect handler) more than once within a minute — each disconnect sends every currently-connected client straight back to `POST /updates/negotiate` at once. If legitimate traffic is getting 429s for either reason, raise `UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN`.
+- `/health/ready` reports 503 for as long as the dedicated Postgres `LISTEN` connection (that feeds `/updates`) is down or reconnecting — see the exposure note above. If `LISTEN` fails on every pod at the same time (e.g. a Postgres restart/failover all pods are reconnecting to), the read API goes unready on every pod too, not just the `/updates` hub, since `/health/ready` is shared.
+
 ### Manual check with the existing .NET public site
 
 Requires the .NET 5 SDK. This is not automated.
