@@ -102,22 +102,39 @@ async function releaseLock(db: Db, jobId: string, lockUntil: Date): Promise<void
  * P2-R16: freezes which subscribers belong to which chunk, once, the first time a release's
  * job is attempted — so a subscriber deleted (cascades the delivery row away) or added
  * (inserted after this ran) between attempts can't shift any *other* recipient's chunk
- * boundary. A no-op (nothing to update) on every attempt after the first, since it only ever
- * touches rows whose chunk_index is still NULL. Not guarded by a transaction wrapping the
- * caller's chunks_assigned flag write: if a crash happens between the two, re-running this is
- * still safe (idempotent — already-assigned rows are untouched) even though it may assign the
- * remaining, still-NULL rows a numbering that isn't perfectly contiguous with what was
- * assigned before the crash; that's fine, chunk indices only need to be stable, not dense.
+ * boundary.
+ *
+ * P2-R18: the chunk_index assignment and the `chunks_assigned` flag write happen inside one
+ * transaction, re-checking `chunks_assigned = false` once inside it before doing anything.
+ * Without that, the two were separate autocommitted statements — a crash between them could
+ * leave chunk_index assigned but the flag still false, so the *next* attempt would see
+ * "not assigned yet", re-run the same UPDATE, and its `WHERE chunk_index IS NULL` subquery
+ * would now only match rows that arrived after the crash (everything else already has a
+ * non-NULL chunk_index). `row_number()` over just that smaller, late-arriving set restarts at
+ * 1, numbering them into chunk 0 — which, from the first (never-flagged) run, may already be
+ * full, silently growing it past chunkSize (at the real 20,000 limit, this is a terminal
+ * Distribution 400, not just an oversight). Wrapping both writes in one transaction means a
+ * crash anywhere in between rolls the entire assignment back, so a later attempt only ever
+ * sees "nothing assigned" (and (re-)assigns everything, including any new arrivals, together
+ * and contiguously) or "fully assigned" (and does nothing) — never the half-done state that
+ * caused the overflow. `onBeforeFlagWrite` exists only so a test can force a failure between
+ * the two writes and assert the whole thing rolled back; production call sites never pass it.
  */
-async function ensureChunksAssigned(db: Db, releaseKey: string, chunkSize: number): Promise<void> {
-  await db.execute(sql`
-    UPDATE deliveries SET chunk_index = sub.idx
-      FROM (
-        SELECT subscriber_id, ((row_number() OVER (ORDER BY subscriber_id) - 1) / ${chunkSize})::int AS idx
-          FROM deliveries
-         WHERE release_key = ${releaseKey} AND chunk_index IS NULL
-      ) sub
-     WHERE deliveries.release_key = ${releaseKey} AND deliveries.subscriber_id = sub.subscriber_id`);
+export async function ensureChunksAssigned(db: Db, jobId: string, releaseKey: string, chunkSize: number, opts: { onBeforeFlagWrite?: () => void } = {}): Promise<void> {
+  await db.transaction(async (tx) => {
+    const [row] = await tx.select({ chunksAssigned: sendJobs.chunksAssigned }).from(sendJobs).where(eq(sendJobs.id, jobId));
+    if (row?.chunksAssigned) return; // already fully assigned (and flagged) — nothing to do
+    await tx.execute(sql`
+      UPDATE deliveries SET chunk_index = sub.idx
+        FROM (
+          SELECT subscriber_id, ((row_number() OVER (ORDER BY subscriber_id) - 1) / ${chunkSize})::int AS idx
+            FROM deliveries
+           WHERE release_key = ${releaseKey} AND chunk_index IS NULL
+        ) sub
+       WHERE deliveries.release_key = ${releaseKey} AND deliveries.subscriber_id = sub.subscriber_id`);
+    opts.onBeforeFlagWrite?.();
+    await tx.update(sendJobs).set({ chunksAssigned: true }).where(and(eq(sendJobs.id, jobId), eq(sendJobs.chunksAssigned, false)));
+  });
 }
 
 interface Recipient {
@@ -149,8 +166,16 @@ async function fetchAssignedRecipients(db: Db, releaseKey: string): Promise<Map<
   return chunks;
 }
 
-/** Verified deliveries for this release that arrived (or became verified) after chunking was
- * frozen — chunk_index is still NULL, so they're not part of this (or any) job's chunks. */
+/** Verified deliveries for this release whose *delivery row itself* was inserted after
+ * chunking was frozen — chunk_index is still NULL, so they're not part of this (or any) job's
+ * chunks (P2-R18: this is not the same thing as "became verified after freezing" —
+ * ensureChunksAssigned doesn't filter on verified_at at all, so a subscriber who becomes
+ * verified later still has whatever chunk_index their delivery row got assigned at freeze
+ * time, and is picked up by fetchAssignedRecipients on this job's next attempt. The one case
+ * where a late-verified subscriber is never mailed is if their chunk was already sent and
+ * accepted in an earlier attempt and the job has since reached a terminal state — by design,
+ * not a bug: freezing trades "catch every last-second verification" for stable, safe-to-retry
+ * chunk membership). */
 async function countLateDeliveries(db: Db, releaseKey: string): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
@@ -238,8 +263,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     let lockUntil: Date;
     try {
       if (!job.chunks_assigned) {
-        await ensureChunksAssigned(opts.db, job.release_key, chunkSize);
-        await opts.db.update(sendJobs).set({ chunksAssigned: true }).where(eq(sendJobs.id, job.id));
+        await ensureChunksAssigned(opts.db, job.id, job.release_key, chunkSize);
       }
       const lateCount = await countLateDeliveries(opts.db, job.release_key);
       if (lateCount > 0) {

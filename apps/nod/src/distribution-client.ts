@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 // Distribution's own contract (apps/distribution/src/messages.ts) isn't imported directly —
 // these two services only share an HTTP boundary, not a TypeScript one — so the request shape
 // is mirrored here as a plain type.
@@ -56,6 +58,13 @@ export interface DistributionClient {
   send(req: MessageRequest): Promise<{ batchId: string }>;
 }
 
+// P2-R18: Distribution's 2xx body is network input like any other — `res.json()` succeeding
+// only proves the bytes were valid JSON, not that they have the shape we need. A body that
+// parses but is missing `batchId` (or has it as `""`, or a non-string) must fail the same way
+// an unparseable body does: retryable, since send-jobs.ts stores whatever `batchId` comes
+// back as *the* record of this chunk's acceptance, and a bad id poisons that permanently.
+const batchResponseSchema = z.object({ batchId: z.string().min(1) });
+
 /** Races `getToken()` against a timer so a hung token endpoint can't hang `send` forever —
  * mirrors the request's own `AbortSignal.timeout` below, just via Promise.race since
  * `getToken` (an opaque async function, possibly cached/synchronous-ish) has no signal to
@@ -111,9 +120,9 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
       }
 
       if (res.ok) {
+        let json: unknown;
         try {
-          const json = (await res.json()) as { batchId: string };
-          return { batchId: json.batchId };
+          json = await res.json();
         } catch (e) {
           // P2-R16: Distribution said success but the body couldn't be read/parsed — we can't
           // learn the batchId, but we also can't be sure Distribution didn't accept the
@@ -121,6 +130,14 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
           const message = e instanceof Error ? e.message : String(e);
           throw new DistributionError(`Distribution returned HTTP ${res.status} but its body was unreadable: ${message}`, true, res.status);
         }
+        const parsed = batchResponseSchema.safeParse(json);
+        if (!parsed.success) {
+          // P2-R18: the body parsed as JSON but doesn't have a usable batchId — same
+          // reasoning as the unreadable-body case above: can't be sure Distribution didn't
+          // accept the batch, so retryable rather than a silent, permanent data-loss failure.
+          throw new DistributionError("Distribution response missing batchId", true, res.status);
+        }
+        return { batchId: parsed.data.batchId };
       }
 
       const body = await res.text().catch(() => "");

@@ -8,7 +8,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createTestDatabase } from "@gcpe/db-kit";
 import { DistributionError, distributionClient, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, sendJobs, subscribers } from "./db/schema";
-import { MAX_RECIPIENTS_PER_CHUNK, sendDueJobs } from "./send-jobs";
+import { MAX_RECIPIENTS_PER_CHUNK, ensureChunksAssigned, sendDueJobs } from "./send-jobs";
 
 const nodMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
 const MANAGE_URL = "https://news.example/subscribe/manage";
@@ -452,6 +452,49 @@ describe("sendDueJobs", () => {
     const everyoneMailed = new Set([...byKey.values()].flatMap((s) => [...s]));
     expect(everyoneMailed).toEqual(new Set(["orig1@example.com", "orig2@example.com", "orig3@example.com", "orig4@example.com"]));
   });
+
+  // Fix 1 (P2-R18): ensureChunksAssigned's chunk_index write and its chunks_assigned flag
+  // write must commit together — otherwise a crash between them (chunk_index assigned, flag
+  // never set) plus a delivery arriving before the next attempt lets that delivery get
+  // renumbered into an already-full chunk 0, overflowing it past chunkSize.
+  it("assigns chunks atomically: a failure before the flag write rolls back the chunk_index assignment too", async () => {
+    const subs = await Promise.all([0, 1, 2, 3].map((n) => insertSubscriber(tdb.db, `atomic${n}@example.com`, { id: lowId(n + 1) })));
+    const job = await insertJob(tdb.db, "release-atomic");
+    await tdb.db.insert(deliveries).values(subs.map((s) => ({ releaseKey: "release-atomic", subscriberId: s.id })));
+
+    // Simulates the old crash shape: the chunk_index UPDATE runs, then (inside the same
+    // transaction) something throws before the chunks_assigned flag write.
+    await expect(
+      ensureChunksAssigned(tdb.db, job.id, "release-atomic", 2, {
+        onBeforeFlagWrite: () => {
+          throw new Error("simulated crash before the flag write");
+        },
+      }),
+    ).rejects.toThrow("simulated crash before the flag write");
+
+    // Rolled back: chunk_index is still NULL for everyone, and the flag is still false — not
+    // the old "assigned but not flagged" half-done state.
+    let rows = await tdb.db.select({ chunkIndex: deliveries.chunkIndex }).from(deliveries).where(eq(deliveries.releaseKey, "release-atomic"));
+    expect(rows.every((r) => r.chunkIndex === null)).toBe(true);
+    const [jobRow] = await tdb.db.select({ chunksAssigned: sendJobs.chunksAssigned }).from(sendJobs).where(eq(sendJobs.id, job.id));
+    expect(jobRow!.chunksAssigned).toBe(false);
+
+    // A delivery arrives between the (rolled-back) crash and the retry. With atomic
+    // assignment this is just one more row in the same still-fully-unassigned pool — it gets
+    // numbered in with everyone else, not appended onto an already-"committed" chunk 0.
+    const lateSub = await insertSubscriber(tdb.db, "atomiclate@example.com", { id: lowId(5) });
+    await tdb.db.insert(deliveries).values([{ releaseKey: "release-atomic", subscriberId: lateSub.id }]);
+
+    await ensureChunksAssigned(tdb.db, job.id, "release-atomic", 2);
+
+    rows = await tdb.db.select({ chunkIndex: deliveries.chunkIndex }).from(deliveries).where(eq(deliveries.releaseKey, "release-atomic"));
+    expect(rows.every((r) => r.chunkIndex !== null)).toBe(true);
+    const counts = new Map<number, number>();
+    for (const r of rows) counts.set(r.chunkIndex!, (counts.get(r.chunkIndex!) ?? 0) + 1);
+    // 5 recipients at chunkSize 2 → sizes [2, 2, 1]; no chunk ever exceeds chunkSize.
+    expect(Math.max(...counts.values())).toBeLessThanOrEqual(2);
+    expect(counts.size).toBe(3);
+  });
 });
 
 describe("MAX_RECIPIENTS_PER_CHUNK", () => {
@@ -572,6 +615,31 @@ describe("distributionClient", () => {
   it("maps an unparseable 2xx body to a retryable DistributionError", async () => {
     respondStatus = 202;
     respondBody = "not json";
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
+    await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
+  });
+
+  // Fix 3 (P2-R18): a 2xx body that parses as JSON but has no usable batchId is just as
+  // dangerous as an unreadable one — send-jobs.ts would otherwise store a missing/empty id as
+  // "the" record of this chunk's acceptance, permanently.
+  it("maps a 2xx body with a missing batchId to a retryable DistributionError", async () => {
+    respondStatus = 202;
+    respondBody = {};
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
+    await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true, status: 202 });
+    await expect(client.send(sampleRequest)).rejects.toThrow(/missing batchId/);
+  });
+
+  it("maps a 2xx body with an empty-string batchId to a retryable DistributionError", async () => {
+    respondStatus = 202;
+    respondBody = { batchId: "" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
+    await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
+  });
+
+  it("maps a 2xx body with a non-string batchId to a retryable DistributionError", async () => {
+    respondStatus = 202;
+    respondBody = { batchId: 12345 };
     const client = distributionClient({ baseUrl, getToken: async () => "t" });
     await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
   });
