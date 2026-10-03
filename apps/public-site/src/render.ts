@@ -1,3 +1,5 @@
+import { escapeHtml } from "@gcpe/http-kit";
+
 export interface PostDocument {
   languageId: number;
   headline: string | null;
@@ -21,9 +23,6 @@ export interface SiteInfo {
 
 const ENGLISH = 4105;
 
-export function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
 const e = (s: string | null | undefined) => escapeHtml(s ?? "");
 const english = (p: PostDto) => p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0];
 

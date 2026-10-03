@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { escapeHtml, renderHomePage, renderPostPage, type PostDto } from "./render";
+import { renderHomePage, renderPostPage, type PostDto } from "./render";
 
 const post: PostDto = {
   key: "2026HLTH0001-000001", kind: "releases", publishDate: "2026-10-03T10:00:00-07:00", summary: "Summary <b>", location: "VICTORIA",
@@ -12,9 +12,6 @@ const post: PostDto = {
 const site = { name: "BC Gov News", baseUrl: "https://news.example" };
 
 describe("render", () => {
-  it("escapes the five HTML metacharacters", () => {
-    expect(escapeHtml(`<a href="x">'&`)).toBe("&lt;a href=&quot;x&quot;&gt;&#39;&amp;");
-  });
   it("renders the English document, escaped headline, trusted body, contacts", () => {
     const html = renderPostPage(post, site);
     expect(html).toContain("<title>Clinics &lt;script&gt;alert(1)&lt;/script&gt; | BC Gov News</title>");

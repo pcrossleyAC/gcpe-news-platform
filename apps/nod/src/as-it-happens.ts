@@ -1,13 +1,10 @@
 import { sql } from "drizzle-orm";
 import type { Tx } from "@gcpe/db-kit";
+import { escapeHtml } from "@gcpe/http-kit";
 import { indexKeysFor, type EventHandler, type ReleaseRecord } from "@gcpe/events";
 import { sendJobs } from "./db/schema";
 
 const ENGLISH_LANGUAGE_ID = 4105;
-
-function escapeHtml(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
-}
 
 /**
  * Distribution (Task 7) substitutes `{{name}}` placeholders in a single pass over the final
