@@ -127,6 +127,58 @@ describe("notify", () => {
     10_000,
   );
 
+  // Final review M5: once a discarded client's listeners are removed, a further 'error' from
+  // it (pg can emit more than one as a socket dies) must never be an unhandled 'error' event —
+  // EventEmitter throws on those, crashing the process. The exposed window is cleanup():
+  // listeners are removed *before* the awaited UNLISTEN, so the client has no 'error'
+  // listener at all while that query is in flight.
+  it(
+    "an 'error' emitted by a discarded client — during cleanup's UNLISTEN or after release — does not throw",
+    async () => {
+      const local = await createNewsTestDb();
+      try {
+        const realConnect = local.pool.connect.bind(local.pool);
+        const clients: pg.PoolClient[] = [];
+        vi.spyOn(local.pool, "connect").mockImplementation(async () => {
+          const c = await realConnect();
+          clients.push(c);
+          return c;
+        });
+        const listener = await listenForUpdates(local.pool, () => {});
+
+        // Broken-connection path: the first client is discarded and a second one LISTENs.
+        const first = clients[0]!;
+        await findAndKillListenBackend(local.url);
+        await vi.waitFor(() => expect(clients.length).toBe(2));
+        expect(() => first.emit("error", new Error("late error 1"))).not.toThrow();
+        expect(() => first.emit("error", new Error("late error 2"))).not.toThrow();
+
+        // stop() path: emit twice while UNLISTEN is in flight.
+        const second = clients[1]!;
+        const realQuery = second.query.bind(second) as (q: string) => Promise<unknown>;
+        const thrown: unknown[] = [];
+        vi.spyOn(second, "query").mockImplementationOnce((async (q: string) => {
+          await new Promise((r) => setTimeout(r, 10));
+          for (const n of [1, 2]) {
+            try {
+              second.emit("error", new Error(`error ${n} during UNLISTEN`));
+            } catch (e) {
+              thrown.push(e);
+            }
+          }
+          return realQuery(q);
+        }) as never);
+        await listener.stop();
+        expect(thrown).toEqual([]);
+        expect(() => second.emit("error", new Error("late error after stop"))).not.toThrow();
+      } finally {
+        vi.restoreAllMocks();
+        await local.drop();
+      }
+    },
+    10_000,
+  );
+
   it(
     "stop() after the connection breaks resolves without leaking a connection",
     async () => {

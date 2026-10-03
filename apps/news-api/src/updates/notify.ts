@@ -78,6 +78,17 @@ export interface UpdatesListener {
 const INITIAL_BACKOFF_MS = 100;
 const MAX_BACKOFF_MS = 5000;
 
+/**
+ * Strips our listeners from a client we're discarding, then attaches a no-op 'error'
+ * listener: a dying pg connection can emit 'error' more than once, and an 'error' event with
+ * no listener at all is thrown by EventEmitter — crashing the process. That window is real
+ * in cleanup(), which awaits UNLISTEN with no listener of ours attached.
+ */
+function detach(c: pg.PoolClient): void {
+  c.removeAllListeners();
+  c.on("error", () => {});
+}
+
 async function sleep(ms: number): Promise<void> {
   await new Promise<void>((resolve) => {
     const timer = setTimeout(resolve, ms);
@@ -112,7 +123,7 @@ export async function listenForUpdates(
   // happy path, the same as release(err) does when UNLISTEN itself fails on an
   // already-broken connection.
   async function cleanup(c: pg.PoolClient): Promise<void> {
-    c.removeAllListeners();
+    detach(c);
     try {
       await c.query(`UNLISTEN ${UPDATES_CHANNEL}`);
       c.release(true);
@@ -132,7 +143,7 @@ export async function listenForUpdates(
       // LISTEN itself failed on an otherwise freshly-checked-out client. Nobody else has a
       // reference to it, so if we don't release it here it's checked out forever as far as
       // the pool is concerned — a leak on every failed (re)connect attempt.
-      c.removeAllListeners();
+      detach(c);
       c.release(e as Error);
       throw e;
     }
@@ -165,7 +176,7 @@ export async function listenForUpdates(
     if (stopped || reconnecting || broken !== client) return;
     reconnecting = true;
     client = null;
-    broken.removeAllListeners();
+    detach(broken);
     broken.release(err);
     reconnectPromise = reconnectLoop();
   }
