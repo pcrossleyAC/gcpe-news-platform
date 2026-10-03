@@ -151,26 +151,41 @@ interface Recipient {
   manageToken: string;
 }
 
-/** Every verified subscriber with an assigned chunk for this release, grouped by that frozen
- * chunk_index (not recomputed from position — see ensureChunksAssigned). The query orders by
- * (chunk_index, subscriber id), so each chunk's own recipient order is deterministic too, and
- * the first time a given index is seen determines the resulting Map's iteration order —
- * ascending by chunk_index, with any index that ended up with zero verified recipients simply
- * absent (sendAllChunks never sends an empty request for it). */
-async function fetchAssignedRecipients(db: Db, releaseKey: string): Promise<Map<number, Recipient[]>> {
+/** R3: a chunk's byte-split partition (how many parts, and which members fall in which part)
+ * must be computed over this — the chunk's *frozen* membership, regardless of each member's
+ * *current* verified status — not over whatever happens to be verified right now. Otherwise a
+ * subscriber flipping unverified between attempt 1 and attempt 2 shrinks the recipient list
+ * `splitChunkByBytes` sizes against, which can change the part count/boundaries and therefore
+ * the idempotencyKey a given recipient's part is sent under — exactly the kind of instability
+ * chunk_index freezing (ensureChunksAssigned) already exists to prevent, one level down. */
+interface Member extends Recipient {
+  verified: boolean;
+}
+
+const toRecipients = (members: Member[]): Recipient[] => members.map(({ email, manageToken }) => ({ email, manageToken }));
+
+/** Every member of this release's frozen chunks (chunk_index IS NOT NULL — see
+ * ensureChunksAssigned), grouped by chunk_index, *regardless of current verified status* (R3:
+ * the byte-split partition below must size itself against this frozen membership, not against
+ * whichever subset happens to be verified on any given attempt). The query orders by
+ * (chunk_index, subscriber id), so each chunk's own member order — and therefore every part's
+ * membership — is deterministic across attempts. Filtering to only-verified happens later, at
+ * send time, per part (see sendAllChunks). */
+async function fetchAssignedMembers(db: Db, releaseKey: string): Promise<Map<number, Member[]>> {
   const rows = await db
-    .select({ chunkIndex: deliveries.chunkIndex, email: subscribers.email, manageToken: subscribers.manageToken })
+    .select({ chunkIndex: deliveries.chunkIndex, email: subscribers.email, manageToken: subscribers.manageToken, verifiedAt: subscribers.verifiedAt })
     .from(deliveries)
     .innerJoin(subscribers, eq(subscribers.id, deliveries.subscriberId))
-    .where(and(eq(deliveries.releaseKey, releaseKey), isNotNull(subscribers.verifiedAt), isNotNull(deliveries.chunkIndex)))
+    .where(and(eq(deliveries.releaseKey, releaseKey), isNotNull(deliveries.chunkIndex)))
     .orderBy(deliveries.chunkIndex, subscribers.id);
 
-  const chunks = new Map<number, Recipient[]>();
+  const chunks = new Map<number, Member[]>();
   for (const row of rows) {
     const idx = row.chunkIndex!;
+    const member: Member = { email: row.email, manageToken: row.manageToken, verified: row.verifiedAt != null };
     const bucket = chunks.get(idx);
-    if (bucket) bucket.push({ email: row.email, manageToken: row.manageToken });
-    else chunks.set(idx, [{ email: row.email, manageToken: row.manageToken }]);
+    if (bucket) bucket.push(member);
+    else chunks.set(idx, [member]);
   }
   return chunks;
 }
@@ -180,7 +195,7 @@ async function fetchAssignedRecipients(db: Db, releaseKey: string): Promise<Map<
  * chunks (P2-R18: this is not the same thing as "became verified after freezing" —
  * ensureChunksAssigned doesn't filter on verified_at at all, so a subscriber who becomes
  * verified later still has whatever chunk_index their delivery row got assigned at freeze
- * time, and is picked up by fetchAssignedRecipients on this job's next attempt. The one case
+ * time, and is picked up by fetchAssignedMembers on this job's next attempt. The one case
  * where a late-verified subscriber is never mailed is if their chunk was already sent and
  * accepted in an earlier attempt and the job has since reached a terminal state — by design,
  * not a bug: freezing trades "catch every last-second verification" for stable, safe-to-retry
@@ -226,30 +241,35 @@ function requestByteSize(req: MessageRequest): number {
 }
 
 /**
- * M3: a chunk sized only by recipient count (MAX_RECIPIENTS_PER_CHUNK) can still produce a
+ * M3/R3: a chunk sized only by recipient count (MAX_RECIPIENTS_PER_CHUNK) can still produce a
  * request whose JSON payload is too big if recipients carry sizeable per-recipient
- * substitutions — so split it further whenever its request would exceed `maxBytes`. Recipients
+ * substitutions — so split it further whenever its request would exceed `maxBytes`. Members
  * are assumed roughly uniform in size (a manage link built the same way for everyone), so the
  * first candidate split's measured size is representative of the rest: `n` only grows until one
  * probe fits, rather than measuring every part. Each part keeps `chunkIndex`'s own identity in
  * its key (`<chunkIndex>` when not split at all, `<chunkIndex>.<part>` otherwise) so retries
  * address the same sub-parts (and the same Distribution idempotencyKey) every time.
+ *
+ * R3: sized and partitioned over `members` — this chunk's *entire frozen membership*,
+ * verified or not (see fetchAssignedMembers) — never over a verified-only subset, so the
+ * number of parts and who falls in which one can't shift as subscribers verify/unverify
+ * between attempts. Returns the *membership* of each part, not yet filtered to verified-only
+ * or built into a request — that happens in sendAllChunks, per attempt.
  */
-function splitChunkByBytes(job: ClaimedJobRow, recipients: Recipient[], chunkIndex: number, manageUrl: string, maxBytes: number): { key: string; request: MessageRequest }[] {
+function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex: number, manageUrl: string, maxBytes: number): { key: string; members: Member[] }[] {
   let n = 1;
-  while (n < recipients.length) {
-    const size = Math.ceil(recipients.length / n);
-    const probe = buildMessageRequest(job, recipients.slice(0, size), String(chunkIndex), manageUrl);
+  while (n < members.length) {
+    const size = Math.ceil(members.length / n);
+    const probe = buildMessageRequest(job, toRecipients(members.slice(0, size)), String(chunkIndex), manageUrl);
     if (requestByteSize(probe) <= maxBytes) break;
     n++;
   }
-  if (n === 1) return [{ key: String(chunkIndex), request: buildMessageRequest(job, recipients, String(chunkIndex), manageUrl) }];
+  if (n === 1) return [{ key: String(chunkIndex), members }];
 
-  const partSize = Math.ceil(recipients.length / n);
-  const parts: { key: string; request: MessageRequest }[] = [];
-  for (let i = 0, part = 0; i < recipients.length; i += partSize, part++) {
-    const key = `${chunkIndex}.${part}`;
-    parts.push({ key, request: buildMessageRequest(job, recipients.slice(i, i + partSize), key, manageUrl) });
+  const partSize = Math.ceil(members.length / n);
+  const parts: { key: string; members: Member[] }[] = [];
+  for (let i = 0, part = 0; i < members.length; i += partSize, part++) {
+    parts.push({ key: `${chunkIndex}.${part}`, members: members.slice(i, i + partSize) });
   }
   return parts;
 }
@@ -262,19 +282,29 @@ function splitChunkByBytes(job: ClaimedJobRow, recipients: Recipient[], chunkInd
  * throws: stops and returns whatever it already has (including a partial `batchIds`) plus the
  * `error` that stopped it, so the caller can persist accepted chunks even on a failed/retried
  * attempt (P2-R16).
+ *
+ * R3: a part's membership is frozen (partitionChunkByBytes, over the whole chunk regardless of
+ * verified status); only now, per attempt, is it filtered down to members currently verified —
+ * so a subscriber who unverifies between attempts simply drops out of their part's recipient
+ * list (the part keeps its key and its other members) rather than shifting anyone's part
+ * assignment. A part with zero currently-verified members is skipped entirely: no request sent,
+ * no batchId recorded for it this attempt (any batchId it already earned on an earlier attempt
+ * stays in the merged `batch_ids`, untouched — see sendDueJobs).
  */
 async function sendAllChunks(
   distribution: DistributionClient,
   job: ClaimedJobRow,
-  chunks: Map<number, Recipient[]>,
+  chunks: Map<number, Member[]>,
   manageUrl: string,
   maxChunkBytes: number,
 ): Promise<{ batchIds: Record<string, string>; error?: DistributionError }> {
   const batchIds: Record<string, string> = {};
-  for (const [chunkIndex, recipients] of chunks) {
-    for (const { key, request } of splitChunkByBytes(job, recipients, chunkIndex, manageUrl, maxChunkBytes)) {
+  for (const [chunkIndex, members] of chunks) {
+    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, manageUrl, maxChunkBytes)) {
+      const verifiedMembers = partMembers.filter((m) => m.verified);
+      if (verifiedMembers.length === 0) continue; // nothing currently verified in this part — skip it this attempt
       try {
-        const { batchId } = await distribution.send(request);
+        const { batchId } = await distribution.send(buildMessageRequest(job, toRecipients(verifiedMembers), key, manageUrl));
         batchIds[key] = batchId;
       } catch (e) {
         // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless
@@ -307,7 +337,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     const job = await claimOneJob(opts.db, now, initialLockUntil);
     if (!job) break;
 
-    let chunks: Map<number, Recipient[]>;
+    let chunks: Map<number, Member[]>;
     let lockUntil: Date;
     try {
       if (!job.chunks_assigned) {
@@ -318,7 +348,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
         console.log(`[nod] release ${job.release_key}: ${lateCount} delivery(ies) arrived after chunking was frozen and are not part of job ${job.id}`);
       }
 
-      chunks = await fetchAssignedRecipients(opts.db, job.release_key);
+      chunks = await fetchAssignedMembers(opts.db, job.release_key);
       // chunks.size (every chunk this attempt will actually send) * perChunkMs (worst case
       // every one hits the request timeout) + perChunkMs once more (getToken's own timeout —
       // it can only block the whole attempt once, since a successful fetch is cached) + the

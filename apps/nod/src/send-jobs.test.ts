@@ -602,6 +602,59 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     expect(distribution.send).toHaveBeenCalledTimes(1);
     expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0`);
   });
+
+  // R3: the byte-split partition must be computed over the chunk's *frozen* membership
+  // (verified or not), not over whichever subset happens to be verified right now — otherwise
+  // a subscriber flipping unverified between attempts shrinks the list splitChunkByBytes sizes
+  // against, which can renumber every other member's part key out from under them.
+  it("keeps identical byte-split keys on retry when a subscriber in one part becomes unverified between attempts (R3)", async () => {
+    const subs = await Promise.all([0, 1, 2, 3].map((n) => insertSubscriber(tdb.db, `r3-${n}@example.com`, { id: lowId(n) })));
+    const job = await insertJob(tdb.db, "release-r3-stable-keys");
+    await tdb.db.insert(deliveries).values(subs.map((s) => ({ releaseKey: "release-r3-stable-keys", subscriberId: s.id })));
+
+    const distribution = stubDistribution();
+    // maxChunkBytes: 50 forces a 1-member-per-part split (as in the test above) -> parts
+    // 0.0, 0.1, 0.2, 0.3. First attempt: 0.0 and 0.1 are accepted, 0.2 fails retryably, 0.3 is
+    // never reached.
+    distribution.send
+      .mockImplementationOnce(async () => ({ batchId: "b0" }))
+      .mockImplementationOnce(async () => ({ batchId: "b1" }))
+      .mockImplementationOnce(async () => {
+        throw new DistributionError("HTTP 503", true);
+      });
+
+    const now = new Date();
+    const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, maxChunkBytes: 50, now: () => now });
+    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
+    expect(distribution.send).toHaveBeenCalledTimes(3);
+    expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0.0`);
+    expect((distribution.send.mock.calls[1]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0.1`);
+    expect((distribution.send.mock.calls[2]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0.2`);
+
+    const afterFirst = (await tdb.db.select().from(sendJobs))[0]!;
+    expect(afterFirst.batchIds).toEqual({ "0.0": "b0", "0.1": "b1" });
+
+    // Between attempts: the subscriber whose sole membership is part 0.1 becomes unverified.
+    await tdb.db.update(subscribers).set({ verifiedAt: null }).where(eq(subscribers.id, subs[1]!.id));
+
+    distribution.send.mockReset();
+    distribution.send.mockResolvedValue({ batchId: "retry" });
+    const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, maxChunkBytes: 50, now: () => afterFirst.nextAttemptAt });
+    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0 });
+
+    // Part 0.1's sole member is now unverified, so that part is skipped entirely this attempt
+    // — but the *other* parts keep their original keys (0.0, 0.2, 0.3), not renumbered as if
+    // only 3 members had ever existed.
+    const keysUsed = distribution.send.mock.calls.map((c) => (c[0] as MessageRequest).idempotencyKey).sort();
+    expect(keysUsed).toEqual([`${job.id}:0.0`, `${job.id}:0.2`, `${job.id}:0.3`]);
+
+    const afterSecond = (await tdb.db.select().from(sendJobs))[0]!;
+    expect(afterSecond.status).toBe("sent");
+    // 0.1's batchId from the first attempt survives untouched — it was never re-sent, just
+    // skipped, since nothing in it is currently verified.
+    expect(Object.keys(afterSecond.batchIds).sort()).toEqual(["0.0", "0.1", "0.2", "0.3"]);
+    expect(afterSecond.batchIds["0.1"]).toBe("b1");
+  });
 });
 
 describe("distributionClient", () => {

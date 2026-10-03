@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb, envelope } from "../test/helpers";
-import { deliveries, sendJobs, subscribers } from "./db/schema";
+import { deliveries, sendJobs, subscribers, subscriptions } from "./db/schema";
 import { addSubscriber } from "./subscribers";
 import { createAsItHappensHandler, renderAsItHappens } from "./as-it-happens";
 
@@ -18,6 +18,7 @@ describe("createAsItHappensHandler", () => {
   let c: string; // sectors:mining, verified
   let d: string; // all news, unverified
   let e: string; // BOTH '*' and ministries:health, verified — must still get exactly one delivery
+  let f: string; // all news, verified, but as_it_happens=false on its subscription (R6)
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
@@ -28,7 +29,12 @@ describe("createAsItHappensHandler", () => {
     c = (await addSubscriber(tdb.db, { email: "c.mining@example.com", lists: ["sectors:Mining"] })).id;
     d = (await addSubscriber(tdb.db, { email: "d.all.unverified@example.com", lists: "all" })).id;
     e = (await addSubscriber(tdb.db, { email: "e.all-and-health@example.com", lists: ["*", "ministries:Health"] })).id;
+    f = (await addSubscriber(tdb.db, { email: "f.all.digest-only@example.com", lists: "all" })).id;
     await tdb.db.update(subscribers).set({ verifiedAt: null }).where(eq(subscribers.id, d));
+    // addSubscriber (the public API) always creates a subscription with as_it_happens=true;
+    // flipping it directly here is the only way to get a digest-only subscription into a
+    // fixture today (R6) — there's no HTTP/service path yet that sets it to false.
+    await tdb.db.update(subscriptions).set({ asItHappens: false }).where(eq(subscriptions.subscriberId, f));
   });
   afterAll(async () => {
     await tdb.drop();
@@ -85,6 +91,19 @@ describe("createAsItHappensHandler", () => {
     expect(jobRows).toHaveLength(0);
   });
 
+  // R6: a verified subscriber on a matching list ('*') whose *subscription* has
+  // as_it_happens=false (a digest-only subscriber) must never get an as-it-happens delivery,
+  // even though every other condition matches.
+  it("excludes a verified, list-matching subscriber whose subscription has as_it_happens=false", async () => {
+    const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
+
+    const fDeliveries = await tdb.db.select().from(deliveries).where(and(eq(deliveries.releaseKey, release.key), eq(deliveries.subscriberId, f)));
+    expect(fDeliveries).toHaveLength(0);
+
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    expect(deliveryRows.map((r) => r.subscriberId)).not.toContain(f);
+  });
 });
 
 describe("createAsItHappensHandler with no subscribers at all", () => {
@@ -148,19 +167,46 @@ describe("renderAsItHappens", () => {
     expect(subject).not.toMatch(/[\r\n\t]/);
   });
 
-  it("truncates a subject over 998 code points, ending in '…'", () => {
+  it("truncates a subject over 998 UTF-16 units, ending in '…'", () => {
     const longHeadline = "x".repeat(1200);
     const release = { ...sampleRelease, documents: [{ ...sampleRelease.documents[0]!, headline: longHeadline }] };
     const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
-    expect(Array.from(subject)).toHaveLength(998);
+    expect(subject.length).toBe(998);
     expect(subject.endsWith("…")).toBe(true);
     expect(subject.slice(0, 997)).toBe("x".repeat(997));
+  });
+
+  // R2: Distribution's own max(998) is `z.string().max(998)`, which counts UTF-16 *code
+  // units* — the previous (reverted) code-point-based truncation let a 600-emoji headline
+  // (600 code points, but 1200 UTF-16 units — astral emoji are surrogate pairs) straight
+  // through unmodified, well over the real limit. Also proves no lone surrogate is left
+  // dangling at the cut point.
+  it("truncates a subject measured in UTF-16 units, not code points, without splitting a surrogate pair (600 emoji)", () => {
+    const longHeadline = "😀".repeat(600); // 600 code points, 1200 UTF-16 units
+    const release = { ...sampleRelease, documents: [{ ...sampleRelease.documents[0]!, headline: longHeadline }] };
+    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
+    expect(subject.length).toBeLessThanOrEqual(998);
+    expect(subject.endsWith("…")).toBe(true);
+    const withoutEllipsis = subject.slice(0, -1);
+    // An even number of units and every code point a complete "😀" proves no dangling half
+    // of a surrogate pair was left in.
+    expect(withoutEllipsis.length % 2).toBe(0);
+    expect([...withoutEllipsis].every((ch) => ch === "😀")).toBe(true);
   });
 
   it("leaves a short, already-clean subject untouched (no truncation marker)", () => {
     const release = { ...sampleRelease, documents: [{ ...sampleRelease.documents[0]!, headline: "Short clean headline" }] };
     const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
     expect(subject).toBe("Short clean headline");
+  });
+
+  // R2: a headline that's present but whitespace-only must not produce an empty subject
+  // (Distribution's schema requires at least 1 character) — falls back to the release key,
+  // same as a genuinely missing headline.
+  it("falls back to the release key when the headline is whitespace-only", () => {
+    const release = { ...sampleRelease, key: "WHITESPACE-ONLY-1", documents: [{ ...sampleRelease.documents[0]!, headline: "   \t\n  " }] };
+    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
+    expect(subject).toBe("WHITESPACE-ONLY-1");
   });
 });
 

@@ -19,26 +19,46 @@ function escapeHtml(s: string): string {
 const neutralizeHtml = (s: string): string => escapeHtml(s).replace(/\{\{/g, "{&#123;");
 const neutralizeText = (s: string): string => s.replace(/\{\{/g, "{ {");
 
-// I4 fix: Distribution rejects (400, terminal) a subject containing CR/LF or longer than 998
-// characters (apps/distribution/src/messages.ts's messageRequestSchema) — and a raw headline
-// can be either (a release imported with embedded newlines, or simply a very long one). A
+// I4/R2 fix: Distribution rejects (400, terminal) a subject containing CR/LF or longer than
+// 998 characters (apps/distribution/src/messages.ts's `z.string().max(998)`, which — like
+// every JS/zod string length check — counts UTF-16 *code units*, not Unicode code points) —
+// and a raw headline can be either (a release imported with embedded newlines, or simply a
+// very long one, including one made of astral-plane characters that are 2 units each). A
 // terminal 400 at that layer means nobody gets mailed, so the subject is sanitised here,
 // before it ever reaches Distribution.
-const MAX_SUBJECT_CODE_POINTS = 998;
+const MAX_SUBJECT_UTF16_UNITS = 998;
+
+/**
+ * Truncates `s` to at most `maxUnits` UTF-16 code units (matching how Distribution's own
+ * `z.string().max(998)` measures length), appending "…" when truncation actually happens —
+ * without ever splitting a surrogate pair. `string.slice(0, n)` counts units already (unlike
+ * `Array.from`, which counts code points — the wrong measure here, since a 600-character
+ * string of astral emoji is 600 code points but 1200 UTF-16 units, well over the real limit).
+ * The one hazard `slice` alone doesn't guard against: landing exactly between a surrogate
+ * pair's two halves, which would store a dangling lone high surrogate — checked for and, if
+ * so, the whole pair is dropped instead of just its first half.
+ */
+function truncateByUtf16Units(s: string, maxUnits: number): string {
+  if (s.length <= maxUnits) return s;
+  let end = maxUnits - 1; // room for the trailing "…" (1 unit)
+  const codeBefore = s.charCodeAt(end - 1);
+  if (codeBefore >= 0xd800 && codeBefore <= 0xdbff) end -= 1; // would split a surrogate pair — drop it whole
+  return s.slice(0, end) + "…";
+}
 
 /**
  * Collapses all whitespace (including \r\n\t, which would otherwise smuggle extra header
  * lines into the SMTP Subject header) to single spaces, trims, neutralises `{{` the same way
  * the text body does (so a headline that happens to contain `{{manageUrl}}` isn't substituted
- * by Distribution), and truncates to {@link MAX_SUBJECT_CODE_POINTS} Unicode code points —
- * counting code points rather than UTF-16 units so a truncation point can't land mid
- * surrogate-pair. The last character becomes "…" when truncation actually happens.
+ * by Distribution), and truncates to {@link MAX_SUBJECT_UTF16_UNITS}. Falls back to `fallback`
+ * (the release key) when the headline is empty or, after trimming, turns out to have been
+ * whitespace-only — a subject must never be empty (Distribution's schema requires at least 1
+ * character).
  */
-function sanitizeSubject(raw: string): string {
+function sanitizeSubject(raw: string, fallback: string): string {
   const cleaned = neutralizeText(raw.replace(/\s+/g, " ").trim());
-  const codePoints = Array.from(cleaned);
-  if (codePoints.length <= MAX_SUBJECT_CODE_POINTS) return cleaned;
-  return codePoints.slice(0, MAX_SUBJECT_CODE_POINTS - 1).join("") + "…";
+  const base = cleaned.length > 0 ? cleaned : fallback;
+  return truncateByUtf16Units(base, MAX_SUBJECT_UTF16_UNITS);
 }
 
 export function renderAsItHappens(r: ReleaseRecord, publicSiteUrl: string): { subject: string; html: string; text: string } {
@@ -50,7 +70,7 @@ export function renderAsItHappens(r: ReleaseRecord, publicSiteUrl: string): { su
   const summary = r.summary ?? "";
   const url = `${publicSiteUrl}/releases/${encodeURIComponent(r.key)}`;
 
-  const subject = sanitizeSubject(headline);
+  const subject = sanitizeSubject(headline, r.key);
   const html =
     `<h1>${neutralizeHtml(headline)}</h1>` +
     `<p>${neutralizeHtml(summary)}</p>` +
