@@ -19,6 +19,23 @@ export interface AppDeps {
   hubRouter?: express.Router;
 }
 
+// Extracts a 4xx status (e.g. body-parser's 413 PayloadTooLargeError) from a
+// thrown error, so client mistakes don't get flattened into a 500.
+function clientErrorStatus(err: unknown): number | undefined {
+  if (typeof err !== "object" || err === null) return undefined;
+  const record = err as Record<string, unknown>;
+  const status = record.status ?? record.statusCode;
+  return typeof status === "number" && status >= 400 && status <= 499 ? status : undefined;
+}
+
+function exposedMessage(err: unknown): string {
+  if (typeof err === "object" && err !== null) {
+    const record = err as Record<string, unknown>;
+    if (record.expose === true && typeof record.message === "string") return record.message;
+  }
+  return "request error";
+}
+
 export function createApp(deps: AppDeps): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -53,6 +70,10 @@ export function createApp(deps: AppDeps): express.Express {
   app.use((err: unknown, _req: express.Request, res: express.Response, next: express.NextFunction) => {
     console.error("[news-api] request failed", err);
     if (res.headersSent) return next(err);
+    const status = clientErrorStatus(err);
+    if (status !== undefined) {
+      return void res.status(status).json({ error: exposedMessage(err) });
+    }
     res.status(500).json({ error: "internal error" });
   });
 

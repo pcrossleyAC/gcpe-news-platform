@@ -58,4 +58,34 @@ describe("Subscribe proxy", () => {
     await request(a).get("/api/Subscribe/SubscriptionItems/x");
     expect((await request(a).get("/api/Subscribe/SubscriptionItems/x")).status).toBe(429);
   });
+
+  it("502s when the token provider throws, instead of a bare 500", async () => {
+    const a = app({
+      baseUrl: nodUrl,
+      getToken: async () => {
+        throw new Error("token service down");
+      },
+      rateLimitPerMinute: 100,
+    });
+    const res = await request(a).get("/api/Subscribe/SubscriptionItems/x?api-version=1.0");
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: "subscriptions upstream unavailable" });
+  });
+
+  it("rejects a '..' path parameter with 400 instead of forwarding it upstream", async () => {
+    const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 100 });
+    const before = seen.length;
+    const res = await request(a).get("/api/Subscribe/CheckEmailActivationToken/..?api-version=1.0");
+    expect(res.status).toBe(400);
+    expect(seen.length).toBe(before); // never reached the upstream stub
+  });
+
+  it("round-trips an email containing + and @ through percent-encoding, intact", async () => {
+    const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 100 });
+    const email = "a+b@c.com";
+    await request(a).get(`/api/Subscribe/ManageNewsOnDemandEmailSubscription/${encodeURIComponent(email)}?api-version=1.0`);
+    const last = seen.at(-1)!;
+    expect(last.url).toBe(`/api/Subscribe/ManageNewsOnDemandEmailSubscription/${encodeURIComponent(email)}`);
+    expect(decodeURIComponent(last.url.split("/").pop()!)).toBe(email);
+  });
 });

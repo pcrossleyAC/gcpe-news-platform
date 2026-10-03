@@ -18,6 +18,24 @@ const ROUTES: [method: "get" | "post", path: string][] = [
   ["get", "/Subscribe/UnsubscribeSubscriber/:tokenGuid"],
 ];
 
+// Builds the upstream path from the route's own literal segments plus each
+// param re-encoded with encodeURIComponent — never from req.path — so a
+// param value can't inject extra "/" segments or a ".."/"%2e%2e" dot-segment
+// that would collapse a segment once NoD resolves the request path.
+function buildUpstreamPath(routePath: string, params: Record<string, string | string[] | undefined>): string | undefined {
+  const segments: string[] = [];
+  for (const seg of routePath.split("/")) {
+    if (!seg.startsWith(":")) {
+      segments.push(seg);
+      continue;
+    }
+    const value = params[seg.slice(1)];
+    if (typeof value !== "string" || value === "." || value === "..") return undefined;
+    segments.push(encodeURIComponent(value));
+  }
+  return segments.join("/");
+}
+
 export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router {
   const r = Router();
   if (!opts) {
@@ -29,17 +47,21 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
 
   for (const [method, path] of ROUTES) {
     r[method](path, express.json({ limit: "100kb" }), async (req, res) => {
+      const upstreamPath = buildUpstreamPath(path, req.params);
+      if (upstreamPath === undefined) {
+        return void res.status(400).json({ error: "invalid parameter" });
+      }
       const query = new URLSearchParams();
       for (const [k, v] of Object.entries(req.query)) {
         if (k === "api-version") continue;
         for (const value of Array.isArray(v) ? v : [v]) if (typeof value === "string") query.append(k, value);
       }
       const qs = query.toString();
-      const target = `${opts.baseUrl.replace(/\/$/, "")}/api${req.path}${qs ? `?${qs}` : ""}`;
+      const target = `${opts.baseUrl.replace(/\/$/, "")}/api${upstreamPath}${qs ? `?${qs}` : ""}`;
       const headers: Record<string, string> = { accept: "application/json" };
-      if (opts.getToken) headers.authorization = `Bearer ${await opts.getToken()}`;
       if (method === "post") headers["content-type"] = "application/json";
       try {
+        if (opts.getToken) headers.authorization = `Bearer ${await opts.getToken()}`;
         const upstream = await doFetch(target, {
           method: method.toUpperCase(),
           headers,
