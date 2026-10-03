@@ -81,7 +81,10 @@ export function startPublisher(opts: PublishOptions & { intervalMs?: number }): 
   const timer = setInterval(() => {
     if (running) return;
     running = publishDue(opts)
-      .then((r) => r.published.length && console.log(`[nrms] published ${r.published.join(", ")}`))
+      .then((r) => {
+        if (r.published.length) console.log(`[nrms] published ${r.published.join(", ")}`);
+        if (r.failed.length) console.log(`[nrms] failed to publish ${r.failed.join(", ")}`);
+      })
       .catch((e) => console.error("[nrms] publish failed", e))
       .finally(() => {
         running = null;
