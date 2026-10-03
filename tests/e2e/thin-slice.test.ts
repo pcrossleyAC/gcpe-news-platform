@@ -87,11 +87,6 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
   let nrmsSubscribers: SubscriberConfig[];
   let newsApiSubscribers: SubscriberConfig[];
 
-  // Clock skew between the test DBs and this process can be < 1ms; every publishDue/
-  // dispatchOnce/sendDueJobs/sendDue call below passes a `now` slightly in the future so a
-  // row scheduled "now" is never missed as not-yet-due.
-  const slightlyAhead = () => new Date(Date.now() + 1000);
-
   beforeAll(async () => {
     // Fix round 1 item 1 (P2-R19): create all five DBs with allSettled so a failure partway
     // through the batch doesn't leak the ones that *did* get created — every fulfilled one is
@@ -271,10 +266,10 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
 
     // Step 3: publishDue claims and publishes it, writing release.published to the NRMS
     // outbox; dispatchOnce then delivers it to both News API and NoD (2 subscribers).
-    const publishResult = await publishDue({ db: nrmsDb.db, subscribers: nrmsSubscribers, now: slightlyAhead });
+    const publishResult = await publishDue({ db: nrmsDb.db, subscribers: nrmsSubscribers });
     expect(publishResult).toEqual({ published: [releaseDraft.key], failed: [] });
 
-    const nrmsDispatch = await dispatchOnce({ db: nrmsDb.db, subscribers: nrmsSubscribers, now: slightlyAhead });
+    const nrmsDispatch = await dispatchOnce({ db: nrmsDb.db, subscribers: nrmsSubscribers });
     expect(nrmsDispatch).toEqual({ delivered: 2, retried: 0, dead: 0 });
 
     // Step 4: News API's projection applied the release — it's now servable, with the raw
@@ -287,7 +282,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     // Step 5: News API's dispatcher delivers site.rebuild_requested to the public site,
     // which writes the static pages. The post page must contain the *escaped* headline and
     // never the raw "<weekend>" (fix round 1 item 3) — proves rendering actually escapes.
-    const newsApiDispatch = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers, now: slightlyAhead });
+    const newsApiDispatch = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers });
     expect(newsApiDispatch).toEqual({ delivered: 1, retried: 0, dead: 0 });
 
     const postHtml = await readFile(join(outputDir!, "releases", releaseDraft.key, "index.html"), "utf8");
@@ -300,10 +295,10 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     // Step 6: NoD's As-It-Happens send job reaches Distribution over real HTTP (NoD's own
     // minted local service token, azp "nod"), and Distribution's sender delivers it to the
     // SMTP sink.
-    const nodSend = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, manageUrl: MANAGE_URL, now: slightlyAhead });
+    const nodSend = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, manageUrl: MANAGE_URL });
     expect(nodSend).toEqual({ sent: 1, retried: 0, failed: 0 });
 
-    const distributionSend = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [], now: slightlyAhead });
+    const distributionSend = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [] });
     expect(distributionSend).toEqual({ sent: 1, retried: 0, failed: 0 });
 
     await vi.waitFor(() => expect(sink!.messages).toHaveLength(1));
@@ -320,15 +315,15 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
 
     // Step 7: re-running every worker once more changes nothing — the release is already
     // published, already dispatched, already sent, already delivered.
-    const publishAgain = await publishDue({ db: nrmsDb.db, subscribers: nrmsSubscribers, now: slightlyAhead });
+    const publishAgain = await publishDue({ db: nrmsDb.db, subscribers: nrmsSubscribers });
     expect(publishAgain).toEqual({ published: [], failed: [] });
-    const nrmsDispatchAgain = await dispatchOnce({ db: nrmsDb.db, subscribers: nrmsSubscribers, now: slightlyAhead });
+    const nrmsDispatchAgain = await dispatchOnce({ db: nrmsDb.db, subscribers: nrmsSubscribers });
     expect(nrmsDispatchAgain).toEqual({ delivered: 0, retried: 0, dead: 0 });
-    const newsApiDispatchAgain = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers, now: slightlyAhead });
+    const newsApiDispatchAgain = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers });
     expect(newsApiDispatchAgain).toEqual({ delivered: 0, retried: 0, dead: 0 });
-    const nodSendAgain = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, manageUrl: MANAGE_URL, now: slightlyAhead });
+    const nodSendAgain = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, manageUrl: MANAGE_URL });
     expect(nodSendAgain).toEqual({ sent: 0, retried: 0, failed: 0 });
-    const distributionSendAgain = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [], now: slightlyAhead });
+    const distributionSendAgain = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [] });
     expect(distributionSendAgain).toEqual({ sent: 0, retried: 0, failed: 0 });
 
     expect(sink!.messages).toHaveLength(1);
@@ -348,7 +343,6 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     const nrmsRedeliver = await dispatchOnce({
       db: nrmsDb.db,
       subscribers: nrmsSubscribers,
-      now: slightlyAhead,
       fetchImpl: async (input, init) => {
         const res = await fetch(input, init);
         redeliveryOutcome = await res
