@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { formatIssues } from "./issues";
 
 function isValidTimeZone(tz: string): boolean {
   try {
@@ -28,10 +29,7 @@ export type TenantConfig = z.infer<typeof tenantConfigSchema>;
 export function loadTenantConfig(path: string): TenantConfig {
   const result = tenantConfigSchema.safeParse(JSON.parse(readFileSync(path, "utf8")));
   if (!result.success) {
-    throw new Error(
-      `Invalid tenant config ${path}: ` +
-        result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
-    );
+    throw new Error(`Invalid tenant config ${path}: ${formatIssues(result.error)}`);
   }
   return result.data;
 }

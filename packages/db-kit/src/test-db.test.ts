@@ -1,14 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import pg from "pg";
-import { createTestDatabase, type TestDatabase } from "./test-db";
+import { adminUrl, createTestDatabase, type TestDatabase } from "./test-db";
 
 const migrationsFolder = new URL("../test/migrations", import.meta.url).pathname;
 const badMigrationsFolder = new URL("../test/bad-migrations", import.meta.url).pathname;
-const adminConnectionString = process.env.TEST_DATABASE_ADMIN_URL ?? "postgres://localhost:5432/postgres";
 
 async function countDatabasesWithPrefix(prefix: string): Promise<number> {
-  const admin = new pg.Client({ connectionString: adminConnectionString });
+  const admin = new pg.Client({ connectionString: adminUrl() });
   await admin.connect();
   try {
     const { rowCount } = await admin.query("SELECT 1 FROM pg_database WHERE position($1 in datname) = 1", [prefix]);
@@ -37,7 +36,7 @@ describe("createTestDatabase", () => {
     const other = await createTestDatabase({ migrationsFolder });
     const name = new URL(other.url).pathname.slice(1);
     await other.drop();
-    const admin = new pg.Client({ connectionString: process.env.TEST_DATABASE_ADMIN_URL ?? "postgres://localhost:5432/postgres" });
+    const admin = new pg.Client({ connectionString: adminUrl() });
     await admin.connect();
     const { rowCount } = await admin.query("SELECT 1 FROM pg_database WHERE datname = $1", [name]);
     await admin.end();
