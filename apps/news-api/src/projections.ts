@@ -1,7 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Tx } from "@gcpe/db-kit";
-import type { CategoryKind, EventEnvelope, EventHandler, OrgRecord, ReleaseRecord, SiteContentChanged, TermKind, TermRecord } from "@gcpe/events";
-import { indexKeysFor } from "@gcpe/events";
+import { indexKeysFor, type CategoryKind, type EventEnvelope, type EventHandler, type OrgRecord, type ReleaseRecord, type SiteContentChanged, type TermKind, type TermRecord } from "@gcpe/events";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { parseOffsetDateTime } from "./time";
 import { notifyUpdate, type UpdateTarget } from "./updates/notify";
@@ -324,13 +323,14 @@ export function createProjectionHandlers(): Record<string, EventHandler> {
 
 /**
  * Which source may drive which event types (final review M1). Core owns reference data;
- * NRMS owns releases and site content. A signed event of the wrong family from a source —
+ * NRMS owns releases and site content; news-api owns site.rebuild_requested (it emits it; the News API itself has no handler for it, so a received one is "ignored"). A signed event of the wrong family from a source —
  * e.g. an nrms-signed `org.deactivated` — is recorded as "ignored" rather than applied, so
  * one source's credentials can't rewrite the other's data.
  */
 export const SOURCE_EVENT_TYPES: Record<string, (type: string) => boolean> = {
   core: (type) => /^(org|sector|theme|tag|service)\./.test(type),
-  nrms: (type) => type.startsWith("release.") || type === "site.content.changed" || type === "site.rebuild_requested",
+  nrms: (type) => type.startsWith("release.") || type === "site.content.changed",
+  "news-api": (type) => type === "site.rebuild_requested",
 };
 
 /** The receiver's handler lookup: `createProjectionHandlers()`, restricted by event.source. */
