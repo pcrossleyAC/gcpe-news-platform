@@ -22,6 +22,7 @@ export function createApp(deps: {
       res.status(503).json({ status: "unavailable" });
     }
   });
-  app.use("/api", express.json({ limit: MAX_EVENT_BYTES }), requireBearer(deps.auth), apiRoutes(deps.db, deps.subscribers));
+  // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.
+  app.use("/api", requireBearer(deps.auth), express.json({ limit: MAX_EVENT_BYTES }), apiRoutes(deps.db, deps.subscribers));
   return app;
 }

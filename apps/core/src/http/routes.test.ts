@@ -42,6 +42,16 @@ describe("Core HTTP API", () => {
     expect((await request(app).put("/api/organizations/health").set("authorization", `Bearer ${reader}`).send(healthOrg)).status).toBe(403);
   });
 
+  it("authenticates before parsing request bodies", async () => {
+    const malformed = await request(app).put("/api/organizations/health").set("content-type", "application/json").send("{not json");
+    expect(malformed.status).toBe(401);
+    const huge = await request(app)
+      .put("/api/organizations/health")
+      .set("content-type", "application/json")
+      .send(JSON.stringify({ pad: "x".repeat(MAX_EVENT_BYTES * 2) }));
+    expect(huge.status).toBe(401);
+  });
+
   it("creates, reads, lists and deactivates an organization", async () => {
     const put = await request(app).put("/api/organizations/health").set("authorization", `Bearer ${admin}`).send(healthOrg);
     expect(put.status).toBe(200);
