@@ -535,6 +535,39 @@ describe("sendDue", () => {
     }
   });
 
+  // P2-R26: SKIP LOCKED, not just the lock predicate, keeps a claim from *waiting* on a row
+  // another transaction holds — the first message in claim order here — instead of sending the rest.
+  it("does not wait on a message row locked by another transaction (FOR UPDATE SKIP LOCKED)", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, priority: "system", recipients: [{ email: "locked@example.com", substitutions: {} }] }, internalDomains);
+    await createBatch(
+      tdb.db,
+      "app",
+      { ...sampleMessageRequest, priority: "digest", recipients: [{ email: "free1@example.com", substitutions: {} }, { email: "free2@example.com", substitutions: {} }] },
+      internalDomains,
+    );
+    const sentTo: string[] = [];
+    const stubTransport = {
+      sendMail: async (mail: { to: string[] }) => {
+        sentTo.push(...mail.to);
+        return {};
+      },
+    } as unknown as Transporter;
+    const locker = await tdb.pool.connect();
+    await locker.query("BEGIN");
+    await locker.query("SELECT 1 FROM messages WHERE email = 'locked@example.com' FOR UPDATE");
+    try {
+      const result = await Promise.race([
+        sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("sendDue waited on the locked row instead of skipping it")), 5000)),
+      ]);
+      expect(result).toEqual({ sent: 2, retried: 0, failed: 0 });
+      expect(sentTo.sort()).toEqual(["free1@example.com", "free2@example.com"]);
+    } finally {
+      await locker.query("ROLLBACK");
+      locker.release();
+    }
+  }, 7000);
+
   it("concurrent sendDue calls never deliver the same message twice", async () => {
     const sink = await startSmtpSink();
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });

@@ -353,6 +353,56 @@ describe("sendDueJobs", () => {
     }
   });
 
+  // P2-R26: SKIP LOCKED, not just the lock predicate, keeps a claim from *waiting* on a job
+  // another transaction holds — the earliest-due job here — instead of sending the others.
+  it("does not wait on a send job locked by another transaction (FOR UPDATE SKIP LOCKED)", async () => {
+    const subs = await Promise.all(["skl0", "skl1", "skl2"].map((e) => insertSubscriber(tdb.db, `${e}@example.com`)));
+    const locked = await insertJob(tdb.db, "release-sk-0", { nextAttemptAt: new Date("2000-01-01T00:00:00Z") }); // first in claim order
+    await insertJob(tdb.db, "release-sk-1");
+    await insertJob(tdb.db, "release-sk-2");
+    await tdb.db.insert(deliveries).values(subs.map((s, i) => ({ releaseKey: `release-sk-${i}`, subscriberId: s.id })));
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "b" });
+
+    const locker = await tdb.pool.connect();
+    await locker.query("BEGIN");
+    await locker.query("SELECT 1 FROM send_jobs WHERE id = $1 FOR UPDATE", [locked.id]);
+    try {
+      const result = await Promise.race([
+        sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, batchSize: 5 }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("sendDueJobs waited on the locked job instead of skipping it")), 5000)),
+      ]);
+      expect(result).toEqual({ sent: 2, retried: 0, failed: 0 });
+      const keys = distribution.send.mock.calls.map((c) => (c[0] as MessageRequest).idempotencyKey);
+      expect(keys.some((k) => k!.startsWith(locked.id))).toBe(false);
+    } finally {
+      await locker.query("ROLLBACK");
+      locker.release();
+    }
+  }, 7000);
+
+  // P2-R26: the terminal write is guarded by this call's lock token, not just status — if
+  // another worker's claim took the job over (our lock expired mid-send), our stale outcome
+  // must not overwrite whatever that worker writes.
+  it("does not overwrite a job whose lock was taken over by another worker mid-send", async () => {
+    const sub = await insertSubscriber(tdb.db, "stolen@example.com");
+    const job = await insertJob(tdb.db, "release-stolen");
+    await tdb.db.insert(deliveries).values([{ releaseKey: "release-stolen", subscriberId: sub.id }]);
+    const distribution = stubDistribution();
+    distribution.send.mockImplementation(async () => {
+      // Another worker's claim overwrites locked_until while this call is mid-send.
+      await tdb.pool.query("UPDATE send_jobs SET locked_until = now() + interval '1 hour' WHERE id = $1", [job.id]);
+      return { batchId: "stale" };
+    });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 0 });
+    const [row] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job.id));
+    expect(row!.status).toBe("pending");
+    expect(row!.batchIds).toEqual({});
+    expect(row!.lockedUntil).not.toBeNull();
+  });
+
   it("two concurrent runs send each due job exactly once", async () => {
     const subA = await insertSubscriber(tdb.db, "a@example.com");
     const subB = await insertSubscriber(tdb.db, "b@example.com");

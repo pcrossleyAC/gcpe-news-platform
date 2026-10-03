@@ -85,6 +85,29 @@ describe("dispatchOnce", () => {
     expect(await dispatchOnce({ db: tdb.db, subscribers: subs, now: () => later })).toEqual({ delivered: 0, retried: 0, dead: 1 });
   });
 
+  // P2-R26: SKIP LOCKED, not just the lock predicate, keeps a claim from *waiting* on a row
+  // another transaction holds — the earliest-due delivery here — instead of delivering the rest.
+  it("does not wait on a delivery row locked by another transaction (FOR UPDATE SKIP LOCKED)", async () => {
+    const envs = [];
+    for (let i = 0; i < 3; i++) {
+      envs.push(await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: `org:sk${i}`, data: { key: `sk${i}` } }, subs));
+    }
+    const locker = await tdb.pool.connect();
+    await locker.query("BEGIN");
+    await locker.query("SELECT 1 FROM outbox_deliveries WHERE event_id = $1 FOR UPDATE", [envs[0]!.id]);
+    try {
+      const result = await Promise.race([
+        dispatchOnce({ db: tdb.db, subscribers: subs }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("dispatchOnce waited on the locked row instead of skipping it")), 5000)),
+      ]);
+      expect(result).toEqual({ delivered: 2, retried: 0, dead: 0 });
+      expect(new Set(received.map((r) => r.headers["x-event-id"]))).toEqual(new Set([envs[1]!.id, envs[2]!.id]));
+    } finally {
+      await locker.query("ROLLBACK");
+      locker.release();
+    }
+  }, 7000);
+
   it("concurrent dispatchOnce calls deliver each event once", async () => {
     for (let i = 0; i < 10; i++) {
       await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: `org:c${i}`, data: { key: `c${i}` } }, subs);
