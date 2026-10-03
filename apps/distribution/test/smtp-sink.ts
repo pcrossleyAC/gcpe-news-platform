@@ -4,14 +4,32 @@ import { simpleParser, type ParsedMail } from "mailparser";
 
 /**
  * A throwaway SMTP server for tests (and for Task 11's E2E test): accepts any mail and parses
- * it into `messages`. Pass `rejectRcpt` to make every RCPT TO fail with that SMTP reply code —
- * used to exercise the permanent-5xx-failure path without a second sink implementation.
+ * it into `messages`.
+ *
+ * - `rejectRcpt`: every RCPT TO fails with that SMTP reply code — exercises the permanent
+ *   recipient-rejection path without a second sink implementation.
+ * - `requireAuth`: refuses MAIL/RCPT/DATA without authentication (530) and rejects every AUTH
+ *   attempt (535) — exercises the SMTP-configuration-error retry path (bad/missing creds),
+ *   which must stay distinct from a permanent recipient rejection.
+ * - `delayMs`: waits this long before acknowledging DATA — a deliberately slow server, for
+ *   exercising claim-lock expiry during an in-flight send.
  */
-export async function startSmtpSink(opts: { rejectRcpt?: number } = {}): Promise<{ port: number; messages: ParsedMail[]; close(): Promise<void> }> {
+export async function startSmtpSink(opts: { rejectRcpt?: number; requireAuth?: boolean; delayMs?: number } = {}): Promise<{
+  port: number;
+  messages: ParsedMail[];
+  close(): Promise<void>;
+}> {
   const messages: ParsedMail[] = [];
   const server = new SMTPServer({
-    authOptional: true,
+    authOptional: !opts.requireAuth,
     disabledCommands: ["STARTTLS"],
+    ...(opts.requireAuth
+      ? {
+          onAuth(_auth, _session, cb: (err: Error | null) => void) {
+            cb(new Error("bad credentials"));
+          },
+        }
+      : {}),
     ...(opts.rejectRcpt !== undefined
       ? {
           onRcptTo(_address, _session, cb) {
@@ -24,8 +42,12 @@ export async function startSmtpSink(opts: { rejectRcpt?: number } = {}): Promise
     onData(stream, _session, cb) {
       simpleParser(stream).then(
         (m) => {
-          messages.push(m);
-          cb();
+          const finish = () => {
+            messages.push(m);
+            cb();
+          };
+          if (opts.delayMs) setTimeout(finish, opts.delayMs);
+          else finish();
         },
         cb,
       );

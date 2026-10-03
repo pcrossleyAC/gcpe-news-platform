@@ -19,6 +19,16 @@ const transport = nodemailer.createTransport({
   secure: env.SMTP_SECURE,
   auth: env.SMTP_USER ? { user: env.SMTP_USER, pass: env.SMTP_PASS } : undefined,
   tls: { rejectUnauthorized: env.SMTP_TLS_REJECT_UNAUTHORIZED },
+  // Explicit timeouts bound how long a single message's send can take, which is what makes
+  // sender.ts's claim lock (batchSize * perMessageMs, below) a real upper bound instead of a
+  // guess — without them a hung connection can outlive the lock and get double-sent.
+  connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
+  greetingTimeout: env.SMTP_GREETING_TIMEOUT_MS,
+  socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
+  // Sends within a batch stay sequential (sendDue awaits each one before starting the next);
+  // pooling just reuses connections across them instead of reconnecting per message.
+  pool: true,
+  maxConnections: env.SMTP_MAX_CONNECTIONS,
 });
 
 // The non-prod mail redirect safety rule: distributionEnvSchema already refuses to boot
@@ -35,6 +45,7 @@ const stopSender = startSender({
   from: env.MAIL_FROM,
   redirectTo: env.MAIL_REDIRECT_TO,
   intervalMs: env.SEND_INTERVAL_MS,
+  perMessageMs: env.SMTP_CONNECTION_TIMEOUT_MS + env.SMTP_GREETING_TIMEOUT_MS + env.SMTP_SOCKET_TIMEOUT_MS,
 });
 
 const app = createApp({
