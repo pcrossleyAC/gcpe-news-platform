@@ -16,7 +16,7 @@ export const healthOrg: OrgInput = {
   parentKey: null,
   url: "http://gov.bc.ca/health",
   displayAdditionalName: null,
-  minister: { name: "Honourable Ravi Kahlon", summary: "Honourable Ravi Kahlon", detailsHtml: "<p>bio</p>", email: "HLTH.Minister@gov.bc.ca", photoUrl: null, address: "PO BOX 9050" },
+  minister: { name: "Honourable Sam Placeholder", summary: "Honourable Sam Placeholder", detailsHtml: "<p>bio</p>", email: "SP.Minister@gov.bc.ca", photoUrl: null, address: "PO BOX 9050" },
   contact: { fullName: "Alex Example", phoneNumber: "250-555-0100", mobileNumber: "250-555-0100", emailAddress: "alex.example@gov.bc.ca" },
   secondContact: null,
   weekendContactNumber: "",

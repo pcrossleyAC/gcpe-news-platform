@@ -66,6 +66,9 @@ function links(rows: LegacyLinkRow[]) {
 
 function contact(id: number | null, fullName: string | null, phone: string | null, mobile: string | null, email: string | null) {
   if (id === null || id === undefined) return null;
+  // A dangling foreign key (ContactUserId set, but the LEFT JOIN to calendar.SystemUser found no row)
+  // yields all-null joined columns; treat that as "no contact" rather than an empty contact record.
+  if (fullName === null && phone === null && mobile === null && email === null) return null;
   return { fullName, phoneNumber: phone, mobileNumber: mobile, emailAddress: email };
 }
 

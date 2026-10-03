@@ -75,6 +75,14 @@ describe("mapMinistry", () => {
     expect(org.topicLinks).toEqual([{ text: "First", url: "https://a" }, { text: "Second", url: "https://b" }]);
     expect(org.sectorKeys).toEqual(["health"]);
   });
+
+  it("maps a dangling ContactUserId (no matching SystemUser) to a null contact", () => {
+    const org = mapMinistry(
+      { ...mediaRelations, ContactUserId: 99, ContactFullName: null, ContactPhone: null, ContactMobile: null, ContactEmail: null },
+      { topics: [], services: [], sectorKeys: [] },
+    );
+    expect(org.contact).toBeNull();
+  });
 });
 
 describe("mapTerm", () => {

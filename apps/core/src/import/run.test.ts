@@ -10,8 +10,8 @@ const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://x/events", se
 const healthId = "11111111-1111-1111-1111-111111111111";
 const ministryRow = {
   Id: healthId, Key: "health", SortOrder: 10, DisplayName: "Health", Abbreviation: "HLTH", IsActive: true,
-  MinisterEmail: "HLTH.Minister@gov.bc.ca", MinisterPhotoUrl: null, MinisterPageHtml: "<p>bio</p>", MinisterAddress: "PO BOX 9050",
-  MinisterName: "Honourable Ravi Kahlon", MinisterSummary: "Honourable Ravi Kahlon", MinistryUrl: "http://gov.bc.ca/health", ParentKey: null,
+  MinisterEmail: "SP.Minister@gov.bc.ca", MinisterPhotoUrl: null, MinisterPageHtml: "<p>bio</p>", MinisterAddress: "PO BOX 9050",
+  MinisterName: "Honourable Sam Placeholder", MinisterSummary: "Honourable Sam Placeholder", MinistryUrl: "http://gov.bc.ca/health", ParentKey: null,
   WeekendContactNumber: "", DisplayAdditionalName: null, TwitterUsername: "", FlickrUrl: null, YoutubeUrl: null, AudioUrl: null,
   ContactUserId: null, ContactFullName: null, ContactPhone: null, ContactMobile: null, ContactEmail: null,
   SecondContactUserId: null, SecondContactFullName: null, SecondContactPhone: null, SecondContactMobile: null, SecondContactEmail: null,
