@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { createEventReceiver } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
-import { requireApiVersion } from "./http/errors";
+import { problemNotFound, requireApiVersion } from "./http/errors";
 import { categoryRoutes } from "./http/v1/categories";
 import { postRoutes } from "./http/v1/posts";
 import { siteRoutes } from "./http/v1/site";
@@ -40,7 +40,12 @@ export function createApp(deps: AppDeps): express.Express {
   api.use(categoryRoutes(deps.db, deps.timeZone));
   api.use(siteRoutes(deps.db, deps.timeZone));
   api.use(postRoutes(deps.db, deps.timeZone));
+  // No route matched (after the api-version check, so an unversioned unknown route still
+  // gets the ApiVersionUnspecified 400 the live API gives): same 404 problem JSON as the
+  // index-key lookups, never Express's HTML "Cannot GET".
+  api.use((_req, res) => problemNotFound(res));
   app.use("/api", api);
+  app.use((_req, res) => void res.status(404).json({ error: "not found" }));
 
   app.use(jsonErrorHandler({ logPrefix: "[news-api]" }));
 

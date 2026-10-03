@@ -31,3 +31,33 @@ describe("app-level error handling", () => {
     expect(res.text).not.toMatch(/at \S+ \(|\.ts:\d+:\d+/);
   });
 });
+
+// Final review M3: unmatched routes used to fall through to Express's HTML "Cannot GET".
+describe("unmatched routes", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+    app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("404s an unknown /api route with RFC 7231 problem JSON", async () => {
+    const res = await request(app).get("/api/NoSuchThing?api-version=1.0");
+    expect(res.status).toBe(404);
+    expect(res.headers["content-type"]).toBe("application/problem+json; charset=utf-8");
+    expect(JSON.parse(res.text)).toMatchObject({ type: "https://tools.ietf.org/html/rfc7231#section-6.5.4", title: "Not Found", status: 404 });
+  });
+
+  it("404s a route outside /api with a JSON error", async () => {
+    for (const path of ["/nope", "/health", "/events"]) {
+      const res = await request(app).get(path);
+      expect(res.status).toBe(404);
+      expect(res.headers["content-type"]).toMatch(/^application\/json/);
+      expect(res.body).toEqual({ error: "not found" });
+    }
+  });
+});
