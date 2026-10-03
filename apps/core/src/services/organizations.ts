@@ -1,7 +1,8 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { enqueueEvent, orgRecordSchema, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
 import { organizations } from "../db/schema";
+import { CORE_SOURCE, lockAggregate, orgAggregateId } from "./aggregate";
 
 export const orgInputSchema = orgRecordSchema.omit({ updatedAt: true });
 export type OrgInput = Omit<OrgRecord, "updatedAt">;
@@ -42,7 +43,7 @@ export async function upsertOrganization(
 ): Promise<{ record: OrgRecord; changed: boolean }> {
   const data = orgInputSchema.parse(input);
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`org:${data.key}`}))`);
+    await lockAggregate(tx, orgAggregateId(data.key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, data.key)).for("update");
     if (existing) {
       const { updatedAt: _u, ...current } = toOrgRecord(existing);
@@ -65,19 +66,19 @@ export async function upsertOrganization(
       .onConflictDoUpdate({ target: organizations.key, set: values })
       .returning();
     const record = toOrgRecord(row!);
-    await enqueueEvent(tx, { type: "org.upserted", source: "core", aggregateId: `org:${record.key}`, data: record }, subscribers);
+    await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(record.key), data: record }, subscribers);
     return { record, changed: true };
   });
 }
 
 export async function deactivateOrganization(db: Db, key: string, subscribers: SubscriberConfig[]): Promise<boolean> {
   return db.transaction(async (tx) => {
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`org:${key}`}))`);
+    await lockAggregate(tx, orgAggregateId(key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
     if (!existing) return false;
     if (!existing.isActive) return true;
     await tx.update(organizations).set({ isActive: false, updatedAt: new Date() }).where(eq(organizations.key, key));
-    await enqueueEvent(tx, { type: "org.deactivated", source: "core", aggregateId: `org:${key}`, data: { key } }, subscribers);
+    await enqueueEvent(tx, { type: "org.deactivated", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: { key } }, subscribers);
     return true;
   });
 }

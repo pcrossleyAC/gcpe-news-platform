@@ -1,7 +1,8 @@
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { enqueueEvent, termEventType, type SubscriberConfig } from "@gcpe/events";
 import { organizations, terms } from "../db/schema";
+import { CORE_SOURCE, lockAggregate, orgAggregateId, termAggregateId } from "./aggregate";
 import { toOrgRecord } from "./organizations";
 import { toTermRecord } from "./terms";
 
@@ -21,11 +22,11 @@ export async function republishAll(db: Db, subscribers: SubscriberConfig[]): Pro
   const orgKeys = await db.select({ key: organizations.key }).from(organizations).orderBy(asc(organizations.key));
   for (const { key } of orgKeys) {
     const done = await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`org:${key}`}))`);
+      await lockAggregate(tx, orgAggregateId(key));
       const [row] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
       if (!row) return false;
       const record = toOrgRecord(row);
-      await enqueueEvent(tx, { type: "org.upserted", source: "core", aggregateId: `org:${record.key}`, data: record }, subscribers);
+      await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(record.key), data: record }, subscribers);
       return true;
     });
     if (done) count++;
@@ -34,7 +35,7 @@ export async function republishAll(db: Db, subscribers: SubscriberConfig[]): Pro
   const termKeys = await db.select({ kind: terms.kind, key: terms.key }).from(terms).orderBy(asc(terms.kind), asc(terms.key));
   for (const { kind, key } of termKeys) {
     const done = await db.transaction(async (tx) => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${`${kind}:${key}`}))`);
+      await lockAggregate(tx, termAggregateId(kind, key));
       const [row] = await tx
         .select()
         .from(terms)
@@ -44,7 +45,7 @@ export async function republishAll(db: Db, subscribers: SubscriberConfig[]): Pro
       const record = toTermRecord(row);
       await enqueueEvent(
         tx,
-        { type: termEventType(record.kind, "upserted"), source: "core", aggregateId: `${record.kind}:${record.key}`, data: record },
+        { type: termEventType(record.kind, "upserted"), source: CORE_SOURCE, aggregateId: termAggregateId(record.kind, record.key), data: record },
         subscribers,
       );
       return true;
