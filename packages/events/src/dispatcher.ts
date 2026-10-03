@@ -1,5 +1,5 @@
 import { and, eq, sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import { ageMsOf, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import type { EventEnvelope } from "./envelope";
 import { signPayload } from "./signing";
 import type { SubscriberConfig } from "./subscribers";
@@ -9,8 +9,10 @@ export interface DispatchOptions {
   db: Db;
   subscribers: SubscriberConfig[];
   fetchImpl?: typeof fetch;
-  /** Clock override for tests; defaults to the wall clock. */
-  now?: () => Date;
+  /** Test hook: when given, its value stands in for SQL `now()` in every statement this call
+   * makes (claim, lock, backoff, delivered_at, age). Production omits it and the database's
+   * clock is used throughout — see {@link dispatchOnce}. */
+  now?: TestClock;
   batchSize?: number;
   maxAgeMs?: number;
   /** How long a claim holds its rows. Defaults to {@link defaultLockMs}. */
@@ -40,45 +42,51 @@ type ClaimedRow = {
   subscriber: string;
   attempts: number;
   envelope: EventEnvelope;
-  created_at: Date;
+  /** The exact locked_until this claim wrote — the row's ownership token. */
+  lock_token: LockToken;
+  /** The event's age at claim time, by the database's clock. */
+  age_ms: number;
 };
 
+/**
+ * Clock (P2-R22 D1): every comparison and stamp uses the database's clock — the claim's due
+ * and lock predicates use `now()`, the lock is `now() + lockMs` and its exact value is returned
+ * as the ownership token, retry backoff and `delivered_at` are computed from `now()` at the
+ * terminal write. The only JS-side time is a monotonic stopwatch started just before the claim
+ * (to age a row at the end of a slow delivery). `opts.now`, a test hook, replaces SQL `now()`
+ * with its value in every statement this call makes.
+ */
 export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: number; retried: number; dead: number }> {
-  const clock = opts.now ?? (() => new Date());
-  const now = clock();
-  const lockUntil = new Date(now.getTime() + (opts.lockMs ?? defaultLockMs(opts)));
+  const lockMs = opts.lockMs ?? defaultLockMs(opts);
   const maxAgeMs = opts.maxAgeMs ?? 24 * 3_600_000;
   const doFetch = opts.fetchImpl ?? fetch;
 
   // Phase 1: claim (short transaction, no network I/O while holding row locks).
+  const sinceClaim = stopwatch();
+  const now = sqlNow(opts.now);
   const claimed = await opts.db.execute<ClaimedRow>(sql`
     UPDATE outbox_deliveries d
-       SET locked_until = ${lockUntil}
+       SET locked_until = ${now} + ${sqlInterval(lockMs)}
       FROM outbox_events e
      WHERE e.id = d.event_id
        AND (d.event_id, d.subscriber) IN (
              SELECT event_id, subscriber FROM outbox_deliveries
               WHERE status = 'pending'
-                AND next_attempt_at < ${new Date(now.getTime() + 1)}
+                AND next_attempt_at <= ${now}
                 AND (locked_until IS NULL OR locked_until < ${now})
               ORDER BY next_attempt_at
               LIMIT ${opts.batchSize ?? DEFAULT_BATCH_SIZE}
               FOR UPDATE SKIP LOCKED)
-    RETURNING d.event_id, d.subscriber, d.attempts, e.envelope, e.created_at`);
+    RETURNING d.event_id, d.subscriber, d.attempts, e.envelope, ${lockTokenOf(sql`d.locked_until`)} AS lock_token, ${ageMsOf(sql`e.created_at`, now)} AS age_ms`);
 
   const result = { delivered: 0, retried: 0, dead: 0 };
   for (const row of claimed.rows) {
-    // The lockUntil this call's claim set is this row's ownership token: a terminal
-    // write only counts if we still held the lock (status unchanged, locked_until
-    // still ours) at write time. If another replica reclaimed the row in between
-    // (its lock expired mid-delivery), this update affects 0 rows and we defer to
-    // whatever that replica writes instead of overwriting it.
-    const where = and(
-      eq(outboxDeliveries.eventId, row.event_id),
-      eq(outboxDeliveries.subscriber, row.subscriber),
-      eq(outboxDeliveries.status, "pending"),
-      eq(outboxDeliveries.lockedUntil, lockUntil),
-    );
+    // The lock this call's claim set is this row's ownership token: a terminal write only
+    // counts if we still held the lock (status unchanged, locked_until still ours) at write
+    // time. If another replica reclaimed the row in between (its lock expired
+    // mid-delivery), this update affects 0 rows and we defer to whatever that replica
+    // writes instead of overwriting it.
+    const where = and(eq(outboxDeliveries.eventId, row.event_id), eq(outboxDeliveries.subscriber, row.subscriber), ownedPending(outboxDeliveries, row.lock_token));
     const sub = opts.subscribers.find((s) => s.name === row.subscriber);
     let error: string | null = null;
     if (!sub) {
@@ -107,23 +115,23 @@ export async function dispatchOnce(opts: DispatchOptions): Promise<{ delivered: 
       }
     }
 
-    // Stamp results with the time the attempt finished, not the batch's claim time:
-    // late rows in a slow batch would otherwise get a backoff that has already elapsed.
-    const finishedAt = clock();
+    // Stamp results with the time the attempt finished (the terminal write's own now()), not
+    // the batch's claim time: late rows in a slow batch would otherwise get a backoff that has
+    // already elapsed.
     const attempts = row.attempts + 1;
     if (error === null) {
       const res = await opts.db
         .update(outboxDeliveries)
-        .set({ status: "delivered", attempts, deliveredAt: finishedAt, lockedUntil: null, lastError: null })
+        .set({ status: "delivered", attempts, deliveredAt: sqlNow(opts.now), lockedUntil: null, lastError: null })
         .where(where);
       if (res.rowCount) result.delivered++;
-    } else if (finishedAt.getTime() - new Date(row.created_at).getTime() >= maxAgeMs) {
+    } else if (Number(row.age_ms) + sinceClaim() >= maxAgeMs) {
       const res = await opts.db.update(outboxDeliveries).set({ status: "dead", attempts, lockedUntil: null, lastError: error }).where(where);
       if (res.rowCount) result.dead++;
     } else {
       const res = await opts.db
         .update(outboxDeliveries)
-        .set({ attempts, nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(attempts)), lockedUntil: null, lastError: error })
+        .set({ attempts, nextAttemptAt: sqlNowPlus(backoffMs(attempts), opts.now), lockedUntil: null, lastError: error })
         .where(where);
       if (res.rowCount) result.retried++;
     }

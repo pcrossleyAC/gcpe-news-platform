@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import pg from "pg";
+import { sql } from "drizzle-orm";
 import { createDb, runMigrations, type Db } from "./db";
 
 export interface TestDatabase {
@@ -53,4 +54,15 @@ export async function createTestDatabase(opts: {
       await withAdmin((c) => c.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`));
     },
   };
+}
+
+/**
+ * Seeds a worker's `now` test hook from the database's clock (the workers' only clock — see
+ * claim.ts), rounded *up* to the next millisecond: a JS Date can't hold Postgres's
+ * microseconds, and rounding down could land before a row the database stamped a moment ago,
+ * making it look "not due yet".
+ */
+export async function dbClock(db: Db): Promise<Date> {
+  const r = await db.execute<{ ms: number }>(sql`SELECT ceil(extract(epoch from clock_timestamp()) * 1000)::float8 AS ms`);
+  return new Date(Number(r.rows[0]!.ms));
 }
