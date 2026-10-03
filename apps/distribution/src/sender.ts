@@ -33,6 +33,16 @@ export interface SendOptions {
    * `startSender`'s stop() so an in-flight run winds down after its current message instead of
    * being torn down mid-send. */
   stopRequested?: () => boolean;
+  /** R1: how long `transport.verify()` is given, on a config-class error, to decide whether the
+   * SMTP server itself is reachable before concluding the *message* is to blame. Defaults to
+   * {@link DEFAULT_VERIFY_TIMEOUT_MS}. */
+  verifyTimeoutMs?: number;
+  /** R1(b) backstop: a message still pending after this long is marked failed and logged no
+   * matter what kind of error it's been hitting — the net under every other retry/defer path,
+   * so nothing can stay pending forever. Measured from its batch's `created_at` (messages have
+   * no creation timestamp of their own; every message in a batch is created at the same
+   * instant). Defaults to {@link DEFAULT_MAX_MESSAGE_AGE_MS}. */
+  maxMessageAgeMs?: number;
 }
 
 const DEFAULT_BATCH_SIZE = 50;
@@ -50,6 +60,13 @@ const MAX_ATTEMPTS = 5;
 const BASE_BACKOFF_MS = 30_000;
 const MAX_BACKOFF_MS = 3_600_000;
 const MAX_ERROR_CODE_POINTS = 500;
+// R1: default budget for transport.verify() to answer "is the server itself reachable" before
+// a config-class error is attributed to the message instead.
+const DEFAULT_VERIFY_TIMEOUT_MS = 10_000;
+// R1(b): the backstop — a message pending longer than this is marked failed regardless of
+// error class, so nothing (a permanently-down server, a poison message misclassified forever,
+// anything) can keep a message pending indefinitely.
+const DEFAULT_MAX_MESSAGE_AGE_MS = 24 * 3_600_000;
 
 /**
  * A send involves real network I/O (SMTP round-trips) per message in the batch, processed
@@ -120,13 +137,45 @@ type ClaimedRow = {
   email: string;
   substitutions: Record<string, string> | null;
   attempts: number;
+  deferrals: number;
   priority: number;
   next_attempt_at: Date;
   subject: string | null;
   html: string | null;
   text: string | null;
   headers: Record<string, string> | null;
+  // R1(b): messages have no creation timestamp of their own; every message in a batch is
+  // created at the same instant as its batch, so this is the age backstop's clock.
+  batch_created_at: Date;
 };
+
+/**
+ * R1: discriminates "the SMTP server/config is actually unreachable" from "this one message is
+ * poison" (e.g. a relay that stalls or resets mid-DATA — nodemailer tags that `command: "CONN"`,
+ * indistinguishable by command alone from a real outage). A hung `verify()` is itself treated
+ * as "unhealthy" (the safer default: a server that can't even answer a lightweight check within
+ * budget is not one we should trust from a message-targeted content).
+ */
+async function isTransportHealthy(transport: Transporter, timeoutMs: number): Promise<boolean> {
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`transport.verify() timed out after ${timeoutMs}ms`)), timeoutMs);
+      transport.verify().then(
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        (err: unknown) => {
+          clearTimeout(timer);
+          reject(err);
+        },
+      );
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /**
  * Releases the lock on rows this call claimed but never got to (or no longer owns), so they're
@@ -148,6 +197,8 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
   const now = clock();
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
   const perMessageMs = opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS;
+  const verifyTimeoutMs = opts.verifyTimeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
+  const maxMessageAgeMs = opts.maxMessageAgeMs ?? DEFAULT_MAX_MESSAGE_AGE_MS;
   const { lockMs, lockMarginMs } = resolveLock({ batchSize, perMessageMs, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
   const lockUntil = new Date(now.getTime() + lockMs);
   const redirect = opts.redirectTo.length > 0;
@@ -171,7 +222,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
        SET locked_until = ${lockUntil}
       FROM batches b, due
      WHERE b.id = m.batch_id AND m.id = due.id
-    RETURNING m.id, m.email, m.substitutions, m.attempts, m.priority, m.next_attempt_at, b.subject, b.html, b.text, b.headers`);
+    RETURNING m.id, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at, b.subject, b.html, b.text, b.headers, b.created_at AS batch_created_at`);
 
   const rows = claimed.rows.slice().sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
@@ -236,10 +287,6 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
       error = e instanceof Error ? e.message : String(e);
       permanent = isPermanentRecipientRejection(e);
       configError = !permanent && isSmtpConfigError(e);
-      if (configError && !loggedConfigError) {
-        loggedConfigError = true;
-        console.error(`[distribution] SMTP configuration error: ${error}`);
-      }
     }
 
     const finishedAt = clock();
@@ -255,20 +302,53 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
 
     const lastError = truncateError(error);
 
-    // I2: a config/connection-stage error (the worker's own SMTP setup, not any particular
-    // recipient) means every remaining message in this batch would fail the exact same way —
-    // an outage, not a reason to spend down anyone's attempt budget. Back off without
-    // incrementing attempts (never reaches MAX_ATTEMPTS, so an outage can never drain the queue
-    // to failed) and stop this run so the rest of the claimed batch isn't attempted (and burned
-    // through retries) against a server that's still down; release it for the next run instead.
+    // R1(b) backstop: whatever error class this is, a message that's been pending this long
+    // is marked failed and logged — the net under every other path below, so nothing (a
+    // server down forever, a message misclassified forever) can keep a message pending past
+    // this.
+    const age = finishedAt.getTime() - new Date(row.batch_created_at).getTime();
+    if (age >= maxMessageAgeMs) {
+      const attempts = row.attempts + 1;
+      const res = await opts.db.update(messages).set({ status: "failed", attempts, lockedUntil: null, lastError, originalRecipient }).where(where);
+      if (res.rowCount) {
+        result.failed++;
+        console.error(`[distribution] message ${row.id} failed after ${attempts} attempts (pending ${Math.round(age / 3_600_000)}h, over the age backstop): ${error}`);
+      }
+      continue;
+    }
+
+    // I2/R1(a): a config/connection-stage error (`CONN`, `MAIL FROM`, `EHLO`/`HELO`/`LHLO`,
+    // `STARTTLS`, `AUTH*`) is ambiguous by command alone — nodemailer tags both "the server is
+    // genuinely down" AND "this message stalled/reset mid-DATA against an otherwise-healthy
+    // server" (a poison message) the same way (`command: "CONN"`). `transport.verify()`
+    // discriminates: if the server itself can't answer a lightweight check, it's an outage —
+    // defer every remaining claimed row without spending an attempt (so an outage can never
+    // drain the queue to failed) and stop this run. If the server verifies healthy, this
+    // specific message is to blame: treat it exactly like a normal transient error (spends an
+    // attempt, standard backoff, eventually fails and is logged) and keep going — unlike an
+    // outage, one poison message must never stop the rest of the batch from sending.
     if (configError) {
-      const res = await opts.db
-        .update(messages)
-        .set({ nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(row.attempts)), lockedUntil: null, lastError, originalRecipient })
-        .where(where);
-      if (res.rowCount) result.retried++;
-      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockUntil);
-      break;
+      const serverHealthy = await isTransportHealthy(opts.transport, verifyTimeoutMs);
+      if (!serverHealthy) {
+        const deferrals = row.deferrals + 1;
+        const res = await opts.db
+          .update(messages)
+          .set({ deferrals, nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(deferrals)), lockedUntil: null, lastError, originalRecipient })
+          .where(where);
+        if (res.rowCount) {
+          result.retried++;
+          if (!loggedConfigError) {
+            loggedConfigError = true;
+            console.error(`[distribution] SMTP server unavailable/misconfigured: ${error}`);
+          }
+        }
+        await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockUntil);
+        break;
+      }
+      // Falls through to the normal transient-error handling below (attempts+1, standard
+      // backoff, fails after MAX_ATTEMPTS), logging distinctly so this is recognisable as the
+      // "poison message, not an outage" case.
+      console.error(`[distribution] message ${row.id} transient error: ${error}`);
     }
 
     const attempts = row.attempts + 1;

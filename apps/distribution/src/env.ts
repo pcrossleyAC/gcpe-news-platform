@@ -35,9 +35,16 @@ export const distributionEnvSchema = z
     SMTP_GREETING_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
     SMTP_SOCKET_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
     SMTP_MAX_CONNECTIONS: z.coerce.number().int().positive().default(3),
+    // R1: how long sender.ts's transport.verify() is given, on a config-class error, to
+    // decide whether the SMTP server itself is reachable before concluding the message is to
+    // blame (a "poison message" that stalls/resets mid-DATA, not an outage).
+    SMTP_VERIFY_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
     MAIL_FROM: z.string().min(1),
     MAIL_REDIRECT_TO: emailList,
     MAIL_ALLOW_REAL_RECIPIENTS: boolEnv("false"),
+    // R1(b): the age backstop — a message pending longer than this is marked failed and
+    // logged no matter what kind of error it's been hitting.
+    MAIL_MAX_AGE_MS: z.coerce.number().int().positive().default(24 * 3_600_000),
     INTERNAL_DOMAINS: commaList,
     SEND_INTERVAL_MS: z.coerce.number().int().default(2000),
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),

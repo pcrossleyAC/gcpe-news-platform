@@ -60,7 +60,7 @@ describe("sendDue", () => {
         internalDomains,
       );
 
-      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
 
       expect(result).toEqual({ sent: 2, retried: 0, failed: 0 });
       expect(sink.messages).toHaveLength(2);
@@ -89,7 +89,7 @@ describe("sendDue", () => {
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
     try {
       await createBatch(tdb.db, "app", sampleMessageRequest, internalDomains);
-      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: ["qa@example.com"] });
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: ["qa@example.com"], now: () => new Date(Date.now() + 1000) });
 
       expect(sink.messages).toHaveLength(2);
       for (const m of sink.messages) {
@@ -116,7 +116,7 @@ describe("sendDue", () => {
         { ...sampleMessageRequest, headers: { "x-original-to": "attacker@evil.com" }, recipients: [{ email: "victim@example.com", substitutions: {} }] },
         internalDomains,
       );
-      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: ["qa@example.com"] });
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: ["qa@example.com"], now: () => new Date(Date.now() + 1000) });
 
       expect(sink.messages).toHaveLength(1);
       const originalToLines = sink.messages[0]!.headerLines.filter((h) => h.key === "x-original-to");
@@ -142,7 +142,7 @@ describe("sendDue", () => {
 
       // Default batchSize: all 6 messages are claimed in the same call, so send order within
       // that one claim is the thing under test (not which batch gets claimed at all).
-      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
 
       expect(result).toEqual({ sent: 6, retried: 0, failed: 0 });
       expect(sink.messages).toHaveLength(6);
@@ -164,7 +164,7 @@ describe("sendDue", () => {
       await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
       const before = new Date();
-      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
       expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
 
       const [row] = await tdb.db.select().from(messages);
@@ -177,7 +177,7 @@ describe("sendDue", () => {
       expect(row!.nextAttemptAt.getTime()).toBeGreaterThan(before.getTime());
 
       // Same clock, immediately after: the backoff window hasn't elapsed, so nothing is due yet.
-      const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
       expect(second).toEqual({ sent: 0, retried: 0, failed: 0 });
     } finally {
       errorSpy.mockRestore();
@@ -191,7 +191,7 @@ describe("sendDue", () => {
     try {
       await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
-      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
       expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
 
       const [row] = await tdb.db.select().from(messages);
@@ -203,9 +203,19 @@ describe("sendDue", () => {
     }
   });
 
-  it("retries (does not fail, does not spend an attempt) when the server demands authentication that was never attempted (530), logging a configuration error once and stopping the run after the first one", async () => {
+  // R1: nodemailer's transport.verify() only attempts AUTH when the transport itself is
+  // *configured* with credentials (see smtp-transport's verify(): no configured auth -> no
+  // login attempt -> finalize() succeeds regardless of what the server would actually demand
+  // at MAIL FROM). A transport with no `auth` block at all therefore can't be told apart from
+  // a poison message by verify() — this specific misconfiguration (missing credentials) is
+  // genuinely indistinguishable from "this message is bad" without literally sending mail,
+  // which is exactly what already happened. So it's treated as the message's fault: every
+  // recipient in the batch is attempted (the run does NOT stop), each spends an attempt, and
+  // each is logged as a transient error rather than a stopped-run deferral.
+  it("treats 'auth required but none configured' (530) as a transient per-message error, not a stopped-run deferral, since verify() can't exercise a missing-credentials gap", async () => {
     const sink = await startSmtpSink({ requireAuth: true });
-    // No `auth` configured: the client never sends AUTH, so the server's 530 fires at MAIL FROM.
+    // No `auth` configured: the client never sends AUTH, so the server's 530 fires at MAIL FROM
+    // — and transport.verify() (which only attempts AUTH when configured) reports healthy.
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
@@ -216,18 +226,16 @@ describe("sendDue", () => {
         internalDomains,
       );
 
-      // I2: a config-stage error stops the run after the first row — the other 2 recipients
-      // are released, untouched, rather than also being attempted (and retried) against a
-      // server that's still misconfigured.
-      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
+      expect(result).toEqual({ sent: 0, retried: 3, failed: 0 });
 
       const rows = await tdb.db.select().from(messages);
-      expect(rows.every((r) => r.status === "pending" && r.attempts === 0)).toBe(true);
-      expect(rows.filter((r) => r.lockedUntil === null)).toHaveLength(3);
+      expect(rows.every((r) => r.status === "pending" && r.attempts === 1 && r.deferrals === 0)).toBe(true);
 
-      const configErrorCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].startsWith("[distribution] SMTP configuration error:"));
-      expect(configErrorCalls).toHaveLength(1);
+      const transientCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].includes("transient error:"));
+      expect(transientCalls).toHaveLength(3);
+      const serverDownCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].startsWith("[distribution] SMTP server unavailable/misconfigured:"));
+      expect(serverDownCalls).toHaveLength(0);
     } finally {
       errorSpy.mockRestore();
       await transport.close();
@@ -235,21 +243,22 @@ describe("sendDue", () => {
     }
   });
 
-  it("retries (does not fail, does not spend an attempt) when authentication is rejected (535 wrong password)", async () => {
+  it("retries (does not fail, does not spend an attempt) when authentication is rejected (535 wrong password) — verify() fails the same way, so this stays a server/config problem", async () => {
     const sink = await startSmtpSink({ requireAuth: true });
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true, auth: { user: "svc", pass: "wrong" } });
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
-      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
       expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("pending");
       expect(row!.attempts).toBe(0);
+      expect(row!.deferrals).toBe(1);
       expect(row!.nextAttemptAt.getTime()).toBeGreaterThan(Date.now() - 1000);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[distribution] SMTP configuration error:"));
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[distribution] SMTP server unavailable/misconfigured:"));
     } finally {
       errorSpy.mockRestore();
       await transport.close();
@@ -257,11 +266,14 @@ describe("sendDue", () => {
     }
   });
 
-  // I2: the bug this fixes — config/connection-stage errors used to count toward MAX_ATTEMPTS
-  // (5), so a ~15-minute SMTP outage (a handful of 2s-apart sendDue calls) would drain the
-  // queue to permanently failed. Running the same CONN-error outage across 6+ calls (more than
-  // MAX_ATTEMPTS) must leave the message pending with attempts still at 0, never failed.
-  it("never fails, and never spends an attempt, across 6+ runs of a connection-stage SMTP outage", async () => {
+  // I2/R1: the bug this fixes — config/connection-stage errors used to count toward
+  // MAX_ATTEMPTS (5), so a ~15-minute SMTP outage (a handful of 2s-apart sendDue calls) would
+  // drain the queue to permanently failed. Running the same CONN-error outage across 6+ calls
+  // (more than MAX_ATTEMPTS) must leave the message pending with attempts still at 0 (deferrals
+  // climbing instead), never failed. The stub transport has no `verify` method at all, which
+  // `isTransportHealthy` treats the same as a verify failure (the safer default) — exactly like
+  // a genuinely unreachable server.
+  it("never fails, and never spends an attempt, across 6+ runs of a connection-stage SMTP outage (deferrals climb instead)", async () => {
     await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const stubTransport = {
@@ -282,6 +294,196 @@ describe("sendDue", () => {
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("pending");
       expect(row!.attempts).toBe(0);
+      expect(row!.deferrals).toBe(6);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[distribution] SMTP server unavailable/misconfigured:"));
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  // R1: the literal "server down" case, with more than one claimed row, spelled out — attempts
+  // stays 0, deferrals becomes 1, and the run stops (the second row is released untouched
+  // rather than also being attempted against a server that's still down).
+  it("a genuinely down server (verify fails): attempts 0, deferrals 1, and the run stops before reaching the second row", async () => {
+    await createBatch(
+      tdb.db,
+      "app",
+      { ...sampleMessageRequest, recipients: [{ email: "first@example.com", substitutions: {} }, { email: "second@example.com", substitutions: {} }] },
+      internalDomains,
+    );
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stubTransport = {
+      sendMail: async () => {
+        throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED", command: "CONN" });
+      },
+      // No real network reachability at all: verify() fails too, exactly like a real outage.
+      verify: async () => {
+        throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+      },
+    } as unknown as Transporter;
+    try {
+      const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+
+      const rows = await tdb.db.select().from(messages);
+      const first = rows.find((r) => r.email === "first@example.com")!;
+      const second = rows.find((r) => r.email === "second@example.com")!;
+      expect(first.status).toBe("pending");
+      expect(first.attempts).toBe(0);
+      expect(first.deferrals).toBe(1);
+      expect(first.lockedUntil).toBeNull();
+      // Never reached at all — the run stopped after the first row's config-class deferral.
+      expect(second.status).toBe("pending");
+      expect(second.attempts).toBe(0);
+      expect(second.deferrals).toBe(0);
+      expect(second.lastError).toBeNull();
+      expect(second.lockedUntil).toBeNull();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  // R1(c): deferrals (unlike attempts) escalate their own backoff, capped at 1h — each
+  // successive deferral on the same still-down server should back off further than the last
+  // (until the cap).
+  it("escalates the deferral backoff across successive config-class deferrals, capped at 1h", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "escalate@example.com", substitutions: {} }] }, internalDomains);
+    const stubTransport = {
+      sendMail: async () => {
+        throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED", command: "CONN" });
+      },
+    } as unknown as Transporter;
+
+    let simulatedNow = Date.now();
+    const deltas: number[] = [];
+    for (let run = 0; run < 4; run++) {
+      const before = simulatedNow;
+      await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(simulatedNow) });
+      const [row] = await tdb.db.select().from(messages);
+      deltas.push(row!.nextAttemptAt.getTime() - before);
+      expect(row!.deferrals).toBe(run + 1);
+      simulatedNow = row!.nextAttemptAt.getTime() + 1000; // just past due for the next run
+    }
+
+    // Strictly increasing until the 1h cap is reached.
+    for (let i = 1; i < deltas.length; i++) {
+      expect(deltas[i]!).toBeGreaterThanOrEqual(deltas[i - 1]!);
+    }
+    expect(Math.max(...deltas)).toBeLessThanOrEqual(3_600_000);
+    expect(deltas.some((d) => d > deltas[0]!)).toBe(true);
+  });
+
+  // R1(a): the actual bug this fixes — a poison message (one specific recipient whose send
+  // stalls/resets mid-DATA, which nodemailer tags `command: "CONN"`, indistinguishable by
+  // command alone from a real outage) must not stop the rest of the batch from sending. A real
+  // smtp-server stalls forever on DATA only for a body containing a marker; transport.verify()
+  // against that same (otherwise healthy) server succeeds, so the poison message is treated as
+  // a normal transient error (spends an attempt) while a lower-priority, healthy message in the
+  // same run still gets sent.
+  it("a poison message (verify succeeds) spends an attempt and does not stop the run — a lower-priority message in the same batch still sends", async () => {
+    const { SMTPServer } = await import("smtp-server");
+    const { simpleParser } = await import("mailparser");
+    const poisonMarker = "POISON-MARKER";
+    const delivered: string[] = [];
+    const server = new SMTPServer({
+      disabledCommands: ["STARTTLS", "AUTH"],
+      onData(stream, _session, cb) {
+        simpleParser(stream).then((m) => {
+          const text = (m.text ?? "") + (m.html ?? "");
+          if (text.includes(poisonMarker)) return; // never call cb(): stalls until socketTimeout
+          delivered.push(m.subject ?? "");
+          cb();
+        }, cb);
+      },
+    });
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+    const port = (server.server.address() as { port: number }).port;
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port, secure: false, ignoreTLS: true, socketTimeout: 500 });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await createBatch(
+        tdb.db,
+        "app",
+        {
+          ...sampleMessageRequest,
+          priority: "system",
+          subject: "Poison batch",
+          text: `Hi {{name}}, ${poisonMarker}`,
+          recipients: [{ email: "poison@example.com", substitutions: { name: "P" } }],
+        },
+        internalDomains,
+      );
+      await createBatch(
+        tdb.db,
+        "app",
+        {
+          ...sampleMessageRequest,
+          priority: "digest",
+          subject: "Healthy batch",
+          text: "Hi {{name}}, ordinary clinic update",
+          recipients: [{ email: "healthy@example.com", substitutions: { name: "H" } }],
+        },
+        internalDomains,
+      );
+
+      // "system" claims before "digest", so the poison message is hit first in this one call.
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
+      expect(result).toEqual({ sent: 1, retried: 1, failed: 0 });
+      expect(delivered).toEqual(["Healthy batch"]);
+
+      const rows = await tdb.db.select().from(messages);
+      const poisonRow = rows.find((r) => r.email === "poison@example.com")!;
+      const healthyRow = rows.find((r) => r.email === "healthy@example.com")!;
+      expect(poisonRow.status).toBe("pending");
+      expect(poisonRow.attempts).toBe(1);
+      expect(poisonRow.deferrals).toBe(0);
+      expect(poisonRow.lastError).toBeTruthy();
+      expect(healthyRow.status).toBe("sent");
+
+      const transientCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].includes(`message ${poisonRow.id} transient error:`));
+      expect(transientCalls).toHaveLength(1);
+    } finally {
+      errorSpy.mockRestore();
+      await transport.close();
+      await new Promise<void>((r) => server.close(() => r()));
+    }
+  }, 10000);
+
+  // R1(b) backstop: whatever error class a message keeps hitting, once it's been pending
+  // longer than maxMessageAgeMs it's marked failed and logged — the net under every other
+  // retry/defer path. Uses a plain (non-config, non-permanent) transient error so this is
+  // clearly the backstop acting, not MAX_ATTEMPTS or a permanent rejection.
+  it("the age backstop fails and logs a message that's been pending too long, regardless of error class", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "stale@example.com", substitutions: {} }] }, internalDomains);
+    const stubTransport = {
+      sendMail: async () => {
+        throw new Error("transient hiccup");
+      },
+    } as unknown as Transporter;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // maxMessageAgeMs: 0 — any elapsed time at all (there's always some, between the batch's
+      // created_at and this call's `now`) is "too long", without needing to actually wait or
+      // fabricate a backdated created_at.
+      const result = await sendDue({
+        db: tdb.db,
+        transport: stubTransport,
+        from: "news@example.com",
+        redirectTo: [],
+        now: () => new Date(Date.now() + 1000),
+        maxMessageAgeMs: 0,
+      });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+
+      const [row] = await tdb.db.select().from(messages);
+      expect(row!.status).toBe("failed");
+      expect(row!.attempts).toBe(1);
+      expect(row!.lastError).toContain("transient hiccup");
+
+      const backstopCalls = errorSpy.mock.calls.filter(
+        (c) => typeof c[0] === "string" && c[0].startsWith(`[distribution] message ${row!.id} failed after 1 attempts`) && c[0].includes("age backstop"),
+      );
+      expect(backstopCalls).toHaveLength(1);
     } finally {
       errorSpy.mockRestore();
     }
@@ -295,7 +497,7 @@ describe("sendDue", () => {
     try {
       await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
-      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
       expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
 
       const [row] = await tdb.db.select().from(messages);
@@ -316,7 +518,7 @@ describe("sendDue", () => {
     try {
       await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
-      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
       const [row] = await tdb.db.select().from(messages);
 
       const failureCalls = errorSpy.mock.calls.filter((c) => typeof c[0] === "string" && c[0].startsWith(`[distribution] message ${row!.id} failed after 1 attempts:`));
@@ -340,8 +542,8 @@ describe("sendDue", () => {
       );
 
       const [a, b] = await Promise.all([
-        sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 50 }),
-        sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 50 }),
+        sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000), batchSize: 50 }),
+        sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000), batchSize: 50 }),
       ]);
 
       expect(a.sent + b.sent).toBe(20);
@@ -373,9 +575,9 @@ describe("sendDue", () => {
       // strictly after it finishes. lockMarginMs is set well below lockMs (sendDue requires
       // lockMs > lockMarginMs) and far below the default (perMessageMs, tens of seconds) so the
       // margin check doesn't trip before the very first message of this short-lived lock.
-      const firstRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 6, lockMs: 300, lockMarginMs: 100 });
+      const firstRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000), batchSize: 6, lockMs: 300, lockMarginMs: 100 });
       await sleep(320); // past the first run's lock, while it may still be mid-batch
-      const secondRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 6 }); // generous default lock
+      const secondRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000), batchSize: 6 }); // generous default lock
       await Promise.all([firstRun, secondRun]);
 
       expect(sink.messages).toHaveLength(6);
@@ -401,7 +603,7 @@ describe("sendDue", () => {
         internalDomains,
       );
 
-      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], stopRequested: () => sink.messages.length >= 1 });
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000), stopRequested: () => sink.messages.length >= 1 });
 
       expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
       expect(sink.messages).toHaveLength(1);
@@ -461,7 +663,7 @@ describe("sendDue", () => {
 
     // lockMs well above the default lockMarginMs (perMessageMs) so the stop/margin check never
     // fires — only the re-assert is under test here.
-    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], batchSize: 6, lockMs: 120_000 });
+    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000), batchSize: 6, lockMs: 120_000 });
 
     // Row 1 sends and is counted; row 2's send happens but the steal lands before its terminal
     // write, so it's silently not counted; rows 3-6 are skipped by the re-assert before ever
@@ -492,7 +694,7 @@ describe("sendDue", () => {
       db: tdb.db,
       transport: stubTransport,
       from: "news@example.com",
-      redirectTo: [],
+      redirectTo: [], now: () => new Date(Date.now() + 1000),
       batchSize: 5,
       lockMs: 120_000, // 2 minutes — if the 4 unreached rows weren't released, they'd stay
       // locked long after this test (and this whole file) finishes.
@@ -506,7 +708,7 @@ describe("sendDue", () => {
     const sink = await startSmtpSink();
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
     try {
-      const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
       expect(second).toEqual({ sent: 4, retried: 0, failed: 0 });
     } finally {
       await transport.close();
@@ -527,7 +729,7 @@ describe("sendDue", () => {
     await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
     const stubTransport = { sendMail: async () => ({}) } as unknown as Transporter;
 
-    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], batchSize: 1, perMessageMs: 200, lockMs: 1000 });
+    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000), batchSize: 1, perMessageMs: 200, lockMs: 1000 });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
   });
 
@@ -547,13 +749,14 @@ describe("sendDue", () => {
         },
       } as unknown as Transporter;
 
-      const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
+      const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
       expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("pending");
       expect(row!.attempts).toBe(0);
-      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[distribution] SMTP configuration error:"));
+      expect(row!.deferrals).toBe(1);
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[distribution] SMTP server unavailable/misconfigured:"));
     } finally {
       errorSpy.mockRestore();
     }
@@ -571,7 +774,7 @@ describe("sendDue", () => {
       },
     } as unknown as Transporter;
 
-    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
+    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(Date.now() + 1000) });
     expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
 
     const [row] = await tdb.db.select().from(messages);

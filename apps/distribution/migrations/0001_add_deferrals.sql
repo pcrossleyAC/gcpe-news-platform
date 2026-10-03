@@ -1,0 +1,1 @@
+ALTER TABLE "messages" ADD COLUMN "deferrals" integer DEFAULT 0 NOT NULL;

@@ -33,6 +33,10 @@ export const messages = pgTable(
     priority: integer("priority").notNull(),
     status: text("status").$type<MessageStatus>().notNull().default("pending"),
     attempts: integer("attempts").notNull().default(0),
+    // R1(c): a config-class error (the worker's own SMTP setup is suspected, not this
+    // message) defers without spending an `attempts` — tracked separately so its own backoff
+    // can still escalate (capped at 1h) without ever moving this message toward MAX_ATTEMPTS.
+    deferrals: integer("deferrals").notNull().default(0),
     nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
     lockedUntil: timestamp("locked_until", { withTimezone: true }),
     lastError: text("last_error"),
