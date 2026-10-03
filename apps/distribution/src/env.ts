@@ -48,6 +48,9 @@ export const distributionEnvSchema = z
     MAIL_MAX_AGE_MS: z.coerce.number().int().positive().default(24 * 3_600_000),
     INTERNAL_DOMAINS: commaList,
     SEND_INTERVAL_MS: z.coerce.number().int().default(2000),
+    // P2-R27: longest pause after an SMTP outage deferral (sender.ts startSender) — bounds how
+    // long sending takes to resume once the server is back.
+    SEND_OUTAGE_COOLDOWN_MAX_MS: z.coerce.number().int().positive().default(300_000),
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   })
   .superRefine((e, ctx) => {

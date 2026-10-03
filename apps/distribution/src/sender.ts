@@ -34,7 +34,8 @@ export interface SendOptions {
    * sendDue/startSender reject that combination immediately. */
   lockMarginMs?: number;
   /** Checked before every message; once it returns true, sendDue stops starting new sends and
-   * returns (rows not yet reached stay claimed until their lock expires). Set by
+   * returns, releasing the lock on rows it hadn't reached yet so another run can claim them
+   * at once (see releaseUnreachedRows). Set by
    * `startSender`'s stop() so an in-flight run winds down after its current message instead of
    * being torn down mid-send. */
   stopRequested?: () => boolean;
@@ -69,6 +70,9 @@ const MAX_ERROR_CODE_POINTS = 500;
 // R1: default budget for transport.verify() to answer "is the server itself reachable" before
 // a config-class error is attributed to the message instead.
 const DEFAULT_VERIFY_TIMEOUT_MS = 10_000;
+// P2-R27 item 2: the longest the sender pauses after an outage deferral, whatever that row's
+// own (escalating, up to 1h) backoff — bounds recovery latency once the server is back.
+export const DEFAULT_OUTAGE_COOLDOWN_MAX_MS = 300_000;
 // R1(b): the backstop — a message pending longer than this is marked failed regardless of
 // error class, so nothing (a permanently-down server, a poison message misclassified forever,
 // anything) can keep a message pending indefinitely.
@@ -139,13 +143,22 @@ function isPermanentRecipientRejection(e: unknown): boolean {
 const CONNECTION_LEVEL_COMMANDS = new Set(["CONN", "EHLO", "HELO", "LHLO", "STARTTLS"]);
 
 function isConnectionLevelError(e: unknown): boolean {
-  const err = e as { command?: unknown; code?: unknown } | null;
-  const command = err?.command;
+  const command = (e as { command?: unknown } | null)?.command;
   if (typeof command === "string") return CONNECTION_LEVEL_COMMANDS.has(command);
-  // P2-R25 item 4: with the pool's re-queue off (transport.ts maxRequeues: 0), a connection
-  // closed before the server's greeting fails with code ECONNECTION and no command at all —
-  // the same outage-or-poison ambiguity, so it goes through the same verify() check.
-  return command === undefined && err?.code === "ECONNECTION";
+  return isDroppedBeforeSend(e);
+}
+
+/**
+ * P2-R25 item 4 / P2-R27 item 3: with the pool's re-queue off (transport.ts maxRequeues: 0), a
+ * connection closed before the server's greeting (or a pool that was closed) fails sendMail
+ * with code ECONNECTION and no `command` at all. Nothing of the message reached the server, so
+ * it can never be the message's fault: verify() decides only between "server down" (an outage,
+ * as for any connection-level error) and "server up but flapping" (deferred without spending an
+ * attempt — see sendDue).
+ */
+function isDroppedBeforeSend(e: unknown): boolean {
+  const err = e as { command?: unknown; code?: unknown } | null;
+  return err?.command === undefined && err?.code === "ECONNECTION";
 }
 
 /**
@@ -341,6 +354,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     let permanent = false;
     let senderLevel = false;
     let connectionLevel = false;
+    let droppedBeforeSend = false;
     try {
       await opts.transport.sendMail({ from: opts.from, to, subject, html, text, headers });
     } catch (e) {
@@ -348,6 +362,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       permanent = isPermanentRecipientRejection(e);
       senderLevel = !permanent && isSenderLevelError(e);
       connectionLevel = !permanent && !senderLevel && isConnectionLevelError(e);
+      droppedBeforeSend = connectionLevel && isDroppedBeforeSend(e);
     }
 
     const originalRecipient = redirect ? row.email : null;
@@ -430,6 +445,22 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
         await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
         break;
       }
+      // P2-R27 item 3: a flapping server — the connection dropped before anything of this
+      // message was sent, yet the server verifies healthy. Not the message's fault, so no
+      // attempt is spent: deferred with its own escalating backoff (the age backstop above
+      // bounds it), and — the server being up — the run carries on with the next row.
+      if (droppedBeforeSend) {
+        const deferrals = row.deferrals + 1;
+        const res = await opts.db
+          .update(messages)
+          .set({ deferrals, nextAttemptAt: sqlNowPlus(backoffMs(deferrals), opts.now), lockedUntil: null, lastError, originalRecipient })
+          .where(where);
+        if (res.rowCount) {
+          result.retried++;
+          console.error(`[distribution] message ${row.id} deferred: connection dropped before sending, server verifies healthy: ${error}`);
+        }
+        continue;
+      }
       // Falls through to the normal transient-error handling below (attempts+1, standard
       // backoff, fails after MAX_ATTEMPTS), logging distinctly so this is recognisable as the
       // "poison message, not an outage" case.
@@ -462,12 +493,13 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
  * P2-R25 item 3, outage pacing: a run that defers a row because the SMTP server/config itself
  * is unavailable stops and releases the rest of its claim — so without pacing, the next tick
  * would claim the next row and hit the still-down server again, every tick, for the length of
- * the outage. Instead, the sender then skips ticks for that row's deferral backoff (an
- * in-memory cooldown, per process); any run that doesn't hit an outage — a successful one in
- * particular — clears it. `cooldownClock` (monotonic ms, default `performance.now`) is a test
- * hook.
+ * the outage. Instead, the sender then skips ticks for that row's deferral backoff, capped at
+ * `outageCooldownMaxMs` (default {@link DEFAULT_OUTAGE_COOLDOWN_MAX_MS}, 5 min) so that once the
+ * server is back, sending resumes within that cap plus one interval even after a long outage
+ * (an in-memory cooldown, per process). `cooldownClock` (monotonic ms, default
+ * `performance.now`) is a test hook.
  */
-export function startSender(opts: SendOptions & { intervalMs?: number; cooldownClock?: () => number }): () => Promise<void> {
+export function startSender(opts: SendOptions & { intervalMs?: number; outageCooldownMaxMs?: number; cooldownClock?: () => number }): () => Promise<void> {
   // Validated eagerly, at call time: a misconfigured lockMs/lockMarginMs would otherwise only
   // surface once the first tick fires, inside the interval's own catch — logged and silently
   // retried forever rather than failing the process fast and loudly at startup.
@@ -480,6 +512,7 @@ export function startSender(opts: SendOptions & { intervalMs?: number; cooldownC
   });
 
   const monotonicNow = opts.cooldownClock ?? (() => performance.now());
+  const cooldownMaxMs = opts.outageCooldownMaxMs ?? DEFAULT_OUTAGE_COOLDOWN_MAX_MS;
   let stopped = false;
   let running: Promise<unknown> | null = null;
   let cooldownUntil = 0;
@@ -489,11 +522,15 @@ export function startSender(opts: SendOptions & { intervalMs?: number; cooldownC
     running = runSend(sendOpts)
       .then(({ outageBackoffMs }) => {
         if (outageBackoffMs === undefined) {
+          // Defensive: ticks are skipped while a cooldown is active, so by the time a run gets
+          // here any earlier cooldown has already expired — clearing it is a no-op today, kept
+          // so a future early-run path (e.g. a manual "send now") can't inherit a stale pause.
           cooldownUntil = 0;
           return;
         }
-        cooldownUntil = monotonicNow() + outageBackoffMs;
-        console.warn(`[distribution] SMTP unavailable: pausing sends for ${Math.round(outageBackoffMs / 1000)}s`);
+        const pauseMs = Math.min(outageBackoffMs, cooldownMaxMs);
+        cooldownUntil = monotonicNow() + pauseMs;
+        console.warn(`[distribution] SMTP unavailable: pausing sends for ${Math.round(pauseMs / 1000)}s`);
       })
       .catch((e) => console.error("[distribution] send failed", e))
       .finally(() => {

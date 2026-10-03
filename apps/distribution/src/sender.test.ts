@@ -724,6 +724,48 @@ describe("sendDue", () => {
     }
   });
 
+  // P2-R27 item 2: the pause is capped (default 5 min) so recovery after a long outage isn't
+  // gated on an escalated 1h row backoff.
+  it("caps the outage pause at outageCooldownMaxMs (default 5 min), even when the deferred row's own backoff is 1h", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, priority: "system", recipients: [{ email: "old-outage@example.com", substitutions: {} }] }, internalDomains);
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, priority: "digest", recipients: [{ email: "waiting@example.com", substitutions: {} }] }, internalDomains);
+    // Already deferred 6 times: its next deferral backs off by the full 1h cap.
+    await tdb.db.execute(sql`UPDATE messages SET deferrals = 6 WHERE email = 'old-outage@example.com'`);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let down = true;
+    let sendCalls = 0;
+    const stubTransport = {
+      sendMail: async () => {
+        sendCalls++;
+        if (down) throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED", command: "CONN" });
+        return {};
+      },
+      verify: async () => {
+        if (down) throw new Error("connect ECONNREFUSED");
+        return true;
+      },
+    } as unknown as Transporter;
+    let fakeMonotonicMs = 0;
+    const stop = startSender({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], intervalMs: 10, cooldownClock: () => fakeMonotonicMs });
+    try {
+      await vi.waitFor(() => expect(sendCalls).toBe(1));
+      down = false;
+      fakeMonotonicMs += 300_000 - 1;
+      await sleep(100);
+      expect(sendCalls).toBe(1); // still paused just short of 5 min
+      fakeMonotonicMs += 1;
+      await vi.waitFor(async () => {
+        const rows = await tdb.db.select().from(messages);
+        expect(rows.find((r) => r.email === "waiting@example.com")!.status).toBe("sent");
+      });
+    } finally {
+      await stop();
+      errorSpy.mockRestore();
+      warnSpy.mockRestore();
+    }
+  });
+
   it("skips rows whose ownership is stolen before their turn to send (the per-message re-assert)", async () => {
     // A stub transport (no real SMTP) so the "another worker reclaimed this row" race can be
     // simulated deterministically: its 2nd call reaches into the DB directly and reclaims every
@@ -922,6 +964,63 @@ describe("sendDue", () => {
       const [row] = await tdb.db.select().from(messages);
       expect(row!.attempts).toBe(0);
       expect(row!.deferrals).toBe(1);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  // P2-R27 item 3: a flapping server — the connection is dropped before the greeting (a
+  // command-less ECONNECTION: nothing of the message was sent, so it can't be the message's
+  // fault) yet verify() finds the server up. Deferred without spending an attempt, with an
+  // escalating backoff, across more runs than MAX_ATTEMPTS; the 24h age backstop bounds it.
+  it("a flapping server (pre-greeting drop, verify healthy) defers without spending an attempt, across more than MAX_ATTEMPTS runs", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "flap@example.com", substitutions: {} }] }, internalDomains);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stubTransport = {
+      sendMail: async () => {
+        throw Object.assign(new Error("Reached maximum number of retries after connection was closed"), { code: "ECONNECTION" });
+      },
+      verify: async () => true,
+    } as unknown as Transporter;
+    try {
+      let simulatedNow = (await dbClock(tdb.db)).getTime();
+      const deltas: number[] = [];
+      for (let run = 0; run < 6; run++) {
+        const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(simulatedNow) });
+        expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+        const [row] = await tdb.db.select().from(messages);
+        deltas.push(row!.nextAttemptAt.getTime() - simulatedNow);
+        simulatedNow = row!.nextAttemptAt.getTime() + 1000;
+      }
+      const [row] = await tdb.db.select().from(messages);
+      expect(row!.status).toBe("pending");
+      expect(row!.attempts).toBe(0);
+      expect(row!.deferrals).toBe(6);
+      expect(deltas[1]!).toBeGreaterThan(deltas[0]!); // escalating
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("a flapping server's pre-greeting drop doesn't stop the run: verify says the server is up, so later rows still send", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, priority: "system", recipients: [{ email: "dropped@example.com", substitutions: {} }] }, internalDomains);
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, priority: "digest", recipients: [{ email: "fine@example.com", substitutions: {} }] }, internalDomains);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stubTransport = {
+      sendMail: async (mail: { to: string[] }) => {
+        if (mail.to[0] === "dropped@example.com") throw Object.assign(new Error("Connection closed"), { code: "ECONNECTION" });
+        return {};
+      },
+      verify: async () => true,
+    } as unknown as Transporter;
+    try {
+      const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
+      expect(result).toEqual({ sent: 1, retried: 1, failed: 0 });
+      const rows = await tdb.db.select().from(messages);
+      const dropped = rows.find((r) => r.email === "dropped@example.com")!;
+      expect(dropped.attempts).toBe(0);
+      expect(dropped.deferrals).toBe(1);
+      expect(rows.find((r) => r.email === "fine@example.com")!.status).toBe("sent");
     } finally {
       errorSpy.mockRestore();
     }

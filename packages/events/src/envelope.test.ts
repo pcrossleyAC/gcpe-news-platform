@@ -40,3 +40,14 @@ describe("envelope sizing", () => {
     expect(envelopeByteLength(sized)).toBe(envelopeByteLength(base) + 9);
   });
 });
+
+describe("sizingEnvelope correlationId", () => {
+  it("sizes with the caller's actual correlationId when one is given, else as a 36-character UUID", () => {
+    const input = { type: base.type, source: base.source, aggregateId: base.aggregateId, data: base.data };
+    const longId = "c".repeat(100);
+    const withDefault = envelopeByteLength(sizingEnvelope(input));
+    const withLong = sizingEnvelope({ ...input, correlationId: longId });
+    expect(withLong.correlationId).toBe(longId);
+    expect(envelopeByteLength(withLong)).toBe(withDefault + (100 - 36));
+  });
+});

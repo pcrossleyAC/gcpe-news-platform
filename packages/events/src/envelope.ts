@@ -51,13 +51,17 @@ export function assertEventFits(envelope: EventEnvelope): void {
 
 /**
  * The largest envelope `input` can become once enqueued, for checking size *before* the event
- * exists (e.g. when a draft is saved, long before it's published). Every generated field is a
- * fixed-width placeholder at its real width — UUIDs are always 36 characters, an ISO
- * `occurredAt` always 24 — except the sequence, which isn't known yet and so is sized at
+ * exists (e.g. when a draft is saved, long before it's published). Generated fields are
+ * fixed-width placeholders at their real width — the event `id` is a UUID (36 characters), an
+ * ISO `occurredAt` is always 24 — and the sequence, which isn't known yet, is sized at
  * {@link MAX_SEQUENCE} (10 digits): the explicit margin that keeps an event accepted here from
  * failing enqueueEvent's own check later just because its aggregate's sequence grew.
+ *
+ * `correlationId`: sized with the caller's actual value when one is given (it is copied into
+ * the envelope as-is), otherwise as the 36-character UUID enqueueEvent generates. Assumes the
+ * caller passes the same correlationId (or none) to enqueueEvent later.
  */
-export function sizingEnvelope(input: { type: string; source: string; aggregateId: string; data: unknown; version?: number }): EventEnvelope {
+export function sizingEnvelope(input: { type: string; source: string; aggregateId: string; data: unknown; version?: number; correlationId?: string }): EventEnvelope {
   const placeholderUuid = "00000000-0000-0000-0000-000000000000";
   return {
     id: placeholderUuid,
@@ -67,7 +71,7 @@ export function sizingEnvelope(input: { type: string; source: string; aggregateI
     aggregateId: input.aggregateId,
     sequence: MAX_SEQUENCE,
     occurredAt: new Date(0).toISOString(),
-    correlationId: placeholderUuid,
+    correlationId: input.correlationId ?? placeholderUuid,
     data: input.data,
   };
 }

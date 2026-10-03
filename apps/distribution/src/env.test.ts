@@ -41,4 +41,8 @@ describe("distribution env", () => {
     });
     expect(parsed).toMatchObject({ SMTP_CONNECTION_TIMEOUT_MS: 5000, SMTP_GREETING_TIMEOUT_MS: 6000, SMTP_SOCKET_TIMEOUT_MS: 7000, SMTP_MAX_CONNECTIONS: 10 });
   });
+  it("defaults SEND_OUTAGE_COOLDOWN_MAX_MS to 5 minutes and accepts an override", () => {
+    expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true" }).SEND_OUTAGE_COOLDOWN_MAX_MS).toBe(300_000);
+    expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", SEND_OUTAGE_COOLDOWN_MAX_MS: "60000" }).SEND_OUTAGE_COOLDOWN_MAX_MS).toBe(60_000);
+  });
 });

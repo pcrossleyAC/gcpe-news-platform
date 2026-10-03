@@ -30,6 +30,7 @@ const stopSender = startSender({
   from: env.MAIL_FROM,
   redirectTo: env.MAIL_REDIRECT_TO,
   intervalMs: env.SEND_INTERVAL_MS,
+  outageCooldownMaxMs: env.SEND_OUTAGE_COOLDOWN_MAX_MS,
   perMessageMs: env.SMTP_CONNECTION_TIMEOUT_MS + env.SMTP_GREETING_TIMEOUT_MS + env.SMTP_SOCKET_TIMEOUT_MS,
   verifyTimeoutMs: env.SMTP_VERIFY_TIMEOUT_MS,
   maxMessageAgeMs: env.MAIL_MAX_AGE_MS,
