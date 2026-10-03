@@ -1,27 +1,14 @@
 import { createServer } from "node:http";
-import { z } from "zod";
 import { createClientCredentialsProvider } from "@gcpe/auth";
 import { loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createApp } from "./app";
+import { newsApiEnvSchema } from "./env";
+import { createShutdown } from "./shutdown";
 import { createUpdatesHub } from "./updates/hub";
 import { listenForUpdates } from "./updates/notify";
 
-const env = parseEnv(
-  z.object({
-    DATABASE_URL: z.string().url(),
-    PORT: z.coerce.number().int().default(3002),
-    TENANT_CONFIG: z.string().default(new URL("../../../config/tenants/bc.json", import.meta.url).pathname),
-    EVENT_SECRETS: z.string().default("{}"),
-    NOD_BASE_URL: z.string().url().optional(),
-    NOD_TOKEN_URL: z.string().url().optional(),
-    NOD_CLIENT_ID: z.string().optional(),
-    NOD_CLIENT_SECRET: z.string().optional(),
-    NOD_SCOPE: z.string().optional(),
-    SUBSCRIBE_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(300),
-    MIGRATIONS_FOLDER: z.string().default(new URL("../migrations", import.meta.url).pathname),
-  }),
-);
+const env = parseEnv(newsApiEnvSchema);
 
 const tenant = loadTenantConfig(env.TENANT_CONFIG);
 const { db, pool } = createDb(env.DATABASE_URL);
@@ -36,7 +23,7 @@ const hub = createUpdatesHub();
 const app = createApp({
   db,
   timeZone: tenant.timeZone,
-  eventSecrets: z.record(z.string()).parse(JSON.parse(env.EVENT_SECRETS)),
+  eventSecrets: env.EVENT_SECRETS,
   hubRouter: hub.router,
   subscribe: env.NOD_BASE_URL ? { baseUrl: env.NOD_BASE_URL, getToken, rateLimitPerMinute: env.SUBSCRIBE_RATE_LIMIT_PER_MIN } : undefined,
 });
@@ -53,15 +40,7 @@ const stopListening = await listenForUpdates(pool, (target, keys) => hub.broadca
 });
 server.listen(env.PORT, () => console.log(`[news-api] listening on ${env.PORT} (${tenant.tenantId}, ${tenant.timeZone})`));
 
-let shuttingDown = false;
+const shutdown = createShutdown({ hub, server, stopListening, pool, exit: process.exit });
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
-  process.on(signal, async () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    await new Promise((resolve) => server.close(resolve));
-    hub.close();
-    await stopListening();
-    await pool.end();
-    process.exit(0);
-  });
+  process.on(signal, () => void shutdown());
 }
