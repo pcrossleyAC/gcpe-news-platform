@@ -37,7 +37,8 @@ export const distributionEnvSchema = z
     SMTP_MAX_CONNECTIONS: z.coerce.number().int().positive().default(3),
     // R1: how long sender.ts's transport.verify() is given, on a config-class error, to
     // decide whether the SMTP server itself is reachable before concluding the message is to
-    // blame (a "poison message" that stalls/resets mid-DATA, not an outage).
+    // blame (a "poison message" that stalls/resets mid-DATA, not an outage). Counted per
+    // message in the claim lock and the stop margin (sender.ts's defaultSendLockMs).
     SMTP_VERIFY_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
     MAIL_FROM: z.string().min(1),
     MAIL_REDIRECT_TO: emailList,

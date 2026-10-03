@@ -269,8 +269,10 @@ npm --workspace @gcpe/distribution run dev
 | `SMTP_SECURE` | no | `false` | Use implicit TLS |
 | `SMTP_USER` / `SMTP_PASS` | no | | SMTP auth credentials (omit both for unauthenticated SMTP, e.g. Mailpit) |
 | `SMTP_TLS_REJECT_UNAUTHORIZED` | no | `true` | Set `false` only for local/self-signed SMTP |
-| `SMTP_CONNECTION_TIMEOUT_MS` / `SMTP_GREETING_TIMEOUT_MS` / `SMTP_SOCKET_TIMEOUT_MS` | no | `10000` / `10000` / `30000` | nodemailer per-connection timeouts; their sum also sizes the sender's claim lock |
+| `SMTP_CONNECTION_TIMEOUT_MS` / `SMTP_GREETING_TIMEOUT_MS` / `SMTP_SOCKET_TIMEOUT_MS` | no | `10000` / `10000` / `30000` | nodemailer per-connection timeouts; their sum, plus `SMTP_VERIFY_TIMEOUT_MS`, sizes the sender's claim lock per message |
 | `SMTP_MAX_CONNECTIONS` | no | `3` | nodemailer pool size |
+| `SMTP_VERIFY_TIMEOUT_MS` | no | `10000` | Budget for the `transport.verify()` that tells an SMTP outage from a poison message after a connection-level error; counted per message in the claim lock and stop margin |
+| `MAIL_MAX_AGE_MS` | no | `86400000` | Age backstop: a message still pending this long after its batch was created is marked failed |
 | `MAIL_FROM` | yes | | `From` header for every sent message |
 | `MAIL_REDIRECT_TO` | no† | | Comma-separated list of real addresses every message is actually sent to instead of its real recipients — see the mail-redirect rule below |
 | `MAIL_ALLOW_REAL_RECIPIENTS` | no† | `false` | Opt-in to delivering to real recipients (disables the redirect) |

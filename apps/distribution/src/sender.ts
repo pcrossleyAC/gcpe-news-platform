@@ -17,16 +17,19 @@ export interface SendOptions {
    * used throughout — see {@link sendDue}. */
   now?: TestClock;
   batchSize?: number;
-  /** Worst-case time a single message can take: the sum of the transport's connection,
-   * greeting and socket timeouts. Used to size the default claim lock (see
-   * {@link defaultSendLockMs}) so a batch that hits every timeout still finishes inside its
-   * own lock. Defaults to {@link DEFAULT_PER_MESSAGE_MS} (the env defaults' sum) when omitted. */
+  /** Worst-case time a single message's *send* can take: the sum of the transport's
+   * connection, greeting and socket timeouts. Together with `verifyTimeoutMs` (a
+   * connection-level error is followed by a transport.verify() of up to that long) it sizes the
+   * default claim lock (see {@link defaultSendLockMs}) so a batch that hits every timeout still
+   * finishes inside its own lock. Defaults to {@link DEFAULT_PER_MESSAGE_MS} (the env defaults'
+   * sum) when omitted. */
   perMessageMs?: number;
   lockMs?: number;
   /** The "stop claiming more rows" threshold: a run stops once the time elapsed since its claim
-   * reaches `lockMs - lockMarginMs`. Defaults to `perMessageMs` — the same worst-case-per-message bound used to
-   * size the default lock — so a run never starts a message it might not finish before its own
-   * lock could, in the worst realistic case (every timeout hit), expire. Must be smaller than
+   * reaches `lockMs - lockMarginMs`. Defaults to `perMessageMs + verifyTimeoutMs` — the same
+   * worst-case-per-message bound (send, then verify) used to size the default lock — so a run
+   * never starts a message it might not finish before its own lock could, in the worst realistic
+   * case (every timeout hit, then a verify that times out too), expire. Must be smaller than
    * the resolved `lockMs`, or every claimed row would be abandoned without ever being sent;
    * sendDue/startSender reject that combination immediately. */
   lockMarginMs?: number;
@@ -36,7 +39,8 @@ export interface SendOptions {
    * being torn down mid-send. */
   stopRequested?: () => boolean;
   /** R1: how long `transport.verify()` is given, on a config-class error, to decide whether the
-   * SMTP server itself is reachable before concluding the *message* is to blame. Defaults to
+   * SMTP server itself is reachable before concluding the *message* is to blame. Part of each
+   * message's worst case, so it is counted in the default lock and stop margin. Defaults to
    * {@link DEFAULT_VERIFY_TIMEOUT_MS}. */
   verifyTimeoutMs?: number;
   /** R1(b) backstop: a message still pending after this long is marked failed and logged no
@@ -50,9 +54,9 @@ export interface SendOptions {
 const DEFAULT_BATCH_SIZE = 50;
 // Mirrors packages/events/src/dispatcher.ts's LOCK_MARGIN_MS: extra slack baked into the
 // *size* of the default lock, on top of the worst-case processing time. Distinct from
-// lockMarginMs (the loop's "stop claiming more rows" threshold, below), which is sized off
-// perMessageMs instead — a fixed 30s margin would be irrelevant for a short lock and overkill
-// for a long one.
+// lockMarginMs (the loop's "stop claiming more rows" threshold, below), which is sized off one
+// message's worst case (perMessageMs + verifyTimeoutMs) instead — a fixed 30s margin would be
+// irrelevant for a short lock and overkill for a long one.
 const LOCK_MARGIN_MS = 30_000;
 // Matches env.ts's SMTP_CONNECTION_TIMEOUT_MS + SMTP_GREETING_TIMEOUT_MS + SMTP_SOCKET_TIMEOUT_MS
 // defaults (10s + 10s + 30s): the worst-case time nodemailer lets a single message's send take
@@ -73,11 +77,13 @@ const DEFAULT_MAX_MESSAGE_AGE_MS = 24 * 3_600_000;
 /**
  * A send involves real network I/O (SMTP round-trips) per message in the batch, processed
  * sequentially, so the claim must outlive the worst case of every message in the batch hitting
- * its full per-message timeout — otherwise another replica reclaims rows mid-batch and sends
- * them a second time. Mirrors packages/events/src/dispatcher.ts's defaultLockMs.
+ * its full per-message timeout *and then* a transport.verify() timing out too (a
+ * connection-level error is followed by one, per message — see isTransportHealthy) — otherwise
+ * another replica reclaims rows mid-batch and sends them a second time. Mirrors
+ * packages/events/src/dispatcher.ts's defaultLockMs.
  */
-export function defaultSendLockMs(opts: { batchSize: number; perMessageMs: number }): number {
-  return opts.batchSize * opts.perMessageMs + LOCK_MARGIN_MS;
+export function defaultSendLockMs(opts: { batchSize: number; perMessageMs: number; verifyTimeoutMs: number }): number {
+  return opts.batchSize * (opts.perMessageMs + opts.verifyTimeoutMs) + LOCK_MARGIN_MS;
 }
 
 /**
@@ -86,9 +92,12 @@ export function defaultSendLockMs(opts: { batchSize: number; perMessageMs: numbe
  * per-message check below would always fire before any row is ever sent, silently turning the
  * run into a no-op that just claims and abandons its whole batch forever.
  */
-function resolveLock(opts: { batchSize: number; perMessageMs: number; lockMs?: number; lockMarginMs?: number }): { lockMs: number; lockMarginMs: number } {
-  const lockMarginMs = opts.lockMarginMs ?? opts.perMessageMs;
-  const lockMs = opts.lockMs ?? defaultSendLockMs({ batchSize: opts.batchSize, perMessageMs: opts.perMessageMs });
+function resolveLock(opts: { batchSize: number; perMessageMs: number; verifyTimeoutMs: number; lockMs?: number; lockMarginMs?: number }): {
+  lockMs: number;
+  lockMarginMs: number;
+} {
+  const lockMarginMs = opts.lockMarginMs ?? opts.perMessageMs + opts.verifyTimeoutMs;
+  const lockMs = opts.lockMs ?? defaultSendLockMs({ batchSize: opts.batchSize, perMessageMs: opts.perMessageMs, verifyTimeoutMs: opts.verifyTimeoutMs });
   if (lockMs <= lockMarginMs) {
     throw new Error(`sendDue: lockMs (${lockMs}) must be greater than lockMarginMs (${lockMarginMs}) — otherwise no claimed row would ever be sent`);
   }
@@ -231,7 +240,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
   const perMessageMs = opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS;
   const verifyTimeoutMs = opts.verifyTimeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
   const maxMessageAgeMs = opts.maxMessageAgeMs ?? DEFAULT_MAX_MESSAGE_AGE_MS;
-  const { lockMs, lockMarginMs } = resolveLock({ batchSize, perMessageMs, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
+  const { lockMs, lockMarginMs } = resolveLock({ batchSize, perMessageMs, verifyTimeoutMs, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
   const redirect = opts.redirectTo.length > 0;
 
   // Phase 1: claim (a single statement, no network I/O while holding row locks). The `due` CTE
@@ -272,7 +281,8 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
     const row = rows[i]!;
 
     // Give up on any rows not yet reached rather than risk still being mid-send when this
-    // call's own lock expires — lockMarginMs matches the worst-case time a message can take.
+    // call's own lock expires — lockMarginMs matches the worst-case time a message can take
+    // (its send, then a verify).
     if (opts.stopRequested?.() || sinceClaim() >= lockMs - lockMarginMs) {
       await releaseUnreachedRows(opts.db, rows.slice(i).map((r) => r.id), lockToken);
       break;
@@ -434,7 +444,13 @@ export function startSender(opts: SendOptions & { intervalMs?: number }): () => 
   // Validated eagerly, at call time: a misconfigured lockMs/lockMarginMs would otherwise only
   // surface once the first tick fires, inside the interval's own catch — logged and silently
   // retried forever rather than failing the process fast and loudly at startup.
-  resolveLock({ batchSize: opts.batchSize ?? DEFAULT_BATCH_SIZE, perMessageMs: opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
+  resolveLock({
+    batchSize: opts.batchSize ?? DEFAULT_BATCH_SIZE,
+    perMessageMs: opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS,
+    verifyTimeoutMs: opts.verifyTimeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS,
+    lockMs: opts.lockMs,
+    lockMarginMs: opts.lockMarginMs,
+  });
 
   let stopped = false;
   let running: Promise<unknown> | null = null;

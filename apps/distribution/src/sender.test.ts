@@ -12,9 +12,11 @@ const internalDomains = ["gov.bc.ca"];
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 describe("defaultSendLockMs", () => {
-  it("is batchSize * perMessageMs, plus a 30s margin", () => {
-    expect(defaultSendLockMs({ batchSize: 50, perMessageMs: 50_000 })).toBe(50 * 50_000 + 30_000);
-    expect(defaultSendLockMs({ batchSize: 1, perMessageMs: 1000 })).toBe(1 * 1000 + 30_000);
+  // P2-R25 item 1: a message's worst case is its send *plus* a transport.verify() (a
+  // connection-level error triggers one per message), so both count toward the lock.
+  it("is batchSize * (perMessageMs + verifyTimeoutMs), plus a 30s margin", () => {
+    expect(defaultSendLockMs({ batchSize: 50, perMessageMs: 50_000, verifyTimeoutMs: 10_000 })).toBe(50 * 60_000 + 30_000);
+    expect(defaultSendLockMs({ batchSize: 1, perMessageMs: 1000, verifyTimeoutMs: 500 })).toBe(1 * 1500 + 30_000);
   });
 });
 
@@ -725,15 +727,68 @@ describe("sendDue", () => {
     ).rejects.toThrow(/lockMs.*lockMarginMs/);
   });
 
-  it("defaults the stop margin to perMessageMs, not a fixed 30s, so a short-but-valid lock for a fast batch still sends", async () => {
+  it("defaults the stop margin to perMessageMs + verifyTimeoutMs, not a fixed 30s, so a short-but-valid lock for a fast batch still sends", async () => {
     // lockMs (1000ms) is smaller than the fixed 30s margin this loop's check used to use — a
     // fixed 30s default would have tripped it before the very first row, sending nothing. With
-    // the margin defaulted off perMessageMs (200ms) instead, there's room for one fast send.
+    // the margin defaulted off one message's worst case (200ms send + 300ms verify) instead,
+    // there's room for one fast send.
     await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
     const stubTransport = { sendMail: async () => ({}) } as unknown as Transporter;
 
-    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], batchSize: 1, perMessageMs: 200, lockMs: 1000 });
+    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], batchSize: 1, perMessageMs: 200, verifyTimeoutMs: 300, lockMs: 1000 });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+  });
+
+  // P2-R25 item 1: the stop margin must cover a message's verify() too — otherwise a run could
+  // start a message whose send + verify outlasts its own lock.
+  it("counts verifyTimeoutMs in the default stop margin, rejecting a lock that only covers the send", async () => {
+    await expect(
+      sendDue({ db: tdb.db, transport: {} as unknown as Transporter, from: "news@example.com", redirectTo: [], perMessageMs: 200, verifyTimeoutMs: 900, lockMs: 1000 }),
+    ).rejects.toThrow(/lockMs \(1000\) must be greater than lockMarginMs \(1100\)/);
+  });
+
+  // P2-R25 item 1 (reproduced): a connection-level error makes the run wait on
+  // transport.verify() for up to verifyTimeoutMs. If the default lock only budgeted the send,
+  // another replica polling during that wait would find the lock expired and send the same
+  // message again.
+  it("sizes the default lock to cover a slow verify(): another run can't re-claim the row while this run waits on verify", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "verify@example.com", substitutions: {} }] }, internalDomains);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let sends = 0;
+    let verifies = 0;
+    let verifyStarted!: () => void;
+    let finishVerify!: () => void;
+    const firstVerifyStarted = new Promise<void>((r) => (verifyStarted = r));
+    const stubTransport = {
+      sendMail: async () => {
+        sends++;
+        throw Object.assign(new Error("Connection closed unexpectedly"), { code: "ECONNECTION", command: "CONN" });
+      },
+      // The first run's verify() hangs (a slow server) until released; any later one answers at once.
+      verify: () => {
+        verifies++;
+        if (verifies > 1) return Promise.resolve(true);
+        verifyStarted();
+        return new Promise((r) => (finishVerify = () => r(true)));
+      },
+    } as unknown as Transporter;
+    const timing = { batchSize: 1, perMessageMs: 1_000, verifyTimeoutMs: 60_000 };
+    try {
+      const first = sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], ...timing });
+      await firstVerifyStarted;
+      // A second replica polls 45s into the first run's verify (simulated with a test clock):
+      // past a send-only lock (1s + 30s), well inside one that also budgets the 60s verify.
+      const t = (await dbClock(tdb.db)).getTime();
+      const second = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], ...timing, now: () => new Date(t + 45_000) });
+      expect(second).toEqual({ sent: 0, retried: 0, failed: 0 });
+      expect(sends).toBe(1);
+
+      finishVerify();
+      expect(await first).toEqual({ sent: 0, retried: 1, failed: 0 });
+    } finally {
+      finishVerify?.();
+      errorSpy.mockRestore();
+    }
   });
 
   it("rejects a lockMs that isn't greater than lockMarginMs, at startSender's entry (synchronously, before the first tick)", () => {
