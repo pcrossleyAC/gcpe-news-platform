@@ -3,6 +3,7 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createTestDatabase } from "@gcpe/db-kit";
 import { DistributionError, distributionClient, type DistributionClient, type MessageRequest } from "./distribution-client";
@@ -12,13 +13,22 @@ import { MAX_RECIPIENTS_PER_CHUNK, sendDueJobs } from "./send-jobs";
 const nodMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
 const MANAGE_URL = "https://news.example/subscribe/manage";
 
-async function insertSubscriber(db: TestDatabase["db"], email: string, verified = true): Promise<{ id: string; manageToken: string }> {
+async function insertSubscriber(
+  db: TestDatabase["db"],
+  email: string,
+  opts: { verified?: boolean; id?: string } = {},
+): Promise<{ id: string; manageToken: string }> {
   const [row] = await db
     .insert(subscribers)
-    .values({ email, manageToken: randomUUID(), verifiedAt: verified ? new Date() : null })
+    .values({ ...(opts.id ? { id: opts.id } : {}), email, manageToken: randomUUID(), verifiedAt: opts.verified === false ? null : new Date() })
     .returning({ id: subscribers.id, manageToken: subscribers.manageToken });
   return row!;
 }
+
+/** A fixed, ordered low UUID — lets a test control exactly which subscriber lands in which
+ * chunk (chunk assignment orders by subscriber id, and `defaultRandom()` ids sort
+ * unpredictably relative to insertion order). */
+const lowId = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
 
 async function insertJob(db: TestDatabase["db"], releaseKey: string, overrides: Partial<typeof sendJobs.$inferInsert> = {}) {
   const [row] = await db
@@ -42,6 +52,36 @@ async function insertJob(db: TestDatabase["db"], releaseKey: string, overrides: 
 
 function stubDistribution(): DistributionClient & { send: ReturnType<typeof vi.fn> } {
   return { send: vi.fn() } as unknown as DistributionClient & { send: ReturnType<typeof vi.fn> };
+}
+
+/**
+ * A fake Distribution that behaves like the real one with respect to idempotency: the same
+ * `idempotencyKey` always gets back the batchId it got the first time, without re-recording
+ * whatever recipients happened to be sent alongside the repeat (exactly as Distribution itself
+ * would dedupe — see apps/distribution/src/messages.ts's createBatch). `failKeyOnce` makes the
+ * *first* call for that specific key throw a retryable error, then behave normally after.
+ */
+function dedupingDistribution(opts: { failKeyOnce?: string } = {}): DistributionClient & { calls: MessageRequest[] } {
+  const accepted = new Map<string, string>();
+  let seq = 0;
+  let failedOnce = false;
+  const calls: MessageRequest[] = [];
+  return {
+    calls,
+    async send(req: MessageRequest) {
+      calls.push(req);
+      const key = req.idempotencyKey!;
+      if (opts.failKeyOnce === key && !failedOnce) {
+        failedOnce = true;
+        throw new DistributionError("HTTP 503", true);
+      }
+      const existing = accepted.get(key);
+      if (existing) return { batchId: existing };
+      const batchId = `batch-${++seq}`;
+      accepted.set(key, batchId);
+      return { batchId };
+    },
+  };
 }
 
 describe("sendDueJobs", () => {
@@ -83,13 +123,30 @@ describe("sendDueJobs", () => {
 
     const updated = (await tdb.db.select().from(sendJobs))[0]!;
     expect(updated.status).toBe("sent");
-    expect(updated.batchIds).toEqual(["batch-1"]);
+    expect(updated.batchIds).toEqual({ "0": "batch-1" });
     expect(updated.lockedUntil).toBeNull();
   });
 
+  // Fix 6 (P2-R16): an existing query string on MANAGE_URL must survive the token parameter
+  // being added, not be clobbered by a naive `${manageUrl}?token=...` concatenation.
+  it("preserves an existing query string on MANAGE_URL when adding the token parameter", async () => {
+    const sub = await insertSubscriber(tdb.db, "query@example.com");
+    await insertJob(tdb.db, "release-manage-url");
+    await tdb.db.insert(deliveries).values([{ releaseKey: "release-manage-url", subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "batch-q" });
+    await sendDueJobs({ db: tdb.db, distribution, manageUrl: "https://news.example/subscribe/manage?utm_source=email" });
+
+    const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+    const link = new URL(req.recipients[0]!.substitutions.manageUrl!);
+    expect(link.searchParams.get("utm_source")).toBe("email");
+    expect(link.searchParams.get("token")).toBe(sub.manageToken);
+  });
+
   it("only sends to verified subscribers", async () => {
-    const verified = await insertSubscriber(tdb.db, "verified@example.com", true);
-    await insertSubscriber(tdb.db, "unverified@example.com", false);
+    const verified = await insertSubscriber(tdb.db, "verified@example.com");
+    await insertSubscriber(tdb.db, "unverified@example.com", { verified: false });
     await insertJob(tdb.db, "release-2");
     await tdb.db.insert(deliveries).values([{ releaseKey: "release-2", subscriberId: verified.id }]);
     // An unverified subscriber was never added to `deliveries` by the Task 9 handler in the
@@ -136,7 +193,7 @@ describe("sendDueJobs", () => {
 
     const afterSecond = (await tdb.db.select().from(sendJobs))[0]!;
     expect(afterSecond.status).toBe("sent");
-    expect(afterSecond.batchIds).toEqual(["batch-2"]);
+    expect(afterSecond.batchIds).toEqual({ "0": "batch-2" });
   });
 
   it("fails immediately on a non-retryable error", async () => {
@@ -155,6 +212,27 @@ describe("sendDueJobs", () => {
     expect(row.lastError).toMatch(/HTTP 400/);
   });
 
+  // Fix 8 (P2-R16): a chunk accepted before a later chunk fails the job must still be
+  // recorded — otherwise re-deriving "what did Distribution already accept" after a terminal
+  // failure requires trusting Distribution's own dedup forever, with no local record at all.
+  it("persists already-accepted chunk batch ids even when a later chunk fails the job outright", async () => {
+    const subs = await Promise.all([0, 1, 2].map((n) => insertSubscriber(tdb.db, `p${n}@example.com`, { id: lowId(n) })));
+    await insertJob(tdb.db, "release-persist");
+    await tdb.db.insert(deliveries).values(subs.map((s) => ({ releaseKey: "release-persist", subscriberId: s.id })));
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValueOnce({ batchId: "ok-0" }).mockRejectedValueOnce(new DistributionError("HTTP 400: bad subject", false));
+
+    // chunkSize 1 over 3 recipients → 3 chunks; chunk 0 succeeds, chunk 1 fails permanently,
+    // chunk 2 is never attempted.
+    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 1 });
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+
+    const row = (await tdb.db.select().from(sendJobs))[0]!;
+    expect(row.status).toBe("failed");
+    expect(row.batchIds).toEqual({ "0": "ok-0" });
+  });
+
   it("fails a retryable error once the job is older than maxAgeMs", async () => {
     const sub = await insertSubscriber(tdb.db, "old@example.com");
     await insertJob(tdb.db, "release-5");
@@ -171,6 +249,78 @@ describe("sendDueJobs", () => {
 
     const row = (await tdb.db.select().from(sendJobs))[0]!;
     expect(row.status).toBe("failed");
+  });
+
+  // Fix 2 (P2-R16): a failure fetching the token itself (the endpoint being down, timing out,
+  // ...) must not permanently fail the job — distribution.send never even reached Distribution.
+  it("treats a token-fetch failure as retryable, not a permanent failure", async () => {
+    const sub = await insertSubscriber(tdb.db, "tok@example.com");
+    await insertJob(tdb.db, "release-token-fail");
+    await tdb.db.insert(deliveries).values([{ releaseKey: "release-token-fail", subscriberId: sub.id }]);
+
+    const distribution = distributionClient({
+      baseUrl: "http://127.0.0.1:1",
+      getToken: async () => {
+        throw new Error("token endpoint responded HTTP 503");
+      },
+    });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+
+    const row = (await tdb.db.select().from(sendJobs))[0]!;
+    expect(row.status).toBe("pending");
+    expect(row.attempts).toBe(1);
+  });
+
+  // Fix 2 (P2-R16, send-jobs.ts side): an error thrown by `distribution.send` that isn't
+  // already a DistributionError (e.g. a custom DistributionClient implementation that throws
+  // a plain Error) must still be treated as retryable, not fail the job outright.
+  it("treats an unexpected (non-DistributionError) send failure as retryable", async () => {
+    const sub = await insertSubscriber(tdb.db, "unexpected@example.com");
+    await insertJob(tdb.db, "release-unexpected");
+    await tdb.db.insert(deliveries).values([{ releaseKey: "release-unexpected", subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockRejectedValue(new Error("boom"));
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+
+    const row = (await tdb.db.select().from(sendJobs))[0]!;
+    expect(row.status).toBe("pending");
+    expect(row.attempts).toBe(1);
+  });
+
+  // Fix 3 (P2-R16): a 401/403 from Distribution is a credentials problem that's usually
+  // transient (propagation delay, clock skew, a brief outage at the issuer) — it must not
+  // permanently fail the job, and must be logged loudly since nothing else will notice it.
+  it("keeps a job pending (not failed) and logs loudly when Distribution returns 401", async () => {
+    const authServer = createServer((_req, res) => {
+      res.statusCode = 401;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ error: "invalid token" }));
+    });
+    await new Promise<void>((r) => authServer.listen(0, r));
+    const port = (authServer.address() as AddressInfo).port;
+    try {
+      const sub = await insertSubscriber(tdb.db, "unauth@example.com");
+      await insertJob(tdb.db, "release-401");
+      await tdb.db.insert(deliveries).values([{ releaseKey: "release-401", subscriberId: sub.id }]);
+      const distribution = distributionClient({ baseUrl: `http://127.0.0.1:${port}`, getToken: async () => "t" });
+
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Distribution rejected our credentials (401/403)"));
+      errorSpy.mockRestore();
+
+      const row = (await tdb.db.select().from(sendJobs))[0]!;
+      expect(row.status).toBe("pending");
+      expect(row.attempts).toBe(1);
+    } finally {
+      authServer.close();
+    }
   });
 
   it("two concurrent runs send each due job exactly once", async () => {
@@ -198,7 +348,7 @@ describe("sendDueJobs", () => {
   });
 
   it("chunks recipients and resends every chunk (same keys) on a retry after a mid-batch failure", async () => {
-    const subs = await Promise.all(Array.from({ length: 5 }, (_, i) => insertSubscriber(tdb.db, `r${i}@example.com`)));
+    const subs = await Promise.all(Array.from({ length: 5 }, (_, i) => insertSubscriber(tdb.db, `r${i}@example.com`, { id: lowId(i) })));
     const job = await insertJob(tdb.db, "release-7");
     await tdb.db.insert(deliveries).values(subs.map((s) => ({ releaseKey: "release-7", subscriberId: s.id })));
 
@@ -217,10 +367,11 @@ describe("sendDueJobs", () => {
     expect((distribution.send.mock.calls[1]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:1`);
 
     const afterFirst = (await tdb.db.select().from(sendJobs))[0]!;
+    expect(afterFirst.batchIds).toEqual({ "0": "b0" }); // fix 8: chunk 0's id survived the retry-pending state
 
     // Retry: resends ALL three chunks, including :0 which already succeeded.
     distribution.send.mockReset();
-    distribution.send.mockResolvedValueOnce({ batchId: "b0" }).mockResolvedValueOnce({ batchId: "b1" }).mockResolvedValueOnce({ batchId: "b2" });
+    distribution.send.mockResolvedValueOnce({ batchId: "b0-again" }).mockResolvedValueOnce({ batchId: "b1" }).mockResolvedValueOnce({ batchId: "b2" });
     const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 2, now: () => afterFirst.nextAttemptAt });
     expect(result2).toEqual({ sent: 1, retried: 0, failed: 0 });
 
@@ -234,7 +385,72 @@ describe("sendDueJobs", () => {
 
     const afterSecond = (await tdb.db.select().from(sendJobs))[0]!;
     expect(afterSecond.status).toBe("sent");
-    expect(afterSecond.batchIds).toEqual(["b0", "b1", "b2"]);
+    // batch_ids merges the newest response per key over whatever was stored before (here,
+    // chunk 0's id legitimately changes because this test's stub isn't dedup-aware — the
+    // *real* Distribution would return the original "b0", which the freezing/dedup test below
+    // covers).
+    expect(afterSecond.batchIds).toEqual({ "0": "b0-again", "1": "b1", "2": "b2" });
+  });
+
+  // Fix 1 (P2-R16): chunk membership must be frozen on the first attempt. Probes both halves
+  // of the bug this fixes: a subscriber deleted from an already-sent chunk must not cause
+  // anyone else to be re-chunked (they'd otherwise shift down and partly double-send), and a
+  // new, low-id delivery inserted after chunking must not retroactively join any chunk.
+  it("freezes chunk membership: a deletion doesn't shift anyone, and a new low-id delivery isn't picked up by a retry", async () => {
+    // Explicit low, ordered ids 1..5 (0 is reserved below for the "new low-id delivery" probe
+    // — it must sort lower than every original subscriber, and the nil UUID has no room
+    // below it): with chunkSize 2, chunk 0 = [id(1), id(2)], chunk 1 = [id(3), id(4)], chunk
+    // 2 = [id(5)].
+    const subs = await Promise.all([0, 1, 2, 3, 4].map((n) => insertSubscriber(tdb.db, `orig${n}@example.com`, { id: lowId(n + 1) })));
+    const job = await insertJob(tdb.db, "release-freeze");
+    await tdb.db.insert(deliveries).values(subs.map((s) => ({ releaseKey: "release-freeze", subscriberId: s.id })));
+
+    // Fails chunk 1 once (retryable), succeeds everywhere else, and dedupes by key exactly
+    // like the real Distribution — so a resend of an already-accepted chunk is a no-op, not a
+    // second mailing.
+    const distribution = dedupingDistribution({ failKeyOnce: `${job.id}:1` });
+
+    const now = new Date();
+    const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 2, now: () => now });
+    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
+
+    const chunk0Call1 = distribution.calls.find((c) => c.idempotencyKey === `${job.id}:0`)!;
+    expect(chunk0Call1.recipients.map((r) => r.email).sort()).toEqual(["orig0@example.com", "orig1@example.com"]);
+
+    const afterFirst = (await tdb.db.select().from(sendJobs))[0]!;
+
+    // Between attempts: delete one subscriber from the already-accepted chunk 0, and add a
+    // brand new delivery whose subscriber id sorts lower than every existing one — if chunking
+    // were re-derived instead of frozen, this would become the new chunk 0's first member and
+    // bump everyone else down by one slot.
+    await tdb.db.delete(subscribers).where(eq(subscribers.id, lowId(1)));
+    const lateSub = await insertSubscriber(tdb.db, "late@example.com", { id: lowId(0) });
+    await tdb.db.insert(deliveries).values([{ releaseKey: "release-freeze", subscriberId: lateSub.id }]);
+
+    const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 2, now: () => afterFirst.nextAttemptAt });
+    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0 });
+
+    // This attempt's (second, final) recipient set per chunk — the proof that chunking was
+    // frozen: chunk 0 lost exactly its deleted member (shrank in place, 2→1) without anyone
+    // from chunk 1 or chunk 2 sliding down to backfill it, and chunks 1/2 are byte-identical
+    // to attempt 1 (same two people, same singleton) despite the deletion and the new delivery.
+    const secondAttemptByKey = new Map<string, Set<string>>();
+    for (const call of distribution.calls.slice(2)) {
+      secondAttemptByKey.set(call.idempotencyKey!, new Set(call.recipients.map((r) => r.email)));
+    }
+    const byKey = secondAttemptByKey;
+
+    // The deleted subscriber's own chunk shrank in place (1 remaining member, not backfilled
+    // from chunk 1), and the late delivery was never sent to at all.
+    expect([...byKey.get(`${job.id}:0`)!]).toEqual(["orig1@example.com"]);
+    expect([...byKey.get(`${job.id}:1`)!].sort()).toEqual(["orig2@example.com", "orig3@example.com"]);
+    expect([...byKey.get(`${job.id}:2`)!]).toEqual(["orig4@example.com"]);
+    expect(distribution.calls.some((c) => c.recipients.some((r) => r.email === "late@example.com"))).toBe(false);
+
+    // Every remaining original person (4, after the deletion) was mailed — exactly the people
+    // above, no more, no fewer.
+    const everyoneMailed = new Set([...byKey.values()].flatMap((s) => [...s]));
+    expect(everyoneMailed).toEqual(new Set(["orig1@example.com", "orig2@example.com", "orig3@example.com", "orig4@example.com"]));
   });
 });
 
@@ -298,6 +514,14 @@ describe("distributionClient", () => {
     expect(await client.send(sampleRequest)).toEqual({ batchId: "batch-existing" });
   });
 
+  // Fix 10 (P2-R16): any 2xx is success, not just the two Distribution happens to use today.
+  it("treats any 2xx (e.g. 201) as success", async () => {
+    respondStatus = 201;
+    respondBody = { batchId: "batch-201" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
+    expect(await client.send(sampleRequest)).toEqual({ batchId: "batch-201" });
+  });
+
   it("maps 503 to a retryable DistributionError", async () => {
     respondStatus = 503;
     respondBody = "service unavailable";
@@ -312,8 +536,53 @@ describe("distributionClient", () => {
     await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: false, status: 400 });
   });
 
+  // Fix 3 (P2-R16): 401/403 are retryable (a credentials problem is usually transient) and
+  // logged loudly, unlike every other 4xx.
+  it("maps 401 to a retryable DistributionError and logs loudly", async () => {
+    respondStatus = 401;
+    respondBody = { error: "invalid token" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true, status: 401 });
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Distribution rejected our credentials (401/403)"));
+    errorSpy.mockRestore();
+  });
+
+  it("maps 403 to a retryable DistributionError", async () => {
+    respondStatus = 403;
+    respondBody = { error: "forbidden" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
+    await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true, status: 403 });
+  });
+
   it("maps a network error to a retryable DistributionError", async () => {
     const client = distributionClient({ baseUrl: "http://127.0.0.1:1", getToken: async () => "t" });
+    await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
+  });
+
+  // Fix 2 (P2-R16): getToken failing is retryable — the request to Distribution was never
+  // even attempted.
+  it("maps a getToken failure to a retryable DistributionError", async () => {
+    const client = distributionClient({ baseUrl, getToken: async () => Promise.reject(new Error("token endpoint HTTP 503")) });
+    await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
+  });
+
+  // Fix 2 (P2-R16): an unreadable/malformed 2xx body is retryable, not a thrown TypeError that
+  // escapes send-jobs.ts uncaught.
+  it("maps an unparseable 2xx body to a retryable DistributionError", async () => {
+    respondStatus = 202;
+    respondBody = "not json";
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
+    await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
+  });
+
+  // Fix 4 (P2-R16): getToken is bounded by the same timeout as the request itself.
+  it("times out a hanging getToken instead of waiting forever", async () => {
+    const client = distributionClient({
+      baseUrl,
+      getToken: () => new Promise<string>(() => {}), // never resolves
+      timeoutMs: 20,
+    });
     await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
   });
 });

@@ -17,7 +17,22 @@ export interface DistributionTokenOptions {
   fetchImpl?: typeof fetch;
   /** Clock override for tests; defaults to the wall clock. */
   now?: () => number;
+  /** Test injection point for the local branch's token minting, so a test can count calls
+   * (distinguishing "returned the cached token" from "minted a fresh one, which happened to
+   * come out identical") without decoding JWTs to guess. Defaults to the real
+   * {@link mintLocalToken}. */
+  mintToken?: typeof mintLocalToken;
 }
+
+// P2-R16 / Task 12 note: Distribution scopes idempotency (and every batch's appId) by the
+// calling token's `azp`. Both the Entra and local branches here always mint with the same
+// identity ("nod" for local; the Entra client id for client-credentials), but if an operator
+// ever needs to switch *which* branch is active (e.g. flipping from a local token to Entra in
+// a given environment), that switch must not happen while any send_jobs are mid-retry: a
+// retry after the switch would carry a different azp than the attempt(s) before it, so
+// Distribution would see it as a different app and never dedupe against the batches the old
+// identity already got accepted — silently double-sending every chunk that had already
+// succeeded under the old token.
 
 /**
  * Picks how NoD authenticates its own calls to Distribution, and returns a cached
@@ -48,11 +63,12 @@ export function distributionTokenProvider(opts: DistributionTokenOptions): () =>
 
   if (opts.local) {
     const local = opts.local;
+    const mint = opts.mintToken ?? mintLocalToken;
     let cached: { token: string; expiresAt: number } | undefined;
     return async () => {
       const now = (opts.now ?? Date.now)();
       if (cached && cached.expiresAt - REFRESH_MARGIN_MS > now) return cached.token;
-      const token = await mintLocalToken({
+      const token = await mint({
         secret: local.secret,
         subject: "nod",
         azp: "nod",

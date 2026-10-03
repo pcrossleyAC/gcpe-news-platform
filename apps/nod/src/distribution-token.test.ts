@@ -1,5 +1,6 @@
 import { jwtVerify } from "jose";
 import { describe, expect, it } from "vitest";
+import { mintLocalToken } from "@gcpe/auth";
 import { distributionTokenProvider } from "./distribution-token";
 
 const LOCAL_SECRET = "a".repeat(32);
@@ -55,17 +56,31 @@ describe("distributionTokenProvider", () => {
   });
 
   it("re-mints the local token once fewer than 5 minutes remain", async () => {
+    // A real mint and a cached-but-identical mint are indistinguishable by content alone
+    // (same claims, same secret), so this counts actual calls to the minter rather than
+    // comparing the returned JWT strings.
     let now = 1_000_000;
-    const getToken = distributionTokenProvider({ local: { username: "admin", passwordHash: "hash", secret: LOCAL_SECRET }, now: () => now });
+    let mintCalls = 0;
+    const mintToken: typeof mintLocalToken = async (o) => {
+      mintCalls++;
+      return mintLocalToken(o);
+    };
+    const getToken = distributionTokenProvider({
+      local: { username: "admin", passwordHash: "hash", secret: LOCAL_SECRET },
+      now: () => now,
+      mintToken,
+    });
 
-    const first = await getToken();
-    // Still safely within the 1h TTL minus the 5-minute margin: cached.
+    await getToken();
+    expect(mintCalls).toBe(1);
+    // Still safely within the 1h TTL minus the 5-minute margin: cached, no new mint.
     now += 10 * 60_000;
-    expect(await getToken()).toBe(first);
-    // Past the refresh margin (55 minutes in): re-minted. Content may be identical (same
-    // claims), but the call must not throw and must still verify.
+    await getToken();
+    expect(mintCalls).toBe(1);
+    // Past the refresh margin (55 minutes in): re-minted.
     now += 50 * 60_000;
     const second = await getToken();
+    expect(mintCalls).toBe(2);
     const { payload } = await jwtVerify(second, localKey(LOCAL_SECRET), { algorithms: ["HS256"] });
     expect(payload.sub).toBe("nod");
   });
