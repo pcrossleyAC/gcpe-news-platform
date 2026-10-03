@@ -28,6 +28,7 @@ npm test               # unit + integration tests (creates/drops throwaway datab
 | `packages/events` | Event envelope/catalogue, outbox, dispatcher, signed webhook receiver |
 | `packages/auth` | Entra bearer tokens, role guard, client-credentials tokens |
 | `packages/legacy-import` | Legacy SQL Server reader and enum maps |
+| `packages/http-kit` | Shared HTTP plumbing: `/health/live` + `/health/ready` (pluggable checks), JSON error handler, ordered graceful shutdown |
 | `apps/core` | Reference data (organizations, sectors, themes, tags, services) |
 
 ## Running Core locally

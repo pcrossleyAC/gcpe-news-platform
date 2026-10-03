@@ -1,0 +1,9 @@
+{
+  "name": "@gcpe/http-kit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": { "express": "^5.2.1" },
+  "devDependencies": { "@types/express": "^5.0.6", "supertest": "^7.1.0", "@types/supertest": "^7.2.1" }
+}

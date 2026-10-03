@@ -4,7 +4,7 @@ import { loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createApp } from "./app";
 import { newsApiEnvSchema } from "./env";
-import { createShutdown } from "./shutdown";
+import { createNewsApiShutdown } from "./shutdown";
 import { createUpdatesHub } from "./updates/hub";
 import { listenForUpdates } from "./updates/notify";
 
@@ -43,7 +43,7 @@ const stopListening = await listenForUpdates(pool, (target, keys) => hub.broadca
 });
 server.listen(env.PORT, () => console.log(`[news-api] listening on ${env.PORT} (${tenant.tenantId}, ${tenant.timeZone})`));
 
-const shutdown = createShutdown({ hub, server, stopListening, pool, exit: process.exit });
+const shutdown = createNewsApiShutdown({ hub, server, stopListening, pool, exit: process.exit });
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => void shutdown());
 }

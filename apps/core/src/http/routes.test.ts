@@ -129,6 +129,30 @@ describe("Core HTTP API", () => {
     expect((await request(app).get("/api/organizations/edge").set("authorization", `Bearer ${reader}`)).status).toBe(404);
   });
 
+  // Final review M10: Core gains the shared JSON error handler — body-parser failures must
+  // come back as JSON, not finalhandler's default HTML page.
+  it("returns malformed-JSON 400s and oversized-body 413s as JSON, not HTML", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const malformed = await request(app)
+        .put("/api/organizations/health")
+        .set("authorization", `Bearer ${admin}`)
+        .set("content-type", "application/json")
+        .send("{not json");
+      expect(malformed.status).toBe(400);
+      expect(malformed.headers["content-type"]).toMatch(/^application\/json/);
+      expect(malformed.text).not.toMatch(/<html|at \S+ \(|\.ts:\d+:\d+/i);
+
+      const big = { ...healthOrg, key: "big", minister: { ...healthOrg.minister, detailsHtml: "x".repeat(MAX_EVENT_BYTES) } };
+      const tooBig = await request(app).put("/api/organizations/big").set("authorization", `Bearer ${admin}`).send(big);
+      expect(tooBig.status).toBe(413);
+      expect(tooBig.headers["content-type"]).toMatch(/^application\/json/);
+      expect(tooBig.body).toEqual({ error: "request entity too large" });
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
   it("republish returns the number of enqueued events", async () => {
     const res = await request(app).post("/api/admin/republish").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(202);

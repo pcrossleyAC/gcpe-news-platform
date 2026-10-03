@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { entraIssuer, entraJwks } from "@gcpe/auth";
 import { parseEnv } from "@gcpe/config";
+import { closeServer, createShutdown } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
@@ -27,14 +28,15 @@ const app = createApp({
 });
 const server = app.listen(env.PORT, () => console.log(`[core] listening on ${env.PORT}`));
 
-let shuttingDown = false;
+const shutdown = createShutdown({
+  logPrefix: "[core]",
+  exit: process.exit,
+  closers: [
+    { name: "http server", close: () => closeServer(server) },
+    { name: "event dispatcher", close: stopDispatcher },
+    { name: "db pool", close: () => pool.end() },
+  ],
+});
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
-  process.on(signal, async () => {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    await new Promise((resolve) => server.close(resolve));
-    await stopDispatcher();
-    await pool.end();
-    process.exit(0);
-  });
+  process.on(signal, () => void shutdown());
 }

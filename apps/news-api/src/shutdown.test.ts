@@ -3,7 +3,7 @@ import type { AddressInfo } from "node:net";
 import express from "express";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createUpdatesHub, type UpdatesHub } from "./updates/hub";
-import { createShutdown } from "./shutdown";
+import { createNewsApiShutdown } from "./shutdown";
 
 const RS = "\u001e";
 
@@ -43,7 +43,7 @@ async function withTimeout(promise: Promise<unknown>, ms: number): Promise<"done
   return result;
 }
 
-describe("createShutdown", () => {
+describe("createNewsApiShutdown", () => {
   const cleanups: (() => Promise<void> | void)[] = [];
   afterEach(async () => {
     for (const c of cleanups.splice(0)) await c();
@@ -63,7 +63,7 @@ describe("createShutdown", () => {
     const pool = { end: vi.fn(async () => {}) };
     const stopListening = vi.fn(async () => {});
     const exit = vi.fn();
-    const shutdown = createShutdown({ hub, server, stopListening, pool, exit });
+    const shutdown = createNewsApiShutdown({ hub, server, stopListening, pool, exit });
 
     const outcome = await withTimeout(shutdown(), 2000);
     expect(outcome).toBe("done");
@@ -77,7 +77,7 @@ describe("createShutdown", () => {
     const pool = { end: vi.fn(async () => {}) };
     const stopListening = vi.fn(async () => {});
     const exit = vi.fn();
-    const shutdown = createShutdown({ hub, server, stopListening, pool, exit });
+    const shutdown = createNewsApiShutdown({ hub, server, stopListening, pool, exit });
 
     await Promise.all([shutdown(), shutdown()]);
     expect(stopListening).toHaveBeenCalledOnce();

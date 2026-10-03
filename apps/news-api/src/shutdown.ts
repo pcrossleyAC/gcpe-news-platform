@@ -1,4 +1,5 @@
 import type { Server } from "node:http";
+import { closeServer, createShutdown } from "@gcpe/http-kit";
 
 export interface ShutdownDeps {
   hub: { close(): void };
@@ -10,8 +11,7 @@ export interface ShutdownDeps {
 }
 
 /**
- * Graceful shutdown, guarded against double invocation (SIGTERM and SIGINT can both fire,
- * or a signal can repeat before the process exits).
+ * The News API's shutdown sequence, built on @gcpe/http-kit's generic `createShutdown`.
  *
  * Order matters: `hub.close()` must run *before* `server.close()`. `hub.close()` terminates
  * every upgraded WebSocket socket; `http.Server.close()` stops accepting new connections but
@@ -21,15 +21,15 @@ export interface ShutdownDeps {
  * all; reversing the order deadlocks shutdown for as long as that client stays connected
  * (empirically confirmed: see `shutdown.test.ts`).
  */
-export function createShutdown(deps: ShutdownDeps): () => Promise<void> {
-  let shuttingDown = false;
-  return async function shutdown(): Promise<void> {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    deps.hub.close();
-    await new Promise<void>((resolve) => deps.server.close(() => resolve()));
-    await deps.stopListening();
-    await deps.pool.end();
-    deps.exit(0);
-  };
+export function createNewsApiShutdown(deps: ShutdownDeps): () => Promise<void> {
+  return createShutdown({
+    logPrefix: "[news-api]",
+    exit: deps.exit,
+    closers: [
+      { name: "updates hub", close: () => deps.hub.close() },
+      { name: "http server", close: () => closeServer(deps.server) },
+      { name: "LISTEN connection", close: deps.stopListening },
+      { name: "db pool", close: () => deps.pool.end() },
+    ],
+  });
 }

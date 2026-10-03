@@ -14,6 +14,7 @@
     "@gcpe/config": "0.0.0",
     "@gcpe/db-kit": "0.0.0",
     "@gcpe/events": "0.0.0",
+    "@gcpe/http-kit": "0.0.0",
     "@gcpe/legacy-import": "0.0.0",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
