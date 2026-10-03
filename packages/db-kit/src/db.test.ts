@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import pg from "pg";
 import { createDb, runMigrations } from "./db";
 import { adminUrl, withAdmin } from "./test-db";
@@ -46,6 +46,22 @@ describe("runMigrations", () => {
       expect((await pool.query("SELECT 1 AS one")).rows[0].one).toBe(1);
     } finally {
       await pool.end();
+    }
+  });
+});
+
+describe("createDb", () => {
+  it("logs errors from idle pooled connections instead of crashing the process", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const { pool } = createDb(adminUrl(), { max: 1 });
+    try {
+      const { rows } = await pool.query("SELECT pg_backend_pid() AS pid");
+      // The connection is now idle in the pool; kill its backend from another session.
+      await withAdmin((c) => c.query("SELECT pg_terminate_backend($1)", [rows[0].pid]));
+      await vi.waitFor(() => expect(errSpy).toHaveBeenCalledWith("[db] idle client error", expect.any(Error)), { timeout: 5_000 });
+    } finally {
+      await pool.end();
+      errSpy.mockRestore();
     }
   });
 });

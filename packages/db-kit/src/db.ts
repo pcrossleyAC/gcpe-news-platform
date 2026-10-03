@@ -13,6 +13,10 @@ export type DbOrTx<TSchema extends Record<string, unknown> = any> = Db<TSchema> 
 
 export function createDb(url: string, opts: { max?: number } = {}): { pool: pg.Pool; db: Db } {
   const pool = new pg.Pool({ connectionString: url, max: opts.max ?? 10 });
+  // An idle client losing its connection (server restart, failover, admin kill) emits
+  // 'error' on the pool; unhandled, that would crash the process. The pool discards the
+  // client and opens a new one on demand, so logging is enough.
+  pool.on("error", (err) => console.error("[db] idle client error", err));
   const db: Db = drizzle(pool);
   return { pool, db };
 }
