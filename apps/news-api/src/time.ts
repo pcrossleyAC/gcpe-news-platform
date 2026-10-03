@@ -18,11 +18,13 @@ export function formatOffsetDateTime(date: Date, timeZone: string): string {
   const offset = zone === "GMT" ? "+00:00" : zone.replace("GMT", "");
   const ms = date.getUTCMilliseconds();
   const fraction = ms === 0 ? "" : `.${String(ms).padStart(3, "0")}`;
-  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${fraction}${offset}`;
+  const year = parts.year!.padStart(4, "0");
+  return `${year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}${fraction}${offset}`;
 }
 
 export function parseOffsetDateTime(value: string): Date {
   const normalized = value.replace(/(\.\d{3})\d+/, "$1");
+  if (!/(Z|[+-]\d{2}:\d{2})$/.test(normalized)) throw new Error(`Invalid date: ${value}`);
   const date = new Date(normalized);
   if (Number.isNaN(date.getTime())) throw new Error(`Invalid date: ${value}`);
   return date;

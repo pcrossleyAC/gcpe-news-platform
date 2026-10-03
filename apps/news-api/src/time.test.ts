@@ -21,4 +21,17 @@ describe("time", () => {
   it("rejects garbage", () => {
     expect(() => parseOffsetDateTime("yesterday")).toThrow(/Invalid date/);
   });
+
+  it("zero-pads years before 1000 (.NET DateTime.MinValue sentinel)", () => {
+    expect(formatOffsetDateTime(new Date("0001-01-01T00:00:00Z"), "UTC")).toBe("0001-01-01T00:00:00+00:00");
+  });
+
+  it("round-trips the zero-padded-year sentinel through format then parse", () => {
+    const d = new Date("0001-01-01T00:00:00Z");
+    expect(parseOffsetDateTime(formatOffsetDateTime(d, "UTC"))).toEqual(d);
+  });
+
+  it("rejects a value with no timezone offset", () => {
+    expect(() => parseOffsetDateTime("2026-10-01T15:10:00.123")).toThrow(/Invalid date/);
+  });
 });
