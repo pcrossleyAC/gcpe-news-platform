@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { createTestDatabase } from "@gcpe/db-kit";
+import { createTestDatabase, dbClock } from "@gcpe/db-kit";
 import { DistributionError, distributionClient, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, sendJobs, subscribers } from "./db/schema";
 import { MAX_CHUNK_BYTES, MAX_RECIPIENTS_PER_CHUNK, ensureChunksAssigned, sendDueJobs } from "./send-jobs";
@@ -38,12 +38,6 @@ async function insertJob(db: TestDatabase["db"], releaseKey: string, overrides: 
       subject: "Clinics open",
       html: "<p>hi</p>",
       text: "hi",
-      // Explicit, JS-clock-derived "already due" rather than the column's defaultNow():
-      // comparing that default (stamped by Postgres's own clock) against sendDueJobs's
-      // JS-side `now()` moments later is exposed to clock skew between the test process and
-      // the database server, which is a real, measurable source of flakiness in this
-      // environment.
-      nextAttemptAt: new Date(Date.now() - 1000),
       ...overrides,
     })
     .returning();
@@ -169,10 +163,6 @@ describe("sendDueJobs", () => {
     const distribution = stubDistribution();
     distribution.send.mockRejectedValueOnce(new DistributionError("HTTP 503", true));
 
-    // No `now` override on this first call: the job's next_attempt_at default was stamped by
-    // Postgres's own clock a moment ago, and comparing it against a JS-side `Date.now()`
-    // captured just before this call risks a flaky off-by-a-few-ms race against clock skew
-    // between the test process and the database server.
     const before = Date.now();
     const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
     expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
@@ -184,7 +174,9 @@ describe("sendDueJobs", () => {
     expect(afterFirst.lockedUntil).toBeNull();
 
     distribution.send.mockResolvedValueOnce({ batchId: "batch-2" });
-    const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, now: () => afterFirst.nextAttemptAt });
+    // The backoff was computed from the database's now() (µs); a JS Date of it is truncated to
+    // the millisecond, so the test clock is set 1ms past it to be on or after the real value.
+    const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, now: () => new Date(afterFirst.nextAttemptAt.getTime() + 1) });
     expect(result2).toEqual({ sent: 1, retried: 0, failed: 0 });
 
     expect(distribution.send).toHaveBeenCalledTimes(2);
@@ -397,7 +389,7 @@ describe("sendDueJobs", () => {
       throw new DistributionError("HTTP 503", true);
     });
 
-    const now = new Date();
+    const now = await dbClock(tdb.db);
     const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 2, now: () => now });
     expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
     expect(distribution.send).toHaveBeenCalledTimes(2);
@@ -448,7 +440,7 @@ describe("sendDueJobs", () => {
     // second mailing.
     const distribution = dedupingDistribution({ failKeyOnce: `${job.id}:1` });
 
-    const now = new Date();
+    const now = await dbClock(tdb.db);
     const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 2, now: () => now });
     expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
 
@@ -623,7 +615,7 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
         throw new DistributionError("HTTP 503", true);
       });
 
-    const now = new Date();
+    const now = await dbClock(tdb.db);
     const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, maxChunkBytes: 50, now: () => now });
     expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
     expect(distribution.send).toHaveBeenCalledTimes(3);

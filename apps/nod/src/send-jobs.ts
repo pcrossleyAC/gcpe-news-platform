@@ -1,5 +1,5 @@
-import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import { and, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
+import { ageMsOf, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, sendJobs, subscribers } from "./db/schema";
@@ -31,8 +31,10 @@ export interface SendJobsOptions {
    * a `token` query parameter set to their `manageToken` (any existing query string on
    * `manageUrl` is preserved — see manageLinkFor). */
   manageUrl: string;
-  /** Clock override for tests; defaults to the wall clock. */
-  now?: () => Date;
+  /** Test hook: when given, its value stands in for SQL `now()` in every statement this call
+   * makes (claim, lock, backoff, age). Production omits it and the database's clock is used
+   * throughout — see {@link sendDueJobs}. */
+  now?: TestClock;
   /** Max number of send_jobs claimed (one at a time, see claimOneJob) per call. */
   batchSize?: number;
   maxAgeMs?: number;
@@ -54,9 +56,12 @@ type ClaimedJobRow = {
   html: string | null;
   text: string | null;
   attempts: number;
-  created_at: Date;
+  /** The job's age at claim time, by the database's clock. */
+  age_ms: number;
   chunks_assigned: boolean;
   batch_ids: Record<string, string>;
+  /** The exact locked_until this claim wrote — the job's ownership token. */
+  lock_token: LockToken;
 };
 
 /**
@@ -67,10 +72,10 @@ type ClaimedJobRow = {
  * multi-row claim would have to size its lock for the worst case across the whole batch,
  * which is unbounded.
  */
-async function claimOneJob(db: Db, now: Date, lockUntil: Date): Promise<ClaimedJobRow | undefined> {
+async function claimOneJob(db: Db, now: SQL, lockMs: number): Promise<ClaimedJobRow | undefined> {
   const claimed = await db.execute<ClaimedJobRow>(sql`
     UPDATE send_jobs
-       SET locked_until = ${lockUntil}
+       SET locked_until = ${now} + ${sqlInterval(lockMs)}
      WHERE id = (
        SELECT id FROM send_jobs
         WHERE status = 'pending'
@@ -80,31 +85,34 @@ async function claimOneJob(db: Db, now: Date, lockUntil: Date): Promise<ClaimedJ
         LIMIT 1
         FOR UPDATE SKIP LOCKED
      )
-    RETURNING id, release_key, subject, html, text, attempts, created_at, chunks_assigned, batch_ids`);
+    RETURNING id, release_key, subject, html, text, attempts, ${ageMsOf(sql`created_at`, now)} AS age_ms, chunks_assigned, batch_ids,
+              ${lockTokenOf(sql`locked_until`)} AS lock_token`);
   return claimed.rows[0];
 }
 
-/** Extends (or shrinks) this call's lock on a job it still owns, re-asserting ownership by
- * requiring the lock to still equal the value this call's own claim set. Returns false if
- * ownership was lost in between (shouldn't happen under normal operation since nothing else
- * can touch a 'pending' row holding our lock, but guarded anyway — ownership checks on every
- * terminal write are the house style, see sender.ts). */
-async function extendLock(db: Db, jobId: string, currentLockUntil: Date, newLockUntil: Date): Promise<boolean> {
-  const res = await db.execute<{ id: string }>(sql`
-    UPDATE send_jobs SET locked_until = ${newLockUntil}
-     WHERE id = ${jobId} AND locked_until = ${currentLockUntil} AND status = 'pending'
-    RETURNING id`);
-  return res.rows.length > 0;
+/** Extends this call's lock on a job it still owns by `extraMs` (relative to the lock the
+ * claim set, so the result is still "claim time + total budget" on the database's clock),
+ * re-asserting ownership by requiring the lock to still equal the value this call's own claim
+ * set. Returns the new ownership token, or undefined if ownership was lost in between
+ * (shouldn't happen under normal operation since nothing else can touch a 'pending' row
+ * holding our lock, but guarded anyway — ownership checks on every terminal write are the
+ * house style, see sender.ts). */
+async function extendLock(db: Db, jobId: string, token: LockToken, extraMs: number): Promise<LockToken | undefined> {
+  const res = await db.execute<{ lock_token: LockToken }>(sql`
+    UPDATE send_jobs SET locked_until = locked_until + ${sqlInterval(extraMs)}
+     WHERE id = ${jobId} AND ${ownedPending(sendJobs, token)}
+    RETURNING ${lockTokenOf(sql`locked_until`)} AS lock_token`);
+  return res.rows[0]?.lock_token;
 }
 
 /** Releases a lock this call still owns without touching status/attempts — used when bailing
  * out of a job before reaching a terminal outcome (e.g. the recipient query itself failed),
  * so another run can retry it immediately instead of waiting out the lock. */
-async function releaseLock(db: Db, jobId: string, lockUntil: Date): Promise<void> {
+async function releaseLock(db: Db, jobId: string, token: LockToken): Promise<void> {
   await db
     .update(sendJobs)
     .set({ lockedUntil: null })
-    .where(and(eq(sendJobs.id, jobId), eq(sendJobs.lockedUntil, lockUntil), eq(sendJobs.status, "pending")));
+    .where(and(eq(sendJobs.id, jobId), ownedPending(sendJobs, token)));
 }
 
 /**
@@ -318,8 +326,15 @@ async function sendAllChunks(
   return { batchIds };
 }
 
+/**
+ * Clock (P2-R22 D1): every comparison and stamp uses the database's clock — the claim's due
+ * and lock predicates use `now()`, the lock is `now() + budget` (later extended relative to
+ * itself) and its exact value is returned as the ownership token, retry backoff is computed
+ * from `now()` at the terminal write, and a job's age is its age at claim time (computed in
+ * SQL) plus the monotonic time elapsed since. `opts.now`, a test hook, replaces SQL `now()`
+ * with its value in every statement this call makes.
+ */
 export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number; retried: number; failed: number }> {
-  const clock = opts.now ?? (() => new Date());
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
   const maxAgeMs = opts.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
   const chunkSize = opts.chunkSize ?? MAX_RECIPIENTS_PER_CHUNK;
@@ -329,16 +344,15 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
   const result = { sent: 0, retried: 0, failed: 0 };
 
   for (let i = 0; i < batchSize; i++) {
-    const now = clock();
+    const sinceClaim = stopwatch();
     // Sized just to outlive assigning chunks + the recipient/late-delivery lookups + the
     // lock-extend below — real sizing (based on this job's own chunk count) happens once
     // that's known, via extendLock.
-    const initialLockUntil = new Date(now.getTime() + perChunkMs + LOCK_MARGIN_MS);
-    const job = await claimOneJob(opts.db, now, initialLockUntil);
+    const job = await claimOneJob(opts.db, sqlNow(opts.now), perChunkMs + LOCK_MARGIN_MS);
     if (!job) break;
 
     let chunks: Map<number, Member[]>;
-    let lockUntil: Date;
+    let lockToken: LockToken;
     try {
       if (!job.chunks_assigned) {
         await ensureChunksAssigned(opts.db, job.id, job.release_key, chunkSize);
@@ -349,19 +363,20 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
       }
 
       chunks = await fetchAssignedMembers(opts.db, job.release_key);
-      // chunks.size (every chunk this attempt will actually send) * perChunkMs (worst case
-      // every one hits the request timeout) + perChunkMs once more (getToken's own timeout —
-      // it can only block the whole attempt once, since a successful fetch is cached) + the
-      // fixed margin.
-      lockUntil = new Date(now.getTime() + chunks.size * perChunkMs + perChunkMs + LOCK_MARGIN_MS);
-      const reowned = await extendLock(opts.db, job.id, initialLockUntil, lockUntil);
+      // Total budget, from the claim's own now(): chunks.size (every chunk this attempt will
+      // actually send) * perChunkMs (worst case every one hits the request timeout) +
+      // perChunkMs once more (getToken's own timeout — it can only block the whole attempt
+      // once, since a successful fetch is cached) + the fixed margin. The claim already
+      // reserved perChunkMs + margin, so the extension is the chunks' share.
+      const reowned = await extendLock(opts.db, job.id, job.lock_token, chunks.size * perChunkMs);
       if (!reowned) continue; // lost ownership somehow; leave it for the next run
+      lockToken = reowned;
     } catch (e) {
-      await releaseLock(opts.db, job.id, initialLockUntil);
+      await releaseLock(opts.db, job.id, job.lock_token);
       throw e;
     }
 
-    const where = and(eq(sendJobs.id, job.id), eq(sendJobs.status, "pending"), eq(sendJobs.lockedUntil, lockUntil));
+    const where = and(eq(sendJobs.id, job.id), ownedPending(sendJobs, lockToken));
 
     // No per-chunk ownership re-assert before each chunk send (unlike sender.ts's per-row
     // loop): chunk membership is frozen (ensureChunksAssigned) and every chunk's
@@ -375,7 +390,6 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     // a chunk accepted before a later chunk failed is never re-sent as if it were unknown.
     const batchIds = { ...job.batch_ids, ...newBatchIds };
 
-    const finishedAt = clock();
     if (!error) {
       const res = await opts.db.update(sendJobs).set({ status: "sent", batchIds, lockedUntil: null, lastError: null }).where(where);
       if (res.rowCount) result.sent++;
@@ -383,9 +397,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     }
 
     const attempts = job.attempts + 1;
-    // job.created_at comes back from the raw db.execute() above as whatever the driver gives
-    // a timestamptz (a string, not a Date) — unlike a drizzle query builder result.
-    const age = finishedAt.getTime() - new Date(job.created_at).getTime();
+    const age = Number(job.age_ms) + sinceClaim();
     if (!error.retryable || age >= maxAgeMs) {
       const res = await opts.db.update(sendJobs).set({ status: "failed", attempts, batchIds, lockedUntil: null, lastError: error.message }).where(where);
       // I5: a job going failed is otherwise silent — nothing else notices a release that
@@ -398,7 +410,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     } else {
       const res = await opts.db
         .update(sendJobs)
-        .set({ attempts, batchIds, nextAttemptAt: new Date(finishedAt.getTime() + backoffMs(attempts)), lockedUntil: null, lastError: error.message })
+        .set({ attempts, batchIds, nextAttemptAt: sqlNowPlus(backoffMs(attempts), opts.now), lockedUntil: null, lastError: error.message })
         .where(where);
       if (res.rowCount) {
         result.retried++;
