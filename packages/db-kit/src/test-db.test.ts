@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, describe, expect, it } from "vitest";
 import pg from "pg";
 import { createTestDatabase, type TestDatabase } from "./test-db";
@@ -6,11 +7,11 @@ const migrationsFolder = new URL("../test/migrations", import.meta.url).pathname
 const badMigrationsFolder = new URL("../test/bad-migrations", import.meta.url).pathname;
 const adminConnectionString = process.env.TEST_DATABASE_ADMIN_URL ?? "postgres://localhost:5432/postgres";
 
-async function countTestDatabases(): Promise<number> {
+async function countDatabasesWithPrefix(prefix: string): Promise<number> {
   const admin = new pg.Client({ connectionString: adminConnectionString });
   await admin.connect();
   try {
-    const { rowCount } = await admin.query("SELECT 1 FROM pg_database WHERE datname LIKE 'test\\_%'");
+    const { rowCount } = await admin.query("SELECT 1 FROM pg_database WHERE position($1 in datname) = 1", [prefix]);
     return rowCount ?? 0;
   } finally {
     await admin.end();
@@ -44,9 +45,10 @@ describe("createTestDatabase", () => {
   });
 
   it("cleans up the database if migrations fail", async () => {
-    const before = await countTestDatabases();
-    await expect(createTestDatabase({ migrationsFolder: badMigrationsFolder })).rejects.toThrow();
-    const after = await countTestDatabases();
+    const namePrefix = `leak_${randomUUID().replace(/-/g, "").slice(0, 8)}_`;
+    const before = await countDatabasesWithPrefix(namePrefix);
+    await expect(createTestDatabase({ migrationsFolder: badMigrationsFolder, namePrefix })).rejects.toThrow();
+    const after = await countDatabasesWithPrefix(namePrefix);
     expect(after).toBe(before);
   });
 });

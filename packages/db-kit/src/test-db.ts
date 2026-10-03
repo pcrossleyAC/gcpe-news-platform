@@ -23,8 +23,13 @@ async function withAdmin<T>(fn: (c: pg.Client) => Promise<T>): Promise<T> {
   }
 }
 
-export async function createTestDatabase(opts: { migrationsFolder: string; extensions?: string[] }): Promise<TestDatabase> {
-  const name = `test_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
+export async function createTestDatabase(opts: {
+  migrationsFolder: string;
+  extensions?: string[];
+  namePrefix?: string;
+}): Promise<TestDatabase> {
+  const prefix = opts.namePrefix ?? "test_";
+  const name = `${prefix}${randomUUID().replace(/-/g, "").slice(0, 20)}`;
   await withAdmin((c) => c.query(`CREATE DATABASE "${name}"`));
   const url = new URL(adminUrl());
   url.pathname = `/${name}`;
