@@ -110,6 +110,8 @@ describe("createEventReceiver", () => {
       const e = makeEvent(1, "org:fail");
       failNext = true;
       expect((await post(app, e)).status).toBe(500);
+      // D10: the failure can be in the inbox bookkeeping as well as the handler itself.
+      expect(errSpy).toHaveBeenCalledWith("[events] processing failed", e.type, e.id, expect.any(Error));
       const side = await tdb.pool.query("SELECT 1 FROM side_effects WHERE event_id = $1", [e.id]);
       expect(side.rowCount).toBe(0);
       expect((await post(app, e)).body.outcome).toBe("applied");

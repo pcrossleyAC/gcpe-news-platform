@@ -109,7 +109,7 @@ export function createEventReceiver(opts: ReceiverOptions): express.Router {
       }
       res.status(200).json({ outcome });
     } catch (e) {
-      console.error("[events] handler failed", event.type, event.id, e);
+      console.error("[events] processing failed", event.type, event.id, e);
       res.status(500).json({ error: "handler failed" });
     }
   });
