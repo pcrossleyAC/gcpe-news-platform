@@ -25,6 +25,9 @@ export const MEDIA_TYPE_PATTERNS: Record<string, RegExp> = {
   image: /flickr\.com|flic\.kr/i,
 };
 
+// Collated explicitly so the tie-break order doesn't depend on the DB's default collation.
+const KEY_DESC = sql`${posts.key} collate "C" desc`;
+
 export async function resolveIndex(db: Db, kind: string, key: string): Promise<ResolvedIndex | "unknown-kind" | "not-found"> {
   const k = kind.toLowerCase();
   if (!(INDEX_KINDS as readonly string[]).includes(k)) return "unknown-kind";
@@ -57,7 +60,7 @@ function conditions(idx: ResolvedIndex, opts: PostQueryOptions, excludeFeatured:
 }
 
 export async function latestPosts(db: Db, idx: ResolvedIndex, opts: PostQueryOptions): Promise<PostRow[]> {
-  let q = db.select().from(posts).where(conditions(idx, opts, true)).orderBy(desc(posts.publishDate), desc(posts.key)).$dynamic();
+  let q = db.select().from(posts).where(conditions(idx, opts, true)).orderBy(desc(posts.publishDate), KEY_DESC).$dynamic();
   if (opts.count !== undefined) q = q.limit(opts.count);
   if (opts.skip) q = q.offset(opts.skip);
   return q;
@@ -68,7 +71,7 @@ export async function postKeys(db: Db, idx: ResolvedIndex, opts: PostQueryOption
     .select({ key: posts.key, kind: posts.kind })
     .from(posts)
     .where(conditions(idx, opts, false))
-    .orderBy(desc(posts.publishDate), desc(posts.key))
+    .orderBy(desc(posts.publishDate), KEY_DESC)
     .$dynamic();
   if (opts.count !== undefined) q = q.limit(opts.count);
   if (opts.skip) q = q.offset(opts.skip);
@@ -95,7 +98,9 @@ export async function getPostByReference(db: Db, reference: string): Promise<{ k
   const [row] = await db
     .select({ key: posts.key, kind: posts.kind })
     .from(posts)
-    .where(and(eq(posts.isPublished, true), sql`lower(${posts.reference}) = lower(${reference})`));
+    .where(and(eq(posts.isPublished, true), sql`lower(${posts.reference}) = lower(${reference})`))
+    .orderBy(desc(posts.publishDate), KEY_DESC)
+    .limit(1);
   return row;
 }
 
@@ -106,7 +111,7 @@ export async function latestMediaUri(db: Db, mediaType: string): Promise<string 
     .select({ assetUrl: posts.assetUrl })
     .from(posts)
     .where(and(eq(posts.isPublished, true), eq(posts.hasMediaAssets, true), sql`${posts.assetUrl} ~* ${pattern.source}`))
-    .orderBy(desc(posts.publishDate))
+    .orderBy(desc(posts.publishDate), KEY_DESC)
     .limit(1);
   return rows[0]?.assetUrl ?? null;
 }

@@ -102,4 +102,41 @@ describe("posts endpoints", () => {
   it("400 for non-integer count", async () => {
     expect((await request(app).get(`/api/Posts/Keys/home/default?count=abc&${V}`)).status).toBe(400);
   });
+
+  it("400 for a count larger than int32", async () => {
+    expect((await request(app).get(`/api/Posts/Keys/home/default?count=3000000000&${V}`)).status).toBe(400);
+  });
+
+  it("Latest without count returns all matching (non-featured) posts, ordered", async () => {
+    expect(keys((await request(app).get(`/api/Posts/Latest/home/default?${V}`)).body)).toEqual(["R2", "R1", "Y1"]);
+  });
+
+  it("count=0 returns an empty page", async () => {
+    expect((await request(app).get(`/api/Posts/Latest/home/default?count=0&${V}`)).body).toEqual([]);
+  });
+
+  it("skip without count returns the tail", async () => {
+    expect(keys((await request(app).get(`/api/Posts/Keys/home/default?skip=3&${V}`)).body)).toEqual(["R1", "Y1"]);
+  });
+
+  it("postKind is case-insensitive", async () => {
+    expect((await request(app).get(`/api/Posts/Keys/home/default?postKind=FACTSHEETS&${V}`)).body).toEqual([{ key: "F1", value: "factsheets" }]);
+  });
+
+  it("a duplicated key in postKeys is echoed twice", async () => {
+    expect(keys((await request(app).get(`/api/Posts?postKeys=R1,R1&${V}`)).body)).toEqual(["R1", "R1"]);
+  });
+
+  it("excludes the index's top/feature post even when its stored case differs", async () => {
+    await sendEvent(app, envelope("core", "theme.upserted", "theme:wellness", {
+      kind: "theme", key: "wellness", displayName: "Wellness", sortOrder: 0, isActive: true,
+      social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null }, updatedAt: "2026-10-01T00:00:00Z",
+    }));
+    await sendEvent(app, envelope("nrms", "release.published", "release:MX1", rel("MX1", "2026-10-07T10:00:00-07:00", { ministryKeys: [], themeKeys: ["wellness"] })));
+    await sendEvent(app, envelope("nrms", "release.published", "release:MX2", rel("MX2", "2026-10-08T10:00:00-07:00", { ministryKeys: [], themeKeys: ["wellness"] })));
+    await sendEvent(app, envelope("nrms", "site.content.changed", "site:feature:themes:WELLNESS", {
+      entity: "categoryFeatures", kind: "themes", key: "WELLNESS", topPostKey: "mx1", featurePostKey: null,
+    }));
+    expect(keys((await request(app).get(`/api/Posts/Latest/themes/wellness?${V}`)).body)).toEqual(["MX2"]);
+  });
 });

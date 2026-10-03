@@ -9,12 +9,14 @@ function first(value: unknown): string | undefined {
   return typeof v === "string" ? v : undefined;
 }
 
+const INT32_MAX = 2147483647;
+
 function parseOptions(req: Request, res: Response): PostQueryOptions | null {
   const opts: PostQueryOptions = { postKind: first(req.query.postKind) };
   for (const name of ["count", "skip"] as const) {
     const raw = first(req.query[name]);
     if (raw === undefined || raw === "") continue;
-    if (!/^\d+$/.test(raw)) {
+    if (!/^\d+$/.test(raw) || Number(raw) > INT32_MAX) {
       res.status(400).json({ errors: { [name]: [`The value '${raw}' is not valid.`] }, title: "One or more validation errors occurred.", status: 400 });
       return null;
     }
@@ -39,8 +41,7 @@ export function postRoutes(db: Db, tz: string): Router {
     const opts = parseOptions(req, res);
     if (!opts) return;
     const idx = await resolveIndex(db, req.params.indexKind, req.params.indexKey);
-    if (idx === "unknown-kind") return problemNotFound(res);
-    if (idx === "not-found") return problemNotFound(res);
+    if (idx === "unknown-kind" || idx === "not-found") return problemNotFound(res);
     res.json((await latestPosts(db, idx, opts)).map((p) => toPostDto(p, tz)));
   });
 
@@ -48,8 +49,7 @@ export function postRoutes(db: Db, tz: string): Router {
     const opts = parseOptions(req, res);
     if (!opts) return;
     const idx = await resolveIndex(db, req.params.indexKind, req.params.indexKey);
-    if (idx === "unknown-kind") return problemNotFound(res);
-    if (idx === "not-found") return problemNotFound(res);
+    if (idx === "unknown-kind" || idx === "not-found") return problemNotFound(res);
     res.json((await postKeys(db, idx, opts)).map(toKeyValue));
   });
 
