@@ -5,7 +5,7 @@ import type { OrgRecord, ReleaseRecord } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNewsTestDb } from "../test/helpers";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
-import { applyOrg, applyRelease, applySiteContent, applyTerm, indexKeysFor, unpublishRelease } from "./projections";
+import { applyOrg, applyRelease, applySiteContent, applyTerm, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
 import { listenForUpdates, type UpdateTarget } from "./updates/notify";
 
 const org: OrgRecord = {
@@ -48,6 +48,14 @@ describe("projections", () => {
     expect(after!.isPublished).toBe(false);
   });
 
+  it("upserts a release across key casing without a unique violation", async () => {
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "R1" }));
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "r1", summary: "changed" }));
+    const rows = await tdb.db.select().from(posts);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ key: "R1", summary: "changed" });
+  });
+
   it("projects an org into categories with ministry details", async () => {
     await tdb.db.transaction((tx) => applyOrg(tx, org));
     const [row] = await tdb.db.select().from(categories).where(eq(categories.key, "health"));
@@ -55,11 +63,56 @@ describe("projections", () => {
     expect(row!.ministry!.minister.email).toBe("SP.Minister@gov.bc.ca");
   });
 
+  it("upserts an org across key casing without a unique violation", async () => {
+    await tdb.db.transaction((tx) => applyOrg(tx, org));
+    await tdb.db.transaction((tx) => applyOrg(tx, { ...org, key: "HEALTH", displayName: "Health Updated" }));
+    const rows = await tdb.db.select().from(categories);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ key: "health", name: "Health Updated" });
+  });
+
+  it("upserts a term across key casing without a unique violation", async () => {
+    const term = { kind: "sector" as const, key: "economy", displayName: "Economy", sortOrder: 1, isActive: true, social: org.social, updatedAt: org.updatedAt };
+    await tdb.db.transaction((tx) => applyTerm(tx, term));
+    await tdb.db.transaction((tx) => applyTerm(tx, { ...term, key: "ECONOMY", displayName: "Economy Updated" }));
+    const rows = await tdb.db.select().from(categories);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ kind: "sectors", key: "economy", name: "Economy Updated" });
+  });
+
   it("ignores service terms", async () => {
     await tdb.db.transaction((tx) =>
       applyTerm(tx, { kind: "service", key: "x", displayName: "X", sortOrder: 0, isActive: true, social: org.social, updatedAt: org.updatedAt }),
     );
     expect(await tdb.db.select().from(categories)).toHaveLength(0);
+  });
+
+  it("notifies on deactivation only when a row actually changes", async () => {
+    await tdb.db.transaction((tx) => applyOrg(tx, org)); // key "health", isActive: true
+
+    const got: [UpdateTarget, string[]][] = [];
+    const stop = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
+
+    // Missing key: no row changes, so no notification.
+    await tdb.db.transaction((tx) => deactivateCategory(tx, "ministries", "does-not-exist"));
+    await new Promise((r) => setTimeout(r, 150));
+    expect(got).toEqual([]);
+
+    // Active -> inactive (case-insensitive match): notifies once, with the stored casing.
+    await tdb.db.transaction((tx) => deactivateCategory(tx, "ministries", "HEALTH"));
+    await new Promise((r) => setTimeout(r, 150));
+    expect(got).toEqual([["MinistryUpdate", ["health"]]]);
+
+    // Already inactive: no further notification.
+    got.length = 0;
+    await tdb.db.transaction((tx) => deactivateCategory(tx, "ministries", "health"));
+    await new Promise((r) => setTimeout(r, 150));
+    expect(got).toEqual([]);
+
+    const [row] = await tdb.db.select().from(categories).where(eq(categories.key, "health"));
+    expect(row!.isActive).toBe(false);
+
+    await stop();
   });
 
   it("applies each site content entity", async () => {
