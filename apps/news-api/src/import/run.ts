@@ -27,9 +27,9 @@ export async function importLegacyNews(
      */
     unpublishMissing?: boolean;
   } = {},
-): Promise<{ releases: number; slides: number; resourceLinks: number; features: number; unpublished: number }> {
+): Promise<{ releases: number; slides: number; resourceLinks: number; features: number; unpublished: number; skippedEventOwned: number }> {
   const log = opts.log ?? (() => {});
-  const result = { releases: 0, slides: 0, resourceLinks: 0, features: 0, unpublished: 0 };
+  const result = { releases: 0, slides: 0, resourceLinks: 0, features: 0, unpublished: 0, skippedEventOwned: 0 };
   const importedKeys: string[] = [];
 
   const years = (await source.query<{ Year: number }>(Q_RELEASE_YEARS)).map((r) => r.Year).sort();
@@ -46,13 +46,22 @@ export async function importLegacyNews(
       const record = mapLegacyRelease(row, releaseDocs, contacts, indexes.get(id) ?? []);
       // No per-release PostUpdate: see ApplyOptions.notify and the README's import notes.
       // origin: "legacy" marks this row as legacy-owned, so unpublish-missing below may later
-      // unpublish it if legacy stops publishing it. An NRMS event for the same key flips it
-      // to "event" (see ApplyOptions.origin) and this importer can never touch it again.
-      await db.transaction((tx) => applyRelease(tx, record, { notify: false, origin: "legacy" }));
+      // unpublish it if legacy stops publishing it — UNLESS NRMS already owns this key
+      // (origin "event", even one this importer originally created): applyRelease (ruling
+      // P1-R21) refuses that write entirely rather than reverting the row to "legacy" and
+      // overwriting NRMS's current content with legacy's now-stale copy.
+      const { skippedEventOwned } = await db.transaction((tx) => applyRelease(tx, record, { notify: false, origin: "legacy" }));
+      // Legacy still lists this key as published either way, so it still belongs in the
+      // published set below — unpublish-missing only acts on origin = 'legacy' rows anyway,
+      // so a skipped (origin "event") key here is a no-op for that step regardless.
       importedKeys.push(record.key);
-      result.releases++;
+      if (skippedEventOwned) result.skippedEventOwned++;
+      else result.releases++;
     }
     log(`year ${y}: ${releases.length} releases`);
+  }
+  if (result.skippedEventOwned > 0) {
+    log(`[import] skipped ${result.skippedEventOwned} post(s) already owned by NRMS (origin "event")`);
   }
 
   if (opts.unpublishMissing !== false) {

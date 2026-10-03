@@ -37,8 +37,8 @@ describe("importLegacyNews", () => {
   });
 
   it("imports posts and site content that the API then serves; re-running is idempotent", async () => {
-    expect(await importLegacyNews(tdb.db, source)).toEqual({ releases: 1, slides: 1, resourceLinks: 1, features: 1, unpublished: 0 });
-    expect(await importLegacyNews(tdb.db, source)).toEqual({ releases: 1, slides: 1, resourceLinks: 1, features: 1, unpublished: 0 });
+    expect(await importLegacyNews(tdb.db, source)).toEqual({ releases: 1, slides: 1, resourceLinks: 1, features: 1, unpublished: 0, skippedEventOwned: 0 });
+    expect(await importLegacyNews(tdb.db, source)).toEqual({ releases: 1, slides: 1, resourceLinks: 1, features: 1, unpublished: 0, skippedEventOwned: 0 });
     const app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS });
     const V = "api-version=1.0";
     expect((await request(app).get(`/api/Posts/2026TT0103-001121?${V}`)).body).toMatchObject({ publishDate: "2026-10-01T15:10:00-07:00", isNewsOnDemand: true });
@@ -192,6 +192,43 @@ describe("importLegacyNews: unpublishes posts missing from legacy's published se
     const result = await importLegacyNews(tdb.db, source);
     expect(result.unpublished).toBe(0);
     expect(await published()).toEqual(["2026TT0103-001121", "STALE-1"]);
+  });
+});
+
+// Controller ruling P1-R21: the critical case the "flips to event-origin" test above didn't
+// cover, because that test's reimport source never mentioned the key again. Here legacy keeps
+// serving the same key on every run — proving the importer must still never touch it once
+// NRMS owns it, not just that the flip itself works.
+describe("importLegacyNews: never overwrites a post NRMS has taken over (ruling P1-R21)", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  const row = async () =>
+    (await tdb.pool.query<{ origin: string; summary: string }>("SELECT origin, summary FROM posts WHERE key = '2026TT0103-001121'")).rows[0];
+
+  it("keeps NRMS's content and counts it as skippedEventOwned when legacy still serves the same key", async () => {
+    // 1. Legacy import creates the post: origin "legacy", legacy's content ("s", from the
+    // `source` fixture's Summary field).
+    const first = await importLegacyNews(tdb.db, source);
+    expect(first).toMatchObject({ releases: 1, skippedEventOwned: 0 });
+    expect(await row()).toEqual({ origin: "legacy", summary: "s" });
+
+    // 2. NRMS takes the key over with an update carrying different content.
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "2026TT0103-001121", summary: "NRMS owns this now" }));
+    expect(await row()).toEqual({ origin: "event", summary: "NRMS owns this now" });
+
+    // 3. Legacy still lists the same key in a routine reimport (unchanged `source` fixture).
+    const second = await importLegacyNews(tdb.db, source);
+
+    // 4. Without the P1-R21 guard, this would silently revert origin to "legacy" and overwrite
+    // NRMS's content with legacy's stale copy — it must not.
+    expect(second).toMatchObject({ releases: 0, skippedEventOwned: 1 });
+    expect(await row()).toEqual({ origin: "event", summary: "NRMS owns this now" });
   });
 });
 

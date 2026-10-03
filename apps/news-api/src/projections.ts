@@ -29,11 +29,16 @@ export function indexKeysFor(r: Pick<ReleaseRecord, "ministryKeys" | "sectorKeys
  * case (e.g. "r1" vs the stored "R1") would hit that lower() index and raise a unique
  * violation instead of upserting. Resolving to the stored casing first — if any — keeps
  * the identity's casing stable across events and makes the insert's own conflict target
- * (`posts.key`, exact) the one that actually fires.
+ * (`posts.key`, exact) the one that actually fires. Also returns the row's current
+ * `origin`, so `applyRelease` can decide (ruling P1-R21) whether a legacy write is even
+ * allowed to proceed.
  */
-async function resolvePostKey(tx: Tx, key: string): Promise<string> {
-  const [existing] = await tx.select({ key: posts.key }).from(posts).where(sql`lower(${posts.key}) = lower(${key})`);
-  return existing?.key ?? key;
+async function findExistingPost(tx: Tx, key: string): Promise<{ key: string; origin: "legacy" | "event" } | undefined> {
+  const [existing] = await tx
+    .select({ key: posts.key, origin: posts.origin })
+    .from(posts)
+    .where(sql`lower(${posts.key}) = lower(${key})`);
+  return existing;
 }
 
 async function resolveCategoryKey(tx: Tx, kind: CategoryKind, key: string): Promise<string> {
@@ -51,21 +56,32 @@ export interface ApplyOptions {
    */
   notify?: boolean;
   /**
-   * Which pipeline owns this post afterwards: 'legacy' (the importer) or 'event' (an NRMS
-   * release.published/release.updated event). Default 'event'. The importer's
-   * unpublish-missing step only considers 'legacy' rows, so once NRMS publishes a key — even
-   * one the legacy importer previously owned — this flips it to 'event' and a routine import
-   * can never unpublish it again.
+   * Which pipeline is writing: 'legacy' (the importer) or 'event' (an NRMS
+   * release.published/release.updated event). Default 'event'.
+   *
+   * origin: "legacy" is not just a label — it's also a guard (ruling P1-R21). If the stored
+   * row already has origin "event" (NRMS has published or updated this key, even one the
+   * legacy importer originally created), a "legacy" write is refused entirely: no upsert, no
+   * notification, nothing changes. applyRelease returns `{ skippedEventOwned: true }` instead.
+   * Without this, the importer's full periodic reimport would otherwise revert the row's
+   * origin back to "legacy" and silently overwrite NRMS's current content with legacy's now-
+   * stale copy on its very next run. An "event" write always proceeds and always wins — NRMS
+   * is authoritative for any key once it has published to it.
    */
   origin?: "legacy" | "event";
 }
 
-export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions = {}): Promise<void> {
-  const key = await resolvePostKey(tx, r.key);
+export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions = {}): Promise<{ skippedEventOwned: boolean }> {
+  const origin = opts.origin ?? "event";
+  const existing = await findExistingPost(tx, r.key);
+  if (origin === "legacy" && existing?.origin === "event") {
+    return { skippedEventOwned: true };
+  }
+  const key = existing?.key ?? r.key;
   const values = {
     key,
     kind: r.kind,
-    origin: opts.origin ?? "event",
+    origin,
     reference: r.reference,
     atomId: r.atomId,
     publishDate: parseOffsetDateTime(r.publishDate),
@@ -93,6 +109,7 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
   };
   await tx.insert(posts).values(values).onConflictDoUpdate({ target: posts.key, set: values });
   if (opts.notify !== false) await notifyUpdate(tx, "PostUpdate", [key]);
+  return { skippedEventOwned: false };
 }
 
 export async function unpublishRelease(tx: Tx, key: string): Promise<void> {
@@ -263,8 +280,8 @@ export function createProjectionHandlers(): Record<string, EventHandler> {
     "sector.deactivated": termDeactivated,
     "theme.deactivated": termDeactivated,
     "tag.deactivated": termDeactivated,
-    "release.published": (tx, e) => applyRelease(tx, e.data as ReleaseRecord),
-    "release.updated": (tx, e) => applyRelease(tx, e.data as ReleaseRecord),
+    "release.published": async (tx, e) => void (await applyRelease(tx, e.data as ReleaseRecord)),
+    "release.updated": async (tx, e) => void (await applyRelease(tx, e.data as ReleaseRecord)),
     "release.unpublished": (tx, e) => unpublishRelease(tx, (e.data as { key: string }).key),
     "site.content.changed": (tx, e) => applySiteContent(tx, e.data as SiteContentChanged),
   };

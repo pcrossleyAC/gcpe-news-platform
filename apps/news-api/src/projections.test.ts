@@ -48,6 +48,11 @@ describe("projections", () => {
     expect(after!.isPublished).toBe(false);
   });
 
+  it("rejects an origin value outside 'legacy' | 'event' (posts_origin_check)", async () => {
+    await tdb.db.transaction((tx) => applyRelease(tx, sampleRelease));
+    await expect(tdb.pool.query("UPDATE posts SET origin = 'bogus' WHERE key = $1", [sampleRelease.key])).rejects.toThrow(/posts_origin_check/);
+  });
+
   it("upserts a release across key casing without a unique violation", async () => {
     await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "R1" }));
     await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "r1", summary: "changed" }));
