@@ -34,4 +34,27 @@ describe("time", () => {
   it("rejects a value with no timezone offset", () => {
     expect(() => parseOffsetDateTime("2026-10-01T15:10:00.123")).toThrow(/Invalid date/);
   });
+
+  // Final review M2: accept every offset form the event catalogue's
+  // z.string().datetime({ offset: true }) lets through (±HH:MM, ±HHMM, Z), plus ±HH,
+  // normalised to ±HH:MM before parsing.
+  it.each([
+    ["±HH:MM", "2026-10-01T15:10:00-07:00"],
+    ["±HHMM", "2026-10-01T15:10:00-0700"],
+    ["±HH", "2026-10-01T15:10:00-07"],
+    ["Z", "2026-10-01T22:10:00Z"],
+    ["+00:00", "2026-10-01T22:10:00+00:00"],
+    ["+0000", "2026-10-01T22:10:00+0000"],
+  ])("parses a %s offset", (_form, value) => {
+    expect(parseOffsetDateTime(value).toISOString()).toBe("2026-10-01T22:10:00.000Z");
+  });
+
+  it("parses ±HHMM and ±HH with .NET 7-digit fractions and positive offsets", () => {
+    expect(parseOffsetDateTime("2026-10-02T03:40:28.0375661+0530").toISOString()).toBe("2026-10-01T22:10:28.037Z");
+    expect(parseOffsetDateTime("2026-10-02T00:10:28.5+02").toISOString()).toBe("2026-10-01T22:10:28.500Z");
+  });
+
+  it("still rejects a date-only value, whose trailing -DD must not be read as an offset", () => {
+    expect(() => parseOffsetDateTime("2026-10-01")).toThrow(/Invalid date/);
+  });
 });

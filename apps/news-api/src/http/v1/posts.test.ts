@@ -140,3 +140,25 @@ describe("posts endpoints", () => {
     expect(keys((await request(app).get(`/api/Posts/Latest/themes/wellness?${V}`)).body)).toEqual(["MX2"]);
   });
 });
+
+// Final review M2: zod's datetime({ offset: true }) accepts "-0700"; the projection must too,
+// or a valid release event 500s at apply time.
+describe("release offsets", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+    app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("applies a release whose publishDate/timestamp use the ±HHMM offset form", async () => {
+    const r = rel("HHMM1", "2026-10-01T10:00:00-0700", { timestamp: "2026-10-01T10:05:00.1234567-0700" });
+    expect((await sendEvent(app, envelope("nrms", "release.published", "release:HHMM1", r))).outcome).toBe("applied");
+    const res = await request(app).get(`/api/Posts/HHMM1?${V}`);
+    expect(res.status).toBe(200);
+    expect(res.body.publishDate).toBe("2026-10-01T10:00:00-07:00");
+  });
+});
