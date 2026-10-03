@@ -87,8 +87,23 @@ export async function unpublishRelease(tx: Tx, key: string): Promise<void> {
   if (rows.length) await notifyUpdate(tx, "PostUpdate", rows.map((r) => r.key));
 }
 
+/** `[key, ...parents]` with each parent resolved to its stored casing, deduplicated case-insensitively. */
+async function withStoredParentKeys(tx: Tx, key: string, parents: (string | null)[]): Promise<string[]> {
+  const keys = [key];
+  for (const parent of parents) {
+    if (!parent) continue;
+    const stored = await resolveCategoryKey(tx, "ministries", parent);
+    if (!keys.some((k) => k.toLowerCase() === stored.toLowerCase())) keys.push(stored);
+  }
+  return keys;
+}
+
 export async function applyOrg(tx: Tx, org: OrgRecord): Promise<void> {
   const key = await resolveCategoryKey(tx, "ministries", org.key);
+  const [previous] = await tx
+    .select({ ministry: categories.ministry })
+    .from(categories)
+    .where(and(eq(categories.kind, "ministries"), eq(categories.key, key)));
   const values = {
     kind: "ministries" as const,
     key,
@@ -110,7 +125,10 @@ export async function applyOrg(tx: Tx, org: OrgRecord): Promise<void> {
     timestamp: parseOffsetDateTime(org.updatedAt),
   };
   await tx.insert(categories).values(values).onConflictDoUpdate({ target: [categories.kind, categories.key], set: values });
-  await notifyUpdate(tx, "MinistryUpdate", org.parentKey ? [key, org.parentKey] : [key]);
+  // A parent's childMinistryKey is derived from its children, so both the new parent and —
+  // if the child moved — the previous one render differently now (final review M6).
+  const parents = [org.parentKey, previous?.ministry?.parentKey ?? null];
+  await notifyUpdate(tx, "MinistryUpdate", await withStoredParentKeys(tx, key, parents));
   await notifyUpdate(tx, "MinisterUpdate", [key]);
 }
 
@@ -137,8 +155,19 @@ export async function deactivateCategory(tx: Tx, kind: CategoryKind, key: string
     .update(categories)
     .set({ isActive: false })
     .where(and(eq(categories.kind, kind), sql`lower(${categories.key}) = lower(${key})`, eq(categories.isActive, true)))
-    .returning({ key: categories.key });
-  if (rows.length) await notifyUpdate(tx, CATEGORY_TARGET[kind], rows.map((r) => r.key));
+    .returning({ key: categories.key, ministry: categories.ministry });
+  if (!rows.length) return;
+  const keys = rows.map((r) => r.key);
+  if (kind === "ministries") {
+    // Deactivating a child can change its parent's childMinistryKey (only active children
+    // count), so the parent is notified too (final review M6).
+    for (const r of rows) {
+      for (const k of await withStoredParentKeys(tx, r.key, [r.ministry?.parentKey ?? null])) {
+        if (!keys.some((existing) => existing.toLowerCase() === k.toLowerCase())) keys.push(k);
+      }
+    }
+  }
+  await notifyUpdate(tx, CATEGORY_TARGET[kind], keys);
 }
 
 export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<void> {
@@ -160,7 +189,9 @@ export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<v
     case "categoryFeatures": {
       const values = { kind: c.kind, key: c.key.toLowerCase(), topPostKey: c.topPostKey, featurePostKey: c.featurePostKey };
       await tx.insert(categoryFeatures).values(values).onConflictDoUpdate({ target: [categoryFeatures.kind, categoryFeatures.key], set: values });
-      await notifyUpdate(tx, CATEGORY_TARGET[c.kind], [c.key]);
+      // Notify with the category's stored casing (as every other category notification does),
+      // falling back to the event's key when the category doesn't exist (yet).
+      await notifyUpdate(tx, CATEGORY_TARGET[c.kind], [await resolveCategoryKey(tx, c.kind, c.key)]);
       return;
     }
     case "slides": {

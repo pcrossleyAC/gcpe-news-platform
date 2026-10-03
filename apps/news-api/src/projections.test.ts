@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { OrgRecord, ReleaseRecord } from "@gcpe/events";
@@ -6,7 +6,7 @@ import { sampleRelease } from "@gcpe/events/testing";
 import { createNewsTestDb } from "../test/helpers";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { applyOrg, applyRelease, applySiteContent, applyTerm, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
-import { listenForUpdates, type UpdateTarget } from "./updates/notify";
+import { listenForUpdates, notifyUpdate, type UpdateTarget } from "./updates/notify";
 
 const org: OrgRecord = {
   key: "health", displayName: "Health", abbreviation: "HLTH", sortOrder: 5, isActive: true, parentKey: null, url: "http://gov.bc.ca/health",
@@ -144,5 +144,68 @@ describe("projections", () => {
     await new Promise((r) => setTimeout(r, 200));
     await stop();
     expect(got).toEqual([["PostUpdate", [sampleRelease.key]]]);
+  });
+
+  // Final review M6: ministry notifications must reach every ministry whose rendered DTO
+  // changed — including a parent whose childMinistryKey moved — using the stored key casing.
+  describe("ministry notification fan-out", () => {
+    /** Runs `fn` in a transaction and returns exactly the notifications it produced: a
+     * sentinel is notified afterwards in its own transaction, and since NOTIFYs arrive in
+     * commit order, everything from `fn` has been delivered once the sentinel shows up. */
+    async function notificationsFrom(fn: Parameters<typeof tdb.db.transaction>[0]): Promise<[UpdateTarget, string[]][]> {
+      const got: [UpdateTarget, string[]][] = [];
+      const { stop } = await listenForUpdates(tdb.pool, (t, k) => got.push([t, k]));
+      try {
+        await tdb.db.transaction(fn);
+        await tdb.db.transaction((tx) => notifyUpdate(tx, "HomeUpdate", ["__sentinel"]));
+        await vi.waitFor(() => expect(got.at(-1)).toEqual(["HomeUpdate", ["__sentinel"]]));
+        return got.slice(0, -1);
+      } finally {
+        await stop();
+      }
+    }
+    const ministry = (key: string, parentKey: string | null, isActive = true): OrgRecord => ({ ...org, key, displayName: key, parentKey, isActive });
+
+    it("applyOrg notifies the previous parent (stored casing) when parentKey changes", async () => {
+      await tdb.db.transaction(async (tx) => {
+        await applyOrg(tx, ministry("Premier", null));
+        await applyOrg(tx, ministry("Forests", null));
+        await applyOrg(tx, ministry("local-gov", "premier"));
+      });
+      const got = await notificationsFrom((tx) => applyOrg(tx, ministry("local-gov", "forests")));
+      expect(got).toEqual([
+        ["MinistryUpdate", ["local-gov", "Forests", "Premier"]],
+        ["MinisterUpdate", ["local-gov"]],
+      ]);
+    });
+
+    it("applyOrg with an unchanged parent notifies that parent once", async () => {
+      await tdb.db.transaction(async (tx) => {
+        await applyOrg(tx, ministry("Premier", null));
+        await applyOrg(tx, ministry("local-gov", "Premier"));
+      });
+      const got = await notificationsFrom((tx) => applyOrg(tx, ministry("local-gov", "PREMIER")));
+      expect(got).toEqual([
+        ["MinistryUpdate", ["local-gov", "Premier"]],
+        ["MinisterUpdate", ["local-gov"]],
+      ]);
+    });
+
+    it("deactivating a child ministry also notifies its parent (stored casing)", async () => {
+      await tdb.db.transaction(async (tx) => {
+        await applyOrg(tx, ministry("Premier", null));
+        await applyOrg(tx, ministry("local-gov", "premier"));
+      });
+      const got = await notificationsFrom((tx) => deactivateCategory(tx, "ministries", "LOCAL-GOV"));
+      expect(got).toEqual([["MinistryUpdate", ["local-gov", "Premier"]]]);
+    });
+
+    it("categoryFeatures notifies with the stored category key casing", async () => {
+      await tdb.db.transaction((tx) => applyOrg(tx, ministry("Health", null)));
+      const got = await notificationsFrom((tx) =>
+        applySiteContent(tx, { entity: "categoryFeatures", kind: "ministries", key: "HEALTH", topPostKey: "t", featurePostKey: "f" }),
+      );
+      expect(got).toEqual([["MinistryUpdate", ["Health"]]]);
+    });
   });
 });
