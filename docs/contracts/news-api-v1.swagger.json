@@ -1,0 +1,1978 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "BC Gov News API Service 1.0",
+    "description": "News API",
+    "license": {
+      "name": "Apache 2.0",
+      "url": "https://www.apache.org/licenses/LICENSE-2.0"
+    },
+    "version": "1.0"
+  },
+  "paths": {
+    "/api/Home": {
+      "get": {
+        "tags": [
+          "Home"
+        ],
+        "summary": "Returns the top level content for the home page",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Home"
+            }
+          }
+        }
+      }
+    },
+    "/api/Ministries": {
+      "get": {
+        "tags": [
+          "Ministries"
+        ],
+        "summary": "Get all ministries",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Ministry"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Ministries/{key}": {
+      "get": {
+        "tags": [
+          "Ministries"
+        ],
+        "summary": "Get the Ministry associated with the ministry key",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Ministry"
+            }
+          }
+        }
+      }
+    },
+    "/api/Ministries/{key}/Minister": {
+      "get": {
+        "tags": [
+          "Ministries"
+        ],
+        "summary": "Get the Minister associated with the ministry key",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Minister"
+            }
+          }
+        }
+      }
+    },
+    "/api/Newsletters": {
+      "get": {
+        "tags": [
+          "Newsletters"
+        ],
+        "summary": "Get all newsletters",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Newsletter"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Newsletters/{newsletterKey}": {
+      "get": {
+        "tags": [
+          "Newsletters"
+        ],
+        "summary": "Get a specific newsletter",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "newsletterKey",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Newsletter"
+            }
+          }
+        }
+      }
+    },
+    "/api/Newsletters/{newsletterKey}/Editions/{editionKey}": {
+      "get": {
+        "tags": [
+          "Newsletters"
+        ],
+        "summary": "Returns a specific edition of a newsletter",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "newsletterKey",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "path",
+            "name": "editionKey",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Edition"
+            }
+          }
+        }
+      }
+    },
+    "/api/Newsletters/{newsletterKey}/Editions/{editionKey}/Articles/{articleKey}": {
+      "get": {
+        "tags": [
+          "Newsletters"
+        ],
+        "summary": "Get an article belonging to a Newsletter edition",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "newsletterKey",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "path",
+            "name": "editionKey",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "path",
+            "name": "articleKey",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Article"
+            }
+          }
+        }
+      }
+    },
+    "/api/Newsletters/Images/{guid}": {
+      "get": {
+        "tags": [
+          "Newsletters"
+        ],
+        "summary": "Get the image object reference by of a Newsletter Edition associated with the image guid",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "guid",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/EditionImage"
+            }
+          }
+        }
+      }
+    },
+    "/api/Posts/{key}": {
+      "get": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Get the post associated with the key",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Post"
+            }
+          }
+        }
+      }
+    },
+    "/api/Posts": {
+      "get": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Get the posts associated with the keys in the list passed in.",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "postKeys",
+            "description": "",
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": ""
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Post"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Posts/Latest/{indexKind}/{indexKey}": {
+      "get": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Get the latest posts of postKind for the specified index (default or category)",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "indexKind",
+            "description": "home or one of categories",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "path",
+            "name": "indexKey",
+            "description": "default or one key of the categories (ministries, sectors, services, tags, themes)",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "postKind",
+            "description": "One of: releases, stories, factsheets, updates or default (releases+stories except top/feature for categories)",
+            "type": "string",
+            "default": ""
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "description": "number of posts to return",
+            "type": "integer",
+            "format": "int32",
+            "default": 50
+          },
+          {
+            "in": "query",
+            "name": "skip",
+            "description": "number of posts to skip",
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Post"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Posts/Keys/{indexKind}/{indexKey}": {
+      "get": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Get all keys for the specified index (newsroom or category)",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "indexKind",
+            "description": "home or one of categories",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "path",
+            "name": "indexKey",
+            "description": "default or one key of the categories (ministries, sectors, services, tags, themes)",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "postKind",
+            "description": "One of: releases, stories, factsheets, updates or default (releases+stories+factsheets)",
+            "type": "string",
+            "default": ""
+          },
+          {
+            "in": "query",
+            "name": "count",
+            "description": "number of posts to return",
+            "type": "integer",
+            "format": "int32",
+            "default": ""
+          },
+          {
+            "in": "query",
+            "name": "skip",
+            "description": "number of posts to skip",
+            "type": "integer",
+            "format": "int32",
+            "default": 0
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/StringStringKeyValuePair"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Posts/Keys/{reference}": {
+      "get": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Get the post key associated with the reference.",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "reference",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/StringStringKeyValuePair"
+            }
+          }
+        }
+      }
+    },
+    "/api/Posts/LatestMediaUri/{mediaType}": {
+      "get": {
+        "tags": [
+          "Posts"
+        ],
+        "summary": "Gets the latest Social Media post for the social media type passed in.",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mediaType",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "format": "uri",
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "/api/ResourceLinks": {
+      "get": {
+        "tags": [
+          "ResourceLinks"
+        ],
+        "summary": "Get all resource links",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/ResourceLink"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Sectors": {
+      "get": {
+        "tags": [
+          "Sectors"
+        ],
+        "summary": "Get all Sectors",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Sector"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Sectors/{key}": {
+      "get": {
+        "tags": [
+          "Sectors"
+        ],
+        "summary": "Get the sector associated with the key",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Sector"
+            }
+          }
+        }
+      }
+    },
+    "/api/Slides/{id}": {
+      "get": {
+        "tags": [
+          "Slides"
+        ],
+        "summary": "Get the slide associated to the id",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Slide"
+            }
+          }
+        }
+      }
+    },
+    "/api/Slides": {
+      "get": {
+        "tags": [
+          "Slides"
+        ],
+        "summary": "Get all Slides",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Slide"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Subscribe/SubscriptionItems/{categoryKey}": {
+      "get": {
+        "tags": [
+          "Subscribe"
+        ],
+        "summary": "The items of a particular category (e.g ministries, sectors, tags, services, newsletters, emergency) available for subscription.",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "categoryKey",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/StringStringKeyValuePair"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Subscribe/CreateNewsOnDemandEmailSubscriptionWithPreferences": {
+      "post": {
+        "tags": [
+          "Subscribe"
+        ],
+        "summary": "Create a NewsOnDemand subscription for the provided subscriberInfo.",
+        "consumes": [
+          "application/json-patch+json",
+          "application/json",
+          "text/json",
+          "application/*+json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/SubscriberInfo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/Subscribe/ConfirmUpdateCreateSubscription/{tokenGuid}": {
+      "get": {
+        "tags": [
+          "Subscribe"
+        ],
+        "summary": "Confirm that the subscription with tokenGuid has been created",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tokenGuid",
+            "description": "",
+            "required": true,
+            "type": "string",
+            "format": "uuid"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/SubscriberInfo"
+            }
+          }
+        }
+      }
+    },
+    "/api/Subscribe/UpdateNewsOnDemandEmailSubscriptionWithPreferences/{tokenGuid}": {
+      "post": {
+        "tags": [
+          "Subscribe"
+        ],
+        "summary": "Update an existing NOD subscription",
+        "consumes": [
+          "application/json-patch+json",
+          "application/json",
+          "text/json",
+          "application/*+json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tokenGuid",
+            "description": "",
+            "required": true,
+            "type": "string",
+            "format": "uuid"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          },
+          {
+            "in": "body",
+            "name": "body",
+            "description": "",
+            "schema": {
+              "$ref": "#/definitions/SubscriberInfo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/Subscribe/ManageNewsOnDemandEmailSubscription/{emailAddress}": {
+      "get": {
+        "tags": [
+          "Subscribe"
+        ],
+        "summary": "Manage an NOD email subscription identified by the passed email address",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "emailAddress",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success"
+          }
+        }
+      }
+    },
+    "/api/Subscribe/CheckEmailActivationToken/{tokenGuid}": {
+      "get": {
+        "tags": [
+          "Subscribe"
+        ],
+        "summary": "Check an email activation for a specific token",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tokenGuid",
+            "description": "",
+            "required": true,
+            "type": "string",
+            "format": "uuid"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "/api/Subscribe/UnsubscribeSubscriber/{tokenGuid}": {
+      "get": {
+        "tags": [
+          "Subscribe"
+        ],
+        "summary": "Unsubscribe the user identified by the passed tokenGuid.",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tokenGuid",
+            "description": "",
+            "required": true,
+            "type": "string",
+            "format": "uuid"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        }
+      }
+    },
+    "/api/Tags": {
+      "get": {
+        "tags": [
+          "Tags"
+        ],
+        "summary": "Get all Tags",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Tag"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Tags/{key}": {
+      "get": {
+        "tags": [
+          "Tags"
+        ],
+        "summary": "Get the Tag associated with the key",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Tag"
+            }
+          }
+        }
+      }
+    },
+    "/api/Themes": {
+      "get": {
+        "tags": [
+          "Themes"
+        ],
+        "summary": "Get all Themes",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Theme"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/Themes/{key}": {
+      "get": {
+        "tags": [
+          "Themes"
+        ],
+        "summary": "Get the Theme associated with the key",
+        "produces": [
+          "text/plain",
+          "application/json",
+          "text/json"
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "key",
+            "description": "",
+            "required": true,
+            "type": "string"
+          },
+          {
+            "in": "query",
+            "name": "api-version",
+            "description": "The requested API version",
+            "type": "string",
+            "default": ""
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "schema": {
+              "$ref": "#/definitions/Theme"
+            }
+          }
+        }
+      }
+    }
+  },
+  "definitions": {
+    "Home": {
+      "type": "object",
+      "properties": {
+        "liveWebcastFlashMediaManifestUrl": {
+          "type": "string"
+        },
+        "liveWebcastM3uPlaylist": {
+          "type": "string"
+        },
+        "granville": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "topPostKey": {
+          "type": "string"
+        },
+        "featurePostKey": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "ResourceLink": {
+      "type": "object",
+      "properties": {
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "uri": {
+          "format": "uri",
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "Contact": {
+      "type": "object",
+      "properties": {
+        "fullName": {
+          "type": "string"
+        },
+        "phoneNumber": {
+          "type": "string"
+        },
+        "mobileNumber": {
+          "type": "string"
+        },
+        "emailAddress": {
+          "type": "string"
+        }
+      }
+    },
+    "Ministry": {
+      "type": "object",
+      "properties": {
+        "childMinistryKey": {
+          "type": "string"
+        },
+        "parentMinistryKey": {
+          "type": "string"
+        },
+        "ministryUrl": {
+          "format": "uri",
+          "type": "string"
+        },
+        "displayAdditionalName": {
+          "type": "string"
+        },
+        "topicLinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResourceLink"
+          }
+        },
+        "serviceLinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResourceLink"
+          }
+        },
+        "newsletterLinks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ResourceLink"
+          }
+        },
+        "ministerName": {
+          "type": "string"
+        },
+        "contactUser": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Contact"
+            }
+          ]
+        },
+        "secondContactUser": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/Contact"
+            }
+          ]
+        },
+        "weekendContactNumber": {
+          "type": "string"
+        },
+        "twitterFeedUsername": {
+          "type": "string",
+          "readOnly": true
+        },
+        "flickrUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "youtubeUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "audioUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "isActive": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "topPostKey": {
+          "type": "string"
+        },
+        "featurePostKey": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "Minister": {
+      "type": "object",
+      "properties": {
+        "headline": {
+          "type": "string",
+          "readOnly": true
+        },
+        "summary": {
+          "type": "string",
+          "readOnly": true
+        },
+        "details": {
+          "type": "string",
+          "readOnly": true
+        },
+        "emailHtml": {
+          "type": "string",
+          "readOnly": true
+        },
+        "photo": {
+          "type": "string",
+          "readOnly": true
+        },
+        "post": {
+          "type": "string",
+          "readOnly": true
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "StringStringKeyValuePair": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "value": {
+          "type": "string",
+          "readOnly": true
+        }
+      }
+    },
+    "Newsletter": {
+      "type": "object",
+      "properties": {
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "name": {
+          "type": "string"
+        },
+        "ministryName": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "editions": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/StringStringKeyValuePair"
+          }
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "Edition": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "htmlBody": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "Article": {
+      "type": "object",
+      "properties": {
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "editionName": {
+          "type": "string"
+        },
+        "htmlBody": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "EditionImage": {
+      "type": "object",
+      "properties": {
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "fileName": {
+          "type": "string"
+        },
+        "imageBytes": {
+          "format": "byte",
+          "type": "string",
+          "readOnly": true
+        },
+        "imageType": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "DocumentContact": {
+      "type": "object",
+      "properties": {
+        "title": {
+          "type": "string"
+        },
+        "details": {
+          "type": "string"
+        }
+      }
+    },
+    "Document": {
+      "type": "object",
+      "properties": {
+        "pageTitle": {
+          "type": "string",
+          "readOnly": true
+        },
+        "languageId": {
+          "format": "int32",
+          "type": "integer",
+          "readOnly": true
+        },
+        "headline": {
+          "type": "string",
+          "readOnly": true
+        },
+        "subheadline": {
+          "type": "string",
+          "readOnly": true
+        },
+        "detailsHtml": {
+          "type": "string",
+          "readOnly": true
+        },
+        "byline": {
+          "type": "string",
+          "readOnly": true
+        },
+        "contacts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/DocumentContact"
+          }
+        }
+      }
+    },
+    "Asset": {
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "label": {
+          "type": "string"
+        },
+        "length": {
+          "format": "int64",
+          "type": "integer"
+        }
+      }
+    },
+    "Post": {
+      "type": "object",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "readOnly": true
+        },
+        "atomId": {
+          "type": "string",
+          "readOnly": true
+        },
+        "summary": {
+          "type": "string",
+          "readOnly": true
+        },
+        "socialMediaSummary": {
+          "type": "string",
+          "readOnly": true
+        },
+        "socialMediaHeadline": {
+          "type": "string",
+          "readOnly": true
+        },
+        "keywords": {
+          "type": "string",
+          "readOnly": true
+        },
+        "publishDate": {
+          "format": "date-time",
+          "type": "string",
+          "readOnly": true
+        },
+        "leadMinistryKey": {
+          "type": "string"
+        },
+        "hasMediaAssets": {
+          "type": "boolean"
+        },
+        "hasTranslations": {
+          "type": "boolean"
+        },
+        "isNewsOnDemand": {
+          "type": "boolean"
+        },
+        "assetUrl": {
+          "type": "string"
+        },
+        "location": {
+          "type": "string"
+        },
+        "documents": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Document"
+          }
+        },
+        "reference": {
+          "type": "string"
+        },
+        "redirectUri": {
+          "format": "uri",
+          "type": "string"
+        },
+        "ministryKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "sectorKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tagKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "themeKeys": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "azureAssets": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Asset"
+          },
+          "readOnly": true
+        },
+        "azureTranslations": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Asset"
+          },
+          "readOnly": true
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "Sector": {
+      "type": "object",
+      "properties": {
+        "twitterFeedUsername": {
+          "type": "string",
+          "readOnly": true
+        },
+        "flickrUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "youtubeUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "audioUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "isActive": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "topPostKey": {
+          "type": "string"
+        },
+        "featurePostKey": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "Slide": {
+      "type": "object",
+      "properties": {
+        "headline": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "actionLabel": {
+          "type": "string"
+        },
+        "actionUri": {
+          "format": "uri",
+          "type": "string"
+        },
+        "image": {
+          "format": "byte",
+          "type": "string"
+        },
+        "facebookPostUri": {
+          "format": "uri",
+          "type": "string"
+        },
+        "justify": {
+          "type": "string",
+          "readOnly": true
+        },
+        "imageType": {
+          "type": "string",
+          "readOnly": true
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "SubscriberInfo": {
+      "type": "object",
+      "properties": {
+        "emailAddress": {
+          "type": "string"
+        },
+        "subscribedCategories": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "isAllNews": {
+          "type": "boolean"
+        },
+        "isAsItHappens": {
+          "type": "boolean"
+        },
+        "isDailyDigest": {
+          "type": "boolean"
+        },
+        "isAdminRegistration": {
+          "type": "boolean"
+        },
+        "notifyIfNewCategories": {
+          "type": "boolean"
+        },
+        "expiredLinkOrUnverifiedEmail": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Tag": {
+      "type": "object",
+      "properties": {
+        "twitterFeedUsername": {
+          "type": "string",
+          "readOnly": true
+        },
+        "flickrUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "youtubeUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "audioUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "isActive": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "topPostKey": {
+          "type": "string"
+        },
+        "featurePostKey": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    },
+    "Theme": {
+      "type": "object",
+      "properties": {
+        "twitterFeedUsername": {
+          "type": "string",
+          "readOnly": true
+        },
+        "flickrUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "youtubeUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "audioUri": {
+          "format": "uri",
+          "type": "string",
+          "readOnly": true
+        },
+        "isActive": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "kind": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "topPostKey": {
+          "type": "string"
+        },
+        "featurePostKey": {
+          "type": "string"
+        },
+        "key": {
+          "type": "string",
+          "readOnly": true
+        },
+        "memoryCachable": {
+          "type": "boolean",
+          "readOnly": true
+        },
+        "timestamp": {
+          "format": "date-time",
+          "type": "string"
+        }
+      }
+    }
+  }
+}
