@@ -18,9 +18,7 @@ export interface AddSubscriberInput {
  * output); validating their shape ('<kind>:<key>') is the HTTP layer's job (routes.ts).
  * Deduped after lowercasing: two input keys that only differ by casing (e.g.
  * "ministries:Health" and "ministries:health") would otherwise collide on the
- * (subscriberId, listKey) primary key mid-insert — and since the catch below maps ANY 23505
- * in this transaction to SubscriberExistsError, a brand-new email would wrongly 409 instead
- * of 201ing.
+ * (subscriberId, listKey) primary key mid-insert.
  */
 export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<{ id: string }> {
   const manageToken = randomBytes(32).toString("base64url");
@@ -41,7 +39,10 @@ export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<
     // drizzle-orm's shared pg-core session wraps every driver error in a DrizzleQueryError,
     // putting the original pg error (with its `.code`) on `.cause` (same pattern as
     // apps/nrms/src/releases.ts's ReleaseExistsError).
-    if ((e as { cause?: { code?: string } }).cause?.code === "23505") throw new SubscriberExistsError(input.email);
+    // Only the case-insensitive email index means "already subscribed"; any other unique
+    // violation is a bug and must surface as one, not as a misleading 409.
+    const cause = (e as { cause?: { code?: string; constraint?: string } }).cause;
+    if (cause?.code === "23505" && cause.constraint === "subscribers_email_lower_idx") throw new SubscriberExistsError(input.email);
     throw e;
   }
 }
