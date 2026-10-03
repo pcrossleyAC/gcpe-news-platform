@@ -1,0 +1,9 @@
+{
+  "tenantId": "nb",
+  "siteName": "New Brunswick News",
+  "timeZone": "America/Moncton",
+  "defaultLanguageId": 4105,
+  "organizationLabel": { "singular": "Department", "plural": "Departments" },
+  "publicSiteBaseUrl": "https://news.gov.nb.ca",
+  "branding": { "primaryColor": "#003366", "logoUrl": null }
+}
