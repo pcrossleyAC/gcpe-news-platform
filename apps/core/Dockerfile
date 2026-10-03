@@ -19,5 +19,6 @@ COPY --from=build /repo/apps/core/migrations ./apps/core/migrations
 USER 1001
 ENV MIGRATIONS_FOLDER=/app/apps/core/migrations
 EXPOSE 3001
-HEALTHCHECK CMD wget -qO- http://localhost:3001/health/live || exit 1
+# Shell form so PORT (main.ts default 3001) is read when the check runs.
+HEALTHCHECK CMD wget -qO- "http://localhost:${PORT:-3001}/health/live" || exit 1
 CMD ["node", "apps/core/dist/main.js"]
