@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import type { Transporter } from "nodemailer";
 import { messages } from "./db/schema";
@@ -21,6 +21,13 @@ export interface SendOptions {
    * own lock. Defaults to {@link DEFAULT_PER_MESSAGE_MS} (the env defaults' sum) when omitted. */
   perMessageMs?: number;
   lockMs?: number;
+  /** The "stop claiming more rows" threshold: a run stops once `now >= lockUntil -
+   * lockMarginMs`. Defaults to `perMessageMs` — the same worst-case-per-message bound used to
+   * size the default lock — so a run never starts a message it might not finish before its own
+   * lock could, in the worst realistic case (every timeout hit), expire. Must be smaller than
+   * the resolved `lockMs`, or every claimed row would be abandoned without ever being sent;
+   * sendDue/startSender reject that combination immediately. */
+  lockMarginMs?: number;
   /** Checked before every message; once it returns true, sendDue stops starting new sends and
    * returns (rows not yet reached stay claimed until their lock expires). Set by
    * `startSender`'s stop() so an in-flight run winds down after its current message instead of
@@ -29,10 +36,11 @@ export interface SendOptions {
 }
 
 const DEFAULT_BATCH_SIZE = 50;
-// Mirrors packages/events/src/dispatcher.ts's LOCK_MARGIN_MS: extra slack on top of the
-// worst-case processing time, and — doubling as the "give up claimed-but-unstarted rows early"
-// threshold below — the point past which a run stops starting new sends rather than risk still
-// being mid-send when its lock expires and another worker reclaims the row.
+// Mirrors packages/events/src/dispatcher.ts's LOCK_MARGIN_MS: extra slack baked into the
+// *size* of the default lock, on top of the worst-case processing time. Distinct from
+// lockMarginMs (the loop's "stop claiming more rows" threshold, below), which is sized off
+// perMessageMs instead — a fixed 30s margin would be irrelevant for a short lock and overkill
+// for a long one.
 const LOCK_MARGIN_MS = 30_000;
 // Matches env.ts's SMTP_CONNECTION_TIMEOUT_MS + SMTP_GREETING_TIMEOUT_MS + SMTP_SOCKET_TIMEOUT_MS
 // defaults (10s + 10s + 30s): the worst-case time nodemailer lets a single message's send take
@@ -51,6 +59,21 @@ const MAX_ERROR_CODE_POINTS = 500;
  */
 export function defaultSendLockMs(opts: { batchSize: number; perMessageMs: number }): number {
   return opts.batchSize * opts.perMessageMs + LOCK_MARGIN_MS;
+}
+
+/**
+ * Resolves the lock duration and stop-margin a call will use, and rejects a combination where
+ * the margin would swallow the lock whole — if `lockMs <= lockMarginMs`, the very first
+ * per-message check below would always fire before any row is ever sent, silently turning the
+ * run into a no-op that just claims and abandons its whole batch forever.
+ */
+function resolveLock(opts: { batchSize: number; perMessageMs: number; lockMs?: number; lockMarginMs?: number }): { lockMs: number; lockMarginMs: number } {
+  const lockMarginMs = opts.lockMarginMs ?? opts.perMessageMs;
+  const lockMs = opts.lockMs ?? defaultSendLockMs({ batchSize: opts.batchSize, perMessageMs: opts.perMessageMs });
+  if (lockMs <= lockMarginMs) {
+    throw new Error(`sendDue: lockMs (${lockMs}) must be greater than lockMarginMs (${lockMarginMs}) — otherwise no claimed row would ever be sent`);
+  }
+  return { lockMs, lockMarginMs };
 }
 
 function backoffMs(attempts: number): number {
@@ -80,11 +103,26 @@ function isPermanentRecipientRejection(e: unknown): boolean {
   return err?.command === "RCPT TO" || Array.isArray(err?.rejected);
 }
 
-const SMTP_CONFIG_ERROR_COMMANDS = new Set(["CONN", "MAIL FROM", "STARTTLS"]);
+/**
+ * nodemailer's own client-side size check (the server advertised a SIZE limit in EHLO and this
+ * message exceeds it) fails at the MAIL FROM step with no SMTP round trip at all — this
+ * specific message can never fit, so it's permanent. This is deliberately narrower than "any
+ * EMESSAGE": a DATA-stage EMESSAGE (the server rejecting an in-flight transfer, e.g. its own
+ * size limit discovered mid-DATA) is left to retry below — losing a message outright is worse
+ * than a few retries, and that rejection might not recur (e.g. a transient server-side limit).
+ */
+function isOversizeForLocalLimit(e: unknown): boolean {
+  const err = e as { code?: unknown; command?: unknown } | null;
+  return err?.code === "EMESSAGE" && err?.command === "MAIL FROM";
+}
 
-/** True for errors at the connection/greeting, authentication, sender, or STARTTLS stage —
- * i.e. everything nodemailer tags with a `command` other than a per-recipient one. These mean
- * the worker's own SMTP setup is wrong, not that any particular message is undeliverable. */
+const SMTP_CONFIG_ERROR_COMMANDS = new Set(["CONN", "MAIL FROM", "STARTTLS", "EHLO", "HELO", "LHLO"]);
+
+/** True for errors at the connection/greeting, EHLO/HELO/LHLO, authentication, sender, or
+ * STARTTLS stage — i.e. everything nodemailer tags with a `command` other than a per-recipient
+ * one (and other than the oversize-message case above, which is permanent, not a config
+ * problem). These mean the worker's own SMTP setup is wrong, not that any particular message is
+ * undeliverable. */
 function isSmtpConfigError(e: unknown): boolean {
   const command = (e as { command?: unknown } | null)?.command;
   return typeof command === "string" && (SMTP_CONFIG_ERROR_COMMANDS.has(command) || command.startsWith("AUTH"));
@@ -103,12 +141,28 @@ type ClaimedRow = {
   headers: Record<string, string> | null;
 };
 
+/**
+ * Releases the lock on rows this call claimed but never got to (or no longer owns), so they're
+ * immediately claimable by another run instead of sitting locked for up to the full lock
+ * duration (tens of minutes at the default batch size). Ownership-guarded like every terminal
+ * write: a row whose lock was already stolen by someone else simply won't match and is left
+ * alone.
+ */
+async function releaseUnreachedRows(db: Db, ids: string[], lockUntil: Date): Promise<void> {
+  if (ids.length === 0) return;
+  await db
+    .update(messages)
+    .set({ lockedUntil: null })
+    .where(and(inArray(messages.id, ids), eq(messages.lockedUntil, lockUntil), eq(messages.status, "pending")));
+}
+
 export async function sendDue(opts: SendOptions): Promise<{ sent: number; retried: number; failed: number }> {
   const clock = opts.now ?? (() => new Date());
   const now = clock();
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
   const perMessageMs = opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS;
-  const lockUntil = new Date(now.getTime() + (opts.lockMs ?? defaultSendLockMs({ batchSize, perMessageMs })));
+  const { lockMs, lockMarginMs } = resolveLock({ batchSize, perMessageMs, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
+  const lockUntil = new Date(now.getTime() + lockMs);
   const redirect = opts.redirectTo.length > 0;
 
   // Phase 1: claim (a single statement, no network I/O while holding row locks). The `due` CTE
@@ -141,20 +195,30 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
 
   const result = { sent: 0, retried: 0, failed: 0 };
   let loggedConfigError = false;
-  for (const row of rows) {
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i]!;
+
     // Give up on any rows not yet reached rather than risk still being mid-send when this
-    // call's own lock expires — the margin matches the slack baked into defaultSendLockMs.
-    if (opts.stopRequested?.() || clock().getTime() >= lockUntil.getTime() - LOCK_MARGIN_MS) break;
+    // call's own lock expires — lockMarginMs matches the worst-case time a message can take.
+    if (opts.stopRequested?.() || clock().getTime() >= lockUntil.getTime() - lockMarginMs) {
+      await releaseUnreachedRows(opts.db, rows.slice(i).map((r) => r.id), lockUntil);
+      break;
+    }
 
     // Re-assert ownership right before using it: a near-no-op UPDATE (rewriting the same
     // value) that fails to match if another worker's claim already reclaimed this row because
     // this call's lock had expired. Cheaper than a second SELECT FOR UPDATE, and closes the
-    // window between the batch claim above and this particular row's turn to send.
+    // window between the batch claim above and this particular row's turn to send. Losing a
+    // row this way means another worker is already active on this batch, so the rest of this
+    // call's claim is abandoned (and released) too rather than racing it row by row.
     const stillOwned = await opts.db.execute<{ id: string }>(sql`
       UPDATE messages SET locked_until = locked_until
        WHERE id = ${row.id} AND locked_until = ${lockUntil} AND status = 'pending'
       RETURNING id`);
-    if (stillOwned.rows.length === 0) continue;
+    if (stillOwned.rows.length === 0) {
+      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockUntil);
+      break;
+    }
 
     // The lockUntil this call's claim set is this row's ownership token: a terminal write
     // only counts if we still held the lock (status unchanged, locked_until still ours) at
@@ -182,7 +246,7 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
       await opts.transport.sendMail({ from: opts.from, to, subject, html, text, headers });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
-      permanent = isPermanentRecipientRejection(e);
+      permanent = isPermanentRecipientRejection(e) || isOversizeForLocalLimit(e);
       if (!permanent && !loggedConfigError && isSmtpConfigError(e)) {
         loggedConfigError = true;
         console.error(`[distribution] SMTP configuration error: ${error}`);
@@ -217,6 +281,11 @@ export async function sendDue(opts: SendOptions): Promise<{ sent: number; retrie
 }
 
 export function startSender(opts: SendOptions & { intervalMs?: number }): () => Promise<void> {
+  // Validated eagerly, at call time: a misconfigured lockMs/lockMarginMs would otherwise only
+  // surface once the first tick fires, inside the interval's own catch — logged and silently
+  // retried forever rather than failing the process fast and loudly at startup.
+  resolveLock({ batchSize: opts.batchSize ?? DEFAULT_BATCH_SIZE, perMessageMs: opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
+
   let stopped = false;
   let running: Promise<unknown> | null = null;
   const sendOpts: SendOptions = { ...opts, stopRequested: () => stopped };

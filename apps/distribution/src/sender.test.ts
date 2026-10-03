@@ -1,5 +1,5 @@
 import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from "vitest";
-import nodemailer from "nodemailer";
+import nodemailer, { type Transporter } from "nodemailer";
 import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createBatch } from "./messages";
@@ -291,8 +291,10 @@ describe("sendDue", () => {
       // The first run's lock (300ms) is far shorter than 6 messages at 150ms each (~900ms) —
       // exactly the "lock expires mid-batch" scenario that used to double-send. It is started
       // without awaiting so the second run below genuinely overlaps it instead of running
-      // strictly after it finishes.
-      const firstRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 6, lockMs: 300 });
+      // strictly after it finishes. lockMarginMs is set well below lockMs (sendDue requires
+      // lockMs > lockMarginMs) and far below the default (perMessageMs, tens of seconds) so the
+      // margin check doesn't trip before the very first message of this short-lived lock.
+      const firstRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 6, lockMs: 300, lockMarginMs: 100 });
       await sleep(320); // past the first run's lock, while it may still be mid-batch
       const secondRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 6 }); // generous default lock
       await Promise.all([firstRun, secondRun]);
@@ -354,5 +356,172 @@ describe("sendDue", () => {
       await transport.close();
       await sink.close();
     }
+  });
+
+  it("skips rows whose ownership is stolen before their turn to send (the per-message re-assert)", async () => {
+    // A stub transport (no real SMTP) so the "another worker reclaimed this row" race can be
+    // simulated deterministically: its 2nd call reaches into the DB directly and reclaims every
+    // still-pending row, exactly as if a second worker's claim had just run.
+    await createBatch(
+      tdb.db,
+      "app",
+      { ...sampleMessageRequest, recipients: Array.from({ length: 6 }, (_, i) => ({ email: `o${i}@example.com`, substitutions: {} })) },
+      internalDomains,
+    );
+
+    let calls = 0;
+    const stubTransport = {
+      sendMail: async () => {
+        calls++;
+        if (calls === 2) {
+          await tdb.db.execute(sql`UPDATE messages SET locked_until = now() + interval '1 hour' WHERE status = 'pending'`);
+        }
+        return {};
+      },
+    } as unknown as Transporter;
+
+    // lockMs well above the default lockMarginMs (perMessageMs) so the stop/margin check never
+    // fires — only the re-assert is under test here.
+    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], batchSize: 6, lockMs: 120_000 });
+
+    // Row 1 sends and is counted; row 2's send happens but the steal lands before its terminal
+    // write, so it's silently not counted; rows 3-6 are skipped by the re-assert before ever
+    // reaching sendMail at all.
+    expect(calls).toBe(2);
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+  });
+
+  it("releases rows it never reached so another run can claim them immediately, not after the full lock expires", async () => {
+    await createBatch(
+      tdb.db,
+      "app",
+      { ...sampleMessageRequest, recipients: Array.from({ length: 5 }, (_, i) => ({ email: `u${i}@example.com`, substitutions: {} })) },
+      internalDomains,
+    );
+
+    let stopNow = false;
+    const sentTo: unknown[] = [];
+    const stubTransport = {
+      sendMail: async (mail: { to: unknown[] }) => {
+        sentTo.push(mail.to);
+        stopNow = true; // request a stop once the first message is underway
+        return {};
+      },
+    } as unknown as Transporter;
+
+    const result = await sendDue({
+      db: tdb.db,
+      transport: stubTransport,
+      from: "news@example.com",
+      redirectTo: [],
+      batchSize: 5,
+      lockMs: 120_000, // 2 minutes — if the 4 unreached rows weren't released, they'd stay
+      // locked long after this test (and this whole file) finishes.
+      stopRequested: () => stopNow,
+    });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+    expect(sentTo).toHaveLength(1);
+
+    // Immediately — no waiting for the first run's lock to expire — a second run with a real
+    // sink should be able to claim and send the other 4.
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      expect(second).toEqual({ sent: 4, retried: 0, failed: 0 });
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("rejects a lockMs that isn't greater than lockMarginMs, at sendDue's entry", async () => {
+    await expect(
+      sendDue({ db: tdb.db, transport: {} as unknown as Transporter, from: "news@example.com", redirectTo: [], lockMs: 1000, lockMarginMs: 1000 }),
+    ).rejects.toThrow(/lockMs.*lockMarginMs/);
+  });
+
+  it("defaults the stop margin to perMessageMs, not a fixed 30s, so a short-but-valid lock for a fast batch still sends", async () => {
+    // lockMs (1000ms) is smaller than the fixed 30s margin this loop's check used to use — a
+    // fixed 30s default would have tripped it before the very first row, sending nothing. With
+    // the margin defaulted off perMessageMs (200ms) instead, there's room for one fast send.
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+    const stubTransport = { sendMail: async () => ({}) } as unknown as Transporter;
+
+    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], batchSize: 1, perMessageMs: 200, lockMs: 1000 });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+  });
+
+  it("rejects a lockMs that isn't greater than lockMarginMs, at startSender's entry (synchronously, before the first tick)", () => {
+    expect(() => startSender({ db: tdb.db, transport: {} as unknown as Transporter, from: "news@example.com", redirectTo: [], lockMs: 1000, lockMarginMs: 2000 })).toThrow(
+      /lockMs.*lockMarginMs/,
+    );
+  });
+
+  it("retries and logs a configuration error for an EHLO/greeting-stage failure", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const stubTransport = {
+        sendMail: async () => {
+          throw Object.assign(new Error("Server terminates connection"), { code: "ECONNECTION", command: "EHLO" });
+        },
+      } as unknown as Transporter;
+
+      const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+
+      const [row] = await tdb.db.select().from(messages);
+      expect(row!.status).toBe("pending");
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("[distribution] SMTP configuration error:"));
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("fails immediately (no configuration-error log) when nodemailer rejects a message as too large for the server's advertised size limit", async () => {
+    // nodemailer raises this client-side, at the MAIL FROM step, with no SMTP round trip at
+    // all, once the server's advertised SIZE limit is known to be exceeded (code: "EMESSAGE",
+    // command: "MAIL FROM") — a stub transport reproduces that exact shape deterministically,
+    // the same way the EHLO test above does for a connection-stage failure.
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const stubTransport = {
+        sendMail: async () => {
+          throw Object.assign(new Error("Message size larger than allowed 200"), { code: "EMESSAGE", command: "MAIL FROM" });
+        },
+      } as unknown as Transporter;
+
+      const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+
+      const [row] = await tdb.db.select().from(messages);
+      expect(row!.status).toBe("failed");
+      expect(row!.attempts).toBe(1);
+      expect(errorSpy).not.toHaveBeenCalled();
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("leaves a DATA-stage 5xx (e.g. a server-side size rejection mid-transfer) to retry, not fail", async () => {
+    // Deliberate: unlike the MAIL-FROM-stage size check above (which never reaches the server),
+    // a DATA-stage rejection means the message was already (partly) accepted — treating it as
+    // permanent would drop mail outright on what might be a transient server-side limit, which
+    // is worse than a few retries.
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+    const stubTransport = {
+      sendMail: async () => {
+        throw Object.assign(new Error("Message failed: 552 message too large"), { code: "EMESSAGE", command: "DATA", responseCode: 552 });
+      },
+    } as unknown as Transporter;
+
+    const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+
+    const [row] = await tdb.db.select().from(messages);
+    expect(row!.status).toBe("pending");
+    expect(row!.attempts).toBe(1);
   });
 });
