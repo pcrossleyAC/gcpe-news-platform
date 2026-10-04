@@ -86,4 +86,12 @@ describe("release editing service — further rules", () => {
     await setStatus(never.id, "failed");
     expect(await deleteRelease(db(), never.id, never.version, editor)).toBe("deleted");
   });
+
+  it("an unpublished release (approved, released_at kept) can be re-planned and deleted", async () => {
+    const v = await createRelease(db(), sampleCreate, editor);
+    await tdb.db.execute(sql`UPDATE news_releases SET status = 'approved', reference = 'NEWS-77777', released_at = now() - interval '1 day' WHERE id = ${v.id}`);
+    const re = await saveSettings(db(), v.id, { ...settings, version: v.version, plannedPublishAt: "2030-01-01T00:00:00Z" }, editor);
+    expect(re.publishAt).toBe("2030-01-01T00:00:00.000Z");
+    expect(await deleteRelease(db(), v.id, re.version, editor)).toBe("hidden");
+  });
 });
