@@ -14,6 +14,14 @@ if (!apiKey || !apiSecret) {
   console.error("Set FLICKR_API_KEY and FLICKR_API_SECRET in the environment before running this.");
   process.exit(1);
 }
+try {
+  // Just the shape -- never echoed back on failure, since a bad value could be arbitrarily long
+  // or (pasted wrong) contain something that was meant to stay secret.
+  new URL(oauthUrl);
+} catch {
+  console.error("FLICKR_OAUTH_URL isn't a valid URL.");
+  process.exit(1);
+}
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 try {

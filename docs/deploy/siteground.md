@@ -288,10 +288,17 @@ It asks for the admin password and a password for each test user (12+ characters
 
 ## Flickr (Phase 3c)
 
-Fake mode is automatic whenever no real Flickr key is configured (`FLICKR_API_KEY` /
-`NRMS_FLICKR_API_KEY` unset) — the stack mounts a fake Flickr at `/fake-flickr` instead, so the
-whole photo-publishing path can be exercised before a real key exists. This is already the case
-on boxs.ca today.
+Fake mode is automatic whenever NRMS has no effective Flickr key (`FLICKR_API_KEY` /
+`NRMS_FLICKR_API_KEY` unset or empty) **and** at least one of: `NODE_ENV` isn't `production`, or
+`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`, or `FLICKR_MODE=fake` (see `usesFakeFlickr` in
+`apps/stack/src/env.ts`) — the stack mounts a fake Flickr at `/fake-flickr` and points NRMS at
+it instead, so the whole photo-publishing path can be exercised before a real key exists. boxs.ca
+qualifies today because `siteground:env` sets `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`.
+
+Without a key, a *real* production deployment (`NODE_ENV=production`, no
+`LOCAL_ADMIN_ALLOW_IN_PRODUCTION` and no `FLICKR_MODE=fake`) fails closed instead: no Flickr at
+all — the publisher alerts on every release with a photo and the asset-status endpoint reads
+"unavailable" — rather than silently using the fake for real photos.
 
 **Exercising it end to end.** From your Mac:
 

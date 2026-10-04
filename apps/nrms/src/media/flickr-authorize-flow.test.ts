@@ -80,4 +80,24 @@ describe("authorizeFlow against the fake Flickr", () => {
       }),
     ).rejects.toThrow(/HTTP 401/);
   });
+
+  it("an invalid oauthUrl rejects without leaking the signed request's signature, token or secrets", async () => {
+    let caught: unknown;
+    try {
+      await authorizeFlow({
+        oauthUrl: "not a url",
+        apiKey: creds.apiKey,
+        apiSecret: creds.apiSecret,
+        prompt: async () => "123-456-789",
+        print: () => {},
+      });
+    } catch (e) {
+      caught = e;
+    }
+    expect(caught).toBeInstanceOf(Error);
+    const message = (caught as Error).message;
+    for (const s of [creds.apiSecret, creds.accessSecret, creds.accessToken, "oauth_signature", "oauth_token", "oauth_verifier", "not a url"]) {
+      expect(message).not.toContain(s);
+    }
+  });
 });

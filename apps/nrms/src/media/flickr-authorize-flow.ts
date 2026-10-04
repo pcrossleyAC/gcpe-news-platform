@@ -11,8 +11,12 @@ import { oauthSignature, percentEncode } from "./flickr-client";
  * Every request is signed the same way the ongoing REST calls are (flickr-client.ts's
  * `oauthSignature`): the request-token call with the consumer secret only (no token yet); the
  * access-token call with the consumer secret and the request token's own secret. Nothing here
- * ever puts a secret, token or signature in a thrown error — only the HTTP status, same rule as
- * flickr-client.ts.
+ * ever puts a secret, token or signature in a thrown error — only the HTTP status (or, for a
+ * `fetch` failure itself — a malformed `FLICKR_OAUTH_URL`, a timeout, a network error — a generic
+ * description), same rule as flickr-client.ts. In particular, `fetch` throwing on an unparsable
+ * URL quotes that URL (and with it this request's own signature, token and verifier) in its own
+ * message, e.g. `Failed to parse URL from <url>?oauth_signature=...` — that's why the `fetch`
+ * call itself is wrapped, not just the response handling below it.
  */
 
 export interface AuthorizeFlowDeps {
@@ -36,9 +40,12 @@ export interface AuthorizeFlowResult {
   username: string;
 }
 
+const TIMEOUT_MS = 10_000;
+
 /** Oauth 1.0a's three endpoints answer `application/x-www-form-urlencoded` text, not JSON. */
 async function signedOauthGet(
   doFetch: typeof fetch,
+  step: string,
   url: string,
   extraParams: Record<string, string>,
   consumerKey: string,
@@ -59,7 +66,13 @@ async function signedOauthGet(
   };
   const signature = oauthSignature("GET", url, params, consumerSecret, tokenSecret);
   const query = new URLSearchParams({ ...params, oauth_signature: signature }).toString();
-  return doFetch(`${url}?${query}`, { method: "GET", headers: { accept: "text/plain" } });
+  try {
+    return await doFetch(`${url}?${query}`, { method: "GET", headers: { accept: "text/plain" }, signal: AbortSignal.timeout(TIMEOUT_MS) });
+  } catch (e) {
+    // Never rethrow `e` itself (or any text built from the URL above) -- see the module doc comment.
+    const why = e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError") ? "timed out" : "couldn't reach Flickr's sign-in service";
+    throw new Error(`Flickr authorize: ${step} ${why}`);
+  }
 }
 
 /** Parses an oauth form-encoded response into the fields we need, or throws (HTTP status only —
@@ -84,7 +97,7 @@ export async function authorizeFlow(deps: AuthorizeFlowDeps): Promise<AuthorizeF
 
   // 1. Request token (consumer secret only — no token exists yet).
   const requestTokenRes = await signedOauthGet(
-    doFetch, `${deps.oauthUrl}/request_token`, { oauth_callback: "oob" }, deps.apiKey, deps.apiSecret, undefined, "", nonce, timestamp,
+    doFetch, "request_token", `${deps.oauthUrl}/request_token`, { oauth_callback: "oob" }, deps.apiKey, deps.apiSecret, undefined, "", nonce, timestamp,
   );
   const requestFields = await oauthFields(requestTokenRes, "request_token", ["oauth_token", "oauth_token_secret"]);
   const requestToken = requestFields.get("oauth_token")!;
@@ -97,7 +110,7 @@ export async function authorizeFlow(deps: AuthorizeFlowDeps): Promise<AuthorizeF
 
   // 3. Access token, signed with the request token's own secret.
   const accessTokenRes = await signedOauthGet(
-    doFetch, `${deps.oauthUrl}/access_token`, { oauth_verifier: verifier }, deps.apiKey, deps.apiSecret, requestToken, requestTokenSecret, nonce, timestamp,
+    doFetch, "access_token", `${deps.oauthUrl}/access_token`, { oauth_verifier: verifier }, deps.apiKey, deps.apiSecret, requestToken, requestTokenSecret, nonce, timestamp,
   );
   const accessFields = await oauthFields(accessTokenRes, "access_token", ["oauth_token", "oauth_token_secret", "username"]);
 
