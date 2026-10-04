@@ -269,14 +269,27 @@ async function collectInteractiveInput(): Promise<SiteGroundEnvInput> {
     if (adminPassword.length < 12) throw new Error("Admin password must be at least 12 characters.");
     const dbUser = await promptPlain(rl, "Postgres user (Site Tools-created, shared by all six DBs)");
     const dbPassword = await promptHidden("Postgres password");
-    const dbPrefix = await promptPlain(rl, "Database name prefix", "gcpe");
+    // SiteGround generates database names (e.g. "dbkjyoirx2cq7n") and only lets you set a label, so
+    // each app's database name is asked for individually. The prefix only supplies the defaults.
+    const dbPrefix = await promptPlain(rl, "Database name prefix (defaults for the six names below)", "gcpe");
+    const dbNames = {
+      core: await promptPlain(rl, "Database name for Core", `${dbPrefix}_core`),
+      nrms: await promptPlain(rl, "Database name for NRMS", `${dbPrefix}_nrms`),
+      newsApi: await promptPlain(rl, "Database name for News API", `${dbPrefix}_news_api`),
+      site: await promptPlain(rl, "Database name for Public Site", `${dbPrefix}_site`),
+      nod: await promptPlain(rl, "Database name for NoD", `${dbPrefix}_nod`),
+      distribution: await promptPlain(rl, "Database name for Distribution", `${dbPrefix}_distribution`),
+    };
     const smtpHost = await promptPlain(rl, "SMTP host (SiteGround mailbox or relay)");
     const smtpPort = Number(await promptPlain(rl, "SMTP port", "587"));
     const smtpSecure = (await promptPlain(rl, "SMTP secure (true/false)", "false")) === "true";
     const smtpUser = await promptPlain(rl, "SMTP username (blank if none)", "");
     const smtpPass = smtpUser ? await promptHidden("SMTP password") : "";
     const mailFrom = await promptPlain(rl, "Mail From address");
-    const mailRedirectTo = commaList(await promptPlain(rl, "Mail redirect-to address(es), comma-separated (real recipients until this is cleared later)"));
+    const mailRedirectTo = commaList(await promptPlain(rl, "Redirect ALL outgoing mail to (comma-separated test inbox(es))"));
+    // Distribution refuses to start without a redirect unless DIST_MAIL_ALLOW_REAL_RECIPIENTS=true,
+    // which this test-environment generator deliberately never emits.
+    if (mailRedirectTo.length === 0) throw new Error("A redirect address is required for this test environment.");
 
     return {
       domain,
@@ -285,14 +298,7 @@ async function collectInteractiveInput(): Promise<SiteGroundEnvInput> {
       adminPasswordHash: await hashPassword(adminPassword),
       dbUser,
       dbPassword,
-      dbNames: {
-        core: `${dbPrefix}_core`,
-        nrms: `${dbPrefix}_nrms`,
-        newsApi: `${dbPrefix}_news_api`,
-        site: `${dbPrefix}_site`,
-        nod: `${dbPrefix}_nod`,
-        distribution: `${dbPrefix}_distribution`,
-      },
+      dbNames,
       smtp: { host: smtpHost, port: smtpPort, secure: smtpSecure, user: smtpUser || undefined, pass: smtpPass || undefined },
       mailFrom,
       mailRedirectTo,
