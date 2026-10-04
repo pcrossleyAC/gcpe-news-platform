@@ -278,6 +278,17 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   app.use(newsApi.app);
   stackApp = app;
 
+  // Fix round 1: public-site's self-heal needs the in-process self: fetch, which only becomes
+  // usable once `stackApp` above is assigned (installInternalFetch's lookup throws "the stack
+  // app is not ready yet" before that) — firing it from inside startPublicSite itself (the
+  // original Task 1 approach) always lost that race, since News API (which self-heal reads
+  // from over a self: URL) starts after Public Site. Fire-and-forget, same logging as the
+  // standalone main.ts does, and must never throw past here.
+  void siteBuilder
+    .selfHeal()
+    .then((r) => r && console.log(`[public-site] self-heal rebuilt ${r.rebuilt} posts`))
+    .catch((e) => console.error(`[public-site] self-heal failed: ${e instanceof Error ? e.message : e}`));
+
   return {
     app,
     port: actualPort,

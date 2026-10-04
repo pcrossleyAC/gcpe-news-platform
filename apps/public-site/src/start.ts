@@ -27,6 +27,18 @@ export interface AppHandle {
   /** The rest of today's shutdown order, run *after* the http server closes, excluding the
    * http server itself (main.ts owns that). */
   closers: Closer[];
+  /**
+   * Task 1 fix round 1: rebuilds `index.html` (and the latest posts) once, if the output
+   * folder came up empty (e.g. right after a SiteGround redeploy) — see self-heal.ts. Exposed
+   * here instead of being fired automatically inside `startPublicSite`: in the single-process
+   * stack, the in-process `self:` fetch `newsApiClient` relies on only becomes usable once
+   * every app has started and `stack.ts` assigns its own `stackApp` (installInternalFetch's
+   * lookup throws "the stack app is not ready yet" before that) — calling this from inside
+   * `startPublicSite` itself always hit that race and failed. The caller decides when it's
+   * actually safe to call: `main.ts` calls it right after the http server starts listening
+   * (standalone has no such race); `stack.ts` calls it right after `stackApp` is assigned.
+   */
+  selfHeal(): Promise<{ rebuilt: number } | null>;
 }
 
 /**
@@ -59,13 +71,6 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
 
   const app = createApp({ db, eventSecrets: parsed.EVENT_SECRETS, handler });
 
-  // Task 1: self-heal once at startup if the output folder came up empty (e.g. right after a
-  // SiteGround redeploy). Never thrown — the News API may not be up yet in a standalone run
-  // (and main.ts has already decided this app should start regardless).
-  void selfHeal({ newsApi, storage, site })
-    .then((r) => r && console.log(`[public-site] self-heal rebuilt ${r.rebuilt} posts`))
-    .catch((e) => console.error(`[public-site] self-heal failed: ${e instanceof Error ? e.message : e}`));
-
   return {
     app,
     port: parsed.PORT,
@@ -75,5 +80,7 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
     },
     closeBeforeServer: [],
     closers: [{ name: "db pool", close: () => pool.end() }],
+    // Fix round 1: not called here — see the AppHandle.selfHeal doc comment above for why.
+    selfHeal: () => selfHeal({ newsApi, storage, site }),
   };
 }

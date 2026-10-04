@@ -23,8 +23,14 @@ export async function selfHeal(deps: { newsApi: NewsApiClient; storage: SiteStor
   if (await storage.exists("index.html")) return null;
 
   const posts = await newsApi.latestHome(count);
-  await storage.write("index.html", renderHomePage(posts, site));
 
+  // Fix round 1: post pages first, index.html LAST — index.html's existence is the signal
+  // this function (and the next cold start) uses to decide "already healed, nothing to do"
+  // (the check above). Writing it first would mark the job done before a single post page
+  // was actually written; if a later post write then failed, the next start would see
+  // index.html and skip retrying, leaving some post pages permanently missing. Writing it
+  // last means any failure midway leaves index.html absent, so the next start retries
+  // everything from scratch.
   let rebuilt = 0;
   for (const post of posts) {
     if (!POST_KEY.test(post.key)) {
@@ -34,5 +40,6 @@ export async function selfHeal(deps: { newsApi: NewsApiClient; storage: SiteStor
     await storage.write(postPath(post.key), renderPostPage(post, site));
     rebuilt++;
   }
+  await storage.write("index.html", renderHomePage(posts, site));
   return { rebuilt };
 }

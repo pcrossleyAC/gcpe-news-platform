@@ -58,4 +58,33 @@ describe("selfHeal", () => {
     };
     await expect(selfHeal({ newsApi, storage, site })).rejects.toThrow("News API down");
   });
+
+  // Fix round 1: writes post pages first and index.html LAST, so a failure partway through
+  // leaves index.html missing — the exists() check at the top of the function means the next
+  // start will retry everything, instead of seeing index.html and wrongly concluding "already
+  // healed" with some post pages never written.
+  it("writes post pages before index.html, so a mid-rebuild failure leaves index.html missing for a retry", async () => {
+    const root = await mkdtemp(join(tmpdir(), "self-heal-"));
+    made.push(root);
+    const real = fsStorage(root);
+    const writes: string[] = [];
+    const storage = {
+      ...real,
+      async write(relPath: string, html: string) {
+        writes.push(relPath);
+        if (relPath === "releases/K2/index.html") throw new Error("disk full");
+        await real.write(relPath, html);
+      },
+    };
+    const newsApi: NewsApiClient = {
+      getPost: vi.fn(async () => null),
+      latestHome: vi.fn(async () => [postA, postB]),
+    };
+
+    await expect(selfHeal({ newsApi, storage, site })).rejects.toThrow("disk full");
+    // K1's page (written before K2's failure) did land, but index.html must not have.
+    expect(writes).toEqual(["releases/K1/index.html", "releases/K2/index.html"]);
+    expect(await real.exists("index.html")).toBe(false);
+    expect(await real.exists("releases/K1/index.html")).toBe(true);
+  });
 });

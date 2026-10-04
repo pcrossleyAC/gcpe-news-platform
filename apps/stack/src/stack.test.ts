@@ -7,7 +7,7 @@ import type { AddressInfo } from "node:net";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Express } from "express";
 import { hashPassword, mintLocalToken } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
@@ -593,5 +593,48 @@ describe("staff session cookie across the stack", () => {
       body: "{}",
     });
     expect(withCsrf.status).toBe(400);
+  });
+});
+
+// Fix round 1: the Critical finding — selfHeal fired from inside startPublicSite always failed
+// in the single-process stack ("the stack app is not ready yet"), because News API (which
+// self-heal reads from over a self: URL) only starts, and stackApp only gets assigned, after
+// Public Site itself has already started. This is the regression test for that: a fresh stack
+// instance with its own empty SITE output dir (setupStack always mkdtemps a fresh one) must
+// end up with an index.html, and must never have logged a self-heal failure while doing so.
+describe("apps/stack: public-site self-heal runs once the stack (not just a standalone process) is ready", () => {
+  let instance: StackTestInstance;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeAll(async () => {
+    // Spying BEFORE setupStack() so it catches self-heal's fire-and-forget call, which starts
+    // inside startStack() itself (right after stackApp is assigned), not after setupStack()
+    // returns.
+    errorSpy = vi.spyOn(console, "error");
+    instance = await setupStack({ fetchAdminToken: false });
+  });
+
+  afterAll(async () => {
+    errorSpy.mockRestore();
+    await instance.close();
+  });
+
+  it("rebuilds index.html via self-heal without ever logging a self-heal failure", async () => {
+    await expect
+      .poll(
+        async () => {
+          try {
+            await readFile(join(instance.outputDir, "index.html"), "utf8");
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 5000 },
+      )
+      .toBe(true);
+
+    const selfHealFailures = errorSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("self-heal failed"));
+    expect(selfHealFailures).toEqual([]);
   });
 });
