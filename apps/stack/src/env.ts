@@ -29,12 +29,15 @@ export type StackEnv = z.infer<typeof stackEnvSchema>;
 export const APP_PREFIXES = ["CORE", "NRMS", "NEWSAPI", "SITE", "NOD", "DIST"] as const;
 export type AppPrefix = (typeof APP_PREFIXES)[number];
 
-/** Shared vars every app's env view inherits unprefixed, verbatim: LOCAL_ADMIN_* (the whole
- * family — ENABLED/ALLOW_IN_PRODUCTION/USERNAME/PASSWORD_HASH), LOCAL_AUTH_SECRET,
- * TENANT_CONFIG and NODE_ENV. Deliberately narrow — see task-14-report.md's deviations
- * section for why ENTRA_TENANT_ID/AUTH_AUDIENCE are NOT shared here. */
+/**
+ * Shared vars every app's env view inherits unprefixed, verbatim: LOCAL_ADMIN_* (the whole
+ * family), LOCAL_AUTH_SECRET, TENANT_CONFIG, NODE_ENV, and (fix round 1, P2-R30 M6)
+ * ENTRA_TENANT_ID — every app talks to the same Entra tenant, so that one is shared too.
+ * AUTH_AUDIENCE is deliberately NOT shared: each app is its own audience/resource in Entra
+ * (`<PREFIX>_AUTH_AUDIENCE`), same as it would be as six separate deployments.
+ */
 function isSharedKey(key: string): boolean {
-  return key === "NODE_ENV" || key === "TENANT_CONFIG" || key === "LOCAL_AUTH_SECRET" || key.startsWith("LOCAL_ADMIN_");
+  return key === "NODE_ENV" || key === "TENANT_CONFIG" || key === "LOCAL_AUTH_SECRET" || key === "ENTRA_TENANT_ID" || key.startsWith("LOCAL_ADMIN_");
 }
 
 /**
@@ -56,14 +59,77 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.Proces
   return view;
 }
 
+const SELF_PREFIX = "self:";
+
+function stripSelfPrefix(url: string): string {
+  return url.slice(SELF_PREFIX.length); // "self:/events" -> "/events"
+}
+
+function isSelfUrl(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith(`${SELF_PREFIX}/`);
+}
+
+/** A subscriber entry shaped closely enough to know its `url` field is the one to rewrite,
+ * without otherwise caring what else is on it (name/secret/types) — `secret` in particular
+ * must never be touched even if it happens to contain the literal text "self:/" (fix round 1,
+ * P2-R30 M1). */
+function hasUrlField(item: unknown): item is { url: unknown } & Record<string, unknown> {
+  return typeof item === "object" && item !== null && "url" in item;
+}
+
 /**
- * Resolves Task 15's `self:` subscriber URLs inside a raw EVENT_SUBSCRIBERS JSON string:
- * every `"self:/rest/of/path"` becomes `"http://127.0.0.1:<actualPort>/rest/of/path"` once the
- * stack's single port is known (pulled forward from Task 15's brief — the stack needs this to
- * wire events between its own apps; see stack.ts). A no-op when `value` is undefined, or
- * contains no `self:` URL.
+ * Resolves Task 15's `self:` subscriber URLs inside a raw EVENT_SUBSCRIBERS JSON string: every
+ * subscriber's `url` field starting with `self:/` becomes `http://127.0.0.1:<actualPort>/rest`
+ * once the stack's single port is known (pulled forward from Task 15's brief — the stack needs
+ * this to wire events between its own apps; see stack.ts).
+ *
+ * Parses the JSON and rewrites only the `url` field of each entry (fix round 1, P2-R30 M1) —
+ * never a blind string replace over the raw text, which would also rewrite a `secret` that
+ * happened to contain the literal substring "self:/". Malformed JSON is passed through
+ * unchanged so `parseSubscribers` (inside each app's own start()) reports the real parse
+ * error, instead of this function masking it with a different one. A no-op when `value` is
+ * undefined.
  */
 export function resolveSelfSubscribers(value: string | undefined, actualPort: number): string | undefined {
   if (value === undefined) return undefined;
-  return value.replace(/self:(\/[^"\\]*)/g, (_match, rest: string) => `http://127.0.0.1:${actualPort}${rest}`);
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    return value;
+  }
+  if (!Array.isArray(parsed)) return value;
+  const rewritten = parsed.map((item) => {
+    if (hasUrlField(item) && isSelfUrl(item.url)) {
+      return { ...item, url: `http://127.0.0.1:${actualPort}${stripSelfPrefix(item.url)}` };
+    }
+    return item;
+  });
+  return JSON.stringify(rewritten);
+}
+
+/**
+ * Resolves every `self:/…` URL in one app's already-prefix-stripped env view to a concrete
+ * loopback URL at the stack's own port (fix round 1, P2-R30 — important fix 1 and M9):
+ * `EVENT_SUBSCRIBERS` (via {@link resolveSelfSubscribers}, scoped to each entry's `url`
+ * field), and every *other* var whose name ends in `_URL` whose whole value is a `self:/…`
+ * URL — e.g. `NEWS_API_URL`, `DISTRIBUTION_URL`, `NOD_BASE_URL` (News API's own var name for
+ * NoD's base URL, seen here as `NEWSAPI_NOD_BASE_URL` before `envFor` strips the prefix).
+ * An external URL (a real public domain, or an OAuth2/Entra token endpoint) never starts with
+ * `self:/`, so this never touches one — "leave external token URLs alone" falls out of the
+ * same check, with no separate case needed for them.
+ */
+export function resolveSelfUrls(env: NodeJS.ProcessEnv, actualPort: number): NodeJS.ProcessEnv {
+  const view: Record<string, string> = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (value === undefined) continue;
+    if (key === "EVENT_SUBSCRIBERS") {
+      view[key] = resolveSelfSubscribers(value, actualPort)!;
+    } else if (key.endsWith("_URL") && isSelfUrl(value)) {
+      view[key] = `http://127.0.0.1:${actualPort}${stripSelfPrefix(value)}`;
+    } else {
+      view[key] = value;
+    }
+  }
+  return view;
 }

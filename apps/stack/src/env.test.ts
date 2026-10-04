@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { envFor, resolveSelfSubscribers, stackEnvSchema } from "./env";
+import { envFor, resolveSelfSubscribers, resolveSelfUrls, stackEnvSchema } from "./env";
 
 describe("envFor", () => {
   it("strips the app's own prefix off every <PREFIX>_VAR, leaving VAR", () => {
@@ -40,6 +40,14 @@ describe("envFor", () => {
     const env: NodeJS.ProcessEnv = { NRMS_DATABASE_URL: undefined, NRMS_PORT: "3006" };
     expect(envFor(env, "NRMS")).toEqual({ PORT: "3006" });
   });
+
+  // Fix round 1, P2-R30 M6: ENTRA_TENANT_ID is shared (every app talks to the same Entra
+  // tenant); AUTH_AUDIENCE stays per-app (each app is its own Entra audience/resource).
+  it("shares ENTRA_TENANT_ID across every app but keeps AUTH_AUDIENCE per-prefix", () => {
+    const env = { ENTRA_TENANT_ID: "tenant-1", CORE_AUTH_AUDIENCE: "aud-core", NRMS_AUTH_AUDIENCE: "aud-nrms" };
+    expect(envFor(env, "CORE")).toEqual({ ENTRA_TENANT_ID: "tenant-1", AUTH_AUDIENCE: "aud-core" });
+    expect(envFor(env, "NRMS")).toEqual({ ENTRA_TENANT_ID: "tenant-1", AUTH_AUDIENCE: "aud-nrms" });
+  });
 });
 
 describe("resolveSelfSubscribers", () => {
@@ -67,6 +75,58 @@ describe("resolveSelfSubscribers", () => {
 
   it("passes undefined through unchanged", () => {
     expect(resolveSelfSubscribers(undefined, 1234)).toBeUndefined();
+  });
+
+  // Fix round 1, P2-R30 M1: only the `url` field is a candidate for rewriting — a `secret`
+  // that happens to contain the literal text "self:/" must survive untouched. A blind
+  // string-replace over the raw JSON text (the pre-fix implementation) would have rewritten
+  // this secret too, corrupting the HMAC signature every delivery to this subscriber signs
+  // with.
+  it("never touches a secret (or any other field) that happens to contain the text self:/", () => {
+    const raw = JSON.stringify([{ name: "a", url: "self:/events", secret: "contains-self:/-literally", types: ["*"] }]);
+    const resolved = JSON.parse(resolveSelfSubscribers(raw, 9999)!);
+    expect(resolved).toEqual([{ name: "a", url: "http://127.0.0.1:9999/events", secret: "contains-self:/-literally", types: ["*"] }]);
+  });
+
+  it("passes malformed JSON through unchanged, so parseSubscribers reports the real error", () => {
+    const raw = "{not valid json";
+    expect(resolveSelfSubscribers(raw, 1234)).toBe(raw);
+  });
+});
+
+describe("resolveSelfUrls", () => {
+  // Important fix 1 (P2-R30): self: resolution must apply to every app's EVENT_SUBSCRIBERS,
+  // not just NRMS/NEWSAPI — Core publishing org.upserted to a self: News API URL dead-lettered
+  // silently (an "unknown scheme" fetch failure, swallowed into dispatchOnce's per-row retry
+  // accounting) before this fix.
+  it("resolves EVENT_SUBSCRIBERS in any app's env view, not just NRMS/NEWSAPI", () => {
+    const env = { EVENT_SUBSCRIBERS: JSON.stringify([{ name: "news-api", url: "self:/events", secret: "s", types: ["org.upserted"] }]) };
+    const resolved = JSON.parse(resolveSelfUrls(env, 4000).EVENT_SUBSCRIBERS!);
+    expect(resolved).toEqual([{ name: "news-api", url: "http://127.0.0.1:4000/events", secret: "s", types: ["org.upserted"] }]);
+  });
+
+  // M9: any OTHER *_URL var (not just EVENT_SUBSCRIBERS) whose whole value is self:/... —
+  // e.g. News API's own NEWS_API_URL as seen by Public Site, or NoD's DISTRIBUTION_URL.
+  it("resolves a plain self: URL on any var ending in _URL", () => {
+    const env = { NEWS_API_URL: "self:/", DISTRIBUTION_URL: "self:/distribution", NOD_BASE_URL: "self:/nod" };
+    expect(resolveSelfUrls(env, 5000)).toEqual({
+      NEWS_API_URL: "http://127.0.0.1:5000/",
+      DISTRIBUTION_URL: "http://127.0.0.1:5000/distribution",
+      NOD_BASE_URL: "http://127.0.0.1:5000/nod",
+    });
+  });
+
+  it("leaves a real external URL alone, including one ending in _URL that looks like a token endpoint", () => {
+    const env = {
+      PUBLIC_SITE_URL: "https://news.gov.bc.ca",
+      DISTRIBUTION_TOKEN_URL: "https://login.microsoftonline.com/tenant/oauth2/v2.0/token",
+    };
+    expect(resolveSelfUrls(env, 5000)).toEqual(env);
+  });
+
+  it("leaves every other var (not ending in _URL, and not EVENT_SUBSCRIBERS) untouched", () => {
+    const env = { DATABASE_URL_PREFIX: "not-a-url-var", PORT: "3001" };
+    expect(resolveSelfUrls(env, 5000)).toEqual(env);
   });
 });
 

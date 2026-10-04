@@ -29,3 +29,26 @@ export function noStoreByDefault(_req: Request, res: Response, next: NextFunctio
   }) as typeof res.writeHead;
   next();
 }
+
+/**
+ * Fix round 1, P2-R30 M4: `express.static`'s own redirect — a directory request without its
+ * trailing slash (e.g. `/site/releases/<key>` -> `/site/releases/<key>/`) gets a bare 301
+ * with no Cache-Control at all, which the SiteGround nginx proxy would then cache (it caches
+ * any GET response lacking a Cache-Control header, ignoring the query string — see
+ * siteground-facts.md), including a redirect — serving a stale 301 to every client that
+ * later only wants the current file at that same path.
+ *
+ * Mounted *before* `express.static` on the same prefix: patches `writeHead` to force
+ * `no-store` only on a 3xx response, leaving the 200 (the actual file, with its own
+ * `Cache-Control: public, max-age=…` from `express.static`'s `maxAge` option) alone.
+ */
+export function noStoreOnRedirect(_req: Request, res: Response, next: NextFunction): void {
+  const originalWriteHead = res.writeHead.bind(res);
+  res.writeHead = ((...args: Parameters<typeof originalWriteHead>) => {
+    if (res.statusCode >= 300 && res.statusCode < 400) {
+      res.setHeader("Cache-Control", "no-store");
+    }
+    return originalWriteHead(...args);
+  }) as typeof res.writeHead;
+  next();
+}

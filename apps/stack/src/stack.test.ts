@@ -1,5 +1,6 @@
-// Stack-level tests (task-14-brief.md's checklist) plus the Phase 2 exit check replayed
-// through the stack's single server and /stack/tick instead of six separate processes.
+// Stack-level tests (task-14-brief.md's checklist, plus fix round 1 / P2-R30) and the Phase 2
+// exit check replayed through the stack's single server and /stack/tick instead of six
+// separate processes.
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
@@ -8,11 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Express } from "express";
-import { hashPassword } from "@gcpe/auth";
+import { hashPassword, mintLocalToken } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { signPayload } from "@gcpe/events";
 
-import { createCoreTestDb } from "../../core/test/helpers";
+import { createCoreTestDb, healthOrg } from "../../core/test/helpers";
 import { createNrmsTestDb, sampleDraft } from "../../nrms/test/helpers";
 import { createNewsTestDb } from "../../news-api/test/helpers";
 import { createPublicSiteTestDb } from "../../public-site/test/helpers";
@@ -22,12 +22,14 @@ import { startSmtpSink } from "../../distribution/test/smtp-sink";
 
 import { startStack } from "./stack";
 
-const TICK_TOKEN = "stack-tick-token-at-least-32-characters-long";
 const LOCAL_AUTH_SECRET = "stack-test-local-auth-secret-32-characters!";
+const ADMIN_PASSWORD = "stack-test-password-99";
 
 const SECRET_NRMS_TO_NEWS_API = "stack-e2e-nrms-to-news-api-secret";
 const SECRET_NRMS_TO_NOD = "stack-e2e-nrms-to-nod-secret";
 const SECRET_NEWS_API_TO_PUBLIC_SITE = "stack-e2e-news-api-to-public-site-secret";
+// Important fix 1 (P2-R30): Core -> News API, over a self: URL, same as NRMS -> News API.
+const SECRET_CORE_TO_NEWS_API = "stack-e2e-core-to-news-api-secret";
 const MANAGE_URL = "http://nod.invalid/manage";
 
 /** Binds a throwaway server to learn a free port, then closes it — same probe-then-rebind
@@ -66,128 +68,203 @@ async function listenOnPort(app: Express, port: number): Promise<{ server: Serve
   };
 }
 
-describe("apps/stack", () => {
-  const dbs: TestDatabase[] = [];
-  let outputDir: string | undefined;
-  let sink: Awaited<ReturnType<typeof startSmtpSink>> | undefined;
-  let bound: Awaited<ReturnType<typeof listenOnPort>> | undefined;
-  let handle: Awaited<ReturnType<typeof startStack>> | undefined;
-  let stackUrl: string;
-  let adminToken: string;
+interface StackTestInstanceDbs {
+  core: TestDatabase;
+  nrms: TestDatabase;
+  newsApi: TestDatabase;
+  publicSite: TestDatabase;
+  nod: TestDatabase;
+  distribution: TestDatabase;
+}
 
-  beforeAll(async () => {
-    const dbResults = await Promise.allSettled([
-      createCoreTestDb(),
-      createNrmsTestDb(),
-      createNewsTestDb(),
-      createPublicSiteTestDb(),
-      createNodTestDb(),
-      createDistributionTestDb(),
-    ]);
-    for (const r of dbResults) if (r.status === "fulfilled") dbs.push(r.value);
-    const rejected = dbResults.find((r): r is PromiseRejectedResult => r.status === "rejected");
-    if (rejected) throw rejected.reason;
-    const [coreDb, nrmsDb, newsApiDb, publicSiteDb, nodDb, distributionDb] = dbResults.map(
-      (r) => (r as PromiseFulfilledResult<TestDatabase>).value,
-    ) as [TestDatabase, TestDatabase, TestDatabase, TestDatabase, TestDatabase, TestDatabase];
+interface StackTestInstance {
+  handle: Awaited<ReturnType<typeof startStack>>;
+  stackUrl: string;
+  dbs: StackTestInstanceDbs;
+  outputDir: string;
+  sink: Awaited<ReturnType<typeof startSmtpSink>>;
+  tickToken: string;
+  /** Present only when `opts.fetchAdminToken` (the default) — omitted for the M7 rate-limit
+   * test, which must start from a clean combined-login-limiter budget (see that describe
+   * block for why fetching one here would consume a slot of it). */
+  adminToken?: string;
+  close(): Promise<void>;
+}
 
-    outputDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-"));
-    sink = await startSmtpSink();
+/**
+ * Spins up one full stack instance against six fresh test databases, a real SMTP sink and a
+ * real listening server — the shared fixture for every test below. Each test file-level
+ * `describe` that needs its *own* isolated instance (M7's combined-login-rate-limit test, M5's
+ * startup-error test) calls this again rather than sharing the main one.
+ */
+async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<StackTestInstance> {
+  const fetchAdminToken = opts.fetchAdminToken ?? true;
 
-    const port = await probeFreePort();
-    const passwordHash = await hashPassword("stack-test-password-99");
-    const siteUrl = `http://127.0.0.1:${port}/site`;
+  const dbResults = await Promise.allSettled([
+    createCoreTestDb(),
+    createNrmsTestDb(),
+    createNewsTestDb(),
+    createPublicSiteTestDb(),
+    createNodTestDb(),
+    createDistributionTestDb(),
+  ]);
+  const created: TestDatabase[] = [];
+  for (const r of dbResults) if (r.status === "fulfilled") created.push(r.value);
+  const rejected = dbResults.find((r): r is PromiseRejectedResult => r.status === "rejected");
+  if (rejected) {
+    await Promise.allSettled(created.map((d) => d.drop()));
+    throw rejected.reason;
+  }
+  const [core, nrms, newsApi, publicSite, nod, distribution] = created as [TestDatabase, TestDatabase, TestDatabase, TestDatabase, TestDatabase, TestDatabase];
+  const dbs: StackTestInstanceDbs = { core, nrms, newsApi, publicSite, nod, distribution };
 
-    const env: NodeJS.ProcessEnv = {
-      PORT: String(port),
-      TICK_TOKEN,
-      STACK_LOOPS: "false",
-      UPDATES_HUB_ENABLED: "false",
-      NODE_ENV: "test",
-      LOCAL_ADMIN_ENABLED: "true",
-      LOCAL_ADMIN_PASSWORD_HASH: passwordHash,
-      LOCAL_AUTH_SECRET,
+  const outputDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-"));
+  const sink = await startSmtpSink();
 
-      CORE_DATABASE_URL: coreDb.url,
+  const port = await probeFreePort();
+  const passwordHash = await hashPassword(ADMIN_PASSWORD);
+  const tickToken = `tick-token-${port}-${"x".repeat(32)}`;
 
-      NRMS_DATABASE_URL: nrmsDb.url,
-      NRMS_EVENT_SUBSCRIBERS: JSON.stringify([
-        { name: "news-api", url: "self:/events", secret: SECRET_NRMS_TO_NEWS_API, types: ["release.published"] },
-        { name: "nod", url: "self:/nod/events", secret: SECRET_NRMS_TO_NOD, types: ["release.published"] },
-      ]),
+  const env: NodeJS.ProcessEnv = {
+    PORT: String(port),
+    TICK_TOKEN: tickToken,
+    STACK_LOOPS: "false",
+    UPDATES_HUB_ENABLED: "false",
+    NODE_ENV: "test",
+    LOCAL_ADMIN_ENABLED: "true",
+    LOCAL_ADMIN_PASSWORD_HASH: passwordHash,
+    LOCAL_AUTH_SECRET,
 
-      NEWSAPI_DATABASE_URL: newsApiDb.url,
-      NEWSAPI_EVENT_SECRETS: JSON.stringify({ nrms: SECRET_NRMS_TO_NEWS_API }),
-      NEWSAPI_EVENT_SUBSCRIBERS: JSON.stringify([
-        { name: "public-site", url: "self:/site-builder/events", secret: SECRET_NEWS_API_TO_PUBLIC_SITE, types: ["site.rebuild_requested"] },
-      ]),
+    CORE_DATABASE_URL: core.url,
+    // Important fix 1 (P2-R30): Core's own EVENT_SUBSCRIBERS, with a self: URL, exactly like
+    // NRMS's below — this is what was missing before the fix.
+    CORE_EVENT_SUBSCRIBERS: JSON.stringify([{ name: "news-api", url: "self:/events", secret: SECRET_CORE_TO_NEWS_API, types: ["org.upserted"] }]),
 
-      SITE_DATABASE_URL: publicSiteDb.url,
-      SITE_NEWS_API_URL: `http://127.0.0.1:${port}`,
-      SITE_OUTPUT_DIR: outputDir,
-      SITE_EVENT_SECRETS: JSON.stringify({ "news-api": SECRET_NEWS_API_TO_PUBLIC_SITE }),
-      SITE_PUBLIC_SITE_URL: siteUrl,
+    NRMS_DATABASE_URL: nrms.url,
+    NRMS_EVENT_SUBSCRIBERS: JSON.stringify([
+      { name: "news-api", url: "self:/events", secret: SECRET_NRMS_TO_NEWS_API, types: ["release.published"] },
+      { name: "nod", url: "self:/nod/events", secret: SECRET_NRMS_TO_NOD, types: ["release.published"] },
+    ]),
 
-      NOD_DATABASE_URL: nodDb.url,
-      NOD_EVENT_SECRETS: JSON.stringify({ nrms: SECRET_NRMS_TO_NOD }),
-      NOD_DISTRIBUTION_URL: `http://127.0.0.1:${port}/distribution`,
-      NOD_PUBLIC_SITE_URL: siteUrl,
-      NOD_MANAGE_URL: MANAGE_URL,
+    NEWSAPI_DATABASE_URL: newsApi.url,
+    NEWSAPI_EVENT_SECRETS: JSON.stringify({ nrms: SECRET_NRMS_TO_NEWS_API, core: SECRET_CORE_TO_NEWS_API }),
+    NEWSAPI_EVENT_SUBSCRIBERS: JSON.stringify([
+      { name: "public-site", url: "self:/site-builder/events", secret: SECRET_NEWS_API_TO_PUBLIC_SITE, types: ["site.rebuild_requested"] },
+    ]),
 
-      DIST_DATABASE_URL: distributionDb.url,
-      DIST_SMTP_HOST: "127.0.0.1",
-      DIST_SMTP_PORT: String(sink.port),
-      DIST_SMTP_SECURE: "false",
-      DIST_MAIL_FROM: "noreply@example.gov.bc.ca",
-      DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
-    };
+    SITE_DATABASE_URL: publicSite.url,
+    // M9: a bare "self:/" (not a hand-built http://127.0.0.1:<port> string) proves the
+    // general *_URL resolution, not just EVENT_SUBSCRIBERS.
+    SITE_NEWS_API_URL: "self:/",
+    SITE_OUTPUT_DIR: outputDir,
+    SITE_EVENT_SECRETS: JSON.stringify({ "news-api": SECRET_NEWS_API_TO_PUBLIC_SITE }),
+    SITE_PUBLIC_SITE_URL: "self:/site",
 
-    handle = await startStack(env);
-    expect(handle.port).toBe(port);
-    bound = await listenOnPort(handle.app, handle.port);
-    stackUrl = `http://127.0.0.1:${handle.port}`;
+    NOD_DATABASE_URL: nod.url,
+    NOD_EVENT_SECRETS: JSON.stringify({ nrms: SECRET_NRMS_TO_NOD }),
+    // M9: NoD -> Distribution, also over a self: URL.
+    NOD_DISTRIBUTION_URL: "self:/distribution",
+    NOD_PUBLIC_SITE_URL: "self:/site",
+    NOD_MANAGE_URL: MANAGE_URL, // external (fake) — never resolved as self:
 
+    DIST_DATABASE_URL: distribution.url,
+    DIST_SMTP_HOST: "127.0.0.1",
+    DIST_SMTP_PORT: String(sink.port),
+    DIST_SMTP_SECURE: "false",
+    DIST_MAIL_FROM: "noreply@example.gov.bc.ca",
+    DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
+  };
+
+  const handle = await startStack(env);
+  if (handle.port !== port) throw new Error(`expected startStack to keep the requested port ${port}, got ${handle.port}`);
+  const bound = await listenOnPort(handle.app, handle.port);
+  const stackUrl = `http://127.0.0.1:${handle.port}`;
+
+  let adminToken: string | undefined;
+  if (fetchAdminToken) {
     const tokenRes = await fetch(`${stackUrl}/nrms/auth/local/token`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ username: "admin", password: "stack-test-password-99" }),
+      body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD }),
     });
-    expect(tokenRes.status).toBe(200);
+    if (tokenRes.status !== 200) throw new Error(`admin token fetch failed: ${tokenRes.status}`);
     ({ access_token: adminToken } = (await tokenRes.json()) as { access_token: string });
+  }
+
+  return {
+    handle,
+    stackUrl,
+    dbs,
+    outputDir,
+    sink,
+    tickToken,
+    adminToken,
+    async close() {
+      const errors: unknown[] = [];
+      const step = async (fn: () => unknown): Promise<void> => {
+        try {
+          await fn();
+        } catch (e) {
+          errors.push(e);
+        }
+      };
+      // Same shutdown order main.ts uses: closeBeforeServer -> http server -> closers.
+      await Promise.all(handle.closeBeforeServer.map((c) => step(() => c.close())));
+      await step(() => bound.close());
+      await Promise.all(handle.closers.map((c) => step(() => c.close())));
+      await step(() => sink.close());
+      for (const db of Object.values(dbs)) await step(() => db.drop());
+      await step(() => rm(outputDir, { recursive: true, force: true }));
+      if (errors.length > 0) throw errors[0];
+    },
+  };
+}
+
+describe("apps/stack", () => {
+  let instance: StackTestInstance;
+
+  beforeAll(async () => {
+    instance = await setupStack();
   });
 
   afterAll(async () => {
-    const errors: unknown[] = [];
-    const step = async (fn: () => unknown): Promise<void> => {
-      try {
-        await fn();
-      } catch (e) {
-        errors.push(e);
-      }
-    };
-    // Same shutdown order main.ts uses: closeBeforeServer -> http server -> closers.
-    if (handle) await Promise.all(handle.closeBeforeServer.map((c) => step(() => c.close())));
-    await step(() => bound?.close());
-    if (handle) await Promise.all(handle.closers.map((c) => step(() => c.close())));
-    await step(() => sink?.close());
-    for (const db of dbs) await step(() => db.drop());
-    await step(() => (outputDir ? rm(outputDir, { recursive: true, force: true }) : undefined));
-    if (errors.length > 0) throw errors[0];
+    await instance.close();
   });
 
   it("every app's health endpoint answers through the stack's single server", async () => {
     for (const path of ["/core/health/live", "/nrms/health/live", "/nod/health/live", "/distribution/health/live", "/site-builder/health/live", "/health/live"]) {
-      const res = await fetch(`${stackUrl}${path}`);
+      const res = await fetch(`${instance.stackUrl}${path}`);
       expect.soft(res.status, path).toBe(200);
     }
   });
 
   it("GET /stack/health aggregates every app's own readiness", async () => {
-    const res = await fetch(`${stackUrl}/stack/health`);
+    const res = await fetch(`${instance.stackUrl}/stack/health`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { status: string; apps: Record<string, boolean> };
     expect(body.status).toBe("ok");
     expect(body.apps).toEqual({ core: true, nrms: true, nod: true, distribution: true, "site-builder": true, "news-api": true });
+  });
+
+  // Fix round 1, P2-R30 M8.
+  it("GET /stack/health caches the aggregate for ~5s instead of re-fanning-out to every app on each call", async () => {
+    const originalFetch = globalThis.fetch;
+    let calls = 0;
+    globalThis.fetch = (async (...args: Parameters<typeof fetch>) => {
+      calls++;
+      return originalFetch(...args);
+    }) as typeof fetch;
+    try {
+      await fetch(`${instance.stackUrl}/stack/health`); // may be a cache hit or miss; don't care which
+      calls = 0; // only the next call (the one actually asserted on) is counted from here
+      const res = await fetch(`${instance.stackUrl}/stack/health`);
+      expect(res.status).toBe(200);
+      // Exactly our own one outer call — if the cache were absent, this would also count 6
+      // more (one loopback fetch per mounted app's /health/ready), i.e. 7.
+      expect(calls).toBe(1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   // Deviation from the brief's literal "/nrms/events ... (receiver mounted)": nrms/src/app.ts
@@ -209,7 +286,7 @@ describe("apps/stack", () => {
       data: {},
     };
     const body = JSON.stringify(event);
-    const res = await fetch(`${stackUrl}/nod/events`, {
+    const res = await fetch(`${instance.stackUrl}/nod/events`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -224,30 +301,40 @@ describe("apps/stack", () => {
 
   it("/site/ serves a file written into OUTPUT_DIR with Cache-Control: public, max-age=60", async () => {
     const { fsStorage } = await import("../../public-site/src/storage");
-    await fsStorage(outputDir!).write("probe.html", "<p>hi</p>");
-    const res = await fetch(`${stackUrl}/site/probe.html`);
+    await fsStorage(instance.outputDir).write("probe.html", "<p>hi</p>");
+    const res = await fetch(`${instance.stackUrl}/site/probe.html`);
     expect(res.status).toBe(200);
     expect(await res.text()).toBe("<p>hi</p>");
     expect(res.headers.get("cache-control")).toBe("public, max-age=60");
   });
 
+  // Fix round 1, P2-R30 M4: express.static's own directory redirect (no trailing slash) must
+  // not be cacheable by the SiteGround proxy either.
+  it("/site/<dir without trailing slash> redirects 301 with Cache-Control: no-store", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    await fsStorage(instance.outputDir).write("probe-dir/index.html", "<p>dir</p>");
+    const res = await fetch(`${instance.stackUrl}/site/probe-dir`, { redirect: "manual" });
+    expect(res.status).toBe(301);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
   it("every other response defaults to Cache-Control: no-store, overriding a weaker header the app set itself", async () => {
-    const api = await fetch(`${stackUrl}/api/Home?api-version=1.0`);
+    const api = await fetch(`${instance.stackUrl}/api/Home?api-version=1.0`);
     expect(api.status).toBe(200);
     expect(api.headers.get("cache-control")).toBe("no-store");
 
-    const health = await fetch(`${stackUrl}/nrms/health/live`);
+    const health = await fetch(`${instance.stackUrl}/nrms/health/live`);
     expect(health.status).toBe(200);
     expect(health.headers.get("cache-control")).toBe("no-store");
   });
 
   describe("/stack/tick", () => {
     it("401s without a token", async () => {
-      expect((await fetch(`${stackUrl}/stack/tick`, { method: "POST" })).status).toBe(401);
+      expect((await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST" })).status).toBe(401);
     });
 
     it("200s with the right bearer token and runs every app's worker once", async () => {
-      const res = await fetch(`${stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${TICK_TOKEN}` } });
+      const res = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { ran: Record<string, string>; ms: number };
       expect(Object.keys(body.ran)).toEqual(["nrms.publish", "nrms.dispatch", "core.dispatch", "news-api.dispatch", "nod.send", "distribution.send"]);
@@ -257,8 +344,8 @@ describe("apps/stack", () => {
 
     it("coalesces an overlapping tick into 202 {skipped:true}", async () => {
       const [a, b] = await Promise.all([
-        fetch(`${stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${TICK_TOKEN}` } }),
-        fetch(`${stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${TICK_TOKEN}` } }),
+        fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } }),
+        fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } }),
       ]);
       const statuses = [a.status, b.status].sort();
       expect(statuses).toEqual([200, 202]);
@@ -267,67 +354,156 @@ describe("apps/stack", () => {
 
   describe("/stack/errors", () => {
     it("401s with no bearer", async () => {
-      expect((await fetch(`${stackUrl}/stack/errors`)).status).toBe(401);
+      expect((await fetch(`${instance.stackUrl}/stack/errors`)).status).toBe(401);
     });
 
     it("200s with a Core.Admin bearer and returns captured console.error entries", async () => {
       console.error("stack.test.ts probe error for /stack/errors");
-      const res = await fetch(`${stackUrl}/stack/errors`, { headers: { authorization: `Bearer ${adminToken}` } });
+      const res = await fetch(`${instance.stackUrl}/stack/errors`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { errors: { timestamp: string; message: string }[] };
       expect(body.errors.some((e) => e.message.includes("stack.test.ts probe error"))).toBe(true);
     });
+
+    // Important fix 2, P2-R30: a valid bearer that just doesn't carry Core.Admin must be 403
+    // (requireRole), not treated as unauthenticated (401) or, worse, let through.
+    it("403s a valid bearer that doesn't carry Core.Admin", async () => {
+      const nonAdminToken = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
+      const res = await fetch(`${instance.stackUrl}/stack/errors`, { headers: { authorization: `Bearer ${nonAdminToken}` } });
+      expect(res.status).toBe(403);
+    });
+  });
+
+  // Important fix 1, P2-R30: Core's own EVENT_SUBSCRIBERS (self:/events) must actually reach
+  // News API, exactly like NRMS's does — before the fix, Core's self: URL was never resolved,
+  // so this delivery would fail (an "unknown scheme" fetch error, recorded as a retry/dead
+  // delivery in Core's own outbox) and News API's inbox would never see it.
+  it("Core's org.upserted reaches News API over its own self: EVENT_SUBSCRIBERS url, driven by /stack/tick", async () => {
+    const putRes = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
+      body: JSON.stringify(healthOrg),
+    });
+    expect(putRes.status).toBe(200);
+
+    const tickRes = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+    expect(tickRes.status).toBe(200);
+    const tickBody = (await tickRes.json()) as { ran: Record<string, string> };
+    expect(tickBody.ran["core.dispatch"]).toBe("ok");
+
+    const inbox = await instance.dbs.newsApi.pool.query<{ source: string; type: string; outcome: string }>(
+      "SELECT source, type, outcome FROM inbox_events WHERE source = 'core' AND type = 'org.upserted'",
+    );
+    expect(inbox.rows).toEqual([{ source: "core", type: "org.upserted", outcome: "applied" }]);
   });
 
   it("Phase 2 exit check: a release created through /nrms/api reaches a static page and an email, driven only by /stack/tick", async () => {
     const draft = { ...sampleDraft, key: "2026HLTH0099-000099" };
-    const createRes = await fetch(`${stackUrl}/nrms/api/releases`, {
+    const createRes = await fetch(`${instance.stackUrl}/nrms/api/releases`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${adminToken}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
       body: JSON.stringify(draft),
     });
     expect(createRes.status).toBe(201);
 
     const publishAt = new Date(Date.now() - 60_000).toISOString();
-    const scheduleRes = await fetch(`${stackUrl}/nrms/api/releases/${draft.key}/schedule`, {
+    const scheduleRes = await fetch(`${instance.stackUrl}/nrms/api/releases/${draft.key}/schedule`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${adminToken}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
       body: JSON.stringify({ publishAt }),
     });
     expect(scheduleRes.status).toBe(200);
 
-    const subscriberRes = await fetch(`${stackUrl}/nod/api/subscribers`, {
+    const subscriberRes = await fetch(`${instance.stackUrl}/nod/api/subscribers`, {
       method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${adminToken}` },
+      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
       body: JSON.stringify({ email: "alex.example@gov.bc.ca", lists: ["ministries:health"] }),
     });
     expect([201, 409]).toContain(subscriberRes.status); // 409 if a prior test run's subscriber row survived
 
     async function tick(): Promise<void> {
-      const res = await fetch(`${stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${TICK_TOKEN}` } });
+      const res = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
       expect(res.status).toBe(200);
     }
 
     await tick();
     let postHtml: string | undefined;
     try {
-      postHtml = await readFile(join(outputDir!, "releases", draft.key, "index.html"), "utf8");
+      postHtml = await readFile(join(instance.outputDir, "releases", draft.key, "index.html"), "utf8");
     } catch {
       // Brief: "call the tick (twice if needed)".
       await tick();
-      postHtml = await readFile(join(outputDir!, "releases", draft.key, "index.html"), "utf8");
+      postHtml = await readFile(join(instance.outputDir, "releases", draft.key, "index.html"), "utf8");
     }
     expect(postHtml).toContain(draft.documents[0]!.headline!);
 
-    const pageRes = await fetch(`${stackUrl}/site/releases/${draft.key}/`);
+    const pageRes = await fetch(`${instance.stackUrl}/site/releases/${draft.key}/`);
     expect(pageRes.status).toBe(200);
 
-    await expect
-      .poll(() => sink!.messages.length, { timeout: 5000 })
-      .toBeGreaterThan(0);
-    const mail = sink!.messages.find((m) => m.subject === draft.documents[0]!.headline);
+    await expect.poll(() => instance.sink.messages.length, { timeout: 5000 }).toBeGreaterThan(0);
+    const mail = instance.sink.messages.find((m) => m.subject === draft.documents[0]!.headline);
     expect(mail).toBeDefined();
     const toAddress = mail!.to && "value" in mail!.to ? mail!.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");
+  });
+});
+
+// Fix round 1, P2-R30 M5: a standalone instance (not the shared one above) so a deliberately
+// broken env (a missing NRMS_DATABASE_URL) can be exercised without disturbing the other
+// tests' happy-path fixture.
+describe("apps/stack: startup errors name the app and its env prefix (M5)", () => {
+  let coreDb: TestDatabase | undefined;
+
+  afterAll(async () => {
+    await coreDb?.drop();
+  });
+
+  it("a missing NRMS_DATABASE_URL fails startStack with a message naming NRMS and NRMS_*", async () => {
+    coreDb = await createCoreTestDb();
+    const passwordHash = await hashPassword(ADMIN_PASSWORD);
+    const env: NodeJS.ProcessEnv = {
+      PORT: "0",
+      TICK_TOKEN: "t".repeat(32),
+      STACK_LOOPS: "false",
+      LOCAL_ADMIN_ENABLED: "true",
+      LOCAL_ADMIN_PASSWORD_HASH: passwordHash,
+      LOCAL_AUTH_SECRET,
+      CORE_DATABASE_URL: coreDb.url,
+      // NRMS_DATABASE_URL deliberately omitted.
+    };
+    await expect(startStack(env)).rejects.toThrow(/^\[stack\] NRMS failed to start \(its variables are NRMS_\*\): /);
+  });
+});
+
+// Fix round 1, P2-R30 M7: its own isolated stack instance, with no admin-token fetch during
+// setup (fetchAdminToken: false) — that fetch is itself a POST to /nrms/auth/local/token,
+// which would otherwise consume one slot of the exact budget this test counts against,
+// making "the 11th request is 429" false (it would actually be the 10th).
+describe("apps/stack: combined login-attempt rate limit across every app (M7)", () => {
+  let instance: StackTestInstance;
+
+  beforeAll(async () => {
+    instance = await setupStack({ fetchAdminToken: false });
+  });
+
+  afterAll(async () => {
+    await instance.close();
+  });
+
+  it("10/min/IP combined across /core, /nrms, /nod and /distribution's login routes — the 11th is 429", async () => {
+    const headers = { "content-type": "application/json" };
+    const body = JSON.stringify({ username: "nope", password: "nope" });
+    const statuses: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      statuses.push((await fetch(`${instance.stackUrl}/core/auth/local/token`, { method: "POST", headers, body })).status);
+    }
+    for (let i = 0; i < 5; i++) {
+      statuses.push((await fetch(`${instance.stackUrl}/nrms/auth/local/token`, { method: "POST", headers, body })).status);
+    }
+    expect(statuses).toHaveLength(11);
+    // The first 10 are the apps' own (unauthenticated-credentials) answers, never 429 — the
+    // combined limiter hasn't tripped yet.
+    expect(statuses.slice(0, 10).every((s) => s !== 429)).toBe(true);
+    expect(statuses[10]).toBe(429);
   });
 });

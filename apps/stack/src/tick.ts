@@ -45,6 +45,11 @@ export function createTickRunner(steps: TickStep[]): TickRunner {
             ran[step.name] = "ok";
           } catch (e) {
             ran[step.name] = `error: ${e instanceof Error ? e.message : String(e)}`;
+            // Fix round 1, P2-R30 M3: a failed step is otherwise only visible in the tick
+            // response's `ran` JSON — logged too, so it also reaches /stack/errors (which
+            // reads back whatever console.error captured) for an operator who only has
+            // SSH-less SiteGround access and didn't happen to be watching that one response.
+            console.error("[stack] tick step failed", step.name, e);
           }
         }
         return { skipped: false as const, ran, ms: Date.now() - start };
@@ -64,8 +69,17 @@ function safeEqual(a: string, b: string): boolean {
   return timingSafeEqual(ha, hb);
 }
 
-/** `Authorization: Bearer <token>` (preferred) or `?token=` (for schedulers that can only
- * issue a GET with no custom header), constant-time compared against `tickToken`. */
+/**
+ * `Authorization: Bearer <token>` (preferred) or `?token=` (for schedulers that can only
+ * issue a GET with no custom header), constant-time compared against `tickToken`.
+ *
+ * Fix round 1, P2-R30 M2: **POST with a `Bearer` header is the supported mode** — prefer it
+ * whenever the scheduler can set a header. `?token=` is a fallback for a scheduler that can
+ * only issue a bare GET: the token then lands in plaintext in the stack's own (and any
+ * intermediate proxy's) access logs, which a header never does. If `?token=` is used in
+ * production, rotate TICK_TOKEN on a schedule accordingly. (This belongs in Task 15's
+ * operator runbook too — noted here since that doc doesn't exist yet.)
+ */
 export function requireTickToken(tickToken: string): RequestHandler {
   return (req, res, next) => {
     const header = req.header("authorization");

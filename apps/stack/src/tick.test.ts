@@ -70,6 +70,25 @@ describe("tick execution", () => {
     expect(order).toEqual(["b"]);
   });
 
+  // Fix round 1, P2-R30 M3: a failed step must also be logged via console.error, so it's
+  // visible through GET /stack/errors (which reads back whatever console.error captured) —
+  // the `ran` JSON in the tick response alone isn't enough for an operator who wasn't
+  // watching that one response (SiteGround's runtime logs aren't reachable over SSH).
+  it("logs a failing step via console.error (so it reaches /stack/errors)", async () => {
+    const original = console.error;
+    const calls: unknown[][] = [];
+    console.error = (...args: unknown[]) => void calls.push(args);
+    try {
+      const steps: TickStep[] = [{ name: "distribution.send", run: async () => { throw new Error("smtp down"); } }];
+      const app = appWith(steps);
+      const res = await request(app).post("/stack/tick").set("authorization", `Bearer ${TOKEN}`);
+      expect(res.status).toBe(200);
+      expect(calls.some((args) => args[0] === "[stack] tick step failed" && args[1] === "distribution.send" && args[2] instanceof Error && args[2].message === "smtp down")).toBe(true);
+    } finally {
+      console.error = original;
+    }
+  });
+
   it("coalesces an overlapping tick into a 202 {skipped:true} instead of running twice concurrently", async () => {
     let concurrent = 0;
     let maxConcurrent = 0;
