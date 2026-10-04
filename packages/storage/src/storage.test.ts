@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -61,5 +61,40 @@ describe("localStore", () => {
     await expect(s.put("../escape", PDF, "application/pdf")).rejects.toThrow(InvalidKeyError);
     await expect(s.get("../escape")).rejects.toThrow(InvalidKeyError);
     await expect(s.delete("a/../b")).rejects.toThrow(InvalidKeyError);
+  });
+
+  it("rejects unsafe list prefixes but still lists everything on an empty prefix", async () => {
+    const s = localStore(root);
+    const key = "releases/r1/0123456789abcdef-doc.pdf";
+    await s.put(key, PDF, "application/pdf");
+    await expect(s.list("../x")).rejects.toThrow(InvalidKeyError);
+    await expect(s.list(".meta")).rejects.toThrow(InvalidKeyError);
+    expect((await s.list("")).map((o) => o.key)).toEqual([key]);
+  });
+
+  it("leaves no tmp file when a write fails, and list() ignores stray tmp files", async () => {
+    const s = localStore(root);
+    const blockedKey = "blocked/0123456789abcdef-x.pdf";
+    await mkdir(join(root, blockedKey), { recursive: true });
+    await expect(s.put(blockedKey, PDF, "application/pdf")).rejects.toThrow();
+    const blockedEntries = await readdir(join(root, "blocked"));
+    expect(blockedEntries.some((name) => name.includes(".tmp-"))).toBe(false);
+
+    await writeFile(join(root, "blocked", "x.tmp-abc"), "partial");
+    expect((await s.list("blocked")).map((o) => o.key)).not.toContain("blocked/x.tmp-abc");
+  });
+
+  it("falls back to octet-stream when metadata JSON is corrupt", async () => {
+    const s = localStore(root);
+    const key = "corrupt/0123456789abcdef-y.pdf";
+    await s.put(key, PDF, "application/pdf");
+    await writeFile(join(root, ".meta", `${key}.json`), "{not json");
+
+    const got = await s.get(key);
+    expect(got!.meta.contentType).toBe("application/octet-stream");
+    expect(got!.meta.size).toBe(PDF.length);
+
+    const listed = await s.list("corrupt");
+    expect(listed[0]!.contentType).toBe("application/octet-stream");
   });
 });

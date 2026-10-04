@@ -29,8 +29,17 @@ const DEFAULT_CONTENT_TYPE = "application/octet-stream";
 async function atomicWrite(path: string, data: string | Buffer): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const tmp = `${path}.tmp-${randomBytes(8).toString("hex")}`;
-  await writeFile(tmp, data);
-  await rename(tmp, path);
+  try {
+    await writeFile(tmp, data);
+    await rename(tmp, path);
+  } catch (err) {
+    try {
+      await unlink(tmp);
+    } catch {
+      // best-effort cleanup; the original error is what matters
+    }
+    throw err;
+  }
 }
 
 function isEnoent(err: unknown): boolean {
@@ -45,13 +54,20 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
   const filePath = (key: string) => join(root, key);
   const metaPath = (key: string) => join(root, ".meta", `${key}.json`);
 
-  async function readMeta(key: string): Promise<StoredObject> {
-    const st = await stat(filePath(key));
+  async function readMeta(key: string): Promise<StoredObject | null> {
+    let st;
+    try {
+      st = await stat(filePath(key));
+    } catch (err) {
+      if (isEnoent(err)) return null;
+      throw err;
+    }
+    // Missing or corrupt metadata is not fatal: fall back to defaults
+    // derived from the file itself rather than failing the read.
     let meta: MetaFile | null = null;
     try {
       meta = JSON.parse(await readFile(metaPath(key), "utf8")) as MetaFile;
-    } catch (err) {
-      if (!isEnoent(err)) throw err;
+    } catch {
       meta = null;
     }
     return {
@@ -82,6 +98,7 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
         throw err;
       }
       const meta = await readMeta(key);
+      if (!meta) return null;
       return { bytes, meta };
     },
 
@@ -102,11 +119,22 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
     },
 
     async list(prefix) {
+      // First layer: the prefix must itself look like a safe key (this is
+      // what rejects things like ".meta" or "a/../b" outright, rather than
+      // relying solely on where the resolved path happens to land).
+      if (prefix !== "") {
+        const normalized = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
+        assertSafeKey(normalized);
+      }
+
+      // Second layer (defense in depth): the resolved path must still be
+      // inside root.
       const resolvedRoot = resolve(root);
       const base = resolve(root, prefix);
       if (base !== resolvedRoot && !base.startsWith(resolvedRoot + sep)) {
         throw new InvalidKeyError(prefix, "prefix escapes root");
       }
+
       const keys: string[] = [];
 
       async function walk(dir: string): Promise<void> {
@@ -119,6 +147,7 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
         }
         for (const entry of entries) {
           if (entry.name === ".meta") continue;
+          if (entry.name.includes(".tmp-")) continue; // in-progress atomic write
           const entryPath = join(dir, entry.name);
           if (entry.isDirectory()) {
             await walk(entryPath);
@@ -130,7 +159,8 @@ export function localStore(root: string, publicPrefix = "/files/"): ObjectStore 
 
       await walk(base);
       keys.sort();
-      return Promise.all(keys.map((key) => readMeta(key)));
+      const metas = await Promise.all(keys.map((key) => readMeta(key)));
+      return metas.filter((meta): meta is StoredObject => meta !== null);
     },
 
     publicPath(key) {
