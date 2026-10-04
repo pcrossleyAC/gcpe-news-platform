@@ -9,6 +9,7 @@ import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
 import { distributionClient, nodClient } from "./clients";
 import { createApp } from "./app";
+import { defaultSoundcloudOembed, type EmbedDeps } from "./media/embeds";
 import { flickrClient, type FlickrConfig } from "./media/flickr-client";
 import { flickrPrepareMedia, processFlickrJobs, startFlickrJobs } from "./media/flickr-jobs";
 import { publishDue, startPublisher } from "./publisher";
@@ -185,6 +186,10 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const flickr = flickrConfig ? flickrClient(flickrConfig) : null;
   // The mode only — never the key, secrets or tokens.
   console.log(`[nrms] Flickr: ${flickrConfig ? parsed.FLICKR_MODE : "not configured"}`);
+  // Task 7: body <asset> embed normalisation on save. Flickr may be null (unconfigured), in
+  // which case Flickr embeds degrade to plain links; SoundCloud always goes through its public
+  // oEmbed endpoint regardless of Flickr configuration.
+  const embeds: EmbedDeps = { flickr, soundcloudOembed: defaultSoundcloudOembed(fetch) };
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
@@ -198,6 +203,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     distribution,
     store,
     flickr,
+    embeds,
   });
 
   const alertEmails = parsed.FLICKR_ALERT_EMAILS;

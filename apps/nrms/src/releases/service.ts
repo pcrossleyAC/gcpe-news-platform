@@ -11,6 +11,7 @@ import {
 } from "../db/schema";
 import type { ObjectStore } from "@gcpe/storage";
 import { flickrAssetProblem } from "../media/asset-status";
+import { normalizeEmbeds, type EmbedDeps } from "../media/embeds";
 import { deleteStoredFiles } from "../media/files";
 import { sanitizeBodyHtml } from "../text/sanitize";
 import { generateSlug } from "../text/slug";
@@ -134,12 +135,23 @@ async function removeDocumentRows(tx: Tx, releaseId: string, documentId: string)
 
 const isFirstEnglish = (sortIndex: number, languageId: number) => sortIndex === 0 && languageId === LANG_EN;
 
-export async function createRelease(db: Db, input: CreateReleaseInput, actor: Actor): Promise<ReleaseView> {
+/**
+ * Sanitises a body and, when `deps` is supplied and the body contains an `<asset>` embed,
+ * normalises it (Task 7) — a network-calling step that must run before `mutateRelease` opens
+ * its transaction (no network while holding the release row lock). Without `deps` (e.g. a test
+ * that doesn't care about embeds), the body is sanitised only, unchanged from before this task.
+ */
+async function normalizedBody(bodyHtml: string, deps: EmbedDeps | undefined): Promise<string> {
+  const sanitized = sanitizeBodyHtml(bodyHtml);
+  return deps && sanitized.includes("<asset") ? normalizeEmbeds(sanitized, deps) : sanitized;
+}
+
+export async function createRelease(db: Db, input: CreateReleaseInput, actor: Actor, deps?: EmbedDeps): Promise<ReleaseView> {
   const type = input.type;
   const rules = typeRules(type);
   if (!rules.creatable) throw new ReleaseRuleError([`A new ${TYPE_LABEL[type]} can't be created.`]);
   assertTypeAllows(type, input);
-  const body = sanitizeBodyHtml(input.bodyHtml);
+  const body = await normalizedBody(input.bodyHtml, deps);
   return keyRace(
     db.transaction(async (tx) => {
       await assertKnownCategories(tx, input);
@@ -279,14 +291,16 @@ export function saveMeta(db: Db, id: string, input: MetaInput, actor: Actor): Pr
   );
 }
 
-export function saveDocumentLanguage(
+export async function saveDocumentLanguage(
   db: Db,
   id: string,
   documentId: string,
   languageId: LanguageId,
   input: DocumentLanguageInput,
   actor: Actor,
+  deps?: EmbedDeps,
 ): Promise<ReleaseView> {
+  const body = await normalizedBody(input.bodyHtml, deps);
   return keyRace(
     mutateRelease(db, id, input.version, actor, async (tx, row) => {
       const rules = typeRules(row.type);
@@ -304,7 +318,6 @@ export function saveDocumentLanguage(
         await tx.update(releaseDocuments).set({ layout: input.layout }).where(eq(releaseDocuments.id, doc.id));
       }
       const layout: Layout = input.layout;
-      const body = sanitizeBodyHtml(input.bodyHtml);
       await tx
         .update(documentLanguages)
         .set({

@@ -76,6 +76,19 @@ describe("release editing service", () => {
     expect(v4.languages[0]!.summary).toBe("My own summary.");
   });
 
+  it("saveDocumentLanguage normalises a body <asset> embed on save when embed deps are supplied", async () => {
+    const v = await createRelease(db(), sampleCreate, editor);
+    const d = doc0(v);
+    const base = { pageTitle: "News Release", layout: "formal" as const, headline: "New headline", subheadline: null, organizations: "Ministry of Health", byline: null, pageImageId: null, contacts: ["Media Relations"] };
+    const embeds = { flickr: null, soundcloudOembed: () => Promise.reject(new Error("not used")) };
+    const v2 = await saveDocumentLanguage(
+      db(), v.id, d.id, 4105,
+      { ...base, version: 1, bodyHtml: "<asset>https://youtu.be/abcdef12345</asset>" },
+      editor, embeds,
+    );
+    expect(doc0(v2).languages[0]).toMatchObject({ bodyHtml: "<asset>https://www.youtube.com/watch?v=abcdef12345</asset>" });
+  });
+
   it("translations, documents, ordering and layout locking", async () => {
     let v = await createRelease(db(), sampleCreate, editor);
     v = await addTranslation(db(), v.id, doc0(v).id, { version: v.version, languageId: 3084 }, editor);

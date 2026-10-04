@@ -7,6 +7,7 @@ import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import type { DistributionClient } from "./clients";
 import type { ObjectStore } from "@gcpe/storage";
 import type { FlickrClient } from "./media/flickr-client";
+import type { EmbedDeps } from "./media/embeds";
 import { mediaRoutes } from "./http/media-routes";
 import { apiRoutes } from "./http/routes";
 import type { WorkflowDeps } from "./releases/workflow";
@@ -23,6 +24,8 @@ export function createApp(deps: {
   store?: ObjectStore;
   /** Flickr (asset status); null/unset when FLICKR_API_KEY isn't configured. */
   flickr?: FlickrClient | null;
+  /** Body `<asset>` embed normalisation on save (Task 7); unset → bodies are sanitised but not normalised. */
+  embeds?: EmbedDeps;
 }): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -44,7 +47,7 @@ export function createApp(deps: {
     requireBearer(deps.auth),
     mediaRoutes({ db: deps.db, store: deps.store, flickr: deps.flickr }),
     express.json({ limit: MAX_EVENT_BYTES }),
-    apiRoutes({ db: deps.db, workflow: deps.workflow, distribution: deps.distribution, store: deps.store }),
+    apiRoutes({ db: deps.db, workflow: deps.workflow, distribution: deps.distribution, store: deps.store, embeds: deps.embeds }),
   );
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
   // escape stay JSON instead of finalhandler's default HTML.

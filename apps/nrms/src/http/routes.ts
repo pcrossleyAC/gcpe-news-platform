@@ -18,6 +18,7 @@ import {
 import { loadView, writeLog } from "../releases/store";
 import { mediaLists, newsReleases, pageImages } from "../db/schema";
 import type { ObjectStore } from "@gcpe/storage";
+import type { EmbedDeps } from "../media/embeds";
 import type { DistributionClient } from "../clients";
 import { buildEmailCopy } from "../renditions/email";
 import { buildRenditionModel } from "../renditions/model";
@@ -33,6 +34,8 @@ export interface RouteDeps {
   distribution?: DistributionClient;
   /** Uploaded release files; a hard delete removes the release's files from it. */
   store?: ObjectStore;
+  /** Body `<asset>` embed normalisation (Task 7); unset → bodies are sanitised but not normalised. */
+  embeds?: EmbedDeps;
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
@@ -82,7 +85,7 @@ export function apiRoutes(deps: RouteDeps): Router {
     "/releases",
     edit,
     run(async (req, res) => {
-      const view = await createRelease(db, createReleaseSchema.parse(req.body), actorOf(req));
+      const view = await createRelease(db, createReleaseSchema.parse(req.body), actorOf(req), deps.embeds);
       res.status(201).json(withStatus(view));
     }),
   );
@@ -239,7 +242,7 @@ export function apiRoutes(deps: RouteDeps): Router {
     edit,
     run(async (req, res) => {
       const lang = Number(req.params.lang) as LanguageId;
-      res.json(withStatus(await saveDocumentLanguage(db, req.params.id, req.params.docId, lang, documentLanguageSchema.parse(req.body), actorOf(req))));
+      res.json(withStatus(await saveDocumentLanguage(db, req.params.id, req.params.docId, lang, documentLanguageSchema.parse(req.body), actorOf(req), deps.embeds)));
     }),
   );
   r.post(
