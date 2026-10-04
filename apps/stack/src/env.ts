@@ -118,6 +118,16 @@ export function resolveSelfSubscribers(value: string | undefined, actualPort: nu
  * An external URL (a real public domain, or an OAuth2/Entra token endpoint) never starts with
  * `self:/`, so this never touches one — "leave external token URLs alone" falls out of the
  * same check, with no separate case needed for them.
+ *
+ * Ruling P2-R32 (Task 14 re-review r1 residual): any var whose name ends in `DATABASE_URL`
+ * (bare `DATABASE_URL` or a prefixed `<PREFIX>_DATABASE_URL`, which `envFor` has already
+ * stripped to `DATABASE_URL` by the time it reaches here) is excluded from this rewrite even
+ * though it also ends in `_URL` — a database is never reached over the stack's own loopback
+ * HTTP port, so "resolving" a `self:/...` DATABASE_URL to `http://127.0.0.1:<port>/...` and
+ * handing that straight to `pg` would just be the wrong fix dressed up as one. `DATABASE_URL`
+ * must simply never be set to `self:/` (the env generator and runbook never produce that);
+ * left untouched here, a mistaken one still fails loudly as an invalid Postgres connection
+ * string, the same way any other typo'd DATABASE_URL would.
  */
 export function resolveSelfUrls(env: NodeJS.ProcessEnv, actualPort: number): NodeJS.ProcessEnv {
   const view: Record<string, string> = {};
@@ -125,7 +135,7 @@ export function resolveSelfUrls(env: NodeJS.ProcessEnv, actualPort: number): Nod
     if (value === undefined) continue;
     if (key === "EVENT_SUBSCRIBERS") {
       view[key] = resolveSelfSubscribers(value, actualPort)!;
-    } else if (key.endsWith("_URL") && isSelfUrl(value)) {
+    } else if (key.endsWith("_URL") && !key.endsWith("DATABASE_URL") && isSelfUrl(value)) {
       view[key] = `http://127.0.0.1:${actualPort}${stripSelfPrefix(value)}`;
     } else {
       view[key] = value;

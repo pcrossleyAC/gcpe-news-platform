@@ -1,17 +1,22 @@
+import { existsSync } from "node:fs";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import express, { Router, type Express } from "express";
 import rateLimit from "express-rate-limit";
+import type { ZodTypeAny } from "zod";
 import { authFromEnv, requireBearer, requireRole } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 
-import { startCore, type AppHandle as CoreHandle } from "../../core/src/start";
+import { coreEnvSchema, startCore, type AppHandle as CoreHandle } from "../../core/src/start";
+import { distributionEnvSchema } from "../../distribution/src/env";
 import { startDistribution, type AppHandle as DistributionHandle } from "../../distribution/src/start";
+import { newsApiEnvSchema } from "../../news-api/src/env";
 import { startNewsApi, type AppHandle as NewsApiHandle } from "../../news-api/src/start";
-import { startNod, type AppHandle as NodHandle } from "../../nod/src/start";
-import { startNrms, type AppHandle as NrmsHandle } from "../../nrms/src/start";
+import { nodEnvSchema, startNod, type AppHandle as NodHandle } from "../../nod/src/start";
+import { nrmsEnvSchema, startNrms, type AppHandle as NrmsHandle } from "../../nrms/src/start";
+import { publicSiteEnvSchema } from "../../public-site/src/env";
 import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../public-site/src/start";
 
 import { noStoreByDefault, noStoreOnRedirect } from "./cache-control";
@@ -268,4 +273,72 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     // other closer's own console.error calls (e.g. a failed shutdown step) run.
     closers: [...newsApi.closers, ...siteBuilder.closers, ...distribution.closers, ...nod.closers, ...nrms.closers, ...core.closers, { name: "error capture", close: () => errorCapture.close() }],
   };
+}
+
+export interface StackCheckAppResult {
+  ok: boolean;
+  /** The app's resolved MIGRATIONS_FOLDER, when its env parsed successfully. */
+  migrationsFolder?: string;
+  error?: string;
+}
+
+export interface StackCheckResult {
+  ok: boolean;
+  tenantId?: string;
+  timeZone?: string;
+  apps: Record<string, StackCheckAppResult>;
+}
+
+/**
+ * Task 15's `node stack.js --check`: validates the stack's configuration — the stack-level
+ * env (TICK_TOKEN, tenant config + its P2-R17 time-zone self-check), then every one of the
+ * six apps' own env schema and its resolved MIGRATIONS_FOLDER actually existing on disk —
+ * all WITHOUT opening a single database connection (no `createDb`/`runMigrations` call, unlike
+ * `startStack`). This is the SiteGround deploy's build-time and post-deploy smoke test: a
+ * misconfigured `<PREFIX>_*` var, or a MIGRATIONS_FOLDER that doesn't resolve relative to the
+ * bundled `stack.js` the way main.ts expects, fails fast and names which app and which prefix
+ * — instead of surfacing three minutes later as "DATABASE_URL: Required" with six candidates
+ * and no way to tell which (the same problem `startNamed` solves for a real `startStack` run).
+ */
+export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResult> {
+  const stackEnv = parseEnv(stackEnvSchema, env);
+  const tenant = loadTenantConfig(stackEnv.TENANT_CONFIG);
+  assertTimeZoneRules(tenant);
+
+  // self: URLs need a real port to resolve against; --check never binds a socket (and
+  // PORT=0 — "let the OS pick" — has nothing to probe here), so this only has to be a
+  // positive integer for the resolved URL's *shape* to come out right. Never dialled.
+  const actualPort = stackEnv.PORT || 1;
+
+  const checks: { label: string; prefix: AppPrefix; schema: ZodTypeAny }[] = [
+    { label: "core", prefix: "CORE", schema: coreEnvSchema },
+    { label: "nrms", prefix: "NRMS", schema: nrmsEnvSchema },
+    { label: "news-api", prefix: "NEWSAPI", schema: newsApiEnvSchema },
+    { label: "public-site", prefix: "SITE", schema: publicSiteEnvSchema(tenant) },
+    { label: "nod", prefix: "NOD", schema: nodEnvSchema },
+    { label: "distribution", prefix: "DIST", schema: distributionEnvSchema },
+  ];
+
+  const apps: Record<string, StackCheckAppResult> = {};
+  let ok = true;
+  for (const c of checks) {
+    const view = resolvedEnvFor(env, c.prefix, actualPort);
+    const parsed = c.schema.safeParse(view);
+    if (!parsed.success) {
+      ok = false;
+      const message = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
+      apps[c.label] = { ok: false, error: `(its variables are ${c.prefix}_*): ${message}` };
+      continue;
+    }
+    const migrationsFolder = (parsed.data as { MIGRATIONS_FOLDER?: string }).MIGRATIONS_FOLDER;
+    const folderOk = migrationsFolder === undefined || existsSync(migrationsFolder);
+    if (!folderOk) ok = false;
+    apps[c.label] = {
+      ok: folderOk,
+      migrationsFolder,
+      ...(folderOk ? {} : { error: `migrations folder not found: ${migrationsFolder}` }),
+    };
+  }
+
+  return { ok, tenantId: tenant.tenantId, timeZone: tenant.timeZone, apps };
 }

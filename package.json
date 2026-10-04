@@ -8,7 +8,10 @@
     "check": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "auth:hash-password": "tsx packages/auth/src/cli/hash-password.ts"
+    "auth:hash-password": "tsx packages/auth/src/cli/hash-password.ts",
+    "build:siteground": "node scripts/build-siteground.mjs",
+    "deploy:siteground": "bash scripts/deploy-siteground.sh",
+    "siteground:env": "tsx scripts/siteground-env.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.1",

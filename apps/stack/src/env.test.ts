@@ -128,6 +128,18 @@ describe("resolveSelfUrls", () => {
     const env = { DATABASE_URL_PREFIX: "not-a-url-var", PORT: "3001" };
     expect(resolveSelfUrls(env, 5000)).toEqual(env);
   });
+
+  // Ruling P2-R32 (Task 14 re-review r1 residual): the *_URL heuristic also matched
+  // <PREFIX>_DATABASE_URL — a self:/... DATABASE_URL would otherwise get silently rewritten
+  // to an http://127.0.0.1:<port>/... URL and handed straight to pg, which fails loudly in
+  // the best case (connection refused) and is simply the wrong fix in every case: a database
+  // is never reached over the stack's own HTTP port. DATABASE_URL must never be set to
+  // self:/ in the first place (see the env generator / runbook), so this is excluded from
+  // rewriting entirely rather than "resolved" to something nonsensical.
+  it("never rewrites a var whose name ends in DATABASE_URL, even one literally named DATABASE_URL", () => {
+    const env = { CORE_DATABASE_URL: "self:/whatever", NRMS_DATABASE_URL: "self:/", DATABASE_URL: "self:/x" };
+    expect(resolveSelfUrls(env, 5000)).toEqual(env);
+  });
 });
 
 describe("stackEnvSchema", () => {
