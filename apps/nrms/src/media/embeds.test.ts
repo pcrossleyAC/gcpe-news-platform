@@ -68,12 +68,34 @@ describe("normalizeEmbeds", () => {
     expect(out).toBe('<a href="https://www.flickr.com/photos/bcgovphotos/53212345678/">https://www.flickr.com/photos/bcgovphotos/53212345678/</a>');
   });
 
-  it("a SoundCloud URL resolves via soundcloudOembed; failure degrades to a plain link", async () => {
+  it("a SoundCloud URL resolves to the oEmbed-returned canonical URL", async () => {
     const url = "https://soundcloud.com/some-artist/some-track";
     const ok = await normalizeEmbeds(`<asset>${url}</asset>`, { flickr: null, soundcloudOembed: () => Promise.resolve("https://soundcloud.com/some-artist/some-track-canonical") });
     expect(ok).toBe("<asset>https://soundcloud.com/some-artist/some-track-canonical</asset>");
-    const failed = await normalizeEmbeds(`<asset>${url}</asset>`, { flickr: null, soundcloudOembed: () => Promise.resolve(null) });
-    expect(failed).toBe(`<a href="${url}">${url}</a>`);
+  });
+
+  it("a SoundCloud lookup failure (null or throw) keeps the embed as an https asset, never degrading to a link", async () => {
+    const url = "http://soundcloud.com/some-artist/some-track";
+    const httpsUrl = "https://soundcloud.com/some-artist/some-track";
+
+    // Fails on the very first save.
+    const firstSaveFails = await normalizeEmbeds(`<asset>${url}</asset>`, { flickr: null, soundcloudOembed: () => Promise.resolve(null) });
+    expect(firstSaveFails).toBe(`<asset>${httpsUrl}</asset>`);
+
+    // Resolves on first save, then SoundCloud is down on a later, unrelated save — the already-
+    // resolved asset must not be silently and permanently downgraded to a plain link.
+    const resolved = await normalizeEmbeds(`<asset>${url}</asset>`, { flickr: null, soundcloudOembed: () => Promise.resolve(httpsUrl) });
+    expect(resolved).toBe(`<asset>${httpsUrl}</asset>`);
+    const resavedWhileDown = await normalizeEmbeds(resolved, { flickr: null, soundcloudOembed: () => Promise.reject(new Error("down")) });
+    expect(resavedWhileDown).toBe(`<asset>${httpsUrl}</asset>`);
+  });
+
+  it("rejects an oEmbed canonical URL that isn't https on a soundcloud.com host, keeping the original instead", async () => {
+    const url = "https://soundcloud.com/some-artist/some-track";
+    const httpCanonical = await normalizeEmbeds(`<asset>${url}</asset>`, { flickr: null, soundcloudOembed: () => Promise.resolve("http://soundcloud.com/other") });
+    expect(httpCanonical).toBe(`<asset>${url}</asset>`);
+    const otherHost = await normalizeEmbeds(`<asset>${url}</asset>`, { flickr: null, soundcloudOembed: () => Promise.resolve("https://evil.example/x") });
+    expect(otherHost).toBe(`<asset>${url}</asset>`);
   });
 
   it("any other http(s) URL becomes a plain link", async () => {

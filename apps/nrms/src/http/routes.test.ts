@@ -13,6 +13,7 @@ const STALE = "Someone else changed this release — reload to see their changes
 describe("NRMS HTTP API", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
+  let appWithEmbeds: ReturnType<typeof createApp>;
   let editorCookie: string;
   let viewerCookie: string;
 
@@ -31,6 +32,12 @@ describe("NRMS HTTP API", () => {
     tdb = await createNrmsTestDb();
     await seedTaxonomy(tdb.db);
     app = createApp({ db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver" } });
+    // A second app on the same db, with the Task 7 embeds dep wired — proves the wiring from
+    // createApp through apiRoutes to the service (routes.ts/app.ts), not just the service itself.
+    appWithEmbeds = createApp({
+      db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver" },
+      embeds: { flickr: null, soundcloudOembed: () => Promise.reject(new Error("not used")) },
+    });
     editorCookie = await cookieFor(["NRMS.Editor"]);
     viewerCookie = await cookieFor(["NRMS.Viewer"]);
   });
@@ -248,6 +255,22 @@ describe("NRMS HTTP API", () => {
     expect(removed.status).toBe(200);
     expect(removed.body.documents.map((d: { id: string }) => d.id)).toEqual([second!.id]);
     expect(removed.body.version).toBe(7);
+  });
+
+  it("a document language PUT normalises a body <asset> embed when the app has embeds wired (Task 7)", async () => {
+    const created = await request(appWithEmbeds).post("/api/releases").set("cookie", editorCookie).set("x-gcpe-request", "1").send(sampleCreate);
+    expect(created.status).toBe(201);
+    const { id, documents, version } = created.body as { id: string; documents: { id: string }[]; version: number };
+    const edited = await request(appWithEmbeds)
+      .put(`/api/releases/${id}/documents/${documents[0]!.id}/4105`)
+      .set("cookie", editorCookie)
+      .set("x-gcpe-request", "1")
+      .send({
+        version, pageTitle: "News Release", layout: "formal", headline: "Weekend clinics open across B.C.", subheadline: null,
+        organizations: "Ministry of Health", byline: null, bodyHtml: "<asset>https://youtu.be/abcdef12345</asset>", pageImageId: null, contacts: [],
+      });
+    expect(edited.status).toBe(200);
+    expect(edited.body.documents[0].languages[0]).toMatchObject({ bodyHtml: "<asset>https://www.youtube.com/watch?v=abcdef12345</asset>" });
   });
 
   it("document routes: a bad language or a malformed id is a 404; a viewer can't add a document", async () => {

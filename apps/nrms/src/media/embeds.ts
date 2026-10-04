@@ -18,8 +18,10 @@ export interface EmbedDeps {
   /** null when Flickr isn't configured (FLICKR_API_KEY unset) — Flickr embeds degrade to links. */
   flickr: FlickrClient | null;
   soundcloudOembed: (url: string) => Promise<string | null>;
-  /** Caps how many `<asset>` tags get network-backed resolution; the rest become plain links
-   * without any network call. Default 10. */
+  /** Caps how many valid `<asset>` tags (in order) get type-specific resolution — every tag
+   * beyond this count becomes a plain link with no network call, whether or not its own
+   * resolution would have needed one (e.g. a YouTube URL past the cap still becomes a link).
+   * Default 10. */
   maxEmbeds?: number;
 }
 
@@ -42,6 +44,31 @@ function decodeEntities(s: string): string {
 function plainLink(url: string): string {
   const esc = escapeHtml(url);
   return `<a href="${esc}">${esc}</a>`;
+}
+
+/** `raw` with its scheme forced to https — used once a host is already validated as safe. */
+function toHttps(raw: string): string {
+  const u = new URL(raw);
+  u.protocol = "https:";
+  return u.toString();
+}
+
+/**
+ * Accepts an oEmbed-returned canonical URL only if it parses as https on a soundcloud.com (or
+ * subdomain) host — a SoundCloud failure/misbehaviour must never smuggle in an arbitrary URL as
+ * an embed. Anything else (null, unparsable, non-https, wrong host) is rejected.
+ */
+function acceptableSoundcloudUrl(candidate: string | null): string | null {
+  if (!candidate) return null;
+  let u: URL;
+  try {
+    u = new URL(candidate);
+  } catch {
+    return null;
+  }
+  if (u.protocol !== "https:") return null;
+  const host = u.hostname.toLowerCase().replace(/^www\./, "");
+  return host === "soundcloud.com" || host.endsWith(".soundcloud.com") ? candidate : null;
 }
 
 /** The video id from a YouTube watch/short/share URL, or null if the URL isn't recognised. */
@@ -80,12 +107,18 @@ async function resolveKnownAsset(url: URL, decoded: string, deps: EmbedDeps): Pr
   }
 
   if (host === "soundcloud.com" || host.endsWith(".soundcloud.com")) {
+    // The host is already validated as SoundCloud, so a failed or untrustworthy lookup still
+    // keeps the embed — as the https-upgraded input URL — rather than silently and permanently
+    // downgrading it to a plain link on some later, unrelated save when SoundCloud happens to
+    // be unreachable (every save re-normalises the body, including this embed).
+    const fallback = toHttps(decoded);
+    let canonical: string | null = null;
     try {
-      const canonical = await deps.soundcloudOembed(decoded);
-      return canonical ? `<asset>${canonical}</asset>` : plainLink(decoded);
+      canonical = await deps.soundcloudOembed(decoded);
     } catch {
-      return plainLink(decoded);
+      canonical = null;
     }
+    return `<asset>${acceptableSoundcloudUrl(canonical) ?? fallback}</asset>`;
   }
 
   return plainLink(decoded);
