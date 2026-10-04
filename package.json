@@ -12,7 +12,8 @@
     "core:seed-test-users": "npm --workspace @gcpe/core run seed:test-users",
     "build:siteground": "node scripts/build-siteground.mjs",
     "deploy:siteground": "bash scripts/deploy-siteground.sh",
-    "siteground:env": "tsx scripts/siteground-env.ts"
+    "siteground:env": "tsx scripts/siteground-env.ts",
+    "core:seed-from-public-api": "tsx scripts/seed-core-from-public-api.ts"
   },
   "devDependencies": {
     "@types/node": "^24.19.1",
