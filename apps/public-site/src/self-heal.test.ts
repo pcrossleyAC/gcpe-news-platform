@@ -2,8 +2,11 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, describe, expect, it, vi } from "vitest";
+import type { Tx } from "@gcpe/db-kit";
+import type { EventEnvelope } from "@gcpe/events";
 import type { NewsApiClient } from "./news-api-client";
 import type { PostDto } from "./render";
+import { createRebuildHandler } from "./rebuild";
 import { selfHeal } from "./self-heal";
 import { fsStorage } from "./storage";
 
@@ -197,5 +200,58 @@ describe("selfHeal", () => {
     } finally {
       errSpy.mockRestore();
     }
+  });
+
+  // Fix round 2 (Important): the exact reported race — selfHeal runs after app.listen(), so
+  // it can overlap an inbound site.rebuild_requested rebuild. Both now go through the same
+  // enqueueSiteWrite queue (rebuild.ts), so selfHeal's turn and createRebuildHandler's turn
+  // can never interleave; whichever is enqueued second simply waits for the first to settle.
+  it("selfHeal and a concurrent createRebuildHandler rebuild never interleave; the later one wins", async () => {
+    const root = await mkdtemp(join(tmpdir(), "self-heal-"));
+    made.push(root);
+    const storage = fsStorage(root);
+    await storage.write("index.html", "<!doctype html><html><body>home, pre-fix</body></html>");
+    await storage.write("releases/K1/index.html", "<!doctype html><html><body>K1, pre-fix</body></html>");
+
+    const order: string[] = [];
+    let releaseSelfHealHome: ((v: { granville: string | null }) => void) | undefined;
+    const selfHealHomeGate = new Promise<{ granville: string | null }>((resolve) => (releaseSelfHealHome = resolve));
+
+    let call = 0;
+    const home = vi.fn(async () => {
+      call++;
+      if (call === 1) {
+        order.push("start-selfHeal-home(ON, gated)");
+        const result = await selfHealHomeGate;
+        order.push("end-selfHeal-home(ON)");
+        return result;
+      }
+      order.push("rebuild-home(OFF)");
+      return { granville: null };
+    });
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => postA), latestHome: vi.fn(async () => []), home };
+
+    const envelope = (data: unknown): EventEnvelope => ({
+      id: "00000000-0000-0000-0000-000000000001",
+      type: "site.rebuild_requested",
+      version: 1,
+      source: "news-api",
+      aggregateId: "site",
+      sequence: 1,
+      occurredAt: new Date().toISOString(),
+      correlationId: "00000000-0000-0000-0000-000000000002",
+      data,
+    });
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
+
+    const pSelfHeal = selfHeal({ newsApi, storage, site, test: false }); // calls home() first, ON, gated
+    const pRebuild = handler({} as Tx, envelope({ pages: ["post:K1"] })); // enqueued second, OFF
+
+    releaseSelfHealHome!({ granville: "true" });
+    await Promise.all([pSelfHeal, pRebuild]);
+
+    expect(order).toEqual(["start-selfHeal-home(ON, gated)", "end-selfHeal-home(ON)", "rebuild-home(OFF)"]);
+    expect(await readFile(join(root, "releases", "K1", "index.html"), "utf8")).not.toContain("blue-bridge-banner");
+    expect(JSON.parse((await storage.read(".site-state.json"))!)).toEqual({ granvilleOn: false, test: false });
   });
 });

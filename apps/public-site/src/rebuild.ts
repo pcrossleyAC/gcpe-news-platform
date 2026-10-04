@@ -123,30 +123,73 @@ export async function tryHome(newsApi: NewsApiClient): Promise<{ granville: stri
   }
 }
 
+/**
+ * Fix round 2 (Important): `selfHeal` runs once at startup, *after* `app.listen()`
+ * (main.ts/stack.ts), so it can overlap an inbound `site.rebuild_requested` rebuild in the same
+ * process — both would otherwise read `.site-state.json`, render under two different
+ * granville/test states (each fetched independently, at different times), and whichever wrote
+ * the marker last "wins", leaving some pages with the wrong banner until the next state change.
+ *
+ * This serialises every one of those turns — the whole body of `createRebuildHandler` below and
+ * of `selfHeal` — through one promise chain *per `SiteStorage` instance*. The public site is a
+ * single process with exactly one `SiteStorage` (its `OUTPUT_DIR`), so a module-level map keyed
+ * by that instance is enough; there is no cross-process coordination to do. Each turn's own
+ * `home()`/`test` read happens *inside* `turn()`, once its slot in the queue actually starts —
+ * never before `enqueueSiteWrite` is called — so two overlapping callers can never race: the
+ * second's `turn()` doesn't even begin (let alone call `home()`) until the first's has fully
+ * settled.
+ *
+ * A turn that rejects never wedges the queue: the chain variable itself is reset to an
+ * already-settled promise after every turn regardless of outcome, so the *next* queued turn
+ * still runs — but `enqueueSiteWrite`'s own return value still rejects with that turn's error,
+ * so `createRebuildHandler` can still let it propagate (Important 1) and `selfHeal` can still
+ * catch and log it.
+ */
+const siteWriteQueues = new WeakMap<SiteStorage, Promise<unknown>>();
+
+export function enqueueSiteWrite<T>(storage: SiteStorage, turn: () => Promise<T>): Promise<T> {
+  const previous = siteWriteQueues.get(storage) ?? Promise.resolve();
+  const settledPrevious = previous.then(
+    () => undefined,
+    () => undefined,
+  );
+  const result = settledPrevious.then(turn);
+  siteWriteQueues.set(
+    storage,
+    result.then(
+      () => undefined,
+      () => undefined,
+    ),
+  );
+  return result;
+}
+
 export function createRebuildHandler(deps: { newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo; test: boolean }): EventHandler {
-  return async (_tx, event) => {
-    const { pages } = event.data as { pages: string[] };
-    // Important 1 (fix round 1): let a home() failure propagate — never swallow it and write
-    // pages without (or with a stale) banner while reporting success.
-    const { granville } = await deps.newsApi.home();
-    const { state, banner } = stateAndBanner(granville, deps.test, new Date());
-    const opts: PageOptions = { test: deps.test, banner };
+  return (_tx, event) =>
+    enqueueSiteWrite(deps.storage, async () => {
+      const { pages } = event.data as { pages: string[] };
+      // Important 1 (fix round 1): let a home() failure propagate — never swallow it and write
+      // pages without (or with a stale) banner while reporting success. Fix round 2: this read
+      // happens inside the queued turn, not before — see enqueueSiteWrite's doc comment.
+      const { granville } = await deps.newsApi.home();
+      const { state, banner } = stateAndBanner(granville, deps.test, new Date());
+      const opts: PageOptions = { test: deps.test, banner };
 
-    // CRITICAL fix: resync every post page already on disk *before* this event's own pages,
-    // so a home-only rebuild still fixes posts the banner/test state left stale.
-    await resyncPostPages(deps, state, banner);
+      // CRITICAL fix (round 1): resync every post page already on disk *before* this event's
+      // own pages, so a home-only rebuild still fixes posts the banner/test state left stale.
+      await resyncPostPages(deps, state, banner);
 
-    for (const id of new Set(pages)) {
-      if (id === "home") {
-        await deps.storage.write("index.html", renderHomePage(await deps.newsApi.latestHome(HOME_COUNT), deps.site, opts));
-        continue;
+      for (const id of new Set(pages)) {
+        if (id === "home") {
+          await deps.storage.write("index.html", renderHomePage(await deps.newsApi.latestHome(HOME_COUNT), deps.site, opts));
+          continue;
+        }
+        const key = id.startsWith("post:") ? id.slice(5) : null;
+        if (!key || !POST_KEY.test(key)) {
+          console.warn(`[public-site] skipping unknown page id ${JSON.stringify(id)}`);
+          continue;
+        }
+        await renderExistingPost(deps.newsApi, deps.storage, deps.site, key, opts);
       }
-      const key = id.startsWith("post:") ? id.slice(5) : null;
-      if (!key || !POST_KEY.test(key)) {
-        console.warn(`[public-site] skipping unknown page id ${JSON.stringify(id)}`);
-        continue;
-      }
-      await renderExistingPost(deps.newsApi, deps.storage, deps.site, key, opts);
-    }
-  };
+    });
 }

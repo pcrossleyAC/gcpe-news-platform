@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Tx } from "@gcpe/db-kit";
 import type { EventEnvelope } from "@gcpe/events";
-import { createRebuildHandler, resyncPostPages, tryHome } from "./rebuild";
+import { createRebuildHandler, enqueueSiteWrite, resyncPostPages, tryHome } from "./rebuild";
 import type { NewsApiClient } from "./news-api-client";
 import type { SiteStorage } from "./storage";
 import type { PostDto } from "./render";
@@ -269,5 +269,106 @@ describe("resyncPostPages", () => {
     const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
     await resyncPostPages({ newsApi, storage, site }, { granvilleOn: false, test: false }, null);
     expect(storage.files.get(".site-state.json")).toBe(JSON.stringify({ granvilleOn: false, test: false }));
+  });
+});
+
+// Fix round 2 (Important): selfHeal runs after app.listen(), so it can overlap an inbound
+// rebuild event in the same process — both createRebuildHandler and selfHeal go through
+// enqueueSiteWrite so their turns (home()/test read, compare-to-marker, render, write-marker)
+// can never interleave.
+describe("enqueueSiteWrite / resync serialisation", () => {
+  it("serialises turns in enqueue order: the second's task function doesn't even start until the first's turn has fully settled", async () => {
+    const storage = memoryStorage();
+    const order: string[] = [];
+    let releaseFirst: (() => void) | undefined;
+    const gate = new Promise<void>((resolve) => (releaseFirst = resolve));
+
+    const p1 = enqueueSiteWrite(storage, async () => {
+      order.push("start1");
+      await gate;
+      order.push("end1");
+    });
+    const p2 = enqueueSiteWrite(storage, async () => {
+      order.push("start2");
+      order.push("end2");
+    });
+
+    // Neither turn's body has run yet — enqueueSiteWrite only schedules them (as microtask
+    // continuations); starting task2 must wait for task1's entire chained promise to settle.
+    expect(order).toEqual([]);
+    releaseFirst!();
+    await Promise.all([p1, p2]);
+    expect(order).toEqual(["start1", "end1", "start2", "end2"]);
+  });
+
+  it("two overlapping rebuilds with different granville — the later-enqueued one (OFF) wins the final pages and marker, and never interleaves with the first (ON)", async () => {
+    const storage = memoryStorage();
+    const order: string[] = [];
+    let releaseFirstHome: ((v: { granville: string | null }) => void) | undefined;
+    const firstHomeGate = new Promise<{ granville: string | null }>((resolve) => (releaseFirstHome = resolve));
+
+    let call = 0;
+    const home = vi.fn(async () => {
+      call++;
+      if (call === 1) {
+        order.push("start-home-1(ON, gated)");
+        const result = await firstHomeGate;
+        order.push("end-home-1(ON)");
+        return result;
+      }
+      order.push("home-2(OFF)");
+      return { granville: null };
+    });
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => [post]), home };
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
+
+    const p1 = handler({} as Tx, envelope({ pages: ["home", "post:K1"] }));
+    const p2 = handler({} as Tx, envelope({ pages: ["home"] }));
+
+    releaseFirstHome!({ granville: "true" });
+    await Promise.all([p1, p2]);
+
+    expect(order).toEqual(["start-home-1(ON, gated)", "end-home-1(ON)", "home-2(OFF)"]);
+    expect(storage.files.get("releases/K1/index.html")).not.toContain("blue-bridge-banner");
+    expect(storage.files.get("index.html")).not.toContain("blue-bridge-banner");
+    expect(JSON.parse(storage.files.get(".site-state.json")!)).toEqual({ granvilleOn: false, test: false });
+  });
+
+  it("a rejected turn doesn't wedge the queue — a concurrently-enqueued later turn still runs", async () => {
+    const storage = memoryStorage();
+    let call = 0;
+    const home = vi.fn(async () => {
+      call++;
+      if (call === 1) throw new Error("News API down");
+      return { granville: null };
+    });
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => [post]), home };
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
+
+    const p1 = handler({} as Tx, envelope({ pages: ["home"] }));
+    const p2 = handler({} as Tx, envelope({ pages: ["home"] }));
+    const [r1, r2] = await Promise.allSettled([p1, p2]);
+
+    expect(r1.status).toBe("rejected");
+    expect(r1.status === "rejected" && r1.reason).toMatchObject({ message: "News API down" });
+    expect(r2.status).toBe("fulfilled");
+    expect(storage.files.has("index.html")).toBe(true); // the second turn still ran and wrote its page
+  });
+
+  it("a rejected turn's queue slot still settles sequentially: a later call made after awaiting it runs normally", async () => {
+    const storage = memoryStorage();
+    const newsApi: NewsApiClient = {
+      getPost: vi.fn(async () => post),
+      latestHome: vi.fn(async () => [post]),
+      home: vi.fn(async () => {
+        throw new Error("News API down");
+      }),
+    };
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
+    await expect(handler({} as Tx, envelope({ pages: ["home"] }))).rejects.toThrow("News API down");
+
+    newsApi.home = vi.fn(async () => ({ granville: null }));
+    await expect(handler({} as Tx, envelope({ pages: ["home"] }))).resolves.toBeUndefined();
+    expect(storage.files.has("index.html")).toBe(true);
   });
 });
