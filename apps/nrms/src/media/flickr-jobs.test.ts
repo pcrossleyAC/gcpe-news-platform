@@ -339,6 +339,21 @@ describe("Flickr jobs", () => {
     expect(fake.photos.get("53000000001")!.isPublic).toBe(false);
   });
 
+  it("the backstop does not skip the wait for a new photo on a correction of an old release", async () => {
+    const r = await scheduledWithPhoto("53000000012");
+    await publish();
+    await work();
+    expect(await publish()).toEqual({ ...none, published: [r.key] });
+    advance(GRACE_MS + GRACE_BACKSTOP_MARGIN_MS + 60_000);
+    const live = (await loadView(tdb.db, r.id))!;
+    await saveAsset(tdb.db, r.id, { version: live.version, assetUrl: page("53000000004"), assetAltText: null, hasMediaAssets: false }, editor);
+    expect(await publish()).toEqual({ ...none, deferred: [r.key] });
+    expect(await publish()).toEqual({ ...none, deferred: [r.key] });
+    expect(await work()).toMatchObject({ done: [r.key] });
+    expect(await publish()).toEqual({ ...none, updated: [r.key] });
+    expect((await lastEvent()).envelope.data.assetUrl).toBe(staticUrl("53000000004"));
+  });
+
   it("two concurrent runs send one alert", async () => {
     fake.state.refuseAuth = true;
     const r = await scheduledWithPhoto("53000000002");

@@ -33,8 +33,8 @@ export const RETRY_MS = 300_000;
  * Backstop margin added on top of {@link GRACE_MS} for a job the worker has never attempted at
  * all (`first_attempt_at IS NULL`): `in_grace` alone is unconditionally true in that case, so
  * without this a release would be deferred forever if the worker never runs (crashed, disabled).
- * Measured from the release's `publish_at` — the only time reference available before any
- * attempt exists — with enough margin that a normally-running worker is never caught by it.
+ * Measured from the job's creation (`updated_at`, untouched until the first attempt) — not the
+ * release's `publish_at`, which is old for a correction — with enough margin that a normally-running worker is never caught by it.
  */
 export const GRACE_BACKSTOP_MARGIN_MS = 300_000;
 /** After this long since the first failed attempt the job stops retrying. */
@@ -63,11 +63,10 @@ export function flickrPrepareMedia(opts: { now?: TestClock } = {}): (tx: Tx, vie
       return { assetUrl: url };
     }
     const now = sqlNow(opts.now);
-    // publish_at is NOT NULL for every status prepareMedia runs against (the DB check
-    // constraint); the `view.publishAt ? … : false` guard is only to satisfy the JS type.
-    const pastBackstop = view.publishAt
-      ? sql`(first_attempt_at IS NULL AND ${now} - ${view.publishAt}::timestamptz > ${sqlInterval(GRACE_MS + GRACE_BACKSTOP_MARGIN_MS)})`
-      : sql`false`;
+    // Anchored on the job's updated_at, which is set when the job is created or reset and is
+    // not touched again until the first attempt. Not publish_at: for a correction of a release
+    // that went live long ago that would trip at once and skip the wait for the new photo.
+    const pastBackstop = sql`(first_attempt_at IS NULL AND ${now} - updated_at > ${sqlInterval(GRACE_MS + GRACE_BACKSTOP_MARGIN_MS)})`;
     const r = await tx.execute<{ photo_id: string; status: "pending" | "done" | "gave_up"; static_url: string | null; last_error: string | null; in_grace: boolean; past_backstop: boolean }>(sql`
       SELECT photo_id, status, static_url, last_error,
              (first_attempt_at IS NULL OR ${now} - first_attempt_at < ${sqlInterval(GRACE_MS)}) AS in_grace,
