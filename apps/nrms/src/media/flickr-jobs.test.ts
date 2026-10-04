@@ -12,7 +12,7 @@ import { saveAsset } from "../releases/service";
 import { cancel, schedule, unpublish } from "../releases/workflow";
 import { loadView } from "../releases/store";
 import { flickrClient, type FlickrClient } from "./flickr-client";
-import { flickrPrepareMedia, GIVE_UP_MS, GRACE_MS, processFlickrJobs } from "./flickr-jobs";
+import { flickrPrepareMedia, GIVE_UP_MS, GRACE_BACKSTOP_MARGIN_MS, GRACE_MS, processFlickrJobs } from "./flickr-jobs";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://news.invalid/events", secret: "s".repeat(40), types: ["*"] }];
 const creds = { apiKey: "fake-key", apiSecret: "fake-secret", accessToken: "fake-token", accessSecret: "fake-token-secret" };
@@ -321,6 +321,22 @@ describe("Flickr jobs", () => {
       expect(await publish()).toEqual({ ...none, deferred: [r.key] });
       expect(await job(r.id)).toMatchObject({ status: "pending", attempts: 0, first_attempt_at: null });
     });
+  });
+
+  it("a job the worker never attempts at all stops being deferred once publish_at is old enough (backstop)", async () => {
+    const r = await scheduledWithPhoto("53000000001");
+    expect(await publish()).toEqual({ ...none, deferred: [r.key] });
+    expect(await job(r.id)).toMatchObject({ status: "pending", attempts: 0, first_attempt_at: null });
+
+    // No work() call: the worker never attempts this job, so first_attempt_at stays null and
+    // in_grace alone would defer it forever without the backstop.
+    advance(GRACE_MS + GRACE_BACKSTOP_MARGIN_MS + 1000);
+    expect(await publish()).toEqual({ ...none, published: [r.key] });
+    const v = (await loadView(tdb.db, r.id))!;
+    expect(v.status).toBe("published");
+    expect(v.flickrAlert).toMatch(/The release went out without it; NRMS keeps trying for 24 hours\.$/);
+    expect(await job(r.id)).toMatchObject({ status: "pending", attempts: 0, first_attempt_at: null });
+    expect(fake.photos.get("53000000001")!.isPublic).toBe(false);
   });
 
   it("two concurrent runs send one alert", async () => {

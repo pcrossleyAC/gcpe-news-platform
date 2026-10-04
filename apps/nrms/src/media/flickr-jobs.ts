@@ -29,6 +29,14 @@ export class DeferPublish extends Error {
 export const GRACE_MS = 120_000;
 export const RETRY_MS_IN_GRACE = 30_000;
 export const RETRY_MS = 300_000;
+/**
+ * Backstop margin added on top of {@link GRACE_MS} for a job the worker has never attempted at
+ * all (`first_attempt_at IS NULL`): `in_grace` alone is unconditionally true in that case, so
+ * without this a release would be deferred forever if the worker never runs (crashed, disabled).
+ * Measured from the release's `publish_at` — the only time reference available before any
+ * attempt exists — with enough margin that a normally-running worker is never caught by it.
+ */
+export const GRACE_BACKSTOP_MARGIN_MS = 300_000;
 /** After this long since the first failed attempt the job stops retrying. */
 export const GIVE_UP_MS = 86_400_000;
 /** The claim's lease: a crashed worker's job becomes claimable again after this. */
@@ -55,9 +63,15 @@ export function flickrPrepareMedia(opts: { now?: TestClock } = {}): (tx: Tx, vie
       return { assetUrl: url };
     }
     const now = sqlNow(opts.now);
-    const r = await tx.execute<{ photo_id: string; status: "pending" | "done" | "gave_up"; static_url: string | null; last_error: string | null; in_grace: boolean }>(sql`
+    // publish_at is NOT NULL for every status prepareMedia runs against (the DB check
+    // constraint); the `view.publishAt ? … : false` guard is only to satisfy the JS type.
+    const pastBackstop = view.publishAt
+      ? sql`(first_attempt_at IS NULL AND ${now} - ${view.publishAt}::timestamptz > ${sqlInterval(GRACE_MS + GRACE_BACKSTOP_MARGIN_MS)})`
+      : sql`false`;
+    const r = await tx.execute<{ photo_id: string; status: "pending" | "done" | "gave_up"; static_url: string | null; last_error: string | null; in_grace: boolean; past_backstop: boolean }>(sql`
       SELECT photo_id, status, static_url, last_error,
-             (first_attempt_at IS NULL OR ${now} - first_attempt_at < ${sqlInterval(GRACE_MS)}) AS in_grace
+             (first_attempt_at IS NULL OR ${now} - first_attempt_at < ${sqlInterval(GRACE_MS)}) AS in_grace,
+             ${pastBackstop} AS past_backstop
       FROM ${flickrJobs} WHERE release_id = ${view.id} FOR UPDATE`);
     const job = r.rows[0];
     if (!job || job.photo_id !== photoId) {
@@ -73,7 +87,7 @@ export function flickrPrepareMedia(opts: { now?: TestClock } = {}): (tx: Tx, vie
       await clearAlert();
       return { assetUrl: job.static_url };
     }
-    if (job.status === "pending" && job.in_grace) throw new DeferPublish("waiting for Flickr");
+    if (job.status === "pending" && job.in_grace && !job.past_backstop) throw new DeferPublish("waiting for Flickr");
     const alert = job.status === "gave_up" ? gaveUpAlert(job.last_error) : outWithoutPhotoAlert(job.last_error);
     await tx.update(newsReleases).set({ flickrAlert: alert }).where(sql`${newsReleases.id} = ${view.id}`);
     return { assetUrl: null };
