@@ -6,7 +6,7 @@ import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } f
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
-import { nodClient } from "./clients";
+import { distributionClient, nodClient } from "./clients";
 import { createApp } from "./app";
 import { publishDue, startPublisher } from "./publisher";
 
@@ -28,6 +28,14 @@ export const nrmsEnvSchema = z.object({
   NOD_CLIENT_ID: z.string().optional(),
   NOD_CLIENT_SECRET: z.string().optional(),
   NOD_SCOPE: z.string().optional(),
+  // Task 11: Distribution, for "Email me a copy" — optional (the route answers 503 when unset);
+  // the stack defaults it to self:/distribution. Its Entra fields follow the same all-or-none
+  // rule as NoD's, with the same local-token fallback.
+  DISTRIBUTION_URL: z.string().url().optional(),
+  DISTRIBUTION_TOKEN_URL: z.string().url().optional(),
+  DISTRIBUTION_CLIENT_ID: z.string().optional(),
+  DISTRIBUTION_CLIENT_SECRET: z.string().optional(),
+  DISTRIBUTION_SCOPE: z.string().optional(),
 });
 
 /**
@@ -53,6 +61,26 @@ export function nodServiceTokenOptions(
     subject: "nrms",
     roles: ["NoD.SubscriberCount"],
     envPrefix: "NOD",
+  };
+}
+
+/**
+ * {@link ServiceTokenOptions} for NRMS's calls to Distribution. Subject "nrms" is also the local
+ * token's azp, which Distribution uses as the app id that scopes idempotency keys and batches.
+ */
+export function distributionServiceTokenOptions(
+  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "DISTRIBUTION_TOKEN_URL" | "DISTRIBUTION_CLIENT_ID" | "DISTRIBUTION_CLIENT_SECRET" | "DISTRIBUTION_SCOPE">,
+  local: LocalAuthConfig | null,
+): ServiceTokenOptions {
+  return {
+    tokenUrl: parsed.DISTRIBUTION_TOKEN_URL,
+    clientId: parsed.DISTRIBUTION_CLIENT_ID,
+    clientSecret: parsed.DISTRIBUTION_CLIENT_SECRET,
+    scope: parsed.DISTRIBUTION_SCOPE,
+    local,
+    subject: "nrms",
+    roles: ["Distribution.Send"],
+    envPrefix: "DISTRIBUTION",
   };
 }
 
@@ -95,6 +123,9 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       }).countSubscribers
     : undefined;
   const workflow = { timeZone: tenant.timeZone, countSubscribers };
+  const distribution = parsed.DISTRIBUTION_URL
+    ? distributionClient({ baseUrl: parsed.DISTRIBUTION_URL, getToken: serviceTokenProvider(distributionServiceTokenOptions(parsed, auth.local)) })
+    : undefined;
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
@@ -105,6 +136,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     loginRouter: auth.loginRouter,
     eventSecrets: parsed.EVENT_SECRETS,
     workflow,
+    distribution,
   });
 
   // Set by startLoops(); closers below reference these lazily so they're safe to call even

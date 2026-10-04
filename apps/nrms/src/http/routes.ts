@@ -1,5 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
@@ -9,14 +9,16 @@ import {
 } from "@gcpe/nrms-contract";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError, VersionConflictError } from "../releases/errors";
 import {
-  goTo, listFolder, listMediaLists, listPageImages, listPageTypes, publication, publications, releaseLog, releaseVisible, searchReleases,
+  goTo, listFolder, listItems, listMediaLists, listPageImages, listPageTypes, publication, publications, releaseLog, releaseVisible, searchReleases,
 } from "../releases/queries";
 import {
   addDocument, addTranslation, createRelease, deleteRelease, removeDocument, removeTranslation, reorderDocuments, saveAsset, saveCategories,
   saveDocumentLanguage, saveMeta, saveSettings,
 } from "../releases/service";
-import { loadView } from "../releases/store";
-import { pageImages } from "../db/schema";
+import { loadView, writeLog } from "../releases/store";
+import { mediaLists, newsReleases, pageImages } from "../db/schema";
+import type { DistributionClient } from "../clients";
+import { buildEmailCopy } from "../renditions/email";
 import { buildRenditionModel } from "../renditions/model";
 import { renderPdf } from "../renditions/pdf";
 import { renderText } from "../renditions/text";
@@ -26,6 +28,8 @@ import { listCategories } from "../taxonomy";
 export interface RouteDeps {
   db: Db;
   workflow: WorkflowDeps;
+  /** "Email me a copy" goes through Distribution; unset → that route answers 503. */
+  distribution?: DistributionClient;
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
@@ -105,19 +109,64 @@ export function apiRoutes(deps: RouteDeps): Router {
       res.type("text/plain; charset=utf-8").set("content-disposition", filename(view, "txt")).send(renderText(view, opts()));
     }),
   );
+  const pdfOf = async (view: ReleaseView, o: ReturnType<typeof opts>) => {
+    const imageId = buildRenditionModel(view, o).docs[0]?.pageImageId;
+    const [pageImage] = imageId
+      ? await db.select({ bytes: pageImages.bytes, mimeType: pageImages.mimeType }).from(pageImages).where(eq(pageImages.id, imageId))
+      : [];
+    return renderPdf(view, { ...o, pageImage: pageImage ?? null });
+  };
   r.get(
     "/releases/:id/pdf",
     read,
     run(async (req, res) => {
       const view = await visibleView(req.params.id);
       if (!view) return notFound(res);
+      res.type("application/pdf").set("content-disposition", filename(view, "pdf")).send(await pdfOf(view, opts()));
+    }),
+  );
+
+  // "Email me a copy": the PDF and text versions, to the signed-in user, through Distribution.
+  // Read-only — logged, but no version bump.
+  r.post(
+    "/releases/:id/email-copy",
+    read,
+    run(async (req, res) => {
+      const view = await visibleView(req.params.id);
+      if (!view) return notFound(res);
+      if (!deps.distribution) return void res.status(503).json({ error: "Email isn't configured." });
+      const email = req.auth?.claims.email;
+      if (typeof email !== "string" || email.trim() === "") {
+        return void res.status(422).json({ error: "Your account has no email address to send to." });
+      }
+      const to = email.trim();
       const o = opts();
-      const imageId = buildRenditionModel(view, o).docs[0]?.pageImageId;
-      const [pageImage] = imageId
-        ? await db.select({ bytes: pageImages.bytes, mimeType: pageImages.mimeType }).from(pageImages).where(eq(pageImages.id, imageId))
+      const [row] = await db.select().from(newsReleases).where(eq(newsReleases.id, view.id));
+      const [item] = await listItems(db, row ? [row] : [], o.nowMs);
+      const lists = view.mediaListKeys.length
+        ? await db.select({ name: mediaLists.displayName }).from(mediaLists).where(inArray(mediaLists.key, view.mediaListKeys)).orderBy(mediaLists.sortOrder, mediaLists.displayName)
         : [];
-      const pdf = await renderPdf(view, { ...o, pageImage: pageImage ?? null });
-      res.type("application/pdf").set("content-disposition", filename(view, "pdf")).send(pdf);
+      const msg = buildEmailCopy(
+        {
+          view,
+          headline: buildRenditionModel(view, o).docs[0]?.headline ?? item?.headline ?? "",
+          leadOrganization: item?.leadOrganization ?? "",
+          mediaListNames: lists.map((l) => l.name),
+          text: renderText(view, o),
+          pdf: await pdfOf(view, o),
+          to,
+        },
+        o,
+      );
+      try {
+        await deps.distribution.send(msg);
+      } catch (e) {
+        // The status only — never the message, which carries the release's content.
+        console.error(`[nrms] email copy of ${view.id} failed: ${e instanceof Error ? e.message : String(e)}`);
+        return void res.status(502).json({ error: "The email couldn't be sent — try again." });
+      }
+      await writeLog(db, view.id, actorOf(req), `Emailed a copy to ${to}`);
+      res.status(202).json({ sentTo: to });
     }),
   );
 

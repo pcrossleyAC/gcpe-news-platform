@@ -338,6 +338,108 @@ describe("NRMS HTTP API", () => {
     expect((await request(app).get(`/api/releases/${id}/text`)).status).toBe(401);
   });
 
+  describe("email me a copy", () => {
+    type Sent = { priority: string; subject: string; html: string; text: string; recipients: { email: string }[]; attachments: { filename: string; contentType: string; contentBase64: string }[] };
+    const sent: Sent[] = [];
+    let mailApp: ReturnType<typeof createApp>;
+    const sessionWith = async (email: string, roles = ["NRMS.Editor"]) =>
+      `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-00000000000b", name: "Eddie Editor", email, roles })).token}`;
+    const emailCopy = (a: ReturnType<typeof createApp>, id: string, cookie: string) =>
+      request(a).post(`/api/releases/${id}/email-copy`).set("cookie", cookie).set("x-gcpe-request", "1").send({});
+
+    beforeAll(() => {
+      mailApp = createApp({
+        db: tdb.db,
+        auth: { session: { secret: SECRET } },
+        eventSecrets: {},
+        workflow: { timeZone: "America/Vancouver" },
+        distribution: {
+          send: async (msg) => {
+            sent.push(msg as Sent);
+            return { batchId: "batch-1" };
+          },
+        },
+      });
+    });
+
+    it("sends the caller a DRAFT copy with the PDF and text attached, and logs it", async () => {
+      const { id } = await create();
+      const res = await emailCopy(mailApp, id, await sessionWith("editor@example.test"));
+      expect(res.status).toBe(202);
+      expect(res.body).toEqual({ sentTo: "editor@example.test" });
+
+      expect(sent).toHaveLength(1);
+      const msg = sent[0]!;
+      expect(msg.priority).toBe("system");
+      expect(msg.recipients).toEqual([{ email: "editor@example.test" }]);
+      expect(msg.subject).toBe("DRAFT - Weekend clinics open across B.C.");
+      expect(msg.text).toContain("VICTORIA - Clinics will open");
+      expect(msg.html).toContain("<pre>");
+      expect(msg.html).toContain("Weekend clinics open across B.C.");
+      expect(msg.attachments.map((a) => [a.filename, a.contentType])).toEqual([
+        [`DRAFT-${id}.pdf`, "application/pdf"],
+        [`DRAFT-${id}.txt`, "text/plain"],
+      ]);
+      expect(Buffer.from(msg.attachments[0]!.contentBase64, "base64").subarray(0, 5).toString()).toBe("%PDF-");
+      expect(Buffer.from(msg.attachments[1]!.contentBase64, "base64").toString()).toBe(msg.text);
+
+      const log = await get(`/api/releases/${id}/log`);
+      expect(log.body.map((e: { text: string }) => e.text)).toContain("Emailed a copy to editor@example.test");
+      // Read-only: no version bump.
+      expect((await get(`/api/releases/${id}`)).body.version).toBe(1);
+    });
+
+    it("an approved release goes as FINAL, named by its key; the summary is HTML-escaped", async () => {
+      const { id } = await create({ headline: 'Clinics <open> & "more"' });
+      const a = await post(`/api/releases/${id}/approve`, editorCookie, { version: 1 });
+      sent.length = 0;
+      const res = await emailCopy(mailApp, id, await sessionWith("viewer@example.test", ["NRMS.Viewer"]));
+      expect(res.status).toBe(202);
+      const msg = sent[0]!;
+      expect(msg.subject).toBe('FINAL - Clinics <open> & "more"');
+      expect(msg.html).toContain("Clinics &lt;open&gt; &amp; &quot;more&quot;");
+      expect(msg.html).not.toContain("<open>");
+      expect(msg.html).toContain(a.body.reference);
+      expect(msg.attachments.map((x) => x.filename)).toEqual([`FINAL-${a.body.key}.pdf`, `FINAL-${a.body.key}.txt`]);
+    });
+
+    it("a session without an email address is a 422", async () => {
+      const { id } = await create();
+      const res = await emailCopy(mailApp, id, await sessionWith(""));
+      expect(res.status).toBe(422);
+      expect(res.body).toEqual({ error: "Your account has no email address to send to." });
+    });
+
+    it("Distribution refusing the message is a 502 with a readable error, and nothing is logged", async () => {
+      const failing = createApp({
+        db: tdb.db,
+        auth: { session: { secret: SECRET } },
+        eventSecrets: {},
+        workflow: { timeZone: "America/Vancouver" },
+        distribution: { send: async () => Promise.reject(new Error("Distribution send failed: HTTP 400")) },
+      });
+      const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const { id } = await create();
+        const res = await emailCopy(failing, id, await sessionWith("editor@example.test"));
+        expect(res.status).toBe(502);
+        expect(res.body).toEqual({ error: "The email couldn't be sent — try again." });
+        const log = await get(`/api/releases/${id}/log`);
+        expect(log.body.map((e: { text: string }) => e.text)).not.toContain("Emailed a copy to editor@example.test");
+      } finally {
+        errors.mockRestore();
+      }
+    });
+
+    it("no Distribution configured is a 503; an unknown release is a 404", async () => {
+      const { id } = await create();
+      const res = await emailCopy(app, id, await sessionWith("editor@example.test"));
+      expect(res.status).toBe(503);
+      expect(res.body).toEqual({ error: "Email isn't configured." });
+      expect((await emailCopy(mailApp, "00000000-0000-4000-8000-0000000000ff", await sessionWith("editor@example.test"))).status).toBe(404);
+    });
+  });
+
   it("local admin login: the token creates a release", async () => {
     const secret = "y".repeat(40) + "-nrms-local-test";
     const passwordHash = await hashPassword("local-test-pass");

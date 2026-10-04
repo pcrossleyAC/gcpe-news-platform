@@ -4,7 +4,7 @@ import { decodeJwt } from "jose";
 import { hashPassword, serviceTokenProvider } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb } from "../test/helpers";
-import { nodServiceTokenOptions, startNrms } from "./start";
+import { distributionServiceTokenOptions, nodServiceTokenOptions, startNrms } from "./start";
 
 describe("startNrms", () => {
   // Every DB created by testEnv() this test created, dropped in afterEach — a test
@@ -79,5 +79,17 @@ describe("nodServiceTokenOptions", () => {
     const token = await getToken();
     const payload = decodeJwt(token);
     expect(payload).toMatchObject({ sub: "nrms", azp: "nrms", roles: ["NoD.SubscriberCount"] });
+  });
+});
+
+describe("distributionServiceTokenOptions", () => {
+  const local = { username: "admin", passwordHash: "x", secret: "s".repeat(40) };
+  const none = { DISTRIBUTION_TOKEN_URL: undefined, DISTRIBUTION_CLIENT_ID: undefined, DISTRIBUTION_CLIENT_SECRET: undefined, DISTRIBUTION_SCOPE: undefined };
+
+  it("asks for exactly the Distribution.Send role, subject nrms (Distribution scopes idempotency by azp)", async () => {
+    const opts = distributionServiceTokenOptions(none, local);
+    expect(opts).toMatchObject({ subject: "nrms", roles: ["Distribution.Send"], envPrefix: "DISTRIBUTION" });
+    const payload = decodeJwt(await serviceTokenProvider(opts)());
+    expect(payload).toMatchObject({ sub: "nrms", azp: "nrms", roles: ["Distribution.Send"] });
   });
 });

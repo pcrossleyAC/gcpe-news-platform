@@ -106,7 +106,7 @@ function leadOrganization(r: NewsReleaseRow, ministries: string[], names: Map<st
 }
 
 /** Batched: one query each for release languages, first documents, ministries and organization names. */
-async function listItems(db: DbOrTx, rows: NewsReleaseRow[], nowMs: number): Promise<ReleaseListItem[]> {
+export async function listItems(db: DbOrTx, rows: NewsReleaseRow[], nowMs: number): Promise<ReleaseListItem[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
   const langs = await db

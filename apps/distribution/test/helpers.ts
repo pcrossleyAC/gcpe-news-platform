@@ -11,6 +11,7 @@ export const sampleMessageRequest: MessageRequest = {
   html: "<p>Hi {{name}}, clinics are open.</p>",
   text: "Hi {{name}}, clinics are open.",
   headers: {},
+  attachments: [],
   recipients: [
     { email: "alex.example@gov.bc.ca", substitutions: { name: "Alex" } },
     { email: "sam.example@example.com", substitutions: { name: "Sam" } },
