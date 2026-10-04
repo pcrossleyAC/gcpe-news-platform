@@ -1,0 +1,1 @@
+ALTER TABLE "news_releases" ADD COLUMN "live" boolean DEFAULT false NOT NULL;
