@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { envFor, resolveSelfSubscribers, resolveSelfUrls, stackEnvSchema } from "./env";
+import { envFor, internalEventEnv, INTERNAL_EVENT_ROUTES, resolveSelfSubscribers, resolveSelfUrls, routeSecret, stackEnvSchema } from "./env";
 
 describe("envFor", () => {
   it("strips the app's own prefix off every <PREFIX>_VAR, leaving VAR", () => {
@@ -158,5 +158,47 @@ describe("stackEnvSchema", () => {
     const result = stackEnvSchema.parse({ TICK_TOKEN: "t".repeat(32), STACK_LOOPS: "false", UPDATES_HUB_ENABLED: "true" });
     expect(result.STACK_LOOPS).toBe(false);
     expect(result.UPDATES_HUB_ENABLED).toBe(true);
+  });
+});
+
+// P2-R35: the internal event wiring is derived from one STACK_EVENT_SECRET.
+describe("internalEventEnv / STACK_EVENT_SECRET", () => {
+  const secret = "s".repeat(40);
+  const parse = (v: string | undefined) => JSON.parse(v ?? "null");
+
+  it("wires every sender to its receivers with matching per-route secrets", () => {
+    const w = internalEventEnv(secret);
+    const core = parse(w.CORE.EVENT_SUBSCRIBERS);
+    const nrms = parse(w.NRMS.EVENT_SUBSCRIBERS);
+    const newsApiSubs = parse(w.NEWSAPI.EVENT_SUBSCRIBERS);
+    expect(core).toEqual([{ name: "news-api", url: "self:/events", secret: expect.any(String), types: ["*"] }]);
+    expect(nrms.map((s: { name: string; types: string[] }) => [s.name, s.types])).toEqual([["news-api", ["*"]], ["nod", ["release.published"]]]);
+    expect(newsApiSubs).toEqual([{ name: "public-site", url: "self:/site-builder/events", secret: expect.any(String), types: ["site.rebuild_requested"] }]);
+    // Receivers hold exactly the secret their sender signs with, keyed by the sender's source name.
+    expect(parse(w.NEWSAPI.EVENT_SECRETS)).toEqual({ core: core[0].secret, nrms: nrms[0].secret });
+    expect(parse(w.NOD.EVENT_SECRETS)).toEqual({ nrms: nrms[1].secret });
+    expect(parse(w.SITE.EVENT_SECRETS)).toEqual({ "news-api": newsApiSubs[0].secret });
+    expect(w.DIST).toEqual({});
+  });
+
+  it("derives a distinct secret per route, none equal to the stack secret, deterministically", () => {
+    const all = INTERNAL_EVENT_ROUTES.map((r) => routeSecret(secret, r));
+    expect(new Set(all).size).toBe(all.length);
+    expect(all).not.toContain(secret);
+    expect(INTERNAL_EVENT_ROUTES.map((r) => routeSecret(secret, r))).toEqual(all);
+    expect(routeSecret("t".repeat(40), INTERNAL_EVENT_ROUTES[0])).not.toBe(all[0]);
+  });
+
+  it("envFor fills EVENT_* from STACK_EVENT_SECRET, lets explicit <PREFIX>_EVENT_* win, and never leaks the stack secret", () => {
+    const derived = envFor({ STACK_EVENT_SECRET: secret }, "NRMS");
+    expect(parse(derived.EVENT_SUBSCRIBERS)).toHaveLength(2);
+    expect(Object.values(derived)).not.toContain(secret);
+    const explicit = envFor({ STACK_EVENT_SECRET: secret, NRMS_EVENT_SUBSCRIBERS: "[]" }, "NRMS");
+    expect(explicit.EVENT_SUBSCRIBERS).toBe("[]");
+    expect(envFor({}, "NRMS").EVENT_SUBSCRIBERS).toBeUndefined();
+  });
+
+  it("rejects a short STACK_EVENT_SECRET at startup", () => {
+    expect(stackEnvSchema.safeParse({ TICK_TOKEN: "x".repeat(32), STACK_EVENT_SECRET: "short" }).success).toBe(false);
   });
 });

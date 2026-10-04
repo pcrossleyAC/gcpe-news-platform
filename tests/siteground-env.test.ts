@@ -85,30 +85,18 @@ describe("buildEnvLines", () => {
     expect(map.get("NOD_PUBLIC_SITE_URL")).toBe("https://news.gov.bc.ca/site");
   });
 
-  it("wires the fixed internal event graph with matching secrets on both ends", () => {
+  it("emits one STACK_EVENT_SECRET instead of per-app EVENT_* JSON (the stack derives the wiring)", () => {
     const secrets = generateSecrets();
     const map = parseEnvLines(buildEnvLines(sampleInput(), secrets).join("\n"));
+    expect(map.get("STACK_EVENT_SECRET")).toBe(secrets.stackEventSecret);
+    expect(secrets.stackEventSecret.length).toBeGreaterThanOrEqual(32);
+    expect([...map.keys()].filter((k) => /EVENT_(SUBSCRIBERS|SECRETS)$/.test(k))).toEqual([]);
+  });
 
-    const coreSubs = JSON.parse(map.get("CORE_EVENT_SUBSCRIBERS")!);
-    expect(coreSubs).toEqual([{ name: "news-api", url: "self:/events", secret: secrets.coreToNewsApi, types: ["org.upserted"] }]);
-
-    const nrmsSubs = JSON.parse(map.get("NRMS_EVENT_SUBSCRIBERS")!);
-    expect(nrmsSubs).toEqual([
-      { name: "news-api", url: "self:/events", secret: secrets.nrmsToNewsApi, types: ["release.published"] },
-      { name: "nod", url: "self:/nod/events", secret: secrets.nrmsToNod, types: ["release.published"] },
-    ]);
-
-    const newsApiSecrets = JSON.parse(map.get("NEWSAPI_EVENT_SECRETS")!);
-    expect(newsApiSecrets).toEqual({ nrms: secrets.nrmsToNewsApi, core: secrets.coreToNewsApi });
-
-    const newsApiSubs = JSON.parse(map.get("NEWSAPI_EVENT_SUBSCRIBERS")!);
-    expect(newsApiSubs).toEqual([{ name: "public-site", url: "self:/site-builder/events", secret: secrets.newsApiToSite, types: ["site.rebuild_requested"] }]);
-
-    const nodSecrets = JSON.parse(map.get("NOD_EVENT_SECRETS")!);
-    expect(nodSecrets).toEqual({ nrms: secrets.nrmsToNod });
-
-    const siteSecrets = JSON.parse(map.get("SITE_EVENT_SECRETS")!);
-    expect(siteSecrets).toEqual({ "news-api": secrets.newsApiToSite });
+  it("keeps every value short enough for SiteGround's env form (< 255 bytes)", () => {
+    const map = parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n"));
+    const tooLong = [...map.entries()].filter(([, v]) => Buffer.byteLength(v, "utf8") >= 255).map(([k]) => k);
+    expect(tooLong).toEqual([]);
   });
 
   it("never sets PORT (SiteGround injects it)", () => {

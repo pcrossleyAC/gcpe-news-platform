@@ -43,10 +43,7 @@ export interface SiteGroundEnvInput {
 export interface GeneratedSecrets {
   localAuthSecret: string;
   tickToken: string;
-  coreToNewsApi: string;
-  nrmsToNewsApi: string;
-  nrmsToNod: string;
-  newsApiToSite: string;
+  stackEventSecret: string;
 }
 
 /** `>= 32 chars` (the same bar LOCAL_AUTH_SECRET/TICK_TOKEN enforce at startup — see
@@ -59,10 +56,7 @@ export function generateSecrets(): GeneratedSecrets {
   return {
     localAuthSecret: generateSecret(),
     tickToken: generateSecret(),
-    coreToNewsApi: generateSecret(),
-    nrmsToNewsApi: generateSecret(),
-    nrmsToNod: generateSecret(),
-    newsApiToSite: generateSecret(),
+    stackEventSecret: generateSecret(),
   };
 }
 
@@ -98,28 +92,22 @@ export function buildEnvLines(input: SiteGroundEnvInput, secrets: GeneratedSecre
     `LOCAL_ADMIN_USERNAME=${input.adminUsername}`,
     `LOCAL_ADMIN_PASSWORD_HASH=${input.adminPasswordHash}`,
     `LOCAL_AUTH_SECRET=${secrets.localAuthSecret}`,
+    // All internal event wiring (who sends which events to whom, and the per-pair signing
+    // secrets) is derived by the stack from this one value — see apps/stack/src/env.ts.
+    `STACK_EVENT_SECRET=${secrets.stackEventSecret}`,
     "",
     `CORE_DATABASE_URL=${dbUrl(input.dbUser, input.dbPassword, input.dbNames.core)}`,
-    `CORE_EVENT_SUBSCRIBERS=${JSON.stringify([{ name: "news-api", url: "self:/events", secret: secrets.coreToNewsApi, types: ["org.upserted"] }])}`,
     "",
     `NRMS_DATABASE_URL=${dbUrl(input.dbUser, input.dbPassword, input.dbNames.nrms)}`,
-    `NRMS_EVENT_SUBSCRIBERS=${JSON.stringify([
-      { name: "news-api", url: "self:/events", secret: secrets.nrmsToNewsApi, types: ["release.published"] },
-      { name: "nod", url: "self:/nod/events", secret: secrets.nrmsToNod, types: ["release.published"] },
-    ])}`,
     "",
     `NEWSAPI_DATABASE_URL=${dbUrl(input.dbUser, input.dbPassword, input.dbNames.newsApi)}`,
-    `NEWSAPI_EVENT_SECRETS=${JSON.stringify({ nrms: secrets.nrmsToNewsApi, core: secrets.coreToNewsApi })}`,
-    `NEWSAPI_EVENT_SUBSCRIBERS=${JSON.stringify([{ name: "public-site", url: "self:/site-builder/events", secret: secrets.newsApiToSite, types: ["site.rebuild_requested"] }])}`,
     "",
     `SITE_DATABASE_URL=${dbUrl(input.dbUser, input.dbPassword, input.dbNames.site)}`,
     "SITE_NEWS_API_URL=self:/",
     "SITE_OUTPUT_DIR=./site-output",
-    `SITE_EVENT_SECRETS=${JSON.stringify({ "news-api": secrets.newsApiToSite })}`,
     `SITE_PUBLIC_SITE_URL=${publicSiteUrl}`,
     "",
     `NOD_DATABASE_URL=${dbUrl(input.dbUser, input.dbPassword, input.dbNames.nod)}`,
-    `NOD_EVENT_SECRETS=${JSON.stringify({ nrms: secrets.nrmsToNod })}`,
     "NOD_DISTRIBUTION_URL=self:/distribution",
     `NOD_PUBLIC_SITE_URL=${publicSiteUrl}`,
     `NOD_MANAGE_URL=${input.manageUrl}`,

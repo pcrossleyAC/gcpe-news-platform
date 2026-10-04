@@ -59,7 +59,7 @@ npm run siteground:env
 This prompts for the domain, the six databases' user/password, SMTP details, the admin
 username/password (hidden input — never echoed), and the subscriber manage/unsubscribe page
 URL, and prints a block of `KEY=value` lines — generating every internal secret
-(`TICK_TOKEN`, `LOCAL_AUTH_SECRET`, and the four inter-app event-delivery secrets) itself, with
+(`TICK_TOKEN`, `LOCAL_AUTH_SECRET`, and `STACK_EVENT_SECRET`, from which the stack derives every internal event subscription and per-pair signing secret — no JSON settings to paste) itself, with
 `crypto.randomBytes`. Paste the output into Site Tools → Devs → Node.js → your project →
 Environment Variables.
 

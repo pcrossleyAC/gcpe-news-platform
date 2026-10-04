@@ -25,11 +25,8 @@ import { startStack } from "./stack";
 const LOCAL_AUTH_SECRET = "stack-test-local-auth-secret-32-characters!";
 const ADMIN_PASSWORD = "stack-test-password-99";
 
-const SECRET_NRMS_TO_NEWS_API = "stack-e2e-nrms-to-news-api-secret";
-const SECRET_NRMS_TO_NOD = "stack-e2e-nrms-to-nod-secret";
-const SECRET_NEWS_API_TO_PUBLIC_SITE = "stack-e2e-news-api-to-public-site-secret";
 // Important fix 1 (P2-R30): Core -> News API, over a self: URL, same as NRMS -> News API.
-const SECRET_CORE_TO_NEWS_API = "stack-e2e-core-to-news-api-secret";
+const STACK_EVENT_SECRET = "stack-e2e-event-secret-" + "s".repeat(32);
 const MANAGE_URL = "http://nod.invalid/manage";
 
 /** Binds a throwaway server to learn a free port, then closes it — same probe-then-rebind
@@ -134,34 +131,24 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
     LOCAL_ADMIN_ENABLED: "true",
     LOCAL_ADMIN_PASSWORD_HASH: passwordHash,
     LOCAL_AUTH_SECRET,
+    // P2-R35: all internal event wiring (Core/NRMS -> News API, NRMS -> NoD, News API -> site
+    // builder) is derived by the stack from this one secret — no per-app EVENT_* JSON at all.
+    STACK_EVENT_SECRET,
 
     CORE_DATABASE_URL: core.url,
-    // Important fix 1 (P2-R30): Core's own EVENT_SUBSCRIBERS, with a self: URL, exactly like
-    // NRMS's below — this is what was missing before the fix.
-    CORE_EVENT_SUBSCRIBERS: JSON.stringify([{ name: "news-api", url: "self:/events", secret: SECRET_CORE_TO_NEWS_API, types: ["org.upserted"] }]),
 
     NRMS_DATABASE_URL: nrms.url,
-    NRMS_EVENT_SUBSCRIBERS: JSON.stringify([
-      { name: "news-api", url: "self:/events", secret: SECRET_NRMS_TO_NEWS_API, types: ["release.published"] },
-      { name: "nod", url: "self:/nod/events", secret: SECRET_NRMS_TO_NOD, types: ["release.published"] },
-    ]),
 
     NEWSAPI_DATABASE_URL: newsApi.url,
-    NEWSAPI_EVENT_SECRETS: JSON.stringify({ nrms: SECRET_NRMS_TO_NEWS_API, core: SECRET_CORE_TO_NEWS_API }),
-    NEWSAPI_EVENT_SUBSCRIBERS: JSON.stringify([
-      { name: "public-site", url: "self:/site-builder/events", secret: SECRET_NEWS_API_TO_PUBLIC_SITE, types: ["site.rebuild_requested"] },
-    ]),
 
     SITE_DATABASE_URL: publicSite.url,
     // M9: a bare "self:/" (not a hand-built http://127.0.0.1:<port> string) proves the
     // general *_URL resolution, not just EVENT_SUBSCRIBERS.
     SITE_NEWS_API_URL: "self:/",
     SITE_OUTPUT_DIR: outputDir,
-    SITE_EVENT_SECRETS: JSON.stringify({ "news-api": SECRET_NEWS_API_TO_PUBLIC_SITE }),
     SITE_PUBLIC_SITE_URL: "self:/site",
 
     NOD_DATABASE_URL: nod.url,
-    NOD_EVENT_SECRETS: JSON.stringify({ nrms: SECRET_NRMS_TO_NOD }),
     // M9: NoD -> Distribution, also over a self: URL.
     NOD_DISTRIBUTION_URL: "self:/distribution",
     NOD_PUBLIC_SITE_URL: "self:/site",

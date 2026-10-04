@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 
@@ -22,6 +23,10 @@ export const stackEnvSchema = z.object({
   // — independent of (but defaulting to the same file as) News API's and Public Site's own
   // per-app loads of the same config.
   TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
+  // Optional: when set, the stack derives every app's internal EVENT_SUBSCRIBERS/EVENT_SECRETS
+  // from it (see internalEventEnv) — one short setting instead of eight long JSON values, which
+  // SiteGround's env form can't hold. Explicit <PREFIX>_EVENT_* vars still take precedence.
+  STACK_EVENT_SECRET: z.string().min(32, "STACK_EVENT_SECRET must be at least 32 characters").optional(),
 });
 export type StackEnv = z.infer<typeof stackEnvSchema>;
 
@@ -52,11 +57,49 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.Proces
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && isSharedKey(key)) view[key] = value;
   }
+  // Derived internal wiring first, so explicit <PREFIX>_EVENT_* vars (applied below) override it.
+  if (env.STACK_EVENT_SECRET) Object.assign(view, internalEventEnv(env.STACK_EVENT_SECRET)[prefix]);
   const withUnderscore = `${prefix}_`;
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && key.startsWith(withUnderscore)) view[key.slice(withUnderscore.length)] = value;
   }
   return view;
+}
+
+/**
+ * The fixed in-process event topology of the stack: who publishes what to whom. Inside one
+ * process this never varies by deployment, so the operator shouldn't have to spell it out.
+ * Core and NRMS send every event type to the News API (it restricts by source itself); NoD
+ * only consumes release.published; the site builder only site.rebuild_requested.
+ */
+export const INTERNAL_EVENT_ROUTES = [
+  { from: "CORE", source: "core", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
+  { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
+  { from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events", types: ["release.published"] },
+  { from: "NEWSAPI", source: "news-api", to: "SITE", name: "public-site", url: "self:/site-builder/events", types: ["site.rebuild_requested"] },
+] as const satisfies readonly { from: AppPrefix; source: string; to: AppPrefix; name: string; url: string; types: readonly string[] }[];
+
+/** Per-route signing secret: HMAC-SHA256(STACK_EVENT_SECRET, "gcpe-event:<source>-><receiver>"),
+ * so every sender/receiver pair gets its own key and none of them is the stack secret itself. */
+export function routeSecret(stackSecret: string, route: (typeof INTERNAL_EVENT_ROUTES)[number]): string {
+  return createHmac("sha256", stackSecret).update(`gcpe-event:${route.source}->${route.name}`).digest("hex");
+}
+
+/** EVENT_SUBSCRIBERS (senders) and EVENT_SECRETS (receivers) for every app, derived from one secret. */
+export function internalEventEnv(stackSecret: string): Record<AppPrefix, Record<string, string>> {
+  const out = Object.fromEntries(APP_PREFIXES.map((p) => [p, {}])) as Record<AppPrefix, Record<string, string>>;
+  const subscribers: Partial<Record<AppPrefix, { name: string; url: string; secret: string; types: string[] }[]>> = {};
+  const secrets: Partial<Record<AppPrefix, Record<string, string>>> = {};
+  for (const route of INTERNAL_EVENT_ROUTES) {
+    const secret = routeSecret(stackSecret, route);
+    (subscribers[route.from] ??= []).push({ name: route.name, url: route.url, secret, types: [...route.types] });
+    (secrets[route.to] ??= {})[route.source] = secret;
+  }
+  for (const prefix of APP_PREFIXES) {
+    if (subscribers[prefix]) out[prefix].EVENT_SUBSCRIBERS = JSON.stringify(subscribers[prefix]);
+    if (secrets[prefix]) out[prefix].EVENT_SECRETS = JSON.stringify(secrets[prefix]);
+  }
+  return out;
 }
 
 const SELF_PREFIX = "self:";
