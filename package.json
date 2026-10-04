@@ -9,6 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "auth:hash-password": "tsx packages/auth/src/cli/hash-password.ts",
+    "core:seed-test-users": "npm --workspace @gcpe/core run seed:test-users",
     "build:siteground": "node scripts/build-siteground.mjs",
     "deploy:siteground": "bash scripts/deploy-siteground.sh",
     "siteground:env": "tsx scripts/siteground-env.ts"
