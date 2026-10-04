@@ -4,7 +4,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { orgInputSchema } from "../apps/core/src/services/organizations";
 import { termInputSchema } from "../apps/core/src/services/terms";
-import { extractMinisterEmail, toOrgInput, toTermInput, type PublicCategory, type PublicMinister, type PublicMinistry } from "../scripts/lib/public-taxonomy";
+import {
+  deriveMinistryAbbreviation,
+  extractAbbreviationFromReleaseKey,
+  extractMinisterEmail,
+  toOrgInput,
+  toTermInput,
+  type PublicCategory,
+  type PublicMinister,
+  type PublicMinistry,
+  type PublicPost,
+} from "../scripts/lib/public-taxonomy";
 import { run } from "../scripts/seed-core-from-public-api";
 
 // --- Fixture-shaped sample data (shapes mirror apps/news-api/src/dto.ts's projections) --------
@@ -77,6 +87,57 @@ describe("extractMinisterEmail", () => {
   });
 });
 
+describe("extractAbbreviationFromReleaseKey", () => {
+  it("extracts the abbreviation from a legacy release key", () => {
+    expect(extractAbbreviationFromReleaseKey("2026HLTH0012-000345")).toBe("HLTH");
+  });
+  it("handles a multi-letter abbreviation", () => {
+    expect(extractAbbreviationFromReleaseKey("2025FIN0003-000012")).toBe("FIN");
+  });
+  it("returns null for a key that doesn't match the legacy format, and for null/undefined", () => {
+    expect(extractAbbreviationFromReleaseKey("not-a-legacy-key")).toBeNull();
+    expect(extractAbbreviationFromReleaseKey("2026hlth0012-000345")).toBeNull(); // lowercase letters don't match
+    expect(extractAbbreviationFromReleaseKey(null)).toBeNull();
+    expect(extractAbbreviationFromReleaseKey(undefined)).toBeNull();
+  });
+});
+
+describe("deriveMinistryAbbreviation", () => {
+  it("picks the most common abbreviation among matching release keys (majority vote)", () => {
+    const posts: PublicPost[] = [
+      { key: "2026HLTH0001-000001", kind: "releases", leadMinistryKey: "HLTH" },
+      { key: "2026HLTH0002-000002", kind: "releases", leadMinistryKey: "HLTH" },
+      { key: "2026FIN00003-000003", kind: "releases", leadMinistryKey: "HLTH" }, // minority, still parses as FIN
+    ];
+    expect(deriveMinistryAbbreviation(posts, "HLTH")).toBe("HLTH");
+  });
+
+  it("only counts posts of kind \"releases\"; stories/factsheets/updates are ignored even if the key matches", () => {
+    const posts: PublicPost[] = [
+      { key: "2026HLTH0001-000001", kind: "stories", leadMinistryKey: "HLTH" },
+      { key: "2026HLTH0002-000002", kind: "factsheets", leadMinistryKey: "HLTH" },
+      { key: "2026FIN0003-000003", kind: "releases", leadMinistryKey: "HLTH" },
+    ];
+    expect(deriveMinistryAbbreviation(posts, "HLTH")).toBe("FIN");
+  });
+
+  it("ignores posts whose leadMinistryKey doesn't match (case-insensitively matches when it does)", () => {
+    const posts: PublicPost[] = [
+      { key: "2026FIN0001-000001", kind: "releases", leadMinistryKey: "FIN" }, // different ministry
+      { key: "2026hlth0002-000002", kind: "releases", leadMinistryKey: "hlth" }, // matches case-insensitively, but key itself is lowercase -> no abbreviation extracted
+      { key: "2026HLTH0003-000003", kind: "releases", leadMinistryKey: "HLTH" },
+    ];
+    expect(deriveMinistryAbbreviation(posts, "hltH")).toBe("HLTH");
+  });
+
+  it("returns null when no post matches kind + leadMinistryKey, or none has a parseable legacy key", () => {
+    expect(deriveMinistryAbbreviation([], "HLTH")).toBeNull();
+    expect(deriveMinistryAbbreviation([{ key: "2026HLTH0001-000001", kind: "stories", leadMinistryKey: "HLTH" }], "HLTH")).toBeNull();
+    expect(deriveMinistryAbbreviation([{ key: "not-legacy-shaped", kind: "releases", leadMinistryKey: "HLTH" }], "HLTH")).toBeNull();
+    expect(deriveMinistryAbbreviation([{ key: "2026HLTH0001-000001", kind: "releases", leadMinistryKey: "OTHER" }], "HLTH")).toBeNull();
+  });
+});
+
 describe("toOrgInput / toTermInput mapping against Core's own schemas", () => {
   it("maps a fixture-shaped ministry (+ minister) into a body that satisfies orgInputSchema", () => {
     const input = toOrgInput(SAMPLE_MINISTRY, SAMPLE_MINISTER);
@@ -95,6 +156,11 @@ describe("toOrgInput / toTermInput mapping against Core's own schemas", () => {
     });
     expect(parsed.topicLinks).toEqual([{ text: "Topic Page", url: "https://example.invalid/topic" }]);
     expect(parsed.social.twitterUsername).toBe("AEST_BC");
+  });
+
+  it("passes a derived abbreviation through to orgInputSchema's abbreviation field", () => {
+    const parsed = orgInputSchema.parse(toOrgInput(SAMPLE_MINISTRY, SAMPLE_MINISTER, "AEST"));
+    expect(parsed.abbreviation).toBe("AEST");
   });
 
   it("defaults displayName to the key when the public ministry has no name, never an empty string (orgInputSchema requires non-empty)", () => {
@@ -131,7 +197,17 @@ function okResponse(status = 200): Response {
 }
 
 /** Routes a mocked fetch by method + pathname, recording every call for assertions. */
-function makeFetchMock(routes: { publicMinistries?: PublicMinistry[]; publicMinister?: PublicMinister | null; publicSectors?: PublicCategory[]; publicThemes?: PublicCategory[]; publicTags?: PublicCategory[]; putStatus?: number; republishStatus?: number }) {
+function makeFetchMock(routes: {
+  publicMinistries?: PublicMinistry[];
+  publicMinister?: PublicMinister | null;
+  /** Keyed by ministry key (case-insensitive) -> the posts /api/Posts/Latest/ministries/:key returns. Defaults to []. */
+  publicMinistryPosts?: Record<string, PublicPost[]>;
+  publicSectors?: PublicCategory[];
+  publicThemes?: PublicCategory[];
+  publicTags?: PublicCategory[];
+  putStatus?: number;
+  republishStatus?: number;
+}) {
   const calls: { method: string; url: URL; headers: Headers; body?: string }[] = [];
   const fetchImpl = vi.fn(async (input: string | URL, init?: RequestInit) => {
     const url = new URL(input instanceof URL ? input : String(input));
@@ -142,6 +218,13 @@ function makeFetchMock(routes: { publicMinistries?: PublicMinistry[]; publicMini
       if (url.pathname === "/api/Ministries") return jsonResponse(routes.publicMinistries ?? []);
       if (/^\/api\/Ministries\/[^/]+\/Minister$/.test(url.pathname)) {
         return routes.publicMinister === undefined ? jsonResponse(routes.publicMinister, 200) : jsonResponse(routes.publicMinister);
+      }
+      const postsMatch = /^\/api\/Posts\/Latest\/ministries\/([^/]+)$/.exec(url.pathname);
+      if (postsMatch) {
+        const ministryKey = decodeURIComponent(postsMatch[1]!).toLowerCase();
+        const byKey = Object.fromEntries(Object.entries(routes.publicMinistryPosts ?? {}).map(([k, v]) => [k.toLowerCase(), v]));
+        expect(url.searchParams.get("postKind")).toBe("releases"); // the script always asks the server to pre-filter too
+        return jsonResponse(byKey[ministryKey] ?? []);
       }
       if (url.pathname === "/api/Sectors") return jsonResponse(routes.publicSectors ?? []);
       if (url.pathname === "/api/Themes") return jsonResponse(routes.publicThemes ?? []);
@@ -179,10 +262,17 @@ describe("run() — CLI orchestration against a mocked fetch", () => {
     }
   });
 
-  it("PUTs organizations/:key and terms/:kind/:key with schema-valid bodies, and calls republish last", async () => {
+  it("PUTs organizations/:key and terms/:kind/:key with schema-valid bodies (including a derived abbreviation), and calls republish last", async () => {
     const { fetchImpl, calls } = makeFetchMock({
       publicMinistries: [SAMPLE_MINISTRY],
       publicMinister: SAMPLE_MINISTER,
+      publicMinistryPosts: {
+        AEST: [
+          { key: "2026AEST0001-000001", kind: "releases", leadMinistryKey: "AEST" },
+          { key: "2026AEST0002-000002", kind: "releases", leadMinistryKey: "AEST" },
+          { key: "2026AEST0003-000003", kind: "stories", leadMinistryKey: "AEST" }, // wrong kind, ignored
+        ],
+      },
       publicSectors: [SAMPLE_SECTOR],
       publicThemes: [SAMPLE_THEME],
       publicTags: [SAMPLE_TAG],
@@ -197,11 +287,30 @@ describe("run() — CLI orchestration against a mocked fetch", () => {
       expect(call.headers.get("content-type")).toBe("application/json");
       expect(() => orgInputSchema.or(termInputSchema).parse(JSON.parse(call.body!))).not.toThrow();
     }
+    const orgCall = putCalls.find((c) => c.url.pathname === "/core/api/organizations/aest")!;
+    expect(JSON.parse(orgCall.body!).abbreviation).toBe("AEST"); // derived from the legacy release keys
 
     const republishIdx = calls.findIndex((c) => c.url.pathname === "/core/api/admin/republish");
     expect(republishIdx).toBeGreaterThan(-1);
     expect(republishIdx).toBe(calls.length - 1); // last call overall
     expect(calls[republishIdx]!.method).toBe("POST");
+  });
+
+  it("leaves abbreviation null and lists the ministry under \"no abbreviation found for\" when no release yields one", async () => {
+    const { fetchImpl } = makeFetchMock({
+      publicMinistries: [SAMPLE_MINISTRY],
+      publicMinister: SAMPLE_MINISTER,
+      publicMinistryPosts: { AEST: [] }, // no recent releases at all
+      publicSectors: [],
+      publicThemes: [],
+      publicTags: [],
+    });
+    const lines: string[] = [];
+    const result = await run({ targetBaseUrl: "https://boxs.ca", token: "t", fetchImpl, delayMs: 0, log: (l) => lines.push(l) });
+
+    const ministries = result.summaries.find((s) => s.kind === "ministries")!;
+    expect(ministries.noAbbreviation).toEqual(["aest"]);
+    expect(lines.some((l) => l.includes("no abbreviation found for: aest"))).toBe(true);
   });
 
   it("counts a non-2xx PUT as a failure, still republishes, and reports ok: false", async () => {

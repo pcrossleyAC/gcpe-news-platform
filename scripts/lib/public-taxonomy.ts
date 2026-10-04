@@ -92,6 +92,18 @@ export interface PublicCategory {
   audioUri?: string | null;
 }
 
+/** The slice of #/definitions/Post (toPostDto) needed to derive a ministry's abbreviation. The
+ * legacy `key` (e.g. "2026HLTH0012-000345") carries the ministry abbreviation — see
+ * apps/nrms/src/releases/record.test.ts's `key: "2026HLTH0001-000001"` and
+ * apps/nrms/src/taxonomy.ts's `abbreviation` field, which NRMS requires non-null before
+ * approving a release (apps/nrms/src/releases/workflow.ts). `reference` (e.g. "NEWS-00001") is a
+ * different, unrelated legacy id and is not used here. */
+export interface PublicPost {
+  key?: string | null;
+  kind?: string | null;
+  leadMinistryKey?: string | null;
+}
+
 // --- Fetchers (sequential GETs; caller is responsible for the polite delay between calls) ----
 
 export function fetchMinistries(baseUrl: string, fetchImpl: typeof fetch = fetch): Promise<PublicMinistry[]> {
@@ -119,6 +131,18 @@ export function fetchThemes(baseUrl: string, fetchImpl: typeof fetch = fetch): P
 
 export function fetchTags(baseUrl: string, fetchImpl: typeof fetch = fetch): Promise<PublicCategory[]> {
   return getPublicJson<PublicCategory[]>(baseUrl, "/api/Tags", fetchImpl);
+}
+
+/** Default number of recent releases to sample when deriving a ministry's abbreviation. */
+export const DEFAULT_ABBREVIATION_SAMPLE_SIZE = 20;
+
+/** `GET /api/Posts/Latest/ministries/{key}?postKind=releases&count=...` — the swagger contract's
+ * per-category latest-posts endpoint, scoped to `indexKind=ministries`. Requesting
+ * `postKind=releases` server-side is a courtesy filter only; `deriveMinistryAbbreviation` below
+ * re-checks `kind === "releases"` itself rather than trusting the server to have applied it. */
+export function fetchLatestMinistryPosts(baseUrl: string, ministryKey: string, count: number = DEFAULT_ABBREVIATION_SAMPLE_SIZE, fetchImpl: typeof fetch = fetch): Promise<PublicPost[]> {
+  const query = new URLSearchParams({ postKind: "releases", count: String(count) });
+  return getPublicJson<PublicPost[]>(baseUrl, `/api/Posts/Latest/ministries/${encodeURIComponent(ministryKey)}?${query}`, fetchImpl);
 }
 
 // --- Mapping: public DTO -> Core input schema (inverting apps/news-api/src/dto.ts) ------------
@@ -158,22 +182,66 @@ export function extractMinisterEmail(emailHtml: string | null | undefined): stri
   return match ? match[1]! : null;
 }
 
+/** Legacy release key format, e.g. "2026HLTH0012-000345": 4-digit year, ministry abbreviation
+ * (letters), a 4-digit sequence, a dash, then a 6-digit sequence. Group 1 is the abbreviation. */
+export const LEGACY_RELEASE_KEY_PATTERN = /^\d{4}([A-Z]+)\d{4}-\d{6}$/;
+
+/** Extracts the ministry abbreviation embedded in one legacy release key, or null if the key
+ * doesn't match the legacy format at all. */
+export function extractAbbreviationFromReleaseKey(key: string | null | undefined): string | null {
+  if (!key) return null;
+  const match = LEGACY_RELEASE_KEY_PATTERN.exec(key);
+  return match ? match[1]! : null;
+}
+
+/**
+ * Derives a ministry's abbreviation by majority vote over its recent releases' legacy keys.
+ *
+ * Only posts of kind "releases" (never stories/factsheets/updates/advisories) whose
+ * `leadMinistryKey` matches `ministryKey` (case-insensitively — the public API's own key casing
+ * isn't guaranteed to match what was used to request the listing) are considered; everything
+ * else is ignored, including posts whose `key` doesn't match the legacy format at all. Returns
+ * null, never a guess, when no post yields an abbreviation.
+ */
+export function deriveMinistryAbbreviation(posts: PublicPost[], ministryKey: string): string | null {
+  const wanted = ministryKey.toLowerCase();
+  const counts = new Map<string, number>();
+  for (const post of posts) {
+    if (post.kind !== "releases") continue;
+    if ((post.leadMinistryKey ?? "").toLowerCase() !== wanted) continue;
+    const abbreviation = extractAbbreviationFromReleaseKey(post.key);
+    if (!abbreviation) continue;
+    counts.set(abbreviation, (counts.get(abbreviation) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestCount = 0;
+  for (const [abbreviation, count] of counts) {
+    if (count > bestCount) {
+      best = abbreviation;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
 /**
  * Builds a Core `orgInputSchema`-shaped body for one ministry.
  *
  * Fields the public API simply doesn't carry get a schema-valid neutral default rather than a
  * guess:
- *  - `abbreviation`: never present in the public contract -> null.
+ *  - `abbreviation`: never a direct field in the public contract. The caller derives it from
+ *    recent release keys via `deriveMinistryAbbreviation` and passes it in; null when no release
+ *    yielded one.
  *  - `sortOrder`: Core-only display ordering, not public -> 0.
  *  - `sectorKeys`: the public Ministry DTO never lists which sectors a ministry belongs to
  *    (that association isn't exposed in either direction) -> [].
  */
-export function toOrgInput(ministry: PublicMinistry, minister: PublicMinister | null): OrgInput {
+export function toOrgInput(ministry: PublicMinistry, minister: PublicMinister | null, abbreviation: string | null = null): OrgInput {
   const key = ministry.key.toLowerCase();
   return {
     key,
     displayName: ministry.name?.trim() || key,
-    abbreviation: null,
+    abbreviation,
     sortOrder: 0,
     isActive: ministry.isActive ?? true,
     parentKey: ministry.parentMinistryKey ? ministry.parentMinistryKey.toLowerCase() : null,

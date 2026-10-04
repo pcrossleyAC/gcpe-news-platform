@@ -18,7 +18,10 @@ import type { TermKind } from "@gcpe/events";
 import { orgInputSchema } from "../apps/core/src/services/organizations";
 import { termInputSchema } from "../apps/core/src/services/terms";
 import {
+  DEFAULT_ABBREVIATION_SAMPLE_SIZE,
   DEFAULT_PUBLIC_API_BASE,
+  deriveMinistryAbbreviation,
+  fetchLatestMinistryPosts,
   fetchMinister,
   fetchMinistries,
   fetchSectors,
@@ -43,6 +46,9 @@ interface KindSummary {
   upserted: number;
   failed: number;
   failures: Failure[];
+  /** Ministries (lowercased key) whose recent releases yielded no abbreviation. Only populated
+   * for the "ministries" summary. */
+  noAbbreviation: string[];
 }
 
 export interface RunOptions {
@@ -54,6 +60,8 @@ export interface RunOptions {
   /** Base URL of the public source API. Defaults to the real public API; overridable for tests. */
   publicApiBase?: string;
   delayMs?: number;
+  /** How many recent releases per ministry to sample when deriving its abbreviation. */
+  abbreviationSampleSize?: number;
   fetchImpl?: typeof fetch;
   log?: (line: string) => void;
 }
@@ -82,14 +90,20 @@ async function postNoBody(baseUrl: string, path: string, token: string, fetchImp
   return fetchImpl(new URL(path, baseUrl), { method: "POST", headers: authHeaders(token) });
 }
 
-async function seedMinistries(opts: Required<Pick<RunOptions, "targetBaseUrl" | "token" | "publicApiBase" | "delayMs" | "fetchImpl">>): Promise<KindSummary> {
-  const { targetBaseUrl, token, publicApiBase, delayMs, fetchImpl } = opts;
-  const summary: KindSummary = { kind: "ministries", upserted: 0, failed: 0, failures: [] };
+async function seedMinistries(
+  opts: Required<Pick<RunOptions, "targetBaseUrl" | "token" | "publicApiBase" | "delayMs" | "fetchImpl" | "abbreviationSampleSize">>,
+): Promise<KindSummary> {
+  const { targetBaseUrl, token, publicApiBase, delayMs, fetchImpl, abbreviationSampleSize } = opts;
+  const summary: KindSummary = { kind: "ministries", upserted: 0, failed: 0, failures: [], noAbbreviation: [] };
   const ministries = await fetchMinistries(publicApiBase, fetchImpl);
   for (const ministry of ministries) {
     await sleep(delayMs);
     const minister = await fetchMinister(publicApiBase, ministry.key, fetchImpl);
-    const input = orgInputSchema.parse(toOrgInput(ministry, minister));
+    await sleep(delayMs);
+    const recentReleases = await fetchLatestMinistryPosts(publicApiBase, ministry.key, abbreviationSampleSize, fetchImpl);
+    const abbreviation = deriveMinistryAbbreviation(recentReleases, ministry.key);
+    const input = orgInputSchema.parse(toOrgInput(ministry, minister, abbreviation));
+    if (abbreviation === null) summary.noAbbreviation.push(input.key);
     await sleep(delayMs);
     const res = await putJson(targetBaseUrl, `/core/api/organizations/${encodeURIComponent(input.key)}`, token, input, fetchImpl);
     if (res.ok) summary.upserted++;
@@ -107,7 +121,7 @@ async function seedTermKind(
   opts: Required<Pick<RunOptions, "targetBaseUrl" | "token" | "publicApiBase" | "delayMs" | "fetchImpl">>,
 ): Promise<KindSummary> {
   const { targetBaseUrl, token, publicApiBase, delayMs, fetchImpl } = opts;
-  const summary: KindSummary = { kind, upserted: 0, failed: 0, failures: [] };
+  const summary: KindSummary = { kind, upserted: 0, failed: 0, failures: [], noAbbreviation: [] };
   const categories = await fetcher(publicApiBase, fetchImpl);
   for (const category of categories) {
     const input = termInputSchema.parse(toTermInput(kind, category));
@@ -130,11 +144,12 @@ export async function run(opts: RunOptions): Promise<RunResult> {
   const fetchImpl = opts.fetchImpl ?? fetch;
   const log = opts.log ?? ((line: string) => console.log(line));
   const delayMs = opts.delayMs ?? DEFAULT_DELAY_MS;
+  const abbreviationSampleSize = opts.abbreviationSampleSize ?? DEFAULT_ABBREVIATION_SAMPLE_SIZE;
   const publicApiBase = opts.publicApiBase ?? DEFAULT_PUBLIC_API_BASE;
   const common = { targetBaseUrl: opts.targetBaseUrl, token: opts.token, publicApiBase, delayMs, fetchImpl };
 
   const summaries: KindSummary[] = [];
-  summaries.push(await seedMinistries(common));
+  summaries.push(await seedMinistries({ ...common, abbreviationSampleSize }));
   summaries.push(await seedTermKind("sector", fetchSectors, common));
   summaries.push(await seedTermKind("theme", fetchThemes, common));
   summaries.push(await seedTermKind("tag", fetchTags, common));
@@ -142,6 +157,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
   for (const s of summaries) {
     log(`${s.kind}: upserted=${s.upserted} failed=${s.failed}`);
     for (const f of s.failures) log(`  FAILED ${s.kind} key=${f.key} status=${f.status}`);
+    if (s.noAbbreviation.length > 0) log(`  no abbreviation found for: ${s.noAbbreviation.join(", ")}`);
   }
 
   // Always republish last, even if some upserts failed, so subscribers get whatever did land.
