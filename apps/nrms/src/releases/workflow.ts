@@ -15,8 +15,8 @@ export interface WorkflowDeps {
 }
 
 const PAST_LIMIT_MS = 5 * 60_000;
-/** A live release in one of these can be taken down (a failed correction is still live). */
-const UNPUBLISHABLE_STATUSES = new Set(["published", "publishing", "failed"]);
+/** A live release in one of these can be taken down (a failed correction, or one re-scheduled, is still live). */
+const UNPUBLISHABLE_STATUSES = new Set(["published", "publishing", "failed", "scheduled"]);
 
 /** "January 15, 2030 at 10:30 a.m." in BC time. */
 export function formatBcDateTime(at: Date, timeZone: string): string {
@@ -104,6 +104,7 @@ export async function schedule(db: Db, id: string, input: ScheduleInput, actor: 
         immediate = t.getTime() <= clock.now.getTime();
         publishAt = immediate ? clock.minute : t;
       }
+      if (row.live && !immediate) throw new ReleaseRuleError(["A live release's correction goes out immediately — choose Publish now."]);
       assertPublishable(toReleaseRecord(view, { publishDate: publishAt.toISOString(), timestamp: clock.now.toISOString() }));
 
       await tx

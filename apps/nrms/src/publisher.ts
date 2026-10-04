@@ -81,8 +81,10 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
 
 /**
  * One transaction per release, claimed FOR UPDATE SKIP LOCKED so replicas never double-publish.
- * A failure after the claim marks only that release failed (never wedges the queue); a failure
- * of the claim itself propagates. Every due/now comparison uses the database clock.
+ * A failure after the claim marks only that release failed when it was publishing (status
+ * scheduled/publishing); an `unpublishing` failure is only logged and retried next run. Either way
+ * the release isn't claimed again in the same run, so it never wedges the queue. A failure of the
+ * claim itself propagates. Every due/now comparison uses the database clock.
  */
 export async function publishDue(opts: PublisherOptions): Promise<PublishResult> {
   const limit = opts.limit ?? 50;

@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import { dbClock, type Db, type TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { createNrmsTestDb, createScheduledRelease, editor } from "../test/helpers";
-import { ReleaseStateError } from "./releases/errors";
+import { ReleaseRuleError, ReleaseStateError } from "./releases/errors";
 import { deleteRelease, saveCategories } from "./releases/service";
 import { loadView } from "./releases/store";
 import { cancel, schedule, unpublish } from "./releases/workflow";
@@ -151,9 +151,29 @@ describe("publisher", () => {
   it("a live correction that was re-scheduled can't be cancelled", async () => {
     const due = await failCorrection();
     await restore();
-    const s = await schedule(tdb.db, due.id, { version: (await loadView(tdb.db, due.id))!.version, publishAt: new Date(Date.now() + 60 * 60_000).toISOString() }, editor, deps);
+    const s = await schedule(tdb.db, due.id, { version: (await loadView(tdb.db, due.id))!.version, publishAt: "now" }, editor, deps);
     expect(s.status).toBe("scheduled");
     await expect(cancel(tdb.db, due.id, s.version, editor)).rejects.toEqual(new ReleaseStateError("This release is live — save a correction or unpublish it instead."));
+  });
+
+  it("a live correction can only go out now: a future time is refused", async () => {
+    const due = await failCorrection();
+    await restore();
+    const failed = (await loadView(tdb.db, due.id))!;
+    await expect(schedule(tdb.db, due.id, { version: failed.version, publishAt: new Date(Date.now() + 60 * 60_000).toISOString() }, editor, deps)).rejects.toEqual(
+      new ReleaseRuleError(["A live release's correction goes out immediately — choose Publish now."]),
+    );
+    expect((await loadView(tdb.db, due.id))!.status).toBe("failed");
+  });
+
+  it("a live correction scheduled now can still be unpublished before the publisher runs", async () => {
+    const due = await failCorrection();
+    await restore();
+    const s = await schedule(tdb.db, due.id, { version: (await loadView(tdb.db, due.id))!.version, publishAt: "now" }, editor, deps);
+    expect((await unpublish(tdb.db, due.id, s.version, editor)).status).toBe("unpublishing");
+    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [], unpublished: [due.key], failed: [] });
+    expect((await events()).at(-1)).toMatchObject({ type: "release.unpublished", envelope: { data: { key: due.key } } });
+    expect(await live(due.id)).toBe(false);
   });
 
   it("a release that was unpublished, re-scheduled and then failed isn't live, so it can be deleted", async () => {
