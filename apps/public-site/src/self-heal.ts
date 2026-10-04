@@ -1,5 +1,5 @@
 import type { NewsApiClient } from "./news-api-client";
-import { POST_KEY, postPath } from "./rebuild";
+import { HOME_COUNT, POST_KEY, postPath } from "./rebuild";
 import { renderHomePage, renderPostPage, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
 
@@ -40,6 +40,8 @@ export async function selfHeal(deps: { newsApi: NewsApiClient; storage: SiteStor
     await storage.write(postPath(post.key), renderPostPage(post, site));
     rebuilt++;
   }
-  await storage.write("index.html", renderHomePage(posts, site));
+  // The home page itself still lists only the normal count — `posts` is generous (above) so
+  // every recent post page gets healed, but the home page shouldn't suddenly show 200 items.
+  await storage.write("index.html", renderHomePage(posts.slice(0, HOME_COUNT), site));
   return { rebuilt };
 }

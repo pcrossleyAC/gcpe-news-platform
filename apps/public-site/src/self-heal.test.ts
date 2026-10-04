@@ -46,6 +46,31 @@ describe("selfHeal", () => {
     expect(newsApi.latestHome).toHaveBeenCalledTimes(1);
   });
 
+  it("caps the home page listing at the normal home count, while still rebuilding every fetched post page", async () => {
+    const root = await mkdtemp(join(tmpdir(), "self-heal-"));
+    made.push(root);
+    const storage = fsStorage(root);
+    const many: PostDto[] = Array.from({ length: 12 }, (_, i) => ({
+      ...postA,
+      key: `K${i + 1}`,
+      documents: [{ ...postA.documents[0]!, headline: `Headline ${i + 1}` }],
+    }));
+    const newsApi: NewsApiClient = {
+      getPost: vi.fn(async () => null),
+      latestHome: vi.fn(async () => many),
+    };
+
+    const result = await selfHeal({ newsApi, storage, site });
+    expect(result).toEqual({ rebuilt: 12 });
+    const home = await readFile(join(root, "index.html"), "utf8");
+    for (let i = 1; i <= 10; i++) expect(home).toContain(`Headline ${i}`);
+    expect(home).not.toContain("Headline 11");
+    expect(home).not.toContain("Headline 12");
+    // Every fetched post still gets its own page, even past the home-page count.
+    expect(await readFile(join(root, "releases", "K11", "index.html"), "utf8")).toContain("Headline 11");
+    expect(await readFile(join(root, "releases", "K12", "index.html"), "utf8")).toContain("Headline 12");
+  });
+
   it("rejects when the News API is down, so the caller can log it", async () => {
     const root = await mkdtemp(join(tmpdir(), "self-heal-"));
     made.push(root);

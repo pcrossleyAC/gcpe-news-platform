@@ -6,7 +6,10 @@ import type { SiteStorage } from "./storage";
 /** A valid post key, same shape NRMS/News API produce — shared with self-heal.ts so both
  * places validate a post key the same way before treating it as a filesystem path component. */
 export const POST_KEY = /^[A-Za-z0-9-]+$/;
-const HOME_COUNT = 10;
+/** How many of the latest posts the home page lists — shared with self-heal.ts so a cold-start
+ * rebuild (which fetches far more, to heal every recent post page) still renders a normal-sized
+ * home page rather than all of them. */
+export const HOME_COUNT = 10;
 
 /** The on-disk path a post page is written to/removed from — shared with self-heal.ts so
  * neither place duplicates this string shape. */
