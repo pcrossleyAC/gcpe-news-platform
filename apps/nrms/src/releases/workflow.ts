@@ -36,6 +36,16 @@ async function dbClock(tx: DbOrTx): Promise<{ now: Date; minute: Date }> {
   return { now: new Date(row.now), minute: new Date(row.minute) };
 }
 
+const NUMBER_INDEXES = new Set(["news_releases_reference_idx", "news_releases_key_idx"]);
+
+/** A unique violation on the reference or key index (drizzle wraps the pg error in `cause`). */
+function isNumberCollision(e: unknown): boolean {
+  for (let err = e as { code?: string; constraint?: string; cause?: unknown } | undefined; err; err = err.cause as typeof err) {
+    if (err.code === "23505") return NUMBER_INDEXES.has(err.constraint ?? "");
+  }
+  return false;
+}
+
 export async function approve(db: Db, id: string, version: number, actor: Actor, deps: WorkflowDeps): Promise<ReleaseView> {
   return mutateRelease(
     db, id, version, actor,
@@ -58,10 +68,15 @@ export async function approve(db: Db, id: string, version: number, actor: Actor,
         numbering = { key: `${year}${(abbr ?? "ADVIS").toUpperCase()}${pad(n, 4)}-${pad(m, 6)}`, year, yearRelease: m, ministryRelease: n };
       }
       const [term] = await tx.select({ id: governmentTerms.id }).from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
-      await tx
-        .update(newsReleases)
-        .set({ status: "approved", reference, leadMinistryKey: lead, termId: term?.id ?? null, ...(numbering ?? {}) })
-        .where(eq(newsReleases.id, id));
+      try {
+        await tx
+          .update(newsReleases)
+          .set({ status: "approved", reference, leadMinistryKey: lead, termId: term?.id ?? null, ...(numbering ?? {}) })
+          .where(eq(newsReleases.id, id));
+      } catch (e) {
+        if (isNumberCollision(e)) throw new ReleaseStateError("That number is already in use — try again.");
+        throw e;
+      }
       return `Approved ${TYPE_LABEL[row.type]}`;
     },
     { correction: false },

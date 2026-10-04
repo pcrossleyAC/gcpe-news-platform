@@ -57,6 +57,20 @@
       "when": 1791096377207,
       "tag": "0007_backfill_live",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791100384999,
+      "tag": "0008_seed_counters",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791100410832,
+      "tag": "0009_key_unique_across_types",
+      "breakpoints": true
     }
   ]
 }

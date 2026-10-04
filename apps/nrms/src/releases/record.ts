@@ -1,5 +1,6 @@
 import { envelopeByteLength, MAX_EVENT_BYTES, releaseRecordSchema, sizingEnvelope, type ReleaseRecord } from "@gcpe/events";
 import { LANG_EN, LANG_FR, POST_KIND, type ReleaseView } from "@gcpe/nrms-contract";
+import { sanitizeBodyHtml } from "../text/sanitize";
 import { ReleaseTooLargeError } from "./errors";
 
 export function splitContact(information: string): { title: string; details: string } {
@@ -15,7 +16,7 @@ export function toReleaseRecord(v: ReleaseView, at: { publishDate: string; times
       const l = d.languages.find((x) => x.languageId === lang);
       if (!l) return [];
       return [{
-        pageTitle: l.pageTitle, languageId: lang, headline: l.headline, subheadline: l.subheadline, detailsHtml: l.bodyHtml,
+        pageTitle: l.pageTitle, languageId: lang, headline: l.headline, subheadline: l.subheadline, detailsHtml: sanitizeBodyHtml(l.bodyHtml),
         byline: d.layout === "informal" ? l.byline : null, contacts: l.contacts.map(splitContact),
       }];
     }),

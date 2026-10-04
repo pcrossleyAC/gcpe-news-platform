@@ -60,6 +60,19 @@ describe("workflow", () => {
     expect(new Set(approved.map((a) => a.key)).size).toBe(20);
   });
 
+  it("a number already in use at approve → ReleaseStateError (409), not a 500", async () => {
+    const a = await createRelease(db(), sampleCreate, editor);
+    await approve(db(), a.id, a.version, editor, deps);
+    await tdb.db.execute(sql`UPDATE number_counters SET last_value = last_value - 1 WHERE scope = 'news'`);
+    try {
+      const b = await createRelease(db(), sampleCreate, editor);
+      await expect(approve(db(), b.id, b.version, editor, deps)).rejects.toEqual(new ReleaseStateError("That number is already in use — try again."));
+      expect((await loadView(db(), b.id))!.status).toBe("draft");
+    } finally {
+      await tdb.db.execute(sql`UPDATE number_counters SET last_value = last_value + 1 WHERE scope = 'news'`);
+    }
+  });
+
   it("nextCounter counts per scope", async () => {
     expect(await nextCounter(tdb.db, "year", 1999, "")).toBe(1);
     expect(await nextCounter(tdb.db, "year", 1999, "")).toBe(2);

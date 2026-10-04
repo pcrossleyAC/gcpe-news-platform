@@ -27,6 +27,16 @@ describe("toReleaseRecord", () => {
     });
     expect(toReleaseRecord(v, at).documents.map((d) => [d.languageId, d.headline, d.byline])).toEqual([[4105, "En", "By X"], [4105, "Bg", null], [3084, "Fr", "Par X"]]);
   });
+  it("sanitises body HTML so copied or legacy markup never reaches the News API unsanitised", () => {
+    const v = view({
+      key: "k",
+      documents: [{ id: "d", sortIndex: 0, layout: "formal", languages: [{
+        languageId: 4105, pageTitle: "T", headline: "H", subheadline: null, organizations: "O", byline: null,
+        bodyHtml: '<p>Hi<img src="x" onerror="alert(1)"> <a href="javascript:bad()">there</a></p><script>bad()</script>', pageImageId: null, contacts: [],
+      }] }],
+    });
+    expect(toReleaseRecord(v, at).documents[0]!.detailsHtml).toBe("<p>Hi <a>there</a></p>");
+  });
   it("splitContact and the size guard", () => {
     expect(splitContact("Title\r\nLine 1\nLine 2")).toEqual({ title: "Title", details: "Line 1\nLine 2" });
     const huge = view({ key: "k", documents: [{ id: "d", sortIndex: 0, layout: "formal", languages: [{ languageId: 4105, pageTitle: "T", headline: "H", subheadline: null, organizations: "O", byline: null, bodyHtml: "x".repeat(2_000_000), pageImageId: null, contacts: [] }] }] });

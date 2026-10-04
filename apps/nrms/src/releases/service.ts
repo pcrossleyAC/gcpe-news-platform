@@ -142,7 +142,7 @@ export async function createRelease(db: Db, input: CreateReleaseInput, actor: Ac
       await assertKnownCategories(tx, input);
       const lead = leadOf(input.leadMinistryKey, input.ministries);
       const listIds = await mediaListIds(tx, input.mediaListKeys);
-      const key = rules.keyEditable ? await uniqueKey(tx, type, generateSlug(input.headline), null) : null;
+      const key = rules.keyEditable ? await uniqueKey(tx, generateSlug(input.headline), null) : null;
       const options = rules.defaultPublishOptions(input.mediaListKeys.length > 0);
       const [row] = await tx
         .insert(newsReleases)
@@ -251,7 +251,7 @@ export function saveMeta(db: Db, id: string, input: MetaInput, actor: Actor): Pr
         if (!rules.keyEditable || !EDITABLE_KEY_STATUSES.has(row.status)) {
           throw new ReleaseStateError(`The URL key of this ${TYPE_LABEL[row.type]} can't be changed now.`);
         }
-        key = await uniqueKey(tx, row.type, generateSlug(input.key), row.id);
+        key = await uniqueKey(tx, generateSlug(input.key), row.id);
       }
       const [en] = await tx
         .select()
@@ -323,7 +323,7 @@ export function saveDocumentLanguage(
             .where(and(eq(releaseLanguages.releaseId, row.id), eq(releaseLanguages.languageId, LANG_EN)));
         }
         if (rules.keyEditable && EDITABLE_KEY_STATUSES.has(row.status) && input.headline !== existing.headline) {
-          const key = await uniqueKey(tx, row.type, generateSlug(input.headline), row.id);
+          const key = await uniqueKey(tx, generateSlug(input.headline), row.id);
           await tx.update(newsReleases).set({ key }).where(eq(newsReleases.id, row.id));
         }
       }

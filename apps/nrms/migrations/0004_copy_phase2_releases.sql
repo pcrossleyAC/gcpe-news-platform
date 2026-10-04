@@ -22,7 +22,7 @@ SELECT
               WHEN 'updates' THEN 'update' ELSE 'advisory' END,
   r.key,
   CASE WHEN r.reference_rank = 1 THEN NULLIF(r.content->>'reference', '') ELSE NULL END,
-  r.content->>'leadMinistryKey',
+  lower(r.content->>'leadMinistryKey'),
   CASE WHEN r.status = 'draft' AND r.reference_rank = 1 AND NULLIF(r.content->>'reference', '') IS NOT NULL THEN 'approved' ELSE r.status END,
   COALESCE(r.publish_at, r.published_at),
   r.published_at,

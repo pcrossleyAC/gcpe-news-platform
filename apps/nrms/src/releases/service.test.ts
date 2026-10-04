@@ -38,6 +38,13 @@ describe("release editing service", () => {
     expect(a.publishOptions.toSubscribers).toBe(false);
   });
 
+  it("keys are unique across all types, case-insensitively (the News API addresses posts by key alone)", async () => {
+    const s = await createRelease(db(), { ...sampleCreate, type: "story", headline: "Budget 2027" }, editor);
+    const f = await createRelease(db(), { ...sampleCreate, type: "factsheet", headline: "Budget 2027" }, editor);
+    expect([s.key, f.key]).toEqual(["budget-2027", "budget-2027-1"]);
+    await expect(tdb.pool.query(`UPDATE news_releases SET key = 'BUDGET-2027' WHERE id = $1`, [f.id])).rejects.toMatchObject({ code: "23505", constraint: "news_releases_key_idx" });
+  });
+
   it("rejects unknown categories and per-type violations", async () => {
     await expect(createRelease(db(), { ...sampleCreate, sectors: ["nope"] }, editor)).rejects.toEqual(new ReleaseRuleError(["Unknown sector: nope"]));
     await expect(createRelease(db(), { ...sampleCreate, type: "advisory", sectors: ["health"], mediaListKeys: ["regional"] }, editor)).rejects.toBeInstanceOf(ReleaseRuleError);

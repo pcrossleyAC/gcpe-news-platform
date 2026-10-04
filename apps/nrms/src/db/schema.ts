@@ -89,7 +89,7 @@ export const newsReleases = pgTable(
     updatedAt: tz("updated_at").notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("news_releases_type_key_idx").on(t.type, sql`lower(${t.key})`).where(sql`${t.key} IS NOT NULL`),
+    uniqueIndex("news_releases_key_idx").on(sql`lower(${t.key})`).where(sql`${t.key} IS NOT NULL`),
     uniqueIndex("news_releases_reference_idx").on(t.reference).where(sql`${t.reference} IS NOT NULL`),
     index("news_releases_due_idx").on(t.publishAt).where(sql`${t.status} IN ('scheduled','publishing','unpublishing')`),
     index("news_releases_status_idx").on(t.status),
