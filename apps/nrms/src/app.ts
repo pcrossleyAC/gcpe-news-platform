@@ -6,6 +6,7 @@ import { createEventReceiver, MAX_EVENT_BYTES } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import type { DistributionClient } from "./clients";
 import type { ObjectStore } from "@gcpe/storage";
+import type { FlickrClient } from "./media/flickr-client";
 import { mediaRoutes } from "./http/media-routes";
 import { apiRoutes } from "./http/routes";
 import type { WorkflowDeps } from "./releases/workflow";
@@ -20,6 +21,8 @@ export function createApp(deps: {
   distribution?: DistributionClient;
   /** Uploaded release files (STORAGE_DIR); unset → the upload routes answer 503. */
   store?: ObjectStore;
+  /** Flickr (asset status); null/unset when FLICKR_API_KEY isn't configured. */
+  flickr?: FlickrClient | null;
 }): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -39,7 +42,7 @@ export function createApp(deps: {
   app.use(
     "/api",
     requireBearer(deps.auth),
-    mediaRoutes({ db: deps.db, store: deps.store }),
+    mediaRoutes({ db: deps.db, store: deps.store, flickr: deps.flickr }),
     express.json({ limit: MAX_EVENT_BYTES }),
     apiRoutes({ db: deps.db, workflow: deps.workflow, distribution: deps.distribution, store: deps.store }),
   );

@@ -122,3 +122,11 @@ export interface ReleasePage<T> {
   page: number;
   pageSize: number;
 }
+
+/** GET /api/releases/:id/asset-status — what the release's media asset is and, for a Flickr
+ * photo, whether it's public, private, gone, or can't be checked right now. */
+export type AssetStatus =
+  | { kind: "none" }
+  | { kind: "youtube" }
+  | { kind: "live" }
+  | { kind: "flickr"; photoId: string; state: "public" | "private" | "missing" | "unavailable"; message: string };

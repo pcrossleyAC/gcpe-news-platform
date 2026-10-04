@@ -20,7 +20,10 @@ import { createNodTestDb } from "../../nod/test/helpers";
 import { createDistributionTestDb } from "../../distribution/test/helpers";
 import { startSmtpSink } from "../../distribution/test/smtp-sink";
 
-import { publicFilesBase, startStack } from "./stack";
+import { flickrClient, FlickrError } from "../../nrms/src/media/flickr-client";
+import { FAKE_FLICKR } from "./env";
+import { INTERNAL_ORIGIN } from "./internal-fetch";
+import { fakeFlickrPublicBase, publicFilesBase, startStack } from "./stack";
 
 const LOCAL_AUTH_SECRET = "stack-test-local-auth-secret-32-characters!";
 const ADMIN_PASSWORD = "stack-test-password-99";
@@ -352,6 +355,83 @@ describe("apps/stack", () => {
     expect(publicFilesBase(undefined)).toBe("");
   });
 
+  describe("fake Flickr (no FLICKR_API_KEY configured)", () => {
+    const PRIVATE_PAGE = "https://www.flickr.com/photos/bcgovphotos/53000000001/";
+    const admin = () => ({ authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" });
+    const fakeState = (body: unknown) =>
+      fetch(`${instance.stackUrl}/fake-flickr/__fake/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+
+    afterAll(async () => {
+      await fakeState({ deleted: [], refuseAuth: false, outageCalls: 0 });
+    });
+
+    it("asset status goes through NRMS's signed client to the fake: private, then missing once the photo is deleted", async () => {
+      await seedTaxonomy(instance.dbs.nrms.db);
+      const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, { method: "POST", headers: admin(), body: JSON.stringify(sampleCreate) });
+      expect(created.status).toBe(201);
+      const { id, version } = (await created.json()) as { id: string; version: number };
+      const saved = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset`, {
+        method: "PUT",
+        headers: admin(),
+        body: JSON.stringify({ version, assetUrl: PRIVATE_PAGE, assetAltText: "Photo", hasMediaAssets: true }),
+      });
+      expect(saved.status).toBe(200);
+
+      const status = async () => {
+        const res = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset-status`, { headers: admin() });
+        expect(res.status).toBe(200);
+        return res.json();
+      };
+      expect(await status()).toEqual({
+        kind: "flickr", photoId: "53000000001", state: "private", message: "Private — will be made public when the release publishes.",
+      });
+
+      expect((await fakeState({ deleted: ["53000000001"] })).status).toBe(200);
+      expect(await status()).toEqual({ kind: "flickr", photoId: "53000000001", state: "missing", message: "This photo no longer exists on Flickr." });
+    });
+
+    it("a Flickr link with no photo id is refused on save with 422", async () => {
+      await seedTaxonomy(instance.dbs.nrms.db);
+      const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, { method: "POST", headers: admin(), body: JSON.stringify(sampleCreate) });
+      const { id, version } = (await created.json()) as { id: string; version: number };
+      const res = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset`, {
+        method: "PUT",
+        headers: admin(),
+        body: JSON.stringify({ version, assetUrl: "https://www.flickr.com/photos/bcgovphotos/", assetAltText: null, hasMediaAssets: false }),
+      });
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { error: string }).error).toBe("That Flickr link doesn't point to a photo.");
+    });
+
+    it("a client signing the in-process URL can make a photo public (signed form POST) and fetch its image; a wrong secret is refused", async () => {
+      const cfg = {
+        ...FAKE_FLICKR,
+        restUrl: `${INTERNAL_ORIGIN}/fake-flickr/services/rest`,
+        oembedUrl: `${INTERNAL_ORIGIN}/fake-flickr/services/oembed`,
+      };
+      const client = flickrClient(cfg);
+      expect(await client.getVisibility("53000000002")).toBe("private");
+      await client.makePublic("53000000002");
+      expect(await client.confirmPublic("53000000002")).toBe(true);
+      const image = await client.staticImageUrl("https://www.flickr.com/photos/bcgovphotos/53000000002/");
+      // The site's public origin (here the self: site URL's) + /fake-flickr.
+      expect(image).toMatch(/^http:\/\/stack\.internal\/fake-flickr\/static\/53000000002_[0-9a-z]+_b\.jpg$/);
+      const jpeg = await fetch(image);
+      expect(jpeg.status).toBe(200);
+      expect(jpeg.headers.get("content-type")).toBe("image/jpeg");
+
+      const wrong = flickrClient({ ...cfg, apiSecret: "not-the-secret" });
+      await expect(wrong.getVisibility("53000000002")).rejects.toMatchObject({ kind: "auth" });
+      await expect(wrong.getVisibility("53000000002")).rejects.toBeInstanceOf(FlickrError);
+    });
+
+    it("the fake's public base is the site URL's origin + /fake-flickr, else localhost at the stack's port", () => {
+      expect(fakeFlickrPublicBase("https://boxs.ca/site/", 3000)).toBe("https://boxs.ca/fake-flickr");
+      expect(fakeFlickrPublicBase(undefined, 4321)).toBe("http://localhost:4321/fake-flickr");
+      expect(fakeFlickrPublicBase("not a url", 4321)).toBe("http://localhost:4321/fake-flickr");
+    });
+  });
+
   it("every other response defaults to Cache-Control: no-store, overriding a weaker header the app set itself", async () => {
     const api = await fetch(`${instance.stackUrl}/api/Home?api-version=1.0`);
     expect(api.status).toBe(200);
@@ -677,5 +757,33 @@ describe("apps/stack: public-site self-heal runs once the stack (not just a stan
 
     const selfHealFailures = errorSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("self-heal failed"));
     expect(selfHealFailures).toEqual([]);
+  });
+});
+
+// Production shape: the fake's public base is the site's https origin, while NRMS signs the
+// in-process http://stack.internal URL it actually calls. The shared stack above can't show this
+// (its site URL is itself a self: URL, so both forms coincide).
+describe("apps/stack: fake Flickr accepts a signature over the in-process URL when its public base differs", () => {
+  it("signed GET and form POST through the in-process fetch succeed; the image URL uses the public base", async () => {
+    const { default: express } = await import("express");
+    const { createFakeFlickr } = await import("@gcpe/flickr-fake");
+    const { installInternalFetch } = await import("./internal-fetch");
+    const app = express();
+    app.set("trust proxy", 1);
+    app.use("/fake-flickr", createFakeFlickr({ ...FAKE_FLICKR, publicBaseUrl: "https://boxs.example/fake-flickr" }).router);
+    const uninstall = installInternalFetch(() => app);
+    try {
+      const client = flickrClient({
+        ...FAKE_FLICKR,
+        restUrl: `${INTERNAL_ORIGIN}/fake-flickr/services/rest`,
+        oembedUrl: `${INTERNAL_ORIGIN}/fake-flickr/services/oembed`,
+      });
+      expect(await client.getVisibility("53000000003")).toBe("private");
+      await client.makePublic("53000000003");
+      expect(await client.confirmPublic("53000000003")).toBe(true);
+      expect(await client.staticImageUrl("https://www.flickr.com/photos/bcgovphotos/53000000003/")).toMatch(/^https:\/\/boxs\.example\/fake-flickr\/static\/53000000003_/);
+    } finally {
+      uninstall();
+    }
   });
 });

@@ -99,6 +99,10 @@ describe("release editing service", () => {
     await expect(saveAsset(db(), v.id, { version: v.version, assetUrl: "https://facebook.com/x", assetAltText: null, hasMediaAssets: false }, editor)).rejects.toEqual(new ReleaseRuleError(["Facebook is no longer supported due to privacy concerns. Use YouTube or Flickr URLs instead."]));
     v = await saveAsset(db(), v.id, { version: v.version, assetUrl: "https://youtu.be/abc", assetAltText: "Video", hasMediaAssets: true }, editor);
     expect(v.assetUrl).toBe("https://youtu.be/abc");
+    // A Flickr link must name a photo (checked offline — the status endpoint does the network call).
+    await expect(saveAsset(db(), v.id, { version: v.version, assetUrl: "https://www.flickr.com/photos/bcgovphotos/", assetAltText: null, hasMediaAssets: false }, editor)).rejects.toEqual(new ReleaseRuleError(["That Flickr link doesn't point to a photo."]));
+    v = await saveAsset(db(), v.id, { version: v.version, assetUrl: "https://www.flickr.com/photos/bcgovphotos/53000000001/", assetAltText: "Photo", hasMediaAssets: true }, editor);
+    expect(v.assetUrl).toBe("https://www.flickr.com/photos/bcgovphotos/53000000001/");
     v = await saveSettings(db(), v.id, { version: v.version, activityId: 4521, plannedPublishAt: "2026-11-02T17:00:00Z", toSubscribers: false, toMediaLists: true, mediaListKeys: [] }, editor);
     expect(v).toMatchObject({ activityId: 4521, publishAt: "2026-11-02T17:00:00.000Z", publishOptions: { toSubscribers: false, toMediaLists: false }, mediaListKeys: [] });
     await setStatus(v.id, "published", sql`, released_at = now(), live = true`);

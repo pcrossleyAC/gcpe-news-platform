@@ -10,6 +10,7 @@ import {
   type NewsReleaseRow,
 } from "../db/schema";
 import type { ObjectStore } from "@gcpe/storage";
+import { flickrAssetProblem } from "../media/asset-status";
 import { deleteStoredFiles } from "../media/files";
 import { sanitizeBodyHtml } from "../text/sanitize";
 import { generateSlug } from "../text/slug";
@@ -231,7 +232,7 @@ export function saveAsset(db: Db, id: string, input: AssetInput, actor: Actor): 
     if (!typeRules(row.type).assetsAllowed && (input.assetUrl || input.assetAltText || input.hasMediaAssets)) {
       throw new ReleaseRuleError([`A ${TYPE_LABEL[row.type]} has no media asset.`]);
     }
-    const problem = input.assetUrl ? assetUrlProblem(input.assetUrl) : null;
+    const problem = input.assetUrl ? (assetUrlProblem(input.assetUrl) ?? flickrAssetProblem(input.assetUrl)) : null;
     if (problem) throw new ReleaseRuleError([problem]);
     await tx
       .update(newsReleases)

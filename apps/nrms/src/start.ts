@@ -9,7 +9,16 @@ import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
 import { distributionClient, nodClient } from "./clients";
 import { createApp } from "./app";
+import { flickrClient, type FlickrConfig } from "./media/flickr-client";
 import { publishDue, startPublisher } from "./publisher";
+
+/** An optional setting where "" (an emptied SiteGround field) means unset. */
+const optionalSetting = z
+  .string()
+  .optional()
+  .transform((v) => (v === "" ? undefined : v));
+
+const FLICKR_SECRETS = ["FLICKR_API_SECRET", "FLICKR_ACCESS_TOKEN", "FLICKR_ACCESS_SECRET"] as const;
 
 export const nrmsEnvSchema = z.object({
   DATABASE_URL: z.string().url(),
@@ -44,7 +53,42 @@ export const nrmsEnvSchema = z.object({
   // The public origin /files/<key> is served from, prefixed to file URLs in published records
   // (e.g. https://boxs.ca). "" keeps them root-relative; the stack derives it from the site URL.
   PUBLIC_FILES_BASE: z.union([z.literal(""), z.string().url()]).default("").transform((v) => v.replace(/\/+$/, "")),
+  // Phase 3c: Flickr (OAuth 1.0a). No FLICKR_API_KEY → no Flickr: asset status reports
+  // "unavailable" and the publisher treats Flickr releases as it does an outage. The stack runs
+  // its fake Flickr in that case and sets FLICKR_MODE=fake plus the fake's credentials and URLs.
+  FLICKR_MODE: z.enum(["real", "fake"]).default("real"),
+  FLICKR_API_KEY: optionalSetting,
+  FLICKR_API_SECRET: optionalSetting,
+  FLICKR_ACCESS_TOKEN: optionalSetting,
+  FLICKR_ACCESS_SECRET: optionalSetting,
+  FLICKR_REST_URL: z.string().url().default("https://api.flickr.com/services/rest"),
+  FLICKR_OEMBED_URL: z.string().url().default("https://www.flickr.com/services/oembed"),
+  FLICKR_OAUTH_URL: z.string().url().default("https://www.flickr.com/services/oauth"),
+  FLICKR_ALERT_EMAILS: z
+    .string()
+    .default("")
+    .transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean))
+    .pipe(z.array(z.string().email("FLICKR_ALERT_EMAILS must be a comma-separated list of email addresses"))),
+}).superRefine((env, ctx) => {
+  if (!env.FLICKR_API_KEY) return;
+  for (const name of FLICKR_SECRETS) {
+    if (!env[name]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [name], message: `${name} is required when FLICKR_API_KEY is set` });
+  }
 });
+
+/** NRMS's Flickr client config, or null when FLICKR_API_KEY is unset (Flickr then reads as unavailable). */
+export function flickrConfigFromEnv(parsed: z.infer<typeof nrmsEnvSchema>): FlickrConfig | null {
+  if (!parsed.FLICKR_API_KEY) return null;
+  return {
+    apiKey: parsed.FLICKR_API_KEY,
+    // The schema requires all three once FLICKR_API_KEY is set.
+    apiSecret: parsed.FLICKR_API_SECRET!,
+    accessToken: parsed.FLICKR_ACCESS_TOKEN!,
+    accessSecret: parsed.FLICKR_ACCESS_SECRET!,
+    restUrl: parsed.FLICKR_REST_URL,
+    oembedUrl: parsed.FLICKR_OEMBED_URL,
+  };
+}
 
 /**
  * Builds the {@link ServiceTokenOptions} for NRMS's own calls to NoD's subscriber-count
@@ -136,6 +180,10 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const distribution = parsed.DISTRIBUTION_URL
     ? distributionClient({ baseUrl: parsed.DISTRIBUTION_URL, getToken: serviceTokenProvider(distributionServiceTokenOptions(parsed, auth.local)) })
     : undefined;
+  const flickrConfig = flickrConfigFromEnv(parsed);
+  const flickr = flickrConfig ? flickrClient(flickrConfig) : null;
+  // The mode only — never the key, secrets or tokens.
+  console.log(`[nrms] Flickr: ${flickrConfig ? parsed.FLICKR_MODE : "not configured"}`);
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
@@ -148,6 +196,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     workflow,
     distribution,
     store,
+    flickr,
   });
 
   // Set by startLoops(); closers below reference these lazily so they're safe to call even

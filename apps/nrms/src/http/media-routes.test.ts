@@ -1,13 +1,14 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { mintSession } from "@gcpe/auth";
 import { localStore, type ObjectStore } from "@gcpe/storage";
 import { createNrmsTestDb, sampleCreate, seedTaxonomy } from "../../test/helpers";
 import { createApp } from "../app";
+import { FlickrError, type FlickrClient } from "../media/flickr-client";
 
 const SECRET = "z".repeat(40) + "-nrms-media-test";
 const PDF = Buffer.from("%PDF-1.7\n% test\n");
@@ -146,5 +147,111 @@ describe("NRMS media routes", () => {
     expect(updated.body).toMatchObject({ altEn: "New alt", isActive: false });
 
     expect((await request(app).get("/api/page-images/00000000-0000-4000-8000-000000000999/image").set("cookie", viewerCookie)).status).toBe(404);
+  });
+});
+
+describe("GET /api/releases/:id/asset-status", () => {
+  let tdb: TestDatabase;
+  let editorCookie: string;
+  let viewerCookie: string;
+  const visibility = new Map<string, "public" | "private" | "missing" | "down">();
+  const flickr: FlickrClient = {
+    async getVisibility(photoId) {
+      const v = visibility.get(photoId);
+      if (v === "missing") throw new FlickrError("not-found", "Flickr flickr.photos.getInfo: Photo not found (code 1)");
+      if (v === "down" || v === undefined) throw new FlickrError("unavailable", "Flickr flickr.photos.getInfo: HTTP 503");
+      return v;
+    },
+    makePublic: () => Promise.reject(new Error("not used")),
+    confirmPublic: () => Promise.reject(new Error("not used")),
+    staticImageUrl: () => Promise.reject(new Error("not used")),
+  };
+  const appWith = (f: FlickrClient | null) =>
+    createApp({ db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver" }, flickr: f });
+  const cookieFor = async (roles: string[]) =>
+    `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-00000000000b", name: "Sam", email: "sam@example.invalid", roles })).token}`;
+
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+    await seedTaxonomy(tdb.db);
+    editorCookie = await cookieFor(["NRMS.Editor"]);
+    viewerCookie = await cookieFor(["NRMS.Viewer"]);
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  async function releaseWithAsset(app: ReturnType<typeof createApp>, assetUrl: string | null): Promise<string> {
+    const created = await request(app).post("/api/releases").set("cookie", editorCookie).set("x-gcpe-request", "1").send(sampleCreate);
+    expect(created.status).toBe(201);
+    if (assetUrl !== null) {
+      const saved = await request(app)
+        .put(`/api/releases/${created.body.id}/asset`)
+        .set("cookie", editorCookie)
+        .set("x-gcpe-request", "1")
+        .send({ version: created.body.version, assetUrl, assetAltText: null, hasMediaAssets: false });
+      expect(saved.status).toBe(200);
+    }
+    return created.body.id as string;
+  }
+  const status = (app: ReturnType<typeof createApp>, id: string) => request(app).get(`/api/releases/${id}/asset-status`).set("cookie", viewerCookie);
+
+  it("a viewer sees none / youtube / live without any Flickr call", async () => {
+    const app = appWith(flickr);
+    for (const [url, body] of [
+      [null, { kind: "none" }],
+      ["https://www.youtube.com/watch?v=abc", { kind: "youtube" }],
+      ["https://news.gov.bc.ca/live", { kind: "live" }],
+    ] as const) {
+      const res = await status(app, await releaseWithAsset(app, url));
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(body);
+    }
+  });
+
+  it("a Flickr asset reports public, private, missing and unavailable with their messages", async () => {
+    const app = appWith(flickr);
+    visibility.set("53000000011", "public").set("53000000001", "private").set("53000000002", "missing").set("53000000003", "down");
+    const cases = [
+      ["53000000011", "public", "Public on Flickr."],
+      ["53000000001", "private", "Private — will be made public when the release publishes."],
+      ["53000000002", "missing", "This photo no longer exists on Flickr."],
+      ["53000000003", "unavailable", "Flickr can't be reached right now."],
+    ] as const;
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      for (const [photoId, state, message] of cases) {
+        const res = await status(app, await releaseWithAsset(app, `https://www.flickr.com/photos/bcgovphotos/${photoId}/`));
+        expect(res.status).toBe(200);
+        expect(res.body).toEqual({ kind: "flickr", photoId, state, message });
+      }
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("with no Flickr configured, a Flickr asset is unavailable", async () => {
+    const app = appWith(null);
+    const res = await status(app, await releaseWithAsset(app, "https://www.flickr.com/photos/bcgovphotos/53000000011/"));
+    expect(res.body).toEqual({ kind: "flickr", photoId: "53000000011", state: "unavailable", message: "Flickr can't be reached right now." });
+  });
+
+  it("404s an unknown or malformed release id, and refuses anonymous callers", async () => {
+    const app = appWith(flickr);
+    expect((await status(app, "00000000-0000-4000-8000-000000000999")).status).toBe(404);
+    expect((await status(app, "not-a-uuid")).status).toBe(404);
+    expect((await request(app).get("/api/releases/00000000-0000-4000-8000-000000000999/asset-status")).status).toBe(401);
+  });
+
+  it("an unparseable Flickr link is refused on save with 422", async () => {
+    const app = appWith(flickr);
+    const created = await request(app).post("/api/releases").set("cookie", editorCookie).set("x-gcpe-request", "1").send(sampleCreate);
+    const res = await request(app)
+      .put(`/api/releases/${created.body.id}/asset`)
+      .set("cookie", editorCookie)
+      .set("x-gcpe-request", "1")
+      .send({ version: created.body.version, assetUrl: "https://www.flickr.com/photos/bcgovphotos/", assetAltText: null, hasMediaAssets: false });
+    expect(res.status).toBe(422);
+    expect(res.body).toEqual({ error: "That Flickr link doesn't point to a photo.", problems: ["That Flickr link doesn't point to a photo."] });
   });
 });

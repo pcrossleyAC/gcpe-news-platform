@@ -4,14 +4,19 @@ import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { statusText, versionOnlySchema, type ReleaseView } from "@gcpe/nrms-contract";
 import type { ObjectStore } from "@gcpe/storage";
+import { assetStatus } from "../media/asset-status";
 import { addReleaseFile, MAX_RELEASE_FILE_BYTES, removeReleaseFile } from "../media/files";
+import type { FlickrClient } from "../media/flickr-client";
 import { addPageImage, MAX_PAGE_IMAGE_BYTES, pageImageBytes, updatePageImage } from "../media/page-images";
+import { loadView } from "../releases/store";
 import { handleError, run, UUID, type Params } from "./routes";
 
 export interface MediaRouteDeps {
   db: Db;
   /** Where release files go; unset → the release-file routes answer 503. */
   store?: ObjectStore;
+  /** Flickr, for the asset status check; null/unset (no FLICKR_API_KEY) → "unavailable". */
+  flickr?: FlickrClient | null;
 }
 
 const int = (re: RegExp) => z.string().regex(re).transform(Number);
@@ -95,6 +100,17 @@ export function mediaRoutes(deps: MediaRouteDeps): Router {
     run(async (req, res) => {
       const { version } = versionOnlySchema.parse(req.body);
       res.json(withStatus(await removeReleaseFile(db, deps.store!, req.params.id, req.params.fileId, version, actorOf(req))));
+    }),
+  );
+
+  // The release's media asset and, for a Flickr photo, its live visibility (one Flickr call).
+  r.get(
+    "/releases/:id/asset-status",
+    read,
+    run(async (req: Request<Params>, res) => {
+      const view = await loadView(db, req.params.id);
+      if (!view || view.status === "deleted") return notFound(res);
+      res.json(await assetStatus(view.assetUrl, deps.flickr));
     }),
   );
 

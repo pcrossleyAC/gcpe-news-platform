@@ -7,6 +7,7 @@ import rateLimit from "express-rate-limit";
 import type { ZodTypeAny } from "zod";
 import { authFromEnv, requireBearer, requireRole } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { createFakeFlickr } from "@gcpe/flickr-fake";
 import type { Closer } from "@gcpe/http-kit";
 
 import { coreEnvSchema, startCore, type AppHandle as CoreHandle } from "../../core/src/start";
@@ -23,7 +24,7 @@ import { noStoreByDefault, noStoreOnRedirect } from "./cache-control";
 import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture } from "./errors";
-import { envFor, resolveSelfUrls, type AppPrefix, stackEnvSchema } from "./env";
+import { envFor, FAKE_FLICKR, FAKE_FLICKR_PATH, resolveSelfUrls, type AppPrefix, stackEnvSchema, usesFakeFlickr } from "./env";
 import { createTickRunner, tickRouter, type TickStep } from "./tick";
 
 export interface StackHandle {
@@ -51,6 +52,12 @@ export function publicFilesBase(siteUrl: string | undefined): string {
   } catch {
     return "";
   }
+}
+
+/** The fake Flickr's public base — what its oEmbed image URLs point at: the public site's origin
+ * + /fake-flickr, or http://localhost:<port>/fake-flickr when the site URL isn't a URL. */
+export function fakeFlickrPublicBase(siteUrl: string | undefined, port: number): string {
+  return `${publicFilesBase(siteUrl) || `http://localhost:${port}`}${FAKE_FLICKR_PATH}`;
 }
 
 /** `requested` as-is when it's a real port; otherwise (PORT=0, "let the OS pick") binds a
@@ -267,6 +274,15 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   );
 
   app.use(noStoreByDefault);
+
+  // Phase 3c: no Flickr key configured → a fake Flickr (signature-checking, in-memory photos)
+  // that NRMS's env view already points at (envFor sets FLICKR_MODE=fake and the self: URLs).
+  // Mounted ahead of every app — and of any body parser, since it reads the raw form body its
+  // signatures cover. Its /__fake/* switches are unauthenticated: test/demo deployments only.
+  if (usesFakeFlickr(env)) {
+    const fake = createFakeFlickr({ ...FAKE_FLICKR, publicBaseUrl: fakeFlickrPublicBase(siteEnv.PUBLIC_SITE_URL, actualPort) });
+    app.use(FAKE_FLICKR_PATH, fake.router);
+  }
 
   // Fix round 1, P2-R30 M7: one combined login-attempt budget (10/min/IP) across every
   // app's local-admin login route, mounted on those exact paths *before* the apps themselves

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   APP_PREFIXES,
   envFor,
+  FAKE_FLICKR,
+  FAKE_FLICKR_ENV,
   internalEventEnv,
   INTERNAL_EVENT_ROUTES,
   resolveSelfSubscribers,
@@ -9,6 +11,7 @@ import {
   routeSecret,
   sessionSecretFrom,
   stackEnvSchema,
+  usesFakeFlickr,
 } from "./env";
 
 describe("envFor", () => {
@@ -19,6 +22,7 @@ describe("envFor", () => {
       PUBLISH_INTERVAL_MS: "1000",
       NOD_URL: "self:/nod",
       DISTRIBUTION_URL: "self:/distribution",
+      ...FAKE_FLICKR_ENV,
     });
   });
 
@@ -43,7 +47,7 @@ describe("envFor", () => {
 
   it("never leaks another app's prefixed vars into this app's view", () => {
     const env = { NRMS_DATABASE_URL: "postgres://x/nrms", NOD_DATABASE_URL: "postgres://x/nod" };
-    expect(envFor(env, "NRMS")).toEqual({ DATABASE_URL: "postgres://x/nrms", NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution" });
+    expect(envFor(env, "NRMS")).toEqual({ DATABASE_URL: "postgres://x/nrms", NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", ...FAKE_FLICKR_ENV });
   });
 
   it("doesn't confuse NOD_ with NODE_ENV (shared) or any other prefix's name as a substring", () => {
@@ -53,7 +57,7 @@ describe("envFor", () => {
 
   it("ignores undefined values", () => {
     const env: NodeJS.ProcessEnv = { NRMS_DATABASE_URL: undefined, NRMS_PORT: "3006" };
-    expect(envFor(env, "NRMS")).toEqual({ PORT: "3006", NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution" });
+    expect(envFor(env, "NRMS")).toEqual({ PORT: "3006", NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", ...FAKE_FLICKR_ENV });
   });
 
   // Fix round 1, P2-R30 M6: ENTRA_TENANT_ID is shared (every app talks to the same Entra
@@ -66,6 +70,7 @@ describe("envFor", () => {
       AUTH_AUDIENCE: "aud-nrms",
       NOD_URL: "self:/nod",
       DISTRIBUTION_URL: "self:/distribution",
+      ...FAKE_FLICKR_ENV,
     });
   });
 
@@ -283,5 +288,50 @@ describe("Core → NRMS taxonomy route", () => {
     expect(toNrms.url).toBe("self:/nrms/events");
     expect(toNrms.types).toEqual(["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"]);
     expect(Object.keys(JSON.parse(wiring.NRMS.EVENT_SECRETS!))).toEqual(["core"]);
+  });
+});
+
+describe("Flickr in the stack", () => {
+  it("with no FLICKR_API_KEY anywhere, NRMS is pointed at the in-stack fake with its fixed test credentials", () => {
+    const view = envFor({ NRMS_FLICKR_ALERT_EMAILS: "ops@gov.bc.ca" }, "NRMS");
+    expect(view).toMatchObject({
+      FLICKR_MODE: "fake",
+      FLICKR_API_KEY: "fake-key",
+      FLICKR_API_SECRET: "fake-secret-0123456789",
+      FLICKR_ACCESS_TOKEN: "fake-token",
+      FLICKR_ACCESS_SECRET: "fake-token-secret-0123456789",
+      FLICKR_REST_URL: "self:/fake-flickr/services/rest",
+      FLICKR_OEMBED_URL: "self:/fake-flickr/services/oembed",
+      FLICKR_OAUTH_URL: "self:/fake-flickr/services/oauth",
+      FLICKR_ALERT_EMAILS: "ops@gov.bc.ca",
+    });
+    expect(FAKE_FLICKR).toEqual({ apiKey: "fake-key", apiSecret: "fake-secret-0123456789", accessToken: "fake-token", accessSecret: "fake-token-secret-0123456789" });
+    expect(resolveSelfUrls(view)).toMatchObject({
+      FLICKR_REST_URL: "http://stack.internal/fake-flickr/services/rest",
+      FLICKR_OEMBED_URL: "http://stack.internal/fake-flickr/services/oembed",
+      FLICKR_OAUTH_URL: "http://stack.internal/fake-flickr/services/oauth",
+    });
+    expect(usesFakeFlickr({})).toBe(true);
+    expect(usesFakeFlickr({ NRMS_FLICKR_API_KEY: "" })).toBe(true);
+  });
+
+  it("an NRMS_FLICKR_API_KEY means the real Flickr: nothing of the fake is set", () => {
+    const view = envFor({ NRMS_FLICKR_API_KEY: "real-key", NRMS_FLICKR_API_SECRET: "real-secret" }, "NRMS");
+    expect(view.FLICKR_API_KEY).toBe("real-key");
+    expect(view.FLICKR_API_SECRET).toBe("real-secret");
+    expect(view.FLICKR_MODE).toBeUndefined();
+    expect(view.FLICKR_REST_URL).toBeUndefined();
+    expect(usesFakeFlickr({ NRMS_FLICKR_API_KEY: "real-key" })).toBe(false);
+  });
+
+  it("an unprefixed (shared) FLICKR_* reaches NRMS only, and an NRMS_FLICKR_* still wins", () => {
+    const env = { FLICKR_API_KEY: "shared-key", FLICKR_API_SECRET: "shared-secret", NRMS_FLICKR_API_SECRET: "nrms-secret" };
+    expect(usesFakeFlickr(env)).toBe(false);
+    const view = envFor(env, "NRMS");
+    expect(view).toMatchObject({ FLICKR_API_KEY: "shared-key", FLICKR_API_SECRET: "nrms-secret" });
+    expect(view.FLICKR_MODE).toBeUndefined();
+    for (const p of APP_PREFIXES.filter((x) => x !== "NRMS")) {
+      expect(Object.keys(envFor(env, p)).filter((k) => k.startsWith("FLICKR_")), p).toEqual([]);
+    }
   });
 });

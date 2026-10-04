@@ -48,6 +48,36 @@ export const STACK_APP_DEFAULTS: Partial<Record<AppPrefix, Record<string, string
   NRMS: { NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution" },
 };
 
+/** Where the stack mounts its fake Flickr when no real Flickr key is configured. */
+export const FAKE_FLICKR_PATH = "/fake-flickr";
+
+/** The fake Flickr's fixed test credentials — not secrets: the fake only exists when no real
+ * Flickr is configured, and it only guards its own in-memory photos. */
+export const FAKE_FLICKR = {
+  apiKey: "fake-key",
+  apiSecret: "fake-secret-0123456789",
+  accessToken: "fake-token",
+  accessSecret: "fake-token-secret-0123456789",
+} as const;
+
+/** What NRMS's env view gets in fake mode: the fake's credentials and its in-process URLs. */
+export const FAKE_FLICKR_ENV: Readonly<Record<string, string>> = {
+  FLICKR_MODE: "fake",
+  FLICKR_API_KEY: FAKE_FLICKR.apiKey,
+  FLICKR_API_SECRET: FAKE_FLICKR.apiSecret,
+  FLICKR_ACCESS_TOKEN: FAKE_FLICKR.accessToken,
+  FLICKR_ACCESS_SECRET: FAKE_FLICKR.accessSecret,
+  FLICKR_REST_URL: `self:${FAKE_FLICKR_PATH}/services/rest`,
+  FLICKR_OEMBED_URL: `self:${FAKE_FLICKR_PATH}/services/oembed`,
+  FLICKR_OAUTH_URL: `self:${FAKE_FLICKR_PATH}/services/oauth`,
+};
+
+/** True when NRMS has no Flickr key — neither NRMS_FLICKR_API_KEY nor the shared FLICKR_API_KEY
+ * (empty counts as unset) — so the stack runs, and points NRMS at, its fake Flickr. */
+export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
+  return !env.NRMS_FLICKR_API_KEY && !env.FLICKR_API_KEY;
+}
+
 /**
  * Shared vars every app's env view inherits unprefixed, verbatim: LOCAL_ADMIN_* (the whole
  * family), LOCAL_AUTH_SECRET, TENANT_CONFIG, NODE_ENV, (fix round 1, P2-R30 M6) ENTRA_TENANT_ID
@@ -96,10 +126,20 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // This app's built-in defaults, before its own prefixed vars so an explicit one still wins.
   if (STACK_APP_DEFAULTS[prefix]) Object.assign(view, STACK_APP_DEFAULTS[prefix]);
   if (dataDir && prefix === "NRMS") view.STORAGE_DIR = join(dataDir, "storage");
+  // Flickr (Phase 3c) is NRMS's alone: an unprefixed FLICKR_* reaches NRMS only, and an
+  // explicit NRMS_FLICKR_* (applied below) still wins over it.
+  if (prefix === "NRMS") {
+    for (const [key, value] of Object.entries(env)) {
+      if (value !== undefined && key.startsWith("FLICKR_")) view[key] = value;
+    }
+  }
   const withUnderscore = `${prefix}_`;
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && key.startsWith(withUnderscore)) view[key.slice(withUnderscore.length)] = value;
   }
+  // No Flickr key at all → the stack's fake Flickr (see stack.ts), whatever else FLICKR_* says;
+  // FLICKR_ALERT_EMAILS is left as configured.
+  if (prefix === "NRMS" && usesFakeFlickr(env)) Object.assign(view, FAKE_FLICKR_ENV);
   if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
     view.OUTPUT_DIR = join(dataDir, view.OUTPUT_DIR);
   }

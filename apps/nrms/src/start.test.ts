@@ -4,7 +4,7 @@ import { decodeJwt } from "jose";
 import { hashPassword, serviceTokenProvider } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb } from "../test/helpers";
-import { distributionServiceTokenOptions, nodServiceTokenOptions, startNrms } from "./start";
+import { distributionServiceTokenOptions, flickrConfigFromEnv, nodServiceTokenOptions, nrmsEnvSchema, startNrms } from "./start";
 
 describe("startNrms", () => {
   // Every DB created by testEnv() this test created, dropped in afterEach — a test
@@ -91,5 +91,64 @@ describe("distributionServiceTokenOptions", () => {
     expect(opts).toMatchObject({ subject: "nrms", roles: ["Distribution.Send"], envPrefix: "DISTRIBUTION" });
     const payload = decodeJwt(await serviceTokenProvider(opts)());
     expect(payload).toMatchObject({ sub: "nrms", azp: "nrms", roles: ["Distribution.Send"] });
+  });
+});
+
+describe("Flickr configuration", () => {
+  const base = { DATABASE_URL: "postgres://u:p@localhost/nrms" };
+  const creds = {
+    FLICKR_API_KEY: "key-1",
+    FLICKR_API_SECRET: "secret-1",
+    FLICKR_ACCESS_TOKEN: "token-1",
+    FLICKR_ACCESS_SECRET: "token-secret-1",
+  };
+
+  it("no FLICKR_API_KEY means no Flickr (features report unavailable)", () => {
+    const parsed = nrmsEnvSchema.parse(base);
+    expect(parsed.FLICKR_MODE).toBe("real");
+    expect(parsed.FLICKR_ALERT_EMAILS).toEqual([]);
+    expect(flickrConfigFromEnv(parsed)).toBeNull();
+    expect(flickrConfigFromEnv(nrmsEnvSchema.parse({ ...base, FLICKR_API_KEY: "" }))).toBeNull();
+  });
+
+  it("a key with its secrets gives a config pointing at the real Flickr endpoints by default", () => {
+    const parsed = nrmsEnvSchema.parse({ ...base, ...creds, FLICKR_ALERT_EMAILS: " a@gov.bc.ca, b@gov.bc.ca ,," });
+    expect(flickrConfigFromEnv(parsed)).toEqual({
+      apiKey: "key-1",
+      apiSecret: "secret-1",
+      accessToken: "token-1",
+      accessSecret: "token-secret-1",
+      restUrl: "https://api.flickr.com/services/rest",
+      oembedUrl: "https://www.flickr.com/services/oembed",
+    });
+    expect(parsed.FLICKR_OAUTH_URL).toBe("https://www.flickr.com/services/oauth");
+    expect(parsed.FLICKR_ALERT_EMAILS).toEqual(["a@gov.bc.ca", "b@gov.bc.ca"]);
+  });
+
+  it("the stack's fake mode overrides the endpoints", () => {
+    const parsed = nrmsEnvSchema.parse({
+      ...base,
+      ...creds,
+      FLICKR_MODE: "fake",
+      FLICKR_REST_URL: "http://stack.internal/fake-flickr/services/rest",
+      FLICKR_OEMBED_URL: "http://stack.internal/fake-flickr/services/oembed",
+      FLICKR_OAUTH_URL: "http://stack.internal/fake-flickr/services/oauth",
+    });
+    expect(parsed.FLICKR_MODE).toBe("fake");
+    expect(flickrConfigFromEnv(parsed)).toMatchObject({
+      restUrl: "http://stack.internal/fake-flickr/services/rest",
+      oembedUrl: "http://stack.internal/fake-flickr/services/oembed",
+    });
+  });
+
+  it("a key without its secrets, a bad mode or a bad alert address fails at startup without echoing secrets", () => {
+    const partial = nrmsEnvSchema.safeParse({ ...base, FLICKR_API_KEY: "key-1", FLICKR_API_SECRET: "secret-1" });
+    expect(partial.success).toBe(false);
+    const text = JSON.stringify(partial.error?.issues);
+    expect(text).toMatch(/FLICKR_ACCESS_TOKEN/);
+    expect(text).toMatch(/FLICKR_ACCESS_SECRET/);
+    expect(text).not.toContain("secret-1");
+    expect(nrmsEnvSchema.safeParse({ ...base, FLICKR_MODE: "sandbox" }).success).toBe(false);
+    expect(nrmsEnvSchema.safeParse({ ...base, FLICKR_ALERT_EMAILS: "not-an-email" }).success).toBe(false);
   });
 });
