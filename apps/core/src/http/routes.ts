@@ -6,6 +6,7 @@ import { EventTooLargeError, termKindSchema, type SubscriberConfig, type TermKin
 import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
+import { usersRouter } from "./users";
 
 function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | null {
   const parsed = termKindSchema.safeParse(req.params.kind);
@@ -103,5 +104,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     admin,
     safe(async (_req, res) => void res.status(202).json({ enqueued: await republishAll(db, subscribers) })),
   );
+
+  r.use("/users", admin, usersRouter(db));
   return r;
 }
