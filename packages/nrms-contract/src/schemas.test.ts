@@ -20,6 +20,8 @@ describe("schemas", () => {
   });
   it("activity id is numeric, categories are lowercased and de-duplicated", () => {
     expect(settingsSchema.safeParse({ version: 1, activityId: "12a", toSubscribers: true, toMediaLists: false, mediaListKeys: [] }).success).toBe(false);
+    expect(settingsSchema.safeParse({ version: 1, activityId: "0", toSubscribers: true, toMediaLists: false, mediaListKeys: [] }).success).toBe(false);
+    expect(settingsSchema.parse({ version: 1, activityId: "4521", toSubscribers: true, toMediaLists: false, mediaListKeys: [] }).activityId).toBe(4521);
     expect(categoriesSchema.parse({ version: 1, leadMinistryKey: "Health", ministries: ["Health", "health"], sectors: [], themes: [], tags: [] })).toMatchObject({ leadMinistryKey: "health", ministries: ["health"] });
   });
   it("schedule takes 'now' or an offset datetime; list query has defaults", () => {

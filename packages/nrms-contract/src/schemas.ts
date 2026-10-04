@@ -12,7 +12,15 @@ const languageId = z.union([z.literal(4105), z.literal(3084)]);
 const version = z.number().int().positive();
 const contact = z.string().max(250);
 const activityId = z
-  .union([z.number().int().positive(), z.string().regex(/^\d+$/, "Activity ID must be numeric").transform(Number), z.null()])
+  .union([
+    z.number().int().positive(),
+    z
+      .string()
+      .regex(/^\d+$/, "Activity ID must be numeric")
+      .transform(Number)
+      .pipe(z.number().int().positive()),
+    z.null(),
+  ])
   .default(null);
 
 export const versionOnlySchema = z.object({ version });
