@@ -22,6 +22,20 @@
       "when": 1791093009067,
       "tag": "0002_taxonomy_cache",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791093600699,
+      "tag": "0003_release_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791093612267,
+      "tag": "0004_copy_phase2_releases",
+      "breakpoints": true
     }
   ]
 }
