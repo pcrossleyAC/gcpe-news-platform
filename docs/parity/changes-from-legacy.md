@@ -48,6 +48,7 @@ Status key: **Agreed** (approved in design) · **Proposed** (in a design section
 | C23 | Website changes aren't logged. | Every change records who made it. | Accountability for public-facing changes. | Agreed |
 | C24 | Separate code paths for Azure Blob and local-disk file storage. | One storage interface (local folder now, cloud storage later). | One code path to test. | Agreed |
 | C25 | Top/Feature slots only visible one release at a time. | Read-only "what's featured where" page. | Site editors can see every slot at once. | Agreed |
+| C33 | Any "Advanced" user can turn on Project Blue Bridge after a browser confirm box. | Core.Admin only, after typing a confirmation phrase; every change logged and emailed to admins; off production the banner says "TEST —". | Turning it on announces the King's death on BC Gov News; see Q2, Q15. | Agreed |
 
 ## Media and Flickr
 
@@ -60,3 +61,4 @@ Status key: **Agreed** (approved in design) · **Proposed** (in a design section
 | C30 | Access token was obtained once by hand and pasted into config. | A one-time command (`flickr:authorize`) does the sign-in and prints the token to put in the environment. | Re-issuing the token shouldn't need a developer. | Agreed |
 | C31 | Page images resized on every request. | Images served as uploaded; the browser scales thumbnails. | Small, fixed set of images; avoids a native image library on SiteGround. | Agreed |
 | C32 | Uploads sent in 4 MB chunks (an Azure Blob requirement); translation file type forced to PDF without checking. | Single upload with a size limit; file contents checked (a PDF must really be a PDF). | Chunking only existed for Azure; checking contents stops mislabelled files. | Agreed |
+| C34 | Body embeds resolved through Flickr's oEmbed over plain HTTP. | HTTPS. | No reason to send it unencrypted. | Agreed |
