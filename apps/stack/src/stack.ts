@@ -227,9 +227,13 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // are mounted below — each app's own localLoginRouter still has its own independent
   // 10/min/IP limiter too (unchanged), so this is an additional, stack-wide ceiling on top,
   // not a replacement: an attacker spreading guesses across /core, /nrms, /nod and
-  // /distribution to dodge any single app's limiter still hits this one.
+  // /distribution to dodge any single app's limiter still hits this one. Task 6: staff sign-in
+  // (/core/auth/login) shares this same stack-wide budget, not a separate one.
   const combinedLoginLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false });
-  app.use(["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token"], combinedLoginLimiter);
+  app.use(
+    ["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token", "/core/auth/login"],
+    combinedLoginLimiter,
+  );
 
   // Fix round 1, P2-R30 M6: /stack/errors's bearer check is built from Core's own env view
   // (which, like every app's view, now carries the shared ENTRA_TENANT_ID plus its own

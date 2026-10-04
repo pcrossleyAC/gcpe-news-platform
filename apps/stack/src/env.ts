@@ -37,13 +37,23 @@ export type AppPrefix = (typeof APP_PREFIXES)[number];
 
 /**
  * Shared vars every app's env view inherits unprefixed, verbatim: LOCAL_ADMIN_* (the whole
- * family), LOCAL_AUTH_SECRET, TENANT_CONFIG, NODE_ENV, and (fix round 1, P2-R30 M6)
- * ENTRA_TENANT_ID — every app talks to the same Entra tenant, so that one is shared too.
- * AUTH_AUDIENCE is deliberately NOT shared: each app is its own audience/resource in Entra
- * (`<PREFIX>_AUTH_AUDIENCE`), same as it would be as six separate deployments.
+ * family), LOCAL_AUTH_SECRET, TENANT_CONFIG, NODE_ENV, (fix round 1, P2-R30 M6) ENTRA_TENANT_ID
+ * — every app talks to the same Entra tenant, so that one is shared too — and (Task 6)
+ * SESSION_SECRET / SESSION_COOKIE_SECURE, so every app verifies the same `gcpe_session` cookie
+ * under the same security policy. AUTH_AUDIENCE is deliberately NOT shared: each app is its own
+ * audience/resource in Entra (`<PREFIX>_AUTH_AUDIENCE`), same as it would be as six separate
+ * deployments.
  */
 function isSharedKey(key: string): boolean {
-  return key === "NODE_ENV" || key === "TENANT_CONFIG" || key === "LOCAL_AUTH_SECRET" || key === "ENTRA_TENANT_ID" || key.startsWith("LOCAL_ADMIN_");
+  return (
+    key === "NODE_ENV" ||
+    key === "TENANT_CONFIG" ||
+    key === "LOCAL_AUTH_SECRET" ||
+    key === "ENTRA_TENANT_ID" ||
+    key === "SESSION_SECRET" ||
+    key === "SESSION_COOKIE_SECURE" ||
+    key.startsWith("LOCAL_ADMIN_")
+  );
 }
 
 /**
@@ -60,6 +70,7 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.Proces
   }
   // Derived internal wiring first, so explicit <PREFIX>_EVENT_* vars (applied below) override it.
   if (env.STACK_EVENT_SECRET) Object.assign(view, internalEventEnv(env.STACK_EVENT_SECRET)[prefix]);
+  if (!view.SESSION_SECRET && env.STACK_EVENT_SECRET) view.SESSION_SECRET = sessionSecretFrom(env.STACK_EVENT_SECRET);
   const withUnderscore = `${prefix}_`;
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && key.startsWith(withUnderscore)) view[key.slice(withUnderscore.length)] = value;
@@ -84,6 +95,12 @@ export const INTERNAL_EVENT_ROUTES = [
  * so every sender/receiver pair gets its own key and none of them is the stack secret itself. */
 export function routeSecret(stackSecret: string, route: (typeof INTERNAL_EVENT_ROUTES)[number]): string {
   return createHmac("sha256", stackSecret).update(`gcpe-event:${route.source}->${route.name}`).digest("hex");
+}
+
+/** The staff session-cookie signing key (spec addendum §2), derived like the event secrets so a
+ * SiteGround deployment needs no extra setting: HMAC-SHA256(STACK_EVENT_SECRET, "gcpe-session"). */
+export function sessionSecretFrom(stackSecret: string): string {
+  return createHmac("sha256", stackSecret).update("gcpe-session").digest("hex");
 }
 
 /** EVENT_SUBSCRIBERS (senders) and EVENT_SECRETS (receivers) for every app, derived from one secret. */

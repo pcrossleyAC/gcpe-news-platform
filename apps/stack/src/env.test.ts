@@ -1,5 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { envFor, internalEventEnv, INTERNAL_EVENT_ROUTES, resolveSelfSubscribers, resolveSelfUrls, routeSecret, stackEnvSchema } from "./env";
+import {
+  APP_PREFIXES,
+  envFor,
+  internalEventEnv,
+  INTERNAL_EVENT_ROUTES,
+  resolveSelfSubscribers,
+  resolveSelfUrls,
+  routeSecret,
+  sessionSecretFrom,
+  stackEnvSchema,
+} from "./env";
 
 describe("envFor", () => {
   it("strips the app's own prefix off every <PREFIX>_VAR, leaving VAR", () => {
@@ -200,5 +210,26 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
 
   it("rejects a short STACK_EVENT_SECRET at startup", () => {
     expect(stackEnvSchema.safeParse({ TICK_TOKEN: "x".repeat(32), STACK_EVENT_SECRET: "short" }).success).toBe(false);
+  });
+});
+
+describe("SESSION_SECRET for the stack", () => {
+  const stackSecret = "e".repeat(40);
+
+  it("derives one session secret for every app from STACK_EVENT_SECRET", () => {
+    const derived = sessionSecretFrom(stackSecret);
+    expect(derived).toMatch(/^[0-9a-f]{64}$/);
+    for (const p of APP_PREFIXES) expect(envFor({ STACK_EVENT_SECRET: stackSecret }, p).SESSION_SECRET).toBe(derived);
+    for (const route of INTERNAL_EVENT_ROUTES) expect(routeSecret(stackSecret, route)).not.toBe(derived);
+  });
+
+  it("an explicit SESSION_SECRET and SESSION_COOKIE_SECURE are shared as-is", () => {
+    const view = envFor({ STACK_EVENT_SECRET: stackSecret, SESSION_SECRET: "x".repeat(40), SESSION_COOKIE_SECURE: "false" }, "NRMS");
+    expect(view.SESSION_SECRET).toBe("x".repeat(40));
+    expect(view.SESSION_COOKIE_SECURE).toBe("false");
+  });
+
+  it("no STACK_EVENT_SECRET and no SESSION_SECRET means no session secret", () => {
+    expect(envFor({}, "CORE").SESSION_SECRET).toBeUndefined();
   });
 });

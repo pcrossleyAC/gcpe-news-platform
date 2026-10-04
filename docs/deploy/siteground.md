@@ -215,6 +215,16 @@ curl -s https://<domain>/site/releases/<key>/
 If steps 1–6 all succeed and the email in step 7 arrives, the deploy is good end to end:
 database connectivity, auth, publishing, event dispatch, static rebuild, and mail delivery.
 
+## Staff sign-in (Phase 3)
+
+Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET`, so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
+
+The break-glass `admin` account signs in through the same endpoint. To create or reset the three test users (`editor@example.test`, `site-editor@example.test`, `viewer@example.test`), run from your Mac:
+
+    scripts/siteground-seed-users.sh https://boxs.ca
+
+It asks for the admin password and a password for each test user (12+ characters, input hidden).
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

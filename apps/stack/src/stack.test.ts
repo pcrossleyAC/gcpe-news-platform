@@ -494,3 +494,33 @@ describe("apps/stack: combined login-attempt rate limit across every app (M7)", 
     expect(statuses[10]).toBe(429);
   });
 });
+
+describe("staff session cookie across the stack", () => {
+  let inst: StackTestInstance;
+  beforeAll(async () => {
+    inst = await setupStack({ fetchAdminToken: false });
+  });
+  afterAll(async () => {
+    await inst.close();
+  });
+
+  it("a cookie from /core/auth/login authenticates /nrms/api, with the CSRF rule", async () => {
+    const login = await fetch(`${inst.stackUrl}/core/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-gcpe-request": "1" },
+      body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD }),
+    });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.getSetCookie().find((c) => c.startsWith("gcpe_session="))!.split(";")[0]!;
+    expect((await fetch(`${inst.stackUrl}/nrms/api/releases/NO-SUCH-RELEASE`)).status).toBe(401);
+    expect((await fetch(`${inst.stackUrl}/nrms/api/releases/NO-SUCH-RELEASE`, { headers: { cookie } })).status).toBe(404);
+    const noCsrf = await fetch(`${inst.stackUrl}/nrms/api/releases`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: "{}" });
+    expect(noCsrf.status).toBe(403);
+    const withCsrf = await fetch(`${inst.stackUrl}/nrms/api/releases`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-gcpe-request": "1" },
+      body: "{}",
+    });
+    expect(withCsrf.status).toBe(400);
+  });
+});
