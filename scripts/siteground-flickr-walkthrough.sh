@@ -4,7 +4,7 @@
 # siteground.md "Flickr"): creates, sets a fake Flickr photo as the media asset, approves and
 # schedules a release for "now", then polls once per cron tick (the stack's background work only
 # runs when something calls /stack/tick -- see "Background work scheduler" in the same doc) for
-# up to 5 minutes until it is published with the photo public, and prints the public page URL.
+# up to 8 minutes until it is published with the photo public, and prints the public page URL.
 #
 # A second mode, --outage, first flips the fake's refuse-auth switch, waits for the release to go
 # out *without* the photo with an alert raised (the up-to-2-minute grace period and alert from
@@ -46,11 +46,19 @@ STATUS="$(printf '%s\n' "$ADMIN_PASS" | login_body admin | curl_api -o /dev/null
 unset ADMIN_PASS
 [ "$STATUS" = "200" ] || { echo "admin sign-in failed (HTTP $STATUS)"; exit 1; }
 
+# The fake's control endpoint is mounted only when the stack isn't configured with a real
+# Flickr key (see usesFakeFlickr in apps/stack/src/env.ts); a harmless no-op POST (empty body)
+# tells us it's there and that our admin session can reach it, before anything below creates or
+# schedules a release. A non-200 here (404: not mounted/real Flickr; 401/403: not signed in as
+# Core.Admin) means this stack must not be driven by this script.
+FAKE_STATUS="$(curl_api -o /dev/null -w '%{http_code}' -X POST "$BASE/fake-flickr/__fake/state" -d '{}')"
+[ "$FAKE_STATUS" = "200" ] || { echo "FAILED: $BASE is not running in fake-Flickr mode (HTTP $FAKE_STATUS from /fake-flickr/__fake/state) -- never run this against real Flickr"; exit 1; }
+
 PHOTO_URL="https://www.flickr.com/photos/bcgovphotos/53000000001/"
 
 if [ "$OUTAGE" = "1" ]; then
   echo "outage: telling the fake Flickr to refuse auth"
-  curl_api -o /dev/null -X POST "$BASE/fake-flickr/__fake/state" -d '{"refuseAuth":true}'
+  curl_api -f -o /dev/null -X POST "$BASE/fake-flickr/__fake/state" -d '{"refuseAuth":true}'
 fi
 
 echo "creating the release..."
@@ -75,17 +83,26 @@ echo "approved: key=$KEY version=$VERSION"
 
 echo "scheduling for now..."
 SCHEDULE_BODY="$(python3 -c 'import json,sys; print(json.dumps({"version":int(sys.argv[1]),"publishAt":"now"}))' "$VERSION")"
-curl_api -o /dev/null -X POST "$BASE/nrms/api/releases/$ID/schedule" -d "$SCHEDULE_BODY"
+curl_api -f -o /dev/null -X POST "$BASE/nrms/api/releases/$ID/schedule" -d "$SCHEDULE_BODY"
 echo "scheduled."
 
 POLL_INTERVAL="${POLL_INTERVAL:-60}"
-MAX_POLLS="${MAX_POLLS:-5}"
+# Phase 1 -- the initial publish, and (in --outage) the wait for the release to go out without
+# the photo: up to GRACE_MS (2 min, apps/nrms/src/media/flickr-jobs.ts) for the photo to go
+# public, plus however long a background tick takes to notice (<=60s per the scheduler doc).
+# 8 polls x 60s = 8 min gives headroom above that ~3 min minimum for a slow tick.
+MAX_POLLS="${MAX_POLLS:-8}"
+# Recovery (after clearing the outage): the worker only retries every RETRY_MS (5 min,
+# flickr-jobs.ts) once out of grace, so the photo may not even be retried for up to that long;
+# then one tick (<=60s) marks the job done, and a second tick (<=60s) republishes the release.
+# RETRY_MS + 2 ticks = 300s + 120s = 420s minimum; 10 polls x 60s = 600s comfortably covers it.
+RECOVERY_MAX_POLLS="${RECOVERY_MAX_POLLS:-10}"
 
-# Polls up to MAX_POLLS times (once per cron tick), printing status/alert/asset state each time,
-# until $1 (a function name) reports success against the globals it sets.
+# Polls up to $3 times (once per cron tick), printing status/alert/asset state each time, until
+# $2 (a function name) reports success against the globals it sets.
 wait_for() {
-  local label="$1" check="$2" i
-  for i in $(seq 1 "$MAX_POLLS"); do
+  local label="$1" check="$2" polls="$3" i
+  for i in $(seq 1 "$polls"); do
     REL="$(curl_api "$BASE/nrms/api/releases/$ID")"
     AST="$(curl_api "$BASE/nrms/api/releases/$ID/asset-status")"
     REL_STATUS="$(echo "$REL" | jfield status)"
@@ -94,7 +111,7 @@ wait_for() {
     AST_STATE="$(echo "$AST" | jfield state)"
     echo "[$label] release status=$REL_STATUS alert=${REL_ALERT:-(none)} asset=${AST_KIND}/${AST_STATE:-(n/a)}"
     if "$check"; then return 0; fi
-    [ "$i" -lt "$MAX_POLLS" ] && sleep "$POLL_INTERVAL"
+    [ "$i" -lt "$polls" ] && sleep "$POLL_INTERVAL"
   done
   return 1
 }
@@ -103,12 +120,12 @@ is_published_with_public_photo() { [ "$REL_STATUS" = "published" ] && [ "$AST_ST
 is_published_without_photo_alerted() { [ "$REL_STATUS" = "published" ] && [ -n "$REL_ALERT" ]; }
 
 if [ "$OUTAGE" = "1" ]; then
-  wait_for "outage" is_published_without_photo_alerted || { echo "FAILED: never published without the photo with an alert"; exit 1; }
+  wait_for "outage" is_published_without_photo_alerted "$MAX_POLLS" || { echo "FAILED: never published without the photo with an alert"; exit 1; }
   echo "clearing the outage..."
-  curl_api -o /dev/null -X POST "$BASE/fake-flickr/__fake/state" -d '{"refuseAuth":false}'
-  wait_for "recovery" is_published_with_public_photo || { echo "FAILED: never republished with the photo"; exit 1; }
+  curl_api -f -o /dev/null -X POST "$BASE/fake-flickr/__fake/state" -d '{"refuseAuth":false}'
+  wait_for "recovery" is_published_with_public_photo "$RECOVERY_MAX_POLLS" || { echo "FAILED: never republished with the photo"; exit 1; }
 else
-  wait_for "publish" is_published_with_public_photo || { echo "FAILED: never published with the photo public"; exit 1; }
+  wait_for "publish" is_published_with_public_photo "$MAX_POLLS" || { echo "FAILED: never published with the photo public"; exit 1; }
 fi
 
 echo "Public page: $BASE/site/releases/$KEY/"

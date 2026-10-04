@@ -37,10 +37,36 @@ describe("scripts/siteground-flickr-walkthrough.sh", () => {
     expect(s).toContain("53000000001");
   });
 
+  it("gives recovery a budget of at least RETRY_MS (300s) plus two 60s ticks, and raises the phase-1 default", () => {
+    const s = readFileSync("scripts/siteground-flickr-walkthrough.sh", "utf8");
+    const pollInterval = Number(/POLL_INTERVAL="\$\{POLL_INTERVAL:-(\d+)\}"/.exec(s)?.[1]);
+    const maxPolls = Number(/MAX_POLLS="\$\{MAX_POLLS:-(\d+)\}"/.exec(s)?.[1]);
+    const recoveryMaxPolls = Number(/RECOVERY_MAX_POLLS="\$\{RECOVERY_MAX_POLLS:-(\d+)\}"/.exec(s)?.[1]);
+    expect(pollInterval).toBe(60);
+    expect(maxPolls).toBeGreaterThanOrEqual(8);
+    expect(recoveryMaxPolls).toBeGreaterThanOrEqual(10);
+    const RETRY_MS = 300_000;
+    const PUBLISHER_TICK_MS = 60_000;
+    expect(recoveryMaxPolls * pollInterval * 1000).toBeGreaterThanOrEqual(RETRY_MS + 2 * PUBLISHER_TICK_MS);
+  });
+
+  it("checks fake mode before doing anything, and fails every control curl on an HTTP error", () => {
+    const s = readFileSync("scripts/siteground-flickr-walkthrough.sh", "utf8");
+    expect(s).toMatch(/fake-Flickr mode/);
+    const loginLine = s.split("\n").findIndex((l) => l.includes('"$BASE/core/auth/login"'));
+    const fakeCheckLine = s.split("\n").findIndex((l) => l.includes("FAKE_STATUS="));
+    const createLine = s.split("\n").findIndex((l) => l.includes('"$BASE/nrms/api/releases"'));
+    expect(loginLine).toBeGreaterThanOrEqual(0);
+    expect(fakeCheckLine).toBeGreaterThan(loginLine);
+    expect(fakeCheckLine).toBeLessThan(createLine);
+    const controlCalls = s.match(/curl_api -f -o \/dev\/null -X POST "\$BASE\/(fake-flickr\/__fake\/state|nrms\/api\/releases\/\$ID\/schedule)"/g) ?? [];
+    expect(controlCalls.length).toBe(3);
+  });
+
   it("exits non-zero when the expected end state is never reached", () => {
     const s = readFileSync("scripts/siteground-flickr-walkthrough.sh", "utf8");
     expect(s).toMatch(/set -euo pipefail/);
-    const waitForCalls = s.match(/wait_for\s+"[^"]+"\s+\w+\s*\|\|\s*\{[^}]*exit 1/g) ?? [];
+    const waitForCalls = s.match(/wait_for\s+"[^"]+"\s+\w+\s+"\$\w+"\s*\|\|\s*\{[^}]*exit 1/g) ?? [];
     expect(waitForCalls.length).toBeGreaterThanOrEqual(2);
   });
 });

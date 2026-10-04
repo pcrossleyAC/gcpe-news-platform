@@ -308,14 +308,15 @@ scripts/siteground-flickr-walkthrough.sh https://boxs.ca
 
 Signs in as the break-glass admin (same hidden password prompt as `siteground-seed-users.sh`),
 creates a release with a fake Flickr photo as its media asset, approves and schedules it for
-"now", then polls `/nrms/api/releases/<id>` and `.../asset-status` once per cron tick (up to 5
+"now", then polls `/nrms/api/releases/<id>` and `.../asset-status` once per cron tick (up to 8
 minutes — background work only runs when something calls `/stack/tick`; see above) printing the
 release's status, Flickr alert and asset state each time, and finally prints the public page
 URL. It exits non-zero if the release never reaches the expected end state.
 
 A second mode additionally drives the fake's outage switch, to exercise the up-to-2-minute grace
 period, the alert, and the automatic correction once the photo becomes available again (C28 in
-`docs/parity/changes-from-legacy.md`):
+`docs/parity/changes-from-legacy.md`) — recovery gets its own, longer budget (up to 10 minutes),
+since the worker only retries every 5 minutes once a job is out of grace:
 
 ```sh
 scripts/siteground-flickr-walkthrough.sh https://boxs.ca --outage
@@ -323,6 +324,7 @@ scripts/siteground-flickr-walkthrough.sh https://boxs.ca --outage
 
 Only ever run either against a stack that is actually using the fake (no real `FLICKR_API_KEY`
 set) — `--outage` calls a fake-only control endpoint and the photo id it uses only exists there.
+The walkthrough itself checks this first and refuses to run otherwise.
 
 **Switching to real Flickr at cutover.** Free Flickr accounts can't create API keys (found
 2026-10-03) — the key has to be created under the `bcgovphotos` account itself, which needs a
