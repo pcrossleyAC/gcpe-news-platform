@@ -316,3 +316,134 @@ export const releasePublications = pgTable(
   },
   (t) => [index("release_publications_release_idx").on(t.releaseId, t.publishedAt)],
 );
+
+// --- Phase 3d: Website section (home-page carousel, emergency pins, live feed / Blue Bridge
+// settings, resource links, general file uploads and the site activity log). See
+// .superpowers/sdd/2026-10-04-phase-3d-website-section/. ---
+
+const justify = () => text("justify").$type<"left" | "right">().notNull().default("left");
+
+/**
+ * The home-page carousel: at most one `live` (shown on the public site) and one `next`
+ * (queued to go live at `go_live_at`); older carousels are kept as `past`, capped at five by
+ * the service layer (Task 2) — the DB only enforces the live/next cardinality and that a
+ * `next` carousel always carries a go-live time.
+ */
+export const carousels = pgTable(
+  "carousels",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    state: text("state").$type<"live" | "next" | "past">().notNull(),
+    goLiveAt: tz("go_live_at"),
+    wentLiveAt: tz("went_live_at"),
+    version: integer("version").notNull().default(1),
+    createdAt: tz("created_at").notNull().defaultNow(),
+    updatedAt: tz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("carousels_state_check", sql`${t.state} IN ('live','next','past')`),
+    check("carousels_next_has_go_live_at", sql`${t.state} <> 'next' OR ${t.goLiveAt} IS NOT NULL`),
+    uniqueIndex("carousels_one_live_idx").on(t.state).where(sql`${t.state} = 'live'`),
+    uniqueIndex("carousels_one_next_idx").on(t.state).where(sql`${t.state} = 'next'`),
+  ],
+);
+
+export const websiteSlides = pgTable(
+  "slides",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    carouselId: uuid("carousel_id").notNull().references(() => carousels.id, { onDelete: "cascade" }),
+    sortIndex: integer("sort_index").notNull(),
+    headline: text("headline").notNull(),
+    summary: text("summary").notNull().default(""),
+    actionUrl: text("action_url").notNull().default(""),
+    facebookPostUrl: text("facebook_post_url").notNull().default(""),
+    justify: justify(),
+    image: bytea("image"),
+    imageType: text("image_type"),
+    updatedAt: tz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("slides_carousel_sort_idx").on(t.carouselId, t.sortIndex),
+    check("slides_justify_check", sql`${t.justify} IN ('left','right')`),
+  ],
+);
+
+/**
+ * The two emergency-pin slots (above the carousel when `pinned`). `slide_id` is a stable id
+ * (independent of any carousel slide) used as the emitted slide's `id`, so pinning/unpinning
+ * doesn't change the id the public site sees for the same pin.
+ */
+export const emergencyPins = pgTable(
+  "emergency_pins",
+  {
+    slot: text("slot").$type<"primary" | "secondary">().primaryKey(),
+    pinned: boolean("pinned").notNull().default(false),
+    slideId: uuid("slide_id").notNull().defaultRandom(),
+    headline: text("headline").notNull().default(""),
+    summary: text("summary").notNull().default(""),
+    actionUrl: text("action_url").notNull().default(""),
+    facebookPostUrl: text("facebook_post_url").notNull().default(""),
+    justify: justify(),
+    image: bytea("image"),
+    imageType: text("image_type"),
+    version: integer("version").notNull().default(1),
+    updatedAt: tz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("emergency_pins_slot_check", sql`${t.slot} IN ('primary','secondary')`),
+    check("emergency_pins_justify_check", sql`${t.justify} IN ('left','right')`),
+  ],
+);
+
+/** Single-row settings: live feed, Project Blue Bridge's `granville` text, and the resource links' own version counter. */
+export const siteSettings = pgTable(
+  "site_settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    liveFeedEnabled: boolean("live_feed_enabled").notNull().default(false),
+    liveManifestUrl: text("live_manifest_url").notNull().default(""),
+    liveM3uUrl: text("live_m3u_url").notNull().default(""),
+    granville: text("granville"),
+    linksVersion: integer("links_version").notNull().default(1),
+    version: integer("version").notNull().default(1),
+    updatedAt: tz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [check("site_settings_id_check", sql`${t.id} = 1`)],
+);
+
+export const websiteResourceLinks = pgTable("resource_links", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  sortIndex: integer("sort_index").notNull(),
+  text: text("text").notNull(),
+  url: text("url").notNull(),
+});
+
+/** General file uploads (Task 3); bytes live in the object store under `storage_key`, as release_files does. */
+export const siteFiles = pgTable("site_files", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  storageKey: text("storage_key").notNull().unique(),
+  name: text("name").notNull().unique(),
+  contentType: text("content_type").notNull(),
+  size: integer("size").notNull(),
+  createdAt: tz("created_at").notNull().defaultNow(),
+  createdBy: text("created_by").notNull(),
+});
+
+export type SiteLogArea = "carousel" | "pins" | "live-feed" | "blue-bridge" | "links" | "files" | "features";
+
+export const siteLog = pgTable(
+  "site_log",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    at: tz("at").notNull().defaultNow(),
+    actorId: text("actor_id").notNull(),
+    actorName: text("actor_name").notNull(),
+    area: text("area").$type<SiteLogArea>().notNull(),
+    text: text("text").notNull(),
+  },
+  (t) => [
+    index("site_log_at_idx").on(t.at.desc()),
+    check("site_log_area_check", sql`${t.area} IN ('carousel','pins','live-feed','blue-bridge','links','files','features')`),
+  ],
+);
