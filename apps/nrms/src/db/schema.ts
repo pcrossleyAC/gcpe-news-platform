@@ -69,6 +69,8 @@ export const newsReleases = pgTable(
     publishAt: tz("publish_at"),
     releasedAt: tz("released_at"),
     onHold: boolean("on_hold").notNull().default(false),
+    /** On the public site right now: set by the publisher at go-live, cleared when an unpublish completes. */
+    live: boolean("live").notNull().default(false),
     toWeb: boolean("to_web").notNull().default(true),
     toSubscribers: boolean("to_subscribers").notNull().default(false),
     toMediaLists: boolean("to_media_lists").notNull().default(false),

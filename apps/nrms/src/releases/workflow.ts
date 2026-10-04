@@ -15,6 +15,8 @@ export interface WorkflowDeps {
 }
 
 const PAST_LIMIT_MS = 5 * 60_000;
+/** A live release in one of these can be taken down (a failed correction is still live). */
+const UNPUBLISHABLE_STATUSES = new Set(["published", "publishing", "failed"]);
 
 /** "January 15, 2030 at 10:30 a.m." in BC time. */
 export function formatBcDateTime(at: Date, timeZone: string): string {
@@ -122,6 +124,7 @@ export async function cancel(db: Db, id: string, version: number, actor: Actor):
     db, id, version, actor,
     async (tx, row) => {
       if (row.status !== "scheduled") throw new ReleaseStateError("Only a scheduled release can be cancelled.");
+      if (row.live) throw new ReleaseStateError("This release is live — save a correction or unpublish it instead.");
       await tx.update(newsReleases).set({ status: row.reference ? "approved" : "draft" }).where(eq(newsReleases.id, id));
       return "Cancelled Release";
     },
@@ -133,7 +136,7 @@ export async function unpublish(db: Db, id: string, version: number, actor: Acto
   return mutateRelease(
     db, id, version, actor,
     async (tx, row) => {
-      if (row.status !== "published" && row.status !== "publishing") throw new ReleaseStateError("Only a published release can be unpublished.");
+      if (!row.live || !UNPUBLISHABLE_STATUSES.has(row.status)) throw new ReleaseStateError("Only a published release can be unpublished.");
       if (!typeRules(row.type).unpublishable) throw new ReleaseStateError(`A sent ${TYPE_LABEL[row.type]} can't be unpublished.`);
       await tx.update(newsReleases).set({ status: "unpublishing" }).where(eq(newsReleases.id, id));
       return "Unpublished Release";

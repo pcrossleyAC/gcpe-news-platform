@@ -43,8 +43,8 @@ describe("Phase 2 → release model data copy", () => {
     );
     await runMigrations(tdb.db, nrmsMigrations);
     const q = async (text: string) => (await tdb.pool.query(text)).rows;
-    expect(await q(`SELECT type, key, reference, status, to_subscribers FROM news_releases`)).toEqual([
-      { type: "release", key: "2026HLTH0001-000001", reference: "NEWS-00001", status: "published", to_subscribers: true },
+    expect(await q(`SELECT type, key, reference, status, to_subscribers, live FROM news_releases`)).toEqual([
+      { type: "release", key: "2026HLTH0001-000001", reference: "NEWS-00001", status: "published", to_subscribers: true, live: true },
     ]);
     expect(await q(`SELECT location, summary, summary_edited FROM release_languages`)).toEqual([{ location: "VICTORIA", summary: "Clinics open.", summary_edited: true }]);
     expect(await q(`SELECT headline, body_html FROM document_languages`)).toEqual([{ headline: "Weekend clinics open", body_html: "<p>Body</p>" }]);

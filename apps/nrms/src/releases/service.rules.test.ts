@@ -43,7 +43,7 @@ describe("release editing service — further rules", () => {
 
   it("planned publish time only in draft/approved/failed; media lists unchanged after release are fine", async () => {
     const v = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional"] }, editor);
-    await setStatus(v.id, "published", sql`, released_at = now()`);
+    await setStatus(v.id, "published", sql`, released_at = now(), live = true`);
     const live = (await loadView(db(), v.id))!;
     await expect(saveSettings(db(), v.id, { ...settings, version: live.version, plannedPublishAt: "2030-01-01T00:00:00Z", mediaListKeys: ["regional"] }, editor)).rejects.toBeInstanceOf(ReleaseStateError);
     const c = await saveSettings(db(), v.id, { ...settings, version: live.version, activityId: 7, mediaListKeys: ["regional"] }, editor);
@@ -76,7 +76,7 @@ describe("release editing service — further rules", () => {
 
   it("a failed correction (released before) can't be deleted or re-planned; a failed first publish can be deleted", async () => {
     const live = await createRelease(db(), sampleCreate, editor);
-    await setStatus(live.id, "failed", sql`, released_at = now()`);
+    await setStatus(live.id, "failed", sql`, released_at = now(), live = true`);
     const failedLive = (await loadView(db(), live.id))!;
     await expect(deleteRelease(db(), live.id, failedLive.version, editor)).rejects.toEqual(new ReleaseStateError("This release has been published — unpublish it first."));
     await expect(saveSettings(db(), live.id, { ...settings, version: failedLive.version, plannedPublishAt: "2030-01-01T00:00:00Z" }, editor)).rejects.toBeInstanceOf(ReleaseStateError);

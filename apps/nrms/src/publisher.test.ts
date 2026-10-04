@@ -3,9 +3,10 @@ import { sql } from "drizzle-orm";
 import { dbClock, type Db, type TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { createNrmsTestDb, createScheduledRelease, editor } from "../test/helpers";
-import { saveCategories } from "./releases/service";
+import { ReleaseStateError } from "./releases/errors";
+import { deleteRelease, saveCategories } from "./releases/service";
 import { loadView } from "./releases/store";
-import { schedule, unpublish } from "./releases/workflow";
+import { cancel, schedule, unpublish } from "./releases/workflow";
 import { publishDue, startPublisher } from "./publisher";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://news.invalid/events", secret: "s".repeat(40), types: ["*"] }];
@@ -104,6 +105,88 @@ describe("publisher", () => {
     await schedule(tdb.db, due.id, { version: (await loadView(tdb.db, due.id))!.version, publishAt: "now" }, editor, deps);
     expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [due.key], unpublished: [], failed: [] });
     expect((await events()).map((e) => e.type)).toEqual(["release.published", "release.updated"]);
+  });
+
+  /** Live release with a correction that fails (empty body); returns the restored bodies' release. */
+  const failCorrection = async () => {
+    const due = await createScheduledRelease(tdb.db);
+    await publishDue({ db: tdb.db, subscribers: subs });
+    const live = (await loadView(tdb.db, due.id))!;
+    await saveCategories(tdb.db, due.id, { version: live.version, leadMinistryKey: "health", ministries: ["health"], sectors: ["education"], themes: [], tags: [] }, editor);
+    await blankBodies(due.id);
+    expect((await publishDue({ db: tdb.db, subscribers: subs })).failed).toEqual([due.key]);
+    return due;
+  };
+  const blankBodies = async (id: string) => {
+    const before = await tdb.pool.query("SELECT document_id, language_id, body_html FROM document_languages WHERE document_id IN (SELECT id FROM release_documents WHERE release_id = $1)", [id]);
+    await tdb.db.execute(sql`UPDATE document_languages SET body_html = '' WHERE document_id IN (SELECT id FROM release_documents WHERE release_id = ${id})`);
+    restore = async () => {
+      for (const b of before.rows) await tdb.pool.query("UPDATE document_languages SET body_html = $3 WHERE document_id = $1 AND language_id = $2", [b.document_id, b.language_id, b.body_html]);
+    };
+  };
+  let restore: () => Promise<void> = async () => {};
+  const live = async (id: string) => (await tdb.pool.query("SELECT live FROM news_releases WHERE id = $1", [id])).rows[0].live as boolean;
+
+  it("live follows go-live and unpublish", async () => {
+    const due = await createScheduledRelease(tdb.db);
+    expect(await live(due.id)).toBe(false);
+    await publishDue({ db: tdb.db, subscribers: subs });
+    expect(await live(due.id)).toBe(true);
+    await unpublish(tdb.db, due.id, (await loadView(tdb.db, due.id))!.version, editor);
+    expect(await live(due.id)).toBe(true); // still on the site until the publisher completes it
+    await publishDue({ db: tdb.db, subscribers: subs });
+    expect(await live(due.id)).toBe(false);
+  });
+
+  it("a failed correction is still live: it can be unpublished, but not deleted", async () => {
+    const due = await failCorrection();
+    const failed = (await loadView(tdb.db, due.id))!;
+    expect(failed.status).toBe("failed");
+    await expect(deleteRelease(tdb.db, due.id, failed.version, editor)).rejects.toEqual(new ReleaseStateError("This release has been published — unpublish it first."));
+    expect((await unpublish(tdb.db, due.id, failed.version, editor)).status).toBe("unpublishing");
+    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [], unpublished: [due.key], failed: [] });
+    expect(await live(due.id)).toBe(false);
+  });
+
+  it("a live correction that was re-scheduled can't be cancelled", async () => {
+    const due = await failCorrection();
+    await restore();
+    const s = await schedule(tdb.db, due.id, { version: (await loadView(tdb.db, due.id))!.version, publishAt: new Date(Date.now() + 60 * 60_000).toISOString() }, editor, deps);
+    expect(s.status).toBe("scheduled");
+    await expect(cancel(tdb.db, due.id, s.version, editor)).rejects.toEqual(new ReleaseStateError("This release is live — save a correction or unpublish it instead."));
+  });
+
+  it("a release that was unpublished, re-scheduled and then failed isn't live, so it can be deleted", async () => {
+    const due = await createScheduledRelease(tdb.db);
+    await publishDue({ db: tdb.db, subscribers: subs });
+    await unpublish(tdb.db, due.id, (await loadView(tdb.db, due.id))!.version, editor);
+    await publishDue({ db: tdb.db, subscribers: subs });
+    await schedule(tdb.db, due.id, { version: (await loadView(tdb.db, due.id))!.version, publishAt: "now" }, editor, deps);
+    await blankBodies(due.id);
+    expect((await publishDue({ db: tdb.db, subscribers: subs })).failed).toEqual([due.key]);
+    const failed = (await loadView(tdb.db, due.id))!;
+    expect(failed).toMatchObject({ status: "failed", releasedAt: due.publishAt });
+    expect(await deleteRelease(tdb.db, due.id, failed.version, editor)).toBe("hidden");
+  });
+
+  it("an unpublish that keeps failing doesn't starve due releases, and failed has no duplicates", async () => {
+    const stuck = await createScheduledRelease(tdb.db, {}, new Date(Date.now() - 3 * 60_000));
+    await publishDue({ db: tdb.db, subscribers: subs });
+    await unpublish(tdb.db, stuck.id, (await loadView(tdb.db, stuck.id))!.version, editor);
+    await tdb.pool.query(`CREATE FUNCTION boom_unpublish() RETURNS trigger AS $$ BEGIN IF NEW.text = 'Unpublished from BC Gov News' THEN RAISE EXCEPTION 'simulated'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql`);
+    await tdb.pool.query(`CREATE TRIGGER boom_unpublish BEFORE INSERT ON release_log FOR EACH ROW EXECUTE FUNCTION boom_unpublish()`);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const due = await createScheduledRelease(tdb.db, {}, new Date(Date.now() - 60_000));
+      const bad = await createScheduledRelease(tdb.db, {}, new Date(Date.now() - 2 * 60_000));
+      await blankBodies(bad.id);
+      const r = await publishDue({ db: tdb.db, subscribers: subs, limit: 5 });
+      expect(r).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [bad.key] });
+      expect((await loadView(tdb.db, stuck.id))!.status).toBe("unpublishing"); // retried next run
+    } finally {
+      errSpy.mockRestore();
+      await tdb.pool.query("DROP TRIGGER boom_unpublish ON release_log; DROP FUNCTION boom_unpublish()");
+    }
   });
 
   it("an incomplete release fails visibly instead of sticking, and doesn't block the next one", async () => {

@@ -115,11 +115,11 @@ describe("workflow", () => {
     const v = await createRelease(db(), sampleCreate, editor);
     const a = await approve(db(), v.id, v.version, editor, deps);
     await expect(unpublish(db(), v.id, a.version, editor)).rejects.toBeInstanceOf(ReleaseStateError);
-    await tdb.db.execute(sql`UPDATE news_releases SET status = 'published', publish_at = now(), released_at = now() WHERE id = ${v.id}`);
+    await tdb.db.execute(sql`UPDATE news_releases SET status = 'published', publish_at = now(), released_at = now(), live = true WHERE id = ${v.id}`);
     const live = (await loadView(db(), v.id))!;
     expect((await unpublish(db(), v.id, live.version, editor)).status).toBe("unpublishing");
     const adv = await createRelease(db(), { ...sampleCreate, type: "advisory", sectors: [], mediaListKeys: ["regional"] }, editor);
-    await tdb.db.execute(sql`UPDATE news_releases SET status = 'published', publish_at = now(), released_at = now() WHERE id = ${adv.id}`);
+    await tdb.db.execute(sql`UPDATE news_releases SET status = 'published', publish_at = now(), released_at = now(), live = true WHERE id = ${adv.id}`);
     await expect(unpublish(db(), adv.id, (await loadView(db(), adv.id))!.version, editor)).rejects.toEqual(new ReleaseStateError("A sent Advisory can't be unpublished."));
   });
 });

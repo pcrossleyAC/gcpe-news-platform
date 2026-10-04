@@ -94,14 +94,14 @@ describe("release editing service", () => {
     expect(v.assetUrl).toBe("https://youtu.be/abc");
     v = await saveSettings(db(), v.id, { version: v.version, activityId: 4521, plannedPublishAt: "2026-11-02T17:00:00Z", toSubscribers: false, toMediaLists: true, mediaListKeys: [] }, editor);
     expect(v).toMatchObject({ activityId: 4521, publishAt: "2026-11-02T17:00:00.000Z", publishOptions: { toSubscribers: false, toMediaLists: false }, mediaListKeys: [] });
-    await setStatus(v.id, "published", sql`, released_at = now()`);
+    await setStatus(v.id, "published", sql`, released_at = now(), live = true`);
     const live = (await loadView(db(), v.id))!;
     await expect(saveSettings(db(), v.id, { version: live.version, activityId: null, plannedPublishAt: null, toSubscribers: false, toMediaLists: true, mediaListKeys: ["national"] }, editor)).rejects.toBeInstanceOf(ReleaseStateError);
   });
 
   it("an edit to a published release becomes a correction; edits while publishing stay publishing", async () => {
     const v = await createRelease(db(), sampleCreate, editor);
-    await setStatus(v.id, "published", sql`, released_at = now()`);
+    await setStatus(v.id, "published", sql`, released_at = now(), live = true`);
     const live = (await loadView(db(), v.id))!;
     const c1 = await saveCategories(db(), v.id, { version: live.version, leadMinistryKey: "health", ministries: ["health"], sectors: ["education"], themes: [], tags: [] }, editor);
     expect(c1.status).toBe("publishing");

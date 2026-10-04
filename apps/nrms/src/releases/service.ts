@@ -19,8 +19,6 @@ import { loadView, mutateRelease, writeLog, type Actor } from "./store";
 const EDITABLE_KEY_STATUSES = new Set(["draft", "approved"]);
 const PLANNING_STATUSES = new Set(["draft", "approved", "failed"]);
 const DELETABLE_STATUSES = new Set(["draft", "approved", "failed"]);
-/** A failed correction: the release is still live on the site. (Unpublished releases go back to draft/approved and keep releasedAt.) */
-const isFailedWhileLive = (row: NewsReleaseRow) => row.status === "failed" && row.releasedAt !== null;
 const SINGULAR = { ministries: "ministry", sectors: "sector", themes: "theme", tags: "tag" } as const;
 
 /** Unknown keys (not in the local cache at all) → ReleaseRuleError. Inactive keys are allowed. */
@@ -200,8 +198,8 @@ export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Ac
 
     const planned = input.plannedPublishAt ? new Date(input.plannedPublishAt) : null;
     let publishAt = row.publishAt;
-    // A failed correction keeps its time (it's still live); schedule/cancel change committed times.
-    if (PLANNING_STATUSES.has(row.status) && !isFailedWhileLive(row)) publishAt = planned;
+    // A live release (e.g. a failed correction) keeps its time; schedule/cancel change committed times.
+    if (PLANNING_STATUSES.has(row.status) && !row.live) publishAt = planned;
     else if (planned && planned.getTime() !== row.publishAt?.getTime()) {
       throw new ReleaseStateError("The publish time can only be planned while the release is a draft, approved or failed (and not live).");
     }
@@ -414,8 +412,8 @@ export async function deleteRelease(db: Db, id: string, version: number, actor: 
     actor,
     async (tx, row: NewsReleaseRow) => {
       if (!DELETABLE_STATUSES.has(row.status)) throw new ReleaseStateError("Only a draft, approved or failed release can be deleted.");
-      // A failed correction is still live on the site: it has to be unpublished, not hidden.
-      if (isFailedWhileLive(row)) throw new ReleaseStateError("This release has been published — unpublish it first.");
+      // A live release (e.g. a failed correction) has to be unpublished, not hidden.
+      if (row.live) throw new ReleaseStateError("This release has been published — unpublish it first.");
       if (!row.reference) {
         await tx.delete(newsReleases).where(eq(newsReleases.id, row.id));
         outcome = "deleted";
