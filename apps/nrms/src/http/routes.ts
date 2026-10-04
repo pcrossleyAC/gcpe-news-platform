@@ -1,4 +1,5 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
+import { eq } from "drizzle-orm";
 import { ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
@@ -15,6 +16,10 @@ import {
   saveDocumentLanguage, saveMeta, saveSettings,
 } from "../releases/service";
 import { loadView } from "../releases/store";
+import { pageImages } from "../db/schema";
+import { buildRenditionModel } from "../renditions/model";
+import { renderPdf } from "../renditions/pdf";
+import { renderText } from "../renditions/text";
 import { approve, cancel, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
 import { listCategories } from "../taxonomy";
 
@@ -82,6 +87,37 @@ export function apiRoutes(deps: RouteDeps): Router {
       const view = await loadView(db, req.params.id);
       if (!view || view.status === "deleted") return void res.status(404).json({ error: "not found" });
       res.json(withStatus(view));
+    }),
+  );
+
+  // The text and PDF versions (legacy Release.ToTextDocument / ToPortableDocument).
+  const visibleView = async (id: string) => {
+    const view = await loadView(db, id);
+    return view && view.status !== "deleted" ? view : null;
+  };
+  const filename = (v: ReleaseView, ext: string) => `inline; filename="${(v.key ?? v.id).replace(/[^A-Za-z0-9._-]/g, "_")}.${ext}"`;
+  r.get(
+    "/releases/:id/text",
+    read,
+    run(async (req, res) => {
+      const view = await visibleView(req.params.id);
+      if (!view) return notFound(res);
+      res.type("text/plain; charset=utf-8").set("content-disposition", filename(view, "txt")).send(renderText(view, opts()));
+    }),
+  );
+  r.get(
+    "/releases/:id/pdf",
+    read,
+    run(async (req, res) => {
+      const view = await visibleView(req.params.id);
+      if (!view) return notFound(res);
+      const o = opts();
+      const imageId = buildRenditionModel(view, o).docs[0]?.pageImageId;
+      const [pageImage] = imageId
+        ? await db.select({ bytes: pageImages.bytes, mimeType: pageImages.mimeType }).from(pageImages).where(eq(pageImages.id, imageId))
+        : [];
+      const pdf = await renderPdf(view, { ...o, pageImage: pageImage ?? null });
+      res.type("application/pdf").set("content-disposition", filename(view, "pdf")).send(pdf);
     }),
   );
 

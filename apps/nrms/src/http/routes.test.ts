@@ -305,6 +305,39 @@ describe("NRMS HTTP API", () => {
     expect(images.body[0]).not.toHaveProperty("bytes");
   });
 
+  it("text and PDF versions: a viewer reads both; the PDF carries the page image; a malformed id is a 404", async () => {
+    const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
+    const img = await tdb.pool.query<{ id: string }>(
+      "INSERT INTO page_images (name, mime_type, bytes, sort_order) VALUES ('Rendition banner', 'image/png', $1, 9) RETURNING id",
+      [png],
+    );
+    const { id } = await create({ pageImageId: img.rows[0]!.id });
+
+    const text = await get(`/api/releases/${id}/text`);
+    expect(text.status).toBe(200);
+    expect(text.headers["content-type"]).toBe("text/plain; charset=utf-8");
+    expect(text.headers["content-disposition"]).toBe(`inline; filename="${id}.txt"`);
+    expect(text.text).toContain("Weekend clinics open across B.C.");
+    expect(text.text).toContain("VICTORIA - Clinics will open");
+
+    const pdf = await get(`/api/releases/${id}/pdf`).buffer(true).parse((res, cb) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("end", () => cb(null, Buffer.concat(chunks)));
+    });
+    expect(pdf.status).toBe(200);
+    expect(pdf.headers["content-type"]).toBe("application/pdf");
+    expect(pdf.headers["content-disposition"]).toBe(`inline; filename="${id}.pdf"`);
+    const body = pdf.body as Buffer;
+    expect(body.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(body.toString("latin1")).toContain("/Subtype /Image");
+
+    expect((await get(`/api/releases/not-a-uuid/text`)).status).toBe(404);
+    expect((await get(`/api/releases/not-a-uuid/pdf`)).status).toBe(404);
+    expect((await get(`/api/releases/00000000-0000-4000-8000-0000000000ff/pdf`)).status).toBe(404);
+    expect((await request(app).get(`/api/releases/${id}/text`)).status).toBe(401);
+  });
+
   it("local admin login: the token creates a release", async () => {
     const secret = "y".repeat(40) + "-nrms-local-test";
     const passwordHash = await hashPassword("local-test-pass");

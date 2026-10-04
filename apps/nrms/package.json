@@ -15,10 +15,12 @@
     "@gcpe/events": "0.0.0",
     "@gcpe/http-kit": "0.0.0",
     "@gcpe/nrms-contract": "0.0.0",
+    "dom-serializer": "^2.0.0",
     "domhandler": "^5.0.3",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
     "htmlparser2": "^10.1.0",
+    "pdf-lib": "^1.17.1",
     "sanitize-html": "^2.18.0",
     "zod": "^3.25.76"
   },
