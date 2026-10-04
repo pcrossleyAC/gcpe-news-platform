@@ -1,9 +1,9 @@
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
-import { LANG_EN, type CategoryKind, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
+import { LANG_EN, type CategoryKind, type LanguageId, type ReleaseFeatureView, type ReleaseView } from "@gcpe/nrms-contract";
 import {
-  documentContacts, documentLanguages, mediaLists, newsReleases, releaseCategories, releaseDocuments, releaseFiles, releaseLanguages, releaseLog, releaseMediaLists,
+  categoryFeatures, documentContacts, documentLanguages, mediaLists, newsReleases, releaseCategories, releaseDocuments, releaseFiles, releaseLanguages, releaseLog, releaseMediaLists,
   type NewsReleaseRow,
 } from "../db/schema";
 import { ReleaseNotFoundError, VersionConflictError } from "./errors";
@@ -45,6 +45,13 @@ export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | nu
     .where(eq(releaseFiles.releaseId, id))
     .orderBy(asc(releaseFiles.createdAt), asc(releaseFiles.id));
   const cat = (kind: CategoryKind) => cats.filter((c) => c.kind === kind).map((c) => c.key);
+  const featureRows = await db.select().from(categoryFeatures).where(or(eq(categoryFeatures.topReleaseId, id), eq(categoryFeatures.featureReleaseId, id)));
+  const features: ReleaseFeatureView[] = featureRows.flatMap((f) => {
+    const out: ReleaseFeatureView[] = [];
+    if (f.topReleaseId === id) out.push({ kind: f.kind, key: f.key, slot: "top" });
+    if (f.featureReleaseId === id) out.push({ kind: f.kind, key: f.key, slot: "feature" });
+    return out;
+  });
   return {
     id: r.id, type: r.type, key: r.key, reference: r.reference, status: r.status, onHold: r.onHold, version: r.version,
     leadMinistryKey: r.leadMinistryKey, activityId: r.activityId, publishAt: iso(r.publishAt), releasedAt: iso(r.releasedAt),
@@ -70,6 +77,7 @@ export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | nu
     })),
     ministries: cat("ministries"), sectors: cat("sectors"), themes: cat("themes"), tags: cat("tags"), mediaListKeys: lists.map((l) => l.key),
     files: files.map((f) => ({ id: f.id, kind: f.kind, label: f.label, url: filePublicPath(f.storageKey), contentType: f.contentType, size: f.size })),
+    features,
     createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
   };
 }

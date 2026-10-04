@@ -6,7 +6,8 @@ import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { mintSession } from "@gcpe/auth";
 import { localStore, type ObjectStore } from "@gcpe/storage";
-import { createNrmsTestDb } from "../../test/helpers";
+import { categoryFeatures } from "../db/schema";
+import { createNrmsTestDb, createScheduledRelease } from "../../test/helpers";
 import { createApp } from "../app";
 
 const SECRET = "z".repeat(40) + "-nrms-site-session-test";
@@ -209,7 +210,7 @@ describe("NRMS site HTTP API — Live Feed, links and files", () => {
     await rm(root, { recursive: true, force: true });
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE resource_links, site_files, site_log, outbox_events, outbox_deliveries, aggregate_sequences CASCADE");
+    await tdb.pool.query("TRUNCATE news_releases, category_features, resource_links, site_files, site_log, outbox_events, outbox_deliveries, aggregate_sequences CASCADE");
     await tdb.pool.query(
       "UPDATE site_settings SET live_feed_enabled = false, live_manifest_url = '', live_m3u_url = '', links_version = 1, version = 1, updated_at = now() WHERE id = 1",
     );
@@ -281,5 +282,16 @@ describe("NRMS site HTTP API — Live Feed, links and files", () => {
     const res = await upload("/api/site/files?name=big.pdf", siteEditorCookie, big);
     expect(res.status).toBe(413);
     expect(await store.get("big.pdf")).toBeNull();
+  });
+
+  it("GET /site/features lists what's featured where; a viewer can read it", async () => {
+    const top = await createScheduledRelease(tdb.db, { headline: "Featured headline" });
+    await tdb.db.insert(categoryFeatures).values({ kind: "home", key: "default", topReleaseId: top.id });
+
+    const res = await get("/api/site/features", viewerCookie);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([
+      { kind: "home", key: "default", label: "Home", top: { id: top.id, key: top.key, headline: "Featured headline" }, feature: null },
+    ]);
   });
 });

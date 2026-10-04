@@ -22,6 +22,7 @@ import {
   type PinSlot,
 } from "../website/carousel";
 import { deleteFile, listFiles, uploadFile, MAX_SITE_FILE_BYTES } from "../website/files";
+import { featuredWhere } from "../website/features";
 import { getLinks, saveLinks } from "../website/links";
 import { getBlueBridge, getLiveFeed, saveLiveFeed, setBlueBridge, type LiveFeedDefaults } from "../website/settings";
 import { run, UUID, type Params } from "./routes";
@@ -292,6 +293,8 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
       res.json(await setBlueBridge(db, input, actorOf(req), { subscribers, timeZone, siteUrl, notify }));
     }),
   );
+
+  r.get("/site/features", read, run(async (_req, res) => void res.json(await featuredWhere(db))));
 
   r.get("/site/links", read, run(async (_req, res) => void res.json(await getLinks(db))));
   r.put(

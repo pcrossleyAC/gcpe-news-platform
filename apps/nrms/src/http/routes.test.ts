@@ -16,6 +16,7 @@ describe("NRMS HTTP API", () => {
   let appWithEmbeds: ReturnType<typeof createApp>;
   let editorCookie: string;
   let viewerCookie: string;
+  let siteEditorCookie: string;
 
   const cookieFor = async (roles: string[]) =>
     `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-00000000000a", name: "Pat Editor", email: "pat@example.invalid", roles })).token}`;
@@ -40,6 +41,7 @@ describe("NRMS HTTP API", () => {
     });
     editorCookie = await cookieFor(["NRMS.Editor"]);
     viewerCookie = await cookieFor(["NRMS.Viewer"]);
+    siteEditorCookie = await cookieFor(["NRMS.SiteEditor"]);
   });
   afterAll(async () => {
     await tdb.drop();
@@ -489,5 +491,17 @@ describe("NRMS HTTP API", () => {
     const token = await mintLocalToken({ secret, subject: "nrms", azp: "nrms", roles: ["NoD.SubscriberCount"] });
     const denied = await request(localApp).post("/api/releases").set("authorization", `Bearer ${token}`).send(sampleCreate);
     expect(denied.status).toBe(403);
+  });
+
+  it("POST /releases/:id/features: an NRMS.SiteEditor is refused 403; an NRMS.Editor sets Top for Home", async () => {
+    const due = await createScheduledRelease(tdb.db, { headline: "Feature route release" });
+    await publishDue({ db: tdb.db, subscribers: [] });
+
+    const denied = await post(`/api/releases/${due.id}/features`, siteEditorCookie, { kind: "home", key: "default", slot: "top", on: true });
+    expect(denied.status).toBe(403);
+
+    const allowed = await post(`/api/releases/${due.id}/features`, editorCookie, { kind: "home", key: "default", slot: "top", on: true });
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.features).toEqual([{ kind: "home", key: "default", slot: "top" }]);
   });
 });

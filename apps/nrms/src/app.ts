@@ -65,7 +65,7 @@ export function createApp(deps: {
       notify: deps.blueBridgeNotify ?? (async (subject) => void console.log(`[nrms] blue bridge: ${subject}`)),
     }),
     express.json({ limit: MAX_EVENT_BYTES }),
-    apiRoutes({ db: deps.db, workflow: deps.workflow, distribution: deps.distribution, store: deps.store, embeds: deps.embeds }),
+    apiRoutes({ db: deps.db, workflow: deps.workflow, distribution: deps.distribution, store: deps.store, embeds: deps.embeds, subscribers: deps.subscribers ?? [] }),
   );
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
   // escape stay JSON instead of finalhandler's default HTML.

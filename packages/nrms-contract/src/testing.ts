@@ -9,7 +9,7 @@ export function view(over: Partial<ReleaseView> = {}): ReleaseView {
     nodSubscribers: null, mediaSubscribers: null, lastError: null, flickrAlert: null,
     languages: [{ languageId: 4105, location: "VICTORIA", summary: "Clinics open.", summaryEdited: false, socialMediaSummary: null }],
     documents: [{ id: "d1", sortIndex: 0, layout: "formal", languages: [{ languageId: 4105, pageTitle: "News Release", headline: "Clinics open", subheadline: null, organizations: "Ministry of Health", byline: null, bodyHtml: "<p>Body</p>", pageImageId: null, contacts: ["Media Relations\n250-555-0100"] }] }],
-    ministries: ["health"], sectors: ["health"], themes: [], tags: [], mediaListKeys: [], files: [],
+    ministries: ["health"], sectors: ["health"], themes: [], tags: [], mediaListKeys: [], files: [], features: [],
     createdAt: "2026-10-03T00:00:00.000Z", updatedAt: "2026-10-03T00:00:00.000Z",
     ...over,
   };

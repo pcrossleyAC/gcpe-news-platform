@@ -1,10 +1,11 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { eq, inArray } from "drizzle-orm";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
+import type { SubscriberConfig } from "@gcpe/events";
 import {
-  addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, listQuerySchema, metaSchema,
+  addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, listQuerySchema, metaSchema,
   reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
 } from "@gcpe/nrms-contract";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError, VersionConflictError } from "../releases/errors";
@@ -27,6 +28,14 @@ import { renderPdf } from "../renditions/pdf";
 import { renderText } from "../renditions/text";
 import { approve, cancel, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
 import { listCategories } from "../taxonomy";
+import { setFeature } from "../website/features";
+
+const featureInputSchema = z.object({
+  kind: z.enum(FEATURE_KINDS),
+  key: z.string().trim().min(1).max(100),
+  slot: z.enum(FEATURE_SLOTS),
+  on: z.boolean(),
+});
 
 export interface RouteDeps {
   db: Db;
@@ -37,6 +46,8 @@ export interface RouteDeps {
   store?: ObjectStore;
   /** Body `<asset>` embed normalisation (Task 7); unset → bodies are sanitised but not normalised. */
   embeds?: EmbedDeps;
+  /** Outbound event subscribers, for `release.unpublished`'s clearing of Top/Feature slots and for Top/Feature's own site events. */
+  subscribers?: SubscriberConfig[];
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
@@ -184,7 +195,20 @@ export function apiRoutes(deps: RouteDeps): Router {
   r.post("/releases/:id/schedule", edit, run(async (req, res) => void res.json(withStatus(await schedule(db, req.params.id, scheduleSchema.parse(req.body), actorOf(req), deps.workflow)))));
   r.post("/releases/:id/cancel", edit, run(async (req, res) => void res.json(withStatus(await cancel(db, req.params.id, version(req), actorOf(req))))));
   r.post("/releases/:id/unpublish", edit, run(async (req, res) => void res.json(withStatus(await unpublish(db, req.params.id, version(req), actorOf(req))))));
-  r.post("/releases/:id/delete", edit, run(async (req, res) => void res.json({ result: await deleteRelease(db, req.params.id, version(req), actorOf(req), deps.store) })));
+  r.post(
+    "/releases/:id/delete",
+    edit,
+    run(async (req, res) => void res.json({ result: await deleteRelease(db, req.params.id, version(req), actorOf(req), deps.store, deps.subscribers ?? []) })),
+  );
+  r.post(
+    "/releases/:id/features",
+    edit,
+    run(async (req, res) => {
+      const input = featureInputSchema.parse(req.body);
+      const view = await setFeature(db, req.params.id, input, actorOf(req), deps.subscribers ?? []);
+      res.json(withStatus(view));
+    }),
+  );
 
   r.get("/releases", read, run(async (req, res) => void res.json(await listFolder(db, listQuerySchema.parse(req.query), opts()))));
   r.get("/search", read, run(async (req, res) => void res.json(await searchReleases(db, searchQuerySchema.parse(req.query), opts()))));

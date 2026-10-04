@@ -12,6 +12,11 @@ export const LAYOUTS = ["formal", "informal"] as const;
 export type Layout = (typeof LAYOUTS)[number];
 export const CATEGORY_KINDS = ["ministries", "sectors", "themes", "tags"] as const;
 export type CategoryKind = (typeof CATEGORY_KINDS)[number];
+/** Plan 3d task 5: Top/Feature slots. Home uses key `default`. */
+export const FEATURE_KINDS = ["home", "ministries", "sectors", "themes"] as const;
+export type FeatureKind = (typeof FEATURE_KINDS)[number];
+export const FEATURE_SLOTS = ["top", "feature"] as const;
+export type FeatureSlot = (typeof FEATURE_SLOTS)[number];
 
 export const POST_KIND = { release: "releases", story: "stories", factsheet: "factsheets", update: "updates", advisory: "advisories" } as const satisfies Record<ReleaseType, string>;
 export const TYPE_LABEL: Record<ReleaseType, string> = { release: "Release", story: "Story", factsheet: "Factsheet", update: "Update", advisory: "Advisory" };
@@ -61,6 +66,13 @@ export interface ReleaseFileView {
   size: number;
 }
 
+/** Plan 3d task 5: a Top/Feature slot this release currently occupies. */
+export interface ReleaseFeatureView {
+  kind: FeatureKind;
+  key: string;
+  slot: FeatureSlot;
+}
+
 export interface ReleaseView {
   id: string;
   type: ReleaseType;
@@ -96,6 +108,8 @@ export interface ReleaseView {
   mediaListKeys: string[];
   /** Uploaded translations and media files, oldest first. */
   files: ReleaseFileView[];
+  /** Top/Feature slots this release currently occupies (plan 3d task 5). */
+  features: ReleaseFeatureView[];
   createdAt: string;
   updatedAt: string;
 }

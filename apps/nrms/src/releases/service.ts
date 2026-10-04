@@ -1,5 +1,6 @@
 import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
+import type { SubscriberConfig } from "@gcpe/events";
 import {
   assetUrlProblem, LANG_EN, LANG_FR, TYPE_LABEL, typeRules,
   type AddDocumentInput, type AddTranslationInput, type AssetInput, type CategoriesInput, type CreateReleaseInput, type DocumentLanguageInput,
@@ -19,6 +20,7 @@ import { summaryFromBody } from "../text/plain";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError } from "./errors";
 import { uniqueKey } from "./keys";
 import { loadView, mutateRelease, writeLog, type Actor } from "./store";
+import { clearFeaturesFor } from "../website/features";
 
 const EDITABLE_KEY_STATUSES = new Set(["draft", "approved"]);
 const PLANNING_STATUSES = new Set(["draft", "approved", "failed"]);
@@ -426,7 +428,7 @@ export function reorderDocuments(db: Db, id: string, input: ReorderDocumentsInpu
  * that did. A hard delete also removes its uploaded files from `store` afterwards (best effort —
  * failures are logged, the delete itself already committed). A hidden release keeps its files.
  */
-export async function deleteRelease(db: Db, id: string, version: number, actor: Actor, store?: ObjectStore): Promise<"deleted" | "hidden"> {
+export async function deleteRelease(db: Db, id: string, version: number, actor: Actor, store?: ObjectStore, subs: SubscriberConfig[] = []): Promise<"deleted" | "hidden"> {
   let outcome: "deleted" | "hidden" = "hidden";
   let storedKeys: string[] = [];
   await mutateRelease(
@@ -438,6 +440,9 @@ export async function deleteRelease(db: Db, id: string, version: number, actor: 
       if (!DELETABLE_STATUSES.has(row.status)) throw new ReleaseStateError("Only a draft, approved or failed release can be deleted.");
       // A live release (e.g. a failed correction) has to be unpublished, not hidden.
       if (row.live) throw new ReleaseStateError("This release has been published — unpublish it first.");
+      // Defensive: a release shouldn't hold a slot once it isn't live (the unpublish path already
+      // clears it), but deleting it must never leave a dangling category_features reference.
+      await clearFeaturesFor(tx, row.id, subs);
       if (!row.reference) {
         storedKeys = (await tx.select({ key: releaseFiles.storageKey }).from(releaseFiles).where(eq(releaseFiles.releaseId, row.id))).map((f) => f.key);
         await tx.delete(newsReleases).where(eq(newsReleases.id, row.id));
