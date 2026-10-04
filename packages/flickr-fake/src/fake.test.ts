@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import express from "express";
 import request from "supertest";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createFakeFlickr } from "./index";
 
 const creds = { apiKey: "k", apiSecret: "s", accessToken: "t", accessSecret: "ts" };
@@ -138,6 +138,48 @@ describe("fake Flickr", () => {
     expect((await request(app).get(`/fake-flickr/services/rest?${q()}`)).body.stat).toBe("ok");
     state.refuseAuth = true;
     expect((await request(app).get(`/fake-flickr/services/rest?${q()}`)).body).toMatchObject({ stat: "fail", code: 98 });
+  });
+
+  it("request_token holds at most 1000 outstanding tokens, evicting the oldest first", async () => {
+    const { app, requestTokens } = setup();
+    const getRequestToken = async (nonce: string) => {
+      const q = signed("GET", `${BASE}/services/oauth/request_token`, { oauth_callback: "oob", oauth_nonce: nonce });
+      const res = await request(app).get(`/fake-flickr/services/oauth/request_token?${q}`);
+      return new URLSearchParams(res.text).get("oauth_token")!;
+    };
+    const first = await getRequestToken("n0");
+    for (let i = 1; i < 1000; i++) await getRequestToken(`n${i}`);
+    expect(requestTokens.size).toBe(1000);
+    expect(requestTokens.has(first)).toBe(true);
+
+    // One more pushes it over the cap: the oldest (first) token is evicted.
+    const last = await getRequestToken("n1000");
+    expect(requestTokens.size).toBe(1000);
+    expect(requestTokens.has(first)).toBe(false);
+    expect(requestTokens.has(last)).toBe(true);
+    const authRes = await request(app).get("/fake-flickr/services/oauth/authorize").query({ oauth_token: first });
+    expect(authRes.status).toBe(400);
+  }, 20_000);
+
+  it("request_token entries expire after 10 minutes, even without hitting the cap", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const { app, requestTokens } = setup();
+      const q1 = signed("GET", `${BASE}/services/oauth/request_token`, { oauth_callback: "oob", oauth_nonce: "a" });
+      const res1 = await request(app).get(`/fake-flickr/services/oauth/request_token?${q1}`);
+      const token = new URLSearchParams(res1.text).get("oauth_token")!;
+      expect(requestTokens.has(token)).toBe(true);
+
+      vi.advanceTimersByTime(10 * 60_000 + 1);
+
+      // Expired but not yet pruned (nothing has looked at the map since) -- /authorize must
+      // still treat it as gone.
+      const authRes = await request(app).get("/fake-flickr/services/oauth/authorize").query({ oauth_token: token });
+      expect(authRes.status).toBe(400);
+      expect(requestTokens.has(token)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("runs the OAuth 1.0a three-legged flow", async () => {

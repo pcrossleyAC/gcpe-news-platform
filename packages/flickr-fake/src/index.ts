@@ -32,6 +32,12 @@ export interface FakeFlickrState {
 const USER = "bcgovphotos";
 /** The most photos the fake holds, so __fake/photos can't grow memory without bound. */
 const MAX_PHOTOS = 1000;
+/** request_token is unauthenticated (anyone can call it), so its secrets are capped and expired
+ * the same way: at most this many outstanding at once (oldest evicted first)... */
+const MAX_REQUEST_TOKENS = 1000;
+/** ...and never held longer than this since being issued, matching Flickr's own request-token
+ * lifetime being short-lived (ours is never meant to sit around waiting for a human). */
+const REQUEST_TOKEN_TTL_MS = 10 * 60_000;
 const VERIFIER = "123-456-789";
 
 /** A 2×2 grey baseline JPEG. */
@@ -77,12 +83,49 @@ function requestParams(req: express.Request): [string, string][] {
   return pairs;
 }
 
-export function createFakeFlickr(opts: FakeFlickrOptions): { router: express.Router; photos: Map<string, FakePhoto>; state: FakeFlickrState } {
+export function createFakeFlickr(
+  opts: FakeFlickrOptions,
+): { router: express.Router; photos: Map<string, FakePhoto>; state: FakeFlickrState; requestTokens: Map<string, { secret: string; expiresAt: number }> } {
   const base = opts.publicBaseUrl.replace(/\/+$/, "");
   const photos = new Map((opts.photos ?? defaultPhotos()).map((p) => [p.id, { ...p }]));
   const state: FakeFlickrState = { refuseAuth: false, outageCalls: 0, deleted: [] };
-  /** Request-token secrets issued by request_token, keyed by token. */
-  const requestTokens = new Map<string, string>();
+  /** Request-token secrets issued by request_token, keyed by token, insertion-ordered by
+   * issue time (never re-inserted) so the oldest entry is always first — which is what lets
+   * both pruning (expired ones are always a leading prefix) and capacity eviction just look at
+   * the front of the map. */
+  const requestTokens = new Map<string, { secret: string; expiresAt: number }>();
+
+  /** Drops every expired request token. Safe to call often: expired entries are always a
+   * leading prefix in insertion order (fixed TTL from a non-decreasing clock), so this stops at
+   * the first still-valid one instead of scanning the whole map. */
+  function pruneRequestTokens(): void {
+    const now = Date.now();
+    for (const [token, entry] of requestTokens) {
+      if (entry.expiresAt > now) break;
+      requestTokens.delete(token);
+    }
+  }
+
+  /** Issues a fresh request token for `secret`, pruning expired ones first and evicting the
+   * oldest outstanding one if still at capacity. */
+  function issueRequestToken(secret: string): string {
+    pruneRequestTokens();
+    if (requestTokens.size >= MAX_REQUEST_TOKENS) {
+      const oldest = requestTokens.keys().next().value;
+      if (oldest !== undefined) requestTokens.delete(oldest);
+    }
+    const token = randomBytes(8).toString("hex");
+    requestTokens.set(token, { secret, expiresAt: Date.now() + REQUEST_TOKEN_TTL_MS });
+    return token;
+  }
+
+  /** The secret for a still-valid (unexpired, known) request token, or undefined. */
+  function requestTokenSecret(token: string | undefined): string | undefined {
+    if (token === undefined) return undefined;
+    pruneRequestTokens();
+    return requestTokens.get(token)?.secret;
+  }
+
   const router = express.Router();
 
   const livePhoto = (id: string | undefined) => (id && !state.deleted.includes(id) ? photos.get(id) : undefined);
@@ -173,20 +216,19 @@ export function createFakeFlickr(opts: FakeFlickrOptions): { router: express.Rou
   router.get("/services/oauth/request_token", (req, res) => {
     const params = verify(req, (t) => (t === undefined ? "" : undefined));
     if (state.refuseAuth || !params || !params.get("oauth_callback")) return void oauthFail(res);
-    const token = randomBytes(8).toString("hex");
     const secret = randomBytes(8).toString("hex");
-    requestTokens.set(token, secret);
+    const token = issueRequestToken(secret);
     res.type("text/plain").send(`oauth_callback_confirmed=true&oauth_token=${token}&oauth_token_secret=${secret}`);
   });
 
   router.get("/services/oauth/authorize", (req, res) => {
     const token = typeof req.query.oauth_token === "string" ? req.query.oauth_token : "";
-    if (!requestTokens.has(token)) return void res.status(400).type("text/plain").send("Unknown request token");
+    if (requestTokenSecret(token) === undefined) return void res.status(400).type("text/plain").send("Unknown request token");
     res.type("html").send(`<!doctype html><html><head><title>Fake Flickr authorization</title></head><body><h1>Fake Flickr</h1><p>Authorized. Your verifier code is:</p><p id="verifier">${VERIFIER}</p></body></html>`);
   });
 
   router.get("/services/oauth/access_token", (req, res) => {
-    const params = verify(req, (t) => (t ? requestTokens.get(t) : undefined));
+    const params = verify(req, requestTokenSecret);
     if (state.refuseAuth || !params || params.get("oauth_verifier") !== VERIFIER) return void oauthFail(res);
     requestTokens.delete(params.get("oauth_token")!);
     res
@@ -220,5 +262,5 @@ export function createFakeFlickr(opts: FakeFlickrOptions): { router: express.Rou
     res.json(p);
   });
 
-  return { router, photos, state };
+  return { router, photos, state, requestTokens };
 }
