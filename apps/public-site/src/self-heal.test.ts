@@ -111,8 +111,9 @@ describe("selfHeal", () => {
     };
 
     await expect(selfHeal({ newsApi, storage, site, test: false })).rejects.toThrow("disk full");
-    // K1's page (written before K2's failure) did land, but index.html must not have.
-    expect(writes).toEqual(["releases/K1/index.html", "releases/K2/index.html"]);
+    // The fresh root has no post pages to resync, so the marker (written first) is the only
+    // resync-time write; K1's page (written before K2's failure) did land, but index.html must not have.
+    expect(writes).toEqual([".site-state.json", "releases/K1/index.html", "releases/K2/index.html"]);
     expect(await real.exists("index.html")).toBe(false);
     expect(await real.exists("releases/K1/index.html")).toBe(true);
   });
@@ -147,6 +148,51 @@ describe("selfHeal", () => {
       const result = await selfHeal({ newsApi, storage, site, test: false });
       expect(result).toEqual({ rebuilt: 1 });
       expect(await readFile(join(root, "index.html"), "utf8")).not.toContain("blue-bridge-banner");
+      expect(errSpy).toHaveBeenCalled();
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  // CRITICAL (fix round 1), test (4) from the ruling: a site that survived the redeploy (so
+  // the bootstrap render above is a no-op) still needs its existing post pages resynced —
+  // there is no marker yet (this ships before this fix ever ran), so it always counts as
+  // "changed" once.
+  it("startup on a pre-existing site with pages present but no marker re-renders them with noindex on a test site", async () => {
+    const root = await mkdtemp(join(tmpdir(), "self-heal-"));
+    made.push(root);
+    const storage = fsStorage(root);
+    // Pre-existing pages, as if written by a deploy before this fix shipped — no noindex, no marker.
+    await storage.write("index.html", "<!doctype html><html><body>home, pre-fix</body></html>");
+    await storage.write("releases/K1/index.html", "<!doctype html><html><body>K1, pre-fix</body></html>");
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => postA), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+
+    const result = await selfHeal({ newsApi, storage, site, test: true });
+    expect(result).toBeNull(); // index.html already existed — the bootstrap render was skipped
+    const k1 = await readFile(join(root, "releases", "K1", "index.html"), "utf8");
+    expect(k1).toContain('<meta name="robots" content="noindex, nofollow">');
+    expect(await storage.read(".site-state.json")).toBe(JSON.stringify({ granvilleOn: false, test: true }));
+  });
+
+  it("startup resync is tolerant: a home() failure is logged and existing pages are left untouched", async () => {
+    const root = await mkdtemp(join(tmpdir(), "self-heal-"));
+    made.push(root);
+    const storage = fsStorage(root);
+    await storage.write("index.html", "<!doctype html><html><body>home, pre-fix</body></html>");
+    await storage.write("releases/K1/index.html", "<!doctype html><html><body>K1, pre-fix</body></html>");
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const newsApi: NewsApiClient = {
+        getPost: vi.fn(async () => postA),
+        latestHome: vi.fn(async () => []),
+        home: vi.fn(async () => {
+          throw new Error("News API down");
+        }),
+      };
+      const result = await selfHeal({ newsApi, storage, site, test: true });
+      expect(result).toBeNull();
+      expect(await readFile(join(root, "releases", "K1", "index.html"), "utf8")).toBe("<!doctype html><html><body>K1, pre-fix</body></html>");
+      expect(await storage.read(".site-state.json")).toBeNull(); // never written — retried next time
       expect(errSpy).toHaveBeenCalled();
     } finally {
       errSpy.mockRestore();

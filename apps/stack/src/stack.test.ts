@@ -316,6 +316,17 @@ describe("apps/stack", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
+  // Plan 3d task 4 fix round 1 (CRITICAL ruling): the public site's own render-state marker
+  // (apps/public-site/src/rebuild.ts's SITE_STATE_PATH, ".site-state.json") must never be
+  // publicly servable.
+  it("/site/<dotfile> is refused — the render-state marker is never publicly servable", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    await fsStorage(instance.outputDir).write(".site-state.json", '{"granvilleOn":true,"test":false}');
+    const res = await fetch(`${instance.stackUrl}/site/.site-state.json`);
+    expect(res.status).not.toBe(200);
+    expect(await res.text()).not.toContain("granvilleOn");
+  });
+
   it("/files/<key> serves an uploaded file from <DATA_DIR>/storage publicly; .meta, listings and missing keys are not served", async () => {
     const { localStore } = await import("@gcpe/storage");
     const store = localStore(join(instance.dataDir, "storage"));

@@ -31,12 +31,26 @@ function ageInBcYears(now: Date): number {
 }
 
 /**
- * The Project Blue Bridge banner text, or `null` when `granville` is null/empty (the switch is
- * off). On a test site the text is prefixed `TEST — ` (constraints.md) so staff previewing a
- * non-production site never mistake it for the real thing.
+ * Fix round 1 (IMPORTANT 2): legacy stores `granville` as the literal strings "true"/"false"
+ * (Hub.Legacy `ProjectBlueBridge.aspx.cs`: `SetAppSetting(appSetting, enabled ? "true" :
+ * "false")`), and the News API legacy importer (apps/news-api/src/import/run.ts) copies it
+ * through. NRMS's own `setBlueBridge` only ever writes "true" or `null`, but the public site
+ * must still treat an imported "false" (or any value that isn't exactly "true") as OFF, not
+ * "any non-empty string is ON". Same rule, same name, in apps/nrms/src/website/settings.ts's
+ * `getBlueBridge` and the News API importer's `normalizeGranville`.
+ */
+export function isGranvilleOn(granville: string | null): boolean {
+  return granville != null && granville.trim().toLowerCase() === "true";
+}
+
+/**
+ * The Project Blue Bridge banner text, or `null` when `granville` isn't ON (per
+ * {@link isGranvilleOn} — covers null/empty/"false"/anything but "true"). On a test site the
+ * text is prefixed `TEST — ` (constraints.md) so staff previewing a non-production site never
+ * mistake it for the real thing.
  */
 export function blueBridgeBanner(granville: string | null, now: Date, test: boolean): string | null {
-  if (!granville) return null;
+  if (!isGranvilleOn(granville)) return null;
   const text = `ALERT: His Majesty King Charles III, King of Canada, has passed away at the age of ${ageInBcYears(now)}`;
   return test ? `TEST — ${text}` : text;
 }

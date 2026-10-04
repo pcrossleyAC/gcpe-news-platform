@@ -1,4 +1,4 @@
-import { lstat, mkdir, realpath, rename, rm, writeFile } from "node:fs/promises";
+import { lstat, mkdir, readdir, readFile, realpath, rename, rm, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
@@ -9,6 +9,14 @@ export interface SiteStorage {
    * symlink planted inside root that would redirect `relPath` outside it is treated as "no",
    * not followed. Used by self-heal.ts to decide whether the public site survived a redeploy. */
   exists(relPath: string): Promise<boolean>;
+  /** `relPath`'s utf8 contents, or `null` if it doesn't exist. Plan 3d task 4 fix round 1: used
+   * to read the site-wide render-state marker (rebuild.ts). */
+  read(relPath: string): Promise<string | null>;
+  /** The immediate subdirectory names at `relPath` (empty when it doesn't exist). Plan 3d task
+   * 4 fix round 1: used to enumerate which post pages already exist on disk — the set that
+   * needs re-rendering when the site-wide render state (Blue Bridge banner, TEST noindex)
+   * changes, since those pages are static files with the chrome baked in. */
+  listDirs(relPath: string): Promise<string[]>;
 }
 
 /** `realpath`, but `undefined` (instead of a thrown ENOENT) when the path doesn't exist. */
@@ -113,6 +121,32 @@ export function fsStorage(root: string): SiteStorage {
         if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
         throw err;
       }
+    },
+    async read(relPath) {
+      const full = target(relPath);
+      const realDir = await tryRealpath(dirname(full));
+      if (realDir === undefined) return null; // the parent doesn't exist, so neither does the file
+      assertInsideRoot(await realpath(base), realDir, relPath);
+      try {
+        return await readFile(full, "utf8");
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+        throw err;
+      }
+    },
+    async listDirs(relPath) {
+      const full = target(relPath);
+      const real = await tryRealpath(full);
+      if (real === undefined) return []; // relPath itself doesn't exist — nothing to list
+      assertInsideRoot(await realpath(base), real, relPath);
+      let entries;
+      try {
+        entries = await readdir(full, { withFileTypes: true });
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return [];
+        throw err;
+      }
+      return entries.filter((e) => e.isDirectory()).map((e) => e.name);
     },
   };
 }

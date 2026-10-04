@@ -144,6 +144,7 @@ describe("website/settings — Project Blue Bridge", () => {
       setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "king charles iii", acknowledgeIgrs: true }, editor, deps()),
     ).rejects.toThrow(SiteRuleError);
     expect((await getBlueBridge(tdb.db)).on).toBe(false);
+    expect(await homeEvents()).toEqual([]);
   });
 
   it("a correct phrase but missing acknowledgeIgrs is refused with a SiteRuleError", async () => {
@@ -203,11 +204,36 @@ describe("website/settings — Project Blue Bridge", () => {
       const saved = await setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "KING CHARLES III", acknowledgeIgrs: true }, editor, deps({ notify }));
       expect(saved.on).toBe(true);
       expect((await getBlueBridge(tdb.db)).on).toBe(true);
-      expect(errSpy).toHaveBeenCalled();
+      // Minor 1: notify now runs in the background (fire-and-forget) rather than being
+      // awaited by the request, so its rejection's console.error lands on a later microtask —
+      // poll instead of asserting immediately after the await above.
+      await expect.poll(() => errSpy.mock.calls.length).toBeGreaterThan(0);
       const logged = errSpy.mock.calls.map((c) => c.join(" ")).join("\n");
       expect(logged).not.toMatch(/@/); // never an email address
     } finally {
       errSpy.mockRestore();
     }
+  });
+
+  // Fix round 1 (Minor 1): the request doesn't wait on notify — setBlueBridge resolves even
+  // while notify is still pending.
+  it("does not wait for notify to settle before resolving", async () => {
+    let resolveNotify: (() => void) | undefined;
+    const notify = vi.fn(() => new Promise<void>((resolve) => (resolveNotify = resolve)));
+    const saved = await setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "KING CHARLES III", acknowledgeIgrs: true }, editor, deps({ notify }));
+    expect(saved.on).toBe(true);
+    expect(notify).toHaveBeenCalledTimes(1);
+    resolveNotify?.();
+  });
+
+  // Fix round 1 (IMPORTANT 2): getBlueBridge reads granville with the same rule as the public
+  // site and the News API importer — only exactly "true" (trimmed, case-insensitive) is ON.
+  it("getBlueBridge treats a legacy-imported 'false' or anything but 'true' as OFF", async () => {
+    for (const value of ["false", "FALSE", "", null]) {
+      await tdb.pool.query("UPDATE site_settings SET granville = $1 WHERE id = 1", [value]);
+      expect((await getBlueBridge(tdb.db)).on).toBe(false);
+    }
+    await tdb.pool.query("UPDATE site_settings SET granville = $1 WHERE id = 1", [" true "]);
+    expect((await getBlueBridge(tdb.db)).on).toBe(true);
   });
 });

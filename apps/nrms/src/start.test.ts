@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { decodeJwt } from "jose";
 import { hashPassword, serviceTokenProvider } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb } from "../test/helpers";
-import { coreServiceTokenOptions, distributionServiceTokenOptions, flickrConfigFromEnv, nodServiceTokenOptions, nrmsEnvSchema, startNrms } from "./start";
+import { buildBlueBridgeNotify, coreServiceTokenOptions, distributionServiceTokenOptions, flickrConfigFromEnv, nodServiceTokenOptions, nrmsEnvSchema, startNrms } from "./start";
+import type { CoreClient, DistributionClient } from "./clients";
 
 describe("startNrms", () => {
   // Every DB created by testEnv() this test created, dropped in afterEach — a test
@@ -114,6 +115,45 @@ describe("coreServiceTokenOptions", () => {
     const token = await getToken();
     const payload = decodeJwt(token);
     expect(payload).toMatchObject({ sub: "nrms", azp: "nrms", roles: ["Core.AdminDirectory"] });
+  });
+});
+
+// Minor 2 (fix round 1): pulled out of startNrms so the branching can be tested directly.
+describe("buildBlueBridgeNotify", () => {
+  it("logs the subject only when either client is missing — never sends, never addresses", async () => {
+    const log = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await buildBlueBridgeNotify(undefined, undefined)("Project Blue Bridge turned ON on https://news.example", "text with an actor name");
+      expect(log).toHaveBeenCalledWith("[nrms] blue bridge: Project Blue Bridge turned ON on https://news.example");
+    } finally {
+      log.mockRestore();
+    }
+  });
+
+  it("with both configured, emails every active admin via Distribution", async () => {
+    const core: CoreClient = { adminEmails: vi.fn(async () => ["a@example.test", "b@example.test"]) };
+    const distribution: DistributionClient = { send: vi.fn(async () => ({ batchId: "b-1" })) };
+    const notify = buildBlueBridgeNotify(core, distribution);
+    await notify("subject", "text & <escaped>");
+    expect(distribution.send).toHaveBeenCalledTimes(1);
+    const [msg] = (distribution.send as ReturnType<typeof vi.fn>).mock.calls[0]!;
+    expect(msg).toMatchObject({ priority: "system", subject: "subject", text: "text & <escaped>", recipients: [{ email: "a@example.test" }, { email: "b@example.test" }] });
+    expect(msg.html).not.toContain("<escaped>");
+    expect(msg.html).toContain("&#38;"); // "&" escaped — never raw markup from the actor's name/site URL
+  });
+
+  // Minor 2: zero active admins must warn, not fail silently.
+  it("with both configured but zero active admins, warns and never calls Distribution", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const core: CoreClient = { adminEmails: vi.fn(async () => []) };
+      const distribution: DistributionClient = { send: vi.fn(async () => ({ batchId: "b-1" })) };
+      await buildBlueBridgeNotify(core, distribution)("subject", "text");
+      expect(distribution.send).not.toHaveBeenCalled();
+      expect(warn).toHaveBeenCalledWith("[nrms] blue bridge: no Core.Admin recipients");
+    } finally {
+      warn.mockRestore();
+    }
   });
 });
 

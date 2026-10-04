@@ -8,6 +8,19 @@ import { Q_APP_SETTINGS, Q_CATEGORY_FEATURES, Q_CURRENT_SLIDES, Q_RELEASE_KEYS_B
 
 const lower = (s: string) => s.toLowerCase();
 
+/**
+ * Fix round 1 (IMPORTANT 2): legacy stores `granville` as the literal strings "true"/"false"
+ * (Hub.Legacy `ProjectBlueBridge.aspx.cs`: `SetAppSetting(appSetting, enabled ? "true" :
+ * "false")`) — copying the raw value through (the old behaviour) let an imported "false"
+ * publish the mourning banner, since the public site treated any non-empty string as ON.
+ * Normalise to exactly "true" (NRMS's own on-value, see apps/nrms/src/website/settings.ts's
+ * `setBlueBridge`) or `null` — same rule as the public site's `isGranvilleOn` and NRMS's
+ * `getBlueBridge`: ON iff the trimmed, case-insensitive value is exactly "true".
+ */
+export function normalizeGranville(raw: string | null | undefined): string | null {
+  return raw != null && raw.trim().toLowerCase() === "true" ? "true" : null;
+}
+
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
   const m = new Map<string, T[]>();
   for (const r of rows) m.set(key(r), [...(m.get(key(r)) ?? []), r]);
@@ -97,7 +110,7 @@ export async function importLegacyNews(
       featurePostKey: keyFor(settings.get("HomeFeatureReleaseId")),
       liveWebcastFlashMediaManifestUrl: null,
       liveWebcastM3uPlaylist: null,
-      granville: settings.get("granville") ?? null,
+      granville: normalizeGranville(settings.get("granville")),
       timestamp: new Date().toISOString(),
     }),
   );

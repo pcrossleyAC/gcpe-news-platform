@@ -66,4 +66,46 @@ describe("fsStorage", () => {
     await expect(s.write("releases/K1/index.html", "<p>a</p>")).rejects.toThrow(/outside/);
     expect(await readdir(outside)).toEqual([]); // no "K1" directory was created outside root
   });
+
+  // Fix round 3 (plan 3d task 4, fix round 1): read()/listDirs() back the site-wide
+  // render-state marker and the "which post pages exist on disk" enumeration.
+  describe("read", () => {
+    it("returns a written file's contents, and null when missing", async () => {
+      const root = await mkdtemp(join(tmpdir(), "site-"));
+      const s = fsStorage(root);
+      expect(await s.read(".site-state.json")).toBeNull();
+      await s.write(".site-state.json", '{"granvilleOn":true,"test":false}');
+      expect(await s.read(".site-state.json")).toBe('{"granvilleOn":true,"test":false}');
+    });
+
+    it("refuses a path that escapes the root", async () => {
+      const s = fsStorage(await mkdtemp(join(tmpdir(), "site-")));
+      await expect(s.read("../escape.html")).rejects.toThrow(/outside/);
+    });
+  });
+
+  describe("listDirs", () => {
+    it("lists immediate subdirectory names, ignoring files and nested subdirectories", async () => {
+      const root = await mkdtemp(join(tmpdir(), "site-"));
+      const s = fsStorage(root);
+      await s.write("releases/K1/index.html", "<p>a</p>");
+      await s.write("releases/K2/index.html", "<p>b</p>");
+      await writeFile(join(root, "releases", "not-a-dir.txt"), "x", "utf8");
+      expect((await s.listDirs("releases")).sort()).toEqual(["K1", "K2"]);
+    });
+
+    it("returns an empty array when the directory doesn't exist", async () => {
+      const s = fsStorage(await mkdtemp(join(tmpdir(), "site-")));
+      expect(await s.listDirs("releases")).toEqual([]);
+    });
+
+    it("refuses to list through a symlink that escapes the root", async () => {
+      const root = await mkdtemp(join(tmpdir(), "site-"));
+      const outside = await mkdtemp(join(tmpdir(), "outside-"));
+      await mkdir(join(outside, "secret"));
+      await symlink(outside, join(root, "releases"));
+      const s = fsStorage(root);
+      await expect(s.listDirs("releases")).rejects.toThrow(/outside/);
+    });
+  });
 });

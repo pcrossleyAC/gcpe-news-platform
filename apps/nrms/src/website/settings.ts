@@ -90,6 +90,18 @@ export async function saveLiveFeed(db: Db, input: SaveLiveFeedInput, actor: Acto
 
 const CONFIRMATION_PHRASE = "KING CHARLES III";
 
+/**
+ * Fix round 1 (IMPORTANT 2): legacy stores `granville` as the literal strings "true"/"false"
+ * (Hub.Legacy `ProjectBlueBridge.aspx.cs`), and the News API legacy importer copies that
+ * through. This column only ever receives "true"/null from {@link setBlueBridge} below, but
+ * read it with the same rule the public site and the News API importer use (same name, same
+ * rule, apps/public-site/src/site-env.ts's `isGranvilleOn` / apps/news-api/src/import/run.ts's
+ * `normalizeGranville`) rather than a narrower one that would drift if that ever changes.
+ */
+function isGranvilleOn(granville: string | null): boolean {
+  return granville != null && granville.trim().toLowerCase() === "true";
+}
+
 export interface BlueBridgeView {
   on: boolean;
   version: number;
@@ -99,7 +111,7 @@ export interface BlueBridgeView {
 export async function getBlueBridge(db: DbOrTx): Promise<BlueBridgeView> {
   const [row] = await db.select().from(siteSettings).where(eq(siteSettings.id, 1));
   if (!row) throw new Error("site_settings has no row — the website migration should have inserted id=1");
-  return { on: row.granville === "true", version: row.version, updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null };
+  return { on: isGranvilleOn(row.granville), version: row.version, updatedAt: row.updatedAt ? row.updatedAt.toISOString() : null };
 }
 
 export interface SetBlueBridgeInput {
@@ -146,12 +158,12 @@ export async function setBlueBridge(db: Db, input: SetBlueBridgeInput, actor: Ac
 
   const subject = `Project Blue Bridge turned ${input.on ? "ON" : "OFF"} on ${deps.siteUrl}`;
   const text = `${actor.name} turned Project Blue Bridge ${input.on ? "ON" : "OFF"} at ${formatBcDateTime(updated.updatedAt, deps.timeZone)}.`;
-  try {
-    await deps.notify(subject, text);
-  } catch (e) {
-    // Never addresses — only our own clients' error messages (status codes) reach here.
+  // Fix round 1 (Minor 1): fire-and-forget, after commit — the change is already durable, and
+  // an editor's request must never wait on (or fail because of) a slow or down Core/Distribution.
+  // Still never addresses — only our own clients' error messages (status codes) reach here.
+  void deps.notify(subject, text).catch((e: unknown) => {
     console.error(`[nrms] blue bridge notify failed: ${e instanceof Error ? e.message : String(e)}`);
-  }
+  });
 
-  return { on: updated.granville === "true", version: updated.version, updatedAt: updated.updatedAt.toISOString() };
+  return { on: isGranvilleOn(updated.granville), version: updated.version, updatedAt: updated.updatedAt.toISOString() };
 }

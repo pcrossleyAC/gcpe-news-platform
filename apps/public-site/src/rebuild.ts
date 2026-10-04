@@ -1,7 +1,7 @@
 import type { EventHandler } from "@gcpe/events";
 import type { NewsApiClient } from "./news-api-client";
-import { renderHomePage, renderPostPage, type SiteInfo } from "./render";
-import { blueBridgeBanner } from "./site-env";
+import { renderHomePage, renderPostPage, type PageOptions, type SiteInfo } from "./render";
+import { blueBridgeBanner, isGranvilleOn } from "./site-env";
 import type { SiteStorage } from "./storage";
 
 /** A valid post key, same shape NRMS/News API produce — shared with self-heal.ts so both
@@ -19,14 +19,104 @@ export function postPath(key: string): string {
 }
 
 /**
- * Plan 3d task 4: fetches Project Blue Bridge's `granville` once (never once per page) and
- * turns it into the banner text for this run — a News API failure never fails the rebuild, it
- * just means no banner this time (logged here, not thrown).
+ * Plan 3d task 4 fix round 1 (CRITICAL): the site-wide render chrome a post page bakes in —
+ * whether Project Blue Bridge is on, and whether this is a test site. Deliberately *not* the
+ * rendered banner text (which carries the age in years): that changes every day His Majesty's
+ * birthday ticks over, and the daily age bump alone must never trigger a full re-render of
+ * every post page on disk. The marker only has to change exactly when the page chrome itself
+ * changes — on/off and test/production is exactly that, nothing more.
  */
-export async function bannerFor(newsApi: NewsApiClient, test: boolean, now: () => Date = () => new Date()): Promise<string | null> {
+export interface SiteRenderState {
+  granvilleOn: boolean;
+  test: boolean;
+}
+
+/** Not served publicly: a leading dot (denied by the `/site` static mount's `dotfiles: "deny"`
+ * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
+export const SITE_STATE_PATH = ".site-state.json";
+
+async function readSiteState(storage: SiteStorage): Promise<SiteRenderState | null> {
+  const raw = await storage.read(SITE_STATE_PATH);
+  if (raw === null) return null;
   try {
-    const { granville } = await newsApi.home();
-    return blueBridgeBanner(granville, now(), test);
+    const parsed = JSON.parse(raw) as Partial<SiteRenderState>;
+    if (typeof parsed.granvilleOn === "boolean" && typeof parsed.test === "boolean") {
+      return { granvilleOn: parsed.granvilleOn, test: parsed.test };
+    }
+  } catch {
+    // Malformed/foreign content — treated the same as "no marker" below.
+  }
+  return null;
+}
+
+async function writeSiteState(storage: SiteStorage, state: SiteRenderState): Promise<void> {
+  await storage.write(SITE_STATE_PATH, JSON.stringify(state));
+}
+
+/** `granville` and `test` together, as both the render state (for the marker) and the banner
+ * text (for this render, with today's age). */
+export function stateAndBanner(granville: string | null, test: boolean, now: Date): { state: SiteRenderState; banner: string | null } {
+  return { state: { granvilleOn: isGranvilleOn(granville), test }, banner: blueBridgeBanner(granville, now, test) };
+}
+
+/**
+ * Fetches, renders and writes (or removes) one post page by its requested key — shared by
+ * `createRebuildHandler`'s per-event post handling and `resyncPostPages` below, so there's one
+ * place that knows the key-casing/path-safety rule: the output path always uses the
+ * *requested* key, never the News API response's unvalidated `post.key` (a mismatch, e.g. a
+ * `post.key` of ".." or a casing difference, is skipped — logged, not written — rather than
+ * trusted).
+ */
+export async function renderExistingPost(newsApi: NewsApiClient, storage: SiteStorage, site: SiteInfo, key: string, opts: PageOptions): Promise<void> {
+  const post = await newsApi.getPost(key);
+  const path = postPath(key);
+  if (!post) {
+    await storage.remove(path);
+    return;
+  }
+  if (post.key.toLowerCase() !== key.toLowerCase()) {
+    console.warn(`[public-site] skipping page post:${key}: News API returned a different key (${JSON.stringify(post.key)})`);
+    return;
+  }
+  await storage.write(path, renderPostPage(post, site, opts));
+}
+
+/**
+ * Plan 3d task 4 fix round 1 (CRITICAL): post pages are static files with the Blue Bridge
+ * banner/TEST noindex baked in at render time — a home-only `site.content.changed` rebuild
+ * (`pages: ["home"]`) never otherwise touches them, so after a mistaken ON→OFF every post
+ * rendered while ON would keep the death announcement indefinitely, and after a real ON,
+ * existing posts would never show it.
+ *
+ * Compares `state` against the marker file left by the last run: unchanged (including a first
+ * run against a brand-new, still-empty output dir where `storage.listDirs` finds nothing) is a
+ * no-op; changed, or no marker at all (first run after this fix, or a pre-existing site), means
+ * every post page already on disk — enumerated directly from the output folder, which is
+ * exactly the set that needs fixing — is re-rendered with the new chrome, then the marker is
+ * updated to match.
+ */
+export async function resyncPostPages(deps: { newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo }, state: SiteRenderState, banner: string | null): Promise<void> {
+  const previous = await readSiteState(deps.storage);
+  if (previous && previous.granvilleOn === state.granvilleOn && previous.test === state.test) return;
+
+  const opts: PageOptions = { test: state.test, banner };
+  for (const key of await deps.storage.listDirs("releases")) {
+    if (!POST_KEY.test(key)) continue; // defensive — every name we ever wrote already matches this
+    await renderExistingPost(deps.newsApi, deps.storage, deps.site, key, opts);
+  }
+  await writeSiteState(deps.storage, state);
+}
+
+/**
+ * A tolerant `home()` fetch: `null` on failure (logged here), never throws. Used only where a
+ * News API outage must not fail the caller outright — selfHeal.ts's startup path. Important 1
+ * (fix round 1): `createRebuildHandler` below does *not* use this — a `home()` failure there
+ * propagates, like a `getPost`/`latestHome` failure already does, so the event receiver 500s
+ * and the dispatcher retries instead of silently publishing a stale/missing banner.
+ */
+export async function tryHome(newsApi: NewsApiClient): Promise<{ granville: string | null } | null> {
+  try {
+    return await newsApi.home();
   } catch (e) {
     console.error(`[public-site] failed to fetch home() for the Blue Bridge banner: ${e instanceof Error ? e.message : String(e)}`);
     return null;
@@ -36,8 +126,16 @@ export async function bannerFor(newsApi: NewsApiClient, test: boolean, now: () =
 export function createRebuildHandler(deps: { newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo; test: boolean }): EventHandler {
   return async (_tx, event) => {
     const { pages } = event.data as { pages: string[] };
-    const banner = await bannerFor(deps.newsApi, deps.test);
-    const opts = { test: deps.test, banner };
+    // Important 1 (fix round 1): let a home() failure propagate — never swallow it and write
+    // pages without (or with a stale) banner while reporting success.
+    const { granville } = await deps.newsApi.home();
+    const { state, banner } = stateAndBanner(granville, deps.test, new Date());
+    const opts: PageOptions = { test: deps.test, banner };
+
+    // CRITICAL fix: resync every post page already on disk *before* this event's own pages,
+    // so a home-only rebuild still fixes posts the banner/test state left stale.
+    await resyncPostPages(deps, state, banner);
+
     for (const id of new Set(pages)) {
       if (id === "home") {
         await deps.storage.write("index.html", renderHomePage(await deps.newsApi.latestHome(HOME_COUNT), deps.site, opts));
@@ -48,20 +146,7 @@ export function createRebuildHandler(deps: { newsApi: NewsApiClient; storage: Si
         console.warn(`[public-site] skipping unknown page id ${JSON.stringify(id)}`);
         continue;
       }
-      const post = await deps.newsApi.getPost(key);
-      // The output path always uses the requested, validated `key` — never the API
-      // response's unvalidated post.key. A post.key of ".." or "a/b" would otherwise let a
-      // malicious/buggy News API response write outside releases/<key>/, and a casing
-      // difference between the write path and the unpublish path could leave a page live
-      // after its post was unpublished. Skip (no write, no remove) rather than throwing, so
-      // a bad response can't poison the event and force endless dispatcher retries.
-      if (post && post.key.toLowerCase() !== key.toLowerCase()) {
-        console.warn(`[public-site] skipping page post:${key}: News API returned a different key (${JSON.stringify(post.key)})`);
-        continue;
-      }
-      const path = postPath(key);
-      if (post) await deps.storage.write(path, renderPostPage(post, deps.site, opts));
-      else await deps.storage.remove(path);
+      await renderExistingPost(deps.newsApi, deps.storage, deps.site, key, opts);
     }
   };
 }

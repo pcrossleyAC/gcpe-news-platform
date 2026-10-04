@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blueBridgeBanner, isTestSite } from "./site-env";
+import { blueBridgeBanner, isGranvilleOn, isTestSite } from "./site-env";
 
 describe("isTestSite", () => {
   it("production, nothing else set: false", () => {
@@ -23,6 +23,24 @@ describe("isTestSite", () => {
   });
 });
 
+// Fix round 1 (IMPORTANT 2): legacy stores "true"/"false"; ON iff the trimmed, case-insensitive
+// value is exactly "true" — not "any non-empty string".
+describe("isGranvilleOn", () => {
+  it.each([
+    ["true", true],
+    ["TRUE", true],
+    [" true ", true],
+    ["false", false],
+    ["FALSE", false],
+    ["", false],
+    [null, false],
+    ["on", false],
+    ["off", false],
+  ] as const)("isGranvilleOn(%j) === %j", (value, expected) => {
+    expect(isGranvilleOn(value)).toBe(expected);
+  });
+});
+
 describe("blueBridgeBanner", () => {
   it("granville null: no banner", () => {
     expect(blueBridgeBanner(null, new Date("2026-10-04T18:00:00Z"), false)).toBeNull();
@@ -30,6 +48,16 @@ describe("blueBridgeBanner", () => {
 
   it("granville empty string: no banner", () => {
     expect(blueBridgeBanner("", new Date("2026-10-04T18:00:00Z"), false)).toBeNull();
+  });
+
+  // Fix round 1 (IMPORTANT 2): a legacy-imported "false" (or any non-"true" value) must never
+  // publish the banner.
+  it.each(["false", "FALSE", ""])("granville %j: no banner", (value) => {
+    expect(blueBridgeBanner(value, new Date("2026-10-04T18:00:00Z"), false)).toBeNull();
+  });
+
+  it("granville ' true ' (whitespace, lower-case): banner shown", () => {
+    expect(blueBridgeBanner(" true ", new Date("2026-10-04T18:00:00Z"), false)).toContain("ALERT:");
   });
 
   it("on, before his birthday this year (BC time): age 77", () => {

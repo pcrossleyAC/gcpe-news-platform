@@ -7,7 +7,7 @@ import { createApp } from "../app";
 import { applyRelease } from "../projections";
 import { listenForUpdates, notifyUpdate, type UpdateTarget } from "../updates/notify";
 import { createNewsTestDb, EVENT_SECRETS, TZ } from "../../test/helpers";
-import { importLegacyNews } from "./run";
+import { importLegacyNews, normalizeGranville } from "./run";
 
 const RID = "9af8cc16-0ae5-4ec6-ad58-fdb081d44e37";
 const source = createFakeSource({
@@ -27,6 +27,25 @@ const source = createFakeSource({
   resourceLinks: [{ SortIndex: 0, LinkText: "Factsheets", LinkUrl: "/factsheets" }],
 });
 
+// Fix round 1 (IMPORTANT 2): legacy stores "true"/"false"; only exactly "true" (trimmed,
+// case-insensitive) survives the import as "true" — everything else, including a legacy
+// "false", becomes null.
+describe("normalizeGranville", () => {
+  it.each([
+    ["true", "true"],
+    ["TRUE", "true"],
+    [" true ", "true"],
+    ["false", null],
+    ["FALSE", null],
+    ["", null],
+    [null, null],
+    [undefined, null],
+    ["off", null],
+  ] as const)("normalizeGranville(%j) === %j", (raw, expected) => {
+    expect(normalizeGranville(raw)).toBe(expected);
+  });
+});
+
 describe("importLegacyNews", () => {
   let tdb: TestDatabase;
   beforeAll(async () => {
@@ -42,7 +61,9 @@ describe("importLegacyNews", () => {
     const app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS });
     const V = "api-version=1.0";
     expect((await request(app).get(`/api/Posts/2026TT0103-001121?${V}`)).body).toMatchObject({ publishDate: "2026-10-01T15:10:00-07:00", isNewsOnDemand: true });
-    expect((await request(app).get(`/api/Home?${V}`)).body).toMatchObject({ featurePostKey: "2026TT0103-001121", topPostKey: null, granville: "off" });
+    // Fix round 1 (IMPORTANT 2): the fixture's legacy "off" setting is normalised to null —
+    // only exactly "true" survives the import; see normalizeGranville's own tests below.
+    expect((await request(app).get(`/api/Home?${V}`)).body).toMatchObject({ featurePostKey: "2026TT0103-001121", topPostKey: null, granville: null });
     expect((await request(app).get(`/api/Slides?${V}`)).body[0]).toMatchObject({ justify: "right", imageType: "image/png", key: "f9adfdc2-5933-4c38-a390-a18077acb213" });
     const { rows } = await tdb.pool.query("SELECT count(*)::int AS n FROM posts");
     expect(rows[0].n).toBe(1);

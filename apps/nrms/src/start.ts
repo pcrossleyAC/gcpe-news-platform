@@ -7,7 +7,7 @@ import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
-import { coreClient, distributionClient, nodClient } from "./clients";
+import { coreClient, distributionClient, nodClient, type CoreClient, type DistributionClient } from "./clients";
 import { createApp } from "./app";
 import { defaultSoundcloudOembed, type EmbedDeps } from "./media/embeds";
 import { flickrClient, type FlickrConfig } from "./media/flickr-client";
@@ -174,6 +174,38 @@ export function coreServiceTokenOptions(
   };
 }
 
+const escapeHtmlForEmail = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+/**
+ * Builds Project Blue Bridge's notify (plan 3d task 4): with both Core and Distribution
+ * configured, look up every active Core.Admin's email and send them the switch notice;
+ * otherwise just log the subject — never an address. Zero active admins is logged too (Minor
+ * 2, fix round 1): a misconfigured admin directory should never fail silently. Any failure
+ * here (a down Core, a down Distribution) is left to throw: `setBlueBridge`
+ * (website/settings.ts) catches it, logs it without addresses, and never undoes the
+ * already-committed change. Pulled out of `startNrms` so the branching can be tested directly,
+ * without a database or a network call — mirrors `nodServiceTokenOptions` in spirit.
+ */
+export function buildBlueBridgeNotify(core: CoreClient | undefined, distribution: DistributionClient | undefined): (subject: string, text: string) => Promise<void> {
+  if (!core || !distribution) {
+    return async (subject: string) => void console.log(`[nrms] blue bridge: ${subject}`);
+  }
+  return async (subject: string, text: string) => {
+    const emails = await core.adminEmails();
+    if (emails.length === 0) {
+      console.warn("[nrms] blue bridge: no Core.Admin recipients");
+      return;
+    }
+    await distribution.send({
+      priority: "system",
+      subject,
+      text,
+      html: `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtmlForEmail(text)}</pre>`,
+      recipients: emails.map((email) => ({ email })),
+    });
+  };
+}
+
 export interface AppHandle {
   app: express.Express;
   /** Parsed PORT (same env var/default as before) — main.ts listens on this; nothing new to
@@ -235,29 +267,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
   const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
-  /**
-   * Project Blue Bridge's notify (plan 3d task 4): with both Core and Distribution configured,
-   * look up every active Core.Admin's email and send them the switch notice; otherwise just log
-   * the subject — never an address. Any failure here (a down Core, a down Distribution) is left
-   * to throw: `setBlueBridge` (website/settings.ts) catches it, logs it without addresses, and
-   * never undoes the already-committed change.
-   */
-  const blueBridgeNotify =
-    core && distribution
-      ? async (subject: string, text: string) => {
-          const emails = await core.adminEmails();
-          if (emails.length === 0) return;
-          await distribution.send({
-            priority: "system",
-            subject,
-            text,
-            html: `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`,
-            recipients: emails.map((email) => ({ email })),
-          });
-        }
-      : async (subject: string) => {
-          console.log(`[nrms] blue bridge: ${subject}`);
-        };
+  const blueBridgeNotify = buildBlueBridgeNotify(core, distribution);
 
   const app = createApp({
     db,

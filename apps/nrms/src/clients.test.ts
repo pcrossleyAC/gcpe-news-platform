@@ -37,15 +37,19 @@ describe("coreClient", () => {
   });
 
   it("on a 500, the error message carries the status, never the token", async () => {
+    // Fix round 1 (Minor 4): capture the rejection reason directly and assert on it, rather
+    // than a try/catch whose catch block could silently never run (e.g. if a future change
+    // made adminEmails() resolve instead of reject) and leave the token-leak check unexecuted
+    // while the test still passed. expect.assertions pins the count so that can't happen
+    // silently either.
+    expect.assertions(3);
     const fetchImpl = vi.fn(async () => new Response("boom", { status: 500 }));
     const client = coreClient({ baseUrl: "https://core.example", getToken: async () => "super-secret-token", fetchImpl: fetchImpl as unknown as typeof fetch });
 
-    await expect(client.adminEmails()).rejects.toThrow(/Core admin-emails failed: HTTP 500/);
-    try {
-      await client.adminEmails();
-    } catch (e) {
-      expect(String(e)).not.toContain("super-secret-token");
-    }
+    const err: unknown = await client.adminEmails().catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(Error);
+    expect(String(err)).toMatch(/Core admin-emails failed: HTTP 500/);
+    expect(String(err)).not.toContain("super-secret-token");
   });
 });
 

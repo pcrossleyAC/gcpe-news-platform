@@ -249,8 +249,14 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // mount actually serves never reaches noStoreByDefault at all. noStoreOnRedirect (M4) sits
   // in front of express.static itself so its *redirect* (a directory request missing its
   // trailing slash) gets no-store too, instead of the bare, cacheable-by-default 301
-  // express.static would otherwise send.
-  app.use("/site", noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS }));
+  // express.static would otherwise send. dotfiles: "deny" (plan 3d task 4 fix round 1) is set
+  // explicitly for the public site's own `.site-state.json` render-state marker
+  // (apps/public-site/src/rebuild.ts) and anything else dot-prefixed under OUTPUT_DIR — "ignore"
+  // (serve-static's default) already keeps a dotfile unservable too, so this changes no
+  // observable behaviour (both fall through, with the default fallthrough: true, to the
+  // same eventual 404), but says explicitly that a dotfile is refused on purpose, not by
+  // accident of the default.
+  app.use("/site", noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny" }));
 
   // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
   // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.
