@@ -195,6 +195,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
         db: nrmsDb.db,
         auth: nrmsAuth.bearer,
         loginRouter: nrmsAuth.loginRouter,
+        eventSecrets: {},
       }),
     );
     nrmsSubscribers = [

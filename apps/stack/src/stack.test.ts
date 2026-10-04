@@ -384,6 +384,23 @@ describe("apps/stack", () => {
     expect(inbox.rows).toEqual([{ source: "core", type: "org.upserted", outcome: "applied" }]);
   });
 
+  it("a ministry saved in Core shows up in NRMS's categories after a tick", async () => {
+    const putRes = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
+      body: JSON.stringify(healthOrg),
+    });
+    expect(putRes.status).toBe(200);
+
+    const tickRes = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+    expect(tickRes.status).toBe(200);
+
+    const res = await fetch(`${instance.stackUrl}/nrms/api/categories`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ministries: { key: string; name: string; abbreviation: string | null }[] };
+    expect(body.ministries).toContainEqual({ key: "health", name: "Health", abbreviation: "HLTH" });
+  });
+
   it("Phase 2 exit check: a release created through /nrms/api reaches a static page and an email, driven only by /stack/tick", async () => {
     const draft = { ...sampleDraft, key: "2026HLTH0099-000099" };
     const createRes = await fetch(`${instance.stackUrl}/nrms/api/releases`, {

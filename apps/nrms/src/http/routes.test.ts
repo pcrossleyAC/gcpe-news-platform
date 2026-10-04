@@ -31,7 +31,7 @@ describe("NRMS HTTP API", () => {
         .sign(pair.privateKey);
     editor = await sign(["NRMS.Editor"]);
     reader = await sign([]);
-    app = createApp({ db: tdb.db, auth: { issuer, audience, keys } });
+    app = createApp({ db: tdb.db, auth: { issuer, audience, keys }, eventSecrets: {} });
   });
   afterAll(async () => {
     await tdb.drop();
@@ -163,6 +163,7 @@ describe("NRMS HTTP API", () => {
       db: tdb.db,
       auth: { local: { secret } },
       loginRouter: localLoginRouter({ username: "admin", passwordHash, secret }),
+      eventSecrets: {},
     });
 
     const login = await request(localApp).post("/auth/local/token").send({ username: "admin", password: "local-test-pass" });

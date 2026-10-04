@@ -181,7 +181,15 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
     const core = parse(w.CORE.EVENT_SUBSCRIBERS);
     const nrms = parse(w.NRMS.EVENT_SUBSCRIBERS);
     const newsApiSubs = parse(w.NEWSAPI.EVENT_SUBSCRIBERS);
-    expect(core).toEqual([{ name: "news-api", url: "self:/events", secret: expect.any(String), types: ["*"] }]);
+    expect(core).toEqual([
+      { name: "news-api", url: "self:/events", secret: expect.any(String), types: ["*"] },
+      {
+        name: "nrms",
+        url: "self:/nrms/events",
+        secret: expect.any(String),
+        types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+      },
+    ]);
     expect(nrms.map((s: { name: string; types: string[] }) => [s.name, s.types])).toEqual([["news-api", ["*"]], ["nod", ["release.published"]]]);
     expect(newsApiSubs).toEqual([{ name: "public-site", url: "self:/site-builder/events", secret: expect.any(String), types: ["site.rebuild_requested"] }]);
     // Receivers hold exactly the secret their sender signs with, keyed by the sender's source name.
@@ -231,5 +239,16 @@ describe("SESSION_SECRET for the stack", () => {
 
   it("no STACK_EVENT_SECRET and no SESSION_SECRET means no session secret", () => {
     expect(envFor({}, "CORE").SESSION_SECRET).toBeUndefined();
+  });
+});
+
+describe("Core → NRMS taxonomy route", () => {
+  it("sends Core's org and category events to NRMS, signed with their own pair secret", () => {
+    const wiring = internalEventEnv("e".repeat(40));
+    const coreSubs = JSON.parse(wiring.CORE.EVENT_SUBSCRIBERS!) as { name: string; url: string; types: string[] }[];
+    const toNrms = coreSubs.find((s) => s.name === "nrms")!;
+    expect(toNrms.url).toBe("self:/nrms/events");
+    expect(toNrms.types).toEqual(["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"]);
+    expect(Object.keys(JSON.parse(wiring.NRMS.EVENT_SECRETS!))).toEqual(["core"]);
   });
 });

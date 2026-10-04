@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv } from "@gcpe/auth";
-import { parseEnv } from "@gcpe/config";
+import { eventSecretsSchema, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
@@ -13,6 +13,7 @@ export const nrmsEnvSchema = z.object({
   DATABASE_URL: z.string().url(),
   PORT: z.coerce.number().int().default(3006),
   EVENT_SUBSCRIBERS: z.string().optional(),
+  EVENT_SECRETS: eventSecretsSchema,
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   PUBLISH_INTERVAL_MS: z.coerce.number().int().default(60000),
 });
@@ -53,6 +54,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     db,
     auth: auth.bearer,
     loginRouter: auth.loginRouter,
+    eventSecrets: parsed.EVENT_SECRETS,
   });
 
   // Set by startLoops(); closers below reference these lazily so they're safe to call even

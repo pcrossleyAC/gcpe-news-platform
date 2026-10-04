@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, jsonb, pgTable, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 import type { PostKind, ReleaseRecord } from "@gcpe/events";
 
 export * from "@gcpe/events/tables";
@@ -28,3 +28,25 @@ export const releases = pgTable(
   ],
 );
 export type ReleaseRow = typeof releases.$inferSelect;
+
+/** Local copy of Core's ministries (org.* events). Keys stored lowercased. */
+export const organizations = pgTable("organizations", {
+  key: text("key").primaryKey(),
+  displayName: text("display_name").notNull(),
+  abbreviation: text("abbreviation"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isActive: boolean("is_active").notNull().default(true),
+});
+
+/** Local copy of Core's sectors, themes and tags (sector.*, theme.*, tag.* events). */
+export const categoryTerms = pgTable(
+  "category_terms",
+  {
+    kind: text("kind").$type<"sectors" | "themes" | "tags">().notNull(),
+    key: text("key").notNull(),
+    displayName: text("display_name").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    isActive: boolean("is_active").notNull().default(true),
+  },
+  (t) => [primaryKey({ columns: [t.kind, t.key] })],
+);

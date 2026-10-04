@@ -1,8 +1,9 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
-import { requireRole } from "@gcpe/auth";
+import { requireAnyRole, requireRole } from "@gcpe/auth";
 import * as releasesService from "../releases";
+import { listCategories } from "../taxonomy";
 
 const scheduleSchema = z.object({ publishAt: z.string().datetime({ offset: true }) });
 type Handler<P> = (req: Request<P>, res: Response) => Promise<void>;
@@ -28,6 +29,7 @@ function handleError(e: unknown, res: Response): boolean {
 
 export function apiRoutes(db: Db): Router {
   const r = Router();
+  const read = requireAnyRole("NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor");
   const run = <P>(h: Handler<P>): ReturnType<typeof safe<P>> =>
     safe<P>(async (req, res) => {
       try {
@@ -36,6 +38,8 @@ export function apiRoutes(db: Db): Router {
         if (!handleError(e, res)) throw e;
       }
     });
+
+  r.get("/categories", read, run(async (_req, res) => void res.json(await listCategories(db))));
 
   r.post(
     "/releases",

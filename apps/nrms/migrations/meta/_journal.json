@@ -15,6 +15,13 @@
       "when": 1791045774438,
       "tag": "0001_release_failed",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791093009067,
+      "tag": "0002_taxonomy_cache",
+      "breakpoints": true
     }
   ]
 }

@@ -82,10 +82,16 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.Proces
  * The fixed in-process event topology of the stack: who publishes what to whom. Inside one
  * process this never varies by deployment, so the operator shouldn't have to spell it out.
  * Core and NRMS send every event type to the News API (it restricts by source itself); NoD
- * only consumes release.published; the site builder only site.rebuild_requested.
+ * only consumes release.published; the site builder only site.rebuild_requested; NRMS also
+ * keeps its own local copy of Core's ministries and categories, so it receives Core's org,
+ * sector, theme and tag upserted/deactivated events too (Phase 3b task 3: taxonomy.ts).
  */
 export const INTERNAL_EVENT_ROUTES = [
   { from: "CORE", source: "core", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
+  {
+    from: "CORE", source: "core", to: "NRMS", name: "nrms", url: "self:/nrms/events",
+    types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+  },
   { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
   { from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events", types: ["release.published"] },
   { from: "NEWSAPI", source: "news-api", to: "SITE", name: "public-site", url: "self:/site-builder/events", types: ["site.rebuild_requested"] },
