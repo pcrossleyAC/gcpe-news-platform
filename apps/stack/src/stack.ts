@@ -319,6 +319,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
       createTickRunner([
         // Flickr first, so a photo made public this tick is published with it in the same tick.
         { name: "nrms.flickr", run: worker(nrms, "flickr") },
+        // Carousel switch-over before publish: a next carousel that just went live should be
+        // what the same tick's publish step (and anything it triggers) sees as current.
+        { name: "nrms.site", run: worker(nrms, "site") },
         { name: "nrms.publish", run: worker(nrms, "publish") },
         { name: "nrms.dispatch", run: worker(nrms, "dispatch") },
         { name: "core.dispatch", run: worker(core, "dispatch") },

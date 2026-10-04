@@ -468,8 +468,8 @@ describe("apps/stack", () => {
       const res = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { ran: Record<string, string>; ms: number };
-      expect(Object.keys(body.ran)).toEqual(["nrms.flickr", "nrms.publish", "nrms.dispatch", "core.dispatch", "news-api.dispatch", "nod.send", "distribution.send"]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.keys(body.ran)).toEqual(["nrms.flickr", "nrms.site", "nrms.publish", "nrms.dispatch", "core.dispatch", "news-api.dispatch", "nod.send", "distribution.send"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 

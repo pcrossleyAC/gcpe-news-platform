@@ -2,7 +2,7 @@ import express, { type Router } from "express";
 import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { requireBearer, type BearerOptions } from "@gcpe/auth";
-import { createEventReceiver, MAX_EVENT_BYTES } from "@gcpe/events";
+import { createEventReceiver, MAX_EVENT_BYTES, type SubscriberConfig } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import type { DistributionClient } from "./clients";
 import type { ObjectStore } from "@gcpe/storage";
@@ -10,6 +10,7 @@ import type { FlickrClient } from "./media/flickr-client";
 import type { EmbedDeps } from "./media/embeds";
 import { mediaRoutes } from "./http/media-routes";
 import { apiRoutes } from "./http/routes";
+import { siteRoutes } from "./http/site-routes";
 import type { WorkflowDeps } from "./releases/workflow";
 import { taxonomyHandler } from "./taxonomy";
 
@@ -26,6 +27,8 @@ export function createApp(deps: {
   flickr?: FlickrClient | null;
   /** Body `<asset>` embed normalisation on save (Task 7); unset → bodies are sanitised but not normalised. */
   embeds?: EmbedDeps;
+  /** Outbound event subscribers, for the website section's `site.content.changed` events (Task 2); unset → events are enqueued but delivered to no one. */
+  subscribers?: SubscriberConfig[];
 }): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -46,6 +49,7 @@ export function createApp(deps: {
     "/api",
     requireBearer(deps.auth),
     mediaRoutes({ db: deps.db, store: deps.store, flickr: deps.flickr }),
+    siteRoutes({ db: deps.db, subscribers: deps.subscribers ?? [], timeZone: deps.workflow.timeZone }),
     express.json({ limit: MAX_EVENT_BYTES }),
     apiRoutes({ db: deps.db, workflow: deps.workflow, distribution: deps.distribution, store: deps.store, embeds: deps.embeds }),
   );

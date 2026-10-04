@@ -13,6 +13,7 @@ import { defaultSoundcloudOembed, type EmbedDeps } from "./media/embeds";
 import { flickrClient, type FlickrConfig } from "./media/flickr-client";
 import { flickrPrepareMedia, processFlickrJobs, startFlickrJobs } from "./media/flickr-jobs";
 import { publishDue, startPublisher } from "./publisher";
+import { switchCarousels } from "./website/carousel";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset. */
 const optionalSetting = z
@@ -204,6 +205,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     store,
     flickr,
     embeds,
+    subscribers,
   });
 
   const alertEmails = parsed.FLICKR_ALERT_EMAILS;
@@ -236,6 +238,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     port: parsed.PORT,
     workers: {
       flickr: () => processFlickrJobs(flickrJobsOpts),
+      site: () => switchCarousels(db, subscribers),
       publish: () => publishDue({ db, subscribers, filesBase, prepareMedia }),
       dispatch: () => dispatchOnce({ db, subscribers }),
     },

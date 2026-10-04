@@ -8,6 +8,7 @@ import {
   reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
 } from "@gcpe/nrms-contract";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError, VersionConflictError } from "../releases/errors";
+import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "../website/errors";
 import {
   goTo, listFolder, listItems, listMediaLists, listPageImages, listPageTypes, publication, publications, releaseLog, releaseVisible, searchReleases,
 } from "../releases/queries";
@@ -39,7 +40,7 @@ export interface RouteDeps {
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
-export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string };
+export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string };
 export type Handler = (req: Request<Params>, res: Response) => Promise<void>;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -53,6 +54,9 @@ export function handleError(e: unknown, res: Response): boolean {
   if (e instanceof VersionConflictError || e instanceof ReleaseStateError) return void res.status(409).json({ error: e.message }), true;
   if (e instanceof ReleaseNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   if (e instanceof ReleaseTooLargeError) return void res.status(413).json({ error: "release too large" }), true;
+  if (e instanceof SiteRuleError) return void res.status(422).json({ errors: e.problems }), true;
+  if (e instanceof SiteConflictError) return void res.status(409).json({ error: e.message }), true;
+  if (e instanceof SiteNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   return false;
 }
 
