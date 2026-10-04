@@ -4,7 +4,7 @@ export interface TypeRules {
   creatable: boolean;
   mediaListsAllowed: boolean;
   mediaListRequired: boolean;
-  /** Sectors, themes, tags, summary, keywords, release date, assets, translations. */
+  /** Sectors, themes, tags, summary, keywords, release date, assets, translations (PDF uploads section — not French documents, which every type may have). */
   categoriesBeyondMinistries: boolean;
   assetsAllowed: boolean;
   pageImageAllowed: boolean;

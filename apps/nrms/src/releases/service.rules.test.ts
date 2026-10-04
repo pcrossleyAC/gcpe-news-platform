@@ -55,7 +55,8 @@ describe("release editing service — further rules", () => {
     await expect(saveSettings(db(), adv.id, { ...settings, version: adv.version, toSubscribers: true, mediaListKeys: ["regional"] }, editor)).rejects.toBeInstanceOf(ReleaseRuleError);
     await expect(saveSettings(db(), adv.id, { ...settings, version: adv.version, mediaListKeys: ["nope"] }, editor)).rejects.toEqual(new ReleaseRuleError(["Unknown media distribution list: nope"]));
     await expect(saveMeta(db(), adv.id, { version: adv.version, key: null, redirectUrl: null, location: "", summary: "A summary", socialMediaSummary: null, keywords: null }, editor)).rejects.toBeInstanceOf(ReleaseRuleError);
-    await expect(addTranslation(db(), adv.id, adv.documents[0]!.id, { version: adv.version, languageId: 3084 }, editor)).rejects.toBeInstanceOf(ReleaseRuleError);
+    const fr = await addTranslation(db(), adv.id, adv.documents[0]!.id, { version: adv.version, languageId: 3084 }, editor);
+    expect(fr.documents[0]!.languages.map((l) => l.languageId)).toEqual([4105, 3084]);
     await tdb.db.execute(sql`UPDATE category_terms SET is_active = false WHERE kind = 'themes' AND key = 'families'`);
     const v = await createRelease(db(), sampleCreate, editor);
     const v2 = await saveCategories(db(), v.id, { version: v.version, leadMinistryKey: null, ministries: ["health", "finance"], sectors: ["health"], themes: ["families"], tags: [] }, editor);
@@ -71,5 +72,18 @@ describe("release editing service — further rules", () => {
     expect((await loadView(db(), v.id))!.status).toBe("deleted");
     const log = await tdb.db.execute<{ text: string }>(sql`SELECT text FROM release_log WHERE release_id = ${v.id} ORDER BY id`);
     expect(log.rows.map((r) => r.text)).toEqual(["Created Release", "Added a French translation", "Deleted Release"]);
+  });
+
+  it("a failed correction (released before) can't be deleted or re-planned; a failed first publish can be deleted", async () => {
+    const live = await createRelease(db(), sampleCreate, editor);
+    await setStatus(live.id, "failed", sql`, released_at = now()`);
+    const failedLive = (await loadView(db(), live.id))!;
+    await expect(deleteRelease(db(), live.id, failedLive.version, editor)).rejects.toEqual(new ReleaseStateError("This release has been published — unpublish it first."));
+    await expect(saveSettings(db(), live.id, { ...settings, version: failedLive.version, plannedPublishAt: "2030-01-01T00:00:00Z" }, editor)).rejects.toBeInstanceOf(ReleaseStateError);
+    const same = await saveSettings(db(), live.id, { ...settings, version: failedLive.version, plannedPublishAt: failedLive.publishAt }, editor);
+    expect(same.publishAt).toBe(failedLive.publishAt);
+    const never = await createRelease(db(), sampleCreate, editor);
+    await setStatus(never.id, "failed");
+    expect(await deleteRelease(db(), never.id, never.version, editor)).toBe("deleted");
   });
 });

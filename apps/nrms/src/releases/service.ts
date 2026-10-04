@@ -198,10 +198,10 @@ export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Ac
 
     const planned = input.plannedPublishAt ? new Date(input.plannedPublishAt) : null;
     let publishAt = row.publishAt;
-    if (PLANNING_STATUSES.has(row.status)) publishAt = planned;
+    // A release that has gone live (incl. a failed correction) keeps its time; schedule/cancel change committed times.
+    if (PLANNING_STATUSES.has(row.status) && !row.releasedAt) publishAt = planned;
     else if (planned && planned.getTime() !== row.publishAt?.getTime()) {
-      // A committed time changes through schedule/cancel, not here.
-      throw new ReleaseStateError("The publish time can only be planned while the release is a draft, approved or failed.");
+      throw new ReleaseStateError("The publish time can only be planned while the release is a draft, approved or failed and has never been published.");
     }
 
     await tx
@@ -347,7 +347,6 @@ export function addDocument(db: Db, id: string, input: AddDocumentInput, actor: 
 export function addTranslation(db: Db, id: string, documentId: string, input: AddTranslationInput, actor: Actor): Promise<ReleaseView> {
   return mutateRelease(db, id, input.version, actor, async (tx, row) => {
     if (input.languageId !== LANG_FR) throw new ReleaseRuleError(["Only a French translation can be added."]);
-    if (!typeRules(row.type).categoriesBeyondMinistries) throw new ReleaseRuleError([`A ${TYPE_LABEL[row.type]} has no translations.`]);
     const doc = await documentOf(tx, row.id, documentId);
     const langs = await tx.select().from(documentLanguages).where(eq(documentLanguages.documentId, doc.id));
     if (langs.some((l) => l.languageId === LANG_FR)) throw new ReleaseStateError("This document already has a French translation.");
@@ -413,6 +412,8 @@ export async function deleteRelease(db: Db, id: string, version: number, actor: 
     actor,
     async (tx, row: NewsReleaseRow) => {
       if (!DELETABLE_STATUSES.has(row.status)) throw new ReleaseStateError("Only a draft, approved or failed release can be deleted.");
+      // A failed correction is still live on the site: it has to be unpublished, not hidden.
+      if (row.releasedAt) throw new ReleaseStateError("This release has been published — unpublish it first.");
       if (!row.reference) {
         await tx.delete(newsReleases).where(eq(newsReleases.id, row.id));
         outcome = "deleted";
