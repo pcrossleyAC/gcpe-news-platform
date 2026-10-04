@@ -1,9 +1,10 @@
-import express, { Router, type Request, type Response } from "express";
+import express, { Router, type NextFunction, type Request, type Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import type { SubscriberConfig } from "@gcpe/events";
+import type { ObjectStore } from "@gcpe/storage";
 import { siteLog, type SiteLogArea } from "../db/schema";
 import {
   createNextCarousel,
@@ -20,12 +21,19 @@ import {
   slideImage,
   type PinSlot,
 } from "../website/carousel";
+import { deleteFile, listFiles, uploadFile, MAX_SITE_FILE_BYTES } from "../website/files";
+import { getLinks, saveLinks } from "../website/links";
+import { getLiveFeed, saveLiveFeed, type LiveFeedDefaults } from "../website/settings";
 import { run, UUID, type Params } from "./routes";
 
 export interface SiteRouteDeps {
   db: Db;
   subscribers: SubscriberConfig[];
   timeZone: string;
+  /** Live Feed URLs to show when none is configured (env `LIVE_WEBCAST_*_URL_DEFAULT`). */
+  liveFeedDefaults: LiveFeedDefaults;
+  /** Where general files go; unset → the file upload/delete routes answer 503. */
+  store?: ObjectStore;
 }
 
 /** Slide/pin images, same 2 MiB cap as the brief (constraints.md §6.1). */
@@ -70,8 +78,44 @@ const logQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 
+const liveFeedSchema = z.object({
+  version: z.number().int().positive(),
+  enabled: z.boolean(),
+  manifestUrl: z.string().trim().max(255),
+  m3uUrl: z.string().trim().max(255),
+});
+
+const linkInputSchema = z.object({
+  id: z.string().uuid().optional(),
+  text: z.string().max(255),
+  url: z.string().max(255),
+});
+const saveLinksSchema = z.object({
+  version: z.number().int().positive(),
+  links: z.array(linkInputSchema),
+});
+
+const filesQuerySchema = z.object({
+  q: z.string().trim().max(255).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+});
+const uploadFileQuerySchema = z.object({
+  name: z.string().min(1).max(1000),
+  replace: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+});
+
 const bytesOf = (req: Request): Buffer => (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
 const notFound = (res: Response) => void res.status(404).json({ error: "not found" });
+
+/** Validates the query string *before* any body is read, so a malformed request never gets buffered (as media-routes.ts does). */
+const query =
+  <T extends z.ZodTypeAny>(schema: T) =>
+  (req: Request, res: Response, next: NextFunction) => {
+    const parsed = schema.safeParse(req.query);
+    if (!parsed.success) return void res.status(400).json({ error: "invalid request", issues: parsed.error.issues });
+    res.locals.query = parsed.data as z.infer<T>;
+    next();
+  };
 
 /**
  * The home-page carousel, emergency pins and the site activity log (plan 3d task 2). Routes are
@@ -85,12 +129,15 @@ const notFound = (res: Response) => void res.status(404).json({ error: "not foun
  * own `run`/`UUID` are defined.)
  */
 export function siteRoutes(deps: SiteRouteDeps): Router {
-  const { db, subscribers, timeZone } = deps;
+  const { db, subscribers, timeZone, liveFeedDefaults } = deps;
   const r = Router();
   const read = requireAnyRole("NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor", "Core.Admin");
   const edit = requireRole("NRMS.SiteEditor");
   const json = express.json({ limit: "64kb" });
   const rawImage = express.raw({ type: () => true, limit: MAX_SITE_IMAGE_BYTES });
+  const rawFile = express.raw({ type: () => true, limit: MAX_SITE_FILE_BYTES });
+  const needStore = (_req: Request, res: Response, next: NextFunction) =>
+    deps.store ? next() : void res.status(503).json({ error: "File storage isn't configured." });
 
   r.param("id", (_req, res, next, value: string) => (UUID.test(value) ? next() : notFound(res)));
   r.param("slot", (_req, res, next, value: string) => (SLOT.test(value) ? next() : notFound(res)));
@@ -202,6 +249,58 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
         .orderBy(desc(siteLog.at), desc(siteLog.id))
         .limit(limit);
       res.json(rows.map((row) => ({ ...row, at: row.at.toISOString() })));
+    }),
+  );
+
+  r.get("/site/live-feed", read, run(async (_req, res) => void res.json(await getLiveFeed(db, liveFeedDefaults))));
+  r.put(
+    "/site/live-feed",
+    edit,
+    json,
+    run(async (req, res) => {
+      const input = liveFeedSchema.parse(req.body);
+      res.json(await saveLiveFeed(db, input, actorOf(req), subscribers));
+    }),
+  );
+
+  r.get("/site/links", read, run(async (_req, res) => void res.json(await getLinks(db))));
+  r.put(
+    "/site/links",
+    edit,
+    json,
+    run(async (req, res) => {
+      const input = saveLinksSchema.parse(req.body);
+      res.json(await saveLinks(db, input, actorOf(req), subscribers));
+    }),
+  );
+
+  r.get(
+    "/site/files",
+    read,
+    run(async (req, res) => {
+      const q = filesQuerySchema.parse(req.query);
+      res.json(await listFiles(db, q));
+    }),
+  );
+  r.post(
+    "/site/files",
+    edit,
+    needStore,
+    query(uploadFileQuerySchema),
+    rawFile,
+    run(async (req, res) => {
+      const q = res.locals.query as z.infer<typeof uploadFileQuerySchema>;
+      const view = await uploadFile(db, deps.store!, { name: q.name, bytes: bytesOf(req), replace: q.replace }, actorOf(req));
+      res.status(201).json(view);
+    }),
+  );
+  r.delete(
+    "/site/files/:id",
+    edit,
+    needStore,
+    run(async (req: Request<Params>, res) => {
+      await deleteFile(db, deps.store!, req.params.id, actorOf(req));
+      res.status(204).end();
     }),
   );
 

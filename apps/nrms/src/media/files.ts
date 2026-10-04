@@ -1,7 +1,7 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
 import { typeRules, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
-import { randomFileKey, sniff, type ObjectStore } from "@gcpe/storage";
+import { appendMatchingExtension, randomFileKey, sniff, type ObjectStore, type SniffedType } from "@gcpe/storage";
 import { newsReleases, releaseFiles } from "../db/schema";
 import { ReleaseNotFoundError, ReleaseRuleError } from "../releases/errors";
 import { mutateRelease, type Actor } from "../releases/store";
@@ -20,12 +20,6 @@ export interface AddReleaseFileInput {
 export const MAX_RELEASE_FILE_BYTES = 25 * 1024 * 1024;
 const MAX_LABEL = 200;
 
-const EXTENSIONS: Record<string, string[]> = {
-  "application/pdf": [".pdf"],
-  "image/png": [".png"],
-  "image/jpeg": [".jpg", ".jpeg"],
-};
-
 const LOG_NOUN: Record<ReleaseFileKind, string> = { translation: "translation", asset: "media file" };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -36,19 +30,8 @@ export function fileLabel(fileName: string): string {
   return cleaned || "file";
 }
 
-/**
- * The name the storage key is built from. The public `/files` mount derives Content-Type from the
- * key's extension, so the extension must agree with the sniffed bytes: a PNG uploaded as
- * `evil.html` is stored as `…-evil.html.png` and can never be served as HTML.
- */
-function keyName(fileName: string, contentType: string): string {
-  const lower = fileName.toLowerCase();
-  const exts = EXTENSIONS[contentType]!;
-  return exts.some((e) => lower.endsWith(e)) ? fileName : `${fileName}${exts[0]}`;
-}
-
 /** Magic-byte check, before anything is written. */
-function checkBytes(kind: ReleaseFileKind, bytes: Buffer): string {
+function checkBytes(kind: ReleaseFileKind, bytes: Buffer): SniffedType {
   if (bytes.length === 0) throw new ReleaseRuleError(["The file is empty."]);
   const type = sniff(bytes);
   if (kind === "translation") {
@@ -80,7 +63,7 @@ async function deleteQuietly(store: ObjectStore, key: string, why: string): Prom
 export async function addReleaseFile(db: Db, store: ObjectStore, id: string, input: AddReleaseFileInput, actor: Actor): Promise<ReleaseView> {
   const contentType = checkBytes(input.kind, input.bytes);
   const label = fileLabel(input.fileName);
-  const key = randomFileKey(`releases/${id}/${input.kind}s`, keyName(label, contentType));
+  const key = randomFileKey(`releases/${id}/${input.kind}s`, appendMatchingExtension(label, contentType));
   await store.put(key, input.bytes, contentType);
   try {
     return await mutateRelease(db, id, input.version, actor, async (tx, row) => {

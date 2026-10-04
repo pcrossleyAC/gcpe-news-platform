@@ -29,6 +29,8 @@ export function createApp(deps: {
   embeds?: EmbedDeps;
   /** Outbound event subscribers, for the website section's `site.content.changed` events (Task 2); unset → events are enqueued but delivered to no one. */
   subscribers?: SubscriberConfig[];
+  /** Live Feed URLs to show when none is configured (Task 3, env `LIVE_WEBCAST_*_URL_DEFAULT`); unset → no default. */
+  liveFeedDefaults?: { manifestUrl: string; m3uUrl: string };
 }): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -49,7 +51,13 @@ export function createApp(deps: {
     "/api",
     requireBearer(deps.auth),
     mediaRoutes({ db: deps.db, store: deps.store, flickr: deps.flickr }),
-    siteRoutes({ db: deps.db, subscribers: deps.subscribers ?? [], timeZone: deps.workflow.timeZone }),
+    siteRoutes({
+      db: deps.db,
+      subscribers: deps.subscribers ?? [],
+      timeZone: deps.workflow.timeZone,
+      liveFeedDefaults: deps.liveFeedDefaults ?? { manifestUrl: "", m3uUrl: "" },
+      store: deps.store,
+    }),
     express.json({ limit: MAX_EVENT_BYTES }),
     apiRoutes({ db: deps.db, workflow: deps.workflow, distribution: deps.distribution, store: deps.store, embeds: deps.embeds }),
   );

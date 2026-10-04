@@ -72,6 +72,10 @@ export const nrmsEnvSchema = z.object({
     .default("")
     .transform((v) => v.split(",").map((s) => s.trim()).filter(Boolean))
     .pipe(z.array(z.string().email("FLICKR_ALERT_EMAILS must be a comma-separated list of email addresses"))),
+  // Task 3: shown in the Live Feed editor when site_settings has no URL stored for that field
+  // (constraints.md Q1) — never written back to the row, just what the editor sees unconfigured.
+  LIVE_WEBCAST_MANIFEST_URL_DEFAULT: z.string().url().optional(),
+  LIVE_WEBCAST_M3U_URL_DEFAULT: z.string().url().optional(),
 }).superRefine((env, ctx) => {
   if (!env.FLICKR_API_KEY) return;
   for (const name of FLICKR_SECRETS) {
@@ -180,6 +184,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const filesBase = parsed.PUBLIC_FILES_BASE;
   const workflow = { timeZone: tenant.timeZone, countSubscribers, filesBase };
   const store = localStore(parsed.STORAGE_DIR, "/files/");
+  const liveFeedDefaults = { manifestUrl: parsed.LIVE_WEBCAST_MANIFEST_URL_DEFAULT ?? "", m3uUrl: parsed.LIVE_WEBCAST_M3U_URL_DEFAULT ?? "" };
   const distribution = parsed.DISTRIBUTION_URL
     ? distributionClient({ baseUrl: parsed.DISTRIBUTION_URL, getToken: serviceTokenProvider(distributionServiceTokenOptions(parsed, auth.local)) })
     : undefined;
@@ -206,6 +211,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     flickr,
     embeds,
     subscribers,
+    liveFeedDefaults,
   });
 
   const alertEmails = parsed.FLICKR_ALERT_EMAILS;

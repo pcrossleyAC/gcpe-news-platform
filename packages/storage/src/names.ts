@@ -64,3 +64,44 @@ export function randomFileKey(prefix: string, original: string): string {
   const random = randomBytes(8).toString("hex");
   return `${prefix}/${random}-${safeFileName(original)}`;
 }
+
+export type SniffedType = "application/pdf" | "image/png" | "image/jpeg";
+
+/** The file extensions each type sniff() can return is allowed to be served under. */
+export const SNIFFED_EXTENSIONS: Record<SniffedType, string[]> = {
+  "application/pdf": [".pdf"],
+  "image/png": [".png"],
+  "image/jpeg": [".jpg", ".jpeg"],
+};
+
+/** True if `fileName` already ends (case-insensitively) with one of `contentType`'s valid extensions. */
+export function hasMatchingExtension(fileName: string, contentType: SniffedType): boolean {
+  const lower = fileName.toLowerCase();
+  return SNIFFED_EXTENSIONS[contentType].some((e) => lower.endsWith(e));
+}
+
+/**
+ * Forces a file name's extension to agree with its sniffed content type by *appending* the
+ * canonical extension when the name doesn't already end in one of that type's extensions —
+ * the rest of the name is kept verbatim. Used for storage keys, where the original name is
+ * kept only for readability (media/files.ts): "evil.html" + image/png becomes
+ * "evil.html.png", never served as HTML.
+ */
+export function appendMatchingExtension(fileName: string, contentType: SniffedType): string {
+  return hasMatchingExtension(fileName, contentType) ? fileName : `${fileName}${SNIFFED_EXTENSIONS[contentType][0]}`;
+}
+
+/**
+ * Forces a file name's extension to agree with its sniffed content type by *replacing* any
+ * other recognised (pdf/png/jpg/jpeg) extension, or appending one when there is none. Used for
+ * names the public site serves as-is (website/files.ts), where the result should read as an
+ * ordinary file name: "report.pdf" + image/png becomes "report.png", not "report.pdf.png".
+ */
+export function forceExtension(fileName: string, contentType: SniffedType): string {
+  if (hasMatchingExtension(fileName, contentType)) return fileName;
+  const lower = fileName.toLowerCase();
+  const allExtensions = Object.values(SNIFFED_EXTENSIONS).flat();
+  const existing = allExtensions.find((e) => lower.endsWith(e));
+  const base = existing ? fileName.slice(0, fileName.length - existing.length) : fileName;
+  return `${base}${SNIFFED_EXTENSIONS[contentType][0]}`;
+}

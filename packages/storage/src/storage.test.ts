@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assertSafeKey, InvalidKeyError, localStore, randomFileKey, safeFileName, sniff } from "./index";
+import { appendMatchingExtension, assertSafeKey, forceExtension, InvalidKeyError, localStore, randomFileKey, safeFileName, sniff } from "./index";
 
 const PDF = Buffer.from("%PDF-1.7\n%âãÏÓ\n1 0 obj\n");
 const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]);
@@ -20,6 +20,19 @@ describe("names", () => {
   it("rejects unsafe keys", () => {
     for (const bad of ["../x", "a/../b", "/abs", "A/b", "a//b", "a/b/c/d/e", ".hidden", "a/.."]) expect(() => assertSafeKey(bad), bad).toThrow(InvalidKeyError);
     expect(() => assertSafeKey("releases/abc/translations/0123456789abcdef-doc.pdf")).not.toThrow();
+  });
+
+  it("appendMatchingExtension keeps a matching extension and appends the canonical one otherwise", () => {
+    expect(appendMatchingExtension("doc.pdf", "application/pdf")).toBe("doc.pdf");
+    expect(appendMatchingExtension("evil.html", "image/png")).toBe("evil.html.png");
+    expect(appendMatchingExtension("photo.jpeg", "image/jpeg")).toBe("photo.jpeg");
+  });
+
+  it("forceExtension keeps a matching extension and replaces a mismatched one, or appends when there is none", () => {
+    expect(forceExtension("budget-2026.pdf", "application/pdf")).toBe("budget-2026.pdf");
+    expect(forceExtension("report.pdf", "image/png")).toBe("report.png");
+    expect(forceExtension("report", "image/png")).toBe("report.png");
+    expect(forceExtension("photo.jpeg", "image/jpeg")).toBe("photo.jpeg");
   });
 });
 
