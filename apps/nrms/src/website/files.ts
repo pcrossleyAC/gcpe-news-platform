@@ -76,29 +76,38 @@ export interface UploadFileInput {
  *
  * Unlike release files (media/files.ts), this name is fixed and predictable rather than
  * random, so a new upload and a replace can both land on bytes that already exist at `name`.
- * To keep that safe under a failed or conflicting save, the new bytes are always written under
- * a *temporary* key first; only after the database transaction (the existence/conflict check,
- * and the insert or update) has committed are they written again under the real key — this
- * store has no rename/move, so "moving" is a second `put` — and the temporary key is removed.
- * A failure or conflict before that point never touches `name`'s existing bytes (or writes any
- * for a brand-new name).
+ * The incoming bytes are always staged under a *temporary* key first (this store has no
+ * rename/move, so "moving" bytes onto the real key is a second `put`); the temporary key is
+ * always removed afterwards regardless of outcome.
  *
- * A new upload can't rely on `SELECT … FOR UPDATE WHERE name = X` to catch a concurrent upload
- * of the *same new* name: with no row yet, `FOR UPDATE` has nothing to lock, so two concurrent
- * callers would both see "no existing row" and both reach the `INSERT`, and the loser would
- * hit the database's unique constraint directly — a raw driver error (500), not a
- * `SiteConflictError` (409). Instead, the insert itself is the conflict check:
- * `.onConflictDoNothing({ target: siteFiles.name })` makes a colliding insert affect zero
- * rows instead of raising, and an empty `returning()` *is* the conflict. Replacing an existing
- * file has no such gap — the row already exists, so `SELECT … FOR UPDATE` genuinely locks it
- * and serialises concurrent replaces/deletes of it.
+ * Fix round 2: every write (or delete, see {@link deleteFile}) of the *real* key now happens
+ * **inside** the database transaction, while that row's lock is held — not after it commits.
+ * That's what actually serialises concurrent writers of the same name; a post-commit "move the
+ * bytes, then re-check" (fix round 1's approach) left a real gap where a concurrent replace or
+ * delete could legitimately change the row in between, and the re-check couldn't tell "my
+ * write was orphaned by a delete" apart from "someone else legitimately replaced this file
+ * after me" — in the latter case it deleted *their* committed bytes, which is worse than the
+ * bug it was meant to fix.
  *
- * A second race lives between the transaction committing and the post-commit `put` onto the
- * real key: a concurrent `deleteFile` could remove the row (and delete the real key's bytes,
- * if any) in that gap, after which this `put` would still land, leaving bytes at a public key
- * with no row — served forever, invisible in the list. So after that `put`, the row is
- * re-read by id; if it (or this write — compared by `size`, kept simple per the brief) is
- * gone, the bytes just written are deleted again.
+ * - New upload: `INSERT … ON CONFLICT (name) DO NOTHING RETURNING …`. A colliding insert
+ *   affects zero rows instead of raising, and an empty `returning()` *is* the conflict
+ *   (`SiteConflictError`) — `SELECT … FOR UPDATE WHERE name = X` can't do this job because
+ *   with no row yet it has nothing to lock, so two concurrent new uploads of the same name
+ *   would both see "no existing row" and both reach the `INSERT`, the loser hitting the raw
+ *   unique constraint. Once our insert succeeds, Postgres holds that row — including against
+ *   another session's conflicting insert of the same name, which blocks until we commit or
+ *   roll back — so it's safe to write the real key next, inside the same transaction, before
+ *   anyone else can observe or touch this name.
+ * - Replace: `SELECT … FOR UPDATE` genuinely locks the existing row, so a concurrent replace
+ *   or delete of the same file blocks until this transaction ends; the real key is written
+ *   right after the row update, still inside the lock.
+ * - If anything after a *new upload's* real-key write fails — later statements, or the commit
+ *   itself — the insert never lands, so there is no row at all; the bytes just written are
+ *   therefore fully orphaned and are deleted again. Accepted residual (ruling): for a
+ *   *replace*, no such cleanup is attempted if the commit fails after the write — the row
+ *   still holds the old committed metadata while the real key may now hold the new bytes, a
+ *   rare inconsistency this doesn't try to repair (restoring the old bytes isn't necessarily
+ *   even correct — see the report for a fuller discussion).
  */
 export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileInput, actor: Actor): Promise<SiteFileView> {
   const contentType = checkBytes(input.bytes);
@@ -109,6 +118,12 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
   // 128-char segment limit without touching the random part that keeps it unique.
   const tempKey = `tmp-${randomBytes(8).toString("hex")}-${name}`.slice(0, 128);
   await store.put(tempKey, input.bytes, contentType);
+
+  // Only true once the real key has actually been written for a brand-new row — see the
+  // catch below: that's the one case where a later failure means the bytes are orphaned
+  // (no row ever existed) and must be cleaned up; a conflict (thrown before this point) must
+  // never touch `name`'s existing bytes, and a replace's accepted residual is never cleaned up.
+  let wroteRealKeyForNewRow = false;
   try {
     const row = await db.transaction(async (tx) => {
       if (!input.replace) {
@@ -118,38 +133,41 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
           .onConflictDoNothing({ target: siteFiles.name })
           .returning();
         if (!created) throw new SiteConflictError("A file with that name already exists.");
+        await store.put(name, input.bytes, contentType);
+        wroteRealKeyForNewRow = true;
         await writeSiteLog(tx, actor, "files", `Uploaded ${name}`);
         return created;
       }
       const [existing] = await tx.select().from(siteFiles).where(eq(siteFiles.name, name)).for("update");
       if (!existing) throw new SiteNotFoundError(`no file named ${name}`);
       const [updated] = await tx.update(siteFiles).set({ contentType, size: input.bytes.length }).where(eq(siteFiles.id, existing.id)).returning();
+      await store.put(name, input.bytes, contentType);
       await writeSiteLog(tx, actor, "files", `Replaced ${name}`);
       return updated!;
     });
-    // The row is committed; move the bytes onto the real key.
-    await store.put(name, input.bytes, contentType);
-    // A concurrent delete (or another replace) could have landed in the gap between the
-    // commit above and this put — if the row this write committed is gone (or no longer
-    // reflects this write), the bytes just written are orphaned; remove them again.
-    const [after] = await db.select({ id: siteFiles.id, size: siteFiles.size }).from(siteFiles).where(eq(siteFiles.id, row.id));
-    if (!after || after.size !== row.size) {
-      await deleteQuietly(store, name, "stored site file", "file removed or replaced during upload");
-    }
     return view(row);
+  } catch (e) {
+    if (wroteRealKeyForNewRow) await deleteQuietly(store, name, "stored site file", "upload not saved");
+    throw e;
   } finally {
     await deleteQuietly(store, tempKey, "stored site file", "upload cleanup");
   }
 }
 
-/** Deletes the row, then the bytes once that's committed. */
+/**
+ * Deletes a file: `SELECT … FOR UPDATE` locks the row, then the row and the real key's bytes
+ * are both removed before the transaction commits (fix round 2 — see {@link uploadFile}'s
+ * doc comment). Locking the row first means a concurrent replace or another delete of the
+ * same file blocks until this transaction ends, rather than racing it. Deleting the bytes
+ * inside the transaction, not best-effort afterwards, means a failure to delete them aborts
+ * the whole delete (row and bytes stay in sync) instead of leaving a row-less orphan.
+ */
 export async function deleteFile(db: Db, store: ObjectStore, id: string, actor: Actor): Promise<void> {
-  let key: string | null = null;
   await db.transaction(async (tx) => {
-    const [row] = await tx.delete(siteFiles).where(eq(siteFiles.id, id)).returning();
+    const [row] = await tx.select().from(siteFiles).where(eq(siteFiles.id, id)).for("update");
     if (!row) throw new SiteNotFoundError("file not found");
-    key = row.storageKey;
+    await tx.delete(siteFiles).where(eq(siteFiles.id, id));
+    await store.delete(row.storageKey);
     await writeSiteLog(tx, actor, "files", `Deleted ${row.name}`);
   });
-  if (key) await deleteQuietly(store, key, "stored site file", "file deleted");
 }

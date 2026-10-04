@@ -2,7 +2,6 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { localStore, type ObjectStore } from "@gcpe/storage";
 import { createNrmsTestDb, editor } from "../../test/helpers";
@@ -159,25 +158,70 @@ describe("website/files — general file uploads", () => {
     expect((await listFiles(tdb.db, { q: "race" })).total).toBe(1);
   });
 
-  it("a delete racing the post-commit move onto the real key doesn't leave orphaned bytes with no row", async () => {
-    // Simulates a concurrent deleteFile landing between uploadFile's transaction commit and its
-    // post-commit `store.put` onto the real key: the wrapped store's `put` for that real key
-    // deletes the just-committed row (and its bytes) via the real store *before* the bytes are
-    // actually written, reproducing the race deterministically rather than relying on timing.
-    const racyStore: ObjectStore = {
+  it("a delete issued while a replace holds the row lock waits for it, and ends with the row and bytes consistent", async () => {
+    // Fix round 2: both uploadFile(replace) and deleteFile take `SELECT ... FOR UPDATE` on the
+    // same row before touching the real key, so one genuinely blocks the other at the database
+    // level — no injected delay needed to prove it. The replace's `put` for the real key is
+    // gated on a promise we control; it signals (`reachedPut`) once it's there, so the test
+    // knows the replace's transaction already holds the row lock before it starts the delete.
+    const name = "lock-race.pdf";
+    const created = await uploadFile(tdb.db, store, { name, bytes: PDF }, editor);
+
+    let releaseGate!: () => void;
+    const gate = new Promise<void>((resolve) => { releaseGate = resolve; });
+    let signalReachedPut!: () => void;
+    const reachedPut = new Promise<void>((resolve) => { signalReachedPut = resolve; });
+    const gatedStore: ObjectStore = {
       ...store,
       async put(key, bytes, contentType) {
-        if (key === "race2.pdf") {
-          const [existing] = await tdb.db.select({ id: siteFiles.id }).from(siteFiles).where(eq(siteFiles.name, "race2.pdf"));
-          if (existing) await deleteFile(tdb.db, store, existing.id, editor);
+        if (key === name) {
+          signalReachedPut();
+          await gate;
         }
         return store.put(key, bytes, contentType);
       },
     };
 
-    await uploadFile(tdb.db, racyStore, { name: "race2.pdf", bytes: PDF }, editor);
+    const replaceBytes = Buffer.concat([PDF, Buffer.from("replaced")]);
+    const replacePromise = uploadFile(tdb.db, gatedStore, { name, bytes: replaceBytes, replace: true }, editor);
+    await reachedPut; // the replace's transaction holds the row lock and is now blocked on the gate
 
-    expect(await listFiles(tdb.db, { q: "race2" })).toEqual({ total: 0, files: [] });
-    expect(await store.get("race2.pdf")).toBeNull();
+    let deleteSettled = false;
+    const deletePromise = deleteFile(tdb.db, store, created.id, editor).finally(() => {
+      deleteSettled = true;
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(deleteSettled).toBe(false); // genuinely blocked on the replace's row lock, not just slow
+
+    releaseGate();
+    await replacePromise;
+    await deletePromise;
+
+    // The delete can only have run after the replace committed (it was blocked until then), so
+    // the file ends up fully gone — row and bytes consistent, nothing orphaned either way.
+    expect(await listFiles(tdb.db, { q: "lock-race" })).toEqual({ total: 0, files: [] });
+    expect(await store.get(name)).toBeNull();
+  });
+
+  it("two concurrent replaces of the same file serialise on the row lock: the store's bytes match the row's final size", async () => {
+    const name = "concurrent-replace.pdf";
+    await uploadFile(tdb.db, store, { name, bytes: PDF }, editor);
+    const bytesA = Buffer.concat([PDF, Buffer.alloc(5)]);
+    const bytesB = Buffer.concat([PDF, Buffer.alloc(9)]);
+
+    const [a, b] = await Promise.allSettled([
+      uploadFile(tdb.db, store, { name, bytes: bytesA, replace: true }, editor),
+      uploadFile(tdb.db, store, { name, bytes: bytesB, replace: true }, editor),
+    ]);
+    expect(a.status).toBe("fulfilled");
+    expect(b.status).toBe("fulfilled");
+
+    const found = await listFiles(tdb.db, { q: "concurrent-replace" });
+    expect(found.total).toBe(1);
+    const finalSize = found.files[0]!.size;
+    expect([bytesA.length, bytesB.length]).toContain(finalSize);
+
+    const stored = await store.get(name);
+    expect(stored!.bytes.length).toBe(finalSize);
   });
 });
