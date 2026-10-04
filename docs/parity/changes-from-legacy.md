@@ -63,6 +63,7 @@ Status key: **Agreed** (approved in design) · **Proposed** (in a design section
 | C31 | Page images resized on every request. | Images served as uploaded; the browser scales thumbnails. | Small, fixed set of images; avoids a native image library on SiteGround. | Agreed |
 | C32 | Uploads sent in 4 MB chunks (an Azure Blob requirement); translation file type forced to PDF without checking. | Single upload with a size limit; file contents checked (a PDF must really be a PDF). | Chunking only existed for Azure; checking contents stops mislabelled files. | Agreed |
 | C34 | Body embeds resolved through Flickr's oEmbed over plain HTTP. | HTTPS. | No reason to send it unencrypted. | Agreed |
+| C38 | N/A — legacy's behaviour here isn't established either way (see Q17). | A release's translation PDFs and media files are downloadable at their unguessable `/files/<key>` URL from the moment they're uploaded — including on a draft, before approval, and before an embargoed release's go-live (`addReleaseFile` in `apps/nrms/src/media/files.ts` checks the file's type, not the release's status). Nothing is guessable or listable: the key is a 64-bit random value plus the release's UUID. | Simpler than gating uploads/downloads on release status, and matches the legacy-style "already-published" case (Q17) uniformly; the risk is a leak of embargoed media to anyone who already has the link, not a stranger guessing it. | Proposed |
 
 ## Operations
 

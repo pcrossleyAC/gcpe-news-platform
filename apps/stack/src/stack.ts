@@ -254,12 +254,15 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
 
   // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
   // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.
-  // Translations become public as soon as they're uploaded — as in legacy, whose upload box only
-  // appeared once a release was committed or published — but every key carries a 16-hex random
-  // part, so nothing is guessable or listable (no index, no directory redirects). The store's
-  // `.meta` folder is refused by dotfiles: "deny". Content-Type comes from the key's extension,
-  // which NRMS forces to match the sniffed bytes (PDF/PNG/JPEG only); nosniff stops a browser
-  // second-guessing it. Mounted before the no-store default so the 60 s public cache stands.
+  // A file becomes downloadable as soon as it's uploaded — including on a draft, before
+  // approval or embargo lifts (addReleaseFile in apps/nrms/src/media/files.ts checks the
+  // file's type, not the release's status; see open question Q17 in
+  // docs/parity/open-questions.md, and C38 in docs/parity/changes-from-legacy.md) — but every
+  // key carries a 16-hex random part, so nothing is guessable or listable (no index, no
+  // directory redirects). The store's `.meta` folder is refused by dotfiles: "deny".
+  // Content-Type comes from the key's extension, which NRMS forces to match the sniffed bytes
+  // (PDF/PNG/JPEG only); nosniff stops a browser second-guessing it. Mounted before the
+  // no-store default so the 60 s public cache stands.
   const storageDir = nrmsEnv.STORAGE_DIR!;
   app.use(
     "/files",
