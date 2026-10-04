@@ -9,6 +9,7 @@ import { createFakeFlickr } from "@gcpe/flickr-fake";
 import { createNrmsTestDb, createScheduledRelease, editor } from "../../test/helpers";
 import { publishDue } from "../publisher";
 import { saveAsset } from "../releases/service";
+import { cancel, schedule, unpublish } from "../releases/workflow";
 import { loadView } from "../releases/store";
 import { flickrClient, type FlickrClient } from "./flickr-client";
 import { flickrPrepareMedia, GIVE_UP_MS, GRACE_MS, processFlickrJobs } from "./flickr-jobs";
@@ -253,5 +254,88 @@ describe("Flickr jobs", () => {
     fake.state.deleted = [];
     expect(await publish()).toMatchObject({ deferred: [r.key] });
     expect(await work()).toMatchObject({ done: [r.key] });
+  });
+  describe("only releases that are going out", () => {
+    const deps = { timeZone: "America/Vancouver" };
+    const version = async (id: string) => (await loadView(tdb.db, id))!.version;
+
+    it("a deferred release that is cancelled: the photo stays private and the job is dropped", async () => {
+      const r = await scheduledWithPhoto("53000000001");
+      expect(await publish()).toMatchObject({ deferred: [r.key] });
+      await cancel(tdb.db, r.id, await version(r.id), editor);
+      expect(await work()).toEqual({ done: [], retried: [], gaveUp: [], alerted: [], republished: [] });
+      expect(fake.photos.get("53000000001")!.isPublic).toBe(false);
+      expect(await job(r.id)).toBeUndefined();
+    });
+
+    it("a stale job of a release no longer going out is dropped by the worker without calling Flickr", async () => {
+      const r = await scheduledWithPhoto("53000000001");
+      await publish();
+      // Bypass cancel()'s own cleanup: the release simply isn't going out any more.
+      await tdb.db.execute(sql`UPDATE news_releases SET status = 'approved' WHERE id = ${r.id}`);
+      expect(await work()).toEqual({ done: [], retried: [], gaveUp: [], alerted: [], republished: [] });
+      expect(fake.photos.get("53000000001")!.isPublic).toBe(false);
+      expect(await job(r.id)).toBeUndefined();
+    });
+
+    it("a deferred correction that is unpublished instead: the new photo stays private, no job, no alert", async () => {
+      const r = await scheduledWithPhoto("53000000011");
+      await publish();
+      await work();
+      expect(await publish()).toMatchObject({ published: [r.key] });
+      await saveAsset(tdb.db, r.id, { version: await version(r.id), assetUrl: page("53000000004"), assetAltText: null, hasMediaAssets: false }, editor);
+      expect(await publish()).toMatchObject({ deferred: [r.key] });
+      await unpublish(tdb.db, r.id, await version(r.id), editor);
+      expect(await work()).toEqual({ done: [], retried: [], gaveUp: [], alerted: [], republished: [] });
+      expect(fake.photos.get("53000000004")!.isPublic).toBe(false);
+      expect(await job(r.id)).toBeUndefined();
+      expect(await publish()).toMatchObject({ unpublished: [r.key] });
+    });
+
+    it("an unpublished release gets no alert email, and its alert is cleared", async () => {
+      fake.state.refuseAuth = true;
+      const r = await scheduledWithPhoto("53000000002");
+      await publish();
+      await work();
+      advance(GRACE_MS + 1000);
+      expect(await publish()).toMatchObject({ published: [r.key] });
+      expect((await loadView(tdb.db, r.id))!.flickrAlert).not.toBeNull();
+      await unpublish(tdb.db, r.id, await version(r.id), editor);
+      expect(await publish()).toMatchObject({ unpublished: [r.key] });
+      expect(await work()).toMatchObject({ alerted: [] });
+      expect(alerts).toEqual([]);
+      expect((await loadView(tdb.db, r.id))!.flickrAlert).toBeNull();
+      expect(await job(r.id)).toBeUndefined();
+    });
+
+    it("a release rescheduled after an earlier failure gets a fresh grace period at its new go-live", async () => {
+      fake.state.refuseAuth = true;
+      const r = await scheduledWithPhoto("53000000002");
+      await publish();
+      await work();
+      expect((await job(r.id))!.first_attempt_at).not.toBeNull();
+      await cancel(tdb.db, r.id, await version(r.id), editor);
+      advance(10 * 60_000);
+      await schedule(tdb.db, r.id, { version: await version(r.id), publishAt: "now" }, editor, deps);
+      // The old attempt is long past grace; the new go-live must wait for the photo again.
+      expect(await publish()).toEqual({ ...none, deferred: [r.key] });
+      expect(await job(r.id)).toMatchObject({ status: "pending", attempts: 0, first_attempt_at: null });
+    });
+  });
+
+  it("two concurrent runs send one alert", async () => {
+    fake.state.refuseAuth = true;
+    const r = await scheduledWithPhoto("53000000002");
+    await publish();
+    await work();
+    advance(GRACE_MS + 1000);
+    expect(await publish()).toMatchObject({ published: [r.key] });
+    const slow = async (subject: string, text: string) => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      alerts.push({ subject, text });
+    };
+    const runs = await Promise.all([1, 2].map(() => processFlickrJobs({ db: tdb.db, flickr, alert: slow, now })));
+    expect(runs.flatMap((x) => x.alerted)).toEqual([r.key]);
+    expect(alerts).toHaveLength(1);
   });
 });

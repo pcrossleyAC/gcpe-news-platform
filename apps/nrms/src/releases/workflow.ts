@@ -1,8 +1,8 @@
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { indexKeysFor } from "@gcpe/events";
 import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
-import { governmentTerms, newsReleases } from "../db/schema";
+import { flickrJobs, governmentTerms, newsReleases } from "../db/schema";
 import { ministryAbbreviation } from "../taxonomy";
 import { ReleaseRuleError, ReleaseStateError } from "./errors";
 import { bcYear, nextCounter, pad } from "./numbering";
@@ -131,10 +131,20 @@ export async function schedule(db: Db, id: string, input: ScheduleInput, actor: 
           ...(subscribers && row.releasedAt === null ? { nodSubscribers: subscribers.count } : {}),
         })
         .where(eq(newsReleases.id, id));
+      await dropUnfinishedFlickrJob(tx, id);
       return immediate ? "Scheduled for Immediate Release" : `Scheduled for Release on ${formatBcDateTime(publishAt, deps.timeZone)}`;
     },
     { correction: false },
   );
+}
+
+/**
+ * A Flickr job from an earlier go-live (pending or gave_up) must not decide this one: its
+ * first_attempt_at would skip the grace period. Scheduling or cancelling starts over; a done job
+ * (the photo is already public) is kept.
+ */
+async function dropUnfinishedFlickrJob(tx: DbOrTx, id: string): Promise<void> {
+  await tx.delete(flickrJobs).where(and(eq(flickrJobs.releaseId, id), ne(flickrJobs.status, "done")));
 }
 
 export async function cancel(db: Db, id: string, version: number, actor: Actor): Promise<ReleaseView> {
@@ -144,6 +154,7 @@ export async function cancel(db: Db, id: string, version: number, actor: Actor):
       if (row.status !== "scheduled") throw new ReleaseStateError("Only a scheduled release can be cancelled.");
       if (row.live) throw new ReleaseStateError("This release is live — save a correction or unpublish it instead.");
       await tx.update(newsReleases).set({ status: row.reference ? "approved" : "draft" }).where(eq(newsReleases.id, id));
+      await dropUnfinishedFlickrJob(tx, id);
       return "Cancelled Release";
     },
     { correction: false },

@@ -50,7 +50,11 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
   const key = view.key ?? id;
   if (status === "unpublishing") {
     await enqueueEvent(tx, { type: "release.unpublished", source: "nrms", aggregateId: key, data: { key } }, opts.subscribers);
-    await tx.update(newsReleases).set({ status: view.reference ? "approved" : "draft", live: false, version: view.version + 1, updatedAt: now }).where(eq(newsReleases.id, id));
+    // Off the site, so no longer "live without its Flickr photo".
+    await tx
+      .update(newsReleases)
+      .set({ status: view.reference ? "approved" : "draft", live: false, flickrAlert: null, version: view.version + 1, updatedAt: now })
+      .where(eq(newsReleases.id, id));
     await writeLog(tx, id, SYSTEM_ACTOR, "Unpublished from BC Gov News");
     return { kind: "unpublished", key };
   }

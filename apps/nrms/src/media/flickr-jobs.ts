@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { sqlInterval, sqlNow, sqlNowPlus, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
 import { LANG_EN, type ReleaseView } from "@gcpe/nrms-contract";
 import { flickrJobs, newsReleases } from "../db/schema";
@@ -103,6 +103,15 @@ type Claimed = {
   asset_url: string | null;
 };
 
+/**
+ * A release whose photo may be made public (alias `r`): due to go live, a correction in flight, or
+ * live without its photo (recovery).
+ */
+const goingOut = (now: SQL) => sql`(
+  (r.status = 'scheduled' AND NOT r.on_hold AND r.publish_at <= ${now})
+  OR r.status = 'publishing'
+  OR (r.status = 'published' AND r.live AND r.flickr_alert IS NOT NULL))`;
+
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").slice(0, MAX_ERROR);
 
 /** One Flickr attempt for a claimed job, outside any transaction. */
@@ -128,15 +137,20 @@ export async function processFlickrJobs(opts: FlickrJobsOptions): Promise<Flickr
   const limit = opts.limit ?? 10;
   const label = (j: { key: string | null; release_id: string }) => j.key ?? j.release_id;
 
-  // 1. Claim due jobs: a short transaction that only takes a lease.
+  // 1. Claim due jobs: a short transaction that only takes a lease. Only a release that is going
+  // out may have its photo made public (an embargoed photo must stay private): a job of any
+  // other release — cancelled, on hold, unpublished, failed — is dropped without calling Flickr.
   const claimed = await opts.db.transaction(async (tx) => {
     const now = sqlNow(opts.now);
+    await tx.execute(sql`
+      DELETE FROM ${flickrJobs} j USING ${newsReleases} r
+      WHERE r.id = j.release_id AND j.status IN ('pending', 'gave_up') AND NOT ${goingOut(now)}`);
     const r = await tx.execute<Claimed>(sql`
       WITH due AS (
-        SELECT release_id FROM ${flickrJobs}
-        WHERE status = 'pending' AND next_attempt_at <= ${now}
-        ORDER BY next_attempt_at, release_id
-        FOR UPDATE SKIP LOCKED LIMIT ${limit}
+        SELECT j.release_id FROM ${flickrJobs} j JOIN ${newsReleases} r ON r.id = j.release_id
+        WHERE j.status = 'pending' AND j.next_attempt_at <= ${now} AND ${goingOut(now)}
+        ORDER BY j.next_attempt_at, j.release_id
+        FOR UPDATE OF j SKIP LOCKED LIMIT ${limit}
       )
       UPDATE ${flickrJobs} j SET next_attempt_at = ${sqlNowPlus(LEASE_MS, opts.now)}
       FROM due, ${newsReleases} r
@@ -191,19 +205,21 @@ export async function processFlickrJobs(opts: FlickrJobsOptions): Promise<Flickr
     else if (status === "pending") out.retried.push(label(job));
   }
 
-  // 3. Alerts: a release that went out without its photo, once; and again when its job gives up.
+  // 3. Alerts, for a live release that went out without its photo: once, and again when its job
+  // gives up. Claimed first (alerted_at set in one guarded UPDATE) so concurrent runs can't both
+  // send; a failed send releases the claim for the next run.
   {
     const now = sqlNow(opts.now);
-    const r = await opts.db.execute<{ release_id: string; key: string | null; status: string; flickr_alert: string; asset_url: string | null; headline: string | null; job_status: string }>(sql`
-      SELECT r.id AS release_id, r.key, r.status, r.flickr_alert, r.asset_url, j.status AS job_status,
-        (SELECT dl.headline FROM release_documents d JOIN document_languages dl ON dl.document_id = d.id AND dl.language_id = ${LANG_EN}
-         WHERE d.release_id = r.id ORDER BY d.sort_index LIMIT 1) AS headline
-      FROM ${flickrJobs} j JOIN ${newsReleases} r ON r.id = j.release_id
-      WHERE r.flickr_alert IS NOT NULL
+    const r = await opts.db.execute<{ release_id: string; key: string | null; status: string; flickr_alert: string; asset_url: string | null; headline: string | null }>(sql`
+      UPDATE ${flickrJobs} j SET alerted_at = ${now}
+      FROM ${newsReleases} r
+      WHERE r.id = j.release_id AND r.live AND r.flickr_alert IS NOT NULL
         AND (j.status = 'gave_up' OR (j.status = 'pending' AND j.first_attempt_at <= ${now} - ${sqlInterval(GRACE_MS)}))
         AND (j.alerted_at IS NULL OR (j.status = 'gave_up' AND j.alerted_at < j.updated_at))
-      ORDER BY r.id`);
-    for (const a of r.rows) {
+      RETURNING r.id AS release_id, r.key, r.status, r.flickr_alert, r.asset_url,
+        (SELECT dl.headline FROM release_documents d JOIN document_languages dl ON dl.document_id = d.id AND dl.language_id = ${LANG_EN}
+         WHERE d.release_id = r.id ORDER BY d.sort_index LIMIT 1) AS headline`);
+    for (const a of [...r.rows].sort((x, y) => (x.release_id < y.release_id ? -1 : 1))) {
       const headline = a.headline || "(no headline)";
       const subject = `Flickr photo not public: ${headline}`;
       const text = [
@@ -218,9 +234,9 @@ export async function processFlickrJobs(opts: FlickrJobsOptions): Promise<Flickr
         await opts.alert(subject, text);
       } catch (e) {
         console.error(`[nrms] flickr alert for ${a.key ?? a.release_id} failed: ${errorText(e)}`);
+        await opts.db.execute(sql`UPDATE ${flickrJobs} SET alerted_at = NULL WHERE release_id = ${a.release_id}`);
         continue;
       }
-      await opts.db.execute(sql`UPDATE ${flickrJobs} SET alerted_at = ${sqlNow(opts.now)} WHERE release_id = ${a.release_id}`);
       out.alerted.push(a.key ?? a.release_id);
     }
   }
