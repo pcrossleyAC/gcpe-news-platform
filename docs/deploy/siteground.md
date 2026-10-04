@@ -322,9 +322,10 @@ since the worker only retries every 5 minutes once a job is out of grace:
 scripts/siteground-flickr-walkthrough.sh https://boxs.ca --outage
 ```
 
-Only ever run either against a stack that is actually using the fake (no real `FLICKR_API_KEY`
-set) — `--outage` calls a fake-only control endpoint and the photo id it uses only exists there.
-The walkthrough itself checks this first and refuses to run otherwise.
+Only ever run either against a stack that is actually using the fake (no real
+`NRMS_FLICKR_API_KEY` / `FLICKR_API_KEY` set) — `--outage` calls a fake-only control endpoint and
+the photo id it uses only exists there. The walkthrough itself checks this first and refuses to
+run otherwise.
 
 **Switching to real Flickr at cutover.** Free Flickr accounts can't create API keys (found
 2026-10-03) — the key has to be created under the `bcgovphotos` account itself, which needs a
@@ -341,14 +342,17 @@ Pro subscription. Once a key and secret exist:
 2. Paste these four values, plus `NRMS_FLICKR_ALERT_EMAILS` (comma-separated addresses), into
    Site Tools → Devs → Node.js → your project → Environment Variables:
    ```
-   FLICKR_API_KEY=<key>
-   FLICKR_API_SECRET=<secret>
+   NRMS_FLICKR_API_KEY=<key>
+   NRMS_FLICKR_API_SECRET=<secret>
    NRMS_FLICKR_ACCESS_TOKEN=<token printed above>
    NRMS_FLICKR_ACCESS_SECRET=<secret printed above>
    NRMS_FLICKR_ALERT_EMAILS=<comma-separated addresses>
    ```
-   Setting `FLICKR_API_KEY` is what switches the stack off the fake and onto real Flickr for
-   NRMS (Flickr settings are NRMS's alone — see `apps/stack/src/env.ts`).
+   Setting `NRMS_FLICKR_API_KEY` is what switches the stack off the fake and onto real Flickr for
+   NRMS (Flickr settings are NRMS's alone — see `apps/stack/src/env.ts`). The unprefixed
+   `FLICKR_API_KEY` / `FLICKR_API_SECRET` also work (envFor's `nrmsFlickrSetting` falls back to
+   the unprefixed name when no `NRMS_`-prefixed one is set) but the prefixed form is what the
+   stack's own startup warning names, so it's used here for consistency.
 
 **What the alert means.** If a release's photo can't be made public within 2 minutes of the
 release actually going out, NRMS publishes the release anyway (keeping the photo link), raises
@@ -383,6 +387,12 @@ sends a final email — at that point the photo should be re-added or replaced b
   cron-job.org's dashboard if you're on the fallback) and that it's getting `200`, not `401`
   (wrong/stale token in `~/.gcpe-tick-token`) or `202` (coalesced — a previous tick was still
   running; harmless, the next call will do the work).
+- **A media file or translation upload fails, especially a large one**: NRMS itself allows up to
+  25 MiB (`MAX_RELEASE_FILE_BYTES` in `apps/nrms/src/media/files.ts`), but SiteGround's nginx
+  sits in front of it with its own upload size limit, which this stack doesn't control. An HTML
+  `413` (not NRMS's own JSON error) means nginx refused the upload before it ever reached the
+  app — check/raise nginx's limit (Site Tools → Devs, or ask SiteGround support) rather than
+  NRMS's.
 
 ## Known limits
 
