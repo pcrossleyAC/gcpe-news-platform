@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv } from "@gcpe/auth";
-import { eventSecretsSchema, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
@@ -16,6 +16,7 @@ export const nrmsEnvSchema = z.object({
   EVENT_SECRETS: eventSecretsSchema,
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   PUBLISH_INTERVAL_MS: z.coerce.number().int().default(60000),
+  TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
 });
 
 export interface AppHandle {
@@ -46,6 +47,11 @@ export interface AppHandle {
 export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const parsed = parseEnv(nrmsEnvSchema, env);
   const auth = authFromEnv(env);
+  // The tenant's time zone decides the BC year in approve-time Keys; fail fast if this
+  // runtime's tzdata disagrees with the tenant's pinned self-check (as the News API does).
+  const tenant = loadTenantConfig(parsed.TENANT_CONFIG);
+  assertTimeZoneRules(tenant);
+  const workflow = { timeZone: tenant.timeZone };
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
@@ -55,6 +61,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     auth: auth.bearer,
     loginRouter: auth.loginRouter,
     eventSecrets: parsed.EVENT_SECRETS,
+    workflow,
   });
 
   // Set by startLoops(); closers below reference these lazily so they're safe to call even

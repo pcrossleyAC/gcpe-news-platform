@@ -4,6 +4,7 @@ COPY package.json package-lock.json ./
 COPY packages ./packages
 COPY apps/nrms ./apps/nrms
 COPY scripts ./scripts
+COPY config ./config
 RUN npm ci --workspace @gcpe/nrms --include-workspace-root
 RUN node scripts/build-app.mjs apps/nrms
 
@@ -16,8 +17,9 @@ COPY --from=build /repo/packages ./packages
 RUN npm ci --omit=dev --workspace @gcpe/nrms && find packages -name '*.test.ts' -delete
 COPY --from=build /repo/apps/nrms/dist ./apps/nrms/dist
 COPY --from=build /repo/apps/nrms/migrations ./apps/nrms/migrations
+COPY --from=build /repo/config ./config
 USER 1001
-ENV MIGRATIONS_FOLDER=/app/apps/nrms/migrations
+ENV MIGRATIONS_FOLDER=/app/apps/nrms/migrations TENANT_CONFIG=/app/config/tenants/bc.json
 EXPOSE 3006
 # Shell form so PORT (main.ts default 3006) is read when the check runs.
 HEALTHCHECK CMD wget -qO- "http://localhost:${PORT:-3006}/health/live" || exit 1

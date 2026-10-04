@@ -36,6 +36,13 @@
       "when": 1791093612267,
       "tag": "0004_copy_phase2_releases",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791095714431,
+      "tag": "0005_drop_phase2_releases",
+      "breakpoints": true
     }
   ]
 }

@@ -1,39 +1,14 @@
 import { fileURLToPath } from "node:url";
+import { sql } from "drizzle-orm";
 import { createTestDatabase, type Db, type TestDatabase } from "@gcpe/db-kit";
-import type { CreateReleaseInput } from "@gcpe/nrms-contract";
+import type { CreateReleaseInput, ReleaseView } from "@gcpe/nrms-contract";
 import { categoryTerms, mediaLists, organizations } from "../src/db/schema";
-import type { ReleaseDraft } from "../src/releases";
+import { createRelease } from "../src/releases/service";
 import type { Actor } from "../src/releases/store";
+import { approve, schedule } from "../src/releases/workflow";
 
 export const nrmsMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
 export const createNrmsTestDb = (): Promise<TestDatabase> => createTestDatabase({ migrationsFolder: nrmsMigrations });
-
-export const sampleDraft: ReleaseDraft = {
-  key: "2026HLTH0001-000001",
-  kind: "releases",
-  reference: "NEWS-00001",
-  leadMinistryKey: "health",
-  summary: "Clinics open on weekends.",
-  socialMediaSummary: null,
-  socialMediaHeadline: null,
-  keywords: null,
-  location: "VICTORIA",
-  hasMediaAssets: false,
-  hasTranslations: false,
-  isNewsOnDemand: true,
-  assetUrl: null,
-  redirectUri: null,
-  documents: [{
-    pageTitle: "Weekend clinics", languageId: 4105, headline: "Weekend clinics open across B.C.", subheadline: null,
-    detailsHtml: "<p>Clinics will open on weekends.</p>", byline: null,
-    contacts: [{ title: "Media Relations", details: "Alex Example\n250-555-0100" }],
-  }],
-  ministryKeys: ["health"], sectorKeys: [], tagKeys: [], themeKeys: [],
-  assets: null, translations: null,
-  publishFlags: { toWeb: true, toSubscribers: true, toMediaLists: false },
-  mediaListKeys: [],
-};
-
 
 export const editor: Actor = { id: "00000000-0000-4000-8000-0000000000e1", name: "Test Editor" };
 
@@ -61,3 +36,15 @@ export const sampleCreate: CreateReleaseInput = {
   contacts: ["Media Relations\nMinistry of Health\n250-555-0100"],
   ministries: ["health"], leadMinistryKey: "health", sectors: ["health"], themes: [], tags: [], mediaListKeys: [], activityId: null, publishAt: null,
 };
+
+
+/** Created, approved and scheduled (default: due one minute ago via a direct publish_at update). */
+export async function createScheduledRelease(db: Db, over: Partial<CreateReleaseInput> = {}, publishAt?: Date): Promise<ReleaseView> {
+  await seedTaxonomy(db);
+  const v = await createRelease(db, { ...sampleCreate, ...over }, editor);
+  const a = await approve(db, v.id, v.version, editor, { timeZone: "America/Vancouver" });
+  const s = await schedule(db, v.id, { version: a.version, publishAt: "now" }, editor, { timeZone: "America/Vancouver" });
+  const at = publishAt ?? new Date(Date.now() - 60_000);
+  await db.execute(sql`UPDATE news_releases SET publish_at = ${at.toISOString()}::timestamptz WHERE id = ${s.id}`);
+  return { ...s, publishAt: at.toISOString() };
+}

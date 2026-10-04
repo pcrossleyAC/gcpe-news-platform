@@ -5,6 +5,7 @@ import { requireBearer, type BearerOptions } from "@gcpe/auth";
 import { createEventReceiver, MAX_EVENT_BYTES } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import { apiRoutes } from "./http/routes";
+import type { WorkflowDeps } from "./releases/workflow";
 import { taxonomyHandler } from "./taxonomy";
 
 export function createApp(deps: {
@@ -12,6 +13,7 @@ export function createApp(deps: {
   auth: BearerOptions;
   loginRouter?: Router | null;
   eventSecrets: Record<string, string>;
+  workflow: WorkflowDeps;
 }): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -25,7 +27,7 @@ export function createApp(deps: {
 
   if (deps.loginRouter) app.use(deps.loginRouter);
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.
-  app.use("/api", requireBearer(deps.auth), express.json({ limit: MAX_EVENT_BYTES }), apiRoutes(deps.db));
+  app.use("/api", requireBearer(deps.auth), express.json({ limit: MAX_EVENT_BYTES }), apiRoutes({ db: deps.db, workflow: deps.workflow }));
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
   // escape stay JSON instead of finalhandler's default HTML.
   app.use(jsonErrorHandler({ logPrefix: "[nrms]" }));

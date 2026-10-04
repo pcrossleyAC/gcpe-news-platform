@@ -15,7 +15,7 @@ import { dispatchOnce, type SubscriberConfig } from "@gcpe/events";
 
 import { createApp as createNrmsApp } from "../../apps/nrms/src/app";
 import { publishDue } from "../../apps/nrms/src/publisher";
-import { createNrmsTestDb, sampleDraft } from "../../apps/nrms/test/helpers";
+import { createNrmsTestDb, sampleCreate, seedTaxonomy } from "../../apps/nrms/test/helpers";
 
 import { createApp as createNewsApiApp } from "../../apps/news-api/src/app";
 import { createNewsTestDb } from "../../apps/news-api/test/helpers";
@@ -57,10 +57,7 @@ const TZ = "America/Vancouver";
 // email subject raw (ruling P2-R19, fix round 1 item 3) — proves rendering actually escapes
 // rather than merely happening not to need to.
 const HEADLINE = "Clinics & <weekend> care";
-const releaseDraft = {
-  ...sampleDraft,
-  documents: [{ ...sampleDraft.documents[0]!, headline: HEADLINE }],
-};
+const releaseInput = { ...sampleCreate, headline: HEADLINE };
 
 describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page -> NoD -> Distribution -> email", () => {
   // Every TestDatabase actually created, regardless of whether a later one in the batch
@@ -196,8 +193,11 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
         auth: nrmsAuth.bearer,
         loginRouter: nrmsAuth.loginRouter,
         eventSecrets: {},
+        workflow: { timeZone: TZ },
       }),
     );
+    // NRMS's local copy of Core's ministries/sectors (normally fed by Core's events).
+    await seedTaxonomy(nrmsDb.db);
     nrmsSubscribers = [
       { name: "news-api", url: `${newsApi.url}/events`, secret: SECRET_NRMS_TO_NEWS_API, types: ["release.published"] },
       { name: "nod", url: `${nod.url}/events`, secret: SECRET_NRMS_TO_NOD, types: ["release.published"] },
@@ -249,34 +249,39 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
   });
 
   it("carries a release from NRMS through to a delivered email and a static page", async () => {
-    // Step 2: NRMS.Editor creates the release from sampleDraft (with an escaping-sensitive
-    // headline), then schedules it a minute in the past.
-    const createRes = await fetch(`${nrms!.url}/api/releases`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${editorToken}` },
-      body: JSON.stringify(releaseDraft),
-    });
-    expect(createRes.status).toBe(201);
-
-    const publishAt = new Date(Date.now() - 60_000).toISOString();
-    const scheduleRes = await fetch(`${nrms!.url}/api/releases/${releaseDraft.key}/schedule`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${editorToken}` },
-      body: JSON.stringify({ publishAt }),
-    });
-    expect(scheduleRes.status).toBe(200);
+    // Step 2: NRMS.Editor creates the release (with an escaping-sensitive headline), approves
+    // it (which assigns its Key) and schedules it for immediate release; the test then moves
+    // publish_at a minute back to simulate a release that has come due.
+    const nrmsPost = async (path: string, body: unknown) => {
+      const res = await fetch(`${nrms!.url}/api/releases${path}`, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${editorToken}` },
+        body: JSON.stringify(body),
+      });
+      return { status: res.status, body: (await res.json()) as { id: string; key: string | null; version: number; status: string } };
+    };
+    const created = await nrmsPost("", releaseInput);
+    expect(created.status).toBe(201);
+    const approved = await nrmsPost(`/${created.body.id}/approve`, { version: created.body.version });
+    expect(approved.status).toBe(200);
+    const key = approved.body.key!;
+    expect(key).toMatch(/^\d{4}HLTH\d{4}-\d{6}$/);
+    const scheduled = await nrmsPost(`/${created.body.id}/schedule`, { version: approved.body.version, publishAt: "now" });
+    expect(scheduled.status).toBe(200);
+    expect(scheduled.body.status).toBe("scheduled");
+    await nrmsDb.pool.query("UPDATE news_releases SET publish_at = now() - interval '1 minute' WHERE id = $1", [created.body.id]);
 
     // Step 3: publishDue claims and publishes it, writing release.published to the NRMS
     // outbox; dispatchOnce then delivers it to both News API and NoD (2 subscribers).
     const publishResult = await publishDue({ db: nrmsDb.db, subscribers: nrmsSubscribers });
-    expect(publishResult).toEqual({ published: [releaseDraft.key], failed: [] });
+    expect(publishResult).toEqual({ published: [key], updated: [], unpublished: [], failed: [] });
 
     const nrmsDispatch = await dispatchOnce({ db: nrmsDb.db, subscribers: nrmsSubscribers });
     expect(nrmsDispatch).toEqual({ delivered: 2, retried: 0, dead: 0 });
 
     // Step 4: News API's projection applied the release — it's now servable, with the raw
     // (unescaped) headline, since this is data, not rendered HTML.
-    const postRes = await fetch(`${newsApi!.url}/api/Posts/${releaseDraft.key}?api-version=1.0`);
+    const postRes = await fetch(`${newsApi!.url}/api/Posts/${key}?api-version=1.0`);
     expect(postRes.status).toBe(200);
     const post = (await postRes.json()) as { documents: { headline: string | null }[] };
     expect(post.documents[0]?.headline).toBe(HEADLINE);
@@ -287,12 +292,12 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     const newsApiDispatch = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers });
     expect(newsApiDispatch).toEqual({ delivered: 1, retried: 0, dead: 0 });
 
-    const postHtml = await readFile(join(outputDir!, "releases", releaseDraft.key, "index.html"), "utf8");
+    const postHtml = await readFile(join(outputDir!, "releases", key, "index.html"), "utf8");
     expect(postHtml).toContain("Clinics &amp; &lt;weekend&gt; care");
     expect(postHtml).not.toContain("<weekend>");
     // Pin the link format (fix round 1 item 4): the home page's own link is site-relative.
     const homeHtml = await readFile(join(outputDir!, "index.html"), "utf8");
-    expect(homeHtml).toContain(`href="/releases/${releaseDraft.key}"`);
+    expect(homeHtml).toContain(`href="/releases/${key}"`);
 
     // Step 6: NoD's As-It-Happens send job reaches Distribution over real HTTP (NoD's own
     // minted local service token, azp "nod"), and Distribution's sender delivers it to the
@@ -313,12 +318,12 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     expect(headerLine("list-unsubscribe")).toContain("?token=");
     expect(headerLine("list-unsubscribe-post").replace(/\s+/g, " ")).toContain("List-Unsubscribe=One-Click");
     // Pin the link format (fix round 1 item 4): the email's own link is the full absolute URL.
-    expect(mail.html).toContain(`${publicSite!.url}/releases/${releaseDraft.key}`);
+    expect(mail.html).toContain(`${publicSite!.url}/releases/${key}`);
 
     // Step 7: re-running every worker once more changes nothing — the release is already
     // published, already dispatched, already sent, already delivered.
     const publishAgain = await publishDue({ db: nrmsDb.db, subscribers: nrmsSubscribers });
-    expect(publishAgain).toEqual({ published: [], failed: [] });
+    expect(publishAgain).toEqual({ published: [], updated: [], unpublished: [], failed: [] });
     const nrmsDispatchAgain = await dispatchOnce({ db: nrmsDb.db, subscribers: nrmsSubscribers });
     expect(nrmsDispatchAgain).toEqual({ delivered: 0, retried: 0, dead: 0 });
     const newsApiDispatchAgain = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers });
@@ -358,12 +363,12 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     expect(nrmsRedeliver).toEqual({ delivered: 1, retried: 0, dead: 0 });
     expect(redeliveryOutcome).toBe("duplicate");
     expect(sink!.messages).toHaveLength(1);
-    const deliveries = await nodDb.pool.query<{ count: number }>("SELECT count(*)::int AS count FROM deliveries WHERE release_key = $1", [releaseDraft.key]);
+    const deliveries = await nodDb.pool.query<{ count: number }>("SELECT count(*)::int AS count FROM deliveries WHERE release_key = $1", [key]);
     expect(deliveries.rows[0]?.count).toBe(1);
 
     // Step 8: every ID is linked end to end.
     const sendJobs = await nodDb.pool.query<{ release_key: string }>("SELECT release_key FROM send_jobs");
-    expect(sendJobs.rows.map((r) => r.release_key)).toEqual([releaseDraft.key]);
+    expect(sendJobs.rows.map((r) => r.release_key)).toEqual([key]);
 
     const nrmsOutbox = await nrmsDb.pool.query<{ correlation_id: string }>(
       "SELECT envelope->>'correlationId' AS correlation_id FROM outbox_events WHERE type = 'release.published'",

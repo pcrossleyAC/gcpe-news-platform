@@ -176,6 +176,17 @@ resolution worked, both at build time (placeholder env) and, optionally, after a
 
 ## Smoke test
 
+NRMS checks every release's ministries and sectors against its own copy of Core's
+taxonomy, and takes the Key's abbreviation from the lead ministry — so Core's data has to
+reach NRMS first:
+
+- After deploying Phase 3 (or on any fresh NRMS database), run Core's republish once with
+  the admin token so NRMS receives every ministry and category:
+  `curl -fsS -X POST https://<domain>/core/api/admin/republish -H "authorization: Bearer <access_token>"`
+  (then tick, step 5 below, or wait for the cron job to deliver the events).
+- The smoke test (by hand below, or `scripts/siteground-smoke.sh https://<domain>`) needs a
+  `health` ministry with abbreviation `HLTH` and a `health` sector in Core.
+
 Replace `<domain>` and `<TICK_TOKEN>` below.
 
 ```sh
@@ -188,13 +199,19 @@ curl -s -X POST https://<domain>/nrms/auth/local/token \
   -d '{"username":"admin","password":"<ADMIN_PASSWORD>"}'
 # -> {"access_token": "..."}
 
-# 3. Create and schedule a release (use the access_token from step 2).
+# 3. Create, approve and schedule a release (use the access_token from step 2). Each step
+#    returns the release; send back its current "version". Approve assigns the "key".
 curl -s -X POST https://<domain>/nrms/api/releases \
   -H 'content-type: application/json' -H "authorization: Bearer <access_token>" \
-  -d '{ ... a release draft ... }'
-curl -s -X POST https://<domain>/nrms/api/releases/<key>/schedule \
+  -d '{"type":"release","pageTitle":"News Release","layout":"formal","headline":"Smoke test","bodyHtml":"<p>Smoke test.</p>","location":"Victoria","contacts":["Media Relations\n250-555-0100"],"ministries":["health"],"leadMinistryKey":"health","sectors":["health"]}'
+# -> {"id": "<id>", "version": 1, ...}
+curl -s -X POST https://<domain>/nrms/api/releases/<id>/approve \
   -H 'content-type: application/json' -H "authorization: Bearer <access_token>" \
-  -d '{"publishAt":"<a time in the past>"}'
+  -d '{"version":1}'
+# -> {"key": "<key>", "version": 2, ...}
+curl -s -X POST https://<domain>/nrms/api/releases/<id>/schedule \
+  -H 'content-type: application/json' -H "authorization: Bearer <access_token>" \
+  -d '{"version":2,"publishAt":"now"}'
 
 # 4. Add a notification subscriber.
 curl -s -X POST https://<domain>/nod/api/subscribers \

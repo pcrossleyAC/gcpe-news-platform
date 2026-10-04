@@ -13,7 +13,7 @@ import { hashPassword, mintLocalToken } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 
 import { createCoreTestDb, healthOrg } from "../../core/test/helpers";
-import { createNrmsTestDb, sampleDraft } from "../../nrms/test/helpers";
+import { createNrmsTestDb, sampleCreate } from "../../nrms/test/helpers";
 import { createNewsTestDb } from "../../news-api/test/helpers";
 import { createPublicSiteTestDb } from "../../public-site/test/helpers";
 import { createNodTestDb } from "../../nod/test/helpers";
@@ -402,21 +402,30 @@ describe("apps/stack", () => {
   });
 
   it("Phase 2 exit check: a release created through /nrms/api reaches a static page and an email, driven only by /stack/tick", async () => {
-    const draft = { ...sampleDraft, key: "2026HLTH0099-000099" };
-    const createRes = await fetch(`${instance.stackUrl}/nrms/api/releases`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
-      body: JSON.stringify(draft),
-    });
-    expect(createRes.status).toBe(201);
+    const admin = { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` };
+    // NRMS validates ministries and sectors against its copy of Core's taxonomy and takes the
+    // Key's abbreviation from the lead ministry: save both in Core and tick once to deliver them.
+    const orgRes = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, { method: "PUT", headers: admin, body: JSON.stringify(healthOrg) });
+    expect(orgRes.status).toBe(200);
+    const sector = { kind: "sector", key: "health", displayName: "Health", sortOrder: 0, isActive: true, social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null } };
+    const sectorRes = await fetch(`${instance.stackUrl}/core/api/terms/sector/health`, { method: "PUT", headers: admin, body: JSON.stringify(sector) });
+    expect(sectorRes.status).toBe(200);
+    const taxonomyTick = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+    expect(taxonomyTick.status).toBe(200);
 
-    const publishAt = new Date(Date.now() - 60_000).toISOString();
-    const scheduleRes = await fetch(`${instance.stackUrl}/nrms/api/releases/${draft.key}/schedule`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
-      body: JSON.stringify({ publishAt }),
-    });
-    expect(scheduleRes.status).toBe(200);
+    const nrmsPost = async (path: string, body: unknown) => {
+      const res = await fetch(`${instance.stackUrl}/nrms/api/releases${path}`, { method: "POST", headers: admin, body: JSON.stringify(body) });
+      return { status: res.status, body: (await res.json()) as { id: string; key: string | null; version: number; status: string } };
+    };
+    const created = await nrmsPost("", sampleCreate);
+    expect(created.status).toBe(201);
+    const approved = await nrmsPost(`/${created.body.id}/approve`, { version: created.body.version });
+    expect(approved.status).toBe(200);
+    const key = approved.body.key!;
+    const scheduled = await nrmsPost(`/${created.body.id}/schedule`, { version: approved.body.version, publishAt: "now" });
+    expect(scheduled.status).toBe(200);
+    expect(scheduled.body.status).toBe("scheduled");
+    const headline = sampleCreate.headline;
 
     const subscriberRes = await fetch(`${instance.stackUrl}/nod/api/subscribers`, {
       method: "POST",
@@ -433,19 +442,19 @@ describe("apps/stack", () => {
     await tick();
     let postHtml: string | undefined;
     try {
-      postHtml = await readFile(join(instance.outputDir, "releases", draft.key, "index.html"), "utf8");
+      postHtml = await readFile(join(instance.outputDir, "releases", key, "index.html"), "utf8");
     } catch {
       // Brief: "call the tick (twice if needed)".
       await tick();
-      postHtml = await readFile(join(instance.outputDir, "releases", draft.key, "index.html"), "utf8");
+      postHtml = await readFile(join(instance.outputDir, "releases", key, "index.html"), "utf8");
     }
-    expect(postHtml).toContain(draft.documents[0]!.headline!);
+    expect(postHtml).toContain(headline);
 
-    const pageRes = await fetch(`${instance.stackUrl}/site/releases/${draft.key}/`);
+    const pageRes = await fetch(`${instance.stackUrl}/site/releases/${key}/`);
     expect(pageRes.status).toBe(200);
 
     await expect.poll(() => instance.sink.messages.length, { timeout: 5000 }).toBeGreaterThan(0);
-    const mail = instance.sink.messages.find((m) => m.subject === draft.documents[0]!.headline);
+    const mail = instance.sink.messages.find((m) => m.subject === headline);
     expect(mail).toBeDefined();
     const toAddress = mail!.to && "value" in mail!.to ? mail!.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");

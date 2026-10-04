@@ -17,8 +17,7 @@ import { dbClock, type TestDatabase } from "@gcpe/db-kit";
 import { backoffMs as dispatchBackoffMs, dispatchOnce, enqueueEvent, type SubscriberConfig } from "@gcpe/events";
 
 import { publishDue } from "../apps/nrms/src/publisher";
-import { createDraft, scheduleRelease } from "../apps/nrms/src/releases";
-import { createNrmsTestDb, sampleDraft } from "../apps/nrms/test/helpers";
+import { createNrmsTestDb, createScheduledRelease } from "../apps/nrms/test/helpers";
 
 import { createBatch } from "../apps/distribution/src/messages";
 import { defaultSendLockMs, sendDue } from "../apps/distribution/src/sender";
@@ -164,14 +163,14 @@ describe.each([
   });
 
   it("NRMS: publishes exactly the releases due by the DB clock, stamped with the DB's now()", async () => {
-    await nrmsDb.pool.query("TRUNCATE releases, outbox_events, outbox_deliveries, aggregate_sequences CASCADE");
+    await nrmsDb.pool.query("TRUNCATE news_releases, release_log, release_publications, outbox_events, outbox_deliveries, aggregate_sequences CASCADE");
     const dbNow = await unskewed(() => dbClock(nrmsDb.db));
-    await createDraft(nrmsDb.db, { ...sampleDraft, key: "SKEW-DUE" });
-    await createDraft(nrmsDb.db, { ...sampleDraft, key: "SKEW-LATER" });
-    await scheduleRelease(nrmsDb.db, "SKEW-DUE", new RealDate(dbNow.getTime() - 60_000)); // due a minute ago
-    await scheduleRelease(nrmsDb.db, "SKEW-LATER", new RealDate(dbNow.getTime() + 5 * 60_000)); // due in 5 minutes
+    const due = await createScheduledRelease(nrmsDb.db, {}, new RealDate(dbNow.getTime() - 60_000)); // due a minute ago
+    await createScheduledRelease(nrmsDb.db, {}, new RealDate(dbNow.getTime() + 5 * 60_000)); // due in 5 minutes
 
-    expect(await publishDue({ db: nrmsDb.db, subscribers: [] })).toEqual({ published: ["SKEW-DUE"], failed: [] });
-    expectAbout(await msFromDbNow(nrmsDb, "releases", "published_at", "key = $1", ["SKEW-DUE"]), 0);
+    expect(await publishDue({ db: nrmsDb.db, subscribers: [] })).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [] });
+    // The publisher stamps updated_at with the DB's now(); released_at is the scheduled publish_at.
+    expectAbout(await msFromDbNow(nrmsDb, "news_releases", "updated_at", "id = $1", [due.id]), 0);
+    expectAbout(await msFromDbNow(nrmsDb, "news_releases", "released_at", "id = $1", [due.id]), -60_000);
   });
 });
