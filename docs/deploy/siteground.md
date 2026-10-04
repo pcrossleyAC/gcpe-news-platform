@@ -361,6 +361,65 @@ retrying every 5 minutes for 24 hours; the moment the photo is confirmed public,
 automatically re-published with it and the alert clears. After 24 hours it stops retrying and
 sends a final email — at that point the photo should be re-added or replaced by hand.
 
+## Website section (Plan 3d)
+
+The home-page carousel, emergency pins, Live Feed, resource links, general files and Project
+Blue Bridge (the mourning banner) are all under `/nrms/api/site/*` — `NRMS.SiteEditor` edits
+every one of them except Project Blue Bridge, which is `Core.Admin` only (spec §6). Reads
+(`GET /nrms/api/site/*`) are open to any of `NRMS.Viewer`, `NRMS.Editor`, `NRMS.SiteEditor`,
+`Core.Admin`.
+
+**Live Feed defaults.** `LIVE_WEBCAST_MANIFEST_URL_DEFAULT` and `LIVE_WEBCAST_M3U_URL_DEFAULT`
+(both optional URLs, `apps/nrms/src/start.ts`) are what the Live Feed editor shows when
+`site_settings` has no URL stored for that field (constraints.md Q1) — they're never written
+back to the row, just what's displayed unconfigured. Through the stack, set them prefixed —
+`NRMS_LIVE_WEBCAST_MANIFEST_URL_DEFAULT` / `NRMS_LIVE_WEBCAST_M3U_URL_DEFAULT` — same as every
+other `NRMS_*` SiteGround setting (`envFor` in `apps/stack/src/env.ts` strips the prefix before
+NRMS ever sees it).
+
+**Core, for Project Blue Bridge's admin directory.** Turning Project Blue Bridge on or off emails
+every active `Core.Admin` user, looked up through Core's `GET /api/directory/admin-emails` with
+a dedicated, read-only service role (`Core.AdminDirectory` — not `Core.Admin`, and never held by
+a human; see `apps/nrms/src/clients.ts`'s `coreClient`). `CORE_URL` defaults to `self:/core`
+in-stack (`STACK_APP_DEFAULTS`, `apps/stack/src/env.ts`) — nothing to set for that. Its Entra
+fields follow the same all-or-none rule as `NOD_*`/`DISTRIBUTION_*` above —
+`CORE_TOKEN_URL`/`CORE_CLIENT_ID`/`CORE_CLIENT_SECRET`/`CORE_SCOPE` — with the same local-admin
+token fallback when they're unset. **Production needs the quartet set** (or local admin left on)
+— without either, NRMS has no way to authenticate its call to Core and the notify step logs an
+error instead of emailing anyone (the banner change itself still happens; only the email fails).
+With no `CORE_URL` at all, `notify()` just logs the subject — never an address — instead of
+calling Core.
+
+**The test-site rule and `SITE_ENVIRONMENT`.** A deployment is a *test site* — every public page
+gets `<meta name="robots" content="noindex, nofollow">` and the Project Blue Bridge banner text
+(when on) is prefixed `TEST — ` — unless it's the real production deployment:
+`NODE_ENV=production` **and** not `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` **and** not
+`SITE_ENVIRONMENT=test` (`isTestSite`, `apps/public-site/src/site-env.ts`; same rule as legacy's
+Flickr fake-mode check). `SITE_ENVIRONMENT` is a shared, unprefixed var (`apps/stack/src/env.ts`'s
+`isSharedKey`) so one setting marks a whole deployment a test site regardless of `NODE_ENV`.
+**boxs.ca is a test site today**: `NODE_ENV=production` but `siteground:env` also sets
+`LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` (see "Flickr" above) — never remove that without first
+confirming boxs.ca really is meant to go live for real, since it flips both the Flickr fake and
+this rule at once.
+
+**Running the walkthrough.** From your Mac, against a stack already confirmed to be a test site
+(the script checks this itself and refuses otherwise):
+
+```sh
+scripts/siteground-website-walkthrough.sh https://boxs.ca
+```
+
+Signs in as the break-glass admin, creates a next carousel two minutes out with one slide, saves
+and pins the primary emergency slide, turns the Live Feed on with test URLs, saves two resource
+links (keeping whatever was already there), uploads a small in-script-generated PDF as a general
+file, then turns Project Blue Bridge ON (typing the confirmation phrase and the IGRS
+acknowledgement) and polls the public News API once a minute, up to 6 times, until the carousel
+has switched over, the primary pin sorts first, the Live Feed URLs and `granville` all show up.
+It then checks the public site shows the `TEST — ` banner and stays noindex, and fetches the
+uploaded file back from `/files`. Its cleanup trap turns Project Blue Bridge back off and unpins
+the primary slide on the way out — on success and on failure alike — so a run that fails partway
+never leaves the banner showing or the pin up.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
@@ -417,3 +476,20 @@ sends a final email — at that point the photo should be re-added or replaced b
   locally: a full cold start (all six apps, migrations already applied) completes in well
   under a second — but it's still a real request that pays for it, so don't be surprised by
   one slow request after a quiet period.
+- **A general file replace can leave bytes and row out of sync if the commit fails right after
+  the write.** `uploadFile`'s accepted residual (`apps/nrms/src/website/files.ts`): a brand-new
+  upload cleans up after itself if anything later fails (no row ever existed, so the just-written
+  bytes are simply deleted again), but a *replace* writes the new bytes inside the same
+  transaction as the row update and doesn't try to undo that write if the commit itself then
+  fails — the row can be left holding the old metadata while the real key already holds the new
+  bytes. Rare, and not repaired automatically.
+- **A static post page freezes the King's age until it's next re-rendered.** Project Blue
+  Bridge's banner computes "the age of N" at render time from the DB clock
+  (`apps/public-site/src/site-env.ts`'s `ageInBcYears`); a page nobody edits or that no
+  `site.content.changed` event touches isn't re-rendered just because a birthday passed, so an
+  old static page can show a stale age until something (a future edit, or a redeploy's self-heal)
+  rebuilds it.
+- **The public site's write queue assumes one process.** `enqueueSiteWrite`
+  (`apps/public-site/src/rebuild.ts`) serialises rebuilds with an in-process promise chain, not a
+  cross-process lock — correct for SiteGround's one Node.js process, but it would race if the
+  public site were ever run as more than one process against the same `OUTPUT_DIR`.

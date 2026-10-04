@@ -50,6 +50,9 @@ Status key: **Agreed** (approved in design) · **Proposed** (in a design section
 | C24 | Separate code paths for Azure Blob and local-disk file storage. | One storage interface (local folder now, cloud storage later). | One code path to test. | Agreed |
 | C25 | Top/Feature slots only visible one release at a time. | Read-only "what's featured where" page. | Site editors can see every slot at once. | Agreed |
 | C33 | Any "Advanced" user can turn on Project Blue Bridge after a browser confirm box. | Core.Admin only, after typing a confirmation phrase; every change logged and emailed to admins; off production the banner says "TEST —". | Turning it on announces the King's death on BC Gov News; see Q2, Q15. | Agreed |
+| C39 | Production vs. test is decided by the hosting environment's name. | A site is treated as a test site (TEST banner, noindex) unless it's the real production deployment: `NODE_ENV=production` **and** not `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` **and** not `SITE_ENVIRONMENT=test`. | boxs.ca runs with `NODE_ENV=production`, and a test site must never look like a real announcement or be indexed. | Agreed (spec §6.4 intent) |
+| C40 | N/A — not established from a legacy source. | Top/Feature can be set only on a published release; unpublishing or deleting that release empties its slots. | A slot pointing at a missing post breaks the home page. | Proposed; see Q18 |
+| C41 | N/A — not established from a legacy source. | General files are named by their sanitised name with an extension forced to match their content; a duplicate name needs `replace=true`. | Stable public URLs (`/files/<name>`) and no silent overwrite. | Proposed |
 
 ## Media and Flickr
 
