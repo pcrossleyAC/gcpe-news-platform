@@ -13,14 +13,14 @@ import { hashPassword, mintLocalToken } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 
 import { createCoreTestDb, healthOrg } from "../../core/test/helpers";
-import { createNrmsTestDb, sampleCreate } from "../../nrms/test/helpers";
+import { createNrmsTestDb, sampleCreate, seedTaxonomy } from "../../nrms/test/helpers";
 import { createNewsTestDb } from "../../news-api/test/helpers";
 import { createPublicSiteTestDb } from "../../public-site/test/helpers";
 import { createNodTestDb } from "../../nod/test/helpers";
 import { createDistributionTestDb } from "../../distribution/test/helpers";
 import { startSmtpSink } from "../../distribution/test/smtp-sink";
 
-import { startStack } from "./stack";
+import { publicFilesBase, startStack } from "./stack";
 
 const LOCAL_AUTH_SECRET = "stack-test-local-auth-secret-32-characters!";
 const ADMIN_PASSWORD = "stack-test-password-99";
@@ -79,6 +79,7 @@ interface StackTestInstance {
   stackUrl: string;
   dbs: StackTestInstanceDbs;
   outputDir: string;
+  dataDir: string;
   sink: Awaited<ReturnType<typeof startSmtpSink>>;
   tickToken: string;
   /** Present only when `opts.fetchAdminToken` (the default) — omitted for the M7 rate-limit
@@ -188,6 +189,7 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
     stackUrl,
     dbs,
     outputDir,
+    dataDir,
     sink,
     tickToken,
     adminToken,
@@ -309,6 +311,45 @@ describe("apps/stack", () => {
     const res = await fetch(`${instance.stackUrl}/site/probe-dir`, { redirect: "manual" });
     expect(res.status).toBe(301);
     expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  it("/files/<key> serves an uploaded file from <DATA_DIR>/storage publicly; .meta, listings and missing keys are not served", async () => {
+    const { localStore } = await import("@gcpe/storage");
+    const store = localStore(join(instance.dataDir, "storage"));
+    const key = "releases/00000000-0000-4000-8000-000000000001/translations/0123456789abcdef-budget-fr.pdf";
+    await store.put(key, Buffer.from("%PDF-1.7 probe"), "application/pdf");
+    const res = await fetch(`${instance.stackUrl}/files/${key}`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("%PDF-1.7 probe");
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await fetch(`${instance.stackUrl}/files/.meta/${key}.json`)).status).toBe(403);
+    expect((await fetch(`${instance.stackUrl}/files/releases/00000000-0000-4000-8000-000000000001/translations`, { redirect: "manual" })).status).toBe(404);
+    expect((await fetch(`${instance.stackUrl}/files/releases/nope.pdf`)).status).toBe(404);
+  });
+
+  it("an upload through /nrms/api is downloadable at the URL in the view; publicFilesBase takes the site URL's origin", async () => {
+    await seedTaxonomy(instance.dbs.nrms.db); // NRMS's local taxonomy copy; idempotent
+    const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" },
+      body: JSON.stringify(sampleCreate),
+    });
+    expect(created.status).toBe(201);
+    const { id, version } = (await created.json()) as { id: string; version: number };
+    const up = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/files?kind=translation&version=${version}&name=Budget%20FR.pdf`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/pdf" },
+      body: Buffer.from("%PDF-1.7 uploaded"),
+    });
+    expect(up.status).toBe(201);
+    const view = (await up.json()) as { files: { url: string }[] };
+    const file = await fetch(`${instance.stackUrl}${view.files[0]!.url}`);
+    expect(file.status).toBe(200);
+    expect(await file.text()).toBe("%PDF-1.7 uploaded");
+    expect(publicFilesBase("https://boxs.ca/site/")).toBe("https://boxs.ca");
+    expect(publicFilesBase(undefined)).toBe("");
   });
 
   it("every other response defaults to Cache-Control: no-store, overriding a weaker header the app set itself", async () => {

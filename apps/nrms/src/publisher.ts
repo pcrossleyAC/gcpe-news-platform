@@ -15,6 +15,8 @@ export interface PublisherOptions {
   limit?: number;
   /** Phase 3c seam: make the photo public etc. Returns the asset URL to publish. */
   prepareMedia?: (tx: Tx, view: ReleaseView) => Promise<{ assetUrl: string | null }>;
+  /** PUBLIC_FILES_BASE: origin prefixed to `/files/…` in the record's translations/assets. */
+  filesBase?: string;
 }
 
 export interface PublishResult {
@@ -66,7 +68,7 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
     })
     .where(eq(newsReleases.id, id))
     .returning({ releasedAt: newsReleases.releasedAt, atomId: newsReleases.atomId, updatedAt: newsReleases.updatedAt });
-  const record = toReleaseRecord({ ...view, assetUrl, atomId: row!.atomId }, { publishDate: row!.releasedAt!.toISOString(), timestamp: row!.updatedAt.toISOString() });
+  const record = toReleaseRecord({ ...view, assetUrl, atomId: row!.atomId }, { publishDate: row!.releasedAt!.toISOString(), timestamp: row!.updatedAt.toISOString() }, { filesBase: opts.filesBase });
   if (goLive) {
     await enqueueEvent(tx, { type: "release.published", source: "nrms", aggregateId: record.key, data: record }, opts.subscribers);
     await writeLog(tx, id, SYSTEM_ACTOR, "Released for Publishing");

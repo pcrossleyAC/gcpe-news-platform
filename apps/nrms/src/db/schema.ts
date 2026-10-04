@@ -241,6 +241,30 @@ export const numberCounters = pgTable(
   (t) => [primaryKey({ columns: [t.scope, t.year, t.ministry] })],
 );
 
+/**
+ * Uploaded release files (Phase 3c): French/other-language translation PDFs and media asset
+ * files. The bytes live in the object store under `storage_key` (served publicly at
+ * `/files/<storage_key>`); this row is the release's record of them.
+ */
+export const releaseFiles = pgTable(
+  "release_files",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    releaseId: releaseFk(),
+    kind: text("kind").$type<"translation" | "asset">().notNull(),
+    storageKey: text("storage_key").notNull().unique(),
+    label: text("label").notNull(),
+    contentType: text("content_type").notNull(),
+    size: integer("size").notNull(),
+    createdAt: tz("created_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("release_files_release_kind_idx").on(t.releaseId, t.kind),
+    check("release_files_kind_check", sql`${t.kind} IN ('translation','asset')`),
+    check("release_files_label_length", sql`char_length(${t.label}) <= 200`),
+  ],
+);
+
 export const releaseLog = pgTable(
   "release_log",
   {

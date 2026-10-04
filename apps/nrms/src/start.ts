@@ -6,6 +6,7 @@ import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } f
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
+import { localStore } from "@gcpe/storage";
 import { distributionClient, nodClient } from "./clients";
 import { createApp } from "./app";
 import { publishDue, startPublisher } from "./publisher";
@@ -36,6 +37,13 @@ export const nrmsEnvSchema = z.object({
   DISTRIBUTION_CLIENT_ID: z.string().optional(),
   DISTRIBUTION_CLIENT_SECRET: z.string().optional(),
   DISTRIBUTION_SCOPE: z.string().optional(),
+  // Phase 3c: uploaded release files (translations, media assets). The stack sets this to
+  // <DATA_DIR>/storage (survives a redeploy) and serves it publicly at /files; this default is
+  // only for standalone dev.
+  STORAGE_DIR: z.string().min(1).default(fileURLToPath(new URL("../../../data/storage", import.meta.url))),
+  // The public origin /files/<key> is served from, prefixed to file URLs in published records
+  // (e.g. https://boxs.ca). "" keeps them root-relative; the stack derives it from the site URL.
+  PUBLIC_FILES_BASE: z.union([z.literal(""), z.string().url()]).default("").transform((v) => v.replace(/\/+$/, "")),
 });
 
 /**
@@ -122,7 +130,9 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
         getToken: serviceTokenProvider(nodServiceTokenOptions(parsed, auth.local)),
       }).countSubscribers
     : undefined;
-  const workflow = { timeZone: tenant.timeZone, countSubscribers };
+  const filesBase = parsed.PUBLIC_FILES_BASE;
+  const workflow = { timeZone: tenant.timeZone, countSubscribers, filesBase };
+  const store = localStore(parsed.STORAGE_DIR, "/files/");
   const distribution = parsed.DISTRIBUTION_URL
     ? distributionClient({ baseUrl: parsed.DISTRIBUTION_URL, getToken: serviceTokenProvider(distributionServiceTokenOptions(parsed, auth.local)) })
     : undefined;
@@ -137,6 +147,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     eventSecrets: parsed.EVENT_SECRETS,
     workflow,
     distribution,
+    store,
   });
 
   // Set by startLoops(); closers below reference these lazily so they're safe to call even
@@ -148,12 +159,12 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     app,
     port: parsed.PORT,
     workers: {
-      publish: () => publishDue({ db, subscribers }),
+      publish: () => publishDue({ db, subscribers, filesBase }),
       dispatch: () => dispatchOnce({ db, subscribers }),
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
-      stopPublisher = startPublisher({ db, subscribers, intervalMs: parsed.PUBLISH_INTERVAL_MS });
+      stopPublisher = startPublisher({ db, subscribers, filesBase, intervalMs: parsed.PUBLISH_INTERVAL_MS });
     },
     closeBeforeServer: [],
     closers: [

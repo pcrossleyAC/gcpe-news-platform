@@ -17,6 +17,7 @@ import {
 } from "../releases/service";
 import { loadView, writeLog } from "../releases/store";
 import { mediaLists, newsReleases, pageImages } from "../db/schema";
+import type { ObjectStore } from "@gcpe/storage";
 import type { DistributionClient } from "../clients";
 import { buildEmailCopy } from "../renditions/email";
 import { buildRenditionModel } from "../renditions/model";
@@ -30,18 +31,20 @@ export interface RouteDeps {
   workflow: WorkflowDeps;
   /** "Email me a copy" goes through Distribution; unset → that route answers 503. */
   distribution?: DistributionClient;
+  /** Uploaded release files; a hard delete removes the release's files from it. */
+  store?: ObjectStore;
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
-type Params = { id: string; docId: string; lang: string; pubId: string };
-type Handler = (req: Request<Params>, res: Response) => Promise<void>;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string };
+export type Handler = (req: Request<Params>, res: Response) => Promise<void>;
+export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Maps the service layer's typed errors (and zod's) to a response. Returns false for anything
  * else so it reaches jsonErrorHandler as a generic, detail-free 500 (see http-kit/errors.ts).
  */
-function handleError(e: unknown, res: Response): boolean {
+export function handleError(e: unknown, res: Response): boolean {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
   if (e instanceof ReleaseRuleError) return void res.status(422).json({ error: e.problems.join(" "), problems: e.problems }), true;
   if (e instanceof VersionConflictError || e instanceof ReleaseStateError) return void res.status(409).json({ error: e.message }), true;
@@ -50,7 +53,7 @@ function handleError(e: unknown, res: Response): boolean {
   return false;
 }
 
-const run = (h: Handler) => (req: Request<Params>, res: Response, next: NextFunction) =>
+export const run = (h: Handler) => (req: Request<Params>, res: Response, next: NextFunction) =>
   h(req, res).catch((e) => {
     if (!handleError(e, res)) next(e);
   });
@@ -174,7 +177,7 @@ export function apiRoutes(deps: RouteDeps): Router {
   r.post("/releases/:id/schedule", edit, run(async (req, res) => void res.json(withStatus(await schedule(db, req.params.id, scheduleSchema.parse(req.body), actorOf(req), deps.workflow)))));
   r.post("/releases/:id/cancel", edit, run(async (req, res) => void res.json(withStatus(await cancel(db, req.params.id, version(req), actorOf(req))))));
   r.post("/releases/:id/unpublish", edit, run(async (req, res) => void res.json(withStatus(await unpublish(db, req.params.id, version(req), actorOf(req))))));
-  r.post("/releases/:id/delete", edit, run(async (req, res) => void res.json({ result: await deleteRelease(db, req.params.id, version(req), actorOf(req)) })));
+  r.post("/releases/:id/delete", edit, run(async (req, res) => void res.json({ result: await deleteRelease(db, req.params.id, version(req), actorOf(req), deps.store) })));
 
   r.get("/releases", read, run(async (req, res) => void res.json(await listFolder(db, listQuerySchema.parse(req.query), opts()))));
   r.get("/search", read, run(async (req, res) => void res.json(await searchReleases(db, searchQuerySchema.parse(req.query), opts()))));

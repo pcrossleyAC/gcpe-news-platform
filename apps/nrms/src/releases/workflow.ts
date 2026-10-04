@@ -12,6 +12,8 @@ import { loadView, mutateRelease, type Actor } from "./store";
 export interface WorkflowDeps {
   timeZone: string;
   countSubscribers?: (listKeys: string[]) => Promise<number>;
+  /** PUBLIC_FILES_BASE — only affects the size check here (absolute file URLs are longer). */
+  filesBase?: string;
 }
 
 const PAST_LIMIT_MS = 5 * 60_000;
@@ -120,7 +122,7 @@ export async function schedule(db: Db, id: string, input: ScheduleInput, actor: 
         publishAt = immediate ? clock.minute : t;
       }
       if (row.live && !immediate) throw new ReleaseRuleError(["A live release's correction goes out immediately — choose Publish now."]);
-      assertPublishable(toReleaseRecord(view, { publishDate: publishAt.toISOString(), timestamp: clock.now.toISOString() }));
+      assertPublishable(toReleaseRecord(view, { publishDate: publishAt.toISOString(), timestamp: clock.now.toISOString() }, { filesBase: deps.filesBase }));
 
       await tx
         .update(newsReleases)

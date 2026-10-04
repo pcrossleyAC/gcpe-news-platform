@@ -6,9 +6,11 @@ import {
   type LanguageId, type Layout, type MetaInput, type ReleaseType, type ReleaseView, type ReorderDocumentsInput, type SettingsInput,
 } from "@gcpe/nrms-contract";
 import {
-  categoryTerms, documentContacts, documentLanguages, mediaLists, newsReleases, organizations, releaseCategories, releaseDocuments, releaseLanguages, releaseMediaLists,
+  categoryTerms, documentContacts, documentLanguages, mediaLists, newsReleases, organizations, releaseCategories, releaseDocuments, releaseFiles, releaseLanguages, releaseMediaLists,
   type NewsReleaseRow,
 } from "../db/schema";
+import type { ObjectStore } from "@gcpe/storage";
+import { deleteStoredFiles } from "../media/files";
 import { sanitizeBodyHtml } from "../text/sanitize";
 import { generateSlug } from "../text/slug";
 import { summaryFromBody } from "../text/plain";
@@ -403,8 +405,14 @@ export function reorderDocuments(db: Db, id: string, input: ReorderDocumentsInpu
 }
 
 /** Without a reference the release is deleted for good; with one it's hidden (status `deleted`). */
-export async function deleteRelease(db: Db, id: string, version: number, actor: Actor): Promise<"deleted" | "hidden"> {
+/**
+ * Deletes a draft/approved/failed release: hard-deletes one that never got a reference, hides one
+ * that did. A hard delete also removes its uploaded files from `store` afterwards (best effort —
+ * failures are logged, the delete itself already committed). A hidden release keeps its files.
+ */
+export async function deleteRelease(db: Db, id: string, version: number, actor: Actor, store?: ObjectStore): Promise<"deleted" | "hidden"> {
   let outcome: "deleted" | "hidden" = "hidden";
+  let storedKeys: string[] = [];
   await mutateRelease(
     db,
     id,
@@ -415,6 +423,7 @@ export async function deleteRelease(db: Db, id: string, version: number, actor: 
       // A live release (e.g. a failed correction) has to be unpublished, not hidden.
       if (row.live) throw new ReleaseStateError("This release has been published — unpublish it first.");
       if (!row.reference) {
+        storedKeys = (await tx.select({ key: releaseFiles.storageKey }).from(releaseFiles).where(eq(releaseFiles.releaseId, row.id))).map((f) => f.key);
         await tx.delete(newsReleases).where(eq(newsReleases.id, row.id));
         outcome = "deleted";
         return null; // the row (and its log) is gone
@@ -425,5 +434,6 @@ export async function deleteRelease(db: Db, id: string, version: number, actor: 
     },
     { correction: false },
   );
+  if (store && storedKeys.length) await deleteStoredFiles(store, storedKeys); // only set on a hard delete
   return outcome;
 }

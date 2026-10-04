@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { LANG_EN, type CategoryKind, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import {
-  documentContacts, documentLanguages, mediaLists, newsReleases, releaseCategories, releaseDocuments, releaseLanguages, releaseLog, releaseMediaLists,
+  documentContacts, documentLanguages, mediaLists, newsReleases, releaseCategories, releaseDocuments, releaseFiles, releaseLanguages, releaseLog, releaseMediaLists,
   type NewsReleaseRow,
 } from "../db/schema";
 import { ReleaseNotFoundError, VersionConflictError } from "./errors";
@@ -16,6 +16,8 @@ export const SYSTEM_ACTOR: Actor = { id: "system", name: "System" };
 
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
+/** Where an uploaded file is publicly served (the stack's `/files` mount; see apps/stack/src/stack.ts). */
+export const filePublicPath = (storageKey: string) => `/files/${storageKey.split("/").map(encodeURIComponent).join("/")}`;
 const langOrder = (a: number, b: number) => (a === LANG_EN ? -1 : b === LANG_EN ? 1 : a - b);
 
 /** The whole release as the API and renditions see it. Deleted releases still load (callers decide). */
@@ -37,6 +39,11 @@ export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | nu
     .innerJoin(mediaLists, eq(mediaLists.id, releaseMediaLists.mediaListId))
     .where(eq(releaseMediaLists.releaseId, id))
     .orderBy(asc(mediaLists.sortOrder), asc(mediaLists.key));
+  const files = await db
+    .select()
+    .from(releaseFiles)
+    .where(eq(releaseFiles.releaseId, id))
+    .orderBy(asc(releaseFiles.createdAt), asc(releaseFiles.id));
   const cat = (kind: CategoryKind) => cats.filter((c) => c.kind === kind).map((c) => c.key);
   return {
     id: r.id, type: r.type, key: r.key, reference: r.reference, status: r.status, onHold: r.onHold, version: r.version,
@@ -61,6 +68,7 @@ export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | nu
         })),
     })),
     ministries: cat("ministries"), sectors: cat("sectors"), themes: cat("themes"), tags: cat("tags"), mediaListKeys: lists.map((l) => l.key),
+    files: files.map((f) => ({ id: f.id, kind: f.kind, label: f.label, url: filePublicPath(f.storageKey), contentType: f.contentType, size: f.size })),
     createdAt: r.createdAt.toISOString(), updatedAt: r.updatedAt.toISOString(),
   };
 }

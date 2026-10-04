@@ -41,6 +41,17 @@ export interface StackHandle {
 /** The static site's own cache lifetime (brief: "the static /site files get Cache-Control:
  * public, max-age=60"). express.static's `maxAge` option wants milliseconds. */
 const SITE_MAX_AGE_MS = 60_000;
+/** Uploaded release files under /files (same one-minute public lifetime). */
+const FILES_MAX_AGE_MS = 60_000;
+
+/** The origin of the public site's URL — where the stack serves /files — or "" if it isn't a URL. */
+export function publicFilesBase(siteUrl: string | undefined): string {
+  try {
+    return siteUrl ? new URL(siteUrl).origin : "";
+  } catch {
+    return "";
+  }
+}
 
 /** `requested` as-is when it's a real port; otherwise (PORT=0, "let the OS pick") binds a
  * throwaway probe server to learn an actual port and closes it immediately so the real
@@ -193,6 +204,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const siteEnv = resolvedEnvFor(env, "SITE", dataDir);
   const nodEnv = resolvedEnvFor(env, "NOD", dataDir);
   const distEnv = resolvedEnvFor(env, "DIST", dataDir);
+  // Phase 3c: published records carry absolute file URLs; unless NRMS_PUBLIC_FILES_BASE says
+  // otherwise, files are served (below, at /files) from the public site's own origin.
+  if (nrmsEnv.PUBLIC_FILES_BASE === undefined) nrmsEnv.PUBLIC_FILES_BASE = publicFilesBase(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl);
 
   // Every self:/… URL resolves to INTERNAL_ORIGIN (http://stack.internal), which this
   // routes into the stack's own Express app in memory — no loopback networking, which
@@ -230,6 +244,27 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // trailing slash) gets no-store too, instead of the bare, cacheable-by-default 301
   // express.static would otherwise send.
   app.use("/site", noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS }));
+
+  // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
+  // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.
+  // Translations become public as soon as they're uploaded — as in legacy, whose upload box only
+  // appeared once a release was committed or published — but every key carries a 16-hex random
+  // part, so nothing is guessable or listable (no index, no directory redirects). The store's
+  // `.meta` folder is refused by dotfiles: "deny". Content-Type comes from the key's extension,
+  // which NRMS forces to match the sniffed bytes (PDF/PNG/JPEG only); nosniff stops a browser
+  // second-guessing it. Mounted before the no-store default so the 60 s public cache stands.
+  const storageDir = nrmsEnv.STORAGE_DIR!;
+  app.use(
+    "/files",
+    express.static(storageDir, {
+      index: false,
+      redirect: false,
+      dotfiles: "deny",
+      fallthrough: false,
+      maxAge: FILES_MAX_AGE_MS,
+      setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
+    }),
+  );
 
   app.use(noStoreByDefault);
 

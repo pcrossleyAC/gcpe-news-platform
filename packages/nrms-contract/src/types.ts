@@ -50,6 +50,17 @@ export interface DocumentView {
   languages: DocumentLanguageView[];
 }
 
+/** An uploaded translation PDF or media asset file. `url` is the public path, `/files/<key>`. */
+export interface ReleaseFileView {
+  id: string;
+  kind: "translation" | "asset";
+  /** The original file name, for display only (never used as a path). */
+  label: string;
+  url: string;
+  contentType: string;
+  size: number;
+}
+
 export interface ReleaseView {
   id: string;
   type: ReleaseType;
@@ -81,6 +92,8 @@ export interface ReleaseView {
   themes: string[];
   tags: string[];
   mediaListKeys: string[];
+  /** Uploaded translations and media files, oldest first. */
+  files: ReleaseFileView[];
   createdAt: string;
   updatedAt: string;
 }
