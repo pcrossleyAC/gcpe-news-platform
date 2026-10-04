@@ -21,7 +21,8 @@ describe("Core users API", () => {
     const admin = await createUser(tdb.db, createUserSchema.parse({ email: "admin@example.test", displayName: "Admin", roles: ["Core.Admin"], password: "admin password 123" }));
     adminId = admin.id;
     adminCookie = `gcpe_session=${(await mintSession(SECRET, { id: admin.id, name: "Admin", email: admin.email, roles: ["Core.Admin"] })).token}`;
-    viewerCookie = `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-0000000000aa", name: "V", email: "v@example.test", roles: ["NRMS.Viewer"] })).token}`;
+    const viewer = await createUser(tdb.db, createUserSchema.parse({ email: "viewer@example.test", displayName: "V", roles: ["NRMS.Viewer"], password: "viewer password 123" }));
+    viewerCookie = `gcpe_session=${(await mintSession(SECRET, { id: viewer.id, name: "V", email: viewer.email, roles: ["NRMS.Viewer"] })).token}`;
   });
   afterAll(async () => {
     await tdb.drop();
@@ -49,7 +50,7 @@ describe("Core users API", () => {
     const signIn = await request(app).post("/auth/login").set("x-gcpe-request", "1").send({ username: "site.editor@example.test", password: "site editor pass 1" });
     expect(signIn.status).toBe(200);
 
-    expect((await as(adminCookie).get("/api/users")).body.map((u: { email: string }) => u.email)).toEqual(["admin@example.test", "site.editor@example.test"]);
+    expect((await as(adminCookie).get("/api/users")).body.map((u: { email: string }) => u.email)).toEqual(["admin@example.test", "site.editor@example.test", "viewer@example.test"]);
     expect((await as(adminCookie).patch(`/api/users/${id}`, { displayName: "Site Ed" })).body.displayName).toBe("Site Ed");
     expect((await as(adminCookie).put(`/api/users/${id}/roles`, { roles: ["NRMS.Viewer"] })).body.roles).toEqual(["NRMS.Viewer"]);
     expect((await as(adminCookie).post(`/api/users/${id}/password`, { password: "another long pass" })).status).toBe(204);

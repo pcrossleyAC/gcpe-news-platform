@@ -38,10 +38,14 @@ seed() {
     echo "created  $email"
   elif [ "$status" = "409" ]; then
     id="$(curl_api "$BASE/core/api/users" | python3 -c 'import json,sys; e=sys.argv[1]; print(next(u["id"] for u in json.load(sys.stdin) if u["email"]==e))' "$email")"
-    python3 -c 'import json,sys; print(json.dumps({"roles":[sys.argv[1]]}))' "$role" | curl_api -o /dev/null -X PUT "$BASE/core/api/users/$id/roles" -d @-
-    printf '%s\n' "$pass" | password_body | curl_api -o /dev/null -X POST "$BASE/core/api/users/$id/password" -d @-
-    python3 -c 'import json,sys; print(json.dumps({"isActive":True,"displayName":sys.argv[1]}))' "$name" | curl_api -o /dev/null -X PATCH "$BASE/core/api/users/$id" -d @-
-    echo "updated  $email"
+    local all_ok=1 rstatus pstatus astatus
+    rstatus="$(python3 -c 'import json,sys; print(json.dumps({"roles":[sys.argv[1]]}))' "$role" | curl_api -o /dev/null -w '%{http_code}' -X PUT "$BASE/core/api/users/$id/roles" -d @-)"
+    case "$rstatus" in 2??) ;; *) echo "failed   $email (roles HTTP $rstatus)"; all_ok=0 ;; esac
+    pstatus="$(printf '%s\n' "$pass" | password_body | curl_api -o /dev/null -w '%{http_code}' -X POST "$BASE/core/api/users/$id/password" -d @-)"
+    case "$pstatus" in 2??) ;; *) echo "failed   $email (password HTTP $pstatus)"; all_ok=0 ;; esac
+    astatus="$(python3 -c 'import json,sys; print(json.dumps({"isActive":True,"displayName":sys.argv[1]}))' "$name" | curl_api -o /dev/null -w '%{http_code}' -X PATCH "$BASE/core/api/users/$id" -d @-)"
+    case "$astatus" in 2??) ;; *) echo "failed   $email (reactivate HTTP $astatus)"; all_ok=0 ;; esac
+    [ "$all_ok" = "1" ] && echo "updated  $email"
   else
     echo "failed   $email (HTTP $status)"
   fi

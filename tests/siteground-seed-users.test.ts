@@ -26,4 +26,19 @@ describe("scripts/siteground-seed-users.sh", () => {
     expect(mktempLine).toBeGreaterThanOrEqual(0);
     expect(trapLine).toBeLessThan(mktempLine);
   });
+  it("captures the HTTP status of every curl_api call on the update (409) path, so a failed roles/password/reactivate step is never silently reported as updated", () => {
+    const s = readFileSync("scripts/siteground-seed-users.sh", "utf8");
+    const elifIdx = s.indexOf('elif [ "$status" = "409" ]');
+    const fiIdx = s.indexOf("\n  else", elifIdx);
+    expect(elifIdx).toBeGreaterThanOrEqual(0);
+    expect(fiIdx).toBeGreaterThan(elifIdx);
+    const updatePath = s.slice(elifIdx, fiIdx);
+    const curlCalls = updatePath.split("curl_api").length - 1;
+    // The user lookup (GET) plus the three write steps (roles, password, reactivate).
+    expect(curlCalls).toBe(4);
+    const writeCalls = updatePath.match(/curl_api[^\n]*-X (PUT|POST|PATCH)[^\n]*/g) ?? [];
+    expect(writeCalls).toHaveLength(3);
+    for (const call of writeCalls) expect(call).toMatch(/-w '%\{http_code\}'/);
+    expect(updatePath).toMatch(/\[ "\$all_ok" = "1" \] && echo "updated {2}\$email"/);
+  });
 });

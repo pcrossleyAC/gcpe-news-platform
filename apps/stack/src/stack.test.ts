@@ -495,6 +495,39 @@ describe("apps/stack: combined login-attempt rate limit across every app (M7)", 
   });
 });
 
+// Mirrors the M7 combined-login-limiter test above, but entirely against /core/auth/login
+// (staff sign-in) instead of spreading across the local-admin token routes — same combined
+// stack-wide budget (apps/stack/src/stack.ts's combinedLoginLimiter), confirmed to cover this
+// route too. Its own isolated instance, with no admin-token fetch during setup
+// (fetchAdminToken: false), for the same reason as M7: that fetch would otherwise consume one
+// slot of the exact budget this test counts against.
+describe("apps/stack: combined login-attempt rate limit covers /core/auth/login", () => {
+  let instance: StackTestInstance;
+
+  beforeAll(async () => {
+    instance = await setupStack({ fetchAdminToken: false });
+  });
+
+  afterAll(async () => {
+    await instance.close();
+  });
+
+  it("10/min/IP wrong-password POSTs to /core/auth/login - the 11th is 429", async () => {
+    const headers = { "content-type": "application/json", "x-gcpe-request": "1" };
+    const body = JSON.stringify({ username: "nope", password: "wrong password" });
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      statuses.push((await fetch(`${instance.stackUrl}/core/auth/login`, { method: "POST", headers, body })).status);
+    }
+    expect(statuses).toHaveLength(11);
+    // The first 10 are Core's own (invalid-credentials) answers, never 429 - the combined
+    // limiter hasn't tripped yet.
+    expect(statuses.slice(0, 10).every((s) => s !== 429)).toBe(true);
+    expect(statuses.slice(0, 10).every((s) => s === 401)).toBe(true);
+    expect(statuses[10]).toBe(429);
+  });
+});
+
 describe("staff session cookie across the stack", () => {
   let inst: StackTestInstance;
   beforeAll(async () => {

@@ -225,6 +225,8 @@ The break-glass `admin` account signs in through the same endpoint. To create or
 
 It asks for the admin password and a password for each test user (12+ characters, input hidden).
 
+**Revoking access.** A session renews (and its roles refresh) while the user stays active; changing a password or logging out does not end a user's *other* sessions. To cut someone off, deactivate the user — that takes effect at once in Core, and within the cookie's remaining life (at most 1 hour) in other apps. To end every session at once, including break-glass, rotate `SESSION_SECRET` (or `STACK_EVENT_SECRET`, which also re-derives the event secrets).
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
