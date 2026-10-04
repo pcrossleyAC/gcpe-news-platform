@@ -41,10 +41,22 @@ Status key: **Agreed** (approved in design) · **Proposed** (in a design section
 
 | # | Legacy | New | Why | Status |
 |---|---|---|---|---|
-| C19 | Slides are shared between carousels and copied on edit. | Each carousel has its own slides. | Simpler, and editing one carousel can't affect another. | Proposed |
-| C20 | Slide image type guessed from its first byte; no size limit. | Type checked from the file's actual contents; 2 MB limit. | The one-byte guess can mislabel images. | Proposed |
-| C21 | Scheduling the next carousel silently unpins the emergency slide. | Emergency pins stay up until someone unpins them. | An emergency notice shouldn't disappear as a side effect. | Proposed |
-| C22 | Resource links have no screen; their table's key is the sort position. | Simple editor; each link has its own id. | Reordering shouldn't renumber keys. See open question Q3. | Proposed |
-| C23 | Website changes aren't logged. | Every change records who made it. | Accountability for public-facing changes. | Proposed |
-| C24 | Separate code paths for Azure Blob and local-disk file storage. | One storage interface (local folder now, cloud storage later). | One code path to test. | Proposed |
-| C25 | Top/Feature slots only visible one release at a time. | Read-only "what's featured where" page. | Site editors can see every slot at once. | Proposed |
+| C19 | Slides are shared between carousels and copied on edit. | Each carousel has its own slides. | Simpler, and editing one carousel can't affect another. | Agreed |
+| C20 | Slide image type guessed from its first byte; no size limit. | Type checked from the file's actual contents; 2 MB limit. | The one-byte guess can mislabel images. | Agreed |
+| C21 | Scheduling the next carousel silently unpins the emergency slide. | Emergency pins stay up until someone unpins them. | An emergency notice shouldn't disappear as a side effect. | Agreed |
+| C22 | Resource links have no screen; their table's key is the sort position. | Simple editor; each link has its own id. | Reordering shouldn't renumber keys. See open question Q3. | Agreed |
+| C23 | Website changes aren't logged. | Every change records who made it. | Accountability for public-facing changes. | Agreed |
+| C24 | Separate code paths for Azure Blob and local-disk file storage. | One storage interface (local folder now, cloud storage later). | One code path to test. | Agreed |
+| C25 | Top/Feature slots only visible one release at a time. | Read-only "what's featured where" page. | Site editors can see every slot at once. | Agreed |
+
+## Media and Flickr
+
+| # | Legacy | New | Why | Status |
+|---|---|---|---|---|
+| C26 | The Flickr photo is only made public if the publisher runs in the exact minute of the publish time. | It's made public whenever the release actually goes out, even if late. | A late run left the photo private on a live release. | Agreed |
+| C27 | If Flickr sign-in fails, "make public" silently does nothing and the release goes out with a private (broken) photo; nobody is told. | After making it public we ask Flickr again to confirm; anything other than "public" counts as a failure. | Closes the one silent failure in legacy's Flickr code. | Agreed |
+| C28 | On any Flickr error the photo link is wiped from the release for good and an email asks staff to re-add it. | The release goes out on time without the photo; the link is kept, an alert shows in the staff app (and email), the job keeps retrying, and when it succeeds the release is re-published with the photo. | Release timing matters more than the photo, but nobody should have to re-add it by hand. | Agreed |
+| C29 | Signs in to Flickr again before every call; checks Flickr's status page before every call. | Signs requests with the stored access token; no status-page check; retries with back-off. | Fewer calls, less exposure to rate limits; the status-page id is hard-coded and fails open anyway. | Agreed |
+| C30 | Access token was obtained once by hand and pasted into config. | A one-time command (`flickr:authorize`) does the sign-in and prints the token to put in the environment. | Re-issuing the token shouldn't need a developer. | Agreed |
+| C31 | Page images resized on every request. | Images served as uploaded; the browser scales thumbnails. | Small, fixed set of images; avoids a native image library on SiteGround. | Agreed |
+| C32 | Uploads sent in 4 MB chunks (an Azure Blob requirement); translation file type forced to PDF without checking. | Single upload with a size limit; file contents checked (a PDF must really be a PDF). | Chunking only existed for Azure; checking contents stops mislabelled files. | Agreed |
