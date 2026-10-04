@@ -30,12 +30,14 @@ import { approve, cancel, schedule, unpublish, type WorkflowDeps } from "../rele
 import { listCategories } from "../taxonomy";
 import { setFeature } from "../website/features";
 
-const featureInputSchema = z.object({
-  kind: z.enum(FEATURE_KINDS),
-  key: z.string().trim().min(1).max(100),
-  slot: z.enum(FEATURE_SLOTS),
-  on: z.boolean(),
-});
+const featureInputSchema = z
+  .object({
+    kind: z.enum(FEATURE_KINDS),
+    key: z.string().trim().min(1).max(100),
+    slot: z.enum(FEATURE_SLOTS),
+    on: z.boolean(),
+  })
+  .refine((v) => v.kind !== "home" || v.key === "default", { message: 'Home slots use the key "default".', path: ["key"] });
 
 export interface RouteDeps {
   db: Db;

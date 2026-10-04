@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { LANG_EN, type FeatureKind, type FeatureSlot, type ReleaseView } from "@gcpe/nrms-contract";
@@ -30,13 +30,29 @@ function slotColumn(row: { topReleaseId: string | null; featureReleaseId: string
   return slot === "top" ? row.topReleaseId : row.featureReleaseId;
 }
 
+/** The one place that writes a slot column — `null` clears it, an id takes it over. */
+function setSlot(tx: Tx, kind: FeatureKind, key: string, slot: FeatureSlot, releaseId: string | null) {
+  const set = slot === "top" ? { topReleaseId: releaseId } : { featureReleaseId: releaseId };
+  return tx.update(categoryFeatures).set(set).where(and(eq(categoryFeatures.kind, kind), eq(categoryFeatures.key, key)));
+}
+
 /**
  * Sets or clears a Top/Feature slot. `on: true` always takes the slot over — whatever release
  * held it before is simply no longer referenced by `category_features`, so it drops out of its
  * own `view.features` (spec §6.5). `on: false` only clears the slot when this release holds it.
+ *
+ * Fix round 1: a bare `SELECT … FOR UPDATE` locks nothing when the (kind,key) row doesn't exist
+ * yet, so two concurrent first-ever takeovers of the same never-used category would both reach
+ * an `INSERT` and the loser would hit a raw unique-violation (500) instead of losing cleanly.
+ * `on: true` first does `INSERT … ON CONFLICT (kind,key) DO NOTHING` — a no-op if the row is
+ * already there, otherwise it creates the (still-empty) row — so the following `SELECT … FOR
+ * UPDATE` always has a real row to lock, and a concurrent takeover genuinely serialises on it
+ * (same idea as website/files.ts's upload fix). `on: false` never does this: if the row doesn't
+ * exist there is nothing to clear and nothing to lock a race over, so no row is created.
  */
 export async function setFeature(db: Db, releaseId: string, input: SetFeatureInput, actor: Actor, subs: SubscriberConfig[]): Promise<ReleaseView> {
   const { kind, key, slot, on } = input;
+  if (kind === "home" && key !== "default") throw new ReleaseRuleError(['Home slots use the key "default".']);
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(newsReleases).where(eq(newsReleases.id, releaseId)).for("update");
     if (!row) throw new ReleaseNotFoundError(releaseId);
@@ -49,25 +65,16 @@ export async function setFeature(db: Db, releaseId: string, input: SetFeatureInp
       if (!cat) throw new ReleaseRuleError(["This release isn't in that category."]);
     }
 
+    if (on) await tx.insert(categoryFeatures).values({ kind, key }).onConflictDoNothing({ target: [categoryFeatures.kind, categoryFeatures.key] });
     const [existing] = await tx.select().from(categoryFeatures).where(and(eq(categoryFeatures.kind, kind), eq(categoryFeatures.key, key))).for("update");
     const holds = slotColumn(existing, slot) === releaseId;
 
     let changed = false;
-    if (on) {
-      if (!holds) {
-        if (existing) {
-          if (slot === "top") await tx.update(categoryFeatures).set({ topReleaseId: releaseId }).where(and(eq(categoryFeatures.kind, kind), eq(categoryFeatures.key, key)));
-          else await tx.update(categoryFeatures).set({ featureReleaseId: releaseId }).where(and(eq(categoryFeatures.kind, kind), eq(categoryFeatures.key, key)));
-        } else if (slot === "top") {
-          await tx.insert(categoryFeatures).values({ kind, key, topReleaseId: releaseId });
-        } else {
-          await tx.insert(categoryFeatures).values({ kind, key, featureReleaseId: releaseId });
-        }
-        changed = true;
-      }
-    } else if (holds) {
-      if (slot === "top") await tx.update(categoryFeatures).set({ topReleaseId: null }).where(and(eq(categoryFeatures.kind, kind), eq(categoryFeatures.key, key)));
-      else await tx.update(categoryFeatures).set({ featureReleaseId: null }).where(and(eq(categoryFeatures.kind, kind), eq(categoryFeatures.key, key)));
+    if (on && !holds) {
+      await setSlot(tx, kind, key, slot, releaseId);
+      changed = true;
+    } else if (!on && holds) {
+      await setSlot(tx, kind, key, slot, null);
       changed = true;
     }
 
@@ -89,12 +96,8 @@ export async function setFeature(db: Db, releaseId: string, input: SetFeatureInp
 export async function clearFeaturesFor(tx: Tx, releaseId: string, subs: SubscriberConfig[]): Promise<void> {
   const rows = await tx.select().from(categoryFeatures).where(or(eq(categoryFeatures.topReleaseId, releaseId), eq(categoryFeatures.featureReleaseId, releaseId)));
   for (const row of rows) {
-    const clearTop = row.topReleaseId === releaseId;
-    const clearFeature = row.featureReleaseId === releaseId;
-    await tx
-      .update(categoryFeatures)
-      .set({ ...(clearTop ? { topReleaseId: null } : {}), ...(clearFeature ? { featureReleaseId: null } : {}) })
-      .where(and(eq(categoryFeatures.kind, row.kind), eq(categoryFeatures.key, row.key)));
+    if (row.topReleaseId === releaseId) await setSlot(tx, row.kind, row.key, "top", null);
+    if (row.featureReleaseId === releaseId) await setSlot(tx, row.kind, row.key, "feature", null);
     await emitSite(tx, subs, row.kind === "home" ? "home" : { kind: row.kind, key: row.key });
   }
 }
@@ -107,16 +110,18 @@ export interface FeaturedWhereRow {
   feature: { id: string; key: string; headline: string } | null;
 }
 
-async function releaseBrief(db: DbOrTx, releaseId: string | null): Promise<{ id: string; key: string; headline: string } | null> {
-  if (!releaseId) return null;
-  const [row] = await db
+type ReleaseBrief = { id: string; key: string; headline: string };
+
+/** One query for every top/feature release id referenced by `featuredWhere`'s rows. */
+async function releaseBriefs(db: DbOrTx, ids: string[]): Promise<Map<string, ReleaseBrief>> {
+  if (!ids.length) return new Map();
+  const rows = await db
     .select({ id: newsReleases.id, key: newsReleases.key, headline: documentLanguages.headline })
     .from(newsReleases)
     .innerJoin(releaseDocuments, and(eq(releaseDocuments.releaseId, newsReleases.id), eq(releaseDocuments.sortIndex, 0)))
     .innerJoin(documentLanguages, and(eq(documentLanguages.documentId, releaseDocuments.id), eq(documentLanguages.languageId, LANG_EN)))
-    .where(eq(newsReleases.id, releaseId));
-  if (!row) return null;
-  return { id: row.id, key: row.key ?? row.id, headline: row.headline };
+    .where(inArray(newsReleases.id, ids));
+  return new Map(rows.map((r) => [r.id, { id: r.id, key: r.key ?? r.id, headline: r.headline }]));
 }
 
 /** Every `category_features` row with a slot set — home first, then by kind and label. */
@@ -130,16 +135,16 @@ export async function featuredWhere(db: DbOrTx): Promise<FeaturedWhereRow[]> {
     return terms.find((t) => t.kind === kind && t.key === key)?.displayName ?? key;
   };
 
-  const out: FeaturedWhereRow[] = [];
-  for (const row of rows) {
-    out.push({
-      kind: row.kind,
-      key: row.key,
-      label: labelOf(row.kind, row.key),
-      top: await releaseBrief(db, row.topReleaseId),
-      feature: await releaseBrief(db, row.featureReleaseId),
-    });
-  }
+  const ids = [...new Set(rows.flatMap((r) => [r.topReleaseId, r.featureReleaseId]).filter((id): id is string => id !== null))];
+  const briefs = await releaseBriefs(db, ids);
+
+  const out: FeaturedWhereRow[] = rows.map((row) => ({
+    kind: row.kind,
+    key: row.key,
+    label: labelOf(row.kind, row.key),
+    top: row.topReleaseId ? briefs.get(row.topReleaseId) ?? null : null,
+    feature: row.featureReleaseId ? briefs.get(row.featureReleaseId) ?? null : null,
+  }));
   out.sort((a, b) => {
     if (a.kind === "home" || b.kind === "home") return a.kind === b.kind ? 0 : a.kind === "home" ? -1 : 1;
     if (a.kind !== b.kind) return a.kind.localeCompare(b.kind);

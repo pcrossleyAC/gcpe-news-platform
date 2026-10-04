@@ -504,4 +504,11 @@ describe("NRMS HTTP API", () => {
     expect(allowed.status).toBe(200);
     expect(allowed.body.features).toEqual([{ kind: "home", key: "default", slot: "top" }]);
   });
+
+  it("POST /releases/:id/features: kind 'home' with a key other than 'default' is a 400", async () => {
+    const due = await createScheduledRelease(tdb.db, { headline: "Feature route home-key release" });
+    await publishDue({ db: tdb.db, subscribers: [] });
+    const res = await post(`/api/releases/${due.id}/features`, editorCookie, { kind: "home", key: "not-default", slot: "top", on: true });
+    expect(res.status).toBe(400);
+  });
 });

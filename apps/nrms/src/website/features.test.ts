@@ -138,6 +138,44 @@ describe("website/features — Top and Feature slots", () => {
     expect(await siteEvents()).toEqual([]);
   });
 
+  it("two concurrent setFeature takeovers for a never-used category both fulfil — no raw unique-violation — and exactly one ends up holding the slot", async () => {
+    const a = await publish({ headline: "Concurrent A" });
+    const b = await publish({ headline: "Concurrent B" });
+
+    const results = await Promise.allSettled([
+      setFeature(tdb.db, a.id, { kind: "sectors", key: "health", slot: "top", on: true }, editor, subs),
+      setFeature(tdb.db, b.id, { kind: "sectors", key: "health", slot: "top", on: true }, editor, subs),
+    ]);
+    expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+
+    const rows = (await tdb.pool.query("SELECT top_release_id FROM category_features WHERE kind = 'sectors' AND key = 'health'")).rows;
+    expect(rows).toHaveLength(1);
+    expect([a.id, b.id]).toContain(rows[0].top_release_id);
+    const winner = rows[0].top_release_id === a.id ? a : b;
+    const loser = winner === a ? b : a;
+
+    expect((await loadView(tdb.db, winner.id))!.features).toEqual([{ kind: "sectors", key: "health", slot: "top" }]);
+    expect((await loadView(tdb.db, loser.id))!.features).toEqual([]);
+  });
+
+  it("on:false on a slot that was never set is a no-op: no row is created, and featuredWhere skips it", async () => {
+    const release = await publish();
+    const view = await setFeature(tdb.db, release.id, { kind: "sectors", key: "health", slot: "top", on: false }, editor, subs);
+    expect(view.features).toEqual([]);
+    const rows = (await tdb.pool.query("SELECT 1 FROM category_features WHERE kind = 'sectors' AND key = 'health'")).rows;
+    expect(rows).toHaveLength(0);
+    expect(await featuredWhere(tdb.db)).toEqual([]);
+    expect(await siteEvents()).toEqual([]);
+  });
+
+  it("setFeature rejects kind 'home' with a key other than 'default'", async () => {
+    const release = await publish();
+    await expect(
+      setFeature(tdb.db, release.id, { kind: "home", key: "not-default", slot: "top", on: true }, editor, subs),
+    ).rejects.toThrow(ReleaseRuleError);
+    expect(await featuredWhere(tdb.db)).toEqual([]);
+  });
+
   it("featuredWhere lists home first, with headlines, labelled by kind", async () => {
     const home = await publish({ headline: "Home headline" });
     const health = await publish({ headline: "Health headline" });
