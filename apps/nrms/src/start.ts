@@ -1,11 +1,12 @@
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
-import { authFromEnv } from "@gcpe/auth";
+import { authFromEnv, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
+import { nodClient } from "./clients";
 import { createApp } from "./app";
 import { publishDue, startPublisher } from "./publisher";
 
@@ -17,6 +18,16 @@ export const nrmsEnvSchema = z.object({
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   PUBLISH_INTERVAL_MS: z.coerce.number().int().default(60000),
   TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
+  // Task 9: NoD's base URL — optional, since not every environment wants NRMS to show a live
+  // subscriber count at schedule time (schedule() just skips the count when unset). The four
+  // Entra fields below are likewise optional and, like serviceTokenProvider everywhere else,
+  // must be set together or not at all; with none set, NRMS falls back to a local admin token
+  // (test/non-prod environments) for its calls to NoD.
+  NOD_URL: z.string().url().optional(),
+  NOD_TOKEN_URL: z.string().url().optional(),
+  NOD_CLIENT_ID: z.string().optional(),
+  NOD_CLIENT_SECRET: z.string().optional(),
+  NOD_SCOPE: z.string().optional(),
 });
 
 export interface AppHandle {
@@ -51,7 +62,22 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   // runtime's tzdata disagrees with the tenant's pinned self-check (as the News API does).
   const tenant = loadTenantConfig(parsed.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
-  const workflow = { timeZone: tenant.timeZone };
+  const countSubscribers = parsed.NOD_URL
+    ? nodClient({
+        baseUrl: parsed.NOD_URL,
+        getToken: serviceTokenProvider({
+          tokenUrl: parsed.NOD_TOKEN_URL,
+          clientId: parsed.NOD_CLIENT_ID,
+          clientSecret: parsed.NOD_CLIENT_SECRET,
+          scope: parsed.NOD_SCOPE,
+          local: auth.local,
+          subject: "nrms",
+          roles: ["NRMS.Editor"],
+          envPrefix: "NOD",
+        }),
+      }).countSubscribers
+    : undefined;
+  const workflow = { timeZone: tenant.timeZone, countSubscribers };
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);

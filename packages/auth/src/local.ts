@@ -28,9 +28,13 @@ export async function mintLocalToken(o: {
   roles: readonly string[];
   azp?: string;
   ttlSeconds?: number;
+  /** Clock override for tests (e.g. serviceTokenProvider's re-mint-after-expiry case, where a
+   * fixed wall clock would otherwise mint byte-identical tokens for the same claims); defaults
+   * to the wall clock. */
+  now?: () => number;
 }): Promise<string> {
   assertSecretStrength(o.secret);
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor((o.now ?? Date.now)() / 1000);
   return new SignJWT({ roles: [...o.roles], ...(o.azp ? { azp: o.azp } : {}) })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuer(LOCAL_ISSUER)

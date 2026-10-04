@@ -14,7 +14,12 @@ import {
 describe("envFor", () => {
   it("strips the app's own prefix off every <PREFIX>_VAR, leaving VAR", () => {
     const env = { NRMS_DATABASE_URL: "postgres://x/nrms", NRMS_PUBLISH_INTERVAL_MS: "1000" };
-    expect(envFor(env, "NRMS")).toEqual({ DATABASE_URL: "postgres://x/nrms", PUBLISH_INTERVAL_MS: "1000" });
+    expect(envFor(env, "NRMS")).toEqual({
+      DATABASE_URL: "postgres://x/nrms",
+      PUBLISH_INTERVAL_MS: "1000",
+      NOD_URL: "self:/nod",
+      DISTRIBUTION_URL: "self:/distribution",
+    });
   });
 
   it("passes shared vars (LOCAL_ADMIN_*, LOCAL_AUTH_SECRET, TENANT_CONFIG, NODE_ENV) through to every app untouched", () => {
@@ -38,7 +43,7 @@ describe("envFor", () => {
 
   it("never leaks another app's prefixed vars into this app's view", () => {
     const env = { NRMS_DATABASE_URL: "postgres://x/nrms", NOD_DATABASE_URL: "postgres://x/nod" };
-    expect(envFor(env, "NRMS")).toEqual({ DATABASE_URL: "postgres://x/nrms" });
+    expect(envFor(env, "NRMS")).toEqual({ DATABASE_URL: "postgres://x/nrms", NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution" });
   });
 
   it("doesn't confuse NOD_ with NODE_ENV (shared) or any other prefix's name as a substring", () => {
@@ -48,7 +53,7 @@ describe("envFor", () => {
 
   it("ignores undefined values", () => {
     const env: NodeJS.ProcessEnv = { NRMS_DATABASE_URL: undefined, NRMS_PORT: "3006" };
-    expect(envFor(env, "NRMS")).toEqual({ PORT: "3006" });
+    expect(envFor(env, "NRMS")).toEqual({ PORT: "3006", NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution" });
   });
 
   // Fix round 1, P2-R30 M6: ENTRA_TENANT_ID is shared (every app talks to the same Entra
@@ -56,7 +61,25 @@ describe("envFor", () => {
   it("shares ENTRA_TENANT_ID across every app but keeps AUTH_AUDIENCE per-prefix", () => {
     const env = { ENTRA_TENANT_ID: "tenant-1", CORE_AUTH_AUDIENCE: "aud-core", NRMS_AUTH_AUDIENCE: "aud-nrms" };
     expect(envFor(env, "CORE")).toEqual({ ENTRA_TENANT_ID: "tenant-1", AUTH_AUDIENCE: "aud-core" });
-    expect(envFor(env, "NRMS")).toEqual({ ENTRA_TENANT_ID: "tenant-1", AUTH_AUDIENCE: "aud-nrms" });
+    expect(envFor(env, "NRMS")).toEqual({
+      ENTRA_TENANT_ID: "tenant-1",
+      AUTH_AUDIENCE: "aud-nrms",
+      NOD_URL: "self:/nod",
+      DISTRIBUTION_URL: "self:/distribution",
+    });
+  });
+
+  // Task 9: NRMS needs NoD's and Distribution's in-process URLs to count subscribers and
+  // schedule sends, but SiteGround's env form shouldn't need yet another pair of settings for
+  // something that's always the same inside one stack — so these are built-in per-app
+  // defaults, overridable by an explicit <PREFIX>_<VAR> like any other var.
+  it("applies STACK_APP_DEFAULTS for an app that has them, overridable by an explicit prefixed var", () => {
+    expect(envFor({}, "NRMS")).toMatchObject({ NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution" });
+    expect(envFor({ NRMS_NOD_URL: "https://nod.example" }, "NRMS").NOD_URL).toBe("https://nod.example");
+  });
+
+  it("gives no defaults to an app that doesn't have any in STACK_APP_DEFAULTS", () => {
+    expect(envFor({}, "CORE").NOD_URL).toBeUndefined();
   });
 });
 

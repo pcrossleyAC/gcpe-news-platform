@@ -36,6 +36,18 @@ export const APP_PREFIXES = ["CORE", "NRMS", "NEWSAPI", "SITE", "NOD", "DIST"] a
 export type AppPrefix = (typeof APP_PREFIXES)[number];
 
 /**
+ * Task 9: per-app defaults for vars that are always the same inside one stack and so need no
+ * SiteGround setting of their own — NRMS's NoD base URL (used to show an editor roughly how
+ * many subscribers a release will notify) and its Distribution base URL (Task 6's correction
+ * notice) are both always this stack's own in-process `self:` URLs, same as NoD's own
+ * DISTRIBUTION_URL default. An explicit `<PREFIX>_<VAR>` (e.g. `NRMS_NOD_URL`) still wins —
+ * see envFor below, which applies this before the app's own prefixed vars.
+ */
+export const STACK_APP_DEFAULTS: Partial<Record<AppPrefix, Record<string, string>>> = {
+  NRMS: { NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution" },
+};
+
+/**
  * Shared vars every app's env view inherits unprefixed, verbatim: LOCAL_ADMIN_* (the whole
  * family), LOCAL_AUTH_SECRET, TENANT_CONFIG, NODE_ENV, (fix round 1, P2-R30 M6) ENTRA_TENANT_ID
  * — every app talks to the same Entra tenant, so that one is shared too — and (Task 6)
@@ -71,6 +83,8 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.Proces
   // Derived internal wiring first, so explicit <PREFIX>_EVENT_* vars (applied below) override it.
   if (env.STACK_EVENT_SECRET) Object.assign(view, internalEventEnv(env.STACK_EVENT_SECRET)[prefix]);
   if (!view.SESSION_SECRET && env.STACK_EVENT_SECRET) view.SESSION_SECRET = sessionSecretFrom(env.STACK_EVENT_SECRET);
+  // This app's built-in defaults, before its own prefixed vars so an explicit one still wins.
+  if (STACK_APP_DEFAULTS[prefix]) Object.assign(view, STACK_APP_DEFAULTS[prefix]);
   const withUnderscore = `${prefix}_`;
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && key.startsWith(withUnderscore)) view[key.slice(withUnderscore.length)] = value;

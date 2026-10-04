@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { subscribers, subscriptions } from "./db/schema";
 
@@ -45,4 +46,23 @@ export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<
     if (cause?.code === "23505" && cause.constraint === "subscribers_email_lower_idx") throw new SubscriberExistsError(input.email);
     throw e;
   }
+}
+
+/**
+ * Counts distinct verified subscribers subscribed to '*' or any of `listKeys` (case-
+ * insensitively — lowercased here, same as {@link addSubscriber} stores them). Backs both
+ * NoD's own `/api/subscribers/count` route and NRMS's "notify ~N subscribers" preview
+ * (Task 6's `WorkflowDeps.countSubscribers`, wired through NRMS's own `nodClient`).
+ */
+export async function countSubscribers(db: Db, listKeys: string[]): Promise<number> {
+  const keys = ["*", ...listKeys.map((k) => k.toLowerCase())];
+  // sql.param, not a bare `${keys}` interpolation: drizzle's sql`` template spreads a plain
+  // array into a parenthesized, comma-joined param list (built for `IN (${array})`), which
+  // `= ANY(...)` can't take — it needs exactly one bind parameter whose value IS the array,
+  // which node-postgres then serializes as a Postgres array literal.
+  const r = await db.execute<{ n: number }>(sql`
+    SELECT count(DISTINCT s.id)::int AS n
+    FROM ${subscribers} s JOIN ${subscriptions} sub ON sub.subscriber_id = s.id
+    WHERE s.verified_at IS NOT NULL AND sub.list_key = ANY(${sql.param(keys)})`);
+  return r.rows[0]!.n;
 }

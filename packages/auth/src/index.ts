@@ -4,6 +4,7 @@ export { authFromEnv } from "./from-env";
 export { ADMIN_ROLES, LOCAL_AUDIENCE, LOCAL_ISSUER, localLoginRouter, mintLocalToken, type LocalAuthConfig } from "./local";
 export { hashPassword, verifyPassword } from "./password";
 export { STAFF_ROLES, type StaffRole } from "./roles";
+export { serviceTokenProvider, type ServiceTokenOptions } from "./service-token";
 export {
   clearedSessionCookie,
   CSRF_HEADER,
