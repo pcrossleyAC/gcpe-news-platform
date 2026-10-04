@@ -1,5 +1,20 @@
-export { entraIssuer, entraJwks, requireBearer, requireRole, type AuthContext, type BearerOptions } from "./bearer";
+export { actorOf, entraIssuer, entraJwks, requireAnyRole, requireBearer, requireRole, type AuthContext, type BearerOptions } from "./bearer";
 export { createClientCredentialsProvider } from "./client-credentials";
 export { authFromEnv } from "./from-env";
 export { ADMIN_ROLES, LOCAL_AUDIENCE, LOCAL_ISSUER, localLoginRouter, mintLocalToken, type LocalAuthConfig } from "./local";
 export { hashPassword, verifyPassword } from "./password";
+export { STAFF_ROLES, type StaffRole } from "./roles";
+export {
+  clearedSessionCookie,
+  CSRF_HEADER,
+  mintSession,
+  readCookie,
+  SESSION_COOKIE,
+  SESSION_ISSUER,
+  SESSION_RENEW_WINDOW_SECONDS,
+  SESSION_TTL_SECONDS,
+  sessionCookie,
+  verifySession,
+  type SessionUser,
+  type VerifiedSession,
+} from "./session";

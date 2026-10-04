@@ -5,7 +5,7 @@ import { verifyPassword } from "./password";
 
 export const LOCAL_ISSUER = "gcpe-local";
 export const LOCAL_AUDIENCE = "gcpe-local";
-export const ADMIN_ROLES = ["Core.Admin", "NRMS.Editor", "NoD.Admin", "Distribution.Send"] as const;
+export const ADMIN_ROLES = ["Core.Admin", "NRMS.Editor", "NRMS.SiteEditor", "NoD.Admin", "Distribution.Send"] as const;
 const DEFAULT_TTL = 8 * 60 * 60;
 const MIN_SECRET_LENGTH = 32;
 

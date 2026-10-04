@@ -122,4 +122,13 @@ describe("authFromEnv", () => {
       expect(a.local).not.toBeNull();
     });
   });
+
+  it("reads SESSION_SECRET (>= 32 chars) into bearer.session and session", async () => {
+    const base = { LOCAL_ADMIN_ENABLED: "true", LOCAL_ADMIN_PASSWORD_HASH: await hashPassword("a-long-enough-password"), LOCAL_AUTH_SECRET: "l".repeat(40) };
+    expect(authFromEnv(base).session).toBeNull();
+    const withSession = authFromEnv({ ...base, SESSION_SECRET: "x".repeat(40) });
+    expect(withSession.session).toEqual({ secret: "x".repeat(40) });
+    expect(withSession.bearer.session).toEqual({ secret: "x".repeat(40) });
+    expect(() => authFromEnv({ ...base, SESSION_SECRET: "short" })).toThrow(/SESSION_SECRET must be at least 32 characters/);
+  });
 });
