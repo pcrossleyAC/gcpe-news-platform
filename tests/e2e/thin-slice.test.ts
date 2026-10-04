@@ -159,6 +159,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
           newsApi: newsApiClient(newsApi.url),
           storage: fsStorage(outputDir),
           site: { name: "BC Gov News (E2E)", baseUrl: publicSite.url },
+          test: false,
         }),
       }),
     );

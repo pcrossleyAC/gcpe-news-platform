@@ -26,16 +26,26 @@ const ENGLISH = 4105;
 const e = (s: string | null | undefined) => escapeHtml(s ?? "");
 const english = (p: PostDto) => p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0];
 
-function page(title: string, site: SiteInfo, canonicalPath: string, body: string): string {
+/** Plan 3d task 4: every page's TEST noindex and Project Blue Bridge banner. */
+export interface PageOptions {
+  /** A test site (site-env.ts's isTestSite) gets `<meta name="robots" content="noindex, nofollow">`. */
+  test?: boolean;
+  /** Project Blue Bridge's banner text (site-env.ts's blueBridgeBanner), or null/absent for none. */
+  banner?: string | null;
+}
+
+function page(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}): string {
+  const robots = opts.test ? `\n<meta name="robots" content="noindex, nofollow">` : "";
+  const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)} | ${e(site.name)}</title>
-<link rel="canonical" href="${e(site.baseUrl + canonicalPath)}">
+<link rel="canonical" href="${e(site.baseUrl + canonicalPath)}">${robots}
 </head>
-<body>
+<body>${banner}
 <header><a href="/">${e(site.name)}</a></header>
 <main>
 ${body}
@@ -45,7 +55,7 @@ ${body}
 `;
 }
 
-export function renderPostPage(p: PostDto, site: SiteInfo): string {
+export function renderPostPage(p: PostDto, site: SiteInfo, opts: PageOptions = {}): string {
   const d = english(p);
   const headline = d?.headline ?? p.key;
   const contacts = (d?.contacts ?? [])
@@ -58,12 +68,12 @@ ${d?.subheadline ? `<h2>${e(d.subheadline)}</h2>` : ""}
 ${d?.detailsHtml ?? ""}
 ${contacts ? `<section><h2>Contacts</h2><ul>\n${contacts}\n</ul></section>` : ""}
 </article>`;
-  return page(headline, site, `/releases/${encodeURIComponent(p.key)}`, body);
+  return page(headline, site, `/releases/${encodeURIComponent(p.key)}`, body, opts);
 }
 
-export function renderHomePage(posts: PostDto[], site: SiteInfo): string {
+export function renderHomePage(posts: PostDto[], site: SiteInfo, opts: PageOptions = {}): string {
   const items = posts
     .map((p) => `<li><a href="/releases/${encodeURIComponent(p.key)}">${e(english(p)?.headline ?? p.key)}</a> <time datetime="${e(p.publishDate)}">${e(p.publishDate)}</time></li>`)
     .join("\n");
-  return page("Home", site, "/", `<h1>Latest news</h1>\n<ul>\n${items}\n</ul>`);
+  return page("Home", site, "/", `<h1>Latest news</h1>\n<ul>\n${items}\n</ul>`, opts);
 }

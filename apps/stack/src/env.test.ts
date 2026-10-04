@@ -22,6 +22,7 @@ describe("envFor", () => {
       PUBLISH_INTERVAL_MS: "1000",
       NOD_URL: "self:/nod",
       DISTRIBUTION_URL: "self:/distribution",
+      CORE_URL: "self:/core",
       ...FAKE_FLICKR_ENV,
     });
   });
@@ -47,7 +48,13 @@ describe("envFor", () => {
 
   it("never leaks another app's prefixed vars into this app's view", () => {
     const env = { NRMS_DATABASE_URL: "postgres://x/nrms", NOD_DATABASE_URL: "postgres://x/nod" };
-    expect(envFor(env, "NRMS")).toEqual({ DATABASE_URL: "postgres://x/nrms", NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", ...FAKE_FLICKR_ENV });
+    expect(envFor(env, "NRMS")).toEqual({
+      DATABASE_URL: "postgres://x/nrms",
+      NOD_URL: "self:/nod",
+      DISTRIBUTION_URL: "self:/distribution",
+      CORE_URL: "self:/core",
+      ...FAKE_FLICKR_ENV,
+    });
   });
 
   it("doesn't confuse NOD_ with NODE_ENV (shared) or any other prefix's name as a substring", () => {
@@ -57,7 +64,13 @@ describe("envFor", () => {
 
   it("ignores undefined values", () => {
     const env: NodeJS.ProcessEnv = { NRMS_DATABASE_URL: undefined, NRMS_PORT: "3006" };
-    expect(envFor(env, "NRMS")).toEqual({ PORT: "3006", NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", ...FAKE_FLICKR_ENV });
+    expect(envFor(env, "NRMS")).toEqual({
+      PORT: "3006",
+      NOD_URL: "self:/nod",
+      DISTRIBUTION_URL: "self:/distribution",
+      CORE_URL: "self:/core",
+      ...FAKE_FLICKR_ENV,
+    });
   });
 
   // Fix round 1, P2-R30 M6: ENTRA_TENANT_ID is shared (every app talks to the same Entra
@@ -70,6 +83,7 @@ describe("envFor", () => {
       AUTH_AUDIENCE: "aud-nrms",
       NOD_URL: "self:/nod",
       DISTRIBUTION_URL: "self:/distribution",
+      CORE_URL: "self:/core",
       ...FAKE_FLICKR_ENV,
     });
   });
@@ -79,12 +93,22 @@ describe("envFor", () => {
   // something that's always the same inside one stack — so these are built-in per-app
   // defaults, overridable by an explicit <PREFIX>_<VAR> like any other var.
   it("applies STACK_APP_DEFAULTS for an app that has them, overridable by an explicit prefixed var", () => {
-    expect(envFor({}, "NRMS")).toMatchObject({ NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution" });
+    expect(envFor({}, "NRMS")).toMatchObject({ NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", CORE_URL: "self:/core" });
     expect(envFor({ NRMS_NOD_URL: "https://nod.example" }, "NRMS").NOD_URL).toBe("https://nod.example");
+    expect(envFor({ NRMS_CORE_URL: "https://core.example" }, "NRMS").CORE_URL).toBe("https://core.example");
   });
 
   it("gives no defaults to an app that doesn't have any in STACK_APP_DEFAULTS", () => {
     expect(envFor({}, "CORE").NOD_URL).toBeUndefined();
+  });
+
+  // Plan 3d task 4: SITE_ENVIRONMENT (e.g. "test") reaches Public Site's isTestSite the same
+  // way NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION do, with no per-app SITE_SITE_ENVIRONMENT
+  // setting needed.
+  it("shares SITE_ENVIRONMENT across every app, like NODE_ENV", () => {
+    const env = { SITE_ENVIRONMENT: "test", SITE_DATABASE_URL: "postgres://x/site" };
+    expect(envFor(env, "SITE")).toMatchObject({ SITE_ENVIRONMENT: "test", DATABASE_URL: "postgres://x/site" });
+    expect(envFor(env, "CORE").SITE_ENVIRONMENT).toBe("test");
   });
 });
 

@@ -31,6 +31,10 @@ export function createApp(deps: {
   subscribers?: SubscriberConfig[];
   /** Live Feed URLs to show when none is configured (Task 3, env `LIVE_WEBCAST_*_URL_DEFAULT`); unset → no default. */
   liveFeedDefaults?: { manifestUrl: string; m3uUrl: string };
+  /** Plan 3d task 4: the public site's base URL, named in Project Blue Bridge's notify subject; unset → "". */
+  siteUrl?: string;
+  /** Plan 3d task 4: Project Blue Bridge's post-commit notify; unset → logs the subject only (see site-routes.ts). */
+  blueBridgeNotify?: (subject: string, text: string) => Promise<void>;
 }): express.Express {
   const app = express();
   app.disable("x-powered-by");
@@ -57,6 +61,8 @@ export function createApp(deps: {
       timeZone: deps.workflow.timeZone,
       liveFeedDefaults: deps.liveFeedDefaults ?? { manifestUrl: "", m3uUrl: "" },
       store: deps.store,
+      siteUrl: deps.siteUrl ?? "",
+      notify: deps.blueBridgeNotify ?? (async (subject) => void console.log(`[nrms] blue bridge: ${subject}`)),
     }),
     express.json({ limit: MAX_EVENT_BYTES }),
     apiRoutes({ db: deps.db, workflow: deps.workflow, distribution: deps.distribution, store: deps.store, embeds: deps.embeds }),

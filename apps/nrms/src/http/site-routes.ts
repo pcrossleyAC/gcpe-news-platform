@@ -23,7 +23,7 @@ import {
 } from "../website/carousel";
 import { deleteFile, listFiles, uploadFile, MAX_SITE_FILE_BYTES } from "../website/files";
 import { getLinks, saveLinks } from "../website/links";
-import { getLiveFeed, saveLiveFeed, type LiveFeedDefaults } from "../website/settings";
+import { getBlueBridge, getLiveFeed, saveLiveFeed, setBlueBridge, type LiveFeedDefaults } from "../website/settings";
 import { run, UUID, type Params } from "./routes";
 
 export interface SiteRouteDeps {
@@ -34,7 +34,14 @@ export interface SiteRouteDeps {
   liveFeedDefaults: LiveFeedDefaults;
   /** Where general files go; unset → the file upload/delete routes answer 503. */
   store?: ObjectStore;
+  /** Plan 3d task 4: the public site's base URL, named in Project Blue Bridge's notify subject. */
+  siteUrl: string;
+  /** Plan 3d task 4: Project Blue Bridge's post-commit notify. */
+  notify: (subject: string, text: string) => Promise<void>;
 }
+
+/** Legacy ProjectBlueBridge.aspx:50 — shown on every GET so the staff app can display it next to the switch. */
+export const BLUE_BRIDGE_WARNING = "Do not click OK unless you have approval from IGRS";
 
 /** Slide/pin images, same 2 MiB cap as the brief (constraints.md §6.1). */
 export const MAX_SITE_IMAGE_BYTES = 2 * 1024 * 1024;
@@ -85,6 +92,13 @@ const liveFeedSchema = z.object({
   m3uUrl: z.string().trim().max(255),
 });
 
+const blueBridgeSchema = z.object({
+  version: z.number().int().positive(),
+  on: z.boolean(),
+  confirmation: z.string(),
+  acknowledgeIgrs: z.boolean(),
+});
+
 const linkInputSchema = z.object({
   id: z.string().uuid().optional(),
   text: z.string().max(255),
@@ -129,10 +143,11 @@ const query =
  * own `run`/`UUID` are defined.)
  */
 export function siteRoutes(deps: SiteRouteDeps): Router {
-  const { db, subscribers, timeZone, liveFeedDefaults } = deps;
+  const { db, subscribers, timeZone, liveFeedDefaults, siteUrl, notify } = deps;
   const r = Router();
   const read = requireAnyRole("NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor", "Core.Admin");
   const edit = requireRole("NRMS.SiteEditor");
+  const blueBridgeAdmin = requireRole("Core.Admin");
   const json = express.json({ limit: "64kb" });
   const rawImage = express.raw({ type: () => true, limit: MAX_SITE_IMAGE_BYTES });
   const rawFile = express.raw({ type: () => true, limit: MAX_SITE_FILE_BYTES });
@@ -260,6 +275,21 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     run(async (req, res) => {
       const input = liveFeedSchema.parse(req.body);
       res.json(await saveLiveFeed(db, input, actorOf(req), subscribers));
+    }),
+  );
+
+  r.get(
+    "/site/blue-bridge",
+    read,
+    run(async (_req, res) => void res.json({ ...(await getBlueBridge(db)), warning: BLUE_BRIDGE_WARNING })),
+  );
+  r.put(
+    "/site/blue-bridge",
+    blueBridgeAdmin,
+    json,
+    run(async (req, res) => {
+      const input = blueBridgeSchema.parse(req.body);
+      res.json(await setBlueBridge(db, input, actorOf(req), { subscribers, timeZone, siteUrl, notify }));
     }),
   );
 

@@ -2,6 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCoreTestDb } from "../../test/helpers";
 import {
+  adminEmails,
   authenticate,
   createUser,
   createUserSchema,
@@ -70,5 +71,20 @@ describe("users service", () => {
     await expect(setRoles(tdb.db, "00000000-0000-4000-8000-000000000000", [])).rejects.toBeInstanceOf(UserNotFoundError);
     expect(await getUser(tdb.db, "not-a-uuid")).toBeNull();
     expect(await sessionUserFor(tdb.db, "local:admin")).toBeNull();
+  });
+
+  it("adminEmails lists only active Core.Admin users, deduplicated and sorted", async () => {
+    await createUser(tdb.db, createUserSchema.parse({ email: "zed-admin@example.test", displayName: "Zed Admin", roles: ["Core.Admin"], password: PW }));
+    await createUser(tdb.db, createUserSchema.parse({ email: "ann-admin@example.test", displayName: "Ann Admin", roles: ["Core.Admin"], password: PW }));
+    const inactiveAdmin = await createUser(tdb.db, createUserSchema.parse({ email: "retired-admin@example.test", displayName: "Retired Admin", roles: ["Core.Admin"], password: PW }));
+    await updateUser(tdb.db, inactiveAdmin.id, { isActive: false });
+    await createUser(tdb.db, createUserSchema.parse({ email: "non-admin@example.test", displayName: "Not Admin", roles: ["NRMS.Viewer"], password: PW }));
+
+    const emails = await adminEmails(tdb.db);
+    expect(emails).not.toContain("retired-admin@example.test");
+    expect(emails).not.toContain("non-admin@example.test");
+    expect(emails.indexOf("ann-admin@example.test")).toBeGreaterThanOrEqual(0);
+    expect(emails.indexOf("zed-admin@example.test")).toBeGreaterThan(emails.indexOf("ann-admin@example.test"));
+    expect(emails).toEqual([...emails].sort());
   });
 });

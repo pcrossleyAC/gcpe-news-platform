@@ -1,4 +1,4 @@
-import { asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { hashPassword, STAFF_ROLES, verifyPassword, type SessionUser } from "@gcpe/auth";
@@ -53,6 +53,20 @@ async function withRoles(db: DbOrTx, rows: UserRow[]): Promise<UserView[]> {
 
 export async function listUsers(db: Db): Promise<UserView[]> {
   return withRoles(db, await db.select().from(users).orderBy(asc(sql`lower(${users.displayName})`), asc(users.email)));
+}
+
+/**
+ * Plan 3d task 4: the active Core.Admin emails Project Blue Bridge notifies — a narrow read
+ * used by NRMS (via `GET /api/directory/admin-emails`, service-only `Core.AdminDirectory` role
+ * or `Core.Admin` itself), never the full user list or anything else about each admin.
+ */
+export async function adminEmails(db: Db): Promise<string[]> {
+  const rows = await db
+    .select({ email: users.email })
+    .from(users)
+    .innerJoin(roleGrants, eq(roleGrants.userId, users.id))
+    .where(and(eq(users.isActive, true), eq(roleGrants.role, "Core.Admin")));
+  return [...new Set(rows.map((r) => r.email))].sort();
 }
 
 export async function getUser(db: DbOrTx, id: string): Promise<UserView | null> {

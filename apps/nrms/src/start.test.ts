@@ -4,7 +4,7 @@ import { decodeJwt } from "jose";
 import { hashPassword, serviceTokenProvider } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb } from "../test/helpers";
-import { distributionServiceTokenOptions, flickrConfigFromEnv, nodServiceTokenOptions, nrmsEnvSchema, startNrms } from "./start";
+import { coreServiceTokenOptions, distributionServiceTokenOptions, flickrConfigFromEnv, nodServiceTokenOptions, nrmsEnvSchema, startNrms } from "./start";
 
 describe("startNrms", () => {
   // Every DB created by testEnv() this test created, dropped in afterEach — a test
@@ -91,6 +91,29 @@ describe("distributionServiceTokenOptions", () => {
     expect(opts).toMatchObject({ subject: "nrms", roles: ["Distribution.Send"], envPrefix: "DISTRIBUTION" });
     const payload = decodeJwt(await serviceTokenProvider(opts)());
     expect(payload).toMatchObject({ sub: "nrms", azp: "nrms", roles: ["Distribution.Send"] });
+  });
+});
+
+// Plan 3d task 4: mirrors nodServiceTokenOptions exactly — NRMS's token for Core's admin
+// directory carries only the dedicated, read-only "Core.AdminDirectory" role, never the full
+// "Core.Admin" credential.
+describe("coreServiceTokenOptions", () => {
+  const local = { username: "admin", passwordHash: "x", secret: "s".repeat(40) };
+  const none = { CORE_TOKEN_URL: undefined, CORE_CLIENT_ID: undefined, CORE_CLIENT_SECRET: undefined, CORE_SCOPE: undefined };
+
+  it("asks for exactly the Core.AdminDirectory role, subject nrms", () => {
+    const opts = coreServiceTokenOptions(none, local);
+    expect(opts.subject).toBe("nrms");
+    expect(opts.roles).toEqual(["Core.AdminDirectory"]);
+    expect(opts.envPrefix).toBe("CORE");
+  });
+
+  it("wired through serviceTokenProvider, mints a local token carrying only Core.AdminDirectory", async () => {
+    const opts = coreServiceTokenOptions(none, local);
+    const getToken = serviceTokenProvider(opts);
+    const token = await getToken();
+    const payload = decodeJwt(token);
+    expect(payload).toMatchObject({ sub: "nrms", azp: "nrms", roles: ["Core.AdminDirectory"] });
   });
 });
 

@@ -3,7 +3,7 @@ import express from "express";
 import request from "supertest";
 import { actorOf, requireAnyRole, requireBearer } from "./bearer";
 import { mintLocalToken } from "./local";
-import { STAFF_ROLES } from "./roles";
+import { CORE_ADMIN_DIRECTORY_ROLE, STAFF_ROLES } from "./roles";
 import { clearedSessionCookie, mintSession, readCookie, sessionCookie, SESSION_COOKIE, verifySession } from "./session";
 
 const secret = "s".repeat(40);
@@ -55,6 +55,11 @@ describe("session tokens", () => {
 
   it("lists every staff role", () => {
     expect(STAFF_ROLES).toEqual(["Core.Admin", "NRMS.Editor", "NRMS.SiteEditor", "NRMS.Viewer", "NoD.Admin", "Distribution.Send"]);
+  });
+
+  it("defines a service-only Core.AdminDirectory role, not a staff role", () => {
+    expect(CORE_ADMIN_DIRECTORY_ROLE).toBe("Core.AdminDirectory");
+    expect(STAFF_ROLES).not.toContain(CORE_ADMIN_DIRECTORY_ROLE);
   });
 });
 

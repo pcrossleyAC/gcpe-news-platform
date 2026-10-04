@@ -1,5 +1,5 @@
 import type { NewsApiClient } from "./news-api-client";
-import { HOME_COUNT, POST_KEY, postPath } from "./rebuild";
+import { bannerFor, HOME_COUNT, POST_KEY, postPath } from "./rebuild";
 import { renderHomePage, renderPostPage, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
 
@@ -18,9 +18,13 @@ const DEFAULT_COUNT = 200;
  * renders the home page and the latest `count` posts from the News API, the same way
  * createRebuildHandler would if it received a rebuild event for every one of them.
  */
-export async function selfHeal(deps: { newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo; count?: number }): Promise<{ rebuilt: number } | null> {
-  const { newsApi, storage, site, count = DEFAULT_COUNT } = deps;
+export async function selfHeal(deps: { newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo; test: boolean; count?: number }): Promise<{ rebuilt: number } | null> {
+  const { newsApi, storage, site, test, count = DEFAULT_COUNT } = deps;
   if (await storage.exists("index.html")) return null;
+
+  // Plan 3d task 4: fetched once for the whole run, not once per page (see rebuild.ts).
+  const banner = await bannerFor(newsApi, test);
+  const opts = { test, banner };
 
   const posts = await newsApi.latestHome(count);
 
@@ -37,11 +41,11 @@ export async function selfHeal(deps: { newsApi: NewsApiClient; storage: SiteStor
       console.warn(`[public-site] self-heal skipping post with invalid key ${JSON.stringify(post.key)}`);
       continue;
     }
-    await storage.write(postPath(post.key), renderPostPage(post, site));
+    await storage.write(postPath(post.key), renderPostPage(post, site, opts));
     rebuilt++;
   }
   // The home page itself still lists only the normal count — `posts` is generous (above) so
   // every recent post page gets healed, but the home page shouldn't suddenly show 200 items.
-  await storage.write("index.html", renderHomePage(posts.slice(0, HOME_COUNT), site));
+  await storage.write("index.html", renderHomePage(posts.slice(0, HOME_COUNT), site, opts));
   return { rebuilt };
 }

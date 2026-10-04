@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Tx } from "@gcpe/db-kit";
 import type { EventEnvelope } from "@gcpe/events";
-import { createRebuildHandler } from "./rebuild";
+import { bannerFor, createRebuildHandler } from "./rebuild";
 import type { NewsApiClient } from "./news-api-client";
 import type { SiteStorage } from "./storage";
 import type { PostDto } from "./render";
@@ -54,8 +54,9 @@ describe("createRebuildHandler", () => {
     const newsApi: NewsApiClient = {
       getPost: vi.fn(async (key: string) => (key === "K1" ? post : null)),
       latestHome: vi.fn(async () => [post]),
+      home: vi.fn(async () => ({ granville: null })),
     };
-    const handler = createRebuildHandler({ newsApi, storage, site });
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
     await handler({} as Tx, envelope({ pages: ["home", "post:K1"] }));
     expect(storage.files.has("index.html")).toBe(true);
     expect(storage.files.has("releases/K1/index.html")).toBe(true);
@@ -64,8 +65,8 @@ describe("createRebuildHandler", () => {
   it("removes the page for an unpublished post (getPost -> null)", async () => {
     const storage = memoryStorage();
     storage.files.set("releases/K1/index.html", "<p>stale</p>");
-    const newsApi: NewsApiClient = { getPost: vi.fn(async () => null), latestHome: vi.fn(async () => []) };
-    const handler = createRebuildHandler({ newsApi, storage, site });
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => null), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
     await handler({} as Tx, envelope({ pages: ["post:K1"] }));
     expect(storage.files.has("releases/K1/index.html")).toBe(false);
   });
@@ -73,8 +74,8 @@ describe("createRebuildHandler", () => {
   it("skips a path-escaping id and an unknown id without writing or throwing", async () => {
     const storage = memoryStorage();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => []) };
-    const handler = createRebuildHandler({ newsApi, storage, site });
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
     await expect(handler({} as Tx, envelope({ pages: ["post:../../x", "ministry:health"] }))).resolves.toBeUndefined();
     expect(storage.files.size).toBe(0);
     expect(newsApi.getPost).not.toHaveBeenCalled();
@@ -86,8 +87,8 @@ describe("createRebuildHandler", () => {
     const storage = memoryStorage();
     storage.files.set("index.html", "home-original");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const newsApi: NewsApiClient = { getPost: vi.fn(async () => ({ ...post, key: ".." })), latestHome: vi.fn(async () => []) };
-    const handler = createRebuildHandler({ newsApi, storage, site });
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => ({ ...post, key: ".." })), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
     await handler({} as Tx, envelope({ pages: ["post:K1"] }));
     expect(storage.files.get("index.html")).toBe("home-original");
     expect(storage.files.size).toBe(1); // nothing written for the post:K1 page
@@ -97,8 +98,8 @@ describe("createRebuildHandler", () => {
 
   it("writes at the requested key's path (not the API response's casing) when the keys only differ by case (fix round 1, item 1)", async () => {
     const storage = memoryStorage();
-    const newsApi: NewsApiClient = { getPost: vi.fn(async () => ({ ...post, key: "k1" })), latestHome: vi.fn(async () => []) };
-    const handler = createRebuildHandler({ newsApi, storage, site });
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => ({ ...post, key: "k1" })), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
     await handler({} as Tx, envelope({ pages: ["post:K1"] }));
     expect(storage.files.has("releases/K1/index.html")).toBe(true);
     expect(storage.files.has("releases/k1/index.html")).toBe(false);
@@ -111,8 +112,44 @@ describe("createRebuildHandler", () => {
         throw new Error("News API down");
       }),
       latestHome: vi.fn(async () => []),
+      home: vi.fn(async () => ({ granville: null })),
     };
-    const handler = createRebuildHandler({ newsApi, storage, site });
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
     await expect(handler({} as Tx, envelope({ pages: ["post:K1"] }))).rejects.toThrow("News API down");
+  });
+
+  // Plan 3d task 4.
+  it("fetches home() once per run (not per page) and renders the banner on every page written", async () => {
+    const storage = memoryStorage();
+    const home = vi.fn(async () => ({ granville: "true" }));
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => [post]), home };
+    const handler = createRebuildHandler({ newsApi, storage, site, test: false });
+    await handler({} as Tx, envelope({ pages: ["home", "post:K1"] }));
+    expect(home).toHaveBeenCalledTimes(1);
+    expect(storage.files.get("index.html")).toContain("blue-bridge-banner");
+    expect(storage.files.get("releases/K1/index.html")).toContain("blue-bridge-banner");
+  });
+
+  it("a test site's pages carry the TEST-prefixed banner and the noindex meta", async () => {
+    const storage = memoryStorage();
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => [post]), home: vi.fn(async () => ({ granville: "true" })) };
+    const handler = createRebuildHandler({ newsApi, storage, site, test: true });
+    await handler({} as Tx, envelope({ pages: ["home", "post:K1"] }));
+    expect(storage.files.get("index.html")).toContain("TEST — ALERT:");
+    expect(storage.files.get("index.html")).toContain("noindex");
+    expect(storage.files.get("releases/K1/index.html")).toContain("TEST — ALERT:");
+  });
+
+  it("bannerFor never throws: a home() failure is logged and renders with no banner", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const home = vi.fn(async () => {
+        throw new Error("News API down");
+      });
+      expect(await bannerFor({ home } as unknown as NewsApiClient, false)).toBeNull();
+      expect(errSpy).toHaveBeenCalled();
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });

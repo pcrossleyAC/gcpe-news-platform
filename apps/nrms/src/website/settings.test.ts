@@ -1,9 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { createNrmsTestDb, editor } from "../../test/helpers";
 import { SiteConflictError, SiteRuleError } from "./errors";
-import { getLiveFeed, saveLiveFeed } from "./settings";
+import { getBlueBridge, getLiveFeed, saveLiveFeed, setBlueBridge } from "./settings";
 
 const subs: SubscriberConfig[] = [];
 const defaults = { manifestUrl: "https://default.invalid/manifest.f4m", m3uUrl: "https://default.invalid/playlist.m3u8" };
@@ -96,5 +96,118 @@ describe("website/settings — Live Feed", () => {
     await expect(
       saveLiveFeed(tdb.db, { version: 1, enabled: false, manifestUrl: "http://insecure.invalid/m.f4m", m3uUrl: "" }, editor, subs),
     ).rejects.toThrow(SiteRuleError);
+  });
+});
+
+describe("website/settings — Project Blue Bridge", () => {
+  let tdb: TestDatabase;
+
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE site_log, outbox_events, outbox_deliveries, aggregate_sequences CASCADE");
+    await tdb.pool.query("UPDATE site_settings SET granville = NULL, version = 1, updated_at = now() WHERE id = 1");
+  });
+
+  const lastLog = async () => {
+    const r = await tdb.pool.query("SELECT actor_name, area, text FROM site_log ORDER BY id DESC LIMIT 1");
+    return r.rows[0] as { actor_name: string; area: string; text: string } | undefined;
+  };
+  const homeEvents = async () => {
+    const r = await tdb.pool.query("SELECT envelope FROM outbox_events WHERE type = 'site.content.changed' ORDER BY sequence");
+    return r.rows.map((row) => row.envelope.data as { granville: string | null });
+  };
+  const deps = (over: Partial<Parameters<typeof setBlueBridge>[3]> = {}) => ({
+    subscribers: subs,
+    timeZone: "America/Vancouver",
+    siteUrl: "https://news.example",
+    notify: vi.fn(async (_subject: string, _text: string) => {}),
+    ...over,
+  });
+
+  it("a wrong phrase is refused with a SiteRuleError; nothing changes, no event", async () => {
+    const notify = vi.fn(async (_subject: string, _text: string) => {});
+    await expect(
+      setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "nope", acknowledgeIgrs: true }, editor, deps({ notify })),
+    ).rejects.toThrow(SiteRuleError);
+    expect(await getBlueBridge(tdb.db)).toMatchObject({ on: false, version: 1 });
+    expect(await homeEvents()).toEqual([]);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("a lower-case phrase is refused with a SiteRuleError", async () => {
+    await expect(
+      setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "king charles iii", acknowledgeIgrs: true }, editor, deps()),
+    ).rejects.toThrow(SiteRuleError);
+    expect((await getBlueBridge(tdb.db)).on).toBe(false);
+  });
+
+  it("a correct phrase but missing acknowledgeIgrs is refused with a SiteRuleError", async () => {
+    await expect(
+      setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "KING CHARLES III", acknowledgeIgrs: false }, editor, deps()),
+    ).rejects.toThrow(SiteRuleError);
+    expect((await getBlueBridge(tdb.db)).on).toBe(false);
+    expect(await homeEvents()).toEqual([]);
+  });
+
+  it("the confirmation phrase tolerates surrounding whitespace but not case", async () => {
+    const saved = await setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "  KING CHARLES III  ", acknowledgeIgrs: true }, editor, deps());
+    expect(saved.on).toBe(true);
+  });
+
+  it("turning it on: stores granville 'true', emits one home event, logs by actor, notifies once with ON", async () => {
+    const notify = vi.fn(async (_subject: string, _text: string) => {});
+    const saved = await setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "KING CHARLES III", acknowledgeIgrs: true }, editor, deps({ notify }));
+
+    expect(saved).toMatchObject({ on: true, version: 2 });
+    expect(await homeEvents()).toMatchObject([{ granville: "true" }]);
+    expect(await lastLog()).toMatchObject({ actor_name: editor.name, area: "blue-bridge", text: "Turned Project Blue Bridge ON" });
+    expect(notify).toHaveBeenCalledTimes(1);
+    const [subject, text] = notify.mock.calls[0]!;
+    expect(subject).toBe("Project Blue Bridge turned ON on https://news.example");
+    expect(text).toContain(editor.name);
+
+    const off = await setBlueBridge(tdb.db, { version: saved.version, on: false, confirmation: "KING CHARLES III", acknowledgeIgrs: true }, editor, deps({ notify }));
+    expect(off.on).toBe(false);
+    expect(await homeEvents()).toMatchObject([{ granville: "true" }, { granville: null }]);
+    expect(await lastLog()).toMatchObject({ area: "blue-bridge", text: "Turned Project Blue Bridge OFF" });
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(notify.mock.calls[1]![0]).toBe("Project Blue Bridge turned OFF on https://news.example");
+  });
+
+  it("turning it off still requires the phrase and acknowledgement", async () => {
+    await setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "KING CHARLES III", acknowledgeIgrs: true }, editor, deps());
+    await expect(
+      setBlueBridge(tdb.db, { version: 2, on: false, confirmation: "nope", acknowledgeIgrs: true }, editor, deps()),
+    ).rejects.toThrow(SiteRuleError);
+    expect((await getBlueBridge(tdb.db)).on).toBe(true);
+  });
+
+  it("a stale version is refused with SiteConflictError", async () => {
+    await setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "KING CHARLES III", acknowledgeIgrs: true }, editor, deps());
+    await expect(
+      setBlueBridge(tdb.db, { version: 1, on: false, confirmation: "KING CHARLES III", acknowledgeIgrs: true }, editor, deps()),
+    ).rejects.toThrow(SiteConflictError);
+  });
+
+  it("a notify failure is logged (without throwing) and does not undo the change", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const notify = vi.fn(async () => {
+      throw new Error("Distribution send failed: HTTP 503");
+    });
+    try {
+      const saved = await setBlueBridge(tdb.db, { version: 1, on: true, confirmation: "KING CHARLES III", acknowledgeIgrs: true }, editor, deps({ notify }));
+      expect(saved.on).toBe(true);
+      expect((await getBlueBridge(tdb.db)).on).toBe(true);
+      expect(errSpy).toHaveBeenCalled();
+      const logged = errSpy.mock.calls.map((c) => c.join(" ")).join("\n");
+      expect(logged).not.toMatch(/@/); // never an email address
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });

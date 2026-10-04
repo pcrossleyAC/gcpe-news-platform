@@ -33,15 +33,16 @@ describe("selfHeal", () => {
     const newsApi: NewsApiClient = {
       getPost: vi.fn(async () => null),
       latestHome: vi.fn(async () => [postA, postB]),
+      home: vi.fn(async () => ({ granville: null })),
     };
 
-    const result = await selfHeal({ newsApi, storage, site });
+    const result = await selfHeal({ newsApi, storage, site, test: false });
     expect(result).toEqual({ rebuilt: 2 });
     expect(await readFile(join(root, "index.html"), "utf8")).toContain("Headline A");
     expect(await readFile(join(root, "releases", "K1", "index.html"), "utf8")).toContain("Headline A");
     expect(await readFile(join(root, "releases", "K2", "index.html"), "utf8")).toContain("Headline B");
 
-    const second = await selfHeal({ newsApi, storage, site });
+    const second = await selfHeal({ newsApi, storage, site, test: false });
     expect(second).toBeNull();
     expect(newsApi.latestHome).toHaveBeenCalledTimes(1);
   });
@@ -58,9 +59,10 @@ describe("selfHeal", () => {
     const newsApi: NewsApiClient = {
       getPost: vi.fn(async () => null),
       latestHome: vi.fn(async () => many),
+      home: vi.fn(async () => ({ granville: null })),
     };
 
-    const result = await selfHeal({ newsApi, storage, site });
+    const result = await selfHeal({ newsApi, storage, site, test: false });
     expect(result).toEqual({ rebuilt: 12 });
     const home = await readFile(join(root, "index.html"), "utf8");
     for (let i = 1; i <= 10; i++) expect(home).toContain(`Headline ${i}`);
@@ -80,8 +82,9 @@ describe("selfHeal", () => {
       latestHome: vi.fn(async () => {
         throw new Error("News API down");
       }),
+      home: vi.fn(async () => ({ granville: null })),
     };
-    await expect(selfHeal({ newsApi, storage, site })).rejects.toThrow("News API down");
+    await expect(selfHeal({ newsApi, storage, site, test: false })).rejects.toThrow("News API down");
   });
 
   // Fix round 1: writes post pages first and index.html LAST, so a failure partway through
@@ -104,12 +107,49 @@ describe("selfHeal", () => {
     const newsApi: NewsApiClient = {
       getPost: vi.fn(async () => null),
       latestHome: vi.fn(async () => [postA, postB]),
+      home: vi.fn(async () => ({ granville: null })),
     };
 
-    await expect(selfHeal({ newsApi, storage, site })).rejects.toThrow("disk full");
+    await expect(selfHeal({ newsApi, storage, site, test: false })).rejects.toThrow("disk full");
     // K1's page (written before K2's failure) did land, but index.html must not have.
     expect(writes).toEqual(["releases/K1/index.html", "releases/K2/index.html"]);
     expect(await real.exists("index.html")).toBe(false);
     expect(await real.exists("releases/K1/index.html")).toBe(true);
+  });
+
+  // Plan 3d task 4.
+  it("fetches home() once for the whole run and renders the Blue Bridge banner on every page", async () => {
+    const root = await mkdtemp(join(tmpdir(), "self-heal-"));
+    made.push(root);
+    const storage = fsStorage(root);
+    const home = vi.fn(async () => ({ granville: "true" }));
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => null), latestHome: vi.fn(async () => [postA, postB]), home };
+
+    await selfHeal({ newsApi, storage, site, test: false });
+    expect(home).toHaveBeenCalledTimes(1);
+    expect(await readFile(join(root, "index.html"), "utf8")).toContain("blue-bridge-banner");
+    expect(await readFile(join(root, "releases", "K1", "index.html"), "utf8")).toContain("blue-bridge-banner");
+  });
+
+  it("a home() failure never fails self-heal — it renders with no banner", async () => {
+    const root = await mkdtemp(join(tmpdir(), "self-heal-"));
+    made.push(root);
+    const storage = fsStorage(root);
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const newsApi: NewsApiClient = {
+        getPost: vi.fn(async () => null),
+        latestHome: vi.fn(async () => [postA]),
+        home: vi.fn(async () => {
+          throw new Error("News API down");
+        }),
+      };
+      const result = await selfHeal({ newsApi, storage, site, test: false });
+      expect(result).toEqual({ rebuilt: 1 });
+      expect(await readFile(join(root, "index.html"), "utf8")).not.toContain("blue-bridge-banner");
+      expect(errSpy).toHaveBeenCalled();
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });

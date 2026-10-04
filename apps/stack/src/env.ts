@@ -45,7 +45,10 @@ export type AppPrefix = (typeof APP_PREFIXES)[number];
  * see envFor below, which applies this before the app's own prefixed vars.
  */
 export const STACK_APP_DEFAULTS: Partial<Record<AppPrefix, Record<string, string>>> = {
-  NRMS: { NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution" },
+  // Plan 3d task 4: Core's in-process URL too, for Project Blue Bridge's admin-directory lookup
+  // (NRMS's own CORE_CLIENT_ID/SECRET stay unset in-stack, same as NOD_*/DISTRIBUTION_* — the
+  // local-admin token fallback covers it, just like NRMS's calls to NoD and Distribution).
+  NRMS: { NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", CORE_URL: "self:/core" },
 };
 
 /** Where the stack mounts its fake Flickr when no real Flickr key is configured. */
@@ -99,7 +102,9 @@ export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
  * under the same security policy. AUTH_AUDIENCE is deliberately NOT shared: each app is its own
  * audience/resource in Entra (`<PREFIX>_AUTH_AUDIENCE`), same as it would be as six separate
  * deployments. DATA_DIR (Task 1) is shared too — the one folder, outside any SiteGround deploy
- * folder, that survives a redeploy (see data-dir.ts).
+ * folder, that survives a redeploy (see data-dir.ts). SITE_ENVIRONMENT (plan 3d task 4) is
+ * shared so an operator can mark a whole deployment (e.g. boxs.ca) a test site with one
+ * setting, reaching Public Site's `isTestSite` the same way NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION do.
  */
 function isSharedKey(key: string): boolean {
   return (
@@ -110,6 +115,7 @@ function isSharedKey(key: string): boolean {
     key === "SESSION_SECRET" ||
     key === "SESSION_COOKIE_SECURE" ||
     key === "DATA_DIR" ||
+    key === "SITE_ENVIRONMENT" ||
     key.startsWith("LOCAL_ADMIN_")
   );
 }

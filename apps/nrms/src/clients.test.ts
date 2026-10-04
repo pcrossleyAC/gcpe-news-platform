@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { distributionClient, nodClient } from "./clients";
+import { coreClient, distributionClient, nodClient } from "./clients";
 
 describe("nodClient", () => {
   it("counts subscribers via a signed GET, encoding the list keys and the bearer token", async () => {
@@ -20,6 +20,32 @@ describe("nodClient", () => {
     const client = nodClient({ baseUrl: "https://nod.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
 
     await expect(client.countSubscribers([])).rejects.toThrow(/NoD count failed: HTTP 500/);
+  });
+});
+
+describe("coreClient", () => {
+  it("fetches admin emails via a signed GET", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify({ emails: ["a@example.test", "b@example.test"] }), { status: 200 }));
+    const client = coreClient({ baseUrl: "https://core.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+
+    const emails = await client.adminEmails();
+
+    expect(emails).toEqual(["a@example.test", "b@example.test"]);
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(String(url)).toBe("https://core.example/api/directory/admin-emails");
+    expect(init?.headers).toMatchObject({ authorization: "Bearer tok" });
+  });
+
+  it("on a 500, the error message carries the status, never the token", async () => {
+    const fetchImpl = vi.fn(async () => new Response("boom", { status: 500 }));
+    const client = coreClient({ baseUrl: "https://core.example", getToken: async () => "super-secret-token", fetchImpl: fetchImpl as unknown as typeof fetch });
+
+    await expect(client.adminEmails()).rejects.toThrow(/Core admin-emails failed: HTTP 500/);
+    try {
+      await client.adminEmails();
+    } catch (e) {
+      expect(String(e)).not.toContain("super-secret-token");
+    }
   });
 });
 

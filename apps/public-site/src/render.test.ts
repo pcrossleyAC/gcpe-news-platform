@@ -31,4 +31,35 @@ describe("render", () => {
     expect(html).toContain('href="/releases/2026HLTH0001-000001"');
     expect(html).toContain("Clinics &lt;script&gt;");
   });
+
+  // Plan 3d task 4: a test site gets noindex on every page kind; production doesn't.
+  it("a test site carries the noindex meta on both page kinds; production doesn't", () => {
+    const testPost = renderPostPage(post, site, { test: true });
+    const testHome = renderHomePage([post], site, { test: true });
+    expect(testPost).toContain('<meta name="robots" content="noindex, nofollow">');
+    expect(testHome).toContain('<meta name="robots" content="noindex, nofollow">');
+
+    const prodPost = renderPostPage(post, site);
+    const prodHome = renderHomePage([post], site);
+    expect(prodPost).not.toContain("noindex");
+    expect(prodHome).not.toContain("noindex");
+  });
+
+  // Plan 3d task 4: the Project Blue Bridge banner renders at the top of <body>, HTML-escaped,
+  // on both page kinds when set, and is absent when null.
+  it("renders the Blue Bridge banner, escaped, at the top of <body> on both page kinds when set", () => {
+    const banner = "ALERT: <script>alert(1)</script>";
+    const postHtml = renderPostPage(post, site, { banner });
+    const homeHtml = renderHomePage([post], site, { banner });
+    for (const html of [postHtml, homeHtml]) {
+      expect(html).toContain('<div class="blue-bridge-banner" role="alert">ALERT: &lt;script&gt;alert(1)&lt;/script&gt;</div>');
+      expect(html).not.toContain("<script>alert(1)");
+      expect(html.indexOf("blue-bridge-banner")).toBeLessThan(html.indexOf("<header"));
+    }
+  });
+
+  it("omits the banner entirely when null (the default)", () => {
+    expect(renderPostPage(post, site)).not.toContain("blue-bridge-banner");
+    expect(renderHomePage([post], site, { banner: null })).not.toContain("blue-bridge-banner");
+  });
 });

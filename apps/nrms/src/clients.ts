@@ -35,6 +35,43 @@ export function nodClient(opts: NodClientOptions): NodClient {
   };
 }
 
+const CORE_TIMEOUT_MS = 10_000;
+
+export interface CoreClientOptions {
+  baseUrl: string;
+  getToken: () => Promise<string>;
+  fetchImpl?: typeof fetch;
+}
+
+export interface CoreClient {
+  adminEmails(): Promise<string[]>;
+}
+
+/**
+ * NRMS's client for Core's `GET /api/directory/admin-emails` (Project Blue Bridge, plan 3d
+ * task 4) — a narrow read, authenticated with the dedicated `Core.AdminDirectory` service role
+ * (see start.ts's `coreServiceTokenOptions`). A non-2xx rejects with the status only — never
+ * the token, and never any address (there is nothing to leak on this error path, by
+ * construction).
+ */
+export function coreClient(opts: CoreClientOptions): CoreClient {
+  const doFetch = opts.fetchImpl ?? fetch;
+  const base = opts.baseUrl.replace(/\/+$/, "");
+
+  return {
+    async adminEmails(): Promise<string[]> {
+      const token = await opts.getToken();
+      const res = await doFetch(`${base}/api/directory/admin-emails`, {
+        headers: { authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(CORE_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`Core admin-emails failed: HTTP ${res.status}`);
+      const json = (await res.json()) as { emails: string[] };
+      return json.emails;
+    },
+  };
+}
+
 // Generous: the body carries a PDF and a text file (base64), and Distribution only queues it.
 const DISTRIBUTION_TIMEOUT_MS = 30_000;
 

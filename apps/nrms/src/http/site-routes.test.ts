@@ -120,6 +120,41 @@ describe("NRMS site HTTP API", () => {
     expect(res.body).toEqual({ error: "missing X-GCPE-Request header" });
   });
 
+  it("PUT /site/blue-bridge: NRMS.SiteEditor gets 403; Core.Admin with the phrase gets 200 and GET carries the IGRS warning", async () => {
+    const coreAdminCookie = await cookieFor(["Core.Admin"], "Avery Admin");
+
+    const before = await get("/api/site/blue-bridge", coreAdminCookie);
+    expect(before.status).toBe(200);
+    expect(before.body).toMatchObject({ on: false, warning: "Do not click OK unless you have approval from IGRS" });
+
+    const denied = await put("/api/site/blue-bridge", siteEditorCookie, {
+      version: before.body.version,
+      on: true,
+      confirmation: "KING CHARLES III",
+      acknowledgeIgrs: true,
+    });
+    expect(denied.status).toBe(403);
+
+    const refused = await put("/api/site/blue-bridge", coreAdminCookie, {
+      version: before.body.version,
+      on: true,
+      confirmation: "wrong",
+      acknowledgeIgrs: true,
+    });
+    expect(refused.status).toBe(422);
+
+    const saved = await put("/api/site/blue-bridge", coreAdminCookie, {
+      version: before.body.version,
+      on: true,
+      confirmation: "KING CHARLES III",
+      acknowledgeIgrs: true,
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({ on: true, version: before.body.version + 1 });
+
+    await put("/api/site/blue-bridge", coreAdminCookie, { version: saved.body.version, on: false, confirmation: "KING CHARLES III", acknowledgeIgrs: true });
+  });
+
   it("GET /site/log lists the actor's display name, newest first", async () => {
     const created = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAt: future() });
     expect(created.status).toBe(201);

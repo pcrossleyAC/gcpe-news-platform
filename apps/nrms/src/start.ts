@@ -7,7 +7,7 @@ import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
-import { distributionClient, nodClient } from "./clients";
+import { coreClient, distributionClient, nodClient } from "./clients";
 import { createApp } from "./app";
 import { defaultSoundcloudOembed, type EmbedDeps } from "./media/embeds";
 import { flickrClient, type FlickrConfig } from "./media/flickr-client";
@@ -49,6 +49,15 @@ export const nrmsEnvSchema = z.object({
   DISTRIBUTION_CLIENT_ID: z.string().optional(),
   DISTRIBUTION_CLIENT_SECRET: z.string().optional(),
   DISTRIBUTION_SCOPE: z.string().optional(),
+  // Plan 3d task 4: Core, for Project Blue Bridge's admin directory (who to email when the
+  // mourning banner is switched). Optional, same all-or-none Entra fields and local-token
+  // fallback as NOD_*/DISTRIBUTION_* above; the stack defaults CORE_URL to self:/core. With no
+  // CORE_URL, the Blue Bridge route still works — notify() just logs instead of emailing.
+  CORE_URL: z.string().url().optional(),
+  CORE_TOKEN_URL: z.string().url().optional(),
+  CORE_CLIENT_ID: z.string().optional(),
+  CORE_CLIENT_SECRET: z.string().optional(),
+  CORE_SCOPE: z.string().optional(),
   // Phase 3c: uploaded release files (translations, media assets). The stack sets this to
   // <DATA_DIR>/storage (survives a redeploy) and serves it publicly at /files; this default is
   // only for standalone dev.
@@ -143,6 +152,28 @@ export function distributionServiceTokenOptions(
   };
 }
 
+/**
+ * {@link ServiceTokenOptions} for NRMS's calls to Core's admin directory (Project Blue Bridge,
+ * plan 3d task 4) — mirrors {@link nodServiceTokenOptions} exactly: a dedicated, read-only
+ * service role (`Core.AdminDirectory`, not added to STAFF_ROLES — no human ever holds it), not
+ * `Core.Admin`, which is a full admin credential.
+ */
+export function coreServiceTokenOptions(
+  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "CORE_TOKEN_URL" | "CORE_CLIENT_ID" | "CORE_CLIENT_SECRET" | "CORE_SCOPE">,
+  local: LocalAuthConfig | null,
+): ServiceTokenOptions {
+  return {
+    tokenUrl: parsed.CORE_TOKEN_URL,
+    clientId: parsed.CORE_CLIENT_ID,
+    clientSecret: parsed.CORE_CLIENT_SECRET,
+    scope: parsed.CORE_SCOPE,
+    local,
+    subject: "nrms",
+    roles: ["Core.AdminDirectory"],
+    envPrefix: "CORE",
+  };
+}
+
 export interface AppHandle {
   app: express.Express;
   /** Parsed PORT (same env var/default as before) — main.ts listens on this; nothing new to
@@ -188,6 +219,9 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const distribution = parsed.DISTRIBUTION_URL
     ? distributionClient({ baseUrl: parsed.DISTRIBUTION_URL, getToken: serviceTokenProvider(distributionServiceTokenOptions(parsed, auth.local)) })
     : undefined;
+  const core = parsed.CORE_URL
+    ? coreClient({ baseUrl: parsed.CORE_URL, getToken: serviceTokenProvider(coreServiceTokenOptions(parsed, auth.local)) })
+    : undefined;
   const flickrConfig = flickrConfigFromEnv(parsed);
   const flickr = flickrConfig ? flickrClient(flickrConfig) : null;
   // The mode only — never the key, secrets or tokens.
@@ -199,6 +233,31 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
+
+  const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  /**
+   * Project Blue Bridge's notify (plan 3d task 4): with both Core and Distribution configured,
+   * look up every active Core.Admin's email and send them the switch notice; otherwise just log
+   * the subject — never an address. Any failure here (a down Core, a down Distribution) is left
+   * to throw: `setBlueBridge` (website/settings.ts) catches it, logs it without addresses, and
+   * never undoes the already-committed change.
+   */
+  const blueBridgeNotify =
+    core && distribution
+      ? async (subject: string, text: string) => {
+          const emails = await core.adminEmails();
+          if (emails.length === 0) return;
+          await distribution.send({
+            priority: "system",
+            subject,
+            text,
+            html: `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`,
+            recipients: emails.map((email) => ({ email })),
+          });
+        }
+      : async (subject: string) => {
+          console.log(`[nrms] blue bridge: ${subject}`);
+        };
 
   const app = createApp({
     db,
@@ -212,10 +271,11 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     embeds,
     subscribers,
     liveFeedDefaults,
+    siteUrl: tenant.publicSiteBaseUrl,
+    blueBridgeNotify,
   });
 
   const alertEmails = parsed.FLICKR_ALERT_EMAILS;
-  const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   /** Flickr alerts go to FLICKR_ALERT_EMAILS through Distribution; without either, just the log. */
   const alert = async (subject: string, text: string) => {
     if (!distribution || alertEmails.length === 0) {
