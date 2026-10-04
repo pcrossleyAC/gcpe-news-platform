@@ -274,7 +274,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     // Step 3: publishDue claims and publishes it, writing release.published to the NRMS
     // outbox; dispatchOnce then delivers it to both News API and NoD (2 subscribers).
     const publishResult = await publishDue({ db: nrmsDb.db, subscribers: nrmsSubscribers });
-    expect(publishResult).toEqual({ published: [key], updated: [], unpublished: [], failed: [] });
+    expect(publishResult).toEqual({ published: [key], updated: [], unpublished: [], failed: [], deferred: [] });
 
     const nrmsDispatch = await dispatchOnce({ db: nrmsDb.db, subscribers: nrmsSubscribers });
     expect(nrmsDispatch).toEqual({ delivered: 2, retried: 0, dead: 0 });
@@ -323,7 +323,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     // Step 7: re-running every worker once more changes nothing — the release is already
     // published, already dispatched, already sent, already delivered.
     const publishAgain = await publishDue({ db: nrmsDb.db, subscribers: nrmsSubscribers });
-    expect(publishAgain).toEqual({ published: [], updated: [], unpublished: [], failed: [] });
+    expect(publishAgain).toEqual({ published: [], updated: [], unpublished: [], failed: [], deferred: [] });
     const nrmsDispatchAgain = await dispatchOnce({ db: nrmsDb.db, subscribers: nrmsSubscribers });
     expect(nrmsDispatchAgain).toEqual({ delivered: 0, retried: 0, dead: 0 });
     const newsApiDispatchAgain = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers });

@@ -51,6 +51,7 @@ export async function loadView(db: DbOrTx, id: string): Promise<ReleaseView | nu
     publishOptions: { toWeb: r.toWeb, toSubscribers: r.toSubscribers, toMediaLists: r.toMediaLists },
     assetUrl: r.assetUrl, assetAltText: r.assetAltText, hasMediaAssets: r.hasMediaAssets, hasTranslations: r.hasTranslations,
     redirectUrl: r.redirectUrl, keywords: r.keywords, atomId: r.atomId, nodSubscribers: r.nodSubscribers, mediaSubscribers: r.mediaSubscribers, lastError: r.lastError,
+    flickrAlert: r.flickrAlert,
     languages: langs
       .sort((a, b) => langOrder(a.languageId, b.languageId))
       .map((l) => ({ languageId: l.languageId as LanguageId, location: l.location, summary: l.summary, summaryEdited: l.summaryEdited, socialMediaSummary: l.socialMediaSummary })),

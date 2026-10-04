@@ -40,7 +40,7 @@ describe("publisher", () => {
     const due = await createScheduledRelease(tdb.db);
     await createScheduledRelease(tdb.db, {}, new Date(Date.now() + 10 * 60_000));
     const r = await publishDue({ db: tdb.db, subscribers: subs });
-    expect(r).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [] });
+    expect(r).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [], deferred: [] });
     const v = (await loadView(tdb.db, due.id))!;
     expect(v.status).toBe("published");
     expect(v.releasedAt).toBe(due.publishAt);
@@ -60,7 +60,7 @@ describe("publisher", () => {
     await publishDue({ db: tdb.db, subscribers: subs });
     const live = (await loadView(tdb.db, due.id))!;
     await saveCategories(tdb.db, due.id, { version: live.version, leadMinistryKey: "health", ministries: ["health"], sectors: ["education"], themes: [], tags: [] }, editor);
-    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [due.key], unpublished: [], failed: [] });
+    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [due.key], unpublished: [], failed: [], deferred: [] });
     const evs = await events();
     expect(evs.map((e) => e.type)).toEqual(["release.published", "release.updated"]);
     expect(evs[1]!.envelope.data).toMatchObject({ notify: true, publishDate: due.publishAt, sectorKeys: ["education"] });
@@ -71,7 +71,7 @@ describe("publisher", () => {
     const due = await createScheduledRelease(tdb.db);
     await publishDue({ db: tdb.db, subscribers: subs });
     await unpublish(tdb.db, due.id, (await loadView(tdb.db, due.id))!.version, editor);
-    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [], unpublished: [due.key], failed: [] });
+    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [], unpublished: [due.key], failed: [], deferred: [] });
     expect((await events()).at(-1)).toMatchObject({ type: "release.unpublished", envelope: { data: { key: due.key } } });
     expect((await loadView(tdb.db, due.id))!.status).toBe("approved");
   });
@@ -84,7 +84,7 @@ describe("publisher", () => {
     const back = (await loadView(tdb.db, due.id))!;
     expect(back.releasedAt).toBe(due.publishAt);
     await schedule(tdb.db, due.id, { version: back.version, publishAt: "now" }, editor, deps);
-    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [] });
+    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [], deferred: [] });
     const evs = await events();
     expect(evs.map((e) => e.type)).toEqual(["release.published", "release.unpublished", "release.published"]);
     expect(evs[2]!.envelope.data).toMatchObject({ key: due.key, publishDate: due.publishAt });
@@ -103,7 +103,7 @@ describe("publisher", () => {
     expect((await publishDue({ db: tdb.db, subscribers: subs })).failed).toEqual([due.key]);
     for (const b of bodies.rows) await tdb.pool.query("UPDATE document_languages SET body_html = $2 WHERE document_id = $1", [b.document_id, b.body_html]);
     await schedule(tdb.db, due.id, { version: (await loadView(tdb.db, due.id))!.version, publishAt: "now" }, editor, deps);
-    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [due.key], unpublished: [], failed: [] });
+    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [due.key], unpublished: [], failed: [], deferred: [] });
     expect((await events()).map((e) => e.type)).toEqual(["release.published", "release.updated"]);
   });
 
@@ -144,7 +144,7 @@ describe("publisher", () => {
     expect(failed.status).toBe("failed");
     await expect(deleteRelease(tdb.db, due.id, failed.version, editor)).rejects.toEqual(new ReleaseStateError("This release has been published — unpublish it first."));
     expect((await unpublish(tdb.db, due.id, failed.version, editor)).status).toBe("unpublishing");
-    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [], unpublished: [due.key], failed: [] });
+    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [], unpublished: [due.key], failed: [], deferred: [] });
     expect(await live(due.id)).toBe(false);
   });
 
@@ -171,7 +171,7 @@ describe("publisher", () => {
     await restore();
     const s = await schedule(tdb.db, due.id, { version: (await loadView(tdb.db, due.id))!.version, publishAt: "now" }, editor, deps);
     expect((await unpublish(tdb.db, due.id, s.version, editor)).status).toBe("unpublishing");
-    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [], unpublished: [due.key], failed: [] });
+    expect(await publishDue({ db: tdb.db, subscribers: subs })).toEqual({ published: [], updated: [], unpublished: [due.key], failed: [], deferred: [] });
     expect((await events()).at(-1)).toMatchObject({ type: "release.unpublished", envelope: { data: { key: due.key } } });
     expect(await live(due.id)).toBe(false);
   });
@@ -201,7 +201,7 @@ describe("publisher", () => {
       const bad = await createScheduledRelease(tdb.db, {}, new Date(Date.now() - 2 * 60_000));
       await blankBodies(bad.id);
       const r = await publishDue({ db: tdb.db, subscribers: subs, limit: 5 });
-      expect(r).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [bad.key] });
+      expect(r).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [bad.key], deferred: [] });
       expect((await loadView(tdb.db, stuck.id))!.status).toBe("unpublishing"); // retried next run
     } finally {
       errSpy.mockRestore();
@@ -214,7 +214,7 @@ describe("publisher", () => {
     await tdb.db.execute(sql`UPDATE document_languages SET body_html = '' WHERE document_id IN (SELECT id FROM release_documents WHERE release_id = ${bad.id})`);
     const good = await createScheduledRelease(tdb.db);
     const r = await publishDue({ db: tdb.db, subscribers: subs });
-    expect(r).toEqual({ published: [good.key], updated: [], unpublished: [], failed: [bad.key] });
+    expect(r).toEqual({ published: [good.key], updated: [], unpublished: [], failed: [bad.key], deferred: [] });
     const v = (await loadView(tdb.db, bad.id))!;
     expect(v).toMatchObject({ status: "failed", lastError: "Document 1 (English) needs body text." });
     expect((await logs(bad.id)).at(-1)!.text).toBe("Publishing failed: Document 1 (English) needs body text.");
@@ -256,7 +256,7 @@ describe("publisher", () => {
         publishDue({ db: tdb.db, subscribers: subs }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error("publishDue waited on the locked row instead of skipping it")), 5000)),
       ]);
-      expect(result).toEqual({ published: [free.key], updated: [], unpublished: [], failed: [] });
+      expect(result).toEqual({ published: [free.key], updated: [], unpublished: [], failed: [], deferred: [] });
     } finally {
       await locker.query("ROLLBACK");
       locker.release();

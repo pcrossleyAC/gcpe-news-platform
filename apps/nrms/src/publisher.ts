@@ -3,6 +3,7 @@ import { sqlNow, type Db, type TestClock, type Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type SubscriberConfig } from "@gcpe/events";
 import { publishProblems, type ReleaseView } from "@gcpe/nrms-contract";
 import { newsReleases, releasePublications } from "./db/schema";
+import { DeferPublish } from "./media/flickr-jobs";
 import { ReleaseRuleError } from "./releases/errors";
 import { toReleaseRecord } from "./releases/record";
 import { loadView, SYSTEM_ACTOR, writeLog } from "./releases/store";
@@ -13,7 +14,12 @@ export interface PublisherOptions {
   /** Test hook: stands in for SQL `now()` in every statement (due check and stamps). */
   now?: TestClock;
   limit?: number;
-  /** Phase 3c seam: make the photo public etc. Returns the asset URL to publish. */
+  /**
+   * Phase 3c seam: make the photo public etc. Returns the asset URL to publish. Throwing
+   * {@link DeferPublish} leaves the release as it is (scheduled/publishing) for a later run —
+   * not a failure. It's called before the release row is touched, so the deferring run commits
+   * only what `prepareMedia` itself wrote (e.g. a Flickr job).
+   */
   prepareMedia?: (tx: Tx, view: ReleaseView) => Promise<{ assetUrl: string | null }>;
   /** PUBLIC_FILES_BASE: origin prefixed to `/files/…` in the record's translations/assets. */
   filesBase?: string;
@@ -24,6 +30,8 @@ export interface PublishResult {
   updated: string[];
   unpublished: string[];
   failed: string[];
+  /** Waiting on media (e.g. a Flickr photo being made public): left as they were, retried next run. */
+  deferred: string[];
 }
 
 const MAX_LAST_ERROR = 500;
@@ -48,7 +56,15 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
   }
   const problems = publishProblems(view);
   if (problems.length) throw new ReleaseRuleError(problems);
-  const { assetUrl } = opts.prepareMedia ? await opts.prepareMedia(tx, view) : { assetUrl: view.assetUrl };
+  let assetUrl = view.assetUrl;
+  if (opts.prepareMedia) {
+    try {
+      ({ assetUrl } = await opts.prepareMedia(tx, view));
+    } catch (e) {
+      if (e instanceof DeferPublish) return { kind: "deferred", key };
+      throw e;
+    }
+  }
   const first = view.releasedAt === null;
   // Go-live (release.published) whenever the release isn't on the site: the first release, or a
   // re-publish after an unpublish. A correction of a live release — claimed as `publishing`, or
@@ -90,7 +106,7 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
  */
 export async function publishDue(opts: PublisherOptions): Promise<PublishResult> {
   const limit = opts.limit ?? 50;
-  const out: PublishResult = { published: [], updated: [], unpublished: [], failed: [] };
+  const out: PublishResult = { published: [], updated: [], unpublished: [], failed: [], deferred: [] };
   // Releases already attempted in this run: a release whose processing keeps failing (an
   // `unpublishing` one stays claimable) must not be re-claimed ahead of everything behind it.
   const tried: string[] = [];

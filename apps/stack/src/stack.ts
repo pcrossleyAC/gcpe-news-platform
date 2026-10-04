@@ -314,6 +314,8 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     tickRouter(
       stackEnv.TICK_TOKEN,
       createTickRunner([
+        // Flickr first, so a photo made public this tick is published with it in the same tick.
+        { name: "nrms.flickr", run: worker(nrms, "flickr") },
         { name: "nrms.publish", run: worker(nrms, "publish") },
         { name: "nrms.dispatch", run: worker(nrms, "dispatch") },
         { name: "core.dispatch", run: worker(core, "dispatch") },

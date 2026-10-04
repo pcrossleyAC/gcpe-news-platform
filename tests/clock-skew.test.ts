@@ -168,7 +168,7 @@ describe.each([
     const due = await createScheduledRelease(nrmsDb.db, {}, new RealDate(dbNow.getTime() - 60_000)); // due a minute ago
     await createScheduledRelease(nrmsDb.db, {}, new RealDate(dbNow.getTime() + 5 * 60_000)); // due in 5 minutes
 
-    expect(await publishDue({ db: nrmsDb.db, subscribers: [] })).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [] });
+    expect(await publishDue({ db: nrmsDb.db, subscribers: [] })).toEqual({ published: [due.key], updated: [], unpublished: [], failed: [], deferred: [] });
     // The publisher stamps updated_at with the DB's now(); released_at is the scheduled publish_at.
     expectAbout(await msFromDbNow(nrmsDb, "news_releases", "updated_at", "id = $1", [due.id]), 0);
     expectAbout(await msFromDbNow(nrmsDb, "news_releases", "released_at", "id = $1", [due.id]), -60_000);

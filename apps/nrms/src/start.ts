@@ -10,6 +10,7 @@ import { localStore } from "@gcpe/storage";
 import { distributionClient, nodClient } from "./clients";
 import { createApp } from "./app";
 import { flickrClient, type FlickrConfig } from "./media/flickr-client";
+import { flickrPrepareMedia, processFlickrJobs, startFlickrJobs } from "./media/flickr-jobs";
 import { publishDue, startPublisher } from "./publisher";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset. */
@@ -199,25 +200,48 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     flickr,
   });
 
+  const alertEmails = parsed.FLICKR_ALERT_EMAILS;
+  const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+  /** Flickr alerts go to FLICKR_ALERT_EMAILS through Distribution; without either, just the log. */
+  const alert = async (subject: string, text: string) => {
+    if (!distribution || alertEmails.length === 0) {
+      console.log(`[nrms] flickr alert: ${subject}`);
+      return;
+    }
+    await distribution.send({
+      priority: "system",
+      subject,
+      text,
+      html: `<pre style="font-family:inherit;white-space:pre-wrap">${escapeHtml(text)}</pre>`,
+      recipients: alertEmails.map((email) => ({ email })),
+    });
+  };
+  const flickrJobsOpts = { db, flickr, alert };
+  const prepareMedia = flickrPrepareMedia({});
+
   // Set by startLoops(); closers below reference these lazily so they're safe to call even
   // if startLoops() was never invoked.
   let stopPublisher: (() => Promise<void>) | undefined;
   let stopDispatcher: (() => Promise<void>) | undefined;
+  let stopFlickr: (() => Promise<void>) | undefined;
 
   return {
     app,
     port: parsed.PORT,
     workers: {
-      publish: () => publishDue({ db, subscribers, filesBase }),
+      flickr: () => processFlickrJobs(flickrJobsOpts),
+      publish: () => publishDue({ db, subscribers, filesBase, prepareMedia }),
       dispatch: () => dispatchOnce({ db, subscribers }),
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
-      stopPublisher = startPublisher({ db, subscribers, filesBase, intervalMs: parsed.PUBLISH_INTERVAL_MS });
+      stopFlickr = startFlickrJobs({ ...flickrJobsOpts, intervalMs: 30_000 });
+      stopPublisher = startPublisher({ db, subscribers, filesBase, prepareMedia, intervalMs: parsed.PUBLISH_INTERVAL_MS });
     },
     closeBeforeServer: [],
     closers: [
       { name: "publisher", close: async () => { await stopPublisher?.(); } },
+      { name: "flickr jobs", close: async () => { await stopFlickr?.(); } },
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],

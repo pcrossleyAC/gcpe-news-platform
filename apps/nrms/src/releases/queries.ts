@@ -146,6 +146,7 @@ export async function listItems(db: DbOrTx, rows: NewsReleaseRow[], nowMs: numbe
       leadOrganization: leadOrganization(r, ministries, names, doc),
       pageTitle: doc?.pageTitle ?? "", headline: doc?.headline ?? "", location: (lang?.location ?? "").toUpperCase(), summary: lang?.summary ?? "",
       publishAt, releasedAt: r.releasedAt?.toISOString() ?? null, activityId: r.activityId, approved: r.reference !== null,
+      flickrAlert: r.flickrAlert,
     };
   });
 }

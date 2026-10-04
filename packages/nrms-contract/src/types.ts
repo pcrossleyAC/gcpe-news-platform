@@ -85,6 +85,8 @@ export interface ReleaseView {
   nodSubscribers: number | null;
   mediaSubscribers: number | null;
   lastError: string | null;
+  /** Set when the release went out without its Flickr photo (it couldn't be made public); cleared once it's republished with the photo. */
+  flickrAlert: string | null;
   languages: ReleaseLanguageView[];
   documents: DocumentView[];
   ministries: string[];
@@ -114,6 +116,8 @@ export interface ReleaseListItem {
   releasedAt: string | null;
   activityId: number | null;
   approved: boolean;
+  /** See {@link ReleaseView.flickrAlert}. */
+  flickrAlert: string | null;
 }
 
 export interface ReleasePage<T> {

@@ -84,6 +84,8 @@ export const newsReleases = pgTable(
     nodSubscribers: integer("nod_subscribers"),
     mediaSubscribers: integer("media_subscribers"),
     lastError: text("last_error"),
+    /** Phase 3c: the release went out without its Flickr photo (see media/flickr-jobs.ts). */
+    flickrAlert: text("flickr_alert"),
     version: integer("version").notNull().default(1),
     createdAt: tz("created_at").notNull().defaultNow(),
     updatedAt: tz("updated_at").notNull().defaultNow(),
@@ -101,6 +103,30 @@ export const newsReleases = pgTable(
 export type NewsReleaseRow = typeof newsReleases.$inferSelect;
 
 const releaseFk = () => uuid("release_id").notNull().references(() => newsReleases.id, { onDelete: "cascade" });
+
+/**
+ * Phase 3c: making a release's Flickr photo public before it goes live (media/flickr-jobs.ts).
+ * One job per release, for the photo its asset currently points at.
+ */
+export const flickrJobs = pgTable(
+  "flickr_jobs",
+  {
+    releaseId: uuid("release_id").primaryKey().references(() => newsReleases.id, { onDelete: "cascade" }),
+    photoId: text("photo_id").notNull(),
+    status: text("status").$type<"pending" | "done" | "gave_up">().notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    firstAttemptAt: tz("first_attempt_at"),
+    nextAttemptAt: tz("next_attempt_at").notNull().defaultNow(),
+    lastError: text("last_error"),
+    staticUrl: text("static_url"),
+    alertedAt: tz("alerted_at"),
+    updatedAt: tz("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    check("flickr_jobs_status_check", sql`${t.status} IN ('pending','done','gave_up')`),
+    index("flickr_jobs_due_idx").on(t.nextAttemptAt).where(sql`${t.status} = 'pending'`),
+  ],
+);
 
 export const releaseLanguages = pgTable(
   "release_languages",

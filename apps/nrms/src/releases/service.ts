@@ -6,7 +6,7 @@ import {
   type LanguageId, type Layout, type MetaInput, type ReleaseType, type ReleaseView, type ReorderDocumentsInput, type SettingsInput,
 } from "@gcpe/nrms-contract";
 import {
-  categoryTerms, documentContacts, documentLanguages, mediaLists, newsReleases, organizations, releaseCategories, releaseDocuments, releaseFiles, releaseLanguages, releaseMediaLists,
+  categoryTerms, documentContacts, flickrJobs, documentLanguages, mediaLists, newsReleases, organizations, releaseCategories, releaseDocuments, releaseFiles, releaseLanguages, releaseMediaLists,
   type NewsReleaseRow,
 } from "../db/schema";
 import type { ObjectStore } from "@gcpe/storage";
@@ -238,6 +238,8 @@ export function saveAsset(db: Db, id: string, input: AssetInput, actor: Actor): 
       .update(newsReleases)
       .set({ assetUrl: input.assetUrl, assetAltText: input.assetAltText, hasMediaAssets: input.hasMediaAssets })
       .where(eq(newsReleases.id, row.id));
+    // Re-adding a photo NRMS gave up on (see media/flickr-jobs.ts) starts over with a fresh job.
+    await tx.delete(flickrJobs).where(and(eq(flickrJobs.releaseId, row.id), eq(flickrJobs.status, "gave_up")));
     return "Updated media asset";
   });
 }

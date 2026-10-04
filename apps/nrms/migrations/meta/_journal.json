@@ -78,6 +78,13 @@
       "when": 1791103999736,
       "tag": "0010_release_files",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791105966435,
+      "tag": "0011_flickr_jobs",
+      "breakpoints": true
     }
   ]
 }
