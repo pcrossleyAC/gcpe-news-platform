@@ -23,6 +23,7 @@ Status key: **Open** (no answer yet) · **Answered**.
 | Q14 | The plain-text version of a release has a "Connect with the Province of B.C." footer in one legacy path but not another. Should it have it? | Decides what the text rendition and "email me a copy" contain. | Include the footer. | 2026-10-03 |
 | Q15 | Who may turn on Project Blue Bridge, and should it need a second person to confirm? | Turning it on by mistake publishes a false announcement of the King's death on BC Gov News. | Only Core.Admin can turn it on, after typing a confirmation phrase; every change is logged and emailed to admins. | 2026-10-03 |
 | Q16 | Should the Blue Bridge banner text be editable, or stay fixed in the public site's code as today? | The text names King Charles III and computes his age; it must be right on the day it's used. | Keep it fixed in the public site's code, as legacy does. | 2026-10-03 |
+| Q17 | When a release is unpublished or deleted, should its translation PDFs and media files stop being downloadable? | Their links have already gone out in the published release; legacy left uploaded files in place. Matters for legal takedowns. | Keep legacy behaviour: files stay downloadable at their (unguessable) addresses until the release is permanently deleted. | 2026-10-04 |
 
 ## Answered
 
