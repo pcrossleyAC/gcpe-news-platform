@@ -25,6 +25,7 @@ Status key: **Agreed** (approved in design) · **Proposed** (in a design section
 | C10 | `NewsReleaseHistory` (published copies) exists but the current code never writes to it. | A frozen copy of the content is saved every time a release is published or corrected. | Gives a real "as published on…" history. | Agreed |
 | C11 | Current government term is picked by sorting term names as text. | An explicit "current term" setting. | Text sorting breaks for some names (e.g. a term starting "2101-"). | Agreed |
 | C12 | Page images that shouldn't be offered are hidden by two ids hard-coded in the code. | Page images have an "active" flag. | Hiding images shouldn't need a code change. | Agreed |
+| C35 | Release keys (the address of a story, factsheet, etc.) are unique per type, so a Story and a Factsheet can share one. | Keys are unique across all types, ignoring case; a clash gets `-1`, `-2`, …. | The public News API addresses posts by key alone, so two posts with one key would overwrite each other on the site. | Agreed |
 
 ## Staff app screens
 

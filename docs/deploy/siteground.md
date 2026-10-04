@@ -75,6 +75,14 @@ never reached over the stack's own HTTP port, and the six databases above are on
 reachable at `localhost:5432` directly. `scripts/siteground-env.ts` always generates real
 `postgres://` URLs for these; if you ever hand-edit one, keep it that way.
 
+**Keep `LOCAL_ADMIN_ENABLED=true`** (as generated) unless Entra is configured for NRMS's
+service calls. NRMS calls NoD (the subscriber count shown at schedule time) and Distribution
+("Email me a copy") with a service token; when the `NOD_TOKEN_URL`/`NOD_CLIENT_ID`/
+`NOD_CLIENT_SECRET`/`NOD_SCOPE` and `DISTRIBUTION_TOKEN_URL`/`DISTRIBUTION_CLIENT_ID`/
+`DISTRIBUTION_CLIENT_SECRET`/`DISTRIBUTION_SCOPE` sets are unset, that token is minted locally
+from the local-admin settings. Turning local admin off without setting both Entra sets leaves
+NRMS with no way to authenticate those calls.
+
 For a non-interactive/scripted run (CI, or re-generating without re-typing everything), see
 `npm run siteground:env -- --non-interactive` and the `SITEGROUND_*` env vars it reads
 (`scripts/siteground-env.ts`'s module doc comment has the full list) — intended for tests, not
@@ -203,7 +211,7 @@ curl -s -X POST https://<domain>/nrms/auth/local/token \
 #    returns the release; send back its current "version". Approve assigns the "key".
 curl -s -X POST https://<domain>/nrms/api/releases \
   -H 'content-type: application/json' -H "authorization: Bearer <access_token>" \
-  -d '{"type":"release","pageTitle":"News Release","layout":"formal","headline":"Smoke test","bodyHtml":"<p>Smoke test.</p>","location":"Victoria","contacts":["Media Relations\n250-555-0100"],"ministries":["health"],"leadMinistryKey":"health","sectors":["health"]}'
+  -d '{"type":"release","pageTitle":"News Release","layout":"formal","organizations":"Ministry of Health","headline":"Smoke test","bodyHtml":"<p>Smoke test.</p>","location":"Victoria","contacts":["Media Relations\n250-555-0100"],"ministries":["health"],"leadMinistryKey":"health","sectors":["health"]}'
 # -> {"id": "<id>", "version": 1, ...}
 curl -s -X POST https://<domain>/nrms/api/releases/<id>/approve \
   -H 'content-type: application/json' -H "authorization: Bearer <access_token>" \
@@ -272,6 +280,11 @@ It asks for the admin password and a password for each test user (12+ characters
   running; harmless, the next call will do the work).
 
 ## Known limits
+
+- **Phase 2 smoke releases need organizations before they can be republished.** The Phase 3
+  migration copies Phase 2 releases into the new release model with the formal layout but no
+  organizations line (Phase 2 had none). They stay live as they are, but saving a correction to
+  one fails at republish until its document's organizations are filled in.
 
 - **No live updates.** News API's SignalR hub is disabled (`UPDATES_HUB_ENABLED=false`) —
   SiteGround's proxy strips WebSocket upgrades. Clients poll instead of subscribing.

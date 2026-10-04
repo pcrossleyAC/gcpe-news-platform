@@ -46,7 +46,7 @@ echo "== create release"
 CREATED="$(python3 - <<'PY' | nrms_post ""
 import json
 print(json.dumps({
-  "type": "release", "pageTitle": "News Release", "layout": "formal",
+  "type": "release", "pageTitle": "News Release", "layout": "formal", "organizations": "Ministry of Health",
   "headline": "Smoke test: weekend clinics open across B.C.",
   "bodyHtml": "<p>This is a smoke test from scripts/siteground-smoke.sh.</p>",
   "location": "Victoria", "contacts": ["Media Relations\nAlex Example\n250-555-0100"],
