@@ -52,3 +52,39 @@ describe("Phase 2 → release model data copy", () => {
     expect(await q(`SELECT kind, key FROM release_categories ORDER BY kind`)).toEqual([{ kind: "ministries", key: "health" }, { kind: "sectors", key: "health" }]);
   });
 });
+
+describe("Phase 2 → release model data copy: duplicate references", () => {
+  let tdb: TestDatabase;
+  let partial: string;
+  beforeAll(async () => {
+    partial = await partialMigrations("0002_taxonomy_cache");
+    tdb = await createTestDatabase({ migrationsFolder: partial });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+    await rm(partial, { recursive: true, force: true });
+  });
+
+  it("keeps the earliest-created row's reference and nulls out later duplicates, without aborting the migration", async () => {
+    const baseContent = {
+      reference: "NEWS-00007", leadMinistryKey: "health", summary: "", socialMediaSummary: null, socialMediaHeadline: null,
+      keywords: null, location: "", hasMediaAssets: false, hasTranslations: false, isNewsOnDemand: true, assetUrl: null, redirectUri: null,
+      documents: [], ministryKeys: [], sectorKeys: [], tagKeys: [], themeKeys: [], assets: null, translations: null,
+      publishFlags: { toWeb: true, toSubscribers: false, toMediaLists: false }, mediaListKeys: [],
+    };
+    await tdb.pool.query(
+      `INSERT INTO releases (key, kind, status, created_at, content) VALUES ($1, 'releases', 'draft', now() - interval '1 hour', $2)`,
+      ["2026HLTH0002-000001", JSON.stringify(baseContent)],
+    );
+    await tdb.pool.query(
+      `INSERT INTO releases (key, kind, status, created_at, content) VALUES ($1, 'releases', 'draft', now(), $2)`,
+      ["2026HLTH0002-000002", JSON.stringify(baseContent)],
+    );
+    await runMigrations(tdb.db, nrmsMigrations);
+    const q = async (text: string) => (await tdb.pool.query(text)).rows;
+    expect(await q(`SELECT key, reference, status FROM news_releases ORDER BY key`)).toEqual([
+      { key: "2026HLTH0002-000001", reference: "NEWS-00007", status: "approved" },
+      { key: "2026HLTH0002-000002", reference: null, status: "draft" },
+    ]);
+  });
+});

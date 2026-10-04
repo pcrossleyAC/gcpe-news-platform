@@ -1,5 +1,19 @@
 -- Copies Phase 2 releases (single JSON row each) into the normalised model. Phase 2 only
 -- ever held English documents, so each JSON document becomes one English document here.
+--
+-- Phase 2 never enforced uniqueness on content->>'reference' (news_releases.reference does).
+-- When two Phase 2 rows share a reference, only the earliest-created row (tiebreak: key) keeps
+-- it; later duplicates get a NULL reference instead of aborting the migration. A draft is only
+-- promoted to 'approved' when it's the row that actually keeps the reference.
+WITH ranked AS (
+  SELECT
+    r.*,
+    row_number() OVER (
+      PARTITION BY NULLIF(r.content->>'reference', '')
+      ORDER BY r.created_at, r.key
+    ) AS reference_rank
+  FROM releases r
+)
 INSERT INTO news_releases (type, key, reference, lead_ministry_key, status, publish_at, released_at,
   to_web, to_subscribers, to_media_lists, asset_url, has_media_assets, has_translations, redirect_url,
   keywords, last_error, created_at, updated_at)
@@ -7,9 +21,9 @@ SELECT
   CASE r.kind WHEN 'releases' THEN 'release' WHEN 'stories' THEN 'story' WHEN 'factsheets' THEN 'factsheet'
               WHEN 'updates' THEN 'update' ELSE 'advisory' END,
   r.key,
-  NULLIF(r.content->>'reference', ''),
+  CASE WHEN r.reference_rank = 1 THEN NULLIF(r.content->>'reference', '') ELSE NULL END,
   r.content->>'leadMinistryKey',
-  CASE WHEN r.status = 'draft' AND NULLIF(r.content->>'reference', '') IS NOT NULL THEN 'approved' ELSE r.status END,
+  CASE WHEN r.status = 'draft' AND r.reference_rank = 1 AND NULLIF(r.content->>'reference', '') IS NOT NULL THEN 'approved' ELSE r.status END,
   COALESCE(r.publish_at, r.published_at),
   r.published_at,
   COALESCE((r.content->'publishFlags'->>'toWeb')::boolean, true),
@@ -23,7 +37,7 @@ SELECT
   r.last_error,
   r.created_at,
   r.updated_at
-FROM releases r;
+FROM ranked r;
 --> statement-breakpoint
 INSERT INTO release_languages (release_id, language_id, location, summary, summary_edited, social_media_summary)
 SELECT n.id, 4105, COALESCE(r.content->>'location', ''), COALESCE(r.content->>'summary', ''), true, r.content->>'socialMediaSummary'
