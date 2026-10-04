@@ -2,9 +2,18 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
-import { createReleaseSchema, scheduleSchema, statusText, versionOnlySchema, type ReleaseView } from "@gcpe/nrms-contract";
+import {
+  addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, listQuerySchema, metaSchema,
+  reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
+} from "@gcpe/nrms-contract";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError, VersionConflictError } from "../releases/errors";
-import { createRelease, deleteRelease } from "../releases/service";
+import {
+  goTo, listFolder, listMediaLists, listPageImages, listPageTypes, publication, publications, releaseLog, releaseVisible, searchReleases,
+} from "../releases/queries";
+import {
+  addDocument, addTranslation, createRelease, deleteRelease, removeDocument, removeTranslation, reorderDocuments, saveAsset, saveCategories,
+  saveDocumentLanguage, saveMeta, saveSettings,
+} from "../releases/service";
 import { loadView } from "../releases/store";
 import { approve, cancel, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
 import { listCategories } from "../taxonomy";
@@ -14,7 +23,10 @@ export interface RouteDeps {
   workflow: WorkflowDeps;
 }
 
-type Handler = (req: Request<{ id: string }>, res: Response) => Promise<void>;
+// A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
+type Params = { id: string; docId: string; lang: string; pubId: string };
+type Handler = (req: Request<Params>, res: Response) => Promise<void>;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Maps the service layer's typed errors (and zod's) to a response. Returns false for anything
@@ -29,7 +41,7 @@ function handleError(e: unknown, res: Response): boolean {
   return false;
 }
 
-const run = (h: Handler) => (req: Request<{ id: string }>, res: Response, next: NextFunction) =>
+const run = (h: Handler) => (req: Request<Params>, res: Response, next: NextFunction) =>
   h(req, res).catch((e) => {
     if (!handleError(e, res)) next(e);
   });
@@ -41,6 +53,16 @@ export function apiRoutes(deps: RouteDeps): Router {
   const edit = requireRole("NRMS.Editor");
   const withStatus = (v: ReleaseView) => ({ ...v, statusText: statusText(v, Date.now()) });
   const version = (req: Request) => versionOnlySchema.parse(req.body).version;
+
+  // Malformed path ids are a 404 (not a 400): nothing can exist at that URL.
+  const notFound = (res: Response) => void res.status(404).json({ error: "not found" });
+  const param = (name: keyof Params, ok: (v: string) => boolean) =>
+    r.param(name, (_req, res, next, value: string) => (ok(value) ? next() : notFound(res)));
+  param("id", (v) => UUID.test(v));
+  param("docId", (v) => UUID.test(v));
+  param("lang", (v) => v === "4105" || v === "3084");
+  param("pubId", (v) => /^\d{1,15}$/.test(v));
+  const opts = () => ({ timeZone: deps.workflow.timeZone, nowMs: Date.now() });
 
   r.get("/categories", read, run(async (_req, res) => void res.json(await listCategories(db))));
 
@@ -68,6 +90,88 @@ export function apiRoutes(deps: RouteDeps): Router {
   r.post("/releases/:id/cancel", edit, run(async (req, res) => void res.json(withStatus(await cancel(db, req.params.id, version(req), actorOf(req))))));
   r.post("/releases/:id/unpublish", edit, run(async (req, res) => void res.json(withStatus(await unpublish(db, req.params.id, version(req), actorOf(req))))));
   r.post("/releases/:id/delete", edit, run(async (req, res) => void res.json({ result: await deleteRelease(db, req.params.id, version(req), actorOf(req)) })));
+
+  r.get("/releases", read, run(async (req, res) => void res.json(await listFolder(db, listQuerySchema.parse(req.query), opts()))));
+  r.get("/search", read, run(async (req, res) => void res.json(await searchReleases(db, searchQuerySchema.parse(req.query), opts()))));
+  r.get(
+    "/goto",
+    read,
+    run(async (req, res) => {
+      const q = typeof req.query.q === "string" ? req.query.q.slice(0, 2000) : "";
+      const id = await goTo(db, q);
+      if (!id) return notFound(res);
+      res.json({ id });
+    }),
+  );
+
+  r.get(
+    "/releases/:id/log",
+    read,
+    run(async (req, res) => {
+      if (!(await releaseVisible(db, req.params.id))) return notFound(res);
+      res.json(await releaseLog(db, req.params.id, req.query.all === "true"));
+    }),
+  );
+  r.get(
+    "/releases/:id/publications",
+    read,
+    run(async (req, res) => {
+      if (!(await releaseVisible(db, req.params.id))) return notFound(res);
+      res.json(await publications(db, req.params.id));
+    }),
+  );
+  r.get(
+    "/releases/:id/publications/:pubId",
+    read,
+    run(async (req, res) => {
+      if (!(await releaseVisible(db, req.params.id))) return notFound(res);
+      const record = await publication(db, req.params.id, Number(req.params.pubId));
+      if (!record) return notFound(res);
+      res.json(record);
+    }),
+  );
+
+  r.get("/media-lists", read, run(async (_req, res) => void res.json(await listMediaLists(db))));
+  r.get("/page-types", read, run(async (_req, res) => void res.json(await listPageTypes(db))));
+  r.get("/page-images", read, run(async (_req, res) => void res.json(await listPageImages(db))));
+
+  r.put("/releases/:id/settings", edit, run(async (req, res) => void res.json(withStatus(await saveSettings(db, req.params.id, settingsSchema.parse(req.body), actorOf(req))))));
+  r.put("/releases/:id/categories", edit, run(async (req, res) => void res.json(withStatus(await saveCategories(db, req.params.id, categoriesSchema.parse(req.body), actorOf(req))))));
+  r.put("/releases/:id/asset", edit, run(async (req, res) => void res.json(withStatus(await saveAsset(db, req.params.id, assetSchema.parse(req.body), actorOf(req))))));
+  r.put("/releases/:id/meta", edit, run(async (req, res) => void res.json(withStatus(await saveMeta(db, req.params.id, metaSchema.parse(req.body), actorOf(req))))));
+
+  r.post("/releases/:id/documents", edit, run(async (req, res) => void res.json(withStatus(await addDocument(db, req.params.id, addDocumentSchema.parse(req.body), actorOf(req))))));
+  r.put(
+    "/releases/:id/documents/order",
+    edit,
+    run(async (req, res) => void res.json(withStatus(await reorderDocuments(db, req.params.id, reorderDocumentsSchema.parse(req.body), actorOf(req))))),
+  );
+  r.put(
+    "/releases/:id/documents/:docId/:lang",
+    edit,
+    run(async (req, res) => {
+      const lang = Number(req.params.lang) as LanguageId;
+      res.json(withStatus(await saveDocumentLanguage(db, req.params.id, req.params.docId, lang, documentLanguageSchema.parse(req.body), actorOf(req))));
+    }),
+  );
+  r.post(
+    "/releases/:id/documents/:docId/translations",
+    edit,
+    run(async (req, res) => void res.json(withStatus(await addTranslation(db, req.params.id, req.params.docId, addTranslationSchema.parse(req.body), actorOf(req))))),
+  );
+  r.post(
+    "/releases/:id/documents/:docId/remove",
+    edit,
+    run(async (req, res) => void res.json(withStatus(await removeDocument(db, req.params.id, req.params.docId, version(req), actorOf(req))))),
+  );
+  r.post(
+    "/releases/:id/documents/:docId/translations/:lang/remove",
+    edit,
+    run(async (req, res) => {
+      const lang = Number(req.params.lang) as LanguageId;
+      res.json(withStatus(await removeTranslation(db, req.params.id, req.params.docId, lang, version(req), actorOf(req))));
+    }),
+  );
 
   return r;
 }

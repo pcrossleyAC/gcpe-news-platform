@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { hashPassword, localLoginRouter, mintSession } from "@gcpe/auth";
-import { createNrmsTestDb, sampleCreate, seedTaxonomy } from "../../test/helpers";
+import { createNrmsTestDb, createScheduledRelease, sampleCreate, seedTaxonomy } from "../../test/helpers";
 import { createApp } from "../app";
+import { publishDue } from "../publisher";
 import * as store from "../releases/store";
 
 const SECRET = "z".repeat(40) + "-nrms-session-test";
@@ -18,6 +19,8 @@ describe("NRMS HTTP API", () => {
   const cookieFor = async (roles: string[]) =>
     `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-00000000000a", name: "Pat Editor", email: "pat@example.invalid", roles })).token}`;
   const post = (path: string, cookie: string, body: unknown) => request(app).post(path).set("cookie", cookie).set("x-gcpe-request", "1").send(body as object);
+  const put = (path: string, cookie: string, body: unknown) => request(app).put(path).set("cookie", cookie).set("x-gcpe-request", "1").send(body as object);
+  const get = (path: string, cookie = viewerCookie) => request(app).get(path).set("cookie", cookie);
   const create = async (over: Record<string, unknown> = {}) => {
     const res = await post("/api/releases", editorCookie, { ...sampleCreate, ...over });
     expect(res.status).toBe(201);
@@ -147,6 +150,159 @@ describe("NRMS HTTP API", () => {
       spy.mockRestore();
       errSpy.mockRestore();
     }
+  });
+
+  it("folder list: a viewer gets a page of list items; a bad folder is a 400", async () => {
+    const { id } = await create({ headline: "Folder list release" });
+    const res = await get("/api/releases?folder=drafts&type=release&pageSize=100");
+    expect(res.status).toBe(200);
+    expect(Array.isArray(res.body.items)).toBe(true);
+    expect(res.body).toMatchObject({ page: 1, pageSize: 100 });
+    expect(res.body.items.find((i: { id: string }) => i.id === id)).toMatchObject({ headline: "Folder list release", statusText: "Draft", leadOrganization: "Health" });
+    expect((await get("/api/releases?folder=nope")).status).toBe(400);
+  });
+
+  it("search finds a release by headline and pages by 20", async () => {
+    const { id } = await create({ headline: "Searchable zebra crossings" });
+    const res = await get("/api/search?q=ZEBRA");
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ total: 1, page: 1, pageSize: 20 });
+    expect(res.body.items[0].id).toBe(id);
+  });
+
+  it("go-to: a known reference → 200 { id }; unknown → 404", async () => {
+    const { id } = await create();
+    const a = await post(`/api/releases/${id}/approve`, editorCookie, { version: 1 });
+    const ok = await get(`/api/goto?q=${encodeURIComponent(a.body.reference)}`);
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual({ id });
+    const byPath = await get(`/api/goto?q=${encodeURIComponent(`https://news.gov.bc.ca/releases/${a.body.key}`)}`);
+    expect(byPath.body).toEqual({ id });
+    const nf = await get("/api/goto?q=nothing-here");
+    expect(nf.status).toBe(404);
+    expect(nf.body).toEqual({ error: "not found" });
+  });
+
+  it("section PUTs: an editor saves (version increments); a viewer gets 403", async () => {
+    const { id } = await create();
+    const settings = await put(`/api/releases/${id}/settings`, editorCookie, {
+      version: 1, activityId: 77, plannedPublishAt: null, toSubscribers: true, toMediaLists: false, mediaListKeys: ["regional"],
+    });
+    expect(settings.status).toBe(200);
+    expect(settings.body).toMatchObject({ version: 2, activityId: 77, mediaListKeys: ["regional"], statusText: "Draft" });
+    const cats = await put(`/api/releases/${id}/categories`, editorCookie, {
+      version: 2, leadMinistryKey: "health", ministries: ["health", "finance"], sectors: ["health"], themes: ["families"], tags: [],
+    });
+    expect(cats.status).toBe(200);
+    expect(cats.body).toMatchObject({ version: 3, ministries: ["finance", "health"], themes: ["families"] });
+    const asset = await put(`/api/releases/${id}/asset`, editorCookie, {
+      version: 3, assetUrl: "https://www.youtube.com/watch?v=abc", assetAltText: "A video", hasMediaAssets: false,
+    });
+    expect(asset.status).toBe(200);
+    expect(asset.body).toMatchObject({ version: 4, assetUrl: "https://www.youtube.com/watch?v=abc" });
+    const meta = await put(`/api/releases/${id}/meta`, editorCookie, {
+      version: 4, key: null, redirectUrl: null, location: "Kelowna", summary: "A short summary.", socialMediaSummary: null, keywords: "clinics",
+    });
+    expect(meta.status).toBe(200);
+    expect(meta.body).toMatchObject({ version: 5, keywords: "clinics" });
+    expect(meta.body.languages[0]).toMatchObject({ location: "Kelowna", summary: "A short summary.", summaryEdited: true });
+    const denied = await put(`/api/releases/${id}/meta`, viewerCookie, {
+      version: 5, key: null, redirectUrl: null, location: "X", summary: "", socialMediaSummary: null, keywords: null,
+    });
+    expect(denied.status).toBe(403);
+    const stale = await put(`/api/releases/${id}/categories`, editorCookie, {
+      version: 2, leadMinistryKey: "health", ministries: ["health"], sectors: [], themes: [], tags: [],
+    });
+    expect(stale.status).toBe(409);
+    expect(stale.body).toEqual({ error: STALE });
+  });
+
+  it("documents: add, edit a language, translate, reorder, remove a translation and a document", async () => {
+    const { id } = await create();
+    const added = await post(`/api/releases/${id}/documents`, editorCookie, { version: 1, pageTitle: "Backgrounder", layout: "formal" });
+    expect(added.status).toBe(200);
+    expect(added.body.version).toBe(2);
+    expect(added.body.documents).toHaveLength(2);
+    const [first, second] = added.body.documents as { id: string }[];
+
+    const edited = await put(`/api/releases/${id}/documents/${second!.id}/4105`, editorCookie, {
+      version: 2, pageTitle: "Backgrounder", layout: "formal", headline: "Facts", subheadline: null, organizations: "Ministry of Health",
+      byline: null, bodyHtml: "<p>Fact one.</p>", pageImageId: null, contacts: [],
+    });
+    expect(edited.status).toBe(200);
+    expect(edited.body.documents[1].languages[0]).toMatchObject({ headline: "Facts", bodyHtml: "<p>Fact one.</p>" });
+
+    const translated = await post(`/api/releases/${id}/documents/${second!.id}/translations`, editorCookie, { version: 3, languageId: 3084 });
+    expect(translated.status).toBe(200);
+    expect(translated.body.documents[1].languages.map((l: { languageId: number }) => l.languageId)).toEqual([4105, 3084]);
+
+    const reordered = await put(`/api/releases/${id}/documents/order`, editorCookie, { version: 4, documentIds: [second!.id, first!.id] });
+    expect(reordered.status).toBe(200);
+    expect(reordered.body.documents.map((d: { id: string }) => d.id)).toEqual([second!.id, first!.id]);
+
+    const noFrench = await post(`/api/releases/${id}/documents/${second!.id}/translations/3084/remove`, editorCookie, { version: 5 });
+    expect(noFrench.status).toBe(200);
+    expect(noFrench.body.documents[0].languages).toHaveLength(1);
+
+    const removed = await post(`/api/releases/${id}/documents/${first!.id}/remove`, editorCookie, { version: 6 });
+    expect(removed.status).toBe(200);
+    expect(removed.body.documents.map((d: { id: string }) => d.id)).toEqual([second!.id]);
+    expect(removed.body.version).toBe(7);
+  });
+
+  it("document routes: a bad language or a malformed id is a 404; a viewer can't add a document", async () => {
+    const { id, version } = await create();
+    const view = await get(`/api/releases/${id}`);
+    const docId = view.body.documents[0].id as string;
+    expect((await put(`/api/releases/${id}/documents/${docId}/9999`, editorCookie, {})).status).toBe(404);
+    expect((await post(`/api/releases/${id}/documents/not-a-uuid/remove`, editorCookie, { version })).status).toBe(404);
+    expect((await post(`/api/releases/not-a-uuid/documents`, editorCookie, { version, pageTitle: "X", layout: "formal" })).status).toBe(404);
+    expect((await post(`/api/releases/${id}/documents`, viewerCookie, { version, pageTitle: "X", layout: "formal" })).status).toBe(403);
+  });
+
+  it("log and publications: one frozen publication after a publisher run", async () => {
+    const due = await createScheduledRelease(tdb.db, { headline: "Publication history release" });
+    await publishDue({ db: tdb.db, subscribers: [] });
+    const log = await get(`/api/releases/${due.id}/log`);
+    expect(log.status).toBe(200);
+    const texts = log.body.map((e: { text: string }) => e.text);
+    expect(texts[0]).toMatch(/^Published to /);
+    expect(texts).toContain("Created Release");
+    const all = await get(`/api/releases/${due.id}/log?all=true`);
+    expect(all.body.length).toBeGreaterThanOrEqual(log.body.length);
+
+    const pubs = await get(`/api/releases/${due.id}/publications`);
+    expect(pubs.status).toBe(200);
+    expect(pubs.body).toHaveLength(1);
+    expect(pubs.body[0]).toMatchObject({ actorName: "System" });
+    const frozen = await get(`/api/releases/${due.id}/publications/${pubs.body[0].id}`);
+    expect(frozen.status).toBe(200);
+    expect(frozen.body.key).toBe(due.key);
+    expect((await get(`/api/releases/${due.id}/publications/999999`)).status).toBe(404);
+    expect((await get(`/api/releases/${due.id}/publications/abc`)).status).toBe(404);
+    expect((await get(`/api/releases/not-a-uuid/log`)).status).toBe(404);
+  });
+
+  it("lookup lists: media lists, page types and page images (no bytes)", async () => {
+    await tdb.pool.query(
+      "INSERT INTO page_images (name, mime_type, bytes, sort_order) VALUES ('BC Logo', 'image/png', '\\x89504e47'::bytea, 1), ('Old', 'image/png', '\\x00'::bytea, 2) ON CONFLICT DO NOTHING",
+    );
+    await tdb.pool.query("UPDATE page_images SET is_active = false WHERE name = 'Old'");
+    await tdb.pool.query(
+      "INSERT INTO page_image_languages (image_id, language_id, alt_text) SELECT id, 4105, 'BC logo' FROM page_images WHERE name = 'BC Logo' ON CONFLICT DO NOTHING",
+    );
+    await tdb.pool.query("INSERT INTO page_types (page_title, language_id, release_type, sort_order) VALUES ('News Release', 4105, 'release', 1) ON CONFLICT DO NOTHING");
+    const lists = await get("/api/media-lists");
+    expect(lists.status).toBe(200);
+    expect(lists.body.map((l: { key: string }) => l.key)).toEqual(["regional", "national"]);
+    const types = await get("/api/page-types");
+    expect(types.status).toBe(200);
+    expect(types.body).toContainEqual(expect.objectContaining({ pageTitle: "News Release", languageId: 4105, releaseType: "release" }));
+    const images = await get("/api/page-images");
+    expect(images.status).toBe(200);
+    expect(images.body).toHaveLength(1);
+    expect(images.body[0]).toMatchObject({ name: "BC Logo", altTexts: { 4105: "BC logo" } });
+    expect(images.body[0]).not.toHaveProperty("bytes");
   });
 
   it("local admin login: the token creates a release", async () => {
