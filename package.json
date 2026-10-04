@@ -1,0 +1,11 @@
+{
+  "name": "gcpe-news-platform-siteground",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node stack.js"
+  }
+}
