@@ -1,0 +1,8 @@
+{
+  "name": "@gcpe/nrms-contract",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts", "./testing": "./src/testing.ts" },
+  "dependencies": { "zod": "^3.25.76" }
+}
