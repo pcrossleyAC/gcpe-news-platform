@@ -56,14 +56,14 @@ const saveCarouselSchema = z.object({
   slides: z.array(slideInputSchema),
 });
 const savePinSchema = z.object({
-  version: z.number().int().min(0),
+  version: z.number().int().positive(),
   headline: z.string().max(255),
   summary: z.string().max(255),
   actionUrl: httpOrEmpty,
   facebookPostUrl: httpOrEmpty,
   justify,
 });
-const setPinnedSchema = z.object({ version: z.number().int().min(0), pinned: z.boolean() });
+const setPinnedSchema = z.object({ version: z.number().int().positive(), pinned: z.boolean() });
 const deleteNextQuerySchema = z.object({ version: z.coerce.number().int().positive() });
 const logQuerySchema = z.object({
   area: z.enum(AREAS as [SiteLogArea, ...SiteLogArea[]]).optional(),

@@ -13,7 +13,7 @@ import { defaultSoundcloudOembed, type EmbedDeps } from "./media/embeds";
 import { flickrClient, type FlickrConfig } from "./media/flickr-client";
 import { flickrPrepareMedia, processFlickrJobs, startFlickrJobs } from "./media/flickr-jobs";
 import { publishDue, startPublisher } from "./publisher";
-import { switchCarousels } from "./website/carousel";
+import { startSiteLoop, switchCarousels } from "./website/carousel";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset. */
 const optionalSetting = z
@@ -232,6 +232,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   let stopPublisher: (() => Promise<void>) | undefined;
   let stopDispatcher: (() => Promise<void>) | undefined;
   let stopFlickr: (() => Promise<void>) | undefined;
+  let stopSite: (() => Promise<void>) | undefined;
 
   return {
     app,
@@ -245,12 +246,14 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopFlickr = startFlickrJobs({ ...flickrJobsOpts, intervalMs: 30_000 });
+      stopSite = startSiteLoop({ db, subscribers, intervalMs: parsed.PUBLISH_INTERVAL_MS });
       stopPublisher = startPublisher({ db, subscribers, filesBase, prepareMedia, intervalMs: parsed.PUBLISH_INTERVAL_MS });
     },
     closeBeforeServer: [],
     closers: [
       { name: "publisher", close: async () => { await stopPublisher?.(); } },
       { name: "flickr jobs", close: async () => { await stopFlickr?.(); } },
+      { name: "site loop", close: async () => { await stopSite?.(); } },
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],

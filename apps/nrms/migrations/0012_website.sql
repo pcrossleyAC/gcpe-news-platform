@@ -89,3 +89,4 @@ CREATE UNIQUE INDEX "carousels_one_next_idx" ON "carousels" USING btree ("state"
 CREATE INDEX "site_log_at_idx" ON "site_log" USING btree ("at" DESC NULLS LAST);--> statement-breakpoint
 CREATE INDEX "slides_carousel_sort_idx" ON "slides" USING btree ("carousel_id","sort_index");--> statement-breakpoint
 INSERT INTO "site_settings" ("id") VALUES (1);
+INSERT INTO "emergency_pins" ("slot") VALUES ('primary'), ('secondary');

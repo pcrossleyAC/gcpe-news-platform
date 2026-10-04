@@ -48,6 +48,8 @@ describe("home-page carousel", () => {
   });
   beforeEach(async () => {
     await tdb.pool.query("TRUNCATE carousels, slides, emergency_pins, site_log, outbox_events, outbox_deliveries, aggregate_sequences CASCADE");
+    // emergency_pins is seeded by migration 0012; TRUNCATE empties it, so re-seed here the same way.
+    await tdb.pool.query("INSERT INTO emergency_pins (slot) VALUES ('primary'), ('secondary')");
     t = await dbClock(tdb.db);
   });
 
@@ -99,6 +101,18 @@ describe("home-page carousel", () => {
     const log = await lastLog();
     expect(log!.text).toMatch(/^Created the next carousel for .+ at .+[ap]\.m\.$/);
     expect(log!.area).toBe("carousel");
+  });
+
+  it("fix round 1: saving the next carousel with a past goLiveAt → SiteRuleError and nothing changes", async () => {
+    const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
+    const past = new Date(t.getTime() - 60_000).toISOString();
+    await expect(
+      saveCarousel(tdb.db, next.id, { version: next.version, goLiveAt: past, slides: [slide("A")] }, editor, subs),
+    ).rejects.toThrow(/future/i);
+    const { next: reloaded } = await getCarousels(tdb.db);
+    expect(reloaded!.version).toBe(next.version);
+    expect(reloaded!.goLiveAt).toBe(next.goLiveAt);
+    expect(reloaded!.slides).toHaveLength(0);
   });
 
   it("2. saveCarousel with a stale version → SiteConflictError; nothing changed", async () => {
@@ -176,10 +190,10 @@ describe("home-page carousel", () => {
   });
 
   it("7. pinned primary + secondary survive a switch-over and appear at -2/-1 in the emitted slides (C21)", async () => {
-    await savePin(tdb.db, "primary", { version: 0, ...slide("P1") }, editor, subs);
-    await setPinned(tdb.db, "primary", { version: 1, pinned: true }, editor, subs);
-    await savePin(tdb.db, "secondary", { version: 0, ...slide("S1") }, editor, subs);
-    await setPinned(tdb.db, "secondary", { version: 1, pinned: true }, editor, subs);
+    await savePin(tdb.db, "primary", { version: 1, ...slide("P1") }, editor, subs);
+    await setPinned(tdb.db, "primary", { version: 2, pinned: true }, editor, subs);
+    await savePin(tdb.db, "secondary", { version: 1, ...slide("S1") }, editor, subs);
+    await setPinned(tdb.db, "secondary", { version: 2, pinned: true }, editor, subs);
 
     await seedLiveCarousel([slide("Live1")]);
     const goLiveAt = new Date(t.getTime() + 1000);
@@ -193,10 +207,10 @@ describe("home-page carousel", () => {
   });
 
   it("8. setPinned true without a headline → SiteRuleError; with one → slides event includes the pin", async () => {
-    await expect(setPinned(tdb.db, "primary", { version: 0, pinned: true }, editor, subs)).rejects.toThrow(/headline/i);
-    await savePin(tdb.db, "primary", { version: 0, ...slide("Alert") }, editor, subs);
+    await expect(setPinned(tdb.db, "primary", { version: 1, pinned: true }, editor, subs)).rejects.toThrow(/headline/i);
+    await savePin(tdb.db, "primary", { version: 1, ...slide("Alert") }, editor, subs);
     const before = await slidesEventCount();
-    await setPinned(tdb.db, "primary", { version: 1, pinned: true }, editor, subs);
+    await setPinned(tdb.db, "primary", { version: 2, pinned: true }, editor, subs);
     expect(await slidesEventCount()).toBe(before + 1);
     const ev = await lastSlidesEvent();
     expect(ev!.data.slides!.some((s) => s.headline === "Alert")).toBe(true);
@@ -227,14 +241,29 @@ describe("home-page carousel", () => {
     await expect(saveCarousel(tdb.db, pastCarousel.id, { version: pastCarousel.version, slides: [] }, editor, subs)).rejects.toThrow(/can't be changed/i);
   });
 
-  it("pins start unpinned with version 0 until the first save", async () => {
-    expect(await getPins(tdb.db)).toEqual([
-      { slot: "primary", pinned: false, version: 0, slide: { id: "", headline: "", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } },
-      { slot: "secondary", pinned: false, version: 0, slide: { id: "", headline: "", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } },
+  it("pins start unpinned at version 1 (seeded by migration 0012)", async () => {
+    const pins = await getPins(tdb.db);
+    expect(pins).toEqual([
+      { slot: "primary", pinned: false, version: 1, slide: expect.objectContaining({ headline: "", hasImage: false, imageUrl: null }) },
+      { slot: "secondary", pinned: false, version: 1, slide: expect.objectContaining({ headline: "", hasImage: false, imageUrl: null }) },
     ]);
-    const saved = await savePin(tdb.db, "primary", { version: 0, ...slide("First") }, editor, subs);
-    expect(saved.version).toBe(1);
-    await expect(savePin(tdb.db, "primary", { version: 0, ...slide("Again") }, editor, subs)).rejects.toThrow(SiteConflictError);
+    const saved = await savePin(tdb.db, "primary", { version: 1, ...slide("First") }, editor, subs);
+    expect(saved.version).toBe(2);
+    await expect(savePin(tdb.db, "primary", { version: 1, ...slide("Again") }, editor, subs)).rejects.toThrow(SiteConflictError);
+  });
+
+  it("two concurrent savePin calls with version 1 → exactly one succeeds, the other gets SiteConflictError", async () => {
+    const results = await Promise.allSettled([
+      savePin(tdb.db, "primary", { version: 1, ...slide("A") }, editor, subs),
+      savePin(tdb.db, "primary", { version: 1, ...slide("B") }, editor, subs),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(SiteConflictError);
+    const [pin] = await getPins(tdb.db);
+    expect(pin!.version).toBe(2);
   });
 
   it("makeNextLive promotes the next carousel immediately, ignoring go_live_at", async () => {
@@ -259,7 +288,7 @@ describe("home-page carousel", () => {
   });
 
   it("setPinImage refuses non-image bytes and round-trips a PNG through pinImage", async () => {
-    await savePin(tdb.db, "secondary", { version: 0, ...slide("Pic") }, editor, subs);
+    await savePin(tdb.db, "secondary", { version: 1, ...slide("Pic") }, editor, subs);
     await expect(setPinImage(tdb.db, "secondary", HTML, editor, subs)).rejects.toThrow(/JPEG or PNG/i);
     await setPinImage(tdb.db, "secondary", PNG, editor, subs);
     expect(await pinImage(tdb.db, "secondary")).toEqual({ bytes: PNG, mimeType: "image/png" });

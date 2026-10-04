@@ -89,9 +89,6 @@ function slideView(s: SlideFields, imageUrl: string): SlideView {
   };
 }
 
-/** No row for this slot yet (pins aren't seeded) — an unpinned, empty slide with no stable id. */
-const blankPinSlide = (): SlideView => ({ id: "", headline: "", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null });
-
 function pinView(row: typeof emergencyPins.$inferSelect): PinView {
   return { slot: row.slot, pinned: row.pinned, version: row.version, slide: slideView({ ...row, id: row.slideId }, pinImageUrl(row.slot)) };
 }
@@ -110,6 +107,12 @@ function carouselView(row: typeof carousels.$inferSelect, slides: SlideView[]): 
     version: row.version,
     slides,
   };
+}
+
+/** Refuses a go-live time that isn't strictly after the database clock's `now()`. */
+async function assertFutureGoLiveAt(tx: Tx, goLiveAtIso: string): Promise<void> {
+  const check = await tx.execute<{ ok: boolean }>(sql`SELECT (${goLiveAtIso}::timestamptz > ${sqlNow()}) AS ok`);
+  if (!check.rows[0]?.ok) throw new SiteRuleError(["Choose a go-live time in the future."]);
 }
 
 /** Live + next (each with their slides) and the past carousels, newest (most recently retired) first. */
@@ -136,8 +139,7 @@ export async function createNextCarousel(db: Db, input: { goLiveAt: string }, ac
     if (existingNext) throw new SiteConflictError("There is already a next carousel.");
 
     const goLiveAt = new Date(input.goLiveAt);
-    const check = await tx.execute<{ ok: boolean }>(sql`SELECT (${input.goLiveAt}::timestamptz > now()) AS ok`);
-    if (!check.rows[0]?.ok) throw new SiteRuleError(["Choose a go-live time in the future."]);
+    await assertFutureGoLiveAt(tx, input.goLiveAt);
 
     const [created] = await tx.insert(carousels).values({ state: "next", goLiveAt }).returning();
     const [liveRow] = await tx.select({ id: carousels.id }).from(carousels).where(eq(carousels.state, "live"));
@@ -181,6 +183,7 @@ export async function saveCarousel(
     if (!row) throw new SiteNotFoundError("carousel not found");
     if (row.state === "past") throw new SiteConflictError("Past carousels can't be changed.");
     if (row.version !== input.version) throw new SiteConflictError();
+    if (input.goLiveAt !== undefined) await assertFutureGoLiveAt(tx, input.goLiveAt);
 
     const existingSlides = await tx.select().from(websiteSlides).where(eq(websiteSlides.carouselId, id));
     const existingIds = new Set(existingSlides.map((s) => s.id));
@@ -236,18 +239,15 @@ export async function setSlideImage(db: Db, slideId: string, bytes: Buffer, acto
   });
 }
 
-/** Sets an emergency pin's image (the row is created — version 1 — if it doesn't exist yet). Emits when the pin is pinned. */
+/** Sets an emergency pin's image. Both slots are seeded by migration 0012 — see {@link getPins}. Emits when the pin is pinned. */
 export async function setPinImage(db: Db, slot: PinSlot, bytes: Buffer, actor: Actor, subs: SubscriberConfig[]): Promise<void> {
   const mimeType = await checkImageBytes(bytes);
   await db.transaction(async (tx) => {
     const [row] = await tx.select().from(emergencyPins).where(eq(emergencyPins.slot, slot)).for("update");
-    const nextVersion = (row?.version ?? 0) + 1;
-    await tx
-      .insert(emergencyPins)
-      .values({ slot, pinned: row?.pinned ?? false, image: bytes, imageType: mimeType, version: nextVersion })
-      .onConflictDoUpdate({ target: emergencyPins.slot, set: { image: bytes, imageType: mimeType, version: nextVersion, updatedAt: sql`now()` } });
+    if (!row) throw new SiteNotFoundError(`emergency_pins has no row for slot ${slot}`);
+    await tx.update(emergencyPins).set({ image: bytes, imageType: mimeType, updatedAt: sql`now()` }).where(eq(emergencyPins.slot, slot));
     await writeSiteLog(tx, actor, "pins", `Updated the ${slot} emergency slide's image`);
-    if (row?.pinned) await emitSite(tx, subs, "slides");
+    if (row.pinned) await emitSite(tx, subs, "slides");
   });
 }
 
@@ -293,6 +293,29 @@ export async function switchCarousels(db: Db, subs: SubscriberConfig[], opts: { 
   });
 }
 
+/**
+ * Runs {@link switchCarousels} every `intervalMs` (default 60 s) for a standalone NRMS (outside
+ * the stack's own tick runner, which instead drives this through the `nrms.site` worker).
+ * Same shape as `startFlickrJobs`/`startPublisher`: unref'd timer, overlap-guarded, errors
+ * logged rather than thrown, returns an async stopper.
+ */
+export function startSiteLoop(opts: { db: Db; subscribers: SubscriberConfig[]; intervalMs?: number }): () => Promise<void> {
+  let running: Promise<unknown> | null = null;
+  const timer = setInterval(() => {
+    if (running) return;
+    running = switchCarousels(opts.db, opts.subscribers)
+      .catch((e) => console.error(`[nrms] carousel switch-over failed: ${e instanceof Error ? e.message : String(e)}`))
+      .finally(() => {
+        running = null;
+      });
+  }, opts.intervalMs ?? 60_000);
+  timer.unref();
+  return async () => {
+    clearInterval(timer);
+    await running;
+  };
+}
+
 export async function deleteNextCarousel(db: Db, version: number, actor: Actor): Promise<void> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(carousels).where(eq(carousels.state, "next")).for("update");
@@ -303,54 +326,53 @@ export async function deleteNextCarousel(db: Db, version: number, actor: Actor):
   });
 }
 
-/** Both slots, always: an absent row (pins aren't seeded) shows as unpinned, empty, version 0 — the first save must accept version 0. */
+/**
+ * Both slots, always. Migration 0012 seeds both rows (unpinned, empty, version 1) — fix round 1:
+ * an absent row used to be synthesised here and accepted "version 0" as a first save, but that
+ * left two concurrent first saves racing past the same `FOR UPDATE` (it locks nothing when there
+ * is no row). Pins are now plain versioned rows from the start, like carousels.
+ */
 export async function getPins(db: DbOrTx): Promise<PinView[]> {
   const rows = await db.select().from(emergencyPins);
   const bySlot = new Map(rows.map((r) => [r.slot, r]));
   return (["primary", "secondary"] as const).map((slot) => {
     const row = bySlot.get(slot);
-    return row ? pinView(row) : { slot, pinned: false, version: 0, slide: blankPinSlide() };
+    if (!row) throw new Error(`emergency_pins has no row for slot ${slot} — migration 0012 should have seeded both slots`);
+    return pinView(row);
   });
 }
 
-/** Saves a pin's content (not its pinned flag — see {@link setPinned}). Upserts by slot since pins aren't seeded. */
+/** Saves a pin's content (not its pinned flag — see {@link setPinned}). */
 export async function savePin(db: Db, slot: PinSlot, input: { version: number } & PinInput, actor: Actor, subs: SubscriberConfig[]): Promise<PinView> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(emergencyPins).where(eq(emergencyPins.slot, slot)).for("update");
-    const currentVersion = row?.version ?? 0;
-    if (currentVersion !== input.version) throw new SiteConflictError();
-    const nextVersion = currentVersion + 1;
-    const wasPinned = row?.pinned ?? false;
+    if (!row) throw new SiteNotFoundError(`emergency_pins has no row for slot ${slot}`);
+    if (row.version !== input.version) throw new SiteConflictError();
     const [updated] = await tx
-      .insert(emergencyPins)
-      .values({ slot, pinned: wasPinned, headline: input.headline, summary: input.summary, actionUrl: input.actionUrl, facebookPostUrl: input.facebookPostUrl, justify: input.justify, version: nextVersion })
-      .onConflictDoUpdate({
-        target: emergencyPins.slot,
-        set: { headline: input.headline, summary: input.summary, actionUrl: input.actionUrl, facebookPostUrl: input.facebookPostUrl, justify: input.justify, version: nextVersion, updatedAt: sql`now()` },
-      })
+      .update(emergencyPins)
+      .set({ headline: input.headline, summary: input.summary, actionUrl: input.actionUrl, facebookPostUrl: input.facebookPostUrl, justify: input.justify, version: row.version + 1, updatedAt: sql`now()` })
+      .where(eq(emergencyPins.slot, slot))
       .returning();
     await writeSiteLog(tx, actor, "pins", `Saved the ${slot} emergency slide`);
-    if (wasPinned) await emitSite(tx, subs, "slides");
+    if (row.pinned) await emitSite(tx, subs, "slides");
     return pinView(updated!);
   });
 }
 
-/** Pins or unpins a slot. Pinning requires a headline. Upserts by slot since pins aren't seeded. */
+/** Pins or unpins a slot. Pinning requires a headline. */
 export async function setPinned(db: Db, slot: PinSlot, input: { version: number; pinned: boolean }, actor: Actor, subs: SubscriberConfig[]): Promise<PinView> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(emergencyPins).where(eq(emergencyPins.slot, slot)).for("update");
-    const currentVersion = row?.version ?? 0;
-    if (currentVersion !== input.version) throw new SiteConflictError();
-    if (input.pinned && !row?.headline.trim()) throw new SiteRuleError(["Add a headline before pinning."]);
-    const wasPinned = row?.pinned ?? false;
-    const nextVersion = currentVersion + 1;
+    if (!row) throw new SiteNotFoundError(`emergency_pins has no row for slot ${slot}`);
+    if (row.version !== input.version) throw new SiteConflictError();
+    if (input.pinned && !row.headline.trim()) throw new SiteRuleError(["Add a headline before pinning."]);
     const [updated] = await tx
-      .insert(emergencyPins)
-      .values({ slot, pinned: input.pinned, version: nextVersion })
-      .onConflictDoUpdate({ target: emergencyPins.slot, set: { pinned: input.pinned, version: nextVersion, updatedAt: sql`now()` } })
+      .update(emergencyPins)
+      .set({ pinned: input.pinned, version: row.version + 1, updatedAt: sql`now()` })
+      .where(eq(emergencyPins.slot, slot))
       .returning();
     await writeSiteLog(tx, actor, "pins", `${input.pinned ? "Pinned" : "Unpinned"} the ${slot} emergency slide`);
-    if (input.pinned || wasPinned) await emitSite(tx, subs, "slides");
+    if (input.pinned || row.pinned) await emitSite(tx, subs, "slides");
     return pinView(updated!);
   });
 }
