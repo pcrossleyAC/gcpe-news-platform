@@ -18,6 +18,9 @@ function memoryStorage(): SiteStorage & { files: Map<string, string> } {
     async remove(relPath) {
       files.delete(relPath);
     },
+    async exists(relPath) {
+      return files.has(relPath);
+    },
   };
 }
 

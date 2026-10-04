@@ -1,4 +1,5 @@
 import { createHmac } from "node:crypto";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { z } from "zod";
@@ -54,7 +55,8 @@ export const STACK_APP_DEFAULTS: Partial<Record<AppPrefix, Record<string, string
  * SESSION_SECRET / SESSION_COOKIE_SECURE, so every app verifies the same `gcpe_session` cookie
  * under the same security policy. AUTH_AUDIENCE is deliberately NOT shared: each app is its own
  * audience/resource in Entra (`<PREFIX>_AUTH_AUDIENCE`), same as it would be as six separate
- * deployments.
+ * deployments. DATA_DIR (Task 1) is shared too — the one folder, outside any SiteGround deploy
+ * folder, that survives a redeploy (see data-dir.ts).
  */
 function isSharedKey(key: string): boolean {
   return (
@@ -64,6 +66,7 @@ function isSharedKey(key: string): boolean {
     key === "ENTRA_TENANT_ID" ||
     key === "SESSION_SECRET" ||
     key === "SESSION_COOKIE_SECURE" ||
+    key === "DATA_DIR" ||
     key.startsWith("LOCAL_ADMIN_")
   );
 }
@@ -74,8 +77,15 @@ function isSharedKey(key: string): boolean {
  * `DATABASE_URL`). A prefixed var always wins over a shared one of the same name (applied
  * second, so it can override) — in practice the two sets don't collide since no app's own
  * schema uses a shared var's exact name for something else.
+ *
+ * `dataDir` (Task 1), when given, anchors the two app-specific defaults that must survive a
+ * SiteGround redeploy: NRMS's `STORAGE_DIR` defaults to `<dataDir>/storage` (set alongside the
+ * other STACK_APP_DEFAULTS, so an explicit `NRMS_STORAGE_DIR` still wins), and a *relative*
+ * `SITE_OUTPUT_DIR` (e.g. the env generator's `./site-output`) resolves to `<dataDir>/<that
+ * relative path>` — applied after the prefixed vars so it can see the raw, still-relative
+ * `OUTPUT_DIR` value; an absolute `SITE_OUTPUT_DIR` is left untouched.
  */
-export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.ProcessEnv {
+export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: string): NodeJS.ProcessEnv {
   const view: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && isSharedKey(key)) view[key] = value;
@@ -85,9 +95,13 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.Proces
   if (!view.SESSION_SECRET && env.STACK_EVENT_SECRET) view.SESSION_SECRET = sessionSecretFrom(env.STACK_EVENT_SECRET);
   // This app's built-in defaults, before its own prefixed vars so an explicit one still wins.
   if (STACK_APP_DEFAULTS[prefix]) Object.assign(view, STACK_APP_DEFAULTS[prefix]);
+  if (dataDir && prefix === "NRMS") view.STORAGE_DIR = join(dataDir, "storage");
   const withUnderscore = `${prefix}_`;
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && key.startsWith(withUnderscore)) view[key.slice(withUnderscore.length)] = value;
+  }
+  if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
+    view.OUTPUT_DIR = join(dataDir, view.OUTPUT_DIR);
   }
   return view;
 }

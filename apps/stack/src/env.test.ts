@@ -265,6 +265,16 @@ describe("SESSION_SECRET for the stack", () => {
   });
 });
 
+describe("persistent data dir in env views", () => {
+  it("resolves a relative SITE_OUTPUT_DIR under the data dir and defaults NRMS STORAGE_DIR", () => {
+    expect(envFor({ SITE_OUTPUT_DIR: "./site-output" }, "SITE", "/data").OUTPUT_DIR).toBe("/data/site-output");
+    expect(envFor({ SITE_OUTPUT_DIR: "/abs/out" }, "SITE", "/data").OUTPUT_DIR).toBe("/abs/out");
+    expect(envFor({}, "NRMS", "/data").STORAGE_DIR).toBe("/data/storage");
+    expect(envFor({ NRMS_STORAGE_DIR: "/x" }, "NRMS", "/data").STORAGE_DIR).toBe("/x");
+    expect(envFor({}, "CORE", "/data").STORAGE_DIR).toBeUndefined();
+  });
+});
+
 describe("Core → NRMS taxonomy route", () => {
   it("sends Core's org and category events to NRMS, signed with their own pair secret", () => {
     const wiring = internalEventEnv("e".repeat(40));

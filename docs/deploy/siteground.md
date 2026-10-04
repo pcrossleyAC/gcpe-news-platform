@@ -19,6 +19,8 @@ owner's GrowBig account, project `boxs.ca`, host `giowm1258`) — the short vers
   cannot be enabled (it stays off).
 - Background work (publishing, event dispatch, notification sends) only happens when
   something calls `/stack/tick` — an external scheduler must call it roughly every minute.
+- Each deploy unpacks into a brand-new folder, so nothing relative to the app may hold state
+  that must survive the next one — see "Persistent data" below for `DATA_DIR`.
 
 ## One-time setup
 
@@ -137,6 +139,38 @@ rotate `TICK_TOKEN` on a schedule if you ever have to use the query-string form.
 Either way: an inbound POST to `/.../events` (one app calling another) also wakes an
 idle-killed process, same as any other request — the scheduler's job is specifically to run
 the *background* workers (publish/dispatch/send), which nothing else triggers.
+
+## Persistent data
+
+Each deploy unpacks into a brand-new `~/www/<domain>/public_html/.nodeapp/<timestamp>/` folder
+(verified 2026-10-04) — nothing stored relative to the running app survives the *next* deploy.
+Before Task 1 this included the public site's own output folder, so every `/site` page 404'd
+after a redeploy until something rebuilt it.
+
+Everything that must survive a redeploy now lives under one folder, **outside** any
+`.nodeapp/<release>/` directory: `DATA_DIR`, defaulting to `~/gcpe-data` (the home directory is
+writable over SSH and outside the deploy folders) if unset. Set `DATA_DIR` explicitly only if
+you want it somewhere else — a relative value resolves against the home directory, same as the
+default.
+
+Today this folder holds:
+
+- `site-output/` — the public site's `OUTPUT_DIR`. `SITE_OUTPUT_DIR` in the generated env
+  (`SITE_OUTPUT_DIR=./site-output`) is relative, so the stack resolves it under `DATA_DIR`
+  automatically; an absolute `SITE_OUTPUT_DIR` is left as-is.
+- `storage/` — NRMS's `STORAGE_DIR` default (uploaded release files/media assets), same rule:
+  overridable with an explicit `NRMS_STORAGE_DIR`.
+
+The stack checks `DATA_DIR` is writable (creating it if needed) **before** starting any app and
+refuses to start at all if it isn't — a misconfigured or unwritable `DATA_DIR` fails loudly at
+startup instead of surfacing later as a silent write failure.
+
+As a second line of defence against exactly the failure Task 1 fixes — a redeploy (or a
+`DATA_DIR` pointed somewhere new) that leaves `site-output/` empty — the public site self-heals
+once at startup: if its output folder has no `index.html`, it rebuilds the home page and the
+latest posts from the News API itself, before anything else would have rebuilt them. This never
+blocks or fails startup (the News API may not be reachable yet); a failure is only logged
+(`[public-site] self-heal failed: ...`).
 
 ## Per-deploy steps
 

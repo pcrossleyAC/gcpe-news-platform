@@ -116,6 +116,10 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
   const dbs: StackTestInstanceDbs = { core, nrms, newsApi, publicSite, nod, distribution };
 
   const outputDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-"));
+  // Task 1: DATA_DIR must point at a temp folder, never the real home directory — resolveDataDir
+  // defaults to ~/gcpe-data, and startStack's ensureWritableDir call would otherwise actually
+  // create that folder on whatever machine runs this test.
+  const dataDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-data-"));
   const sink = await startSmtpSink();
 
   const port = await probeFreePort();
@@ -128,6 +132,7 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
     STACK_LOOPS: "false",
     UPDATES_HUB_ENABLED: "false",
     NODE_ENV: "test",
+    DATA_DIR: dataDir,
     LOCAL_ADMIN_ENABLED: "true",
     LOCAL_ADMIN_PASSWORD_HASH: passwordHash,
     LOCAL_AUTH_SECRET,
@@ -202,6 +207,7 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
       await step(() => sink.close());
       for (const db of Object.values(dbs)) await step(() => db.drop());
       await step(() => rm(outputDir, { recursive: true, force: true }));
+      await step(() => rm(dataDir, { recursive: true, force: true }));
       if (errors.length > 0) throw errors[0];
     },
   };
@@ -466,18 +472,24 @@ describe("apps/stack", () => {
 // tests' happy-path fixture.
 describe("apps/stack: startup errors name the app and its env prefix (M5)", () => {
   let coreDb: TestDatabase | undefined;
+  let dataDir: string | undefined;
 
   afterAll(async () => {
     await coreDb?.drop();
+    if (dataDir) await rm(dataDir, { recursive: true, force: true });
   });
 
   it("a missing NRMS_DATABASE_URL fails startStack with a message naming NRMS and NRMS_*", async () => {
     coreDb = await createCoreTestDb();
+    // Task 1: DATA_DIR must point at a temp folder, not the real home directory — startStack's
+    // ensureWritableDir call runs before NRMS's own startup failure is reached.
+    dataDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-data-"));
     const passwordHash = await hashPassword(ADMIN_PASSWORD);
     const env: NodeJS.ProcessEnv = {
       PORT: "0",
       TICK_TOKEN: "t".repeat(32),
       STACK_LOOPS: "false",
+      DATA_DIR: dataDir,
       LOCAL_ADMIN_ENABLED: "true",
       LOCAL_ADMIN_PASSWORD_HASH: passwordHash,
       LOCAL_AUTH_SECRET,

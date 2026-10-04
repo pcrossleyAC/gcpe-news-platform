@@ -3,8 +3,16 @@ import type { NewsApiClient } from "./news-api-client";
 import { renderHomePage, renderPostPage, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
 
-const KEY = /^[A-Za-z0-9-]+$/;
+/** A valid post key, same shape NRMS/News API produce — shared with self-heal.ts so both
+ * places validate a post key the same way before treating it as a filesystem path component. */
+export const POST_KEY = /^[A-Za-z0-9-]+$/;
 const HOME_COUNT = 10;
+
+/** The on-disk path a post page is written to/removed from — shared with self-heal.ts so
+ * neither place duplicates this string shape. */
+export function postPath(key: string): string {
+  return `releases/${key}/index.html`;
+}
 
 export function createRebuildHandler(deps: { newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo }): EventHandler {
   return async (_tx, event) => {
@@ -15,7 +23,7 @@ export function createRebuildHandler(deps: { newsApi: NewsApiClient; storage: Si
         continue;
       }
       const key = id.startsWith("post:") ? id.slice(5) : null;
-      if (!key || !KEY.test(key)) {
+      if (!key || !POST_KEY.test(key)) {
         console.warn(`[public-site] skipping unknown page id ${JSON.stringify(id)}`);
         continue;
       }
@@ -30,7 +38,7 @@ export function createRebuildHandler(deps: { newsApi: NewsApiClient; storage: Si
         console.warn(`[public-site] skipping page post:${key}: News API returned a different key (${JSON.stringify(post.key)})`);
         continue;
       }
-      const path = `releases/${key}/index.html`;
+      const path = postPath(key);
       if (post) await deps.storage.write(path, renderPostPage(post, deps.site));
       else await deps.storage.remove(path);
     }

@@ -5,6 +5,10 @@ import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 export interface SiteStorage {
   write(relPath: string, html: string): Promise<void>;
   remove(relPath: string): Promise<void>;
+  /** Whether `relPath` exists under root. Same path-safety checks as `write`/`remove` — a
+   * symlink planted inside root that would redirect `relPath` outside it is treated as "no",
+   * not followed. Used by self-heal.ts to decide whether the public site survived a redeploy. */
+  exists(relPath: string): Promise<boolean>;
 }
 
 /** `realpath`, but `undefined` (instead of a thrown ENOENT) when the path doesn't exist. */
@@ -96,6 +100,19 @@ export function fsStorage(root: string): SiteStorage {
       if (realDir === undefined) return; // the parent doesn't exist, so neither does the file
       assertInsideRoot(await realpath(base), realDir, relPath);
       await rm(full, { force: true });
+    },
+    async exists(relPath) {
+      const full = target(relPath);
+      const realDir = await tryRealpath(dirname(full));
+      if (realDir === undefined) return false; // the parent doesn't exist, so neither does the file
+      assertInsideRoot(await realpath(base), realDir, relPath);
+      try {
+        await lstat(full);
+        return true;
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") return false;
+        throw err;
+      }
     },
   };
 }

@@ -20,6 +20,7 @@ import { publicSiteEnvSchema } from "../../public-site/src/env";
 import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../public-site/src/start";
 
 import { noStoreByDefault, noStoreOnRedirect } from "./cache-control";
+import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture } from "./errors";
 import { envFor, resolveSelfUrls, type AppPrefix, stackEnvSchema } from "./env";
@@ -67,9 +68,12 @@ async function determineActualPort(requested: number): Promise<number> {
  * round 1, P2-R30 important fix 1: applied to every app, not just NRMS/NEWSAPI — Core's own
  * EVENT_SUBSCRIBERS needs this exactly as much as NRMS's does (Core publishes org.upserted
  * the same way NRMS publishes release.published).
+ *
+ * `dataDir` (Task 1) is threaded through to `envFor` so NRMS's STORAGE_DIR and a relative
+ * SITE_OUTPUT_DIR both anchor under the one persistent folder that survives a redeploy.
  */
-function resolvedEnvFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.ProcessEnv {
-  return resolveSelfUrls(envFor(env, prefix));
+function resolvedEnvFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir: string): NodeJS.ProcessEnv {
+  return resolveSelfUrls(envFor(env, prefix, dataDir));
 }
 
 /**
@@ -172,16 +176,23 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const tenant = loadTenantConfig(stackEnv.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
 
+  // Task 1: the one folder that survives a SiteGround redeploy (site output, uploaded files)
+  // — resolved and checked writable before any app starts, so a misconfigured/unwritable
+  // DATA_DIR fails fast instead of surfacing later as a silent write failure or a 404 for
+  // every /site page after the next deploy.
+  const dataDir = resolveDataDir(env);
+  await ensureWritableDir(dataDir);
+
   const actualPort = await determineActualPort(stackEnv.PORT);
 
   // Fix round 1, P2-R30 important fix 1 + M9: every app's view gets self: URLs resolved, not
   // just NRMS/NEWSAPI's EVENT_SUBSCRIBERS.
-  const coreEnv = resolvedEnvFor(env, "CORE");
-  const nrmsEnv = resolvedEnvFor(env, "NRMS");
-  const newsApiEnv = resolvedEnvFor(env, "NEWSAPI");
-  const siteEnv = resolvedEnvFor(env, "SITE");
-  const nodEnv = resolvedEnvFor(env, "NOD");
-  const distEnv = resolvedEnvFor(env, "DIST");
+  const coreEnv = resolvedEnvFor(env, "CORE", dataDir);
+  const nrmsEnv = resolvedEnvFor(env, "NRMS", dataDir);
+  const newsApiEnv = resolvedEnvFor(env, "NEWSAPI", dataDir);
+  const siteEnv = resolvedEnvFor(env, "SITE", dataDir);
+  const nodEnv = resolvedEnvFor(env, "NOD", dataDir);
+  const distEnv = resolvedEnvFor(env, "DIST", dataDir);
 
   // Every self:/… URL resolves to INTERNAL_ORIGIN (http://stack.internal), which this
   // routes into the stack's own Express app in memory — no loopback networking, which
@@ -326,6 +337,12 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   // positive integer for the resolved URL's *shape* to come out right. Never dialled.
   const actualPort = stackEnv.PORT || 1;
 
+  // Task 1: the same DATA_DIR resolution a real startStack() uses, so --check validates each
+  // app's SITE_OUTPUT_DIR/NRMS_STORAGE_DIR exactly as they'd actually resolve — but, like the
+  // rest of this function, without any filesystem side effect (no ensureWritableDir call;
+  // that's exercised by a real startStack()).
+  const dataDir = resolveDataDir(env);
+
   const checks: { label: string; prefix: AppPrefix; schema: ZodTypeAny }[] = [
     { label: "core", prefix: "CORE", schema: coreEnvSchema },
     { label: "nrms", prefix: "NRMS", schema: nrmsEnvSchema },
@@ -338,7 +355,7 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   const apps: Record<string, StackCheckAppResult> = {};
   let ok = true;
   for (const c of checks) {
-    const view = resolvedEnvFor(env, c.prefix);
+    const view = resolvedEnvFor(env, c.prefix, dataDir);
     const errors: string[] = [];
 
     const parsed = c.schema.safeParse(view);

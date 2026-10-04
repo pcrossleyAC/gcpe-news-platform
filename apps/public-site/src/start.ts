@@ -7,6 +7,7 @@ import { createApp } from "./app";
 import { publicSiteEnvSchema, resolveTenantConfig, tenantConfigPathSchema } from "./env";
 import { newsApiClient } from "./news-api-client";
 import { createRebuildHandler } from "./rebuild";
+import { selfHeal } from "./self-heal";
 import { fsStorage } from "./storage";
 
 export interface AppHandle {
@@ -50,13 +51,20 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
 
-  const handler = createRebuildHandler({
-    newsApi: newsApiClient(parsed.NEWS_API_URL),
-    storage: fsStorage(parsed.OUTPUT_DIR),
-    site: { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL },
-  });
+  const newsApi = newsApiClient(parsed.NEWS_API_URL);
+  const storage = fsStorage(parsed.OUTPUT_DIR);
+  const site = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL };
+
+  const handler = createRebuildHandler({ newsApi, storage, site });
 
   const app = createApp({ db, eventSecrets: parsed.EVENT_SECRETS, handler });
+
+  // Task 1: self-heal once at startup if the output folder came up empty (e.g. right after a
+  // SiteGround redeploy). Never thrown — the News API may not be up yet in a standalone run
+  // (and main.ts has already decided this app should start regardless).
+  void selfHeal({ newsApi, storage, site })
+    .then((r) => r && console.log(`[public-site] self-heal rebuilt ${r.rebuilt} posts`))
+    .catch((e) => console.error(`[public-site] self-heal failed: ${e instanceof Error ? e.message : e}`));
 
   return {
     app,
