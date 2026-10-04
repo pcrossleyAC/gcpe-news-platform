@@ -335,3 +335,49 @@ describe("Flickr in the stack", () => {
     }
   });
 });
+
+describe("when the stack uses the fake Flickr (fix round 1: never silently in production)", () => {
+  const prod = { NODE_ENV: "production" };
+
+  it("production with no key and no override: no fake — NRMS gets no Flickr config and reports unavailable", () => {
+    expect(usesFakeFlickr(prod)).toBe(false);
+    const view = envFor(prod, "NRMS");
+    expect(Object.keys(view).filter((k) => k.startsWith("FLICKR_"))).toEqual([]);
+  });
+
+  it("production + LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true (a test deployment) → fake", () => {
+    const env = { ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" };
+    expect(usesFakeFlickr(env)).toBe(true);
+    expect(envFor(env, "NRMS")).toMatchObject(FAKE_FLICKR_ENV);
+    expect(usesFakeFlickr({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "false" })).toBe(false);
+  });
+
+  it("an explicit FLICKR_MODE=fake (shared or NRMS-prefixed) → fake, even in production", () => {
+    expect(usesFakeFlickr({ ...prod, FLICKR_MODE: "fake" })).toBe(true);
+    expect(usesFakeFlickr({ ...prod, NRMS_FLICKR_MODE: "fake" })).toBe(true);
+    expect(envFor({ ...prod, NRMS_FLICKR_MODE: "fake" }, "NRMS")).toMatchObject(FAKE_FLICKR_ENV);
+    // The prefixed setting wins over the shared one, as it does in envFor.
+    expect(usesFakeFlickr({ ...prod, FLICKR_MODE: "fake", NRMS_FLICKR_MODE: "real" })).toBe(false);
+  });
+
+  it("not production → fake when there is no key", () => {
+    expect(usesFakeFlickr({})).toBe(true);
+    expect(usesFakeFlickr({ NODE_ENV: "test" })).toBe(true);
+  });
+
+  it("a key present never means the fake, whatever else is set", () => {
+    for (const extra of [{}, { NODE_ENV: "test" }, { LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }, { FLICKR_MODE: "fake" }, { NRMS_FLICKR_MODE: "fake" }]) {
+      expect(usesFakeFlickr({ ...extra, NRMS_FLICKR_API_KEY: "k" })).toBe(false);
+      expect(usesFakeFlickr({ ...extra, FLICKR_API_KEY: "k" })).toBe(false);
+      expect(envFor({ ...extra, FLICKR_API_KEY: "k" }, "NRMS").FLICKR_REST_URL).toBeUndefined();
+    }
+  });
+
+  it("the effective key is the prefixed one when it is defined, else the shared one", () => {
+    // An emptied NRMS_FLICKR_API_KEY overrides a shared key in NRMS's view ("" = unset), so it means no key here too.
+    expect(envFor({ FLICKR_API_KEY: "shared", NRMS_FLICKR_API_KEY: "" }, "NRMS").FLICKR_API_KEY).not.toBe("shared");
+    expect(usesFakeFlickr({ FLICKR_API_KEY: "shared", NRMS_FLICKR_API_KEY: "" })).toBe(true);
+    expect(usesFakeFlickr({ ...prod, FLICKR_API_KEY: "shared", NRMS_FLICKR_API_KEY: "" })).toBe(false);
+    expect(usesFakeFlickr({ ...prod, FLICKR_API_KEY: "shared" })).toBe(false);
+  });
+});

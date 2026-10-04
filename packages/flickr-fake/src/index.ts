@@ -30,6 +30,8 @@ export interface FakeFlickrState {
 }
 
 const USER = "bcgovphotos";
+/** The most photos the fake holds, so __fake/photos can't grow memory without bound. */
+const MAX_PHOTOS = 1000;
 const VERIFIER = "123-456-789";
 
 /** A 2×2 grey baseline JPEG. */
@@ -212,6 +214,7 @@ export function createFakeFlickr(opts: FakeFlickrOptions): { router: express.Rou
     const b = (req.body ?? {}) as Record<string, unknown>;
     const ok = ["id", "secret", "server"].every((k) => typeof b[k] === "string" && /^[A-Za-z0-9]+$/.test(b[k] as string)) && typeof b.isPublic === "boolean";
     if (!ok) return void res.status(400).json({ error: "invalid photo" });
+    if (!photos.has(b.id as string) && photos.size >= MAX_PHOTOS) return void res.status(409).json({ error: `too many photos (max ${MAX_PHOTOS})` });
     const p: FakePhoto = { id: b.id as string, secret: b.secret as string, server: b.server as string, isPublic: b.isPublic as boolean };
     photos.set(p.id, p);
     res.json(p);

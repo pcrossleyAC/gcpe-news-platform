@@ -275,12 +275,22 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
 
   app.use(noStoreByDefault);
 
-  // Phase 3c: no Flickr key configured → a fake Flickr (signature-checking, in-memory photos)
-  // that NRMS's env view already points at (envFor sets FLICKR_MODE=fake and the self: URLs).
-  // Mounted ahead of every app — and of any body parser, since it reads the raw form body its
-  // signatures cover. Its /__fake/* switches are unauthenticated: test/demo deployments only.
+  // Fix round 1, P2-R30 M6: /stack/errors's bearer check (and the fake Flickr's switches below)
+  // is built from Core's own env view (which, like every app's view, carries the shared
+  // ENTRA_TENANT_ID plus its own CORE_AUTH_AUDIENCE) rather than the raw, unprefixed env — Core is
+  // the stack's admin app, so its own identity configuration is the one these defer to.
+  const errorsAuth = authFromEnv(coreEnv);
+
+  // Phase 3c: no Flickr key on a non-production (or test, or explicitly fake) deployment → a fake
+  // Flickr (signature-checking, in-memory photos) that NRMS's env view already points at (envFor
+  // sets FLICKR_MODE=fake and the self: URLs; see usesFakeFlickr). Mounted ahead of every app —
+  // and of any body parser, since it reads the raw form body its signatures cover. The Flickr
+  // API surface (/services/*, /static/*, photo pages) stays public like the real one; the
+  // /__fake/* test switches need a Core.Admin bearer or staff session.
   if (usesFakeFlickr(env)) {
+    console.warn(`[stack] FLICKR: using the FAKE Flickr at ${FAKE_FLICKR_PATH} — set NRMS_FLICKR_API_KEY etc. for real Flickr`);
     const fake = createFakeFlickr({ ...FAKE_FLICKR, publicBaseUrl: fakeFlickrPublicBase(siteEnv.PUBLIC_SITE_URL, actualPort) });
+    app.use(`${FAKE_FLICKR_PATH}/__fake`, requireBearer(errorsAuth.bearer), requireRole("Core.Admin"));
     app.use(FAKE_FLICKR_PATH, fake.router);
   }
 
@@ -297,11 +307,6 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     combinedLoginLimiter,
   );
 
-  // Fix round 1, P2-R30 M6: /stack/errors's bearer check is built from Core's own env view
-  // (which, like every app's view, now carries the shared ENTRA_TENANT_ID plus its own
-  // CORE_AUTH_AUDIENCE) rather than the raw, unprefixed env — Core is the stack's admin app,
-  // so its own identity configuration is the one /stack/errors defers to.
-  const errorsAuth = authFromEnv(coreEnv);
   app.use("/stack", healthRouter());
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
   app.use(

@@ -117,6 +117,19 @@ describe("fake Flickr", () => {
     expect(photos.get("999")).toEqual({ id: "999", secret: "abc", server: "1", isPublic: true });
   });
 
+  it("__fake/photos holds at most 1000 photos: a new id beyond that is refused, an existing one can still be replaced", async () => {
+    const many = Array.from({ length: 1000 }, (_, i) => ({ id: String(60000000000 + i), secret: "abc", server: "1", isPublic: false }));
+    const fake = createFakeFlickr({ ...creds, publicBaseUrl: BASE, photos: many });
+    const app = express();
+    app.use("/fake-flickr", fake.router);
+    const full = await request(app).post("/fake-flickr/__fake/photos").send({ id: "999", secret: "abc", server: "1", isPublic: true });
+    expect(full.status).toBe(409);
+    expect(full.body).toEqual({ error: "too many photos (max 1000)" });
+    expect(fake.photos.size).toBe(1000);
+    await request(app).post("/fake-flickr/__fake/photos").send({ id: "60000000000", secret: "def", server: "1", isPublic: true }).expect(200);
+    expect(fake.photos.get("60000000000")).toMatchObject({ secret: "def", isPublic: true });
+  });
+
   it("outage returns 503 then recovers; refuseAuth fails signed calls", async () => {
     const { app, state } = setup();
     state.outageCalls = 1;

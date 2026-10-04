@@ -359,7 +359,24 @@ describe("apps/stack", () => {
     const PRIVATE_PAGE = "https://www.flickr.com/photos/bcgovphotos/53000000001/";
     const admin = () => ({ authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" });
     const fakeState = (body: unknown) =>
-      fetch(`${instance.stackUrl}/fake-flickr/__fake/state`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      fetch(`${instance.stackUrl}/fake-flickr/__fake/state`, { method: "POST", headers: admin(), body: JSON.stringify(body) });
+
+    it("the fake's /__fake switches need a Core.Admin bearer; its Flickr API stays public", async () => {
+      const post = (path: string, headers: Record<string, string>) =>
+        fetch(`${instance.stackUrl}/fake-flickr/__fake/${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ refuseAuth: false }) });
+      expect((await post("state", {})).status).toBe(401);
+      expect((await post("photos", {})).status).toBe(401);
+      const editor = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
+      expect((await post("state", { authorization: `Bearer ${editor}` })).status).toBe(403);
+      const ok = await post("state", { authorization: `Bearer ${instance.adminToken}` });
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toEqual({ refuseAuth: false, outageCalls: 0, deleted: [] });
+      // No auth on the Flickr API itself: an unsigned call reaches the fake and gets Flickr's own answer.
+      const rest = await fetch(`${instance.stackUrl}/fake-flickr/services/rest?method=flickr.photos.getInfo&photo_id=1`);
+      expect(rest.status).toBe(200);
+      expect(await rest.json()).toMatchObject({ stat: "fail", code: 98 });
+      expect((await fetch(`${instance.stackUrl}/fake-flickr/photos/bcgovphotos/53000000001`)).status).toBe(200);
+    });
 
     afterAll(async () => {
       await fakeState({ deleted: [], refuseAuth: false, outageCalls: 0 });
@@ -714,6 +731,20 @@ describe("staff session cookie across the stack", () => {
       body: "{}",
     });
     expect(withCsrf.status).toBe(400);
+  });
+
+  it("a staff session cookie with Core.Admin can use the fake Flickr's /__fake switches, with the CSRF rule", async () => {
+    const login = await fetch(`${inst.stackUrl}/core/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-gcpe-request": "1" },
+      body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD }),
+    });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.getSetCookie().find((c) => c.startsWith("gcpe_session="))!.split(";")[0]!;
+    const post = (headers: Record<string, string>) =>
+      fetch(`${inst.stackUrl}/fake-flickr/__fake/state`, { method: "POST", headers: { cookie, "content-type": "application/json", ...headers }, body: JSON.stringify({ outageCalls: 0 }) });
+    expect((await post({})).status).toBe(403);
+    expect((await post({ "x-gcpe-request": "1" })).status).toBe(200);
   });
 });
 

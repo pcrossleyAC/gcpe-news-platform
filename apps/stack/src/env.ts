@@ -72,10 +72,23 @@ export const FAKE_FLICKR_ENV: Readonly<Record<string, string>> = {
   FLICKR_OAUTH_URL: `self:${FAKE_FLICKR_PATH}/services/oauth`,
 };
 
-/** True when NRMS has no Flickr key — neither NRMS_FLICKR_API_KEY nor the shared FLICKR_API_KEY
- * (empty counts as unset) — so the stack runs, and points NRMS at, its fake Flickr. */
+/** NRMS's effective value of a FLICKR_* setting, as envFor resolves it: NRMS_<name> when it is
+ * defined (even empty), else the shared <name>. */
+function nrmsFlickrSetting(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  return env[`NRMS_${name}`] !== undefined ? env[`NRMS_${name}`] : env[name];
+}
+
+/**
+ * True when the stack runs, and points NRMS at, its fake Flickr: NRMS has no effective Flickr
+ * key ("" counts as none) AND this is not a real production deployment — NODE_ENV isn't
+ * "production", or it's a test deployment (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true), or the fake
+ * is asked for explicitly (FLICKR_MODE=fake). Production with a lost key fails closed instead:
+ * no Flickr at all, so the publisher alerts and asset status reads "unavailable" — never the
+ * fake's "this photo no longer exists" for a real photo.
+ */
 export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
-  return !env.NRMS_FLICKR_API_KEY && !env.FLICKR_API_KEY;
+  if (nrmsFlickrSetting(env, "FLICKR_API_KEY")) return false;
+  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || nrmsFlickrSetting(env, "FLICKR_MODE") === "fake";
 }
 
 /**
