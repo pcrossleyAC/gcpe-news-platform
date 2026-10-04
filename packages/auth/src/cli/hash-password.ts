@@ -10,7 +10,6 @@ import { applyKeypress, INITIAL_KEYPRESS_STATE, type KeypressState } from "./hid
 import { hashPassword } from "../password";
 
 function readHiddenFromTTY(stdin: NodeJS.ReadStream & { fd: 0 }): Promise<string> {
-  process.stderr.write("Password for the local admin (input hidden): ");
   return new Promise<string>((resolve, reject) => {
     let state: KeypressState = INITIAL_KEYPRESS_STATE;
     const cleanup = () => {
@@ -41,8 +40,10 @@ function readHiddenFromTTY(stdin: NodeJS.ReadStream & { fd: 0 }): Promise<string
       cleanup();
       reject(err);
     };
+    // Echo off BEFORE the prompt appears, so nothing typed or pasted immediately is echoed.
     stdin.setRawMode(true);
     stdin.resume();
+    process.stderr.write("Password for the local admin (input hidden): ");
     stdin.on("data", onData);
     stdin.on("error", onError);
   });

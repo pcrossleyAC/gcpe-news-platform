@@ -211,7 +211,6 @@ export async function collectNonInteractiveInput(env: NodeJS.ProcessEnv): Promis
 // --- Interactive prompting (not exercised by tests: no TTY in CI) ---------------------------
 
 async function readHiddenFromTTY(label: string, stdin: NodeJS.ReadStream & { fd: 0 }): Promise<string> {
-  process.stderr.write(`${label} (input hidden): `);
   return new Promise<string>((resolve, reject) => {
     let state: KeypressState = INITIAL_KEYPRESS_STATE;
     const cleanup = () => {
@@ -239,10 +238,13 @@ async function readHiddenFromTTY(label: string, stdin: NodeJS.ReadStream & { fd:
       cleanup();
       reject(err);
     };
+    // Echo off BEFORE the prompt appears: otherwise anything typed or pasted the instant the
+    // label shows up is echoed by the still-cooked terminal.
     stdin.setRawMode(true);
-    stdin.resume();
     stdin.on("data", onData);
     stdin.on("error", onError);
+    stdin.resume();
+    process.stderr.write(`${label} (input hidden): `);
   });
 }
 
@@ -251,42 +253,71 @@ async function promptHidden(label: string): Promise<string> {
   return readHiddenFromTTY(label, process.stdin as NodeJS.ReadStream & { fd: 0 });
 }
 
-async function promptPlain(rl: ReturnType<typeof createInterface>, label: string, defaultValue?: string): Promise<string> {
-  const suffix = defaultValue ? ` [${defaultValue}]` : "";
-  const answer = (await rl.question(`${label}${suffix}: `)).trim();
-  if (answer.length > 0) return answer;
-  if (defaultValue !== undefined) return defaultValue;
-  throw new Error(`"${label}" is required`);
+/**
+ * Plain prompts use readline; hidden prompts read raw bytes from the TTY. The two must never be
+ * attached to stdin at the same time: readline would also receive (and could echo) the hidden
+ * keystrokes, and the hidden reader pauses stdin when it finishes, which a live readline
+ * interface doesn't notice — its next question then waits forever and Node exits silently.
+ * So the readline interface is closed before every hidden prompt and recreated after it.
+ */
+class Prompter {
+  private rl: ReturnType<typeof createInterface> | null = null;
+
+  private open(): ReturnType<typeof createInterface> {
+    if (!this.rl) {
+      this.rl = createInterface({ input: process.stdin, output: process.stderr });
+      process.stdin.resume();
+    }
+    return this.rl;
+  }
+
+  close(): void {
+    this.rl?.close();
+    this.rl = null;
+  }
+
+  async plain(label: string, defaultValue?: string): Promise<string> {
+    const suffix = defaultValue ? ` [${defaultValue}]` : "";
+    const answer = (await this.open().question(`${label}${suffix}: `)).trim();
+    if (answer.length > 0) return answer;
+    if (defaultValue !== undefined) return defaultValue;
+    throw new Error(`"${label}" is required`);
+  }
+
+  async hidden(label: string): Promise<string> {
+    this.close();
+    return promptHidden(label);
+  }
 }
 
 async function collectInteractiveInput(): Promise<SiteGroundEnvInput> {
-  const rl = createInterface({ input: process.stdin, output: process.stderr });
+  const p = new Prompter();
   try {
-    const domain = await promptPlain(rl, "Public domain (e.g. news.gov.bc.ca)");
-    const manageUrl = await promptPlain(rl, "Subscriber manage/unsubscribe page URL (external)");
-    const adminUsername = await promptPlain(rl, "Admin username", "admin");
-    const adminPassword = await promptHidden("Admin password");
+    const domain = await p.plain("Public domain (e.g. news.gov.bc.ca)");
+    const manageUrl = await p.plain("Subscriber manage/unsubscribe page URL (external)");
+    const adminUsername = await p.plain("Admin username", "admin");
+    const adminPassword = await p.hidden("Admin password");
     if (adminPassword.length < 12) throw new Error("Admin password must be at least 12 characters.");
-    const dbUser = await promptPlain(rl, "Postgres user (Site Tools-created, shared by all six DBs)");
-    const dbPassword = await promptHidden("Postgres password");
+    const dbUser = await p.plain("Postgres user (Site Tools-created, shared by all six DBs)");
+    const dbPassword = await p.hidden("Postgres password");
     // SiteGround generates database names (e.g. "dbkjyoirx2cq7n") and only lets you set a label, so
     // each app's database name is asked for individually. The prefix only supplies the defaults.
-    const dbPrefix = await promptPlain(rl, "Database name prefix (defaults for the six names below)", "gcpe");
+    const dbPrefix = await p.plain("Database name prefix (defaults for the six names below)", "gcpe");
     const dbNames = {
-      core: await promptPlain(rl, "Database name for Core", `${dbPrefix}_core`),
-      nrms: await promptPlain(rl, "Database name for NRMS", `${dbPrefix}_nrms`),
-      newsApi: await promptPlain(rl, "Database name for News API", `${dbPrefix}_news_api`),
-      site: await promptPlain(rl, "Database name for Public Site", `${dbPrefix}_site`),
-      nod: await promptPlain(rl, "Database name for NoD", `${dbPrefix}_nod`),
-      distribution: await promptPlain(rl, "Database name for Distribution", `${dbPrefix}_distribution`),
+      core: await p.plain("Database name for Core", `${dbPrefix}_core`),
+      nrms: await p.plain("Database name for NRMS", `${dbPrefix}_nrms`),
+      newsApi: await p.plain("Database name for News API", `${dbPrefix}_news_api`),
+      site: await p.plain("Database name for Public Site", `${dbPrefix}_site`),
+      nod: await p.plain("Database name for NoD", `${dbPrefix}_nod`),
+      distribution: await p.plain("Database name for Distribution", `${dbPrefix}_distribution`),
     };
-    const smtpHost = await promptPlain(rl, "SMTP host (SiteGround mailbox or relay)");
-    const smtpPort = Number(await promptPlain(rl, "SMTP port", "587"));
-    const smtpSecure = (await promptPlain(rl, "SMTP secure (true/false)", "false")) === "true";
-    const smtpUser = await promptPlain(rl, "SMTP username (blank if none)", "");
-    const smtpPass = smtpUser ? await promptHidden("SMTP password") : "";
-    const mailFrom = await promptPlain(rl, "Mail From address");
-    const mailRedirectTo = commaList(await promptPlain(rl, "Redirect ALL outgoing mail to (comma-separated test inbox(es))"));
+    const smtpHost = await p.plain("SMTP host (SiteGround mailbox or relay)");
+    const smtpPort = Number(await p.plain("SMTP port", "587"));
+    const smtpSecure = (await p.plain("SMTP secure (true/false)", "false")) === "true";
+    const smtpUser = await p.plain("SMTP username (blank if none)", "");
+    const smtpPass = smtpUser ? await p.hidden("SMTP password") : "";
+    const mailFrom = await p.plain("Mail From address");
+    const mailRedirectTo = commaList(await p.plain("Redirect ALL outgoing mail to (comma-separated test inbox(es))"));
     // Distribution refuses to start without a redirect unless DIST_MAIL_ALLOW_REAL_RECIPIENTS=true,
     // which this test-environment generator deliberately never emits.
     if (mailRedirectTo.length === 0) throw new Error("A redirect address is required for this test environment.");
@@ -304,7 +335,7 @@ async function collectInteractiveInput(): Promise<SiteGroundEnvInput> {
       mailRedirectTo,
     };
   } finally {
-    rl.close();
+    p.close();
   }
 }
 
