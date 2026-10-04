@@ -170,6 +170,53 @@ describe("collectNonInteractiveInput", () => {
     expect(input.dbNames.core).toBe("custom_core");
     expect(input.dbNames.nod).toBe("nod_override");
   });
+
+  // Ruling P2-R34: the interactive prompt enforces >= 12 characters (and effectively rejects
+  // empty, via the "required" check) — non-interactive mode must enforce exactly the same
+  // rule, not let a short password sail through into a real LOCAL_ADMIN_PASSWORD_HASH.
+  it("rejects a SITEGROUND_ADMIN_PASSWORD shorter than 12 characters", async () => {
+    await expect(
+      collectNonInteractiveInput({
+        SITEGROUND_DOMAIN: "news.example.invalid",
+        SITEGROUND_MANAGE_URL: "https://legacy.example.invalid/manage",
+        SITEGROUND_ADMIN_PASSWORD: "short1",
+        SITEGROUND_DB_USER: "gcpe_app",
+        SITEGROUND_DB_PASSWORD: "db-pass",
+        SITEGROUND_SMTP_HOST: "mail.example.invalid",
+        SITEGROUND_MAIL_FROM: "noreply@example.invalid",
+        SITEGROUND_MAIL_REDIRECT_TO: "ops@example.invalid",
+      }),
+    ).rejects.toThrow(/at least 12 characters/);
+  });
+
+  it("rejects an empty SITEGROUND_ADMIN_PASSWORD (as a missing required var)", async () => {
+    await expect(
+      collectNonInteractiveInput({
+        SITEGROUND_DOMAIN: "news.example.invalid",
+        SITEGROUND_MANAGE_URL: "https://legacy.example.invalid/manage",
+        SITEGROUND_ADMIN_PASSWORD: "",
+        SITEGROUND_DB_USER: "gcpe_app",
+        SITEGROUND_DB_PASSWORD: "db-pass",
+        SITEGROUND_SMTP_HOST: "mail.example.invalid",
+        SITEGROUND_MAIL_FROM: "noreply@example.invalid",
+        SITEGROUND_MAIL_REDIRECT_TO: "ops@example.invalid",
+      }),
+    ).rejects.toThrow(/SITEGROUND_ADMIN_PASSWORD/);
+  });
+
+  it("accepts a SITEGROUND_ADMIN_PASSWORD exactly 12 characters long", async () => {
+    const input = await collectNonInteractiveInput({
+      SITEGROUND_DOMAIN: "news.example.invalid",
+      SITEGROUND_MANAGE_URL: "https://legacy.example.invalid/manage",
+      SITEGROUND_ADMIN_PASSWORD: "exactly12chr",
+      SITEGROUND_DB_USER: "gcpe_app",
+      SITEGROUND_DB_PASSWORD: "db-pass",
+      SITEGROUND_SMTP_HOST: "mail.example.invalid",
+      SITEGROUND_MAIL_FROM: "noreply@example.invalid",
+      SITEGROUND_MAIL_REDIRECT_TO: "ops@example.invalid",
+    });
+    expect(input.adminPasswordHash).toMatch(/^scrypt\$/);
+  });
 });
 
 describe("CLI entry point, --non-interactive (real child process)", () => {

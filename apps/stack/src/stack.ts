@@ -292,13 +292,16 @@ export interface StackCheckResult {
 /**
  * Task 15's `node stack.js --check`: validates the stack's configuration — the stack-level
  * env (TICK_TOKEN, tenant config + its P2-R17 time-zone self-check), then every one of the
- * six apps' own env schema and its resolved MIGRATIONS_FOLDER actually existing on disk —
- * all WITHOUT opening a single database connection (no `createDb`/`runMigrations` call, unlike
- * `startStack`). This is the SiteGround deploy's build-time and post-deploy smoke test: a
- * misconfigured `<PREFIX>_*` var, or a MIGRATIONS_FOLDER that doesn't resolve relative to the
- * bundled `stack.js` the way main.ts expects, fails fast and names which app and which prefix
- * — instead of surfacing three minutes later as "DATABASE_URL: Required" with six candidates
- * and no way to tell which (the same problem `startNamed` solves for a real `startStack` run).
+ * six apps' own env schema, its auth config (`authFromEnv` — ruling P2-R34: a truncated
+ * `LOCAL_ADMIN_PASSWORD_HASH`, a too-short `LOCAL_AUTH_SECRET`, a half-set Entra pair, or the
+ * production-guard refusal would otherwise only surface at a real `startStack`, not here),
+ * and its resolved MIGRATIONS_FOLDER actually existing on disk — all WITHOUT opening a single
+ * database connection (no `createDb`/`runMigrations` call, unlike `startStack`). This is the
+ * SiteGround deploy's build-time and post-deploy smoke test: a misconfigured `<PREFIX>_*` var,
+ * or a MIGRATIONS_FOLDER that doesn't resolve relative to the bundled `stack.js` the way
+ * main.ts expects, fails fast and names which app and which prefix — instead of surfacing
+ * three minutes later as "DATABASE_URL: Required" with six candidates and no way to tell
+ * which (the same problem `startNamed` solves for a real `startStack` run).
  */
 export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResult> {
   const stackEnv = parseEnv(stackEnvSchema, env);
@@ -323,13 +326,30 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   let ok = true;
   for (const c of checks) {
     const view = resolvedEnvFor(env, c.prefix, actualPort);
+    const errors: string[] = [];
+
     const parsed = c.schema.safeParse(view);
     if (!parsed.success) {
+      errors.push(parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "));
+    }
+
+    // P2-R34: every app wires its own auth the same way it does at real startup
+    // (authFromEnv(env), called inside start<App>() — see e.g. apps/core/src/start.ts) —
+    // --check must exercise the exact same validation, not just each app's own env schema
+    // (which has no auth fields at all; auth is deliberately validated separately, the same
+    // way it's wired separately at runtime).
+    try {
+      authFromEnv(view);
+    } catch (e) {
+      errors.push(e instanceof Error ? e.message : String(e));
+    }
+
+    if (errors.length > 0) {
       ok = false;
-      const message = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-      apps[c.label] = { ok: false, error: `(its variables are ${c.prefix}_*): ${message}` };
+      apps[c.label] = { ok: false, error: `(its variables are ${c.prefix}_*): ${errors.join("; ")}` };
       continue;
     }
+
     const migrationsFolder = (parsed.data as { MIGRATIONS_FOLDER?: string }).MIGRATIONS_FOLDER;
     const folderOk = migrationsFolder === undefined || existsSync(migrationsFolder);
     if (!folderOk) ok = false;

@@ -56,7 +56,9 @@ cp -R dist/siteground/. "$WORKTREE_DIR/"
   if git diff --cached --quiet; then
     echo "[deploy-siteground] artifact is byte-identical to the current $BRANCH tip — nothing new to commit."
   else
-    git commit -q -m "deploy: siteground artifact built from $SOURCE_SHA"
+    # P2-R34: the brief's own example format — the bare source SHA first, so it's the first
+    # thing visible in `git log --oneline deploy/siteground` without needing `--format`.
+    git commit -q -m "$SOURCE_SHA deploy: siteground artifact"
     echo "[deploy-siteground] committed $(git rev-parse HEAD) on $BRANCH"
   fi
 )

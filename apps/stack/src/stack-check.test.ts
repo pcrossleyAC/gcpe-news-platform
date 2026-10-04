@@ -1,13 +1,18 @@
 // Tests for checkStack(), the logic behind `node stack.js --check` (Task 15): validates every
-// app's own env schema, each app's resolved MIGRATIONS_FOLDER actually existing on disk, and
-// the tenant config (incl. the P2-R17 time-zone self-check) — all WITHOUT opening a database
-// connection. This is deliberately a separate, DB-free test file from stack.test.ts: every
-// case here must run instantly with no Postgres fixture.
+// app's own env schema, its auth config (P2-R34), each app's resolved MIGRATIONS_FOLDER
+// actually existing on disk, and the tenant config (incl. the P2-R17 time-zone self-check) —
+// all WITHOUT opening a database connection. This is deliberately a separate, DB-free test
+// file from stack.test.ts: every case here must run instantly with no Postgres fixture.
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { checkStack } from "./stack";
 
 const TICK_TOKEN = "t".repeat(32);
+const LOCAL_AUTH_SECRET = "s".repeat(32);
+// A real, policy-valid hashPassword() output (scrypt$16384$8$1$<16+ byte salt>$<32+ byte key>,
+// base64url) — fixed here rather than computed so this file stays synchronous/fast; nothing
+// below ever verifies a password against it, only that authFromEnv accepts its *shape*.
+const VALID_PASSWORD_HASH = "scrypt$16384$8$1$AR0_F516SFjYwNcFNR980A$DE642bMgMzH2Q46b7hoQ2hf-CTYQIrqFSaM7xJNdHjGnXQw-T7aYQgf5Fqghm7p5YL4CEuW_ipSpedzYPPHzIw";
 
 // Syntactically valid (passes z.string().url()) but never actually dialled — port 1 on
 // loopback refuses instantly if anything *did* try to connect, which the "fast" test below
@@ -19,6 +24,11 @@ const coreMigrations = fileURLToPath(new URL("../../core/migrations", import.met
 function baseEnv(): NodeJS.ProcessEnv {
   return {
     TICK_TOKEN,
+    // Shared (apps/stack/src/env.ts's isSharedKey) — every app's view inherits these, same as
+    // a real deploy where LOCAL_ADMIN_* and LOCAL_AUTH_SECRET are set once, not per-prefix.
+    LOCAL_ADMIN_ENABLED: "true",
+    LOCAL_ADMIN_PASSWORD_HASH: VALID_PASSWORD_HASH,
+    LOCAL_AUTH_SECRET,
     CORE_DATABASE_URL: DB("core"),
     CORE_EVENT_SUBSCRIBERS: JSON.stringify([{ name: "news-api", url: "self:/events", secret: "s", types: ["org.upserted"] }]),
 
@@ -99,5 +109,63 @@ describe("checkStack", () => {
     env.CORE_MIGRATIONS_FOLDER = coreMigrations;
     const result = await checkStack(env);
     expect(result.apps.core).toEqual({ ok: true, migrationsFolder: coreMigrations });
+  });
+
+  // Ruling P2-R34: --check must exercise the exact same authFromEnv() every app's real
+  // startup runs — a truncated LOCAL_ADMIN_PASSWORD_HASH previously passed --check cleanly
+  // (the app's own env schema has no auth fields at all) and only failed three steps later,
+  // at an actual startStack(), with no app/prefix named.
+  it("fails a truncated LOCAL_ADMIN_PASSWORD_HASH for every app, naming the app and prefix", async () => {
+    const env = baseEnv();
+    env.LOCAL_ADMIN_PASSWORD_HASH = VALID_PASSWORD_HASH.slice(0, 40); // cuts off mid-hash
+    const result = await checkStack(env);
+    expect(result.ok).toBe(false);
+    for (const [label, prefix] of [
+      ["core", "CORE"],
+      ["nrms", "NRMS"],
+      ["news-api", "NEWSAPI"],
+      ["public-site", "SITE"],
+      ["nod", "NOD"],
+      ["distribution", "DIST"],
+    ] as const) {
+      expect.soft(result.apps[label]?.ok, label).toBe(false);
+      expect.soft(result.apps[label]?.error, label).toMatch(new RegExp(`${prefix}_\\*`));
+      expect.soft(result.apps[label]?.error, label).toMatch(/LOCAL_ADMIN_PASSWORD_HASH/);
+    }
+  });
+
+  it("fails a LOCAL_AUTH_SECRET shorter than 32 characters", async () => {
+    const env = baseEnv();
+    env.LOCAL_AUTH_SECRET = "too-short";
+    const result = await checkStack(env);
+    expect(result.ok).toBe(false);
+    expect(result.apps.core?.error).toMatch(/LOCAL_AUTH_SECRET/);
+  });
+
+  it("fails a half-set Entra pair (ENTRA_TENANT_ID without AUTH_AUDIENCE)", async () => {
+    const env = baseEnv();
+    delete env.LOCAL_ADMIN_ENABLED;
+    delete env.LOCAL_ADMIN_PASSWORD_HASH;
+    env.ENTRA_TENANT_ID = "some-tenant-id";
+    // CORE_AUTH_AUDIENCE deliberately left unset.
+    const result = await checkStack(env);
+    expect(result.ok).toBe(false);
+    expect(result.apps.core?.error).toMatch(/ENTRA_TENANT_ID.*AUTH_AUDIENCE|AUTH_AUDIENCE.*ENTRA_TENANT_ID/);
+  });
+
+  it("fails LOCAL_ADMIN_ENABLED=true under NODE_ENV=production without the explicit override", async () => {
+    const env = baseEnv();
+    env.NODE_ENV = "production";
+    const result = await checkStack(env);
+    expect(result.ok).toBe(false);
+    expect(result.apps.core?.error).toMatch(/production/i);
+  });
+
+  it("passes LOCAL_ADMIN_ENABLED=true under NODE_ENV=production once LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true is set", async () => {
+    const env = baseEnv();
+    env.NODE_ENV = "production";
+    env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION = "true";
+    const result = await checkStack(env);
+    expect(result.ok).toBe(true);
   });
 });

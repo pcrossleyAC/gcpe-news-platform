@@ -171,12 +171,20 @@ export async function collectNonInteractiveInput(env: NodeJS.ProcessEnv): Promis
   if (missing.length > 0) {
     throw new Error(`--non-interactive is missing required env vars: ${missing.join(", ")}`);
   }
+  // Ruling P2-R34: the same >= 12 character rule the interactive prompt enforces (below) —
+  // the missing-vars check above already rejects an EMPTY SITEGROUND_ADMIN_PASSWORD (an
+  // empty string is falsy), but a short-but-non-empty one would otherwise sail through
+  // non-interactive mode and produce a hash for a password nobody should be allowed to set.
+  const adminPassword = env.SITEGROUND_ADMIN_PASSWORD!;
+  if (adminPassword.length < 12) {
+    throw new Error("SITEGROUND_ADMIN_PASSWORD must be at least 12 characters.");
+  }
   const dbPrefix = env.SITEGROUND_DB_PREFIX ?? "gcpe";
   return {
     domain: env.SITEGROUND_DOMAIN!,
     manageUrl: env.SITEGROUND_MANAGE_URL!,
     adminUsername: env.SITEGROUND_ADMIN_USERNAME ?? "admin",
-    adminPasswordHash: await hashPassword(env.SITEGROUND_ADMIN_PASSWORD!),
+    adminPasswordHash: await hashPassword(adminPassword),
     dbUser: env.SITEGROUND_DB_USER!,
     dbPassword: env.SITEGROUND_DB_PASSWORD!,
     dbNames: {
