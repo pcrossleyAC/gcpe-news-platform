@@ -1,9 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { hashPassword } from "@gcpe/auth";
+import { decodeJwt } from "jose";
+import { hashPassword, serviceTokenProvider } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb } from "../test/helpers";
-import { startNrms } from "./start";
+import { nodServiceTokenOptions, startNrms } from "./start";
 
 describe("startNrms", () => {
   // Every DB created by testEnv() this test created, dropped in afterEach — a test
@@ -55,5 +56,28 @@ describe("startNrms", () => {
     const started = await startNrms(await testEnv());
     started.startLoops();
     await expect(Promise.all([...started.closeBeforeServer, ...started.closers].map((c) => c.close()))).resolves.not.toThrow();
+  });
+});
+
+// Fix round 1 (review finding): NRMS's token for NoD must carry a dedicated, read-only
+// "NoD.SubscriberCount" role — not "NRMS.Editor", which on the local-auth branch is a full
+// NRMS write credential (same LOCAL_AUTH_SECRET/issuer/audience everywhere) and far more than
+// reading a count needs.
+describe("nodServiceTokenOptions", () => {
+  const local = { username: "admin", passwordHash: "x", secret: "s".repeat(40) };
+
+  it("asks for exactly the NoD.SubscriberCount role, subject nrms", () => {
+    const opts = nodServiceTokenOptions({ NOD_TOKEN_URL: undefined, NOD_CLIENT_ID: undefined, NOD_CLIENT_SECRET: undefined, NOD_SCOPE: undefined }, local);
+    expect(opts.subject).toBe("nrms");
+    expect(opts.roles).toEqual(["NoD.SubscriberCount"]);
+    expect(opts.envPrefix).toBe("NOD");
+  });
+
+  it("wired through serviceTokenProvider, mints a local token carrying only NoD.SubscriberCount", async () => {
+    const opts = nodServiceTokenOptions({ NOD_TOKEN_URL: undefined, NOD_CLIENT_ID: undefined, NOD_CLIENT_SECRET: undefined, NOD_SCOPE: undefined }, local);
+    const getToken = serviceTokenProvider(opts);
+    const token = await getToken();
+    const payload = decodeJwt(token);
+    expect(payload).toMatchObject({ sub: "nrms", azp: "nrms", roles: ["NoD.SubscriberCount"] });
   });
 });

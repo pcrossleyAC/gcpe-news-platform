@@ -50,7 +50,11 @@ export function apiRoutes(db: Db): Router {
 
   r.get(
     "/subscribers/count",
-    requireAnyRole("NoD.Admin", "NRMS.Editor"),
+    // Fix round 1 (review finding): "NoD.SubscriberCount" is a dedicated, read-only service
+    // role for NRMS's own calls — minted with far less than the full NRMS.Editor write
+    // credential (see apps/nrms/src/start.ts). NoD.Admin and NRMS.Editor can still call this
+    // directly (NoD.Admin for ops, NRMS.Editor for a staff editor testing it by hand).
+    requireAnyRole("NoD.Admin", "NRMS.Editor", "NoD.SubscriberCount"),
     run(async (req, res) => {
       const raw = typeof req.query.lists === "string" ? req.query.lists : "";
       const lists = z.array(listKeySchema).parse(raw ? raw.split(",") : []);

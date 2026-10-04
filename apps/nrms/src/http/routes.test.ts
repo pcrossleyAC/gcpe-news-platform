@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { hashPassword, localLoginRouter, mintSession } from "@gcpe/auth";
+import { hashPassword, localLoginRouter, mintLocalToken, mintSession } from "@gcpe/auth";
 import { createNrmsTestDb, createScheduledRelease, sampleCreate, seedTaxonomy } from "../../test/helpers";
 import { createApp } from "../app";
 import { publishDue } from "../publisher";
@@ -319,5 +319,17 @@ describe("NRMS HTTP API", () => {
     expect(login.status).toBe(200);
     const created = await request(localApp).post("/api/releases").set("authorization", `Bearer ${login.body.access_token}`).send(sampleCreate);
     expect(created.status).toBe(201);
+  });
+
+  // Fix round 1 (review finding): NoD.SubscriberCount is a dedicated, read-only service role
+  // minted for NRMS's own calls to NoD (apps/nrms/src/start.ts's nodServiceTokenOptions) — it
+  // must grant nothing here. A token carrying only that role is just another unprivileged
+  // bearer token against NRMS's own routes.
+  it("a NoD.SubscriberCount-only token is refused by a write route", async () => {
+    const secret = "w".repeat(40) + "-nod-subscriber-count-test";
+    const localApp = createApp({ db: tdb.db, auth: { local: { secret } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver" } });
+    const token = await mintLocalToken({ secret, subject: "nrms", azp: "nrms", roles: ["NoD.SubscriberCount"] });
+    const denied = await request(localApp).post("/api/releases").set("authorization", `Bearer ${token}`).send(sampleCreate);
+    expect(denied.status).toBe(403);
   });
 });

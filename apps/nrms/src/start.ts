@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
-import { authFromEnv, serviceTokenProvider } from "@gcpe/auth";
+import { authFromEnv, serviceTokenProvider, type LocalAuthConfig, type ServiceTokenOptions } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
@@ -29,6 +29,32 @@ export const nrmsEnvSchema = z.object({
   NOD_CLIENT_SECRET: z.string().optional(),
   NOD_SCOPE: z.string().optional(),
 });
+
+/**
+ * Builds the {@link ServiceTokenOptions} for NRMS's own calls to NoD's subscriber-count
+ * endpoint — pulled out of `startNrms` so the wiring (which role, which subject) can be
+ * asserted directly in a test, without standing up a database or a network call.
+ *
+ * Fix round 1 (review finding): roles is `["NoD.SubscriberCount"]`, a dedicated, read-only
+ * service role — not `NRMS.Editor`, which on the local-auth branch is a full NRMS write
+ * credential (same LOCAL_AUTH_SECRET/issuer/audience everywhere) and far more than reading a
+ * count needs. Not added to STAFF_ROLES: no human ever holds it.
+ */
+export function nodServiceTokenOptions(
+  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "NOD_TOKEN_URL" | "NOD_CLIENT_ID" | "NOD_CLIENT_SECRET" | "NOD_SCOPE">,
+  local: LocalAuthConfig | null,
+): ServiceTokenOptions {
+  return {
+    tokenUrl: parsed.NOD_TOKEN_URL,
+    clientId: parsed.NOD_CLIENT_ID,
+    clientSecret: parsed.NOD_CLIENT_SECRET,
+    scope: parsed.NOD_SCOPE,
+    local,
+    subject: "nrms",
+    roles: ["NoD.SubscriberCount"],
+    envPrefix: "NOD",
+  };
+}
 
 export interface AppHandle {
   app: express.Express;
@@ -65,16 +91,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const countSubscribers = parsed.NOD_URL
     ? nodClient({
         baseUrl: parsed.NOD_URL,
-        getToken: serviceTokenProvider({
-          tokenUrl: parsed.NOD_TOKEN_URL,
-          clientId: parsed.NOD_CLIENT_ID,
-          clientSecret: parsed.NOD_CLIENT_SECRET,
-          scope: parsed.NOD_SCOPE,
-          local: auth.local,
-          subject: "nrms",
-          roles: ["NRMS.Editor"],
-          envPrefix: "NOD",
-        }),
+        getToken: serviceTokenProvider(nodServiceTokenOptions(parsed, auth.local)),
       }).countSubscribers
     : undefined;
   const workflow = { timeZone: tenant.timeZone, countSubscribers };

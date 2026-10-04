@@ -120,6 +120,7 @@ describe("GET /api/subscribers/count", () => {
   let app: ReturnType<typeof createApp>;
   let editor: string;
   let reader: string;
+  let subscriberCountService: string;
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
@@ -135,6 +136,9 @@ describe("GET /api/subscribers/count", () => {
         .sign(pair.privateKey);
     editor = await sign(["NRMS.Editor"]);
     reader = await sign([]);
+    // Fix round 1: NRMS's own service token for this endpoint carries only this dedicated
+    // role (apps/nrms/src/start.ts's nodServiceTokenOptions) — never NRMS.Editor.
+    subscriberCountService = await sign(["NoD.SubscriberCount"]);
     app = createApp({
       db: tdb.db,
       auth: { issuer, audience, keys },
@@ -174,8 +178,14 @@ describe("GET /api/subscribers/count", () => {
     expect(bad.status).toBe(400);
   });
 
-  it("403s a token with neither NoD.Admin nor NRMS.Editor", async () => {
+  it("403s a token with none of NoD.Admin, NRMS.Editor or NoD.SubscriberCount", async () => {
     const forbidden = await request(app).get("/api/subscribers/count?lists=ministries:health").set("authorization", `Bearer ${reader}`);
     expect(forbidden.status).toBe(403);
+  });
+
+  it("accepts a token with only the dedicated NoD.SubscriberCount service role", async () => {
+    const res = await request(app).get("/api/subscribers/count?lists=ministries:health").set("authorization", `Bearer ${subscriberCountService}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ count: 2 });
   });
 });
