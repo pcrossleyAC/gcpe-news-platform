@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
+    "flickr:authorize": "tsx src/cli/flickr-authorize.ts",
     "db:generate": "drizzle-kit generate",
     "build": "node ../../scripts/build-app.mjs apps/nrms"
   },

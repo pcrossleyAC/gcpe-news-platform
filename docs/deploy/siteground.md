@@ -286,6 +286,68 @@ It asks for the admin password and a password for each test user (12+ characters
 
 **Revoking access.** A session renews (and its roles refresh) while the user stays active; changing a password or logging out does not end a user's *other* sessions. To cut someone off, deactivate the user — that takes effect at once in Core, and within the cookie's remaining life (at most 1 hour) in other apps. To end every session at once, including break-glass, rotate `SESSION_SECRET` (or `STACK_EVENT_SECRET`, which also re-derives the event secrets).
 
+## Flickr (Phase 3c)
+
+Fake mode is automatic whenever no real Flickr key is configured (`FLICKR_API_KEY` /
+`NRMS_FLICKR_API_KEY` unset) — the stack mounts a fake Flickr at `/fake-flickr` instead, so the
+whole photo-publishing path can be exercised before a real key exists. This is already the case
+on boxs.ca today.
+
+**Exercising it end to end.** From your Mac:
+
+```sh
+scripts/siteground-flickr-walkthrough.sh https://boxs.ca
+```
+
+Signs in as the break-glass admin (same hidden password prompt as `siteground-seed-users.sh`),
+creates a release with a fake Flickr photo as its media asset, approves and schedules it for
+"now", then polls `/nrms/api/releases/<id>` and `.../asset-status` once per cron tick (up to 5
+minutes — background work only runs when something calls `/stack/tick`; see above) printing the
+release's status, Flickr alert and asset state each time, and finally prints the public page
+URL. It exits non-zero if the release never reaches the expected end state.
+
+A second mode additionally drives the fake's outage switch, to exercise the up-to-2-minute grace
+period, the alert, and the automatic correction once the photo becomes available again (C28 in
+`docs/parity/changes-from-legacy.md`):
+
+```sh
+scripts/siteground-flickr-walkthrough.sh https://boxs.ca --outage
+```
+
+Only ever run either against a stack that is actually using the fake (no real `FLICKR_API_KEY`
+set) — `--outage` calls a fake-only control endpoint and the photo id it uses only exists there.
+
+**Switching to real Flickr at cutover.** Free Flickr accounts can't create API keys (found
+2026-10-03) — the key has to be created under the `bcgovphotos` account itself, which needs a
+Pro subscription. Once a key and secret exist:
+
+1. Locally (never on SiteGround — this needs an interactive browser step), with `FLICKR_API_KEY`
+   and `FLICKR_API_SECRET` set in your shell:
+   ```sh
+   npm run nrms:flickr-authorize
+   ```
+   It prints a Flickr URL — open it, approve access, copy the verifier code it shows, and paste
+   it back at the prompt. On success it prints the access token and secret (and only prints them
+   — they're written nowhere else).
+2. Paste these four values, plus `NRMS_FLICKR_ALERT_EMAILS` (comma-separated addresses), into
+   Site Tools → Devs → Node.js → your project → Environment Variables:
+   ```
+   FLICKR_API_KEY=<key>
+   FLICKR_API_SECRET=<secret>
+   NRMS_FLICKR_ACCESS_TOKEN=<token printed above>
+   NRMS_FLICKR_ACCESS_SECRET=<secret printed above>
+   NRMS_FLICKR_ALERT_EMAILS=<comma-separated addresses>
+   ```
+   Setting `FLICKR_API_KEY` is what switches the stack off the fake and onto real Flickr for
+   NRMS (Flickr settings are NRMS's alone — see `apps/stack/src/env.ts`).
+
+**What the alert means.** If a release's photo can't be made public within 2 minutes of the
+release actually going out, NRMS publishes the release anyway (keeping the photo link), raises
+`flickrAlert` on it (shown in the staff app) and emails `NRMS_FLICKR_ALERT_EMAILS`. It keeps
+retrying every 5 minutes for 24 hours; the moment the photo is confirmed public, the release is
+automatically re-published with it and the alert clears. After 24 hours it stops retrying and
+sends a final email — at that point the photo should be re-added or replaced by hand.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
