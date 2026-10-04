@@ -18,7 +18,13 @@ export interface AppHandle {
   workers: Record<string, () => Promise<unknown>>;
   /** No-op: nothing to start. Kept for a uniform AppHandle shape across apps. */
   startLoops(): void;
-  /** In today's shutdown order, excluding the http server itself (main.ts owns that). */
+  /** Closers that must run *before* the http server closes. Public Site has none — always
+   * empty — but the field exists on every app's AppHandle so main.ts (and the stack) can
+   * build the shutdown order uniformly: `[...closeBeforeServer, httpServer, ...closers]`,
+   * with no app-specific special-casing. */
+  closeBeforeServer: Closer[];
+  /** The rest of today's shutdown order, run *after* the http server closes, excluding the
+   * http server itself (main.ts owns that). */
   closers: Closer[];
 }
 
@@ -59,6 +65,7 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
     startLoops() {
       // No background loops.
     },
+    closeBeforeServer: [],
     closers: [{ name: "db pool", close: () => pool.end() }],
   };
 }

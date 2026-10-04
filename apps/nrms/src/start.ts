@@ -27,7 +27,13 @@ export interface AppHandle {
   workers: Record<string, () => Promise<unknown>>;
   /** Starts the interval loops exactly as main.ts does today. */
   startLoops(): void;
-  /** In today's shutdown order, excluding the http server itself (main.ts owns that). */
+  /** Closers that must run *before* the http server closes. NRMS has none — always empty —
+   * but the field exists on every app's AppHandle so main.ts (and the stack) can build the
+   * shutdown order uniformly: `[...closeBeforeServer, httpServer, ...closers]`, with no
+   * app-specific special-casing. */
+  closeBeforeServer: Closer[];
+  /** The rest of today's shutdown order, run *after* the http server closes, excluding the
+   * http server itself (main.ts owns that). */
   closers: Closer[];
 }
 
@@ -65,6 +71,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopPublisher = startPublisher({ db, subscribers, intervalMs: parsed.PUBLISH_INTERVAL_MS });
     },
+    closeBeforeServer: [],
     closers: [
       { name: "publisher", close: async () => { await stopPublisher?.(); } },
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },

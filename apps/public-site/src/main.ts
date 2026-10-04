@@ -8,7 +8,7 @@ const server = handle.app.listen(handle.port, () => console.log(`[public-site] l
 const shutdown = createShutdown({
   logPrefix: "[public-site]",
   exit: process.exit,
-  closers: [{ name: "http server", close: () => closeServer(server) }, ...handle.closers],
+  closers: [...handle.closeBeforeServer, { name: "http server", close: () => closeServer(server) }, ...handle.closers],
 });
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => void shutdown());

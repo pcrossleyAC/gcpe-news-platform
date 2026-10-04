@@ -28,12 +28,18 @@ export interface AppHandle {
    * when the hub is enabled (`opts.hub`, default true). */
   attach?(server: Server): void;
   /**
-   * In today's shutdown order, excluding the http server itself (main.ts owns that). With
-   * the hub enabled (the production default), this is `[updates hub, LISTEN connection,
-   * event dispatcher, db pool]` — note "updates hub" must close *before* the http server:
-   * a connected /updates client otherwise blocks server.close() forever (see updates/hub.ts
-   * and shutdown.test.ts). main.ts accounts for that by inserting the http server closer
-   * after this array's first element rather than before it, for this app only.
+   * Closers that must run *before* the http server closes. With the hub enabled (the
+   * production default) this is `[updates hub]` — a connected /updates client otherwise
+   * blocks server.close() forever (see updates/hub.ts and start.test.ts's
+   * "doesn't hang with a connected /updates client" regression test). Empty when the hub is
+   * disabled. main.ts (and the stack) build the shutdown order uniformly as
+   * `[...closeBeforeServer, httpServer, ...closers]`, with no app-specific special-casing.
+   */
+  closeBeforeServer: Closer[];
+  /**
+   * The rest of today's shutdown order, run *after* the http server closes, excluding the
+   * http server itself (main.ts owns that). With the hub enabled this is `[LISTEN
+   * connection, event dispatcher, db pool]`; with it disabled, `[event dispatcher, db pool]`.
    */
   closers: Closer[];
 }
@@ -123,8 +129,8 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
       stopDispatcher = startDispatcher({ db, subscribers });
     },
     attach: hub ? (server: Server) => hub.attach(server) : undefined,
+    closeBeforeServer: hub ? [{ name: "updates hub", close: () => hub.close() }] : [],
     closers: [
-      ...(hub ? [{ name: "updates hub", close: () => hub.close() }] : []),
       ...(stopListening ? [{ name: "LISTEN connection", close: stopListening }] : []),
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
       { name: "db pool", close: () => pool.end() },
