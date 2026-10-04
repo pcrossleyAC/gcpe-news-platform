@@ -20,6 +20,7 @@ import { publicSiteEnvSchema } from "../../public-site/src/env";
 import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../public-site/src/start";
 
 import { noStoreByDefault, noStoreOnRedirect } from "./cache-control";
+import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture } from "./errors";
 import { envFor, resolveSelfUrls, type AppPrefix, stackEnvSchema } from "./env";
 import { createTickRunner, tickRouter, type TickStep } from "./tick";
@@ -67,8 +68,8 @@ async function determineActualPort(requested: number): Promise<number> {
  * EVENT_SUBSCRIBERS needs this exactly as much as NRMS's does (Core publishes org.upserted
  * the same way NRMS publishes release.published).
  */
-function resolvedEnvFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, actualPort: number): NodeJS.ProcessEnv {
-  return resolveSelfUrls(envFor(env, prefix), actualPort);
+function resolvedEnvFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.ProcessEnv {
+  return resolveSelfUrls(envFor(env, prefix));
 }
 
 /**
@@ -111,7 +112,7 @@ const HEALTH_CACHE_TTL_MS = 5_000;
  * would otherwise fan out into 6 fresh loopback requests (one of which is itself a DB ping)
  * on every single poll, for a number that's realistically stable across a 5 s window.
  */
-function healthRouter(actualPort: number): Router {
+function healthRouter(): Router {
   const checks: { name: string; path: string }[] = [
     { name: "core", path: "/core/health/ready" },
     { name: "nrms", path: "/nrms/health/ready" },
@@ -130,7 +131,7 @@ function healthRouter(actualPort: number): Router {
     await Promise.all(
       checks.map(async ({ name, path }) => {
         try {
-          const response = await fetch(`http://127.0.0.1:${actualPort}${path}`);
+          const response = await fetch(`${INTERNAL_ORIGIN}${path}`);
           apps[name] = response.ok;
         } catch {
           apps[name] = false;
@@ -175,12 +176,19 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
 
   // Fix round 1, P2-R30 important fix 1 + M9: every app's view gets self: URLs resolved, not
   // just NRMS/NEWSAPI's EVENT_SUBSCRIBERS.
-  const coreEnv = resolvedEnvFor(env, "CORE", actualPort);
-  const nrmsEnv = resolvedEnvFor(env, "NRMS", actualPort);
-  const newsApiEnv = resolvedEnvFor(env, "NEWSAPI", actualPort);
-  const siteEnv = resolvedEnvFor(env, "SITE", actualPort);
-  const nodEnv = resolvedEnvFor(env, "NOD", actualPort);
-  const distEnv = resolvedEnvFor(env, "DIST", actualPort);
+  const coreEnv = resolvedEnvFor(env, "CORE");
+  const nrmsEnv = resolvedEnvFor(env, "NRMS");
+  const newsApiEnv = resolvedEnvFor(env, "NEWSAPI");
+  const siteEnv = resolvedEnvFor(env, "SITE");
+  const nodEnv = resolvedEnvFor(env, "NOD");
+  const distEnv = resolvedEnvFor(env, "DIST");
+
+  // Every self:/… URL resolves to INTERNAL_ORIGIN (http://stack.internal), which this
+  // routes into the stack's own Express app in memory — no loopback networking, which
+  // SiteGround's sandboxed runtime doesn't allow. Installed BEFORE the apps start because
+  // their HTTP clients capture `fetch` when they're created; `stackApp` is assigned below.
+  let stackApp: express.Express | undefined;
+  const uninstallInternalFetch = installInternalFetch(() => stackApp);
 
   // Fix round 1, P2-R30 M5: name the app and its env prefix in any startup failure.
   const core: CoreHandle = await startNamed("Core", "CORE", () => startCore(coreEnv));
@@ -228,7 +236,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // CORE_AUTH_AUDIENCE) rather than the raw, unprefixed env — Core is the stack's admin app,
   // so its own identity configuration is the one /stack/errors defers to.
   const errorsAuth = authFromEnv(coreEnv);
-  app.use("/stack", healthRouter(actualPort));
+  app.use("/stack", healthRouter());
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
   app.use(
     "/stack",
@@ -253,6 +261,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   app.use("/distribution", distribution.app);
   app.use("/site-builder", siteBuilder.app);
   app.use(newsApi.app);
+  stackApp = app;
 
   return {
     app,
@@ -271,7 +280,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     closeBeforeServer: [...core.closeBeforeServer, ...nrms.closeBeforeServer, ...nod.closeBeforeServer, ...distribution.closeBeforeServer, ...siteBuilder.closeBeforeServer, ...newsApi.closeBeforeServer],
     // Reverse mount order, then the error capture last so it's still installed while every
     // other closer's own console.error calls (e.g. a failed shutdown step) run.
-    closers: [...newsApi.closers, ...siteBuilder.closers, ...distribution.closers, ...nod.closers, ...nrms.closers, ...core.closers, { name: "error capture", close: () => errorCapture.close() }],
+    closers: [...newsApi.closers, ...siteBuilder.closers, ...distribution.closers, ...nod.closers, ...nrms.closers, ...core.closers, { name: "error capture", close: () => errorCapture.close() }, { name: "internal fetch", close: () => uninstallInternalFetch() }],
   };
 }
 
@@ -325,7 +334,7 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   const apps: Record<string, StackCheckAppResult> = {};
   let ok = true;
   for (const c of checks) {
-    const view = resolvedEnvFor(env, c.prefix, actualPort);
+    const view = resolvedEnvFor(env, c.prefix);
     const errors: string[] = [];
 
     const parsed = c.schema.safeParse(view);

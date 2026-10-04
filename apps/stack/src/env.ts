@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { fileURLToPath } from "node:url";
+import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { z } from "zod";
 
 /** The stack's own env — one PORT for every mounted app, a tick token, and the two feature
@@ -122,7 +123,7 @@ function hasUrlField(item: unknown): item is { url: unknown } & Record<string, u
 
 /**
  * Resolves Task 15's `self:` subscriber URLs inside a raw EVENT_SUBSCRIBERS JSON string: every
- * subscriber's `url` field starting with `self:/` becomes `http://127.0.0.1:<actualPort>/rest`
+ * subscriber's `url` field starting with `self:/` becomes `http://stack.internal/rest` (routed in-process — see internal-fetch.ts)
  * once the stack's single port is known (pulled forward from Task 15's brief — the stack needs
  * this to wire events between its own apps; see stack.ts).
  *
@@ -133,7 +134,7 @@ function hasUrlField(item: unknown): item is { url: unknown } & Record<string, u
  * error, instead of this function masking it with a different one. A no-op when `value` is
  * undefined.
  */
-export function resolveSelfSubscribers(value: string | undefined, actualPort: number): string | undefined {
+export function resolveSelfSubscribers(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   let parsed: unknown;
   try {
@@ -144,7 +145,7 @@ export function resolveSelfSubscribers(value: string | undefined, actualPort: nu
   if (!Array.isArray(parsed)) return value;
   const rewritten = parsed.map((item) => {
     if (hasUrlField(item) && isSelfUrl(item.url)) {
-      return { ...item, url: `http://127.0.0.1:${actualPort}${stripSelfPrefix(item.url)}` };
+      return { ...item, url: `${INTERNAL_ORIGIN}${stripSelfPrefix(item.url)}` };
     }
     return item;
   });
@@ -166,20 +167,20 @@ export function resolveSelfSubscribers(value: string | undefined, actualPort: nu
  * (bare `DATABASE_URL` or a prefixed `<PREFIX>_DATABASE_URL`, which `envFor` has already
  * stripped to `DATABASE_URL` by the time it reaches here) is excluded from this rewrite even
  * though it also ends in `_URL` — a database is never reached over the stack's own loopback
- * HTTP port, so "resolving" a `self:/...` DATABASE_URL to `http://127.0.0.1:<port>/...` and
+ * HTTP port, so "resolving" a `self:/...` DATABASE_URL to `http://stack.internal/...` and
  * handing that straight to `pg` would just be the wrong fix dressed up as one. `DATABASE_URL`
  * must simply never be set to `self:/` (the env generator and runbook never produce that);
  * left untouched here, a mistaken one still fails loudly as an invalid Postgres connection
  * string, the same way any other typo'd DATABASE_URL would.
  */
-export function resolveSelfUrls(env: NodeJS.ProcessEnv, actualPort: number): NodeJS.ProcessEnv {
+export function resolveSelfUrls(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const view: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value === undefined) continue;
     if (key === "EVENT_SUBSCRIBERS") {
-      view[key] = resolveSelfSubscribers(value, actualPort)!;
+      view[key] = resolveSelfSubscribers(value)!;
     } else if (key.endsWith("_URL") && !key.endsWith("DATABASE_URL") && isSelfUrl(value)) {
-      view[key] = `http://127.0.0.1:${actualPort}${stripSelfPrefix(value)}`;
+      view[key] = `${INTERNAL_ORIGIN}${stripSelfPrefix(value)}`;
     } else {
       view[key] = value;
     }

@@ -53,9 +53,9 @@ describe("envFor", () => {
 describe("resolveSelfSubscribers", () => {
   it("rewrites a self: subscriber URL to the loopback address at the actual port", () => {
     const raw = JSON.stringify([{ name: "news-api", url: "self:/events", secret: "s", types: ["release.published"] }]);
-    const resolved = resolveSelfSubscribers(raw, 54321);
+    const resolved = resolveSelfSubscribers(raw);
     expect(JSON.parse(resolved!)).toEqual([
-      { name: "news-api", url: "http://127.0.0.1:54321/events", secret: "s", types: ["release.published"] },
+      { name: "news-api", url: "http://stack.internal/events", secret: "s", types: ["release.published"] },
     ]);
   });
 
@@ -64,17 +64,17 @@ describe("resolveSelfSubscribers", () => {
       { name: "a", url: "self:/one", secret: "s", types: ["*"] },
       { name: "b", url: "self:/two", secret: "s", types: ["*"] },
     ]);
-    const resolved = resolveSelfSubscribers(raw, 1234);
-    expect(JSON.parse(resolved!).map((s: { url: string }) => s.url)).toEqual(["http://127.0.0.1:1234/one", "http://127.0.0.1:1234/two"]);
+    const resolved = resolveSelfSubscribers(raw);
+    expect(JSON.parse(resolved!).map((s: { url: string }) => s.url)).toEqual(["http://stack.internal/one", "http://stack.internal/two"]);
   });
 
   it("leaves a non-self: subscriber URL untouched", () => {
     const raw = JSON.stringify([{ name: "ext", url: "https://example.com/events", secret: "s", types: ["*"] }]);
-    expect(resolveSelfSubscribers(raw, 1234)).toBe(raw);
+    expect(resolveSelfSubscribers(raw)).toBe(raw);
   });
 
   it("passes undefined through unchanged", () => {
-    expect(resolveSelfSubscribers(undefined, 1234)).toBeUndefined();
+    expect(resolveSelfSubscribers(undefined)).toBeUndefined();
   });
 
   // Fix round 1, P2-R30 M1: only the `url` field is a candidate for rewriting — a `secret`
@@ -84,13 +84,13 @@ describe("resolveSelfSubscribers", () => {
   // with.
   it("never touches a secret (or any other field) that happens to contain the text self:/", () => {
     const raw = JSON.stringify([{ name: "a", url: "self:/events", secret: "contains-self:/-literally", types: ["*"] }]);
-    const resolved = JSON.parse(resolveSelfSubscribers(raw, 9999)!);
-    expect(resolved).toEqual([{ name: "a", url: "http://127.0.0.1:9999/events", secret: "contains-self:/-literally", types: ["*"] }]);
+    const resolved = JSON.parse(resolveSelfSubscribers(raw)!);
+    expect(resolved).toEqual([{ name: "a", url: "http://stack.internal/events", secret: "contains-self:/-literally", types: ["*"] }]);
   });
 
   it("passes malformed JSON through unchanged, so parseSubscribers reports the real error", () => {
     const raw = "{not valid json";
-    expect(resolveSelfSubscribers(raw, 1234)).toBe(raw);
+    expect(resolveSelfSubscribers(raw)).toBe(raw);
   });
 });
 
@@ -101,18 +101,18 @@ describe("resolveSelfUrls", () => {
   // accounting) before this fix.
   it("resolves EVENT_SUBSCRIBERS in any app's env view, not just NRMS/NEWSAPI", () => {
     const env = { EVENT_SUBSCRIBERS: JSON.stringify([{ name: "news-api", url: "self:/events", secret: "s", types: ["org.upserted"] }]) };
-    const resolved = JSON.parse(resolveSelfUrls(env, 4000).EVENT_SUBSCRIBERS!);
-    expect(resolved).toEqual([{ name: "news-api", url: "http://127.0.0.1:4000/events", secret: "s", types: ["org.upserted"] }]);
+    const resolved = JSON.parse(resolveSelfUrls(env).EVENT_SUBSCRIBERS!);
+    expect(resolved).toEqual([{ name: "news-api", url: "http://stack.internal/events", secret: "s", types: ["org.upserted"] }]);
   });
 
   // M9: any OTHER *_URL var (not just EVENT_SUBSCRIBERS) whose whole value is self:/... —
   // e.g. News API's own NEWS_API_URL as seen by Public Site, or NoD's DISTRIBUTION_URL.
   it("resolves a plain self: URL on any var ending in _URL", () => {
     const env = { NEWS_API_URL: "self:/", DISTRIBUTION_URL: "self:/distribution", NOD_BASE_URL: "self:/nod" };
-    expect(resolveSelfUrls(env, 5000)).toEqual({
-      NEWS_API_URL: "http://127.0.0.1:5000/",
-      DISTRIBUTION_URL: "http://127.0.0.1:5000/distribution",
-      NOD_BASE_URL: "http://127.0.0.1:5000/nod",
+    expect(resolveSelfUrls(env)).toEqual({
+      NEWS_API_URL: "http://stack.internal/",
+      DISTRIBUTION_URL: "http://stack.internal/distribution",
+      NOD_BASE_URL: "http://stack.internal/nod",
     });
   });
 
@@ -121,12 +121,12 @@ describe("resolveSelfUrls", () => {
       PUBLIC_SITE_URL: "https://news.gov.bc.ca",
       DISTRIBUTION_TOKEN_URL: "https://login.microsoftonline.com/tenant/oauth2/v2.0/token",
     };
-    expect(resolveSelfUrls(env, 5000)).toEqual(env);
+    expect(resolveSelfUrls(env)).toEqual(env);
   });
 
   it("leaves every other var (not ending in _URL, and not EVENT_SUBSCRIBERS) untouched", () => {
     const env = { DATABASE_URL_PREFIX: "not-a-url-var", PORT: "3001" };
-    expect(resolveSelfUrls(env, 5000)).toEqual(env);
+    expect(resolveSelfUrls(env)).toEqual(env);
   });
 
   // Ruling P2-R32 (Task 14 re-review r1 residual): the *_URL heuristic also matched
@@ -138,7 +138,7 @@ describe("resolveSelfUrls", () => {
   // rewriting entirely rather than "resolved" to something nonsensical.
   it("never rewrites a var whose name ends in DATABASE_URL, even one literally named DATABASE_URL", () => {
     const env = { CORE_DATABASE_URL: "self:/whatever", NRMS_DATABASE_URL: "self:/", DATABASE_URL: "self:/x" };
-    expect(resolveSelfUrls(env, 5000)).toEqual(env);
+    expect(resolveSelfUrls(env)).toEqual(env);
   });
 });
 
