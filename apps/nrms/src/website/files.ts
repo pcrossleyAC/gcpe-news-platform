@@ -4,6 +4,7 @@ import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { assertSafeKey, forceExtension, safeFileName, sniff, type ObjectStore } from "@gcpe/storage";
 import { siteFiles } from "../db/schema";
 import type { Actor } from "../releases/store";
+import { deleteQuietly } from "../storage-log";
 import { writeSiteLog } from "./events";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
 
@@ -61,14 +62,6 @@ function checkBytes(bytes: Buffer): "application/pdf" | "image/png" | "image/jpe
   return type;
 }
 
-async function deleteQuietly(store: ObjectStore, key: string, why: string): Promise<void> {
-  try {
-    await store.delete(key);
-  } catch (e) {
-    console.error(`[nrms] could not delete stored site file ${key} (${why}): ${e instanceof Error ? e.message : String(e)}`);
-  }
-}
-
 export interface UploadFileInput {
   /** The uploader's original file name. */
   name: string;
@@ -88,8 +81,24 @@ export interface UploadFileInput {
  * and the insert or update) has committed are they written again under the real key — this
  * store has no rename/move, so "moving" is a second `put` — and the temporary key is removed.
  * A failure or conflict before that point never touches `name`'s existing bytes (or writes any
- * for a brand-new name), and two concurrent uploads of the same new name serialize on the
- * transaction's `FOR UPDATE`: the loser's own temporary key is cleaned up, never the winner's.
+ * for a brand-new name).
+ *
+ * A new upload can't rely on `SELECT … FOR UPDATE WHERE name = X` to catch a concurrent upload
+ * of the *same new* name: with no row yet, `FOR UPDATE` has nothing to lock, so two concurrent
+ * callers would both see "no existing row" and both reach the `INSERT`, and the loser would
+ * hit the database's unique constraint directly — a raw driver error (500), not a
+ * `SiteConflictError` (409). Instead, the insert itself is the conflict check:
+ * `.onConflictDoNothing({ target: siteFiles.name })` makes a colliding insert affect zero
+ * rows instead of raising, and an empty `returning()` *is* the conflict. Replacing an existing
+ * file has no such gap — the row already exists, so `SELECT … FOR UPDATE` genuinely locks it
+ * and serialises concurrent replaces/deletes of it.
+ *
+ * A second race lives between the transaction committing and the post-commit `put` onto the
+ * real key: a concurrent `deleteFile` could remove the row (and delete the real key's bytes,
+ * if any) in that gap, after which this `put` would still land, leaving bytes at a public key
+ * with no row — served forever, invisible in the list. So after that `put`, the row is
+ * re-read by id; if it (or this write — compared by `size`, kept simple per the brief) is
+ * gone, the bytes just written are deleted again.
  */
 export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileInput, actor: Actor): Promise<SiteFileView> {
   const contentType = checkBytes(input.bytes);
@@ -102,13 +111,17 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
   await store.put(tempKey, input.bytes, contentType);
   try {
     const row = await db.transaction(async (tx) => {
-      const [existing] = await tx.select().from(siteFiles).where(eq(siteFiles.name, name)).for("update");
       if (!input.replace) {
-        if (existing) throw new SiteConflictError("A file with that name already exists.");
-        const [created] = await tx.insert(siteFiles).values({ storageKey: name, name, contentType, size: input.bytes.length, createdBy: actor.id }).returning();
+        const [created] = await tx
+          .insert(siteFiles)
+          .values({ storageKey: name, name, contentType, size: input.bytes.length, createdBy: actor.id })
+          .onConflictDoNothing({ target: siteFiles.name })
+          .returning();
+        if (!created) throw new SiteConflictError("A file with that name already exists.");
         await writeSiteLog(tx, actor, "files", `Uploaded ${name}`);
-        return created!;
+        return created;
       }
+      const [existing] = await tx.select().from(siteFiles).where(eq(siteFiles.name, name)).for("update");
       if (!existing) throw new SiteNotFoundError(`no file named ${name}`);
       const [updated] = await tx.update(siteFiles).set({ contentType, size: input.bytes.length }).where(eq(siteFiles.id, existing.id)).returning();
       await writeSiteLog(tx, actor, "files", `Replaced ${name}`);
@@ -116,9 +129,16 @@ export async function uploadFile(db: Db, store: ObjectStore, input: UploadFileIn
     });
     // The row is committed; move the bytes onto the real key.
     await store.put(name, input.bytes, contentType);
+    // A concurrent delete (or another replace) could have landed in the gap between the
+    // commit above and this put — if the row this write committed is gone (or no longer
+    // reflects this write), the bytes just written are orphaned; remove them again.
+    const [after] = await db.select({ id: siteFiles.id, size: siteFiles.size }).from(siteFiles).where(eq(siteFiles.id, row.id));
+    if (!after || after.size !== row.size) {
+      await deleteQuietly(store, name, "stored site file", "file removed or replaced during upload");
+    }
     return view(row);
   } finally {
-    await deleteQuietly(store, tempKey, "upload cleanup");
+    await deleteQuietly(store, tempKey, "stored site file", "upload cleanup");
   }
 }
 
@@ -131,5 +151,5 @@ export async function deleteFile(db: Db, store: ObjectStore, id: string, actor: 
     key = row.storageKey;
     await writeSiteLog(tx, actor, "files", `Deleted ${row.name}`);
   });
-  if (key) await deleteQuietly(store, key, "file deleted");
+  if (key) await deleteQuietly(store, key, "stored site file", "file deleted");
 }

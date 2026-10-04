@@ -2,11 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { localStore, type ObjectStore } from "@gcpe/storage";
 import { createNrmsTestDb, editor } from "../../test/helpers";
-import { SiteConflictError, SiteRuleError } from "./errors";
-import { deleteFile, listFiles, uploadFile } from "./files";
+import { siteFiles } from "../db/schema";
+import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
+import { deleteFile, listFiles, uploadFile, type SiteFileView } from "./files";
 
 const PDF = Buffer.from("%PDF-1.7\n% test\n");
 const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.from("rest-of-png")]);
@@ -107,5 +109,75 @@ describe("website/files — general file uploads", () => {
     expect(await listFiles(tdb.db)).toEqual({ total: 0, files: [] });
     expect(await store.get("budget-2026.pdf")).toBeNull();
     expect(await lastLog()).toMatchObject({ area: "files", text: "Deleted budget-2026.pdf" });
+  });
+
+  it("replace=true on a name that doesn't exist is a SiteNotFoundError", async () => {
+    await expect(uploadFile(tdb.db, store, { name: "missing.pdf", bytes: PDF, replace: true }, editor)).rejects.toThrow(SiteNotFoundError);
+  });
+
+  it("page 2 of listFiles returns the remainder, ordered newest first", async () => {
+    const rows = Array.from({ length: 51 }, (_, i) => ({
+      storageKey: `file-${i}.pdf`,
+      name: `file-${i}.pdf`,
+      contentType: "application/pdf",
+      size: 10,
+      createdBy: editor.id,
+      createdAt: new Date(Date.now() - i * 1000),
+    }));
+    await tdb.db.insert(siteFiles).values(rows);
+
+    const page1 = await listFiles(tdb.db, { page: 1 });
+    expect(page1.total).toBe(51);
+    expect(page1.files).toHaveLength(50);
+    expect(page1.files[0]!.name).toBe("file-0.pdf"); // newest (largest createdAt)
+
+    const page2 = await listFiles(tdb.db, { page: 2 });
+    expect(page2.total).toBe(51);
+    expect(page2.files).toHaveLength(1);
+    expect(page2.files[0]!.name).toBe("file-50.pdf"); // oldest, pushed onto page 2
+  });
+
+  it("concurrent uploads of the same new name: exactly one succeeds (SiteConflictError for the rest), and the store ends up holding the winner's bytes", async () => {
+    // `FOR UPDATE WHERE name = X` locks nothing when no row exists yet, so a plain pre-check
+    // can't serialise two brand-new uploads of the same name against each other — only the
+    // database's own unique constraint can. Several concurrent attempts (more than the pool
+    // ever runs one-at-a-time) make it overwhelmingly likely at least two land their INSERTs
+    // concurrently, as the 20-concurrent-approvals test in releases/workflow.test.ts does for
+    // the same reason.
+    const attempts = Array.from({ length: 8 }, (_, i) => Buffer.concat([PDF, Buffer.alloc(i)])); // distinct sizes identify the winner
+    const settled = await Promise.allSettled(attempts.map((bytes) => uploadFile(tdb.db, store, { name: "race.pdf", bytes }, editor)));
+
+    const fulfilled = settled.filter((r): r is PromiseFulfilledResult<SiteFileView> => r.status === "fulfilled");
+    const rejected = settled.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(attempts.length - 1);
+    for (const r of rejected) expect(r.reason).toBeInstanceOf(SiteConflictError);
+
+    const winnerIndex = attempts.findIndex((b) => b.length === fulfilled[0]!.value.size);
+    const stored = await store.get("race.pdf");
+    expect(stored!.bytes.equals(attempts[winnerIndex]!)).toBe(true);
+    expect((await listFiles(tdb.db, { q: "race" })).total).toBe(1);
+  });
+
+  it("a delete racing the post-commit move onto the real key doesn't leave orphaned bytes with no row", async () => {
+    // Simulates a concurrent deleteFile landing between uploadFile's transaction commit and its
+    // post-commit `store.put` onto the real key: the wrapped store's `put` for that real key
+    // deletes the just-committed row (and its bytes) via the real store *before* the bytes are
+    // actually written, reproducing the race deterministically rather than relying on timing.
+    const racyStore: ObjectStore = {
+      ...store,
+      async put(key, bytes, contentType) {
+        if (key === "race2.pdf") {
+          const [existing] = await tdb.db.select({ id: siteFiles.id }).from(siteFiles).where(eq(siteFiles.name, "race2.pdf"));
+          if (existing) await deleteFile(tdb.db, store, existing.id, editor);
+        }
+        return store.put(key, bytes, contentType);
+      },
+    };
+
+    await uploadFile(tdb.db, racyStore, { name: "race2.pdf", bytes: PDF }, editor);
+
+    expect(await listFiles(tdb.db, { q: "race2" })).toEqual({ total: 0, files: [] });
+    expect(await store.get("race2.pdf")).toBeNull();
   });
 });

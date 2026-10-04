@@ -5,6 +5,7 @@ import { appendMatchingExtension, randomFileKey, sniff, type ObjectStore, type S
 import { newsReleases, releaseFiles } from "../db/schema";
 import { ReleaseNotFoundError, ReleaseRuleError } from "../releases/errors";
 import { mutateRelease, type Actor } from "../releases/store";
+import { deleteQuietly } from "../storage-log";
 
 export type ReleaseFileKind = "translation" | "asset";
 
@@ -47,14 +48,6 @@ async function syncFlag(tx: Tx, releaseId: string, kind: ReleaseFileKind): Promi
   await tx.update(newsReleases).set(kind === "translation" ? { hasTranslations: any } : { hasMediaAssets: any }).where(eq(newsReleases.id, releaseId));
 }
 
-async function deleteQuietly(store: ObjectStore, key: string, why: string): Promise<void> {
-  try {
-    await store.delete(key);
-  } catch (e) {
-    console.error(`[nrms] could not delete stored file ${key} (${why}): ${e instanceof Error ? e.message : String(e)}`);
-  }
-}
-
 /**
  * Adds a translation PDF or a media asset file. The bytes are written to the store *before* the
  * database transaction (so a committed row always points at a stored file) and deleted again if
@@ -76,7 +69,7 @@ export async function addReleaseFile(db: Db, store: ObjectStore, id: string, inp
       return `Added ${LOG_NOUN[input.kind]} ${label}`;
     });
   } catch (e) {
-    await deleteQuietly(store, key, "upload not saved");
+    await deleteQuietly(store, key, "stored file", "upload not saved");
     throw e;
   }
 }
@@ -95,11 +88,11 @@ export async function removeReleaseFile(db: Db, store: ObjectStore, id: string, 
     removedKey = file.storageKey;
     return `Removed ${LOG_NOUN[file.kind]} ${file.label}`;
   });
-  if (removedKey) await deleteQuietly(store, removedKey, "file removed");
+  if (removedKey) await deleteQuietly(store, removedKey, "stored file", "file removed");
   return view;
 }
 
 /** Best-effort removal of a hard-deleted release's stored files (its rows are already gone). */
 export async function deleteStoredFiles(store: ObjectStore, keys: string[]): Promise<void> {
-  for (const key of keys) await deleteQuietly(store, key, "release deleted");
+  for (const key of keys) await deleteQuietly(store, key, "stored file", "release deleted");
 }
