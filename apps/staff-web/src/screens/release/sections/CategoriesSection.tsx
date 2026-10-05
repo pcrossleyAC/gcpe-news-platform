@@ -49,7 +49,6 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
   }, []);
 
   const dirty = !readOnly && JSON.stringify(form) !== JSON.stringify(fromView(view));
-  useRegisterDirty("categories", dirty);
 
   const toggle = (kind: CategoryKind, key: string) =>
     setForm((f) => {
@@ -59,11 +58,15 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
       return { ...f, ...patch };
     });
 
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    void section.save("/categories", { version: view.version, ...form }).then((next) => {
+  const doSave = () =>
+    section.save("/categories", { version: view.version, ...form }).then((next) => {
       if (next) setForm(fromView(next));
     });
+  useRegisterDirty("categories", dirty, !readOnly ? { label: "Save categories", save: doSave } : undefined);
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    void doSave();
   };
 
   const places: FeaturePlace[] = [
@@ -86,7 +89,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
   );
 
   return (
-    <section className="gcpe-release-editor__categories" aria-label="Categories">
+    <section className="gcpe-release-editor__categories" aria-label="Categories" id="section-categories" tabIndex={-1}>
       <h2>Categories</h2>
 
       {section.conflict && (

@@ -66,7 +66,6 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   };
 
   const dirty = !readOnly && (JSON.stringify(form) !== JSON.stringify(fromView(view)) || (plannedValue?.instant ?? null) !== view.publishAt);
-  useRegisterDirty("settings", dirty);
 
   const toggleMediaList = (key: string) =>
     setForm((f) => ({ ...f, mediaListKeys: f.mediaListKeys.includes(key) ? f.mediaListKeys.filter((k) => k !== key) : [...f.mediaListKeys, key] }));
@@ -81,9 +80,8 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   // what the release already has, re-send that exact instant unchanged instead of recomputing it.
   const plannedUnchanged = (plannedValue?.instant ?? null) === view.publishAt;
 
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    void section
+  const doSave = () =>
+    section
       .save("/settings", {
         version: view.version,
         activityId: form.activityId,
@@ -99,12 +97,17 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
       .then((next) => {
         if (next) resetFrom(next);
       });
+  useRegisterDirty("settings", dirty, !readOnly ? { label: "Save settings", save: doSave } : undefined);
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    void doSave();
   };
 
   const initialPlanned = view.publishAt ? instantToBcLocal(view.publishAt, timeZone) : null;
 
   return (
-    <section className="gcpe-release-editor__settings" aria-label="Publish settings">
+    <section className="gcpe-release-editor__settings" aria-label="Publish settings" id="section-settings" tabIndex={-1}>
       <h2>Publish settings</h2>
 
       {section.conflict && (

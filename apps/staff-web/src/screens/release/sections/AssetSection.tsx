@@ -54,24 +54,12 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
   }, [view.id, view.assetUrl, view.version]);
 
   const dirty = !readOnly && JSON.stringify(form) !== JSON.stringify(fromView(view));
-  useRegisterDirty("asset", dirty);
-
-  if (!rules.assetsAllowed) {
-    return (
-      <section className="gcpe-release-editor__asset" aria-label="Media asset">
-        <h2>Media asset</h2>
-        <p>A {TYPE_LABEL[view.type]} has no media asset.</p>
-      </section>
-    );
-  }
-
   const trimmedUrl = form.assetUrl.trim();
   const urlProblem = trimmedUrl ? assetUrlProblem(trimmedUrl) : null;
 
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (urlProblem) return;
-    void section
+  const doSave = () => {
+    if (urlProblem) return Promise.resolve();
+    return section
       .save("/asset", {
         version: view.version,
         assetUrl: trimmedUrl || null,
@@ -82,9 +70,24 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
         if (next) setForm(fromView(next));
       });
   };
+  useRegisterDirty("asset", dirty, !readOnly ? { label: "Save media asset", save: doSave } : undefined);
+
+  if (!rules.assetsAllowed) {
+    return (
+      <section className="gcpe-release-editor__asset" aria-label="Media asset" id="section-asset" tabIndex={-1}>
+        <h2>Media asset</h2>
+        <p>A {TYPE_LABEL[view.type]} has no media asset.</p>
+      </section>
+    );
+  }
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    void doSave();
+  };
 
   return (
-    <section className="gcpe-release-editor__asset" aria-label="Media asset">
+    <section className="gcpe-release-editor__asset" aria-label="Media asset" id="section-asset" tabIndex={-1}>
       <h2>Media asset</h2>
 
       {status && <p className="gcpe-release-editor__asset-status">{statusMessage(status)}</p>}

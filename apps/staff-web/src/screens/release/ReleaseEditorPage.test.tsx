@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import axe from "axe-core";
@@ -53,6 +53,10 @@ describe("ReleaseEditorPage", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
     cleanup();
+    // Several tests below share the same release id and the same signed-in user id — without
+    // this, a draft DocumentLanguageForm saved to sessionStorage (session-expiry recovery) in
+    // one test leaks into the next and pre-dirties it.
+    sessionStorage.clear();
   });
 
   it("loads the release and renders every spec section in order, with exactly one h1", async () => {
@@ -140,7 +144,9 @@ describe("ReleaseEditorPage", () => {
 
     await screen.findByRole("heading", { name: "Categories" });
     await user.click(screen.getByLabelText("Sector One"));
-    await user.click(screen.getByRole("button", { name: "Save categories" }));
+    // Checking that box also dirties the sticky save bar, which gets its own "Save categories"
+    // button — scope to the Categories section itself for its inline one.
+    await user.click(within(screen.getByRole("region", { name: "Categories" })).getByRole("button", { name: "Save categories" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url.endsWith("/categories"))).toBe(true));
 
     await user.click(screen.getByRole("button", { name: "Save settings" }));
@@ -251,5 +257,75 @@ describe("ReleaseEditorPage", () => {
 
     // Back on the same release, with the unsaved headline restored from sessionStorage.
     expect(await screen.findByLabelText("Headline")).toHaveValue("Unsaved after 401");
+  });
+
+
+  // Hand-check feedback: a long document body pushed its own Save button far down the page —
+  // this bar is always visible, and its button is the same save (same request/409/422 handling).
+  it("the sticky save bar is hidden while clean, appears with the right label once dirty, and its button saves and makes it disappear", async () => {
+    const v = releaseView({ version: 1 });
+    const calls: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+        if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [], sectors: [], themes: [], tags: [] });
+        if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+        if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+        if (init?.method === "PUT" && url.includes("/documents/")) {
+          calls.push({ url, init });
+          return jsonResponse(200, releaseView({ ...v, version: 2 }));
+        }
+        if (/\/nrms\/api\/releases\/[^/]+$/.test(url)) return jsonResponse(200, v);
+        throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+      }),
+    );
+    const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: [`/releases/${v.id}`] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    const headline = await screen.findByLabelText("Headline");
+    expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument();
+
+    const user = userEvent.setup();
+    await user.type(headline, " more");
+    const bar = await screen.findByRole("region", { name: "Unsaved changes" });
+    expect(bar).toHaveTextContent("You have unsaved changes in: English content (Document 1)");
+    const barButton = within(bar).getByRole("button", { name: "Save English content (Document 1)" });
+
+    await user.click(barButton);
+    await waitFor(() => expect(calls).toHaveLength(1));
+    const body = JSON.parse(calls[0]!.init!.body as string);
+    expect(body).toMatchObject({ version: 1, headline: "Clinics open more" });
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument());
+  });
+
+  it("two dirty sections show two buttons in the bar", async () => {
+    renderPage("11111111-1111-1111-1111-111111111111");
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Headline"), " more");
+    await user.type(await screen.findByLabelText("Location"), "V");
+    const bar = await screen.findByRole("region", { name: "Unsaved changes" });
+    expect(within(bar).getByRole("button", { name: "Save English content (Document 1)" })).toBeInTheDocument();
+    expect(within(bar).getByRole("button", { name: "Save page details" })).toBeInTheDocument();
+  });
+
+  it("a read-only Viewer never sees the sticky save bar", async () => {
+    renderPage("11111111-1111-1111-1111-111111111111", { roles: ["NRMS.Viewer"] });
+    await screen.findByRole("heading", { name: "Publish settings" });
+    expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument();
+  });
+
+  it("has no serious/critical axe violations with the sticky save bar visible", async () => {
+    renderPage("11111111-1111-1111-1111-111111111111");
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Headline"), " more");
+    await screen.findByRole("region", { name: "Unsaved changes" });
+    const results = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+    const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+    expect(serious).toEqual([]);
   });
 });

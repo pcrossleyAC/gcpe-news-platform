@@ -71,29 +71,14 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
 
   const serverForm = fromView(view, documentId, languageId);
   const dirty = !readOnly && JSON.stringify(form) !== JSON.stringify(serverForm);
-  useRegisterDirty(`document-${documentId}-${languageId}`, dirty);
-
-  useEffect(() => {
-    if (!canPersistDraft || !draftKey) return;
-    if (dirty) saveDraft(draftKey, form);
-    else clearDraft(draftKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, canPersistDraft]);
+  const languageLabel = LANGUAGE_NAME[languageId];
 
   const doc = findDocument(view, documentId);
   const lang = findLanguage(doc, languageId);
-  if (!doc || !lang) return <p role="alert">This document or language no longer exists.</p>;
 
-  const idBase = `doc-${documentId}-${languageId}`;
-  const languageLabel = LANGUAGE_NAME[languageId];
-
-  const setContact = (index: number, value: string) => setForm((f) => ({ ...f, contacts: f.contacts.map((c, i) => (i === index ? value : c)) }));
-  const removeContact = (index: number) => setForm((f) => ({ ...f, contacts: f.contacts.filter((_, i) => i !== index) }));
-  const addContact = () => setForm((f) => ({ ...f, contacts: [...f.contacts, ""] }));
-
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    void section
+  const doSave = (): Promise<void> => {
+    if (!doc || !lang) return Promise.resolve();
+    return section
       .save(
         `/documents/${documentId}/${languageId}`,
         {
@@ -115,6 +100,31 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
         if (draftKey) clearDraft(draftKey);
         setForm(fromView(next, documentId, languageId));
       });
+  };
+  // "Save English content (Document 1)" — the sticky save bar's own copy of this section's
+  // button, with the document number added since (unlike the inline button, seen in the
+  // context of one specific document) the bar needs to disambiguate among several documents.
+  const barLabel = `Save ${languageLabel} content${doc ? ` (Document ${doc.sortIndex + 1})` : ""}`;
+  useRegisterDirty(`document-${documentId}-${languageId}`, dirty, !readOnly && doc && lang ? { label: barLabel, save: doSave } : undefined);
+
+  useEffect(() => {
+    if (!canPersistDraft || !draftKey) return;
+    if (dirty) saveDraft(draftKey, form);
+    else clearDraft(draftKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, canPersistDraft]);
+
+  if (!doc || !lang) return <p role="alert">This document or language no longer exists.</p>;
+
+  const idBase = `doc-${documentId}-${languageId}`;
+
+  const setContact = (index: number, value: string) => setForm((f) => ({ ...f, contacts: f.contacts.map((c, i) => (i === index ? value : c)) }));
+  const removeContact = (index: number) => setForm((f) => ({ ...f, contacts: f.contacts.filter((_, i) => i !== index) }));
+  const addContact = () => setForm((f) => ({ ...f, contacts: [...f.contacts, ""] }));
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    void doSave();
   };
 
   const reload = () => void section.reload().then((next) => setForm(fromView(next, documentId, languageId)));

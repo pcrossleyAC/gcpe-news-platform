@@ -45,14 +45,12 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
   const [form, setForm] = useState<FormState>(() => fromView(view));
 
   const dirty = !readOnly && JSON.stringify(form) !== JSON.stringify(fromView(view));
-  useRegisterDirty("page-details", dirty);
 
   const keyEditable = rules.keyEditable && EDITABLE_KEY_STATUSES.has(view.status);
   const showSummaryFields = rules.categoriesBeyondMinistries;
 
-  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    void section
+  const doSave = () =>
+    section
       .save("/meta", {
         version: view.version,
         key: keyEditable ? form.key.trim() || null : null,
@@ -65,10 +63,15 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
       .then((next) => {
         if (next) setForm(fromView(next));
       });
+  useRegisterDirty("page-details", dirty, !readOnly ? { label: "Save page details", save: doSave } : undefined);
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    void doSave();
   };
 
   return (
-    <section className="gcpe-release-editor__page-details" aria-label="Page details">
+    <section className="gcpe-release-editor__page-details" aria-label="Page details" id="section-page-details" tabIndex={-1}>
       <h2>Page details</h2>
 
       {section.conflict && (

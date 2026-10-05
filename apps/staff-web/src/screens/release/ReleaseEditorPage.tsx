@@ -7,6 +7,7 @@ import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { useUnsavedChangesGuard } from "./useUnsavedChanges";
+import { UnsavedChangesBar } from "./UnsavedChangesBar";
 import { HeaderSection } from "./sections/HeaderSection";
 import { ActionsSection } from "./sections/ActionsSection";
 import { SettingsSection } from "./sections/SettingsSection";
@@ -76,7 +77,10 @@ export function ReleaseEditorPage(): React.JSX.Element {
 
   return (
     <guard.Provider>
-      <div className="gcpe-release-editor">
+      {/* Sticky save bar (hand-check feedback on boxs.ca: a long document body pushed its own
+       * Save button out of view) — extra bottom padding while it's showing, so it never covers
+       * the last section's own buttons. */}
+      <div className={`gcpe-release-editor${guard.dirtySections.length > 0 ? " gcpe-release-editor--save-bar-open" : ""}`}>
         <HeaderSection view={view} />
 
         {/* Fix round 1, finding 2: a real Modal/AlertDialog instead of an inline div — traps
@@ -108,6 +112,7 @@ export function ReleaseEditorPage(): React.JSX.Element {
         <FilesSection view={view} setView={setView} readOnly={!canEdit} />
         <SideBar view={view} />
       </div>
+      <UnsavedChangesBar sections={guard.dirtySections} />
     </guard.Provider>
   );
 }
