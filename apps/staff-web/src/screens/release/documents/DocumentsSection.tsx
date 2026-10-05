@@ -1,7 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { LANG_EN, LAYOUTS, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
+import { useAnnouncer } from "../../../shared/Announcer";
 import { DragHandle, useDragReorder } from "../../../shared/useDragReorder";
+import { useMoveFocusRestore } from "../../../shared/useMoveFocusRestore";
 import { moveBy, moveTo } from "../../../shared/reorder";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { documentsInOrder } from "./documentHelpers";
@@ -30,10 +32,31 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
 
   const enLang = view.languages.find((l) => l.languageId === LANG_EN);
+  const { announce } = useAnnouncer();
+  const moveFocus = useMoveFocusRestore();
+
+  // I4: the Move buttons disable for the duration of this save — restore focus to the moved
+  // document's own Move button (by id, since every later document's index/label just changed)
+  // once the save settles and the DOM reflects the new order, rather than letting the browser
+  // drop focus to <body> and leave it there. Keyed on `view` (not `docs`, a fresh array every
+  // render) so it only runs once the server's response has actually landed; a harmless no-op
+  // whenever nothing is pending.
+  useEffect(() => {
+    moveFocus.restore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [view]);
 
   const reorder = (next: string[]) => void section.save("/documents/order", { version: view.version, documentIds: next }, "PUT");
-  const moveUp = (index: number) => reorder(moveBy(orderedIds(docs), index, -1));
-  const moveDown = (index: number) => reorder(moveBy(orderedIds(docs), index, 1));
+  const moveUp = (index: number) => {
+    moveFocus.remember(docs[index]!.id, "up");
+    announce(`Document ${index + 1} moved to position ${index}`);
+    reorder(moveBy(orderedIds(docs), index, -1));
+  };
+  const moveDown = (index: number) => {
+    moveFocus.remember(docs[index]!.id, "down");
+    announce(`Document ${index + 1} moved to position ${index + 2}`);
+    reorder(moveBy(orderedIds(docs), index, 1));
+  };
 
   const dragReorder = useDragReorder({
     enabled: !readOnly && !section.saving,
@@ -58,7 +81,7 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
   };
 
   return (
-    <section className="gcpe-release-editor__documents" aria-label="Documents">
+    <section className="gcpe-release-editor__documents" aria-label="Documents" ref={moveFocus.containerRef}>
       <h2>Documents</h2>
 
       <p className="gcpe-documents__summary-note">
@@ -83,12 +106,16 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
             <h3>Document {index + 1}</h3>
             {!readOnly && (
               <>
-                <Button variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0 || section.saving}>
-                  Move document {index + 1} up
-                </Button>
-                <Button variant="secondary" onPress={() => moveDown(index)} isDisabled={index === docs.length - 1 || section.saving}>
-                  Move document {index + 1} down
-                </Button>
+                <span data-move-id={doc.id} data-move-dir="up">
+                  <Button variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0 || section.saving}>
+                    Move document {index + 1} up
+                  </Button>
+                </span>
+                <span data-move-id={doc.id} data-move-dir="down">
+                  <Button variant="secondary" onPress={() => moveDown(index)} isDisabled={index === docs.length - 1 || section.saving}>
+                    Move document {index + 1} down
+                  </Button>
+                </span>
                 <DialogTrigger isOpen={removeTarget === doc.id} onOpenChange={(open) => setRemoveTarget(open ? doc.id : null)}>
                   <Button variant="secondary" danger isDisabled={section.saving || docs.length <= 1}>
                     Remove document {index + 1}

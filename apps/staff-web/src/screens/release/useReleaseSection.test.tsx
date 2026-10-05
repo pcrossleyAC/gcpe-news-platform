@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, render, renderHook, screen } from "@testing-library/react";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
+import { AnnouncerProvider } from "../../shared/Announcer";
 import { useReleaseSection } from "./useReleaseSection";
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -101,6 +102,34 @@ describe("useReleaseSection", () => {
     expect(setView).toHaveBeenCalledWith(fresh);
     expect(returned).toEqual(fresh);
     expect(result.current.conflict).toBe(false);
+  });
+
+  // I4: one shared "Saved" announcement for every section save, wherever it's wrapped in an
+  // AnnouncerProvider (every real screen, via AppShell).
+  it("a successful save announces \"Saved\" through the shared AnnouncerProvider", async () => {
+    const saved = releaseView({ version: 2 });
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, saved)));
+    const v = releaseView({ version: 1 });
+
+    function Harness() {
+      const section = useReleaseSection(v, () => {});
+      return (
+        <button type="button" onClick={() => void section.save("/meta", { version: 1 })}>
+          Save
+        </button>
+      );
+    }
+
+    render(
+      <AnnouncerProvider>
+        <Harness />
+      </AnnouncerProvider>,
+    );
+    await act(async () => {
+      screen.getByRole("button", { name: "Save" }).click();
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved");
   });
 
   it("clear() resets problems/conflict/error without touching the view", async () => {

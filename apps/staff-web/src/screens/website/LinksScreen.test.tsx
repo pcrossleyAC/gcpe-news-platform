@@ -5,16 +5,19 @@ import { MemoryRouter } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
+import { AnnouncerProvider } from "../../shared/Announcer";
 import { LinksScreen } from "./LinksScreen";
 import type { LinksView } from "./types";
 
 function withAuth(children: React.ReactNode) {
   return (
-    <SessionProvider>
-      <MemoryRouter>
-        <RequireAuth>{children}</RequireAuth>
-      </MemoryRouter>
-    </SessionProvider>
+    <AnnouncerProvider>
+      <SessionProvider>
+        <MemoryRouter>
+          <RequireAuth>{children}</RequireAuth>
+        </MemoryRouter>
+      </SessionProvider>
+    </AnnouncerProvider>
   );
 }
 
@@ -86,6 +89,28 @@ describe("LinksScreen", () => {
     expect(row).not.toHaveAttribute("draggable");
     const textField = screen.getByLabelText("Link 1 text");
     expect(textField.closest("[draggable='true']")).toBeNull();
+  });
+
+  // I4: moving a link to the first/last position disables that same direction's own button —
+  // the one the user just pressed — the instant it re-renders at its new position, which drops
+  // focus to <body> unless it's explicitly restored. Also announces the move.
+  it("keyboard Move down on the last-but-one link restores focus (falling back to Move up) and announces the move", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/links") return jsonResponse(200, TWO_LINKS);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<LinksScreen />));
+    const user = userEvent.setup();
+    const moveDown = await screen.findByRole("button", { name: "Move link 1 down" });
+    moveDown.focus();
+    await user.click(moveDown);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Link 1 moved to position 2");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Move link 2 up" })).toHaveFocus());
   });
 
   it("a Viewer sees no edit controls", async () => {

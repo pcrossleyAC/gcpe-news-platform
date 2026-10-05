@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { act, renderHook } from "@testing-library/react";
+import { act, render, renderHook, screen } from "@testing-library/react";
 import { ApiError } from "../../api/client";
+import { AnnouncerProvider } from "../../shared/Announcer";
 import { useVersionedSave } from "./useVersionedSave";
 
 describe("useVersionedSave", () => {
@@ -50,6 +51,28 @@ describe("useVersionedSave", () => {
       });
     });
     expect(result.current.error).toBe("boom");
+  });
+
+  // I4: one shared "Saved" announcement for every Website section save too.
+  it("a successful run() announces \"Saved\" through the shared AnnouncerProvider", async () => {
+    function Harness() {
+      const section = useVersionedSave<{ ok: true }>();
+      return (
+        <button type="button" onClick={() => void section.run(async () => ({ ok: true }))}>
+          Save
+        </button>
+      );
+    }
+    render(
+      <AnnouncerProvider>
+        <Harness />
+      </AnnouncerProvider>,
+    );
+    await act(async () => {
+      screen.getByRole("button", { name: "Save" }).click();
+      await Promise.resolve();
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved");
   });
 
   it("clear() resets to the initial state", async () => {

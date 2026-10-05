@@ -2,6 +2,7 @@ import { NavLink, Outlet, useNavigate } from "react-router";
 import { Button, Header, InlineAlert } from "@bcgov/design-system-react-components";
 import { useSession, type SessionValue } from "../session/SessionContext";
 import { useTimeZoneWarning } from "../format/timeZoneWarning";
+import { AnnouncerProvider } from "../shared/Announcer";
 
 interface NavItem {
   to: string;
@@ -36,33 +37,35 @@ export function AppShell(): React.JSX.Element {
   };
 
   return (
-    <div className="gcpe-shell">
-      <Header title="GCPE News — Staff" />
-      <nav className="gcpe-shell__nav" aria-label="Sections">
-        <ul>
-          {NAV_ITEMS.filter((item) => item.show(session)).map((item) => (
-            <li key={item.to}>
-              <NavLink to={item.to}>{item.label}</NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
-      <main className="gcpe-shell__main">
-        {/* Each routed screen owns its own single h1 (constraints.md); the shell itself has none. */}
-        {session.user && <p>Signed in as {session.user.name}</p>}
-        <Button onPress={onSignOut}>Sign out</Button>
-        {/* Fix round 1, finding 3: persistent — not closeable — since it stays true for the
-         * whole session; the only real fix is updating the browser. */}
-        {tzMismatch && (
-          <InlineAlert
-            variant="warning"
-            role="alert"
-            isCloseable={false}
-            description="Your browser's time-zone information is out of date, so times shown here may be off by an hour. Update your browser."
-          />
-        )}
-        <Outlet />
-      </main>
-    </div>
+    <AnnouncerProvider>
+      <div className="gcpe-shell">
+        <Header title="GCPE News — Staff" />
+        <nav className="gcpe-shell__nav" aria-label="Sections">
+          <ul>
+            {NAV_ITEMS.filter((item) => item.show(session)).map((item) => (
+              <li key={item.to}>
+                <NavLink to={item.to}>{item.label}</NavLink>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <main className="gcpe-shell__main">
+          {/* Each routed screen owns its own single h1 (constraints.md); the shell itself has none. */}
+          {session.user && <p>Signed in as {session.user.name}</p>}
+          <Button onPress={onSignOut}>Sign out</Button>
+          {/* Fix round 1, finding 3: persistent — not closeable — since it stays true for the
+           * whole session; the only real fix is updating the browser. */}
+          {tzMismatch && (
+            <InlineAlert
+              variant="warning"
+              role="alert"
+              isCloseable={false}
+              description="Your browser's time-zone information is out of date, so times shown here may be off by an hour. Update your browser."
+            />
+          )}
+          <Outlet />
+        </main>
+      </div>
+    </AnnouncerProvider>
   );
 }

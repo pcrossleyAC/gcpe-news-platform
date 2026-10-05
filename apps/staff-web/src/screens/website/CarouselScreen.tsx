@@ -1,18 +1,24 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { formatWhen } from "../../format/dates";
+import { useAnnouncer } from "../../shared/Announcer";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
+import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
 import { SchedulePicker, type ScheduleValue } from "../release/sections/SchedulePicker";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { CarouselsResponse, CarouselView, SlideView } from "./types";
 
 /** A slide's editable fields, as the slides-order PUT (saveCarouselSchema) takes them — `id`
- * omitted means "a new slide", same convention as Documents' reorder. */
+ * omitted means "a new slide", same convention as Documents' reorder. `clientKey` is this
+ * form's own stable identity (never sent to the server): `id` alone can't identify a slide
+ * that hasn't been saved yet, and a plain array index isn't stable across a reorder (I4 needs
+ * an id-shaped key to restore keyboard focus to the moved slide's own Move button). */
 interface SlideForm {
+  clientKey: string;
   id?: string;
   headline: string;
   summary: string;
@@ -21,10 +27,8 @@ interface SlideForm {
   justify: "left" | "right";
 }
 
-const BLANK_SLIDE: SlideForm = { headline: "", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" };
-
 function toForm(slides: SlideView[]): SlideForm[] {
-  return slides.map((s) => ({ id: s.id, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, facebookPostUrl: s.facebookPostUrl, justify: s.justify }));
+  return slides.map((s) => ({ clientKey: s.id, id: s.id, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, facebookPostUrl: s.facebookPostUrl, justify: s.justify }));
 }
 
 interface SlideEditorProps {
@@ -47,10 +51,29 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   const [goLive, setGoLive] = useState<ScheduleValue | null>(null);
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
+  const { announce } = useAnnouncer();
+  const moveFocus = useMoveFocusRestore<HTMLDivElement>();
+  const nextClientKey = useRef(0);
+
+  // I4: local reorders (unlike Documents, moving a slide isn't saved until "Save carousel")
+  // re-render synchronously, so restoring focus right after the triggering state update (in an
+  // effect keyed on `slides`) is enough — no need to wait on a network round trip.
+  useEffect(() => {
+    moveFocus.restore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slides]);
 
   const update = (index: number, patch: Partial<SlideForm>) => setSlides((s) => s.map((slide, i) => (i === index ? { ...slide, ...patch } : slide)));
-  const moveUp = (index: number) => setSlides((s) => moveItemBy(s, index, -1));
-  const moveDown = (index: number) => setSlides((s) => moveItemBy(s, index, 1));
+  const moveUp = (index: number) => {
+    moveFocus.remember(slides[index]!.clientKey, "up");
+    announce(`Slide ${index + 1} moved to position ${index}`);
+    setSlides((s) => moveItemBy(s, index, -1));
+  };
+  const moveDown = (index: number) => {
+    moveFocus.remember(slides[index]!.clientKey, "down");
+    announce(`Slide ${index + 1} moved to position ${index + 2}`);
+    setSlides((s) => moveItemBy(s, index, 1));
+  };
 
   const dragReorder = useDragReorder({
     enabled: canEdit && !section.saving,
@@ -62,7 +85,11 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
       .run(() =>
         apiFetch<CarouselView>(`/nrms/api/site/carousels/${carousel.id}`, {
           method: "PUT",
-          body: { version: carousel.version, ...(allowGoLiveEdit && goLive ? { goLiveAtLocal: goLive.local } : {}), slides },
+          body: {
+            version: carousel.version,
+            ...(allowGoLiveEdit && goLive ? { goLiveAtLocal: goLive.local } : {}),
+            slides: slides.map(({ clientKey, ...slide }) => slide),
+          },
         }),
       )
       .then((next) => {
@@ -87,7 +114,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   };
 
   return (
-    <div className="gcpe-carousel__slides">
+    <div className="gcpe-carousel__slides" ref={moveFocus.containerRef}>
       {section.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={onSaved}>Reload</Button>} />}
       {section.problems && (
         <ul role="alert" className="gcpe-release-editor__problems">
@@ -104,7 +131,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
       )}
 
       {slides.map((slide, index) => (
-        <div key={slide.id ?? `new-${index}`} className="gcpe-carousel__slide" {...dragReorder.dropZoneProps(index)}>
+        <div key={slide.clientKey} className="gcpe-carousel__slide" {...dragReorder.dropZoneProps(index)}>
           {canEdit && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder slide ${index + 1}`} />}
           <h4>Slide {index + 1}</h4>
           <TextField label={`Slide ${index + 1} headline`} value={slide.headline} onChange={(v) => update(index, { headline: v })} isDisabled={!canEdit} />
@@ -120,12 +147,16 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
           </label>
           {canEdit && (
             <>
-              <Button variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0 || section.saving}>
-                Move slide {index + 1} up
-              </Button>
-              <Button variant="secondary" onPress={() => moveDown(index)} isDisabled={index === slides.length - 1 || section.saving}>
-                Move slide {index + 1} down
-              </Button>
+              <span data-move-id={slide.clientKey} data-move-dir="up">
+                <Button variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0 || section.saving}>
+                  Move slide {index + 1} up
+                </Button>
+              </span>
+              <span data-move-id={slide.clientKey} data-move-dir="down">
+                <Button variant="secondary" onPress={() => moveDown(index)} isDisabled={index === slides.length - 1 || section.saving}>
+                  Move slide {index + 1} down
+                </Button>
+              </span>
               <DialogTrigger isOpen={removeIndex === index} onOpenChange={(open) => setRemoveIndex(open ? index : null)}>
                 <Button variant="secondary" danger isDisabled={section.saving}>
                   Remove slide {index + 1}
@@ -171,7 +202,11 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
       ))}
 
       {canEdit && (
-        <Button variant="secondary" onPress={() => setSlides((s) => [...s, { ...BLANK_SLIDE }])} isDisabled={section.saving}>
+        <Button
+          variant="secondary"
+          onPress={() => setSlides((s) => [...s, { clientKey: `new-${nextClientKey.current++}`, headline: "", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" }])}
+          isDisabled={section.saving}
+        >
           Add slide
         </Button>
       )}

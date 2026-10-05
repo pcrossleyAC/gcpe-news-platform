@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { ApiError } from "../../api/client";
+import { useAnnouncer } from "../../shared/Announcer";
 
 /** Same wording as release/useReleaseSection.ts's RELOAD_MESSAGE (constraints.md: one shared
  * copy of the 409 message) — re-exported here so every Website screen can import it from one
@@ -36,12 +37,15 @@ const INITIAL: VersionedSaveState = { saving: false, problems: null, conflict: f
  */
 export function useVersionedSave<T = unknown>(): VersionedSave<T> {
   const [state, setState] = useState<VersionedSaveState>(INITIAL);
+  const { announce } = useAnnouncer();
 
   const run = useCallback(async (action: () => Promise<T>): Promise<T | null> => {
     setState({ saving: true, problems: null, conflict: false, error: null });
     try {
       const result = await action();
       setState(INITIAL);
+      // I4: one shared announcement for every Website section save, same as release sections.
+      announce("Saved");
       return result;
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409) {
@@ -53,7 +57,7 @@ export function useVersionedSave<T = unknown>(): VersionedSave<T> {
       }
       return null;
     }
-  }, []);
+  }, [announce]);
 
   const clear = useCallback(() => setState(INITIAL), []);
 

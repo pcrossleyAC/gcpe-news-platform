@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
@@ -7,6 +8,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { LANG_EN, type DocumentView, type ReleaseView } from "@gcpe/nrms-contract";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
+import { AnnouncerProvider } from "../../../shared/Announcer";
 import { DocumentsSection } from "./DocumentsSection";
 
 function doc(id: string, sortIndex: number, headline: string): DocumentView {
@@ -112,6 +114,49 @@ describe("DocumentsSection", () => {
     expect(item).not.toHaveAttribute("draggable");
     const headline = screen.getAllByLabelText("Headline")[0]!;
     expect(headline.closest("[draggable='true']")).toBeNull();
+  });
+
+  // I4: clicking Move disables every Move button for the save — the browser would otherwise
+  // drop focus to <body> the instant that happens. Focus must land back on a Move button for
+  // the moved document once the save settles, found by the document's own id (its index/label
+  // changed along with the move).
+  it("keyboard Move down restores focus to a Move button for the moved document, by id — and announces the move, then the save", async () => {
+    let resolvePut!: (v: Response) => void;
+    stubFetch((_url, init) => {
+      if (init?.method === "PUT") return new Promise<Response>((resolve) => (resolvePut = resolve));
+      return jsonResponse(200, {});
+    });
+
+    function Harness() {
+      const [view, setView] = useState(TWO_DOCS);
+      return <DocumentsSection view={view} setView={setView} readOnly={false} />;
+    }
+    render(
+      <AnnouncerProvider>
+        <SessionProvider>
+          <MemoryRouter>
+            <RequireAuth>
+              <Harness />
+            </RequireAuth>
+          </MemoryRouter>
+        </SessionProvider>
+      </AnnouncerProvider>,
+    );
+    const user = userEvent.setup();
+    const moveDown = await screen.findByRole("button", { name: "Move document 1 down" });
+    moveDown.focus();
+    await user.click(moveDown);
+
+    // Announced immediately — before the save (which the mocked PUT above is still holding
+    // open) ever resolves.
+    expect(screen.getByRole("status")).toHaveTextContent("Document 1 moved to position 2");
+
+    resolvePut(jsonResponse(200, releaseView({ ...TWO_DOCS, version: 2, documents: [doc("doc-2", 0, "Second"), doc("doc-1", 1, "First")] })));
+    expect(await screen.findByRole("status")).toHaveTextContent("Saved");
+
+    // doc-1 is now the second (last) document — its own "down" button is the new boundary one,
+    // disabled; focus must fall back to its "up" button instead.
+    await waitFor(() => expect(screen.getByRole("button", { name: "Move document 2 up" })).toHaveFocus());
   });
 
   it("adds a document via the inline form", async () => {

@@ -5,16 +5,19 @@ import { MemoryRouter } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
+import { AnnouncerProvider } from "../../shared/Announcer";
 import { CarouselScreen } from "./CarouselScreen";
 import type { CarouselsResponse, CarouselView } from "./types";
 
 function withAuth(children: React.ReactNode) {
   return (
-    <SessionProvider>
-      <MemoryRouter>
-        <RequireAuth>{children}</RequireAuth>
-      </MemoryRouter>
-    </SessionProvider>
+    <AnnouncerProvider>
+      <SessionProvider>
+        <MemoryRouter>
+          <RequireAuth>{children}</RequireAuth>
+        </MemoryRouter>
+      </SessionProvider>
+    </AnnouncerProvider>
   );
 }
 
@@ -218,6 +221,33 @@ describe("CarouselScreen", () => {
     expect(row).not.toHaveAttribute("draggable");
     const headline = screen.getByLabelText("Slide 1 headline");
     expect(headline.closest("[draggable='true']")).toBeNull();
+  });
+
+  // I4: moving a slide to the first/last position disables that same direction's own button —
+  // the one the user just pressed — the instant it re-renders at its new position, which drops
+  // focus to <body> unless it's explicitly restored. Also announces the move.
+  it("keyboard Move down on the last-but-one slide restores focus (falling back to Move up) and announces the move", async () => {
+    const withSlides: CarouselsResponse = {
+      ...EMPTY,
+      next: {
+        ...NEXT_CAROUSEL,
+        slides: [
+          { id: "slide-1", headline: "One", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null },
+          { id: "slide-2", headline: "Two", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null },
+        ],
+      },
+    };
+    stubBasicFetch(["NRMS.SiteEditor"], withSlides);
+    render(withAuth(<CarouselScreen />));
+
+    const user = userEvent.setup();
+    const moveDown = await screen.findByRole("button", { name: "Move slide 1 down" });
+    moveDown.focus();
+    await user.click(moveDown);
+
+    expect(await screen.findByRole("status")).toHaveTextContent("Slide 1 moved to position 2");
+    // slide-1 is now last — its own "down" is the new boundary (disabled); fall back to "up".
+    await waitFor(() => expect(screen.getByRole("button", { name: "Move slide 2 up" })).toHaveFocus());
   });
 
   it("a too-large slide image upload (413) shows a clear message", async () => {

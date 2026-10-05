@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
+import { useAnnouncer } from "../../shared/Announcer";
 
 /** Fix round 1 (3f Task 3), minor 4: one shared copy of the 409 message, used by every section
  * (and the page-level unsaved-changes dialog) instead of each defining its own. */
@@ -46,6 +47,7 @@ const INITIAL: ReleaseSectionState = { saving: false, problems: null, conflict: 
  */
 export function useReleaseSection(view: ReleaseView, setView: (v: ReleaseView) => void): ReleaseSection {
   const [state, setState] = useState<ReleaseSectionState>(INITIAL);
+  const { announce } = useAnnouncer();
   const id = view.id;
 
   const save = useCallback(
@@ -55,6 +57,9 @@ export function useReleaseSection(view: ReleaseView, setView: (v: ReleaseView) =
         const next = await apiFetch<ReleaseView>(`/nrms/api/releases/${id}${path}`, { method, body });
         setView(next);
         setState(INITIAL);
+        // I4: one shared announcement for every section save, instead of each screen wiring
+        // its own aria-live region.
+        announce("Saved");
         return next;
       } catch (caught) {
         // I2: a 409 is "someone else changed this — reload" (version_conflict) only when the
@@ -71,7 +76,7 @@ export function useReleaseSection(view: ReleaseView, setView: (v: ReleaseView) =
         return null;
       }
     },
-    [id, setView],
+    [id, setView, announce],
   );
 
   const reload = useCallback(async (): Promise<ReleaseView> => {
