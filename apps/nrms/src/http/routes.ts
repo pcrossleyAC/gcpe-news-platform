@@ -3,7 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
-import type { SubscriberConfig } from "@gcpe/events";
+import { EventTooLargeError, type SubscriberConfig } from "@gcpe/events";
 import {
   addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, listQuerySchema, metaSchema,
   reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
@@ -70,6 +70,10 @@ export function handleError(e: unknown, res: Response): boolean {
   if (e instanceof SiteRuleError) return void res.status(422).json({ errors: e.problems }), true;
   if (e instanceof SiteConflictError) return void res.status(409).json({ error: e.message }), true;
   if (e instanceof SiteNotFoundError) return void res.status(404).json({ error: "not found" }), true;
+  // I4 backstop: website/carousel.ts's assertSlidesFit refuses a write that would grow a
+  // `slides` snapshot past the budget before it's ever emitted, so this is a last resort for
+  // an emit that's still too large (e.g. pre-existing data from before that fix shipped).
+  if (e instanceof EventTooLargeError) return void res.status(413).json({ error: e.message }), true;
   return false;
 }
 

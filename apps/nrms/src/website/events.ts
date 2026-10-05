@@ -64,12 +64,9 @@ function toSlideRecord(s: {
   };
 }
 
-/**
- * Pinned emergency slides first (`primary` → sortIndex -2, `secondary` → -1, only when
- * `pinned`), then the live carousel's slides renumbered 0..n-1 in their stored order. No
- * live carousel → only the pins (possibly none).
- */
-export async function slidesSnapshot(tx: DbOrTx): Promise<SiteContentChanged & { entity: "slides" }> {
+/** The two pinned emergency slides (`primary` → sortIndex -2, `secondary` → -1), only when
+ * `pinned` — shared by {@link slidesSnapshotFor} for whichever carousel is being snapshotted. */
+async function pinnedSlides(tx: DbOrTx): Promise<SlideRecord[]> {
   const pins = await tx.select().from(emergencyPins).where(eq(emergencyPins.pinned, true));
   const bySlot = new Map(pins.map((p) => [p.slot, p]));
   const pinSlides: SlideRecord[] = [];
@@ -77,14 +74,33 @@ export async function slidesSnapshot(tx: DbOrTx): Promise<SiteContentChanged & {
   if (primary) pinSlides.push(toSlideRecord({ ...primary, id: primary.slideId, sortIndex: -2 }));
   const secondary = bySlot.get("secondary");
   if (secondary) pinSlides.push(toSlideRecord({ ...secondary, id: secondary.slideId, sortIndex: -1 }));
+  return pinSlides;
+}
 
-  const [live] = await tx.select().from(carousels).where(eq(carousels.state, "live"));
-  let liveSlides: SlideRecord[] = [];
-  if (live) {
-    const rows = await tx.select().from(websiteSlides).where(eq(websiteSlides.carouselId, live.id)).orderBy(asc(websiteSlides.sortIndex));
-    liveSlides = rows.map((s, i) => toSlideRecord({ ...s, sortIndex: i }));
+/**
+ * Pinned emergency slides first, then `carouselId`'s own slides (if any) renumbered 0..n-1 in
+ * their stored order — the same shape {@link slidesSnapshot} emits for the live carousel, but
+ * for an arbitrary carousel. Used by carousel.ts's `assertSlidesFit` to size the snapshot the
+ * *next* carousel would emit once it goes live, without waiting for that to actually happen.
+ */
+export async function slidesSnapshotFor(tx: DbOrTx, carouselId: string | null): Promise<SiteContentChanged & { entity: "slides" }> {
+  const pinSlides = await pinnedSlides(tx);
+  let ownSlides: SlideRecord[] = [];
+  if (carouselId) {
+    const rows = await tx.select().from(websiteSlides).where(eq(websiteSlides.carouselId, carouselId)).orderBy(asc(websiteSlides.sortIndex));
+    ownSlides = rows.map((s, i) => toSlideRecord({ ...s, sortIndex: i }));
   }
-  return { entity: "slides", slides: [...pinSlides, ...liveSlides] };
+  return { entity: "slides", slides: [...pinSlides, ...ownSlides] };
+}
+
+/**
+ * Pinned emergency slides first (`primary` → sortIndex -2, `secondary` → -1, only when
+ * `pinned`), then the live carousel's slides renumbered 0..n-1 in their stored order. No
+ * live carousel → only the pins (possibly none).
+ */
+export async function slidesSnapshot(tx: DbOrTx): Promise<SiteContentChanged & { entity: "slides" }> {
+  const [live] = await tx.select({ id: carousels.id }).from(carousels).where(eq(carousels.state, "live"));
+  return slidesSnapshotFor(tx, live?.id ?? null);
 }
 
 /** The resource links list (Task 3), ordered by `sort_index`. */

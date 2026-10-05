@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { dbClock, type TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { createNrmsTestDb, editor } from "../../test/helpers";
@@ -15,10 +15,11 @@ import {
   setPinned,
   setSlideImage,
   slideImage,
+  SLIDES_EVENT_BUDGET_BYTES,
   switchCarousels,
   type SlideInput,
 } from "./carousel";
-import { SiteConflictError, SiteNotFoundError } from "./errors";
+import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://news.invalid/events", secret: "s".repeat(40), types: ["*"] }];
 const TZ = "America/Vancouver";
@@ -292,5 +293,127 @@ describe("home-page carousel", () => {
     await expect(setPinImage(tdb.db, "secondary", HTML, editor, subs)).rejects.toThrow(/JPEG or PNG/i);
     await setPinImage(tdb.db, "secondary", PNG, editor, subs);
     expect(await pinImage(tdb.db, "secondary")).toEqual({ bytes: PNG, mimeType: "image/png" });
+  });
+
+  // Minor 2: a bare pre-check SELECT locks nothing when no "next" row exists yet, so two
+  // concurrent first-ever creates could both pass it and both reach the INSERT, the loser
+  // hitting the raw carousels_one_next_idx unique violation as a bare 500. createNextCarousel
+  // now inserts directly and maps that violation to SiteConflictError.
+  it("two concurrent createNextCarousel calls → exactly one succeeds, the other gets SiteConflictError (minor 2)", async () => {
+    const results = await Promise.allSettled([
+      createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ),
+      createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ),
+    ]);
+    const fulfilled = results.filter((r) => r.status === "fulfilled");
+    const rejected = results.filter((r) => r.status === "rejected");
+    expect(fulfilled).toHaveLength(1);
+    expect(rejected).toHaveLength(1);
+    expect((rejected[0] as PromiseRejectedResult).reason).toBeInstanceOf(SiteConflictError);
+    const { next } = await getCarousels(tdb.db);
+    expect(next).not.toBeNull();
+  });
+
+  // Minor 3: setSlideImage now locks the slide's carousel row (SELECT … FOR UPDATE) before
+  // writing the image, so it can't race a concurrent switch-over and have its write land after
+  // the switch has already read (and emitted) the slides without it.
+  it("setSlideImage blocks until a concurrent lock on its carousel row is released (minor 3)", async () => {
+    await seedLiveCarousel([slide("Img")]);
+    const { live } = await getCarousels(tdb.db);
+    const slideId = live!.slides[0]!.id;
+
+    const client = await tdb.pool.connect();
+    let settled = false;
+    try {
+      await client.query("BEGIN");
+      await client.query("SELECT id FROM carousels WHERE id = $1 FOR UPDATE", [live!.id]);
+
+      const setPromise = setSlideImage(tdb.db, slideId, PNG, editor, subs).then(() => {
+        settled = true;
+      });
+
+      // setSlideImage must not be able to complete while this transaction still holds the
+      // carousel row's lock.
+      await new Promise((r) => setTimeout(r, 150));
+      expect(settled).toBe(false);
+
+      await client.query("COMMIT");
+      await setPromise;
+      expect(settled).toBe(true);
+    } finally {
+      client.release();
+    }
+    const { live: reloaded } = await getCarousels(tdb.db);
+    expect(reloaded!.slides[0]!.hasImage).toBe(true);
+  });
+
+  describe("I4: the slides event-size budget", () => {
+    const PNG_HEADER = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    /** A PNG of a given total size — large enough to matter for the byte budget, small enough
+     * to still be well under any individual slide's own content otherwise. */
+    const bigImage = (totalBytes: number): Buffer => Buffer.concat([PNG_HEADER, Buffer.alloc(Math.max(0, totalBytes - PNG_HEADER.length))]);
+    // Each one's base64 form alone fits comfortably under the budget; both inlined into the
+    // same live snapshot together don't (base64 is ~4/3 the binary size).
+    const bigEnoughAlone = Math.floor((SLIDES_EVENT_BUDGET_BYTES * 0.6 * 3) / 4);
+
+    it("images that fit individually but not together → SiteRuleError on the last one", async () => {
+      await seedLiveCarousel([slide("S1"), slide("S2")]);
+      const { live } = await getCarousels(tdb.db);
+      const [s1, s2] = live!.slides;
+
+      await setSlideImage(tdb.db, s1!.id, bigImage(bigEnoughAlone), editor, subs); // fits alone
+
+      await expect(setSlideImage(tdb.db, s2!.id, bigImage(bigEnoughAlone), editor, subs)).rejects.toThrow(SiteRuleError);
+      await expect(setSlideImage(tdb.db, s2!.id, bigImage(bigEnoughAlone), editor, subs)).rejects.toThrow(/too large together/i);
+
+      // Refused — s2 must still have no image, and no new slides event for the refused write.
+      const before = await slidesEventCount();
+      const { live: reloaded } = await getCarousels(tdb.db);
+      expect(reloaded!.slides.find((s) => s.id === s2!.id)!.hasImage).toBe(false);
+      expect(await slidesEventCount()).toBe(before);
+    });
+
+    it("a next carousel that fits (with pins) switches fine", async () => {
+      await savePin(tdb.db, "primary", { version: 1, ...slide("Pin") }, editor, subs);
+      await setPinned(tdb.db, "primary", { version: 2, pinned: true }, editor, subs);
+      await seedLiveCarousel([]);
+      const goLiveAt = new Date(t.getTime() + 1000);
+      const next = await createNextCarousel(tdb.db, { goLiveAt: goLiveAt.toISOString() }, editor, subs, TZ);
+      await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("N1")] }, editor, subs);
+      const { next: withSlide } = await getCarousels(tdb.db);
+      await setSlideImage(tdb.db, withSlide!.slides[0]!.id, bigImage(bigEnoughAlone), editor, subs);
+
+      t = new Date(goLiveAt.getTime() + 1000);
+      expect(await switchCarousels(tdb.db, subs, { now })).toEqual({ switched: true });
+      const ev = await lastSlidesEvent();
+      expect(ev!.data.slides!.map((s) => s.headline)).toEqual(["Pin", "N1"]);
+    });
+
+    // Backstop: assertSlidesFit guards every write that can grow a snapshot, but pre-existing
+    // data from before this fix shipped could already be oversized. switchCarousels must not
+    // crash the tick loop on that — it logs once and leaves the next carousel queued (not
+    // switched), so it's retried (and keeps failing loudly) rather than wedging or crash-looping.
+    it("switchCarousels: a next carousel that's already too large (pre-existing data) logs once and is left queued, not switched", async () => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const goLiveAt = new Date(t.getTime() + 1000);
+        const next = await createNextCarousel(tdb.db, { goLiveAt: goLiveAt.toISOString() }, editor, subs, TZ);
+        await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("Big")] }, editor, subs);
+        const { next: withSlide } = await getCarousels(tdb.db);
+        const slideId = withSlide!.slides[0]!.id;
+        // Bypasses assertSlidesFit entirely — simulating data that predates this fix.
+        const oversized = bigImage(SLIDES_EVENT_BUDGET_BYTES + 1024);
+        await tdb.pool.query("UPDATE slides SET image = $1, image_type = 'image/png' WHERE id = $2", [oversized, slideId]);
+
+        t = new Date(goLiveAt.getTime() + 1000);
+        expect(await switchCarousels(tdb.db, subs, { now })).toEqual({ switched: false });
+        expect(errSpy).toHaveBeenCalled();
+
+        const { next: stillNext, live } = await getCarousels(tdb.db);
+        expect(stillNext!.id).toBe(next.id); // left in place — the switch rolled back
+        expect(live).toBeNull();
+      } finally {
+        errSpy.mockRestore();
+      }
+    });
   });
 });

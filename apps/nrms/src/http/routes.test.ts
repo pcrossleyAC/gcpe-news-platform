@@ -1,11 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
+import type { Response } from "express";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { hashPassword, localLoginRouter, mintLocalToken, mintSession } from "@gcpe/auth";
+import { EventTooLargeError } from "@gcpe/events";
 import { createNrmsTestDb, createScheduledRelease, sampleCreate, seedTaxonomy } from "../../test/helpers";
 import { createApp } from "../app";
 import { publishDue } from "../publisher";
 import * as store from "../releases/store";
+import { handleError } from "./routes";
 
 const SECRET = "z".repeat(40) + "-nrms-session-test";
 const STALE = "Someone else changed this release — reload to see their changes";
@@ -510,5 +513,34 @@ describe("NRMS HTTP API", () => {
     await publishDue({ db: tdb.db, subscribers: [] });
     const res = await post(`/api/releases/${due.id}/features`, editorCookie, { kind: "home", key: "not-default", slot: "top", on: true });
     expect(res.status).toBe(400);
+  });
+});
+
+// I4 backstop: assertSlidesFit (website/carousel.ts) guards every write that can grow a
+// `slides` snapshot before it's ever emitted, so this almost never fires in practice — but if
+// an emit still produces an oversized envelope (e.g. pre-existing data from before that fix),
+// handleError maps it to 413 rather than a bare 500.
+describe("handleError", () => {
+  const fakeRes = (): { res: Response; status?: number; body?: unknown } => {
+    const captured: { status?: number; body?: unknown } = {};
+    const res = {
+      status(code: number) {
+        captured.status = code;
+        return res;
+      },
+      json(b: unknown) {
+        captured.body = b;
+        return res;
+      },
+    } as unknown as Response;
+    return { res, get status() { return captured.status; }, get body() { return captured.body; } };
+  };
+
+  it("maps EventTooLargeError to 413", () => {
+    const captured = fakeRes();
+    const handled = handleError(new EventTooLargeError("site.content.changed", "site:slides", 2_000_000), captured.res);
+    expect(handled).toBe(true);
+    expect(captured.status).toBe(413);
+    expect(captured.body).toMatchObject({ error: expect.stringContaining("2000000") });
   });
 });
