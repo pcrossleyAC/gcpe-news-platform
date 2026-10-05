@@ -316,6 +316,37 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     }),
   );
 
+  // Task 1 (staff-web): the staff app, hosted at /hub — mounted here (before the no-store
+  // default) so /hub/assets' own long-lived Cache-Control isn't overridden by it, same
+  // reasoning as /site and /files above. /hub/assets' filenames are content-hashed by the
+  // build (esbuild's [hash]), so a year-long immutable cache is safe: a changed file is a
+  // changed URL. fallthrough: false means a miss under /hub/assets (a stale or mistyped asset
+  // reference) 404s outright — it must never fall through to the SPA-fallback route below and
+  // come back as index.html.
+  const staffWebDir = stackEnv.STAFF_WEB_DIR;
+  const staffWebAssetsDir = join(staffWebDir, "assets");
+  if (existsSync(staffWebAssetsDir)) {
+    app.use("/hub/assets", express.static(staffWebAssetsDir, { immutable: true, maxAge: "1y", fallthrough: false }));
+  }
+  // Deep links (e.g. /hub/releases/<id>) and a plain browser refresh must all resolve to the
+  // shell's index.html, which then does its own client-side routing — matched here by "the
+  // last path segment has no extension", so a genuinely missing file (anything that looks like
+  // a file but isn't under /hub/assets, e.g. a typo'd /hub/favicon.ico) 404s instead of
+  // silently becoming the shell (constraints.md review item 5). index.html is never cached —
+  // Cache-Control: no-store is set explicitly here since this route runs ahead of
+  // noStoreByDefault. When the build directory is missing entirely (never built yet, or a
+  // broken deploy), /hub/* answers 503 "Staff app not built" rather than crashing the whole
+  // stack — every other mount below (including /stack/health) still starts normally.
+  app.use("/hub", (req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    res.setHeader("Cache-Control", "no-store");
+    const last = req.path.split("/").pop() ?? "";
+    if (last.includes(".")) return void res.status(404).end();
+    const indexPath = join(staffWebDir, "index.html");
+    if (!existsSync(indexPath)) return void res.status(503).send("Staff app not built");
+    res.sendFile(indexPath);
+  });
+
   app.use(noStoreByDefault);
 
   // Fix round 1, P2-R30 M6: /stack/errors's bearer check (and the fake Flickr's switches below)

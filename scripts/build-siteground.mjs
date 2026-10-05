@@ -13,6 +13,7 @@ import { homedir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { runBuild as runStaffWebBuild } from "./build-staff-web.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const outDir = join(root, "dist/siteground");
@@ -122,6 +123,14 @@ async function runBuild() {
   console.log("[build-siteground] copying config …");
   cpSync(join(root, "config"), join(outDir, "config"), { recursive: true });
 
+  // Task 1 (staff-web): the staff app, built fresh (never reusing a stale apps/staff-web/dist
+  // from an earlier, unrelated build) and copied to dist/siteground/hub — the relative path
+  // apps/stack/src/env.ts's STAFF_WEB_DIR default falls back to when it's sitting next to the
+  // bundled stack.js, exactly as it will be once this directory is deployed.
+  console.log("[build-staff-web] building the staff web app …");
+  await runStaffWebBuild();
+  cpSync(join(root, "apps/staff-web/dist"), join(outDir, "hub"), { recursive: true });
+
   writeFileSync(
     join(outDir, "package.json"),
     JSON.stringify(
@@ -179,6 +188,15 @@ async function runBuild() {
     process.exit(1);
   }
   console.log("[build-siteground] OK — no leaked local paths/username found.");
+
+  // Task 1 (staff-web): the one thing this script can check without actually starting the
+  // stack — that the staff app's shell made it into the artifact at the path stack.js's own
+  // STAFF_WEB_DIR default expects.
+  if (!existsSync(join(outDir, "hub", "index.html"))) {
+    console.error("[build-siteground] FAILED: dist/siteground/hub/index.html is missing — the staff web app did not make it into the artifact");
+    process.exit(1);
+  }
+  console.log("[build-siteground] OK — dist/siteground/hub/index.html is present.");
 
   console.log("[build-siteground] smoke test: node dist/siteground/stack.js --check …");
   try {

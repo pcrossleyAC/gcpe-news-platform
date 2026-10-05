@@ -1,0 +1,60 @@
+:root {
+  /* Legacy release type colours (legacy ReleaseModel.cs:1260-1275), kept as CSS custom
+   * properties alongside the BC design tokens (constraints.md). Decorative only — the bar
+   * carries no text, so every place that uses one of these must also show the type label as
+   * text for WCAG AA contrast. */
+  --gcpe-type-release: rgb(72, 88, 113);
+  --gcpe-type-story: rgb(113, 72, 73);
+  --gcpe-type-update: rgb(226, 222, 69);
+  --gcpe-type-advisory: rgb(226, 109, 90);
+  --gcpe-type-factsheet: rgb(92, 92, 92);
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: "BC Sans", system-ui, sans-serif;
+}
+
+.gcpe-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.gcpe-shell__nav {
+  flex: 0 0 220px;
+  border-right: 1px solid #ccc;
+  padding: 1rem;
+}
+
+.gcpe-shell__nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.gcpe-shell__main {
+  flex: 1 1 auto;
+  padding: 1rem 1.5rem;
+}
+
+.gcpe-sign-in {
+  max-width: 24rem;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+.gcpe-sign-in form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}

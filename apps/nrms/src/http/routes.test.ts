@@ -54,6 +54,22 @@ describe("NRMS HTTP API", () => {
     expect((await request(app).get("/health/live")).status).toBe(200);
   });
 
+  it("GET /config: timeZone + site facts for any signed-in role (including Core.Admin); 401 without a session", async () => {
+    const res = await request(app).get("/api/config").set("cookie", viewerCookie);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ timeZone: "America/Vancouver" });
+    expect(typeof res.body.siteUrl).toBe("string");
+    expect(typeof res.body.publicSiteUrl).toBe("string");
+    expect(typeof res.body.filesBase).toBe("string");
+    expect(typeof res.body.isTestSite).toBe("boolean");
+    expect(res.body).not.toHaveProperty("secret");
+
+    const adminCookie = await cookieFor(["Core.Admin"]);
+    expect((await request(app).get("/api/config").set("cookie", adminCookie)).status).toBe(200);
+
+    expect((await request(app).get("/api/config")).status).toBe(401);
+  });
+
   it("a viewer can read categories and releases but can't create one", async () => {
     const created = await create();
     const cats = await request(app).get("/api/categories").set("cookie", viewerCookie);

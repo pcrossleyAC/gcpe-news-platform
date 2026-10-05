@@ -92,6 +92,18 @@ export const nrmsEnvSchema = z.object({
   }
 });
 
+/**
+ * Task 1 (staff-web) GET /config's isTestSite: the exact same rule as
+ * apps/public-site/src/site-env.ts's `isTestSite(env)` (deliberately duplicated — apps never
+ * import another app's src, only shared packages). A site is a test site unless it is the real
+ * production deployment: NODE_ENV isn't "production", or it is but
+ * LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true (a test deployment left in "production" for other
+ * reasons), or SITE_ENVIRONMENT=test says so explicitly.
+ */
+export function nrmsIsTestSite(env: NodeJS.ProcessEnv): boolean {
+  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || env.SITE_ENVIRONMENT === "test";
+}
+
 /** NRMS's Flickr client config, or null when FLICKR_API_KEY is unset (Flickr then reads as unavailable). */
 export function flickrConfigFromEnv(parsed: z.infer<typeof nrmsEnvSchema>): FlickrConfig | null {
   if (!parsed.FLICKR_API_KEY) return null;
@@ -282,6 +294,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     subscribers,
     liveFeedDefaults,
     siteUrl: tenant.publicSiteBaseUrl,
+    isTestSite: nrmsIsTestSite(env),
     blueBridgeNotify,
   });
 

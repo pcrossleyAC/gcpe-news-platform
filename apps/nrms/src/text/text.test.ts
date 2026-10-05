@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { BODY_TAGS as CONTRACT_BODY_TAGS } from "@gcpe/nrms-contract";
 import { htmlToText } from "./html-to-text";
 import { asciiPunctuation, collapseBlankLines, ledeFromBody, summaryFromBody, trimSummary } from "./plain";
-import { sanitizeBodyHtml } from "./sanitize";
+import { BODY_TAGS, sanitizeBodyHtml } from "./sanitize";
 import { generateSlug } from "./slug";
 
 describe("generateSlug — legacy SlugUnitTests cases, verbatim", () => {
@@ -25,6 +26,12 @@ describe("generateSlug — legacy SlugUnitTests cases, verbatim", () => {
 });
 
 describe("sanitizeBodyHtml", () => {
+  it("drives its allow-list from the shared @gcpe/nrms-contract list (Task 1, staff-web)", () => {
+    // Reference equality: sanitize.ts must re-export the contract's own tuple, not a second
+    // array that merely happens to contain the same strings today.
+    expect(BODY_TAGS).toBe(CONTRACT_BODY_TAGS);
+  });
+
   it("keeps the allow-list, normalises b, strips attributes except a[href]", () => {
     expect(sanitizeBodyHtml('<p class="x" style="color:red">Hi <b>there</b></p>')).toBe("<p>Hi <strong>there</strong></p>");
     expect(sanitizeBodyHtml('<a href="https://gov.bc.ca" target="_blank" onclick="x()">link</a>')).toBe('<a href="https://gov.bc.ca">link</a>');

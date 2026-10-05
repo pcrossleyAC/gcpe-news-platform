@@ -1,8 +1,26 @@
 import { createHmac } from "node:crypto";
+import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { z } from "zod";
+
+// Task 1 (staff-web): the staff app's built output directory. Two on-disk layouts share one
+// default so no SiteGround setting is required: in dev (`tsx apps/stack/src/main.ts`),
+// `import.meta.url` is this source file's own location and the build lives at
+// apps/staff-web/dist; in the SiteGround bundle, this whole module is esbuild'd into one file
+// at dist/siteground/stack.js, and build-siteground.mjs copies the staff-web build to
+// dist/siteground/hub (`./hub`, relative to that same `import.meta.url`). Whichever of the
+// two actually exists on disk at startup wins; an explicit STAFF_WEB_DIR env var always
+// overrides both. Neither existing (dev, before the staff-web build has ever run) falls back
+// to the dev path, so the 503 "Staff app not built" message names a sensible, existing-tree
+// location rather than a path that can never be right.
+const DEV_STAFF_WEB_DIR = fileURLToPath(new URL("../../staff-web/dist", import.meta.url));
+const BUNDLED_STAFF_WEB_DIR = fileURLToPath(new URL("./hub", import.meta.url));
+
+export function defaultStaffWebDir(): string {
+  return existsSync(BUNDLED_STAFF_WEB_DIR) ? BUNDLED_STAFF_WEB_DIR : DEV_STAFF_WEB_DIR;
+}
 
 /** The stack's own env — one PORT for every mounted app, a tick token, and the two feature
  * toggles main.ts needs (STACK_LOOPS for the background interval loops, UPDATES_HUB_ENABLED
@@ -29,6 +47,9 @@ export const stackEnvSchema = z.object({
   // from it (see internalEventEnv) — one short setting instead of eight long JSON values, which
   // SiteGround's env form can't hold. Explicit <PREFIX>_EVENT_* vars still take precedence.
   STACK_EVENT_SECRET: z.string().min(32, "STACK_EVENT_SECRET must be at least 32 characters").optional(),
+  // Task 1 (staff-web): see defaultStaffWebDir above for why a static default suffices for
+  // both dev and the SiteGround bundle.
+  STAFF_WEB_DIR: z.string().default(defaultStaffWebDir),
 });
 export type StackEnv = z.infer<typeof stackEnvSchema>;
 

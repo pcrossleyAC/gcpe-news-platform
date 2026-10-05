@@ -4,7 +4,7 @@
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -98,7 +98,7 @@ interface StackTestInstance {
  * `describe` that needs its *own* isolated instance (M7's combined-login-rate-limit test, M5's
  * startup-error test) calls this again rather than sharing the main one.
  */
-async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<StackTestInstance> {
+async function setupStack(opts: { fetchAdminToken?: boolean; staffWebDir?: string } = {}): Promise<StackTestInstance> {
   const fetchAdminToken = opts.fetchAdminToken ?? true;
 
   const dbResults = await Promise.allSettled([
@@ -170,6 +170,9 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
     DIST_MAIL_FROM: "noreply@example.gov.bc.ca",
     DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
   };
+  // Task 1 (staff-web): unset leaves the real default (apps/staff-web/dist, almost certainly
+  // not built in this test run) in place, so most instances see the 503 "not built" path.
+  if (opts.staffWebDir !== undefined) env.STAFF_WEB_DIR = opts.staffWebDir;
 
   const handle = await startStack(env);
   if (handle.port !== port) throw new Error(`expected startStack to keep the requested port ${port}, got ${handle.port}`);
@@ -971,5 +974,66 @@ describe("apps/stack: fake Flickr accepts a signature over the in-process URL wh
     } finally {
       uninstall();
     }
+  });
+});
+
+// Task 1 (staff-web): /hub hosting — a built staff-web directory (faked here as a plain
+// index.html + a hashed asset, not a real esbuild build: scripts/build-staff-web.mjs's own
+// test covers the real build's output shape) and the 503-when-missing fallback, each its own
+// instance since the shared "apps/stack" instance above deliberately leaves STAFF_WEB_DIR at
+// its real (almost certainly unbuilt in this test run) default.
+describe("apps/stack: /hub hosting", () => {
+  let dir: string;
+  let built: StackTestInstance;
+  let unbuiltDir: string;
+  let unbuilt: StackTestInstance;
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-hub-"));
+    await mkdir(join(dir, "assets"), { recursive: true });
+    await writeFile(join(dir, "index.html"), "<!doctype html><html><body>staff web shell</body></html>");
+    await writeFile(join(dir, "assets", "app-abc123.js"), "console.log('staff-web');\n");
+    built = await setupStack({ fetchAdminToken: false, staffWebDir: dir });
+
+    unbuiltDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-hub-missing-"));
+    await rm(unbuiltDir, { recursive: true, force: true }); // exists on disk as a path, not as a directory
+    unbuilt = await setupStack({ fetchAdminToken: false, staffWebDir: unbuiltDir });
+  });
+
+  afterAll(async () => {
+    await built.close();
+    await unbuilt.close();
+    await rm(dir, { recursive: true, force: true });
+    // unbuiltDir was already removed in beforeAll (it must not exist); nothing left to clean up.
+  });
+
+  it("GET /hub/ and a deep link both serve index.html with no-store", async () => {
+    for (const path of ["/hub", "/hub/", "/hub/releases/abc"]) {
+      const res = await fetch(`${built.stackUrl}${path}`);
+      expect.soft(res.status, path).toBe(200);
+      expect.soft(res.headers.get("cache-control"), path).toBe("no-store");
+      expect.soft(await res.text(), path).toContain("staff web shell");
+    }
+  });
+
+  it("GET /hub/assets/<hashed file> is served with an immutable, year-long cache", async () => {
+    const res = await fetch(`${built.stackUrl}/hub/assets/app-abc123.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toMatch(/immutable/);
+    expect(res.headers.get("cache-control")).toMatch(/max-age=31536000/);
+  });
+
+  it("GET /hub/missing.js 404s instead of falling back to index.html", async () => {
+    const res = await fetch(`${built.stackUrl}/hub/missing.js`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("staff web shell");
+  });
+
+  it("with no build directory, /hub/ 503s but the stack still starts and serves /stack/health", async () => {
+    const hub = await fetch(`${unbuilt.stackUrl}/hub/`);
+    expect(hub.status).toBe(503);
+    const health = await fetch(`${unbuilt.stackUrl}/stack/health`);
+    expect(health.status).toBe(200);
+    expect(((await health.json()) as { status: string }).status).toBe("ok");
   });
 });

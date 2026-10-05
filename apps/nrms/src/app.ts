@@ -31,8 +31,13 @@ export function createApp(deps: {
   subscribers?: SubscriberConfig[];
   /** Live Feed URLs to show when none is configured (Task 3, env `LIVE_WEBCAST_*_URL_DEFAULT`); unset → no default. */
   liveFeedDefaults?: { manifestUrl: string; m3uUrl: string };
-  /** Plan 3d task 4: the public site's base URL, named in Project Blue Bridge's notify subject; unset → "". */
+  /** Plan 3d task 4: the public site's base URL, named in Project Blue Bridge's notify subject; unset → "".
+   * Task 1 (staff-web): also GET /config's siteUrl and publicSiteUrl (the two names the staff UI uses). */
   siteUrl?: string;
+  /** Task 1 (staff-web): GET /config's isTestSite — same rule as apps/public-site/src/site-env.ts's
+   * isTestSite(env) (duplicated here, not imported: apps never import each other's src). Unset → true
+   * (fail safe: an unconfigured deployment reads as a test site, never silently as production). */
+  isTestSite?: boolean;
   /** Plan 3d task 4: Project Blue Bridge's post-commit notify; unset → logs the subject only (see site-routes.ts). */
   blueBridgeNotify?: (subject: string, text: string) => Promise<void>;
 }): express.Express {
@@ -65,7 +70,15 @@ export function createApp(deps: {
       notify: deps.blueBridgeNotify ?? (async (subject) => void console.log(`[nrms] blue bridge: ${subject}`)),
     }),
     express.json({ limit: MAX_EVENT_BYTES }),
-    apiRoutes({ db: deps.db, workflow: deps.workflow, distribution: deps.distribution, store: deps.store, embeds: deps.embeds, subscribers: deps.subscribers ?? [] }),
+    apiRoutes({
+      db: deps.db,
+      workflow: deps.workflow,
+      distribution: deps.distribution,
+      store: deps.store,
+      embeds: deps.embeds,
+      subscribers: deps.subscribers ?? [],
+      config: { siteUrl: deps.siteUrl ?? "", publicSiteUrl: deps.siteUrl ?? "", isTestSite: deps.isTestSite ?? true },
+    }),
   );
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
   // escape stay JSON instead of finalhandler's default HTML.

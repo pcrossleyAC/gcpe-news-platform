@@ -14,6 +14,8 @@
     "nrms:import": "npm --workspace @gcpe/nrms run import:legacy --",
     "nrms:release-holds": "npm --workspace @gcpe/nrms run release-holds --",
     "nrms:replay-to-news-api": "npm --workspace @gcpe/nrms run replay-to-news-api --",
+    "staff-web:build": "node scripts/build-staff-web.mjs",
+    "staff-web:dev": "node scripts/build-staff-web.mjs --watch",
     "build:siteground": "node scripts/build-siteground.mjs",
     "deploy:siteground": "bash scripts/deploy-siteground.sh",
     "siteground:env": "tsx scripts/siteground-env.ts",

@@ -221,6 +221,13 @@ describe("stackEnvSchema", () => {
     expect(result.STACK_LOOPS).toBe(false);
     expect(result.UPDATES_HUB_ENABLED).toBe(true);
   });
+
+  it("Task 1 (staff-web): defaults STAFF_WEB_DIR to an existing on-disk path, overridable", () => {
+    const result = stackEnvSchema.parse({ TICK_TOKEN: "t".repeat(32) });
+    expect(result.STAFF_WEB_DIR.length).toBeGreaterThan(0);
+    const overridden = stackEnvSchema.parse({ TICK_TOKEN: "t".repeat(32), STAFF_WEB_DIR: "/tmp/some-hub-dir" });
+    expect(overridden.STAFF_WEB_DIR).toBe("/tmp/some-hub-dir");
+  });
 });
 
 // P2-R35: the internal event wiring is derived from one STACK_EVENT_SECRET.

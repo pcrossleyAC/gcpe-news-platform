@@ -50,6 +50,11 @@ export interface RouteDeps {
   embeds?: EmbedDeps;
   /** Outbound event subscribers, for `release.unpublished`'s clearing of Top/Feature slots and for Top/Feature's own site events. */
   subscribers?: SubscriberConfig[];
+  /** Task 1 (staff-web): GET /config's non-secret deployment facts. siteUrl/publicSiteUrl both
+   * default to "" (createApp's own deps.siteUrl is unset in most tests); filesBase defaults to
+   * `workflow.filesBase` (PUBLIC_FILES_BASE); isTestSite defaults to true (fail safe: an
+   * unconfigured caller is treated as a test site, never silently as production). */
+  config?: { siteUrl?: string; publicSiteUrl?: string; isTestSite?: boolean };
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
@@ -87,6 +92,10 @@ export function apiRoutes(deps: RouteDeps): Router {
   const r = Router();
   const read = requireAnyRole("NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor");
   const edit = requireRole("NRMS.Editor");
+  // Task 1 (staff-web): GET /config is read by every staff screen before anything else
+  // renders (the shell needs the tenant time zone and site links), so it accepts any signed-in
+  // staff role, including Core.Admin — unlike `read`, which is only the three NRMS roles.
+  const anySignedIn = requireAnyRole("NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor", "Core.Admin");
   const withStatus = (v: ReleaseView) => ({ ...v, statusText: statusText(v, Date.now()) });
   const version = (req: Request) => versionOnlySchema.parse(req.body).version;
 
@@ -99,6 +108,20 @@ export function apiRoutes(deps: RouteDeps): Router {
   param("lang", (v) => v === "4105" || v === "3084");
   param("pubId", (v) => /^\d{1,15}$/.test(v));
   const opts = () => ({ timeZone: deps.workflow.timeZone, nowMs: Date.now() });
+
+  r.get(
+    "/config",
+    anySignedIn,
+    run(async (_req, res) => {
+      void res.json({
+        timeZone: deps.workflow.timeZone,
+        siteUrl: deps.config?.siteUrl ?? "",
+        publicSiteUrl: deps.config?.publicSiteUrl ?? "",
+        filesBase: deps.workflow.filesBase ?? "",
+        isTestSite: deps.config?.isTestSite ?? true,
+      });
+    }),
+  );
 
   r.get("/categories", read, run(async (_req, res) => void res.json(await listCategories(db))));
 
