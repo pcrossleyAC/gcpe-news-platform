@@ -1,6 +1,6 @@
-# Changes from legacy NRMS
+# Changes from legacy
 
-Where the new NRMS deliberately behaves differently from the legacy system (`gcpe-hub-develop/Hub.Legacy`). Everything not listed here is meant to match legacy. Each change says what legacy does, what we do instead, and why, so it can be challenged or reversed.
+Where the new platform deliberately behaves differently from the legacy systems (NRMS: `gcpe-hub-develop/Hub.Legacy`; NoD and Distribution, from Phase 4: `~/HUB/Subscribe`). Everything not listed here is meant to match legacy. Each change says what legacy does, what we do instead, and why, so it can be challenged or reversed.
 
 Status key: **Agreed** (approved in design) · **Proposed** (in a design section not yet approved) · **Reversed** (we went back to legacy behaviour; keep the row for the record).
 
@@ -84,3 +84,23 @@ Status key: **Agreed** (approved in design) · **Proposed** (in a design section
 | # | Legacy | New | Why | Status |
 |---|---|---|---|---|
 | C43 | A release's summary has no "edited by hand" flag — legacy always regenerates it until its own UI-level auto-fill logic stops applying, with nothing recorded about whether the stored text is hand-written. | An imported release's `summary_edited` is set `true`, so NRMS's save-time auto-fill from the body never overwrites a legacy summary with a freshly generated one. | Legacy's summaries are effectively hand-written (nothing in legacy writes them from the body automatically at the point they're stored), but there's no column saying so; importing them as "not yet edited" would let the very next save silently replace the imported text. | Proposed |
+
+## NoD and Distribution (Phase 4)
+
+Spec: `docs/superpowers/specs/2026-10-05-nod-distribution-parity-design.md`. Legacy references are under `~/HUB/Subscribe` unless noted.
+
+| # | Legacy | New | Why | Status |
+|---|---|---|---|---|
+| C47 | Media list keys in the Hub (`MediaDistributionList`) must match NoD list keys by hand. The Hub Contacts module writes journalists into NoD as ordinary subscribers. | NRMS keeps the list names and keys and emits `media_list.*` events; NoD mirrors them and holds the members (Media Hub contact id + chosen email, or a manual email). | Hand-matched keys silently break sends when they drift. | Agreed |
+| C48 | Manage/verify links are stored as plain GUIDs; every email gets a fresh 1-day link and no unsubscribe header. | Link tokens are stored only as hashes. Every email also carries a stable per-subscriber `List-Unsubscribe` URL with RFC 8058 one-click `POST`. | A database leak shouldn't hand out working links; mail providers expect one-click unsubscribe, and links in old emails should still unsubscribe after 24 h. | Agreed |
+| C49 | Changing email switches the address in place, without verifying the new one (`SubscriptionProvider.cs:315-317`). | The new address must confirm a link before the switch. | Otherwise anyone with a manage link can point a subscription at someone else's address. | Agreed |
+| C50 | Unsubscribe with an unknown token throws (`Single()`, `SubscriptionProvider.cs:226`). | Unsubscribe is idempotent and always reports success. | A repeated click or an old link shouldn't show an error. | Agreed |
+| C51 | Contacts added to media lists get the public "confirm your subscription" email (`NodSubscriptions.cs:51-53`). Admin-added subscribers are active at once. | Staff-added subscribers and media-list members are active at once, with no verification email. | Journalists were added by staff on purpose; a public opt-in email to them is confusing. | Agreed |
+| C52 | Bounces are matched by "subject = title within 4 days", or every delivery in the 25 h before a digest bounce (`DistributionProvider.cs:385-463`). The recipient is the first address found in the body. | Every message carries its own `Message-ID`; bounces are parsed as RFC 3464 reports and matched by that id. Legacy's heuristic is kept only as a fallback. | Subject matching marks the wrong deliveries as bounced. | Agreed |
+| C53 | SMTP errors other than format/argument errors are retried in the same loop forever, with no backoff (`DistributionServiceLib.cs:126-128,176`). | Permanent errors fail at once; transient ones back off with escalation and an age backstop (built in Phase 2). | Endless retries hammer the relay and never surface the failure. | Agreed |
+| C54 | Bounces are read only on Sunday and Wednesday, 12:00–13:00 (`Global.asax.cs:168-175`), from Exchange EWS with TLS validation off. | Every 15 minutes, through a bounce source interface (Graph in production, a fake mailbox in test), with TLS validated. | Bounce handling days late lets a dead address keep failing; TLS validation is not optional. | Agreed |
+| C55 | Media Hub's Membership tab calls the NoD API with Basic Auth. | NoD serves a compatible endpoint with Basic Auth (hashed credentials), for compatibility only; to retire when Media Hub uses the service token. | Keeps the Membership tab working at cutover. | Agreed |
+| C56 | The retention purge exists but never runs: its loop is commented out and nothing calls the API (`Global.asax.cs:190-213`). | The purge is built and switched off by default; staff turn it on once the windows are confirmed (Q25). | Matches what legacy actually does, without blocking privacy-friendly retention later. | Agreed |
+| C57 | Bugs: the verification flag is set after save and never stored (`SubscriptionProvider.cs:499`); verify tokens fail while the subscriber is pending (`:672-674`); the "Self Subscriber" and "Subscribed Emails" reports filter on an event that's never logged; `NotifyIfNewCategories` is stored but never used. | Not ported. Verification is saved; pending tokens work; reports read from `subscriber_history`; `NotifyIfNewCategories` is dropped. | These are defects, not behaviour anyone relies on. | Agreed |
+| C58 | No send-rate limit and no mail redirect for test environments. | A per-minute rate cap shared across workers, and the non-prod redirect (built in Phase 2). | The relay has limits; test sites must never mail real subscribers. | Agreed |
+| C59 | Media-list members are ordinary subscribers, so 10 hard bounces in 15 days deletes them like anyone else (only highlighted in the summary email). | Media-list members are flagged "needs attention" instead of deleted, as are members whose chosen Media Hub email disappears. | Removing a journalist from a media list is a staff decision; a mailbox outage shouldn't do it silently. | Agreed |

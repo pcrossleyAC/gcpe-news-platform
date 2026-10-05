@@ -192,7 +192,7 @@ Phase 4 adds:
   - Fallback: legacy's heuristic of an "Undeliverable:" subject, the first address in the body, and a 5.x.x or 5xx code (`BounceManager.cs:101-156`).
   - A status starting with 5 is a hard bounce. Others are recorded as soft and don't count.
 - **Matching:** by `Message-ID`, which identifies the message, batch and app. Fallback for messages without one: recipient email within 4 days. Distribution emits `delivery.bounced { appId, batchId, email, messageId, hard, at }` to the originating app.
-- **NoD:** marks the matching delivery hard-bounced. If a subscriber's last 10 deliveries within 15 days are all hard-bounced, they are disabled and `deleted`, with history (legacy `DistributionProvider.cs:465-506`). Media-list members are flagged "needs attention" instead of deleted.
+- **NoD:** marks the matching delivery hard-bounced. If a subscriber's last 10 deliveries within 15 days are all hard-bounced, they are disabled and `deleted`, with history (legacy `DistributionProvider.cs:465-506`). Media-list members are flagged "needs attention" instead of deleted (C59).
 - **Summary email:** daily, when there was anything to report, to a configured address (legacy hard-coded Carolynn.Hunter@gov.bc.ca). Subject "News On Demand - Bounce Manager - <date>", with media-list members highlighted.
 
 ## 8. Staff Subscribers section
