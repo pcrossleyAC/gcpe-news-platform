@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
+import { isGranvilleOn } from "@gcpe/legacy-import";
 import { siteSettings } from "../db/schema";
 import { formatBcDateTime } from "../releases/workflow";
 import type { Actor } from "../releases/store";
@@ -90,17 +91,9 @@ export async function saveLiveFeed(db: Db, input: SaveLiveFeedInput, actor: Acto
 
 const CONFIRMATION_PHRASE = "KING CHARLES III";
 
-/**
- * Fix round 1 (IMPORTANT 2): legacy stores `granville` as the literal strings "true"/"false"
- * (Hub.Legacy `ProjectBlueBridge.aspx.cs`), and the News API legacy importer copies that
- * through. This column only ever receives "true"/null from {@link setBlueBridge} below, but
- * read it with the same rule the public site and the News API importer use (same name, same
- * rule, apps/public-site/src/site-env.ts's `isGranvilleOn` / apps/news-api/src/import/run.ts's
- * `normalizeGranville`) rather than a narrower one that would drift if that ever changes.
- */
-function isGranvilleOn(granville: string | null): boolean {
-  return granville != null && granville.trim().toLowerCase() === "true";
-}
+// This column only ever receives "true"/null from {@link setBlueBridge} below, but read it
+// with the same rule the public site and both legacy importers use — @gcpe/legacy-import's
+// `isGranvilleOn` — rather than a private copy here that would drift if that ever changes.
 
 export interface BlueBridgeView {
   on: boolean;
