@@ -8,6 +8,7 @@
     "check": "tsc -p tsconfig.json && tsc -p apps/staff-web/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "auth:hash-password": "tsx packages/auth/src/cli/hash-password.ts",
     "core:seed-test-users": "npm --workspace @gcpe/core run seed:test-users",
     "nrms:flickr-authorize": "npm --workspace @gcpe/nrms run flickr:authorize",
@@ -22,6 +23,8 @@
     "core:seed-from-public-api": "tsx scripts/seed-core-from-public-api.ts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
     "@types/node": "^24.19.1",
     "esbuild": "^0.28.2",
     "tsx": "^4.20.0",

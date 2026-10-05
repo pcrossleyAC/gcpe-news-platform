@@ -274,7 +274,29 @@ curl -s https://<domain>/site/releases/<key>/
 If steps 1–6 all succeed and the email in step 7 arrives, the deploy is good end to end:
 database connectivity, auth, publishing, event dispatch, static rebuild, and mail delivery.
 
-## Staff sign-in (Phase 3)
+## Staff app (Phase 3)
+
+The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps/stack/src/stack.ts` mounts the built bundle there (`STAFF_WEB_DIR`, default `apps/staff-web/dist`) ahead of the News API's own catch-all. A deep link (e.g. `https://boxs.ca/hub/releases/<id>`) and a plain browser refresh on one both work (the `/hub` route serves `index.html` for anything under it, with `Cache-Control: no-store` on the shell itself and a year-long immutable cache on its hashed `/hub/assets/*`). `scripts/build-siteground.mjs` builds and bundles it into the artifact automatically — there is no separate staff-app deploy step.
+
+**Who sees what.** The same `gcpe_session` cookie and roles gate every screen (constraints.md: "roles decide what's shown, but the server is the authority" — hiding a nav item or button is a convenience, never the actual enforcement):
+
+| Role | Sees |
+|---|---|
+| `NRMS.Viewer` | Releases (Drafts/Scheduled/Published), Search — read-only everywhere; no Approve/Publish/Delete/etc., no Website, Users or Error log. |
+| `NRMS.Editor` | Everything a Viewer sees, plus "New release" and every write action in the release editor (Approve, Schedule/Publish now, Cancel, Unpublish, Delete, documents, categories, media asset, page details, Top/Feature). No Website, Users or Error log. |
+| `NRMS.SiteEditor` | Releases/Search read-only (same as Viewer, unless also an Editor) plus the whole Website section — carousel, emergency pins, Live Feed, resource links, files, "what's featured where", the website log. Sees Project Blue Bridge's current state and warning text but not its switch. No Users or Error log. |
+| `Core.Admin` | Users (create/deactivate staff, set roles and passwords) and the Error log, plus Project Blue Bridge's switch (needs the typed confirmation phrase and the IGRS checkbox) and read access to the Website section. The environment break-glass `admin` account carries this role (see below). |
+
+**Reporting a problem.** A Core.Admin signs in and opens `/hub/error-log` (`GET /stack/errors`, newest first) — entries are written to `<DATA_DIR>/logs/errors.jsonl` and survive a SiteGround idle-kill restart (unlike the in-memory log a Phase 2 deployment would have lost — see "Troubleshooting" below), so what happened before the last restart is still there to read. Values inside a logged error message are redacted before they're stored.
+
+**Hand-check list.** The items below are automated against the whole stack running locally (`npm run test:e2e`, Phase 3's acceptance list, `docs/superpowers/specs/2026-10-03-nrms-parity-design.md` §9) but are also marked `*` there for a hand check on boxs.ca itself, since production Flickr, real SMTP delivery and the real SiteGround cron cadence can't be faked:
+
+- [ ] **Item 1** — sign in as the test editor (`scripts/siteground-seed-users.sh` creates/resets the three test users); confirm a viewer can read a release but has no write controls, and a site editor reaches the Website section but never sees Approve.
+- [ ] **Item 2** — create one of each type (Release, Story, Factsheet, Advisory) through `/hub/releases/new`; confirm the form's required/allowed fields match the type (e.g. an Advisory offers no Sectors/Themes/Tags).
+- [ ] **Item 5** — approve and publish a release now; confirm it reaches the public site (`https://boxs.ca/releases/<key>/`) and a subscriber actually receives the NoD email, within one scheduled `/stack/tick` run (see "Background work scheduler" above).
+- [ ] **Item 7** — edit a field on an already-published release; confirm it shows "Republishing…" and comes back as "Published" with a new entry in its History ("Show all") and an extra frozen copy.
+- [ ] **Item 9** — with a real `NRMS_FLICKR_API_KEY` configured, run `scripts/siteground-flickr-walkthrough.sh https://boxs.ca --outage` (see "Flickr" below) and confirm the release goes out on time without the photo, the alert shows, and the photo appears once recovered.
+- [ ] **Item 12** — schedule a carousel go-live a minute or two out and confirm it switches over on its own; confirm an emergency pin survives an unrelated carousel change; confirm Project Blue Bridge needs the Core.Admin phrase and (off production) shows "TEST —" on the public banner.
 
 Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET`, so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
 
