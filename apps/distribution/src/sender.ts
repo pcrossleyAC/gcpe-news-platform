@@ -370,6 +370,9 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       headers[name] = substitute(value, values, "header");
     }
     if (redirect) headers["X-Original-To"] = row.email;
+    // Non-prod redirect: every copy lands in the same tester's inbox, so name the intended
+    // recipient in the subject too — otherwise copies for different recipients look identical.
+    const sentSubject = redirect ? `[to: ${row.email}] ${subject}` : subject;
 
     const to = redirect ? opts.redirectTo : [row.email];
     const attachments = await attachmentsFor(row);
@@ -380,7 +383,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     let connectionLevel = false;
     let droppedBeforeSend = false;
     try {
-      await opts.transport.sendMail({ from: opts.from, to, subject, html, text, headers, attachments });
+      await opts.transport.sendMail({ from: opts.from, to, subject: sentSubject, html, text, headers, attachments });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       permanent = isPermanentRecipientRejection(e);

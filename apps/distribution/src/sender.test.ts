@@ -134,6 +134,9 @@ describe("sendDue", () => {
       }
       const originalTos = sink.messages.map((m) => m.headers.get("x-original-to")).sort();
       expect(originalTos).toEqual(["alex.example@gov.bc.ca", "sam.example@example.com"]);
+      // Redirected copies say who they were for, so a tester can tell identical-looking copies apart.
+      const subjects = sink.messages.map((m) => m.subject ?? "").sort();
+      expect(subjects.every((s, i) => s.startsWith(`[to: ${originalTos[i]}] `))).toBe(true);
 
       const rows = await tdb.db.select().from(messages);
       expect(rows.map((r) => r.originalRecipient).sort()).toEqual(["alex.example@gov.bc.ca", "sam.example@example.com"]);
