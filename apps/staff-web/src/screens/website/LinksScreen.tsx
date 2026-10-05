@@ -3,6 +3,7 @@ import { Button, InlineAlert, TextField } from "@bcgov/design-system-react-compo
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useAnnouncer } from "../../shared/Announcer";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
 import { moveItemBy, moveItemTo } from "./reorder";
@@ -31,6 +32,7 @@ function toForm(links: ResourceLinkView[]): LinkForm[] {
  */
 export function LinksScreen(): React.JSX.Element {
   const session = useSession();
+  useDocumentTitle("Resource links");
   const canEdit = session.has("NRMS.SiteEditor");
   const section = useVersionedSave<LinksView>();
   const [view, setView] = useState<LinksView | null>(null);

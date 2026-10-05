@@ -4,12 +4,14 @@ import { Button, Form, Header, InlineAlert, TextField } from "@bcgov/design-syst
 import { ApiError } from "../api/client";
 import { safeReturnTo } from "../session/safeReturnTo";
 import { useSession } from "../session/SessionContext";
+import { useDocumentTitle } from "../shared/useDocumentTitle";
 
 const SIGN_IN_FAILED = "Sign-in failed. Check your user name and password.";
 const RATE_LIMITED = "Too many attempts, wait a minute";
 
 export function SignIn(): React.JSX.Element {
   const { user, signIn } = useSession();
+  useDocumentTitle("Sign in");
   const [params] = useSearchParams();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");

@@ -41,6 +41,18 @@ describe("UsersScreen", () => {
     sessionStorage.clear();
   });
 
+  // I5: document.title matches the h1.
+  it("sets the document title", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    await screen.findByRole("heading", { name: "Users", level: 1 });
+    expect(document.title).toBe("Users — GCPE News Staff");
+  });
+
   it("creates a user with email, display name, roles and an optional password", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     stubSession(calls, (url, init) => {

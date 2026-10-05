@@ -36,6 +36,21 @@ describe("LinksScreen", () => {
     sessionStorage.clear();
   });
 
+  // I5: document.title matches the h1.
+  it("sets the document title", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/links") return jsonResponse(200, TWO_LINKS);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<LinksScreen />));
+    await screen.findByRole("heading", { name: "Resource links", level: 1 });
+    expect(document.title).toBe("Resource links — GCPE News Staff");
+  });
+
   it("Move down then Save sends the whole reordered list in one PUT", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     vi.stubGlobal(

@@ -13,6 +13,12 @@ describe("HeaderSection", () => {
     expect(headings[0]).toHaveTextContent("Clinics open");
   });
 
+  // I5: document.title matches the h1 (the release's own headline).
+  it("sets the document title to the headline", () => {
+    render(<HeaderSection view={releaseView()} />);
+    expect(document.title).toBe(`${screen.getByRole("heading", { level: 1 }).textContent} — GCPE News Staff`);
+  });
+
   it("falls back to (untitled) with no documents", () => {
     render(<HeaderSection view={releaseView({ documents: [] })} />);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("(untitled)");

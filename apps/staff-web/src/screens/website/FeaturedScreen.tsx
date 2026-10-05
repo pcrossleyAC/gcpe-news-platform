@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import type { FeaturedWhereRow } from "./types";
 
 /**
@@ -8,6 +9,7 @@ import type { FeaturedWhereRow } from "./types";
  * role (release screens' FeatureSwitches, Task 4, are the only place that sets these).
  */
 export function FeaturedScreen(): React.JSX.Element {
+  useDocumentTitle("What’s featured where");
   const [rows, setRows] = useState<FeaturedWhereRow[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 

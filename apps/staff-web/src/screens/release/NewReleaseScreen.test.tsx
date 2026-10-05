@@ -167,6 +167,8 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     renderScreen();
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/don.t have permission/i);
     expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
+    // I5: document.title matches the h1, not the "New release" the Editor-only form shows.
+    expect(document.title).toBe("You don’t have permission to create releases — GCPE News Staff");
     const user = userEvent.setup();
     await user.click(screen.getByRole("link"));
     expect(await screen.findByText("Drafts list")).toBeInTheDocument();
@@ -184,5 +186,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     renderScreen();
     expect(await screen.findByLabelText("Type")).toBeInTheDocument();
     expect(screen.queryByText(/don.t have permission/i)).not.toBeInTheDocument();
+    // I5: document.title matches the h1.
+    expect(document.title).toBe("New release — GCPE News Staff");
   });
 });

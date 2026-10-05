@@ -5,6 +5,7 @@ import { CREATABLE_TYPES, LANG_EN, LAYOUTS, TYPE_LABEL, createReleaseSchema, typ
 import type { ZodIssue } from "zod";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import type { Categories } from "./categories";
 
 type CreatableType = (typeof CREATABLE_TYPES)[number];
@@ -64,6 +65,7 @@ function groupByField(problems: string[]): Record<string, string[]> {
 export function NewReleaseScreen(): React.JSX.Element {
   const session = useSession();
   const navigate = useNavigate();
+  useDocumentTitle(session.has("NRMS.Editor") ? "New release" : "You don’t have permission to create releases");
 
   const [type, setType] = useState<CreatableType>("release");
   const [pageTitle, setPageTitle] = useState("");

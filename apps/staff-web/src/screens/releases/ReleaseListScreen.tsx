@@ -4,6 +4,7 @@ import { RELEASE_TYPES, TYPE_LABEL, type ReleaseListItem, type ReleasePage, type
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { ReleaseRow } from "./ReleaseRow";
 import { Pagination } from "./Pagination";
 
@@ -27,6 +28,7 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
   const [searchParams, setSearchParams] = useSearchParams();
   const session = useSession();
   const timeZone = useTenantTimeZone();
+  useDocumentTitle("Releases");
   const [result, setResult] = useState<ReleasePage<ReleaseListItem> | null>(null);
   const [error, setError] = useState<string | null>(null);
 

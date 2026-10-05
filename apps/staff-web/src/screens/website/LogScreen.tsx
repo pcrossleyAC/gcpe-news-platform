@@ -3,6 +3,7 @@ import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { formatWhen } from "../../format/dates";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { SITE_LOG_AREAS, type SiteLogArea, type SiteLogEntry } from "./types";
 
 const AREA_LABEL: Record<SiteLogArea, string> = {
@@ -22,6 +23,7 @@ const AREA_LABEL: Record<SiteLogArea, string> = {
  */
 export function LogScreen(): React.JSX.Element {
   const timeZone = useTenantTimeZone();
+  useDocumentTitle("Website log");
   const [area, setArea] = useState<SiteLogArea | "">("");
   const [entries, setEntries] = useState<SiteLogEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

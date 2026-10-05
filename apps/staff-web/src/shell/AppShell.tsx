@@ -3,6 +3,7 @@ import { Button, Header, InlineAlert } from "@bcgov/design-system-react-componen
 import { useSession, type SessionValue } from "../session/SessionContext";
 import { useTimeZoneWarning } from "../format/timeZoneWarning";
 import { AnnouncerProvider } from "../shared/Announcer";
+import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
 
 interface NavItem {
   to: string;
@@ -30,6 +31,8 @@ export function AppShell(): React.JSX.Element {
   const session = useSession();
   const navigate = useNavigate();
   const tzMismatch = useTimeZoneWarning();
+  // I5 (WCAG 2.4.2): move focus to the new screen's h1 on every route change.
+  const mainRef = useFocusH1OnRouteChange<HTMLElement>();
 
   const onSignOut = async () => {
     await session.signOut();
@@ -49,7 +52,7 @@ export function AppShell(): React.JSX.Element {
             ))}
           </ul>
         </nav>
-        <main className="gcpe-shell__main">
+        <main className="gcpe-shell__main" ref={mainRef}>
           {/* Each routed screen owns its own single h1 (constraints.md); the shell itself has none. */}
           {session.user && <p>Signed in as {session.user.name}</p>}
           <Button onPress={onSignOut}>Sign out</Button>

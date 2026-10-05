@@ -5,6 +5,7 @@ import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { useUnsavedChangesGuard } from "./useUnsavedChanges";
 import { HeaderSection } from "./sections/HeaderSection";
 import { ActionsSection } from "./sections/ActionsSection";
@@ -34,6 +35,9 @@ export function ReleaseEditorPage(): React.JSX.Element {
   const [view, setView] = useState<ReleaseView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const guard = useUnsavedChangesGuard();
+  // The happy-path title (the release's own headline) is HeaderSection's job, below — this
+  // only owns it for the error state, whose h1 ("Release") HeaderSection never renders.
+  useDocumentTitle(error ? "Release" : null);
 
   useEffect(() => {
     if (!id) return;

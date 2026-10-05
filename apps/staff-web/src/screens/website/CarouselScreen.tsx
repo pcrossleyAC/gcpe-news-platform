@@ -5,6 +5,7 @@ import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { formatWhen } from "../../format/dates";
 import { useAnnouncer } from "../../shared/Announcer";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
 import { SchedulePicker, type ScheduleValue } from "../release/sections/SchedulePicker";
@@ -239,6 +240,7 @@ function PastCarousel({ carousel, timeZone }: { carousel: CarouselView; timeZone
 export function CarouselScreen(): React.JSX.Element {
   const session = useSession();
   const timeZone = useTenantTimeZone();
+  useDocumentTitle("Carousel");
   const canEdit = session.has("NRMS.SiteEditor");
   const [data, setData] = useState<CarouselsResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

@@ -28,6 +28,21 @@ describe("FilesScreen", () => {
     sessionStorage.clear();
   });
 
+  // I5: document.title matches the h1.
+  it("sets the document title", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url.startsWith("/nrms/api/site/files")) return jsonResponse(200, EMPTY);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<FilesScreen />));
+    await screen.findByRole("heading", { name: "Files", level: 1 });
+    expect(document.title).toBe("Files — GCPE News Staff");
+  });
+
   it("a new upload that collides (409) offers to replace, and replacing resends with replace=true", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     let listing = EMPTY;

@@ -4,6 +4,7 @@ import { Button, Form, TextField } from "@bcgov/design-system-react-components";
 import type { ReleaseListItem, ReleasePage } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { ReleaseRow } from "../releases/ReleaseRow";
 import { Pagination } from "../releases/Pagination";
 
@@ -25,6 +26,7 @@ export function SearchScreen(): React.JSX.Element {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const timeZone = useTenantTimeZone();
+  useDocumentTitle("Search");
 
   const q = searchParams.get("q") ?? "";
   const ministry = searchParams.get("ministry") ?? "";

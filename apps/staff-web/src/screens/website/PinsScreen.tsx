@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { Justify, PinSlot, PinView } from "./types";
 
@@ -112,6 +113,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
  */
 export function PinsScreen(): React.JSX.Element {
   const session = useSession();
+  useDocumentTitle("Emergency pins");
   const canEdit = session.has("NRMS.SiteEditor");
   const [pins, setPins] = useState<PinView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

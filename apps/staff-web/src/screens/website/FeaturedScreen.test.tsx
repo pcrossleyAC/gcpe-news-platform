@@ -19,6 +19,8 @@ describe("FeaturedScreen", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => (url === "/nrms/api/site/features" ? jsonResponse(200, ROWS) : jsonResponse(200, {}))));
     render(<FeaturedScreen />);
     await screen.findByRole("heading", { name: "What’s featured where", level: 1 });
+    // I5: document.title matches the h1.
+    expect(document.title).toBe("What’s featured where — GCPE News Staff");
     expect(screen.getByRole("cell", { name: "Big news" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "Clinics open" })).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();

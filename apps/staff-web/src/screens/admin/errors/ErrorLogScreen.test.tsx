@@ -29,6 +29,22 @@ describe("ErrorLogScreen", () => {
     sessionStorage.clear();
   });
 
+  // I5: document.title matches the h1.
+  it("sets the document title", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/stack/errors?limit=200") return jsonResponse(200, { errors: ENTRIES });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<ErrorLogScreen />));
+    await screen.findByRole("heading", { name: "Error log", level: 1 });
+    expect(document.title).toBe("Error log — GCPE News Staff");
+  });
+
   it("renders entries newest first, with a Refresh button that re-fetches", async () => {
     const calls: string[] = [];
     vi.stubGlobal(

@@ -4,6 +4,7 @@ import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 import { formatWhen } from "../../../format/dates";
+import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 
 export interface ErrorEntry {
   timestamp: string;
@@ -20,6 +21,7 @@ export interface ErrorEntry {
 export function ErrorLogScreen(): React.JSX.Element {
   const session = useSession();
   const timeZone = useTenantTimeZone();
+  useDocumentTitle("Error log");
   const isAdmin = session.has("Core.Admin");
   const [entries, setEntries] = useState<ErrorEntry[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);

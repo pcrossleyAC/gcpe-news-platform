@@ -95,6 +95,13 @@ describe("ReleaseListScreen", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
+  // I5: document.title matches the screen's own h1.
+  it("sets the document title", async () => {
+    renderScreen("drafts", "/releases/drafts");
+    await screen.findByText("A headline");
+    expect(document.title).toBe("Releases — GCPE News Staff");
+  });
+
   it("changing the type filter re-queries with that type and resets to page 1", async () => {
     const calls = renderScreen("drafts", "/releases/drafts?page=3");
     await screen.findByText("A headline");

@@ -1,5 +1,6 @@
 import { NavLink, Outlet } from "react-router";
 import { useSession } from "../../session/SessionContext";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 
 const SECTIONS: { to: string; label: string }[] = [
   { to: "carousel", label: "Carousel" },
@@ -21,6 +22,9 @@ const SECTIONS: { to: string; label: string }[] = [
  */
 export function WebsiteScreen(): React.JSX.Element {
   const session = useSession();
+  // Only the permission-denied branch below renders an h1 of its own; every real sub-screen
+  // (Carousel, Pins, ...) owns its own title via its own useDocumentTitle call.
+  useDocumentTitle(!session.has("NRMS.SiteEditor") && !session.has("Core.Admin") ? "Website" : null);
   if (!session.has("NRMS.SiteEditor") && !session.has("Core.Admin")) {
     return (
       <div className="gcpe-website">

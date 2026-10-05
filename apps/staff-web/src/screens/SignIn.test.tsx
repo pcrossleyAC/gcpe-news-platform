@@ -44,6 +44,14 @@ describe("SignIn", () => {
     cleanup();
   });
 
+  // I5: document.title matches the h1.
+  it("sets the document title", async () => {
+    stubFetch(() => jsonResponse(401, { error: "not signed in" }));
+    renderSignIn();
+    await screen.findByRole("heading", { name: "Sign in", level: 1 });
+    expect(document.title).toBe("Sign in — GCPE News Staff");
+  });
+
   it("submitting calls POST /core/auth/login with the entered credentials", async () => {
     const calls: RequestInit[] = [];
     stubFetch((init) => {

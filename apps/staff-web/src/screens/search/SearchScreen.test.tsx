@@ -106,6 +106,14 @@ describe("SearchScreen", () => {
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
   });
 
+  // I5: document.title matches the screen's own h1.
+  it("sets the document title", async () => {
+    stubFetch();
+    renderSearch();
+    await screen.findByRole("heading", { level: 1 });
+    expect(document.title).toBe("Search — GCPE News Staff");
+  });
+
   it("a goto hit navigates straight to the release", async () => {
     const gotoCalls: string[] = [];
     stubFetch({ gotoHit: { id: "22222222-2222-2222-2222-222222222222" }, gotoCalls });

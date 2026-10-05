@@ -1,5 +1,6 @@
 import { approveProblems, publishProblems, statusText, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
 import { InlineAlert } from "@bcgov/design-system-react-components";
+import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { headlineOf } from "../viewHelpers";
 
 export interface HeaderSectionProps {
@@ -15,6 +16,7 @@ export interface HeaderSectionProps {
 export function HeaderSection({ view }: HeaderSectionProps): React.JSX.Element {
   const toApprove = approveProblems(view);
   const toPublish = publishProblems(view);
+  useDocumentTitle(headlineOf(view) || "(untitled)");
 
   return (
     <header className="gcpe-release-editor__header">

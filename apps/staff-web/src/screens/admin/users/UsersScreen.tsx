@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
+import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { STAFF_ROLES } from "./roles";
 
 export interface UserView {
@@ -165,6 +166,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
  */
 export function UsersScreen(): React.JSX.Element {
   const session = useSession();
+  useDocumentTitle("Users");
   const [users, setUsers] = useState<UserView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 

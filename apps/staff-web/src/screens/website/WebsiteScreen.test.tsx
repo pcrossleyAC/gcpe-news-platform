@@ -52,4 +52,11 @@ describe("WebsiteScreen", () => {
     await screen.findByText("You don’t have permission to view the Website section.");
     expect(screen.queryByRole("link", { name: "Carousel" })).toBeNull();
   });
+
+  // I5: document.title matches the permission-denied branch's own h1.
+  it("sets the document title on the permission-denied branch", async () => {
+    renderWithRole("NRMS.Viewer");
+    await screen.findByRole("heading", { name: "Website", level: 1 });
+    expect(document.title).toBe("Website — GCPE News Staff");
+  });
 });

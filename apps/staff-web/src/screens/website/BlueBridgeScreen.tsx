@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertDialog, Button, Checkbox, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { useIsTestSite } from "./useIsTestSite";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { BlueBridgeView } from "./types";
@@ -18,6 +19,7 @@ const CONFIRMATION_PHRASE = "KING CHARLES III";
  */
 export function BlueBridgeScreen(): React.JSX.Element {
   const session = useSession();
+  useDocumentTitle("Project Blue Bridge");
   const isAdmin = session.has("Core.Admin");
   const isTestSite = useIsTestSite();
   const section = useVersionedSave<BlueBridgeView>();

@@ -15,6 +15,21 @@ describe("LogScreen", () => {
     vi.unstubAllGlobals();
   });
 
+  // I5: document.title matches the h1.
+  it("sets the document title", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url.startsWith("/nrms/api/site/log")) return jsonResponse(200, ENTRIES);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(<LogScreen />);
+    await screen.findByRole("heading", { name: "Website log", level: 1 });
+    expect(document.title).toBe("Website log — GCPE News Staff");
+  });
+
   it("loads the unfiltered log, then refetches with the chosen area", async () => {
     const calls: string[] = [];
     vi.stubGlobal(

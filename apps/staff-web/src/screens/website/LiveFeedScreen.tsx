@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { LiveFeedView } from "./types";
 
@@ -15,6 +16,7 @@ const M3U_REQUIRED_MESSAGE = "Add the M3U playlist URL before turning the Live F
  */
 export function LiveFeedScreen(): React.JSX.Element {
   const session = useSession();
+  useDocumentTitle("Live Feed");
   const canEdit = session.has("NRMS.SiteEditor");
   const section = useVersionedSave<LiveFeedView>();
   const [feed, setFeed] = useState<LiveFeedView | null>(null);

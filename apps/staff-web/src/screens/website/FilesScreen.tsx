@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import type { ListFilesResult, SiteFileView } from "./types";
 
 interface UploadState {
@@ -20,6 +21,7 @@ const INITIAL_UPLOAD: UploadState = { busy: false, error: null, replacePrompt: n
  */
 export function FilesScreen(): React.JSX.Element {
   const session = useSession();
+  useDocumentTitle("Files");
   const canEdit = session.has("NRMS.SiteEditor");
   const [result, setResult] = useState<ListFilesResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
