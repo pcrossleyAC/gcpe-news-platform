@@ -24,7 +24,7 @@ import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../publi
 import { noStoreByDefault, noStoreOnRedirect } from "./cache-control";
 import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
-import { installErrorCapture } from "./errors";
+import { installErrorCapture, type ErrorEntry } from "./errors";
 import { envFor, FAKE_FLICKR, FAKE_FLICKR_PATH, resolveSelfUrls, type AppPrefix, stackEnvSchema, usesFakeFlickr } from "./env";
 import { createTickRunner, tickRouter, type TickStep } from "./tick";
 
@@ -45,6 +45,10 @@ export interface StackHandle {
 const SITE_MAX_AGE_MS = 60_000;
 /** Uploaded release files under /files (same one-minute public lifetime). */
 const FILES_MAX_AGE_MS = 60_000;
+
+/** /stack/errors's persisted ring: how many of the most recent console.error calls are kept,
+ * in memory and in the DATA_DIR-backed file that survives a restart. */
+const ERROR_LOG_RING_LIMIT = 1000;
 
 /** The origin of the public site's URL — where the stack serves /files — or "" if it isn't a URL. */
 export function publicFilesBase(siteUrl: string | undefined): string {
@@ -179,10 +183,22 @@ function healthRouter(startedAt: string): Router {
   return r;
 }
 
-function errorsRouter(auth: Parameters<typeof requireBearer>[0], entries: () => { timestamp: string; message: string }[]): Router {
+/** `/stack/errors`'s own response-size knob: how many of the persisted ring's entries a single
+ * GET returns. Independent of the ring's own cap (ERROR_LOG_RING_LIMIT below) — a caller can
+ * ask for fewer than what's kept, up to everything that's kept. */
+const ERROR_LOG_DEFAULT_RESPONSE_LIMIT = 200;
+const ERROR_LOG_MAX_RESPONSE_LIMIT = 1000;
+
+function errorsRouter(auth: Parameters<typeof requireBearer>[0], entries: () => ErrorEntry[]): Router {
   const r = Router();
-  r.get("/errors", requireBearer(auth), requireRole("Core.Admin"), (_req, res) => {
-    res.json({ errors: entries() });
+  r.get("/errors", requireBearer(auth), requireRole("Core.Admin"), (req, res) => {
+    const all = entries();
+    const requested = Number(req.query.limit);
+    const limit =
+      Number.isFinite(requested) && requested > 0
+        ? Math.min(Math.trunc(requested), ERROR_LOG_MAX_RESPONSE_LIMIT)
+        : ERROR_LOG_DEFAULT_RESPONSE_LIMIT;
+    res.json({ errors: all.slice(Math.max(0, all.length - limit)) });
   });
   return r;
 }
@@ -242,7 +258,15 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
 
   console.log(`[stack] cold start complete in ${Date.now() - startedAt}ms (tenant ${tenant.tenantId}, ${tenant.timeZone})`);
 
-  const errorCapture = installErrorCapture();
+  // 2026-10-04 SiteGround debugging: held only in process memory until now, this log was wiped
+  // by every idle-kill restart (docs/deploy/siteground.md "Troubleshooting") — it was nearly
+  // always empty by the time anyone checked it. Persisted under DATA_DIR (the same folder that
+  // already survives a restart and a redeploy; see data-dir.ts) so it doesn't lose history.
+  const errorCapture = installErrorCapture({
+    limit: ERROR_LOG_RING_LIMIT,
+    filePath: join(dataDir, "logs", "errors.jsonl"),
+    startedAt: new Date(startedAt).toISOString(),
+  });
 
   const app = express();
   app.disable("x-powered-by");

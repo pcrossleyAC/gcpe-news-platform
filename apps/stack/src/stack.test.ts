@@ -616,12 +616,39 @@ describe("apps/stack", () => {
       expect((await fetch(`${instance.stackUrl}/stack/errors`)).status).toBe(401);
     });
 
-    it("200s with a Core.Admin bearer and returns captured console.error entries", async () => {
+    it("200s with a Core.Admin bearer and returns captured console.error entries, each carrying this process's pid and startedAt", async () => {
       console.error("stack.test.ts probe error for /stack/errors");
+      const health = (await (await fetch(`${instance.stackUrl}/stack/health`)).json()) as { startedAt: string; pid: number };
       const res = await fetch(`${instance.stackUrl}/stack/errors`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { errors: { timestamp: string; message: string }[] };
-      expect(body.errors.some((e) => e.message.includes("stack.test.ts probe error"))).toBe(true);
+      const body = (await res.json()) as { errors: { timestamp: string; message: string; pid: number; startedAt: string }[] };
+      const probe = body.errors.find((e) => e.message.includes("stack.test.ts probe error"));
+      expect(probe).toBeDefined();
+      expect(probe!.pid).toBe(health.pid);
+      expect(probe!.startedAt).toBe(health.startedAt);
+    });
+
+    // 2026-10-04 SiteGround debugging: this log used to live only in process memory, so every
+    // idle-kill restart wiped it (docs/deploy/siteground.md "Troubleshooting") — it was nearly
+    // always empty by the time anyone checked. It's now persisted under DATA_DIR/logs, which
+    // already survives a restart (see data-dir.ts); confirm the file itself holds the entry.
+    it("persists captured entries to <DATA_DIR>/logs/errors.jsonl", async () => {
+      console.error("stack.test.ts probe error for persistence check");
+      const raw = await readFile(join(instance.dataDir, "logs", "errors.jsonl"), "utf8");
+      expect(raw.includes("stack.test.ts probe error for persistence check")).toBe(true);
+    });
+
+    it("honours ?limit=, capped at 1000, defaulting to 200", async () => {
+      for (let i = 0; i < 5; i++) console.error(`stack.test.ts limit-probe ${i}`);
+      const res = await fetch(`${instance.stackUrl}/stack/errors?limit=2`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { errors: { message: string }[] };
+      expect(body.errors).toHaveLength(2);
+      expect(body.errors[1]!.message).toBe("stack.test.ts limit-probe 4");
+
+      const resOverCap = await fetch(`${instance.stackUrl}/stack/errors?limit=5000`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+      const bodyOverCap = (await resOverCap.json()) as { errors: unknown[] };
+      expect(bodyOverCap.errors.length).toBeLessThanOrEqual(1000);
     });
 
     // Important fix 2, P2-R30: a valid bearer that just doesn't carry Core.Admin must be 403

@@ -428,11 +428,15 @@ never leaves the banner showing or the pin up.
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
-  from the smoke test's step 2): returns every `console.error` call captured in-process since
-  the last cold start. This is the *only* way to see runtime errors — SiteGround's runtime
-  environment is separate from the SSH user, so **runtime logs are not reachable over SSH**.
-  An idle-killed-then-restarted process starts this log empty again; check it soon after
-  reproducing a problem.
+  from the smoke test's step 2; optional `?limit=` query param, default 200, max 1000): returns
+  captured `console.error` calls, newest last. This is the *only* way to see runtime errors —
+  SiteGround's runtime environment is separate from the SSH user, so **runtime logs are not
+  reachable over SSH**. The log is persisted to `<DATA_DIR>/logs/errors.jsonl` (the same
+  DATA_DIR folder that already survives a redeploy), as a ring of the most recent 1000 entries,
+  so it **survives the idle-kill-then-cold-start restart** that used to wipe it — before this,
+  the log was held only in process memory and was nearly always empty by the time anyone
+  checked it. Each entry also carries the `pid` and `startedAt` of the process that logged it,
+  so entries from before and after a restart can be told apart in one combined list.
 - **Build log** (the deploy pipeline itself, not the running app): over SSH,
   `.nodeapp/<build>/build_script.sh` is the script SiteGround generates and runs for a given
   build (verified by probe — see siteground-facts.md); `<build>` is a per-build identifier
