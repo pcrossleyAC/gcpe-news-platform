@@ -16,9 +16,14 @@
 # on every public page until it's turned off again -- never run this against a real production
 # deployment. The script refuses to run at all unless `BASE/site/` already carries
 # `<meta name="robots" content="noindex, nofollow">` (constraints.md's test-site rule), checked
-# before anything else is touched. Its cleanup trap turns Project Blue Bridge back OFF and
-# unpins the primary emergency slide on the way out -- on success *and* on failure -- so a
-# half-finished run never leaves the banner showing or the pin up.
+# before anything else is touched. Its cleanup trap -- on success *and* on failure, so a
+# half-finished run never leaves residue behind -- turns Project Blue Bridge back OFF, unpins
+# the primary emergency slide, restores the Live Feed to whatever it was before this run (its
+# prior on/off + URLs, re-read before this run changes them), and removes the two resource links
+# this run added (restoring the prior list, by id). The one thing it deliberately does NOT undo
+# is the live carousel: the next carousel this run creates is expected to actually switch over
+# and replace whatever was live before -- harmless residue on a test site, but left in place
+# (there's no "prior carousel" to restore it to; a switch-over isn't reversible).
 #
 # Signs in as the break-glass admin using exactly the pattern (and the same secrecy rules) as
 # scripts/siteground-flickr-walkthrough.sh: the password is read with getpass, never put on a
@@ -44,8 +49,11 @@ echo "PASS: $BASE/site/ is a test site (noindex present)"
 umask 077
 JAR=""
 PDF_FILE=""
+UPLOAD_BODY=""
 BB_ON=0
 PIN_ON=0
+LIVE_FEED_TOUCHED=0
+LINKS_TOUCHED=0
 
 hidden() { python3 -c 'import getpass,sys; print(getpass.getpass(sys.argv[1]))' "$1"; }
 curl_api() { curl -sS -b "$JAR" -c "$JAR" -H 'x-gcpe-request: 1' -H 'content-type: application/json' "$@"; }
@@ -53,10 +61,18 @@ curl_bin() { curl -sS -b "$JAR" -c "$JAR" -H 'x-gcpe-request: 1' "$@"; }
 login_body() { python3 -c 'import json,sys; print(json.dumps({"username":sys.argv[1],"password":sys.stdin.readline().rstrip("\n")}))' "$1"; }
 jfield() { python3 -c 'import json,sys; v=json.load(sys.stdin).get(sys.argv[1]); print(v if v is not None else "")' "$1"; }
 
-# Cleanup: turns Project Blue Bridge back off and unpins the primary emergency slide, re-reading
-# each one's current version rather than trusting a value captured earlier in the run (a failed
-# step may have left it stale). Every lookup/call here is best-effort -- a failure is a loud
-# warning, never a second crash on the way out -- and the original exit status is preserved.
+# Cleanup: turns Project Blue Bridge back off, unpins the primary emergency slide, restores the
+# Live Feed and the resource links to what they were before this run, re-reading each one's
+# current version rather than trusting a value captured earlier in the run (a failed step may
+# have left it stale). I3 fix: every mutating call here captures its HTTP status with
+# `-w '%{http_code}'` and checks for 2xx explicitly -- a bare `curl ... || echo WARNING` never
+# catches a non-2xx response (409/403/422/...) since curl itself still exits 0 having received
+# one, so the "turn it off by hand" warning would otherwise never print on exactly the responses
+# that matter. (Cleanup turning something off/back that's already off/back is harmless: the
+# service treats it as an ordinary successful write, not an error -- see setBlueBridge/setPinned
+# /saveLiveFeed/saveLinks, which always write and log even when nothing's actually changing.)
+# Every lookup/call here is still best-effort -- a failure is a loud warning, never a second
+# crash on the way out -- and the original exit status is preserved.
 cleanup() {
   local status=$?
   set +e
@@ -66,7 +82,11 @@ cleanup() {
     CUR_V="$(printf '%s' "$CUR" | jfield version 2>/dev/null)"
     if [ -n "$CUR_V" ]; then
       OFF_BODY="$(python3 -c 'import json,sys; print(json.dumps({"version":int(sys.argv[1]),"on":False,"confirmation":"KING CHARLES III","acknowledgeIgrs":True}))' "$CUR_V" 2>/dev/null)"
-      curl_api -o /dev/null -X PUT "$BASE/nrms/api/site/blue-bridge" -d "$OFF_BODY" || echo "cleanup: WARNING -- failed to turn Project Blue Bridge off; turn it off by hand."
+      OFF_STATUS="$(curl_api -o /dev/null -w '%{http_code}' -X PUT "$BASE/nrms/api/site/blue-bridge" -d "$OFF_BODY" 2>/dev/null)"
+      case "$OFF_STATUS" in
+        2??) : ;;
+        *) echo "cleanup: WARNING -- failed to turn Project Blue Bridge off (HTTP $OFF_STATUS); turn it off by hand." ;;
+      esac
     else
       echo "cleanup: WARNING -- couldn't read Project Blue Bridge's current version; turn it off by hand."
     fi
@@ -82,13 +102,50 @@ except Exception:
     print("")' 2>/dev/null)"
     if [ -n "$PV" ]; then
       UNPIN_BODY="$(python3 -c 'import json,sys; print(json.dumps({"version":int(sys.argv[1]),"pinned":False}))' "$PV" 2>/dev/null)"
-      curl_api -o /dev/null -X POST "$BASE/nrms/api/site/pins/primary/pinned" -d "$UNPIN_BODY" || echo "cleanup: WARNING -- failed to unpin the primary emergency slide; unpin it by hand."
+      UNPIN_STATUS="$(curl_api -o /dev/null -w '%{http_code}' -X POST "$BASE/nrms/api/site/pins/primary/pinned" -d "$UNPIN_BODY" 2>/dev/null)"
+      case "$UNPIN_STATUS" in
+        2??) : ;;
+        *) echo "cleanup: WARNING -- failed to unpin the primary emergency slide (HTTP $UNPIN_STATUS); unpin it by hand." ;;
+      esac
     else
       echo "cleanup: WARNING -- couldn't read the primary pin's current version; unpin it by hand."
     fi
   fi
+  if [ "${LIVE_FEED_TOUCHED:-0}" = "1" ]; then
+    echo "cleanup: restoring the Live Feed to its prior state..."
+    CUR_LF="$(curl_api "$BASE/nrms/api/site/live-feed" 2>/dev/null)"
+    CUR_LF_V="$(printf '%s' "$CUR_LF" | jfield version 2>/dev/null)"
+    if [ -n "$CUR_LF_V" ]; then
+      RESTORE_LF_BODY="$(python3 -c 'import json,sys; print(json.dumps({"version":int(sys.argv[1]),"enabled":sys.argv[2]=="True","manifestUrl":sys.argv[3],"m3uUrl":sys.argv[4]}))' \
+        "$CUR_LF_V" "${PRIOR_LIVE_FEED_ENABLED:-False}" "${PRIOR_LIVE_FEED_MANIFEST:-}" "${PRIOR_LIVE_FEED_M3U:-}" 2>/dev/null)"
+      LF_STATUS="$(curl_api -o /dev/null -w '%{http_code}' -X PUT "$BASE/nrms/api/site/live-feed" -d "$RESTORE_LF_BODY" 2>/dev/null)"
+      case "$LF_STATUS" in
+        2??) : ;;
+        *) echo "cleanup: WARNING -- failed to restore the Live Feed (HTTP $LF_STATUS); restore it by hand." ;;
+      esac
+    else
+      echo "cleanup: WARNING -- couldn't read the Live Feed's current version; restore it by hand."
+    fi
+  fi
+  if [ "${LINKS_TOUCHED:-0}" = "1" ]; then
+    echo "cleanup: removing the two resource links added by this run..."
+    CUR_LINKS="$(curl_api "$BASE/nrms/api/site/links" 2>/dev/null)"
+    CUR_LINKS_V="$(printf '%s' "$CUR_LINKS" | jfield version 2>/dev/null)"
+    if [ -n "$CUR_LINKS_V" ]; then
+      RESTORE_LINKS_BODY="$(printf '%s' "${PRIOR_LINKS_JSON:-[]}" | python3 -c 'import json,sys; links=json.load(sys.stdin); print(json.dumps({"version":int(sys.argv[1]),"links":links}))' "$CUR_LINKS_V" 2>/dev/null)"
+      LINKS_STATUS="$(curl_api -o /dev/null -w '%{http_code}' -X PUT "$BASE/nrms/api/site/links" -d "$RESTORE_LINKS_BODY" 2>/dev/null)"
+      case "$LINKS_STATUS" in
+        2??) : ;;
+        *) echo "cleanup: WARNING -- failed to remove the links added by this run (HTTP $LINKS_STATUS); remove them by hand." ;;
+      esac
+    else
+      echo "cleanup: WARNING -- couldn't read the resource links' current version; remove the two added links by hand."
+    fi
+  fi
+  # Best-effort and genuinely inconsequential either way -- not worth a WARNING on failure.
   curl_api -o /dev/null -X POST "$BASE/core/auth/logout" >/dev/null 2>&1 || true
   [ -n "$PDF_FILE" ] && rm -f "$PDF_FILE"
+  [ -n "$UPLOAD_BODY" ] && rm -f "$UPLOAD_BODY"
   [ -n "$JAR" ] && rm -f "$JAR"
   exit "$status"
 }
@@ -133,14 +190,23 @@ echo "PASS: saved the primary emergency slide"
 
 echo "pinning it..."
 PINNED_BODY="$(python3 -c 'import json,sys; print(json.dumps({"version":int(sys.argv[1]),"pinned":True}))' "$PIN_VERSION")"
-curl_api -f -o /dev/null -X POST "$BASE/nrms/api/site/pins/primary/pinned" -d "$PINNED_BODY"
+# I3: set before sending the request -- a timeout after the server actually committed the pin
+# must still trigger cleanup's unpin; cleanup unpinning something that was never pinned is a
+# harmless no-op (saveLiveFeed/setPinned-style writes always succeed and log either way).
 PIN_ON=1
+curl_api -f -o /dev/null -X POST "$BASE/nrms/api/site/pins/primary/pinned" -d "$PINNED_BODY"
 echo "PASS: pinned the primary emergency slide"
 
 echo "turning the Live Feed on with test URLs..."
 LIVE_FEED_RES="$(curl_api "$BASE/nrms/api/site/live-feed")"
 LIVE_FEED_VERSION="$(printf '%s' "$LIVE_FEED_RES" | jfield version)"
 [ -n "$LIVE_FEED_VERSION" ] || { echo "FAILED: couldn't read the Live Feed's version: $LIVE_FEED_RES"; exit 1; }
+# Minor 7: captured before changing anything, so cleanup can restore exactly this (not just
+# turn it off) -- a site that already had its own Live Feed configured must get it back.
+PRIOR_LIVE_FEED_ENABLED="$(printf '%s' "$LIVE_FEED_RES" | jfield enabled)"
+PRIOR_LIVE_FEED_MANIFEST="$(printf '%s' "$LIVE_FEED_RES" | jfield manifestUrl)"
+PRIOR_LIVE_FEED_M3U="$(printf '%s' "$LIVE_FEED_RES" | jfield m3uUrl)"
+LIVE_FEED_TOUCHED=1
 LIVE_FEED_BODY="$(python3 -c 'import json,sys; print(json.dumps({"version":int(sys.argv[1]),"enabled":True,"manifestUrl":sys.argv[2],"m3uUrl":sys.argv[3]}))' "$LIVE_FEED_VERSION" "$MANIFEST_URL" "$M3U_URL")"
 SAVE_LIVE_FEED_RES="$(curl_api -f -X PUT "$BASE/nrms/api/site/live-feed" -d "$LIVE_FEED_BODY")"
 [ "$(printf '%s' "$SAVE_LIVE_FEED_RES" | jfield enabled)" = "True" ] || { echo "FAILED: turning the Live Feed on failed: $SAVE_LIVE_FEED_RES"; exit 1; }
@@ -150,6 +216,10 @@ echo "saving two resource links..."
 LINKS_RES="$(curl_api "$BASE/nrms/api/site/links")"
 LINKS_VERSION="$(printf '%s' "$LINKS_RES" | jfield version)"
 [ -n "$LINKS_VERSION" ] || { echo "FAILED: couldn't read the resource links' version: $LINKS_RES"; exit 1; }
+# Minor 7: the prior list (by id), captured before this run appends to it, so cleanup can
+# restore exactly it -- removing only the two links this run added, not anyone else's.
+PRIOR_LINKS_JSON="$(printf '%s' "$LINKS_RES" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(json.dumps([{"id":l["id"],"text":l["text"],"url":l["url"]} for l in d["links"]]))')"
+LINKS_TOUCHED=1
 NEW_LINKS_BODY="$(printf '%s' "$LINKS_RES" | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
@@ -165,9 +235,22 @@ echo "PASS: saved two resource links, keeping whatever was already there"
 echo "uploading a small generated PDF as a general file..."
 PDF_FILE="$(mktemp)"
 python3 -c "import sys; open(sys.argv[1], 'wb').write(b'%PDF-1.4\n%%EOF\n')" "$PDF_FILE"
-UPLOAD_RES="$(curl_bin -f -X POST "$BASE/nrms/api/site/files?name=website-walkthrough.pdf&replace=true" -H 'content-type: application/pdf' --data-binary "@$PDF_FILE")"
-FILE_NAME="$(printf '%s' "$UPLOAD_RES" | jfield name)"
-[ -n "$FILE_NAME" ] || { echo "FAILED: uploading the test PDF failed: $UPLOAD_RES"; exit 1; }
+# I2: a fresh site has no file named this yet, so replace=true (uploadFile's "replace" branch,
+# which requires an existing row) would 404 on the very first run. Upload with replace=false
+# first; only on a 409 (a file with that name already exists, from a previous run) retry with
+# replace=true. Any other non-2xx is a real failure.
+UPLOAD_BODY="$(mktemp)"
+UPLOAD_STATUS="$(curl_bin -o "$UPLOAD_BODY" -w '%{http_code}' -X POST "$BASE/nrms/api/site/files?name=website-walkthrough.pdf&replace=false" -H 'content-type: application/pdf' --data-binary "@$PDF_FILE")"
+if [ "$UPLOAD_STATUS" = "409" ]; then
+  echo "a file named website-walkthrough.pdf already exists (from a previous run) -- replacing it..."
+  UPLOAD_STATUS="$(curl_bin -o "$UPLOAD_BODY" -w '%{http_code}' -X POST "$BASE/nrms/api/site/files?name=website-walkthrough.pdf&replace=true" -H 'content-type: application/pdf' --data-binary "@$PDF_FILE")"
+fi
+case "$UPLOAD_STATUS" in
+  2??) : ;;
+  *) echo "FAILED: uploading the test PDF failed (HTTP $UPLOAD_STATUS): $(cat "$UPLOAD_BODY")"; exit 1 ;;
+esac
+FILE_NAME="$(jfield name < "$UPLOAD_BODY")"
+[ -n "$FILE_NAME" ] || { echo "FAILED: uploading the test PDF failed: $(cat "$UPLOAD_BODY")"; exit 1; }
 echo "PASS: uploaded $FILE_NAME"
 
 echo "turning Project Blue Bridge ON..."
@@ -175,9 +258,12 @@ BB_RES="$(curl_api "$BASE/nrms/api/site/blue-bridge")"
 BB_VERSION="$(printf '%s' "$BB_RES" | jfield version)"
 [ -n "$BB_VERSION" ] || { echo "FAILED: couldn't read Project Blue Bridge's version: $BB_RES"; exit 1; }
 BB_ON_BODY="$(python3 -c 'import json,sys; print(json.dumps({"version":int(sys.argv[1]),"on":True,"confirmation":"KING CHARLES III","acknowledgeIgrs":True}))' "$BB_VERSION")"
+# I3: set before sending the request -- a timeout after the server actually committed the
+# change must still trigger cleanup's "turn it off"; cleanup turning off something that was
+# never turned on is a harmless no-op (setBlueBridge always writes and logs either way).
+BB_ON=1
 BB_ON_RES="$(curl_api -f -X PUT "$BASE/nrms/api/site/blue-bridge" -d "$BB_ON_BODY")"
 [ "$(printf '%s' "$BB_ON_RES" | jfield on)" = "True" ] || { echo "FAILED: turning Project Blue Bridge on failed: $BB_ON_RES"; exit 1; }
-BB_ON=1
 echo "PASS: turned Project Blue Bridge ON"
 
 POLL_INTERVAL="${POLL_INTERVAL:-60}"
@@ -190,17 +276,19 @@ ready=0
 for i in $(seq 1 "$MAX_POLLS"); do
   HOME_JSON="$(curl -sS "$BASE/api/Home?api-version=1.0")"
   SLIDES_JSON="$(curl -sS "$BASE/api/Slides?api-version=1.0")"
-  STATE="$(python3 -c '
+  # Minor 7: /api/Slides can carry inlined base64 images (I4) -- piped to python via stdin,
+  # never as a command-line argument (ARG_MAX, and visible in a process listing).
+  STATE="$(printf '%s' "$SLIDES_JSON" | python3 -c '
 import json, sys
 home = json.loads(sys.argv[1])
-slides = json.loads(sys.argv[2])
-slide_headline, pin_headline, manifest_url, m3u_url = sys.argv[3:7]
+slides = json.load(sys.stdin)
+slide_headline, pin_headline, manifest_url, m3u_url = sys.argv[2:6]
 switched = any(s.get("headline") == slide_headline for s in slides)
 pinned = len(slides) > 0 and slides[0].get("headline") == pin_headline
 urls = home.get("liveWebcastFlashMediaManifestUrl") == manifest_url and home.get("liveWebcastM3uPlaylist") == m3u_url
 granville = home.get("granville") == "true"
 print(int(switched), int(pinned), int(urls), int(granville))
-' "$HOME_JSON" "$SLIDES_JSON" "$SLIDE_HEADLINE" "$PIN_HEADLINE" "$MANIFEST_URL" "$M3U_URL")"
+' "$HOME_JSON" "$SLIDE_HEADLINE" "$PIN_HEADLINE" "$MANIFEST_URL" "$M3U_URL")"
   read -r SWITCHED PINNED URLS GRANVILLE <<< "$STATE"
   echo "[poll $i/$MAX_POLLS] switched=$SWITCHED pin-first=$PINNED urls=$URLS granville=$GRANVILLE"
   if [ "$SWITCHED" = "1" ] && [ "$PINNED" = "1" ] && [ "$URLS" = "1" ] && [ "$GRANVILLE" = "1" ]; then
@@ -233,4 +321,4 @@ esac
 echo "PASS: fetched $BASE/files/$FILE_NAME"
 
 echo "Public site: $BASE/site/"
-echo "PASS: website walkthrough complete -- Project Blue Bridge and the pin will be turned off/unpinned on exit."
+echo "PASS: website walkthrough complete -- Project Blue Bridge, the pin, the Live Feed and the resource links will be restored on exit. The carousel switch-over is left in place."

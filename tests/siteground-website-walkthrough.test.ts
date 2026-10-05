@@ -60,15 +60,92 @@ describe("scripts/siteground-website-walkthrough.sh", () => {
     expect(s).toMatch(/PDF_FILE="\$\(mktemp\)"/);
   });
 
-  it("every mutating control call (POST/PUT) uses curl -f or explicitly checks its result", () => {
+  it("every mutating control call (POST/PUT) uses curl -f or explicitly checks its result (not a bare `|| true`)", () => {
     const s = readFileSync(SCRIPT, "utf8");
     const lines = s.split("\n");
-    const mutating = lines.filter((l) => /curl_(api|bin)\b.*-X (POST|PUT)/.test(l));
+    // The logout call is deliberately exempt: it's genuinely best-effort (failing to log out
+    // isn't worth a WARNING), which is exactly what its own `|| true` says.
+    const mutating = lines.filter((l) => /curl_(api|bin)\b.*-X (POST|PUT)/.test(l) && !l.includes("auth/logout"));
     expect(mutating.length).toBeGreaterThanOrEqual(10);
     for (const l of mutating) {
       const hasDashF = /(^|\s)-f(\s|$)/.test(l);
-      const checksStatus = l.includes("-w '%{http_code}'") || l.includes("||");
+      // I3: `|| true` unconditionally swallows a failure without even a warning — it must not
+      // count as "checking status". A real check is either `-w '%{http_code}'` (read elsewhere
+      // in the script and compared) or a `||` fallback that actually does something (e.g. an
+      // `echo "...WARNING..."`).
+      const checksStatus = l.includes("-w '%{http_code}'") || (/\|\|/.test(l) && !/\|\|\s*true\b/.test(l));
       expect(hasDashF || checksStatus).toBe(true);
+    }
+  });
+
+  // I3: cleanup's PUT/POST calls must capture and branch on the real HTTP status — a bare
+  // `curl ... || echo WARNING` never fires on a non-2xx response (curl itself still exits 0
+  // having received one), so the warning would silently never print on exactly the responses
+  // (409/403/422) that matter.
+  it("cleanup's Blue Bridge/pin/Live Feed/links calls check the real HTTP status, not just curl's own exit code", () => {
+    const s = readFileSync(SCRIPT, "utf8");
+    const cleanupFn = s.slice(s.indexOf("cleanup() {"), s.indexOf("trap cleanup EXIT"));
+    const statusChecks = cleanupFn.match(/-w '%\{http_code\}'/g) ?? [];
+    expect(statusChecks.length).toBeGreaterThanOrEqual(4); // Blue Bridge, pin, Live Feed, links
+    expect(cleanupFn).toMatch(/case "\$OFF_STATUS" in/);
+    expect(cleanupFn).toMatch(/case "\$UNPIN_STATUS" in/);
+    expect(cleanupFn).toMatch(/case "\$LF_STATUS" in/);
+    expect(cleanupFn).toMatch(/case "\$LINKS_STATUS" in/);
+  });
+
+  // I3: BB_ON/PIN_ON must be set to 1 *before* the request that turns the thing on is sent —
+  // not after confirming it succeeded — so a client-side timeout that happened after the
+  // server actually committed the change still triggers cleanup.
+  it("sets BB_ON=1 and PIN_ON=1 before sending the request that turns each one on", () => {
+    const s = readFileSync(SCRIPT, "utf8");
+    const lines = s.split("\n");
+    const bbOnAssign = lines.findIndex((l) => /^BB_ON=1$/.test(l.trim()));
+    const bbPut = lines.findIndex((l) => l.includes('curl_api -f -X PUT "$BASE/nrms/api/site/blue-bridge" -d "$BB_ON_BODY"'));
+    const pinOnAssign = lines.findIndex((l) => /^PIN_ON=1$/.test(l.trim()));
+    const pinPost = lines.findIndex((l) => l.includes('-X POST "$BASE/nrms/api/site/pins/primary/pinned" -d "$PINNED_BODY"'));
+    expect(bbOnAssign).toBeGreaterThanOrEqual(0);
+    expect(bbOnAssign).toBeLessThan(bbPut);
+    expect(pinOnAssign).toBeGreaterThanOrEqual(0);
+    expect(pinOnAssign).toBeLessThan(pinPost);
+  });
+
+  it("uploads the test PDF with replace=false first, retrying with replace=true only on a 409 conflict", () => {
+    const s = readFileSync(SCRIPT, "utf8");
+    const lines = s.split("\n");
+    // Matched against the actual curl invocations (the URL query string), not the explanatory
+    // comment above them, which mentions both words too.
+    const falseLine = lines.findIndex((l) => l.includes("name=website-walkthrough.pdf&replace=false"));
+    const checkLine = lines.findIndex((l) => l.includes('"$UPLOAD_STATUS" = "409"'));
+    const trueLine = lines.findIndex((l) => l.includes("name=website-walkthrough.pdf&replace=true"));
+    const genericCase = lines.findIndex((l) => l.includes('case "$UPLOAD_STATUS" in'));
+    expect(falseLine).toBeGreaterThanOrEqual(0);
+    expect(checkLine).toBeGreaterThan(falseLine);
+    expect(trueLine).toBeGreaterThan(checkLine);
+    expect(genericCase).toBeGreaterThan(trueLine); // any other non-2xx still fails, after the retry
+  });
+
+  // Minor 7: Live Feed and resource links are restored to their prior state on exit; the
+  // carousel switch-over is deliberately left in place (documented, not restored).
+  it("restores the Live Feed and resource links on exit; documents that the carousel switch-over is left in place", () => {
+    const s = readFileSync(SCRIPT, "utf8");
+    expect(s).toMatch(/LIVE_FEED_TOUCHED=1/);
+    expect(s).toMatch(/LINKS_TOUCHED=1/);
+    expect(s).toMatch(/PRIOR_LIVE_FEED_ENABLED/);
+    expect(s).toMatch(/PRIOR_LINKS_JSON/);
+    expect(s).toMatch(/does NOT undo[\s\S]*carousel/);
+  });
+
+  // Minor 7: /api/Slides can carry inlined base64 image data (I4) — must go to python via
+  // stdin, never as a command-line argument.
+  it("pipes the /api/Slides JSON to python via stdin, not as a command-line argument", () => {
+    const s = readFileSync(SCRIPT, "utf8");
+    const lines = s.split("\n");
+    const pollPython = s.slice(s.indexOf("for i in $(seq"), s.indexOf("[ \"$ready\" = \"1\" ]"));
+    expect(pollPython).toMatch(/printf '%s' "\$SLIDES_JSON" \| python3/);
+    expect(pollPython).not.toMatch(/sys\.argv\[1\]\)\s*\n\s*slides = json\.loads\(sys\.argv/);
+    for (const l of lines) {
+      // SLIDES_JSON must never appear as a quoted argv element passed to python3.
+      expect(l).not.toMatch(/python3[^|]*"\$SLIDES_JSON"/);
     }
   });
 
