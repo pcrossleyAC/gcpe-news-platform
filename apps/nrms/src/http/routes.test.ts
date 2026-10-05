@@ -237,6 +237,22 @@ describe("NRMS HTTP API", () => {
     expect(nf.body).toEqual({ error: "not found" });
   });
 
+  // Fix round 1 follow-up: settingsSchema's plannedPublishAtLocal gets the same server-side,
+  // BC-wall-clock conversion treatment as scheduleSchema's publishAtLocal.
+  it("settings: plannedPublishAtLocal converts server-side (incl. a winter date after BC's permanent UTC-7 switch); both fields together is a 400", async () => {
+    const { id } = await create();
+    const planned = await put(`/api/releases/${id}/settings`, editorCookie, {
+      version: 1, activityId: null, plannedPublishAtLocal: "2026-12-15T14:30", toSubscribers: true, toMediaLists: false, mediaListKeys: [],
+    });
+    expect(planned.status).toBe(200);
+    expect(planned.body.publishAt).toBe("2026-12-15T21:30:00.000Z");
+
+    const both = await put(`/api/releases/${id}/settings`, editorCookie, {
+      version: planned.body.version, activityId: null, plannedPublishAt: "2026-12-15T21:30:00Z", plannedPublishAtLocal: "2026-12-15T14:30", toSubscribers: true, toMediaLists: false, mediaListKeys: [],
+    });
+    expect(both.status).toBe(400);
+  });
+
   it("section PUTs: an editor saves (version increments); a viewer gets 403", async () => {
     const { id } = await create();
     const settings = await put(`/api/releases/${id}/settings`, editorCookie, {

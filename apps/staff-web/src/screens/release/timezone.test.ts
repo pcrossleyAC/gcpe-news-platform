@@ -26,9 +26,9 @@ describe("wallClockToInstant (ported from packages/legacy-import/src/timezone.ts
 
   // Fix round 1 (3f Task 3), minor 4: the controller's three pinned DST/offset dates, also
   // pinned in packages/config/src/timezone.test.ts (the canonical server-side implementation)
-  // — this is the one conversion that remains client-side (SettingsSection's plannedPublishAt,
-  // and SchedulePicker's browser-side preview `instant`; the Schedule action itself now sends
-  // `publishAtLocal` and lets the server convert, per finding 3).
+  // — this client-side copy now backs only local comparisons and an optional preview
+  // (SchedulePicker's `instant`); both the Schedule action and Settings' planned date send
+  // the raw local string (`publishAtLocal`/`plannedPublishAtLocal`) and let the server convert.
   it("2026-03-08 02:30 BC local (spring-forward gap) -> 2026-03-08T10:30:00.000Z", () => {
     expect(wallClockToInstant(new Date("2026-03-08T02:30:00.000Z"), TZ).toISOString()).toBe("2026-03-08T10:30:00.000Z");
   });

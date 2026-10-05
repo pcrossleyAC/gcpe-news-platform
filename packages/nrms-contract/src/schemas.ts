@@ -22,6 +22,9 @@ const activityId = z
     z.null(),
   ])
   .default(null);
+/** BC wall-clock local time, no offset — "YYYY-MM-DDTHH:mm" (fix round 1, finding 3; reused by
+ * settingsSchema's plannedPublishAtLocal, fix round 1 follow-up). */
+const localDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "must be a local date/time, YYYY-MM-DDTHH:mm");
 
 export const versionOnlySchema = z.object({ version });
 
@@ -48,15 +51,27 @@ export const createReleaseSchema = z.object({
 });
 export type CreateReleaseInput = z.infer<typeof createReleaseSchema>;
 
-export const settingsSchema = z.object({
-  version,
-  activityId,
-  /** Planned publish time (drafts); committing a time is POST /schedule. */
-  plannedPublishAt: z.string().datetime({ offset: true }).nullable().default(null),
-  toSubscribers: z.boolean(),
-  toMediaLists: z.boolean(),
-  mediaListKeys: keys,
-});
+/**
+ * Planned publish time (drafts); committing a time is POST /schedule. At most one of
+ * `plannedPublishAt` (a real instant, as before) or `plannedPublishAtLocal` (fix round 1
+ * follow-up: BC wall-clock, no offset — the server converts it with its own tzdata, the same
+ * treatment `scheduleSchema`'s `publishAtLocal` got) may be given; both is a 400. Omitting
+ * both clears the planned time (`plannedPublishAt` then defaults to `null`).
+ */
+export const settingsSchema = z
+  .object({
+    version,
+    activityId,
+    plannedPublishAt: z.string().datetime({ offset: true }).nullable().optional(),
+    plannedPublishAtLocal: localDateTime.optional(),
+    toSubscribers: z.boolean(),
+    toMediaLists: z.boolean(),
+    mediaListKeys: keys,
+  })
+  .refine((v) => !(v.plannedPublishAt !== undefined && v.plannedPublishAtLocal !== undefined), {
+    message: "Provide at most one of plannedPublishAt or plannedPublishAtLocal.",
+  })
+  .transform((v) => ({ ...v, plannedPublishAt: v.plannedPublishAt ?? null }));
 export type SettingsInput = z.infer<typeof settingsSchema>;
 
 export const categoriesSchema = z.object({ version, leadMinistryKey: key.nullable(), ministries: keys, sectors: keys, themes: keys, tags: keys });
@@ -98,8 +113,6 @@ export type DocumentLanguageInput = z.infer<typeof documentLanguageSchema>;
 export const addDocumentSchema = z.object({ version, pageTitle: z.string().trim().min(1).max(50), layout: z.enum(LAYOUTS) });
 export const addTranslationSchema = z.object({ version, languageId });
 export const reorderDocumentsSchema = z.object({ version, documentIds: z.array(z.string().uuid()).min(1).max(50) });
-/** BC wall-clock local time, no offset — "YYYY-MM-DDTHH:mm" (fix round 1, finding 3). */
-const localDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "must be a local date/time, YYYY-MM-DDTHH:mm");
 
 /**
  * Exactly one of `publishAt` ("now", or an already-resolved instant with an explicit offset —

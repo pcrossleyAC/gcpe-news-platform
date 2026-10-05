@@ -1,6 +1,7 @@
 import { and, asc, eq, inArray, max, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
+import { wallClockToInstant } from "@gcpe/config";
 import {
   assetUrlProblem, LANG_EN, LANG_FR, TYPE_LABEL, typeRules,
   type AddDocumentInput, type AddTranslationInput, type AssetInput, type CategoriesInput, type CreateReleaseInput, type DocumentLanguageInput,
@@ -21,6 +22,7 @@ import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError } from "./err
 import { uniqueKey } from "./keys";
 import { loadView, mutateRelease, writeLog, type Actor } from "./store";
 import { clearFeaturesFor } from "../website/features";
+import { parseLocalDateTime, type WorkflowDeps } from "./workflow";
 
 const EDITABLE_KEY_STATUSES = new Set(["draft", "approved"]);
 const PLANNING_STATUSES = new Set(["draft", "approved", "failed"]);
@@ -192,7 +194,7 @@ export async function createRelease(db: Db, input: CreateReleaseInput, actor: Ac
   );
 }
 
-export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Actor): Promise<ReleaseView> {
+export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Actor, deps: Pick<WorkflowDeps, "timeZone">): Promise<ReleaseView> {
   return mutateRelease(db, id, input.version, actor, async (tx, row) => {
     const rules = typeRules(row.type);
     assertTypeAllows(row.type, { mediaListKeys: input.mediaListKeys });
@@ -213,7 +215,14 @@ export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Ac
     else if (input.toSubscribers) throw new ReleaseRuleError([`A ${TYPE_LABEL[row.type]} can't be sent to News On Demand subscribers.`]);
     else toSubscribers = false;
 
-    const planned = input.plannedPublishAt ? new Date(input.plannedPublishAt) : null;
+    // Fix round 1 follow-up: plannedPublishAtLocal (BC wall-clock, no offset) is converted
+    // here with the *server's* tzdata, never the browser's, which may be stale — same
+    // treatment as scheduleSchema's publishAtLocal in ./workflow.ts's schedule().
+    const planned = input.plannedPublishAtLocal
+      ? wallClockToInstant(parseLocalDateTime(input.plannedPublishAtLocal), deps.timeZone)
+      : input.plannedPublishAt
+        ? new Date(input.plannedPublishAt)
+        : null;
     let publishAt = row.publishAt;
     // A live release (e.g. a failed correction) keeps its time; schedule/cancel change committed times.
     if (PLANNING_STATUSES.has(row.status) && !row.live) publishAt = planned;

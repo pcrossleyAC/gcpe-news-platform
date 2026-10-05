@@ -24,6 +24,22 @@ describe("schemas", () => {
     expect(settingsSchema.parse({ version: 1, activityId: "4521", toSubscribers: true, toMediaLists: false, mediaListKeys: [] }).activityId).toBe(4521);
     expect(categoriesSchema.parse({ version: 1, leadMinistryKey: "Health", ministries: ["Health", "health"], sectors: [], themes: [], tags: [] })).toMatchObject({ leadMinistryKey: "health", ministries: ["health"] });
   });
+  // Fix round 1 follow-up: plannedPublishAtLocal (BC wall-clock, no offset) as an alternative
+  // to plannedPublishAt — the same exactly-one-or-neither treatment scheduleSchema got, except
+  // here neither is also valid (it clears the planned time).
+  it("settings: plannedPublishAtLocal is an alternative to plannedPublishAt; omitting both clears it; both together is invalid", () => {
+    expect(settingsSchema.parse({ version: 1, toSubscribers: false, toMediaLists: false, mediaListKeys: [] }).plannedPublishAt).toBeNull();
+    expect(settingsSchema.parse({ version: 1, plannedPublishAt: null, toSubscribers: false, toMediaLists: false, mediaListKeys: [] }).plannedPublishAt).toBeNull();
+    expect(settingsSchema.parse({ version: 1, plannedPublishAt: "2026-06-15T21:30:00Z", toSubscribers: false, toMediaLists: false, mediaListKeys: [] }).plannedPublishAt).toBe("2026-06-15T21:30:00Z");
+    const local = settingsSchema.parse({ version: 1, plannedPublishAtLocal: "2026-12-15T14:30", toSubscribers: false, toMediaLists: false, mediaListKeys: [] });
+    expect(local.plannedPublishAtLocal).toBe("2026-12-15T14:30");
+    expect(local.plannedPublishAt).toBeNull(); // untouched/defaulted — the service layer reads plannedPublishAtLocal first
+    expect(
+      settingsSchema.safeParse({ version: 1, plannedPublishAt: "2026-06-15T21:30:00Z", plannedPublishAtLocal: "2026-12-15T14:30", toSubscribers: false, toMediaLists: false, mediaListKeys: [] })
+        .success,
+    ).toBe(false);
+    expect(settingsSchema.safeParse({ version: 1, plannedPublishAtLocal: "not-a-datetime", toSubscribers: false, toMediaLists: false, mediaListKeys: [] }).success).toBe(false);
+  });
   it("schedule takes 'now' or an offset datetime; list query has defaults", () => {
     expect(scheduleSchema.parse({ version: 3, publishAt: "now" }).publishAt).toBe("now");
     expect(scheduleSchema.safeParse({ version: 3, publishAt: "2026-10-04T09:00:00" }).success).toBe(false);

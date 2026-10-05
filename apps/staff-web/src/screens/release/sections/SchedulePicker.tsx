@@ -4,12 +4,14 @@ import { bcLocalToInstant } from "../timezone";
 
 export interface ScheduleValue {
   /** "YYYY-MM-DDTHH:mm" — the BC wall-clock date/time exactly as typed, no conversion. Fix
-   * round 1, finding 3: this is what the Schedule action now sends (`publishAtLocal`) — the
+   * round 1, finding 3 (and its follow-up): this is what both the Schedule action
+   * (`publishAtLocal`) and Settings' planned date (`plannedPublishAtLocal`) now send — the
    * server, whose tzdata is the one that actually matters for the tenant, converts it. */
   local: string;
   /** The same wall-clock time converted to a UTC instant using the *browser's* own tzdata.
-   * No longer sent for scheduling (a stale browser could get it wrong by an hour); kept for
-   * Settings' `plannedPublishAt` (unchanged by this fix round) and as an optional preview. */
+   * Never sent to the server any more (a stale browser could get it wrong by an hour); kept
+   * only for local comparisons (e.g. Settings' own unsaved-changes dirty check) and as a
+   * hook for an optional preview. */
   instant: string;
 }
 

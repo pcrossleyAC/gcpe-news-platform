@@ -1,11 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Button, Form, InlineAlert, NumberField } from "@bcgov/design-system-react-components";
 import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
-import { apiFetch, ApiError } from "../../../api/client";
+import { apiFetch } from "../../../api/client";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import { instantToBcLocal } from "../timezone";
-import { SchedulePicker } from "./SchedulePicker";
+import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
 
 export interface SettingsSectionProps {
   view: ReleaseView;
@@ -22,7 +22,6 @@ interface MediaListOption {
 
 interface FormState {
   activityId: number | null;
-  plannedPublishAt: string | null;
   toSubscribers: boolean;
   toMediaLists: boolean;
   mediaListKeys: string[];
@@ -31,13 +30,19 @@ interface FormState {
 function fromView(view: ReleaseView): FormState {
   return {
     activityId: view.activityId,
-    plannedPublishAt: view.publishAt,
     toSubscribers: view.publishOptions.toSubscribers,
     toMediaLists: view.publishOptions.toMediaLists,
     mediaListKeys: view.mediaListKeys,
   };
 }
 
+/** `view.publishAt` (a real instant) as a {@link ScheduleValue} — `local` is derived via
+ * {@link instantToBcLocal} so the picker can be pre-filled and, if left unchanged, re-saved as
+ * the same `plannedPublishAtLocal` the server would convert right back to this instant. */
+function scheduleValueFromInstant(iso: string, timeZone: string): ScheduleValue {
+  const { date, time } = instantToBcLocal(iso, timeZone);
+  return { local: `${date}T${time}`, instant: iso };
+}
 
 /** Spec's "Publish settings" section (`PUT .../settings`): Calendar activity id, the planned
  * (not yet committed — Schedule/Publish now in {@link ActionsSection} commit it) publish time,
@@ -46,7 +51,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   const section = useReleaseSection(view, setView);
   const rules = typeRules(view.type);
   const [form, setForm] = useState<FormState>(() => fromView(view));
-  const [plannedIso, setPlannedIso] = useState<string | null>(view.publishAt);
+  const [plannedValue, setPlannedValue] = useState<ScheduleValue | null>(view.publishAt ? scheduleValueFromInstant(view.publishAt, timeZone) : null);
   const [lists, setLists] = useState<MediaListOption[]>([]);
 
   useEffect(() => {
@@ -57,10 +62,10 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
 
   const resetFrom = (next: ReleaseView) => {
     setForm(fromView(next));
-    setPlannedIso(next.publishAt);
+    setPlannedValue(next.publishAt ? scheduleValueFromInstant(next.publishAt, timeZone) : null);
   };
 
-  const dirty = !readOnly && JSON.stringify({ ...form, plannedPublishAt: plannedIso }) !== JSON.stringify(fromView(view));
+  const dirty = !readOnly && (JSON.stringify(form) !== JSON.stringify(fromView(view)) || (plannedValue?.instant ?? null) !== view.publishAt);
   useRegisterDirty("settings", dirty);
 
   const toggleMediaList = (key: string) =>
@@ -68,11 +73,14 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
 
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    // Fix round 1 follow-up: sends the raw BC wall-clock string (`plannedPublishAtLocal`), not
+    // a client-converted instant, exactly like ActionsSection's Schedule action — the server
+    // (whose tzdata is authoritative) converts it. `plannedPublishAt: null` clears it.
     void section
       .save("/settings", {
         version: view.version,
         activityId: form.activityId,
-        plannedPublishAt: plannedIso,
+        ...(plannedValue ? { plannedPublishAtLocal: plannedValue.local } : { plannedPublishAt: null }),
         toSubscribers: form.toSubscribers,
         toMediaLists: form.toMediaLists,
         mediaListKeys: form.mediaListKeys,
@@ -112,20 +120,16 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           isDisabled={readOnly}
         />
 
-        {/* Out of 3f Task 3 fix round 1 finding 3's scope: plannedPublishAt (unlike
-         * scheduleSchema's publishAt/publishAtLocal) still takes a client-converted instant —
-         * this is only a *planned*, not-yet-committed time, re-converted by Schedule/Publish
-         * now in ActionsSection when it's actually committed. */}
         <SchedulePicker
           timeZone={timeZone}
           legend="Planned publish date (not yet committed)"
           idPrefix="planned"
           initialDate={initialPlanned?.date}
           initialTime={initialPlanned?.time}
-          onChange={(v) => setPlannedIso(v?.instant ?? null)}
+          onChange={setPlannedValue}
         />
-        {plannedIso && !readOnly && (
-          <button type="button" onClick={() => setPlannedIso(null)}>
+        {plannedValue && !readOnly && (
+          <button type="button" onClick={() => setPlannedValue(null)}>
             Clear planned date
           </button>
         )}

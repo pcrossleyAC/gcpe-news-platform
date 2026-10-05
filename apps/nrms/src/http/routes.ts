@@ -290,7 +290,7 @@ export function apiRoutes(deps: RouteDeps): Router {
   r.get("/page-types", read, run(async (_req, res) => void res.json(await listPageTypes(db))));
   r.get("/page-images", read, run(async (_req, res) => void res.json(await listPageImages(db))));
 
-  r.put("/releases/:id/settings", edit, run(async (req, res) => void res.json(withStatus(await saveSettings(db, req.params.id, settingsSchema.parse(req.body), actorOf(req))))));
+  r.put("/releases/:id/settings", edit, run(async (req, res) => void res.json(withStatus(await saveSettings(db, req.params.id, settingsSchema.parse(req.body), actorOf(req), deps.workflow)))));
   r.put("/releases/:id/categories", edit, run(async (req, res) => void res.json(withStatus(await saveCategories(db, req.params.id, categoriesSchema.parse(req.body), actorOf(req))))));
   r.put("/releases/:id/asset", edit, run(async (req, res) => void res.json(withStatus(await saveAsset(db, req.params.id, assetSchema.parse(req.body), actorOf(req))))));
   r.put("/releases/:id/meta", edit, run(async (req, res) => void res.json(withStatus(await saveMeta(db, req.params.id, metaSchema.parse(req.body), actorOf(req))))));

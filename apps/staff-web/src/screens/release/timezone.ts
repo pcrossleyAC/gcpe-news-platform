@@ -97,9 +97,11 @@ const TIME_RE = /^(\d{2}):(\d{2})$/;
 
 /**
  * Combines a BC-local `YYYY-MM-DD` date and `HH:MM` time (as typed into the schedule picker)
- * into the real UTC instant they represent in `timeZone`, DST-correctly — what
- * `scheduleSchema`'s `publishAt` and `settingsSchema`'s `plannedPublishAt` both expect
- * (an ISO 8601 string with an explicit offset).
+ * into the real UTC instant they represent in `timeZone`, DST-correctly. This instant is no
+ * longer sent to the server for scheduling (fix round 1, finding 3 and its follow-up: the
+ * Schedule action and Settings' planned date both send the raw local string instead, and the
+ * server converts it) — it now backs only local comparisons (e.g. an unsaved-changes dirty
+ * check) and an optional preview.
  */
 export function bcLocalToInstant(date: string, time: string, timeZone: string): string {
   const dateMatch = DATE_RE.exec(date);

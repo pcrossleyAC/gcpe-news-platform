@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
@@ -78,6 +78,43 @@ describe("SettingsSection", () => {
     await waitFor(() => expect(setView).toHaveBeenCalledWith(saved));
     const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
     expect(put?.body).toMatchObject({ version: 1, mediaListKeys: ["list1"] });
+  });
+
+  // Fix round 1 follow-up: the planned publish date now sends the raw BC wall-clock string
+  // (plannedPublishAtLocal), not a client-converted instant — same treatment as
+  // ActionsSection's Schedule action.
+  it("setting a planned date sends plannedPublishAtLocal, not a converted instant", async () => {
+    const saved = releaseView({ version: 2 });
+    const calls = stubFetch({ onPut: () => jsonResponse(200, saved) });
+    const v = releaseView({ type: "release", version: 1, publishAt: null });
+    renderSettings(v);
+    await screen.findByLabelText("Date");
+
+    fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-12-15" } });
+    fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/settings"))).toBe(true));
+    const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
+    expect(put?.body).toMatchObject({ version: 1, plannedPublishAtLocal: "2026-12-15T14:30" });
+    expect(put?.body).not.toHaveProperty("plannedPublishAt");
+  });
+
+  it("with no planned date set, saving sends plannedPublishAt: null (clears it)", async () => {
+    const saved = releaseView({ version: 2 });
+    const calls = stubFetch({ onPut: () => jsonResponse(200, saved) });
+    const v = releaseView({ type: "release", version: 1, publishAt: null });
+    renderSettings(v);
+    await screen.findByLabelText("Date");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/settings"))).toBe(true));
+    const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
+    expect(put?.body).toMatchObject({ version: 1, plannedPublishAt: null });
+    expect(put?.body).not.toHaveProperty("plannedPublishAtLocal");
   });
 
   it("read-only disables every control and hides the Save button", async () => {

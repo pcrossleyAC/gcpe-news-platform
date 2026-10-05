@@ -9,6 +9,8 @@ import {
 } from "./service";
 import { loadView } from "./store";
 
+const deps = { timeZone: "America/Vancouver" };
+
 describe("release editing service", () => {
   let tdb: TestDatabase;
   beforeAll(async () => {
@@ -116,11 +118,33 @@ describe("release editing service", () => {
     await expect(saveAsset(db(), v.id, { version: v.version, assetUrl: "https://www.flickr.com/photos/bcgovphotos/", assetAltText: null, hasMediaAssets: false }, editor)).rejects.toEqual(new ReleaseRuleError(["That Flickr link doesn't point to a photo."]));
     v = await saveAsset(db(), v.id, { version: v.version, assetUrl: "https://www.flickr.com/photos/bcgovphotos/53000000001/", assetAltText: "Photo", hasMediaAssets: true }, editor);
     expect(v.assetUrl).toBe("https://www.flickr.com/photos/bcgovphotos/53000000001/");
-    v = await saveSettings(db(), v.id, { version: v.version, activityId: 4521, plannedPublishAt: "2026-11-02T17:00:00Z", toSubscribers: false, toMediaLists: true, mediaListKeys: [] }, editor);
+    v = await saveSettings(db(), v.id, { version: v.version, activityId: 4521, plannedPublishAt: "2026-11-02T17:00:00Z", toSubscribers: false, toMediaLists: true, mediaListKeys: [] }, editor, deps);
     expect(v).toMatchObject({ activityId: 4521, publishAt: "2026-11-02T17:00:00.000Z", publishOptions: { toSubscribers: false, toMediaLists: false }, mediaListKeys: [] });
     await setStatus(v.id, "published", sql`, released_at = now(), live = true`);
     const live = (await loadView(db(), v.id))!;
-    await expect(saveSettings(db(), v.id, { version: live.version, activityId: null, plannedPublishAt: null, toSubscribers: false, toMediaLists: true, mediaListKeys: ["national"] }, editor)).rejects.toBeInstanceOf(ReleaseStateError);
+    await expect(
+      saveSettings(db(), v.id, { version: live.version, activityId: null, plannedPublishAt: null, toSubscribers: false, toMediaLists: true, mediaListKeys: ["national"] }, editor, deps),
+    ).rejects.toBeInstanceOf(ReleaseStateError);
+  });
+
+  // Fix round 1 follow-up: plannedPublishAtLocal (BC wall-clock, no offset) converts
+  // server-side with the tenant's own tzdata — a winter date after BC's permanent UTC-7 switch
+  // (2026-11-01) must still resolve to UTC-7, not fall back to UTC-8 (requires Node 24+ tzdata).
+  it("settings: plannedPublishAtLocal converts server-side, including a winter date after BC's permanent UTC-7 switch", async () => {
+    const v = await createRelease(db(), sampleCreate, editor);
+    const planned = await saveSettings(
+      db(), v.id,
+      { version: v.version, activityId: null, plannedPublishAt: null, plannedPublishAtLocal: "2026-12-15T14:30", toSubscribers: false, toMediaLists: false, mediaListKeys: [] },
+      editor, deps,
+    );
+    expect(planned.publishAt).toBe("2026-12-15T21:30:00.000Z"); // 14:30 UTC-7 (permanent BC time) -> 21:30Z, not 22:30Z
+
+    const cleared = await saveSettings(
+      db(), v.id,
+      { version: planned.version, activityId: null, plannedPublishAt: null, toSubscribers: false, toMediaLists: false, mediaListKeys: [] },
+      editor, deps,
+    );
+    expect(cleared.publishAt).toBeNull();
   });
 
   it("an edit to a published release becomes a correction; edits while publishing stay publishing", async () => {

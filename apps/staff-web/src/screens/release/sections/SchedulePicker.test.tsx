@@ -6,10 +6,10 @@ afterEach(() => cleanup());
 
 const TZ = "America/Vancouver";
 
-// Fix round 1 (3f Task 3), finding 3: the picker now emits the raw BC-local wall-clock string
-// (`local`) alongside a browser-side-converted `instant` — the Schedule action sends `local`
-// (the server converts it with its own, authoritative tzdata); `instant` remains available only
-// for Settings' plannedPublishAt (out of this fix round's scope) and an optional preview.
+// Fix round 1 (3f Task 3), finding 3 (and its follow-up): the picker now emits the raw
+// BC-local wall-clock string (`local`) alongside a browser-side-converted `instant` — both the
+// Schedule action and Settings' planned date now send `local` (the server converts it with its
+// own, authoritative tzdata); `instant` remains only for local comparisons and an optional preview.
 describe("SchedulePicker", () => {
   it("emits { local, instant } once both fields are filled — local is the typed value, untouched", () => {
     const onChange = vi.fn();

@@ -22,11 +22,12 @@ const PAST_LIMIT_MS = 5 * 60_000;
 const UNPUBLISHABLE_STATUSES = new Set(["published", "publishing", "failed", "scheduled"]);
 
 /**
- * `s` ("YYYY-MM-DDTHH:mm", `scheduleSchema`'s `publishAtLocal` — no offset, already validated
- * by that schema) as a Date whose *UTC* fields hold those wall-clock values, exactly the input
- * {@link wallClockToInstant} expects.
+ * `s` ("YYYY-MM-DDTHH:mm", `scheduleSchema`'s `publishAtLocal`/`settingsSchema`'s
+ * `plannedPublishAtLocal` — no offset, already validated by those schemas) as a Date whose
+ * *UTC* fields hold those wall-clock values, exactly the input {@link wallClockToInstant}
+ * expects. Exported for `./service.ts`'s `saveSettings`, which needs the same conversion.
  */
-function parseLocalDateTime(s: string): Date {
+export function parseLocalDateTime(s: string): Date {
   const [datePart, timePart] = s.split("T");
   const [year, month, day] = datePart!.split("-").map(Number);
   const [hour, minute] = timePart!.split(":").map(Number);
