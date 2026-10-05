@@ -47,15 +47,27 @@ describe("WebsiteScreen", () => {
     await screen.findByRole("link", { name: "Carousel" });
   });
 
-  it("blocks a role with neither NRMS.SiteEditor nor Core.Admin", async () => {
+  // Minors: every read role (Viewer, Editor, SiteEditor, Core.Admin) can now reach Website at
+  // all, for Featured/the log — only a role with none of those four (out of scope per
+  // constraints.md — NoD.Admin/Distribution.Send) is blocked entirely.
+  it("a Viewer sees the sub-nav too, but only Featured/the log (not the manage-only sections)", async () => {
     renderWithRole("NRMS.Viewer");
-    await screen.findByText("You don’t have permission to view the Website section.");
+    await screen.findByRole("link", { name: "What's featured where" });
+    expect(screen.getByRole("link", { name: "Website log" })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Carousel" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Project Blue Bridge" })).toBeNull();
+    expect(screen.getByText("index child")).toBeInTheDocument();
+  });
+
+  it("blocks a role with none of Viewer/Editor/SiteEditor/Core.Admin", async () => {
+    renderWithRole("NoD.Admin");
+    await screen.findByText("You don’t have permission to view the Website section.");
+    expect(screen.queryByRole("link", { name: "What's featured where" })).toBeNull();
   });
 
   // I5: document.title matches the permission-denied branch's own h1.
   it("sets the document title on the permission-denied branch", async () => {
-    renderWithRole("NRMS.Viewer");
+    renderWithRole("NoD.Admin");
     await screen.findByRole("heading", { name: "Website", level: 1 });
     expect(document.title).toBe("Website — GCPE News Staff");
   });

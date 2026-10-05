@@ -6,6 +6,7 @@ import { useAnnouncer } from "../../shared/Announcer";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
+import { canManageWebsite } from "./access";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { LinksView, ResourceLinkView } from "./types";
@@ -33,6 +34,7 @@ function toForm(links: ResourceLinkView[]): LinkForm[] {
 export function LinksScreen(): React.JSX.Element {
   const session = useSession();
   useDocumentTitle("Resource links");
+  const canManage = canManageWebsite(session);
   const canEdit = session.has("NRMS.SiteEditor");
   const section = useVersionedSave<LinksView>();
   const [view, setView] = useState<LinksView | null>(null);
@@ -51,7 +53,11 @@ export function LinksScreen(): React.JSX.Element {
     apiFetch<LinksView>("/nrms/api/site/links").then(resetFrom, () => setLoadError("Couldn't load the resource links."));
   }, []);
 
-  useEffect(reload, [reload]);
+  // Minors: stays NRMS.SiteEditor/Core.Admin only — defense in depth for a direct deep link,
+  // now that WebsiteScreen itself lets every read role through for Featured/Log.
+  useEffect(() => {
+    if (canManage) reload();
+  }, [canManage, reload]);
 
   // I4: same local-reorder timing as Carousel — restore focus right after the triggering state
   // update re-renders, no network round trip to wait for.
@@ -77,6 +83,15 @@ export function LinksScreen(): React.JSX.Element {
     enabled: canEdit && !section.saving,
     onReorder: (from, to) => setLinks((l) => moveItemTo(l, from, to)),
   });
+
+  if (!canManage) {
+    return (
+      <div className="gcpe-links">
+        <h1>Resource links</h1>
+        <p>You don&rsquo;t have permission to view the resource links.</p>
+      </div>
+    );
+  }
 
   const save = () => {
     if (!view) return;

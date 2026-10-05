@@ -6,7 +6,7 @@ import { ReleaseListScreen } from "./screens/releases/ReleaseListScreen";
 import { SearchScreen } from "./screens/search/SearchScreen";
 import { NewReleaseScreen } from "./screens/release/NewReleaseScreen";
 import { ReleaseEditorPage } from "./screens/release/ReleaseEditorPage";
-import { WebsiteScreen } from "./screens/website/WebsiteScreen";
+import { WebsiteIndexRedirect, WebsiteScreen } from "./screens/website/WebsiteScreen";
 import { CarouselScreen } from "./screens/website/CarouselScreen";
 import { PinsScreen } from "./screens/website/PinsScreen";
 import { LiveFeedScreen } from "./screens/website/LiveFeedScreen";
@@ -57,7 +57,7 @@ export const routes: RouteObject[] = [
         path: "website",
         element: <WebsiteScreen />,
         children: [
-          { index: true, element: <Navigate to="carousel" replace /> },
+          { index: true, element: <WebsiteIndexRedirect /> },
           { path: "carousel", element: <CarouselScreen /> },
           { path: "pins", element: <PinsScreen /> },
           { path: "live-feed", element: <LiveFeedScreen /> },

@@ -3,6 +3,7 @@ import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-rea
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { canManageWebsite } from "./access";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { Justify, PinSlot, PinView } from "./types";
 
@@ -114,6 +115,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
 export function PinsScreen(): React.JSX.Element {
   const session = useSession();
   useDocumentTitle("Emergency pins");
+  const canManage = canManageWebsite(session);
   const canEdit = session.has("NRMS.SiteEditor");
   const [pins, setPins] = useState<PinView[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -122,7 +124,20 @@ export function PinsScreen(): React.JSX.Element {
     apiFetch<PinView[]>("/nrms/api/site/pins").then(setPins, () => setLoadError("Couldn't load the emergency pins."));
   }, []);
 
-  useEffect(reload, [reload]);
+  // Minors: stays NRMS.SiteEditor/Core.Admin only — defense in depth for a direct deep link,
+  // now that WebsiteScreen itself lets every read role through for Featured/Log.
+  useEffect(() => {
+    if (canManage) reload();
+  }, [canManage, reload]);
+
+  if (!canManage) {
+    return (
+      <div className="gcpe-pins">
+        <h1>Emergency pins</h1>
+        <p>You don&rsquo;t have permission to view the emergency pins.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="gcpe-pins">

@@ -3,6 +3,7 @@ import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-rea
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { canManageWebsite } from "./access";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { LiveFeedView } from "./types";
 
@@ -17,6 +18,7 @@ const M3U_REQUIRED_MESSAGE = "Add the M3U playlist URL before turning the Live F
 export function LiveFeedScreen(): React.JSX.Element {
   const session = useSession();
   useDocumentTitle("Live Feed");
+  const canManage = canManageWebsite(session);
   const canEdit = session.has("NRMS.SiteEditor");
   const section = useVersionedSave<LiveFeedView>();
   const [feed, setFeed] = useState<LiveFeedView | null>(null);
@@ -37,7 +39,20 @@ export function LiveFeedScreen(): React.JSX.Element {
     apiFetch<LiveFeedView>("/nrms/api/site/live-feed").then(resetFrom, () => setLoadError("Couldn't load the Live Feed settings."));
   }, []);
 
-  useEffect(reload, [reload]);
+  // Minors: stays NRMS.SiteEditor/Core.Admin only — defense in depth for a direct deep link,
+  // now that WebsiteScreen itself lets every read role through for Featured/Log.
+  useEffect(() => {
+    if (canManage) reload();
+  }, [canManage, reload]);
+
+  if (!canManage) {
+    return (
+      <div className="gcpe-live-feed">
+        <h1>Live Feed</h1>
+        <p>You don&rsquo;t have permission to view the Live Feed settings.</p>
+      </div>
+    );
+  }
 
   const onSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

@@ -3,6 +3,7 @@ import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } fro
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { canManageWebsite } from "./access";
 import type { ListFilesResult, SiteFileView } from "./types";
 
 interface UploadState {
@@ -22,6 +23,7 @@ const INITIAL_UPLOAD: UploadState = { busy: false, error: null, replacePrompt: n
 export function FilesScreen(): React.JSX.Element {
   const session = useSession();
   useDocumentTitle("Files");
+  const canManage = canManageWebsite(session);
   const canEdit = session.has("NRMS.SiteEditor");
   const [result, setResult] = useState<ListFilesResult | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -34,7 +36,20 @@ export function FilesScreen(): React.JSX.Element {
     apiFetch<ListFilesResult>(`/nrms/api/site/files?q=${encodeURIComponent(query)}`).then(setResult, () => setLoadError("Couldn't load files."));
   }, []);
 
-  useEffect(() => reload(""), [reload]);
+  // Minors: stays NRMS.SiteEditor/Core.Admin only — defense in depth for a direct deep link,
+  // now that WebsiteScreen itself lets every read role through for Featured/Log.
+  useEffect(() => {
+    if (canManage) reload("");
+  }, [canManage, reload]);
+
+  if (!canManage) {
+    return (
+      <div className="gcpe-files">
+        <h1>Files</h1>
+        <p>You don&rsquo;t have permission to view the files.</p>
+      </div>
+    );
+  }
 
   const onSearch = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();

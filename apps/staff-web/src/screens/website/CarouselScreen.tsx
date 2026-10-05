@@ -9,6 +9,7 @@ import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
 import { SchedulePicker, type ScheduleValue } from "../release/sections/SchedulePicker";
+import { canManageWebsite } from "./access";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { CarouselsResponse, CarouselView, SlideView } from "./types";
@@ -241,6 +242,7 @@ export function CarouselScreen(): React.JSX.Element {
   const session = useSession();
   const timeZone = useTenantTimeZone();
   useDocumentTitle("Carousel");
+  const canManage = canManageWebsite(session);
   const canEdit = session.has("NRMS.SiteEditor");
   const [data, setData] = useState<CarouselsResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -255,7 +257,21 @@ export function CarouselScreen(): React.JSX.Element {
     apiFetch<CarouselsResponse>("/nrms/api/site/carousels").then(setData, () => setLoadError("Couldn't load the carousels."));
   }, []);
 
-  useEffect(reload, [reload]);
+  // Minors: WebsiteScreen's own gate now lets every read role through for Featured/Log — this
+  // screen stays NRMS.SiteEditor/Core.Admin only, so it checks for itself (defense in depth
+  // for a direct deep link) and never even fetches carousel data for anyone else.
+  useEffect(() => {
+    if (canManage) reload();
+  }, [canManage, reload]);
+
+  if (!canManage) {
+    return (
+      <div className="gcpe-carousel">
+        <h1>Carousel</h1>
+        <p>You don&rsquo;t have permission to view the carousel.</p>
+      </div>
+    );
+  }
 
   const onCreateNext = () => {
     if (!goLive) return;

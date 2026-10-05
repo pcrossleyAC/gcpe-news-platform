@@ -120,18 +120,20 @@ describe("PinsScreen", () => {
     expect(screen.queryByText("Someone else changed this — reload to see their changes.")).toBeNull();
   });
 
-  it("a Viewer sees no pin/unpin switch enabled and no save button", async () => {
+  // Minors: Emergency pins stays NRMS.SiteEditor/Core.Admin only even though WebsiteScreen
+  // itself now lets every read role through for Featured/Log — a Viewer gets the
+  // permission-denied message, not the read-only screen.
+  it("a Viewer can't reach Emergency pins at all", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Viewer"] }, expiresAt: new Date().toISOString() });
-        if (url === "/nrms/api/site/pins") return jsonResponse(200, [PRIMARY, SECONDARY]);
         throw new Error(`unhandled: ${url}`);
       }),
     );
     render(withAuth(<PinsScreen />));
-    const toggle = await screen.findByRole("switch", { name: "Primary is not pinned" });
-    expect(toggle).toBeDisabled();
+    await screen.findByText("You don’t have permission to view the emergency pins.");
+    expect(screen.queryByRole("switch")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save primary pin" })).toBeNull();
   });
 

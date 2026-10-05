@@ -128,18 +128,19 @@ describe("LinksScreen", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Move link 2 up" })).toHaveFocus());
   });
 
-  it("a Viewer sees no edit controls", async () => {
+  // Minors: Resource links stays NRMS.SiteEditor/Core.Admin only even though WebsiteScreen
+  // itself now lets every read role through for Featured/Log.
+  it("a Viewer can't reach Resource links at all", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Viewer"] }, expiresAt: new Date().toISOString() });
-        if (url === "/nrms/api/site/links") return jsonResponse(200, TWO_LINKS);
         throw new Error(`unhandled: ${url}`);
       }),
     );
     render(withAuth(<LinksScreen />));
-    await screen.findByDisplayValue("First");
+    await screen.findByText("You don’t have permission to view the resource links.");
+    expect(screen.queryByDisplayValue("First")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save links" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Move link 1 down" })).toBeNull();
   });
 });

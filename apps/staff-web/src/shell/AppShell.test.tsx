@@ -42,9 +42,12 @@ describe("AppShell nav — roles decide what's shown", () => {
     cleanup();
   });
 
-  it("a viewer sees Releases + Search only", async () => {
+  // Minors: Website opened up to every read role (Featured/the log are read-only for all of
+  // them) — a Viewer now sees the nav item too, even though most of Website still isn't
+  // theirs to manage.
+  it("a viewer sees Releases + Search + Website (read-only Featured/log)", async () => {
     await renderShell(["NRMS.Viewer"]);
-    expect(visibleLabels()).toEqual(["Releases", "Search"]);
+    expect(visibleLabels()).toEqual(["Releases", "Search", "Website"]);
   });
 
   it("a site editor also sees Website", async () => {

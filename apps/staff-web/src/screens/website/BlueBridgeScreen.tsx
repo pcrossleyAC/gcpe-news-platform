@@ -3,6 +3,7 @@ import { AlertDialog, Button, Checkbox, InlineAlert, Modal, Switch, TextField } 
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { canManageWebsite } from "./access";
 import { useIsTestSite } from "./useIsTestSite";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { BlueBridgeView } from "./types";
@@ -20,6 +21,7 @@ const CONFIRMATION_PHRASE = "KING CHARLES III";
 export function BlueBridgeScreen(): React.JSX.Element {
   const session = useSession();
   useDocumentTitle("Project Blue Bridge");
+  const canManage = canManageWebsite(session);
   const isAdmin = session.has("Core.Admin");
   const isTestSite = useIsTestSite();
   const section = useVersionedSave<BlueBridgeView>();
@@ -34,7 +36,21 @@ export function BlueBridgeScreen(): React.JSX.Element {
     apiFetch<BlueBridgeView>("/nrms/api/site/blue-bridge").then(setState, () => setLoadError("Couldn't load Project Blue Bridge."));
   }, []);
 
-  useEffect(reload, [reload]);
+  // Minors: stays NRMS.SiteEditor/Core.Admin only (same as the other five manage-only
+  // sections) — defense in depth for a direct deep link, now that WebsiteScreen itself lets
+  // every read role through for Featured/Log.
+  useEffect(() => {
+    if (canManage) reload();
+  }, [canManage, reload]);
+
+  if (!canManage) {
+    return (
+      <div className="gcpe-blue-bridge">
+        <h1>Project Blue Bridge</h1>
+        <p>You don&rsquo;t have permission to view Project Blue Bridge.</p>
+      </div>
+    );
+  }
 
   const openDialog = (nextOn: boolean) => {
     setPendingOn(nextOn);

@@ -131,10 +131,14 @@ describe("CarouselScreen", () => {
     await waitFor(() => expect(within(liveSection).getByLabelText("Slide 1 headline")).toHaveValue("Big news"));
   });
 
-  it("a Viewer sees no write controls", async () => {
+  // Minors: Carousel stays NRMS.SiteEditor/Core.Admin only even though WebsiteScreen itself
+  // now lets every read role through for Featured/Log — a Viewer gets the permission-denied
+  // message, not the read-only screen (that's reserved for Core.Admin, below).
+  it("a Viewer can't reach Carousel at all (Featured/Log opened up to every role, not this)", async () => {
     stubBasicFetch(["NRMS.Viewer"], EMPTY);
     render(withAuth(<CarouselScreen />));
-    await screen.findByText("There is no next carousel.");
+    await screen.findByText("You don’t have permission to view the carousel.");
+    expect(screen.queryByText("There is no next carousel.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Create next carousel" })).toBeNull();
     expect(screen.queryByLabelText("Date")).toBeNull();
   });

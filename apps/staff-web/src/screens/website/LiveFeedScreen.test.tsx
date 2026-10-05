@@ -86,11 +86,14 @@ describe("LiveFeedScreen", () => {
     expect(JSON.parse(call.init!.body as string)).toEqual({ version: 1, enabled: true, manifestUrl: "", m3uUrl: "https://example.invalid/feed.m3u8" });
   });
 
-  it("a Viewer sees the settings read-only, with no Save button", async () => {
+  // Minors: Live Feed stays NRMS.SiteEditor/Core.Admin only even though WebsiteScreen itself
+  // now lets every read role through for Featured/Log.
+  it("a Viewer can't reach Live Feed at all", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(["NRMS.Viewer"], OFF, calls);
     render(withAuth(<LiveFeedScreen />));
-    await screen.findByRole("switch", { name: "Live Feed on" });
-    expect(screen.queryByRole("button", { name: "Save Live Feed" })).toBeNull();
+    await screen.findByText("You don’t have permission to view the Live Feed settings.");
+    expect(screen.queryByRole("switch", { name: "Live Feed on" })).toBeNull();
+    expect(calls).toHaveLength(1); // only /core/auth/session — the live-feed GET is never sent
   });
 });

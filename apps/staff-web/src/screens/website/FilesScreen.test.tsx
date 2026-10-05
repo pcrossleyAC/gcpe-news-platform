@@ -134,18 +134,19 @@ describe("FilesScreen", () => {
     expect(await screen.findByText("request entity too large")).toBeInTheDocument();
   });
 
-  it("a Viewer sees no upload input or delete buttons", async () => {
+  // Minors: Files stays NRMS.SiteEditor/Core.Admin only even though WebsiteScreen itself now
+  // lets every read role through for Featured/Log.
+  it("a Viewer can't reach Files at all", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Viewer"] }, expiresAt: new Date().toISOString() });
-        if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, ONE_FILE);
         throw new Error(`unhandled: ${url}`);
       }),
     );
     render(withAuth(<FilesScreen />));
-    await screen.findByText("report.pdf");
+    await screen.findByText("You don’t have permission to view the files.");
+    expect(screen.queryByText("report.pdf")).toBeNull();
     expect(screen.queryByLabelText("Upload a file (PDF, PNG or JPEG)")).toBeNull();
-    expect(screen.queryByRole("button", { name: "Delete report.pdf" })).toBeNull();
   });
 });

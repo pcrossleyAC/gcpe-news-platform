@@ -4,6 +4,7 @@ import { useSession, type SessionValue } from "../session/SessionContext";
 import { useTimeZoneWarning } from "../format/timeZoneWarning";
 import { AnnouncerProvider } from "../shared/Announcer";
 import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
+import { canReadWebsite } from "../screens/website/access";
 
 interface NavItem {
   to: string;
@@ -15,14 +16,15 @@ const hasAnyReadRole = (s: SessionValue) => s.has("NRMS.Viewer") || s.has("NRMS.
 
 /**
  * Sections shown only when the signed-in user's roles allow them (constraints.md: "roles
- * decide what's shown, but the server is the authority"). Website is visible to NRMS.SiteEditor
- * (who edits it) and to Core.Admin (who needs it to reach Project Blue Bridge's switch —
- * constraints.md Review Focus 4); Users and the error log are Core.Admin only.
+ * decide what's shown, but the server is the authority"). Website is visible to every read
+ * role (minors: Featured/the log are read-only for all of them; canReadWebsite) — WebsiteScreen
+ * itself (and each manage-only sub-screen) still restricts the other six sections to
+ * NRMS.SiteEditor/Core.Admin; Users and the error log are Core.Admin only.
  */
 const NAV_ITEMS: NavItem[] = [
   { to: "/releases", label: "Releases", show: hasAnyReadRole },
   { to: "/search", label: "Search", show: hasAnyReadRole },
-  { to: "/website", label: "Website", show: (s) => s.has("NRMS.SiteEditor") || s.has("Core.Admin") },
+  { to: "/website", label: "Website", show: canReadWebsite },
   { to: "/users", label: "Users", show: (s) => s.has("Core.Admin") },
   { to: "/error-log", label: "Error log", show: (s) => s.has("Core.Admin") },
 ];
