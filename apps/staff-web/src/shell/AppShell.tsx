@@ -46,7 +46,7 @@ export function AppShell(): React.JSX.Element {
         </ul>
       </nav>
       <main className="gcpe-shell__main">
-        <h1>GCPE News</h1>
+        {/* Each routed screen owns its own single h1 (constraints.md); the shell itself has none. */}
         {session.user && <p>Signed in as {session.user.name}</p>}
         <Button onPress={onSignOut}>Sign out</Button>
         <Outlet />

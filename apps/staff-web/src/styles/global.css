@@ -58,3 +58,106 @@ body {
   gap: 1rem;
   margin-top: 1rem;
 }
+
+/* Task 2 (staff-web): release lists and search. */
+
+.gcpe-tabs ul {
+  list-style: none;
+  display: flex;
+  gap: 1rem;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.gcpe-release-list__toolbar,
+.gcpe-search__filters {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+.gcpe-release-list__rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.gcpe-release-row {
+  display: flex;
+  gap: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.75rem;
+}
+
+/* Decorative only (aria-hidden) — the type is always also shown as text. */
+.gcpe-release-row__bar {
+  flex: 0 0 6px;
+  border-radius: 2px;
+}
+
+.gcpe-release-row__bar--release {
+  background: var(--gcpe-type-release);
+}
+.gcpe-release-row__bar--story {
+  background: var(--gcpe-type-story);
+}
+.gcpe-release-row__bar--update {
+  background: var(--gcpe-type-update);
+}
+.gcpe-release-row__bar--advisory {
+  background: var(--gcpe-type-advisory);
+}
+.gcpe-release-row__bar--factsheet {
+  background: var(--gcpe-type-factsheet);
+}
+
+.gcpe-release-row__body {
+  flex: 1 1 auto;
+}
+
+.gcpe-release-row__badges {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0;
+}
+
+.gcpe-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #666;
+  font-size: 0.8rem;
+}
+
+.gcpe-badge--alert {
+  border-color: #b00020;
+  color: #b00020;
+}
+
+/* Visually hidden but still reachable by aria-describedby/aria-labelledby (used for the
+ * Flickr alert badge's accessible description). */
+.gcpe-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.gcpe-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+}
