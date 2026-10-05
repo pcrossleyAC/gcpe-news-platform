@@ -99,11 +99,21 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
   if (!res.ok) {
     if (res.status === 401) notifyUnauthorized(currentReturnPath());
     const errObj = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
-    const message = typeof errObj.error === "string" ? errObj.error : text || `Request failed (${res.status})`;
+    // Task 5: the Website section's 422s (apps/nrms/src/website/errors.ts's SiteRuleError,
+    // mapped in apps/nrms/src/http/routes.ts's handleError) send `{ errors: string[] }` with no
+    // `error`/`problems` at all — a different shape from every release 422 (`{error, problems}`).
+    // `errors` is read here as a `problems` fallback (never the reverse) so one error shape
+    // doesn't shadow the other; no server response mixes the two keys.
+    const problems = Array.isArray(errObj.problems)
+      ? (errObj.problems as string[])
+      : Array.isArray(errObj.errors)
+        ? (errObj.errors as string[])
+        : undefined;
+    const message = typeof errObj.error === "string" ? errObj.error : problems ? problems.join(" ") : text || `Request failed (${res.status})`;
     throw new ApiError({
       status: res.status,
       message,
-      problems: Array.isArray(errObj.problems) ? (errObj.problems as string[]) : undefined,
+      problems,
       issues: Array.isArray(errObj.issues) ? (errObj.issues as unknown[]) : undefined,
     });
   }

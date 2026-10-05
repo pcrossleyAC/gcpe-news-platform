@@ -85,6 +85,19 @@ describe("apiFetch", () => {
     expect(call.init.body).toBe(bytes);
   });
 
+  // Task 5: the Website section's 422s (SiteRuleError) send `{ errors: [...] }` instead of
+  // `{ error, problems }` — apiFetch must still surface those as `problems`, with a message
+  // built from them, so every Website screen can use the exact same problems-list rendering
+  // the release screens already use.
+  it("a Website-section 422's `errors` array is read as `problems`, with no `error` field needed", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(422, { errors: ["Add the M3U playlist URL before turning the Live Feed on."] })));
+    await expect(apiFetch("/nrms/api/site/live-feed", { method: "PUT", body: { version: 1 } })).rejects.toMatchObject({
+      status: 422,
+      problems: ["Add the M3U playlist URL before turning the Live Feed on."],
+      message: "Add the M3U playlist URL before turning the Live Feed on.",
+    });
+  });
+
   it("a `raw` body and a JSON `body` can't both be given", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, {})));
     await expect(apiFetch("/x", { method: "POST", body: { a: 1 }, raw: new Uint8Array() })).rejects.toThrow();

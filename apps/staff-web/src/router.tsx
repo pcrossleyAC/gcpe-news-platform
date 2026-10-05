@@ -6,6 +6,17 @@ import { ReleaseListScreen } from "./screens/releases/ReleaseListScreen";
 import { SearchScreen } from "./screens/search/SearchScreen";
 import { NewReleaseScreen } from "./screens/release/NewReleaseScreen";
 import { ReleaseEditorPage } from "./screens/release/ReleaseEditorPage";
+import { WebsiteScreen } from "./screens/website/WebsiteScreen";
+import { CarouselScreen } from "./screens/website/CarouselScreen";
+import { PinsScreen } from "./screens/website/PinsScreen";
+import { LiveFeedScreen } from "./screens/website/LiveFeedScreen";
+import { BlueBridgeScreen } from "./screens/website/BlueBridgeScreen";
+import { LinksScreen } from "./screens/website/LinksScreen";
+import { FilesScreen } from "./screens/website/FilesScreen";
+import { FeaturedScreen } from "./screens/website/FeaturedScreen";
+import { LogScreen } from "./screens/website/LogScreen";
+import { UsersScreen } from "./screens/admin/users/UsersScreen";
+import { ErrorLogScreen } from "./screens/admin/errors/ErrorLogScreen";
 
 /**
  * Library-mode react-router v7, basename "/hub" (the stack hosts the staff app there — see
@@ -42,6 +53,23 @@ export const routes: RouteObject[] = [
         ],
       },
       { path: "search", element: <SearchScreen /> },
+      {
+        path: "website",
+        element: <WebsiteScreen />,
+        children: [
+          { index: true, element: <Navigate to="carousel" replace /> },
+          { path: "carousel", element: <CarouselScreen /> },
+          { path: "pins", element: <PinsScreen /> },
+          { path: "live-feed", element: <LiveFeedScreen /> },
+          { path: "blue-bridge", element: <BlueBridgeScreen /> },
+          { path: "links", element: <LinksScreen /> },
+          { path: "files", element: <FilesScreen /> },
+          { path: "featured", element: <FeaturedScreen /> },
+          { path: "log", element: <LogScreen /> },
+        ],
+      },
+      { path: "users", element: <UsersScreen /> },
+      { path: "error-log", element: <ErrorLogScreen /> },
       { path: "*", element: null },
     ],
   },

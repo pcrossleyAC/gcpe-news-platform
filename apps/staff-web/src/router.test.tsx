@@ -106,4 +106,36 @@ describe("router (basename /hub)", () => {
     expect(await screen.findByRole("heading", { name: "Actions" })).toBeInTheDocument();
     expect(screen.queryByText(/editor isn.t built yet/i)).not.toBeInTheDocument();
   });
+
+  it("/hub/website, /hub/users and /hub/error-log render Task 5's real screens for Core.Admin, not placeholders", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") {
+          return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        }
+        if (url === "/nrms/api/config") {
+          return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
+        }
+        if (url === "/nrms/api/site/carousels") return jsonResponse(200, { live: null, next: null, past: [] });
+        if (url === "/core/api/users") return jsonResponse(200, []);
+        if (url === "/stack/errors?limit=200") return jsonResponse(200, { errors: [] });
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    const router = createMemoryRouter(routes, { basename: "/hub", initialEntries: ["/hub/website"] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: "Carousel" })).toBeInTheDocument();
+
+    router.navigate("/users");
+    expect(await screen.findByRole("heading", { level: 1, name: "Users" })).toBeInTheDocument();
+
+    router.navigate("/error-log");
+    expect(await screen.findByRole("heading", { level: 1, name: "Error log" })).toBeInTheDocument();
+  });
 });
