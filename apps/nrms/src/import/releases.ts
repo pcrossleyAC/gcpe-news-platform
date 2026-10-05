@@ -460,7 +460,9 @@ function rootCauseMessage(e: unknown): string {
 
 function failureReason(e: unknown, key: string): string {
   if (uniqueViolationConstraint(e) === "news_releases_key_idx") {
-    return `key '${key}' already used by another imported release (legacy keys are unique per type; NRMS keys are unique across types — C35)`;
+    // M4: the colliding key may already be in use by an NRMS-native release (not necessarily
+    // one this import itself brought in), so don't claim "another imported release" as fact.
+    return `key '${key}' already used by another release (legacy keys are unique per type; NRMS keys are unique across types — C35)`;
   }
   return stripParamsLines(rootCauseMessage(e));
 }

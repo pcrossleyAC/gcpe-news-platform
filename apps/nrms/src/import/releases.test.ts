@@ -247,7 +247,7 @@ describe("importReleases — fictional fixture (all statuses, categories, media 
     expect(r10, "R10 (the colliding key) should never have been written").toBeUndefined();
 
     const json = report.toJSON();
-    const expectedReason = `key '${fx.ids.SHARED_KEY}' already used by another imported release (legacy keys are unique per type; NRMS keys are unique across types — C35)`;
+    const expectedReason = `key '${fx.ids.SHARED_KEY}' already used by another release (legacy keys are unique per type; NRMS keys are unique across types — C35)`;
     expect(json.skipped.some((s) => s.table === "news_releases" && s.legacyId === fx.ids.R10.toLowerCase() && s.reason === expectedReason)).toBe(true);
     expect(json.warnings.some((w) => w.legacyId === fx.ids.R10.toLowerCase() && w.problems.includes(expectedReason))).toBe(true);
 
@@ -269,7 +269,7 @@ describe("importReleases — fictional fixture (all statuses, categories, media 
     expect(r11Skip).toBeDefined();
     expect(r11Skip!.reason).toContain("news_releases_committed_has_time");
     expect(r11Skip!.reason).not.toContain("params:");
-    expect(r11Skip!.reason).not.toContain("already used by another imported release");
+    expect(r11Skip!.reason).not.toContain("already used by another release");
 
     // The run continued past both R10 and R11's failures: R12 (processed right after them) imported fine.
     const r12 = await byLegacyId(fx.ids.R12);
