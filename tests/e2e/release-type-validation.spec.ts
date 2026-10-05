@@ -74,7 +74,9 @@ test.describe("item 2: per-type required/allowed fields", () => {
 
     await signInAs(context, "editor");
     await page.goto(`${baseUrl()}/hub/releases/${approved.id}`);
-    await expect(page.getByText("Choose at least one media distribution list.")).toBeVisible();
+    // Scoped to the header's own checklist — Actions' own "why is Publish now disabled" reasons
+    // list (next to the button itself) repeats the same sentence as its own link.
+    await expect(page.locator("header").getByText("Choose at least one media distribution list.")).toBeVisible();
     await expect(page.getByRole("button", { name: "Publish now" })).toBeDisabled();
 
     // Fixable from the same form: check a media list, save, and the warning (and the

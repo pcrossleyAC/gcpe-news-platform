@@ -29,7 +29,9 @@ test.describe("item 7: editing a published release republishes it as a correctio
     await firstDoc.getByLabel("Headline", { exact: true }).fill(correctedHeadline);
     await firstDoc.getByRole("button", { name: /Save English content/ }).click();
 
-    await expect(page.getByText("Republishing...")).toBeVisible();
+    // { exact: true }: the page-level status announcement (aria-live, for screen readers) also
+    // contains this word ("Status: Republishing...") — exact matches only the visible span.
+    await expect(page.getByText("Republishing...", { exact: true })).toBeVisible();
 
     await tickTwice();
     await page.reload();

@@ -23,7 +23,9 @@ test.describe("item 5: publish now reaches the News API, the static site and a N
     await page.getByRole("button", { name: "Approve" }).click();
     await expect(page.getByRole("button", { name: "Publish now" })).toBeVisible();
     await page.getByRole("button", { name: "Publish now" }).click();
-    await expect(page.getByText(/Scheduled|Publishing/)).toBeVisible();
+    // Scoped to the header's own status line — the page-level status announcement (aria-live,
+    // for screen readers) also contains this word ("Status: Publishing...").
+    await expect(page.locator(".gcpe-release-editor__meta").getByText(/Scheduled|Publishing/)).toBeVisible();
 
     await tick();
 

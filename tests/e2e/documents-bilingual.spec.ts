@@ -146,3 +146,37 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     await expect(reloadedFirstItem.getByLabel("Contact 1")).toHaveValue("Relations avec les médias\n250-555-0101");
   });
 });
+
+// Hand-check feedback on boxs.ca: a long document body pushed the document's own Save button
+// out of view — the sticky save bar (fixed to the bottom of the viewport) is always reachable.
+test.describe("sticky save bar", () => {
+  test("typing in a document body shows the bar; its own Save button persists the change after reload", async ({ page, context }) => {
+    const editorCookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
+    const view = await createPublishableRelease(editorCookie);
+    await signInAs(context, "editor");
+    await page.goto(`${baseUrl()}/hub/releases/${view.id}`);
+
+    const bar = page.getByRole("region", { name: "Unsaved changes" });
+    await expect(bar).not.toBeVisible();
+
+    const docsSection = page.getByRole("region", { name: "Documents" });
+    const firstItem = docsSection.locator(".gcpe-documents__item").nth(0);
+    const body = firstItem.getByRole("textbox", { name: "Body" });
+    const addedText = `Sticky bar check ${Date.now()}`;
+    await body.click();
+    await page.keyboard.press("End");
+    await page.keyboard.type(` ${addedText}`);
+    await expect(body).toContainText(addedText);
+
+    await expect(bar).toBeVisible();
+    await expect(bar).toContainText("English content (Document 1)");
+    const barSaveButton = bar.getByRole("button", { name: /Save English content/ });
+
+    await clickAndWaitForSave(page, barSaveButton);
+    await expect(bar).not.toBeVisible();
+
+    await page.reload();
+    const reloadedBody = docsSection.locator(".gcpe-documents__item").nth(0).getByRole("textbox", { name: "Body" });
+    await expect(reloadedBody).toContainText(addedText);
+  });
+});
