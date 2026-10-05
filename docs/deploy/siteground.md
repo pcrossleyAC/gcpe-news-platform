@@ -469,6 +469,16 @@ looks changed since the last import (normally a no-op re-run). Takes a whole-run
 one started while the first is running exits immediately with "another nrms:import is already
 running" and touches nothing.
 
+**Re-run behaviour is not the same for every stage.** Releases and website data are "NRMS
+wins": a re-run skips (and reports) any release or Top/Feature slot edited in NRMS since the last
+import, and the whole website bundle (carousel, pins, Live Feed, `granville`, resource links) is
+skipped outright when anything there was touched since the last import (unless `--force-website`).
+The reference tables (page images, media lists, government terms) are **"legacy wins"** instead:
+every re-run overwrites them from legacy's current data regardless of any edit made to them
+directly in NRMS in the meantime — there is no re-run-safety check on these tables at all. Don't
+edit page images, media lists or government terms in NRMS while legacy imports are still running
+on a schedule; those edits will be silently overwritten on the next run.
+
 **Reading the report.** Every run writes `--report <path>` (default
 `nrms-import-<UTC timestamp>.json`) plus a matching `.txt` beside it. For every table it lists
 `legacy` (rows seen), `imported` (rows written or confirmed unchanged) and `skipped` (rows
