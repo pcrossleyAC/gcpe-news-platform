@@ -85,10 +85,12 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
         <div
           key={doc.id}
           className="gcpe-documents__item"
-          draggable={!readOnly}
-          onDragStart={readOnly ? undefined : onDragStart(index)}
-          onDragOver={readOnly ? undefined : onDragOver}
-          onDrop={readOnly ? undefined : onDrop(index)}
+          // Fix round 1, minor: disabled while a save is in flight, matching the Move
+          // up/down buttons — a drag that reorders mid-save could race the in-flight PUT.
+          draggable={!readOnly && !section.saving}
+          onDragStart={readOnly || section.saving ? undefined : onDragStart(index)}
+          onDragOver={readOnly || section.saving ? undefined : onDragOver}
+          onDrop={readOnly || section.saving ? undefined : onDrop(index)}
         >
           <div className="gcpe-documents__item-header">
             <h3>Document {index + 1}</h3>

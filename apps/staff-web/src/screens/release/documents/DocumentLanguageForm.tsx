@@ -3,6 +3,7 @@ import { Button, Form, InlineAlert, TextArea, TextField } from "@bcgov/design-sy
 import { LANGUAGE_NAME, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty } from "../useUnsavedChanges";
+import { useSession } from "../../../session/SessionContext";
 import { BodyEditor } from "../../../editor/BodyEditor";
 import { findDocument, findLanguage } from "./documentHelpers";
 import { clearDraft, loadDraft, saveDraft } from "./unsavedDocumentStorage";
@@ -44,16 +45,27 @@ function fromView(view: ReleaseView, documentId: string, languageId: LanguageId)
  * `PUT .../documents/:docId/:lang` (`documentLanguageSchema`).
  *
  * Review Focus 1 (session-expiry recovery): while dirty, the form's own fields are mirrored
- * into `sessionStorage` keyed by release id + document id + language
+ * into `sessionStorage` keyed by signed-in user id + release id + document id + language
  * (unsavedDocumentStorage.ts) — restored on mount (e.g. after a 401 sent the user to sign in
  * and RequireAuth brought them back to this same release) and cleared on a successful save.
- * Never written at all for a read-only viewer.
+ * Never written at all for a read-only viewer, or if (defensively — this component only ever
+ * renders inside the authenticated area) no user is signed in.
+ *
+ * Fix round 1, finding 1: the user id is part of the draft key — on a shared machine, user B
+ * signing in on the same tab must never be handed user A's unsaved text. An expired session
+ * (a 401) leaves the draft in place for the *same* user to recover; a different user's drafts
+ * are simply never readable under their own key. Explicit sign-out additionally wipes every
+ * draft outright (SessionContext.tsx's `signOut`), so a stale draft can't resurface even for a
+ * returning version of the same person on a machine other people also use.
  */
 export function DocumentLanguageForm({ view, setView, documentId, languageId, readOnly }: DocumentLanguageFormProps): React.JSX.Element {
   const section = useReleaseSection(view, setView);
-  const draftKey = { releaseId: view.id, documentId, languageId };
+  const session = useSession();
+  const userId = session.user?.id ?? null;
+  const canPersistDraft = !readOnly && userId !== null;
+  const draftKey = userId !== null ? { userId, releaseId: view.id, documentId, languageId } : null;
   const [form, setForm] = useState<FormState>(() => {
-    if (readOnly) return fromView(view, documentId, languageId);
+    if (!canPersistDraft || !draftKey) return fromView(view, documentId, languageId);
     return loadDraft<FormState>(draftKey) ?? fromView(view, documentId, languageId);
   });
 
@@ -62,11 +74,11 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
   useRegisterDirty(`document-${documentId}-${languageId}`, dirty);
 
   useEffect(() => {
-    if (readOnly) return;
+    if (!canPersistDraft || !draftKey) return;
     if (dirty) saveDraft(draftKey, form);
     else clearDraft(draftKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [form, readOnly]);
+  }, [form, canPersistDraft]);
 
   const doc = findDocument(view, documentId);
   const lang = findLanguage(doc, languageId);
@@ -100,7 +112,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
       )
       .then((next) => {
         if (!next) return;
-        clearDraft(draftKey);
+        if (draftKey) clearDraft(draftKey);
         setForm(fromView(next, documentId, languageId));
       });
   };

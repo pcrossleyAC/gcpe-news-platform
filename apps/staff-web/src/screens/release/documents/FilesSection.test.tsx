@@ -2,12 +2,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
+import { jsonResponse } from "../../../../test/jsonResponse";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { FilesSection } from "./FilesSection";
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-}
 
 const BASE = releaseView({
   files: [
@@ -70,7 +67,29 @@ describe("FilesSection", () => {
     expect(await screen.findByText("release too large")).toBeInTheDocument();
   });
 
-  it("removes a file via POST .../files/:fileId/remove", async () => {
+  // Fix round 1, finding 2: removal now asks for confirmation first, same AlertDialog pattern
+  // as document/translation removal — it used to fire immediately.
+  it("Remove opens a confirmation dialog; cancelling makes no request", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        return jsonResponse(200, releaseView({ ...BASE, version: 2 }));
+      }),
+    );
+    render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Remove fr.pdf" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(calls).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(calls).toHaveLength(0);
+  });
+
+  it("confirming removes a file via POST .../files/:fileId/remove", async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     vi.stubGlobal(
       "fetch",
@@ -82,9 +101,20 @@ describe("FilesSection", () => {
     render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Remove fr.pdf" }));
+    await user.click(screen.getByRole("button", { name: "Confirm remove" }));
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]!.url).toBe(`/nrms/api/releases/${BASE.id}/files/f1/remove`);
     expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ version: BASE.version });
+  });
+
+  // Fix round 1, finding 2: remove's 422 problems now surface the same way upload's do.
+  it("shows the server's 422 problems on remove", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(422, { error: "bad", problems: ["This file is still referenced and can't be removed."] })));
+    render(<FilesSection view={BASE} setView={() => {}} readOnly={false} />);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Remove fr.pdf" }));
+    await user.click(screen.getByRole("button", { name: "Confirm remove" }));
+    expect(await screen.findByText("This file is still referenced and can't be removed.")).toBeInTheDocument();
   });
 
   it("read-only: no upload inputs or remove buttons", () => {

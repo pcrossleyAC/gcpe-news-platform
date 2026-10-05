@@ -1,11 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
+import { jsonResponse } from "../../../../test/jsonResponse";
 import { SideBar } from "./SideBar";
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-}
 
 describe("SideBar", () => {
   afterEach(() => {

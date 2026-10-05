@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import type { ReleaseFileView, ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
 import { RELOAD_MESSAGE } from "../useReleaseSection";
@@ -25,6 +25,9 @@ const INITIAL: GroupState = { busy: false, conflict: false, problems: null, erro
  * is one component with two groups rather than two separate ones. */
 export function FilesSection({ view, setView, readOnly }: FilesSectionProps): React.JSX.Element {
   const [state, setState] = useState<Record<Kind, GroupState>>({ translation: INITIAL, asset: INITIAL });
+  // Fix round 1, finding 2: a file pending remove confirmation (same AlertDialog pattern as
+  // document/translation removal — this used to fire with no confirmation at all).
+  const [removeTarget, setRemoveTarget] = useState<{ kind: Kind; file: ReleaseFileView } | null>(null);
 
   const setGroup = (kind: Kind, patch: Partial<GroupState>) => setState((s) => ({ ...s, [kind]: { ...s[kind], ...patch } }));
 
@@ -44,14 +47,20 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
     }
   };
 
-  const remove = async (kind: Kind, file: ReleaseFileView) => {
+  const confirmRemove = async () => {
+    if (!removeTarget) return;
+    const { kind, file } = removeTarget;
     setGroup(kind, { ...INITIAL, busy: true });
     try {
       const next = await apiFetch<ReleaseView>(`/nrms/api/releases/${view.id}/files/${file.id}/remove`, { method: "POST", body: { version: view.version } });
       setView(next);
       setGroup(kind, INITIAL);
+      setRemoveTarget(null);
     } catch (caught) {
+      // Fix round 1, finding 2: 422 problems now surface the same way upload's do, instead of
+      // falling into the generic `error` message.
       if (caught instanceof ApiError && caught.status === 409) setGroup(kind, { busy: false, conflict: true, problems: null, error: null });
+      else if (caught instanceof ApiError && caught.status === 422) setGroup(kind, { busy: false, conflict: false, problems: caught.problems ?? [caught.message], error: null });
       else setGroup(kind, { busy: false, conflict: false, problems: null, error: caught instanceof ApiError ? caught.message : "Remove failed." });
     }
   };
@@ -82,9 +91,29 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
             <li key={f.id}>
               <a href={f.url}>{f.label}</a>
               {!readOnly && (
-                <Button variant="secondary" onPress={() => void remove(kind, f)} isDisabled={s.busy}>
-                  Remove {f.label}
-                </Button>
+                <DialogTrigger isOpen={removeTarget?.file.id === f.id} onOpenChange={(open) => setRemoveTarget(open ? { kind, file: f } : null)}>
+                  <Button variant="secondary" danger isDisabled={s.busy}>
+                    Remove {f.label}
+                  </Button>
+                  <Modal isDismissable>
+                    <AlertDialog
+                      variant="destructive"
+                      title={`Remove ${f.label}?`}
+                      buttons={
+                        <>
+                          <Button onPress={() => setRemoveTarget(null)} isDisabled={s.busy}>
+                            Cancel
+                          </Button>
+                          <Button danger onPress={() => void confirmRemove()} isDisabled={s.busy}>
+                            Confirm remove
+                          </Button>
+                        </>
+                      }
+                    >
+                      <p>This removes the uploaded file. It can&rsquo;t be undone.</p>
+                    </AlertDialog>
+                  </Modal>
+                </DialogTrigger>
               )}
             </li>
           ))}

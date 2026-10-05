@@ -2,11 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
+import { jsonResponse } from "../../../../test/jsonResponse";
 import { HistorySection } from "./HistorySection";
-
-function jsonResponse(status: number, body: unknown): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-}
 
 const VIEW = releaseView();
 
