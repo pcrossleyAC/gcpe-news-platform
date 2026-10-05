@@ -10,7 +10,8 @@ import { createFakeSource, type LegacySource } from "@gcpe/legacy-import";
 import { createCoreTestDb } from "../../../core/test/helpers";
 import { createNrmsTestDb } from "../../test/helpers";
 import { newsReleases, siteLog } from "../db/schema";
-import { ImportAlreadyRunningError, IMPORT_LOCK, runImport, runImportCli } from "./run";
+import { ImportReport } from "./report";
+import { ImportAlreadyRunningError, IMPORT_LOCK, reportExitCode, runImport, runImportCli } from "./run";
 
 const cliPath = fileURLToPath(new URL("./cli.ts", import.meta.url));
 const tsxBin = fileURLToPath(new URL("../../../../node_modules/.bin/tsx", import.meta.url));
@@ -77,6 +78,24 @@ function fullFixtureSource(): LegacySource {
 }
 
 const TIME_ZONE = "America/Vancouver";
+
+// M6: the balance -> exit-code decision runImportCli makes, tested directly against a crafted
+// report rather than only indirectly through a full (and hard to deliberately unbalance) run.
+describe("reportExitCode", () => {
+  it("0 when the report balances", () => {
+    const report = new ImportReport();
+    report.count("releases", "legacy", 2);
+    report.count("releases", "imported", 2);
+    expect(reportExitCode(report)).toBe(0);
+  });
+
+  it("2 when the report does not balance", () => {
+    const report = new ImportReport();
+    report.count("releases", "legacy", 3);
+    report.count("releases", "imported", 2);
+    expect(reportExitCode(report)).toBe(2);
+  });
+});
 
 describe("runImport (orchestrator)", () => {
   let tdb: TestDatabase;

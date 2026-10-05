@@ -159,6 +159,12 @@ async function writeReportFiles(report: ImportReport, jsonPath: string): Promise
   await writeFile(reportTextPath(jsonPath), report.toText());
 }
 
+/** M6: the balance → exit-code decision, pulled out so it's directly testable against a
+ * crafted {@link ImportReport} instead of only indirectly through a full orchestrator run. */
+export function reportExitCode(report: ImportReport): 0 | 2 {
+  return report.balanced() ? 0 : 2;
+}
+
 export interface RunImportCliOptions {
   db: Db;
   coreDb: Db;
@@ -185,7 +191,7 @@ export async function runImportCli(opts: RunImportCliOptions): Promise<number> {
     const report = await runImport(opts.db, opts.coreDb, opts.source, { force: opts.force, timeZone: opts.timeZone, log });
     await writeReportFiles(report, opts.reportPath);
     log(report.toText());
-    return report.balanced() ? 0 : 2;
+    return reportExitCode(report);
   } catch (e) {
     if (e instanceof ImportAlreadyRunningError) {
       log(e.message);
