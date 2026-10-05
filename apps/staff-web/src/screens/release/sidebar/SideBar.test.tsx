@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import { jsonResponse } from "../../../../test/jsonResponse";
+import { SessionProvider } from "../../../session/SessionContext";
 import { SideBar } from "./SideBar";
 
 describe("SideBar", () => {
@@ -20,7 +21,11 @@ describe("SideBar", () => {
         return jsonResponse(200, {});
       }),
     );
-    render(<SideBar view={releaseView()} />);
+    render(
+      <SessionProvider>
+        <SideBar view={releaseView()} />
+      </SessionProvider>,
+    );
     expect(screen.getByText("Key")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View PDF" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Email me a copy" })).toBeInTheDocument();

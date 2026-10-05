@@ -6,6 +6,7 @@ import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import { jsonResponse } from "../../../../test/jsonResponse";
+import { SessionProvider } from "../../../session/SessionContext";
 import { SideBar } from "./SideBar";
 import { HistorySection } from "./HistorySection";
 
@@ -32,7 +33,11 @@ describe("accessibility (constraints.md: no serious/critical axe violations) —
         return jsonResponse(200, {});
       }),
     );
-    const { container } = render(<SideBar view={VIEW} />);
+    const { container } = render(
+      <SessionProvider>
+        <SideBar view={VIEW} />
+      </SessionProvider>,
+    );
     await screen.findByRole("heading", { name: "History" });
     expect(await seriousViolations(container)).toEqual([]);
   });
