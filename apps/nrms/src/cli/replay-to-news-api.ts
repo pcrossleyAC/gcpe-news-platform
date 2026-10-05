@@ -7,6 +7,11 @@
  * is a replay of existing data, not a new edit. NoD only reacts to `release.published` from
  * `nrms` (apps/nod/src/app.ts:32), so this never emails a subscriber -- pinned by a NoD test.
  * Dry run by default; `--confirm` to actually enqueue.
+ *
+ * I4: each release is replayed inside its own savepoint (a nested `tx.transaction`), so one bad
+ * release (e.g. its current content now builds an oversized envelope -- `MAX_EVENT_BYTES`)
+ * never rolls back the rest of its batch. Failures are collected (key + a short, redacted
+ * reason -- never the raw driver message's `params:` line) and the run keeps going.
  */
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
@@ -14,6 +19,7 @@ import { parseEnv } from "@gcpe/config";
 import { createDb, type Db } from "@gcpe/db-kit";
 import { enqueueEvent, parseSubscribers, type SubscriberConfig } from "@gcpe/events";
 import { newsReleases } from "../db/schema";
+import { stripParamsLines } from "../import/redact";
 import { toReleaseRecord } from "../releases/record";
 import { loadView } from "../releases/store";
 
@@ -38,35 +44,52 @@ export interface ReplayOptions {
   now?: () => Date;
 }
 
+export interface ReplayFailure {
+  key: string;
+  reason: string;
+}
+
 export interface ReplayResult {
   confirmed: boolean;
   count: number;
   keys: string[];
+  /** I4: releases that failed to replay (key + a short, redacted reason) -- empty on a dry run
+   * or when every release replayed cleanly. */
+  failures: ReplayFailure[];
 }
 
 /**
  * Dry run: counts and lists the candidates, enqueues nothing -- no transaction is even opened.
  * Confirmed: replays each candidate's current content as a `release.updated`, batched 200
  * releases per transaction so one run of a large catalogue never holds one giant transaction.
+ * I4: each release gets its own savepoint inside the batch, so one failing release is recorded
+ * and skipped rather than rolling back every other release already enqueued in its batch.
  */
 export async function replayToNewsApi(db: Db, opts: ReplayOptions): Promise<ReplayResult> {
   const candidates = await loadCandidates(db);
   const keys = candidates.map((c) => c.key ?? c.id);
-  if (!opts.confirm) return { confirmed: false, count: candidates.length, keys };
+  if (!opts.confirm) return { confirmed: false, count: candidates.length, keys, failures: [] };
 
   const nowIso = (opts.now ? opts.now() : new Date()).toISOString();
+  const failures: ReplayFailure[] = [];
   for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
     const batch = candidates.slice(i, i + BATCH_SIZE);
     await db.transaction(async (tx) => {
       for (const c of batch) {
-        const view = await loadView(tx, c.id);
-        if (!view || !view.releasedAt) continue; // defensive: shouldn't happen for published+live
-        const record = toReleaseRecord(view, { publishDate: view.releasedAt, timestamp: nowIso }, { filesBase: opts.filesBase });
-        await enqueueEvent(tx, { type: "release.updated", source: "nrms", aggregateId: record.key, data: { ...record, notify: false } }, opts.subscribers);
+        try {
+          await tx.transaction(async (savepoint) => {
+            const view = await loadView(savepoint, c.id);
+            if (!view || !view.releasedAt) return; // defensive: shouldn't happen for published+live
+            const record = toReleaseRecord(view, { publishDate: view.releasedAt, timestamp: nowIso }, { filesBase: opts.filesBase });
+            await enqueueEvent(savepoint, { type: "release.updated", source: "nrms", aggregateId: record.key, data: { ...record, notify: false } }, opts.subscribers);
+          });
+        } catch (e) {
+          failures.push({ key: c.key ?? c.id, reason: stripParamsLines(e instanceof Error ? e.message : String(e)) });
+        }
       }
     });
   }
-  return { confirmed: true, count: candidates.length, keys };
+  return { confirmed: true, count: candidates.length, keys, failures };
 }
 
 export function printResult(result: ReplayResult, log: (s: string) => void = console.log): void {
@@ -74,8 +97,13 @@ export function printResult(result: ReplayResult, log: (s: string) => void = con
     log(`${result.count} published, live release(s) would be replayed:`);
     for (const key of result.keys) log(`  ${key}`);
     log("Dry run: nothing enqueued. Re-run with --confirm to replay.");
-  } else {
-    log(`Replayed ${result.count} release(s) to the News API as release.updated (notify: false).`);
+    return;
+  }
+  const ok = result.count - result.failures.length;
+  log(`Replayed ${ok} of ${result.count} release(s) to the News API as release.updated (notify: false).`);
+  if (result.failures.length > 0) {
+    log(`${result.failures.length} release(s) failed to replay:`);
+    for (const f of result.failures) log(`  ${f.key}: ${f.reason}`);
   }
 }
 
@@ -86,6 +114,8 @@ async function main(): Promise<void> {
   try {
     const result = await replayToNewsApi(db, { confirm, subscribers: parseSubscribers(env.EVENT_SUBSCRIBERS), filesBase: env.PUBLIC_FILES_BASE });
     printResult(result);
+    // I4: any per-release failure makes the whole run exit non-zero, even though it kept going.
+    if (result.failures.length > 0) process.exitCode = 1;
   } finally {
     await pool.end();
   }
