@@ -68,4 +68,36 @@ describe("ImportReport", () => {
     expect(text).toContain("website");
     expect(text).toContain("website edited in NRMS since the last import");
   });
+
+  // I3: a partial report on failure must never say "balanced", even when the counts collected
+  // before the failure happen to tally.
+  describe("markFailed", () => {
+    it("forces balanced() false and appears in toJSON, even when every counted table balances", () => {
+      const report = new ImportReport();
+      report.count("releases", "legacy", 2);
+      report.count("releases", "imported", 2);
+      expect(report.balanced()).toBe(true); // true before the failure is recorded
+
+      report.markFailed("website", "connection reset");
+      expect(report.balanced()).toBe(false);
+      expect(report.toJSON().failed).toEqual({ stage: "website", message: "connection reset" });
+    });
+
+    it("surfaces on the first line of toText", () => {
+      const report = new ImportReport();
+      report.markFailed("reference", "ETIMEDOUT");
+      const lines = report.toText().split("\n");
+      expect(lines[0]).toContain("NOT BALANCED");
+      expect(lines[0]).toContain("failed during reference");
+      expect(lines[0]).toContain("ETIMEDOUT");
+    });
+
+    it("a report with no failure has a null failed field and an unqualified first line", () => {
+      const report = new ImportReport();
+      report.count("releases", "legacy", 1);
+      report.count("releases", "imported", 1);
+      expect(report.toJSON().failed).toBeNull();
+      expect(report.toText().split("\n")[0]).toBe("Import report — balanced");
+    });
+  });
 });

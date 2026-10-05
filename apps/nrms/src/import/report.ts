@@ -31,12 +31,18 @@ interface SkippedStage {
   reason: string;
 }
 
+interface Failed {
+  stage: string;
+  message: string;
+}
+
 export interface ImportReportJSON {
   balanced: boolean;
   tables: Record<string, TableCounts>;
   skipped: SkippedRow[];
   warnings: Warning[];
   skippedStages: SkippedStage[];
+  failed: Failed | null;
 }
 
 export class ImportReport {
@@ -44,6 +50,7 @@ export class ImportReport {
   private readonly skipped: SkippedRow[] = [];
   private readonly warnings: Warning[] = [];
   private readonly skippedStages: SkippedStage[] = [];
+  private failed: Failed | null = null;
 
   private row(table: string): TableCounts {
     let row = this.tables.get(table);
@@ -80,8 +87,20 @@ export class ImportReport {
     this.skippedStages.push({ stage, reason });
   }
 
-  /** True when, for every table, legacy = imported + skipped. */
+  /**
+   * I3: records that the run itself failed during `stage` — a *partial* report, since whatever
+   * ran before the failure may still look balanced by coincidence (every legacy row the run got
+   * to before dying happened to be accounted for). `message` should already be redacted and
+   * length-capped by the caller (run.ts's `ImportStageError` does this — M5) before it reaches
+   * here, since it ends up in a file on disk.
+   */
+  markFailed(stage: string, message: string): void {
+    this.failed = { stage, message };
+  }
+
+  /** True when, for every table, legacy = imported + skipped, and the run didn't fail outright. */
   balanced(): boolean {
+    if (this.failed) return false;
     for (const row of this.tables.values()) {
       if (row.legacy !== row.imported + row.skipped) return false;
     }
@@ -95,13 +114,15 @@ export class ImportReport {
       skipped: [...this.skipped],
       warnings: [...this.warnings],
       skippedStages: [...this.skippedStages],
+      failed: this.failed ? { ...this.failed } : null,
     };
   }
 
   toText(): string {
     const lines: string[] = [];
     const json = this.toJSON();
-    lines.push(`Import report — ${json.balanced ? "balanced" : "NOT BALANCED"}`);
+    const header = `Import report — ${json.balanced ? "balanced" : "NOT BALANCED"}`;
+    lines.push(json.failed ? `${header} — failed during ${json.failed.stage}: ${json.failed.message}` : header);
     if (json.skippedStages.length > 0) {
       lines.push("Skipped stages:");
       for (const s of json.skippedStages) lines.push(`  [${s.stage}] ${s.reason}`);

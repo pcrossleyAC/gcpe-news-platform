@@ -62,6 +62,7 @@ import {
   releaseMediaLists as qReleaseMediaLists,
   releases as qReleases,
 } from "./queries";
+import { stripParamsLines } from "./redact";
 import type { ImportReport } from "./report";
 
 export interface ImportReleasesContext {
@@ -461,11 +462,7 @@ function failureReason(e: unknown, key: string): string {
   if (uniqueViolationConstraint(e) === "news_releases_key_idx") {
     return `key '${key}' already used by another imported release (legacy keys are unique per type; NRMS keys are unique across types — C35)`;
   }
-  return rootCauseMessage(e)
-    .split("\n")
-    .filter((line) => !/^\s*params:/.test(line))
-    .join("\n")
-    .trim();
+  return stripParamsLines(rootCauseMessage(e));
 }
 
 async function importOneRelease(db: Db, raw: RawReleaseRow, g: GroupedChildren, ctx: ImportReleasesContext, known: KnownCategories): Promise<ReleaseOutcome> {

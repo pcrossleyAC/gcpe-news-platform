@@ -18,6 +18,7 @@ import { legacyUserMap, type LegacyUserRow } from "./map";
 import { importReference } from "./reference";
 import { importReleases, type ImportReleasesContext } from "./releases";
 import { Q_USERS } from "./queries";
+import { capMessageLength, stripParamsLines } from "./redact";
 import { ImportReport } from "./report";
 import { importWebsite } from "./website";
 
@@ -33,14 +34,23 @@ export class ImportAlreadyRunningError extends Error {
   }
 }
 
-/** Carries the partial report accumulated before `stage` failed, so a caller can still write it. */
+/**
+ * Carries the partial report accumulated before `stage` failed, so a caller can still write it.
+ * M5: the raw driver/Postgres error can carry drizzle's own `params: …` line (arbitrary legacy
+ * content, not for a report on disk) and can run arbitrarily long, so both the error's own
+ * `.message` and what lands in the report (I3's `markFailed`, forcing `balanced()` false) are
+ * redacted and length-capped the same way releases.ts's `failureReason` is.
+ */
 export class ImportStageError extends Error {
   constructor(
     public readonly stage: string,
     public readonly report: ImportReport,
     public readonly cause: unknown,
   ) {
-    super(`nrms:import failed during ${stage}: ${cause instanceof Error ? cause.message : String(cause)}`);
+    const raw = cause instanceof Error ? cause.message : String(cause);
+    const redacted = capMessageLength(stripParamsLines(raw));
+    super(`nrms:import failed during ${stage}: ${redacted}`);
+    report.markFailed(stage, redacted);
   }
 }
 

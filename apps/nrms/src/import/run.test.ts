@@ -165,6 +165,14 @@ describe("runImport (orchestrator)", () => {
     expect(written.tables.users).toEqual({ legacy: 0, imported: 0, skipped: 0 });
     const text = await readFile(join(dir, "report.txt"), "utf8");
     expect(text).toMatch(/Import report/);
+
+    // I3: the partial report names the failure and is forced NOT BALANCED, even though the
+    // one table it got to ("users", 0=0+0) would otherwise look balanced.
+    expect(written.balanced).toBe(false);
+    expect(written.failed).toMatchObject({ stage: "reference" });
+    expect(typeof written.failed.message).toBe("string");
+    expect(text.split("\n")[0]).toContain("NOT BALANCED");
+    expect(text.split("\n")[0]).toContain("failed during reference");
   });
 
   it("refuses a concurrent run: another session already holding the advisory lock throws ImportAlreadyRunningError and writes nothing", async () => {
