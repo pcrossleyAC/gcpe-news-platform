@@ -124,6 +124,41 @@ describe("SettingsSection", () => {
     expect(screen.queryByRole("button", { name: "Save settings" })).not.toBeInTheDocument();
   });
 
+  // I2: re-sending a minute-truncated local time for a date the user never touched caused a
+  // permanent 409 loop on published releases (saveSettings only tolerates a no-op change to the
+  // planned time once published) — saving an untouched planned date with seconds must re-send
+  // that exact stored instant, not a recomputed local/instant pair.
+  it("saving without touching the planned date re-sends the exact stored instant (seconds included)", async () => {
+    const saved = releaseView({ version: 2 });
+    const calls = stubFetch({ onPut: () => jsonResponse(200, saved) });
+    const v = releaseView({ type: "release", version: 1, publishAt: "2026-11-02T17:00:34.000Z" });
+    renderSettings(v);
+    await screen.findByLabelText("Date");
+
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/settings"))).toBe(true));
+    const put = calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`);
+    expect(put?.body).toMatchObject({ version: 1, plannedPublishAt: "2026-11-02T17:00:34.000Z" });
+    expect(put?.body).not.toHaveProperty("plannedPublishAtLocal");
+  });
+
+  // I2: a 409 that's a ReleaseStateError (code "state"), not a real version conflict, must show
+  // the server's own message — reloading wouldn't fix it — not the generic reload banner/button.
+  it("a 409 with code 'state' shows the server's message, not the generic reload banner", async () => {
+    const calls = stubFetch({ onPut: () => jsonResponse(409, { error: "Only a draft can have its planned date changed.", code: "state" }) });
+    const v = releaseView({ type: "release", version: 1 });
+    renderSettings(v);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+
+    expect(await screen.findByText("Only a draft can have its planned date changed.")).toBeInTheDocument();
+    expect(screen.queryByText(/someone else changed this/i)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reload" })).toBeNull();
+    void calls;
+  });
+
   it("a 409 shows the reload message and keeps the user's input until Reload is clicked", async () => {
     let putCount = 0;
     const calls = stubFetch({

@@ -71,16 +71,27 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   const toggleMediaList = (key: string) =>
     setForm((f) => ({ ...f, mediaListKeys: f.mediaListKeys.includes(key) ? f.mediaListKeys.filter((k) => k !== key) : [...f.mediaListKeys, key] }));
 
+  // I2: the planned date is only ever truncated to the minute once it's round-tripped through
+  // the BC-local picker (`plannedValue.local` has no seconds) — fine when the user actually
+  // picked a new time, but re-sending that truncated local for a date the user never touched
+  // can silently change the stored instant by a few seconds. For a published/approved release
+  // that's not a no-op in the server's eyes (saveSettings only allows an unplanned-time change
+  // from draft/approved/failed — see service.rules.test.ts) — it was rejected as a state error
+  // on every retry, forever. Same check as the `dirty` flag above: if the picker shows exactly
+  // what the release already has, re-send that exact instant unchanged instead of recomputing it.
+  const plannedUnchanged = (plannedValue?.instant ?? null) === view.publishAt;
+
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    // Fix round 1 follow-up: sends the raw BC wall-clock string (`plannedPublishAtLocal`), not
-    // a client-converted instant, exactly like ActionsSection's Schedule action — the server
-    // (whose tzdata is authoritative) converts it. `plannedPublishAt: null` clears it.
     void section
       .save("/settings", {
         version: view.version,
         activityId: form.activityId,
-        ...(plannedValue ? { plannedPublishAtLocal: plannedValue.local } : { plannedPublishAt: null }),
+        ...(plannedUnchanged
+          ? { plannedPublishAt: view.publishAt }
+          : plannedValue
+            ? { plannedPublishAtLocal: plannedValue.local }
+            : { plannedPublishAt: null }),
         toSubscribers: form.toSubscribers,
         toMediaLists: form.toMediaLists,
         mediaListKeys: form.mediaListKeys,
@@ -111,6 +122,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           ))}
         </ul>
       )}
+      {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
       <Form onSubmit={onSubmit}>
         <NumberField

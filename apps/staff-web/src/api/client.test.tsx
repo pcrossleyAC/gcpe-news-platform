@@ -54,6 +54,16 @@ describe("apiFetch", () => {
     });
   });
 
+  // I2: the machine-readable `code` on a 409 (version_conflict vs state) lets a caller tell a
+  // real version conflict apart from "this action isn't allowed right now".
+  it("409 carries the server's `code` when present", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(409, { error: "Only a draft can be approved.", code: "state" })));
+    await expect(apiFetch("/nrms/api/releases/abc-123/approve", { method: "POST", body: { version: 1 } })).rejects.toMatchObject({
+      status: 409,
+      code: "state",
+    });
+  });
+
   it("422 carries the server's `problems`", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(422, { error: "bad", problems: ["Headline is required."] })));
     await expect(apiFetch("/nrms/api/releases/abc-123/approve", { method: "POST", body: { version: 1 } })).rejects.toMatchObject({

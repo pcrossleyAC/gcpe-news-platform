@@ -136,7 +136,7 @@ describe("NRMS media routes", () => {
 
     const dup = await upload(path, editorCookie, PNG);
     expect(dup.status).toBe(409);
-    expect(dup.body).toEqual({ error: "A page image with that name already exists." });
+    expect(dup.body).toEqual({ error: "A page image with that name already exists.", code: "state" });
 
     const updated = await request(app)
       .put(`/api/page-images/${created.body.id}`)

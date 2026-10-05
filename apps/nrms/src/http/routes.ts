@@ -75,7 +75,11 @@ const TZ_CHECK_AT = "2026-12-15T20:00:00Z";
 export function handleError(e: unknown, res: Response): boolean {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
   if (e instanceof ReleaseRuleError) return void res.status(422).json({ error: e.problems.join(" "), problems: e.problems }), true;
-  if (e instanceof VersionConflictError || e instanceof ReleaseStateError) return void res.status(409).json({ error: e.message }), true;
+  // I2: a machine-readable `code` lets the client tell "someone else changed this" (retry by
+  // reloading) apart from "this action isn't allowed right now" (show the server's own message
+  // instead — reloading won't fix it) even though both are HTTP 409.
+  if (e instanceof VersionConflictError) return void res.status(409).json({ error: e.message, code: "version_conflict" }), true;
+  if (e instanceof ReleaseStateError) return void res.status(409).json({ error: e.message, code: "state" }), true;
   if (e instanceof ReleaseNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   if (e instanceof ReleaseTooLargeError) return void res.status(413).json({ error: "release too large" }), true;
   if (e instanceof SiteRuleError) return void res.status(422).json({ errors: e.problems }), true;

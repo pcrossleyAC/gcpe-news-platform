@@ -15,6 +15,11 @@ export interface ApiErrorInit {
   message: string;
   problems?: string[];
   issues?: unknown[];
+  /** I2: a 409's machine-readable reason ("version_conflict" vs "state" —
+   * apps/nrms/src/http/routes.ts's handleError) — undefined for 409s from before this was
+   * added, and for every other status. Callers that only care about "was this a real version
+   * conflict" check `code !== "state"` rather than requiring it to be present. */
+  code?: string;
 }
 
 /** Thrown by {@link apiFetch} for any non-2xx response. `problems` (422) and `issues` (400)
@@ -23,6 +28,7 @@ export class ApiError extends Error {
   readonly status: number;
   readonly problems?: string[];
   readonly issues?: unknown[];
+  readonly code?: string;
 
   constructor(init: ApiErrorInit) {
     super(init.message);
@@ -30,6 +36,7 @@ export class ApiError extends Error {
     this.status = init.status;
     this.problems = init.problems;
     this.issues = init.issues;
+    this.code = init.code;
   }
 }
 
@@ -115,6 +122,7 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
       message,
       problems,
       issues: Array.isArray(errObj.issues) ? (errObj.issues as unknown[]) : undefined,
+      code: typeof errObj.code === "string" ? errObj.code : undefined,
     });
   }
 

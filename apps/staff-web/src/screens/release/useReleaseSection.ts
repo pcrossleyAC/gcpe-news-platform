@@ -57,7 +57,11 @@ export function useReleaseSection(view: ReleaseView, setView: (v: ReleaseView) =
         setState(INITIAL);
         return next;
       } catch (caught) {
-        if (caught instanceof ApiError && caught.status === 409) {
+        // I2: a 409 is "someone else changed this — reload" (version_conflict) only when the
+        // server says so; a ReleaseStateError is also a 409 but means "this action isn't
+        // allowed right now" — reloading won't fix it, so it falls through to the generic
+        // error branch below, which shows the server's own message instead of RELOAD_MESSAGE.
+        if (caught instanceof ApiError && caught.status === 409 && caught.code !== "state") {
           setState({ saving: false, problems: null, conflict: true, error: null });
         } else if (caught instanceof ApiError && caught.status === 422) {
           setState({ saving: false, problems: caught.problems ?? [caught.message], conflict: false, error: null });

@@ -105,7 +105,7 @@ describe("NRMS HTTP API", () => {
     expect(ok.body.status).toBe("approved");
     const again = await post(`/api/releases/${id}/approve`, editorCookie, { version: ok.body.version });
     expect(again.status).toBe(409);
-    expect(again.body).toEqual({ error: "This has already been approved." });
+    expect(again.body).toEqual({ error: "This has already been approved.", code: "state" });
   });
 
   it("schedule now → 200 scheduled; a stale version → 409 with the reload message", async () => {
@@ -117,7 +117,7 @@ describe("NRMS HTTP API", () => {
     expect(typeof s.body.statusText).toBe("string");
     const stale = await post(`/api/releases/${id}/schedule`, editorCookie, { version: a.body.version, publishAt: "now" });
     expect(stale.status).toBe(409);
-    expect(stale.body).toEqual({ error: STALE });
+    expect(stale.body).toEqual({ error: STALE, code: "version_conflict" });
   });
 
   // Fix round 1 (3f Task 3), finding 3: publishAtLocal (BC wall-clock, no offset) is an
@@ -302,7 +302,7 @@ describe("NRMS HTTP API", () => {
       version: 2, leadMinistryKey: "health", ministries: ["health"], sectors: [], themes: [], tags: [],
     });
     expect(stale.status).toBe(409);
-    expect(stale.body).toEqual({ error: STALE });
+    expect(stale.body).toEqual({ error: STALE, code: "version_conflict" });
   });
 
   it("documents: add, edit a language, translate, reorder, remove a translation and a document", async () => {
