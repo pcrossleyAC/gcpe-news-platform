@@ -8,6 +8,7 @@ import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
+import { needsReferenceData } from "./lists";
 import { sendDueJobs, startJobSender } from "./send-jobs";
 
 export const nodEnvSchema = z.object({
@@ -92,6 +93,9 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     port: parsed.PORT,
     workers: {
       send: () => sendDueJobs(sendJobsOptions),
+      // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
+      // data has ever reached this NoD so it knows whether to ask Core to republish.
+      needsReferenceData: () => needsReferenceData(db),
     },
     startLoops() {
       stopJobSender = startJobSender(sendJobsOptions);

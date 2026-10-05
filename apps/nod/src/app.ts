@@ -6,6 +6,7 @@ import { createEventReceiver } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import { createAsItHappensHandler, type AsItHappensOptions } from "./as-it-happens";
 import { apiRoutes } from "./http/routes";
+import { listsHandler } from "./lists";
 
 export interface AppDeps {
   db: Db;
@@ -29,7 +30,7 @@ export function createApp(deps: AppDeps): express.Express {
     createEventReceiver({
       db: deps.db,
       secrets: deps.eventSecrets,
-      handlers: (ev) => (ev.source === "nrms" && ev.type === "release.published" ? handler : undefined),
+      handlers: (ev) => (ev.source === "nrms" && ev.type === "release.published" ? handler : listsHandler(ev)),
     }),
   );
 

@@ -703,6 +703,28 @@ describe("apps/stack", () => {
     expect(body.ministries).toContainEqual({ key: "health", name: "Health", abbreviation: "HLTH" });
   });
 
+  // Task 2 (Phase 4a): NoD's `lists` mirror Core's taxonomy events over the same CORE->NOD
+  // route NRMS already uses for its own copy (see the test just above). The Subscribe API's
+  // own SubscriptionItems/ministries route isn't wired until Task 6 — this asserts the mirror
+  // directly against NoD's database instead.
+  it("a ministry saved in Core shows up in NoD's lists after a tick", async () => {
+    const putRes = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
+      body: JSON.stringify(healthOrg),
+    });
+    expect(putRes.status).toBe(200);
+
+    const tickRes = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+    expect(tickRes.status).toBe(200);
+
+    const rows = await instance.dbs.nod.pool.query<{ list_key: string; name: string }>(
+      "SELECT list_key, name FROM lists WHERE category = 'ministries' AND key = $1",
+      [healthOrg.key],
+    );
+    expect(rows.rows).toEqual([{ list_key: `ministries:${healthOrg.key}`, name: healthOrg.displayName }]);
+  });
+
   it("Phase 2 exit check: a release created through /nrms/api reaches a static page and an email, driven only by /stack/tick", async () => {
     const admin = { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` };
     // NRMS validates ministries and sectors against its copy of Core's taxonomy and takes the

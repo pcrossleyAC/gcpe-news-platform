@@ -248,14 +248,28 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
         secret: expect.any(String),
         types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
       },
+      {
+        name: "nod",
+        url: "self:/nod/events",
+        secret: expect.any(String),
+        types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+      },
     ]);
     expect(nrms.map((s: { name: string; types: string[] }) => [s.name, s.types])).toEqual([["news-api", ["*"]], ["nod", ["release.published"]]]);
     expect(newsApiSubs).toEqual([{ name: "public-site", url: "self:/site-builder/events", secret: expect.any(String), types: ["site.rebuild_requested"] }]);
     // Receivers hold exactly the secret their sender signs with, keyed by the sender's source name.
     expect(parse(w.NEWSAPI.EVENT_SECRETS)).toEqual({ core: core[0].secret, nrms: nrms[0].secret });
-    expect(parse(w.NOD.EVENT_SECRETS)).toEqual({ nrms: nrms[1].secret });
+    // Phase 4a: NoD now receives Core's taxonomy events too, alongside NRMS's release.published.
+    expect(parse(w.NOD.EVENT_SECRETS)).toEqual({ core: core[2].secret, nrms: nrms[1].secret });
     expect(parse(w.SITE.EVENT_SECRETS)).toEqual({ "news-api": newsApiSubs[0].secret });
     expect(w.DIST).toEqual({});
+  });
+
+  // Task 2 (Phase 4a): NoD mirrors Core's taxonomy events as well as NRMS's release.published,
+  // so its EVENT_SECRETS must carry both senders' keys.
+  it("NOD.EVENT_SECRETS carries both core and nrms keys", () => {
+    const w = internalEventEnv(secret);
+    expect(Object.keys(parse(w.NOD.EVENT_SECRETS)).sort()).toEqual(["core", "nrms"]);
   });
 
   it("derives a distinct secret per route, none equal to the stack secret, deterministically", () => {
