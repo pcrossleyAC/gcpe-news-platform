@@ -95,10 +95,23 @@ describe("DocumentsSection", () => {
     await user.click(await screen.findByRole("button", { name: "Move document 1 down" }));
 
     await waitFor(() => expect(screen.getByRole("button", { name: "Move document 1 up" })).toBeDisabled());
-    const items = document.querySelectorAll(".gcpe-documents__item");
-    expect(items[0]).toHaveAttribute("draggable", "false");
+    expect(screen.getByRole("img", { name: "Drag to reorder document 1" })).toHaveAttribute("draggable", "false");
 
     resolvePut(jsonResponse(200, releaseView({ ...TWO_DOCS, version: 2 })));
+  });
+
+  // I3: dragging the whole row made it impossible to mouse-select text in its inputs. Only
+  // the dedicated grip handle is draggable; the row and its fields are not.
+  it("only the drag handle is draggable, not the row or its inputs", async () => {
+    stubFetch();
+    renderSection(TWO_DOCS);
+    const handle = await screen.findByRole("img", { name: "Drag to reorder document 1" });
+    expect(handle).toHaveAttribute("draggable", "true");
+
+    const item = document.querySelectorAll(".gcpe-documents__item")[0]!;
+    expect(item).not.toHaveAttribute("draggable");
+    const headline = screen.getAllByLabelText("Headline")[0]!;
+    expect(headline.closest("[draggable='true']")).toBeNull();
   });
 
   it("adds a document via the inline form", async () => {

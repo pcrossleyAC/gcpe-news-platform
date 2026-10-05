@@ -257,3 +257,13 @@ body {
   padding: 0.25rem 0;
   margin: 0;
 }
+
+/* I3: the only draggable element in a reorderable row (shared/useDragReorder.tsx) — a small
+ * grip, not the whole row, so mouse text selection in the row's own inputs still works. */
+.gcpe-drag-handle {
+  display: inline-block;
+  cursor: grab;
+  padding: 0 0.5rem;
+  line-height: 1;
+  user-select: none;
+}

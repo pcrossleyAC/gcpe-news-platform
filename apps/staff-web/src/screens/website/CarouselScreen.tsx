@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { formatWhen } from "../../format/dates";
+import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { SchedulePicker, type ScheduleValue } from "../release/sections/SchedulePicker";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
@@ -44,7 +45,6 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   const section = useVersionedSave<CarouselView>();
   const [slides, setSlides] = useState<SlideForm[]>(() => toForm(carousel.slides));
   const [goLive, setGoLive] = useState<ScheduleValue | null>(null);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [removeIndex, setRemoveIndex] = useState<number | null>(null);
   const [imageError, setImageError] = useState<string | null>(null);
 
@@ -52,16 +52,10 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
   const moveUp = (index: number) => setSlides((s) => moveItemBy(s, index, -1));
   const moveDown = (index: number) => setSlides((s) => moveItemBy(s, index, 1));
 
-  const onDragStart = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    setDragIndex(index);
-    e.dataTransfer.effectAllowed = "move";
-  };
-  const onDragOver = (e: DragEvent<HTMLDivElement>) => e.preventDefault();
-  const onDrop = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (dragIndex !== null && dragIndex !== index) setSlides((s) => moveItemTo(s, dragIndex, index));
-    setDragIndex(null);
-  };
+  const dragReorder = useDragReorder({
+    enabled: canEdit && !section.saving,
+    onReorder: (from, to) => setSlides((s) => moveItemTo(s, from, to)),
+  });
 
   const save = () => {
     void section
@@ -110,14 +104,8 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
       )}
 
       {slides.map((slide, index) => (
-        <div
-          key={slide.id ?? `new-${index}`}
-          className="gcpe-carousel__slide"
-          draggable={canEdit && !section.saving}
-          onDragStart={canEdit && !section.saving ? onDragStart(index) : undefined}
-          onDragOver={canEdit && !section.saving ? onDragOver : undefined}
-          onDrop={canEdit && !section.saving ? onDrop(index) : undefined}
-        >
+        <div key={slide.id ?? `new-${index}`} className="gcpe-carousel__slide" {...dragReorder.dropZoneProps(index)}>
+          {canEdit && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder slide ${index + 1}`} />}
           <h4>Slide {index + 1}</h4>
           <TextField label={`Slide ${index + 1} headline`} value={slide.headline} onChange={(v) => update(index, { headline: v })} isDisabled={!canEdit} />
           <TextField label={`Slide ${index + 1} summary`} value={slide.summary} onChange={(v) => update(index, { summary: v })} isDisabled={!canEdit} />

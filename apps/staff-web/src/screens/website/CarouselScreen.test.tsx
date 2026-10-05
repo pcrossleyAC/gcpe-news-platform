@@ -205,6 +205,21 @@ describe("CarouselScreen", () => {
     expect(screen.queryByText("Someone else changed this — reload to see their changes.")).toBeNull();
   });
 
+  // I3: dragging the whole slide made it impossible to mouse-select text in its inputs. Only
+  // the dedicated grip handle is draggable; the slide row and its fields are not.
+  it("only the drag handle is draggable, not the slide row or its inputs", async () => {
+    const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
+    stubBasicFetch(["NRMS.SiteEditor"], withSlide);
+    render(withAuth(<CarouselScreen />));
+    const handle = await screen.findByRole("img", { name: "Drag to reorder slide 1" });
+    expect(handle).toHaveAttribute("draggable", "true");
+
+    const row = document.querySelector(".gcpe-carousel__slide")!;
+    expect(row).not.toHaveAttribute("draggable");
+    const headline = screen.getByLabelText("Slide 1 headline");
+    expect(headline.closest("[draggable='true']")).toBeNull();
+  });
+
   it("a too-large slide image upload (413) shows a clear message", async () => {
     const withSlide: CarouselsResponse = { ...EMPTY, next: { ...NEXT_CAROUSEL, slides: [{ id: "slide-1", headline: "H", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] } };
     vi.stubGlobal(

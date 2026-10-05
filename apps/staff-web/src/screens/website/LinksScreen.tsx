@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState, type DragEvent } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Button, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { moveItemBy, moveItemTo } from "./reorder";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
 import type { LinksView, ResourceLinkView } from "./types";
@@ -28,7 +29,6 @@ export function LinksScreen(): React.JSX.Element {
   const [view, setView] = useState<LinksView | null>(null);
   const [links, setLinks] = useState<LinkForm[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const resetFrom = (v: LinksView) => {
     setView(v);
@@ -46,16 +46,10 @@ export function LinksScreen(): React.JSX.Element {
   const moveDown = (index: number) => setLinks((l) => moveItemBy(l, index, 1));
   const remove = (index: number) => setLinks((l) => l.filter((_, i) => i !== index));
 
-  const onDragStart = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    setDragIndex(index);
-    e.dataTransfer.effectAllowed = "move";
-  };
-  const onDragOver = (e: DragEvent<HTMLDivElement>) => e.preventDefault();
-  const onDrop = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (dragIndex !== null && dragIndex !== index) setLinks((l) => moveItemTo(l, dragIndex, index));
-    setDragIndex(null);
-  };
+  const dragReorder = useDragReorder({
+    enabled: canEdit && !section.saving,
+    onReorder: (from, to) => setLinks((l) => moveItemTo(l, from, to)),
+  });
 
   const save = () => {
     if (!view) return;
@@ -89,14 +83,8 @@ export function LinksScreen(): React.JSX.Element {
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
       {links.map((link, index) => (
-        <div
-          key={link.id ?? `new-${index}`}
-          className="gcpe-links__item"
-          draggable={canEdit && !section.saving}
-          onDragStart={canEdit && !section.saving ? onDragStart(index) : undefined}
-          onDragOver={canEdit && !section.saving ? onDragOver : undefined}
-          onDrop={canEdit && !section.saving ? onDrop(index) : undefined}
-        >
+        <div key={link.id ?? `new-${index}`} className="gcpe-links__item" {...dragReorder.dropZoneProps(index)}>
+          {canEdit && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder link ${index + 1}`} />}
           <TextField label={`Link ${index + 1} text`} value={link.text} onChange={(v) => update(index, { text: v })} isDisabled={!canEdit} />
           <TextField label={`Link ${index + 1} URL`} value={link.url} onChange={(v) => update(index, { url: v })} isDisabled={!canEdit} />
           {canEdit && (

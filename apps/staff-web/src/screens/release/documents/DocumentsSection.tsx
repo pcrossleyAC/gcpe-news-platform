@@ -1,9 +1,11 @@
-import { useState, type DragEvent, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { LANG_EN, LAYOUTS, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
+import { DragHandle, useDragReorder } from "../../../shared/useDragReorder";
+import { moveBy, moveTo } from "../../../shared/reorder";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { documentsInOrder } from "./documentHelpers";
-import { moveBy, moveTo, orderedIds } from "./reorder";
+import { orderedIds } from "./reorder";
 import { DocumentTabs } from "./DocumentTabs";
 
 export interface DocumentsSectionProps {
@@ -26,7 +28,6 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
   const [newPageTitle, setNewPageTitle] = useState("");
   const [newLayout, setNewLayout] = useState<Layout>("formal");
   const [removeTarget, setRemoveTarget] = useState<string | null>(null);
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const enLang = view.languages.find((l) => l.languageId === LANG_EN);
 
@@ -34,16 +35,10 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
   const moveUp = (index: number) => reorder(moveBy(orderedIds(docs), index, -1));
   const moveDown = (index: number) => reorder(moveBy(orderedIds(docs), index, 1));
 
-  const onDragStart = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    setDragIndex(index);
-    e.dataTransfer.effectAllowed = "move";
-  };
-  const onDragOver = (e: DragEvent<HTMLDivElement>) => e.preventDefault();
-  const onDrop = (index: number) => (e: DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (dragIndex !== null && dragIndex !== index) reorder(moveTo(orderedIds(docs), dragIndex, index));
-    setDragIndex(null);
-  };
+  const dragReorder = useDragReorder({
+    enabled: !readOnly && !section.saving,
+    onReorder: (from, to) => reorder(moveTo(orderedIds(docs), from, to)),
+  });
 
   const submitAdd = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -82,17 +77,9 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
       {docs.map((doc, index) => (
-        <div
-          key={doc.id}
-          className="gcpe-documents__item"
-          // Fix round 1, minor: disabled while a save is in flight, matching the Move
-          // up/down buttons — a drag that reorders mid-save could race the in-flight PUT.
-          draggable={!readOnly && !section.saving}
-          onDragStart={readOnly || section.saving ? undefined : onDragStart(index)}
-          onDragOver={readOnly || section.saving ? undefined : onDragOver}
-          onDrop={readOnly || section.saving ? undefined : onDrop(index)}
-        >
+        <div key={doc.id} className="gcpe-documents__item" {...dragReorder.dropZoneProps(index)}>
           <div className="gcpe-documents__item-header">
+            {!readOnly && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder document ${index + 1}`} />}
             <h3>Document {index + 1}</h3>
             {!readOnly && (
               <>

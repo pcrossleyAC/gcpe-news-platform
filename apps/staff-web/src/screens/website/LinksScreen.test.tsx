@@ -66,6 +66,28 @@ describe("LinksScreen", () => {
     });
   });
 
+  // I3: dragging the whole row made it impossible to mouse-select text in its inputs. Only
+  // the dedicated grip handle is draggable; the row and its fields are not.
+  it("only the drag handle is draggable, not the row or its inputs", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/links") return jsonResponse(200, TWO_LINKS);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<LinksScreen />));
+    await screen.findByDisplayValue("First");
+    const handle = screen.getByRole("img", { name: "Drag to reorder link 1" });
+    expect(handle).toHaveAttribute("draggable", "true");
+
+    const row = document.querySelectorAll(".gcpe-links__item")[0]!;
+    expect(row).not.toHaveAttribute("draggable");
+    const textField = screen.getByLabelText("Link 1 text");
+    expect(textField.closest("[draggable='true']")).toBeNull();
+  });
+
   it("a Viewer sees no edit controls", async () => {
     vi.stubGlobal(
       "fetch",
