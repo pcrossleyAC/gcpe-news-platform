@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
@@ -133,8 +134,17 @@ const HEALTH_CACHE_TTL_MS = 5_000;
  * {@link HEALTH_CACHE_TTL_MS} — an external uptime monitor polling this every few seconds
  * would otherwise fan out into 6 fresh loopback requests (one of which is itself a DB ping)
  * on every single poll, for a number that's realistically stable across a 5 s window.
+ *
+ * `startedAt`/`pid` (2026-10-04 SiteGround debugging): SiteGround idle-kills the stack
+ * process after 30-60s and cold-starts a brand-new one on the next request
+ * (docs/deploy/siteground.md "Background work scheduler") — indistinguishable, from the
+ * outside, from a crash-triggered restart unless something names *when this process itself
+ * started*. Two polls a request-apart with a different `startedAt` (or `pid`) prove a restart
+ * happened between them; the same `startedAt` across many minutes proves the process stayed
+ * up the whole time. Deliberately outside the cache above (constant for the process's whole
+ * life, so there's nothing to cache) and never itself a reason for a non-200/503.
  */
-function healthRouter(): Router {
+function healthRouter(startedAt: string): Router {
   const checks: { name: string; path: string }[] = [
     { name: "core", path: "/core/health/ready" },
     { name: "nrms", path: "/nrms/health/ready" },
@@ -147,7 +157,7 @@ function healthRouter(): Router {
   const r = Router();
   r.get("/health", async (_req, res) => {
     if (cached && cached.expiresAt > Date.now()) {
-      return void res.status(cached.status).json(cached.body);
+      return void res.status(cached.status).json({ ...cached.body, startedAt, pid: process.pid });
     }
     const apps: Record<string, boolean> = {};
     await Promise.all(
@@ -164,7 +174,7 @@ function healthRouter(): Router {
     const status = ok ? 200 : 503;
     const body = { status: ok ? "ok" : "unavailable", apps };
     cached = { expiresAt: Date.now() + HEALTH_CACHE_TTL_MS, status, body };
-    res.status(status).json(body);
+    res.status(status).json({ ...body, startedAt, pid: process.pid });
   });
   return r;
 }
@@ -298,7 +308,18 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // /__fake/* test switches need a Core.Admin bearer or staff session.
   if (usesFakeFlickr(env)) {
     console.warn(`[stack] FLICKR: using the FAKE Flickr at ${FAKE_FLICKR_PATH} — set NRMS_FLICKR_API_KEY etc. for real Flickr`);
-    const fake = createFakeFlickr({ ...FAKE_FLICKR, publicBaseUrl: fakeFlickrPublicBase(siteEnv.PUBLIC_SITE_URL, actualPort) });
+    // 2026-10-04 SiteGround debugging: the fake's refuseAuth/outageCalls/deleted switches and
+    // every photo's isPublic flag used to live only in this process's memory — SiteGround
+    // idle-kills the stack process after 30-60s and cold-starts a brand-new one on the very
+    // next request (docs/deploy/siteground.md "Background work scheduler"), which reset all
+    // of that mid-scenario. scripts/siteground-flickr-walkthrough.sh --outage polls once a
+    // minute, close enough to that idle window that a restart between polls silently cleared
+    // refuseAuth and un-published the photo it had just made public, which is why the photo's
+    // reported state oscillated (unavailable -> private -> public -> private) instead of
+    // settling. statePath, under the same DATA_DIR that already survives this (and a
+    // redeploy), makes the fake's test state durable across it, the same way real Flickr's
+    // own state would be.
+    const fake = createFakeFlickr({ ...FAKE_FLICKR, publicBaseUrl: fakeFlickrPublicBase(siteEnv.PUBLIC_SITE_URL, actualPort), statePath: join(dataDir, "fake-flickr-state.json") });
     app.use(`${FAKE_FLICKR_PATH}/__fake`, requireBearer(errorsAuth.bearer), requireRole("Core.Admin"));
     app.use(FAKE_FLICKR_PATH, fake.router);
   }
@@ -316,7 +337,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     combinedLoginLimiter,
   );
 
-  app.use("/stack", healthRouter());
+  app.use("/stack", healthRouter(new Date(startedAt).toISOString()));
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
   app.use(
     "/stack",

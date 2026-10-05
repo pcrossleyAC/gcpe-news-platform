@@ -49,6 +49,45 @@ function applyArtifactDefaults(env: NodeJS.ProcessEnv): void {
 applyArtifactDefaults(process.env);
 
 /**
+ * 2026-10-04 SiteGround debugging (scripts/siteground-flickr-walkthrough.sh --outage): Node
+ * 24 exits on an unhandled rejection by default (and always has on an uncaught exception) —
+ * with no handler of our own, that exit is silent from SiteGround's side: there is no
+ * reachable runtime log over SSH (siteground-facts.md), the crash looks identical to an
+ * ordinary 30-60s idle-kill cold start, and nothing durable records that it happened at all
+ * or why. These two handlers log first (through console.error, so once `startStack` has
+ * installed its capture below, the message also reaches `GET /stack/errors` for the *next*
+ * process to show) and then exit anyway — deliberately, not a change in outcome:
+ *
+ * - Investigation here found the actual cause of the restarts seen on boxs.ca was something
+ *   else entirely (the documented idle-kill, not a crash — see docs/deploy/siteground.md and
+ *   packages/flickr-fake's new `statePath`), so there's no evidence a real unhandled
+ *   rejection has ever reached this process. If one ever does, though, it means some promise
+ *   somewhere was never awaited — i.e. an invariant this codebase doesn't otherwise check for
+ *   broke in a way nothing here was written to recover from (a half-finished write, a
+ *   listener left in a torn state). Continuing to serve requests after that is a worse bet
+ *   than restarting clean.
+ * - SiteGround already cold-starts a brand-new process, cheaply (well under a second for all
+ *   six apps), on the very next request/tick regardless of why the last one stopped — so
+ *   exiting here costs nothing beyond what idle-kill already costs continuously in normal
+ *   operation.
+ *
+ * Shuts down the same way a SIGTERM would (DB pools closed, etc.) when `shutdown` has been
+ * assigned below already; falls back to a bare exit if the crash happens during startup,
+ * before there's anything to shut down.
+ */
+let shutdownOnCrash: (() => Promise<void>) | undefined;
+function crash(kind: string, err: unknown): void {
+  console.error(`[stack] ${kind} — exiting so the platform restarts clean`, err);
+  if (shutdownOnCrash) {
+    void shutdownOnCrash();
+  } else {
+    process.exit(1);
+  }
+}
+process.on("unhandledRejection", (reason) => crash("unhandled rejection", reason));
+process.on("uncaughtException", (err) => crash("uncaught exception", err));
+
+/**
  * `node stack.js --check`: validates config (every app's env schema, its resolved
  * MIGRATIONS_FOLDER existing on disk, and the tenant config's time-zone self-check) and exits
  * — no database connection, no listening server. Used by the build script as a build-time
@@ -77,6 +116,7 @@ const shutdown = createShutdown({
   exit: process.exit,
   closers: [...handle.closeBeforeServer, { name: "http server", close: () => closeServer(server) }, ...handle.closers],
 });
+shutdownOnCrash = shutdown;
 for (const signal of ["SIGTERM", "SIGINT"] as const) {
   process.on(signal, () => void shutdown());
 }

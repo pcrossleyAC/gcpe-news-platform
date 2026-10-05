@@ -1,4 +1,6 @@
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname } from "node:path";
 import express from "express";
 
 /**
@@ -21,6 +23,60 @@ export interface FakeFlickrOptions {
   /** Absolute public base the oEmbed "url" points at, e.g. https://boxs.ca/fake-flickr */
   publicBaseUrl: string;
   photos?: FakePhoto[];
+  /**
+   * Where to persist `state` and every photo's `isPublic` flag (JSON), so both survive a
+   * process restart — SiteGround idle-kills the stack process after 30-60s and cold-starts a
+   * brand-new one on the next request (docs/deploy/siteground.md "Background work
+   * scheduler"), which otherwise throws away refuseAuth/outageCalls/deleted and every photo's
+   * visibility, resetting them to these defaults mid-scenario. Omit it (every test but the
+   * stack's own) for the old in-memory-only behaviour. Loaded once at construction; a
+   * missing or unreadable/corrupt file is treated the same as "nothing persisted yet" — the
+   * ordinary seeded/default state — never a startup failure.
+   */
+  statePath?: string;
+}
+
+interface PersistedFakeFlickrState {
+  state: FakeFlickrState;
+  /** Every photo the fake knows about, in full — not just a delta against the seed/options
+   * default — so a photo added only through `__fake/photos` (never in `opts.photos` or
+   * `defaultPhotos()`) still exists after a restart, not merely its `isPublic` flag. */
+  photos: FakePhoto[];
+}
+
+function isFakePhoto(p: unknown): p is FakePhoto {
+  return (
+    typeof p === "object" &&
+    p !== null &&
+    typeof (p as FakePhoto).id === "string" &&
+    typeof (p as FakePhoto).secret === "string" &&
+    typeof (p as FakePhoto).server === "string" &&
+    typeof (p as FakePhoto).isPublic === "boolean"
+  );
+}
+
+function loadPersistedState(statePath: string): PersistedFakeFlickrState | null {
+  try {
+    const raw = JSON.parse(readFileSync(statePath, "utf8")) as Partial<PersistedFakeFlickrState>;
+    const s = raw.state;
+    if (
+      !s ||
+      typeof s.refuseAuth !== "boolean" ||
+      typeof s.outageCalls !== "number" ||
+      !Array.isArray(s.deleted) ||
+      !s.deleted.every((d) => typeof d === "string") ||
+      !Array.isArray(raw.photos)
+    ) {
+      return null;
+    }
+    return {
+      state: { refuseAuth: s.refuseAuth, outageCalls: s.outageCalls, deleted: [...s.deleted] },
+      photos: raw.photos.filter(isFakePhoto).map((p) => ({ ...p })),
+    };
+  } catch {
+    // No file yet (first boot ever), or unreadable/corrupt — same as "nothing persisted".
+    return null;
+  }
 }
 
 export interface FakeFlickrState {
@@ -89,6 +145,32 @@ export function createFakeFlickr(
   const base = opts.publicBaseUrl.replace(/\/+$/, "");
   const photos = new Map((opts.photos ?? defaultPhotos()).map((p) => [p.id, { ...p }]));
   const state: FakeFlickrState = { refuseAuth: false, outageCalls: 0, deleted: [] };
+
+  const persisted = opts.statePath ? loadPersistedState(opts.statePath) : null;
+  if (persisted) {
+    state.refuseAuth = persisted.state.refuseAuth;
+    state.outageCalls = persisted.state.outageCalls;
+    state.deleted = persisted.state.deleted;
+    // Full overwrite, not just isPublic: a photo added only through __fake/photos (never in
+    // opts.photos/defaultPhotos()) must exist after a restart too, not just its visibility.
+    for (const p of persisted.photos) photos.set(p.id, { ...p });
+  }
+
+  /** Writes `state` and every known photo (in full) to {@link FakeFlickrOptions.statePath}
+   * (a no-op when it wasn't given). Called after every request that mutates either — never
+   * allowed to throw past the caller: a persistence failure (e.g. a read-only DATA_DIR) must
+   * never break the fake's own response, only leave it no more durable than before this
+   * feature existed. */
+  function persist(): void {
+    if (!opts.statePath) return;
+    try {
+      const payload: PersistedFakeFlickrState = { state, photos: [...photos.values()] };
+      mkdirSync(dirname(opts.statePath), { recursive: true });
+      writeFileSync(opts.statePath, JSON.stringify(payload));
+    } catch (e) {
+      console.error(`[flickr-fake] failed to persist state to ${opts.statePath}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
   /** Request-token secrets issued by request_token, keyed by token, insertion-ordered by
    * issue time (never re-inserted) so the oldest entry is always first — which is what lets
    * both pruning (expired ones are always a leading prefix) and capacity eviction just look at
@@ -159,6 +241,7 @@ export function createFakeFlickr(
     if (req.method !== "GET" && req.method !== "POST") return void res.status(405).end();
     if (state.outageCalls > 0) {
       state.outageCalls -= 1;
+      persist();
       return void res.status(503).type("text/plain").send("Service Unavailable");
     }
     const params = verify(req, accessSecretFor);
@@ -182,6 +265,7 @@ export function createFakeFlickr(
       const p = livePhoto(params.get("photo_id"));
       if (!p) return void notFound();
       p.isPublic = params.get("is_public") === "1";
+      persist();
       return void res.json({ stat: "ok" });
     }
     res.json({ stat: "fail", code: 112, message: "Method not found" });
@@ -249,6 +333,7 @@ export function createFakeFlickr(
     if (b.refuseAuth !== undefined) state.refuseAuth = b.refuseAuth as boolean;
     if (b.outageCalls !== undefined) state.outageCalls = b.outageCalls as number;
     if (b.deleted !== undefined) state.deleted = [...(b.deleted as string[])];
+    persist();
     res.json(state);
   });
 
@@ -259,6 +344,7 @@ export function createFakeFlickr(
     if (!photos.has(b.id as string) && photos.size >= MAX_PHOTOS) return void res.status(409).json({ error: `too many photos (max ${MAX_PHOTOS})` });
     const p: FakePhoto = { id: b.id as string, secret: b.secret as string, server: b.server as string, isPublic: b.isPublic as boolean };
     photos.set(p.id, p);
+    persist();
     res.json(p);
   });
 

@@ -244,6 +244,19 @@ describe("apps/stack", () => {
     expect(body.apps).toEqual({ core: true, nrms: true, nod: true, distribution: true, "site-builder": true, "news-api": true });
   });
 
+  // 2026-10-04 SiteGround debugging: the walkthrough's restarts were indistinguishable from a
+  // crash without something naming when *this* process started. startedAt/pid make a restart
+  // between two polls observable (a changed value) instead of a mystery, whether or not the
+  // aggregate health check itself is cached (M8) at the time.
+  it("GET /stack/health reports this process's startedAt and pid, stable across calls and across the health cache", async () => {
+    const first = (await (await fetch(`${instance.stackUrl}/stack/health`)).json()) as { startedAt: string; pid: number };
+    expect(first.pid).toBe(process.pid); // the test and the stack run in the same process here
+    expect(new Date(first.startedAt).toString()).not.toBe("Invalid Date");
+    expect(new Date(first.startedAt).getTime()).toBeLessThanOrEqual(Date.now());
+    const second = (await (await fetch(`${instance.stackUrl}/stack/health`)).json()) as { startedAt: string; pid: number };
+    expect(second).toEqual(first);
+  });
+
   // Fix round 1, P2-R30 M8.
   it("GET /stack/health caches the aggregate for ~5s instead of re-fanning-out to every app on each call", async () => {
     const originalFetch = globalThis.fetch;
@@ -453,10 +466,114 @@ describe("apps/stack", () => {
       await expect(wrong.getVisibility("53000000002")).rejects.toBeInstanceOf(FlickrError);
     });
 
+    // Debugging boxs.ca: scripts/siteground-flickr-walkthrough.sh --outage saw the fake
+    // Flickr's in-memory state reset mid-run (refuseAuth cleared, then photos reseeded
+    // private) with no external actor doing it -- strong evidence the stack process itself
+    // crashed and SiteGround restarted it. Reproduces the walkthrough's load (once-a-minute
+    // asset-status polls plus once-a-minute cron ticks) at full speed, with refuseAuth on the
+    // whole time (every Flickr call fails auth, round-tripping through installInternalFetch's
+    // self:/fake-flickr machinery every time), and asserts nothing crashes the process.
+    it("repeated Flickr calls while refuseAuth is on never crash the process (no unhandled rejection/exception)", async () => {
+      const seen: unknown[] = [];
+      const onRejection = (reason: unknown) => seen.push(reason);
+      const onException = (err: unknown) => seen.push(err);
+      process.on("unhandledRejection", onRejection);
+      process.on("uncaughtException", onException);
+      try {
+        expect((await fakeState({ refuseAuth: true })).status).toBe(200);
+
+        await seedTaxonomy(instance.dbs.nrms.db);
+        const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, { method: "POST", headers: admin(), body: JSON.stringify(sampleCreate) });
+        const { id, version } = (await created.json()) as { id: string; version: number };
+        const saved = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset`, {
+          method: "PUT",
+          headers: admin(),
+          body: JSON.stringify({ version, assetUrl: PRIVATE_PAGE, assetAltText: "Photo", hasMediaAssets: true }),
+        });
+        expect(saved.status).toBe(200);
+
+        const statusOnce = () => fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset-status`, { headers: admin() });
+        const tickOnce = () => fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+
+        for (let i = 0; i < 20; i++) {
+          const [s, t] = await Promise.all([statusOnce(), tickOnce()]);
+          expect(s.status).toBe(200);
+          expect(t.status).toBe(200);
+        }
+        await Promise.all(Array.from({ length: 20 }, () => statusOnce()));
+
+        // Give any late/async 'error' event a chance to surface before asserting.
+        await new Promise((r) => setTimeout(r, 50));
+        expect(seen).toEqual([]);
+      } finally {
+        process.off("unhandledRejection", onRejection);
+        process.off("uncaughtException", onException);
+        await fakeState({ refuseAuth: false });
+      }
+    });
+
     it("the fake's public base is the site URL's origin + /fake-flickr, else localhost at the stack's port", () => {
       expect(fakeFlickrPublicBase("https://boxs.ca/site/", 3000)).toBe("https://boxs.ca/fake-flickr");
       expect(fakeFlickrPublicBase(undefined, 4321)).toBe("http://localhost:4321/fake-flickr");
       expect(fakeFlickrPublicBase("not a url", 4321)).toBe("http://localhost:4321/fake-flickr");
+    });
+
+    // 2026-10-04 SiteGround debugging, end to end: a brand-new startStack(), pointed at the
+    // same DATA_DIR/databases/output dir as the shared `instance` but a fresh port, is
+    // exactly what SiteGround's documented 30-60s idle-kill-then-cold-start cycle does to a
+    // real deployment (docs/deploy/siteground.md "Background work scheduler") — a new
+    // process, same persistent state. Before the fix, this second instance's fake Flickr
+    // would come up with refuseAuth/photo visibility back at their in-memory defaults even
+    // though the first instance had already cleared the outage and made the photo public;
+    // that's what scripts/siteground-flickr-walkthrough.sh --outage was actually hitting.
+    it("a second startStack() against the same DATA_DIR sees the first's Flickr outage recovery (statePath survives a restart)", async () => {
+      expect((await fakeState({ refuseAuth: true })).status).toBe(200);
+      expect((await fakeState({ refuseAuth: false })).status).toBe(200);
+      const client1 = flickrClient({ ...FAKE_FLICKR, restUrl: `${instance.stackUrl}/fake-flickr/services/rest`, oembedUrl: `${instance.stackUrl}/fake-flickr/services/oembed` });
+      await client1.makePublic("53000000003");
+      expect(await client1.confirmPublic("53000000003")).toBe(true);
+
+      const port2 = await probeFreePort();
+      const env2: NodeJS.ProcessEnv = {
+        PORT: String(port2),
+        TICK_TOKEN: instance.tickToken,
+        STACK_LOOPS: "false",
+        NODE_ENV: "test",
+        DATA_DIR: instance.dataDir,
+        LOCAL_ADMIN_ENABLED: "true",
+        LOCAL_ADMIN_PASSWORD_HASH: await hashPassword(ADMIN_PASSWORD),
+        LOCAL_AUTH_SECRET,
+        STACK_EVENT_SECRET,
+        CORE_DATABASE_URL: instance.dbs.core.url,
+        NRMS_DATABASE_URL: instance.dbs.nrms.url,
+        NEWSAPI_DATABASE_URL: instance.dbs.newsApi.url,
+        SITE_DATABASE_URL: instance.dbs.publicSite.url,
+        SITE_NEWS_API_URL: "self:/",
+        SITE_OUTPUT_DIR: instance.outputDir,
+        SITE_PUBLIC_SITE_URL: "self:/site",
+        NOD_DATABASE_URL: instance.dbs.nod.url,
+        NOD_DISTRIBUTION_URL: "self:/distribution",
+        NOD_PUBLIC_SITE_URL: "self:/site",
+        NOD_MANAGE_URL: MANAGE_URL,
+        DIST_DATABASE_URL: instance.dbs.distribution.url,
+        DIST_SMTP_HOST: "127.0.0.1",
+        DIST_SMTP_PORT: String(instance.sink.port),
+        DIST_SMTP_SECURE: "false",
+        DIST_MAIL_FROM: "noreply@example.gov.bc.ca",
+        DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
+      };
+      const handle2 = await startStack(env2);
+      const bound2 = await listenOnPort(handle2.app, handle2.port);
+      try {
+        const stackUrl2 = `http://127.0.0.1:${handle2.port}`;
+        const client2 = flickrClient({ ...FAKE_FLICKR, restUrl: `${stackUrl2}/fake-flickr/services/rest`, oembedUrl: `${stackUrl2}/fake-flickr/services/oembed` });
+        expect(await client2.getVisibility("53000000003")).toBe("public");
+        // A photo neither instance touched keeps its ordinary seeded default.
+        expect(await client2.getVisibility("53000000004")).toBe("private");
+      } finally {
+        await bound2.close();
+        await Promise.all([...handle2.closeBeforeServer, ...handle2.closers].map((c) => c.close()));
+      }
     });
   });
 

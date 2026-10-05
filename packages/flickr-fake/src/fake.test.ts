@@ -1,7 +1,10 @@
 import { createHmac } from "node:crypto";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import express from "express";
 import request from "supertest";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createFakeFlickr } from "./index";
 
 const creds = { apiKey: "k", apiSecret: "s", accessToken: "t", accessSecret: "ts" };
@@ -197,5 +200,86 @@ describe("fake Flickr", () => {
     const at = await request(app).get(`/fake-flickr/services/oauth/access_token?${signed("GET", `${BASE}/services/oauth/access_token`, { oauth_verifier: "123-456-789" }, { token, secret })}`);
     expect(at.status).toBe(200);
     expect(at.text).toBe("fullname=Fake%20Flickr&oauth_token=t&oauth_token_secret=ts&user_nsid=12345%40N00&username=bcgovphotos");
+  });
+
+  // SiteGround idle-kills the stack process after 30-60s and cold-starts it on the next
+  // request (docs/deploy/siteground.md "Background work scheduler") — a brand-new
+  // createFakeFlickr instance, in-memory state reset to the defaults, every time this
+  // happens. scripts/siteground-flickr-walkthrough.sh --outage polls once a minute, close to
+  // that idle window, so refuseAuth/photo-visibility changes made by an earlier poll were
+  // silently lost before a later poll ever saw them. `statePath` makes the fake durable
+  // across exactly that restart, the same way DATA_DIR already does for uploaded files and
+  // the site's rendered output.
+  describe("statePath (durable across a process restart)", () => {
+    let dir: string | undefined;
+
+    afterEach(async () => {
+      if (dir) await rm(dir, { recursive: true, force: true });
+      dir = undefined;
+    });
+
+    it("a restart after the outage flag is set sees it; a restart after a photo is made public sees that too", async () => {
+      dir = await mkdtemp(join(tmpdir(), "gcpe-flickr-fake-test-"));
+      const statePath = join(dir, "fake-flickr-state.json");
+
+      // Phase 1: the walkthrough's --outage flips refuseAuth on. A cold start right after
+      // that (the first restart seen on boxs.ca) must still see the outage.
+      const duringOutage = createFakeFlickr({ ...creds, publicBaseUrl: BASE, statePath });
+      const outageApp = express();
+      outageApp.use("/fake-flickr", duringOutage.router);
+      await request(outageApp).post("/fake-flickr/__fake/state").send({ refuseAuth: true });
+
+      const afterFirstRestart = createFakeFlickr({ ...creds, publicBaseUrl: BASE, statePath });
+      expect(afterFirstRestart.state.refuseAuth).toBe(true);
+
+      // Phase 2: the outage clears and the Flickr job makes the photo public (a plain signed
+      // setPerms call — refuseAuth must be off for it to succeed, same as the real fake).
+      const clearApp = express();
+      clearApp.use("/fake-flickr", afterFirstRestart.router);
+      await request(clearApp).post("/fake-flickr/__fake/state").send({ refuseAuth: false });
+      const p = restParams("flickr.photos.setPerms", { photo_id: "53000000002", is_public: "1", is_friend: "0", is_family: "0" });
+      await request(clearApp)
+        .post("/fake-flickr/services/rest")
+        .type("form")
+        .send(signed("POST", `${BASE}/services/rest`, p, { token: "t", secret: "ts" }));
+      expect(afterFirstRestart.photos.get("53000000002")?.isPublic).toBe(true);
+
+      // A second restart (the one seen ~2 minutes later on boxs.ca) must still see both: the
+      // outage cleared, and the photo now public.
+      const afterSecondRestart = createFakeFlickr({ ...creds, publicBaseUrl: BASE, statePath });
+      expect(afterSecondRestart.state.refuseAuth).toBe(false);
+      expect(afterSecondRestart.photos.get("53000000002")?.isPublic).toBe(true);
+      // A photo never touched keeps its ordinary seeded default.
+      expect(afterSecondRestart.photos.get("53000000001")?.isPublic).toBe(false);
+    });
+
+    it("a missing or corrupt statePath file falls back to the ordinary seeded defaults", async () => {
+      dir = await mkdtemp(join(tmpdir(), "gcpe-flickr-fake-test-"));
+      const missing = createFakeFlickr({ ...creds, publicBaseUrl: BASE, statePath: join(dir, "does-not-exist.json") });
+      expect(missing.state).toEqual({ refuseAuth: false, outageCalls: 0, deleted: [] });
+
+      const corruptPath = join(dir, "corrupt.json");
+      const { writeFile } = await import("node:fs/promises");
+      await writeFile(corruptPath, "not json");
+      const corrupt = createFakeFlickr({ ...creds, publicBaseUrl: BASE, statePath: corruptPath });
+      expect(corrupt.state).toEqual({ refuseAuth: false, outageCalls: 0, deleted: [] });
+    });
+
+    it("persists __fake/state and __fake/photos writes too, not just setPerms", async () => {
+      dir = await mkdtemp(join(tmpdir(), "gcpe-flickr-fake-test-"));
+      const statePath = join(dir, "fake-flickr-state.json");
+      const first = createFakeFlickr({ ...creds, publicBaseUrl: BASE, statePath });
+      const app1 = express();
+      app1.use("/fake-flickr", first.router);
+      await request(app1).post("/fake-flickr/__fake/state").send({ outageCalls: 3, deleted: ["53000000001"] });
+      await request(app1).post("/fake-flickr/__fake/photos").send({ id: "999", secret: "abc", server: "1", isPublic: true });
+
+      const onDisk = JSON.parse(await readFile(statePath, "utf8")) as unknown;
+      expect(onDisk).toMatchObject({ state: { outageCalls: 3, deleted: ["53000000001"] } });
+
+      const second = createFakeFlickr({ ...creds, publicBaseUrl: BASE, statePath });
+      expect(second.state).toEqual({ refuseAuth: false, outageCalls: 3, deleted: ["53000000001"] });
+      expect(second.photos.get("999")).toEqual({ id: "999", secret: "abc", server: "1", isPublic: true });
+    });
   });
 });
