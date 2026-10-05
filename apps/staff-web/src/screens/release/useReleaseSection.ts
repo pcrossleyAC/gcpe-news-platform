@@ -4,8 +4,10 @@ import { apiFetch, ApiError } from "../../api/client";
 import { useAnnouncer } from "../../shared/Announcer";
 
 /** Fix round 1 (3f Task 3), minor 4: one shared copy of the 409 message, used by every section
- * (and the page-level unsaved-changes dialog) instead of each defining its own. */
-export const RELOAD_MESSAGE = "Someone else changed this — reload to see their changes.";
+ * (and the page-level unsaved-changes dialog) instead of each defining its own. Minors: the
+ * literal itself lives in shared/reloadMessage.ts — this re-export keeps every existing
+ * `from "../useReleaseSection"` import working unchanged. */
+export { RELOAD_MESSAGE } from "../../shared/reloadMessage";
 
 export interface ReleaseSectionState {
   saving: boolean;

@@ -3,9 +3,10 @@ import { ApiError } from "../../api/client";
 import { useAnnouncer } from "../../shared/Announcer";
 
 /** Same wording as release/useReleaseSection.ts's RELOAD_MESSAGE (constraints.md: one shared
- * copy of the 409 message) — re-exported here so every Website screen can import it from one
- * place without reaching into the release folder. */
-export const RELOAD_MESSAGE = "Someone else changed this — reload to see their changes.";
+ * copy of the 409 message) — re-exported here (both of them, from shared/reloadMessage.ts) so
+ * every Website screen can import it from this module without reaching into the release
+ * folder, and there's still only one literal behind both re-exports. */
+export { RELOAD_MESSAGE } from "../../shared/reloadMessage";
 
 export interface VersionedSaveState {
   saving: boolean;
@@ -48,7 +49,12 @@ export function useVersionedSave<T = unknown>(): VersionedSave<T> {
       announce("Saved");
       return result;
     } catch (caught) {
-      if (caught instanceof ApiError && caught.status === 409) {
+      // Same code-aware distinction as release/useReleaseSection.ts's save(): a 409 is a real
+      // version conflict (show the reload banner) unless the server says `code: "state"` —
+      // every Website 409 today is a version conflict (no Website error carries that code
+      // yet), so this doesn't change current behaviour; it exists so this hook's one state
+      // machine keeps agreeing with useReleaseSection's if that ever changes.
+      if (caught instanceof ApiError && caught.status === 409 && caught.code !== "state") {
         setState({ saving: false, problems: null, conflict: true, error: null });
       } else if (caught instanceof ApiError && caught.status === 422) {
         setState({ saving: false, problems: caught.problems ?? [caught.message], conflict: false, error: null });

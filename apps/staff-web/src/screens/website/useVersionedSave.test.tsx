@@ -32,6 +32,19 @@ describe("useVersionedSave", () => {
     expect(result.current.error).toBeNull();
   });
 
+  // Minors: same code-aware distinction as release/useReleaseSection.ts — a 409 with
+  // `code: "state"` isn't a version conflict and falls through to the generic error branch.
+  it("a 409 with code 'state' is not treated as a version conflict", async () => {
+    const { result } = renderHook(() => useVersionedSave());
+    await act(async () => {
+      await result.current.run(async () => {
+        throw new ApiError({ status: 409, message: "This action isn't allowed right now.", code: "state" });
+      });
+    });
+    expect(result.current.conflict).toBe(false);
+    expect(result.current.error).toBe("This action isn't allowed right now.");
+  });
+
   it("a 422 sets problems from the ApiError's problems array", async () => {
     const { result } = renderHook(() => useVersionedSave());
     await act(async () => {
