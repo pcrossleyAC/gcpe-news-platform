@@ -4,6 +4,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createFakeSource, type LegacySource } from "@gcpe/legacy-import";
 import { createNrmsTestDb, editor, seedTaxonomy } from "../../test/helpers";
 import { categoryFeatures, categoryTerms, mediaLists, newsReleases, organizations, releaseCategories, releaseLog, releaseMediaLists } from "../db/schema";
+import { bcYear } from "../releases/numbering";
 import { toReleaseRecord } from "../releases/record";
 import { createRelease, saveMeta } from "../releases/service";
 import { loadView } from "../releases/store";
@@ -82,6 +83,20 @@ interface FixtureIds {
 const fx = fictionalFixture as unknown as YearFixture & { ids: FixtureIds };
 const CORE_USER_ID = "99999999-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const CORE_USER_NAME = "Jane Doe";
+
+// Fix round 1 follow-up: approve()'s key/numbering uses the real BC clock (bcYear(now, tz)),
+// not an injectable one — WorkflowDeps/approve() have no test-clock hook (only the publisher
+// does, via TestClock). So R12 — the release that seeds the "year"/"ministry" counters the
+// real approve() test continues from — is patched to *today's* BC year here, at module load
+// time (before any test's import runs), instead of a year hardcoded in the fixture file. This
+// keeps the test passing regardless of which calendar year it happens to run in.
+const BC_YEAR = bcYear(new Date(), "America/Vancouver");
+const R12_KEY = `r12-${BC_YEAR}-seed`;
+{
+  const r12 = fx.years["2025"]!.releases!.find((r) => r.Id === fx.ids.R12)!;
+  r12.Year = BC_YEAR;
+  r12.Key = R12_KEY;
+}
 
 describe("importReleases — fictional fixture (all statuses, categories, media lists, log, top/feature, counters)", () => {
   let tdb: TestDatabase;
@@ -256,7 +271,7 @@ describe("importReleases — fictional fixture (all statuses, categories, media 
     // The run continued past both R10 and R11's failures: R12 (processed right after them) imported fine.
     const r12 = await byLegacyId(fx.ids.R12);
     expect(r12, "R12, processed after both failures, should still have imported").toBeDefined();
-    expect(r12!.key).toBe("r12-2026-seed");
+    expect(r12!.key).toBe(R12_KEY);
   });
 
   it("a release edited in NRMS after import is skipped by a re-run and listed in the report", async () => {
@@ -312,8 +327,8 @@ describe("importReleases — fictional fixture (all statuses, categories, media 
   it("counters: approving a brand-new release through the real workflow gets NEWS-<max+1> and the next yearRelease/ministryRelease", async () => {
     // Legacy maxes across every release processed (including R10/R11, which failed to import
     // but still occupied these numbers historically — Reference max is 99 from R6;
-    // R12 seeds year=2026 at 20 and ministry=health/2026 at 7): approve()'s bcYear() uses the
-    // real clock, so R12's Year=2026 is what makes this a meaningful continuity check today.
+    // R12 seeds year=BC_YEAR at 20 and ministry=health/BC_YEAR at 7): approve()'s bcYear() uses
+    // the real clock, so R12's Year was patched to match it at module load time, above.
     const v = await createRelease(
       tdb.db,
       {
@@ -329,7 +344,7 @@ describe("importReleases — fictional fixture (all statuses, categories, media 
 
     const [row] = await tdb.db.select().from(newsReleases).where(eq(newsReleases.id, v.id));
     expect(row).toMatchObject({ yearRelease: 21, ministryRelease: 8 });
-    expect(approved.key).toBe("2026HLTH0008-000021");
+    expect(approved.key).toBe(`${BC_YEAR}HLTH0008-000021`);
   });
 });
 
