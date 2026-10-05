@@ -1016,6 +1016,15 @@ describe("apps/stack: /hub hosting", () => {
     }
   });
 
+  // Minors: the staff shell is never meant to be framed by anything (clickjacking).
+  it("GET /hub/ carries frame-ancestors 'none' and X-Frame-Options: DENY", async () => {
+    for (const path of ["/hub", "/hub/", "/hub/releases/abc"]) {
+      const res = await fetch(`${built.stackUrl}${path}`);
+      expect.soft(res.headers.get("content-security-policy"), path).toBe("frame-ancestors 'none'");
+      expect.soft(res.headers.get("x-frame-options"), path).toBe("DENY");
+    }
+  });
+
   it("GET /hub/assets/<hashed file> is served with an immutable, year-long cache", async () => {
     const res = await fetch(`${built.stackUrl}/hub/assets/app-abc123.js`);
     expect(res.status).toBe(200);

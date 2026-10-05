@@ -340,6 +340,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   app.use("/hub", (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     res.setHeader("Cache-Control", "no-store");
+    // Minors: the staff shell is never meant to be framed by anything (clickjacking) — belt
+    // and suspenders, since the two headers cover browsers that only honour one of them.
+    res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+    res.setHeader("X-Frame-Options", "DENY");
     const last = req.path.split("/").pop() ?? "";
     if (last.includes(".")) return void res.status(404).end();
     const indexPath = join(staffWebDir, "index.html");
