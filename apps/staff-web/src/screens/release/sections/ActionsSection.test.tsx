@@ -233,4 +233,50 @@ describe("ActionsSection", () => {
     expect(await screen.findByText(/someone else changed this/i)).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
+
+  // Hand-check feedback: say why Approve/Publish are unavailable next to the buttons, not only
+  // in the header's checklist a long scroll away.
+  it("a draft that can't be approved says why next to Approve, and points the button at it", () => {
+    renderActions(releaseView({ status: "draft", ministries: [] }));
+    const why = screen.getByText("Approve is unavailable until:").parentElement!;
+    expect(why).toHaveTextContent("Choose at least one ministry.");
+    expect(screen.getByRole("button", { name: "Approve" })).toHaveAttribute("aria-describedby", why.id);
+    expect(screen.getByText("Publish now and Schedule appear once this is approved.")).toBeInTheDocument();
+  });
+
+  it("an approvable draft has no 'unavailable' reasons", () => {
+    renderActions(releaseView({ status: "draft", ministries: ["health"], leadMinistryKey: "health" }));
+    expect(screen.queryByText(/is unavailable until/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Approve" })).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("an approved release that can't be published lists what's missing next to Publish now and Schedule", () => {
+    renderActions(releaseView({ status: "approved", reference: "NEWS-00001", key: "k", documents: [] }));
+    const why = screen.getByText("Publish now and Schedule are unavailable until:").parentElement!;
+    expect(why).toHaveTextContent("Add at least one document.");
+    expect(screen.getByRole("button", { name: "Publish now" })).toHaveAttribute("aria-describedby", why.id);
+    expect(screen.getByRole("button", { name: "Schedule" })).toHaveAttribute("aria-describedby", why.id);
+    expect(screen.queryByText("Approve is unavailable until:")).not.toBeInTheDocument();
+  });
+
+  // Each reason links to (and, on click, scrolls/focuses) the section it's about — "where
+  // practical": at minimum Categories for a ministry/sector problem, Documents for a
+  // per-document one.
+  it("a ministry/sector reason links to #section-categories", () => {
+    renderActions(releaseView({ status: "draft", ministries: [] }));
+    expect(screen.getByRole("link", { name: "Choose at least one ministry." })).toHaveAttribute("href", "#section-categories");
+  });
+
+  it("'Add at least one document' links to #section-documents, and a per-document reason links to that document's own heading", () => {
+    renderActions(releaseView({ status: "approved", reference: "NEWS-00001", key: "k", documents: [] }));
+    expect(screen.getByRole("link", { name: "Add at least one document." })).toHaveAttribute("href", "#section-documents");
+  });
+
+  it("clicking a reason link scrolls to and focuses its target", async () => {
+    document.body.innerHTML += '<section id="section-categories" tabindex="-1">Categories</section>';
+    renderActions(releaseView({ status: "draft", ministries: [] }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link", { name: "Choose at least one ministry." }));
+    expect(document.getElementById("section-categories")).toHaveFocus();
+  });
 });

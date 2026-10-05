@@ -3,6 +3,7 @@ import { useNavigate } from "react-router";
 import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { approveProblems, publishProblems, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
+import { scrollToAndFocus } from "../../../shared/scrollToSection";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
@@ -32,6 +33,8 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
 
   const [schedulerOpen, setSchedulerOpen] = useState(false);
   const [scheduleValue, setScheduleValue] = useState<ScheduleValue | null>(null);
+  // Just blocks navigation while open (no save of its own to offer the sticky bar — Schedule's
+  // own "Confirm schedule" below is the only way to act on it).
   useRegisterDirty("actions-scheduler", schedulerOpen);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -47,6 +50,10 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
   const canCancel = view.status === "scheduled";
   const canUnpublish = rules.unpublishable && view.releasedAt !== null && UNPUBLISHABLE_STATUSES.has(view.status);
   const canDelete = DELETABLE_STATUSES.has(view.status);
+  // Why Approve/Publish are greyed out, said next to the buttons themselves (the header's
+  // checklists are a long scroll away) — hand-check feedback on boxs.ca.
+  const approveBlockers = canApprove ? approveProblems(view) : [];
+  const publishBlockers = canPublish ? publishProblems(view) : [];
 
   const approve = () => void section.save("/approve", { version: view.version }, "POST");
   const publishNow = () => void section.save("/schedule", { version: view.version, publishAt: "now" }, "POST");
@@ -100,17 +107,22 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
 
       <div className="gcpe-release-editor__action-buttons">
         {canApprove && (
-          <Button onPress={approve} isDisabled={section.saving || approveProblems(view).length > 0}>
+          <Button onPress={approve} isDisabled={section.saving || approveBlockers.length > 0} aria-describedby={approveBlockers.length > 0 ? "actions-approve-why" : undefined}>
             Approve
           </Button>
         )}
 
         {canPublish && (
           <>
-            <Button onPress={publishNow} isDisabled={section.saving || publishProblems(view).length > 0}>
+            <Button onPress={publishNow} isDisabled={section.saving || publishBlockers.length > 0} aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}>
               Publish now
             </Button>
-            <Button variant="secondary" onPress={() => setSchedulerOpen((o) => !o)} isDisabled={publishProblems(view).length > 0}>
+            <Button
+              variant="secondary"
+              onPress={() => setSchedulerOpen((o) => !o)}
+              isDisabled={publishBlockers.length > 0}
+              aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}
+            >
               Schedule
             </Button>
           </>
@@ -188,6 +200,10 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
         )}
       </div>
 
+      {approveBlockers.length > 0 && <BlockerList id="actions-approve-why" lead="Approve is unavailable until:" items={approveBlockers} />}
+      {canApprove && <p className="gcpe-release-editor__why">Publish now and Schedule appear once this is approved.</p>}
+      {publishBlockers.length > 0 && <BlockerList id="actions-publish-why" lead="Publish now and Schedule are unavailable until:" items={publishBlockers} />}
+
       {schedulerOpen && canPublish && (
         <div className="gcpe-release-editor__scheduler">
           <SchedulePicker timeZone={timeZone} legend="Schedule for" idPrefix="schedule" onChange={setScheduleValue} />
@@ -197,5 +213,47 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
         </div>
       )}
     </section>
+  );
+}
+
+/** Which section/field a given {@link approveProblems}/{@link publishProblems} message is
+ * about — "where practical" (hand-check feedback on boxs.ca): at minimum the Documents section
+ * for a per-document problem and Categories for a ministry/sector one, per the fix's own ask. */
+function blockerTarget(problem: string): string | null {
+  if (/\bministr(y|ies)\b/i.test(problem) || /\bsector\b/i.test(problem)) return "section-categories";
+  if (/media distribution list/i.test(problem)) return "section-settings";
+  if (/^add at least one document\.?$/i.test(problem)) return "section-documents";
+  const doc = /^Document (\d+)/.exec(problem);
+  if (doc) return `document-${doc[1]}-heading`;
+  return null;
+}
+
+function BlockerList({ id, lead, items }: { id: string; lead: string; items: string[] }): React.JSX.Element {
+  return (
+    <div id={id} className="gcpe-release-editor__why">
+      <p>{lead}</p>
+      <ul>
+        {items.map((p) => {
+          const target = blockerTarget(p);
+          return (
+            <li key={p}>
+              {target ? (
+                <a
+                  href={`#${target}`}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToAndFocus(target);
+                  }}
+                >
+                  {p}
+                </a>
+              ) : (
+                p
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 }

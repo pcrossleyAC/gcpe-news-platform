@@ -81,7 +81,7 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
   };
 
   return (
-    <section className="gcpe-release-editor__documents" aria-label="Documents" ref={moveFocus.containerRef}>
+    <section className="gcpe-release-editor__documents" aria-label="Documents" id="section-documents" tabIndex={-1} ref={moveFocus.containerRef}>
       <h2>Documents</h2>
 
       <p className="gcpe-documents__summary-note">
@@ -103,7 +103,9 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
         <div key={doc.id} className="gcpe-documents__item" {...dragReorder.dropZoneProps(index)}>
           <div className="gcpe-documents__item-header">
             {!readOnly && <DragHandle reorder={dragReorder} index={index} label={`Drag to reorder document ${index + 1}`} />}
-            <h3>Document {index + 1}</h3>
+            <h3 id={`document-${index + 1}-heading`} tabIndex={-1}>
+              Document {index + 1}
+            </h3>
             {!readOnly && (
               <>
                 <span data-move-id={doc.id} data-move-dir="up">
