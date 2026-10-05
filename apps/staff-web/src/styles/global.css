@@ -8,6 +8,10 @@
   --gcpe-type-update: rgb(226, 222, 69);
   --gcpe-type-advisory: rgb(226, 109, 90);
   --gcpe-type-factsheet: rgb(92, 92, 92);
+  /* @bcgov/bc-sans registers its faces as "BCSans" (no space), but the design tokens name the
+   * family 'BC Sans' with no fallback — so design-system components fell back to the browser's
+   * default serif. Point the token at the real face name, with fallbacks. */
+  --typography-font-families-bc-sans: "BCSans", "BC Sans", system-ui, sans-serif;
 }
 
 html,
@@ -18,7 +22,7 @@ body,
 
 body {
   margin: 0;
-  font-family: "BC Sans", system-ui, sans-serif;
+  font-family: var(--typography-font-families-bc-sans);
 }
 
 .gcpe-shell {
@@ -282,4 +286,36 @@ body {
   display: inline-block;
   padding: 0.25rem 0;
   min-height: 24px;
+}
+
+/* Body editor: a visible label and a bordered, multi-line typing area (the contenteditable
+   has no size or border of its own). */
+.gcpe-body-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-block: 1rem;
+}
+.gcpe-body-editor__label {
+  font-weight: 600;
+}
+.gcpe-body-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.gcpe-body-editor__area .ProseMirror {
+  min-height: 12rem;
+  padding: 0.75rem;
+  border: 1px solid var(--surface-color-border-dark, #898785);
+  border-radius: 4px;
+  background: var(--surface-color-forms-default, #fff);
+  line-height: 1.5;
+}
+.gcpe-body-editor__area .ProseMirror:focus {
+  outline: 3px solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: 1px;
+}
+.gcpe-body-editor__area .ProseMirror[contenteditable="false"] {
+  background: var(--surface-color-forms-disabled, #edebe9);
 }

@@ -36,7 +36,7 @@ export function BodyEditor({ id, label, value, onChange, readOnly }: BodyEditorP
       content: value,
       editable: !readOnly,
       editorProps: {
-        attributes: { id, "aria-label": label },
+        attributes: { id, role: "textbox", "aria-multiline": "true", "aria-labelledby": `${id}-label` },
         transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted),
       },
       onUpdate: ({ editor: e }) => onChange(e.getHTML()),
@@ -78,6 +78,9 @@ export function BodyEditor({ id, label, value, onChange, readOnly }: BodyEditorP
 
   return (
     <div className="gcpe-body-editor">
+      <span id={`${id}-label`} className="gcpe-body-editor__label">
+        {label}
+      </span>
       {!readOnly && editor && (
         <div className="gcpe-body-editor__toolbar" role="toolbar" aria-label={`${label} formatting`}>
           <ToggleButton isSelected={editor.isActive("bold")} onChange={() => editor.chain().focus().toggleBold().run()}>
@@ -95,7 +98,7 @@ export function BodyEditor({ id, label, value, onChange, readOnly }: BodyEditorP
           <Button onPress={insertAsset}>Insert asset</Button>
         </div>
       )}
-      <EditorContent editor={editor} />
+      <EditorContent editor={editor} className="gcpe-body-editor__area" />
     </div>
   );
 }

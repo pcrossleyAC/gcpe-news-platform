@@ -90,7 +90,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     { pageTitle: "News Story", languageId: LANG_EN, releaseType: "story", sortOrder: 0, layout: "formal" },
     { pageTitle: "Fact Sheet", languageId: LANG_EN, releaseType: "factsheet", sortOrder: 0, layout: "formal" },
     { pageTitle: "Media Advisory", languageId: LANG_EN, releaseType: "advisory", sortOrder: 0, layout: "formal" },
-  ]);
+  ]).onConflictDoNothing(); // migration 0014 already seeds some defaults (e.g. "News Release") on a fresh database
 
   const outputDir = await mkdtemp(join(tmpdir(), "gcpe-e2e-site-"));
   const dataDir = await mkdtemp(join(tmpdir(), "gcpe-e2e-data-"));

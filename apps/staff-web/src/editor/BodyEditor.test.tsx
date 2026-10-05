@@ -15,6 +15,16 @@ describe("BodyEditor", () => {
     expect(field.innerHTML).toContain("<strong>world</strong>");
   });
 
+  it("shows a visible label tied to the editing area, which is a multi-line textbox", async () => {
+    render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={() => {}} readOnly={false} />);
+    const label = screen.getByText("Body", { selector: "label, span, div" });
+    expect(label).toBeVisible();
+    const field = await screen.findByRole("textbox", { name: "Body" });
+    expect(field.getAttribute("aria-multiline")).toBe("true");
+    expect(field.getAttribute("aria-labelledby")).toBe(label.id);
+    expect(field.closest(".gcpe-body-editor__area")).not.toBeNull();
+  });
+
   it("read-only: not editable, and no toolbar", async () => {
     render(<BodyEditor id="body" label="Body" value="<p>x</p>" onChange={() => {}} readOnly />);
     const field = await screen.findByLabelText("Body");
