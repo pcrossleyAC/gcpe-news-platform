@@ -446,8 +446,8 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // once; the events reach NoD on the next dispatch tick. Fire-and-forget, never throws.
   void (async () => {
     try {
-      if (await nod.workers.needsReferenceData!()) {
-        const n = await core.workers.republish!();
+      if (await worker(nod, "needsReferenceData")()) {
+        const n = await worker(core, "republish")();
         console.log(`[stack] NoD had no lists; Core republished ${String(n)} reference records`);
       }
     } catch (e) {
