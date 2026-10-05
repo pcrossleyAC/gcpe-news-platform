@@ -107,10 +107,8 @@ export function installInternalFetch(getApp: () => RequestListener | undefined):
     }
     const status = res.statusCode ?? 500;
     const nullBody = status === 204 || status === 304 || method === "HEAD";
-    // Task 1 (staff-web): adding the DOM lib (for apps/staff-web's browser code — see
-    // tsconfig.json) made the DOM lib's own BodyInit win over @types/node's, and a plain
-    // Buffer<ArrayBufferLike> no longer structurally satisfies it (a generic-bounds mismatch,
-    // not a real runtime concern) — an explicit Uint8Array view of the same bytes does.
+    // An explicit Uint8Array view of the bytes satisfies BodyInit under both Node's and the DOM's
+    // typings (a plain Buffer<ArrayBufferLike> doesn't under the DOM's); same bytes at runtime.
     return new Response(nullBody ? null : new Uint8Array(payload), { status, headers: responseHeaders });
   };
 
