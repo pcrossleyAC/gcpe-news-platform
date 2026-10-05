@@ -84,6 +84,40 @@ describe("PinsScreen", () => {
     expect(JSON.parse(call.init!.body as string)).toEqual({ version: 1, headline: "New headline", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left" });
   });
 
+  // I1: a 409 on save must not leave the form showing the editor's stale local text once the
+  // user reloads — reload must re-seed the form from the server's current values.
+  it("409 on save -> Reload shows the server's current values, not the local edit", async () => {
+    let primary = PRIMARY;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/pins") return jsonResponse(200, [primary, SECONDARY]);
+        if (url === "/nrms/api/site/pins/primary" && init?.method === "PUT") return jsonResponse(409, { error: "conflict", code: "version_conflict" });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+
+    render(withAuth(<PinsScreen />));
+    const headlineField = await screen.findByLabelText("Primary headline");
+    expect(headlineField).toHaveValue("H");
+
+    const user = userEvent.setup();
+    await user.clear(headlineField);
+    await user.type(headlineField, "My local edit");
+    await user.click(screen.getByRole("button", { name: "Save primary pin" }));
+
+    await screen.findByText("Someone else changed this — reload to see their changes.");
+
+    primary = { ...primary, version: 2, slide: { ...primary.slide, headline: "Server headline" } };
+
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+
+    const reloaded = await screen.findByLabelText("Primary headline");
+    expect(reloaded).toHaveValue("Server headline");
+    expect(screen.queryByText("Someone else changed this — reload to see their changes.")).toBeNull();
+  });
+
   it("a Viewer sees no pin/unpin switch enabled and no save button", async () => {
     vi.stubGlobal(
       "fetch",

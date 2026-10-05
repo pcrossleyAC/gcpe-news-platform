@@ -110,11 +110,20 @@ describe("CarouselScreen", () => {
       slides: [{ headline: "Big news", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" }],
     });
 
+    // I1: the saved slide now has a server-assigned id — the image upload control (only
+    // rendered once a slide has an id) must appear without a manual re-render trigger.
+    await screen.findByLabelText("Slide 1 image (JPEG or PNG, up to 2 MB)");
+
     await user.click(await screen.findByRole("button", { name: "Make live now" }));
     const dialog = await screen.findByRole("dialog");
     await user.click(within(dialog).getByRole("button", { name: "Confirm make live" }));
 
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/carousels/next/make-live" && c.init?.method === "POST")).toBe(true));
+
+    // I1: the live editor must show the slides that just went live, not whatever stale local
+    // state its SlideEditor instance was carrying (there was no live carousel before this).
+    const liveSection = (await screen.findByRole("region", { name: "Live carousel" })) as HTMLElement;
+    await waitFor(() => expect(within(liveSection).getByLabelText("Slide 1 headline")).toHaveValue("Big news"));
   });
 
   it("a Viewer sees no write controls", async () => {
@@ -155,6 +164,45 @@ describe("CarouselScreen", () => {
     // relies on the mocked fetch below to stand in for the server's actual content check.
     await user.upload(input, new File(["not actually an image"], "notes.png", { type: "image/png" }));
     expect(await screen.findByText("Upload a JPEG or PNG image.")).toBeInTheDocument();
+  });
+
+  // I1: a 409 on save must not leave the form showing the editor's stale local text once the
+  // user reloads — reload must re-seed the form from the server's current values.
+  it("409 on save -> Reload shows the server's current values, not the local edit", async () => {
+    let next: CarouselView = {
+      ...NEXT_CAROUSEL,
+      slides: [{ id: "slide-1", headline: "Old headline", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }],
+    };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: false });
+        if (url === "/nrms/api/site/carousels") return jsonResponse(200, { live: null, next, past: [] });
+        if (url === "/nrms/api/site/carousels/next-1" && init?.method === "PUT") return jsonResponse(409, { error: "conflict", code: "version_conflict" });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+
+    render(withAuth(<CarouselScreen />));
+    const headlineField = await screen.findByLabelText("Slide 1 headline");
+    expect(headlineField).toHaveValue("Old headline");
+
+    const user = userEvent.setup();
+    await user.clear(headlineField);
+    await user.type(headlineField, "My local edit");
+    await user.click(screen.getByRole("button", { name: "Save carousel" }));
+
+    await screen.findByText("Someone else changed this — reload to see their changes.");
+
+    // Someone else's save landed in the meantime.
+    next = { ...next, version: 2, slides: [{ ...next.slides[0]!, headline: "Server headline" }] };
+
+    await user.click(screen.getByRole("button", { name: "Reload" }));
+
+    const reloaded = await screen.findByLabelText("Slide 1 headline");
+    expect(reloaded).toHaveValue("Server headline");
+    expect(screen.queryByText("Someone else changed this — reload to see their changes.")).toBeNull();
   });
 
   it("a too-large slide image upload (413) shows a clear message", async () => {

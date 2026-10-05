@@ -280,7 +280,7 @@ export function CarouselScreen(): React.JSX.Element {
       <section aria-label="Live carousel">
         <h2>Live</h2>
         {data.live ? (
-          <SlideEditor carousel={data.live} canEdit={canEdit} allowGoLiveEdit={false} timeZone={timeZone} onSaved={reload} />
+          <SlideEditor key={`${data.live.id}:${data.live.version}`} carousel={data.live} canEdit={canEdit} allowGoLiveEdit={false} timeZone={timeZone} onSaved={reload} />
         ) : (
           <p>No carousel is live.</p>
         )}
@@ -290,7 +290,7 @@ export function CarouselScreen(): React.JSX.Element {
         <h2>Next</h2>
         {data.next ? (
           <>
-            <SlideEditor carousel={data.next} canEdit={canEdit} allowGoLiveEdit={canEdit} timeZone={timeZone} onSaved={reload} />
+            <SlideEditor key={`${data.next.id}:${data.next.version}`} carousel={data.next} canEdit={canEdit} allowGoLiveEdit={canEdit} timeZone={timeZone} onSaved={reload} />
             {canEdit && (
               <>
                 {makeLive.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}

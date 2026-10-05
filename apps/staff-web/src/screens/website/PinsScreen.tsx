@@ -127,7 +127,7 @@ export function PinsScreen(): React.JSX.Element {
       <h1>Emergency pins</h1>
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       {pins === null && !loadError && <p>Loading…</p>}
-      {pins?.map((pin) => <PinForm key={pin.slot} pin={pin} canEdit={canEdit} onSaved={reload} />)}
+      {pins?.map((pin) => <PinForm key={`${pin.slot}:${pin.version}`} pin={pin} canEdit={canEdit} onSaved={reload} />)}
     </div>
   );
 }
