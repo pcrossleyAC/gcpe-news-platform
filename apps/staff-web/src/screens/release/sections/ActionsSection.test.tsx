@@ -55,6 +55,35 @@ describe("ActionsSection", () => {
     expect(screen.getByRole("button", { name: "Unpublish" })).toBeInTheDocument();
   });
 
+  // Minors: Unpublish takes a public release down — it needs a confirm dialog, same pattern
+  // as Delete, instead of firing the POST straight from the button press.
+  it("Unpublish opens a confirm dialog; only Confirm unpublish actually sends the request", async () => {
+    const v = releaseView({ type: "release", status: "published", releasedAt: "2026-01-01T00:00:00.000Z" });
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        return jsonResponse(200, releaseView({ ...v, status: "approved" }));
+      }),
+    );
+    renderActions(v);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("button", { name: "Unpublish" }));
+    expect(calls).toHaveLength(0);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent(/take.*down|unpublish/i);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(calls).toHaveLength(0);
+
+    await user.click(screen.getByRole("button", { name: "Unpublish" }));
+    await user.click(await screen.findByRole("button", { name: "Confirm unpublish" }));
+    await waitFor(() => expect(calls.some((c) => c.endsWith("/unpublish"))).toBe(true));
+  });
+
   it('the delete dialog says "permanent" for a never-approved draft (no reference)', async () => {
     renderActions(releaseView({ status: "draft", reference: null }));
     const user = userEvent.setup();

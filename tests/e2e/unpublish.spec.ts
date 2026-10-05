@@ -17,6 +17,15 @@ test.describe("item 8: unpublish", () => {
     await signInAs(context, "editor");
     await page.goto(`${baseUrl()}/hub/releases/${published.id}`);
     await page.getByRole("button", { name: "Unpublish" }).click();
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toBeVisible();
+    // I6: wait for the unpublish POST's own response (not just the click) before ticking —
+    // ticking before the server has actually recorded the unpublish is a race.
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes("/unpublish")),
+      dialog.getByRole("button", { name: "Confirm unpublish" }).click(),
+    ]);
+    await expect(dialog).toBeHidden();
     await tickTwice();
 
     const after = await apiCall<ReleaseView>(cookie, `/nrms/api/releases/${published.id}`);
@@ -24,6 +33,13 @@ test.describe("item 8: unpublish", () => {
 
     const afterRes = await fetch(`${baseUrl()}/site/releases/${key}/`);
     expect(afterRes.status).toBe(404);
+
+    // I6: the brief asks this spec to also assert the News API itself no longer returns the
+    // post — apps/news-api/src/http/v1/posts.ts answers a missing/unpublished key with 200 and
+    // an empty body (emptyOk), not a 404, so the empty text is what actually proves it's gone.
+    const newsApiRes = await fetch(`${baseUrl()}/api/Posts/${key}?api-version=1.0`);
+    expect(newsApiRes.status).toBe(200);
+    expect(await newsApiRes.text()).toBe("");
   });
 
   test("an Advisory never shows an Unpublish button, even once published", async ({ page, context }) => {

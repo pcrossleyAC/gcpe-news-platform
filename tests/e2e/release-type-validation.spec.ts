@@ -3,7 +3,7 @@
 import { test, expect } from "@playwright/test";
 import { CREATABLE_TYPES, TYPE_LABEL } from "@gcpe/nrms-contract";
 import { EDITOR_EMAIL, TEST_USER_PASSWORDS } from "./constants";
-import { apiCall, baseUrl, expectNoSeriousA11yViolations, loginForCookie, signInAs, uniqueHeadline } from "./playwright-support";
+import { apiCall, approveRelease, baseUrl, createPublishableRelease, expectNoSeriousA11yViolations, loginForCookie, signInAs, uniqueHeadline } from "./playwright-support";
 
 test.describe("item 2: per-type required/allowed fields", () => {
   test("the new-release form requires a headline before it will submit", async ({ page, context }) => {
@@ -56,6 +56,37 @@ test.describe("item 2: per-type required/allowed fields", () => {
         },
       }),
     ).rejects.toThrow(/422/);
+  });
+
+  // I6: an Advisory's only distribution channel is media lists (it can't go to NoD
+  // subscribers) — the server refuses to schedule/publish one with none at all, and the form
+  // must show the editor why, not just silently leave Publish disabled.
+  test("an Advisory with no media lists: the API refuses to publish it (422), and the form shows why", async ({ page, context }) => {
+    const cookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
+    const created = await createPublishableRelease(cookie, {
+      type: "advisory", sectors: [], themes: [], tags: [], mediaListKeys: [], headline: uniqueHeadline("Advisory with no media lists"),
+    });
+    const approved = await approveRelease(cookie, created);
+
+    await expect(
+      apiCall(cookie, `/nrms/api/releases/${approved.id}/schedule`, { method: "POST", body: { version: approved.version, publishAt: "now" } }),
+    ).rejects.toThrow(/422/);
+
+    await signInAs(context, "editor");
+    await page.goto(`${baseUrl()}/hub/releases/${approved.id}`);
+    await expect(page.getByText("Choose at least one media distribution list.")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Publish now" })).toBeDisabled();
+
+    // Fixable from the same form: check a media list, save, and the warning (and the
+    // disabled state) must clear.
+    const settings = page.getByRole("region", { name: "Publish settings" });
+    await settings.getByRole("checkbox", { name: /Regional media/ }).check();
+    await Promise.all([
+      page.waitForResponse((r) => r.request().method() === "PUT" && r.url().includes("/settings")),
+      settings.getByRole("button", { name: "Save settings" }).click(),
+    ]);
+    await expect(page.getByText("Choose at least one media distribution list.")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Publish now" })).toBeEnabled();
   });
 
   const PAGE_TITLE_FOR: Record<string, string> = { release: "News Release", story: "News Story", factsheet: "Fact Sheet", advisory: "Media Advisory" };

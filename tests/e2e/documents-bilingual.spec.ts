@@ -118,10 +118,31 @@ test.describe("item 3: documents, translations, contacts, reorder, auto-summary"
     // HTML5 drag protocol needs its own drag/dataTransfer events, which `dragTo` doesn't raise
     // — confirmed by running it here and watching the drop have no effect).
     const items = docsSection.locator(".gcpe-documents__item");
+    // I3: only the dedicated grip handle is draggable now (the whole row no longer is, so
+    // text in its inputs can be mouse-selected) — dragstart must originate there, not on the
+    // row itself.
     await Promise.all([
       page.waitForResponse((r) => r.request().method() !== "GET" && r.url().includes("/nrms/api/releases/")),
-      dragReorder(page, items.nth(1), items.nth(0)),
+      dragReorder(page, items.nth(1).locator(".gcpe-drag-handle"), items.nth(0)),
     ]);
     await expect.poll(() => pageTitleOf(0).inputValue()).toBe("News Release");
+
+    // I6 (item 3): reload the page and assert everything actually persisted server-side —
+    // the two documents (in their post-reorder order), document 1's French translation, and
+    // both documents' contacts — not just what the in-memory React state happened to show
+    // right after each save.
+    await page.reload();
+    await expect(docsSection.locator(".gcpe-documents__item")).toHaveCount(2);
+    await expect(pageTitleOf(0)).toHaveValue("News Release");
+    await expect(pageTitleOf(1)).toHaveValue("Second Document Page Title");
+
+    const reloadedFirstItem = docsSection.locator(".gcpe-documents__item").nth(0);
+    await expect(reloadedFirstItem.getByRole("tab", { name: "French" })).toBeVisible();
+    await reloadedFirstItem.getByRole("tab", { name: "English" }).click();
+    await expect(reloadedFirstItem.getByLabel("Contact 1")).toHaveValue("Media Relations\nMinistry of Health\n250-555-0101");
+    await reloadedFirstItem.getByRole("tab", { name: "French" }).click();
+    await expect(reloadedFirstItem.getByLabel("Page title")).toHaveValue("Communiqué de presse");
+    await expect(reloadedFirstItem.getByLabel("Headline", { exact: true })).toHaveValue("Des cliniques ouvertes les week-ends");
+    await expect(reloadedFirstItem.getByLabel("Contact 1")).toHaveValue("Relations avec les médias\n250-555-0101");
   });
 });

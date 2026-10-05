@@ -39,6 +39,8 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
   const [deleteConflict, setDeleteConflict] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
+  const [unpublishOpen, setUnpublishOpen] = useState(false);
+
   const canApprove = view.status === "draft";
   const canPublish = (view.status === "approved" || view.status === "failed") && view.key !== null;
   const needsKeyFirst = (view.status === "approved" || view.status === "failed") && view.key === null;
@@ -49,7 +51,10 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
   const approve = () => void section.save("/approve", { version: view.version }, "POST");
   const publishNow = () => void section.save("/schedule", { version: view.version, publishAt: "now" }, "POST");
   const cancelSchedule = () => void section.save("/cancel", { version: view.version }, "POST");
-  const unpublish = () => void section.save("/unpublish", { version: view.version }, "POST");
+  const unpublish = () =>
+    void section.save("/unpublish", { version: view.version }, "POST").then((next) => {
+      if (next) setUnpublishOpen(false);
+    });
 
   const submitSchedule = async () => {
     if (!scheduleValue) return;
@@ -119,9 +124,31 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
         )}
 
         {canUnpublish && (
-          <Button variant="secondary" onPress={unpublish} isDisabled={section.saving}>
-            Unpublish
-          </Button>
+          // Minors: this takes a public release down — a confirm dialog, same pattern as
+          // Delete, instead of firing the POST straight from the button press.
+          <DialogTrigger isOpen={unpublishOpen} onOpenChange={setUnpublishOpen}>
+            <Button variant="secondary" isDisabled={section.saving}>
+              Unpublish
+            </Button>
+            <Modal isDismissable>
+              <AlertDialog
+                variant="warning"
+                title="Unpublish this release?"
+                buttons={
+                  <>
+                    <Button onPress={() => setUnpublishOpen(false)} isDisabled={section.saving}>
+                      Cancel
+                    </Button>
+                    <Button danger onPress={unpublish} isDisabled={section.saving}>
+                      Confirm unpublish
+                    </Button>
+                  </>
+                }
+              >
+                <p>This takes the release down from the public site and the News API. It can be republished afterwards.</p>
+              </AlertDialog>
+            </Modal>
+          </DialogTrigger>
         )}
 
         {canDelete && (

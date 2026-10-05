@@ -88,6 +88,23 @@ export async function apiCall<T = unknown>(
   return data as T;
 }
 
+/** A minimal valid 1x1 PNG — reused wherever a test just needs *some* real image bytes
+ * (I6's axe-sweep seeding; website.spec.ts's own upload test builds the same bytes inline). */
+export const ONE_PX_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
+
+/** `POST /nrms/api/site/files?name=&replace=` with raw bytes — `apiCall` always JSON-encodes
+ * its body, which this route doesn't take (apps/nrms/src/http/site-routes.ts's `rawFile`
+ * middleware reads the raw request body). Used to seed a Website file outside the browser. */
+export async function uploadSiteFile(cookie: string, name: string, bytes: Buffer, contentType = "image/png"): Promise<{ id: string; url: string }> {
+  const res = await fetch(`${baseUrl()}/nrms/api/site/files?${new URLSearchParams({ name, replace: "false" })}`, {
+    method: "POST",
+    headers: { cookie, [CSRF_HEADER]: "1", "content-type": contentType },
+    body: new Uint8Array(bytes),
+  });
+  if (!res.ok) throw new Error(`uploadSiteFile(${name}) -> ${res.status}: ${await res.text()}`);
+  return res.json() as Promise<{ id: string; url: string }>;
+}
+
 /** `POST /stack/tick` (the publisher/dispatch worker run) — apps/stack/src/stack.ts. */
 export async function tick(): Promise<void> {
   const res = await fetch(`${baseUrl()}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${TICK_TOKEN}` } });
@@ -196,10 +213,19 @@ export function bcLocalParts(date: Date): { date: string; time: string } {
   return { date: `${get("year")}-${get("month")}-${get("day")}`, time: `${get("hour")}:${get("minute")}` };
 }
 
-/** The wall-clock instant (real ms since epoch) at which the *next* BC-local minute boundary
- * after `from` begins — i.e. what `bcLocalParts(new Date(from.getTime() + 60_000))` names. */
+/**
+ * The wall-clock instant (real ms since epoch) at which the *next* BC-local minute boundary
+ * after `from` begins — i.e. what `bcLocalParts(new Date(from.getTime() + 60_000))` names.
+ *
+ * I6 (minute-boundary flake): callers compute this once, then spend real time driving the UI
+ * (filling in the date/time, saving, ...) before the deadline is actually supposed to matter —
+ * if that boundary was less than 15s away to begin with, the UI steps alone can eat into or
+ * past it, making "not due yet" assertions flaky. Skip to the *following* minute whenever the
+ * nearest one is that close, so every caller always gets at least 15s of real headroom.
+ */
 export function nextMinuteBoundaryMs(from: Date): number {
-  return Math.ceil((from.getTime() + 1) / 60_000) * 60_000;
+  const nearest = Math.ceil((from.getTime() + 1) / 60_000) * 60_000;
+  return nearest - from.getTime() < 15_000 ? nearest + 60_000 : nearest;
 }
 
 export function uniqueHeadline(prefix: string): string {

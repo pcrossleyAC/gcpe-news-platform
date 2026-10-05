@@ -3,7 +3,7 @@
 // Approve." Also covers axe on the sign-in screen (item 16).
 import { test, expect } from "@playwright/test";
 import { EDITOR_EMAIL, TEST_USER_PASSWORDS } from "./constants";
-import { baseUrl, createApprovedAndPublished, expectNoSeriousA11yViolations, loginForCookie, signInAs, uniqueHeadline } from "./playwright-support";
+import { apiCall, baseUrl, createApprovedAndPublished, createPublishableRelease, expectNoSeriousA11yViolations, loginForCookie, ROLE_LOGINS, signInAs, uniqueHeadline } from "./playwright-support";
 
 test.describe("item 1: sign-in and role visibility", () => {
   test("a test editor signs in through the sign-in form and lands on Drafts", async ({ page }) => {
@@ -64,11 +64,22 @@ test.describe("item 1: sign-in and role visibility", () => {
     await expect(page).toHaveURL(/\/hub\/website\/carousel$/);
     await expect(page.getByRole("heading", { name: "Carousel" })).toBeVisible();
 
+    // I6: a published release's Approve/Publish buttons are absent for *every* role (they're
+    // actions for a draft/approved release, not a published one) — that alone proves nothing
+    // about the site editor's own role gate. Use a draft instead: the whole Actions region
+    // (not just one button) must be absent for a site editor, and the server itself (not just
+    // the UI) must refuse the write.
     const editorCookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
-    const view = await createApprovedAndPublished(editorCookie);
-    await page.goto(`${baseUrl()}/hub/releases/${view.id}`);
+    const headline = uniqueHeadline("Site editor sees no Actions");
+    const draft = await createPublishableRelease(editorCookie, { headline });
+    await page.goto(`${baseUrl()}/hub/releases/${draft.id}`);
+    await expect(page.getByRole("heading", { level: 1 })).toContainText(headline);
+    await expect(page.getByRole("region", { name: "Actions" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Approve" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Publish now" })).toHaveCount(0);
+
+    const siteEditorCookie = await ROLE_LOGINS.siteEditor();
+    await expect(apiCall(siteEditorCookie, `/nrms/api/releases/${draft.id}/approve`, { method: "POST", body: { version: draft.version } })).rejects.toThrow("403");
 
     // Site editor is also never offered Blue Bridge's switch, Users, or the error log.
     await page.goto(`${baseUrl()}/hub/website/blue-bridge`);

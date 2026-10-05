@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test, expect } from "@playwright/test";
 import { ADMIN_USERNAME, ADMIN_PASSWORD, SITE_EDITOR_EMAIL, TEST_USER_PASSWORDS } from "./constants";
-import { apiCall, baseUrl, bcLocalParts, loginForCookie, nextMinuteBoundaryMs, signInAs, tick, uniqueHeadline } from "./playwright-support";
+import { apiCall, baseUrl, bcLocalParts, loginForCookie, nextMinuteBoundaryMs, signInAs, tick, tickTwice, uniqueHeadline } from "./playwright-support";
 import type { PinView } from "../../apps/staff-web/src/screens/website/types";
 
 test.describe("item 12: Website section", () => {
@@ -40,7 +40,8 @@ test.describe("item 12: Website section", () => {
     await expect(page.getByRole("region", { name: "Next carousel" }).getByText("There is no next carousel.")).toBeVisible();
   });
 
-  test("an emergency pin's content and pinned state survive a carousel change", async ({ page, context }) => {
+  test("an emergency pin's content and pinned state survive a carousel going live, and stays first in the public feed", async ({ page, context }) => {
+    test.setTimeout(60_000);
     await signInAs(context, "siteEditor");
     await page.goto(`${baseUrl()}/hub/website/pins`);
 
@@ -63,18 +64,46 @@ test.describe("item 12: Website section", () => {
     ]);
     await expect(primary.getByText("Primary is pinned")).toBeVisible();
 
-    // A carousel change: delete any next carousel and create a fresh one (whatever state this
-    // worker-shared suite left behind), as an unrelated site-editor action.
+    // I6: the previous version of this test only changed the carousel *through the API* and
+    // never actually made anything go live, so it never exercised the one scenario the pin is
+    // actually for — proving pinnedSlides()/slidesSnapshot() (apps/nrms/src/website/events.ts)
+    // really does put the pin ahead of the carousel's own slides once that carousel is live, in
+    // what the public News API (`/api/Slides`) serves. Self-contained: create a fresh next
+    // carousel with its own slide and make it live now.
     const siteEditorCookie = await loginForCookie(SITE_EDITOR_EMAIL, TEST_USER_PASSWORDS[SITE_EDITOR_EMAIL]!);
     const data = await apiCall<{ next: { version: number } | null }>(siteEditorCookie, "/nrms/api/site/carousels");
     if (data.next) {
       await apiCall(siteEditorCookie, `/nrms/api/site/carousels/next?version=${data.next.version}`, { method: "DELETE" });
     }
+    const carouselHeadline = uniqueHeadline("Carousel slide alongside the pin");
+    const { date, time } = bcLocalParts(new Date());
+    const next = await apiCall<{ id: string; version: number }>(siteEditorCookie, "/nrms/api/site/carousels/next", {
+      method: "POST",
+      body: { goLiveAtLocal: `${date}T${time}` },
+    });
+    await apiCall(siteEditorCookie, `/nrms/api/site/carousels/${next.id}`, {
+      method: "PUT",
+      body: { version: next.version, slides: [{ headline: carouselHeadline, summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" }] },
+    });
+    await apiCall(siteEditorCookie, "/nrms/api/site/carousels/next/make-live", { method: "POST" });
+    await tickTwice();
 
     const pins = await apiCall<PinView[]>(siteEditorCookie, "/nrms/api/site/pins");
     const primaryPin = pins.find((p) => p.slot === "primary")!;
     expect(primaryPin.pinned).toBe(true);
     expect(primaryPin.slide.headline).toBe(headline);
+
+    // Still pinned/first in the staff UI too.
+    await page.reload();
+    await expect(primary.getByLabel("Primary headline")).toHaveValue(headline);
+    await expect(primary.getByText("Primary is pinned")).toBeVisible();
+
+    // And first — ahead of the now-live carousel's own slide — in the public News API feed.
+    const publicSlides = (await (await fetch(`${baseUrl()}/api/Slides?api-version=1.0`)).json()) as { headline: string }[];
+    expect(publicSlides.length).toBeGreaterThanOrEqual(2);
+    expect(publicSlides[0]!.headline).toBe(headline);
+    expect(publicSlides.some((s) => s.headline === carouselHeadline)).toBe(true);
+    expect(publicSlides.findIndex((s) => s.headline === carouselHeadline)).toBeGreaterThan(publicSlides.findIndex((s) => s.headline === headline));
   });
 
   test("Live Feed's URLs reach the News API's home record", async () => {
@@ -135,17 +164,36 @@ test.describe("item 12: Website section", () => {
     await expect(page.getByText("Project Blue Bridge is currently OFF.")).toBeVisible();
   });
 
-  test("resource links can be added, saved and reordered", async ({ page, context }) => {
+  // I6: renamed from "...and reordered" — the old test added and saved a link but never
+  // actually reordered anything. This one adds two links, moves the second one up with the
+  // keyboard-operable Move button, saves, and reloads to confirm the new order persisted.
+  test("resource links can be added, saved, and actually reordered", async ({ page, context }) => {
     await signInAs(context, "siteEditor");
     await page.goto(`${baseUrl()}/hub/website/links`);
     const before = await page.locator(".gcpe-links__item").count();
 
+    const firstText = uniqueHeadline("First link");
+    const secondText = uniqueHeadline("Second link");
+
     await page.getByRole("button", { name: "Add link" }).click();
-    const index = before; // the newly added link's position
-    await page.getByLabel(`Link ${index + 1} text`).fill("Immunization info");
-    await page.getByLabel(`Link ${index + 1} URL`).fill("https://www2.gov.bc.ca/immunize");
+    await page.getByLabel(`Link ${before + 1} text`).fill(firstText);
+    await page.getByLabel(`Link ${before + 1} URL`).fill("https://www2.gov.bc.ca/immunize");
+    await page.getByRole("button", { name: "Add link" }).click();
+    await page.getByLabel(`Link ${before + 2} text`).fill(secondText);
+    await page.getByLabel(`Link ${before + 2} URL`).fill("https://www2.gov.bc.ca/health");
     await page.getByRole("button", { name: "Save links" }).click();
-    await expect(page.getByLabel(`Link ${index + 1} URL`)).toHaveValue("https://www2.gov.bc.ca/immunize");
+    await expect(page.getByLabel(`Link ${before + 2} URL`)).toHaveValue("https://www2.gov.bc.ca/health");
+
+    await page.getByRole("button", { name: `Move link ${before + 2} up` }).click();
+    await expect(page.getByLabel(`Link ${before + 1} text`)).toHaveValue(secondText);
+    await expect(page.getByLabel(`Link ${before + 2} text`)).toHaveValue(firstText);
+    await page.getByRole("button", { name: "Save links" }).click();
+    await expect(page.getByLabel(`Link ${before + 1} text`)).toHaveValue(secondText);
+
+    // Persisted, not just a local reorder of unsaved state.
+    await page.reload();
+    await expect(page.getByLabel(`Link ${before + 1} text`)).toHaveValue(secondText);
+    await expect(page.getByLabel(`Link ${before + 2} text`)).toHaveValue(firstText);
   });
 
   test("a file can be uploaded to the Website Files section and is reachable at its URL", async ({ page, context }) => {
