@@ -21,6 +21,17 @@ describe("installErrorCapture", () => {
     expect(() => new Date(entries[0]!.timestamp).toISOString()).not.toThrow();
   });
 
+  it("redacts query parameter values from database errors (they can hold password hashes and emails)", () => {
+    capture = installErrorCapture();
+    const dbError = new Error('Failed query: insert into "users" ("email", "password_hash") values ($1, $2)\nparams: pat@example.com,$argon2id$v=19$secret');
+    console.error("[core] request failed", dbError);
+    const message = capture.entries()[0]!.message;
+    expect(message).toContain('Failed query: insert into "users"');
+    expect(message).toContain("params: [redacted]");
+    expect(message).not.toContain("pat@example.com");
+    expect(message).not.toContain("argon2id");
+  });
+
   it("still writes through to the original console.error (doesn't silence it)", () => {
     const original = console.error;
     let sawCall = false;

@@ -2,6 +2,15 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path";
 import { format } from "node:util";
 
+/**
+ * Drizzle's DrizzleQueryError puts every bound parameter in its message ("Failed query: …
+ * params: a,b,c"), and those values can be password hashes, emails or tokens. Entries are kept
+ * on disk and shown to admins, so strip the values and keep the query text for debugging.
+ */
+export function redact(message: string): string {
+  return message.replace(/^(\s*params: ).*$/gm, "$1[redacted]");
+}
+
 export interface ErrorEntry {
   timestamp: string;
   message: string;
@@ -135,7 +144,7 @@ export function installErrorCapture(options: number | ErrorCaptureOptions = {}):
 
   const original = console.error;
   console.error = ((...args: unknown[]) => {
-    const entry: ErrorEntry = { timestamp: new Date().toISOString(), message: format(...args), pid, startedAt };
+    const entry: ErrorEntry = { timestamp: new Date().toISOString(), message: redact(format(...args)), pid, startedAt };
     buffer.push(entry);
     if (buffer.length > limit) buffer.splice(0, buffer.length - limit);
     if (filePath) {
