@@ -107,6 +107,16 @@ describe("mapRelease", () => {
     expect(r).toMatchObject({ toWeb: true, toSubscribers: false, toMediaLists: false });
   });
 
+  it("an advisory is never toWeb, even with every PublishOptions bit set (legacy NewModel.cs: advisories never publish to the website)", () => {
+    const r = mapRelease({ ...baseRelease, ReleaseType: 5, PublishOptions: 7 }, { governmentTermId: null });
+    expect(r).toMatchObject({ toWeb: false, toSubscribers: true, toMediaLists: true });
+  });
+
+  it("a non-advisory is toWeb even with no PublishOptions bits set", () => {
+    const r = mapRelease({ ...baseRelease, PublishOptions: 0 }, { governmentTermId: null });
+    expect(r).toMatchObject({ toWeb: true, toSubscribers: false, toMediaLists: false });
+  });
+
   it("lower-cases the legacy GUID", () => {
     const r = mapRelease(baseRelease, { governmentTermId: null });
     expect(r.legacyId).toBe("9af8cc16-0ae5-4ec6-ad58-fdb081d44e37");

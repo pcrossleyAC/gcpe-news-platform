@@ -1,4 +1,4 @@
-import { imageTypeFromBytes, justifyFromLegacy, RELEASE_TYPE_TO_KIND } from "@gcpe/legacy-import";
+import { hasPublishOption, imageTypeFromBytes, justifyFromLegacy, PUBLISH_OPTIONS, RELEASE_TYPE_TO_KIND } from "@gcpe/legacy-import";
 import { POST_KIND, type Layout, type ReleaseStatus, type ReleaseType } from "@gcpe/nrms-contract";
 import type { documentContacts, documentLanguages, newsReleases, releaseDocuments, releaseLanguages } from "../db/schema";
 
@@ -25,9 +25,6 @@ export function layoutFromLegacy(value: number): Layout {
   if (value === 2) return "informal";
   throw new Error(`Unknown legacy PageLayout ${value}`);
 }
-
-const PUBLISH_OPTION_BITS = { toWeb: 1, toSubscribers: 2, toMediaLists: 4 } as const;
-const has = (value: number, bit: number) => (value & bit) === bit;
 
 /**
  * The collection (NewsReleaseCollection.Name) whose name's last 4-digit year is the highest —
@@ -103,9 +100,10 @@ export type NewNewsReleaseRow = typeof newsReleases.$inferInsert;
 
 export function mapRelease(row: LegacyReleaseRow, ctx: MapReleaseContext): NewNewsReleaseRow {
   const { status, live, onHold } = statusFromLegacy(row);
+  const type = releaseTypeFromLegacy(row.ReleaseType);
   return {
     legacyId: row.Id.toLowerCase(),
-    type: releaseTypeFromLegacy(row.ReleaseType),
+    type,
     key: row.Key,
     reference: row.Reference ? row.Reference : null,
     year: row.Year,
@@ -119,9 +117,11 @@ export function mapRelease(row: LegacyReleaseRow, ctx: MapReleaseContext): NewNe
     releasedAt: row.ReleaseDateTime,
     onHold,
     live,
-    toWeb: has(row.PublishOptions, PUBLISH_OPTION_BITS.toWeb),
-    toSubscribers: has(row.PublishOptions, PUBLISH_OPTION_BITS.toSubscribers),
-    toMediaLists: has(row.PublishOptions, PUBLISH_OPTION_BITS.toMediaLists),
+    // Legacy NewModel.cs: Advisories are never published to the website, regardless of
+    // PublishOptions (nrms-contract's own rule, packages/nrms-contract/src/rules.ts:39).
+    toWeb: type !== "advisory",
+    toSubscribers: hasPublishOption(row.PublishOptions, PUBLISH_OPTIONS.NewsOnDemand),
+    toMediaLists: hasPublishOption(row.PublishOptions, PUBLISH_OPTIONS.MediaContacts),
     assetUrl: row.AssetUrl ? row.AssetUrl : null,
     hasMediaAssets: Boolean(row.HasMediaAssets),
     hasTranslations: Boolean(row.HasTranslations),
