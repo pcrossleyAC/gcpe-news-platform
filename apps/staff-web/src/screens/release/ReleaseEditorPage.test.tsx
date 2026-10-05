@@ -8,7 +8,7 @@ import type { ReleaseView } from "@gcpe/nrms-contract";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { SignIn } from "../SignIn";
-import { ReleaseEditorPage } from "./ReleaseEditorPage";
+import { ReleaseEditorPage, SETTLING_REFRESH_MS, settlingDelay } from "./ReleaseEditorPage";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -259,6 +259,94 @@ describe("ReleaseEditorPage", () => {
     expect(await screen.findByLabelText("Headline")).toHaveValue("Unsaved after 401");
   });
 
+  // Hand-check feedback: the page sat on "Republishing..." until it was reloaded by hand.
+  it("re-fetches the release on its own while it's publishing, and stops once it has settled", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    try {
+      const statuses: ReleaseView["status"][] = ["publishing", "publishing", "published"];
+      let gets = 0;
+      const base = { status: "published" as const, reference: "NEWS-00001", key: "k", releasedAt: "2026-01-01T00:00:00.000Z" };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+          if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+          if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [], sectors: [], themes: [], tags: [] });
+          if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+          if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+          if (url.match(/\/nrms\/api\/releases\/[^/]+$/)) {
+            const status = statuses[Math.min(gets, statuses.length - 1)]!;
+            gets += 1;
+            return jsonResponse(200, releaseView({ ...base, status }));
+          }
+          return jsonResponse(200, []);
+        }),
+      );
+      const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: ["/releases/r1"] });
+      render(
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>,
+      );
+      expect(await screen.findByText("Republishing...")).toBeInTheDocument();
+      expect(screen.getByText(/updates on its own/)).toBeInTheDocument();
+      expect(gets).toBe(1);
+
+      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      await waitFor(() => expect(gets).toBe(2));
+      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      expect(await screen.findByText("Published")).toBeInTheDocument();
+      expect(screen.queryByText(/updates on its own/)).not.toBeInTheDocument();
+
+      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS * 3);
+      expect(gets).toBe(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not re-fetch while the tab is hidden, but picks back up once it's visible again", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+    const visibilitySpy = vi.spyOn(document, "visibilityState", "get");
+    try {
+      let gets = 0;
+      const base = { status: "publishing" as const, reference: "NEWS-00001", key: "k", releasedAt: "2026-01-01T00:00:00.000Z" };
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string) => {
+          if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+          if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+          if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [], sectors: [], themes: [], tags: [] });
+          if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+          if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+          if (url.match(/\/nrms\/api\/releases\/[^/]+$/)) {
+            gets += 1;
+            return jsonResponse(200, releaseView({ ...base, status: "publishing" }));
+          }
+          return jsonResponse(200, []);
+        }),
+      );
+      const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: ["/releases/r2"] });
+      render(
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>,
+      );
+      await screen.findByText("Republishing...");
+      expect(gets).toBe(1);
+
+      visibilitySpy.mockReturnValue("hidden");
+      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      expect(gets).toBe(1); // hidden — skipped the fetch
+
+      visibilitySpy.mockReturnValue("visible");
+      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      await waitFor(() => expect(gets).toBe(2)); // visible again — picked back up
+    } finally {
+      visibilitySpy.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 
   // Hand-check feedback: a long document body pushed its own Save button far down the page —
   // this bar is always visible, and its button is the same save (same request/409/422 handling).
@@ -327,5 +415,26 @@ describe("ReleaseEditorPage", () => {
     const results = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
     const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
     expect(serious).toEqual([]);
+  });
+});
+
+describe("settlingDelay", () => {
+  const now = Date.parse("2026-10-05T20:00:00.000Z");
+
+  it("polls while publishing or unpublishing", () => {
+    expect(settlingDelay({ status: "publishing", publishAt: null }, now)).toBe(SETTLING_REFRESH_MS);
+    expect(settlingDelay({ status: "unpublishing", publishAt: null }, now)).toBe(SETTLING_REFRESH_MS);
+  });
+
+  it("waits for a future schedule, then polls once it's due", () => {
+    expect(settlingDelay({ status: "scheduled", publishAt: "2026-10-05T20:10:00.000Z" }, now)).toBe(10 * 60_000 + 1_000);
+    expect(settlingDelay({ status: "scheduled", publishAt: "2026-10-05T19:59:00.000Z" }, now)).toBe(SETTLING_REFRESH_MS);
+    expect(settlingDelay({ status: "scheduled", publishAt: "2026-12-25T20:00:00.000Z" }, now)).toBe(60 * 60_000);
+  });
+
+  it("does nothing for a settled release", () => {
+    for (const status of ["draft", "approved", "published", "failed", "deleted"] as const) {
+      expect(settlingDelay({ status, publishAt: null }, now)).toBeNull();
+    }
   });
 });

@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { AlertDialog, Button, Modal } from "@bcgov/design-system-react-components";
-import type { ReleaseView } from "@gcpe/nrms-contract";
+import { statusText, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { useAnnouncer } from "../../shared/Announcer";
 import { useUnsavedChangesGuard } from "./useUnsavedChanges";
 import { UnsavedChangesBar } from "./UnsavedChangesBar";
 import { HeaderSection } from "./sections/HeaderSection";
@@ -29,6 +30,27 @@ import { SideBar } from "./sidebar/SideBar";
  * FilesSection, SideBar below) after Task 3's sections, without needing to touch anything above
  * them.
  */
+/** How often the page re-fetches the release while it's on its way to a settled status. */
+export const SETTLING_REFRESH_MS = 5_000;
+/** setTimeout's ceiling is ~24.8 days; a far-off schedule just re-checks hourly instead. */
+const MAX_WAIT_MS = 60 * 60_000;
+
+/**
+ * How long to wait before re-fetching the release on its own, or null for "don't": every
+ * {@link SETTLING_REFRESH_MS} while it's publishing/unpublishing (or scheduled and already due —
+ * the background tick just hasn't picked it up yet), and at the scheduled moment itself while
+ * it's scheduled for later. Hand-check feedback on boxs.ca: the page sat on "Republishing..."
+ * until it was reloaded by hand.
+ */
+export function settlingDelay(view: Pick<ReleaseView, "status" | "publishAt">, nowMs: number): number | null {
+  if (view.status === "publishing" || view.status === "unpublishing") return SETTLING_REFRESH_MS;
+  if (view.status === "scheduled" && view.publishAt) {
+    const until = Date.parse(view.publishAt) - nowMs;
+    return until <= 0 ? SETTLING_REFRESH_MS : Math.min(until + 1_000, MAX_WAIT_MS);
+  }
+  return null;
+}
+
 export function ReleaseEditorPage(): React.JSX.Element {
   const { id } = useParams<{ id: string }>();
   const session = useSession();
@@ -36,6 +58,11 @@ export function ReleaseEditorPage(): React.JSX.Element {
   const [view, setView] = useState<ReleaseView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const guard = useUnsavedChangesGuard();
+  const { announce } = useAnnouncer();
+  // Bumped when a background refresh fails, so the effect below schedules another try even
+  // though `view` didn't change.
+  const [retry, setRetry] = useState(0);
+  const lastStatus = useRef<string | null>(null);
   // The happy-path title (the release's own headline) is HeaderSection's job, below — this
   // only owns it for the error state, whose h1 ("Release") HeaderSection never renders.
   useDocumentTitle(error ? "Release" : null);
@@ -59,6 +86,44 @@ export function ReleaseEditorPage(): React.JSX.Element {
     };
   }, [id]);
 
+  // Re-fetch on its own while the release is on its way somewhere (see settlingDelay). Each
+  // successful fetch replaces `view`, which re-runs this effect — the loop ends by itself once
+  // the release settles. Sections seed their own form state once, so a refresh never clobbers
+  // unsaved edits. Only while the tab is visible (same reasoning as SessionContext's renewal
+  // check) — a backgrounded tab just checks again at the next tick instead of fetching.
+  useEffect(() => {
+    if (!view) return;
+    const delay = settlingDelay(view, Date.now());
+    if (delay === null) return;
+    let active = true;
+    const timer = setTimeout(() => {
+      if (document.visibilityState !== "visible") {
+        if (active) setRetry((n) => n + 1);
+        return;
+      }
+      apiFetch<ReleaseView>(`/nrms/api/releases/${view.id}`).then(
+        (fresh) => {
+          if (active) setView(fresh);
+        },
+        () => {
+          if (active) setRetry((n) => n + 1);
+        },
+      );
+    }, delay);
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [view, retry]);
+
+  // Say so when a refresh (or anything else) moves the release to a new status.
+  useEffect(() => {
+    if (!view) return;
+    const text = statusText(view, Date.now());
+    if (lastStatus.current !== null && lastStatus.current !== text) announce(`Status: ${text}`);
+    lastStatus.current = text;
+  }, [view, announce]);
+
   if (error) {
     return (
       <div className="gcpe-release-editor">
@@ -74,14 +139,13 @@ export function ReleaseEditorPage(): React.JSX.Element {
   // shows the release's data, just with no inputs enabled and no Actions at all (every action
   // is an Editor-only write).
   const canEdit = session.has("NRMS.Editor");
+  const settling = settlingDelay(view, Date.now()) === SETTLING_REFRESH_MS;
 
   return (
     <guard.Provider>
-      {/* Sticky save bar (hand-check feedback on boxs.ca: a long document body pushed its own
-       * Save button out of view) — extra bottom padding while it's showing, so it never covers
-       * the last section's own buttons. */}
       <div className={`gcpe-release-editor${guard.dirtySections.length > 0 ? " gcpe-release-editor--save-bar-open" : ""}`}>
         <HeaderSection view={view} />
+        {settling && <p className="gcpe-release-editor__settling">This page updates on its own until the release is done — no need to reload.</p>}
 
         {/* Fix round 1, finding 2: a real Modal/AlertDialog instead of an inline div — traps
          * focus, restores it on close, and closes on Escape (treated the same as "Stay": the

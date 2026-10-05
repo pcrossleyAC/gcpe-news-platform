@@ -333,6 +333,11 @@ body {
   margin: 0.25rem 0 0;
 }
 
+/* Release editor: the "this page updates on its own" note while publishing/unpublishing. */
+.gcpe-release-editor__settling {
+  margin: 0;
+}
+
 /* Release editor: the sticky unsaved-changes save bar. */
 
 .gcpe-release-editor--save-bar-open {
