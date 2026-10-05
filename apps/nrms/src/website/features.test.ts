@@ -62,6 +62,23 @@ describe("website/features — Top and Feature slots", () => {
     expect(events[1]!.envelope.data).toMatchObject({ entity: "home", topPostKey: b.key });
   });
 
+  // Minor 4: category_features itself carries no timestamp, so a Top/Feature change for home
+  // must move site_settings.updated_at (the field homeSnapshot's "timestamp" reads) — otherwise
+  // a home snapshot with a new topPostKey/featurePostKey can carry a stale, unchanged timestamp.
+  it("Minor 4: a Top/Feature change for home bumps site_settings.updated_at", async () => {
+    const a = await publish({ headline: "Timestamp release A" });
+    const before = (await tdb.pool.query("SELECT updated_at FROM site_settings WHERE id = 1")).rows[0]!.updated_at as Date;
+
+    await setFeature(tdb.db, a.id, { kind: "home", key: "default", slot: "top", on: true }, editor, subs);
+
+    const after = (await tdb.pool.query("SELECT updated_at FROM site_settings WHERE id = 1")).rows[0]!.updated_at as Date;
+    expect(after.getTime()).toBeGreaterThan(before.getTime());
+
+    const events = await siteEvents();
+    expect(events).toHaveLength(1);
+    expect(new Date((events[0]!.envelope.data as { timestamp: string }).timestamp).getTime()).toBe(after.getTime());
+  });
+
   it("Feature for ministries/health on a release not tagged health is refused with ReleaseRuleError", async () => {
     const notHealth = await publish({ ministries: ["finance"], leadMinistryKey: "finance", sectors: ["education"] });
     await expect(

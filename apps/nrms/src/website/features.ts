@@ -1,8 +1,8 @@
-import { and, eq, inArray, isNotNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { LANG_EN, type FeatureKind, type FeatureSlot, type ReleaseView } from "@gcpe/nrms-contract";
-import { categoryFeatures, categoryTerms, documentLanguages, newsReleases, organizations, releaseCategories, releaseDocuments } from "../db/schema";
+import { categoryFeatures, categoryTerms, documentLanguages, newsReleases, organizations, releaseCategories, releaseDocuments, siteSettings } from "../db/schema";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError } from "../releases/errors";
 import { loadView, writeLog, type Actor } from "../releases/store";
 import { emitSite, writeSiteLog } from "./events";
@@ -82,6 +82,10 @@ export async function setFeature(db: Db, releaseId: string, input: SetFeatureInp
       const text = `${on ? "Set as" : "Removed as"} ${SLOT_LABEL[slot]} for ${placeLabel(kind, key)}`;
       await writeLog(tx, releaseId, actor, text);
       await writeSiteLog(tx, actor, "features", text);
+      // Minor 4: category_features carries no timestamp of its own — homeSnapshot's
+      // "timestamp" reads site_settings.updated_at, so a Top/Feature change for home must
+      // bump it too, or the emitted home snapshot's timestamp wouldn't move.
+      if (kind === "home") await tx.update(siteSettings).set({ updatedAt: sql`now()` }).where(eq(siteSettings.id, 1));
       await emitSite(tx, subs, kind === "home" ? "home" : { kind, key });
     }
     return (await loadView(tx, releaseId))!;
