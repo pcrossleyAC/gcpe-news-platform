@@ -87,8 +87,20 @@ export function NewReleaseScreen(): React.JSX.Element {
   const [problems, setProblems] = useState<Record<string, string[]>>({});
   const [submitting, setSubmitting] = useState(false);
 
+  // Minors: /page-types failing, or coming back empty, used to leave the Page title picker
+  // silently empty with no way to tell why the form can't be filled in. `pageTypesLoaded`
+  // distinguishes "still loading" (pageTypes also starts as []) from "loaded, but empty".
+  const [pageTypesError, setPageTypesError] = useState<string | null>(null);
+  const [pageTypesLoaded, setPageTypesLoaded] = useState(false);
+
   useEffect(() => {
-    apiFetch<PageTypeOption[]>("/nrms/api/page-types").then(setPageTypes, () => {});
+    apiFetch<PageTypeOption[]>("/nrms/api/page-types").then(
+      (types) => {
+        setPageTypes(types);
+        setPageTypesLoaded(true);
+      },
+      () => setPageTypesError("Couldn't load page types."),
+    );
     apiFetch<PageImageOption[]>("/nrms/api/page-images").then(setPageImages, () => {});
     apiFetch<Categories>("/nrms/api/categories").then(setCategories, () => {});
     apiFetch<MediaListOption[]>("/nrms/api/media-lists").then(setMediaLists, () => {});
@@ -211,6 +223,11 @@ export function NewReleaseScreen(): React.JSX.Element {
             ))}
           </select>
         </label>
+
+        {pageTypesError && <InlineAlert variant="danger" role="alert" description={pageTypesError} />}
+        {!pageTypesError && pageTypesLoaded && pageTypes.length === 0 && (
+          <InlineAlert variant="warning" role="alert" description="No page types are set up — run the importer or add them." />
+        )}
 
         <label>
           Page title

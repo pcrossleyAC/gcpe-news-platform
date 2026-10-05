@@ -181,6 +181,43 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
   });
 
+  const EMPTY_CATEGORIES = { ministries: [], sectors: [], themes: [], tags: [] };
+
+  // Minors: a failed /page-types fetch used to leave the Page title picker silently empty.
+  it("shows an error when /page-types fails to load", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") {
+          return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        }
+        if (url === "/nrms/api/page-types") return jsonResponse(500, { error: "boom" });
+        if (url === "/nrms/api/categories") return jsonResponse(200, EMPTY_CATEGORIES);
+        return jsonResponse(200, []);
+      }),
+    );
+    renderScreen();
+    expect(await screen.findByText("Couldn't load page types.")).toBeInTheDocument();
+  });
+
+  // Minors: an empty /page-types list used to leave the form silently blocked with no
+  // explanation.
+  it("shows a clear message when /page-types comes back empty", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") {
+          return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        }
+        if (url === "/nrms/api/page-types") return jsonResponse(200, []);
+        if (url === "/nrms/api/categories") return jsonResponse(200, EMPTY_CATEGORIES);
+        return jsonResponse(200, []);
+      }),
+    );
+    renderScreen();
+    expect(await screen.findByText("No page types are set up — run the importer or add them.")).toBeInTheDocument();
+  });
+
   it("an Editor still sees the real form (no permission message)", async () => {
     stubFetch({ roles: ["NRMS.Editor"] });
     renderScreen();

@@ -49,6 +49,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
   const [activeMessages, setActiveMessages] = useState<string[]>([]);
   const [rolesMessages, setRolesMessages] = useState<string[]>([]);
   const [passwordMessages, setPasswordMessages] = useState<string[]>([]);
+  const [passwordSaved, setPasswordSaved] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const saveName = async () => {
@@ -94,10 +95,14 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
     e.preventDefault();
     setBusy(true);
     setPasswordMessages([]);
+    setPasswordSaved(false);
     const toSend = password;
     setPassword(""); // never kept around once submitted, success or not
     try {
       await apiFetch(`/core/api/users/${user.id}/password`, { method: "POST", body: { password: toSend } });
+      // Minors: nothing on screen used to change on success — the password field just went
+      // blank again, indistinguishable from a failed save that also cleared it.
+      setPasswordSaved(true);
     } catch (caught) {
       setPasswordMessages(messagesOf(caught));
     } finally {
@@ -148,7 +153,20 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
               {m}
             </p>
           ))}
-          <TextField label={`${user.email} new password`} type="password" value={password} onChange={setPassword} isDisabled={busy} />
+          {/* Minors: without this, the field just going blank again on success looked
+           * identical to a failed save that also clears it. */}
+          {passwordSaved && <p role="status">Password updated.</p>}
+          <TextField
+            label={`${user.email} new password`}
+            type="password"
+            value={password}
+            onChange={(v) => {
+              setPassword(v);
+              setPasswordSaved(false);
+            }}
+            isDisabled={busy}
+            autoComplete="new-password"
+          />
           <Button type="submit" isDisabled={busy || password.length === 0}>
             Set password
           </Button>
@@ -242,7 +260,7 @@ export function UsersScreen(): React.JSX.Element {
           Set a password now
         </label>
         {setPasswordNow && (
-          <TextField label="Password (at least 12 characters)" type="password" value={password} onChange={setPassword} isDisabled={creating} />
+          <TextField label="Password (at least 12 characters)" type="password" value={password} onChange={setPassword} isDisabled={creating} autoComplete="new-password" />
         )}
         <Button type="submit" isDisabled={creating}>
           Add user

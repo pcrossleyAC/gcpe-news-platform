@@ -112,7 +112,7 @@ describe("UsersScreen", () => {
     expect(await screen.findByText("you can't remove your own admin access")).toBeInTheDocument();
   });
 
-  it("sends a new password once and clears the field afterward", async () => {
+  it("sends a new password once, clears the field afterward, and shows a success message", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     stubSession(calls, (url, init) => {
       if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF]);
@@ -122,6 +122,9 @@ describe("UsersScreen", () => {
     render(withAuth(<UsersScreen />));
     const user = userEvent.setup();
     const passwordField = (await screen.findByLabelText("self@x.invalid new password")) as HTMLInputElement;
+    // Minors: autocomplete="new-password" — never offers to autofill the user's own existing
+    // sign-in password into a field that's setting a *different* user's.
+    expect(passwordField).toHaveAttribute("autocomplete", "new-password");
     await user.type(passwordField, "a-new-strong-password");
     await user.click(screen.getByRole("button", { name: "Set password" }));
 
@@ -129,6 +132,9 @@ describe("UsersScreen", () => {
     const call = calls.find((c) => c.url === "/core/api/users/self-1/password")!;
     expect(JSON.parse(call.init!.body as string)).toEqual({ password: "a-new-strong-password" });
     await waitFor(() => expect(passwordField.value).toBe(""));
+    // Minors: a visible success message — the field going blank again used to be
+    // indistinguishable from a failed save that also clears it.
+    expect(await screen.findByText("Password updated.")).toBeInTheDocument();
   });
 
   // Fix round 1, item 3: onCreate clears the password field on failure too (not just success),
