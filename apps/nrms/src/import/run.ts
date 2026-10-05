@@ -87,8 +87,8 @@ async function withImportLock<T>(db: Db, fn: () => Promise<T>): Promise<T> {
 export interface RunImportOptions {
   /** Forces the website stage even when nothing changed since the last import (import/website.ts). */
   force: boolean;
-  /** The tenant's time zone (e.g. "America/Vancouver") -- not used directly here yet, but part
-   * of the agreed interface for stages that need BC-local dates. */
+  /** The tenant's time zone (e.g. "America/Vancouver"): the releases stage uses it to turn legacy
+   * `ReleaseDateTime` (a BC wall-clock DATETIME) into a real instant. */
   timeZone: string;
   log?: (message: string) => void;
 }
