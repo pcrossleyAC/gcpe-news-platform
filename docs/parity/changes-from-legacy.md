@@ -75,3 +75,9 @@ Status key: **Agreed** (approved in design) · **Proposed** (in a design section
 |---|---|---|---|---|
 | C36 | N/A — legacy isn't deployed this way. | Uploaded files and the public site's built output live in one `DATA_DIR` folder, outside any per-deploy folder, so a redeploy (which unpacks into a brand-new folder on SiteGround) doesn't lose either. | Before this, every deploy's new folder started with an empty site output, 404ing every public page until something rebuilt it. Not a legacy behaviour change — fixes a defect introduced by Phase 2's own deploy shape. | Agreed |
 | C37 | N/A — legacy isn't deployed this way. | At startup, the public site rebuilds its home page and latest posts from the News API if its output folder has no `index.html` (self-heal), without blocking or failing startup if the News API isn't reachable yet. | A second line of defence against the same failure (`DATA_DIR` pointed somewhere new, or emptied) surfacing as public 404s instead of being fixed automatically. Not a legacy behaviour change. | Agreed |
+
+## Legacy import (Phase 3e)
+
+| # | Legacy | New | Why | Status |
+|---|---|---|---|---|
+| C43 | A release's summary has no "edited by hand" flag — legacy always regenerates it until its own UI-level auto-fill logic stops applying, with nothing recorded about whether the stored text is hand-written. | An imported release's `summary_edited` is set `true`, so NRMS's save-time auto-fill from the body never overwrites a legacy summary with a freshly generated one. | Legacy's summaries are effectively hand-written (nothing in legacy writes them from the body automatically at the point they're stored), but there's no column saying so; importing them as "not yet edited" would let the very next save silently replace the imported text. | Proposed |

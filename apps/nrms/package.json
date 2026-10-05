@@ -6,6 +6,9 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "flickr:authorize": "tsx src/cli/flickr-authorize.ts",
+    "import:legacy": "tsx src/import/cli.ts",
+    "release-holds": "tsx src/cli/release-holds.ts",
+    "replay-to-news-api": "tsx src/cli/replay-to-news-api.ts",
     "db:generate": "drizzle-kit generate",
     "build": "node ../../scripts/build-app.mjs apps/nrms"
   },
@@ -24,12 +27,14 @@
     "express": "^5.2.1",
     "htmlparser2": "^10.1.0",
     "pdf-lib": "^1.17.1",
+    "pg": "^8.16.3",
     "sanitize-html": "^2.18.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@gcpe/flickr-fake": "0.0.0",
     "@types/express": "^5.0.6",
+    "@types/pg": "^8.23.1",
     "@types/sanitize-html": "^2.16.2",
     "@types/supertest": "^7.2.1",
     "drizzle-kit": "^0.31.9",

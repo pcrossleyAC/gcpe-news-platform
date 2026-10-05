@@ -425,6 +425,81 @@ uploaded file back from `/files`. Its cleanup trap turns Project Blue Bridge bac
 the primary slide on the way out — on success and on failure alike — so a run that fails partway
 never leaves the banner showing or the pin up.
 
+## Importing legacy NRMS data (Phase 3e)
+
+`npm run nrms:import` reads legacy's SQL Server through `@gcpe/legacy-import` and writes NRMS's
+and Core's databases directly — it does **not** go through the running NRMS service or the
+stack. It needs its own environment: `DATABASE_URL` (NRMS's Postgres), `CORE_DATABASE_URL`
+(Core's Postgres — legacy users are imported there, matched by email, as inactive Core users),
+`LEGACY_SQL_SERVER`, `LEGACY_SQL_DATABASE` (default `Gcpe.Hub`), `LEGACY_SQL_USER`,
+`LEGACY_SQL_PASSWORD`, `LEGACY_SQL_TRUST_CERT` (`true`/`false`). None of these are printed or
+written anywhere by the tool itself; a missing required one fails fast naming only the variable,
+never a value.
+
+**Assumption to confirm before relying on this at cutover:** Site Tools' PostgreSQL only accepts
+connections from `localhost` (see "Databases" above — the public hostname is rejected by
+`pg_hba.conf`), so `DATABASE_URL`/`CORE_DATABASE_URL` can only be reached from a process running
+*on* that SiteGround instance. The legacy SQL Server, on the other hand, almost certainly can't
+be reached *from* SiteGround (it lives on the government network). That means the importer likely
+can't run as a single process against boxs.ca's own databases the way the other `import:legacy`
+CLIs do today — **it's expected to run from an operator's machine (on the government network, or
+over a VPN) or from an OpenShift job, pointed at whichever Postgres actually ends up hosting the
+target environment at cutover**, not necessarily SiteGround's. Confirm the real cutover target's
+networking before scripting this into a deploy step.
+
+**Prerequisites.** Import Core's reference data first (`npm --workspace @gcpe/core run
+import:legacy` — ministries, sectors, themes, tags) — NRMS's release categories resolve against
+those keys, and unresolved ones are dropped with a warning, not an error, so an incomplete Core
+import silently loses data rather than failing loudly.
+
+**Running it:**
+
+```sh
+DATABASE_URL=... CORE_DATABASE_URL=... LEGACY_SQL_SERVER=... LEGACY_SQL_USER=... LEGACY_SQL_PASSWORD=... \
+  npm run nrms:import -- --report nrms-import.json
+```
+
+Runs migrations first (as the Core and News API importers do), then imports in order: Core
+users, NRMS's own reference tables (page images, page types, media lists, government terms),
+every release in every status (never publishing or notifying anyone — no `outbox_events` rows,
+no `flickr_jobs` rows are ever written), then website data (carousel, slides, pins, Live Feed,
+`granville`, resource links). `--force-website` re-imports the website bundle even if nothing
+looks changed since the last import (normally a no-op re-run). Takes a whole-run advisory lock
+(`pg_try_advisory_lock`) so two imports can never run against the same database at once; a second
+one started while the first is running exits immediately with "another nrms:import is already
+running" and touches nothing.
+
+**Reading the report.** Every run writes `--report <path>` (default
+`nrms-import-<UTC timestamp>.json`) plus a matching `.txt` beside it. For every table it lists
+`legacy` (rows seen), `imported` (rows written or confirmed unchanged) and `skipped` (rows
+deliberately not imported, each with a reason) — `legacy` always equals `imported + skipped`,
+checked as the report's own `balanced` flag. A release edited in NRMS since the last import is
+skipped and listed, not overwritten. `NewsReleaseHistory` rows (old published copies) are counted
+under their own table and skipped with reason "frozen copies not imported (Q12)" — see
+`docs/parity/open-questions.md` Q12; they are not yet imported as `release_publications` rows.
+Exit code: `0` when the report balances, `2` when it doesn't (import still completed — check the
+report), `1` on any error, including a stage failing partway through (a partial report is still
+written) and the lock-contention case above.
+
+**Cutover order**, once the report balances and every imported scheduled release is confirmed
+correct:
+
+1. Turn legacy's own publisher off (nothing may publish from both systems at once).
+2. `npm run nrms:replay-to-news-api -- --confirm` — re-sends every already-published, live
+   release to the News API as `release.updated` with `notify: false`, so the public site and the
+   News API's own data agree with NRMS's copy before NRMS's publisher starts touching anything.
+   NoD only reacts to `release.published` from `nrms` (`apps/nod/src/app.ts:32`), so this never
+   emails a subscriber — pinned by a NoD test. Dry run (no `--confirm`) lists what it would send
+   and changes nothing.
+3. `npm run nrms:release-holds -- --confirm` — clears `on_hold` on every imported scheduled
+   release (they import held, per spec §8's safety rule 2, so NRMS's publisher never fires on
+   stale/incomplete data mid-import) and lets NRMS's own publisher take over scheduling. Dry run
+   lists what's on hold, with past-due ones flagged "will publish immediately" since the
+   publisher claims them on its very next tick, not before.
+
+Both cutover commands default to a dry run and only act with `--confirm`, exactly like
+`nrms:import`'s report-first approach — read the dry-run output before confirming either one.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
