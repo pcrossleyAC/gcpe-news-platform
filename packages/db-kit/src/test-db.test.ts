@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const migrationsFolder = fileURLToPath(new URL("../test/migrations", import.meta.url));
 const badMigrationsFolder = fileURLToPath(new URL("../test/bad-migrations", import.meta.url));
+const multiMigrationsFolder = fileURLToPath(new URL("../test/multi-migrations", import.meta.url));
 
 async function countDatabasesWithPrefix(prefix: string): Promise<number> {
   const admin = new pg.Client({ connectionString: adminUrl() });
@@ -50,5 +51,27 @@ describe("createTestDatabase", () => {
     await expect(createTestDatabase({ migrationsFolder: badMigrationsFolder, namePrefix })).rejects.toThrow();
     const after = await countDatabasesWithPrefix(namePrefix);
     expect(after).toBe(before);
+  });
+
+  it("upTo applies only the migrations through that tag; migrate() applies the rest of the folder", async () => {
+    tdb = await createTestDatabase({ migrationsFolder: multiMigrationsFolder, upTo: "0000_init" });
+    await tdb.pool.query("INSERT INTO widgets (name) VALUES ('a')");
+    // 0001 (adding "color") hasn't run yet.
+    await expect(tdb.pool.query("SELECT color FROM widgets")).rejects.toThrow();
+
+    await tdb.migrate();
+    const { rows } = await tdb.pool.query("SELECT name, color FROM widgets");
+    expect(rows).toEqual([{ name: "a", color: "red" }]);
+  });
+
+  it("upTo throws for a tag that isn't in the journal, naming the tag", async () => {
+    await expect(createTestDatabase({ migrationsFolder: multiMigrationsFolder, upTo: "nonexistent_tag" })).rejects.toThrow(/nonexistent_tag/);
+  });
+
+  it("migrate() is a no-op when everything is already applied (e.g. no upTo was given)", async () => {
+    tdb = await createTestDatabase({ migrationsFolder: multiMigrationsFolder });
+    await tdb.migrate();
+    const { rows } = await tdb.pool.query("SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations");
+    expect(rows[0].n).toBe(2);
   });
 });

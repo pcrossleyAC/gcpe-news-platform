@@ -29,6 +29,27 @@
       "when": 1791054942971,
       "tag": "0003_freeze_chunks",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791239334634,
+      "tag": "0004_subscriber_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791239342694,
+      "tag": "0005_backfill_subscriber_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791239357260,
+      "tag": "0006_drop_subscription_timing",
+      "breakpoints": true
     }
   ]
 }

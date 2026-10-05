@@ -14,7 +14,9 @@ export interface AddSubscriberInput {
 
 /**
  * Phase 2 ruling: subscribers are added already verified through the admin API, standing in
- * for the double opt-in journey that arrives in Phase 4 — so this sets verifiedAt immediately.
+ * for the double opt-in journey (Phase 4's public Subscribe API) — so this sets verifiedAt
+ * immediately and goes straight to `status: "active"` (source `"admin"`), skipping the
+ * pending/verify-link step a self-service signup goes through.
  * List keys are lowercased here (the receiver compares against indexKeysFor's lowercased
  * output); validating their shape ('<kind>:<key>') is the HTTP layer's job (routes.ts).
  * Deduped after lowercasing: two input keys that only differ by casing (e.g.
@@ -28,7 +30,7 @@ export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<
     return await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(subscribers)
-        .values({ email: input.email, manageToken, verifiedAt: new Date() })
+        .values({ email: input.email, manageToken, verifiedAt: new Date(), status: "active", source: "admin", asItHappens: true })
         .returning({ id: subscribers.id });
       const subscriberId = row!.id;
       if (listKeys.length > 0) {
@@ -49,7 +51,7 @@ export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<
 }
 
 /**
- * Counts distinct verified subscribers subscribed to '*' or any of `listKeys` (case-
+ * Counts distinct active subscribers subscribed to '*' or any of `listKeys` (case-
  * insensitively — lowercased here, same as {@link addSubscriber} stores them). Backs both
  * NoD's own `/api/subscribers/count` route and NRMS's "notify ~N subscribers" preview
  * (Task 6's `WorkflowDeps.countSubscribers`, wired through NRMS's own `nodClient`).
@@ -63,6 +65,6 @@ export async function countSubscribers(db: Db, listKeys: string[]): Promise<numb
   const r = await db.execute<{ n: number }>(sql`
     SELECT count(DISTINCT s.id)::int AS n
     FROM ${subscribers} s JOIN ${subscriptions} sub ON sub.subscriber_id = s.id
-    WHERE s.verified_at IS NOT NULL AND sub.list_key = ANY(${sql.param(keys)})`);
+    WHERE s.status = 'active' AND sub.list_key = ANY(${sql.param(keys)})`);
   return r.rows[0]!.n;
 }
