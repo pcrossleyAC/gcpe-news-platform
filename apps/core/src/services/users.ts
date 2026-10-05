@@ -9,7 +9,14 @@ const password = z.string().min(12, "use at least 12 characters").max(200);
 const roles = z.array(z.enum(STAFF_ROLES)).max(20);
 const displayName = z.string().trim().min(1).max(100);
 
-export const createUserSchema = z.object({ email, displayName, roles: roles.default([]), password: password.optional() });
+export const createUserSchema = z.object({
+  email,
+  displayName,
+  roles: roles.default([]),
+  password: password.optional(),
+  /** Phase 3e (NRMS legacy importer): legacy staff import as inactive, with no password or roles. */
+  isActive: z.boolean().default(true),
+});
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export const updateUserSchema = z
   .object({ displayName: displayName.optional(), isActive: z.boolean().optional() })
@@ -84,7 +91,10 @@ export async function createUser(db: Db, input: CreateUserInput): Promise<UserVi
   const passwordHash = input.password ? await hashPassword(input.password) : null;
   try {
     const id = await db.transaction(async (tx) => {
-      const [row] = await tx.insert(users).values({ email: input.email, displayName: input.displayName, passwordHash }).returning({ id: users.id });
+      const [row] = await tx
+        .insert(users)
+        .values({ email: input.email, displayName: input.displayName, passwordHash, isActive: input.isActive })
+        .returning({ id: users.id });
       const unique = [...new Set(input.roles)];
       if (unique.length) await tx.insert(roleGrants).values(unique.map((role) => ({ userId: row!.id, role })));
       return row!.id;

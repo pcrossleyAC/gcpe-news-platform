@@ -4,6 +4,7 @@ import {
   imageTypeFromBytes,
   justifyFromLegacy,
   layoutFromLegacy,
+  legacyUserMap,
   mapContact,
   mapDocument,
   mapDocumentLanguage,
@@ -206,6 +207,24 @@ describe("newestTerm", () => {
 
   it("sorts a name without a year last", () => {
     expect(newestTerm(["No Year", "2017-2021"])).toBe("2017-2021");
+  });
+});
+
+describe("legacyUserMap", () => {
+  it("joins legacy User rows to Core's email map, keyed by lower-cased legacy user id", () => {
+    const emailMap = new Map([["editor@example.test", { id: "core-id-1", displayName: "Existing Editor" }]]);
+    const rows = [
+      { Id: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA", EmailAddress: "Editor@Example.TEST", DisplayName: "Legacy Editor" },
+      { Id: "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB", EmailAddress: "", DisplayName: "No Email" },
+      { Id: "CCCCCCCC-CCCC-CCCC-CCCC-CCCCCCCCCCCC", EmailAddress: "unknown@example.test", DisplayName: "Unknown" },
+    ];
+    expect(legacyUserMap(rows, emailMap)).toEqual(
+      new Map([["aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", { id: "core-id-1", displayName: "Existing Editor" }]]),
+    );
+  });
+
+  it("skips a row with no email", () => {
+    expect(legacyUserMap([{ Id: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA", EmailAddress: null, DisplayName: "No Email" }], new Map())).toEqual(new Map());
   });
 });
 

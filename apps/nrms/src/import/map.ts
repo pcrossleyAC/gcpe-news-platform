@@ -202,6 +202,30 @@ export function mapDocumentLanguage(row: LegacyDocumentLanguageRow, documentId: 
   };
 }
 
+// --- dbo.[User] → legacy user id → Core user (spec §8; Core's own importLegacyUsers does the
+// matching/creation). This purely joins legacy User rows to the email map Core's importer
+// returns, for Task 5's orchestrator to resolve release_log actors by legacy user id. ---
+export interface LegacyUserRow extends Record<string, unknown> {
+  Id: string;
+  DisplayName: string | null;
+  EmailAddress: string | null;
+}
+
+export function legacyUserMap(
+  rows: LegacyUserRow[],
+  emailMap: Map<string, { id: string; displayName: string }>,
+): Map<string, { id: string; displayName: string }> {
+  const result = new Map<string, { id: string; displayName: string }>();
+  for (const row of rows) {
+    const email = row.EmailAddress?.trim().toLowerCase();
+    if (!email) continue;
+    const core = emailMap.get(email);
+    if (!core) continue;
+    result.set(row.Id.toLowerCase(), core);
+  }
+  return result;
+}
+
 // --- dbo.NewsReleaseDocumentContact → document_contacts ---
 export interface LegacyContactRow extends Record<string, unknown> {
   DocumentId: string;

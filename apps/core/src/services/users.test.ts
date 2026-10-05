@@ -87,4 +87,13 @@ describe("users service", () => {
     expect(emails.indexOf("zed-admin@example.test")).toBeGreaterThan(emails.indexOf("ann-admin@example.test"));
     expect(emails).toEqual([...emails].sort());
   });
+
+  it("createUser({ isActive: false }) creates an inactive user; default stays active", async () => {
+    const inactive = await createUser(tdb.db, createUserSchema.parse({ email: "legacy-import@example.test", displayName: "Legacy Import", isActive: false }));
+    expect(inactive.isActive).toBe(false);
+    expect(await findUserByEmail(tdb.db, "legacy-import@example.test")).toMatchObject({ isActive: false });
+
+    const active = await createUser(tdb.db, createUserSchema.parse({ email: "default-active@example.test", displayName: "Default Active" }));
+    expect(active.isActive).toBe(true);
+  });
 });
