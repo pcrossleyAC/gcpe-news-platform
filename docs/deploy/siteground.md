@@ -381,14 +381,19 @@ NRMS ever sees it).
 every active `Core.Admin` user, looked up through Core's `GET /api/directory/admin-emails` with
 a dedicated, read-only service role (`Core.AdminDirectory` — not `Core.Admin`, and never held by
 a human; see `apps/nrms/src/clients.ts`'s `coreClient`). `CORE_URL` defaults to `self:/core`
-in-stack (`STACK_APP_DEFAULTS`, `apps/stack/src/env.ts`) — nothing to set for that. Its Entra
+in-stack (`STACK_APP_DEFAULTS`, `apps/stack/src/env.ts`) — nothing to set for that, and nothing
+turns it off in-stack: `startNrms` builds a `coreClient` (and the `serviceTokenProvider` behind
+it) whenever `CORE_URL` is set, exactly like `NOD_URL`/`DISTRIBUTION_URL` above. Its Entra
 fields follow the same all-or-none rule as `NOD_*`/`DISTRIBUTION_*` above —
 `CORE_TOKEN_URL`/`CORE_CLIENT_ID`/`CORE_CLIENT_SECRET`/`CORE_SCOPE` — with the same local-admin
 token fallback when they're unset. **Production needs the quartet set** (or local admin left on)
-— without either, NRMS has no way to authenticate its call to Core and the notify step logs an
-error instead of emailing anyone (the banner change itself still happens; only the email fails).
-With no `CORE_URL` at all, `notify()` just logs the subject — never an address — instead of
-calling Core.
+— without either, `serviceTokenProvider` throws as soon as `startNrms` tries to build the Core
+client, so **NRMS refuses to start at all**, exactly like an unset `NOD_*`/`DISTRIBUTION_*`
+quartet with local admin off — not a soft failure limited to the Blue Bridge notify step. The
+"notify step just logs instead of emailing" behaviour only exists for the `CORE_URL` genuinely
+unset case, which is unreachable in-stack (the default above always sets it) — it only applies
+outside the stack, where the Blue Bridge route still works and `notify()` just logs the
+subject, never an address, instead of calling Core.
 
 **The test-site rule and `SITE_ENVIRONMENT`.** A deployment is a *test site* — every public page
 gets `<meta name="robots" content="noindex, nofollow">` and the Project Blue Bridge banner text
