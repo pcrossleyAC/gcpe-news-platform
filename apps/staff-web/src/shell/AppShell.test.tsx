@@ -15,7 +15,7 @@ function stubSession(roles: string[], tzCheck?: { at: string; offsetMinutes: num
       if (url === "/core/auth/session") {
         return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@example.invalid", roles }, expiresAt: new Date().toISOString() });
       }
-      if (url === "/nrms/api/config") return jsonResponse(200, tzCheck ? { tzCheck } : {});
+      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", ...(tzCheck ? { tzCheck } : {}) });
       throw new Error(`unexpected fetch: ${url}`);
     }),
   );
@@ -59,7 +59,8 @@ describe("AppShell nav — roles decide what's shown", () => {
 });
 
 // Fix round 1 (3f Task 3), finding 3: a persistent warning when the browser's own tzdata
-// disagrees with the server's for GET /config's tzCheck instant.
+// disagrees with the server's for GET /config's tzCheck instant — compared *for the tenant
+// zone specifically* (fix round 2, bug 2), never the device's own default zone.
 describe("AppShell — browser time-zone drift warning", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -67,14 +68,19 @@ describe("AppShell — browser time-zone drift warning", () => {
     cleanup();
   });
 
-  it("shows nothing when there's no tzCheck mismatch", async () => {
-    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(420); // UTC-7, agrees
+  it("shows nothing when there's no tzCheck mismatch (real tzdata, no device-zone mocking needed)", async () => {
     await renderShell(["NRMS.Viewer"], { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
     expect(screen.queryByText(/time-zone information is out of date/i)).not.toBeInTheDocument();
   });
 
-  it("shows a persistent warning when the browser's tzdata disagrees with the server's", async () => {
-    vi.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(480); // stuck on UTC-8
+  it("shows a persistent warning when the browser's own Intl answer for the tenant zone disagrees with the server's (stale tzdata)", async () => {
+    const RealDateTimeFormat = Intl.DateTimeFormat;
+    vi.spyOn(Intl, "DateTimeFormat").mockImplementation(function (this: unknown, locale?: Intl.LocalesArgument, options?: Intl.DateTimeFormatOptions) {
+      if (options?.timeZone === "America/Vancouver" && options.timeZoneName === "longOffset") {
+        return { formatToParts: () => [{ type: "timeZoneName", value: "GMT-08:00" }] } as unknown as Intl.DateTimeFormat; // stuck on UTC-8
+      }
+      return new RealDateTimeFormat(locale, options);
+    });
     await renderShell(["NRMS.Viewer"], { at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
     expect(await screen.findByText(/time-zone information is out of date/i)).toBeInTheDocument();
   });

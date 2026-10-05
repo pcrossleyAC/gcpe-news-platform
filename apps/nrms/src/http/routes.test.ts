@@ -130,6 +130,15 @@ describe("NRMS HTTP API", () => {
     expect(s.body.publishAt).toBe("2030-06-15T17:30:00.000Z"); // 10:30 PDT (UTC-7) -> 17:30Z
   });
 
+  // Fix round 2, bug 1: a calendar-invalid publishAtLocal (not just malformed digit grouping)
+  // is a 400 at the route too — proof the schema-level fix is actually wired through here.
+  it("schedule is a 400 for a calendar-invalid publishAtLocal (e.g. month 13)", async () => {
+    const { id } = await create();
+    const a = await post(`/api/releases/${id}/approve`, editorCookie, { version: 1 });
+    const bad = await post(`/api/releases/${id}/schedule`, editorCookie, { version: a.body.version, publishAtLocal: "2026-13-40T25:99" });
+    expect(bad.status).toBe(400);
+  });
+
   it("schedule is a 400 when given both publishAt and publishAtLocal, or neither", async () => {
     const { id } = await create();
     const a = await post(`/api/releases/${id}/approve`, editorCookie, { version: 1 });
@@ -251,6 +260,15 @@ describe("NRMS HTTP API", () => {
       version: planned.body.version, activityId: null, plannedPublishAt: "2026-12-15T21:30:00Z", plannedPublishAtLocal: "2026-12-15T14:30", toSubscribers: true, toMediaLists: false, mediaListKeys: [],
     });
     expect(both.status).toBe(400);
+  });
+
+  // Fix round 2, bug 1: the same calendar-invalid-value rejection at the settings route.
+  it("settings is a 400 for a calendar-invalid plannedPublishAtLocal (e.g. day 31 in April)", async () => {
+    const { id } = await create();
+    const bad = await put(`/api/releases/${id}/settings`, editorCookie, {
+      version: 1, activityId: null, plannedPublishAtLocal: "2026-04-31T10:00", toSubscribers: true, toMediaLists: false, mediaListKeys: [],
+    });
+    expect(bad.status).toBe(400);
   });
 
   it("section PUTs: an editor saves (version increments); a viewer gets 403", async () => {

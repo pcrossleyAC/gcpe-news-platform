@@ -54,4 +54,27 @@ describe("schemas", () => {
     expect(scheduleSchema.safeParse({ version: 3, publishAtLocal: "2026-12-15T14:30:00Z" }).success).toBe(false); // must have no offset/seconds
     expect(scheduleSchema.safeParse({ version: 3, publishAtLocal: "not-a-datetime" }).success).toBe(false);
   });
+  // Fix round 2, bug 1: the digit-grouping regex alone let non-existent calendar values through
+  // (e.g. "2026-13-40T25:99", which Date.UTC silently normalised to 2027-02-10 01:39 instead of
+  // being rejected) — publishAtLocal/plannedPublishAtLocal must reject any value whose parts
+  // don't round-trip through Date.UTC unchanged.
+  it("local date/times reject calendar-invalid values (month, day incl. leap years, hour, minute) with a clear message", () => {
+    const invalid = [
+      "2026-13-01T10:00", // no month 13
+      "2026-02-29T10:00", // 2026 is not a leap year
+      "2026-04-31T10:00", // April has 30 days
+      "2026-06-15T24:00", // hour must be 0-23
+      "2026-06-15T23:60", // minute must be 0-59
+      "2026-00-15T10:00", // no month 0
+      "2026-06-00T10:00", // no day 0
+    ];
+    for (const publishAtLocal of invalid) {
+      const result = scheduleSchema.safeParse({ version: 3, publishAtLocal });
+      expect(result.success, `expected ${publishAtLocal} to be rejected`).toBe(false);
+      if (!result.success) expect(result.error.issues.some((i) => i.message === "Enter a real date and time.")).toBe(true);
+    }
+    // 2028 *is* a leap year — the one case that must be accepted.
+    expect(scheduleSchema.safeParse({ version: 3, publishAtLocal: "2028-02-29T10:00" }).success).toBe(true);
+    expect(settingsSchema.safeParse({ version: 1, plannedPublishAtLocal: "2026-13-40T25:99", toSubscribers: false, toMediaLists: false, mediaListKeys: [] }).success).toBe(false);
+  });
 });

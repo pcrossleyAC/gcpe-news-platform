@@ -22,9 +22,33 @@ const activityId = z
     z.null(),
   ])
   .default(null);
+const LOCAL_DATE_TIME_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/;
+
+/**
+ * Fix round 2, bug 1: the digit-grouping regex alone accepted non-existent calendar values
+ * (e.g. "2026-13-40T25:99") — `Date.UTC` silently *normalises* out-of-range components (month
+ * 13 rolls into next January, hour 25 rolls into the next day, etc.) rather than rejecting
+ * them, so a naive `new Date(...)` round trip through that regex alone would have quietly
+ * shifted a mistyped date by days or months instead of refusing it. This round-trips the parsed
+ * parts through `Date.UTC` and rejects unless every part comes back unchanged — which, as a
+ * side effect, also correctly handles leap years (Feb 29 round-trips only in a leap year)
+ * without any separate leap-year table.
+ */
+function isRealLocalDateTime(s: string): boolean {
+  const m = LOCAL_DATE_TIME_RE.exec(s);
+  if (!m) return false;
+  const [year, month, day, hour, minute] = m.slice(1).map(Number);
+  const d = new Date(Date.UTC(year!, month! - 1, day!, hour!, minute!));
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month! - 1 && d.getUTCDate() === day && d.getUTCHours() === hour && d.getUTCMinutes() === minute;
+}
+
 /** BC wall-clock local time, no offset — "YYYY-MM-DDTHH:mm" (fix round 1, finding 3; reused by
- * settingsSchema's plannedPublishAtLocal, fix round 1 follow-up). */
-const localDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "must be a local date/time, YYYY-MM-DDTHH:mm");
+ * settingsSchema's plannedPublishAtLocal, fix round 1 follow-up), with real calendar values
+ * (fix round 2, bug 1). */
+const localDateTime = z
+  .string()
+  .regex(LOCAL_DATE_TIME_RE, "must be a local date/time, YYYY-MM-DDTHH:mm")
+  .refine(isRealLocalDateTime, "Enter a real date and time.");
 
 export const versionOnlySchema = z.object({ version });
 
