@@ -5,6 +5,7 @@ import { createNodTestDb } from "../../test/helpers";
 import { subscriberHistory, subscribers, subscriptions } from "../db/schema";
 import { subscriberInfoSchema, PreferencesError } from "./info";
 import { checkToken, confirm, requestManageLink, subscribe, unsubscribe, update, type JourneyDeps } from "./journeys";
+import * as linksModule from "./links";
 import { unsubscribeToken } from "./tokens";
 
 const SECRET = "k".repeat(32);
@@ -239,7 +240,27 @@ describe("subscriber journeys", () => {
 
   it("requestManageLink for an unknown address resolves and sends nothing", async () => {
     await requestManageLink(deps, "nobody@example.test");
+    await new Promise((r) => setTimeout(r, 50)); // flush any pending (unexpected) async work
     expect(sent).toHaveLength(0);
+  });
+
+  it("requestManageLink logs no address or query params when issuing the link fails", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const createLinkSpy = vi
+      .spyOn(linksModule, "createLink")
+      .mockRejectedValueOnce(new Error('Failed query: insert into "subscriber_links" (...) values (...)\nparams: pat@example.test,abcDEF123xyz'));
+    try {
+      await requestManageLink(deps, "pat@example.test");
+      await vi.waitFor(() => expect(errSpy).toHaveBeenCalled());
+      const logged = errSpy.mock.calls.flat().map(String).join(" ");
+      expect(logged).not.toContain("pat@example.test");
+      expect(logged).not.toContain("params:");
+    } finally {
+      createLinkSpy.mockRestore();
+      errSpy.mockRestore();
+    }
   });
 
   it("unsubscribes via a legacy Phase 2 manage_token", async () => {

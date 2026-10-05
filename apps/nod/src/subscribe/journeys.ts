@@ -33,6 +33,25 @@ function isRetryableConflict(e: unknown): boolean {
   return code === "23505" || code === "40P01";
 }
 
+/** A log-safe label for an error from `issue()`'s DB calls. Never `e.message` or `e.cause.message`:
+ * drizzle's `DrizzleQueryError` message is `"Failed query: <sql>\nparams: <params>"`, and every
+ * query inside `issue()` binds the target email address — logging it would put the address in
+ * the logs (the thing C-anti-enumeration/"no addresses in logs" forbids). The Postgres error
+ * code (or, failing that, the error's name) is informative without carrying any bound value. */
+function safeErrorLabel(e: unknown): string {
+  const code = (e as { cause?: { code?: unknown } })?.cause?.code ?? (e as { code?: unknown })?.code;
+  if (typeof code === "string") return code;
+  return e instanceof Error ? e.name : "error";
+}
+
+/** Serialises confirms for the same address within this transaction: a verify confirm and a
+ * change-email confirm for the same target address each start by taking this lock before
+ * claiming/touching any `subscriber_links` row, so the two can never interleave their row locks
+ * in opposite orders and deadlock. Released automatically at transaction end. */
+async function lockAddress(tx: DbOrTx, email: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${email}))`);
+}
+
 async function bySubscriberEmail(db: DbOrTx, email: string) {
   const [s] = await db.select().from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`);
   return s ?? null;
@@ -128,6 +147,7 @@ type VerifyOutcome = { subscriberId: string } | "unclaimed";
 async function applyVerify(deps: JourneyDeps, link: LinkRow): Promise<SubscriberInfo | null> {
   const pending = link.pending!;
   const outcome = await deps.db.transaction<VerifyOutcome>(async (tx) => {
+    await lockAddress(tx, link.email);
     if (!(await claimVerifyLink(tx, link))) return "unclaimed";
 
     const existing = await bySubscriberEmail(tx, link.email);
@@ -180,6 +200,7 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
   if (!link.subscriberId) return null;
   const subscriberId = link.subscriberId;
   const outcome = await deps.db.transaction<EmailChangeOutcome>(async (tx) => {
+    await lockAddress(tx, link.email);
     if (!(await claimLink(tx, link.id))) return "unclaimed";
 
     const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId));
@@ -243,7 +264,7 @@ export async function requestManageLink(deps: JourneyDeps, rawEmail: string): Pr
   // measurably longer for a subscribed address than for an unknown one, leaking subscription
   // status through timing even though the reply itself never differs (reviewer finding).
   void issue(deps, "manage", { email, subscriberId: s.id, pending: null }).catch((e) =>
-    console.error(`[nod] manage link request failed: ${e instanceof Error ? e.message : String(e)}`),
+    console.error("[nod] manage link request failed", safeErrorLabel(e)),
   );
 }
 
