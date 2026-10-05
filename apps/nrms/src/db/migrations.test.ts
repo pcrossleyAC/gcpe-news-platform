@@ -3,11 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDatabase, runMigrations, type TestDatabase } from "@gcpe/db-kit";
-import { editor, nrmsMigrations, sampleCreate, seedTaxonomy } from "../../test/helpers";
+import { createNrmsTestDb, editor, nrmsMigrations, sampleCreate, seedTaxonomy } from "../../test/helpers";
 import { bcYear } from "../releases/numbering";
+import { listPageTypes } from "../releases/queries";
 import { createRelease } from "../releases/service";
 import { approve } from "../releases/workflow";
-import { governmentTerms } from "./schema";
+import { governmentTerms, pageTypes } from "./schema";
 
 /** A copy of the migrations folder whose journal stops after `lastTag`. */
 async function partialMigrations(lastTag: string): Promise<string> {
@@ -138,5 +139,48 @@ describe("number counters seeded from copied releases", () => {
       { scope: "year", year: 2019, ministry: "", last_value: 99 },
       { scope: "year", year, ministry: "", last_value: 9 },
     ]);
+  });
+});
+
+describe("default page types on a fresh install", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("seeds exactly the default 8 English page types, one per release type except release (5)", async () => {
+    const rows = await listPageTypes(tdb.db);
+    expect(rows).toHaveLength(8);
+    expect(rows.every((r) => r.languageId === 4105 && r.pageImageId === null)).toBe(true);
+    expect(rows.filter((r) => r.releaseType === "release").map((r) => r.pageTitle)).toEqual([
+      "News Release", "Information Bulletin", "Statement", "Backgrounder", "Traffic Advisory",
+    ]);
+    expect(rows.find((r) => r.releaseType === "story")).toMatchObject({ pageTitle: "Story", layout: "informal", sortOrder: 1 });
+    expect(rows.find((r) => r.releaseType === "factsheet")).toMatchObject({ pageTitle: "Factsheet", layout: "informal", sortOrder: 1 });
+    expect(rows.find((r) => r.releaseType === "advisory")).toMatchObject({ pageTitle: "Media Advisory", layout: "formal", sortOrder: 1 });
+    expect(rows.find((r) => r.releaseType === "update")).toBeUndefined();
+  });
+});
+
+describe("default page types: does not touch an already-imported table", () => {
+  let tdb: TestDatabase;
+  let partial: string;
+  beforeAll(async () => {
+    partial = await partialMigrations("0013_import_tracking");
+    tdb = await createTestDatabase({ migrationsFolder: partial });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+    await rm(partial, { recursive: true, force: true });
+  });
+
+  it("keeps only the legacy-imported row once 0014 runs", async () => {
+    await tdb.db.insert(pageTypes).values({ pageTitle: "Legacy Title", languageId: 4105, releaseType: "release", sortOrder: 1, layout: "formal" });
+    await runMigrations(tdb.db, nrmsMigrations);
+    const rows = await listPageTypes(tdb.db);
+    expect(rows).toEqual([{ pageTitle: "Legacy Title", languageId: 4105, releaseType: "release", sortOrder: 1, layout: "formal", pageImageId: null }]);
   });
 });

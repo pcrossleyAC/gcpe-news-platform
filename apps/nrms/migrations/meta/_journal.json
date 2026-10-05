@@ -99,6 +99,13 @@
       "when": 1791183105891,
       "tag": "0013_import_tracking",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791230396210,
+      "tag": "0014_default_page_types",
+      "breakpoints": true
     }
   ]
 }
