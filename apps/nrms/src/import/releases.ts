@@ -16,8 +16,8 @@
  * tables, never through `mutateRelease`/the workflow functions (controller ruling).
  */
 import { createHash } from "node:crypto";
-import { and, eq, inArray, sql } from "drizzle-orm";
-import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
+import { eq, sql } from "drizzle-orm";
+import type { Db, Tx } from "@gcpe/db-kit";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { publishProblems, type CategoryKind, type FeatureKind, type ReleaseStatus, type ReleaseType, type ReleaseView } from "@gcpe/nrms-contract";
 import {
@@ -185,6 +185,42 @@ function skipChildrenEntirely(report: ImportReport, legacyId: string, g: Grouped
   for (const [table, n] of Object.entries(legacyChildCounts(g))) for (let i = 0; i < n; i++) report.skip(table, legacyId, reason);
 }
 
+/**
+ * `buildBundle`/`validateCategories` run inside the release's own transaction, *before* the
+ * final write is attempted — so if that write then fails (fix round 1: a key collision, a
+ * CHECK violation, …), the transaction rolls back but any `report.skip`/`report.warn` calls
+ * already made would NOT roll back with it (the report is a plain in-memory object). Routing
+ * every such call through this buffer instead, and only replaying it onto the real report once
+ * the release has actually, successfully landed, keeps a failed release's report entries from
+ * leaking in on top of the single failure-reason skip the caller then records.
+ */
+interface PendingReportOps {
+  skips: { table: string; legacyId: string; reason: string }[];
+  warns: { legacyId: string; key: string; problems: string[] }[];
+}
+function newPending(): PendingReportOps {
+  return { skips: [], warns: [] };
+}
+function applyPending(report: ImportReport, pending: PendingReportOps): void {
+  for (const s of pending.skips) report.skip(s.table, s.legacyId, s.reason);
+  for (const w of pending.warns) report.warn(w.legacyId, w.key, w.problems);
+}
+
+interface KnownCategories {
+  ministries: Set<string>;
+  sectors: Set<string>;
+  themes: Set<string>;
+  tags: Set<string>;
+}
+
+/** Fix round 1 (minor): loaded once per `importReleases()` run instead of twice per release. */
+async function loadKnownCategories(db: Db): Promise<KnownCategories> {
+  const orgs = await db.select({ k: organizations.key }).from(organizations);
+  const terms = await db.select({ k: categoryTerms.key, kind: categoryTerms.kind }).from(categoryTerms);
+  const byKind = (kind: "sectors" | "themes" | "tags") => new Set(terms.filter((t) => t.kind === kind).map((t) => t.k));
+  return { ministries: new Set(orgs.map((o) => o.k)), sectors: byKind("sectors"), themes: byKind("themes"), tags: byKind("tags") };
+}
+
 interface MappedDocument {
   sortIndex: number;
   layout: "formal" | "informal";
@@ -219,12 +255,7 @@ function actorOf(userId: string | null, ctx: ImportReleasesContext): { id: strin
  * participate in the content hash as anything other than their *validated* result, since a
  * dropped reference is the actual imported content, not a transient error.
  */
-async function buildBundle(
-  tx: DbOrTx,
-  raw: RawReleaseRow,
-  g: GroupedChildren,
-  ctx: ImportReleasesContext,
-): Promise<Bundle> {
+function buildBundle(raw: RawReleaseRow, g: GroupedChildren, ctx: ImportReleasesContext, known: KnownCategories, pending: PendingReportOps): Bundle {
   const legacyId = raw.Id.toLowerCase();
   const governmentTermId = raw.CollectionId ? ctx.termIds.get(raw.CollectionId.toLowerCase()) ?? null : null;
   const leadMinistryKey = raw.LeadMinistryKey ? raw.LeadMinistryKey.toLowerCase() : null;
@@ -246,7 +277,7 @@ async function buildBundle(
           if (dl.PageImageId) {
             pageImageId = ctx.pageImageIds.get(dl.PageImageId.toLowerCase()) ?? null;
             if (!pageImageId) {
-              ctx.report.warn(legacyId, raw.Key, [`Document references an unknown page image '${dl.PageImageId.toLowerCase()}'`]);
+              pending.warns.push({ legacyId, key: raw.Key, problems: [`Document references an unknown page image '${dl.PageImageId.toLowerCase()}'`] });
             }
           }
           return mapDocumentLanguage(dl, "", pageImageId);
@@ -258,15 +289,16 @@ async function buildBundle(
       return { sortIndex: d.SortIndex, layout, languages: dls, contacts };
     });
 
-  const categories = await validateCategories(tx, g.categories, ctx.report, legacyId, raw.Key);
+  const categories = validateCategories(known, g.categories, pending, legacyId, raw.Key);
 
   const mediaListIds: string[] = [];
   for (const m of g.mediaLists) {
     const id = ctx.mediaListIds.get(m.MediaDistributionListId.toLowerCase());
     if (id) mediaListIds.push(id);
     else {
-      ctx.report.skip("release_media_lists", legacyId, `Unknown media distribution list '${m.MediaDistributionListId.toLowerCase()}'`);
-      ctx.report.warn(legacyId, raw.Key, [`Unknown media distribution list '${m.MediaDistributionListId.toLowerCase()}'`]);
+      const reason = `Unknown media distribution list '${m.MediaDistributionListId.toLowerCase()}'`;
+      pending.skips.push({ table: "release_media_lists", legacyId, reason });
+      pending.warns.push({ legacyId, key: raw.Key, problems: [reason] });
     }
   }
 
@@ -302,13 +334,13 @@ async function buildBundle(
   return { release, status, statusNote: note, languages, documents, categories, mediaListIds, logEntries, hash: sha256(content) };
 }
 
-async function validateCategories(
-  tx: DbOrTx,
+function validateCategories(
+  known: KnownCategories,
   rows: RawCategoryRow[],
-  report: ImportReport,
+  pending: PendingReportOps,
   legacyId: string,
   releaseKey: string,
-): Promise<{ kind: CategoryKind; key: string }[]> {
+): { kind: CategoryKind; key: string }[] {
   const byKind = new Map<CategoryKind, string[]>();
   for (const r of rows) {
     const key = r.Key.toLowerCase();
@@ -317,20 +349,13 @@ async function validateCategories(
   const valid: { kind: CategoryKind; key: string }[] = [];
   for (const [kind, keysWithDupes] of byKind) {
     const keys = [...new Set(keysWithDupes)];
-    const found =
-      kind === "ministries"
-        ? new Set((await tx.select({ k: organizations.key }).from(organizations).where(inArray(organizations.key, keys))).map((r) => r.k))
-        : new Set(
-            (await tx.select({ k: categoryTerms.key }).from(categoryTerms).where(and(eq(categoryTerms.kind, kind), inArray(categoryTerms.key, keys)))).map(
-              (r) => r.k,
-            ),
-          );
     for (const key of keys) {
-      if (found.has(key)) {
+      if (known[kind].has(key)) {
         valid.push({ kind, key });
       } else {
-        report.skip("release_categories", legacyId, `Unknown ${SINGULAR[kind]} key '${key}'`);
-        report.warn(legacyId, releaseKey, [`Unknown ${SINGULAR[kind]} key '${key}'`]);
+        const reason = `Unknown ${SINGULAR[kind]} key '${key}'`;
+        pending.skips.push({ table: "release_categories", legacyId, reason });
+        pending.warns.push({ legacyId, key: releaseKey, problems: [reason] });
       }
     }
   }
@@ -404,7 +429,43 @@ interface ReleaseOutcome {
   status: ReleaseStatus;
 }
 
-async function importOneRelease(db: Db, raw: RawReleaseRow, g: GroupedChildren, ctx: ImportReleasesContext): Promise<ReleaseOutcome> {
+/** Walks drizzle's `.cause` chain (it wraps the real `pg` driver error) looking for a unique-violation's constraint/index name. */
+function uniqueViolationConstraint(e: unknown): string | null {
+  for (let err = e as { code?: string; constraint?: string; cause?: unknown } | undefined; err; err = err.cause as typeof err) {
+    if (err.code === "23505" && err.constraint) return err.constraint;
+  }
+  return null;
+}
+
+/**
+ * Fix round 1: one legacy row that violates an NRMS constraint (a key collision across
+ * types — C35 — or a committed row with no publish time, etc.) must not abort the whole
+ * multi-year run. This turns the thrown error into the single reason recorded against that
+ * release. `news_releases_key_idx` gets a specific, named explanation; everything else keeps
+ * the driver's own message, minus drizzle's `params: …` line (the bound values are arbitrary
+ * legacy content and don't belong in a report a human reads — same redaction apps/stack's
+ * error log applies, done locally here rather than importing a deploy-stack-specific module).
+ */
+/** The root cause's own message is the actual driver/Postgres text (e.g. "violates check
+ * constraint …"); drizzle's own `DrizzleQueryError.message` is just the failed SQL + params. */
+function rootCauseMessage(e: unknown): string {
+  let err = e;
+  while (err instanceof Error && err.cause instanceof Error) err = err.cause;
+  return err instanceof Error ? err.message : String(err);
+}
+
+function failureReason(e: unknown, key: string): string {
+  if (uniqueViolationConstraint(e) === "news_releases_key_idx") {
+    return `key '${key}' already used by another imported release (legacy keys are unique per type; NRMS keys are unique across types — C35)`;
+  }
+  return rootCauseMessage(e)
+    .split("\n")
+    .filter((line) => !/^\s*params:/.test(line))
+    .join("\n")
+    .trim();
+}
+
+async function importOneRelease(db: Db, raw: RawReleaseRow, g: GroupedChildren, ctx: ImportReleasesContext, known: KnownCategories): Promise<ReleaseOutcome> {
   const { report } = ctx;
   const legacyId = raw.Id.toLowerCase();
 
@@ -417,13 +478,20 @@ async function importOneRelease(db: Db, raw: RawReleaseRow, g: GroupedChildren, 
       return { id: existing.id, status: existing.status };
     }
 
-    const bundle = await buildBundle(tx, raw, g, ctx);
+    // Everything buildBundle (and the per-type rule check below) reports goes through a local
+    // buffer, not straight onto ctx.report: if the write further down then fails, this whole
+    // transaction rolls back and the caller records one failure-reason skip instead — any
+    // already-buffered skip/warn entries from this release are simply discarded with it
+    // (fix round 1 — see skipAllChildren's caller for the rollback-matching report entries).
+    const pending = newPending();
+    const bundle = buildBundle(raw, g, ctx, known, pending);
     const problems = publishProblems(pseudoView(raw, bundle));
-    if (problems.length) report.warn(legacyId, raw.Key, problems);
+    if (problems.length) pending.warns.push({ legacyId, key: raw.Key, problems });
 
     if (existing && existing.importHash === bundle.hash) {
       report.count("news_releases", "imported");
       countChildrenImported(report, g, bundle);
+      applyPending(report, pending);
       return { id: existing.id, status: existing.status };
     }
 
@@ -459,6 +527,7 @@ async function importOneRelease(db: Db, raw: RawReleaseRow, g: GroupedChildren, 
 
     report.count("news_releases", "imported");
     countChildrenImported(report, g, bundle);
+    applyPending(report, pending);
 
     return { id: releaseId, status: bundle.status };
   });
@@ -547,6 +616,8 @@ export async function importReleases(db: Db, source: LegacySource, ctx: ImportRe
   const years = (await source.query<{ Year: number }>(Q_RELEASE_YEARS)).map((r) => r.Year);
   const releaseInfo = new Map<string, ReleaseOutcome>();
   const agg = newAggregate();
+  // Fix round 1 (minor): loaded once here instead of twice per release inside validateCategories.
+  const known = await loadKnownCategories(db);
 
   for (const year of years) {
     const releaseRows = await source.query<RawReleaseRow>(qReleases(year));
@@ -572,8 +643,20 @@ export async function importReleases(db: Db, source: LegacySource, ctx: ImportRe
         logs: logsByRelease.get(legacyId) ?? [],
       };
       countLegacyChildren(report, g);
-      const outcome = await importOneRelease(db, row, g, ctx);
-      releaseInfo.set(legacyId, outcome);
+      // Fix round 1 (Important): one bad legacy row (a key collision across types — C35 — a
+      // committed row with no publish time, …) must not abort the whole multi-year run.
+      // importOneRelease's transaction has already rolled back by the time this catches, so
+      // nothing of this release was written; it's reported as a single skip (and warned, so
+      // it's visible) and the run continues with the next release.
+      try {
+        const outcome = await importOneRelease(db, row, g, ctx, known);
+        releaseInfo.set(legacyId, outcome);
+      } catch (e) {
+        const reason = failureReason(e, row.Key);
+        report.skip("news_releases", legacyId, reason);
+        report.warn(legacyId, row.Key, [reason]);
+        skipChildrenEntirely(report, legacyId, g, reason);
+      }
     }
   }
 

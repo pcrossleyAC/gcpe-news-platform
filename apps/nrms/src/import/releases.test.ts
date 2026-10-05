@@ -4,15 +4,16 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createFakeSource, type LegacySource } from "@gcpe/legacy-import";
 import { createNrmsTestDb, editor, seedTaxonomy } from "../../test/helpers";
 import { categoryFeatures, categoryTerms, mediaLists, newsReleases, organizations, releaseCategories, releaseLog, releaseMediaLists } from "../db/schema";
-import { nextCounter } from "../releases/numbering";
 import { toReleaseRecord } from "../releases/record";
-import { saveMeta } from "../releases/service";
+import { createRelease, saveMeta } from "../releases/service";
 import { loadView } from "../releases/store";
+import { approve } from "../releases/workflow";
 import { publishDue } from "../publisher";
 import { importReleases, type ImportReleasesContext } from "./releases";
 import { ImportReport } from "./report";
 
 import fictionalFixture from "../../test/fixtures/legacy/fictional.json";
+import fiveTypesFixture from "../../test/fixtures/legacy/five-types.json";
 import apiFixture from "../../test/fixtures/legacy/api-releases.json";
 import apiPostTT from "../../test/fixtures/legacy/api-raw/post-2026TT0103-001121.json";
 import apiPostAG from "../../test/fixtures/legacy/api-raw/post-2026AG0068-001112.json";
@@ -72,6 +73,11 @@ interface FixtureIds {
   MEDIA_LIST_UNKNOWN_LEGACY: string;
   USER_KNOWN: string;
   USER_UNKNOWN: string;
+  R9: string;
+  R10: string;
+  R11: string;
+  R12: string;
+  SHARED_KEY: string;
 }
 const fx = fictionalFixture as unknown as YearFixture & { ids: FixtureIds };
 const CORE_USER_ID = "99999999-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -208,8 +214,49 @@ describe("importReleases — fictional fixture (all statuses, categories, media 
     expect(logsAfter).toBe(logsBefore);
 
     const json = freshCtx.report.toJSON();
-    expect(json.tables.news_releases).toEqual({ legacy: 8, imported: 8, skipped: 0 });
+    // 12 legacy releases: R1-R8 plus the fix-round-1 fault-isolation fixtures (R9 imports,
+    // R10 collides on key, R11 violates the committed/publish_at check, R12 imports).
+    expect(json.tables.news_releases).toEqual({ legacy: 12, imported: 10, skipped: 2 });
     for (const c of Object.values(json.tables)) expect(c.legacy).toBe(c.imported + c.skipped);
+  });
+
+  it("fix round 1 — a key collision across release types (C35) skips the second release and the run continues", async () => {
+    const r9 = await byLegacyId(fx.ids.R9);
+    expect(r9, "R9 (imported first) should exist").toBeDefined();
+    expect(r9!.key).toBe(fx.ids.SHARED_KEY);
+
+    const r10 = await byLegacyId(fx.ids.R10);
+    expect(r10, "R10 (the colliding key) should never have been written").toBeUndefined();
+
+    const json = report.toJSON();
+    const expectedReason = `key '${fx.ids.SHARED_KEY}' already used by another imported release (legacy keys are unique per type; NRMS keys are unique across types — C35)`;
+    expect(json.skipped.some((s) => s.table === "news_releases" && s.legacyId === fx.ids.R10.toLowerCase() && s.reason === expectedReason)).toBe(true);
+    expect(json.warnings.some((w) => w.legacyId === fx.ids.R10.toLowerCase() && w.problems.includes(expectedReason))).toBe(true);
+
+    // The run continued past the failure: R10's own 2 legacy categories (1 valid, 1 unknown)
+    // are both skipped under the *same* failure reason, not leaked individually from the
+    // category validation that ran (and warned) before the insert failed and rolled back.
+    const r10CategorySkips = json.skipped.filter((s) => s.table === "release_categories" && s.legacyId === fx.ids.R10.toLowerCase());
+    expect(r10CategorySkips).toHaveLength(2);
+    expect(r10CategorySkips.every((s) => s.reason === expectedReason)).toBe(true);
+    expect(json.warnings.some((w) => w.legacyId === fx.ids.R10.toLowerCase() && w.problems.some((p) => p.includes("Unknown sector key")))).toBe(false);
+  });
+
+  it("fix round 1 — a committed release with a null publish_at is skipped (not a key collision) and the run continues", async () => {
+    const r11 = await byLegacyId(fx.ids.R11);
+    expect(r11, "R11 should never have been written").toBeUndefined();
+
+    const json = report.toJSON();
+    const r11Skip = json.skipped.find((s) => s.table === "news_releases" && s.legacyId === fx.ids.R11.toLowerCase());
+    expect(r11Skip).toBeDefined();
+    expect(r11Skip!.reason).toContain("news_releases_committed_has_time");
+    expect(r11Skip!.reason).not.toContain("params:");
+    expect(r11Skip!.reason).not.toContain("already used by another imported release");
+
+    // The run continued past both R10 and R11's failures: R12 (processed right after them) imported fine.
+    const r12 = await byLegacyId(fx.ids.R12);
+    expect(r12, "R12, processed after both failures, should still have imported").toBeDefined();
+    expect(r12!.key).toBe("r12-2026-seed");
   });
 
   it("a release edited in NRMS after import is skipped by a re-run and listed in the report", async () => {
@@ -262,17 +309,27 @@ describe("importReleases — fictional fixture (all statuses, categories, media 
     expect(r4After).toMatchObject({ status: "scheduled", onHold: true });
   });
 
-  it("counters: a new approval after import gets NEWS-<max+1> and the next yearRelease/ministryRelease", async () => {
-    // Legacy maxes: news ref max("NEWS-00010","NEWS-00020","NEWS-00021","NEWS-00099","NEWS-00022") = 99;
-    // year=2024 max(yearRelease) = 12 (R8); ministry=health,year=2024 max(ministryRelease) = 4 (R5).
-    const news = await tdb.db.transaction((tx) => nextCounter(tx, "news", 0, ""));
-    expect(news).toBe(100);
-    const year2024 = await tdb.db.transaction((tx) => nextCounter(tx, "year", 2024, ""));
-    expect(year2024).toBe(13);
-    const ministryHealth2024 = await tdb.db.transaction((tx) => nextCounter(tx, "ministry", 2024, "health"));
-    expect(ministryHealth2024).toBe(5);
-    const year2023 = await tdb.db.transaction((tx) => nextCounter(tx, "year", 2023, ""));
-    expect(year2023).toBe(6);
+  it("counters: approving a brand-new release through the real workflow gets NEWS-<max+1> and the next yearRelease/ministryRelease", async () => {
+    // Legacy maxes across every release processed (including R10/R11, which failed to import
+    // but still occupied these numbers historically — Reference max is 99 from R6;
+    // R12 seeds year=2026 at 20 and ministry=health/2026 at 7): approve()'s bcYear() uses the
+    // real clock, so R12's Year=2026 is what makes this a meaningful continuity check today.
+    const v = await createRelease(
+      tdb.db,
+      {
+        type: "release", pageTitle: "News Release", layout: "formal", pageImageId: null,
+        headline: "A brand-new release created after import", subheadline: null, organizations: "Ministry of Health", byline: null,
+        bodyHtml: "<p>Content.</p>", location: "Victoria", contacts: ["Media Relations\nMinistry of Health\n250-555-0999"],
+        ministries: ["health"], leadMinistryKey: "health", sectors: ["health"], themes: [], tags: [], mediaListKeys: [], activityId: null, publishAt: null,
+      },
+      editor,
+    );
+    const approved = await approve(tdb.db, v.id, v.version, editor, { timeZone: "America/Vancouver" });
+    expect(approved.reference).toBe("NEWS-00100");
+
+    const [row] = await tdb.db.select().from(newsReleases).where(eq(newsReleases.id, v.id));
+    expect(row).toMatchObject({ yearRelease: 21, ministryRelease: 8 });
+    expect(approved.key).toBe("2026HLTH0008-000021");
   });
 });
 
@@ -318,5 +375,40 @@ describe("importReleases — api.news.gov.bc.ca fixture (3 published releases)",
       expect(record.summary).toBe(post.summary);
       expect(record.documents[0]!.headline).toBe(post.documents[0]!.headline);
     }
+  });
+});
+
+describe("importReleases — one release of each of the five types", () => {
+  let tdb: TestDatabase;
+
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+    await seedTaxonomy(tdb.db);
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("imports release/story/factsheet/update/advisory; only the advisory has toWeb=false; activityId, key and reference are preserved", async () => {
+    const fixture = fiveTypesFixture as unknown as YearFixture & { ids: Record<string, string> };
+    const report = new ImportReport();
+    const ctx: ImportReleasesContext = { pageImageIds: new Map(), mediaListIds: new Map(), termIds: new Map(), users: new Map(), report, timeZone: "America/Vancouver" };
+
+    await importReleases(tdb.db, buildFakeSource(fixture), ctx);
+
+    for (const [kind, legacyId] of Object.entries(fixture.ids)) {
+      const [row] = await tdb.db.select().from(newsReleases).where(eq(newsReleases.legacyId, legacyId.toLowerCase()));
+      expect(row, kind).toBeDefined();
+      expect(row!.type, kind).toBe(kind);
+      expect(row!.toWeb, `${kind} toWeb`).toBe(kind !== "advisory");
+      expect(row!.key, kind).toBe(`five-types-${kind}`);
+    }
+
+    const [release] = await tdb.db.select().from(newsReleases).where(eq(newsReleases.legacyId, fixture.ids.release!.toLowerCase()));
+    expect(release).toMatchObject({ activityId: 777000, reference: "NEWS-00050" });
+    const [advisory] = await tdb.db.select().from(newsReleases).where(eq(newsReleases.legacyId, fixture.ids.advisory!.toLowerCase()));
+    expect(advisory).toMatchObject({ activityId: null, reference: "NEWS-00054" });
+
+    expect(report.toJSON().tables.news_releases).toEqual({ legacy: 5, imported: 5, skipped: 0 });
   });
 });
