@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
+import { hashPassword } from "@gcpe/auth";
 import { closeServer, createShutdown } from "@gcpe/http-kit";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNewsTestDb, EVENT_SECRETS } from "../test/helpers";
@@ -135,5 +136,29 @@ describe("startNewsApi", () => {
     // server}, {name:"updates hub", ...}]`-style misordering) makes this exact test hang
     // past the 2s timeout ("timed-out", not "done") with the client still connected — see
     // the fix-round report for the transcript.
+  });
+
+  // Phase 4a task 6: startNewsApi's NoD service-token provider (serviceTokenProvider) must
+  // fail fast at startup, not on the first proxied request, when NOD_BASE_URL is set but
+  // neither a full Entra client-credentials config nor local-admin is available.
+  describe("NoD service token selection (Phase 4a)", () => {
+    it("rejects at startup when NOD_BASE_URL is set, no NOD_* Entra vars are set, and LOCAL_ADMIN_ENABLED is unset", async () => {
+      const env = { ...(await testEnv()), NOD_BASE_URL: "http://127.0.0.1:1" };
+      await expect(startNewsApi(env)).rejects.toThrow(/service token/);
+    });
+
+    it("starts when NOD_BASE_URL is set and LOCAL_ADMIN_ENABLED=true (the test-site fallback)", async () => {
+      const hash = await hashPassword("fixture-password-for-start-tests");
+      const env = {
+        ...(await testEnv()),
+        NOD_BASE_URL: "http://127.0.0.1:1",
+        LOCAL_ADMIN_ENABLED: "true",
+        LOCAL_ADMIN_PASSWORD_HASH: hash,
+        LOCAL_AUTH_SECRET: "x".repeat(32),
+      };
+      const handle = await startNewsApi(env);
+      expect((await request(handle.app).get("/health/live")).status).toBe(200);
+      await Promise.all([...handle.closeBeforeServer, ...handle.closers].map((c) => c.close()));
+    });
   });
 });

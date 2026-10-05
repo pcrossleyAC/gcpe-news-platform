@@ -212,6 +212,7 @@ Subscriptions API plus "As-It-Happens" email delivery: on `release.published` it
 createdb nod_dev
 DATABASE_URL=postgres://localhost:5432/nod_dev EVENT_SECRETS='{"nrms":"dev"}' \
 DISTRIBUTION_URL=http://localhost:3005 PUBLIC_SITE_URL=http://localhost:3003 MANAGE_URL=http://localhost:3004/manage \
+LINK_SECRET=<32+ char secret> \
 LOCAL_ADMIN_ENABLED=true LOCAL_ADMIN_PASSWORD_HASH=<hash> LOCAL_AUTH_SECRET=<32+ char secret> \
 npm --workspace @gcpe/nod run dev
 ```
@@ -231,6 +232,8 @@ npm --workspace @gcpe/nod run dev
 | `DISTRIBUTION_TIMEOUT_MS` | no | `30000` | Per-chunk request timeout against Distribution; also sizes the send-jobs claim lock |
 | `PUBLIC_SITE_URL` | yes | | Embedded in As-It-Happens emails as the link back to the public site |
 | `MANAGE_URL` | yes | | Embedded in As-It-Happens emails as the subscription-management link |
+| `LINK_SECRET` | yes | | HMAC key (32+ chars) for unsubscribe tokens (the stack derives it from `STACK_EVENT_SECRET`) |
+| `SUBSCRIBE_PAGE_URL` | no | `${PUBLIC_SITE_URL}/subscribe/manage/` | The page emailed verify/manage links open |
 | `MIGRATIONS_FOLDER` | no | `apps/nod/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/nod/migrations` |
 
 \* All four `DISTRIBUTION_*` Entra fields must be set together, or none of them — see "NoD's token selection" below.
