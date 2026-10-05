@@ -1,5 +1,5 @@
 import "@bcgov/design-tokens/css/variables.css";
-import "@bcgov/bc-sans/css/BCSans.css";
+import "@bcgov/bc-sans/css/BC_Sans.css";
 import "./styles/global.css";
 
 import { createRoot } from "react-dom/client";

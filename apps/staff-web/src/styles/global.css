@@ -8,10 +8,9 @@
   --gcpe-type-update: rgb(226, 222, 69);
   --gcpe-type-advisory: rgb(226, 109, 90);
   --gcpe-type-factsheet: rgb(92, 92, 92);
-  /* @bcgov/bc-sans registers its faces as "BCSans" (no space), but the design tokens name the
-   * family 'BC Sans' with no fallback — so design-system components fell back to the browser's
-   * default serif. Point the token at the real face name, with fallbacks. */
-  --typography-font-families-bc-sans: "BCSans", "BC Sans", system-ui, sans-serif;
+  /* Fallbacks for the design tokens' 'BC Sans' family (main.tsx imports @bcgov/bc-sans's
+   * BC_Sans.css, which registers the faces under that exact name). */
+  --typography-font-families-bc-sans: "BC Sans", system-ui, sans-serif;
 }
 
 html,
