@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createFakeSource } from "@gcpe/legacy-import";
 import { createNrmsTestDb } from "../../test/helpers";
@@ -83,6 +83,82 @@ describe("importReference — page images, languages and types", () => {
     expect(after).toEqual(before);
     expect(report.toJSON().tables.page_images).toEqual({ legacy: 3, imported: 3, skipped: 0 });
   });
+
+  it("skips a page image language row whose image id is unknown, with a reason", async () => {
+    const report = new ImportReport();
+    await importReference(
+      tdb.db,
+      source({
+        pageImageLanguages: [
+          { ImageId: IMAGE_ID, LanguageId: 4105, AlternateName: "Ribbon (EN)" },
+          { ImageId: IMAGE_ID, LanguageId: 3084, AlternateName: "Ruban (FR)" },
+          { ImageId: "99999999-9999-9999-9999-999999999999", LanguageId: 4105, AlternateName: "Orphan" },
+        ],
+      }),
+      report,
+    );
+    const json = report.toJSON();
+    expect(json.tables.page_image_languages).toEqual({ legacy: 3, imported: 2, skipped: 1 });
+    expect(json.skipped).toContainEqual({
+      table: "page_image_languages",
+      legacyId: "99999999-9999-9999-9999-999999999999",
+      reason: "unknown page image",
+    });
+  });
+
+  it("a re-run with a changed alt text updates the page image language row", async () => {
+    const report = new ImportReport();
+    await importReference(
+      tdb.db,
+      source({
+        pageImageLanguages: [
+          { ImageId: IMAGE_ID, LanguageId: 4105, AlternateName: "Ribbon (EN), revised" },
+          { ImageId: IMAGE_ID, LanguageId: 3084, AlternateName: "Ruban (FR)" },
+        ],
+      }),
+      report,
+    );
+    const [ribbon] = await tdb.db.select().from(pageImages).where(eq(pageImages.legacyId, IMAGE_ID));
+    const [en] = await tdb.db
+      .select()
+      .from(pageImageLanguages)
+      .where(and(eq(pageImageLanguages.imageId, ribbon!.id), eq(pageImageLanguages.languageId, 4105)));
+    expect(en!.altText).toBe("Ribbon (EN), revised");
+    expect(report.toJSON().tables.page_image_languages).toEqual({ legacy: 2, imported: 2, skipped: 0 });
+  });
+
+  it("warns when a page type references a page image id that was never imported", async () => {
+    const report = new ImportReport();
+    await importReference(
+      tdb.db,
+      source({
+        pageTypes: [
+          { PageTitle: "Dangling", LanguageId: 4105, ReleaseType: 1, SortOrder: 1, PageLayout: 1, PageImageId: "99999999-9999-9999-9999-999999999999" },
+        ],
+      }),
+      report,
+    );
+    const [pt] = await tdb.db.select().from(pageTypes).where(eq(pageTypes.pageTitle, "Dangling"));
+    expect(pt!.pageImageId).toBeNull();
+    const json = report.toJSON();
+    expect(json.warnings).toContainEqual({
+      legacyId: "99999999-9999-9999-9999-999999999999",
+      key: "Dangling/4105",
+      problems: ["Page type references an unknown page image"],
+    });
+  });
+
+  it("a re-run with a changed sort order updates the page type row", async () => {
+    const report = new ImportReport();
+    await importReference(
+      tdb.db,
+      source({ pageTypes: [{ PageTitle: "News Release", LanguageId: 4105, ReleaseType: 1, SortOrder: 99, PageLayout: 2, PageImageId: IMAGE_ID }] }),
+      report,
+    );
+    const [pt] = await tdb.db.select().from(pageTypes).where(eq(pageTypes.pageTitle, "News Release"));
+    expect(pt).toMatchObject({ sortOrder: 99, layout: "informal" });
+    expect(report.toJSON().tables.page_types).toEqual({ legacy: 1, imported: 1, skipped: 0 });
+  });
 });
 
 describe("importReference — media lists", () => {
@@ -145,5 +221,64 @@ describe("importReference — government terms", () => {
     expect(current).toHaveLength(1);
     expect(current[0]!.name).toBe("2017-2021");
     expect(report.toJSON().tables.government_terms).toEqual({ legacy: 4, imported: 4, skipped: 0 });
+  });
+});
+
+describe("importReference — clearing a current term with no legacy id", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("clears it (legacy is the source of truth at cutover) but warns, naming the term", async () => {
+    await tdb.db.insert(governmentTerms).values({ name: "Manually Set Current", isCurrent: true });
+
+    const report = new ImportReport();
+    await importReference(tdb.db, source(), report);
+
+    const [manual] = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.name, "Manually Set Current"));
+    expect(manual!.isCurrent).toBe(false);
+
+    const current = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
+    expect(current).toHaveLength(1);
+    expect(current[0]!.name).toBe("2017-2021");
+
+    expect(report.toJSON().warnings).toContainEqual({
+      legacyId: "no-legacy-id",
+      key: "Manually Set Current",
+      problems: ["Cleared is_current on a government term with no legacy id (legacy is the source of truth at cutover)"],
+    });
+  });
+});
+
+describe("importReference — concurrent imports", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("two concurrent imports of the same fixtures never create duplicate legacy_id rows", async () => {
+    const reportA = new ImportReport();
+    const reportB = new ImportReport();
+    const results = await Promise.allSettled([importReference(tdb.db, source(), reportA), importReference(tdb.db, source(), reportB)]);
+
+    // Either both succeed, or at most one fails cleanly (no partial/duplicated state either way).
+    expect(results.filter((r) => r.status === "rejected").length).toBeLessThanOrEqual(1);
+
+    for (const table of [pageImages, mediaLists, governmentTerms] as const) {
+      const rows = await tdb.db.select().from(table);
+      const legacyIds = rows.map((r) => r.legacyId).filter((id): id is string => id !== null);
+      expect(new Set(legacyIds).size).toBe(legacyIds.length);
+    }
+
+    const current = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
+    expect(current).toHaveLength(1);
+    expect(current[0]!.name).toBe("2017-2021");
   });
 });

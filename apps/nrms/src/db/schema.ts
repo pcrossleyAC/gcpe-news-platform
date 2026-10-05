@@ -49,7 +49,11 @@ export const governmentTerms = pgTable("government_terms", {
   name: text("name").notNull().unique(),
   isCurrent: boolean("is_current").notNull().default(false),
   legacyId: uuid("legacy_id"),
-}, (t) => [uniqueIndex("government_terms_one_current_idx").on(t.isCurrent).where(sql`${t.isCurrent}`)]);
+}, (t) => [
+  uniqueIndex("government_terms_one_current_idx").on(t.isCurrent).where(sql`${t.isCurrent}`),
+  // Phase 3e importer (task 2 fix round 1): backs the upsert-by-legacy-id's ON CONFLICT target.
+  uniqueIndex("government_terms_legacy_id_idx").on(t.legacyId).where(sql`${t.legacyId} IS NOT NULL`),
+]);
 
 export const newsReleases = pgTable(
   "news_releases",
@@ -208,7 +212,10 @@ export const mediaLists = pgTable("media_lists", {
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
   legacyId: uuid("legacy_id"),
-});
+}, (t) => [
+  // Phase 3e importer (task 2 fix round 1): backs the upsert-by-legacy-id's ON CONFLICT target.
+  uniqueIndex("media_lists_legacy_id_idx").on(t.legacyId).where(sql`${t.legacyId} IS NOT NULL`),
+]);
 
 export const releaseMediaLists = pgTable(
   "release_media_lists",
@@ -239,7 +246,10 @@ export const pageImages = pgTable("page_images", {
   bytes: bytea("bytes").notNull(),
   isActive: boolean("is_active").notNull().default(true),
   legacyId: uuid("legacy_id"),
-});
+}, (t) => [
+  // Phase 3e importer (task 2 fix round 1): backs the upsert-by-legacy-id's ON CONFLICT target.
+  uniqueIndex("page_images_legacy_id_idx").on(t.legacyId).where(sql`${t.legacyId} IS NOT NULL`),
+]);
 
 export const pageImageLanguages = pgTable(
   "page_image_languages",

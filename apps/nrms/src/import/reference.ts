@@ -5,8 +5,15 @@
  * NRMS's own schema, so each table is matched to its existing row by legacy id (or, for page
  * types, by their own natural key — legacy's own PK) and only rewritten when its content
  * actually changed, so a re-run with unchanged legacy data is a no-op.
+ *
+ * Fix round 1: page_images, media_lists and government_terms upsert by legacy id through a
+ * real `INSERT ... ON CONFLICT (legacy_id) WHERE legacy_id IS NOT NULL DO UPDATE ... WHERE
+ * <changed>` (backed by a partial unique index added to migration 0013 — see schema.ts),
+ * instead of a select-then-insert-or-update that raced under concurrent imports and had no
+ * database-level guarantee against duplicate legacy ids. The `WHERE <changed>` on the DO
+ * UPDATE keeps the "unchanged row is not rewritten" behaviour without a separate read.
  */
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { governmentTerms, mediaLists, pageImageLanguages, pageImages, pageTypes } from "../db/schema";
@@ -76,23 +83,21 @@ async function importPageImages(tx: Tx, rows: LegacyPageImageRow[], report: Impo
       isActive: !HIDDEN_PAGE_IMAGE_LEGACY_IDS.has(legacyId),
       legacyId,
     };
-    const [existing] = await tx.select().from(pageImages).where(eq(pageImages.legacyId, legacyId));
-    const unchanged =
-      existing !== undefined &&
-      existing.name === values.name &&
-      existing.sortOrder === values.sortOrder &&
-      existing.mimeType === values.mimeType &&
-      existing.isActive === values.isActive &&
-      Buffer.compare(existing.bytes, values.bytes) === 0;
-    if (unchanged) {
-      ids.set(legacyId, existing.id);
-    } else if (existing) {
-      const [updated] = await tx.update(pageImages).set(values).where(eq(pageImages.id, existing.id)).returning();
-      ids.set(legacyId, updated!.id);
-    } else {
-      const [inserted] = await tx.insert(pageImages).values(values).returning();
-      ids.set(legacyId, inserted!.id);
-    }
+    await tx
+      .insert(pageImages)
+      .values(values)
+      .onConflictDoUpdate({
+        target: pageImages.legacyId,
+        targetWhere: sql`${pageImages.legacyId} IS NOT NULL`,
+        set: values,
+        setWhere: sql`${pageImages.name} IS DISTINCT FROM ${values.name}
+          OR ${pageImages.sortOrder} IS DISTINCT FROM ${values.sortOrder}
+          OR ${pageImages.mimeType} IS DISTINCT FROM ${values.mimeType}
+          OR ${pageImages.isActive} IS DISTINCT FROM ${values.isActive}
+          OR ${pageImages.bytes} IS DISTINCT FROM ${values.bytes}`,
+      });
+    const [row_] = await tx.select({ id: pageImages.id }).from(pageImages).where(eq(pageImages.legacyId, legacyId));
+    ids.set(legacyId, row_!.id);
     report.count("page_images", "imported");
   }
   return ids;
@@ -175,22 +180,20 @@ async function importMediaLists(tx: Tx, rows: LegacyMediaListRow[], report: Impo
     report.count("media_lists", "legacy");
     const legacyId = row.Id.toLowerCase();
     const values = { key: row.Key, displayName: row.DisplayName, sortOrder: row.SortOrder, isActive: Boolean(row.IsActive), legacyId };
-    const [existing] = await tx.select().from(mediaLists).where(eq(mediaLists.legacyId, legacyId));
-    const unchanged =
-      existing !== undefined &&
-      existing.key === values.key &&
-      existing.displayName === values.displayName &&
-      existing.sortOrder === values.sortOrder &&
-      existing.isActive === values.isActive;
-    if (unchanged) {
-      ids.set(legacyId, existing.id);
-    } else if (existing) {
-      const [updated] = await tx.update(mediaLists).set(values).where(eq(mediaLists.id, existing.id)).returning();
-      ids.set(legacyId, updated!.id);
-    } else {
-      const [inserted] = await tx.insert(mediaLists).values(values).returning();
-      ids.set(legacyId, inserted!.id);
-    }
+    await tx
+      .insert(mediaLists)
+      .values(values)
+      .onConflictDoUpdate({
+        target: mediaLists.legacyId,
+        targetWhere: sql`${mediaLists.legacyId} IS NOT NULL`,
+        set: values,
+        setWhere: sql`${mediaLists.key} IS DISTINCT FROM ${values.key}
+          OR ${mediaLists.displayName} IS DISTINCT FROM ${values.displayName}
+          OR ${mediaLists.sortOrder} IS DISTINCT FROM ${values.sortOrder}
+          OR ${mediaLists.isActive} IS DISTINCT FROM ${values.isActive}`,
+      });
+    const [row_] = await tx.select({ id: mediaLists.id }).from(mediaLists).where(eq(mediaLists.legacyId, legacyId));
+    ids.set(legacyId, row_!.id);
     report.count("media_lists", "imported");
   }
   return ids;
@@ -199,8 +202,13 @@ async function importMediaLists(tx: Tx, rows: LegacyMediaListRow[], report: Impo
 /**
  * `NewsReleaseCollection` rows become `government_terms`, matched by legacy id. Exactly one
  * row is ever `is_current` (enforced by the partial unique index on `government_terms`), so
- * the winner — `newestTerm()` of all the names — is set only after every other row's flag is
- * cleared, in the same transaction, and only if it isn't already the sole current row.
+ * the winner — `newestTerm()` of all the names — is set only after every other current row's
+ * flag is cleared, in the same transaction, and only if it isn't already the sole current row.
+ *
+ * A term can be `is_current` with no `legacy_id` at all — e.g. a term created directly in NRMS
+ * before this import ever ran. Clearing that row is intentional (legacy is the source of truth
+ * at cutover), but silent data loss on an unrelated row is exactly the kind of thing a report
+ * must surface, so it's logged as a warning naming the term.
  */
 async function importTerms(tx: Tx, rows: LegacyCollectionRow[], report: ImportReport): Promise<Map<string, string>> {
   const ids = new Map<string, string>();
@@ -211,19 +219,18 @@ async function importTerms(tx: Tx, rows: LegacyCollectionRow[], report: ImportRe
   for (const row of rows) {
     report.count("government_terms", "legacy");
     const legacyId = row.Id.toLowerCase();
-    const [existing] = await tx.select().from(governmentTerms).where(eq(governmentTerms.legacyId, legacyId));
-    let id: string;
-    if (existing && existing.name === row.Name) {
-      id = existing.id;
-    } else if (existing) {
-      const [updated] = await tx.update(governmentTerms).set({ name: row.Name }).where(eq(governmentTerms.id, existing.id)).returning();
-      id = updated!.id;
-    } else {
-      const [inserted] = await tx.insert(governmentTerms).values({ name: row.Name, legacyId, isCurrent: false }).returning();
-      id = inserted!.id;
-    }
-    ids.set(legacyId, id);
-    idByName.set(row.Name, id);
+    await tx
+      .insert(governmentTerms)
+      .values({ name: row.Name, legacyId })
+      .onConflictDoUpdate({
+        target: governmentTerms.legacyId,
+        targetWhere: sql`${governmentTerms.legacyId} IS NOT NULL`,
+        set: { name: row.Name },
+        setWhere: sql`${governmentTerms.name} IS DISTINCT FROM ${row.Name}`,
+      });
+    const [term] = await tx.select({ id: governmentTerms.id }).from(governmentTerms).where(eq(governmentTerms.legacyId, legacyId));
+    ids.set(legacyId, term!.id);
+    idByName.set(row.Name, term!.id);
     report.count("government_terms", "imported");
   }
 
@@ -231,7 +238,15 @@ async function importTerms(tx: Tx, rows: LegacyCollectionRow[], report: ImportRe
   const current = await tx.select().from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
   const alreadyCorrect = winnerId !== undefined && current.length === 1 && current[0]!.id === winnerId;
   if (!alreadyCorrect) {
-    if (current.length > 0) await tx.update(governmentTerms).set({ isCurrent: false }).where(eq(governmentTerms.isCurrent, true));
+    const toClear = current.filter((r) => r.id !== winnerId);
+    for (const r of toClear) {
+      if (!r.legacyId) {
+        report.warn("no-legacy-id", r.name, ["Cleared is_current on a government term with no legacy id (legacy is the source of truth at cutover)"]);
+      }
+    }
+    if (toClear.length > 0) {
+      await tx.update(governmentTerms).set({ isCurrent: false }).where(inArray(governmentTerms.id, toClear.map((r) => r.id)));
+    }
     if (winnerId) await tx.update(governmentTerms).set({ isCurrent: true }).where(eq(governmentTerms.id, winnerId));
   }
   return ids;
