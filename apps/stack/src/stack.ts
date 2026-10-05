@@ -348,7 +348,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     if (last.includes(".")) return void res.status(404).end();
     const indexPath = join(staffWebDir, "index.html");
     if (!existsSync(indexPath)) return void res.status(503).send("Staff app not built");
-    res.sendFile(indexPath);
+    // `root` keeps send's dotfile check to "index.html" itself: on SiteGround the build lives
+    // under ~/.nodeapp/<build>/hub, and an absolute path with a dot segment would 404.
+    res.sendFile("index.html", { root: staffWebDir });
   });
 
   app.use(noStoreByDefault);

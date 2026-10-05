@@ -983,13 +983,17 @@ describe("apps/stack: fake Flickr accepts a signature over the in-process URL wh
 // instance since the shared "apps/stack" instance above deliberately leaves STAFF_WEB_DIR at
 // its real (almost certainly unbuilt in this test run) default.
 describe("apps/stack: /hub hosting", () => {
+  let hubRoot: string;
   let dir: string;
   let built: StackTestInstance;
   let unbuiltDir: string;
   let unbuilt: StackTestInstance;
 
   beforeAll(async () => {
-    dir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-hub-"));
+    // Inside a dot-directory, as on SiteGround (~/.nodeapp/<build>/hub): send/serve-static
+    // refuse a path containing a dotfile segment unless it's below a `root` — this pins that.
+    hubRoot = await mkdtemp(join(tmpdir(), "gcpe-stack-test-hub-"));
+    dir = join(hubRoot, ".nodeapp", "build");
     await mkdir(join(dir, "assets"), { recursive: true });
     await writeFile(join(dir, "index.html"), "<!doctype html><html><body>staff web shell</body></html>");
     await writeFile(join(dir, "assets", "app-abc123.js"), "console.log('staff-web');\n");
@@ -1003,7 +1007,7 @@ describe("apps/stack: /hub hosting", () => {
   afterAll(async () => {
     await built.close();
     await unbuilt.close();
-    await rm(dir, { recursive: true, force: true });
+    await rm(hubRoot, { recursive: true, force: true });
     // unbuiltDir was already removed in beforeAll (it must not exist); nothing left to clean up.
   });
 
