@@ -12,6 +12,9 @@ import { SettingsSection } from "./sections/SettingsSection";
 import { CategoriesSection } from "./sections/CategoriesSection";
 import { AssetSection } from "./sections/AssetSection";
 import { PageDetailsSection } from "./sections/PageDetailsSection";
+import { DocumentsSection } from "./documents/DocumentsSection";
+import { FilesSection } from "./documents/FilesSection";
+import { SideBar } from "./sidebar/SideBar";
 
 /**
  * `/hub/releases/:id` (task-3-brief.md): loads the view once, holds it in one piece of state
@@ -20,8 +23,9 @@ import { PageDetailsSection } from "./sections/PageDetailsSection";
  * *whole* `view` with the server's response — so every other section's `version` field stays
  * current too, even though only one section's fields actually changed.
  *
- * Task 4 adds Documents, Translations/files, History and a side bar to this same page — see the
- * marked slot below — without needing to touch anything above it.
+ * Task 4 adds Documents, Translations/files, History and a side bar (DocumentsSection,
+ * FilesSection, SideBar below) after Task 3's sections, without needing to touch anything above
+ * them.
  */
 export function ReleaseEditorPage(): React.JSX.Element {
   const { id } = useParams<{ id: string }>();
@@ -96,8 +100,9 @@ export function ReleaseEditorPage(): React.JSX.Element {
         <CategoriesSection view={view} setView={setView} readOnly={!canEdit} />
         <AssetSection view={view} setView={setView} readOnly={!canEdit} />
         <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />
-
-        {/* Task 4 adds Documents, Translations/files, History and a side bar here. */}
+        <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
+        <FilesSection view={view} setView={setView} readOnly={!canEdit} />
+        <SideBar view={view} />
       </div>
     </guard.Provider>
   );

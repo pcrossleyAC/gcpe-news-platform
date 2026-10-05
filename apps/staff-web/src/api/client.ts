@@ -49,6 +49,11 @@ function notifyUnauthorized(returnTo: string): void {
 export interface ApiFetchInit extends Omit<RequestInit, "body"> {
   /** Plain data, JSON-stringified here — never a pre-encoded string/FormData/Blob. */
   body?: unknown;
+  /** Task 4: a raw upload body (release file/translation uploads, `POST .../files?...`) — sent
+   * exactly as given, with no JSON encoding and no Content-Type forced (the browser sets its
+   * own for a Blob; the server judges bytes by magic number, not the declared type). Mutually
+   * exclusive with `body`. */
+  raw?: BodyInit;
 }
 
 function currentReturnPath(): string {
@@ -63,12 +68,18 @@ function currentReturnPath(): string {
  * page the caller was on, so the session context can send them to sign-in and back.
  */
 export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {}): Promise<T> {
+  if (init.body !== undefined && init.raw !== undefined) {
+    throw new Error("apiFetch: provide at most one of body or raw.");
+  }
+
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
   if (!SAFE_METHODS.has(method)) headers.set(CSRF_HEADER, "1");
 
   let body: BodyInit | undefined;
-  if (init.body !== undefined) {
+  if (init.raw !== undefined) {
+    body = init.raw;
+  } else if (init.body !== undefined) {
     if (!headers.has("Content-Type")) headers.set("Content-Type", "application/json");
     body = JSON.stringify(init.body);
   }

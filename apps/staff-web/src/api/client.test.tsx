@@ -61,4 +61,32 @@ describe("apiFetch", () => {
       problems: ["Headline is required."],
     });
   });
+
+  // Task 4: file uploads (POST .../files?kind=...) are raw bodies, not JSON — `raw` sends the
+  // bytes untouched (no JSON.stringify, no Content-Type forced to application/json) while every
+  // other apiFetch behaviour (CSRF header, credentials, 401/409/422 handling) stays the same.
+  it("a `raw` body is sent untouched, with no Content-Type forced and no JSON encoding", async () => {
+    const calls: { url: string; init: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit) => {
+        calls.push({ url, init });
+        return jsonResponse(201, { ok: true });
+      }),
+    );
+    const bytes = new Uint8Array([1, 2, 3]);
+    await apiFetch("/nrms/api/releases/abc-123/files?kind=asset&version=1&name=a.png", { method: "POST", raw: bytes });
+
+    const call = calls[0]!;
+    const headers = new Headers(call.init.headers);
+    expect(headers.get("X-GCPE-Request")).toBe("1");
+    expect(headers.has("Content-Type")).toBe(false);
+    expect(call.init.credentials).toBe("same-origin");
+    expect(call.init.body).toBe(bytes);
+  });
+
+  it("a `raw` body and a JSON `body` can't both be given", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, {})));
+    await expect(apiFetch("/x", { method: "POST", body: { a: 1 }, raw: new Uint8Array() })).rejects.toThrow();
+  });
 });
