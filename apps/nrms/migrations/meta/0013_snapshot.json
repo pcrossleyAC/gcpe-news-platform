@@ -1,5 +1,5 @@
 {
-  "id": "43f3c387-69a7-4eb0-b4c7-a65dddd54ece",
+  "id": "a05ef5e4-51ed-498c-945f-6bf38ba2c7a6",
   "prevId": "6560a0b3-1d4f-4d1e-a825-26725e396057",
   "version": "7",
   "dialect": "postgresql",
@@ -2172,6 +2172,12 @@
         "website_imported_version": {
           "name": "website_imported_version",
           "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "website_import_hash": {
+          "name": "website_import_hash",
+          "type": "text",
           "primaryKey": false,
           "notNull": false
         },

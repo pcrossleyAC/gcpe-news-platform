@@ -430,6 +430,11 @@ export const siteSettings = pgTable(
     /** Phase 3e importer (Task 4): the website `version` after the last import, and when it ran. */
     websiteImportedAt: tz("website_imported_at"),
     websiteImportedVersion: integer("website_imported_version"),
+    /** Phase 3e importer (Task 4, fix round 1): a stable hash of the whole mapped website
+     * bundle (carousels/slides/pins/live-feed/granville/links) as of the last import — an
+     * unchanged re-run matches this and makes no writes at all, so wholesale-replaced tables
+     * (which have no legacy id to diff by) don't get fresh ids on every no-op run. */
+    websiteImportHash: text("website_import_hash"),
     updatedAt: tz("updated_at").notNull().defaultNow(),
   },
   (t) => [check("site_settings_id_check", sql`${t.id} = 1`)],

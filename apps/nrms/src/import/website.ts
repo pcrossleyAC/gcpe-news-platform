@@ -5,16 +5,28 @@
  * tables). See .superpowers/sdd/2026-10-04-phase-3e-nrms-importer/task-4-brief.md.
  *
  * Carousels, their slides and the resource links have no legacy-id column of their own (see
- * codemap.md §3), so a re-run replaces all three wholesale, in this function's own transaction,
- * rather than diffing row by row. `site_settings` (Live Feed + `granville`) and the two seeded
- * `emergency_pins` rows DO have a stable identity (a singleton row, and the fixed slots
- * `primary`/`secondary`), so those are compared against their current content and only written
- * (and versioned) when something actually changed — keeping an unchanged re-run from endlessly
- * bumping `site_settings.version` or an emergency pin's own `version`.
+ * codemap.md §3), so a write replaces all three wholesale, in this function's own transaction,
+ * rather than diffing row by row — which would give them fresh ids on every write. Fix round 1
+ * (spec acceptance 15 — a re-run against unchanged legacy data must change nothing): before
+ * writing anything, the whole mapped bundle (carousel states/go-live times/slides including an
+ * image-bytes digest, both pins, the Live Feed flag, `granville`, and the links) is hashed and
+ * compared to `site_settings.website_import_hash`. An equal hash makes this call a complete
+ * no-op — no writes anywhere, report counts still "imported" — so wholesale-replaced tables only
+ * get fresh ids when something legacy-sourced actually changed. `site_settings` (Live Feed +
+ * `granville`) and the two seeded `emergency_pins` rows additionally have a stable identity of
+ * their own (a singleton row, and the fixed slots `primary`/`secondary`), so even on a write
+ * those are compared against their current content and only versioned when THEY changed — an
+ * unrelated change elsewhere (e.g. a new carousel) doesn't bump an untouched pin's version.
+ *
+ * Fix round 1, finding 2: resource_links is wholesale-replaced (fresh ids) on every write, which
+ * invalidates any id an editor's open links page is holding — so every write also bumps
+ * `site_settings.links_version` (the links editor's optimistic-concurrency token,
+ * apps/nrms/src/website/links.ts), regardless of whether the links themselves changed.
  *
  * No events: this importer never calls `emitSite`/`enqueueEvent` (the News API's own importer
  * already carries this content to the public site from its own copy of the legacy data).
  */
+import { createHash } from "node:crypto";
 import { and, eq, gt, ne, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
 import { imageTypeFromBytes, isGranvilleOn, justifyFromLegacy, normalizeGranville, type LegacySource } from "@gcpe/legacy-import";
@@ -65,6 +77,27 @@ function bufEq(a: Buffer | null, b: Buffer | null): boolean {
   return a.equals(b);
 }
 
+// --- Stable hashing (fix round 1): a deterministic digest of the whole mapped bundle, so an
+// unchanged re-run can be detected without comparing every column of every row by hand. Image
+// bytes are reduced to a sha256 digest first (never embedded raw) so the hash input stays small
+// and JSON-safe. ---
+function imageDigest(image: Buffer | null): string | null {
+  return image ? createHash("sha256").update(image).digest("hex") : null;
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const keys = Object.keys(value as Record<string, unknown>).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify((value as Record<string, unknown>)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sha256(value: unknown): string {
+  return createHash("sha256").update(stableStringify(value)).digest("hex");
+}
+
 interface SlideFields {
   headline: string;
   summary: string;
@@ -86,6 +119,10 @@ function slideFields(row: RawCarouselSlideRow): SlideFields {
     image,
     imageType: imageTypeFromBytes(image),
   };
+}
+
+function hashableSlide(s: { sortIndex: number } & SlideFields): Record<string, unknown> {
+  return { sortIndex: s.sortIndex, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, facebookPostUrl: s.facebookPostUrl, justify: s.justify, imageDigest: imageDigest(s.image) };
 }
 
 // --- Carousel state assignment (task-4 brief): newest PublishDateTime <= now → live; the
@@ -124,86 +161,146 @@ function planCarousels(rows: RawCarouselRow[], now: Date): CarouselPlan {
   return { live, next, past, skipped };
 }
 
-async function importCarousels(tx: Tx, carouselRows: RawCarouselRow[], slideRows: RawCarouselSlideRow[], now: Date, report: ImportReport): Promise<void> {
-  for (const _row of carouselRows) report.count("carousels", "legacy");
-  const plan = planCarousels(carouselRows, now);
+// --- Carousel + slide plan (pure): decides, for every legacy carousel/slide row, whether it's
+// imported or skipped (and why) — computed once, then shared by the report, the hash and the
+// actual write, so those three can never disagree with each other. ---
+interface SelectedCarousel {
+  row: RawCarouselRow;
+  state: "live" | "next" | "past";
+  slides: ({ sortIndex: number } & SlideFields)[];
+}
+interface CarouselSlidePlan {
+  selected: SelectedCarousel[];
+  legacyCarouselCount: number;
+  carouselSkips: { legacyId: string; reason: string }[];
+  legacySlideCount: number;
+  slideSkips: { legacyId: string; reason: string }[];
+}
 
-  const selected: { row: RawCarouselRow; state: "live" | "next" | "past" }[] = [
+function buildCarouselSlidePlan(carouselRows: RawCarouselRow[], slideRows: RawCarouselSlideRow[], plan: CarouselPlan): CarouselSlidePlan {
+  const selectedList: { row: RawCarouselRow; state: "live" | "next" | "past" }[] = [
     ...(plan.live ? [{ row: plan.live, state: "live" as const }] : []),
     ...(plan.next ? [{ row: plan.next, state: "next" as const }] : []),
     ...plan.past.map((row) => ({ row, state: "past" as const })),
   ];
-  const selectedIds = new Set(selected.map((s) => s.row.Id.toLowerCase()));
+  const selectedIds = new Set(selectedList.map((s) => s.row.Id.toLowerCase()));
   const skipReasonById = new Map(plan.skipped.map(({ row, reason }) => [row.Id.toLowerCase(), reason]));
-
-  for (const _s of selected) report.count("carousels", "imported");
-  for (const { row, reason } of plan.skipped) report.skip("carousels", row.Id.toLowerCase(), reason);
-
   const slidesByCarousel = groupBy(slideRows, (r) => r.CarouselId);
 
-  // Wholesale replace: carousels have no legacy-id column to diff against, so every successful
-  // run deletes and reinserts (cascading to `slides`) rather than trying to match old rows.
-  await tx.delete(carousels);
+  const carouselSkips = plan.skipped.map(({ row, reason }) => ({ legacyId: row.Id.toLowerCase(), reason }));
+  const slideSkips: { legacyId: string; reason: string }[] = [];
+  let legacySlideCount = 0;
 
-  for (const { row, state } of selected) {
-    const [created] = await tx
-      .insert(carousels)
-      .values({
-        state,
-        goLiveAt: state === "next" ? row.PublishDateTime : null,
-        wentLiveAt: state === "next" ? null : row.PublishDateTime,
-      })
-      .returning({ id: carousels.id });
-
+  const selected: SelectedCarousel[] = selectedList.map(({ row, state }) => {
     const legacySlides = [...(slidesByCarousel.get(row.Id.toLowerCase()) ?? [])].sort((a, b) => a.SortIndex - b.SortIndex);
-    const values: (typeof websiteSlides.$inferInsert)[] = [];
+    const slides: ({ sortIndex: number } & SlideFields)[] = [];
     let sortIndex = 0;
     for (const s of legacySlides) {
-      report.count("slides", "legacy");
+      legacySlideCount++;
       if (s.SortIndex < 0) {
-        report.skip("slides", `${row.Id.toLowerCase()}:${s.SlideId.toLowerCase()}`, "pinned slide (SortIndex < 0), not a carousel slide");
+        slideSkips.push({ legacyId: `${row.Id.toLowerCase()}:${s.SlideId.toLowerCase()}`, reason: "pinned slide (SortIndex < 0), not a carousel slide" });
         continue;
       }
-      values.push({ carouselId: created!.id, sortIndex: sortIndex++, ...slideFields(s) });
-      report.count("slides", "imported");
+      slides.push({ sortIndex: sortIndex++, ...slideFields(s) });
     }
-    if (values.length) await tx.insert(websiteSlides).values(values);
-  }
+    return { row, state, slides };
+  });
 
   for (const row of carouselRows) {
     if (selectedIds.has(row.Id.toLowerCase())) continue;
     const reason = skipReasonById.get(row.Id.toLowerCase());
     if (!reason) continue;
     for (const s of slidesByCarousel.get(row.Id.toLowerCase()) ?? []) {
-      report.count("slides", "legacy");
-      report.skip("slides", `${row.Id.toLowerCase()}:${s.SlideId.toLowerCase()}`, `carousel skipped: ${reason}`);
+      legacySlideCount++;
+      slideSkips.push({ legacyId: `${row.Id.toLowerCase()}:${s.SlideId.toLowerCase()}`, reason: `carousel skipped: ${reason}` });
+    }
+  }
+
+  return { selected, legacyCarouselCount: carouselRows.length, carouselSkips, legacySlideCount, slideSkips };
+}
+
+function reportCarouselSlidePlan(report: ImportReport, plan: CarouselSlidePlan): void {
+  for (let i = 0; i < plan.legacyCarouselCount; i++) report.count("carousels", "legacy");
+  for (let i = 0; i < plan.selected.length; i++) report.count("carousels", "imported");
+  for (const { legacyId, reason } of plan.carouselSkips) report.skip("carousels", legacyId, reason);
+
+  for (let i = 0; i < plan.legacySlideCount; i++) report.count("slides", "legacy");
+  const importedSlides = plan.selected.reduce((n, s) => n + s.slides.length, 0);
+  for (let i = 0; i < importedSlides; i++) report.count("slides", "imported");
+  for (const { legacyId, reason } of plan.slideSkips) report.skip("slides", legacyId, reason);
+}
+
+function hashableCarousel(s: SelectedCarousel): Record<string, unknown> {
+  return {
+    state: s.state,
+    publishDateTime: s.row.PublishDateTime ? s.row.PublishDateTime.toISOString() : null,
+    slides: s.slides.map(hashableSlide),
+  };
+}
+
+async function applyCarouselSlidePlan(tx: Tx, plan: CarouselSlidePlan): Promise<void> {
+  // Wholesale replace: carousels have no legacy-id column to diff against, so a write deletes
+  // and reinserts (cascading to `slides`) rather than trying to match old rows by content.
+  await tx.delete(carousels);
+  for (const s of plan.selected) {
+    const [created] = await tx
+      .insert(carousels)
+      .values({
+        state: s.state,
+        goLiveAt: s.state === "next" ? s.row.PublishDateTime : null,
+        wentLiveAt: s.state === "next" ? null : s.row.PublishDateTime,
+      })
+      .returning({ id: carousels.id });
+    if (s.slides.length) {
+      await tx.insert(websiteSlides).values(s.slides.map((sl) => ({ carouselId: created!.id, ...sl })));
     }
   }
 }
 
-async function importResourceLinks(tx: Tx, rows: RawResourceLinkRow[], report: ImportReport): Promise<void> {
-  await tx.delete(websiteResourceLinks);
-  const sorted = [...rows].sort((a, b) => a.SortIndex - b.SortIndex);
-  if (sorted.length) {
-    await tx.insert(websiteResourceLinks).values(sorted.map((r) => ({ sortIndex: r.SortIndex, text: r.LinkText ?? "", url: r.LinkUrl ?? "" })));
-  }
-  for (const _row of rows) {
+// --- Resource links (pure plan + report + write, same three-way split as carousels). ---
+interface LinkPlanRow {
+  sortIndex: number;
+  text: string;
+  url: string;
+}
+
+function buildLinksPlan(rows: RawResourceLinkRow[]): LinkPlanRow[] {
+  return [...rows].sort((a, b) => a.SortIndex - b.SortIndex).map((r) => ({ sortIndex: r.SortIndex, text: r.LinkText ?? "", url: r.LinkUrl ?? "" }));
+}
+
+function reportLinksPlan(report: ImportReport, rows: RawResourceLinkRow[]): void {
+  for (let i = 0; i < rows.length; i++) {
     report.count("resource_links", "legacy");
     report.count("resource_links", "imported");
   }
 }
 
+async function applyLinksPlan(tx: Tx, plan: LinkPlanRow[]): Promise<void> {
+  await tx.delete(websiteResourceLinks);
+  if (plan.length) await tx.insert(websiteResourceLinks).values(plan);
+}
+
 // --- Emergency pins (task-4 brief): legacy's exact ApplicationSetting keys, from
 // Hub.Legacy.Website/News/EmergencySlideManagement.aspx.cs:16-21/45-50 — a pinned slide is a
 // CarouselSlide row with SortIndex < 0 inside the carousel named by PinnedCarouselId /
-// SecondaryCarouselId. ---
+// SecondaryCarouselId. `resolvePins` is pure (no DB access): an unpinned slot contributes
+// nothing legacy-sourced beyond "not pinned" — whatever content currently sits in that row is
+// NRMS's own state, not legacy's, so it's left alone (and never hashed) rather than read here. ---
 const PIN_SETTINGS = {
   primary: { isPinned: "IsPinnedSlide", slideId: "PinnedSlideId", carouselId: "PinnedCarouselId" },
   secondary: { isPinned: "IsPinnedSecondarySlide", slideId: "SecondarySlideId", carouselId: "SecondaryCarouselId" },
 } as const;
+type PinSlot = keyof typeof PIN_SETTINGS;
 
-async function importPins(tx: Tx, settings: Map<string, string>, slideRows: RawCarouselSlideRow[], now: Date, report: ImportReport): Promise<void> {
+interface PinPlan {
+  pinned: boolean;
+  content: SlideFields | null;
+  warn?: { legacyId: string; key: string; problems: string[] };
+}
+
+function resolvePins(settings: Map<string, string>, slideRows: RawCarouselSlideRow[]): Record<PinSlot, PinPlan> {
   const bySlideCarousel = new Map(slideRows.map((r) => [`${r.CarouselId.toLowerCase()}\u0000${r.SlideId.toLowerCase()}`, r]));
+  const result = {} as Record<PinSlot, PinPlan>;
 
   for (const slot of ["primary", "secondary"] as const) {
     const names = PIN_SETTINGS[slot];
@@ -215,17 +312,37 @@ async function importPins(tx: Tx, settings: Map<string, string>, slideRows: RawC
     if (flagged && slideIdRaw && carouselIdRaw) {
       match = bySlideCarousel.get(`${carouselIdRaw.toLowerCase()}\u0000${slideIdRaw.toLowerCase()}`);
     }
+    const pinned = flagged && Boolean(match);
+    const plan: PinPlan = { pinned, content: pinned ? slideFields(match!) : null };
     if (flagged && !match) {
-      report.warn(slideIdRaw ?? slot, `pin:${slot}`, ["pinned slide setting points at an unknown carousel/slide — left unpinned"]);
+      plan.warn = { legacyId: slideIdRaw ?? slot, key: `pin:${slot}`, problems: ["pinned slide setting points at an unknown carousel/slide — left unpinned"] };
     }
+    result[slot] = plan;
+  }
+  return result;
+}
 
+function reportPinWarnings(report: ImportReport, pins: Record<PinSlot, PinPlan>): void {
+  for (const slot of ["primary", "secondary"] as const) {
+    const w = pins[slot].warn;
+    if (w) report.warn(w.legacyId, w.key, w.problems);
+  }
+}
+
+function hashablePin(p: PinPlan): Record<string, unknown> {
+  if (!p.pinned || !p.content) return { pinned: false };
+  return { pinned: true, headline: p.content.headline, summary: p.content.summary, actionUrl: p.content.actionUrl, facebookPostUrl: p.content.facebookPostUrl, justify: p.content.justify, imageDigest: imageDigest(p.content.image) };
+}
+
+async function applyPinsPlan(tx: Tx, pins: Record<PinSlot, PinPlan>, now: Date): Promise<void> {
+  for (const slot of ["primary", "secondary"] as const) {
+    const plan = pins[slot];
     const [current] = await tx.select().from(emergencyPins).where(eq(emergencyPins.slot, slot)).for("update");
     if (!current) throw new Error(`emergency_pins has no seeded row for slot ${slot} — migration 0012 should have seeded both slots`);
 
-    const pinned = flagged && Boolean(match);
-    const desired: SlideFields & { pinned: boolean } = match
-      ? { pinned, ...slideFields(match) }
-      : { pinned, headline: current.headline, summary: current.summary, actionUrl: current.actionUrl, facebookPostUrl: current.facebookPostUrl, justify: current.justify, image: current.image, imageType: current.imageType };
+    const desired: { pinned: boolean } & SlideFields = plan.content
+      ? { pinned: true, ...plan.content }
+      : { pinned: false, headline: current.headline, summary: current.summary, actionUrl: current.actionUrl, facebookPostUrl: current.facebookPostUrl, justify: current.justify, image: current.image, imageType: current.imageType };
 
     const changed =
       current.pinned !== desired.pinned ||
@@ -267,6 +384,13 @@ async function websiteEditedSinceImport(tx: Tx, settingsRow: typeof siteSettings
   return null;
 }
 
+async function dbNow(tx: Tx): Promise<Date> {
+  // Constraints: "now" for live/next/past decisions is the DB clock, not Date.now() (same idiom
+  // as releases/workflow.ts's dbClock — the driver can hand this back as a string).
+  const r = await tx.execute<{ now: string | Date }>(sql`SELECT now() AS now`);
+  return new Date(r.rows[0]!.now);
+}
+
 export interface ImportWebsiteResult {
   skipped: boolean;
   reason?: string;
@@ -282,10 +406,7 @@ export async function importWebsite(db: Db, source: LegacySource, report: Import
       if (reason) return { skipped: true, reason };
     }
 
-    // Constraints: "now" for live/next/past decisions is the DB clock, not Date.now() (same
-    // idiom as releases/workflow.ts's dbClock — the driver can hand this back as a string).
-    const nowResult = await tx.execute<{ now: string | Date }>(sql`SELECT now() AS now`);
-    const now = new Date(nowResult.rows[0]!.now);
+    const now = await dbNow(tx);
 
     const appSettingRows = await source.query<RawAppSettingRow>(Q_APP_SETTINGS);
     const carouselRows = await source.query<RawCarouselRow>(Q_CAROUSELS);
@@ -293,29 +414,67 @@ export async function importWebsite(db: Db, source: LegacySource, report: Import
     const resourceLinkRows = await source.query<RawResourceLinkRow>(Q_RESOURCE_LINKS);
     const settings = new Map(appSettingRows.map((r) => [r.SettingName, r.SettingValue]));
 
-    await importCarousels(tx, carouselRows, slideRows, now, report);
-    await importResourceLinks(tx, resourceLinkRows, report);
-    await importPins(tx, settings, slideRows, now, report);
-
+    const carouselPlan = planCarousels(carouselRows, now);
+    const slidePlan = buildCarouselSlidePlan(carouselRows, slideRows, carouselPlan);
+    const linksPlan = buildLinksPlan(resourceLinkRows);
+    const pinsPlan = resolvePins(settings, slideRows);
     const liveFeedEnabled = isGranvilleOn(settings.get("live_webcast_enabled"));
     const granville = normalizeGranville(settings.get("granville"));
-    const desired = { liveFeedEnabled, liveManifestUrl: "", liveM3uUrl: "", granville };
-    const changed =
-      settingsRow.liveFeedEnabled !== desired.liveFeedEnabled ||
-      settingsRow.liveManifestUrl !== desired.liveManifestUrl ||
-      settingsRow.liveM3uUrl !== desired.liveM3uUrl ||
-      settingsRow.granville !== desired.granville;
 
-    let resultingVersion = settingsRow.version;
-    if (changed) {
-      resultingVersion = settingsRow.version + 1;
-      await tx.update(siteSettings).set({ ...desired, version: resultingVersion, updatedAt: now }).where(eq(siteSettings.id, 1));
-      if (granville === "true") {
-        await tx.insert(siteLog).values({ actorId: SYSTEM_ACTOR.id, actorName: SYSTEM_ACTOR.name, area: "blue-bridge", text: "Imported Project Blue Bridge as ON", at: now });
-      }
+    // Report counts and warnings reflect the legacy data either way — even a hash-matched
+    // no-op run below still reports every legacy row as "imported" (spec acceptance 15).
+    reportCarouselSlidePlan(report, slidePlan);
+    reportLinksPlan(report, resourceLinkRows);
+    reportPinWarnings(report, pinsPlan);
+
+    const bundleHash = sha256({
+      carousels: slidePlan.selected.map(hashableCarousel),
+      pins: { primary: hashablePin(pinsPlan.primary), secondary: hashablePin(pinsPlan.secondary) },
+      liveFeedEnabled,
+      granville,
+      links: linksPlan,
+    });
+
+    // Fix round 1 (spec acceptance 15): an unchanged bundle makes no writes at all — no fresh
+    // ids for the wholesale-replaced tables, no version bumps, no site_log rows. `force`
+    // bypasses this too: its whole purpose is to reassert legacy content regardless of what's
+    // currently in NRMS, including reverting a local edit the hash can't see (the hash is a
+    // function of legacy data only, so it would otherwise match and silently no-op).
+    if (!opts.force && settingsRow.websiteImportHash === bundleHash) {
+      return { skipped: false };
     }
 
-    await tx.update(siteSettings).set({ websiteImportedAt: now, websiteImportedVersion: resultingVersion }).where(eq(siteSettings.id, 1));
+    await applyCarouselSlidePlan(tx, slidePlan);
+    await applyLinksPlan(tx, linksPlan);
+    await applyPinsPlan(tx, pinsPlan, now);
+
+    const desiredSettings = { liveFeedEnabled, liveManifestUrl: "", liveM3uUrl: "", granville };
+    const settingsChanged =
+      settingsRow.liveFeedEnabled !== desiredSettings.liveFeedEnabled ||
+      settingsRow.liveManifestUrl !== desiredSettings.liveManifestUrl ||
+      settingsRow.liveM3uUrl !== desiredSettings.liveM3uUrl ||
+      settingsRow.granville !== desiredSettings.granville;
+    const resultingVersion = settingsChanged ? settingsRow.version + 1 : settingsRow.version;
+
+    await tx
+      .update(siteSettings)
+      .set({
+        ...desiredSettings,
+        version: resultingVersion,
+        // Fix round 1, finding 2: resource_links was just rewritten with fresh ids above, which
+        // invalidates any id an editor's open links page is holding — bump links_version every
+        // time that write happens, regardless of whether the links' own content changed.
+        linksVersion: settingsRow.linksVersion + 1,
+        websiteImportHash: bundleHash,
+        websiteImportedAt: now,
+        websiteImportedVersion: resultingVersion,
+        updatedAt: now,
+      })
+      .where(eq(siteSettings.id, 1));
+
+    if (settingsChanged && granville === "true") {
+      await tx.insert(siteLog).values({ actorId: SYSTEM_ACTOR.id, actorName: SYSTEM_ACTOR.name, area: "blue-bridge", text: "Imported Project Blue Bridge as ON", at: now });
+    }
 
     return { skipped: false };
   });

@@ -5,7 +5,8 @@ import type { SubscriberConfig } from "@gcpe/events";
 import { createFakeSource, type LegacySource } from "@gcpe/legacy-import";
 import { createNrmsTestDb, editor } from "../../test/helpers";
 import { carousels, emergencyPins, siteLog, siteSettings, websiteResourceLinks, websiteSlides } from "../db/schema";
-import { saveLinks } from "../website/links";
+import { SiteConflictError } from "../website/errors";
+import { getLinks, saveLinks } from "../website/links";
 import { ImportReport } from "./report";
 import { importWebsite } from "./website";
 
@@ -196,9 +197,11 @@ describe("importWebsite", () => {
     expect(json.tables.resource_links).toEqual({ legacy: 3, imported: 3, skipped: 0 });
   });
 
-  it("writes no outbox rows; an unchanged re-run doesn't bump versions; an edit since import is skipped unless forced", async () => {
+  it("writes no outbox rows; an unchanged re-run changes nothing at all; an edit since import is skipped unless forced", async () => {
     const src = source({
       appSettings: [{ SettingName: "granville", SettingValue: "true" }],
+      carousels: [{ Id: "c-live", PublishDateTime: new Date(Date.now() - 60_000), Timestamp: new Date() }],
+      carouselSlides: [{ CarouselId: "c-live", SlideId: "s0", SortIndex: 0, Headline: "H", Summary: "", ActionUrl: "", Image: null, FacebookPostUrl: null, Justify: 0, Timestamp: new Date() }],
       resourceLinks: [{ SortIndex: 0, LinkText: "A", LinkUrl: "/a" }],
     });
 
@@ -210,36 +213,71 @@ describe("importWebsite", () => {
     const [afterFirst] = await tdb.db.select().from(siteSettings).where(eq(siteSettings.id, 1));
     const [primaryAfterFirst] = await tdb.db.select().from(emergencyPins).where(eq(emergencyPins.slot, "primary"));
     expect(afterFirst!.websiteImportedVersion).toBe(afterFirst!.version);
+    expect(afterFirst!.websiteImportHash).toBeTruthy();
 
-    // Re-running against the same, unchanged legacy data must not bump site_settings.version,
-    // an emergency pin's own version, or write a second "Imported Project Blue Bridge as ON" line.
+    const carouselsAfterFirst = await tdb.db.select().from(carousels);
+    const slidesAfterFirst = await tdb.db.select().from(websiteSlides);
+    const linksAfterFirst = await tdb.db.select().from(websiteResourceLinks);
+    const logCountAfterFirst = (await tdb.db.select().from(siteLog)).length;
+
+    // Re-running against the same, unchanged legacy data (spec acceptance 15) must produce
+    // literally no writes: same carousel/slide/link row ids (not just the same content), the
+    // same site_settings version/links_version/updated_at, the same pin version, and no new
+    // site_log rows at all.
     const before2 = await outboxCount();
     const second = await importWebsite(tdb.db, src, new ImportReport(), { force: false });
     expect(second).toEqual({ skipped: false });
     expect(await outboxCount()).toBe(before2);
 
     const [afterSecond] = await tdb.db.select().from(siteSettings).where(eq(siteSettings.id, 1));
-    expect(afterSecond!.version).toBe(afterFirst!.version);
-    expect(afterSecond!.granville).toBe(afterFirst!.granville);
+    expect(afterSecond).toEqual(afterFirst);
     const [primaryAfterSecond] = await tdb.db.select().from(emergencyPins).where(eq(emergencyPins.slot, "primary"));
-    expect(primaryAfterSecond!.version).toBe(primaryAfterFirst!.version);
-    const bbLogs = await tdb.db.select().from(siteLog).where(eq(siteLog.area, "blue-bridge"));
-    expect(bbLogs).toHaveLength(1);
+    expect(primaryAfterSecond).toEqual(primaryAfterFirst);
+
+    const carouselsAfterSecond = await tdb.db.select().from(carousels);
+    const slidesAfterSecond = await tdb.db.select().from(websiteSlides);
     const linksAfterSecond = await tdb.db.select().from(websiteResourceLinks);
-    expect(linksAfterSecond.map((r) => r.text)).toEqual(["A"]);
+    expect(carouselsAfterSecond.map((c) => c.id).sort()).toEqual(carouselsAfterFirst.map((c) => c.id).sort());
+    expect(slidesAfterSecond.map((s) => s.id).sort()).toEqual(slidesAfterFirst.map((s) => s.id).sort());
+    expect(linksAfterSecond.map((l) => l.id).sort()).toEqual(linksAfterFirst.map((l) => l.id).sort());
+    expect((await tdb.db.select().from(siteLog)).length).toBe(logCountAfterFirst);
 
     // A real edit in NRMS (saveLinks) writes a non-system site_log entry after website_imported_at.
-    await saveLinks(tdb.db, { version: 1, links: [{ text: "Edited", url: "https://edited.invalid" }] }, editor, subs);
+    // (The first import's write already bumped links_version once, from the initial 1.)
+    const beforeEdit = await getLinks(tdb.db);
+    await saveLinks(tdb.db, { version: beforeEdit.version, links: [{ text: "Edited", url: "https://edited.invalid" }] }, editor, subs);
 
     const third = await importWebsite(tdb.db, src, new ImportReport(), { force: false });
     expect(third).toEqual({ skipped: true, reason: "website edited in NRMS since the last import" });
     const linksAfterSkip = await tdb.db.select().from(websiteResourceLinks);
     expect(linksAfterSkip.map((r) => r.text)).toEqual(["Edited"]);
 
-    // force: true overrides the edited-since-import check and reimports from legacy anyway.
+    // force: true overrides the edited-since-import check and reimports from legacy anyway —
+    // this is a real rewrite (ids change), so links_version bumps too (see the dedicated test below).
+    const [beforeForce] = await tdb.db.select().from(siteSettings).where(eq(siteSettings.id, 1));
     const fourth = await importWebsite(tdb.db, src, new ImportReport(), { force: true });
     expect(fourth).toEqual({ skipped: false });
     const linksAfterForce = await tdb.db.select().from(websiteResourceLinks);
     expect(linksAfterForce.map((r) => r.text)).toEqual(["A"]);
+    const [afterForce] = await tdb.db.select().from(siteSettings).where(eq(siteSettings.id, 1));
+    expect(afterForce!.linksVersion).toBe(beforeForce!.linksVersion + 1);
+  });
+
+  it("bumps site_settings.links_version whenever the import rewrites resource_links, so a stale editor gets a conflict", async () => {
+    const before = await getLinks(tdb.db);
+    expect(before).toEqual({ version: 1, links: [] });
+
+    const src = source({ resourceLinks: [{ SortIndex: 0, LinkText: "A", LinkUrl: "/a" }] });
+    const result = await importWebsite(tdb.db, src, new ImportReport(), { force: false });
+    expect(result).toEqual({ skipped: false });
+
+    const after = await getLinks(tdb.db);
+    expect(after.version).toBeGreaterThan(before.version);
+    expect(after.links.map((l) => l.text)).toEqual(["A"]);
+
+    // The editor loaded `before.version` and still has it open — the import gave resource_links
+    // fresh ids and bumped links_version, so saving against the stale version must conflict,
+    // not fail with "Unknown link" (which is what a plain id-mismatch would have produced).
+    await expect(saveLinks(tdb.db, { version: before.version, links: [{ text: "B", url: "/b" }] }, editor, subs)).rejects.toThrow(SiteConflictError);
   });
 });
