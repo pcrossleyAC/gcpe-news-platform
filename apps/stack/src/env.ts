@@ -70,6 +70,9 @@ export const STACK_APP_DEFAULTS: Partial<Record<AppPrefix, Record<string, string
   // (NRMS's own CORE_CLIENT_ID/SECRET stay unset in-stack, same as NOD_*/DISTRIBUTION_* — the
   // local-admin token fallback covers it, just like NRMS's calls to NoD and Distribution).
   NRMS: { NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", CORE_URL: "self:/core" },
+  // Phase 4a: the public Subscribe API proxies to this stack's own NoD, same in-process-URL
+  // pattern (and local-admin-token fallback) as NRMS's calls to NoD/Distribution/Core above.
+  NEWSAPI: { NOD_BASE_URL: "self:/nod" },
 };
 
 /** Where the stack mounts its fake Flickr when no real Flickr key is configured. */
@@ -163,6 +166,10 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // Derived internal wiring first, so explicit <PREFIX>_EVENT_* vars (applied below) override it.
   if (env.STACK_EVENT_SECRET) Object.assign(view, internalEventEnv(env.STACK_EVENT_SECRET)[prefix]);
   if (!view.SESSION_SECRET && env.STACK_EVENT_SECRET) view.SESSION_SECRET = sessionSecretFrom(env.STACK_EVENT_SECRET);
+  // Phase 4a: NoD's LINK_SECRET (HMAC key for unsubscribe tokens) needs no SiteGround setting
+  // of its own — derived from the same stack secret as the session/event secrets above. An
+  // explicit NOD_LINK_SECRET still wins (applied below, with every other prefixed var).
+  if (prefix === "NOD" && !view.LINK_SECRET && env.STACK_EVENT_SECRET) view.LINK_SECRET = createHmac("sha256", env.STACK_EVENT_SECRET).update("gcpe-nod-links").digest("hex");
   // This app's built-in defaults, before its own prefixed vars so an explicit one still wins.
   if (STACK_APP_DEFAULTS[prefix]) Object.assign(view, STACK_APP_DEFAULTS[prefix]);
   if (dataDir && prefix === "NRMS") view.STORAGE_DIR = join(dataDir, "storage");

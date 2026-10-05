@@ -69,6 +69,25 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
     }),
   );
 
+  // RFC 8058 one-click unsubscribe: mail clients POST this with an
+  // application/x-www-form-urlencoded body (never JSON) and no api-version query — handled
+  // separately from the generic loop below, which always forwards JSON.
+  r.post("/Subscribe/OneClickUnsubscribe/:tokenGuid", express.urlencoded({ extended: false, limit: "1kb" }), async (req, res) => {
+    const upstreamPath = buildUpstreamPath("/Subscribe/OneClickUnsubscribe/:tokenGuid", req.params);
+    if (upstreamPath === undefined) return void res.status(400).json({ error: "invalid parameter" });
+    try {
+      const headers: Record<string, string> = { accept: "application/json", "content-type": "application/x-www-form-urlencoded" };
+      if (opts.getToken) headers.authorization = `Bearer ${await opts.getToken()}`;
+      const upstream = await doFetch(`${opts.baseUrl.replace(/\/$/, "")}/api${upstreamPath}`, {
+        method: "POST", headers, body: "List-Unsubscribe=One-Click", signal: AbortSignal.timeout(15_000),
+      });
+      res.status(upstream.status).type("application/json").send(await upstream.text());
+    } catch (e) {
+      console.error("[news-api] one-click unsubscribe proxy failed", e);
+      res.status(502).json({ error: "subscriptions upstream unavailable" });
+    }
+  });
+
   for (const [method, path] of ROUTES) {
     r[method](path, express.json({ limit: "100kb" }), async (req, res) => {
       const upstreamPath = buildUpstreamPath(path, req.params);

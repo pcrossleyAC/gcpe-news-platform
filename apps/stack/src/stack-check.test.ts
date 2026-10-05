@@ -53,6 +53,7 @@ function baseEnv(): NodeJS.ProcessEnv {
     NOD_DISTRIBUTION_URL: "self:/distribution",
     NOD_PUBLIC_SITE_URL: "https://news.example.invalid/site",
     NOD_MANAGE_URL: "https://news.example.invalid/manage",
+    NOD_LINK_SECRET: "l".repeat(32),
 
     DIST_DATABASE_URL: DB("distribution"),
     DIST_SMTP_HOST: "127.0.0.1",

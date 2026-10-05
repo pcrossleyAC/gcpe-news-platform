@@ -21,7 +21,8 @@ export const EVENT_SECRETS = { nrms: "nrms-secret", core: "core-secret" } as con
 
 // Same createApp options as routes.test.ts uses — issuer/audience/keys are omitted (no test
 // here needs the bearer-protected /api routes), events need only eventSecrets, and the
-// Subscribe options (Task 6) are left undefined for now.
+// Subscribe options (Task 6) are left undefined: tests that need /api/Subscribe build their
+// own app via createApp directly (see subscribe-routes.test.ts).
 export function createTestApp(db: Db): express.Express {
   return createApp({
     db,

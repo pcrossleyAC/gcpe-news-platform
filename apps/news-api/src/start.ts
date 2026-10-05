@@ -1,6 +1,6 @@
 import type { Server } from "node:http";
 import express from "express";
-import { createClientCredentialsProvider } from "@gcpe/auth";
+import { authFromEnv, NOD_SUBSCRIBE_API_ROLE, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
@@ -67,10 +67,18 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
 
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
-  const getToken =
-    parsed.NOD_TOKEN_URL && parsed.NOD_CLIENT_ID && parsed.NOD_CLIENT_SECRET && parsed.NOD_SCOPE
-      ? createClientCredentialsProvider({ tokenUrl: parsed.NOD_TOKEN_URL, clientId: parsed.NOD_CLIENT_ID, clientSecret: parsed.NOD_CLIENT_SECRET, scope: parsed.NOD_SCOPE })
-      : undefined;
+  const nodEntra = [parsed.NOD_TOKEN_URL, parsed.NOD_CLIENT_ID, parsed.NOD_CLIENT_SECRET, parsed.NOD_SCOPE];
+  // Entra when configured; otherwise, on test sites, a local token carrying the subscribe
+  // role (same fallback NRMS uses for its NoD calls).
+  const getToken = parsed.NOD_BASE_URL
+    ? serviceTokenProvider({
+        tokenUrl: parsed.NOD_TOKEN_URL, clientId: parsed.NOD_CLIENT_ID, clientSecret: parsed.NOD_CLIENT_SECRET, scope: parsed.NOD_SCOPE,
+        local: nodEntra.every((v) => !v) && env.LOCAL_ADMIN_ENABLED === "true" ? authFromEnv(env).local : null,
+        subject: "news-api",
+        roles: [NOD_SUBSCRIBE_API_ROLE],
+        envPrefix: "NOD",
+      })
+    : undefined;
 
   // Assigned once listenForUpdates() resolves below; until then readiness reports
   // unavailable. Read through this mutable binding (not captured by value) so createApp's

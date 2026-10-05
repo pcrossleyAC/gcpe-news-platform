@@ -9,3 +9,7 @@ export type StaffRole = (typeof STAFF_ROLES)[number];
  * (apps/nrms/src/start.ts).
  */
 export const CORE_ADMIN_DIRECTORY_ROLE = "Core.AdminDirectory";
+
+/** Phase 4a: the News API's service role for proxying the public Subscribe API to NoD (legacy
+ * "SubscribeApiUser"). Not a staff role. */
+export const NOD_SUBSCRIBE_API_ROLE = "NoD.SubscribeApi";

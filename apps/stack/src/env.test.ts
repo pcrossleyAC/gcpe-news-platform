@@ -102,6 +102,12 @@ describe("envFor", () => {
     expect(envFor({}, "CORE").NOD_URL).toBeUndefined();
   });
 
+  // Phase 4a task 6: the public Subscribe API (News API's proxy) always reaches this stack's
+  // own NoD in-process, same as NRMS's NOD_URL above — no SiteGround setting needed.
+  it("Phase 4a: NEWSAPI defaults NOD_BASE_URL to this stack's own in-process NoD", () => {
+    expect(envFor({ STACK_EVENT_SECRET: "x".repeat(32) }, "NEWSAPI").NOD_BASE_URL).toBe("self:/nod");
+  });
+
   // Plan 3d task 4: SITE_ENVIRONMENT (e.g. "test") reaches Public Site's isTestSite the same
   // way NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION do, with no per-app SITE_SITE_ENVIRONMENT
   // setting needed.
@@ -291,6 +297,17 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
 
   it("rejects a short STACK_EVENT_SECRET at startup", () => {
     expect(stackEnvSchema.safeParse({ TICK_TOKEN: "x".repeat(32), STACK_EVENT_SECRET: "short" }).success).toBe(false);
+  });
+
+  // Phase 4a task 6: NoD's LINK_SECRET (HMAC key for unsubscribe tokens) is derived the same
+  // way the session secret is — no new SiteGround setting — and an explicit NOD_LINK_SECRET
+  // still wins.
+  it("derives NoD's LINK_SECRET from STACK_EVENT_SECRET as a stable 64-hex-char value, overridable", () => {
+    const derived = envFor({ STACK_EVENT_SECRET: secret }, "NOD").LINK_SECRET;
+    expect(derived).toMatch(/^[0-9a-f]{64}$/);
+    expect(envFor({ STACK_EVENT_SECRET: secret }, "NOD").LINK_SECRET).toBe(derived); // stable
+    expect(envFor({ STACK_EVENT_SECRET: secret, NOD_LINK_SECRET: "explicit-secret-value" }, "NOD").LINK_SECRET).toBe("explicit-secret-value");
+    expect(envFor({}, "NOD").LINK_SECRET).toBeUndefined();
   });
 });
 

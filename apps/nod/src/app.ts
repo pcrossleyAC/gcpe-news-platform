@@ -6,7 +6,9 @@ import { createEventReceiver } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import { createAsItHappensHandler, type AsItHappensOptions } from "./as-it-happens";
 import { apiRoutes } from "./http/routes";
+import { subscribeApiRoutes } from "./http/subscribe-routes";
 import { listsHandler } from "./lists";
+import type { JourneyDeps } from "./subscribe/journeys";
 
 export interface AppDeps {
   db: Db;
@@ -14,6 +16,8 @@ export interface AppDeps {
   loginRouter?: Router | null;
   eventSecrets: Record<string, string>;
   handlerOptions: AsItHappensOptions;
+  /** Phase 4a: the legacy public Subscribe API, mounted at /api/Subscribe when set. */
+  subscribe?: JourneyDeps;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -35,6 +39,7 @@ export function createApp(deps: AppDeps): express.Express {
   );
 
   if (deps.loginRouter) app.use(deps.loginRouter);
+  if (deps.subscribe) app.use("/api/Subscribe", requireBearer(deps.auth), express.json({ limit: "100kb" }), subscribeApiRoutes(deps.subscribe));
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.
   app.use("/api", requireBearer(deps.auth), express.json({ limit: "100kb" }), apiRoutes(deps.db));
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
