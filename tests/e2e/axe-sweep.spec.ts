@@ -61,6 +61,21 @@ async function seedWebsiteContent(siteEditorCookie: string): Promise<void> {
   }
 }
 
+/** Undoes seedWebsiteContent's two mutations to *global, singleton* Website state (the next
+ * carousel; the primary pin's pinned flag) — this suite shares one stack/database with every
+ * other spec file (playwright.config.ts: workers: 1), and other specs (website.spec.ts's own
+ * scheduled-carousel and pin tests) assume a pristine "no next carousel" / "primary starts
+ * unpinned" state the way a fresh environment has it. The seeded link and file are left in
+ * place — nothing elsewhere indexes resource links or files by position, only by content it
+ * created itself, so they're harmless. */
+async function restoreWebsiteContent(siteEditorCookie: string): Promise<void> {
+  const primary = (await apiCall<PinView[]>(siteEditorCookie, "/nrms/api/site/pins")).find((p) => p.slot === "primary")!;
+  if (primary.pinned) await apiCall(siteEditorCookie, "/nrms/api/site/pins/primary/pinned", { method: "POST", body: { version: primary.version, pinned: false } });
+
+  const carousels = await apiCall<{ next: { version: number } | null }>(siteEditorCookie, "/nrms/api/site/carousels");
+  if (carousels.next) await apiCall(siteEditorCookie, `/nrms/api/site/carousels/next?version=${carousels.next.version}`, { method: "DELETE" });
+}
+
 let publishedHeadline: string;
 
 test.describe("item 16: axe across every staff screen", () => {
@@ -70,6 +85,11 @@ test.describe("item 16: axe across every staff screen", () => {
     await createApprovedAndPublished(editorCookie, { headline: publishedHeadline });
     const siteEditorCookie = await loginForCookie(SITE_EDITOR_EMAIL, TEST_USER_PASSWORDS[SITE_EDITOR_EMAIL]!);
     await seedWebsiteContent(siteEditorCookie);
+  });
+
+  test.afterAll(async () => {
+    const siteEditorCookie = await loginForCookie(SITE_EDITOR_EMAIL, TEST_USER_PASSWORDS[SITE_EDITOR_EMAIL]!);
+    await restoreWebsiteContent(siteEditorCookie);
   });
 
   test("sign-in", async ({ page }) => {

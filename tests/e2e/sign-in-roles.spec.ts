@@ -35,11 +35,16 @@ test.describe("item 1: sign-in and role visibility", () => {
     await expect(page.getByRole("heading", { name: "Releases" })).toBeVisible();
     // No create-release link for a Viewer.
     await expect(page.getByRole("link", { name: "New release" })).toHaveCount(0);
-    // A Viewer has no NRMS.SiteEditor/Core.Admin — the Website/Users/Error log nav items are
-    // hidden entirely (AppShell.tsx's NAV_ITEMS).
-    await expect(page.getByRole("link", { name: "Website" })).toHaveCount(0);
+    // Minors: every read role (including Viewer) now reaches Website, but only for the
+    // read-only Featured/Log sections — Users and the error log stay Core.Admin only
+    // (AppShell.tsx's NAV_ITEMS).
+    await expect(page.getByRole("link", { name: "Website" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Users" })).toHaveCount(0);
     await expect(page.getByRole("link", { name: "Error log" })).toHaveCount(0);
+    await page.getByRole("link", { name: "Website" }).click();
+    await expect(page.getByRole("link", { name: "What's featured where" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Carousel" })).toHaveCount(0);
+    await page.goto(`${baseUrl()}/hub/releases/drafts`);
 
     const editorCookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
     const headline = uniqueHeadline("Viewer read-only release");

@@ -267,3 +267,19 @@ body {
   line-height: 1;
   user-select: none;
 }
+
+/* I6/axe: the file-name link and its neighbouring Delete button were both a bare inline
+ * element with no padding — axe's target-size rule (WCAG 2.5.8) failed on the link (under
+ * 24px tall) and on the gap between it and the button (under 24px of safe clickable space).
+ * Only found once axe-sweep.spec.ts started scanning a populated Files list (I6). */
+.gcpe-files li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+.gcpe-files li > a {
+  display: inline-block;
+  padding: 0.25rem 0;
+  min-height: 24px;
+}

@@ -76,7 +76,10 @@ test.describe("item 12: Website section", () => {
       await apiCall(siteEditorCookie, `/nrms/api/site/carousels/next?version=${data.next.version}`, { method: "DELETE" });
     }
     const carouselHeadline = uniqueHeadline("Carousel slide alongside the pin");
-    const { date, time } = bcLocalParts(new Date());
+    // An hour out, not "now" — the server refuses a go-live time that isn't strictly in the
+    // future, and "now" truncated to the minute can already have passed by the time this
+    // request lands.
+    const { date, time } = bcLocalParts(new Date(Date.now() + 60 * 60 * 1000));
     const next = await apiCall<{ id: string; version: number }>(siteEditorCookie, "/nrms/api/site/carousels/next", {
       method: "POST",
       body: { goLiveAtLocal: `${date}T${time}` },
