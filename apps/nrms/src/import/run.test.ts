@@ -48,7 +48,9 @@ function fullFixtureSource(): LegacySource {
     {
       Id: PUBLISHED_ID, Key: "run-test-published", ReleaseType: 1, Reference: "NEWS-00001", AtomId: "",
       Year: 2024, YearRelease: 1, MinistryRelease: null, ActivityId: null,
-      ReleaseDateTime: new Date("2024-06-01T09:00:00-07:00"), PublishDateTime: new Date("2024-06-01T09:00:00-07:00"),
+      // ReleaseDateTime is a legacy DATETIME (no offset): tedious hands it back with its UTC
+      // fields holding the wall-clock value, so this is "Z" even though the wall-clock is PDT.
+      ReleaseDateTime: new Date("2024-06-01T09:00:00Z"), PublishDateTime: new Date("2024-06-01T09:00:00-07:00"),
       IsCommitted: true, IsPublished: true, PublishOptions: 0, IsActive: true,
       HasMediaAssets: false, HasTranslations: false, NodSubscribers: null, MediaSubscribers: null,
       Keywords: "", AssetUrl: "", RedirectUrl: "", CollectionId: null, LeadMinistryKey: null,

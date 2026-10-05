@@ -99,48 +99,59 @@ describe("statusFromLegacy", () => {
 
 describe("mapRelease", () => {
   it("PublishOptions 7 sets toWeb/toSubscribers/toMediaLists all true", () => {
-    const r = mapRelease(baseRelease, { governmentTermId: null });
+    const r = mapRelease(baseRelease, { governmentTermId: null, timeZone: "America/Vancouver" });
     expect(r).toMatchObject({ toWeb: true, toSubscribers: true, toMediaLists: true });
   });
 
   it("PublishOptions 1 sets web only", () => {
-    const r = mapRelease({ ...baseRelease, PublishOptions: 1 }, { governmentTermId: null });
+    const r = mapRelease({ ...baseRelease, PublishOptions: 1 }, { governmentTermId: null, timeZone: "America/Vancouver" });
     expect(r).toMatchObject({ toWeb: true, toSubscribers: false, toMediaLists: false });
   });
 
   it("an advisory is never toWeb, even with every PublishOptions bit set (legacy NewModel.cs: advisories never publish to the website)", () => {
-    const r = mapRelease({ ...baseRelease, ReleaseType: 5, PublishOptions: 7 }, { governmentTermId: null });
+    const r = mapRelease({ ...baseRelease, ReleaseType: 5, PublishOptions: 7 }, { governmentTermId: null, timeZone: "America/Vancouver" });
     expect(r).toMatchObject({ toWeb: false, toSubscribers: true, toMediaLists: true });
   });
 
   it("a non-advisory is toWeb even with no PublishOptions bits set", () => {
-    const r = mapRelease({ ...baseRelease, PublishOptions: 0 }, { governmentTermId: null });
+    const r = mapRelease({ ...baseRelease, PublishOptions: 0 }, { governmentTermId: null, timeZone: "America/Vancouver" });
     expect(r).toMatchObject({ toWeb: true, toSubscribers: false, toMediaLists: false });
   });
 
   it("lower-cases the legacy GUID", () => {
-    const r = mapRelease(baseRelease, { governmentTermId: null });
+    const r = mapRelease(baseRelease, { governmentTermId: null, timeZone: "America/Vancouver" });
     expect(r.legacyId).toBe("9af8cc16-0ae5-4ec6-ad58-fdb081d44e37");
   });
 
-  it("keeps the DATETIMEOFFSET instant", () => {
-    const r = mapRelease(baseRelease, { governmentTermId: null });
+  it("keeps the DATETIMEOFFSET (PublishDateTime) instant as is", () => {
+    const r = mapRelease(baseRelease, { governmentTermId: null, timeZone: "America/Vancouver" });
     expect(r.publishAt?.toISOString()).toBe("2026-10-01T22:10:00.000Z");
-    expect(r.releasedAt?.toISOString()).toBe("2026-10-01T22:10:00.000Z");
+  });
+
+  it("C1: converts the DATETIME (ReleaseDateTime) wall-clock value to its real instant, DST-aware", () => {
+    // 2026-10-01 is PDT (UTC-7): wall-clock 22:10 (as tedious hands it back, UTC fields holding
+    // the wall-clock value) is actually 2026-10-02T05:10:00Z.
+    const r = mapRelease(baseRelease, { governmentTermId: null, timeZone: "America/Vancouver" });
+    expect(r.releasedAt?.toISOString()).toBe("2026-10-02T05:10:00.000Z");
+  });
+
+  it("C1: a null ReleaseDateTime stays null", () => {
+    const r = mapRelease({ ...baseRelease, ReleaseDateTime: null }, { governmentTermId: null, timeZone: "America/Vancouver" });
+    expect(r.releasedAt).toBeNull();
   });
 
   it("sets status/live/onHold from the status map and version/importedVersion to 1", () => {
-    const r = mapRelease(baseRelease, { governmentTermId: null });
+    const r = mapRelease(baseRelease, { governmentTermId: null, timeZone: "America/Vancouver" });
     expect(r).toMatchObject({ status: "published", live: true, onHold: false, version: 1, importedVersion: 1 });
   });
 
   it("carries the lead ministry key and the resolved government term id", () => {
-    const r = mapRelease(baseRelease, { governmentTermId: "11111111-1111-1111-1111-111111111111" });
+    const r = mapRelease(baseRelease, { governmentTermId: "11111111-1111-1111-1111-111111111111", timeZone: "America/Vancouver" });
     expect(r).toMatchObject({ leadMinistryKey: "health", termId: "11111111-1111-1111-1111-111111111111" });
   });
 
   it("carries key/reference/year/yearRelease/ministryRelease/activityId straight through", () => {
-    const r = mapRelease({ ...baseRelease, ActivityId: 4521 }, { governmentTermId: null });
+    const r = mapRelease({ ...baseRelease, ActivityId: 4521 }, { governmentTermId: null, timeZone: "America/Vancouver" });
     expect(r).toMatchObject({ key: "2026HLTH0001-000001", reference: "NEWS-00001", year: 2026, yearRelease: 1, ministryRelease: 1, activityId: 4521 });
   });
 });

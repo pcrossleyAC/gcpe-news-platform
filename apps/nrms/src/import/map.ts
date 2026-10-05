@@ -1,4 +1,4 @@
-import { hasPublishOption, imageTypeFromBytes, justifyFromLegacy, PUBLISH_OPTIONS, RELEASE_TYPE_TO_KIND } from "@gcpe/legacy-import";
+import { hasPublishOption, imageTypeFromBytes, justifyFromLegacy, PUBLISH_OPTIONS, RELEASE_TYPE_TO_KIND, wallClockToInstant } from "@gcpe/legacy-import";
 import { POST_KIND, type Layout, type ReleaseStatus, type ReleaseType } from "@gcpe/nrms-contract";
 import type { documentContacts, documentLanguages, newsReleases, releaseDocuments, releaseLanguages } from "../db/schema";
 
@@ -94,6 +94,10 @@ export interface LegacyReleaseRow extends Record<string, unknown> {
 export interface MapReleaseContext {
   /** Resolved from NewsRelease.CollectionId → NewsReleaseCollection.Name → newestTerm() → government_terms, by the caller. */
   governmentTermId: string | null;
+  /** The tenant's time zone (e.g. "America/Vancouver") — C1: `ReleaseDateTime` is a legacy
+   * `DATETIME` (no offset), set by legacy as server-local wall-clock time and decoded by
+   * tedious as UTC, so it must be converted back to a real instant through this before use. */
+  timeZone: string;
 }
 
 export type NewNewsReleaseRow = typeof newsReleases.$inferInsert;
@@ -113,8 +117,10 @@ export function mapRelease(row: LegacyReleaseRow, ctx: MapReleaseContext): NewNe
     leadMinistryKey: row.LeadMinistryKey,
     activityId: row.ActivityId,
     status,
+    // PublishDateTime is DATETIMEOFFSET — already a real instant. ReleaseDateTime is DATETIME —
+    // legacy wall-clock time decoded as UTC by tedious — so it must be converted (C1).
     publishAt: row.PublishDateTime,
-    releasedAt: row.ReleaseDateTime,
+    releasedAt: row.ReleaseDateTime ? wallClockToInstant(row.ReleaseDateTime, ctx.timeZone) : null,
     onHold,
     live,
     // Legacy NewModel.cs: Advisories are never published to the website, regardless of

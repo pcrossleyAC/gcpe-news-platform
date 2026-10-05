@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
+import { outboxEvents } from "@gcpe/events";
 import { createFakeSource, type LegacySource } from "@gcpe/legacy-import";
 import { createNrmsTestDb, editor, seedTaxonomy } from "../../test/helpers";
 import { categoryFeatures, categoryTerms, mediaLists, newsReleases, organizations, releaseCategories, releaseLog, releaseMediaLists } from "../db/schema";
@@ -10,6 +11,7 @@ import { createRelease, saveMeta } from "../releases/service";
 import { loadView } from "../releases/store";
 import { approve } from "../releases/workflow";
 import { publishDue } from "../publisher";
+import { replayToNewsApi } from "../cli/replay-to-news-api";
 import { importReleases, type ImportReleasesContext } from "./releases";
 import { ImportReport } from "./report";
 
@@ -390,6 +392,24 @@ describe("importReleases — api.news.gov.bc.ca fixture (3 published releases)",
       expect(record.summary).toBe(post.summary);
       expect(record.documents[0]!.headline).toBe(post.documents[0]!.headline);
     }
+  });
+
+  it("C1: a release published at 11:52 PDT imports releasedAt as that instant, and replay's publishDate matches it", async () => {
+    // apiPostAG (2026AG0068-001112): legacy ReleaseDateTime "2026-09-22T11:52:00Z" (DATETIME,
+    // tedious's UTC fields holding the 11:52 PDT wall-clock value) and PublishDateTime
+    // "2026-09-22T11:52:00-07:00" (DATETIMEOFFSET, already the real instant) both name the same
+    // real moment: 2026-09-22T18:52:00Z (PDT is UTC-7).
+    const EXPECTED_INSTANT = "2026-09-22T18:52:00.000Z";
+    const [row] = await tdb.db.select().from(newsReleases).where(eq(newsReleases.key, apiPostAG.key));
+    expect(row!.releasedAt?.toISOString()).toBe(EXPECTED_INSTANT);
+    expect(row!.publishAt?.toISOString()).toBe(EXPECTED_INSTANT);
+
+    const result = await replayToNewsApi(tdb.db, { confirm: true, subscribers: [] });
+    expect(result.keys).toContain(apiPostAG.key);
+
+    const [event] = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, apiPostAG.key));
+    const envelope = event!.envelope as { data: { publishDate: string } };
+    expect(envelope.data.publishDate).toBe(EXPECTED_INSTANT);
   });
 });
 

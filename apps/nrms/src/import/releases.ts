@@ -260,7 +260,7 @@ function buildBundle(raw: RawReleaseRow, g: GroupedChildren, ctx: ImportReleases
   const governmentTermId = raw.CollectionId ? ctx.termIds.get(raw.CollectionId.toLowerCase()) ?? null : null;
   const leadMinistryKey = raw.LeadMinistryKey ? raw.LeadMinistryKey.toLowerCase() : null;
   const { status, note } = statusFromLegacy(raw);
-  const release = mapRelease({ ...raw, LeadMinistryKey: leadMinistryKey }, { governmentTermId });
+  const release = mapRelease({ ...raw, LeadMinistryKey: leadMinistryKey }, { governmentTermId, timeZone: ctx.timeZone });
 
   const languages = [...g.languages]
     .sort((a, b) => a.LanguageId - b.LanguageId)
@@ -311,9 +311,11 @@ function buildBundle(raw: RawReleaseRow, g: GroupedChildren, ctx: ImportReleases
   // The status-map note is an NRMS-synthesised entry, not a legacy log row — it never
   // participates in legacy/imported/skipped child counts, only the hash and the write.
   // Its timestamp is derived from legacy data (never wall-clock), so re-imports of unchanged
-  // legacy data hash identically.
+  // legacy data hash identically. C1: uses the *already-converted* instants off `release`
+  // (releasedAt went through wallClockToInstant above) — never raw.ReleaseDateTime directly,
+  // which is a DATETIME wall-clock value, not an instant.
   if (note) {
-    logEntries.push({ at: raw.ReleaseDateTime ?? raw.PublishDateTime ?? new Date(0), actorId: SYSTEM_ACTOR.id, actorName: SYSTEM_ACTOR.name, text: note });
+    logEntries.push({ at: release.releasedAt ?? release.publishAt ?? new Date(0), actorId: SYSTEM_ACTOR.id, actorName: SYSTEM_ACTOR.name, text: note });
   }
 
   const { version: _v, importedVersion: _iv, legacyId: _lid, ...releaseContent } = release;
