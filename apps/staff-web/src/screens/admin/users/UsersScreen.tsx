@@ -201,13 +201,17 @@ export function UsersScreen(): React.JSX.Element {
     e.preventDefault();
     setCreating(true);
     setCreateMessages([]);
+    // Fix round 1, item 3: cleared immediately, success or failure — same rule savePassword
+    // follows (a typed password is never kept around once submitted, so a failed create never
+    // leaves it sitting in the form for a 400/409 to be displayed next to).
+    const passwordToSend = setPasswordNow ? password : undefined;
+    setPassword("");
     try {
-      await apiFetch("/core/api/users", { method: "POST", body: { email, displayName, roles, ...(setPasswordNow && password ? { password } : {}) } });
+      await apiFetch("/core/api/users", { method: "POST", body: { email, displayName, roles, ...(passwordToSend ? { password: passwordToSend } : {}) } });
       setEmail("");
       setDisplayName("");
       setRoles([]);
       setSetPasswordNow(false);
-      setPassword("");
       reload();
     } catch (caught) {
       setCreateMessages(messagesOf(caught));

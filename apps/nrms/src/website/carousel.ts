@@ -1,12 +1,13 @@
 import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx, TestClock } from "@gcpe/db-kit";
 import { sqlNow } from "@gcpe/db-kit";
+import { wallClockToInstant } from "@gcpe/config";
 import { envelopeByteLength, EventTooLargeError, MAX_EVENT_BYTES, sizingEnvelope, type SubscriberConfig } from "@gcpe/events";
 import { sniff } from "@gcpe/storage";
 import { carousels, emergencyPins, websiteSlides } from "../db/schema";
 import type { Actor } from "../releases/store";
 import { SYSTEM_ACTOR } from "../releases/store";
-import { formatBcDateTime } from "../releases/workflow";
+import { formatBcDateTime, parseLocalDateTime } from "../releases/workflow";
 import { emitSite, slidesSnapshotFor, writeSiteLog } from "./events";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
 
@@ -110,9 +111,22 @@ function carouselView(row: typeof carousels.$inferSelect, slides: SlideView[]): 
 }
 
 /** Refuses a go-live time that isn't strictly after the database clock's `now()`. */
-async function assertFutureGoLiveAt(tx: Tx, goLiveAtIso: string): Promise<void> {
-  const check = await tx.execute<{ ok: boolean }>(sql`SELECT (${goLiveAtIso}::timestamptz > ${sqlNow()}) AS ok`);
+async function assertFutureGoLiveAt(tx: Tx, goLiveAt: Date): Promise<void> {
+  const check = await tx.execute<{ ok: boolean }>(sql`SELECT (${goLiveAt.toISOString()}::timestamptz > ${sqlNow()}) AS ok`);
   if (!check.rows[0]?.ok) throw new SiteRuleError(["Choose a go-live time in the future."]);
+}
+
+/**
+ * At most one of `goLiveAt` (an already-resolved instant with an explicit offset) or
+ * `goLiveAtLocal` (3f task 5 fix round 1, controller ruling: a BC wall-clock time with no
+ * offset — converted here with the server's own tzdata via `wallClockToInstant`, rather than
+ * trusting a browser that may have stale tzdata, exactly like releases'
+ * `publishAtLocal`/`plannedPublishAtLocal`). The route schemas (site-routes.ts's
+ * `createNextSchema`/`saveCarouselSchema`) already refuse both-or-neither where one is
+ * required; this is never called with both set.
+ */
+function resolveGoLiveAt(input: { goLiveAt?: string; goLiveAtLocal?: string }, timeZone: string): Date {
+  return input.goLiveAt !== undefined ? new Date(input.goLiveAt) : wallClockToInstant(parseLocalDateTime(input.goLiveAtLocal!), timeZone);
 }
 
 /**
@@ -181,10 +195,16 @@ export async function getCarousels(db: DbOrTx): Promise<{ live: CarouselView | n
  * go-live time in the site log line (the brief's shorthand signature omits it, but the log text
  * is specified in BC time).
  */
-export async function createNextCarousel(db: Db, input: { goLiveAt: string }, actor: Actor, subs: SubscriberConfig[], timeZone: string): Promise<CarouselView> {
+export async function createNextCarousel(
+  db: Db,
+  input: { goLiveAt?: string; goLiveAtLocal?: string },
+  actor: Actor,
+  subs: SubscriberConfig[],
+  timeZone: string,
+): Promise<CarouselView> {
   return db.transaction(async (tx) => {
-    const goLiveAt = new Date(input.goLiveAt);
-    await assertFutureGoLiveAt(tx, input.goLiveAt);
+    const goLiveAt = resolveGoLiveAt(input, timeZone);
+    await assertFutureGoLiveAt(tx, goLiveAt);
 
     // Minor 2 (fix round 1): a bare pre-check SELECT locks nothing when no "next" row exists
     // yet, so two concurrent first-ever creates could both pass it and both reach this INSERT —
@@ -233,16 +253,19 @@ export async function createNextCarousel(db: Db, input: { goLiveAt: string }, ac
 export async function saveCarousel(
   db: Db,
   id: string,
-  input: { version: number; goLiveAt?: string; slides: SlideInput[] },
+  input: { version: number; goLiveAt?: string; goLiveAtLocal?: string; slides: SlideInput[] },
   actor: Actor,
   subs: SubscriberConfig[],
+  timeZone: string,
 ): Promise<CarouselView> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(carousels).where(eq(carousels.id, id)).for("update");
     if (!row) throw new SiteNotFoundError("carousel not found");
     if (row.state === "past") throw new SiteConflictError("Past carousels can't be changed.");
     if (row.version !== input.version) throw new SiteConflictError();
-    if (input.goLiveAt !== undefined) await assertFutureGoLiveAt(tx, input.goLiveAt);
+    const changingGoLiveAt = input.goLiveAt !== undefined || input.goLiveAtLocal !== undefined;
+    const goLiveAt = changingGoLiveAt ? resolveGoLiveAt(input, timeZone) : undefined;
+    if (goLiveAt !== undefined) await assertFutureGoLiveAt(tx, goLiveAt);
 
     const existingSlides = await tx.select().from(websiteSlides).where(eq(websiteSlides.carouselId, id));
     const existingIds = new Set(existingSlides.map((s) => s.id));
@@ -270,7 +293,7 @@ export async function saveCarousel(
 
     const [updated] = await tx
       .update(carousels)
-      .set({ version: row.version + 1, updatedAt: sql`now()`, ...(input.goLiveAt !== undefined ? { goLiveAt: new Date(input.goLiveAt) } : {}) })
+      .set({ version: row.version + 1, updatedAt: sql`now()`, ...(goLiveAt !== undefined ? { goLiveAt } : {}) })
       .where(eq(carousels.id, id))
       .returning();
     await assertSlidesFit(tx); // I4 — a longer slide list/text can still grow the snapshot

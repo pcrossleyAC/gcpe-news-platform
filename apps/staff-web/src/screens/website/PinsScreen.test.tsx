@@ -98,4 +98,40 @@ describe("PinsScreen", () => {
     expect(toggle).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Save primary pin" })).toBeNull();
   });
+
+  // Fix round 1, item 4: a wrong-type or too-large pin image upload must show something a
+  // human can act on, not a blank/undefined error.
+  it("a wrong-type pin image upload shows the server's 422 message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/pins") return jsonResponse(200, [PRIMARY, SECONDARY]);
+        if (url === "/nrms/api/site/pins/primary/image" && init?.method === "PUT") return jsonResponse(422, { errors: ["Upload a JPEG or PNG image."] });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<PinsScreen />));
+    const input = await screen.findByLabelText("Primary image (JPEG or PNG, up to 2 MB)");
+    const user = userEvent.setup();
+    await user.upload(input, new File(["not actually an image"], "notes.png", { type: "image/png" }));
+    expect(await screen.findByText("Upload a JPEG or PNG image.")).toBeInTheDocument();
+  });
+
+  it("a too-large pin image upload (413) shows a clear message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/site/pins") return jsonResponse(200, [PRIMARY, SECONDARY]);
+        if (url === "/nrms/api/site/pins/primary/image" && init?.method === "PUT") return jsonResponse(413, { error: "request entity too large" });
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<PinsScreen />));
+    const input = await screen.findByLabelText("Primary image (JPEG or PNG, up to 2 MB)");
+    const user = userEvent.setup();
+    await user.upload(input, new File([new Uint8Array(10)], "big.png", { type: "image/png" }));
+    expect(await screen.findByText("request entity too large")).toBeInTheDocument();
+  });
 });

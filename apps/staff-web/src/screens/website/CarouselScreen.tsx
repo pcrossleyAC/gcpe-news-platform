@@ -68,7 +68,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
       .run(() =>
         apiFetch<CarouselView>(`/nrms/api/site/carousels/${carousel.id}`, {
           method: "PUT",
-          body: { version: carousel.version, ...(allowGoLiveEdit && goLive ? { goLiveAt: goLive.instant } : {}), slides },
+          body: { version: carousel.version, ...(allowGoLiveEdit && goLive ? { goLiveAtLocal: goLive.local } : {}), slides },
         }),
       )
       .then((next) => {
@@ -234,7 +234,7 @@ export function CarouselScreen(): React.JSX.Element {
 
   const onCreateNext = () => {
     if (!goLive) return;
-    void createNext.run(() => apiFetch<CarouselView>("/nrms/api/site/carousels/next", { method: "POST", body: { goLiveAt: goLive.instant } })).then((created) => {
+    void createNext.run(() => apiFetch<CarouselView>("/nrms/api/site/carousels/next", { method: "POST", body: { goLiveAtLocal: goLive.local } })).then((created) => {
       if (created) {
         setGoLive(null);
         reload();

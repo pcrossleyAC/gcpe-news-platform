@@ -74,7 +74,7 @@ describe("home-page carousel", () => {
   /** Creates a next carousel with `slides`, then promotes it to live. Returns its id. */
   const seedLiveCarousel = async (slides: SlideInput[]): Promise<string> => {
     const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
-    await saveCarousel(tdb.db, next.id, { version: next.version, slides }, editor, subs);
+    await saveCarousel(tdb.db, next.id, { version: next.version, slides }, editor, subs, TZ);
     await makeNextLive(tdb.db, editor, subs);
     return next.id;
   };
@@ -104,11 +104,33 @@ describe("home-page carousel", () => {
     expect(log!.area).toBe("carousel");
   });
 
+  // 3f task 5 fix round 1 (controller ruling): goLiveAtLocal (BC wall-clock, no offset)
+  // converts server-side with the tenant's own tzdata — a winter date after BC's permanent
+  // UTC-7 switch (2026-11-01) must still resolve to UTC-7, not fall back to UTC-8 (requires
+  // Node 24+ tzdata) — same pattern as releases/service.test.ts's plannedPublishAtLocal test.
+  it("createNextCarousel accepts goLiveAtLocal and converts it server-side, including a winter date after BC's permanent UTC-7 switch", async () => {
+    const next = await createNextCarousel(tdb.db, { goLiveAtLocal: "2026-12-15T14:30" }, editor, subs, TZ);
+    expect(next.goLiveAt).toBe("2026-12-15T21:30:00.000Z"); // 14:30 UTC-7 (permanent BC time) -> 21:30Z, not 22:30Z
+  });
+
+  it("saveCarousel accepts goLiveAtLocal and converts it server-side", async () => {
+    const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
+    const saved = await saveCarousel(tdb.db, next.id, { version: next.version, goLiveAtLocal: "2026-12-15T14:30", slides: [] }, editor, subs, TZ);
+    expect(saved.goLiveAt).toBe("2026-12-15T21:30:00.000Z");
+  });
+
+  it("saveCarousel: a goLiveAtLocal in the past (BC time) still fails the future check on the converted instant", async () => {
+    const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
+    await expect(
+      saveCarousel(tdb.db, next.id, { version: next.version, goLiveAtLocal: "2020-01-01T00:00", slides: [] }, editor, subs, TZ),
+    ).rejects.toThrow(/future/i);
+  });
+
   it("fix round 1: saving the next carousel with a past goLiveAt → SiteRuleError and nothing changes", async () => {
     const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
     const past = new Date(t.getTime() - 60_000).toISOString();
     await expect(
-      saveCarousel(tdb.db, next.id, { version: next.version, goLiveAt: past, slides: [slide("A")] }, editor, subs),
+      saveCarousel(tdb.db, next.id, { version: next.version, goLiveAt: past, slides: [slide("A")] }, editor, subs, TZ),
     ).rejects.toThrow(/future/i);
     const { next: reloaded } = await getCarousels(tdb.db);
     expect(reloaded!.version).toBe(next.version);
@@ -118,8 +140,8 @@ describe("home-page carousel", () => {
 
   it("2. saveCarousel with a stale version → SiteConflictError; nothing changed", async () => {
     const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
-    await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("A")] }, editor, subs);
-    await expect(saveCarousel(tdb.db, next.id, { version: next.version, slides: [] }, editor, subs)).rejects.toThrow(SiteConflictError);
+    await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("A")] }, editor, subs, TZ);
+    await expect(saveCarousel(tdb.db, next.id, { version: next.version, slides: [] }, editor, subs, TZ)).rejects.toThrow(SiteConflictError);
     const { next: reloaded } = await getCarousels(tdb.db);
     expect(reloaded!.slides).toHaveLength(1);
     expect(reloaded!.slides[0]!.headline).toBe("A");
@@ -130,12 +152,12 @@ describe("home-page carousel", () => {
     const next = await createNextCarousel(tdb.db, { goLiveAt: future() }, editor, subs, TZ);
 
     const beforeNext = await slidesEventCount();
-    await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("N1")] }, editor, subs);
+    await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("N1")] }, editor, subs, TZ);
     expect(await slidesEventCount()).toBe(beforeNext);
 
     const { live } = await getCarousels(tdb.db);
     const beforeLive = await slidesEventCount();
-    await saveCarousel(tdb.db, live!.id, { version: live!.version, slides: [slide("L1")] }, editor, subs);
+    await saveCarousel(tdb.db, live!.id, { version: live!.version, slides: [slide("L1")] }, editor, subs, TZ);
     expect(await slidesEventCount()).toBe(beforeLive + 1);
     const ev = await lastSlidesEvent();
     expect(ev!.data.entity).toBe("slides");
@@ -168,7 +190,7 @@ describe("home-page carousel", () => {
     for (let i = 0; i < 7; i++) {
       const goLiveAt = new Date(t.getTime() + 1000);
       const next = await createNextCarousel(tdb.db, { goLiveAt: goLiveAt.toISOString() }, editor, subs, TZ);
-      await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide(`N${i}`)] }, editor, subs);
+      await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide(`N${i}`)] }, editor, subs, TZ);
       t = new Date(goLiveAt.getTime() + 1000);
       expect(await switchCarousels(tdb.db, subs, { now })).toEqual({ switched: true });
     }
@@ -199,7 +221,7 @@ describe("home-page carousel", () => {
     await seedLiveCarousel([slide("Live1")]);
     const goLiveAt = new Date(t.getTime() + 1000);
     const next = await createNextCarousel(tdb.db, { goLiveAt: goLiveAt.toISOString() }, editor, subs, TZ);
-    await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("Next1")] }, editor, subs);
+    await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("Next1")] }, editor, subs, TZ);
     t = new Date(goLiveAt.getTime() + 1000);
     await switchCarousels(tdb.db, subs, { now });
 
@@ -239,7 +261,7 @@ describe("home-page carousel", () => {
     await switchCarousels(tdb.db, subs, { now });
     const { past } = await getCarousels(tdb.db);
     const pastCarousel = past[0]!;
-    await expect(saveCarousel(tdb.db, pastCarousel.id, { version: pastCarousel.version, slides: [] }, editor, subs)).rejects.toThrow(/can't be changed/i);
+    await expect(saveCarousel(tdb.db, pastCarousel.id, { version: pastCarousel.version, slides: [] }, editor, subs, TZ)).rejects.toThrow(/can't be changed/i);
   });
 
   it("pins start unpinned at version 1 (seeded by migration 0012)", async () => {
@@ -378,7 +400,7 @@ describe("home-page carousel", () => {
       await seedLiveCarousel([]);
       const goLiveAt = new Date(t.getTime() + 1000);
       const next = await createNextCarousel(tdb.db, { goLiveAt: goLiveAt.toISOString() }, editor, subs, TZ);
-      await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("N1")] }, editor, subs);
+      await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("N1")] }, editor, subs, TZ);
       const { next: withSlide } = await getCarousels(tdb.db);
       await setSlideImage(tdb.db, withSlide!.slides[0]!.id, bigImage(bigEnoughAlone), editor, subs);
 
@@ -397,7 +419,7 @@ describe("home-page carousel", () => {
       try {
         const goLiveAt = new Date(t.getTime() + 1000);
         const next = await createNextCarousel(tdb.db, { goLiveAt: goLiveAt.toISOString() }, editor, subs, TZ);
-        await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("Big")] }, editor, subs);
+        await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("Big")] }, editor, subs, TZ);
         const { next: withSlide } = await getCarousels(tdb.db);
         const slideId = withSlide!.slides[0]!.id;
         // Bypasses assertSlidesFit entirely — simulating data that predates this fix.

@@ -56,6 +56,45 @@ describe("NRMS site HTTP API", () => {
     expect(saved.body.slides[0]).toMatchObject({ headline: "H1", hasImage: false, imageUrl: null });
   });
 
+  // Fix round 1 (controller ruling): goLiveAt/goLiveAtLocal is an XOR for creating the next
+  // carousel (exactly one required) — both or neither is a 400, same shape as scheduleSchema's
+  // publishAt/publishAtLocal.
+  it("POST /site/carousels/next: goLiveAtLocal converts server-side; neither or both goLiveAt/goLiveAtLocal is a 400", async () => {
+    const created = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAtLocal: "2026-12-15T14:30" });
+    expect(created.status).toBe(201);
+    expect(created.body.goLiveAt).toBe("2026-12-15T21:30:00.000Z"); // 14:30 UTC-7 (permanent BC time) -> 21:30Z
+
+    const neither = await post("/api/site/carousels/next", siteEditorCookie, {});
+    expect(neither.status).toBe(400);
+
+    const both = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAt: future(), goLiveAtLocal: "2030-01-01T00:00" });
+    expect(both.status).toBe(400);
+
+    await request(app).delete(`/api/site/carousels/next?version=${created.body.version}`).set("cookie", siteEditorCookie).set("x-gcpe-request", "1");
+  });
+
+  it("POST /site/carousels/next: an invalid calendar date/time in goLiveAtLocal is a 400", async () => {
+    const res = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAtLocal: "2026-02-30T10:00" });
+    expect(res.status).toBe(400);
+  });
+
+  it("PUT /site/carousels/:id: goLiveAtLocal converts server-side; both goLiveAt and goLiveAtLocal is a 400", async () => {
+    const created = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAt: future() });
+    const both = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, {
+      version: created.body.version,
+      goLiveAt: future(),
+      goLiveAtLocal: "2030-01-01T00:00",
+      slides: [],
+    });
+    expect(both.status).toBe(400);
+
+    const saved = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, { version: created.body.version, goLiveAtLocal: "2030-06-15T10:30", slides: [] });
+    expect(saved.status).toBe(200);
+    expect(saved.body.goLiveAt).toBe("2030-06-15T17:30:00.000Z"); // 10:30 PDT (UTC-7) -> 17:30Z
+
+    await request(app).delete(`/api/site/carousels/next?version=${saved.body.version}`).set("cookie", siteEditorCookie).set("x-gcpe-request", "1");
+  });
+
   it("an NRMS.Editor-only user gets 403 on PUT /site/carousels/:id; a viewer can read but not write", async () => {
     const created = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAt: future() });
     expect(created.status).toBe(201);

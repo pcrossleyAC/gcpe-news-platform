@@ -1,6 +1,7 @@
 import express, { Router, type NextFunction, type Request, type Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { localDateTime } from "@gcpe/nrms-contract";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import type { SubscriberConfig } from "@gcpe/events";
@@ -65,12 +66,32 @@ const slideInputSchema = z.object({
   facebookPostUrl: httpOrEmpty,
   justify,
 });
-const createNextSchema = z.object({ goLiveAt: dateish });
-const saveCarouselSchema = z.object({
-  version: z.number().int().positive(),
-  goLiveAt: dateish.optional(),
-  slides: z.array(slideInputSchema),
-});
+/**
+ * 3f task 5 fix round 1 (controller ruling): exactly one of `goLiveAt` (an already-resolved
+ * instant with an explicit offset — today's form) or `goLiveAtLocal` (a BC wall-clock time with
+ * no offset, converted server-side with the tenant's tzdata — see
+ * ../website/carousel.ts's `resolveGoLiveAt`) must be given; neither or both is a 400. Same XOR
+ * shape as `@gcpe/nrms-contract`'s `scheduleSchema` (`publishAt`/`publishAtLocal`), whose
+ * `localDateTime` this reuses rather than copying.
+ */
+const createNextSchema = z
+  .object({ goLiveAt: dateish.optional(), goLiveAtLocal: localDateTime.optional() })
+  .refine((v) => (v.goLiveAt !== undefined) !== (v.goLiveAtLocal !== undefined), {
+    message: "Provide exactly one of goLiveAt or goLiveAtLocal.",
+  });
+/** Saving a carousel's go-live time is optional (slides alone can be saved without touching
+ * it) — so, unlike `createNextSchema`, at most one of `goLiveAt`/`goLiveAtLocal` may be given
+ * (settingsSchema's `plannedPublishAt`/`plannedPublishAtLocal` shape), not exactly one. */
+const saveCarouselSchema = z
+  .object({
+    version: z.number().int().positive(),
+    goLiveAt: dateish.optional(),
+    goLiveAtLocal: localDateTime.optional(),
+    slides: z.array(slideInputSchema),
+  })
+  .refine((v) => !(v.goLiveAt !== undefined && v.goLiveAtLocal !== undefined), {
+    message: "Provide at most one of goLiveAt or goLiveAtLocal.",
+  });
 const savePinSchema = z.object({
   version: z.number().int().positive(),
   headline: z.string().max(255),
@@ -176,7 +197,7 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     json,
     run(async (req: Request<Params>, res) => {
       const input = saveCarouselSchema.parse(req.body);
-      res.json(await saveCarousel(db, req.params.id, input, actorOf(req), subscribers));
+      res.json(await saveCarousel(db, req.params.id, input, actorOf(req), subscribers, timeZone));
     }),
   );
 

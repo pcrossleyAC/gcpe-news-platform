@@ -118,4 +118,27 @@ describe("UsersScreen", () => {
     expect(JSON.parse(call.init!.body as string)).toEqual({ password: "a-new-strong-password" });
     await waitFor(() => expect(passwordField.value).toBe(""));
   });
+
+  // Fix round 1, item 3: onCreate clears the password field on failure too (not just success),
+  // same rule as savePassword — a typed password is never left sitting in the form.
+  it("clears the create form's password field even when creation fails", async () => {
+    stubSession([], (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF]);
+      if (url === "/core/api/users" && init?.method === "POST") return jsonResponse(409, { error: "a user with that email already exists" });
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    const form = (await screen.findByRole("form", { name: "Add a user" })) as HTMLFormElement;
+
+    await user.type(within(form).getByLabelText(/^Email/), "new@x.invalid");
+    await user.type(within(form).getByLabelText(/^Display name/), "New Person");
+    await user.click(within(form).getByLabelText("Set a password now"));
+    const passwordField = within(form).getByLabelText("Password (at least 12 characters)") as HTMLInputElement;
+    await user.type(passwordField, "correct-horse-battery");
+    await user.click(within(form).getByRole("button", { name: "Add user" }));
+
+    expect(await screen.findByText("a user with that email already exists")).toBeInTheDocument();
+    expect(passwordField.value).toBe("");
+  });
 });

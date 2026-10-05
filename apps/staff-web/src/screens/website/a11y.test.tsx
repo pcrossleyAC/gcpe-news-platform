@@ -4,7 +4,7 @@
  * helper/pattern as screens/release/documents/a11y.test.tsx.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import axe from "axe-core";
@@ -61,6 +61,10 @@ const CAROUSELS: CarouselsResponse = {
   next: null,
   past: [],
 };
+const CAROUSELS_WITH_NEXT: CarouselsResponse = {
+  ...CAROUSELS,
+  next: { id: "n1", state: "next", goLiveAt: "2027-01-01T12:00:00.000Z", wentLiveAt: null, version: 1, slides: [{ id: "ns1", headline: "H", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
+};
 const PINS: PinView[] = [
   { slot: "primary", pinned: false, version: 1, slide: { id: "p1", headline: "H", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } },
   { slot: "secondary", pinned: true, version: 1, slide: { id: "p2", headline: "H2", summary: "S2", actionUrl: "", facebookPostUrl: "", justify: "right", hasImage: false, imageUrl: null } },
@@ -82,6 +86,38 @@ describe("accessibility — Website section screens", () => {
     await screen.findByRole("heading", { name: "Carousel", level: 1 });
     await screen.findByText("Slide 1 headline", { exact: false });
     expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  // Fix round 1, item 2: CarouselScreen's three dialogs (remove slide, make live, delete next)
+  // were never axe-checked — all three need a next carousel (with a slide, for remove-slide).
+  it("CarouselScreen, with the remove-slide confirm dialog open", async () => {
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/carousels": CAROUSELS_WITH_NEXT });
+    const { container } = render(withAuth(<CarouselScreen />));
+    const user = userEvent.setup();
+    // Both the Live and Next sections number their own slides "Slide 1" — scope to the Next
+    // section (CAROUSELS_WITH_NEXT's live slide and next slide would otherwise collide).
+    const nextSection = await screen.findByRole("region", { name: "Next carousel" });
+    await user.click(within(nextSection).getByRole("button", { name: "Remove slide 1" }));
+    await screen.findByRole("dialog");
+    expect(await seriousViolationsWithModalOpen(container)).toEqual([]);
+  });
+
+  it("CarouselScreen, with the make-live confirm dialog open", async () => {
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/carousels": CAROUSELS_WITH_NEXT });
+    const { container } = render(withAuth(<CarouselScreen />));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Make live now" }));
+    await screen.findByRole("dialog");
+    expect(await seriousViolationsWithModalOpen(container)).toEqual([]);
+  });
+
+  it("CarouselScreen, with the delete-next confirm dialog open", async () => {
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/carousels": CAROUSELS_WITH_NEXT });
+    const { container } = render(withAuth(<CarouselScreen />));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete next carousel" }));
+    await screen.findByRole("dialog");
+    expect(await seriousViolationsWithModalOpen(container)).toEqual([]);
   });
 
   it("PinsScreen", async () => {

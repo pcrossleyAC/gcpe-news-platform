@@ -43,9 +43,11 @@ function isRealLocalDateTime(s: string): boolean {
 }
 
 /** BC wall-clock local time, no offset — "YYYY-MM-DDTHH:mm" (fix round 1, finding 3; reused by
- * settingsSchema's plannedPublishAtLocal, fix round 1 follow-up), with real calendar values
- * (fix round 2, bug 1). */
-const localDateTime = z
+ * settingsSchema's plannedPublishAtLocal, fix round 1 follow-up; and by the Website section's
+ * carousel goLiveAtLocal, 3f task 5 fix round 1 — exported so apps/nrms/src/http/site-routes.ts
+ * can reuse this exact schema instead of a second copy), with real calendar values (fix round
+ * 2, bug 1). */
+export const localDateTime = z
   .string()
   .regex(LOCAL_DATE_TIME_RE, "must be a local date/time, YYYY-MM-DDTHH:mm")
   .refine(isRealLocalDateTime, "Enter a real date and time.");

@@ -83,6 +83,42 @@ describe("FilesScreen", () => {
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/files/f1" && c.init?.method === "DELETE")).toBe(true));
   });
 
+  // Fix round 1, item 4: a wrong-type or too-large general-file upload must show something a
+  // human can act on, not a blank/undefined error.
+  it("a wrong-type file upload shows the server's 422 message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url.startsWith("/nrms/api/site/files?name=notes.txt&replace=false") && init?.method === "POST") return jsonResponse(422, { errors: ["Upload a PDF, PNG or JPEG file."] });
+        if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, EMPTY);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<FilesScreen />));
+    const input = (await screen.findByLabelText("Upload a file (PDF, PNG or JPEG)")) as HTMLInputElement;
+    const user = userEvent.setup();
+    await user.upload(input, new File(["plain text"], "notes.txt", { type: "application/pdf" }));
+    expect(await screen.findByText("Upload a PDF, PNG or JPEG file.")).toBeInTheDocument();
+  });
+
+  it("a too-large file upload (413) shows a clear message", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url.startsWith("/nrms/api/site/files?name=big.pdf&replace=false") && init?.method === "POST") return jsonResponse(413, { error: "request entity too large" });
+        if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, EMPTY);
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<FilesScreen />));
+    const input = (await screen.findByLabelText("Upload a file (PDF, PNG or JPEG)")) as HTMLInputElement;
+    const user = userEvent.setup();
+    await user.upload(input, new File([new Uint8Array(10)], "big.pdf", { type: "application/pdf" }));
+    expect(await screen.findByText("request entity too large")).toBeInTheDocument();
+  });
+
   it("a Viewer sees no upload input or delete buttons", async () => {
     vi.stubGlobal(
       "fetch",
