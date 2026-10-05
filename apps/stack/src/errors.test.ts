@@ -32,6 +32,34 @@ describe("installErrorCapture", () => {
     expect(message).not.toContain("argon2id");
   });
 
+  // M8: a pg unique-violation (etc.) error carries the offending value in its own `detail`
+  // property, which node:util's default Error inspection prints as its own line -- not covered
+  // by the `params:` pattern above, since it's a different driver-generated field, and it shows
+  // up whether or not the error is wrapped as a drizzle query error's `.cause`.
+  it("redacts a pg error's detail field (it can hold the offending row's value, e.g. an email)", () => {
+    capture = installErrorCapture();
+    const pgError = new Error('duplicate key value violates unique constraint "users_email_idx"') as Error & { code: string; detail: string };
+    pgError.code = "23505";
+    pgError.detail = "Key (email)=(pat@example.com) already exists.";
+    console.error("[core] request failed", pgError);
+    const message = capture.entries()[0]!.message;
+    expect(message).toContain('duplicate key value violates unique constraint "users_email_idx"');
+    expect(message).toContain("detail: [redacted]");
+    expect(message).not.toContain("pat@example.com");
+  });
+
+  it("redacts a pg error's detail field when it's nested inside a wrapping error's cause", () => {
+    capture = installErrorCapture();
+    const pgError = new Error('duplicate key value violates unique constraint "users_email_idx"') as Error & { code: string; detail: string };
+    pgError.code = "23505";
+    pgError.detail = "Key (email)=(pat@example.com) already exists.";
+    const wrapper = new Error("Failed query: insert into users (...)", { cause: pgError });
+    console.error("[core] request failed", wrapper);
+    const message = capture.entries()[0]!.message;
+    expect(message).toContain("detail: [redacted]");
+    expect(message).not.toContain("pat@example.com");
+  });
+
   it("still writes through to the original console.error (doesn't silence it)", () => {
     const original = console.error;
     let sawCall = false;

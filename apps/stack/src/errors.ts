@@ -6,9 +6,15 @@ import { format } from "node:util";
  * Drizzle's DrizzleQueryError puts every bound parameter in its message ("Failed query: …
  * params: a,b,c"), and those values can be password hashes, emails or tokens. Entries are kept
  * on disk and shown to admins, so strip the values and keep the query text for debugging.
+ *
+ * M8: a raw pg error (a unique-violation, for one) carries the offending value in its own
+ * `detail` property (e.g. `detail: 'Key (email)=(pat@example.com) already exists.'`), which
+ * node:util's default Error inspection prints on its own line -- whether the error is logged
+ * directly or nested inside a wrapping error's `cause` (console.error formats both the same
+ * way). That's a different field than drizzle's `params:` line above, so it needs its own strip.
  */
 export function redact(message: string): string {
-  return message.replace(/^(\s*params: ).*$/gm, "$1[redacted]");
+  return message.replace(/^(\s*params: ).*$/gm, "$1[redacted]").replace(/(\bdetail: )(?:'(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*")/g, "$1[redacted]");
 }
 
 export interface ErrorEntry {
