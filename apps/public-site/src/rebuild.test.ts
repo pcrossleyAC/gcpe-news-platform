@@ -100,14 +100,13 @@ describe("createRebuildHandler", () => {
 
   it("ignores a post whose returned key doesn't match the requested key, leaving other files untouched (fix round 1, item 1)", async () => {
     const storage = memoryStorage();
-    storage.files.set("index.html", "home-original");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const newsApi: NewsApiClient = { getPost: vi.fn(async () => ({ ...post, key: ".." })), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
     const handler = createRebuildHandler({ newsApi, storage, site, test: false });
     await handler({} as Tx, envelope({ pages: ["post:K1"] }));
-    expect(storage.files.get("index.html")).toBe("home-original");
     // Fix round 1: the run also writes the marker — nothing else for the post:K1 page itself.
-    expect([...storage.files.keys()].sort()).toEqual([".site-state.json", "index.html"]);
+    // No pre-existing index.html here, so I1's resync has nothing to re-render either.
+    expect([...storage.files.keys()].sort()).toEqual([".site-state.json"]);
     expect(warn).toHaveBeenCalled();
     warn.mockRestore();
   });
@@ -222,6 +221,70 @@ describe("createRebuildHandler", () => {
       storage.files.set("releases/K1/index.html", "<p>stale but unrelated to the marker check</p>");
       await resyncPostPages({ newsApi, storage, site }, { granvilleOn: true, test: false }, "ALERT: ...age of 78");
       expect(storage.files.get("releases/K1/index.html")).toBe("<p>stale but unrelated to the marker check</p>");
+    });
+
+    // I1: index.html is itself a static page with the chrome baked in, same as every post page —
+    // a home-only rebuild's resync must re-render it too, not just releases/*, or it keeps
+    // whatever chrome it had from the last time it was actually rendered.
+    it("I1: re-renders an already-existing index.html when the Blue Bridge/test state changes", async () => {
+      const storage = memoryStorage();
+      storage.files.set("index.html", "<p>stale home, pre-fix</p>");
+      const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => [post]), home: vi.fn(async () => ({ granville: "true" })) };
+      const handler = createRebuildHandler({ newsApi, storage, site, test: false });
+      // "pages" deliberately omits "home" — only resyncPostPages's own index.html re-render
+      // (not createRebuildHandler's explicit pages loop) can be responsible for the change.
+      await handler({} as Tx, envelope({ pages: ["post:K1"] }));
+      expect(storage.files.get("index.html")).toContain("blue-bridge-banner");
+      expect(storage.files.get("index.html")).not.toBe("<p>stale home, pre-fix</p>");
+    });
+
+    // I1: a brand-new output dir has no index.html yet — that's selfHeal's bootstrap job, not
+    // resyncPostPages's; resyncPostPages must not pre-empt it by writing a (possibly
+    // under-populated) index.html of its own before the bootstrap ever runs.
+    it("I1: never writes index.html when it doesn't already exist (leaves that to selfHeal's bootstrap)", async () => {
+      const storage = memoryStorage();
+      const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => [post]), home: vi.fn(async () => ({ granville: "true" })) };
+      await resyncPostPages({ newsApi, storage, site }, { granvilleOn: true, test: false }, "ALERT: ...");
+      expect(storage.files.has("index.html")).toBe(false);
+    });
+
+    // Minor 1: one post whose getPost keeps failing must not block the resync of every other
+    // post, nor the event's own requested pages — and the marker must not be written, so the
+    // next run retries the failing post too instead of silently giving up on it forever.
+    it("Minor 1: a post whose getPost keeps failing is skipped and logged; other pages still render; the marker isn't written", async () => {
+      const storage = memoryStorage();
+      storage.files.set("releases/K1/index.html", "<p>stale K1</p>");
+      storage.files.set("releases/K2/index.html", "<p>stale K2</p>");
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        const newsApi: NewsApiClient = {
+          getPost: vi.fn(async (key: string) => {
+            if (key === "K1") throw new Error("News API down for K1");
+            return { ...post, key };
+          }),
+          latestHome: vi.fn(async () => [post]),
+          home: vi.fn(async () => ({ granville: "true" })),
+        };
+        const handler = createRebuildHandler({ newsApi, storage, site, test: false });
+        // "post:K3" is this event's own explicitly requested page — must still render even
+        // though the K1 resync failed.
+        await expect(handler({} as Tx, envelope({ pages: ["post:K3"] }))).resolves.toBeUndefined();
+
+        expect(storage.files.get("releases/K1/index.html")).toBe("<p>stale K1</p>"); // skipped, left alone
+        expect(storage.files.get("releases/K2/index.html")).toContain("blue-bridge-banner"); // resynced fine
+        expect(storage.files.has("releases/K3/index.html")).toBe(true); // the event's own page
+        expect(storage.files.has(".site-state.json")).toBe(false); // marker withheld — retry next time
+        expect(errSpy).toHaveBeenCalled();
+
+        // Next run: K1 still fails, but since the marker was never written, it's retried (not
+        // silently skipped forever) and K2 is resynced again too.
+        storage.files.set("releases/K2/index.html", "<p>stale K2 again</p>");
+        await handler({} as Tx, envelope({ pages: [] }));
+        expect(storage.files.get("releases/K2/index.html")).toContain("blue-bridge-banner");
+        expect(storage.files.has(".site-state.json")).toBe(false);
+      } finally {
+        errSpy.mockRestore();
+      }
     });
   });
 });

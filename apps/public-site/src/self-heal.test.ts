@@ -174,6 +174,11 @@ describe("selfHeal", () => {
     expect(result).toBeNull(); // index.html already existed — the bootstrap render was skipped
     const k1 = await readFile(join(root, "releases", "K1", "index.html"), "utf8");
     expect(k1).toContain('<meta name="robots" content="noindex, nofollow">');
+    // I1: index.html is itself resynced the same way — it kept no noindex either, since it was
+    // written (by the bootstrap render, long ago) before this fix ever ran.
+    const home = await readFile(join(root, "index.html"), "utf8");
+    expect(home).toContain('<meta name="robots" content="noindex, nofollow">');
+    expect(home).not.toContain("home, pre-fix");
     expect(await storage.read(".site-state.json")).toBe(JSON.stringify({ granvilleOn: false, test: true }));
   });
 

@@ -100,9 +100,27 @@ export async function resyncPostPages(deps: { newsApi: NewsApiClient; storage: S
   if (previous && previous.granvilleOn === state.granvilleOn && previous.test === state.test) return;
 
   const opts: PageOptions = { test: state.test, banner };
+  // Minor 1 (fix round 3): one post whose getPost keeps failing (or whose write fails) must not
+  // block every other post's resync, nor the marker that lets this whole function short-circuit
+  // on a later unrelated run. Skipped and logged here; the marker is withheld below so the next
+  // run retries every post (including this one) rather than concluding the resync is done.
+  let hadFailure = false;
   for (const key of await deps.storage.listDirs("releases")) {
     if (!POST_KEY.test(key)) continue; // defensive — every name we ever wrote already matches this
-    await renderExistingPost(deps.newsApi, deps.storage, deps.site, key, opts);
+    try {
+      await renderExistingPost(deps.newsApi, deps.storage, deps.site, key, opts);
+    } catch (e) {
+      hadFailure = true;
+      console.error(`[public-site] resync: skipping post:${key} this run (will retry next time): ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+  if (hadFailure) return;
+
+  // I1 (fix round 3): index.html is itself a static page with the same banner/noindex chrome
+  // baked in as every post page — only re-render it if it's already there (a brand-new output
+  // dir has none yet; that first render is selfHeal's bootstrap job, not this one's).
+  if (await deps.storage.exists("index.html")) {
+    await deps.storage.write("index.html", renderHomePage(await deps.newsApi.latestHome(HOME_COUNT), deps.site, opts));
   }
   await writeSiteState(deps.storage, state);
 }
