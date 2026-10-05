@@ -87,6 +87,16 @@ export const newsReleases = pgTable(
     /** Phase 3c: the release went out without its Flickr photo (see media/flickr-jobs.ts). */
     flickrAlert: text("flickr_alert"),
     version: integer("version").notNull().default(1),
+    /**
+     * Phase 3e (NRMS legacy importer, apps/nrms/src/import/): the `version` this row had the
+     * last time the importer wrote it. A later NRMS edit bumps `version` past this, which the
+     * re-run detects (its own `version` is higher than `imported_version`) and skips the row
+     * rather than overwriting the edit with stale legacy data.
+     */
+    importedVersion: integer("imported_version"),
+    importedAt: tz("imported_at"),
+    /** SHA-256 of the mapped release plus its children, so a re-run with unchanged legacy data is a no-op. */
+    importHash: text("import_hash"),
     createdAt: tz("created_at").notNull().defaultNow(),
     updatedAt: tz("updated_at").notNull().defaultNow(),
   },
@@ -407,6 +417,9 @@ export const siteSettings = pgTable(
     granville: text("granville"),
     linksVersion: integer("links_version").notNull().default(1),
     version: integer("version").notNull().default(1),
+    /** Phase 3e importer (Task 4): the website `version` after the last import, and when it ran. */
+    websiteImportedAt: tz("website_imported_at"),
+    websiteImportedVersion: integer("website_imported_version"),
     updatedAt: tz("updated_at").notNull().defaultNow(),
   },
   (t) => [check("site_settings_id_check", sql`${t.id} = 1`)],
