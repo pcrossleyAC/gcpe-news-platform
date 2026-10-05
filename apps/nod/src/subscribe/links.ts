@@ -39,6 +39,15 @@ export async function markLinkUsed(tx: DbOrTx, id: string): Promise<void> {
   await tx.update(subscriberLinks).set({ usedAt: sql`now()` }).where(eq(subscriberLinks.id, id));
 }
 
+/** Atomically claims a one-time link: marks it used only if it hadn't been already, and reports
+ * whether this call won that race. Two concurrent (or repeated) attempts to apply the same link
+ * must result in exactly one of them doing the work — this is the guard. */
+export async function claimLink(tx: DbOrTx, id: string): Promise<boolean> {
+  const r = await tx.execute<{ id: string }>(sql`
+    UPDATE ${subscriberLinks} SET used_at = now() WHERE id = ${id} AND used_at IS NULL RETURNING id`);
+  return r.rows.length > 0;
+}
+
 export async function linksSentLastHour(db: DbOrTx, email: string): Promise<number> {
   const r = await db.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n FROM ${subscriberLinks}

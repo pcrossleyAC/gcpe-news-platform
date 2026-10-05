@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
-import { createLink, findLink, linksSentLastHour, markLinkUsed } from "./links";
+import { claimLink, createLink, findLink, linksSentLastHour, markLinkUsed } from "./links";
 import { hashToken } from "./tokens";
 
 describe("links", () => {
@@ -35,6 +35,13 @@ describe("links", () => {
   it("markLinkUsed stamps used_at", async () => {
     const { id, token } = await createLink(tdb.db, { purpose: "verify", email: "u@example.test", subscriberId: null, pending: null });
     await markLinkUsed(tdb.db, id);
+    expect((await findLink(tdb.db, token))?.usedAt).not.toBeNull();
+  });
+
+  it("claimLink marks a link used only once, reporting who won", async () => {
+    const { id, token } = await createLink(tdb.db, { purpose: "verify", email: "claim@example.test", subscriberId: null, pending: null });
+    expect(await claimLink(tdb.db, id)).toBe(true);
+    expect(await claimLink(tdb.db, id)).toBe(false);
     expect((await findLink(tdb.db, token))?.usedAt).not.toBeNull();
   });
 });
