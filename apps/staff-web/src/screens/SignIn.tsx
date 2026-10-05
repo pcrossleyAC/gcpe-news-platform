@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Navigate, useSearchParams } from "react-router";
 import { Button, Form, Header, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { ApiError } from "../api/client";
+import { safeReturnTo } from "../session/safeReturnTo";
 import { useSession } from "../session/SessionContext";
 
 const SIGN_IN_FAILED = "Sign-in failed. Check your user name and password.";
@@ -15,7 +16,7 @@ export function SignIn(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  if (user) return <Navigate to={params.get("return") || "/"} replace />;
+  if (user) return <Navigate to={safeReturnTo(params.get("return"))} replace />;
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();

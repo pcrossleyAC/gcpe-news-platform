@@ -12,20 +12,15 @@ interface SessionState {
   user: SessionUser | null;
   /** Still loading the initial GET /core/auth/session on first mount. */
   loading: boolean;
-  /** Where a 401 (or an expired session) interrupted the user — RequireAuth/SignIn use this to
-   * send them back where they were once they sign in again (constraints.md Review Focus 1). */
-  returnTo: string | null;
 }
 
 export interface SessionValue {
   user: SessionUser | null;
   roles: string[];
   loading: boolean;
-  returnTo: string | null;
   has(role: string): boolean;
   signIn(username: string, password: string): Promise<void>;
   signOut(): Promise<void>;
-  clearReturnTo(): void;
 }
 
 const SessionContext = createContext<SessionValue | null>(null);
@@ -40,7 +35,7 @@ interface LoginResponse {
 }
 
 export function SessionProvider({ children }: { children: ReactNode }): React.JSX.Element {
-  const [state, setState] = useState<SessionState>({ user: null, loading: true, returnTo: null });
+  const [state, setState] = useState<SessionState>({ user: null, loading: true });
 
   const loadSession = useCallback(async () => {
     try {
@@ -62,9 +57,11 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     return () => clearInterval(id);
   }, [loadSession]);
 
-  // Any apiFetch 401, anywhere in the app, signs the user out here and remembers where they
-  // were so RequireAuth can send them back after they sign in again.
-  useEffect(() => onUnauthorized((returnTo) => setState((s) => ({ ...s, user: null, returnTo }))), []);
+  // Any apiFetch 401, anywhere in the app, signs the user out here. Where they were — and
+  // getting back there after they sign in again — is RequireAuth's job alone, via the
+  // /hub/sign-in?return=<path> it redirects to (constraints.md Review Focus 1): this context
+  // doesn't duplicate that as its own state.
+  useEffect(() => onUnauthorized(() => setState((s) => ({ ...s, user: null }))), []);
 
   const signIn = useCallback(async (username: string, password: string) => {
     const { user } = await apiFetch<LoginResponse>("/core/auth/login", { method: "POST", body: { username, password } });
@@ -79,20 +76,16 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     }
   }, []);
 
-  const clearReturnTo = useCallback(() => setState((s) => ({ ...s, returnTo: null })), []);
-
   const value = useMemo<SessionValue>(
     () => ({
       user: state.user,
       roles: state.user?.roles ?? [],
       loading: state.loading,
-      returnTo: state.returnTo,
       has: (role: string) => state.user?.roles.includes(role) ?? false,
       signIn,
       signOut,
-      clearReturnTo,
     }),
-    [state, signIn, signOut, clearReturnTo],
+    [state, signIn, signOut],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

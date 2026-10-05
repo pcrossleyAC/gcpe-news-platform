@@ -5,7 +5,7 @@
   "engines": { "node": ">=24" },
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
-    "check": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json && tsc -p apps/staff-web/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "auth:hash-password": "tsx packages/auth/src/cli/hash-password.ts",

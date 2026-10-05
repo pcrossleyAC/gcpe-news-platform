@@ -68,6 +68,29 @@ export function findLeakedPaths(dir, forbidden) {
 }
 
 /**
+ * Task 1 (staff-web), fix round 1: copies an already-built apps/staff-web/dist into
+ * `<outDir>/hub` — factored out of runBuild so this step (and {@link assertHubBuilt} below) can
+ * be unit-tested against a throwaway directory, without needing a real (slow) esbuild bundle of
+ * react/react-dom/the BC design system for every test run.
+ */
+export function copyStaffWebToHub(staffWebDistDir, outDir) {
+  cpSync(staffWebDistDir, join(outDir, "hub"), { recursive: true });
+}
+
+/**
+ * Throws if `<outDir>/hub/index.html` is missing — the one thing build-siteground.mjs can
+ * check, without actually starting the stack, that the staff app's shell made it into the
+ * artifact at the path apps/stack/src/env.ts's STAFF_WEB_DIR default expects. Called both by
+ * runBuild (which turns a throw into a logged failure + `process.exit(1)`) and directly by
+ * tests/build-siteground-guard.test.ts.
+ */
+export function assertHubBuilt(outDir) {
+  if (!existsSync(join(outDir, "hub", "index.html"))) {
+    throw new Error("dist/siteground/hub/index.html is missing — the staff web app did not make it into the artifact");
+  }
+}
+
+/**
  * Everything that actually touches the filesystem/network/exits the process lives in here,
  * called only when this file is run as the entry point (`node scripts/build-siteground.mjs`)
  * — NOT merely imported (as tests/build-siteground-guard.test.ts does, for `findLeakedPaths`
@@ -129,7 +152,7 @@ async function runBuild() {
   // bundled stack.js, exactly as it will be once this directory is deployed.
   console.log("[build-staff-web] building the staff web app …");
   await runStaffWebBuild();
-  cpSync(join(root, "apps/staff-web/dist"), join(outDir, "hub"), { recursive: true });
+  copyStaffWebToHub(join(root, "apps/staff-web/dist"), outDir);
 
   writeFileSync(
     join(outDir, "package.json"),
@@ -192,8 +215,10 @@ async function runBuild() {
   // Task 1 (staff-web): the one thing this script can check without actually starting the
   // stack — that the staff app's shell made it into the artifact at the path stack.js's own
   // STAFF_WEB_DIR default expects.
-  if (!existsSync(join(outDir, "hub", "index.html"))) {
-    console.error("[build-siteground] FAILED: dist/siteground/hub/index.html is missing — the staff web app did not make it into the artifact");
+  try {
+    assertHubBuilt(outDir);
+  } catch (e) {
+    console.error(`[build-siteground] FAILED: ${e.message}`);
     process.exit(1);
   }
   console.log("[build-siteground] OK — dist/siteground/hub/index.html is present.");
