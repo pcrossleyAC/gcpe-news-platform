@@ -1,11 +1,11 @@
 import { useState } from "react";
 import { useNavigate } from "react-router";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { approveProblems, publishProblems, typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
-import { useReleaseSection } from "../useReleaseSection";
+import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty } from "../useUnsavedChanges";
-import { SchedulePicker } from "./SchedulePicker";
+import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
 
 /** apps/nrms/src/releases/service.ts's DELETABLE_STATUSES. */
 const DELETABLE_STATUSES = new Set(["draft", "approved", "failed"]);
@@ -17,8 +17,6 @@ export interface ActionsSectionProps {
   setView(v: ReleaseView): void;
   timeZone: string;
 }
-
-const RELOAD_MESSAGE = "Someone else changed this — reload to see their changes.";
 
 /**
  * Editors-only (the caller gates this whole section on `NRMS.Editor`): Approve, Publish
@@ -33,7 +31,7 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
   const rules = typeRules(view.type);
 
   const [schedulerOpen, setSchedulerOpen] = useState(false);
-  const [scheduleIso, setScheduleIso] = useState<string | null>(null);
+  const [scheduleValue, setScheduleValue] = useState<ScheduleValue | null>(null);
   useRegisterDirty("actions-scheduler", schedulerOpen);
 
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -54,11 +52,13 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
   const unpublish = () => void section.save("/unpublish", { version: view.version }, "POST");
 
   const submitSchedule = async () => {
-    if (!scheduleIso) return;
-    const result = await section.save("/schedule", { version: view.version, publishAt: scheduleIso }, "POST");
+    if (!scheduleValue) return;
+    // Fix round 1, finding 3: sends the raw BC wall-clock string (`publishAtLocal`), not a
+    // client-converted instant — the server (whose tzdata is authoritative) converts it.
+    const result = await section.save("/schedule", { version: view.version, publishAtLocal: scheduleValue.local }, "POST");
     if (result) {
       setSchedulerOpen(false);
-      setScheduleIso(null);
+      setScheduleValue(null);
     }
   };
 
@@ -125,36 +125,47 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
         )}
 
         {canDelete && (
-          <Button variant="secondary" danger onPress={() => setDeleteOpen(true)} isDisabled={section.saving}>
-            Delete
-          </Button>
+          // Fix round 1, finding 2: a real Modal/AlertDialog (React Aria's ModalOverlay under
+          // the hood), wrapped in a DialogTrigger so focus restoration on close is tied to
+          // *this* trigger button specifically — instead of a bare `<div role="dialog">`, which
+          // left other action buttons clickable, trapped no focus, and restored nothing.
+          <DialogTrigger isOpen={deleteOpen} onOpenChange={setDeleteOpen}>
+            <Button variant="secondary" danger isDisabled={section.saving}>
+              Delete
+            </Button>
+            <Modal isDismissable>
+              <AlertDialog
+                variant="destructive"
+                title="Delete this release?"
+                buttons={
+                  <>
+                    <Button onPress={() => setDeleteOpen(false)} isDisabled={deleting}>
+                      Cancel
+                    </Button>
+                    <Button danger onPress={() => void confirmDelete()} isDisabled={deleting}>
+                      Confirm delete
+                    </Button>
+                  </>
+                }
+              >
+                <p>
+                  {view.reference
+                    ? `This release has a reference number (${view.reference}) — deleting it hides it from the lists but keeps the record.`
+                    : "This draft has never been approved — deleting it is permanent and can't be undone."}
+                </p>
+                {deleteConflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} />}
+                {deleteError && <InlineAlert variant="danger" role="alert" description={deleteError} />}
+              </AlertDialog>
+            </Modal>
+          </DialogTrigger>
         )}
       </div>
 
       {schedulerOpen && canPublish && (
         <div className="gcpe-release-editor__scheduler">
-          <SchedulePicker timeZone={timeZone} legend="Schedule for" idPrefix="schedule" onChange={setScheduleIso} />
-          <Button onPress={() => void submitSchedule()} isDisabled={!scheduleIso || section.saving}>
+          <SchedulePicker timeZone={timeZone} legend="Schedule for" idPrefix="schedule" onChange={setScheduleValue} />
+          <Button onPress={() => void submitSchedule()} isDisabled={!scheduleValue || section.saving}>
             Confirm schedule
-          </Button>
-        </div>
-      )}
-
-      {deleteOpen && (
-        <div role="dialog" aria-modal="true" aria-labelledby="delete-dialog-title" className="gcpe-release-editor__delete-dialog">
-          <h2 id="delete-dialog-title">Delete this release?</h2>
-          <p>
-            {view.reference
-              ? `This release has a reference number (${view.reference}) — deleting it hides it from the lists but keeps the record.`
-              : "This draft has never been approved — deleting it is permanent and can't be undone."}
-          </p>
-          {deleteConflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} />}
-          {deleteError && <InlineAlert variant="danger" role="alert" description={deleteError} />}
-          <Button onPress={() => setDeleteOpen(false)} isDisabled={deleting}>
-            Cancel
-          </Button>
-          <Button danger onPress={() => void confirmDelete()} isDisabled={deleting}>
-            Confirm delete
           </Button>
         </div>
       )}

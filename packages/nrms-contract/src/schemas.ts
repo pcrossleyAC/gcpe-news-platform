@@ -98,7 +98,26 @@ export type DocumentLanguageInput = z.infer<typeof documentLanguageSchema>;
 export const addDocumentSchema = z.object({ version, pageTitle: z.string().trim().min(1).max(50), layout: z.enum(LAYOUTS) });
 export const addTranslationSchema = z.object({ version, languageId });
 export const reorderDocumentsSchema = z.object({ version, documentIds: z.array(z.string().uuid()).min(1).max(50) });
-export const scheduleSchema = z.object({ version, publishAt: z.union([z.literal("now"), z.string().datetime({ offset: true })]) });
+/** BC wall-clock local time, no offset — "YYYY-MM-DDTHH:mm" (fix round 1, finding 3). */
+const localDateTime = z.string().regex(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/, "must be a local date/time, YYYY-MM-DDTHH:mm");
+
+/**
+ * Exactly one of `publishAt` ("now", or an already-resolved instant with an explicit offset —
+ * today's form, still used e.g. by anything that already has a real instant) or
+ * `publishAtLocal` (fix round 1, finding 3: a BC wall-clock time with no offset at all — the
+ * server, whose tzdata is the one that actually matters for the tenant, resolves it via
+ * `wallClockToInstant`, rather than trusting a browser that may have stale tzdata). Neither or
+ * both is a 400, not a silently-ambiguous choice between them.
+ */
+export const scheduleSchema = z
+  .object({
+    version,
+    publishAt: z.union([z.literal("now"), z.string().datetime({ offset: true })]).optional(),
+    publishAtLocal: localDateTime.optional(),
+  })
+  .refine((v) => (v.publishAt !== undefined) !== (v.publishAtLocal !== undefined), {
+    message: "Provide exactly one of publishAt or publishAtLocal.",
+  });
 export type ScheduleInput = z.infer<typeof scheduleSchema>;
 
 export const listQuerySchema = z.object({

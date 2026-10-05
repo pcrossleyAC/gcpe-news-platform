@@ -73,12 +73,14 @@ describe("ActionsSection", () => {
 
   it("confirming delete POSTs /delete with the current version and navigates to drafts on success", async () => {
     const v = releaseView({ status: "draft", version: 3, reference: null });
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      expect(url).toBe(`/nrms/api/releases/${v.id}/delete`);
-      expect(JSON.parse(init!.body as string)).toEqual({ version: 3 });
-      return jsonResponse(200, { result: "deleted" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    const calls: { url: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, body: init?.body ? JSON.parse(init.body as string) : undefined });
+        return jsonResponse(200, { result: "deleted" });
+      }),
+    );
     render(
       <MemoryRouter initialEntries={["/releases/" + v.id]}>
         <ActionsSection view={v} setView={() => {}} timeZone="America/Vancouver" />
@@ -87,7 +89,47 @@ describe("ActionsSection", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Delete" }));
     await user.click(screen.getByRole("button", { name: "Confirm delete" }));
-    expect(fetchMock).toHaveBeenCalled();
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]).toEqual({ url: `/nrms/api/releases/${v.id}/delete`, body: { version: 3 } });
+  });
+
+  // Fix round 1, finding 2: a real Modal/AlertDialog, not a bare div.
+  it("while the delete dialog is open, other action buttons aren't reachable (aria-hidden by the modal's overlay)", async () => {
+    renderActions(releaseView({ status: "draft", reference: null, ministries: [] })); // draft -> Approve + Delete both show
+    const user = userEvent.setup();
+    expect(screen.getByRole("button", { name: "Approve" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    // Still in the DOM, but hidden from the accessibility tree (and so from getByRole) while
+    // the modal traps focus/interaction — exactly what a bare div never gave us for free.
+    expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
+  });
+
+  it("opening the delete dialog moves focus into it, and closing it returns focus to the Delete button", async () => {
+    renderActions(releaseView({ status: "draft", reference: null }));
+    const user = userEvent.setup();
+    const deleteButton = screen.getByRole("button", { name: "Delete" });
+    await user.click(deleteButton);
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog.contains(document.activeElement)).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    // React Aria restores focus inside a requestAnimationFrame callback, one tick after the
+    // scope unmounts — waitFor rather than a synchronous assertion.
+    await waitFor(() => expect(document.activeElement).toBe(deleteButton));
+  });
+
+  it("Escape cancels the delete dialog without deleting anything", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse(200, { result: "deleted" }));
+    vi.stubGlobal("fetch", fetchMock);
+    renderActions(releaseView({ status: "draft", reference: null }));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await screen.findByRole("dialog");
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("a 409 on delete shows the reload message instead of navigating away", async () => {
@@ -123,22 +165,33 @@ describe("ActionsSection", () => {
     await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
   });
 
-  it("Schedule converts the typed BC local date/time and POSTs that ISO instant", async () => {
+  // Fix round 1 (3f Task 3), finding 3: Schedule now sends the raw BC wall-clock string
+  // (`publishAtLocal`), not a client-converted instant — the server converts it. Note: the
+  // outer `waitFor(setView...)` assertion (not an `expect` thrown *inside* the fetch mock,
+  // which a catch block elsewhere would silently swallow as a generic save failure) is what
+  // actually fails this test if the request body is wrong.
+  it("Schedule sends publishAtLocal (the typed BC wall-clock string), not a converted instant", async () => {
     const v = releaseView({ status: "approved", key: "k1", reference: "NEWS-00001", version: 2 });
-    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      if (!url.endsWith("/schedule")) throw new Error(`unexpected: ${url}`);
-      const body = JSON.parse(init!.body as string);
-      expect(body).toEqual({ version: 2, publishAt: "2026-06-15T21:30:00.000Z" });
-      return jsonResponse(200, releaseView({ status: "scheduled" }));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-    renderActions(v);
+    const next = releaseView({ status: "scheduled" });
+    const calls: { url: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push({ url, body: init?.body ? JSON.parse(init.body as string) : undefined });
+        return jsonResponse(200, next);
+      }),
+    );
+    const setView = vi.fn();
+    renderActions(v, setView);
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Schedule" }));
     fireEvent.change(screen.getByLabelText("Date"), { target: { value: "2026-06-15" } });
     fireEvent.change(screen.getByLabelText("Time (BC time)"), { target: { value: "14:30" } });
     await user.click(screen.getByRole("button", { name: "Confirm schedule" }));
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    await waitFor(() => expect(setView).toHaveBeenCalledWith(next));
+    const scheduleCall = calls.find((c) => c.url.endsWith("/schedule"));
+    expect(scheduleCall?.body).toEqual({ version: 2, publishAtLocal: "2026-06-15T14:30" });
   });
 
   it("a 409 on an action shows the reload message with a Reload button, and never auto-retries", async () => {

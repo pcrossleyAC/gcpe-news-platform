@@ -29,4 +29,13 @@ describe("schemas", () => {
     expect(scheduleSchema.safeParse({ version: 3, publishAt: "2026-10-04T09:00:00" }).success).toBe(false);
     expect(listQuerySchema.parse({ folder: "drafts" })).toEqual({ folder: "drafts", type: "all", page: 1, pageSize: 25 });
   });
+  // Fix round 1 (3f Task 3), finding 3: a BC-local wall-clock alternative to publishAt, so the
+  // server (not a browser with potentially stale tzdata) does the DST-aware conversion.
+  it("schedule: accepts publishAtLocal (BC wall-clock, no offset) as an alternative to publishAt, but not both or neither", () => {
+    expect(scheduleSchema.parse({ version: 3, publishAtLocal: "2026-12-15T14:30" }).publishAtLocal).toBe("2026-12-15T14:30");
+    expect(scheduleSchema.safeParse({ version: 3 }).success).toBe(false);
+    expect(scheduleSchema.safeParse({ version: 3, publishAt: "now", publishAtLocal: "2026-12-15T14:30" }).success).toBe(false);
+    expect(scheduleSchema.safeParse({ version: 3, publishAtLocal: "2026-12-15T14:30:00Z" }).success).toBe(false); // must have no offset/seconds
+    expect(scheduleSchema.safeParse({ version: 3, publishAtLocal: "not-a-datetime" }).success).toBe(false);
+  });
 });

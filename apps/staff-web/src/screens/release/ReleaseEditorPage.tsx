@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
-import { Button } from "@bcgov/design-system-react-components";
+import { AlertDialog, Button, Modal } from "@bcgov/design-system-react-components";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
@@ -71,15 +71,25 @@ export function ReleaseEditorPage(): React.JSX.Element {
       <div className="gcpe-release-editor">
         <HeaderSection view={view} />
 
-        {guard.blocker.state === "blocked" && (
-          <div role="alertdialog" aria-label="Unsaved changes" className="gcpe-release-editor__unsaved-dialog">
+        {/* Fix round 1, finding 2: a real Modal/AlertDialog instead of an inline div — traps
+         * focus, restores it on close, and closes on Escape (treated the same as "Stay": the
+         * blocker is simply left blocked, so the in-app navigation stays cancelled). */}
+        <Modal isOpen={guard.blocker.state === "blocked"} onOpenChange={(open) => { if (!open) guard.blocker.reset?.(); }} isDismissable>
+          <AlertDialog
+            variant="warning"
+            title="Unsaved changes"
+            buttons={
+              <>
+                <Button onPress={() => guard.blocker.reset?.()}>Stay</Button>
+                <Button danger onPress={() => guard.blocker.proceed?.()}>
+                  Leave
+                </Button>
+              </>
+            }
+          >
             <p>You have unsaved changes on this page. Leave anyway and discard them?</p>
-            <Button onPress={() => guard.blocker.reset?.()}>Stay</Button>
-            <Button danger onPress={() => guard.blocker.proceed?.()}>
-              Leave
-            </Button>
-          </div>
-        )}
+          </AlertDialog>
+        </Modal>
 
         {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} />}
         <SettingsSection view={view} setView={setView} timeZone={timeZone} readOnly={!canEdit} />

@@ -4,6 +4,7 @@ import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { EventTooLargeError, type SubscriberConfig } from "@gcpe/events";
+import { utcOffsetMinutes } from "@gcpe/config";
 import {
   addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, listQuerySchema, metaSchema,
   reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
@@ -62,6 +63,11 @@ export type Params = { id: string; docId: string; lang: string; pubId: string; f
 export type Handler = (req: Request<Params>, res: Response) => Promise<void>;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Fix round 1 (3f Task 3), finding 3: a fixed, arbitrary instant well after BC's permanent
+ * UTC-7 switch (2026-11-01) — `GET /config`'s `tzCheck` reports what offset the *server's* own
+ * tzdata resolves this to, so the browser (whose own tzdata might be stale) can tell. */
+const TZ_CHECK_AT = "2026-12-15T20:00:00Z";
+
 /**
  * Maps the service layer's typed errors (and zod's) to a response. Returns false for anything
  * else so it reaches jsonErrorHandler as a generic, detail-free 500 (see http-kit/errors.ts).
@@ -119,6 +125,7 @@ export function apiRoutes(deps: RouteDeps): Router {
         publicSiteUrl: deps.config?.publicSiteUrl ?? "",
         filesBase: deps.workflow.filesBase ?? "",
         isTestSite: deps.config?.isTestSite ?? true,
+        tzCheck: { at: TZ_CHECK_AT, offsetMinutes: utcOffsetMinutes(TZ_CHECK_AT, deps.workflow.timeZone) },
       });
     }),
   );

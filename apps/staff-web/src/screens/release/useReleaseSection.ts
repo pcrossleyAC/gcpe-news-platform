@@ -2,6 +2,10 @@ import { useCallback, useState } from "react";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 
+/** Fix round 1 (3f Task 3), minor 4: one shared copy of the 409 message, used by every section
+ * (and the page-level unsaved-changes dialog) instead of each defining its own. */
+export const RELOAD_MESSAGE = "Someone else changed this — reload to see their changes.";
+
 export interface ReleaseSectionState {
   saving: boolean;
   /** 422 `problems`, scoped to whatever this section just tried to save — the section is the

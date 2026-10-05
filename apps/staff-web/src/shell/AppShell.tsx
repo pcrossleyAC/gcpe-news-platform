@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useNavigate } from "react-router";
-import { Button, Header } from "@bcgov/design-system-react-components";
+import { Button, Header, InlineAlert } from "@bcgov/design-system-react-components";
 import { useSession, type SessionValue } from "../session/SessionContext";
+import { useTimeZoneWarning } from "../format/timeZoneWarning";
 
 interface NavItem {
   to: string;
@@ -27,6 +28,7 @@ const NAV_ITEMS: NavItem[] = [
 export function AppShell(): React.JSX.Element {
   const session = useSession();
   const navigate = useNavigate();
+  const tzMismatch = useTimeZoneWarning();
 
   const onSignOut = async () => {
     await session.signOut();
@@ -49,6 +51,16 @@ export function AppShell(): React.JSX.Element {
         {/* Each routed screen owns its own single h1 (constraints.md); the shell itself has none. */}
         {session.user && <p>Signed in as {session.user.name}</p>}
         <Button onPress={onSignOut}>Sign out</Button>
+        {/* Fix round 1, finding 3: persistent — not closeable — since it stays true for the
+         * whole session; the only real fix is updating the browser. */}
+        {tzMismatch && (
+          <InlineAlert
+            variant="warning"
+            role="alert"
+            isCloseable={false}
+            description="Your browser's time-zone information is out of date, so times shown here may be off by an hour. Update your browser."
+          />
+        )}
         <Outlet />
       </main>
     </div>

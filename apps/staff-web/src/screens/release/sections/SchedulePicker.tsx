@@ -2,26 +2,35 @@ import { useState } from "react";
 import { TextField } from "@bcgov/design-system-react-components";
 import { bcLocalToInstant } from "../timezone";
 
+export interface ScheduleValue {
+  /** "YYYY-MM-DDTHH:mm" — the BC wall-clock date/time exactly as typed, no conversion. Fix
+   * round 1, finding 3: this is what the Schedule action now sends (`publishAtLocal`) — the
+   * server, whose tzdata is the one that actually matters for the tenant, converts it. */
+  local: string;
+  /** The same wall-clock time converted to a UTC instant using the *browser's* own tzdata.
+   * No longer sent for scheduling (a stale browser could get it wrong by an hour); kept for
+   * Settings' `plannedPublishAt` (unchanged by this fix round) and as an optional preview. */
+  instant: string;
+}
+
 export interface SchedulePickerProps {
-  /** The tenant time zone (`GET /nrms/api/config`'s `timeZone`) — every date/time typed here is
-   * read as BC local time, never the browser's own zone. */
+  /** The tenant time zone (`GET /nrms/api/config`'s `timeZone`) — used only to compute
+   * {@link ScheduleValue.instant}'s browser-side preview conversion; `local` never depends on it. */
   timeZone: string;
   legend: string;
   idPrefix: string;
   initialDate?: string;
   initialTime?: string;
-  /** Called with the converted UTC instant (ISO 8601, with offset) whenever both fields hold a
-   * valid date and time, or `null` while incomplete/invalid — never called with a locally
-   * "guessed" instant the server didn't actually ask for. */
-  onChange(iso: string | null): void;
+  /** Called with `{ local, instant }` once both fields hold a valid date and time, or `null`
+   * while incomplete/invalid. */
+  onChange(value: ScheduleValue | null): void;
 }
 
 /**
- * A BC-local date + time picker that converts to a UTC instant DST-correctly (task-3-brief.md
- * design note), for Schedule (ActionsSection) and the planned publish time (SettingsSection).
- * Plain `<input type="date">`/`<input type="time">` rather than the design system's
- * DatePicker/TimeField (which take `CalendarDate`/`Time` objects) — simpler to wire to one BC
- * instant and to drive from tests.
+ * A BC-local date + time picker (task-3-brief.md design note), for Schedule (ActionsSection)
+ * and the planned publish time (SettingsSection). Plain `<input type="date">`/`<input
+ * type="time">` rather than the design system's DatePicker/TimeField (which take
+ * `CalendarDate`/`Time` objects) — simpler to wire to BC local time and to drive from tests.
  */
 export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", initialTime = "", onChange }: SchedulePickerProps): React.JSX.Element {
   const [date, setDate] = useState(initialDate);
@@ -37,7 +46,8 @@ export function SchedulePicker({ timeZone, legend, idPrefix, initialDate = "", i
       return;
     }
     try {
-      onChange(bcLocalToInstant(nextDate, nextTime, timeZone));
+      const instant = bcLocalToInstant(nextDate, nextTime, timeZone);
+      onChange({ local: `${nextDate}T${nextTime}`, instant });
       setError(null);
     } catch {
       onChange(null);

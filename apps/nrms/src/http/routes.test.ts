@@ -70,6 +70,13 @@ describe("NRMS HTTP API", () => {
     expect((await request(app).get("/api/config")).status).toBe(401);
   });
 
+  // Fix round 1 (3f Task 3), finding 3: the browser compares its own offset for `tzCheck.at`
+  // against this server-computed one, warning if a stale browser tzdata disagrees.
+  it("GET /config's tzCheck gives the server's own UTC offset for a pinned instant after BC's permanent UTC-7 switch (requires Node 24+ tzdata)", async () => {
+    const res = await request(app).get("/api/config").set("cookie", viewerCookie);
+    expect(res.body.tzCheck).toEqual({ at: "2026-12-15T20:00:00Z", offsetMinutes: -420 });
+  });
+
   it("a viewer can read categories and releases but can't create one", async () => {
     const created = await create();
     const cats = await request(app).get("/api/categories").set("cookie", viewerCookie);
@@ -111,6 +118,25 @@ describe("NRMS HTTP API", () => {
     const stale = await post(`/api/releases/${id}/schedule`, editorCookie, { version: a.body.version, publishAt: "now" });
     expect(stale.status).toBe(409);
     expect(stale.body).toEqual({ error: STALE });
+  });
+
+  // Fix round 1 (3f Task 3), finding 3: publishAtLocal (BC wall-clock, no offset) is an
+  // alternative to publishAt — the server converts it with its own tzdata.
+  it("schedule accepts publishAtLocal as an alternative to publishAt, converted server-side", async () => {
+    const { id } = await create();
+    const a = await post(`/api/releases/${id}/approve`, editorCookie, { version: 1 });
+    const s = await post(`/api/releases/${id}/schedule`, editorCookie, { version: a.body.version, publishAtLocal: "2030-06-15T10:30" });
+    expect(s.status).toBe(200);
+    expect(s.body.publishAt).toBe("2030-06-15T17:30:00.000Z"); // 10:30 PDT (UTC-7) -> 17:30Z
+  });
+
+  it("schedule is a 400 when given both publishAt and publishAtLocal, or neither", async () => {
+    const { id } = await create();
+    const a = await post(`/api/releases/${id}/approve`, editorCookie, { version: 1 });
+    const both = await post(`/api/releases/${id}/schedule`, editorCookie, { version: a.body.version, publishAt: "now", publishAtLocal: "2030-06-15T10:30" });
+    expect(both.status).toBe(400);
+    const neither = await post(`/api/releases/${id}/schedule`, editorCookie, { version: a.body.version });
+    expect(neither.status).toBe(400);
   });
 
   it("cancel returns a scheduled release to approved", async () => {

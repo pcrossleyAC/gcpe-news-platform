@@ -1,9 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { useNavigate } from "react-router";
+import { Link, useNavigate } from "react-router";
 import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { CREATABLE_TYPES, LANG_EN, LAYOUTS, TYPE_LABEL, createReleaseSchema, typeRules, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
 import type { ZodIssue } from "zod";
 import { apiFetch, ApiError } from "../../api/client";
+import { useSession } from "../../session/SessionContext";
+import type { Categories } from "./categories";
 
 type CreatableType = (typeof CREATABLE_TYPES)[number];
 
@@ -19,16 +21,6 @@ interface PageImageOption {
   id: string;
   name: string;
   sortOrder: number;
-}
-interface Term {
-  key: string;
-  name: string;
-}
-interface Categories {
-  ministries: Term[];
-  sectors: Term[];
-  themes: Term[];
-  tags: Term[];
 }
 interface MediaListOption {
   id: string;
@@ -70,6 +62,7 @@ function groupByField(problems: string[]): Record<string, string[]> {
  * sending; on success, `POST /nrms/api/releases` and navigate to the new release's editor.
  */
 export function NewReleaseScreen(): React.JSX.Element {
+  const session = useSession();
   const navigate = useNavigate();
 
   const [type, setType] = useState<CreatableType>("release");
@@ -98,6 +91,18 @@ export function NewReleaseScreen(): React.JSX.Element {
     apiFetch<Categories>("/nrms/api/categories").then(setCategories, () => {});
     apiFetch<MediaListOption[]>("/nrms/api/media-lists").then(setMediaLists, () => {});
   }, []);
+
+  // Fix round 1, finding 1: this route had no role gate at all — a Viewer or Site Editor
+  // (anyone who can merely *read* releases) got a live creation form. Only NRMS.Editor may.
+  if (!session.has("NRMS.Editor")) {
+    return (
+      <div className="gcpe-new-release">
+        <h1>You don&rsquo;t have permission to create releases</h1>
+        <p>Creating a release needs the Editor role.</p>
+        <Link to="/releases/drafts">Back to releases</Link>
+      </div>
+    );
+  }
 
   const rules = typeRules(type);
   const pageTitleOptions = pageTypes.filter((pt) => pt.releaseType === type && pt.languageId === LANG_EN).sort((a, b) => a.sortOrder - b.sortOrder);

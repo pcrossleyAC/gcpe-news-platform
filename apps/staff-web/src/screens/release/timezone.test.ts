@@ -23,6 +23,23 @@ describe("wallClockToInstant (ported from packages/legacy-import/src/timezone.ts
     const d = new Date("2024-03-10T02:30:00.000Z");
     expect(wallClockToInstant(d, TZ).toISOString()).toBe("2024-03-10T10:30:00.000Z");
   });
+
+  // Fix round 1 (3f Task 3), minor 4: the controller's three pinned DST/offset dates, also
+  // pinned in packages/config/src/timezone.test.ts (the canonical server-side implementation)
+  // — this is the one conversion that remains client-side (SettingsSection's plannedPublishAt,
+  // and SchedulePicker's browser-side preview `instant`; the Schedule action itself now sends
+  // `publishAtLocal` and lets the server convert, per finding 3).
+  it("2026-03-08 02:30 BC local (spring-forward gap) -> 2026-03-08T10:30:00.000Z", () => {
+    expect(wallClockToInstant(new Date("2026-03-08T02:30:00.000Z"), TZ).toISOString()).toBe("2026-03-08T10:30:00.000Z");
+  });
+
+  it("2025-11-02 01:30 BC local (fall-back ambiguous hour) -> 2025-11-02T08:30:00.000Z", () => {
+    expect(wallClockToInstant(new Date("2025-11-02T01:30:00.000Z"), TZ).toISOString()).toBe("2025-11-02T08:30:00.000Z");
+  });
+
+  it("2026-12-15 14:30 BC local, after BC's permanent UTC-7 switch -> 2026-12-15T21:30:00.000Z (requires Node 24+ tzdata)", () => {
+    expect(wallClockToInstant(new Date("2026-12-15T14:30:00.000Z"), TZ).toISOString()).toBe("2026-12-15T21:30:00.000Z");
+  });
 });
 
 describe("bcLocalToInstant (schedule picker: BC local date+time -> ISO instant)", () => {

@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, Form, InlineAlert, NumberField } from "@bcgov/design-system-react-components";
 import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
-import { useReleaseSection } from "../useReleaseSection";
+import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import { instantToBcLocal } from "../timezone";
 import { SchedulePicker } from "./SchedulePicker";
@@ -38,7 +38,6 @@ function fromView(view: ReleaseView): FormState {
   };
 }
 
-const RELOAD_MESSAGE = "Someone else changed this — reload to see their changes.";
 
 /** Spec's "Publish settings" section (`PUT .../settings`): Calendar activity id, the planned
  * (not yet committed — Schedule/Publish now in {@link ActionsSection} commit it) publish time,
@@ -113,13 +112,17 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           isDisabled={readOnly}
         />
 
+        {/* Out of 3f Task 3 fix round 1 finding 3's scope: plannedPublishAt (unlike
+         * scheduleSchema's publishAt/publishAtLocal) still takes a client-converted instant —
+         * this is only a *planned*, not-yet-committed time, re-converted by Schedule/Publish
+         * now in ActionsSection when it's actually committed. */}
         <SchedulePicker
           timeZone={timeZone}
           legend="Planned publish date (not yet committed)"
           idPrefix="planned"
           initialDate={initialPlanned?.date}
           initialTime={initialPlanned?.time}
-          onChange={setPlannedIso}
+          onChange={(v) => setPlannedIso(v?.instant ?? null)}
         />
         {plannedIso && !readOnly && (
           <button type="button" onClick={() => setPlannedIso(null)}>

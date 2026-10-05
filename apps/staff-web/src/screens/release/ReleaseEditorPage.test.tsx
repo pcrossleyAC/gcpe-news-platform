@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import axe from "axe-core";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
@@ -101,5 +102,83 @@ describe("ReleaseEditorPage", () => {
     const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
     const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
     expect(serious).toEqual([]);
+  });
+
+  // Fix round 1 (3f Task 3), minor 4: two different sections saving back-to-back — the second
+  // save must use the version the *first* save's response carried, not the page's stale
+  // initial version, since `setView` replaces the whole page's view after every save.
+  it("two different sections saving back-to-back: the second save sends the version the first one returned", async () => {
+    const calls: { url: string; method?: string; body?: unknown }[] = [];
+    const initial = releaseView({ version: 1, type: "release", ministries: ["health"], leadMinistryKey: "health", sectors: [] });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        const body = init?.body ? JSON.parse(init.body as string) : undefined;
+        calls.push({ url, method: init?.method, body });
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+        if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+        if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+        if (url === "/nrms/api/categories") {
+          return jsonResponse(200, { ministries: [{ key: "health", name: "Health", abbreviation: "HLTH" }], sectors: [{ key: "sector1", name: "Sector One" }], themes: [], tags: [] });
+        }
+        if (init?.method === "PUT" && url.endsWith("/categories")) return jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] }));
+        if (init?.method === "PUT" && url.endsWith("/settings")) return jsonResponse(200, releaseView({ ...initial, version: 3 }));
+        if (/\/nrms\/api\/releases\/[^/]+$/.test(url) && init?.method === "GET") return jsonResponse(200, initial);
+        throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+      }),
+    );
+    const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: [`/releases/${initial.id}`] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    const user = userEvent.setup();
+
+    await screen.findByRole("heading", { name: "Categories" });
+    await user.click(screen.getByLabelText("Sector One"));
+    await user.click(screen.getByRole("button", { name: "Save categories" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url.endsWith("/categories"))).toBe(true));
+
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url.endsWith("/settings"))).toBe(true));
+
+    const categoriesPut = calls.find((c) => c.method === "PUT" && c.url.endsWith("/categories"));
+    const settingsPut = calls.find((c) => c.method === "PUT" && c.url.endsWith("/settings"));
+    expect((categoriesPut?.body as { version: number }).version).toBe(1);
+    expect((settingsPut?.body as { version: number }).version).toBe(2); // the version /categories returned, not the stale 1
+  });
+
+  // Fix round 1, finding 2: the unsaved-changes dialog is the same Modal/AlertDialog
+  // composition as the delete dialog — a real modal, Escape-dismissable, not a bare div.
+  it("the unsaved-changes dialog is a real dialog that Escape dismisses without losing the block, and Leave proceeds", async () => {
+    stubFetch({ roles: ["NRMS.Editor"] });
+    const router = createMemoryRouter(
+      [
+        { path: "/releases/:id", element: <ReleaseEditorPage /> },
+        { path: "/releases/drafts", element: <p>Drafts list</p> },
+      ],
+      { initialEntries: ["/releases/11111111-1111-1111-1111-111111111111"] },
+    );
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("Location"), "V");
+
+    router.navigate("/releases/drafts");
+    expect(await screen.findByRole("dialog")).toHaveTextContent(/unsaved changes/i);
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/releases/11111111-1111-1111-1111-111111111111"); // Escape, like Stay, cancels the navigation
+
+    router.navigate("/releases/drafts");
+    await screen.findByRole("dialog");
+    await user.click(screen.getByRole("button", { name: "Leave" }));
+    await waitFor(() => expect(router.state.location.pathname).toBe("/releases/drafts"));
   });
 });

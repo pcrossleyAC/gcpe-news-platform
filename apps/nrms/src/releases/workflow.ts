@@ -1,6 +1,7 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { indexKeysFor } from "@gcpe/events";
+import { wallClockToInstant } from "@gcpe/config";
 import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
 import { flickrJobs, governmentTerms, newsReleases } from "../db/schema";
 import { ministryAbbreviation } from "../taxonomy";
@@ -19,6 +20,18 @@ export interface WorkflowDeps {
 const PAST_LIMIT_MS = 5 * 60_000;
 /** A live release in one of these can be taken down (a failed correction, or one re-scheduled, is still live). */
 const UNPUBLISHABLE_STATUSES = new Set(["published", "publishing", "failed", "scheduled"]);
+
+/**
+ * `s` ("YYYY-MM-DDTHH:mm", `scheduleSchema`'s `publishAtLocal` — no offset, already validated
+ * by that schema) as a Date whose *UTC* fields hold those wall-clock values, exactly the input
+ * {@link wallClockToInstant} expects.
+ */
+function parseLocalDateTime(s: string): Date {
+  const [datePart, timePart] = s.split("T");
+  const [year, month, day] = datePart!.split("-").map(Number);
+  const [hour, minute] = timePart!.split(":").map(Number);
+  return new Date(Date.UTC(year!, month! - 1, day!, hour!, minute!, 0, 0));
+}
 
 /** "January 15, 2030 at 10:30 a.m." in BC time. */
 export function formatBcDateTime(at: Date, timeZone: string): string {
@@ -116,7 +129,10 @@ export async function schedule(db: Db, id: string, input: ScheduleInput, actor: 
         publishAt = clock.minute;
         immediate = true;
       } else {
-        const t = new Date(input.publishAt);
+        // Fix round 1, finding 3: `publishAtLocal` (a BC wall-clock time, no offset) is
+        // converted here, with the *server's* tzdata — never the browser's, which may be
+        // stale. `scheduleSchema` guarantees exactly one of the two is present.
+        const t = input.publishAt ? new Date(input.publishAt) : wallClockToInstant(parseLocalDateTime(input.publishAtLocal!), deps.timeZone);
         if (t.getTime() < clock.now.getTime() - PAST_LIMIT_MS) throw new ReleaseRuleError(["The publish time is more than 5 minutes in the past."]);
         immediate = t.getTime() <= clock.now.getTime();
         publishAt = immediate ? clock.minute : t;

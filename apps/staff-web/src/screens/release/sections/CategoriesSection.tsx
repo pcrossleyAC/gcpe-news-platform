@@ -2,8 +2,9 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, Form, InlineAlert } from "@bcgov/design-system-react-components";
 import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
-import { useReleaseSection } from "../useReleaseSection";
+import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty } from "../useUnsavedChanges";
+import type { Categories, Term } from "../categories";
 import { FeatureSwitches, type FeaturePlace } from "./FeatureSwitches";
 
 export interface CategoriesSectionProps {
@@ -12,16 +13,6 @@ export interface CategoriesSectionProps {
   readOnly: boolean;
 }
 
-interface Term {
-  key: string;
-  name: string;
-}
-interface Categories {
-  ministries: (Term & { abbreviation: string })[];
-  sectors: Term[];
-  themes: Term[];
-  tags: Term[];
-}
 type CategoryKind = "ministries" | "sectors" | "themes" | "tags";
 
 interface FormState {
@@ -37,7 +28,6 @@ function fromView(view: ReleaseView): FormState {
 }
 
 const EMPTY_CATEGORIES: Categories = { ministries: [], sectors: [], themes: [], tags: [] };
-const RELOAD_MESSAGE = "Someone else changed this — reload to see their changes.";
 const nameOf = (list: Term[], key: string): string => list.find((t) => t.key === key)?.name ?? key;
 
 /**

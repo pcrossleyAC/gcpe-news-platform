@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
+import { SessionProvider } from "../../session/SessionContext";
 import { NewReleaseScreen } from "./NewReleaseScreen";
 
 const IMG_ID = "11111111-1111-1111-1111-111111111111";
@@ -11,13 +12,21 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-function stubFetch(onPost?: (body: unknown) => Response) {
+interface StubOptions {
+  roles?: string[];
+  onPost?: (body: unknown) => Response;
+}
+
+function stubFetch({ roles = ["NRMS.Editor"], onPost }: StubOptions = {}) {
   const calls: { url: string; body?: unknown }[] = [];
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
       calls.push({ url, body });
+      if (url === "/core/auth/session") {
+        return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
+      }
       if (url === "/nrms/api/page-types") {
         return jsonResponse(200, [
           { pageTitle: "News Release", languageId: 4105, releaseType: "release", sortOrder: 0, layout: "formal", pageImageId: IMG_ID },
@@ -49,12 +58,15 @@ function stubFetch(onPost?: (body: unknown) => Response) {
 
 function renderScreen() {
   return render(
-    <MemoryRouter initialEntries={["/releases/new"]}>
-      <Routes>
-        <Route path="/releases/new" element={<NewReleaseScreen />} />
-        <Route path="/releases/:id" element={<p>Editor page</p>} />
-      </Routes>
-    </MemoryRouter>,
+    <SessionProvider>
+      <MemoryRouter initialEntries={["/releases/new"]}>
+        <Routes>
+          <Route path="/releases/new" element={<NewReleaseScreen />} />
+          <Route path="/releases/drafts" element={<p>Drafts list</p>} />
+          <Route path="/releases/:id" element={<p>Editor page</p>} />
+        </Routes>
+      </MemoryRouter>
+    </SessionProvider>,
   );
 }
 
@@ -124,7 +136,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
 
   it("on success, POSTs the release and navigates to its editor", async () => {
     const created = releaseView({ id: "99999999-9999-9999-9999-999999999999" });
-    stubFetch(() => jsonResponse(201, created));
+    stubFetch({ onPost: () => jsonResponse(201, created) });
     renderScreen();
     await screen.findByText("Legislature");
     const user = userEvent.setup();
@@ -137,7 +149,7 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
   });
 
   it("a server 422 maps its problems onto the ministries field", async () => {
-    stubFetch(() => jsonResponse(422, { error: "bad", problems: ["Choose at least one ministry."] }));
+    stubFetch({ onPost: () => jsonResponse(422, { error: "bad", problems: ["Choose at least one ministry."] }) });
     renderScreen();
     await screen.findByText("Legislature");
     const user = userEvent.setup();
@@ -147,5 +159,30 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
 
     const alerts = await screen.findAllByRole("alert");
     expect(alerts.some((a) => /choose at least one ministry/i.test(a.textContent ?? ""))).toBe(true);
+  });
+
+  // Fix round 1, finding 1: only NRMS.Editor sees the form at all.
+  it("a Viewer gets a permission message instead of the form, with a link back", async () => {
+    stubFetch({ roles: ["NRMS.Viewer"] });
+    renderScreen();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/don.t have permission/i);
+    expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("link"));
+    expect(await screen.findByText("Drafts list")).toBeInTheDocument();
+  });
+
+  it("a Site Editor (no NRMS.Editor) also gets the permission message, not the form", async () => {
+    stubFetch({ roles: ["NRMS.SiteEditor"] });
+    renderScreen();
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(/don.t have permission/i);
+    expect(screen.queryByLabelText("Type")).not.toBeInTheDocument();
+  });
+
+  it("an Editor still sees the real form (no permission message)", async () => {
+    stubFetch({ roles: ["NRMS.Editor"] });
+    renderScreen();
+    expect(await screen.findByLabelText("Type")).toBeInTheDocument();
+    expect(screen.queryByText(/don.t have permission/i)).not.toBeInTheDocument();
   });
 });

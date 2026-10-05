@@ -94,6 +94,15 @@ describe("workflow", () => {
     expect(log.rows.map((r) => r.text)).toEqual(expect.arrayContaining(["Scheduled for Immediate Release", "Cancelled Release", "Scheduled for Release on January 15, 2030 at 10:30 a.m."]));
   });
 
+  // Fix round 1 (3f Task 3), finding 3: the server does the DST-aware conversion for
+  // `publishAtLocal` with its own tzdata — a stale browser can no longer get this wrong.
+  it("schedule accepts publishAtLocal (BC wall-clock, no offset) and converts it with the server's own tzdata", async () => {
+    const v = await createRelease(db(), sampleCreate, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    const future = await schedule(db(), v.id, { version: a.version, publishAtLocal: "2030-06-15T10:30" }, editor, deps);
+    expect(future.publishAt).toBe("2030-06-15T17:30:00.000Z"); // 10:30 PDT (UTC-7) -> 17:30Z
+  });
+
   it("schedule refuses incomplete releases and caches the subscriber count", async () => {
     const v = await createRelease(db(), { ...sampleCreate, sectors: [] }, editor);
     const a = await approve(db(), v.id, v.version, editor, deps);

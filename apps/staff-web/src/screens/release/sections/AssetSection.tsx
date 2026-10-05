@@ -2,7 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { assetUrlProblem, typeRules, TYPE_LABEL, type AssetStatus, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
-import { useReleaseSection } from "../useReleaseSection";
+import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty } from "../useUnsavedChanges";
 
 export interface AssetSectionProps {
@@ -34,7 +34,6 @@ function statusMessage(status: AssetStatus): string {
   }
 }
 
-const RELOAD_MESSAGE = "Someone else changed this — reload to see their changes.";
 
 /** Spec's "Media asset" section (`PUT .../asset`): the asset URL (validated client-side with
  * the shared {@link assetUrlProblem} rule, the same one the server enforces), alt text, and the

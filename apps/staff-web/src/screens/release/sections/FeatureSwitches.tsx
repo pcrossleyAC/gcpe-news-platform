@@ -1,6 +1,6 @@
 import { Switch } from "@bcgov/design-system-react-components";
 import { FEATURE_SLOTS, type FeatureKind, type ReleaseView } from "@gcpe/nrms-contract";
-import { useReleaseSection } from "../useReleaseSection";
+import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 
 export interface FeaturePlace {
   kind: FeatureKind;
@@ -40,7 +40,7 @@ export function FeatureSwitches({ view, setView, places, readOnly }: FeatureSwit
     <div className="gcpe-release-editor__features">
       <h3>Top / Feature</h3>
       {!readOnly && view.status !== "published" && <p>Feature switches are only available once this release is published.</p>}
-      {section.conflict && <p role="alert">Someone else changed this — reload to see their changes.</p>}
+      {section.conflict && <p role="alert">{RELOAD_MESSAGE}</p>}
       {section.error && <p role="alert">{section.error}</p>}
 
       {places.map((place) => (

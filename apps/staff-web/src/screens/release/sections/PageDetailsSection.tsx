@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Button, Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { typeRules, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
-import { useReleaseSection } from "../useReleaseSection";
+import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import { releaseLanguageOf } from "../viewHelpers";
 
@@ -35,7 +35,6 @@ function fromView(view: ReleaseView): FormState {
   };
 }
 
-const RELOAD_MESSAGE = "Someone else changed this — reload to see their changes.";
 
 /** Spec's "Page details" section (`PUT .../meta`): the URL key/slug (editable only for Story/
  * Factsheet, and only while still a draft or approved), redirect URL, location, English summary,
