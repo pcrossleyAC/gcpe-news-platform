@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Tx } from "@gcpe/db-kit";
 import type { EventEnvelope } from "@gcpe/events";
-import { createRebuildHandler, enqueueSiteWrite, resyncPostPages, tryHome } from "./rebuild";
+import { createRebuildHandler, enqueueSiteWrite, RENDER_CHROME_VERSION, resyncPostPages, tryHome } from "./rebuild";
 import type { NewsApiClient } from "./news-api-client";
 import type { SiteStorage } from "./storage";
 import type { PostDto } from "./render";
@@ -331,7 +331,25 @@ describe("resyncPostPages", () => {
     const storage = memoryStorage();
     const newsApi: NewsApiClient = { getPost: vi.fn(async () => post), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
     await resyncPostPages({ newsApi, storage, site }, { granvilleOn: false, test: false }, null);
-    expect(storage.files.get(".site-state.json")).toBe(JSON.stringify({ granvilleOn: false, test: false }));
+    expect(storage.files.get(".site-state.json")).toBe(JSON.stringify({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl }));
+  });
+
+  // boxs.ca: pages written before links carried the /site prefix must be re-rendered on the
+  // next startup even though granville/test haven't changed.
+  it("re-renders when the marker predates the current chrome version, or names another base URL; not when it matches", async () => {
+    for (const [marker, expectRender] of [
+      [{ granvilleOn: false, test: false }, true],
+      [{ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: "https://boxs.ca/site" }, true],
+      [{ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl }, false],
+    ] as const) {
+      const storage = memoryStorage();
+      storage.files.set(".site-state.json", JSON.stringify(marker));
+      storage.files.set("releases/K1/index.html", "<p>stale</p>");
+      const newsApi: NewsApiClient = { getPost: vi.fn(async (key: string) => ({ ...post, key })), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+      await resyncPostPages({ newsApi, storage, site }, { granvilleOn: false, test: false }, null);
+      expect(newsApi.getPost).toHaveBeenCalledTimes(expectRender ? 1 : 0);
+      expect(storage.files.get("releases/K1/index.html") === "<p>stale</p>").toBe(!expectRender);
+    }
   });
 });
 
@@ -394,7 +412,7 @@ describe("enqueueSiteWrite / resync serialisation", () => {
     expect(order).toEqual(["start-home-1(ON, gated)", "end-home-1(ON)", "home-2(OFF)"]);
     expect(storage.files.get("releases/K1/index.html")).not.toContain("blue-bridge-banner");
     expect(storage.files.get("index.html")).not.toContain("blue-bridge-banner");
-    expect(JSON.parse(storage.files.get(".site-state.json")!)).toEqual({ granvilleOn: false, test: false });
+    expect(JSON.parse(storage.files.get(".site-state.json")!)).toEqual({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
   });
 
   it("a rejected turn doesn't wedge the queue — a concurrently-enqueued later turn still runs", async () => {

@@ -6,7 +6,7 @@ import type { Tx } from "@gcpe/db-kit";
 import type { EventEnvelope } from "@gcpe/events";
 import type { NewsApiClient } from "./news-api-client";
 import type { PostDto } from "./render";
-import { createRebuildHandler } from "./rebuild";
+import { createRebuildHandler, RENDER_CHROME_VERSION } from "./rebuild";
 import { selfHeal } from "./self-heal";
 import { fsStorage } from "./storage";
 
@@ -179,7 +179,7 @@ describe("selfHeal", () => {
     const home = await readFile(join(root, "index.html"), "utf8");
     expect(home).toContain('<meta name="robots" content="noindex, nofollow">');
     expect(home).not.toContain("home, pre-fix");
-    expect(await storage.read(".site-state.json")).toBe(JSON.stringify({ granvilleOn: false, test: true }));
+    expect(await storage.read(".site-state.json")).toBe(JSON.stringify({ granvilleOn: false, test: true, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl }));
   });
 
   it("startup resync is tolerant: a home() failure is logged and existing pages are left untouched", async () => {
@@ -257,6 +257,6 @@ describe("selfHeal", () => {
 
     expect(order).toEqual(["start-selfHeal-home(ON, gated)", "end-selfHeal-home(ON)", "rebuild-home(OFF)"]);
     expect(await readFile(join(root, "releases", "K1", "index.html"), "utf8")).not.toContain("blue-bridge-banner");
-    expect(JSON.parse((await storage.read(".site-state.json"))!)).toEqual({ granvilleOn: false, test: false });
+    expect(JSON.parse((await storage.read(".site-state.json"))!)).toEqual({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
   });
 });

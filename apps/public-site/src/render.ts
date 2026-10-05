@@ -34,6 +34,14 @@ export interface PageOptions {
   banner?: string | null;
 }
 
+/** The base URL's path with no trailing slash — "" at a root base ("https://news.gov.bc.ca"),
+ * "/site" on boxs.ca ("https://boxs.ca/site"). Every in-site link starts with it. */
+function basePath(site: SiteInfo): string {
+  return new URL(site.baseUrl).pathname.replace(/\/+$/, "");
+}
+
+const releasePath = (site: SiteInfo, key: string) => `${basePath(site)}/releases/${encodeURIComponent(key)}`;
+
 function page(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}): string {
   const robots = opts.test ? `\n<meta name="robots" content="noindex, nofollow">` : "";
   const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
@@ -43,10 +51,10 @@ function page(title: string, site: SiteInfo, canonicalPath: string, body: string
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)} | ${e(site.name)}</title>
-<link rel="canonical" href="${e(site.baseUrl + canonicalPath)}">${robots}
+<link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}
 </head>
 <body>${banner}
-<header><a href="/">${e(site.name)}</a></header>
+<header><a href="${e(basePath(site))}/">${e(site.name)}</a></header>
 <main>
 ${body}
 </main>
@@ -68,12 +76,12 @@ ${d?.subheadline ? `<h2>${e(d.subheadline)}</h2>` : ""}
 ${d?.detailsHtml ?? ""}
 ${contacts ? `<section><h2>Contacts</h2><ul>\n${contacts}\n</ul></section>` : ""}
 </article>`;
-  return page(headline, site, `/releases/${encodeURIComponent(p.key)}`, body, opts);
+  return page(headline, site, releasePath(site, p.key), body, opts);
 }
 
 export function renderHomePage(posts: PostDto[], site: SiteInfo, opts: PageOptions = {}): string {
   const items = posts
-    .map((p) => `<li><a href="/releases/${encodeURIComponent(p.key)}">${e(english(p)?.headline ?? p.key)}</a> <time datetime="${e(p.publishDate)}">${e(p.publishDate)}</time></li>`)
+    .map((p) => `<li><a href="${e(releasePath(site, p.key))}">${e(english(p)?.headline ?? p.key)}</a> <time datetime="${e(p.publishDate)}">${e(p.publishDate)}</time></li>`)
     .join("\n");
-  return page("Home", site, "/", `<h1>Latest news</h1>\n<ul>\n${items}\n</ul>`, opts);
+  return page("Home", site, `${basePath(site)}/`, `<h1>Latest news</h1>\n<ul>\n${items}\n</ul>`, opts);
 }

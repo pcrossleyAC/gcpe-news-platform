@@ -62,4 +62,23 @@ describe("render", () => {
     expect(renderPostPage(post, site)).not.toContain("blue-bridge-banner");
     expect(renderHomePage([post], site, { banner: null })).not.toContain("blue-bridge-banner");
   });
+
+  // boxs.ca: the site is served under /site (PUBLIC_SITE_URL=https://boxs.ca/site), so a bare
+  // "/releases/<key>" link 404'd. Links carry the base URL's path; at a root base they don't change.
+  it("links carry the base URL's path prefix, with or without a trailing slash", () => {
+    for (const baseUrl of ["https://boxs.ca/site", "https://boxs.ca/site/"]) {
+      const sub = { name: "BC Gov News", baseUrl };
+      const home = renderHomePage([post], sub);
+      expect(home).toContain('href="/site/releases/2026HLTH0001-000001"');
+      expect(home).toContain('<header><a href="/site/">');
+      expect(home).toContain('<link rel="canonical" href="https://boxs.ca/site/">');
+      const page = renderPostPage(post, sub);
+      expect(page).toContain('<header><a href="/site/">');
+      expect(page).toContain('<link rel="canonical" href="https://boxs.ca/site/releases/2026HLTH0001-000001">');
+    }
+  });
+  it("a root base URL keeps root links", () => {
+    expect(renderHomePage([post], { name: "BC Gov News", baseUrl: "https://news.example/" })).toContain('<header><a href="/">');
+    expect(renderPostPage(post, site)).toContain('<header><a href="/">');
+  });
 });

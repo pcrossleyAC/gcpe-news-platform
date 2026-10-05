@@ -35,13 +35,33 @@ export interface SiteRenderState {
  * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
 export const SITE_STATE_PATH = ".site-state.json";
 
-async function readSiteState(storage: SiteStorage): Promise<SiteRenderState | null> {
+/**
+ * Bump whenever render.ts changes what every page bakes in (links, header, ...), so the next
+ * startup self-heal re-renders the pages already on disk. 2: in-site links carry the base URL's
+ * path (boxs.ca serves the site under /site; "/releases/<key>" links 404'd there).
+ */
+export const RENDER_CHROME_VERSION = 2;
+
+/** What the marker file holds: the render state plus what else every page bakes in — the
+ * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
+ * re-render too). A marker written before these existed reads as chrome 1, no base URL. */
+interface SiteStateMarker extends SiteRenderState {
+  chrome: number;
+  baseUrl: string | null;
+}
+
+async function readSiteState(storage: SiteStorage): Promise<SiteStateMarker | null> {
   const raw = await storage.read(SITE_STATE_PATH);
   if (raw === null) return null;
   try {
-    const parsed = JSON.parse(raw) as Partial<SiteRenderState>;
+    const parsed = JSON.parse(raw) as Partial<SiteStateMarker>;
     if (typeof parsed.granvilleOn === "boolean" && typeof parsed.test === "boolean") {
-      return { granvilleOn: parsed.granvilleOn, test: parsed.test };
+      return {
+        granvilleOn: parsed.granvilleOn,
+        test: parsed.test,
+        chrome: typeof parsed.chrome === "number" ? parsed.chrome : 1,
+        baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : null,
+      };
     }
   } catch {
     // Malformed/foreign content — treated the same as "no marker" below.
@@ -49,8 +69,9 @@ async function readSiteState(storage: SiteStorage): Promise<SiteRenderState | nu
   return null;
 }
 
-async function writeSiteState(storage: SiteStorage, state: SiteRenderState): Promise<void> {
-  await storage.write(SITE_STATE_PATH, JSON.stringify(state));
+async function writeSiteState(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<void> {
+  const marker: SiteStateMarker = { granvilleOn: state.granvilleOn, test: state.test, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl };
+  await storage.write(SITE_STATE_PATH, JSON.stringify(marker));
 }
 
 /** `granville` and `test` together, as both the render state (for the marker) and the banner
@@ -97,7 +118,15 @@ export async function renderExistingPost(newsApi: NewsApiClient, storage: SiteSt
  */
 export async function resyncPostPages(deps: { newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo }, state: SiteRenderState, banner: string | null): Promise<void> {
   const previous = await readSiteState(deps.storage);
-  if (previous && previous.granvilleOn === state.granvilleOn && previous.test === state.test) return;
+  if (
+    previous &&
+    previous.granvilleOn === state.granvilleOn &&
+    previous.test === state.test &&
+    previous.chrome === RENDER_CHROME_VERSION &&
+    previous.baseUrl === deps.site.baseUrl
+  ) {
+    return;
+  }
 
   const opts: PageOptions = { test: state.test, banner };
   // Minor 1 (fix round 3): one post whose getPost keeps failing (or whose write fails) must not
@@ -122,7 +151,7 @@ export async function resyncPostPages(deps: { newsApi: NewsApiClient; storage: S
   if (await deps.storage.exists("index.html")) {
     await deps.storage.write("index.html", renderHomePage(await deps.newsApi.latestHome(HOME_COUNT), deps.site, opts));
   }
-  await writeSiteState(deps.storage, state);
+  await writeSiteState(deps.storage, state, deps.site);
 }
 
 /**
