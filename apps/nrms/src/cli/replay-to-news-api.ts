@@ -13,6 +13,8 @@
  * never rolls back the rest of its batch. Failures are collected (key + a short, redacted
  * reason -- never the raw driver message's `params:` line) and the run keeps going.
  */
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { and, asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import { parseEnv } from "@gcpe/config";
@@ -121,6 +123,7 @@ async function main(): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// M1: see release-holds.ts's matching guard for why this isn't the naive `file://${process.argv[1]}` comparison.
+if (pathToFileURL(realpathSync(process.argv[1]!)).href === import.meta.url) {
   await main();
 }

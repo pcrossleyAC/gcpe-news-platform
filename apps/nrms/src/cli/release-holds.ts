@@ -4,6 +4,8 @@
  * NRMS's publisher can take over. Without `--confirm` it only reports what it would do -- the
  * exact dry-run-by-default / `--confirm`-to-act shape every cutover command in this phase uses.
  */
+import { realpathSync } from "node:fs";
+import { pathToFileURL } from "node:url";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { parseEnv } from "@gcpe/config";
@@ -91,6 +93,10 @@ async function main(): Promise<void> {
 
 // Runs only when this file is the process's entry point (e.g. `npm run nrms:release-holds`) --
 // never when it's imported for its exported functions, such as from release-holds.test.ts.
-if (import.meta.url === `file://${process.argv[1]}`) {
+// M1: `file://${process.argv[1]}` never percent-encodes the path, so it silently never matched
+// (main() never ran, no error, exit 0) from a path containing a space or other character
+// import.meta.url itself encodes -- pathToFileURL does the same encoding import.meta.url has
+// already applied, and realpathSync resolves a symlinked invocation to the same real file.
+if (pathToFileURL(realpathSync(process.argv[1]!)).href === import.meta.url) {
   await main();
 }
