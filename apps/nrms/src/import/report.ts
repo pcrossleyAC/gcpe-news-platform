@@ -26,17 +26,24 @@ interface Warning {
   problems: string[];
 }
 
+interface SkippedStage {
+  stage: string;
+  reason: string;
+}
+
 export interface ImportReportJSON {
   balanced: boolean;
   tables: Record<string, TableCounts>;
   skipped: SkippedRow[];
   warnings: Warning[];
+  skippedStages: SkippedStage[];
 }
 
 export class ImportReport {
   private readonly tables = new Map<string, TableCounts>();
   private readonly skipped: SkippedRow[] = [];
   private readonly warnings: Warning[] = [];
+  private readonly skippedStages: SkippedStage[] = [];
 
   private row(table: string): TableCounts {
     let row = this.tables.get(table);
@@ -63,6 +70,16 @@ export class ImportReport {
     this.warnings.push({ legacyId, key, problems });
   }
 
+  /**
+   * I2: records an entire stage skipped outright (e.g. the website import, when nothing changed
+   * or an NRMS edit blocks it) -- distinct from `skip()`: there's no legacy/imported row count to
+   * balance for a whole stage, so this never touches `tables`/`balanced()`, just a note a human
+   * reading the report (or the CLI's own stdout) needs to see instead of a plain success line.
+   */
+  skipStage(stage: string, reason: string): void {
+    this.skippedStages.push({ stage, reason });
+  }
+
   /** True when, for every table, legacy = imported + skipped. */
   balanced(): boolean {
     for (const row of this.tables.values()) {
@@ -77,6 +94,7 @@ export class ImportReport {
       tables: Object.fromEntries([...this.tables.entries()].sort(([a], [b]) => a.localeCompare(b))),
       skipped: [...this.skipped],
       warnings: [...this.warnings],
+      skippedStages: [...this.skippedStages],
     };
   }
 
@@ -84,6 +102,10 @@ export class ImportReport {
     const lines: string[] = [];
     const json = this.toJSON();
     lines.push(`Import report — ${json.balanced ? "balanced" : "NOT BALANCED"}`);
+    if (json.skippedStages.length > 0) {
+      lines.push("Skipped stages:");
+      for (const s of json.skippedStages) lines.push(`  [${s.stage}] ${s.reason}`);
+    }
     for (const [table, c] of Object.entries(json.tables)) {
       lines.push(`  ${table}: legacy=${c.legacy} imported=${c.imported} skipped=${c.skipped}`);
     }

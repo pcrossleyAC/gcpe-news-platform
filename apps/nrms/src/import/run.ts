@@ -116,8 +116,16 @@ export async function runImport(db: Db, coreDb: Db, source: LegacySource, opts: 
       log("[nrms:import] releases imported");
 
       stage = "website";
-      await importWebsite(db, source, report, { force: opts.force });
-      log("[nrms:import] website data imported");
+      const websiteResult = await importWebsite(db, source, report, { force: opts.force });
+      if (websiteResult.skipped) {
+        // I2: a skipped website import used to be invisible -- recorded in the report (so
+        // toText/toJSON show it) and logged with its reason instead of the generic success line.
+        const reason = websiteResult.reason ?? "skipped";
+        report.skipStage("website", reason);
+        log(`[nrms:import] website: ${reason}`);
+      } else {
+        log("[nrms:import] website data imported");
+      }
 
       return report;
     } catch (e) {

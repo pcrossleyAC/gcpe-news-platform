@@ -9,7 +9,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createFakeSource, type LegacySource } from "@gcpe/legacy-import";
 import { createCoreTestDb } from "../../../core/test/helpers";
 import { createNrmsTestDb } from "../../test/helpers";
-import { newsReleases } from "../db/schema";
+import { newsReleases, siteLog } from "../db/schema";
 import { ImportAlreadyRunningError, IMPORT_LOCK, runImport, runImportCli } from "./run";
 
 const cliPath = fileURLToPath(new URL("./cli.ts", import.meta.url));
@@ -123,6 +123,23 @@ describe("runImport (orchestrator)", () => {
     expect(publishedAgain[0]!.version).toBe(published[0]!.version); // no version bump
     const coreUsersAgain = (await coreTdb.pool.query("SELECT count(*)::int AS n FROM users WHERE lower(email) = 'jane.doe@gov.bc.ca'")).rows;
     expect(coreUsersAgain[0].n).toBe(1); // not duplicated
+  });
+
+  it("I2: a skipped website import is recorded in the report and not reported as imported in the log", async () => {
+    // A site editor touches something on the website side directly in NRMS (any non-system
+    // site_log entry blocks the next website import -- website.ts's websiteEditedSinceImport).
+    await tdb.db.insert(siteLog).values({ actorId: "a-site-editor", actorName: "A Site Editor", area: "carousel", text: "Edited a carousel directly in NRMS" });
+
+    const messages: string[] = [];
+    const source = fullFixtureSource();
+    const report = await runImport(tdb.db, coreTdb.db, source, { force: false, timeZone: TIME_ZONE, log: (m) => messages.push(m) });
+
+    const json = report.toJSON();
+    expect(json.skippedStages).toEqual([{ stage: "website", reason: "website edited in NRMS since the last import" }]);
+
+    const joined = messages.join("\n");
+    expect(joined).not.toContain("website data imported");
+    expect(joined).toContain("website edited in NRMS since the last import");
   });
 
   it("a stage failure stops the run but still throws with the partial report attached", async () => {
