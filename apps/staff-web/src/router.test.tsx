@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createMemoryRouter, RouterProvider } from "react-router";
+import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import { SessionProvider } from "./session/SessionContext";
 import { routes } from "./router";
 
@@ -71,5 +72,38 @@ describe("router (basename /hub)", () => {
     // The basename is prefixed onto every rendered href too, including a row's link.
     const link = await screen.findByRole("link", { name: "A headline" });
     expect(link).toHaveAttribute("href", "/hub/releases/22222222-2222-2222-2222-222222222222");
+  });
+
+  it("/hub/releases/new renders the New release screen, and /hub/releases/:id renders the real editor (Task 3), not a placeholder", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") {
+          return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        }
+        if (url === "/nrms/api/config") {
+          return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+        }
+        if (url === "/nrms/api/page-types" || url === "/nrms/api/page-images" || url === "/nrms/api/media-lists") return jsonResponse(200, []);
+        if (url === "/nrms/api/categories") return jsonResponse(200, { ministries: [], sectors: [], themes: [], tags: [] });
+        if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+        if (url === "/nrms/api/releases/33333333-3333-3333-3333-333333333333") {
+          return jsonResponse(200, releaseView({ id: "33333333-3333-3333-3333-333333333333" }));
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    const router = createMemoryRouter(routes, { basename: "/hub", initialEntries: ["/hub/releases/new"] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: "New release" })).toBeInTheDocument();
+
+    router.navigate("/releases/33333333-3333-3333-3333-333333333333");
+    expect(await screen.findByRole("heading", { name: "Actions" })).toBeInTheDocument();
+    expect(screen.queryByText(/editor isn.t built yet/i)).not.toBeInTheDocument();
   });
 });

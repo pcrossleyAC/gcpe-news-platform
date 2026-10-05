@@ -161,3 +161,69 @@ body {
   gap: 1rem;
   margin-top: 1rem;
 }
+
+/* Task 3 (staff-web): new release and the release editor. */
+
+.gcpe-release-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 48rem;
+}
+
+.gcpe-release-editor__header,
+.gcpe-release-editor__actions,
+.gcpe-release-editor__settings,
+.gcpe-release-editor__categories,
+.gcpe-release-editor__asset,
+.gcpe-release-editor__page-details {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.gcpe-release-editor__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem;
+}
+
+.gcpe-release-editor__checklist ul,
+.gcpe-release-editor__problems {
+  margin: 0.25rem 0 0.75rem;
+}
+
+.gcpe-release-editor__action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.gcpe-release-editor__scheduler,
+.gcpe-release-editor__delete-dialog,
+.gcpe-release-editor__unsaved-dialog {
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.gcpe-schedule-picker {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  border: 0;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+
+.gcpe-release-editor__feature-place {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border: 0;
+  padding: 0.25rem 0;
+  margin: 0;
+}

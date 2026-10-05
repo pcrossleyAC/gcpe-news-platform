@@ -73,8 +73,8 @@ function stubFetch({ gotoHit = null, gotoCalls = [], searchCalls = [], searchRes
   );
 }
 
-// Stands in for the real ReleasePlaceholder route — just enough to prove a goto hit navigated
-// to the right id, without pulling that component into this test.
+// Stands in for the real release editor route (apps/staff-web/src/screens/release/ReleaseEditorPage.tsx)
+// — just enough to prove a goto hit navigated to the right id, without pulling that component into this test.
 function LandedOnRelease(): React.JSX.Element {
   const { id } = useParams<{ id: string }>();
   return <p>landed on release {id}</p>;
