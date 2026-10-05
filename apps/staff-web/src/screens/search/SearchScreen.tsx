@@ -71,6 +71,21 @@ export function SearchScreen(): React.JSX.Element {
     };
   }, [q, ministry, sector, page]);
 
+  // Fix round 1, finding 3: if `page` no longer has any results (the result set shrank —
+  // a filter now matches fewer, or someone deleted releases) but is still in the URL, replace
+  // it with the last page that actually has something, rather than leaving the screen stuck on
+  // an empty page with a nonsensical "Showing" line. A `replace` (not a push) so going back
+  // doesn't land on the same dead page again.
+  useEffect(() => {
+    if (!result || result.total === 0 || result.items.length > 0) return;
+    const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+    if (page > lastPage) {
+      const params = new URLSearchParams(searchParams);
+      params.set("page", String(lastPage));
+      setSearchParams(params, { replace: true });
+    }
+  }, [result, page]);
+
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const typed = qInput.trim();
@@ -85,9 +100,14 @@ export function SearchScreen(): React.JSX.Element {
         navigate(`/releases/${hit.id}`);
         return;
       }
-      setSearchParams({ q: typed });
-    } catch {
-      setError("Search failed.");
+      // Merge into the existing params (fix round 1, finding 2) — a bare `setSearchParams({ q
+      // })` would drop any ministry/sector filter already selected.
+      const params = new URLSearchParams(searchParams);
+      params.set("q", typed);
+      params.delete("page");
+      setSearchParams(params);
+    } catch (caught: unknown) {
+      setError(caught instanceof ApiError ? caught.message : "Search failed.");
     }
   };
 

@@ -52,6 +52,21 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
     };
   }, [folder, type, page]);
 
+  // Fix round 1, finding 3: if the page the URL asks for no longer has any items (the result
+  // set shrank — someone deleted releases, a filter now matches fewer — but `page` itself is
+  // still in the URL), replace it with the last page that actually has something, rather than
+  // leaving the screen stuck showing an empty page with a nonsensical "Showing" line. A
+  // `replace` (not a push) so going back doesn't land on the same dead page again.
+  useEffect(() => {
+    if (!result || result.total === 0 || result.items.length > 0) return;
+    const lastPage = Math.max(1, Math.ceil(result.total / result.pageSize));
+    if (page > lastPage) {
+      const params = new URLSearchParams(searchParams);
+      params.set("page", String(lastPage));
+      setSearchParams(params, { replace: true });
+    }
+  }, [result, page]);
+
   const onTypeChange = (next: string) => {
     const params = new URLSearchParams(searchParams);
     if (next === "all") params.delete("type");

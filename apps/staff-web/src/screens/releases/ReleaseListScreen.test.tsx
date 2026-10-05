@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { createMemoryRouter, MemoryRouter, RouterProvider, Route, Routes } from "react-router";
 import type { ReleaseListItem, ReleasePage } from "@gcpe/nrms-contract";
 import { SessionProvider } from "../../session/SessionContext";
 import { ReleaseListScreen } from "./ReleaseListScreen";
@@ -139,6 +139,44 @@ describe("ReleaseListScreen", () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole("link", { name: "Scheduled" }));
     await waitFor(() => expect(calls.filter((c) => c.startsWith("/nrms/api/releases")).at(-1)).toContain("folder=scheduled"));
+  });
+
+  it("replaces (not pushes) the URL to the last valid page when the current page has no items but total > 0", async () => {
+    // Fix round 1, finding 3: an out-of-range page used to render "Showing 101–30 of 30".
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        if (url === "/core/auth/session") {
+          return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Viewer"] }, expiresAt: new Date().toISOString() });
+        }
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+        if (url.startsWith("/nrms/api/releases")) {
+          const page5 = new URLSearchParams(url.split("?")[1]).get("page") === "5";
+          return jsonResponse(200, page5 ? { items: [], total: 30, page: 5, pageSize: 25 } : { items: [item({ headline: "Page two headline" })], total: 30, page: 2, pageSize: 25 });
+        }
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+
+    const router = createMemoryRouter([{ path: "/releases/drafts", element: <ReleaseListScreen folder="drafts" /> }], {
+      initialEntries: ["/releases/drafts", "/releases/drafts?page=5"],
+      initialIndex: 1,
+    });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+
+    expect(await screen.findByText("Page two headline")).toBeInTheDocument();
+    expect(router.state.location.search).toBe("?page=2");
+
+    // If the correction had pushed a new entry instead of replacing, going back once would
+    // land on the bad "?page=5" state rather than skipping straight past it.
+    router.navigate(-1);
+    await waitFor(() => expect(router.state.location.pathname + router.state.location.search).toBe("/releases/drafts"));
   });
 
   it("has no serious/critical axe violations", async () => {

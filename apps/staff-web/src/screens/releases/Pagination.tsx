@@ -13,8 +13,15 @@ export interface PaginationProps {
 export function Pagination({ page, pageSize, total, onPageChange }: PaginationProps): React.JSX.Element | null {
   if (total === 0) return null;
 
-  const start = (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, total);
+  // Defensive clamp (fix round 1, finding 3): a `page` past the last page — e.g. the result
+  // set shrank after it was fetched — would otherwise show a nonsensical range like "Showing
+  // 101–30 of 30". The screens themselves correct the URL back to the last valid page when
+  // this happens (see ReleaseListScreen/SearchScreen); this is just a second line of defence.
+  const lastPage = Math.max(1, Math.ceil(total / pageSize));
+  const clampedPage = Math.min(Math.max(page, 1), lastPage);
+
+  const start = (clampedPage - 1) * pageSize + 1;
+  const end = Math.min(clampedPage * pageSize, total);
 
   return (
     <nav aria-label="Pagination" className="gcpe-pagination">
@@ -22,10 +29,10 @@ export function Pagination({ page, pageSize, total, onPageChange }: PaginationPr
         Showing {start}–{end} of {total}
       </p>
       <ButtonGroup ariaLabel="Pagination controls">
-        <Button isDisabled={page <= 1} onPress={() => onPageChange(page - 1)}>
+        <Button isDisabled={clampedPage <= 1} onPress={() => onPageChange(clampedPage - 1)}>
           Previous
         </Button>
-        <Button isDisabled={end >= total} onPress={() => onPageChange(page + 1)}>
+        <Button isDisabled={clampedPage >= lastPage} onPress={() => onPageChange(clampedPage + 1)}>
           Next
         </Button>
       </ButtonGroup>

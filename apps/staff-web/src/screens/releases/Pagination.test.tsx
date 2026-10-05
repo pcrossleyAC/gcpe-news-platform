@@ -16,6 +16,15 @@ describe("Pagination", () => {
     expect(screen.getByText("Showing 101–112 of 112")).toBeInTheDocument();
   });
 
+  it("clamps defensively when page is past the last page (fix round 1, finding 3)", () => {
+    // page=5 with pageSize=25 and total=30 has only 2 pages — an unclamped (page-1)*pageSize+1
+    // would show "Showing 101–30 of 30". The screens themselves correct the URL in this case
+    // (see ReleaseListScreen/SearchScreen), but Pagination must never render nonsense either.
+    render(<Pagination page={5} pageSize={25} total={30} onPageChange={vi.fn()} />);
+    expect(screen.getByText("Showing 26–30 of 30")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
+  });
+
   it("disables Previous on page 1 and Next on the last page", () => {
     render(<Pagination page={1} pageSize={25} total={30} onPageChange={vi.fn()} />);
     expect(screen.getByRole("button", { name: "Previous" })).toBeDisabled();

@@ -98,6 +98,13 @@ describe("ReleaseRow", () => {
     expect(screen.queryByText("Approved", { selector: ".gcpe-badge" })).not.toBeInTheDocument();
   });
 
+  it("shows the Approved badge on a failed item too — failed releases are in the Drafts folder", () => {
+    // Fix round 1, finding 1: legacy shows the badge whenever the reference is set, and
+    // FOLDER_STATUSES.drafts (apps/nrms/src/releases/queries.ts) is ["draft","approved","failed"].
+    renderRow({ ...BASE, status: "failed", statusText: "Failed", approved: true });
+    expect(screen.getByText("Approved", { selector: ".gcpe-badge" })).toBeInTheDocument();
+  });
+
   it("shows a Flickr alert badge with the alert text as its accessible description", () => {
     renderRow({ ...BASE, flickrAlert: "The Flickr photo could not be made public." });
     const badge = screen.getByText("Flickr alert");

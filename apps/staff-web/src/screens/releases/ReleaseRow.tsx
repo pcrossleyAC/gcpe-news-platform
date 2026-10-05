@@ -2,6 +2,10 @@ import { Link } from "react-router";
 import { TYPE_LABEL, type ReleaseListItem } from "@gcpe/nrms-contract";
 import { formatWhen } from "../../format/dates";
 
+/** The Drafts folder's statuses (apps/nrms/src/releases/queries.ts's FOLDER_STATUSES.drafts) —
+ * the Approved badge is specific to this folder. */
+const DRAFT_FOLDER_STATUSES: readonly string[] = ["draft", "approved", "failed"];
+
 export interface ReleaseRowProps {
   item: ReleaseListItem;
   /** "Now", for {@link formatWhen}'s relative wording — passed in (not read with `new Date()`
@@ -24,8 +28,9 @@ export function ReleaseRow({ item, now, timeZone }: ReleaseRowProps): React.JSX.
 
   // The Approved badge is specific to the Drafts folder (brief: "'Approved' badge on drafts
   // with a reference") — `approved` itself (reference !== null) stays true after the release
-  // moves on to Scheduled/Published, where it's no longer shown.
-  const showApprovedBadge = item.approved && (item.status === "draft" || item.status === "approved");
+  // moves on to Scheduled/Published, where it's no longer shown. Legacy shows the badge
+  // whenever the reference is set, including on a failed release (fix round 1).
+  const showApprovedBadge = item.approved && DRAFT_FOLDER_STATUSES.includes(item.status);
   const flickrAlertId = item.flickrAlert ? `flickr-alert-${item.id}` : undefined;
 
   return (
