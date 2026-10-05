@@ -16,7 +16,7 @@
  * tables, never through `mutateRelease`/the workflow functions (controller ruling).
  */
 import { createHash } from "node:crypto";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, gt, ne, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { publishProblems, type CategoryKind, type FeatureKind, type ReleaseStatus, type ReleaseType, type ReleaseView } from "@gcpe/nrms-contract";
@@ -32,6 +32,7 @@ import {
   releaseLanguages,
   releaseLog,
   releaseMediaLists,
+  siteLog,
 } from "../db/schema";
 import { SYSTEM_ACTOR } from "../releases/store";
 import {
@@ -535,7 +536,41 @@ async function importOneRelease(db: Db, raw: RawReleaseRow, g: GroupedChildren, 
   });
 }
 
-async function importFeatures(db: Db, source: LegacySource, releaseInfo: Map<string, ReleaseOutcome>, report: ImportReport): Promise<void> {
+/**
+ * I1: the watermark for "the last import", captured at the very start of a run (before this run
+ * writes anything) so it reflects the end of the *previous* run, not this one. `null` on a
+ * first-ever run (no release has been imported yet) — there is nothing prior to protect against.
+ */
+async function lastImportWatermark(db: Db): Promise<Date | null> {
+  const [row] = await db.select({ max: sql<string | Date | null>`max(${newsReleases.importedAt})` }).from(newsReleases);
+  return row?.max ? new Date(row.max) : null;
+}
+
+/**
+ * I1 (controller ruling): `category_features` carries no timestamp of its own, and site_log's
+ * `features` area entries are a single free-text line per edit (setFeature, website/features.ts)
+ * with no structured kind/key/slot columns to tell slots apart. So rather than guess which slot a
+ * log line refers to, any non-system `features` entry after the last import's watermark is
+ * treated as "something was edited in NRMS since" and every slot write is skipped for the whole
+ * run — the safe, honest answer given what the log can actually tell us.
+ */
+async function featuresEditedSinceImport(db: Db, since: Date | null): Promise<boolean> {
+  if (!since) return false;
+  const [row] = await db
+    .select({ id: siteLog.id })
+    .from(siteLog)
+    .where(and(eq(siteLog.area, "features"), gt(siteLog.at, since), ne(siteLog.actorId, SYSTEM_ACTOR.id)))
+    .limit(1);
+  return Boolean(row);
+}
+
+async function importFeatures(
+  db: Db,
+  source: LegacySource,
+  releaseInfo: Map<string, ReleaseOutcome>,
+  report: ImportReport,
+  editedSinceImport: boolean,
+): Promise<void> {
   const catRows = await source.query<RawFeatureRow>(Q_CATEGORY_FEATURES);
   const settingRows = await source.query<RawAppSettingRow>(Q_APP_SETTINGS);
   const settings = new Map(settingRows.map((r) => [r.SettingName, r.SettingValue]));
@@ -564,6 +599,20 @@ async function importFeatures(db: Db, source: LegacySource, releaseInfo: Map<str
 
   for (const slot of slots) {
     if (!slot.topLegacyId && !slot.featureLegacyId) continue;
+    if (editedSinceImport) {
+      // I1: leave this (and every other) slot exactly as NRMS has it — don't even resolve the
+      // legacy release ids, since nothing is being written.
+      const reason = "edited in NRMS since the last import";
+      if (slot.topLegacyId) {
+        report.count("category_features", "legacy");
+        report.skip("category_features", slot.topLegacyId.toLowerCase(), reason);
+      }
+      if (slot.featureLegacyId) {
+        report.count("category_features", "legacy");
+        report.skip("category_features", slot.featureLegacyId.toLowerCase(), reason);
+      }
+      continue;
+    }
     const topReleaseId = slot.topLegacyId ? resolve(slot.topLegacyId, "Top") : null;
     const featureReleaseId = slot.featureLegacyId ? resolve(slot.featureLegacyId, "Feature") : null;
     await db
@@ -615,6 +664,8 @@ async function seedCounters(db: Db, agg: CounterAggregate): Promise<void> {
 
 export async function importReleases(db: Db, source: LegacySource, ctx: ImportReleasesContext): Promise<void> {
   const { report } = ctx;
+  // I1: captured before this run writes anything — see lastImportWatermark's doc comment.
+  const since = await lastImportWatermark(db);
   const years = (await source.query<{ Year: number }>(Q_RELEASE_YEARS)).map((r) => r.Year);
   const releaseInfo = new Map<string, ReleaseOutcome>();
   const agg = newAggregate();
@@ -668,6 +719,7 @@ export async function importReleases(db: Db, source: LegacySource, ctx: ImportRe
     for (let i = 0; i < n; i++) report.skip("NewsReleaseHistory", h.ReleaseId.toLowerCase(), "frozen copies not imported (Q12)");
   }
 
-  await importFeatures(db, source, releaseInfo, report);
+  const editedSinceImport = await featuresEditedSinceImport(db, since);
+  await importFeatures(db, source, releaseInfo, report, editedSinceImport);
   await seedCounters(db, agg);
 }

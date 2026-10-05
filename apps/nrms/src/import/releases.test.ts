@@ -12,6 +12,7 @@ import { loadView } from "../releases/store";
 import { approve } from "../releases/workflow";
 import { publishDue } from "../publisher";
 import { replayToNewsApi } from "../cli/replay-to-news-api";
+import { setFeature } from "../website/features";
 import { importReleases, type ImportReleasesContext } from "./releases";
 import { ImportReport } from "./report";
 
@@ -347,6 +348,34 @@ describe("importReleases — fictional fixture (all statuses, categories, media 
     const [row] = await tdb.db.select().from(newsReleases).where(eq(newsReleases.id, v.id));
     expect(row).toMatchObject({ yearRelease: 21, ministryRelease: 8 });
     expect(approved.key).toBe(`${BC_YEAR}HLTH0008-000021`);
+  });
+
+  it("I1: a Top/Feature slot edited in NRMS since the last import is not reverted by a re-run, and the report lists it", async () => {
+    // Normalise first: earlier tests in this file put R8 through a correction cycle (an edit,
+    // then the publisher's republish), which can leave Home's Feature slot cleared for reasons
+    // unrelated to this fix. A plain re-run against unchanged legacy data restores it from
+    // scratch, giving this test an unambiguous baseline.
+    const baseline = await freshContext();
+    await importReleases(tdb.db, buildFakeSource(fx), baseline);
+    const r8 = await byLegacyId(fx.ids.R8);
+    const [homeBaseline] = await tdb.db.select().from(categoryFeatures).where(and(eq(categoryFeatures.kind, "home"), eq(categoryFeatures.key, "default")));
+    expect(homeBaseline).toMatchObject({ featureReleaseId: r8!.id });
+
+    // A site editor clears Home's Feature slot directly in NRMS (a non-system site_log entry).
+    await setFeature(tdb.db, r8!.id, { kind: "home", key: "default", slot: "feature", on: false }, editor, []);
+    const [homeEdited] = await tdb.db.select().from(categoryFeatures).where(and(eq(categoryFeatures.kind, "home"), eq(categoryFeatures.key, "default")));
+    expect(homeEdited!.featureReleaseId).toBeNull();
+
+    const freshCtx = await freshContext();
+    await importReleases(tdb.db, buildFakeSource(fx), freshCtx);
+
+    const [homeAfter] = await tdb.db.select().from(categoryFeatures).where(and(eq(categoryFeatures.kind, "home"), eq(categoryFeatures.key, "default")));
+    expect(homeAfter!.featureReleaseId, "re-run must not revert the NRMS edit").toBeNull();
+
+    const json = freshCtx.report.toJSON();
+    expect(
+      json.skipped.some((s) => s.table === "category_features" && s.legacyId === fx.ids.R8.toLowerCase() && s.reason === "edited in NRMS since the last import"),
+    ).toBe(true);
   });
 });
 
