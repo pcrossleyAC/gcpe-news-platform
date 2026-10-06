@@ -40,7 +40,7 @@ describe("createAsItHappensHandler", () => {
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE deliveries, send_jobs");
+    await tdb.pool.query("TRUNCATE deliveries, send_jobs, job_recipients CASCADE");
   });
 
   const releaseEvent = (release = sampleRelease) => envelope("nrms", "release.published", release, release.key);
@@ -49,10 +49,10 @@ describe("createAsItHappensHandler", () => {
     const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
     await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
 
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
     expect(deliveryRows.map((r) => r.subscriberId).sort()).toEqual([a, b, e].sort());
 
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
     expect(jobRows).toHaveLength(1);
     expect(jobRows[0]!.subject).toBe(release.documents[0]!.headline);
     expect(jobRows[0]!.kind).toBe("as_it_happens");
@@ -62,10 +62,10 @@ describe("createAsItHappensHandler", () => {
     const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
     await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
 
-    const eDeliveries = await tdb.db.select().from(deliveries).where(and(eq(deliveries.releaseKey, release.key), eq(deliveries.subscriberId, e)));
+    const eDeliveries = await tdb.db.select().from(deliveries).where(and(eq(deliveries.itemKey, release.key), eq(deliveries.subscriberId, e)));
     expect(eDeliveries).toHaveLength(1);
 
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
     expect(jobRows).toHaveLength(1);
   });
 
@@ -74,10 +74,10 @@ describe("createAsItHappensHandler", () => {
     await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
     await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
 
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
     expect(deliveryRows).toHaveLength(3);
 
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
     expect(jobRows).toHaveLength(1);
   });
 
@@ -85,9 +85,9 @@ describe("createAsItHappensHandler", () => {
     const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: false } };
     await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
 
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
     expect(deliveryRows).toHaveLength(0);
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
     expect(jobRows).toHaveLength(0);
   });
 
@@ -98,10 +98,10 @@ describe("createAsItHappensHandler", () => {
     const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
     await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
 
-    const fDeliveries = await tdb.db.select().from(deliveries).where(and(eq(deliveries.releaseKey, release.key), eq(deliveries.subscriberId, f)));
+    const fDeliveries = await tdb.db.select().from(deliveries).where(and(eq(deliveries.itemKey, release.key), eq(deliveries.subscriberId, f)));
     expect(fDeliveries).toHaveLength(0);
 
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
     expect(deliveryRows.map((r) => r.subscriberId)).not.toContain(f);
   });
 });
@@ -124,10 +124,10 @@ describe("createAsItHappensHandler subscriber-level timing gate", () => {
     const handler = createAsItHappensHandler({ publicSiteUrl: PUBLIC_SITE_URL, manageUrl: MANAGE_URL });
     const release = { ...sampleRelease, key: "K-TIMING", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
     await tdb.pool.query(`
-      INSERT INTO subscribers (id, email, manage_token, status, as_it_happens, digest) VALUES
-        ('00000000-0000-0000-0000-0000000000a1', 'on@example.test', 'ta1', 'active', true, false),
-        ('00000000-0000-0000-0000-0000000000a2', 'pending@example.test', 'ta2', 'pending', true, false),
-        ('00000000-0000-0000-0000-0000000000a3', 'digest@example.test', 'ta3', 'active', false, true);
+      INSERT INTO subscribers (id, email, status, as_it_happens, digest) VALUES
+        ('00000000-0000-0000-0000-0000000000a1', 'on@example.test', 'active', true, false),
+        ('00000000-0000-0000-0000-0000000000a2', 'pending@example.test', 'pending', true, false),
+        ('00000000-0000-0000-0000-0000000000a3', 'digest@example.test', 'active', false, true);
       INSERT INTO subscriptions (subscriber_id, list_key) VALUES
         ('00000000-0000-0000-0000-0000000000a1', '*'),
         ('00000000-0000-0000-0000-0000000000a2', '*'),
@@ -135,7 +135,7 @@ describe("createAsItHappensHandler subscriber-level timing gate", () => {
     `);
     await tdb.db.transaction((tx) => handler(tx, envelope("nrms", "release.published", release, release.key)));
 
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
     expect(deliveryRows.map((r) => r.subscriberId)).toEqual(["00000000-0000-0000-0000-0000000000a1"]);
   });
 });
@@ -154,9 +154,9 @@ describe("createAsItHappensHandler with no subscribers at all", () => {
     const release = { ...sampleRelease, publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
     await tdb.db.transaction((tx) => handler(tx, envelope("nrms", "release.published", release, release.key)));
 
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
     expect(deliveryRows).toHaveLength(0);
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
     expect(jobRows).toHaveLength(0);
   });
 });
@@ -292,8 +292,8 @@ describe("createAsItHappensHandler at scale (I1)", () => {
   // JS round-trip per row) so the test itself stays fast, proves the fix handles it.
   it("delivers to more than 32,767 matching subscribers without hitting Postgres's bind-parameter limit", async () => {
     await tdb.pool.query(`
-      INSERT INTO subscribers (email, manage_token, verified_at, status)
-      SELECT 'bulk' || gs || '@example.com', 'bulk-token-' || gs, now(), 'active'
+      INSERT INTO subscribers (email, verified_at, status)
+      SELECT 'bulk' || gs || '@example.com', now(), 'active'
         FROM generate_series(1, 33000) AS gs
     `);
     await tdb.pool.query(`
@@ -306,10 +306,10 @@ describe("createAsItHappensHandler at scale (I1)", () => {
 
     await tdb.db.transaction((tx) => handler(tx, envelope("nrms", "release.published", release, release.key)));
 
-    const rows = (await tdb.pool.query(`SELECT count(*)::int FROM deliveries WHERE release_key = $1`, [release.key])).rows as { count: number }[];
+    const rows = (await tdb.pool.query(`SELECT count(*)::int FROM deliveries WHERE item_key = $1`, [release.key])).rows as { count: number }[];
     expect(rows[0]!.count).toBe(33000);
 
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
     expect(jobRows).toHaveLength(1);
   }, 10_000);
 });

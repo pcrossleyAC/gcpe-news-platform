@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Tx } from "@gcpe/db-kit";
 import { escapeHtml } from "@gcpe/http-kit";
 import { indexKeysFor, type EventHandler, type ReleaseRecord } from "@gcpe/events";
@@ -89,8 +89,9 @@ export interface AsItHappensOptions {
   /**
    * Base URL for the manage/unsubscribe page. Not used while rendering (the footer carries the
    * literal `{{manageUrl}}` placeholder; Distribution substitutes it per recipient), but part
-   * of this handler's configuration because the per-recipient manage link Task 10 builds from
-   * a subscriber's manage_token is relative to it.
+   * of this handler's configuration because the per-recipient manage link (send-jobs.ts) is
+   * relative to it. Phase 4b (Task 1): that per-recipient link isn't rebuilt yet — see
+   * send-jobs.ts's buildMessageRequest.
    */
   manageUrl: string;
 }
@@ -114,9 +115,33 @@ export function createAsItHappensHandler(opts: AsItHappensOptions): EventHandler
     // param per key here is fine — this is not the unbounded list the fix above removes.
     const listKeyMatch = keys.length > 0 ? sql`(sub.list_key = '*' OR sub.list_key IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)}))` : sql`sub.list_key = '*'`;
 
+    // A release matching no active as-it-happens subscriber creates no job, no deliveries and
+    // no job_recipients — an empty job would send nothing. Checked up front (read-only) so
+    // the job insert below never has to be undone.
+    const matched = await tx.execute(sql`
+      SELECT 1
+        FROM subscribers s
+        JOIN subscriptions sub ON sub.subscriber_id = s.id
+       WHERE s.status = 'active' AND s.as_it_happens = true AND ${listKeyMatch}
+       LIMIT 1
+    `);
+    if (matched.rows.length === 0) return;
+
+    // Phase 4b sending model: the job comes first (deliveries.job_id and job_recipients both
+    // reference it), keyed by a stable job_key so a repeat delivery of the same release (the
+    // idempotency case) finds the same job instead of creating a second one.
+    const { subject, html, text } = renderAsItHappens(r, opts.publicSiteUrl);
+    const jobKey = `as_it_happens:${r.key}`;
+    const createdJob = await tx
+      .insert(sendJobs)
+      .values({ jobKey, itemKey: r.key, kind: "as_it_happens", subject, html, text })
+      .onConflictDoNothing({ target: sendJobs.jobKey })
+      .returning({ id: sendJobs.id });
+    const jobId = createdJob[0]?.id ?? (await tx.select({ id: sendJobs.id }).from(sendJobs).where(eq(sendJobs.jobKey, jobKey)))[0]!.id;
+
     const inserted = await tx.execute(sql`
-      INSERT INTO deliveries (release_key, subscriber_id)
-      SELECT DISTINCT ${r.key}, s.id
+      INSERT INTO deliveries (item_key, subscriber_id, mode, job_id)
+      SELECT DISTINCT ${r.key}, s.id, 'as_it_happens', ${jobId}::uuid
         FROM subscribers s
         JOIN subscriptions sub ON sub.subscriber_id = s.id
        WHERE s.status = 'active'
@@ -126,17 +151,18 @@ export function createAsItHappensHandler(opts: AsItHappensOptions): EventHandler
       RETURNING 1
     `);
 
-    // A release matching no active as-it-happens subscriber inserts no delivery rows: skip
-    // creating a job entirely (an empty job would send nothing). On a repeat delivery of an
-    // already-fully-inserted release (the idempotency case), every row conflicts and this is
-    // also 0 — harmless, since the job itself already exists by then (its own insert below is
-    // onConflictDoNothing too).
+    // On a repeat delivery of an already-fully-inserted release (the idempotency case), every
+    // row conflicts and this is 0 — harmless, since job_recipients was already populated the
+    // first time.
     if (inserted.rows.length === 0) return;
 
-    const { subject, html, text } = renderAsItHappens(r, opts.publicSiteUrl);
-    await tx
-      .insert(sendJobs)
-      .values({ releaseKey: r.key, kind: "as_it_happens", subject, html, text })
-      .onConflictDoNothing({ target: [sendJobs.releaseKey, sendJobs.kind] });
+    await tx.execute(sql`
+      INSERT INTO job_recipients (job_id, subscriber_id)
+      SELECT DISTINCT ${jobId}::uuid, s.id
+        FROM subscribers s
+        JOIN subscriptions sub ON sub.subscriber_id = s.id
+       WHERE s.status = 'active' AND s.as_it_happens = true AND ${listKeyMatch}
+      ON CONFLICT DO NOTHING
+    `);
   };
 }

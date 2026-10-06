@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { subscribers, subscriptions } from "./db/schema";
@@ -24,13 +23,12 @@ export interface AddSubscriberInput {
  * (subscriberId, listKey) primary key mid-insert.
  */
 export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<{ id: string }> {
-  const manageToken = randomBytes(32).toString("base64url");
   const listKeys = input.lists === "all" ? ["*"] : [...new Set(input.lists.map((key) => key.toLowerCase()))];
   try {
     return await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(subscribers)
-        .values({ email: input.email, manageToken, verifiedAt: new Date(), status: "active", source: "admin", asItHappens: true })
+        .values({ email: input.email, verifiedAt: new Date(), status: "active", source: "admin", asItHappens: true })
         .returning({ id: subscribers.id });
       const subscriberId = row!.id;
       if (listKeys.length > 0) {

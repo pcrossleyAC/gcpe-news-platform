@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import type { DistributionClient } from "../distribution-client";
@@ -181,7 +180,7 @@ async function applyVerify(deps: JourneyDeps, link: LinkRow): Promise<Subscriber
         subscriberId = await tx.transaction(async (tx2) => {
           const [row] = await tx2
             .insert(subscribers)
-            .values({ email: link.email, manageToken: randomBytes(32).toString("base64url"), ...fields })
+            .values({ email: link.email, ...fields })
             .returning({ id: subscribers.id });
           return row!.id;
         });
@@ -320,11 +319,6 @@ export async function unsubscribe(deps: JourneyDeps, token: string): Promise<tru
       const [s] = await deps.db.select().from(subscribers).where(eq(subscribers.id, parsed.subscriberId));
       if (s && s.unsubscribeVersion === parsed.version) subscriberId = s.id;
     }
-  }
-  if (!subscriberId && /^[A-Za-z0-9_-]{43}$/.test(token)) {
-    // Phase 2 footers carry subscribers.manage_token; honoured until 4b replaces those links.
-    const [s] = await deps.db.select({ id: subscribers.id }).from(subscribers).where(eq(subscribers.manageToken, token));
-    subscriberId = s?.id ?? null;
   }
   if (subscriberId) await deps.db.transaction((tx) => endSubscriber(tx, subscriberId!));
   return true;

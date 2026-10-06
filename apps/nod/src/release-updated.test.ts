@@ -32,7 +32,7 @@ describe("release.updated from nrms produces no NoD send", () => {
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE deliveries, send_jobs");
+    await tdb.pool.query("TRUNCATE deliveries, send_jobs, job_recipients CASCADE");
   });
 
   it.each([false, true])("notify: %s is ignored -- no delivery, no send job", async (notify) => {
@@ -43,9 +43,9 @@ describe("release.updated from nrms produces no NoD send", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ outcome: "ignored" });
 
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
     expect(deliveryRows).toHaveLength(0);
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
     expect(jobRows).toHaveLength(0);
   });
 });

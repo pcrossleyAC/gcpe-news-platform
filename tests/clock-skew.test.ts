@@ -10,7 +10,6 @@
 //   - NRMS publishes exactly what is due by the DB's clock.
 // Any claim/stamp that fell back to the JS clock fails here (revert-checked in the P2-R27
 // report for the dispatcher, sender and NoD claims and the NRMS due check).
-import { randomUUID } from "node:crypto";
 import type { Transporter } from "nodemailer";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { dbClock, type TestDatabase } from "@gcpe/db-kit";
@@ -130,15 +129,14 @@ describe.each([
   });
 
   it("NoD send-jobs: lock and retry backoff come from the DB clock, no re-claim by a correct-clock replica, age backstop not tripped", async () => {
-    await nodDb.pool.query("TRUNCATE TABLE send_jobs, deliveries, subscribers CASCADE");
+    await nodDb.pool.query("TRUNCATE TABLE send_jobs, job_recipients, subscribers CASCADE");
     const { rows: subRows } = await nodDb.pool.query<{ id: string }>(
-      "INSERT INTO subscribers (email, manage_token, verified_at, status) VALUES ('skew@example.com', $1, now(), 'active') RETURNING id",
-      [randomUUID()],
+      "INSERT INTO subscribers (email, verified_at, status) VALUES ('skew@example.com', now(), 'active') RETURNING id",
     );
     const { rows: jobRows } = await nodDb.pool.query<{ id: string }>(
-      "INSERT INTO send_jobs (release_key, kind, subject, html, text) VALUES ('release-skew', 'as_it_happens', 's', '<p>h</p>', 't') RETURNING id",
+      "INSERT INTO send_jobs (job_key, item_key, kind, subject, html, text) VALUES ('as_it_happens:release-skew', 'release-skew', 'as_it_happens', 's', '<p>h</p>', 't') RETURNING id",
     );
-    await nodDb.pool.query("INSERT INTO deliveries (release_key, subscriber_id) VALUES ('release-skew', $1)", [subRows[0]!.id]);
+    await nodDb.pool.query("INSERT INTO job_recipients (job_id, subscriber_id) VALUES ($1, $2)", [jobRows[0]!.id, subRows[0]!.id]);
     const jobId = jobRows[0]!.id;
     const lockMs = 1 * 30_000 + 30_000 + 30_000; // one chunk, plus getToken, plus the margin
     let lockFromDbNow: number | undefined;

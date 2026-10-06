@@ -2,7 +2,7 @@ import { and, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import { ageMsOf, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
-import { deliveries, sendJobs, subscribers } from "./db/schema";
+import { jobRecipients, sendJobs, subscribers } from "./db/schema";
 
 /** Distribution refuses a request with more than 20,000 recipients (P2-R15): a release that
  * targets more subscribers than this is sent as several requests instead of one. Exported so
@@ -27,9 +27,9 @@ const LOCK_MARGIN_MS = 30_000;
 export interface SendJobsOptions {
   db: Db;
   distribution: DistributionClient;
-  /** Base URL for the manage/unsubscribe page; each recipient's substitution is this URL with
-   * a `token` query parameter set to their `manageToken` (any existing query string on
-   * `manageUrl` is preserved — see manageLinkFor). */
+  /** Base URL for the manage/unsubscribe page. Phase 4b (Task 1): `subscribers.manageToken` is
+   * gone and the per-recipient manage link isn't rebuilt yet (Task 3 does that, from
+   * `subscriber_links`) — kept here so callers don't have to change twice. */
   manageUrl: string;
   /** Test hook: when given, its value stands in for SQL `now()` in every statement this call
    * makes (claim, lock, backoff, age). Production omits it and the database's clock is used
@@ -51,7 +51,7 @@ export interface SendJobsOptions {
 
 type ClaimedJobRow = {
   id: string;
-  release_key: string;
+  item_key: string | null;
   subject: string | null;
   html: string | null;
   text: string | null;
@@ -85,7 +85,7 @@ async function claimOneJob(db: Db, now: SQL, lockMs: number): Promise<ClaimedJob
         LIMIT 1
         FOR UPDATE SKIP LOCKED
      )
-    RETURNING id, release_key, subject, html, text, attempts, ${ageMsOf(sql`created_at`, now)} AS age_ms, chunks_assigned, batch_ids,
+    RETURNING id, item_key, subject, html, text, attempts, ${ageMsOf(sql`created_at`, now)} AS age_ms, chunks_assigned, batch_ids,
               ${lockTokenOf(sql`locked_until`)} AS lock_token`);
   return claimed.rows[0];
 }
@@ -137,18 +137,18 @@ async function releaseLock(db: Db, jobId: string, token: LockToken): Promise<voi
  * caused the overflow. `onBeforeFlagWrite` exists only so a test can force a failure between
  * the two writes and assert the whole thing rolled back; production call sites never pass it.
  */
-export async function ensureChunksAssigned(db: Db, jobId: string, releaseKey: string, chunkSize: number, opts: { onBeforeFlagWrite?: () => void } = {}): Promise<void> {
+export async function ensureChunksAssigned(db: Db, jobId: string, chunkSize: number, opts: { onBeforeFlagWrite?: () => void } = {}): Promise<void> {
   await db.transaction(async (tx) => {
     const [row] = await tx.select({ chunksAssigned: sendJobs.chunksAssigned }).from(sendJobs).where(eq(sendJobs.id, jobId));
     if (row?.chunksAssigned) return; // already fully assigned (and flagged) — nothing to do
     await tx.execute(sql`
-      UPDATE deliveries SET chunk_index = sub.idx
+      UPDATE job_recipients SET chunk_index = sub.idx
         FROM (
           SELECT subscriber_id, ((row_number() OVER (ORDER BY subscriber_id) - 1) / ${chunkSize})::int AS idx
-            FROM deliveries
-           WHERE release_key = ${releaseKey} AND chunk_index IS NULL
+            FROM job_recipients
+           WHERE job_id = ${jobId} AND chunk_index IS NULL
         ) sub
-       WHERE deliveries.release_key = ${releaseKey} AND deliveries.subscriber_id = sub.subscriber_id`);
+       WHERE job_recipients.job_id = ${jobId} AND job_recipients.subscriber_id = sub.subscriber_id`);
     opts.onBeforeFlagWrite?.();
     await tx.update(sendJobs).set({ chunksAssigned: true }).where(and(eq(sendJobs.id, jobId), eq(sendJobs.chunksAssigned, false)));
   });
@@ -156,7 +156,6 @@ export async function ensureChunksAssigned(db: Db, jobId: string, releaseKey: st
 
 interface Recipient {
   email: string;
-  manageToken: string;
 }
 
 /** R3: a chunk's byte-split partition (how many parts, and which members fall in which part)
@@ -170,27 +169,27 @@ interface Member extends Recipient {
   active: boolean;
 }
 
-const toRecipients = (members: Member[]): Recipient[] => members.map(({ email, manageToken }) => ({ email, manageToken }));
+const toRecipients = (members: Member[]): Recipient[] => members.map(({ email }) => ({ email }));
 
-/** Every member of this release's frozen chunks (chunk_index IS NOT NULL — see
+/** Every member of this job's frozen chunks (chunk_index IS NOT NULL — see
  * ensureChunksAssigned), grouped by chunk_index, *regardless of current active status* (R3:
  * the byte-split partition below must size itself against this frozen membership, not against
  * whichever subset happens to be active on any given attempt). The query orders by
  * (chunk_index, subscriber id), so each chunk's own member order — and therefore every part's
  * membership — is deterministic across attempts. Filtering to only-active happens later, at
  * send time, per part (see sendAllChunks). */
-async function fetchAssignedMembers(db: Db, releaseKey: string): Promise<Map<number, Member[]>> {
+async function fetchAssignedMembers(db: Db, jobId: string): Promise<Map<number, Member[]>> {
   const rows = await db
-    .select({ chunkIndex: deliveries.chunkIndex, email: subscribers.email, manageToken: subscribers.manageToken, status: subscribers.status })
-    .from(deliveries)
-    .innerJoin(subscribers, eq(subscribers.id, deliveries.subscriberId))
-    .where(and(eq(deliveries.releaseKey, releaseKey), isNotNull(deliveries.chunkIndex)))
-    .orderBy(deliveries.chunkIndex, subscribers.id);
+    .select({ chunkIndex: jobRecipients.chunkIndex, email: subscribers.email, status: subscribers.status })
+    .from(jobRecipients)
+    .innerJoin(subscribers, eq(subscribers.id, jobRecipients.subscriberId))
+    .where(and(eq(jobRecipients.jobId, jobId), isNotNull(jobRecipients.chunkIndex)))
+    .orderBy(jobRecipients.chunkIndex, subscribers.id);
 
   const chunks = new Map<number, Member[]>();
   for (const row of rows) {
     const idx = row.chunkIndex!;
-    const member: Member = { email: row.email, manageToken: row.manageToken, active: row.status === "active" };
+    const member: Member = { email: row.email, active: row.status === "active" };
     const bucket = chunks.get(idx);
     if (bucket) bucket.push(member);
     else chunks.set(idx, [member]);
@@ -198,38 +197,32 @@ async function fetchAssignedMembers(db: Db, releaseKey: string): Promise<Map<num
   return chunks;
 }
 
-/** Active-subscriber deliveries for this release whose *delivery row itself* was inserted
+/** Active-subscriber recipients of this job whose *job_recipients row itself* was inserted
  * after chunking was frozen — chunk_index is still NULL, so they're not part of this (or any)
- * job's chunks (P2-R18: this is not the same thing as "became active after freezing" —
+ * attempt's chunks (P2-R18: this is not the same thing as "became active after freezing" —
  * ensureChunksAssigned doesn't filter on status at all, so a subscriber who becomes active
- * later still has whatever chunk_index their delivery row got assigned at freeze time, and is
- * picked up by fetchAssignedMembers on this job's next attempt. The one case where a
+ * later still has whatever chunk_index their job_recipients row got assigned at freeze time,
+ * and is picked up by fetchAssignedMembers on this job's next attempt. The one case where a
  * late-activated subscriber is never mailed is if their chunk was already sent and accepted in
  * an earlier attempt and the job has since reached a terminal state — by design, not a bug:
  * freezing trades "catch every last-second activation" for stable, safe-to-retry chunk
  * membership). */
-async function countLateDeliveries(db: Db, releaseKey: string): Promise<number> {
+async function countLateDeliveries(db: Db, jobId: string): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
-    .from(deliveries)
-    .innerJoin(subscribers, eq(subscribers.id, deliveries.subscriberId))
-    .where(and(eq(deliveries.releaseKey, releaseKey), eq(subscribers.status, "active"), isNull(deliveries.chunkIndex)));
+    .from(jobRecipients)
+    .innerJoin(subscribers, eq(subscribers.id, jobRecipients.subscriberId))
+    .where(and(eq(jobRecipients.jobId, jobId), eq(subscribers.status, "active"), isNull(jobRecipients.chunkIndex)));
   return row?.count ?? 0;
 }
 
-/** Builds the per-recipient manage/unsubscribe link from `manageUrl` plus a `token` query
- * parameter, preserving any query string `manageUrl` already has (P2-R16) — a naive
- * `${manageUrl}?token=...` would instead produce a second, malformed `?` if `manageUrl` ever
- * carries its own query. */
-function manageLinkFor(manageUrl: string, token: string): string {
-  const url = new URL(manageUrl);
-  url.searchParams.set("token", token);
-  return url.toString();
-}
-
 /** `key` is the chunk's own idempotency suffix — normally just its `chunk_index` (as a
- * string), or `<chunk_index>.<part>` when {@link splitChunkByBytes} had to split it further. */
-function buildMessageRequest(job: ClaimedJobRow, chunk: Recipient[], key: string, manageUrl: string): MessageRequest {
+ * string), or `<chunk_index>.<part>` when {@link splitChunkByBytes} had to split it further.
+ *
+ * Phase 4b (Task 1): the per-recipient manage link substitution is not rebuilt yet —
+ * `subscribers.manageToken` is gone, and its replacement (a fresh `subscriber_links` row per
+ * send, Task 3) isn't wired in here. `substitutions` is empty until then. */
+function buildMessageRequest(job: ClaimedJobRow, chunk: Recipient[], key: string): MessageRequest {
   return {
     priority: "immediate",
     idempotencyKey: `${job.id}:${key}`,
@@ -237,10 +230,7 @@ function buildMessageRequest(job: ClaimedJobRow, chunk: Recipient[], key: string
     html: job.html ?? "",
     text: job.text ?? undefined,
     headers: { "List-Unsubscribe": "<{{manageUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-    recipients: chunk.map((r) => ({
-      email: r.email,
-      substitutions: { manageUrl: manageLinkFor(manageUrl, r.manageToken) },
-    })),
+    recipients: chunk.map((r) => ({ email: r.email, substitutions: {} })),
   };
 }
 
@@ -264,11 +254,11 @@ function requestByteSize(req: MessageRequest): number {
  * between attempts. Returns the *membership* of each part, not yet filtered to active-only
  * or built into a request — that happens in sendAllChunks, per attempt.
  */
-function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex: number, manageUrl: string, maxBytes: number): { key: string; members: Member[] }[] {
+function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex: number, maxBytes: number): { key: string; members: Member[] }[] {
   let n = 1;
   while (n < members.length) {
     const size = Math.ceil(members.length / n);
-    const probe = buildMessageRequest(job, toRecipients(members.slice(0, size)), String(chunkIndex), manageUrl);
+    const probe = buildMessageRequest(job, toRecipients(members.slice(0, size)), String(chunkIndex));
     if (requestByteSize(probe) <= maxBytes) break;
     n++;
   }
@@ -303,16 +293,15 @@ async function sendAllChunks(
   distribution: DistributionClient,
   job: ClaimedJobRow,
   chunks: Map<number, Member[]>,
-  manageUrl: string,
   maxChunkBytes: number,
 ): Promise<{ batchIds: Record<string, string>; error?: DistributionError }> {
   const batchIds: Record<string, string> = {};
   for (const [chunkIndex, members] of chunks) {
-    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, manageUrl, maxChunkBytes)) {
+    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes)) {
       const activeMembers = partMembers.filter((m) => m.active);
       if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
       try {
-        const { batchId } = await distribution.send(buildMessageRequest(job, toRecipients(activeMembers), key, manageUrl));
+        const { batchId } = await distribution.send(buildMessageRequest(job, toRecipients(activeMembers), key));
         batchIds[key] = batchId;
       } catch (e) {
         // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless
@@ -355,14 +344,14 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     let lockToken: LockToken;
     try {
       if (!job.chunks_assigned) {
-        await ensureChunksAssigned(opts.db, job.id, job.release_key, chunkSize);
+        await ensureChunksAssigned(opts.db, job.id, chunkSize);
       }
-      const lateCount = await countLateDeliveries(opts.db, job.release_key);
+      const lateCount = await countLateDeliveries(opts.db, job.id);
       if (lateCount > 0) {
-        console.log(`[nod] release ${job.release_key}: ${lateCount} delivery(ies) arrived after chunking was frozen and are not part of job ${job.id}`);
+        console.log(`[nod] job ${job.id} item ${job.item_key}: ${lateCount} recipient(s) arrived after chunking was frozen and are not part of this attempt`);
       }
 
-      chunks = await fetchAssignedMembers(opts.db, job.release_key);
+      chunks = await fetchAssignedMembers(opts.db, job.id);
       // Total budget, from the claim's own now(): chunks.size (every chunk this attempt will
       // actually send) * perChunkMs (worst case every one hits the request timeout) +
       // perChunkMs once more (getToken's own timeout — it can only block the whole attempt
@@ -384,7 +373,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     // this call's lock were stolen mid-loop, a concurrent claimant would resend the exact same
     // chunks and Distribution would dedupe every one already accepted. The only write that
     // has to be ownership-checked is the terminal one below (`where`), which is.
-    const { batchIds: newBatchIds, error } = await sendAllChunks(opts.distribution, job, chunks, opts.manageUrl, maxChunkBytes);
+    const { batchIds: newBatchIds, error } = await sendAllChunks(opts.distribution, job, chunks, maxChunkBytes);
     // P2-R16: merge newly-accepted chunk ids into whatever this job already had recorded —
     // persisted below on every attempt, including one that ends in "failed" or "retried", so
     // a chunk accepted before a later chunk failed is never re-sent as if it were unknown.
@@ -405,7 +394,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
       // ownership-guarded `where` matched), not on every attempt that merely observes it.
       if (res.rowCount) {
         result.failed++;
-        console.error(`[nod] job ${job.id} release ${job.release_key} failed: ${error.message}`);
+        console.error(`[nod] job ${job.id} item ${job.item_key} failed: ${error.message}`);
       }
     } else {
       const res = await opts.db
@@ -414,7 +403,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
         .where(where);
       if (res.rowCount) {
         result.retried++;
-        console.warn(`[nod] job ${job.id} release ${job.release_key} retrying (attempt ${attempts}): ${error.message}`);
+        console.warn(`[nod] job ${job.id} item ${job.item_key} retrying (attempt ${attempts}): ${error.message}`);
       }
     }
   }

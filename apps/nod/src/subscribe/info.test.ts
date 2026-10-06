@@ -48,7 +48,7 @@ describe("SubscriberInfo", () => {
 
   it("infoFor returns legacy-shaped preferences", async () => {
     await tdb.db.execute(sql`
-      INSERT INTO subscribers (id, email, manage_token, status, as_it_happens, digest) VALUES ('00000000-0000-0000-0000-0000000000b1', 'info@example.test', 'tb1', 'active', false, true);
+      INSERT INTO subscribers (id, email, status, as_it_happens, digest) VALUES ('00000000-0000-0000-0000-0000000000b1', 'info@example.test', 'active', false, true);
       INSERT INTO subscriptions (subscriber_id, list_key) VALUES ('00000000-0000-0000-0000-0000000000b1', 'ministries:health');`);
     expect(await infoFor(tdb.db, "00000000-0000-0000-0000-0000000000b1")).toEqual({
       emailAddress: "info@example.test",

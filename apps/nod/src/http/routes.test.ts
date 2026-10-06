@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { randomUUID } from "node:crypto";
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
@@ -104,9 +103,9 @@ describe("NoD HTTP API", () => {
     expect(ignored.status).toBe(200);
     expect(ignored.body).toEqual({ outcome: "ignored" });
 
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, "ROUTES-TEST-2"));
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "ROUTES-TEST-2"));
     expect(jobRows).toHaveLength(0);
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, "ROUTES-TEST-2"));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, "ROUTES-TEST-2"));
     expect(deliveryRows).toHaveLength(0);
   });
 });
@@ -151,7 +150,7 @@ describe("GET /api/subscribers/count", () => {
     await addSubscriber(tdb.db, { email: "count-edu@example.com", lists: ["sectors:education"] });
     const [unverified] = await tdb.db
       .insert(subscribers)
-      .values({ email: "count-unverified@example.com", manageToken: randomUUID() })
+      .values({ email: "count-unverified@example.com" })
       .returning({ id: subscribers.id });
     await tdb.db.insert(subscriptions).values({ subscriberId: unverified!.id, listKey: "ministries:health" });
   });
