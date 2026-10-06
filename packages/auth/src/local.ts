@@ -5,7 +5,7 @@ import { verifyPassword } from "./password";
 
 export const LOCAL_ISSUER = "gcpe-local";
 export const LOCAL_AUDIENCE = "gcpe-local";
-export const ADMIN_ROLES = ["Core.Admin", "NRMS.Editor", "NoD.Admin", "Distribution.Send"] as const;
+export const ADMIN_ROLES = ["Core.Admin", "NRMS.Editor", "NRMS.SiteEditor", "NoD.Admin", "Distribution.Send"] as const;
 const DEFAULT_TTL = 8 * 60 * 60;
 const MIN_SECRET_LENGTH = 32;
 
@@ -28,9 +28,13 @@ export async function mintLocalToken(o: {
   roles: readonly string[];
   azp?: string;
   ttlSeconds?: number;
+  /** Clock override for tests (e.g. serviceTokenProvider's re-mint-after-expiry case, where a
+   * fixed wall clock would otherwise mint byte-identical tokens for the same claims); defaults
+   * to the wall clock. */
+  now?: () => number;
 }): Promise<string> {
   assertSecretStrength(o.secret);
-  const now = Math.floor(Date.now() / 1000);
+  const now = Math.floor((o.now ?? Date.now)() / 1000);
   return new SignJWT({ roles: [...o.roles], ...(o.azp ? { azp: o.azp } : {}) })
     .setProtectedHeader({ alg: "HS256", typ: "JWT" })
     .setIssuer(LOCAL_ISSUER)

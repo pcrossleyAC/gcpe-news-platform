@@ -1,12 +1,18 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import type { CategoryKind } from "@gcpe/events";
+import { normalizeGranville } from "@gcpe/legacy-import";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { applyRelease, applySiteContent } from "../projections";
 import { imageTypeFromBytes, justifyFromLegacy, mapLegacyRelease, type LegacyContactRow, type LegacyDocumentRow, type LegacyIndexRow, type LegacyReleaseRow } from "./map";
 import { Q_APP_SETTINGS, Q_CATEGORY_FEATURES, Q_CURRENT_SLIDES, Q_RELEASE_KEYS_BY_ID, Q_RELEASE_YEARS, Q_RESOURCE_LINKS, qContacts, qDocuments, qReleaseIndexes, qReleases } from "./queries";
 
 const lower = (s: string) => s.toLowerCase();
+
+// Re-exported for callers (and this file's own test suite) that import it from here — the rule
+// itself now lives in @gcpe/legacy-import's `normalizeGranville`, shared with NRMS's importer
+// and apps/nrms/src/website/settings.ts's `getBlueBridge`, instead of a private copy here.
+export { normalizeGranville };
 
 function groupBy<T>(rows: T[], key: (r: T) => string): Map<string, T[]> {
   const m = new Map<string, T[]>();
@@ -97,7 +103,7 @@ export async function importLegacyNews(
       featurePostKey: keyFor(settings.get("HomeFeatureReleaseId")),
       liveWebcastFlashMediaManifestUrl: null,
       liveWebcastM3uPlaylist: null,
-      granville: settings.get("granville") ?? null,
+      granville: normalizeGranville(settings.get("granville")),
       timestamp: new Date().toISOString(),
     }),
   );

@@ -18,6 +18,8 @@ describe("Core HTTP API", () => {
   let app: ReturnType<typeof createApp>;
   let admin: string;
   let reader: string;
+  let directoryService: string;
+  let editorOnly: string;
 
   beforeAll(async () => {
     tdb = await createCoreTestDb();
@@ -27,6 +29,8 @@ describe("Core HTTP API", () => {
       new SignJWT({ roles }).setProtectedHeader({ alg: "RS256", kid: "k" }).setIssuer(issuer).setAudience(audience).setSubject("svc").setExpirationTime("5m").sign(pair.privateKey);
     admin = await sign(["Core.Admin"]);
     reader = await sign([]);
+    directoryService = await sign(["Core.AdminDirectory"]);
+    editorOnly = await sign(["NRMS.Editor"]);
     app = createApp({ db: tdb.db, subscribers: [], auth: { issuer, audience, keys } });
   });
   afterAll(async () => {
@@ -152,6 +156,28 @@ describe("Core HTTP API", () => {
     } finally {
       errSpy.mockRestore();
     }
+  });
+
+  // Plan 3d task 4: Project Blue Bridge's admin directory — Core.Admin itself or NRMS's
+  // narrow Core.AdminDirectory service token can read it; nothing else can.
+  it("GET /api/directory/admin-emails: Core.Admin and Core.AdminDirectory can read it; anything else is refused", async () => {
+    const created = await request(app)
+      .post("/api/users")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ email: "directory-admin@example.test", displayName: "Directory Admin", roles: ["Core.Admin"], password: "correct horse battery" });
+    expect(created.status).toBe(201);
+
+    const asAdmin = await request(app).get("/api/directory/admin-emails").set("authorization", `Bearer ${admin}`);
+    expect(asAdmin.status).toBe(200);
+    expect(asAdmin.body.emails).toContain("directory-admin@example.test");
+
+    const asService = await request(app).get("/api/directory/admin-emails").set("authorization", `Bearer ${directoryService}`);
+    expect(asService.status).toBe(200);
+    expect(asService.body.emails).toEqual(asAdmin.body.emails);
+
+    expect((await request(app).get("/api/directory/admin-emails").set("authorization", `Bearer ${editorOnly}`)).status).toBe(403);
+    expect((await request(app).get("/api/directory/admin-emails").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    expect((await request(app).get("/api/directory/admin-emails")).status).toBe(401);
   });
 
   it("republish returns the number of enqueued events", async () => {

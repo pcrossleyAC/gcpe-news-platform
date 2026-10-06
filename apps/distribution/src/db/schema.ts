@@ -3,6 +3,13 @@ import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uu
 
 export * from "@gcpe/events/tables";
 
+/** A batch attachment as posted (base64 content), sent unchanged with every message. */
+export interface StoredAttachment {
+  filename: string;
+  contentType: "application/pdf" | "text/plain";
+  contentBase64: string;
+}
+
 export type MessageStatus = "pending" | "sent" | "failed";
 
 export const batches = pgTable(
@@ -15,6 +22,7 @@ export const batches = pgTable(
     html: text("html"),
     text: text("text"),
     headers: jsonb("headers").$type<Record<string, string>>(),
+    attachments: jsonb("attachments").$type<StoredAttachment[]>().notNull().default([]),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("batches_app_id_idempotency_key_idx").on(t.appId, t.idempotencyKey)],

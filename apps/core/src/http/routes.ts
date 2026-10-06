@@ -1,11 +1,13 @@
 import express, { type Request, type Response } from "express";
 import { ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
-import { requireRole } from "@gcpe/auth";
+import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
 import { EventTooLargeError, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
 import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
+import { adminEmails } from "../services/users";
+import { usersRouter } from "./users";
 
 function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | null {
   const parsed = termKindSchema.safeParse(req.params.kind);
@@ -103,5 +105,16 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     admin,
     safe(async (_req, res) => void res.status(202).json({ enqueued: await republishAll(db, subscribers) })),
   );
+
+  // Plan 3d task 4: NRMS's Project Blue Bridge notify — a narrow, read-only directory lookup,
+  // open to Core.Admin itself or NRMS's own Core.AdminDirectory service token. Deliberately not
+  // under /users (that's the full admin-only user-management surface).
+  r.get(
+    "/directory/admin-emails",
+    requireAnyRole("Core.Admin", CORE_ADMIN_DIRECTORY_ROLE),
+    safe(async (_req, res) => void res.json({ emails: await adminEmails(db) })),
+  );
+
+  r.use("/users", admin, usersRouter(db));
   return r;
 }

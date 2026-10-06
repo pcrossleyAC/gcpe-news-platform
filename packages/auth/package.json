@@ -4,7 +4,8 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./cli/read-hidden": "./src/cli/read-hidden.ts"
   },
   "dependencies": {
     "express": "^5.2.1",

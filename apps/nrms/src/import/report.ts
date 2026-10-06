@@ -1,0 +1,143 @@
+/**
+ * Phase 3e (NRMS legacy importer, spec §8 "Safety" point 4): every import run writes a report
+ * of legacy and NRMS row counts per table, skipped rows with reasons, and validation warnings.
+ * `balanced()` is the acceptance check from §9/15: for every table, legacy rows = imported +
+ * skipped rows. This class never accepts or holds connection details (no constructor args),
+ * so there is nothing secret for toJSON()/toText() to leak.
+ */
+
+export type ReportSide = "legacy" | "imported" | "skipped";
+
+interface TableCounts {
+  legacy: number;
+  imported: number;
+  skipped: number;
+}
+
+interface SkippedRow {
+  table: string;
+  legacyId: string;
+  reason: string;
+}
+
+interface Warning {
+  legacyId: string;
+  key: string;
+  problems: string[];
+}
+
+interface SkippedStage {
+  stage: string;
+  reason: string;
+}
+
+interface Failed {
+  stage: string;
+  message: string;
+}
+
+export interface ImportReportJSON {
+  balanced: boolean;
+  tables: Record<string, TableCounts>;
+  skipped: SkippedRow[];
+  warnings: Warning[];
+  skippedStages: SkippedStage[];
+  failed: Failed | null;
+}
+
+export class ImportReport {
+  private readonly tables = new Map<string, TableCounts>();
+  private readonly skipped: SkippedRow[] = [];
+  private readonly warnings: Warning[] = [];
+  private readonly skippedStages: SkippedStage[] = [];
+  private failed: Failed | null = null;
+
+  private row(table: string): TableCounts {
+    let row = this.tables.get(table);
+    if (!row) {
+      row = { legacy: 0, imported: 0, skipped: 0 };
+      this.tables.set(table, row);
+    }
+    return row;
+  }
+
+  /** Adds `n` (default 1) to `table`'s count for `side`. */
+  count(table: string, side: ReportSide, n = 1): void {
+    this.row(table)[side] += n;
+  }
+
+  /** Records a legacy row that was deliberately not imported, with its reason. Also counts it as "skipped". */
+  skip(table: string, legacyId: string, reason: string): void {
+    this.count(table, "skipped");
+    this.skipped.push({ table, legacyId, reason });
+  }
+
+  /** Records a validation problem on an imported row (imported anyway; must be fixed before publishing). */
+  warn(legacyId: string, key: string, problems: string[]): void {
+    this.warnings.push({ legacyId, key, problems });
+  }
+
+  /**
+   * I2: records an entire stage skipped outright (e.g. the website import, when nothing changed
+   * or an NRMS edit blocks it) -- distinct from `skip()`: there's no legacy/imported row count to
+   * balance for a whole stage, so this never touches `tables`/`balanced()`, just a note a human
+   * reading the report (or the CLI's own stdout) needs to see instead of a plain success line.
+   */
+  skipStage(stage: string, reason: string): void {
+    this.skippedStages.push({ stage, reason });
+  }
+
+  /**
+   * I3: records that the run itself failed during `stage` — a *partial* report, since whatever
+   * ran before the failure may still look balanced by coincidence (every legacy row the run got
+   * to before dying happened to be accounted for). `message` should already be redacted and
+   * length-capped by the caller (run.ts's `ImportStageError` does this — M5) before it reaches
+   * here, since it ends up in a file on disk.
+   */
+  markFailed(stage: string, message: string): void {
+    this.failed = { stage, message };
+  }
+
+  /** True when, for every table, legacy = imported + skipped, and the run didn't fail outright. */
+  balanced(): boolean {
+    if (this.failed) return false;
+    for (const row of this.tables.values()) {
+      if (row.legacy !== row.imported + row.skipped) return false;
+    }
+    return true;
+  }
+
+  toJSON(): ImportReportJSON {
+    return {
+      balanced: this.balanced(),
+      tables: Object.fromEntries([...this.tables.entries()].sort(([a], [b]) => a.localeCompare(b))),
+      skipped: [...this.skipped],
+      warnings: [...this.warnings],
+      skippedStages: [...this.skippedStages],
+      failed: this.failed ? { ...this.failed } : null,
+    };
+  }
+
+  toText(): string {
+    const lines: string[] = [];
+    const json = this.toJSON();
+    const header = `Import report — ${json.balanced ? "balanced" : "NOT BALANCED"}`;
+    lines.push(json.failed ? `${header} — failed during ${json.failed.stage}: ${json.failed.message}` : header);
+    if (json.skippedStages.length > 0) {
+      lines.push("Skipped stages:");
+      for (const s of json.skippedStages) lines.push(`  [${s.stage}] ${s.reason}`);
+    }
+    for (const [table, c] of Object.entries(json.tables)) {
+      lines.push(`  ${table}: legacy=${c.legacy} imported=${c.imported} skipped=${c.skipped}`);
+    }
+    if (json.skipped.length > 0) {
+      lines.push("Skipped rows:");
+      for (const s of json.skipped) lines.push(`  [${s.table}] ${s.legacyId}: ${s.reason}`);
+    }
+    if (json.warnings.length > 0) {
+      lines.push("Validation warnings:");
+      for (const w of json.warnings) lines.push(`  ${w.legacyId} (${w.key}): ${w.problems.join("; ")}`);
+    }
+    return lines.join("\n");
+  }
+}

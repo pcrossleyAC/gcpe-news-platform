@@ -1,0 +1,372 @@
+:root {
+  /* Legacy release type colours (legacy ReleaseModel.cs:1260-1275), kept as CSS custom
+   * properties alongside the BC design tokens (constraints.md). Decorative only — the bar
+   * carries no text, so every place that uses one of these must also show the type label as
+   * text for WCAG AA contrast. */
+  --gcpe-type-release: rgb(72, 88, 113);
+  --gcpe-type-story: rgb(113, 72, 73);
+  --gcpe-type-update: rgb(226, 222, 69);
+  --gcpe-type-advisory: rgb(226, 109, 90);
+  --gcpe-type-factsheet: rgb(92, 92, 92);
+  /* Fallbacks for the design tokens' 'BC Sans' family (main.tsx imports @bcgov/bc-sans's
+   * BC_Sans.css, which registers the faces under that exact name). */
+  --typography-font-families-bc-sans: "BC Sans", system-ui, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  font-family: var(--typography-font-families-bc-sans);
+}
+
+.gcpe-shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.gcpe-shell__nav {
+  flex: 0 0 220px;
+  border-right: 1px solid #ccc;
+  padding: 1rem;
+}
+
+.gcpe-shell__nav ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Task 6 (Playwright axe sweep) found these three unstyled link/tab groups genuinely failing
+ * WCAG 2.5.8 (target size, wcag22aa) — a plain inline `<a>`/`<button>` with no padding is only
+ * as tall as its text (well under the 24px minimum) and, stacked with no gap, sits closer than
+ * 24px to its neighbour too. jsdom has no real layout engine, so none of the existing
+ * component-level axe tests could have caught a *sizing* violation — this fix's regression
+ * coverage is exactly the Playwright axe check that found it (tests/e2e/axe-sweep.spec.ts). */
+.gcpe-website nav a,
+.gcpe-document-tabs [role="tab"],
+.gcpe-sidebar__view-links a {
+  display: inline-block;
+  min-height: 24px;
+  padding: 0.35rem 0.4rem;
+  box-sizing: border-box;
+}
+
+.gcpe-website nav ul,
+.gcpe-sidebar__view-links ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.gcpe-document-tabs [role="tablist"] {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.gcpe-shell__main {
+  flex: 1 1 auto;
+  padding: 1rem 1.5rem;
+}
+
+.gcpe-sign-in {
+  max-width: 24rem;
+  margin: 3rem auto;
+  padding: 0 1rem;
+}
+
+.gcpe-sign-in form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+/* Task 2 (staff-web): release lists and search. */
+
+.gcpe-tabs ul {
+  list-style: none;
+  display: flex;
+  gap: 1rem;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.gcpe-release-list__toolbar,
+.gcpe-search__filters {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin: 1rem 0;
+}
+
+.gcpe-release-list__rows {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.gcpe-release-row {
+  display: flex;
+  gap: 0.75rem;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 0.75rem;
+}
+
+/* Decorative only (aria-hidden) — the type is always also shown as text. */
+.gcpe-release-row__bar {
+  flex: 0 0 6px;
+  border-radius: 2px;
+}
+
+.gcpe-release-row__bar--release {
+  background: var(--gcpe-type-release);
+}
+.gcpe-release-row__bar--story {
+  background: var(--gcpe-type-story);
+}
+.gcpe-release-row__bar--update {
+  background: var(--gcpe-type-update);
+}
+.gcpe-release-row__bar--advisory {
+  background: var(--gcpe-type-advisory);
+}
+.gcpe-release-row__bar--factsheet {
+  background: var(--gcpe-type-factsheet);
+}
+
+.gcpe-release-row__body {
+  flex: 1 1 auto;
+}
+
+.gcpe-release-row__badges {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.25rem 0 0;
+}
+
+.gcpe-badge {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid #666;
+  font-size: 0.8rem;
+}
+
+.gcpe-badge--alert {
+  border-color: #b00020;
+  color: #b00020;
+}
+
+/* Visually hidden but still reachable by aria-describedby/aria-labelledby (used for the
+ * Flickr alert badge's accessible description). */
+.gcpe-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.gcpe-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+/* Task 3 (staff-web): new release and the release editor. */
+
+.gcpe-release-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 48rem;
+}
+
+.gcpe-release-editor__header,
+.gcpe-release-editor__actions,
+.gcpe-release-editor__settings,
+.gcpe-release-editor__categories,
+.gcpe-release-editor__asset,
+.gcpe-release-editor__page-details {
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 1rem;
+}
+
+.gcpe-release-editor__meta {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.5rem;
+}
+
+.gcpe-release-editor__checklist ul,
+.gcpe-release-editor__problems {
+  margin: 0.25rem 0 0.75rem;
+}
+
+.gcpe-release-editor__action-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.gcpe-release-editor__scheduler,
+.gcpe-release-editor__delete-dialog,
+.gcpe-release-editor__unsaved-dialog {
+  border: 1px solid #999;
+  border-radius: 4px;
+  padding: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.gcpe-schedule-picker {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-end;
+  border: 0;
+  padding: 0;
+  margin: 0.5rem 0;
+}
+
+.gcpe-release-editor__feature-place {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  border: 0;
+  padding: 0.25rem 0;
+  margin: 0;
+}
+
+/* I3: the only draggable element in a reorderable row (shared/useDragReorder.tsx) — a small
+ * grip, not the whole row, so mouse text selection in the row's own inputs still works. */
+.gcpe-drag-handle {
+  display: inline-block;
+  cursor: grab;
+  padding: 0 0.5rem;
+  line-height: 1;
+  user-select: none;
+}
+
+/* I6/axe: the file-name link and its neighbouring Delete button were both a bare inline
+ * element with no padding — axe's target-size rule (WCAG 2.5.8) failed on the link (under
+ * 24px tall) and on the gap between it and the button (under 24px of safe clickable space).
+ * Only found once axe-sweep.spec.ts started scanning a populated Files list (I6). */
+.gcpe-files li {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.25rem 0;
+}
+.gcpe-files li > a {
+  display: inline-block;
+  padding: 0.25rem 0;
+  min-height: 24px;
+}
+
+/* Body editor: a visible label and a bordered, multi-line typing area (the contenteditable
+   has no size or border of its own). */
+.gcpe-body-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-block: 1rem;
+}
+.gcpe-body-editor__label {
+  font-weight: 600;
+}
+.gcpe-body-editor__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.gcpe-body-editor__area .ProseMirror {
+  min-height: 12rem;
+  padding: 0.75rem;
+  border: 1px solid var(--surface-color-border-dark, #898785);
+  border-radius: 4px;
+  background: var(--surface-color-forms-default, #fff);
+  line-height: 1.5;
+}
+.gcpe-body-editor__area .ProseMirror:focus {
+  outline: 3px solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: 1px;
+}
+.gcpe-body-editor__area .ProseMirror[contenteditable="false"] {
+  background: var(--surface-color-forms-disabled, #edebe9);
+}
+
+/* Release editor: why Approve/Publish are unavailable, next to the buttons. */
+
+.gcpe-release-editor__why {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.gcpe-release-editor__why p {
+  margin: 0;
+}
+
+.gcpe-release-editor__why ul {
+  margin: 0.25rem 0 0;
+}
+
+/* Release editor: the "this page updates on its own" note while publishing/unpublishing. */
+.gcpe-release-editor__settling {
+  margin: 0;
+}
+
+/* Release editor: the sticky unsaved-changes save bar. */
+
+.gcpe-release-editor--save-bar-open {
+  padding-bottom: 6rem;
+}
+
+.gcpe-save-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  background: #fef1d8;
+  border-top: 1px solid #f8bb47;
+  box-shadow: 0 -2px 6px rgba(0, 0, 0, 0.12);
+}
+
+.gcpe-save-bar__message {
+  margin: 0;
+  font-weight: 700;
+}
+
+.gcpe-save-bar__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

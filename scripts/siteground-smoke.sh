@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
 # Smoke test for a SiteGround deployment of apps/stack (docs/deploy/siteground.md, "Smoke test").
 # Prompts (hidden) for the local admin password and the TICK_TOKEN, then: logs in, adds a test
-# subscriber, creates a release scheduled one minute in the past, ticks the stack twice, and
-# prints what happened. Secrets are never printed or written to disk.
+# subscriber, creates, approves and schedules a release for immediate publishing, ticks the
+# stack, and prints what happened. Secrets are never printed or written to disk.
+#
+# Needs Core's `health` ministry (abbreviation HLTH) and `health` sector to have reached NRMS
+# (docs/deploy/siteground.md, "Smoke test").
 #
 # Usage: scripts/siteground-smoke.sh https://boxs.ca
 set -euo pipefail
@@ -10,7 +13,6 @@ set -euo pipefail
 BASE="${1:?usage: $0 https://<domain>}"
 BASE="${BASE%/}"
 STAMP="$(date -u +%Y%m%d%H%M%S)"
-KEY="SMOKE-${STAMP}"
 
 json_get() { python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get(sys.argv[1], ""))' "$1"; }
 
@@ -30,29 +32,42 @@ echo "== add subscriber smoke+${STAMP}@example.test on ministries:health"
 curl -sS -X POST "$BASE/nod/api/subscribers" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
   -d "{\"email\":\"smoke+${STAMP}@example.test\",\"lists\":[\"ministries:health\"]}"; echo
 
-echo "== create release $KEY"
-python3 - "$KEY" <<'PY' | curl -sS -X POST "$BASE/nrms/api/releases" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d @-
-import json, sys
-key = sys.argv[1]
+# POSTs JSON from stdin to an NRMS release endpoint; prints the response body, or the body and
+# a failure message (then exits) when the HTTP status isn't 2xx.
+nrms_post() {
+  local out status
+  out="$(curl -sS -X POST "$BASE/nrms/api/releases$1" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' -d @- -w '\n%{http_code}')"
+  status="${out##*$'\n'}"
+  out="${out%$'\n'*}"
+  case "$status" in 2??) printf '%s' "$out" ;; *) echo "POST /nrms/api/releases$1 failed ($status): $out" >&2; exit 1 ;; esac
+}
+
+echo "== create release"
+CREATED="$(python3 - <<'PY' | nrms_post ""
+import json
 print(json.dumps({
-  "key": key, "kind": "releases", "reference": None, "leadMinistryKey": "health",
-  "summary": "Smoke test release from scripts/siteground-smoke.sh.",
-  "socialMediaSummary": None, "socialMediaHeadline": None, "keywords": None, "location": "VICTORIA",
-  "hasMediaAssets": False, "hasTranslations": False, "isNewsOnDemand": True, "assetUrl": None, "redirectUri": None,
-  "documents": [{"pageTitle": "Smoke test", "languageId": 4105, "headline": "Smoke test: weekend clinics open across B.C.",
-                 "subheadline": None, "detailsHtml": "<p>This is a smoke test.</p>", "byline": None,
-                 "contacts": [{"title": "Media Relations", "details": "Alex Example\n250-555-0100"}]}],
-  "ministryKeys": ["health"], "sectorKeys": [], "tagKeys": [], "themeKeys": [],
-  "assets": None, "translations": None,
-  "publishFlags": {"toWeb": True, "toSubscribers": True, "toMediaLists": False}, "mediaListKeys": [],
+  "type": "release", "pageTitle": "News Release", "layout": "formal", "organizations": "Ministry of Health",
+  "headline": "Smoke test: weekend clinics open across B.C.",
+  "bodyHtml": "<p>This is a smoke test from scripts/siteground-smoke.sh.</p>",
+  "location": "Victoria", "contacts": ["Media Relations\nAlex Example\n250-555-0100"],
+  "ministries": ["health"], "leadMinistryKey": "health", "sectors": ["health"],
 }))
 PY
-echo
+)"
+ID="$(printf '%s' "$CREATED" | json_get id)"
+VERSION="$(printf '%s' "$CREATED" | json_get version)"
+echo "id $ID (version $VERSION)"
 
-echo "== schedule one minute in the past"
-PUBLISH_AT="$(date -u -v-1M +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-1 minute' +%Y-%m-%dT%H:%M:%SZ)"
-curl -sS -X POST "$BASE/nrms/api/releases/$KEY/schedule" -H "Authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-  -d "{\"publishAt\":\"$PUBLISH_AT\"}"; echo
+echo "== approve"
+APPROVED="$(printf '{"version":%s}' "$VERSION" | nrms_post "/$ID/approve")"
+KEY="$(printf '%s' "$APPROVED" | json_get key)"
+VERSION="$(printf '%s' "$APPROVED" | json_get version)"
+[ -n "$KEY" ] || { echo "approve returned no key: $APPROVED"; exit 1; }
+echo "key $KEY (version $VERSION)"
+
+echo "== schedule for immediate release"
+SCHEDULED="$(printf '{"version":%s,"publishAt":"now"}' "$VERSION" | nrms_post "/$ID/schedule")"
+printf '%s' "$SCHEDULED" | python3 -c 'import json,sys; d=json.load(sys.stdin); print({k: d.get(k) for k in ("key","status","statusText","publishAt")})'
 
 if [ -n "$TICK_TOKEN" ]; then
   for i in 1 2 3; do
@@ -73,7 +88,7 @@ fi
 unset TICK_TOKEN
 
 echo "== release status"
-curl -sS "$BASE/nrms/api/releases/$KEY" -H "Authorization: Bearer $TOKEN" | python3 -c 'import json,sys; d=json.load(sys.stdin); print({k: d.get(k) for k in ("key","status","publishedAt","lastError")})'
+curl -sS "$BASE/nrms/api/releases/$ID" -H "Authorization: Bearer $TOKEN" | python3 -c 'import json,sys; d=json.load(sys.stdin); print({k: d.get(k) for k in ("key","status","statusText","releasedAt","lastError")})'
 echo "== News API post"
 curl -sS -o /dev/null -w "%{http_code} %{size_download} bytes\n" "$BASE/api/Posts/$KEY?api-version=1.0"
 echo "== static page"

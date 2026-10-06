@@ -1,8 +1,8 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
-import { requireRole } from "@gcpe/auth";
-import { addSubscriber, SubscriberExistsError } from "../subscribers";
+import { requireAnyRole, requireRole } from "@gcpe/auth";
+import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
 
 /** '*' = all news, or '<kind>:<key>' with kind in ministries|sectors|themes|tags (matches indexKeysFor's output shape). */
 export const listKeySchema = z
@@ -45,6 +45,20 @@ export function apiRoutes(db: Db): Router {
       const parsed = addSubscriberSchema.parse(req.body);
       const { id } = await addSubscriber(db, parsed);
       res.status(201).json({ id });
+    }),
+  );
+
+  r.get(
+    "/subscribers/count",
+    // Fix round 1 (review finding): "NoD.SubscriberCount" is a dedicated, read-only service
+    // role for NRMS's own calls — minted with far less than the full NRMS.Editor write
+    // credential (see apps/nrms/src/start.ts). NoD.Admin and NRMS.Editor can still call this
+    // directly (NoD.Admin for ops, NRMS.Editor for a staff editor testing it by hand).
+    requireAnyRole("NoD.Admin", "NRMS.Editor", "NoD.SubscriberCount"),
+    run(async (req, res) => {
+      const raw = typeof req.query.lists === "string" ? req.query.lists : "";
+      const lists = z.array(listKeySchema).parse(raw ? raw.split(",") : []);
+      res.json({ count: await countSubscribers(db, lists) });
     }),
   );
 

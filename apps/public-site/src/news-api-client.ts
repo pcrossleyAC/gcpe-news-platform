@@ -3,6 +3,9 @@ import type { PostDto } from "./render";
 export interface NewsApiClient {
   getPost(key: string): Promise<PostDto | null>;
   latestHome(count: number): Promise<PostDto[]>;
+  /** The home settings News API already projects (plan 3d tasks 1–3) — used here only for
+   * Project Blue Bridge's `granville` (plan 3d task 4). */
+  home(): Promise<{ granville: string | null }>;
 }
 
 export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch): NewsApiClient {
@@ -20,5 +23,6 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
   return {
     getPost: async (key) => (await get(`api/Posts/${encodeURIComponent(key)}?api-version=1.0`)) as PostDto | null,
     latestHome: async (count) => ((await get(`api/Posts/Latest/home/default?api-version=1.0&count=${count}`)) as PostDto[] | null) ?? [],
+    home: async () => (await get(`api/Home?api-version=1.0`)) as { granville: string | null },
   };
 }

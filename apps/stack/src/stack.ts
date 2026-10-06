@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { join } from "node:path";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
@@ -7,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import type { ZodTypeAny } from "zod";
 import { authFromEnv, requireBearer, requireRole } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { createFakeFlickr } from "@gcpe/flickr-fake";
 import type { Closer } from "@gcpe/http-kit";
 
 import { coreEnvSchema, startCore, type AppHandle as CoreHandle } from "../../core/src/start";
@@ -20,9 +22,10 @@ import { publicSiteEnvSchema } from "../../public-site/src/env";
 import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../public-site/src/start";
 
 import { noStoreByDefault, noStoreOnRedirect } from "./cache-control";
+import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
-import { installErrorCapture } from "./errors";
-import { envFor, resolveSelfUrls, type AppPrefix, stackEnvSchema } from "./env";
+import { installErrorCapture, type ErrorEntry } from "./errors";
+import { envFor, FAKE_FLICKR, FAKE_FLICKR_PATH, resolveSelfUrls, type AppPrefix, stackEnvSchema, usesFakeFlickr } from "./env";
 import { createTickRunner, tickRouter, type TickStep } from "./tick";
 
 export interface StackHandle {
@@ -40,6 +43,27 @@ export interface StackHandle {
 /** The static site's own cache lifetime (brief: "the static /site files get Cache-Control:
  * public, max-age=60"). express.static's `maxAge` option wants milliseconds. */
 const SITE_MAX_AGE_MS = 60_000;
+/** Uploaded release files under /files (same one-minute public lifetime). */
+const FILES_MAX_AGE_MS = 60_000;
+
+/** /stack/errors's persisted ring: how many of the most recent console.error calls are kept,
+ * in memory and in the DATA_DIR-backed file that survives a restart. */
+const ERROR_LOG_RING_LIMIT = 1000;
+
+/** The origin of the public site's URL — where the stack serves /files — or "" if it isn't a URL. */
+export function publicFilesBase(siteUrl: string | undefined): string {
+  try {
+    return siteUrl ? new URL(siteUrl).origin : "";
+  } catch {
+    return "";
+  }
+}
+
+/** The fake Flickr's public base — what its oEmbed image URLs point at: the public site's origin
+ * + /fake-flickr, or http://localhost:<port>/fake-flickr when the site URL isn't a URL. */
+export function fakeFlickrPublicBase(siteUrl: string | undefined, port: number): string {
+  return `${publicFilesBase(siteUrl) || `http://localhost:${port}`}${FAKE_FLICKR_PATH}`;
+}
 
 /** `requested` as-is when it's a real port; otherwise (PORT=0, "let the OS pick") binds a
  * throwaway probe server to learn an actual port and closes it immediately so the real
@@ -67,9 +91,12 @@ async function determineActualPort(requested: number): Promise<number> {
  * round 1, P2-R30 important fix 1: applied to every app, not just NRMS/NEWSAPI — Core's own
  * EVENT_SUBSCRIBERS needs this exactly as much as NRMS's does (Core publishes org.upserted
  * the same way NRMS publishes release.published).
+ *
+ * `dataDir` (Task 1) is threaded through to `envFor` so NRMS's STORAGE_DIR and a relative
+ * SITE_OUTPUT_DIR both anchor under the one persistent folder that survives a redeploy.
  */
-function resolvedEnvFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.ProcessEnv {
-  return resolveSelfUrls(envFor(env, prefix));
+function resolvedEnvFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir: string): NodeJS.ProcessEnv {
+  return resolveSelfUrls(envFor(env, prefix, dataDir));
 }
 
 /**
@@ -111,8 +138,17 @@ const HEALTH_CACHE_TTL_MS = 5_000;
  * {@link HEALTH_CACHE_TTL_MS} — an external uptime monitor polling this every few seconds
  * would otherwise fan out into 6 fresh loopback requests (one of which is itself a DB ping)
  * on every single poll, for a number that's realistically stable across a 5 s window.
+ *
+ * `startedAt`/`pid` (2026-10-04 SiteGround debugging): SiteGround idle-kills the stack
+ * process after 30-60s and cold-starts a brand-new one on the next request
+ * (docs/deploy/siteground.md "Background work scheduler") — indistinguishable, from the
+ * outside, from a crash-triggered restart unless something names *when this process itself
+ * started*. Two polls a request-apart with a different `startedAt` (or `pid`) prove a restart
+ * happened between them; the same `startedAt` across many minutes proves the process stayed
+ * up the whole time. Deliberately outside the cache above (constant for the process's whole
+ * life, so there's nothing to cache) and never itself a reason for a non-200/503.
  */
-function healthRouter(): Router {
+function healthRouter(startedAt: string): Router {
   const checks: { name: string; path: string }[] = [
     { name: "core", path: "/core/health/ready" },
     { name: "nrms", path: "/nrms/health/ready" },
@@ -125,7 +161,7 @@ function healthRouter(): Router {
   const r = Router();
   r.get("/health", async (_req, res) => {
     if (cached && cached.expiresAt > Date.now()) {
-      return void res.status(cached.status).json(cached.body);
+      return void res.status(cached.status).json({ ...cached.body, startedAt, pid: process.pid });
     }
     const apps: Record<string, boolean> = {};
     await Promise.all(
@@ -142,15 +178,27 @@ function healthRouter(): Router {
     const status = ok ? 200 : 503;
     const body = { status: ok ? "ok" : "unavailable", apps };
     cached = { expiresAt: Date.now() + HEALTH_CACHE_TTL_MS, status, body };
-    res.status(status).json(body);
+    res.status(status).json({ ...body, startedAt, pid: process.pid });
   });
   return r;
 }
 
-function errorsRouter(auth: Parameters<typeof requireBearer>[0], entries: () => { timestamp: string; message: string }[]): Router {
+/** `/stack/errors`'s own response-size knob: how many of the persisted ring's entries a single
+ * GET returns. Independent of the ring's own cap (ERROR_LOG_RING_LIMIT below) — a caller can
+ * ask for fewer than what's kept, up to everything that's kept. */
+const ERROR_LOG_DEFAULT_RESPONSE_LIMIT = 200;
+const ERROR_LOG_MAX_RESPONSE_LIMIT = 1000;
+
+function errorsRouter(auth: Parameters<typeof requireBearer>[0], entries: () => ErrorEntry[]): Router {
   const r = Router();
-  r.get("/errors", requireBearer(auth), requireRole("Core.Admin"), (_req, res) => {
-    res.json({ errors: entries() });
+  r.get("/errors", requireBearer(auth), requireRole("Core.Admin"), (req, res) => {
+    const all = entries();
+    const requested = Number(req.query.limit);
+    const limit =
+      Number.isFinite(requested) && requested > 0
+        ? Math.min(Math.trunc(requested), ERROR_LOG_MAX_RESPONSE_LIMIT)
+        : ERROR_LOG_DEFAULT_RESPONSE_LIMIT;
+    res.json({ errors: all.slice(Math.max(0, all.length - limit)) });
   });
   return r;
 }
@@ -172,16 +220,26 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const tenant = loadTenantConfig(stackEnv.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
 
+  // Task 1: the one folder that survives a SiteGround redeploy (site output, uploaded files)
+  // — resolved and checked writable before any app starts, so a misconfigured/unwritable
+  // DATA_DIR fails fast instead of surfacing later as a silent write failure or a 404 for
+  // every /site page after the next deploy.
+  const dataDir = resolveDataDir(env);
+  await ensureWritableDir(dataDir);
+
   const actualPort = await determineActualPort(stackEnv.PORT);
 
   // Fix round 1, P2-R30 important fix 1 + M9: every app's view gets self: URLs resolved, not
   // just NRMS/NEWSAPI's EVENT_SUBSCRIBERS.
-  const coreEnv = resolvedEnvFor(env, "CORE");
-  const nrmsEnv = resolvedEnvFor(env, "NRMS");
-  const newsApiEnv = resolvedEnvFor(env, "NEWSAPI");
-  const siteEnv = resolvedEnvFor(env, "SITE");
-  const nodEnv = resolvedEnvFor(env, "NOD");
-  const distEnv = resolvedEnvFor(env, "DIST");
+  const coreEnv = resolvedEnvFor(env, "CORE", dataDir);
+  const nrmsEnv = resolvedEnvFor(env, "NRMS", dataDir);
+  const newsApiEnv = resolvedEnvFor(env, "NEWSAPI", dataDir);
+  const siteEnv = resolvedEnvFor(env, "SITE", dataDir);
+  const nodEnv = resolvedEnvFor(env, "NOD", dataDir);
+  const distEnv = resolvedEnvFor(env, "DIST", dataDir);
+  // Phase 3c: published records carry absolute file URLs; unless NRMS_PUBLIC_FILES_BASE says
+  // otherwise, files are served (below, at /files) from the public site's own origin.
+  if (nrmsEnv.PUBLIC_FILES_BASE === undefined) nrmsEnv.PUBLIC_FILES_BASE = publicFilesBase(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl);
 
   // Every self:/… URL resolves to INTERNAL_ORIGIN (http://stack.internal), which this
   // routes into the stack's own Express app in memory — no loopback networking, which
@@ -200,7 +258,15 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
 
   console.log(`[stack] cold start complete in ${Date.now() - startedAt}ms (tenant ${tenant.tenantId}, ${tenant.timeZone})`);
 
-  const errorCapture = installErrorCapture();
+  // 2026-10-04 SiteGround debugging: held only in process memory until now, this log was wiped
+  // by every idle-kill restart (docs/deploy/siteground.md "Troubleshooting") — it was nearly
+  // always empty by the time anyone checked it. Persisted under DATA_DIR (the same folder that
+  // already survives a restart and a redeploy; see data-dir.ts) so it doesn't lose history.
+  const errorCapture = installErrorCapture({
+    limit: ERROR_LOG_RING_LIMIT,
+    filePath: join(dataDir, "logs", "errors.jsonl"),
+    startedAt: new Date(startedAt).toISOString(),
+  });
 
   const app = express();
   app.disable("x-powered-by");
@@ -217,32 +283,133 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // mount actually serves never reaches noStoreByDefault at all. noStoreOnRedirect (M4) sits
   // in front of express.static itself so its *redirect* (a directory request missing its
   // trailing slash) gets no-store too, instead of the bare, cacheable-by-default 301
-  // express.static would otherwise send.
-  app.use("/site", noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS }));
+  // express.static would otherwise send. dotfiles: "deny" (plan 3d task 4 fix round 1) is set
+  // explicitly for the public site's own `.site-state.json` render-state marker
+  // (apps/public-site/src/rebuild.ts) and anything else dot-prefixed under OUTPUT_DIR — "ignore"
+  // (serve-static's default) already keeps a dotfile unservable too, so this changes no
+  // observable behaviour (both fall through, with the default fallthrough: true, to the
+  // same eventual 404), but says explicitly that a dotfile is refused on purpose, not by
+  // accident of the default.
+  app.use("/site", noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny" }));
+
+  // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
+  // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.
+  // A file becomes downloadable as soon as it's uploaded — including on a draft, before
+  // approval or embargo lifts (addReleaseFile in apps/nrms/src/media/files.ts checks the
+  // file's type, not the release's status; see open question Q17 in
+  // docs/parity/open-questions.md, and C38 in docs/parity/changes-from-legacy.md) — but every
+  // key carries a 16-hex random part, so nothing is guessable or listable (no index, no
+  // directory redirects). The store's `.meta` folder is refused by dotfiles: "deny".
+  // Content-Type comes from the key's extension, which NRMS forces to match the sniffed bytes
+  // (PDF/PNG/JPEG only); nosniff stops a browser second-guessing it. Mounted before the
+  // no-store default so the 60 s public cache stands.
+  const storageDir = nrmsEnv.STORAGE_DIR!;
+  app.use(
+    "/files",
+    express.static(storageDir, {
+      index: false,
+      redirect: false,
+      dotfiles: "deny",
+      fallthrough: false,
+      maxAge: FILES_MAX_AGE_MS,
+      setHeaders: (res) => res.setHeader("X-Content-Type-Options", "nosniff"),
+    }),
+  );
+
+  // Task 1 (staff-web): the staff app, hosted at /hub — mounted here (before the no-store
+  // default) so /hub/assets' own long-lived Cache-Control isn't overridden by it, same
+  // reasoning as /site and /files above. /hub/assets' filenames are content-hashed by the
+  // build (esbuild's [hash]), so a year-long immutable cache is safe: a changed file is a
+  // changed URL. fallthrough: false means a miss under /hub/assets (a stale or mistyped asset
+  // reference) 404s outright — it must never fall through to the SPA-fallback route below and
+  // come back as index.html.
+  const staffWebDir = stackEnv.STAFF_WEB_DIR;
+  const staffWebAssetsDir = join(staffWebDir, "assets");
+  if (existsSync(staffWebAssetsDir)) {
+    app.use("/hub/assets", express.static(staffWebAssetsDir, { immutable: true, maxAge: "1y", fallthrough: false }));
+  }
+  // Deep links (e.g. /hub/releases/<id>) and a plain browser refresh must all resolve to the
+  // shell's index.html, which then does its own client-side routing — matched here by "the
+  // last path segment has no extension", so a genuinely missing file (anything that looks like
+  // a file but isn't under /hub/assets, e.g. a typo'd /hub/favicon.ico) 404s instead of
+  // silently becoming the shell (constraints.md review item 5). index.html is never cached —
+  // Cache-Control: no-store is set explicitly here since this route runs ahead of
+  // noStoreByDefault. When the build directory is missing entirely (never built yet, or a
+  // broken deploy), /hub/* answers 503 "Staff app not built" rather than crashing the whole
+  // stack — every other mount below (including /stack/health) still starts normally.
+  app.use("/hub", (req, res, next) => {
+    if (req.method !== "GET" && req.method !== "HEAD") return next();
+    res.setHeader("Cache-Control", "no-store");
+    // Minors: the staff shell is never meant to be framed by anything (clickjacking) — belt
+    // and suspenders, since the two headers cover browsers that only honour one of them.
+    res.setHeader("Content-Security-Policy", "frame-ancestors 'none'");
+    res.setHeader("X-Frame-Options", "DENY");
+    const last = req.path.split("/").pop() ?? "";
+    if (last.includes(".")) return void res.status(404).end();
+    const indexPath = join(staffWebDir, "index.html");
+    if (!existsSync(indexPath)) return void res.status(503).send("Staff app not built");
+    // `root` keeps send's dotfile check to "index.html" itself: on SiteGround the build lives
+    // under ~/.nodeapp/<build>/hub, and an absolute path with a dot segment would 404.
+    res.sendFile("index.html", { root: staffWebDir });
+  });
 
   app.use(noStoreByDefault);
+
+  // Fix round 1, P2-R30 M6: /stack/errors's bearer check (and the fake Flickr's switches below)
+  // is built from Core's own env view (which, like every app's view, carries the shared
+  // ENTRA_TENANT_ID plus its own CORE_AUTH_AUDIENCE) rather than the raw, unprefixed env — Core is
+  // the stack's admin app, so its own identity configuration is the one these defer to.
+  const errorsAuth = authFromEnv(coreEnv);
+
+  // Phase 3c: no Flickr key on a non-production (or test, or explicitly fake) deployment → a fake
+  // Flickr (signature-checking, in-memory photos) that NRMS's env view already points at (envFor
+  // sets FLICKR_MODE=fake and the self: URLs; see usesFakeFlickr). Mounted ahead of every app —
+  // and of any body parser, since it reads the raw form body its signatures cover. The Flickr
+  // API surface (/services/*, /static/*, photo pages) stays public like the real one; the
+  // /__fake/* test switches need a Core.Admin bearer or staff session.
+  if (usesFakeFlickr(env)) {
+    console.warn(`[stack] FLICKR: using the FAKE Flickr at ${FAKE_FLICKR_PATH} — set NRMS_FLICKR_API_KEY etc. for real Flickr`);
+    // 2026-10-04 SiteGround debugging: the fake's refuseAuth/outageCalls/deleted switches and
+    // every photo's isPublic flag used to live only in this process's memory — SiteGround
+    // idle-kills the stack process after 30-60s and cold-starts a brand-new one on the very
+    // next request (docs/deploy/siteground.md "Background work scheduler"), which reset all
+    // of that mid-scenario. scripts/siteground-flickr-walkthrough.sh --outage polls once a
+    // minute, close enough to that idle window that a restart between polls silently cleared
+    // refuseAuth and un-published the photo it had just made public, which is why the photo's
+    // reported state oscillated (unavailable -> private -> public -> private) instead of
+    // settling. statePath, under the same DATA_DIR that already survives this (and a
+    // redeploy), makes the fake's test state durable across it, the same way real Flickr's
+    // own state would be.
+    const fake = createFakeFlickr({ ...FAKE_FLICKR, publicBaseUrl: fakeFlickrPublicBase(siteEnv.PUBLIC_SITE_URL, actualPort), statePath: join(dataDir, "fake-flickr-state.json") });
+    app.use(`${FAKE_FLICKR_PATH}/__fake`, requireBearer(errorsAuth.bearer), requireRole("Core.Admin"));
+    app.use(FAKE_FLICKR_PATH, fake.router);
+  }
 
   // Fix round 1, P2-R30 M7: one combined login-attempt budget (10/min/IP) across every
   // app's local-admin login route, mounted on those exact paths *before* the apps themselves
   // are mounted below — each app's own localLoginRouter still has its own independent
   // 10/min/IP limiter too (unchanged), so this is an additional, stack-wide ceiling on top,
   // not a replacement: an attacker spreading guesses across /core, /nrms, /nod and
-  // /distribution to dodge any single app's limiter still hits this one.
+  // /distribution to dodge any single app's limiter still hits this one. Task 6: staff sign-in
+  // (/core/auth/login) shares this same stack-wide budget, not a separate one.
   const combinedLoginLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false });
-  app.use(["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token"], combinedLoginLimiter);
+  app.use(
+    ["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token", "/core/auth/login"],
+    combinedLoginLimiter,
+  );
 
-  // Fix round 1, P2-R30 M6: /stack/errors's bearer check is built from Core's own env view
-  // (which, like every app's view, now carries the shared ENTRA_TENANT_ID plus its own
-  // CORE_AUTH_AUDIENCE) rather than the raw, unprefixed env — Core is the stack's admin app,
-  // so its own identity configuration is the one /stack/errors defers to.
-  const errorsAuth = authFromEnv(coreEnv);
-  app.use("/stack", healthRouter());
+  app.use("/stack", healthRouter(new Date(startedAt).toISOString()));
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
   app.use(
     "/stack",
     tickRouter(
       stackEnv.TICK_TOKEN,
       createTickRunner([
+        // Flickr first, so a photo made public this tick is published with it in the same tick.
+        { name: "nrms.flickr", run: worker(nrms, "flickr") },
+        // Carousel switch-over before publish: a next carousel that just went live should be
+        // what the same tick's publish step (and anything it triggers) sees as current.
+        { name: "nrms.site", run: worker(nrms, "site") },
         { name: "nrms.publish", run: worker(nrms, "publish") },
         { name: "nrms.dispatch", run: worker(nrms, "dispatch") },
         { name: "core.dispatch", run: worker(core, "dispatch") },
@@ -262,6 +429,17 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   app.use("/site-builder", siteBuilder.app);
   app.use(newsApi.app);
   stackApp = app;
+
+  // Fix round 1: public-site's self-heal needs the in-process self: fetch, which only becomes
+  // usable once `stackApp` above is assigned (installInternalFetch's lookup throws "the stack
+  // app is not ready yet" before that) — firing it from inside startPublicSite itself (the
+  // original Task 1 approach) always lost that race, since News API (which self-heal reads
+  // from over a self: URL) starts after Public Site. Fire-and-forget, same logging as the
+  // standalone main.ts does, and must never throw past here.
+  void siteBuilder
+    .selfHeal()
+    .then((r) => r && console.log(`[public-site] self-heal rebuilt ${r.rebuilt} posts`))
+    .catch((e) => console.error(`[public-site] self-heal failed: ${e instanceof Error ? e.message : e}`));
 
   return {
     app,
@@ -322,6 +500,12 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   // positive integer for the resolved URL's *shape* to come out right. Never dialled.
   const actualPort = stackEnv.PORT || 1;
 
+  // Task 1: the same DATA_DIR resolution a real startStack() uses, so --check validates each
+  // app's SITE_OUTPUT_DIR/NRMS_STORAGE_DIR exactly as they'd actually resolve — but, like the
+  // rest of this function, without any filesystem side effect (no ensureWritableDir call;
+  // that's exercised by a real startStack()).
+  const dataDir = resolveDataDir(env);
+
   const checks: { label: string; prefix: AppPrefix; schema: ZodTypeAny }[] = [
     { label: "core", prefix: "CORE", schema: coreEnvSchema },
     { label: "nrms", prefix: "NRMS", schema: nrmsEnvSchema },
@@ -334,7 +518,7 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   const apps: Record<string, StackCheckAppResult> = {};
   let ok = true;
   for (const c of checks) {
-    const view = resolvedEnvFor(env, c.prefix);
+    const view = resolvedEnvFor(env, c.prefix, dataDir);
     const errors: string[] = [];
 
     const parsed = c.schema.safeParse(view);

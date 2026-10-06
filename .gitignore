@@ -6,3 +6,8 @@ dist/
 .DS_Store
 CLAUDE.md
 .superpowers/
+/data/
+.impeccable/
+/test-results/
+/playwright-report/
+/blob-report/

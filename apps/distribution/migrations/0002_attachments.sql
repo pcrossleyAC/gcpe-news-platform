@@ -1,0 +1,1 @@
+ALTER TABLE "batches" ADD COLUMN "attachments" jsonb DEFAULT '[]'::jsonb NOT NULL;

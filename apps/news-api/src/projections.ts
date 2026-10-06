@@ -333,6 +333,22 @@ async function requestRebuild(tx: Tx, key: string, correlationId: string, subscr
   );
 }
 
+/**
+ * Enqueues `site.rebuild_requested` for just the home page, in the same transaction as the
+ * `site.content.changed` write that triggered it. One fixed aggregate (`site:home-page`,
+ * distinct from NRMS's own `site:home` snapshot aggregate) is fine here — unlike
+ * {@link requestRebuild}, every home-page content change competes for the same page, so
+ * sequence-based staleness dropping the odd retried rebuild in favour of a newer one is the
+ * correct behaviour, not a bug.
+ */
+async function requestHomeRebuild(tx: Tx, correlationId: string, subscribers: SubscriberConfig[]): Promise<void> {
+  await enqueueEvent(
+    tx,
+    { type: "site.rebuild_requested", source: "news-api", aggregateId: "site:home-page", data: { pages: ["home"] }, correlationId },
+    subscribers,
+  );
+}
+
 export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<string, EventHandler> {
   const subscribers = opts.subscribers ?? [];
   const termUpserted: EventHandler = (tx, e) => applyTerm(tx, e.data as TermRecord);
@@ -362,7 +378,11 @@ export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<s
       await unpublishRelease(tx, key);
       await requestRebuild(tx, key, e.correlationId, subscribers);
     },
-    "site.content.changed": (tx, e) => applySiteContent(tx, e.data as SiteContentChanged),
+    "site.content.changed": async (tx, e) => {
+      const c = e.data as SiteContentChanged;
+      await applySiteContent(tx, c);
+      if (c.entity === "home") await requestHomeRebuild(tx, e.correlationId, subscribers);
+    },
   };
 }
 

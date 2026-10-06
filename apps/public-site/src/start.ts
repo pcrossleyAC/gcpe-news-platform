@@ -7,6 +7,8 @@ import { createApp } from "./app";
 import { publicSiteEnvSchema, resolveTenantConfig, tenantConfigPathSchema } from "./env";
 import { newsApiClient } from "./news-api-client";
 import { createRebuildHandler } from "./rebuild";
+import { selfHeal } from "./self-heal";
+import { isTestSite } from "./site-env";
 import { fsStorage } from "./storage";
 
 export interface AppHandle {
@@ -26,6 +28,18 @@ export interface AppHandle {
   /** The rest of today's shutdown order, run *after* the http server closes, excluding the
    * http server itself (main.ts owns that). */
   closers: Closer[];
+  /**
+   * Task 1 fix round 1: rebuilds `index.html` (and the latest posts) once, if the output
+   * folder came up empty (e.g. right after a SiteGround redeploy) — see self-heal.ts. Exposed
+   * here instead of being fired automatically inside `startPublicSite`: in the single-process
+   * stack, the in-process `self:` fetch `newsApiClient` relies on only becomes usable once
+   * every app has started and `stack.ts` assigns its own `stackApp` (installInternalFetch's
+   * lookup throws "the stack app is not ready yet" before that) — calling this from inside
+   * `startPublicSite` itself always hit that race and failed. The caller decides when it's
+   * actually safe to call: `main.ts` calls it right after the http server starts listening
+   * (standalone has no such race); `stack.ts` calls it right after `stackApp` is assigned.
+   */
+  selfHeal(): Promise<{ rebuilt: number } | null>;
 }
 
 /**
@@ -50,11 +64,15 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
 
-  const handler = createRebuildHandler({
-    newsApi: newsApiClient(parsed.NEWS_API_URL),
-    storage: fsStorage(parsed.OUTPUT_DIR),
-    site: { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL },
-  });
+  const newsApi = newsApiClient(parsed.NEWS_API_URL);
+  const storage = fsStorage(parsed.OUTPUT_DIR);
+  const site = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL };
+  // Plan 3d task 4: the TEST banner prefix and noindex meta — decided once, from this process's
+  // own env view (the stack's envFor shares NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION/SITE_ENVIRONMENT
+  // into it the same way for every app).
+  const test = isTestSite(env);
+
+  const handler = createRebuildHandler({ newsApi, storage, site, test });
 
   const app = createApp({ db, eventSecrets: parsed.EVENT_SECRETS, handler });
 
@@ -67,5 +85,7 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
     },
     closeBeforeServer: [],
     closers: [{ name: "db pool", close: () => pool.end() }],
+    // Fix round 1: not called here — see the AppHandle.selfHeal doc comment above for why.
+    selfHeal: () => selfHeal({ newsApi, storage, site, test }),
   };
 }

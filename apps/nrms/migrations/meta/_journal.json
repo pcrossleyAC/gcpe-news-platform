@@ -15,6 +15,97 @@
       "when": 1791045774438,
       "tag": "0001_release_failed",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791093009067,
+      "tag": "0002_taxonomy_cache",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791093600699,
+      "tag": "0003_release_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791093612267,
+      "tag": "0004_copy_phase2_releases",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791095714431,
+      "tag": "0005_drop_phase2_releases",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791096376723,
+      "tag": "0006_release_live",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791096377207,
+      "tag": "0007_backfill_live",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791100384999,
+      "tag": "0008_seed_counters",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791100410832,
+      "tag": "0009_key_unique_across_types",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791103999736,
+      "tag": "0010_release_files",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791105966435,
+      "tag": "0011_flickr_jobs",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791138016564,
+      "tag": "0012_website",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791183105891,
+      "tag": "0013_import_tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791230396210,
+      "tag": "0014_default_page_types",
+      "breakpoints": true
     }
   ]
 }

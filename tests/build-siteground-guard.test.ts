@@ -4,11 +4,11 @@
 // itself (findLeakedPaths) in isolation — a tiny throwaway directory, not a real build — so
 // the "does it actually fail the build" guarantee doesn't depend on reproducing a leak in a
 // real bundle (which, correctly, doesn't currently leak anything).
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { findLeakedPaths } from "../scripts/build-siteground.mjs";
+import { assertHubBuilt, copyStaffWebToHub, findLeakedPaths } from "../scripts/build-siteground.mjs";
 
 let dir: string | undefined;
 
@@ -74,5 +74,50 @@ describe("findLeakedPaths", () => {
     // All three forbidden values are present in the one file -> one offender entry per label.
     expect(offenders).toHaveLength(3);
     expect(offenders.map((o) => o.label).sort()).toEqual(["home dir", "repo path", "username"]);
+  });
+});
+
+// Task 1 (staff-web), fix round 1: build-siteground.mjs's staff-web step had no test at all —
+// these exercise the copy + presence-check functions directly (fast, no real esbuild bundle),
+// so a regression that stops dist/siteground/hub/index.html from being produced is caught here
+// without needing the slow real build (that real build is still run, and still fails loudly on
+// the same check, by runBuild itself — see build-siteground.mjs's own assertHubBuilt call).
+describe("copyStaffWebToHub / assertHubBuilt", () => {
+  let staffWebDistDir: string | undefined;
+  let outDir: string | undefined;
+
+  afterEach(() => {
+    if (staffWebDistDir) rmSync(staffWebDistDir, { recursive: true, force: true });
+    if (outDir) rmSync(outDir, { recursive: true, force: true });
+    staffWebDistDir = undefined;
+    outDir = undefined;
+  });
+
+  it("copies a built staff-web dist to <outDir>/hub, and assertHubBuilt passes against it", () => {
+    staffWebDistDir = mkdtempSync(join(tmpdir(), "staff-web-dist-"));
+    mkdirSync(join(staffWebDistDir, "assets"), { recursive: true });
+    writeFileSync(join(staffWebDistDir, "index.html"), "<!doctype html><body>staff web shell</body>");
+    writeFileSync(join(staffWebDistDir, "assets", "app-abc123.js"), "console.log('x');\n");
+    const dir = (outDir = mkdtempSync(join(tmpdir(), "siteground-out-")));
+
+    copyStaffWebToHub(staffWebDistDir, dir);
+
+    expect(existsSync(join(dir, "hub", "index.html"))).toBe(true);
+    expect(readFileSync(join(dir, "hub", "index.html"), "utf8")).toContain("staff web shell");
+    expect(existsSync(join(dir, "hub", "assets", "app-abc123.js"))).toBe(true);
+    expect(() => assertHubBuilt(dir)).not.toThrow();
+  });
+
+  it("assertHubBuilt throws when dist/siteground/hub/index.html was never produced — this is what would catch the staff-web step silently disappearing from runBuild", () => {
+    const dir = (outDir = mkdtempSync(join(tmpdir(), "siteground-out-missing-")));
+    // dir exists, but nothing ever copied a hub/ folder into it (the step this guards).
+    expect(() => assertHubBuilt(dir)).toThrow(/dist\/siteground\/hub\/index\.html is missing/);
+  });
+
+  it("assertHubBuilt throws when hub/ exists but index.html itself is missing from it", () => {
+    const dir = (outDir = mkdtempSync(join(tmpdir(), "siteground-out-partial-")));
+    mkdirSync(join(dir, "hub", "assets"), { recursive: true });
+    writeFileSync(join(dir, "hub", "assets", "app-abc123.js"), "console.log('x');\n");
+    expect(() => assertHubBuilt(dir)).toThrow(/index\.html is missing/);
   });
 });

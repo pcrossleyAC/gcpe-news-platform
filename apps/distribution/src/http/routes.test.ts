@@ -106,6 +106,47 @@ describe("Distribution HTTP API", () => {
     expect(badHeader.status).toBe(400);
   });
 
+  describe("attachments", () => {
+    const pdf = { filename: "DRAFT-release.pdf", contentType: "application/pdf", contentBase64: Buffer.from("%PDF-1.4 tiny").toString("base64") };
+    const postWith = (attachments: unknown[], idempotencyKey?: string) =>
+      request(app)
+        .post("/api/messages")
+        .set("authorization", `Bearer ${sender}`)
+        .send({ ...sampleMessageRequest, ...(idempotencyKey ? { idempotencyKey } : {}), attachments });
+
+    it("accepts a message with one PDF attachment and stores it on the batch", async () => {
+      const res = await postWith([pdf], "attach-1");
+      expect(res.status).toBe(202);
+      const { rows } = await tdb.pool.query("SELECT attachments FROM batches WHERE id = $1", [res.body.batchId]);
+      expect(rows[0].attachments).toEqual([pdf]);
+    });
+
+    it("a message without attachments stores an empty list", async () => {
+      const res = await postWith([], "attach-none");
+      expect(res.status).toBe(202);
+      const { rows } = await tdb.pool.query("SELECT attachments FROM batches WHERE id = $1", [res.body.batchId]);
+      expect(rows[0].attachments).toEqual([]);
+    });
+
+    it("400s more than 3 attachments, a filename with a slash, an unsupported type, and non-base64 content", async () => {
+      expect((await postWith([pdf, pdf, pdf, pdf])).status).toBe(400);
+      expect((await postWith([{ ...pdf, filename: "../etc/passwd.pdf" }])).status).toBe(400);
+      expect((await postWith([{ ...pdf, filename: 'a".pdf' }])).status).toBe(400);
+      expect((await postWith([{ ...pdf, contentType: "text/html" }])).status).toBe(400);
+      expect((await postWith([{ ...pdf, contentBase64: "not base64!" }])).status).toBe(400);
+    });
+
+    it("400s attachments whose decoded total is over 7 MiB (and accepts exactly 7 MiB)", async () => {
+      const over = Buffer.alloc(7 * 1024 * 1024 + 1, 1).toString("base64");
+      const res = await postWith([{ ...pdf, contentBase64: over }]);
+      expect(res.status).toBe(400);
+      expect(JSON.stringify(res.body.issues)).toContain("attachments exceed 7 MiB");
+
+      const half = Buffer.alloc(3.5 * 1024 * 1024, 1).toString("base64");
+      expect((await postWith([{ ...pdf, contentBase64: half }, { ...pdf, contentBase64: half }], "attach-7mib")).status).toBe(202);
+    });
+  });
+
   // M3: the body limit was raised from 5mb to 10mb (apps/distribution/src/app.ts) so a batch
   // whose JSON payload is over the old limit but under the new one is no longer rejected.
   it("accepts a request body over the old 5mb limit but under the new 10mb one", async () => {

@@ -107,7 +107,9 @@ export function installInternalFetch(getApp: () => RequestListener | undefined):
     }
     const status = res.statusCode ?? 500;
     const nullBody = status === 204 || status === 304 || method === "HEAD";
-    return new Response(nullBody ? null : payload, { status, headers: responseHeaders });
+    // An explicit Uint8Array view of the bytes satisfies BodyInit under both Node's and the DOM's
+    // typings (a plain Buffer<ArrayBufferLike> doesn't under the DOM's); same bytes at runtime.
+    return new Response(nullBody ? null : new Uint8Array(payload), { status, headers: responseHeaders });
   };
 
   globalThis.fetch = internalFetch;

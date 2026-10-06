@@ -1,0 +1,305 @@
+{
+  "releases": [
+    {
+      "Id": "a0000001-0000-4000-8000-000000000001",
+      "Key": "2026TT0103-001121",
+      "ReleaseType": 1,
+      "Reference": "NEWS-34336",
+      "AtomId": "uuid:9af8cc16-0ae5-4ec6-ad58-fdb081d44e37",
+      "Year": 2026,
+      "YearRelease": 1121,
+      "MinistryRelease": 103,
+      "ActivityId": null,
+      "ReleaseDateTime": "2026-10-01T15:10:00Z",
+      "PublishDateTime": "2026-10-01T15:10:00-07:00",
+      "IsCommitted": true,
+      "IsPublished": true,
+      "PublishOptions": 3,
+      "IsActive": true,
+      "HasMediaAssets": false,
+      "HasTranslations": false,
+      "NodSubscribers": null,
+      "MediaSubscribers": null,
+      "Keywords": "",
+      "AssetUrl": "",
+      "RedirectUrl": "",
+      "CollectionId": null,
+      "LeadMinistryKey": "transportation-and-transit"
+    },
+    {
+      "Id": "a0000002-0000-4000-8000-000000000002",
+      "Key": "2026AG0068-001112",
+      "ReleaseType": 1,
+      "Reference": "NEWS-34327",
+      "AtomId": "uuid:96389d73-5468-4015-a9e1-079fce9cad5a",
+      "Year": 2026,
+      "YearRelease": 1112,
+      "MinistryRelease": 68,
+      "ActivityId": null,
+      "ReleaseDateTime": "2026-09-22T11:52:00Z",
+      "PublishDateTime": "2026-09-22T11:52:00-07:00",
+      "IsCommitted": true,
+      "IsPublished": true,
+      "PublishOptions": 3,
+      "IsActive": true,
+      "HasMediaAssets": false,
+      "HasTranslations": false,
+      "NodSubscribers": null,
+      "MediaSubscribers": null,
+      "Keywords": "",
+      "AssetUrl": "",
+      "RedirectUrl": "",
+      "CollectionId": null,
+      "LeadMinistryKey": "attorney-general"
+    },
+    {
+      "Id": "a0000003-0000-4000-8000-000000000003",
+      "Key": "2026MCM0031-001120",
+      "ReleaseType": 1,
+      "Reference": "NEWS-34335",
+      "AtomId": "uuid:5ae0766a-d582-467c-a76b-07aa59075df2",
+      "Year": 2026,
+      "YearRelease": 1120,
+      "MinistryRelease": 31,
+      "ActivityId": null,
+      "ReleaseDateTime": "2026-09-22T09:08:00Z",
+      "PublishDateTime": "2026-09-22T09:08:00-07:00",
+      "IsCommitted": true,
+      "IsPublished": true,
+      "PublishOptions": 3,
+      "IsActive": true,
+      "HasMediaAssets": false,
+      "HasTranslations": false,
+      "NodSubscribers": null,
+      "MediaSubscribers": null,
+      "Keywords": "",
+      "AssetUrl": "",
+      "RedirectUrl": "",
+      "CollectionId": null,
+      "LeadMinistryKey": "mining-and-critical-minerals"
+    }
+  ],
+  "releaseLanguages": [
+    {
+      "ReleaseId": "a0000001-0000-4000-8000-000000000001",
+      "LanguageId": 4105,
+      "Location": "Abbotsford",
+      "Summary": "Drivers can expect major traffic-pattern changes on Highway 11 at Highway 1 starting on Friday, Oct. 2, 2026, to allow crews to safely demolish the Highway 11 overpass.",
+      "SocialMediaSummary": null
+    },
+    {
+      "ReleaseId": "a0000002-0000-4000-8000-000000000002",
+      "LanguageId": 4105,
+      "Location": "Chilliwack",
+      "Summary": "Court now operates on Stó:lō land at Qw'oqw'elith'a (Coqualeetza)",
+      "SocialMediaSummary": ""
+    },
+    {
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "LanguageId": 4105,
+      "Location": "Victoria",
+      "Summary": "Mineral-exploration permits being approved quicker with new efficient process",
+      "SocialMediaSummary": ""
+    }
+  ],
+  "documents": [
+    {
+      "Id": "a0000001-0000-4000-8000-000000000000",
+      "ReleaseId": "a0000001-0000-4000-8000-000000000001",
+      "SortIndex": 0,
+      "PageLayout": 1
+    },
+    {
+      "Id": "a0000002-0000-4000-8000-000000000000",
+      "ReleaseId": "a0000002-0000-4000-8000-000000000002",
+      "SortIndex": 0,
+      "PageLayout": 1
+    },
+    {
+      "Id": "a0000002-0000-4000-8000-000000000001",
+      "ReleaseId": "a0000002-0000-4000-8000-000000000002",
+      "SortIndex": 1,
+      "PageLayout": 1
+    },
+    {
+      "Id": "a0000003-0000-4000-8000-000000000000",
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "SortIndex": 0,
+      "PageLayout": 1
+    },
+    {
+      "Id": "a0000003-0000-4000-8000-000000000001",
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "SortIndex": 1,
+      "PageLayout": 1
+    }
+  ],
+  "documentLanguages": [
+    {
+      "DocumentId": "a0000001-0000-4000-8000-000000000000",
+      "LanguageId": 4105,
+      "PageImageId": null,
+      "PageTitle": "Traffic Advisory",
+      "Organizations": null,
+      "Headline": "Traffic-pattern change planned for Highway 11 at Highway 1",
+      "Subheadline": "",
+      "Byline": "",
+      "BodyHtml": "<p>Drivers<strong> </strong>can expect major traffic-pattern changes on Highway 11 at Highway 1 starting on Friday, Oct. 2, 2026, to allow crews to safely demolish<strong> </strong>the Highway 11 overpass.</p><p>From 9 p.m. on Friday, Oct. 2, through to 5 a.m. on Monday, Oct. 5, drivers can expect the following traffic diversions:</p><ul>\n\t<li>The new westbound on-ramp from northbound Highway 11 to Highway 1 will be temporarily closed and drivers will be detoured via Marshall Road and McCallum Road.</li>\n\t<li>Highway 11, under Highway 1, will be reduced to one lane in each direction.</li>\n</ul><p>As some work is weather dependent, the timing of these traffic diversions might change. People travelling through the area during the diversions should plan additional travel time.</p><p>During construction, reduced speed limits of 50 km/h on Highway 11, and 80 km/h on Highway 1 will be in place. Drivers are reminded to slow down and use caution, obey signage and traffic-control personnel in the area, and watch for roadside workers.</p><p>For the most up-to-date traffic information, check: <a href=\"https://www.DriveBC.ca\">www.DriveBC.ca&nbsp;</a></p>"
+    },
+    {
+      "DocumentId": "a0000002-0000-4000-8000-000000000000",
+      "LanguageId": 4105,
+      "PageImageId": null,
+      "PageTitle": "News Release",
+      "Organizations": null,
+      "Headline": "Chilliwack Indigenous Court moving closer to community it serves",
+      "Subheadline": "Court now operates on Stó:lō land at Qw'oqw'elith'a (Coqualeetza)",
+      "Byline": "",
+      "BodyHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>The Chilliwack Indigenous Court has moved closer to the people it serves, from the Chilliwack courthouse to Siy&aacute;:m L&aacute;lem, a space on Qw&#39;oqw&#39;elith&#39;a (Coqualeetza) grounds owned by the St&oacute;:lō Collective</em></li>\n\t<li><em>Siy&aacute;:m L&aacute;lem offers a culturally grounded setting, support services through the St&oacute;:lō Service Agency and more room for Elders, families, victims and community members to take part in the court process</em></li>\n\t<li><em>Holding court in the community supports healing and accountability for victims, families, others affected and the people before the court</em></li>\n</ul><p>__________</p><p>Chilliwack&rsquo;s Indigenous Court has moved closer to the people it serves, from the Chilliwack courthouse to Siy&aacute;:m L&aacute;lem, a space on Qw&#39;oqw&#39;elith&#39;a (Coqualeetza) grounds owned by the St&oacute;:lō Collective.</p><p>&ldquo;Indigenous courts do their best work when Elders, families, victims and community can participate,&rdquo; said Niki Sharma, Attorney General. &ldquo;I want to thank the St&oacute;:lō Collective for welcoming the court into their space, and the Provincial Court, Qw&iacute;:qwelst&oacute;m and partners for their continued leadership. Together, we are making the justice system work better for Indigenous Peoples and their communities.&rdquo;</p><p><strong>Why the court moved</strong></p><p>The new space is larger, closer to the First Nations communities and designed to offer a more culturally appropriate setting for victims, community members and the people who come before the court. The new location will make it easier for Elders, families and support people to take part in the healing-focused process.</p><p>The Ministry of Attorney General&rsquo;s Court Services Branch, which manages courtroom administration, worked with the Provincial Court, the Qw&iacute;:qwelst&oacute;m Justice Program and the St&oacute;:lō Collective to set up the new space. The move does not change the court<strong> </strong>process. Independent Provincial Court judges continue to decide how each matter is heard.</p><p><strong>What people coming to court should know</strong></p><ul>\n\t<li>As of Thursday, Sept. 17, 2026, people with a matter in the Chilliwack Indigenous Court should go to Siy&aacute;:m L&aacute;lem (St&oacute;:lō Government House), 8B-7201 Vedder Road, Chilliwack.</li>\n\t<li>Court dates and process have not changed.</li>\n\t<li>People with questions can contact the Chilliwack court registry at 604-795-8350.</li>\n\t<li>Free parking is available on site. The location is on a major public transit route and is fully accessible.</li>\n</ul><p><strong>How the court works</strong></p><p>Indigenous courts focus on understanding the root causes of offending behaviours. Participants work with a team that includes Elders, a judge, legal counsel and Native court workers or First Nations court navigators to create a healing plan shaped around them and their community. Healing plans are intended to restore balance for the victim, the community and the person responsible for the harm, and can include cultural practices, land-based healing and ceremonies, counselling, addictions treatment and community service.</p><p>Supporting Indigenous sentencing courts is part of the Province&rsquo;s broader work to advance reconciliation and create a justice system that is accessible for everyone. These courts help make communities in B.C. safer by strengthening community connections and creating a justice system that works better for all.</p><p>Through initiatives, such as Indigenous Justice Centres and the implementation of the BC First Nations Justice Strategy, government is working with First Nations and Indigenous justice partners to support approaches that better respect and address the needs of Indigenous Peoples.</p><p><strong>Quotes:</strong></p><p><strong>Spencer Chandra Herbert, Minister of Indigenous Relations and Reconciliation &ndash;</strong></p><p>&ldquo;Creating a safe space for community and culture is an important part of our commitment to justice and improving the lives for everyone in British Columbia. This new, larger Indigenous Court space at Siyam Lalem will make it easier for Elders, families, victims and community members to navigate the justice system and find support on the path to accountability and healing.&rdquo;</p><p><strong>Chief Alisha Peters (Schew&oacute;tiya), Sqw&aacute; First Nation &ndash;</strong></p><p>&ldquo;Sharing space with the provincial justice system strengthens the commitment to the Truth and Reconciliation Commission&rsquo;s Calls to Action. The First Nations<strong>&nbsp;</strong>Court shows that Indigenous-led justice and provincial systems can stand together in service of safety, healing and accountability.&rdquo;</p><p><strong>Melissa Gillespie, chief judge, Provincial Court of British Columbia &ndash;</strong></p><p>&ldquo;The Provincial Court is grateful to be welcomed into the Siyam Lalem, a St&oacute;:lō Nation community space. Holding the court in the community is a step towards reconciliation and strengthens the connection between the court and the people it serves, helping to build relationships and make justice more accessible. The Provincial Court appreciates the community&rsquo;s work to make this possible. We also want to thank the Elders, court staff, counsel, service providers, police, Legal Aid BC and BC Corrections who have worked to support this important step.&rdquo;&nbsp;</p><p><strong>Quick Facts:</strong></p><ul>\n\t<li>Since opening on Dec. 11, 2025, the Chilliwack Indigenous Court has held one sitting a month and heard an average of 10 cases each sitting day.</li>\n\t<li>The court is supported by the Qw&iacute;:qwelst&oacute;m Justice Program, operated by the St&oacute;:lō Service Agency.</li>\n\t<li>It is a pilot scheduled to operate until March 2027.</li>\n</ul><p><strong>Learn More:</strong></p><ul>\n\t<li>For more about how Indigenous sentencing courts work, visit the Provincial Court of British Columbia: <a href=\"https://www.provincialcourt.bc.ca/navigating-court-case/criminal-adult-and-youth/indigenous-sentencing-and-specialized-criminal-courts/indigenous-sentencing-courts\">https://www.provincialcourt.bc.ca/navigating-court-case/criminal-adult-and-youth/indigenous-sentencing-and-specialized-criminal-courts/indigenous-sentencing-courts</a></li>\n\t<li>To learn how an Indigenous sentencing court can help, visit Legal Aid BC: <a href=\"https://aboriginal.legalaid.bc.ca/courts-criminal-cases/first-nations-court\">https://aboriginal.legalaid.bc.ca/courts-criminal-cases/first-nations-court</a></li>\n\t<li>To read about the opening of the Chilliwack Indigenous Court in December 2025, visit: <a href=\"https://news.gov.bc.ca/releases/2025AG0073-001262\">https://news.gov.bc.ca/releases/2025AG0073-001262</a></li>\n</ul><p>A backgrounder follows.</p>"
+    },
+    {
+      "DocumentId": "a0000002-0000-4000-8000-000000000001",
+      "LanguageId": 4105,
+      "PageImageId": null,
+      "PageTitle": "Backgrounder",
+      "Organizations": null,
+      "Headline": "How Indigenous sentencing courts work in B.C.",
+      "Subheadline": "",
+      "Byline": "",
+      "BodyHtml": "<p>The Chilliwack Indigenous Court is one of 10 Indigenous sentencing courts in B.C. Each one takes a holistic and restorative approach to sentencing and is designed to meet the needs of the community it serves.</p><p><strong>Who can use an Indigenous sentencing court</strong></p><ul>\n\t<li>People who identify as Indigenous and intend to plead guilty to a criminal offence.</li>\n\t<li>In some courts, Crown counsel must also agree to the person taking part.</li>\n\t<li>Eligibility depends on the offences each court accepts. Most cases are for less serious offences.</li>\n\t<li>Indigenous sentencing courts do not conduct trials.</li>\n</ul><p><strong>Other Indigenous courts in B.C.</strong></p><p>There are nine other Indigenous courts operating in B.C:</p><ul>\n\t<li>New Westminster First Nations court</li>\n\t<li>North Vancouver Chet wa nexwn&iacute;w̓ ta S7eḵw&rsquo;&iacute;7tel Indigenous court</li>\n\t<li>Kamloops Cknu&#39;cwentn First Nations sentencing court</li>\n\t<li>Duncan First Nations court</li>\n\t<li>Nicola Valley Indigenous court</li>\n\t<li>Prince George Indigenous court</li>\n\t<li>Williams Lake Indigenous court</li>\n\t<li>Hazelton Indigenous court</li>\n\t<li>Lillooet Indigenous court</li>\n</ul>"
+    },
+    {
+      "DocumentId": "a0000003-0000-4000-8000-000000000000",
+      "LanguageId": 4105,
+      "PageImageId": null,
+      "PageTitle": "News Release",
+      "Organizations": null,
+      "Headline": "Accelerating mining in B.C. with streamlined permitting",
+      "Subheadline": "Mineral-exploration permits being approved quicker with new efficient process",
+      "Byline": "",
+      "BodyHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>Since the new fixed permitting timelines framework for mineral exploration took effect in April 2026, every permitting target timeline has been met, with the first permits issued ahead of schedule</em></li>\n\t<li><em>Since the Mineral Claims Consultation Framework (MCCF) was introduced in March 2025, approximately 80% of all applications received have been processed, while median approval time has decreased by approximately 8%</em></li>\n\t<li><em>It reflects the value of early consultation throughout the MCCF and permitting processes</em></li>\n\t<li><em>It is part of the Province&rsquo;s Look West strategy to strengthen B.C.&rsquo;s and Canada&rsquo;s economy</em></li>\n</ul><p>_________</p><p>Six months after introducing the fixed permitting timelines framework for mineral exploration, every permitting target has been met and the first permits under the framework were issued ahead of schedule.</p><p>&ldquo;Today, we have shown that we are not only the first jurisdiction in Canada to make a framework like this work, but we are exceeding our own targets while doing it,&rdquo; said Jagrup Brar, Minister of Mining and Critical Minerals. &ldquo;I want to thank ministry staff, industry, First Nations and Association for Mineral Exploration British Columbia for their hard work and effective collaboration. This is just the beginning of our ambitious agenda, and it shows what is possible when we work together for the benefit of everyone.&rdquo;</p><p>In April 2026, B.C. became the first jurisdiction in Canada to introduce fixed permitting timelines for Mineral Exploration Notices of Work, with targets of 40, 90 or 140 days depending on project complexity. The framework was designed to make the permitting process more clear, predictable and timely for industry, First Nations and provincial staff.</p><p>The first two permits issued under the new framework beat their targets by a wide margin. The Ranch East Project by Thesis Gold &amp; Silver had a 90-day target and the Fran Project by MGX Minerals had a 140-day target, and both were permitted in less than 70 days.</p><p>Additional examples of mineral-exploration files permitted within the fixed timelines include:</p><ul>\n\t<li>Southwestern B.C. &ndash; North Island exploration program by Northisle Copper and Gold was permitted in less than three months.</li>\n\t<li>North central B.C. &ndash; Aspen exploration project by Korestar Exploration was permitted in less than two months.</li>\n</ul><p>All applications submitted under the new framework are being processed within their target timelines. Throughout the new process, permitting decisions continue to be based on strong environmental protections, public safety standards and consultation with First Nations.</p><p><strong>Mineral Claims Consultation Framework (MCCF)</strong></p><p>In British Columbia, consultation with First Nations remains a cornerstone of mineral-exploration permitting. As part of Budget 2026, the Province allocated $2 million to support the MCCF.</p><p>Since the implementation of MCCF in March 2025, the Ministry of Mining and Critical Minerals has been improving business processes and decision timelines. Approximately 80% of all applications received since March 2025 have been processed. In addition to the backlog being addressed, median approval time has decreased by approximately 8%.</p><p>Consultation at the mineral claim acquisition stage lays the foundation for engagement and consultation throughout permitting. Early engagement helps First Nations, proponents and provincial staff identify issues sooner and supports a more co-ordinated permitting process.</p><p>The ministry continues to work with First Nations and proponents to undertake efficient and respectful consultation.</p><p><strong>Permitting efficiency and standards </strong></p><ul>\n\t<li>Improved co-ordination across government and clear application requirements are helping reduce delays in the permitting process.</li>\n\t<li>Reduced permitting timelines give proponents more certainty to plan their work within the short field-exploration season.</li>\n\t<li>Permitting decisions continue to be guided by strong environmental protections and public safety requirements.</li>\n\t<li>Improvements to permitting timelines reflect better co-ordination and process design, not a lowering of standards.</li>\n</ul><p>By pairing fixed timelines with strong environmental protections, meaningful consultation and close collaboration between government, industry and First Nations, British Columbia is building a permitting process that works better.</p><p>The Province will continue to set the foundation for continued progress under the fixed permitting timelines framework and the MCCF in the coming months.</p><p>The work supports the Province&rsquo;s Look West strategy for jobs and industry, which outlines B.C.&rsquo;s vision to deliver major projects quicker, grow key industries and targeted sectors, diversify markets and create jobs and opportunities by strengthening the workforce to develop a more independent economy.</p><p><strong>Learn More:</strong></p><ul>\n\t<li>To read a news release about fixed permitting timelines, visit: <a href=\"https://news.gov.bc.ca/releases/2026MCM0003-000071\">https://news.gov.bc.ca/releases/2026MCM0003-000071</a></li>\n\t<li>To learn more about the mineral- and coal-exploration permit applications, visit: <a href=\"https://www2.gov.bc.ca/gov/content?id=E2389D4562AD4A1DAE773A45370D2B36\">https://www2.gov.bc.ca/gov/content?id=E2389D4562AD4A1DAE773A45370D2B36</a></li>\n\t<li>To learn more about the Mineral Claims Consultation Framework in B.C., visit: <a href=\"https://www2.gov.bc.ca/gov/content/industry/mineral-exploration-mining/mineral-titles/mineral-claims-consultation-framework\">https://www2.gov.bc.ca/gov/content/industry/mineral-exploration-mining/mineral-titles/mineral-claims-consultation-framework</a></li>\n</ul><p>A backgrounder follows.</p>"
+    },
+    {
+      "DocumentId": "a0000003-0000-4000-8000-000000000001",
+      "LanguageId": 4105,
+      "PageImageId": null,
+      "PageTitle": "Backgrounder",
+      "Organizations": null,
+      "Headline": "What to know about mining in B.C.",
+      "Subheadline": "",
+      "Byline": "",
+      "BodyHtml": "<ul>\n\t<li>The new fixed permitting timelines build on efficiencies achieved to date, including:<ul>\n\t\t<li>almost 35% more exploration permits issued in 2025 than in 2024</li>\n\t\t<li>co-ordinated environmental assessment and permitting process, with the potential for ready projects to experience reduced timelines for major-mines applications by 35%</li>\n\t</ul></li>\n\t<li>B.C. is&nbsp;a global&nbsp;mining and critical minerals&nbsp;hub, with&nbsp;approximately&nbsp;1,000&nbsp;mining and mineral exploration&nbsp;and development&nbsp;companies&nbsp;headquartered&nbsp;in the region,&nbsp;40,000&nbsp;employees, including 4,100 people employed in mineral exploration at&nbsp;18&nbsp;operating&nbsp;mines, two smelters and 280 mineral-exploration projects.</li>\n\t<li>By 2040, new and expanded critical-minerals projects could&nbsp;represent&nbsp;an investment opportunity of&nbsp;$44&nbsp;billion.&nbsp;</li>\n\t<li>With a rich geology, B.C. produces or has potential to produce&nbsp;22 of Canada&rsquo;s 34 critical&nbsp;minerals.</li>\n</ul>"
+    }
+  ],
+  "documentContacts": [
+    {
+      "DocumentId": "a0000001-0000-4000-8000-000000000000",
+      "LanguageId": 4105,
+      "SortIndex": 0,
+      "Information": "Ministry of Transportation and Transit\nMedia Relations\n250-356-8241"
+    },
+    {
+      "DocumentId": "a0000002-0000-4000-8000-000000000000",
+      "LanguageId": 4105,
+      "SortIndex": 0,
+      "Information": "Ministry of Attorney General\nMedia Relations\n604-830-6285"
+    },
+    {
+      "DocumentId": "a0000002-0000-4000-8000-000000000001",
+      "LanguageId": 4105,
+      "SortIndex": 0,
+      "Information": "Ministry of Attorney General\nMedia Relations\n604-830-6285"
+    },
+    {
+      "DocumentId": "a0000003-0000-4000-8000-000000000000",
+      "LanguageId": 4105,
+      "SortIndex": 0,
+      "Information": "Ministry of Mining and Critical Minerals\nMedia Relations\n250-514-0510"
+    },
+    {
+      "DocumentId": "a0000003-0000-4000-8000-000000000001",
+      "LanguageId": 4105,
+      "SortIndex": 0,
+      "Information": "Ministry of Mining and Critical Minerals\nMedia Relations\n250-514-0510"
+    }
+  ],
+  "releaseCategories": [
+    {
+      "ReleaseId": "a0000001-0000-4000-8000-000000000001",
+      "Kind": "ministries",
+      "Key": "transportation-and-transit"
+    },
+    {
+      "ReleaseId": "a0000001-0000-4000-8000-000000000001",
+      "Kind": "sectors",
+      "Key": "government-operations"
+    },
+    {
+      "ReleaseId": "a0000001-0000-4000-8000-000000000001",
+      "Kind": "sectors",
+      "Key": "services"
+    },
+    {
+      "ReleaseId": "a0000002-0000-4000-8000-000000000002",
+      "Kind": "ministries",
+      "Key": "attorney-general"
+    },
+    {
+      "ReleaseId": "a0000002-0000-4000-8000-000000000002",
+      "Kind": "sectors",
+      "Key": "government-operations"
+    },
+    {
+      "ReleaseId": "a0000002-0000-4000-8000-000000000002",
+      "Kind": "sectors",
+      "Key": "services"
+    },
+    {
+      "ReleaseId": "a0000002-0000-4000-8000-000000000002",
+      "Kind": "themes",
+      "Key": "british-columbians-and-our-governments"
+    },
+    {
+      "ReleaseId": "a0000002-0000-4000-8000-000000000002",
+      "Kind": "themes",
+      "Key": "law-crime-and-justice"
+    },
+    {
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "Kind": "ministries",
+      "Key": "mining-and-critical-minerals"
+    },
+    {
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "Kind": "sectors",
+      "Key": "government-operations"
+    },
+    {
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "Kind": "sectors",
+      "Key": "services"
+    },
+    {
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "Kind": "themes",
+      "Key": "british-columbians-and-our-governments"
+    },
+    {
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "Kind": "themes",
+      "Key": "employment-business-and-economic-development"
+    },
+    {
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "Kind": "themes",
+      "Key": "farming-natural-resources-and-industry"
+    },
+    {
+      "ReleaseId": "a0000003-0000-4000-8000-000000000003",
+      "Kind": "tags",
+      "Key": "look-west-strategy"
+    }
+  ],
+  "releaseMediaLists": [],
+  "releaseLog": []
+}

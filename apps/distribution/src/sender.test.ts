@@ -86,6 +86,41 @@ describe("sendDue", () => {
     }
   });
 
+  it("sends a batch's attachments with every message, with their filenames and content types", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      const pdfBytes = Buffer.from("%PDF-1.4 fake pdf bytes");
+      await createBatch(
+        tdb.db,
+        "app",
+        {
+          ...sampleMessageRequest,
+          attachments: [
+            { filename: "DRAFT-abc.pdf", contentType: "application/pdf", contentBase64: pdfBytes.toString("base64") },
+            { filename: "DRAFT-abc.txt", contentType: "text/plain", contentBase64: Buffer.from("Plain text version").toString("base64") },
+          ],
+        },
+        internalDomains,
+      );
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+
+      expect(result).toEqual({ sent: 2, retried: 0, failed: 0 });
+      expect(sink.messages).toHaveLength(2);
+      for (const m of sink.messages) {
+        expect(m.attachments.map((a) => [a.filename, a.contentType])).toEqual([
+          ["DRAFT-abc.pdf", "application/pdf"],
+          ["DRAFT-abc.txt", "text/plain"],
+        ]);
+        expect(m.attachments[0]!.content.equals(pdfBytes)).toBe(true);
+        expect(m.attachments[1]!.content.toString()).toBe("Plain text version");
+      }
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
   it("redirects to the configured address, preserving the original recipient", async () => {
     const sink = await startSmtpSink();
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
@@ -99,6 +134,9 @@ describe("sendDue", () => {
       }
       const originalTos = sink.messages.map((m) => m.headers.get("x-original-to")).sort();
       expect(originalTos).toEqual(["alex.example@gov.bc.ca", "sam.example@example.com"]);
+      // Redirected copies say who they were for, so a tester can tell identical-looking copies apart.
+      const subjects = sink.messages.map((m) => m.subject ?? "").sort();
+      expect(subjects.every((s, i) => s.startsWith(`[to: ${originalTos[i]}] `))).toBe(true);
 
       const rows = await tdb.db.select().from(messages);
       expect(rows.map((r) => r.originalRecipient).sort()).toEqual(["alex.example@gov.bc.ca", "sam.example@example.com"]);

@@ -1,5 +1,7 @@
 import type { ReleaseRecord } from "@gcpe/events";
-import { hasPublishOption, PUBLISH_OPTIONS, releaseKindFromLegacy } from "@gcpe/legacy-import";
+import { hasPublishOption, imageTypeFromBytes, justifyFromLegacy, PUBLISH_OPTIONS, releaseKindFromLegacy } from "@gcpe/legacy-import";
+
+export { imageTypeFromBytes, justifyFromLegacy };
 
 export interface LegacyReleaseRow extends Record<string, unknown> {
   Id: string;
@@ -49,20 +51,6 @@ export interface LegacyIndexRow extends Record<string, unknown> {
 export function splitContact(information: string): { title: string; details: string } {
   const [title = "", ...rest] = information.split(/\r?\n/);
   return { title, details: rest.join("\n") };
-}
-
-export function justifyFromLegacy(value: number | null): string | null {
-  if (value === 0) return "left";
-  if (value === 1) return "right";
-  return null;
-}
-
-export function imageTypeFromBytes(buf: Buffer | null): string | null {
-  if (!buf || buf.length < 4) return null;
-  if (buf.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"))) return "image/png";
-  if (buf[0] === 0xff && buf[1] === 0xd8) return "image/jpeg";
-  if (buf.subarray(0, 3).toString("ascii") === "GIF") return "image/gif";
-  return null;
 }
 
 const languageOrder = (id: number) => (id === 4105 ? 0 : 1);

@@ -4,23 +4,26 @@
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import type { Express } from "express";
 import { hashPassword, mintLocalToken } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 
 import { createCoreTestDb, healthOrg } from "../../core/test/helpers";
-import { createNrmsTestDb, sampleDraft } from "../../nrms/test/helpers";
+import { createNrmsTestDb, sampleCreate, seedTaxonomy } from "../../nrms/test/helpers";
 import { createNewsTestDb } from "../../news-api/test/helpers";
 import { createPublicSiteTestDb } from "../../public-site/test/helpers";
 import { createNodTestDb } from "../../nod/test/helpers";
 import { createDistributionTestDb } from "../../distribution/test/helpers";
 import { startSmtpSink } from "../../distribution/test/smtp-sink";
 
-import { startStack } from "./stack";
+import { flickrClient, FlickrError } from "../../nrms/src/media/flickr-client";
+import { FAKE_FLICKR } from "./env";
+import { INTERNAL_ORIGIN } from "./internal-fetch";
+import { fakeFlickrPublicBase, publicFilesBase, startStack } from "./stack";
 
 const LOCAL_AUTH_SECRET = "stack-test-local-auth-secret-32-characters!";
 const ADMIN_PASSWORD = "stack-test-password-99";
@@ -79,6 +82,7 @@ interface StackTestInstance {
   stackUrl: string;
   dbs: StackTestInstanceDbs;
   outputDir: string;
+  dataDir: string;
   sink: Awaited<ReturnType<typeof startSmtpSink>>;
   tickToken: string;
   /** Present only when `opts.fetchAdminToken` (the default) — omitted for the M7 rate-limit
@@ -94,7 +98,7 @@ interface StackTestInstance {
  * `describe` that needs its *own* isolated instance (M7's combined-login-rate-limit test, M5's
  * startup-error test) calls this again rather than sharing the main one.
  */
-async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<StackTestInstance> {
+async function setupStack(opts: { fetchAdminToken?: boolean; staffWebDir?: string } = {}): Promise<StackTestInstance> {
   const fetchAdminToken = opts.fetchAdminToken ?? true;
 
   const dbResults = await Promise.allSettled([
@@ -116,6 +120,10 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
   const dbs: StackTestInstanceDbs = { core, nrms, newsApi, publicSite, nod, distribution };
 
   const outputDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-"));
+  // Task 1: DATA_DIR must point at a temp folder, never the real home directory — resolveDataDir
+  // defaults to ~/gcpe-data, and startStack's ensureWritableDir call would otherwise actually
+  // create that folder on whatever machine runs this test.
+  const dataDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-data-"));
   const sink = await startSmtpSink();
 
   const port = await probeFreePort();
@@ -128,6 +136,7 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
     STACK_LOOPS: "false",
     UPDATES_HUB_ENABLED: "false",
     NODE_ENV: "test",
+    DATA_DIR: dataDir,
     LOCAL_ADMIN_ENABLED: "true",
     LOCAL_ADMIN_PASSWORD_HASH: passwordHash,
     LOCAL_AUTH_SECRET,
@@ -161,6 +170,9 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
     DIST_MAIL_FROM: "noreply@example.gov.bc.ca",
     DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
   };
+  // Task 1 (staff-web): unset leaves the real default (apps/staff-web/dist, almost certainly
+  // not built in this test run) in place, so most instances see the 503 "not built" path.
+  if (opts.staffWebDir !== undefined) env.STAFF_WEB_DIR = opts.staffWebDir;
 
   const handle = await startStack(env);
   if (handle.port !== port) throw new Error(`expected startStack to keep the requested port ${port}, got ${handle.port}`);
@@ -183,6 +195,7 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
     stackUrl,
     dbs,
     outputDir,
+    dataDir,
     sink,
     tickToken,
     adminToken,
@@ -202,6 +215,7 @@ async function setupStack(opts: { fetchAdminToken?: boolean } = {}): Promise<Sta
       await step(() => sink.close());
       for (const db of Object.values(dbs)) await step(() => db.drop());
       await step(() => rm(outputDir, { recursive: true, force: true }));
+      await step(() => rm(dataDir, { recursive: true, force: true }));
       if (errors.length > 0) throw errors[0];
     },
   };
@@ -231,6 +245,19 @@ describe("apps/stack", () => {
     const body = (await res.json()) as { status: string; apps: Record<string, boolean> };
     expect(body.status).toBe("ok");
     expect(body.apps).toEqual({ core: true, nrms: true, nod: true, distribution: true, "site-builder": true, "news-api": true });
+  });
+
+  // 2026-10-04 SiteGround debugging: the walkthrough's restarts were indistinguishable from a
+  // crash without something naming when *this* process started. startedAt/pid make a restart
+  // between two polls observable (a changed value) instead of a mystery, whether or not the
+  // aggregate health check itself is cached (M8) at the time.
+  it("GET /stack/health reports this process's startedAt and pid, stable across calls and across the health cache", async () => {
+    const first = (await (await fetch(`${instance.stackUrl}/stack/health`)).json()) as { startedAt: string; pid: number };
+    expect(first.pid).toBe(process.pid); // the test and the stack run in the same process here
+    expect(new Date(first.startedAt).toString()).not.toBe("Invalid Date");
+    expect(new Date(first.startedAt).getTime()).toBeLessThanOrEqual(Date.now());
+    const second = (await (await fetch(`${instance.stackUrl}/stack/health`)).json()) as { startedAt: string; pid: number };
+    expect(second).toEqual(first);
   });
 
   // Fix round 1, P2-R30 M8.
@@ -305,6 +332,254 @@ describe("apps/stack", () => {
     expect(res.headers.get("cache-control")).toBe("no-store");
   });
 
+  // Plan 3d task 4 fix round 1 (CRITICAL ruling): the public site's own render-state marker
+  // (apps/public-site/src/rebuild.ts's SITE_STATE_PATH, ".site-state.json") must never be
+  // publicly servable.
+  it("/site/<dotfile> is refused — the render-state marker is never publicly servable", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    await fsStorage(instance.outputDir).write(".site-state.json", '{"granvilleOn":true,"test":false}');
+    const res = await fetch(`${instance.stackUrl}/site/.site-state.json`);
+    expect(res.status).not.toBe(200);
+    expect(await res.text()).not.toContain("granvilleOn");
+  });
+
+  it("/files/<key> serves an uploaded file from <DATA_DIR>/storage publicly; .meta, listings and missing keys are not served", async () => {
+    const { localStore } = await import("@gcpe/storage");
+    const store = localStore(join(instance.dataDir, "storage"));
+    const key = "releases/00000000-0000-4000-8000-000000000001/translations/0123456789abcdef-budget-fr.pdf";
+    await store.put(key, Buffer.from("%PDF-1.7 probe"), "application/pdf");
+    const res = await fetch(`${instance.stackUrl}/files/${key}`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("%PDF-1.7 probe");
+    expect(res.headers.get("content-type")).toBe("application/pdf");
+    expect(res.headers.get("cache-control")).toBe("public, max-age=60");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect((await fetch(`${instance.stackUrl}/files/.meta/${key}.json`)).status).toBe(403);
+    expect((await fetch(`${instance.stackUrl}/files/releases/00000000-0000-4000-8000-000000000001/translations`, { redirect: "manual" })).status).toBe(404);
+    expect((await fetch(`${instance.stackUrl}/files/releases/nope.pdf`)).status).toBe(404);
+  });
+
+  it("an upload through /nrms/api is downloadable at the URL in the view; publicFilesBase takes the site URL's origin", async () => {
+    await seedTaxonomy(instance.dbs.nrms.db); // NRMS's local taxonomy copy; idempotent
+    const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" },
+      body: JSON.stringify(sampleCreate),
+    });
+    expect(created.status).toBe(201);
+    const { id, version } = (await created.json()) as { id: string; version: number };
+    const up = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/files?kind=translation&version=${version}&name=Budget%20FR.pdf`, {
+      method: "POST",
+      headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/pdf" },
+      body: Buffer.from("%PDF-1.7 uploaded"),
+    });
+    expect(up.status).toBe(201);
+    const view = (await up.json()) as { files: { url: string }[] };
+    const file = await fetch(`${instance.stackUrl}${view.files[0]!.url}`);
+    expect(file.status).toBe(200);
+    expect(await file.text()).toBe("%PDF-1.7 uploaded");
+    expect(publicFilesBase("https://boxs.ca/site/")).toBe("https://boxs.ca");
+    expect(publicFilesBase(undefined)).toBe("");
+  });
+
+  describe("fake Flickr (no FLICKR_API_KEY configured)", () => {
+    const PRIVATE_PAGE = "https://www.flickr.com/photos/bcgovphotos/53000000001/";
+    const admin = () => ({ authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" });
+    const fakeState = (body: unknown) =>
+      fetch(`${instance.stackUrl}/fake-flickr/__fake/state`, { method: "POST", headers: admin(), body: JSON.stringify(body) });
+
+    it("the fake's /__fake switches need a Core.Admin bearer; its Flickr API stays public", async () => {
+      const post = (path: string, headers: Record<string, string>) =>
+        fetch(`${instance.stackUrl}/fake-flickr/__fake/${path}`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ refuseAuth: false }) });
+      expect((await post("state", {})).status).toBe(401);
+      expect((await post("photos", {})).status).toBe(401);
+      const editor = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
+      expect((await post("state", { authorization: `Bearer ${editor}` })).status).toBe(403);
+      const ok = await post("state", { authorization: `Bearer ${instance.adminToken}` });
+      expect(ok.status).toBe(200);
+      expect(await ok.json()).toEqual({ refuseAuth: false, outageCalls: 0, deleted: [] });
+      // No auth on the Flickr API itself: an unsigned call reaches the fake and gets Flickr's own answer.
+      const rest = await fetch(`${instance.stackUrl}/fake-flickr/services/rest?method=flickr.photos.getInfo&photo_id=1`);
+      expect(rest.status).toBe(200);
+      expect(await rest.json()).toMatchObject({ stat: "fail", code: 98 });
+      expect((await fetch(`${instance.stackUrl}/fake-flickr/photos/bcgovphotos/53000000001`)).status).toBe(200);
+    });
+
+    afterAll(async () => {
+      await fakeState({ deleted: [], refuseAuth: false, outageCalls: 0 });
+    });
+
+    it("asset status goes through NRMS's signed client to the fake: private, then missing once the photo is deleted", async () => {
+      await seedTaxonomy(instance.dbs.nrms.db);
+      const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, { method: "POST", headers: admin(), body: JSON.stringify(sampleCreate) });
+      expect(created.status).toBe(201);
+      const { id, version } = (await created.json()) as { id: string; version: number };
+      const saved = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset`, {
+        method: "PUT",
+        headers: admin(),
+        body: JSON.stringify({ version, assetUrl: PRIVATE_PAGE, assetAltText: "Photo", hasMediaAssets: true }),
+      });
+      expect(saved.status).toBe(200);
+
+      const status = async () => {
+        const res = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset-status`, { headers: admin() });
+        expect(res.status).toBe(200);
+        return res.json();
+      };
+      expect(await status()).toEqual({
+        kind: "flickr", photoId: "53000000001", state: "private", message: "Private — will be made public when the release publishes.",
+      });
+
+      expect((await fakeState({ deleted: ["53000000001"] })).status).toBe(200);
+      expect(await status()).toEqual({ kind: "flickr", photoId: "53000000001", state: "missing", message: "This photo no longer exists on Flickr." });
+    });
+
+    it("a Flickr link with no photo id is refused on save with 422", async () => {
+      await seedTaxonomy(instance.dbs.nrms.db);
+      const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, { method: "POST", headers: admin(), body: JSON.stringify(sampleCreate) });
+      const { id, version } = (await created.json()) as { id: string; version: number };
+      const res = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset`, {
+        method: "PUT",
+        headers: admin(),
+        body: JSON.stringify({ version, assetUrl: "https://www.flickr.com/photos/bcgovphotos/", assetAltText: null, hasMediaAssets: false }),
+      });
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { error: string }).error).toBe("That Flickr link doesn't point to a photo.");
+    });
+
+    it("a client signing the in-process URL can make a photo public (signed form POST) and fetch its image; a wrong secret is refused", async () => {
+      const cfg = {
+        ...FAKE_FLICKR,
+        restUrl: `${INTERNAL_ORIGIN}/fake-flickr/services/rest`,
+        oembedUrl: `${INTERNAL_ORIGIN}/fake-flickr/services/oembed`,
+      };
+      const client = flickrClient(cfg);
+      expect(await client.getVisibility("53000000002")).toBe("private");
+      await client.makePublic("53000000002");
+      expect(await client.confirmPublic("53000000002")).toBe(true);
+      const image = await client.staticImageUrl("https://www.flickr.com/photos/bcgovphotos/53000000002/");
+      // The site's public origin (here the self: site URL's) + /fake-flickr.
+      expect(image).toMatch(/^http:\/\/stack\.internal\/fake-flickr\/static\/53000000002_[0-9a-z]+_b\.jpg$/);
+      const jpeg = await fetch(image);
+      expect(jpeg.status).toBe(200);
+      expect(jpeg.headers.get("content-type")).toBe("image/jpeg");
+
+      const wrong = flickrClient({ ...cfg, apiSecret: "not-the-secret" });
+      await expect(wrong.getVisibility("53000000002")).rejects.toMatchObject({ kind: "auth" });
+      await expect(wrong.getVisibility("53000000002")).rejects.toBeInstanceOf(FlickrError);
+    });
+
+    // Debugging boxs.ca: scripts/siteground-flickr-walkthrough.sh --outage saw the fake
+    // Flickr's in-memory state reset mid-run (refuseAuth cleared, then photos reseeded
+    // private) with no external actor doing it -- strong evidence the stack process itself
+    // crashed and SiteGround restarted it. Reproduces the walkthrough's load (once-a-minute
+    // asset-status polls plus once-a-minute cron ticks) at full speed, with refuseAuth on the
+    // whole time (every Flickr call fails auth, round-tripping through installInternalFetch's
+    // self:/fake-flickr machinery every time), and asserts nothing crashes the process.
+    it("repeated Flickr calls while refuseAuth is on never crash the process (no unhandled rejection/exception)", async () => {
+      const seen: unknown[] = [];
+      const onRejection = (reason: unknown) => seen.push(reason);
+      const onException = (err: unknown) => seen.push(err);
+      process.on("unhandledRejection", onRejection);
+      process.on("uncaughtException", onException);
+      try {
+        expect((await fakeState({ refuseAuth: true })).status).toBe(200);
+
+        await seedTaxonomy(instance.dbs.nrms.db);
+        const created = await fetch(`${instance.stackUrl}/nrms/api/releases`, { method: "POST", headers: admin(), body: JSON.stringify(sampleCreate) });
+        const { id, version } = (await created.json()) as { id: string; version: number };
+        const saved = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset`, {
+          method: "PUT",
+          headers: admin(),
+          body: JSON.stringify({ version, assetUrl: PRIVATE_PAGE, assetAltText: "Photo", hasMediaAssets: true }),
+        });
+        expect(saved.status).toBe(200);
+
+        const statusOnce = () => fetch(`${instance.stackUrl}/nrms/api/releases/${id}/asset-status`, { headers: admin() });
+        const tickOnce = () => fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+
+        for (let i = 0; i < 20; i++) {
+          const [s, t] = await Promise.all([statusOnce(), tickOnce()]);
+          expect(s.status).toBe(200);
+          expect(t.status).toBe(200);
+        }
+        await Promise.all(Array.from({ length: 20 }, () => statusOnce()));
+
+        // Give any late/async 'error' event a chance to surface before asserting.
+        await new Promise((r) => setTimeout(r, 50));
+        expect(seen).toEqual([]);
+      } finally {
+        process.off("unhandledRejection", onRejection);
+        process.off("uncaughtException", onException);
+        await fakeState({ refuseAuth: false });
+      }
+    });
+
+    it("the fake's public base is the site URL's origin + /fake-flickr, else localhost at the stack's port", () => {
+      expect(fakeFlickrPublicBase("https://boxs.ca/site/", 3000)).toBe("https://boxs.ca/fake-flickr");
+      expect(fakeFlickrPublicBase(undefined, 4321)).toBe("http://localhost:4321/fake-flickr");
+      expect(fakeFlickrPublicBase("not a url", 4321)).toBe("http://localhost:4321/fake-flickr");
+    });
+
+    // 2026-10-04 SiteGround debugging, end to end: a brand-new startStack(), pointed at the
+    // same DATA_DIR/databases/output dir as the shared `instance` but a fresh port, is
+    // exactly what SiteGround's documented 30-60s idle-kill-then-cold-start cycle does to a
+    // real deployment (docs/deploy/siteground.md "Background work scheduler") — a new
+    // process, same persistent state. Before the fix, this second instance's fake Flickr
+    // would come up with refuseAuth/photo visibility back at their in-memory defaults even
+    // though the first instance had already cleared the outage and made the photo public;
+    // that's what scripts/siteground-flickr-walkthrough.sh --outage was actually hitting.
+    it("a second startStack() against the same DATA_DIR sees the first's Flickr outage recovery (statePath survives a restart)", async () => {
+      expect((await fakeState({ refuseAuth: true })).status).toBe(200);
+      expect((await fakeState({ refuseAuth: false })).status).toBe(200);
+      const client1 = flickrClient({ ...FAKE_FLICKR, restUrl: `${instance.stackUrl}/fake-flickr/services/rest`, oembedUrl: `${instance.stackUrl}/fake-flickr/services/oembed` });
+      await client1.makePublic("53000000003");
+      expect(await client1.confirmPublic("53000000003")).toBe(true);
+
+      const port2 = await probeFreePort();
+      const env2: NodeJS.ProcessEnv = {
+        PORT: String(port2),
+        TICK_TOKEN: instance.tickToken,
+        STACK_LOOPS: "false",
+        NODE_ENV: "test",
+        DATA_DIR: instance.dataDir,
+        LOCAL_ADMIN_ENABLED: "true",
+        LOCAL_ADMIN_PASSWORD_HASH: await hashPassword(ADMIN_PASSWORD),
+        LOCAL_AUTH_SECRET,
+        STACK_EVENT_SECRET,
+        CORE_DATABASE_URL: instance.dbs.core.url,
+        NRMS_DATABASE_URL: instance.dbs.nrms.url,
+        NEWSAPI_DATABASE_URL: instance.dbs.newsApi.url,
+        SITE_DATABASE_URL: instance.dbs.publicSite.url,
+        SITE_NEWS_API_URL: "self:/",
+        SITE_OUTPUT_DIR: instance.outputDir,
+        SITE_PUBLIC_SITE_URL: "self:/site",
+        NOD_DATABASE_URL: instance.dbs.nod.url,
+        NOD_DISTRIBUTION_URL: "self:/distribution",
+        NOD_PUBLIC_SITE_URL: "self:/site",
+        NOD_MANAGE_URL: MANAGE_URL,
+        DIST_DATABASE_URL: instance.dbs.distribution.url,
+        DIST_SMTP_HOST: "127.0.0.1",
+        DIST_SMTP_PORT: String(instance.sink.port),
+        DIST_SMTP_SECURE: "false",
+        DIST_MAIL_FROM: "noreply@example.gov.bc.ca",
+        DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
+      };
+      const handle2 = await startStack(env2);
+      const bound2 = await listenOnPort(handle2.app, handle2.port);
+      try {
+        const stackUrl2 = `http://127.0.0.1:${handle2.port}`;
+        const client2 = flickrClient({ ...FAKE_FLICKR, restUrl: `${stackUrl2}/fake-flickr/services/rest`, oembedUrl: `${stackUrl2}/fake-flickr/services/oembed` });
+        expect(await client2.getVisibility("53000000003")).toBe("public");
+        // A photo neither instance touched keeps its ordinary seeded default.
+        expect(await client2.getVisibility("53000000004")).toBe("private");
+      } finally {
+        await bound2.close();
+        await Promise.all([...handle2.closeBeforeServer, ...handle2.closers].map((c) => c.close()));
+      }
+    });
+  });
+
   it("every other response defaults to Cache-Control: no-store, overriding a weaker header the app set itself", async () => {
     const api = await fetch(`${instance.stackUrl}/api/Home?api-version=1.0`);
     expect(api.status).toBe(200);
@@ -324,8 +599,8 @@ describe("apps/stack", () => {
       const res = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { ran: Record<string, string>; ms: number };
-      expect(Object.keys(body.ran)).toEqual(["nrms.publish", "nrms.dispatch", "core.dispatch", "news-api.dispatch", "nod.send", "distribution.send"]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.keys(body.ran)).toEqual(["nrms.flickr", "nrms.site", "nrms.publish", "nrms.dispatch", "core.dispatch", "news-api.dispatch", "nod.send", "distribution.send"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 
@@ -344,12 +619,39 @@ describe("apps/stack", () => {
       expect((await fetch(`${instance.stackUrl}/stack/errors`)).status).toBe(401);
     });
 
-    it("200s with a Core.Admin bearer and returns captured console.error entries", async () => {
+    it("200s with a Core.Admin bearer and returns captured console.error entries, each carrying this process's pid and startedAt", async () => {
       console.error("stack.test.ts probe error for /stack/errors");
+      const health = (await (await fetch(`${instance.stackUrl}/stack/health`)).json()) as { startedAt: string; pid: number };
       const res = await fetch(`${instance.stackUrl}/stack/errors`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
       expect(res.status).toBe(200);
-      const body = (await res.json()) as { errors: { timestamp: string; message: string }[] };
-      expect(body.errors.some((e) => e.message.includes("stack.test.ts probe error"))).toBe(true);
+      const body = (await res.json()) as { errors: { timestamp: string; message: string; pid: number; startedAt: string }[] };
+      const probe = body.errors.find((e) => e.message.includes("stack.test.ts probe error"));
+      expect(probe).toBeDefined();
+      expect(probe!.pid).toBe(health.pid);
+      expect(probe!.startedAt).toBe(health.startedAt);
+    });
+
+    // 2026-10-04 SiteGround debugging: this log used to live only in process memory, so every
+    // idle-kill restart wiped it (docs/deploy/siteground.md "Troubleshooting") — it was nearly
+    // always empty by the time anyone checked. It's now persisted under DATA_DIR/logs, which
+    // already survives a restart (see data-dir.ts); confirm the file itself holds the entry.
+    it("persists captured entries to <DATA_DIR>/logs/errors.jsonl", async () => {
+      console.error("stack.test.ts probe error for persistence check");
+      const raw = await readFile(join(instance.dataDir, "logs", "errors.jsonl"), "utf8");
+      expect(raw.includes("stack.test.ts probe error for persistence check")).toBe(true);
+    });
+
+    it("honours ?limit=, capped at 1000, defaulting to 200", async () => {
+      for (let i = 0; i < 5; i++) console.error(`stack.test.ts limit-probe ${i}`);
+      const res = await fetch(`${instance.stackUrl}/stack/errors?limit=2`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { errors: { message: string }[] };
+      expect(body.errors).toHaveLength(2);
+      expect(body.errors[1]!.message).toBe("stack.test.ts limit-probe 4");
+
+      const resOverCap = await fetch(`${instance.stackUrl}/stack/errors?limit=5000`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+      const bodyOverCap = (await resOverCap.json()) as { errors: unknown[] };
+      expect(bodyOverCap.errors.length).toBeLessThanOrEqual(1000);
     });
 
     // Important fix 2, P2-R30: a valid bearer that just doesn't carry Core.Admin must be 403
@@ -384,22 +686,48 @@ describe("apps/stack", () => {
     expect(inbox.rows).toEqual([{ source: "core", type: "org.upserted", outcome: "applied" }]);
   });
 
-  it("Phase 2 exit check: a release created through /nrms/api reaches a static page and an email, driven only by /stack/tick", async () => {
-    const draft = { ...sampleDraft, key: "2026HLTH0099-000099" };
-    const createRes = await fetch(`${instance.stackUrl}/nrms/api/releases`, {
-      method: "POST",
+  it("a ministry saved in Core shows up in NRMS's categories after a tick", async () => {
+    const putRes = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, {
+      method: "PUT",
       headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
-      body: JSON.stringify(draft),
+      body: JSON.stringify(healthOrg),
     });
-    expect(createRes.status).toBe(201);
+    expect(putRes.status).toBe(200);
 
-    const publishAt = new Date(Date.now() - 60_000).toISOString();
-    const scheduleRes = await fetch(`${instance.stackUrl}/nrms/api/releases/${draft.key}/schedule`, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
-      body: JSON.stringify({ publishAt }),
-    });
-    expect(scheduleRes.status).toBe(200);
+    const tickRes = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+    expect(tickRes.status).toBe(200);
+
+    const res = await fetch(`${instance.stackUrl}/nrms/api/categories`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { ministries: { key: string; name: string; abbreviation: string | null }[] };
+    expect(body.ministries).toContainEqual({ key: "health", name: "Health", abbreviation: "HLTH" });
+  });
+
+  it("Phase 2 exit check: a release created through /nrms/api reaches a static page and an email, driven only by /stack/tick", async () => {
+    const admin = { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` };
+    // NRMS validates ministries and sectors against its copy of Core's taxonomy and takes the
+    // Key's abbreviation from the lead ministry: save both in Core and tick once to deliver them.
+    const orgRes = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, { method: "PUT", headers: admin, body: JSON.stringify(healthOrg) });
+    expect(orgRes.status).toBe(200);
+    const sector = { kind: "sector", key: "health", displayName: "Health", sortOrder: 0, isActive: true, social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null } };
+    const sectorRes = await fetch(`${instance.stackUrl}/core/api/terms/sector/health`, { method: "PUT", headers: admin, body: JSON.stringify(sector) });
+    expect(sectorRes.status).toBe(200);
+    const taxonomyTick = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+    expect(taxonomyTick.status).toBe(200);
+
+    const nrmsPost = async (path: string, body: unknown) => {
+      const res = await fetch(`${instance.stackUrl}/nrms/api/releases${path}`, { method: "POST", headers: admin, body: JSON.stringify(body) });
+      return { status: res.status, body: (await res.json()) as { id: string; key: string | null; version: number; status: string } };
+    };
+    const created = await nrmsPost("", sampleCreate);
+    expect(created.status).toBe(201);
+    const approved = await nrmsPost(`/${created.body.id}/approve`, { version: created.body.version });
+    expect(approved.status).toBe(200);
+    const key = approved.body.key!;
+    const scheduled = await nrmsPost(`/${created.body.id}/schedule`, { version: approved.body.version, publishAt: "now" });
+    expect(scheduled.status).toBe(200);
+    expect(scheduled.body.status).toBe("scheduled");
+    const headline = sampleCreate.headline;
 
     const subscriberRes = await fetch(`${instance.stackUrl}/nod/api/subscribers`, {
       method: "POST",
@@ -416,19 +744,19 @@ describe("apps/stack", () => {
     await tick();
     let postHtml: string | undefined;
     try {
-      postHtml = await readFile(join(instance.outputDir, "releases", draft.key, "index.html"), "utf8");
+      postHtml = await readFile(join(instance.outputDir, "releases", key, "index.html"), "utf8");
     } catch {
       // Brief: "call the tick (twice if needed)".
       await tick();
-      postHtml = await readFile(join(instance.outputDir, "releases", draft.key, "index.html"), "utf8");
+      postHtml = await readFile(join(instance.outputDir, "releases", key, "index.html"), "utf8");
     }
-    expect(postHtml).toContain(draft.documents[0]!.headline!);
+    expect(postHtml).toContain(headline);
 
-    const pageRes = await fetch(`${instance.stackUrl}/site/releases/${draft.key}/`);
+    const pageRes = await fetch(`${instance.stackUrl}/site/releases/${key}/`);
     expect(pageRes.status).toBe(200);
 
     await expect.poll(() => instance.sink.messages.length, { timeout: 5000 }).toBeGreaterThan(0);
-    const mail = instance.sink.messages.find((m) => m.subject === draft.documents[0]!.headline);
+    const mail = instance.sink.messages.find((m) => m.subject === headline);
     expect(mail).toBeDefined();
     const toAddress = mail!.to && "value" in mail!.to ? mail!.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");
@@ -440,18 +768,24 @@ describe("apps/stack", () => {
 // tests' happy-path fixture.
 describe("apps/stack: startup errors name the app and its env prefix (M5)", () => {
   let coreDb: TestDatabase | undefined;
+  let dataDir: string | undefined;
 
   afterAll(async () => {
     await coreDb?.drop();
+    if (dataDir) await rm(dataDir, { recursive: true, force: true });
   });
 
   it("a missing NRMS_DATABASE_URL fails startStack with a message naming NRMS and NRMS_*", async () => {
     coreDb = await createCoreTestDb();
+    // Task 1: DATA_DIR must point at a temp folder, not the real home directory — startStack's
+    // ensureWritableDir call runs before NRMS's own startup failure is reached.
+    dataDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-data-"));
     const passwordHash = await hashPassword(ADMIN_PASSWORD);
     const env: NodeJS.ProcessEnv = {
       PORT: "0",
       TICK_TOKEN: "t".repeat(32),
       STACK_LOOPS: "false",
+      DATA_DIR: dataDir,
       LOCAL_ADMIN_ENABLED: "true",
       LOCAL_ADMIN_PASSWORD_HASH: passwordHash,
       LOCAL_AUTH_SECRET,
@@ -492,5 +826,227 @@ describe("apps/stack: combined login-attempt rate limit across every app (M7)", 
     // combined limiter hasn't tripped yet.
     expect(statuses.slice(0, 10).every((s) => s !== 429)).toBe(true);
     expect(statuses[10]).toBe(429);
+  });
+});
+
+// Mirrors the M7 combined-login-limiter test above, but entirely against /core/auth/login
+// (staff sign-in) instead of spreading across the local-admin token routes — same combined
+// stack-wide budget (apps/stack/src/stack.ts's combinedLoginLimiter), confirmed to cover this
+// route too. Its own isolated instance, with no admin-token fetch during setup
+// (fetchAdminToken: false), for the same reason as M7: that fetch would otherwise consume one
+// slot of the exact budget this test counts against.
+describe("apps/stack: combined login-attempt rate limit covers /core/auth/login", () => {
+  let instance: StackTestInstance;
+
+  beforeAll(async () => {
+    instance = await setupStack({ fetchAdminToken: false });
+  });
+
+  afterAll(async () => {
+    await instance.close();
+  });
+
+  it("10/min/IP wrong-password POSTs to /core/auth/login - the 11th is 429", async () => {
+    const headers = { "content-type": "application/json", "x-gcpe-request": "1" };
+    const body = JSON.stringify({ username: "nope", password: "wrong password" });
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      statuses.push((await fetch(`${instance.stackUrl}/core/auth/login`, { method: "POST", headers, body })).status);
+    }
+    expect(statuses).toHaveLength(11);
+    // The first 10 are Core's own (invalid-credentials) answers, never 429 - the combined
+    // limiter hasn't tripped yet.
+    expect(statuses.slice(0, 10).every((s) => s !== 429)).toBe(true);
+    expect(statuses.slice(0, 10).every((s) => s === 401)).toBe(true);
+    expect(statuses[10]).toBe(429);
+  });
+});
+
+describe("staff session cookie across the stack", () => {
+  let inst: StackTestInstance;
+  beforeAll(async () => {
+    inst = await setupStack({ fetchAdminToken: false });
+  });
+  afterAll(async () => {
+    await inst.close();
+  });
+
+  it("a cookie from /core/auth/login authenticates /nrms/api, with the CSRF rule", async () => {
+    const login = await fetch(`${inst.stackUrl}/core/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-gcpe-request": "1" },
+      body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD }),
+    });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.getSetCookie().find((c) => c.startsWith("gcpe_session="))!.split(";")[0]!;
+    expect((await fetch(`${inst.stackUrl}/nrms/api/releases/NO-SUCH-RELEASE`)).status).toBe(401);
+    expect((await fetch(`${inst.stackUrl}/nrms/api/releases/NO-SUCH-RELEASE`, { headers: { cookie } })).status).toBe(404);
+    const noCsrf = await fetch(`${inst.stackUrl}/nrms/api/releases`, { method: "POST", headers: { cookie, "content-type": "application/json" }, body: "{}" });
+    expect(noCsrf.status).toBe(403);
+    const withCsrf = await fetch(`${inst.stackUrl}/nrms/api/releases`, {
+      method: "POST",
+      headers: { cookie, "content-type": "application/json", "x-gcpe-request": "1" },
+      body: "{}",
+    });
+    expect(withCsrf.status).toBe(400);
+  });
+
+  it("a staff session cookie with Core.Admin can use the fake Flickr's /__fake switches, with the CSRF rule", async () => {
+    const login = await fetch(`${inst.stackUrl}/core/auth/login`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-gcpe-request": "1" },
+      body: JSON.stringify({ username: "admin", password: ADMIN_PASSWORD }),
+    });
+    expect(login.status).toBe(200);
+    const cookie = login.headers.getSetCookie().find((c) => c.startsWith("gcpe_session="))!.split(";")[0]!;
+    const post = (headers: Record<string, string>) =>
+      fetch(`${inst.stackUrl}/fake-flickr/__fake/state`, { method: "POST", headers: { cookie, "content-type": "application/json", ...headers }, body: JSON.stringify({ outageCalls: 0 }) });
+    expect((await post({})).status).toBe(403);
+    expect((await post({ "x-gcpe-request": "1" })).status).toBe(200);
+  });
+});
+
+// Fix round 1: the Critical finding — selfHeal fired from inside startPublicSite always failed
+// in the single-process stack ("the stack app is not ready yet"), because News API (which
+// self-heal reads from over a self: URL) only starts, and stackApp only gets assigned, after
+// Public Site itself has already started. This is the regression test for that: a fresh stack
+// instance with its own empty SITE output dir (setupStack always mkdtemps a fresh one) must
+// end up with an index.html, and must never have logged a self-heal failure while doing so.
+describe("apps/stack: public-site self-heal runs once the stack (not just a standalone process) is ready", () => {
+  let instance: StackTestInstance;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeAll(async () => {
+    // Spying BEFORE setupStack() so it catches self-heal's fire-and-forget call, which starts
+    // inside startStack() itself (right after stackApp is assigned), not after setupStack()
+    // returns.
+    errorSpy = vi.spyOn(console, "error");
+    instance = await setupStack({ fetchAdminToken: false });
+  });
+
+  afterAll(async () => {
+    errorSpy.mockRestore();
+    await instance.close();
+  });
+
+  it("rebuilds index.html via self-heal without ever logging a self-heal failure", async () => {
+    await expect
+      .poll(
+        async () => {
+          try {
+            await readFile(join(instance.outputDir, "index.html"), "utf8");
+            return true;
+          } catch {
+            return false;
+          }
+        },
+        { timeout: 5000 },
+      )
+      .toBe(true);
+
+    const selfHealFailures = errorSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("self-heal failed"));
+    expect(selfHealFailures).toEqual([]);
+  });
+});
+
+// Production shape: the fake's public base is the site's https origin, while NRMS signs the
+// in-process http://stack.internal URL it actually calls. The shared stack above can't show this
+// (its site URL is itself a self: URL, so both forms coincide).
+describe("apps/stack: fake Flickr accepts a signature over the in-process URL when its public base differs", () => {
+  it("signed GET and form POST through the in-process fetch succeed; the image URL uses the public base", async () => {
+    const { default: express } = await import("express");
+    const { createFakeFlickr } = await import("@gcpe/flickr-fake");
+    const { installInternalFetch } = await import("./internal-fetch");
+    const app = express();
+    app.set("trust proxy", 1);
+    app.use("/fake-flickr", createFakeFlickr({ ...FAKE_FLICKR, publicBaseUrl: "https://boxs.example/fake-flickr" }).router);
+    const uninstall = installInternalFetch(() => app);
+    try {
+      const client = flickrClient({
+        ...FAKE_FLICKR,
+        restUrl: `${INTERNAL_ORIGIN}/fake-flickr/services/rest`,
+        oembedUrl: `${INTERNAL_ORIGIN}/fake-flickr/services/oembed`,
+      });
+      expect(await client.getVisibility("53000000003")).toBe("private");
+      await client.makePublic("53000000003");
+      expect(await client.confirmPublic("53000000003")).toBe(true);
+      expect(await client.staticImageUrl("https://www.flickr.com/photos/bcgovphotos/53000000003/")).toMatch(/^https:\/\/boxs\.example\/fake-flickr\/static\/53000000003_/);
+    } finally {
+      uninstall();
+    }
+  });
+});
+
+// Task 1 (staff-web): /hub hosting — a built staff-web directory (faked here as a plain
+// index.html + a hashed asset, not a real esbuild build: scripts/build-staff-web.mjs's own
+// test covers the real build's output shape) and the 503-when-missing fallback, each its own
+// instance since the shared "apps/stack" instance above deliberately leaves STAFF_WEB_DIR at
+// its real (almost certainly unbuilt in this test run) default.
+describe("apps/stack: /hub hosting", () => {
+  let hubRoot: string;
+  let dir: string;
+  let built: StackTestInstance;
+  let unbuiltDir: string;
+  let unbuilt: StackTestInstance;
+
+  beforeAll(async () => {
+    // Inside a dot-directory, as on SiteGround (~/.nodeapp/<build>/hub): send/serve-static
+    // refuse a path containing a dotfile segment unless it's below a `root` — this pins that.
+    hubRoot = await mkdtemp(join(tmpdir(), "gcpe-stack-test-hub-"));
+    dir = join(hubRoot, ".nodeapp", "build");
+    await mkdir(join(dir, "assets"), { recursive: true });
+    await writeFile(join(dir, "index.html"), "<!doctype html><html><body>staff web shell</body></html>");
+    await writeFile(join(dir, "assets", "app-abc123.js"), "console.log('staff-web');\n");
+    built = await setupStack({ fetchAdminToken: false, staffWebDir: dir });
+
+    unbuiltDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-hub-missing-"));
+    await rm(unbuiltDir, { recursive: true, force: true }); // exists on disk as a path, not as a directory
+    unbuilt = await setupStack({ fetchAdminToken: false, staffWebDir: unbuiltDir });
+  });
+
+  afterAll(async () => {
+    await built.close();
+    await unbuilt.close();
+    await rm(hubRoot, { recursive: true, force: true });
+    // unbuiltDir was already removed in beforeAll (it must not exist); nothing left to clean up.
+  });
+
+  it("GET /hub/ and a deep link both serve index.html with no-store", async () => {
+    for (const path of ["/hub", "/hub/", "/hub/releases/abc"]) {
+      const res = await fetch(`${built.stackUrl}${path}`);
+      expect.soft(res.status, path).toBe(200);
+      expect.soft(res.headers.get("cache-control"), path).toBe("no-store");
+      expect.soft(await res.text(), path).toContain("staff web shell");
+    }
+  });
+
+  // Minors: the staff shell is never meant to be framed by anything (clickjacking).
+  it("GET /hub/ carries frame-ancestors 'none' and X-Frame-Options: DENY", async () => {
+    for (const path of ["/hub", "/hub/", "/hub/releases/abc"]) {
+      const res = await fetch(`${built.stackUrl}${path}`);
+      expect.soft(res.headers.get("content-security-policy"), path).toBe("frame-ancestors 'none'");
+      expect.soft(res.headers.get("x-frame-options"), path).toBe("DENY");
+    }
+  });
+
+  it("GET /hub/assets/<hashed file> is served with an immutable, year-long cache", async () => {
+    const res = await fetch(`${built.stackUrl}/hub/assets/app-abc123.js`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toMatch(/immutable/);
+    expect(res.headers.get("cache-control")).toMatch(/max-age=31536000/);
+  });
+
+  it("GET /hub/missing.js 404s instead of falling back to index.html", async () => {
+    const res = await fetch(`${built.stackUrl}/hub/missing.js`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("staff web shell");
+  });
+
+  it("with no build directory, /hub/ 503s but the stack still starts and serves /stack/health", async () => {
+    const hub = await fetch(`${unbuilt.stackUrl}/hub/`);
+    expect(hub.status).toBe(503);
+    const health = await fetch(`${unbuilt.stackUrl}/stack/health`);
+    expect(health.status).toBe(200);
+    expect(((await health.json()) as { status: string }).status).toBe("ok");
   });
 });

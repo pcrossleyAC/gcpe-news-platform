@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, integer, jsonb, pgTable, text, timestamp, unique, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { OrgRecord, TermRecord } from "@gcpe/events";
 
 export * from "@gcpe/events/tables";
@@ -43,4 +43,36 @@ export const terms = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [unique("terms_kind_key").on(t.kind, t.key)],
+);
+
+/** Staff users (spec addendum §2). Emails are stored trimmed and lowercased. */
+export const users = pgTable(
+  "users",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    email: text("email").notNull(),
+    displayName: text("display_name").notNull(),
+    isActive: boolean("is_active").notNull().default(true),
+    signInMethod: text("sign_in_method").$type<"local" | "entra">().notNull().default("local"),
+    passwordHash: text("password_hash"),
+    legacyId: uuid("legacy_id"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("users_email_lower_idx").on(sql`lower(${t.email})`),
+    check("users_sign_in_method_check", sql`${t.signInMethod} IN ('local','entra')`),
+  ],
+);
+
+export const roleGrants = pgTable(
+  "role_grants",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    role: text("role").notNull(),
+    grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.role] })],
 );

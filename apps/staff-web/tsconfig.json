@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    // Fix round 1: a real standalone project, not extending the root (server) tsconfig — no
+    // "node" here on purpose (browser code gets no Node ambient globals at all). Nothing else
+    // needs listing: @types/react, @types/react-dom and @testing-library/jest-dom's matcher
+    // augmentation (apps/staff-web/test/setup.ts's side-effect import) all resolve through
+    // ordinary module resolution, not the ambient "types" list.
+    "types": [],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "allowImportingTsExtensions": false,
+    "noEmit": true
+  },
+  "include": ["src", "test"]
+}

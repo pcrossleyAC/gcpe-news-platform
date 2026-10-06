@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { ageMsOf, heldBy, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import type { Transporter } from "nodemailer";
-import { messages } from "./db/schema";
+import { batches, messages, type StoredAttachment } from "./db/schema";
 import { substitute } from "./substitute";
 
 export interface SendOptions {
@@ -178,6 +178,10 @@ function isSenderLevelError(e: unknown): boolean {
 
 type ClaimedRow = {
   id: string;
+  batch_id: string;
+  /** Whether the batch carries attachments — they're loaded once per batch (see
+   * loadAttachments), not returned by the claim, which would repeat up to 7 MiB per row. */
+  has_attachments: boolean;
   email: string;
   substitutions: Record<string, string> | null;
   attempts: number;
@@ -197,6 +201,13 @@ type ClaimedRow = {
    * one claim: a statement's now() is constant). */
   lock_token: LockToken;
 };
+
+type MailAttachment = { filename: string; content: Buffer; contentType: StoredAttachment["contentType"] };
+
+async function loadAttachments(db: Db, batchId: string): Promise<MailAttachment[]> {
+  const [row] = await db.select({ attachments: batches.attachments }).from(batches).where(eq(batches.id, batchId));
+  return (row?.attachments ?? []).map((a) => ({ filename: a.filename, content: Buffer.from(a.contentBase64, "base64"), contentType: a.contentType }));
+}
 
 /**
  * R1: discriminates "the SMTP server/config is actually unreachable" from "this one message is
@@ -290,7 +301,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
        SET locked_until = ${now} + ${sqlInterval(lockMs)}
       FROM batches b, due
      WHERE b.id = m.batch_id AND m.id = due.id
-    RETURNING m.id, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at,
+    RETURNING m.id, m.batch_id, jsonb_array_length(b.attachments) > 0 AS has_attachments, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at,
               b.subject, b.html, b.text, b.headers, ${ageMsOf(sql`b.created_at`, now)} AS batch_age_ms, ${lockTokenOf(sql`m.locked_until`)} AS lock_token`);
 
   const rows = claimed.rows.slice().sort((a, b) => {
@@ -300,6 +311,18 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
   });
   const lockToken = rows[0]?.lock_token ?? "";
+
+  // Per run, per batch: every message of a batch carries the same attachments.
+  const attachmentsByBatch = new Map<string, Promise<MailAttachment[]>>();
+  const attachmentsFor = (row: ClaimedRow): Promise<MailAttachment[]> => {
+    if (!row.has_attachments) return Promise.resolve([]);
+    let loaded = attachmentsByBatch.get(row.batch_id);
+    if (!loaded) {
+      loaded = loadAttachments(opts.db, row.batch_id);
+      attachmentsByBatch.set(row.batch_id, loaded);
+    }
+    return loaded;
+  };
 
   const result = { sent: 0, retried: 0, failed: 0 };
   let outageBackoffMs: number | undefined;
@@ -347,8 +370,12 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       headers[name] = substitute(value, values, "header");
     }
     if (redirect) headers["X-Original-To"] = row.email;
+    // Non-prod redirect: every copy lands in the same tester's inbox, so name the intended
+    // recipient in the subject too — otherwise copies for different recipients look identical.
+    const sentSubject = redirect ? `[to: ${row.email}] ${subject}` : subject;
 
     const to = redirect ? opts.redirectTo : [row.email];
+    const attachments = await attachmentsFor(row);
 
     let error: string | null = null;
     let permanent = false;
@@ -356,7 +383,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     let connectionLevel = false;
     let droppedBeforeSend = false;
     try {
-      await opts.transport.sendMail({ from: opts.from, to, subject, html, text, headers });
+      await opts.transport.sendMail({ from: opts.from, to, subject: sentSubject, html, text, headers, attachments });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       permanent = isPermanentRecipientRejection(e);

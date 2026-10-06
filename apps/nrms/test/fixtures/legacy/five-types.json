@@ -1,0 +1,355 @@
+{
+  "ids": {
+    "release": "a1111111-1111-4111-8111-111111111111",
+    "story": "a2222222-2222-4222-8222-222222222222",
+    "factsheet": "a3333333-3333-4333-8333-333333333333",
+    "update": "a4444444-4444-4444-8444-444444444444",
+    "advisory": "a5555555-5555-4555-8555-555555555555"
+  },
+  "years": {
+    "2024": {
+      "releases": [
+        {
+          "Id": "a1111111-1111-4111-8111-111111111111",
+          "Key": "five-types-release",
+          "ReleaseType": 1,
+          "Reference": "NEWS-00050",
+          "AtomId": "",
+          "Year": 2024,
+          "YearRelease": null,
+          "MinistryRelease": null,
+          "ActivityId": 777000,
+          "ReleaseDateTime": "2024-06-01T09:00:00Z",
+          "PublishDateTime": "2024-06-01T09:00:00-07:00",
+          "IsCommitted": true,
+          "IsPublished": true,
+          "PublishOptions": 3,
+          "IsActive": true,
+          "HasMediaAssets": false,
+          "HasTranslations": false,
+          "NodSubscribers": null,
+          "MediaSubscribers": null,
+          "Keywords": "",
+          "AssetUrl": "",
+          "RedirectUrl": "",
+          "CollectionId": null,
+          "LeadMinistryKey": "health"
+        },
+        {
+          "Id": "a2222222-2222-4222-8222-222222222222",
+          "Key": "five-types-story",
+          "ReleaseType": 2,
+          "Reference": "NEWS-00051",
+          "AtomId": "",
+          "Year": 2024,
+          "YearRelease": null,
+          "MinistryRelease": null,
+          "ActivityId": null,
+          "ReleaseDateTime": "2024-06-01T09:00:00Z",
+          "PublishDateTime": "2024-06-01T09:00:00-07:00",
+          "IsCommitted": true,
+          "IsPublished": true,
+          "PublishOptions": 3,
+          "IsActive": true,
+          "HasMediaAssets": false,
+          "HasTranslations": false,
+          "NodSubscribers": null,
+          "MediaSubscribers": null,
+          "Keywords": "",
+          "AssetUrl": "",
+          "RedirectUrl": "",
+          "CollectionId": null,
+          "LeadMinistryKey": "health"
+        },
+        {
+          "Id": "a3333333-3333-4333-8333-333333333333",
+          "Key": "five-types-factsheet",
+          "ReleaseType": 3,
+          "Reference": "NEWS-00052",
+          "AtomId": "",
+          "Year": 2024,
+          "YearRelease": null,
+          "MinistryRelease": null,
+          "ActivityId": null,
+          "ReleaseDateTime": "2024-06-01T09:00:00Z",
+          "PublishDateTime": "2024-06-01T09:00:00-07:00",
+          "IsCommitted": true,
+          "IsPublished": true,
+          "PublishOptions": 3,
+          "IsActive": true,
+          "HasMediaAssets": false,
+          "HasTranslations": false,
+          "NodSubscribers": null,
+          "MediaSubscribers": null,
+          "Keywords": "",
+          "AssetUrl": "",
+          "RedirectUrl": "",
+          "CollectionId": null,
+          "LeadMinistryKey": "health"
+        },
+        {
+          "Id": "a4444444-4444-4444-8444-444444444444",
+          "Key": "five-types-update",
+          "ReleaseType": 4,
+          "Reference": "NEWS-00053",
+          "AtomId": "",
+          "Year": 2024,
+          "YearRelease": null,
+          "MinistryRelease": null,
+          "ActivityId": null,
+          "ReleaseDateTime": "2024-06-01T09:00:00Z",
+          "PublishDateTime": "2024-06-01T09:00:00-07:00",
+          "IsCommitted": true,
+          "IsPublished": true,
+          "PublishOptions": 3,
+          "IsActive": true,
+          "HasMediaAssets": false,
+          "HasTranslations": false,
+          "NodSubscribers": null,
+          "MediaSubscribers": null,
+          "Keywords": "",
+          "AssetUrl": "",
+          "RedirectUrl": "",
+          "CollectionId": null,
+          "LeadMinistryKey": "health"
+        },
+        {
+          "Id": "a5555555-5555-4555-8555-555555555555",
+          "Key": "five-types-advisory",
+          "ReleaseType": 5,
+          "Reference": "NEWS-00054",
+          "AtomId": "",
+          "Year": 2024,
+          "YearRelease": null,
+          "MinistryRelease": null,
+          "ActivityId": null,
+          "ReleaseDateTime": "2024-06-01T09:00:00Z",
+          "PublishDateTime": "2024-06-01T09:00:00-07:00",
+          "IsCommitted": true,
+          "IsPublished": true,
+          "PublishOptions": 3,
+          "IsActive": true,
+          "HasMediaAssets": false,
+          "HasTranslations": false,
+          "NodSubscribers": null,
+          "MediaSubscribers": null,
+          "Keywords": "",
+          "AssetUrl": "",
+          "RedirectUrl": "",
+          "CollectionId": null,
+          "LeadMinistryKey": "health"
+        }
+      ],
+      "releaseLanguages": [
+        {
+          "ReleaseId": "a1111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "Location": "Victoria",
+          "Summary": "A release.",
+          "SocialMediaSummary": null
+        },
+        {
+          "ReleaseId": "a2222222-2222-4222-8222-222222222222",
+          "LanguageId": 4105,
+          "Location": "Victoria",
+          "Summary": "A story.",
+          "SocialMediaSummary": null
+        },
+        {
+          "ReleaseId": "a3333333-3333-4333-8333-333333333333",
+          "LanguageId": 4105,
+          "Location": "Victoria",
+          "Summary": "A factsheet.",
+          "SocialMediaSummary": null
+        },
+        {
+          "ReleaseId": "a4444444-4444-4444-8444-444444444444",
+          "LanguageId": 4105,
+          "Location": "Victoria",
+          "Summary": "A update.",
+          "SocialMediaSummary": null
+        },
+        {
+          "ReleaseId": "a5555555-5555-4555-8555-555555555555",
+          "LanguageId": 4105,
+          "Location": "Victoria",
+          "Summary": "A advisory.",
+          "SocialMediaSummary": null
+        }
+      ],
+      "documents": [
+        {
+          "Id": "b0111111-1111-4111-8111-111111111111",
+          "ReleaseId": "a1111111-1111-4111-8111-111111111111",
+          "SortIndex": 0,
+          "PageLayout": 1
+        },
+        {
+          "Id": "b1111111-1111-4111-8111-111111111111",
+          "ReleaseId": "a2222222-2222-4222-8222-222222222222",
+          "SortIndex": 0,
+          "PageLayout": 1
+        },
+        {
+          "Id": "b2111111-1111-4111-8111-111111111111",
+          "ReleaseId": "a3333333-3333-4333-8333-333333333333",
+          "SortIndex": 0,
+          "PageLayout": 1
+        },
+        {
+          "Id": "b3111111-1111-4111-8111-111111111111",
+          "ReleaseId": "a4444444-4444-4444-8444-444444444444",
+          "SortIndex": 0,
+          "PageLayout": 1
+        },
+        {
+          "Id": "b4111111-1111-4111-8111-111111111111",
+          "ReleaseId": "a5555555-5555-4555-8555-555555555555",
+          "SortIndex": 0,
+          "PageLayout": 1
+        }
+      ],
+      "documentLanguages": [
+        {
+          "DocumentId": "b0111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "PageImageId": null,
+          "PageTitle": "News Release",
+          "Organizations": "Ministry of Health",
+          "Headline": "A release release",
+          "Subheadline": "",
+          "Byline": "",
+          "BodyHtml": "<p>Body for the release type.</p>"
+        },
+        {
+          "DocumentId": "b1111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "PageImageId": null,
+          "PageTitle": "News Release",
+          "Organizations": "Ministry of Health",
+          "Headline": "A story release",
+          "Subheadline": "",
+          "Byline": "",
+          "BodyHtml": "<p>Body for the story type.</p>"
+        },
+        {
+          "DocumentId": "b2111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "PageImageId": null,
+          "PageTitle": "News Release",
+          "Organizations": "Ministry of Health",
+          "Headline": "A factsheet release",
+          "Subheadline": "",
+          "Byline": "",
+          "BodyHtml": "<p>Body for the factsheet type.</p>"
+        },
+        {
+          "DocumentId": "b3111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "PageImageId": null,
+          "PageTitle": "News Release",
+          "Organizations": "Ministry of Health",
+          "Headline": "A update release",
+          "Subheadline": "",
+          "Byline": "",
+          "BodyHtml": "<p>Body for the update type.</p>"
+        },
+        {
+          "DocumentId": "b4111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "PageImageId": null,
+          "PageTitle": "News Release",
+          "Organizations": "Ministry of Health",
+          "Headline": "A advisory release",
+          "Subheadline": "",
+          "Byline": "",
+          "BodyHtml": "<p>Body for the advisory type.</p>"
+        }
+      ],
+      "documentContacts": [
+        {
+          "DocumentId": "b0111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "SortIndex": 0,
+          "Information": "Media Relations\nMinistry of Health\n250-555-0700"
+        },
+        {
+          "DocumentId": "b1111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "SortIndex": 0,
+          "Information": "Media Relations\nMinistry of Health\n250-555-0700"
+        },
+        {
+          "DocumentId": "b2111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "SortIndex": 0,
+          "Information": "Media Relations\nMinistry of Health\n250-555-0700"
+        },
+        {
+          "DocumentId": "b3111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "SortIndex": 0,
+          "Information": "Media Relations\nMinistry of Health\n250-555-0700"
+        },
+        {
+          "DocumentId": "b4111111-1111-4111-8111-111111111111",
+          "LanguageId": 4105,
+          "SortIndex": 0,
+          "Information": "Media Relations\nMinistry of Health\n250-555-0700"
+        }
+      ],
+      "releaseCategories": [
+        {
+          "ReleaseId": "a1111111-1111-4111-8111-111111111111",
+          "Kind": "ministries",
+          "Key": "health"
+        },
+        {
+          "ReleaseId": "a1111111-1111-4111-8111-111111111111",
+          "Kind": "sectors",
+          "Key": "health"
+        },
+        {
+          "ReleaseId": "a2222222-2222-4222-8222-222222222222",
+          "Kind": "ministries",
+          "Key": "health"
+        },
+        {
+          "ReleaseId": "a2222222-2222-4222-8222-222222222222",
+          "Kind": "sectors",
+          "Key": "health"
+        },
+        {
+          "ReleaseId": "a3333333-3333-4333-8333-333333333333",
+          "Kind": "ministries",
+          "Key": "health"
+        },
+        {
+          "ReleaseId": "a3333333-3333-4333-8333-333333333333",
+          "Kind": "sectors",
+          "Key": "health"
+        },
+        {
+          "ReleaseId": "a4444444-4444-4444-8444-444444444444",
+          "Kind": "ministries",
+          "Key": "health"
+        },
+        {
+          "ReleaseId": "a4444444-4444-4444-8444-444444444444",
+          "Kind": "sectors",
+          "Key": "health"
+        },
+        {
+          "ReleaseId": "a5555555-5555-4555-8555-555555555555",
+          "Kind": "ministries",
+          "Key": "health"
+        }
+      ],
+      "releaseMediaLists": [],
+      "releaseLog": []
+    }
+  },
+  "historyCount": [],
+  "appSettings": [],
+  "categoryFeatures": []
+}

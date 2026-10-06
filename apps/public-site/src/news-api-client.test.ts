@@ -62,4 +62,19 @@ describe("newsApiClient", () => {
     await client.getPost("K1");
     expect(String(fetchImpl.mock.calls[0]?.[0])).toBe("http://host/news/api/Posts/K1?api-version=1.0");
   });
+
+  // Plan 3d task 4: home() reads Project Blue Bridge's granville text off News API's /api/Home,
+  // which already projects it (tasks 1–3).
+  it("home() fetches GET api/Home and returns granville", async () => {
+    const fetchImpl = stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ granville: "true", topPostKey: null, featurePostKey: null }) }));
+    const client = newsApiClient("http://host", fetchImpl as unknown as typeof fetch);
+    expect(await client.home()).toMatchObject({ granville: "true" });
+    expect(String(fetchImpl.mock.calls[0]?.[0])).toBe("http://host/api/Home?api-version=1.0");
+  });
+
+  it("home() rejects on a non-2xx response", async () => {
+    const fetchImpl = stubFetch(fakeResponse({ ok: false, status: 503, body: "down" }));
+    const client = newsApiClient("http://host", fetchImpl as unknown as typeof fetch);
+    await expect(client.home()).rejects.toThrow(/503/);
+  });
 });

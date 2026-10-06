@@ -5,15 +5,26 @@
   "engines": { "node": ">=24" },
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
-    "check": "tsc -p tsconfig.json",
+    "check": "tsc -p tsconfig.json && tsc -p apps/staff-web/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
     "auth:hash-password": "tsx packages/auth/src/cli/hash-password.ts",
+    "core:seed-test-users": "npm --workspace @gcpe/core run seed:test-users",
+    "nrms:flickr-authorize": "npm --workspace @gcpe/nrms run flickr:authorize",
+    "nrms:import": "npm --workspace @gcpe/nrms run import:legacy --",
+    "nrms:release-holds": "npm --workspace @gcpe/nrms run release-holds --",
+    "nrms:replay-to-news-api": "npm --workspace @gcpe/nrms run replay-to-news-api --",
+    "staff-web:build": "node scripts/build-staff-web.mjs",
+    "staff-web:dev": "node scripts/build-staff-web.mjs --watch",
     "build:siteground": "node scripts/build-siteground.mjs",
     "deploy:siteground": "bash scripts/deploy-siteground.sh",
-    "siteground:env": "tsx scripts/siteground-env.ts"
+    "siteground:env": "tsx scripts/siteground-env.ts",
+    "core:seed-from-public-api": "tsx scripts/seed-core-from-public-api.ts"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.13.0",
+    "@playwright/test": "1.63.0",
     "@types/node": "^24.19.1",
     "esbuild": "^0.28.2",
     "tsx": "^4.20.0",

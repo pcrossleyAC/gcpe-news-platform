@@ -13,5 +13,10 @@
     "allowImportingTsExtensions": false,
     "noEmit": true
   },
-  "include": ["packages/*/src", "packages/*/test", "apps/*/src", "apps/*/test", "apps/*/scripts", "scripts", "tests", "vitest.config.ts"]
+  "include": ["packages/*/src", "packages/*/test", "apps/*/src", "apps/*/test", "apps/*/scripts", "scripts", "tests", "vitest.config.ts"],
+  // Fix round 1: apps/staff-web is browser code (DOM lib, no Node types) and has its own
+  // standalone tsconfig (apps/staff-web/tsconfig.json), checked separately — see package.json's
+  // "check" script. Giving every server file DOM globals (window, fetch's DOM BodyInit, etc.)
+  // with no type error was exactly the problem that tsconfig split fixes.
+  "exclude": ["apps/staff-web"]
 }

@@ -13,6 +13,7 @@ export const coreEnvSchema = z.object({
   PORT: z.coerce.number().int().default(3001),
   EVENT_SUBSCRIBERS: z.string().optional(),
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
+  SESSION_COOKIE_SECURE: z.enum(["true", "false"]).default("true").transform((v) => v === "true"),
 });
 
 export interface AppHandle {
@@ -53,6 +54,7 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     subscribers,
     auth: auth.bearer,
     loginRouter: auth.loginRouter,
+    session: auth.session ? { secret: auth.session.secret, secure: parsed.SESSION_COOKIE_SECURE, local: auth.local } : undefined,
   });
 
   // Set by startLoops(); closers below reference it lazily so they're safe to call even if

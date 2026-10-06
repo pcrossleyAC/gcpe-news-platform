@@ -44,6 +44,25 @@ const headersSchema = z
     return canonical;
   });
 
+const MAX_ATTACHMENT_BYTES = 7 * 1024 * 1024;
+// Strict base64 (padding only at the end): Buffer.from(b64, "base64") silently skips anything
+// else, which would turn a garbled payload into a quietly corrupt attachment.
+const BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** Decoded byte length of a base64 string, without decoding it. */
+export function base64DecodedBytes(b64: string): number {
+  const padding = b64.endsWith("==") ? 2 : b64.endsWith("=") ? 1 : 0;
+  return Math.floor((b64.length * 3) / 4) - padding;
+}
+
+const attachmentSchema = z.object({
+  // No path separators (a mail client may honour them), no quotes or line breaks (header injection).
+  filename: z.string().min(1).max(200).regex(/^[^\\/\r\n"]+$/),
+  contentType: z.enum(["application/pdf", "text/plain"]),
+  contentBase64: z.string().max(10_000_000).regex(BASE64, "must be base64"),
+});
+export type Attachment = z.infer<typeof attachmentSchema>;
+
 export const messageRequestSchema = z.object({
   priority: z.enum(["system", "media", "immediate", "digest"]),
   idempotencyKey: z.string().min(1).max(200).optional(),
@@ -52,6 +71,12 @@ export const messageRequestSchema = z.object({
   text: z.string().optional(),
   headers: headersSchema,
   recipients: z.array(z.object({ email: z.string().email(), substitutions: z.record(z.string()).default({}) })).min(1).max(20_000),
+  // Sent unchanged with every message of the batch (no substitution).
+  attachments: z
+    .array(attachmentSchema)
+    .max(3)
+    .default([])
+    .refine((list) => list.reduce((n, a) => n + base64DecodedBytes(a.contentBase64), 0) <= MAX_ATTACHMENT_BYTES, "attachments exceed 7 MiB"),
 });
 export type MessageRequest = z.infer<typeof messageRequestSchema>;
 
@@ -101,6 +126,7 @@ export async function createBatch(
         html: req.html,
         text: req.text ?? null,
         headers: req.headers,
+        attachments: req.attachments,
       })
       .returning({ id: batches.id });
     const batchId = batch!.id;

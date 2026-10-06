@@ -1,0 +1,71 @@
+import { useCallback, useState } from "react";
+import { ApiError } from "../../api/client";
+import { useAnnouncer } from "../../shared/Announcer";
+
+/** Same wording as release/useReleaseSection.ts's RELOAD_MESSAGE (constraints.md: one shared
+ * copy of the 409 message) — re-exported here (both of them, from shared/reloadMessage.ts) so
+ * every Website screen can import it from this module without reaching into the release
+ * folder, and there's still only one literal behind both re-exports. */
+export { RELOAD_MESSAGE } from "../../shared/reloadMessage";
+
+export interface VersionedSaveState {
+  saving: boolean;
+  /** 422 problems (release shape's `problems`, or the Website section's own `errors` —
+   * apiFetch normalises both into this one field; see api/client.ts). */
+  problems: string[] | null;
+  /** 409 — constraints.md: show the reload message, never retry automatically. */
+  conflict: boolean;
+  error: string | null;
+}
+
+export interface VersionedSave<T> extends VersionedSaveState {
+  /** Runs `action` (an apiFetch call) under the shared saving/409/422/error state machine.
+   * Returns the action's result on success, or `null` on any failure (the caller decides what
+   * to do with its own local form state either way — this never touches it). */
+  run(action: () => Promise<T>): Promise<T | null>;
+  /** Clears problems/conflict/error without touching anything else. */
+  clear(): void;
+}
+
+const INITIAL: VersionedSaveState = { saving: false, problems: null, conflict: false, error: null };
+
+/**
+ * The Website section's generalisation of release/useReleaseSection.ts's save/409/422 pattern
+ * (task-5-brief.md's design note: "generalise ... into a small useVersionedSave helper"). Unlike
+ * that hook, this one isn't tied to one release id/URL shape — every Website endpoint (carousels,
+ * pins, live feed, Blue Bridge, links, files) has its own URL and payload, so the caller supplies
+ * the whole `apiFetch` call as a thunk and this just wraps it with the shared state machine.
+ */
+export function useVersionedSave<T = unknown>(): VersionedSave<T> {
+  const [state, setState] = useState<VersionedSaveState>(INITIAL);
+  const { announce } = useAnnouncer();
+
+  const run = useCallback(async (action: () => Promise<T>): Promise<T | null> => {
+    setState({ saving: true, problems: null, conflict: false, error: null });
+    try {
+      const result = await action();
+      setState(INITIAL);
+      // I4: one shared announcement for every Website section save, same as release sections.
+      announce("Saved");
+      return result;
+    } catch (caught) {
+      // Same code-aware distinction as release/useReleaseSection.ts's save(): a 409 is a real
+      // version conflict (show the reload banner) unless the server says `code: "state"` —
+      // every Website 409 today is a version conflict (no Website error carries that code
+      // yet), so this doesn't change current behaviour; it exists so this hook's one state
+      // machine keeps agreeing with useReleaseSection's if that ever changes.
+      if (caught instanceof ApiError && caught.status === 409 && caught.code !== "state") {
+        setState({ saving: false, problems: null, conflict: true, error: null });
+      } else if (caught instanceof ApiError && caught.status === 422) {
+        setState({ saving: false, problems: caught.problems ?? [caught.message], conflict: false, error: null });
+      } else {
+        setState({ saving: false, problems: null, conflict: false, error: caught instanceof ApiError ? caught.message : "Save failed." });
+      }
+      return null;
+    }
+  }, [announce]);
+
+  const clear = useCallback(() => setState(INITIAL), []);
+
+  return { ...state, run, clear };
+}

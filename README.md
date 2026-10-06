@@ -176,6 +176,7 @@ EVENT_SUBSCRIBERS='[]' npm --workspace @gcpe/nrms run dev
 | `EVENT_SUBSCRIBERS` | no | `[]` | JSON array of webhook subscribers that receive NRMS's `release.*` events, see [Event wiring](#event-wiring) below |
 | `MIGRATIONS_FOLDER` | no | `apps/nrms/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/nrms/migrations` |
 | `PUBLISH_INTERVAL_MS` | no | `60000` | How often the scheduled-publish poller runs |
+| `TENANT_CONFIG` | no | `config/tenants/bc.json` | Tenant config path (its `timeZone` decides the BC year in approve-time Keys); the Docker image sets `/app/config/tenants/bc.json` |
 
 Plus the shared auth env vars — see [Authentication](#authentication-entra-or-local-admin-login-test-environments-only) below.
 

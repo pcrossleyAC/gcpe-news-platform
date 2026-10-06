@@ -1,7 +1,26 @@
 import { createHmac } from "node:crypto";
+import { existsSync } from "node:fs";
+import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { z } from "zod";
+
+// Task 1 (staff-web): the staff app's built output directory. Two on-disk layouts share one
+// default so no SiteGround setting is required: in dev (`tsx apps/stack/src/main.ts`),
+// `import.meta.url` is this source file's own location and the build lives at
+// apps/staff-web/dist; in the SiteGround bundle, this whole module is esbuild'd into one file
+// at dist/siteground/stack.js, and build-siteground.mjs copies the staff-web build to
+// dist/siteground/hub (`./hub`, relative to that same `import.meta.url`). Whichever of the
+// two actually exists on disk at startup wins; an explicit STAFF_WEB_DIR env var always
+// overrides both. Neither existing (dev, before the staff-web build has ever run) falls back
+// to the dev path, so the 503 "Staff app not built" message names a sensible, existing-tree
+// location rather than a path that can never be right.
+const DEV_STAFF_WEB_DIR = fileURLToPath(new URL("../../staff-web/dist", import.meta.url));
+const BUNDLED_STAFF_WEB_DIR = fileURLToPath(new URL("./hub", import.meta.url));
+
+export function defaultStaffWebDir(): string {
+  return existsSync(BUNDLED_STAFF_WEB_DIR) ? BUNDLED_STAFF_WEB_DIR : DEV_STAFF_WEB_DIR;
+}
 
 /** The stack's own env — one PORT for every mounted app, a tick token, and the two feature
  * toggles main.ts needs (STACK_LOOPS for the background interval loops, UPDATES_HUB_ENABLED
@@ -28,6 +47,9 @@ export const stackEnvSchema = z.object({
   // from it (see internalEventEnv) — one short setting instead of eight long JSON values, which
   // SiteGround's env form can't hold. Explicit <PREFIX>_EVENT_* vars still take precedence.
   STACK_EVENT_SECRET: z.string().min(32, "STACK_EVENT_SECRET must be at least 32 characters").optional(),
+  // Task 1 (staff-web): see defaultStaffWebDir above for why a static default suffices for
+  // both dev and the SiteGround bundle.
+  STAFF_WEB_DIR: z.string().default(defaultStaffWebDir),
 });
 export type StackEnv = z.infer<typeof stackEnvSchema>;
 
@@ -36,14 +58,87 @@ export const APP_PREFIXES = ["CORE", "NRMS", "NEWSAPI", "SITE", "NOD", "DIST"] a
 export type AppPrefix = (typeof APP_PREFIXES)[number];
 
 /**
+ * Task 9: per-app defaults for vars that are always the same inside one stack and so need no
+ * SiteGround setting of their own — NRMS's NoD base URL (used to show an editor roughly how
+ * many subscribers a release will notify) and its Distribution base URL (Task 6's correction
+ * notice) are both always this stack's own in-process `self:` URLs, same as NoD's own
+ * DISTRIBUTION_URL default. An explicit `<PREFIX>_<VAR>` (e.g. `NRMS_NOD_URL`) still wins —
+ * see envFor below, which applies this before the app's own prefixed vars.
+ */
+export const STACK_APP_DEFAULTS: Partial<Record<AppPrefix, Record<string, string>>> = {
+  // Plan 3d task 4: Core's in-process URL too, for Project Blue Bridge's admin-directory lookup
+  // (NRMS's own CORE_CLIENT_ID/SECRET stay unset in-stack, same as NOD_*/DISTRIBUTION_* — the
+  // local-admin token fallback covers it, just like NRMS's calls to NoD and Distribution).
+  NRMS: { NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", CORE_URL: "self:/core" },
+};
+
+/** Where the stack mounts its fake Flickr when no real Flickr key is configured. */
+export const FAKE_FLICKR_PATH = "/fake-flickr";
+
+/** The fake Flickr's fixed test credentials — not secrets: the fake only exists when no real
+ * Flickr is configured, and it only guards its own in-memory photos. */
+export const FAKE_FLICKR = {
+  apiKey: "fake-key",
+  apiSecret: "fake-secret-0123456789",
+  accessToken: "fake-token",
+  accessSecret: "fake-token-secret-0123456789",
+} as const;
+
+/** What NRMS's env view gets in fake mode: the fake's credentials and its in-process URLs. */
+export const FAKE_FLICKR_ENV: Readonly<Record<string, string>> = {
+  FLICKR_MODE: "fake",
+  FLICKR_API_KEY: FAKE_FLICKR.apiKey,
+  FLICKR_API_SECRET: FAKE_FLICKR.apiSecret,
+  FLICKR_ACCESS_TOKEN: FAKE_FLICKR.accessToken,
+  FLICKR_ACCESS_SECRET: FAKE_FLICKR.accessSecret,
+  FLICKR_REST_URL: `self:${FAKE_FLICKR_PATH}/services/rest`,
+  FLICKR_OEMBED_URL: `self:${FAKE_FLICKR_PATH}/services/oembed`,
+  FLICKR_OAUTH_URL: `self:${FAKE_FLICKR_PATH}/services/oauth`,
+};
+
+/** NRMS's effective value of a FLICKR_* setting, as envFor resolves it: NRMS_<name> when it is
+ * defined (even empty), else the shared <name>. */
+function nrmsFlickrSetting(env: NodeJS.ProcessEnv, name: string): string | undefined {
+  return env[`NRMS_${name}`] !== undefined ? env[`NRMS_${name}`] : env[name];
+}
+
+/**
+ * True when the stack runs, and points NRMS at, its fake Flickr: NRMS has no effective Flickr
+ * key ("" counts as none) AND this is not a real production deployment — NODE_ENV isn't
+ * "production", or it's a test deployment (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true), or the fake
+ * is asked for explicitly (FLICKR_MODE=fake). Production with a lost key fails closed instead:
+ * no Flickr at all, so the publisher alerts and asset status reads "unavailable" — never the
+ * fake's "this photo no longer exists" for a real photo.
+ */
+export function usesFakeFlickr(env: NodeJS.ProcessEnv): boolean {
+  if (nrmsFlickrSetting(env, "FLICKR_API_KEY")) return false;
+  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || nrmsFlickrSetting(env, "FLICKR_MODE") === "fake";
+}
+
+/**
  * Shared vars every app's env view inherits unprefixed, verbatim: LOCAL_ADMIN_* (the whole
- * family), LOCAL_AUTH_SECRET, TENANT_CONFIG, NODE_ENV, and (fix round 1, P2-R30 M6)
- * ENTRA_TENANT_ID — every app talks to the same Entra tenant, so that one is shared too.
- * AUTH_AUDIENCE is deliberately NOT shared: each app is its own audience/resource in Entra
- * (`<PREFIX>_AUTH_AUDIENCE`), same as it would be as six separate deployments.
+ * family), LOCAL_AUTH_SECRET, TENANT_CONFIG, NODE_ENV, (fix round 1, P2-R30 M6) ENTRA_TENANT_ID
+ * — every app talks to the same Entra tenant, so that one is shared too — and (Task 6)
+ * SESSION_SECRET / SESSION_COOKIE_SECURE, so every app verifies the same `gcpe_session` cookie
+ * under the same security policy. AUTH_AUDIENCE is deliberately NOT shared: each app is its own
+ * audience/resource in Entra (`<PREFIX>_AUTH_AUDIENCE`), same as it would be as six separate
+ * deployments. DATA_DIR (Task 1) is shared too — the one folder, outside any SiteGround deploy
+ * folder, that survives a redeploy (see data-dir.ts). SITE_ENVIRONMENT (plan 3d task 4) is
+ * shared so an operator can mark a whole deployment (e.g. boxs.ca) a test site with one
+ * setting, reaching Public Site's `isTestSite` the same way NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION do.
  */
 function isSharedKey(key: string): boolean {
-  return key === "NODE_ENV" || key === "TENANT_CONFIG" || key === "LOCAL_AUTH_SECRET" || key === "ENTRA_TENANT_ID" || key.startsWith("LOCAL_ADMIN_");
+  return (
+    key === "NODE_ENV" ||
+    key === "TENANT_CONFIG" ||
+    key === "LOCAL_AUTH_SECRET" ||
+    key === "ENTRA_TENANT_ID" ||
+    key === "SESSION_SECRET" ||
+    key === "SESSION_COOKIE_SECURE" ||
+    key === "DATA_DIR" ||
+    key === "SITE_ENVIRONMENT" ||
+    key.startsWith("LOCAL_ADMIN_")
+  );
 }
 
 /**
@@ -52,17 +147,41 @@ function isSharedKey(key: string): boolean {
  * `DATABASE_URL`). A prefixed var always wins over a shared one of the same name (applied
  * second, so it can override) — in practice the two sets don't collide since no app's own
  * schema uses a shared var's exact name for something else.
+ *
+ * `dataDir` (Task 1), when given, anchors the two app-specific defaults that must survive a
+ * SiteGround redeploy: NRMS's `STORAGE_DIR` defaults to `<dataDir>/storage` (set alongside the
+ * other STACK_APP_DEFAULTS, so an explicit `NRMS_STORAGE_DIR` still wins), and a *relative*
+ * `SITE_OUTPUT_DIR` (e.g. the env generator's `./site-output`) resolves to `<dataDir>/<that
+ * relative path>` — applied after the prefixed vars so it can see the raw, still-relative
+ * `OUTPUT_DIR` value; an absolute `SITE_OUTPUT_DIR` is left untouched.
  */
-export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.ProcessEnv {
+export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: string): NodeJS.ProcessEnv {
   const view: Record<string, string> = {};
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && isSharedKey(key)) view[key] = value;
   }
   // Derived internal wiring first, so explicit <PREFIX>_EVENT_* vars (applied below) override it.
   if (env.STACK_EVENT_SECRET) Object.assign(view, internalEventEnv(env.STACK_EVENT_SECRET)[prefix]);
+  if (!view.SESSION_SECRET && env.STACK_EVENT_SECRET) view.SESSION_SECRET = sessionSecretFrom(env.STACK_EVENT_SECRET);
+  // This app's built-in defaults, before its own prefixed vars so an explicit one still wins.
+  if (STACK_APP_DEFAULTS[prefix]) Object.assign(view, STACK_APP_DEFAULTS[prefix]);
+  if (dataDir && prefix === "NRMS") view.STORAGE_DIR = join(dataDir, "storage");
+  // Flickr (Phase 3c) is NRMS's alone: an unprefixed FLICKR_* reaches NRMS only, and an
+  // explicit NRMS_FLICKR_* (applied below) still wins over it.
+  if (prefix === "NRMS") {
+    for (const [key, value] of Object.entries(env)) {
+      if (value !== undefined && key.startsWith("FLICKR_")) view[key] = value;
+    }
+  }
   const withUnderscore = `${prefix}_`;
   for (const [key, value] of Object.entries(env)) {
     if (value !== undefined && key.startsWith(withUnderscore)) view[key.slice(withUnderscore.length)] = value;
+  }
+  // No Flickr key at all → the stack's fake Flickr (see stack.ts), whatever else FLICKR_* says;
+  // FLICKR_ALERT_EMAILS is left as configured.
+  if (prefix === "NRMS" && usesFakeFlickr(env)) Object.assign(view, FAKE_FLICKR_ENV);
+  if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
+    view.OUTPUT_DIR = join(dataDir, view.OUTPUT_DIR);
   }
   return view;
 }
@@ -71,10 +190,16 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix): NodeJS.Proces
  * The fixed in-process event topology of the stack: who publishes what to whom. Inside one
  * process this never varies by deployment, so the operator shouldn't have to spell it out.
  * Core and NRMS send every event type to the News API (it restricts by source itself); NoD
- * only consumes release.published; the site builder only site.rebuild_requested.
+ * only consumes release.published; the site builder only site.rebuild_requested; NRMS also
+ * keeps its own local copy of Core's ministries and categories, so it receives Core's org,
+ * sector, theme and tag upserted/deactivated events too (Phase 3b task 3: taxonomy.ts).
  */
 export const INTERNAL_EVENT_ROUTES = [
   { from: "CORE", source: "core", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
+  {
+    from: "CORE", source: "core", to: "NRMS", name: "nrms", url: "self:/nrms/events",
+    types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+  },
   { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
   { from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events", types: ["release.published"] },
   { from: "NEWSAPI", source: "news-api", to: "SITE", name: "public-site", url: "self:/site-builder/events", types: ["site.rebuild_requested"] },
@@ -84,6 +209,12 @@ export const INTERNAL_EVENT_ROUTES = [
  * so every sender/receiver pair gets its own key and none of them is the stack secret itself. */
 export function routeSecret(stackSecret: string, route: (typeof INTERNAL_EVENT_ROUTES)[number]): string {
   return createHmac("sha256", stackSecret).update(`gcpe-event:${route.source}->${route.name}`).digest("hex");
+}
+
+/** The staff session-cookie signing key (spec addendum §2), derived like the event secrets so a
+ * SiteGround deployment needs no extra setting: HMAC-SHA256(STACK_EVENT_SECRET, "gcpe-session"). */
+export function sessionSecretFrom(stackSecret: string): string {
+  return createHmac("sha256", stackSecret).update("gcpe-session").digest("hex");
 }
 
 /** EVENT_SUBSCRIBERS (senders) and EVENT_SECRETS (receivers) for every app, derived from one secret. */
