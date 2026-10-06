@@ -40,3 +40,13 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Developer** — Public pages are static files. When `render.ts` changes what every page bakes
   in, bump `RENDER_CHROME_VERSION` (rebuild.ts), so startup self-heal re-renders the pages
   already on disk.
+
+## Phase 4 — NoD and Distribution
+
+- **Operations** — Subscription emails link to `SUBSCRIBE_PAGE_URL` (default: the public site's
+  `/subscribe/manage/`). Links last 24 hours. An address gets at most 3 confirmation/manage
+  emails an hour; more requests are quietly ignored.
+- **Operations** — A fresh NoD has no lists until Core's reference data reaches it; the stack asks
+  Core to republish once at startup when NoD has no ministry lists.
+- **Developer** — The public Subscribe API never reveals whether an address is subscribed, and
+  takes link tokens only, never an email address in place of a token (C60).
