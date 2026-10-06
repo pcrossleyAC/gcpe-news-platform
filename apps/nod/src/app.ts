@@ -1,12 +1,13 @@
 import express, { type Router } from "express";
 import { sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import type { Db, Tx } from "@gcpe/db-kit";
 import { requireBearer, type BearerOptions } from "@gcpe/auth";
-import { createEventReceiver } from "@gcpe/events";
+import { createEventReceiver, type EventEnvelope, type ReleaseRecord } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import { createAsItHappensHandler, type AsItHappensOptions } from "./as-it-happens";
 import { apiRoutes } from "./http/routes";
 import { subscribeApiRoutes } from "./http/subscribe-routes";
+import { itemHandlers } from "./items";
 import { listsHandler } from "./lists";
 import type { JourneyDeps } from "./subscribe/journeys";
 
@@ -29,12 +30,29 @@ export function createApp(deps: AppDeps): express.Express {
   // Mounted before any body parser: signatures cover the raw bytes (see
   // packages/events/src/receiver.ts), so an upstream express.json()/raw() that already
   // consumed the body would make every event fail verification.
-  const handler = createAsItHappensHandler(deps.handlerOptions);
+  const asItHappensHandler = createAsItHappensHandler(deps.handlerOptions);
+  // itemHandlers' onPublished only hands back the release, not the full envelope (Task 5
+  // replaces this with the real send-selection logic, which won't need one either) — this
+  // shim adapts it to today's interim handler, which still reads a full EventHandler event.
+  // None of the placeholder envelope fields below are read by asItHappensHandler.
+  const onPublished = (tx: Tx, r: ReleaseRecord): Promise<void> =>
+    asItHappensHandler(tx, {
+      id: "00000000-0000-0000-0000-000000000000",
+      type: "release.published",
+      version: 1,
+      source: "nrms",
+      aggregateId: r.key,
+      sequence: 0,
+      occurredAt: new Date(0).toISOString(),
+      correlationId: "00000000-0000-0000-0000-000000000000",
+      data: r,
+    } satisfies EventEnvelope);
+  const resolveItemHandler = itemHandlers({ publicSiteUrl: deps.handlerOptions.publicSiteUrl, onPublished });
   app.use(
     createEventReceiver({
       db: deps.db,
       secrets: deps.eventSecrets,
-      handlers: (ev) => (ev.source === "nrms" && ev.type === "release.published" ? handler : listsHandler(ev)),
+      handlers: (ev) => resolveItemHandler(ev) ?? listsHandler(ev),
     }),
   );
 

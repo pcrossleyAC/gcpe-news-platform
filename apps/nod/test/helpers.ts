@@ -28,7 +28,7 @@ export function createTestApp(db: Db): express.Express {
     db,
     auth: {},
     eventSecrets: EVENT_SECRETS,
-    handlerOptions: { publicSiteUrl: "https://news.gov.bc.ca", manageUrl: "https://news.gov.bc.ca/manage" },
+    handlerOptions: { publicSiteUrl: "https://news.example/site", manageUrl: "https://news.gov.bc.ca/manage" },
   });
 }
 

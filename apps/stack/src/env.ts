@@ -197,8 +197,10 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
  * The fixed in-process event topology of the stack: who publishes what to whom. Inside one
  * process this never varies by deployment, so the operator shouldn't have to spell it out.
  * Core and NRMS send every event type to the News API (it restricts by source itself); NoD
- * consumes release.published (NRMS) and Core's taxonomy events (Phase 4a: its own `lists`
- * mirror Core's ministries/sectors/themes/tags — see apps/nod/src/lists.ts); the site builder
+ * consumes release.published/updated/unpublished (NRMS: Phase 4b Task 2 — items.ts records
+ * and refreshes/withdraws items from these, release.updated never sending) and Core's
+ * taxonomy events (Phase 4a: its own `lists` mirror Core's ministries/sectors/themes/tags —
+ * see apps/nod/src/lists.ts); the site builder
  * only site.rebuild_requested; NRMS also keeps its own local copy of Core's ministries and
  * categories, so it receives Core's org, sector, theme and tag upserted/deactivated events too
  * (Phase 3b task 3: taxonomy.ts).
@@ -214,7 +216,10 @@ export const INTERNAL_EVENT_ROUTES = [
     types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
   },
   { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
-  { from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events", types: ["release.published"] },
+  {
+    from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events",
+    types: ["release.published", "release.updated", "release.unpublished"],
+  },
   { from: "NEWSAPI", source: "news-api", to: "SITE", name: "public-site", url: "self:/site-builder/events", types: ["site.rebuild_requested"] },
 ] as const satisfies readonly { from: AppPrefix; source: string; to: AppPrefix; name: string; url: string; types: readonly string[] }[];
 
