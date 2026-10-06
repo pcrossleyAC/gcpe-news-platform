@@ -436,6 +436,21 @@ const resolveHubContact: MediaHubContact = {
   deletedAt: null,
 };
 
+const collideHubContact: MediaHubContact = {
+  id: 46,
+  firstName: "Drew",
+  lastName: "Tanaka",
+  outlet: null,
+  emails: [
+    { ref: "personal", address: "drew.tanaka.46@example.test", kind: "personal", organization: null, preferred: false },
+    // Deliberately the same address as resolveHubContact's workplace:1, already claimed by
+    // an earlier test -- used to prove a resolve re-point onto an address someone else
+    // already has 409s instead of merging.
+    { ref: "workplace:1", address: "casey.1@riverbend.example.test", kind: "workplace", organization: "Riverbend Times", preferred: true },
+  ],
+  deletedAt: null,
+};
+
 describe("media-lists Media Hub integration (search proxy, add-from-hub)", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
@@ -453,7 +468,7 @@ describe("media-lists Media Hub integration (search proxy, add-from-hub)", () =>
       .setSubject("svc")
       .setExpirationTime("5m")
       .sign(pair.privateKey);
-    const byId = new Map([sampleHubContact, deletedHubContact, badEmailHubContact, resolveHubContact].map((c) => [c.id, c]));
+    const byId = new Map([sampleHubContact, deletedHubContact, badEmailHubContact, resolveHubContact, collideHubContact].map((c) => [c.id, c]));
     mediaHub = {
       search: vi.fn().mockResolvedValue({ contacts: [sampleHubContact], page: 1, pageSize: 25, total: 1 }),
       get: vi.fn(async (id: number) => byId.get(id) ?? null),
@@ -536,13 +551,31 @@ describe("media-lists Media Hub integration (search proxy, add-from-hub)", () =>
 
     const posted = await request(app).post("/api/media-hub/sync").set("authorization", `Bearer ${admin}`);
     expect(posted.status).toBe(200);
-    expect(posted.body).toEqual({ contacts: 0, updated: 0, flagged: 0, removed: 0, errors: 0 });
+    expect(posted.body).toEqual({ done: true, result: { contacts: 0, updated: 0, flagged: 0, removed: 0, errors: 0 } });
 
     const got = await request(app).get("/api/media-hub/sync").set("authorization", `Bearer ${admin}`);
     expect(got.status).toBe(200);
     expect(got.body.result).toEqual({ contacts: 0, updated: 0, flagged: 0, removed: 0, errors: 0 });
     expect(typeof got.body.since).toBe("string");
     expect(typeof got.body.at).toBe("string");
+    expect(got.body.running).toBe(false);
+  });
+
+  it("POST /api/media-hub/sync 409s while one is already in progress", async () => {
+    // Deterministic rather than racing two real HTTP requests against each other (flaky under
+    // load): the route's own "busy" behaviour is just "claimOrResume saw an active lease",
+    // which is exercised directly (and reliably) by sync.test.ts; here it's enough to put that
+    // state in the DB by hand and check the route maps it to 409.
+    await tdb.db
+      .update(nodSettings)
+      .set({ mediaSyncLease: "22222222-2222-2222-2222-222222222222", mediaSyncLeaseUntil: new Date(Date.now() + 60_000) })
+      .where(eq(nodSettings.id, 1));
+
+    const busy = await request(app).post("/api/media-hub/sync").set("authorization", `Bearer ${admin}`);
+    expect(busy.status).toBe(409);
+    expect(busy.body).toEqual({ error: "sync in progress" });
+
+    await tdb.db.update(nodSettings).set({ mediaSyncLease: null, mediaSyncLeaseUntil: null }).where(eq(nodSettings.id, 1));
   });
 
   it("POST /api/media-members/:subscriberId/resolve re-points to a new ref and clears the flag", async () => {
@@ -569,6 +602,24 @@ describe("media-lists Media Hub integration (search proxy, add-from-hub)", () =>
       .set("authorization", `Bearer ${admin}`)
       .send({});
     expect(res.status).toBe(404);
+  });
+
+  it("POST /api/media-members/:subscriberId/resolve 409s email-taken when the new ref's address already belongs to someone else", async () => {
+    const { subscriberId } = await request(app)
+      .post("/api/media-lists/hub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ mediaHubContactId: collideHubContact.id, emailRef: "personal" })
+      .then((r) => r.body as { subscriberId: string });
+
+    const res = await request(app)
+      .post(`/api/media-members/${subscriberId}/resolve`)
+      .set("authorization", `Bearer ${admin}`)
+      .send({ emailRef: "workplace:1" }); // casey.1@riverbend.example.test -- already taken (earlier test)
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "email-taken" });
+
+    const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(row).toMatchObject({ email: collideHubContact.emails[0]!.address, needsAttention: "email-taken" });
   });
 });
 

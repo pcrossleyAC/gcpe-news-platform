@@ -186,6 +186,15 @@ export const nodSettings = pgTable(
     mediaSyncAt: timestamp("media_sync_at", { withTimezone: true }),
     // That run's result (a SyncResult, or `{ error }` on an aborted run) -- for the status route.
     mediaSyncResult: jsonb("media_sync_result"),
+    // A lease, not a held transaction, protects an in-progress sync (one run can
+    // span many ticks/pages). A non-null `media_sync_lease` with `media_sync_lease_until` still
+    // in the future means some invocation is actively working it; past that instant, it's
+    // abandoned (crashed mid-run) and the next caller takes it over. `media_sync_run_start` and
+    // `media_sync_cursor` carry a multi-tick run's own progress across invocations.
+    mediaSyncLease: uuid("media_sync_lease"),
+    mediaSyncLeaseUntil: timestamp("media_sync_lease_until", { withTimezone: true }),
+    mediaSyncRunStart: timestamp("media_sync_run_start", { withTimezone: true }),
+    mediaSyncCursor: text("media_sync_cursor"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],

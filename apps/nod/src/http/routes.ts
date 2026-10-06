@@ -198,7 +198,9 @@ export function apiRoutes(
     requireRole("NoD.Admin"),
     run(async (_req, res) => {
       if (!mediaHub) return void res.status(503).json({ error: "media hub not configured" });
-      res.json(await runMediaSync(db, mediaHub));
+      const outcome = await runMediaSync(db, mediaHub);
+      if (outcome === "busy") return void res.status(409).json({ error: "sync in progress" });
+      res.json(outcome);
     }),
   );
 
@@ -210,6 +212,8 @@ export function apiRoutes(
       const outcome = await resolveMediaMember(db, mediaHub, req.params.subscriberId, parsed.emailRef, actorOf(req).name);
       if (outcome === "not-found" || outcome === "ref-not-found") return void res.status(404).json({ error: "not found" });
       if (outcome === "media-hub-unavailable") return void res.status(503).json({ error: "media hub not configured" });
+      if (outcome === "email-taken") return void res.status(409).json({ error: "email-taken" });
+      if (outcome === "conflict") return void res.status(409).json({ error: "changed, retry" });
       res.status(200).json({ ok: true });
     }),
   );
