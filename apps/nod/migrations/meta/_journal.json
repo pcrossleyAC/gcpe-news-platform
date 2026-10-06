@@ -71,6 +71,13 @@
       "when": 1791249453469,
       "tag": "0009_drop_legacy_send_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791279488021,
+      "tag": "0010_deliveries_job_id_idx",
+      "breakpoints": true
     }
   ]
 }

@@ -44,7 +44,7 @@ describe("items from NRMS release events", () => {
     expect(await tdb.db.select().from(sendJobs)).toHaveLength(jobsBefore.length);
   });
 
-  // Fix round 1: the brief's original wording was "cancels its pending jobs", but the required
+  // The brief's original wording was "cancels its pending jobs", but the required
   // behaviour (see the fix-round describe block below for why) is to delete the pending job
   // outright, not flip its status -- so a later republish starts clean instead of finding a
   // cancelled job and stale deliveries in its way.
@@ -109,7 +109,7 @@ describe("items from NRMS release events", () => {
   });
 });
 
-// Fix round 1: unpublish -> republish must send again. Cancelling the pending job (leaving its
+// Unpublish -> republish must send again. Cancelling the pending job (leaving its
 // deliveries behind) silently broke this -- a republish's INSERT...ON CONFLICT DO NOTHING found
 // the stale, never-attempted delivery rows already there and inserted nothing, so the cancelled
 // job's recipients never got re-matched into a job that would actually send. withdrawItem now
@@ -195,7 +195,7 @@ describe("withdraw then republish resets the pending job", () => {
     expect(otherJob[0]!.status).toBe("pending");
   });
 
-  // Fix round 2: a job the sender has currently claimed (locked_until in the future, status
+  // A job the sender has currently claimed (locked_until in the future, status
   // still 'pending' -- claimOneJob doesn't flip status until its terminal write) must survive
   // an unpublish untouched, deliveries included -- the send may already be in flight with
   // Distribution, and deleting the job out from under it would let a republish create a second

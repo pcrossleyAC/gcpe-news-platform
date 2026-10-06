@@ -5,6 +5,7 @@ import type { Db, Tx } from "@gcpe/db-kit";
 import { matchesItem } from "./matching";
 import { itemCategories, renderDigest, type Rendered, type RenderItem, type RenderOptions } from "./render";
 import { digestRuns, items, nodSettings, sendJobs } from "./db/schema";
+import { safeErrorLabel } from "./subscribe/journeys";
 
 export const DIGEST_HOUR = 17;
 
@@ -180,4 +181,34 @@ export async function runDigestIfDue(
 
     return { ran: true, cutoff: cutoff.toISOString(), subscribers: totalSubscribers, groups: groupRows.length };
   });
+}
+
+/**
+ * Controller ruling: the standalone NoD image and STACK_LOOPS=true starts only the job
+ * sender loop (send-jobs.ts's startJobSender); without this, nothing ever calls
+ * {@link runDigestIfDue} outside of the once-per-process-startup `workers.digest` hook, so no
+ * digest is ever sent. This runs the same worker function, once a minute (a no-op call until
+ * the tenant's wall clock actually reaches DIGEST_HOUR for a cutoff not already run -- see
+ * runDigestIfDue), same start/stop shape as startJobSender (send-jobs.ts): a tick is skipped
+ * while the previous one is still running, and the returned stop function clears the interval
+ * and awaits any run still in flight. Errors are logged (safeErrorLabel: no bound values) and
+ * never thrown out of the loop -- one failed tick must not take down the process or stop later
+ * ticks from being tried.
+ */
+export function startDigestLoop(opts: { db: Db; timeZone: string; render: RenderOptions; intervalMs?: number }): () => Promise<void> {
+  let stopped = false;
+  let running: Promise<unknown> | null = null;
+  const timer = setInterval(() => {
+    if (stopped || running) return;
+    running = runDigestIfDue(opts.db, opts.timeZone, opts.render)
+      .catch((e) => console.error("[nod] digest failed", safeErrorLabel(e)))
+      .finally(() => {
+        running = null;
+      });
+  }, opts.intervalMs ?? 60_000);
+  return async () => {
+    stopped = true;
+    clearInterval(timer);
+    await running;
+  };
 }

@@ -50,9 +50,10 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   Core to republish once at startup when NoD has no ministry lists.
 - **Developer** — The public Subscribe API never reveals whether an address is subscribed, and
   takes link tokens only, never an email address in place of a token (C60).
-- **Operations** — NOD_BANNER_URL is optional. Unset, every NoD email (As-It-Happens, emergency,
-  digest, and the manage/verify emails) shows a plain blue "Government of B.C." heading instead
-  of a banner image.
+- **Operations** — `NOD_BANNER_URL` (set as `BANNER_URL` in NoD's own schema; the stack strips
+  the `NOD_` prefix) is optional. Unset, every NoD email (As-It-Happens, emergency, digest, and
+  the manage/verify emails) shows a plain blue "Government of B.C." heading instead of a banner
+  image.
 - **Administrator** — Emergency alerts go out through `POST /api/emergency-items` (NoD.Admin
   only), to every active subscriber on the `emergency:alerts` list regardless of their own
   As-It-Happens/digest preference. The same guid always resolves to the same item (201 the first

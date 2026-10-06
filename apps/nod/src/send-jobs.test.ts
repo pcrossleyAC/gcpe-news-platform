@@ -95,7 +95,7 @@ function dedupingDistribution(opts: { failKeyOnce?: string } = {}): Distribution
 }
 
 /**
- * Fix round 1, I1: wraps a real test `db` so that the very first `INSERT INTO subscriber_links`
+ * Wraps a real test `db` so that the very first `INSERT INTO subscriber_links`
  * it sees (recipientSubstitutions' own insert, called from inside sendAllChunks) runs
  * `onBeforeInsert` first — lands a subscriber deletion exactly in the gap between
  * `fetchAssignedMembers` reading the row and `recipientSubstitutions` writing a link row for
@@ -725,7 +725,7 @@ describe("sendDueJobs", () => {
     expect(req.recipients).toHaveLength(2);
   });
 
-  // Fix round 1, I1 (logs constraint): a DB error from recipientSubstitutions must never leak
+  // Logs constraint: a DB error from recipientSubstitutions must never leak
   // a bound email address into send_jobs.last_error or the console — drizzle's own
   // DrizzleQueryError message binds every param of the failed query (including each row's
   // email), so `e.message` is unsafe for anything that isn't already a DistributionError.
@@ -759,7 +759,7 @@ describe("sendDueJobs", () => {
     expect(row.lastError).not.toContain("address-must-not-leak@example.com");
   });
 
-  // Fix round 1, I2: withdrawItem (items.ts) never locks the `items` row before selecting the
+  // withdrawItem (items.ts) never locks the `items` row before selecting the
   // unclaimed jobs to delete, so sendDueJobs's own withdrawn-item check must take its own lock
   // (FOR SHARE) to avoid reading an uncommitted (pre-withdraw) NULL. Here withdrawItem's
   // transaction is held open — committing only after a delay — while a job for the very item
@@ -805,7 +805,7 @@ describe("sendDueJobs", () => {
     expect(row.status).toBe("cancelled");
   });
 
-  // Fix round 1, F1: the withdrawn-check read and the cancel write must happen in one
+  // The withdrawn-check read and the cancel write must happen in one
   // transaction, or a republish that lands entirely in the gap between them (upsertReleaseItem
   // clearing withdrawn_at, then createItemSend, both inside one transaction — as-it-happens.ts)
   // can leave the item live with only a cancelled job and nothing fresh to send it. The
@@ -859,7 +859,7 @@ describe("sendDueJobs", () => {
     expect(recipientRows.map((r) => r.subscriberId)).toEqual([sub.id]);
   }, 7000);
 
-  // Fix round 1, I3/I4: deliveries.attempted_at is stamped right before a part is handed to
+  // deliveries.attempted_at is stamped right before a part is handed to
   // Distribution, not after a successful response — so every part actually handed off this
   // attempt is stamped, whether or not it ultimately succeeds, while a part skipped because
   // nobody in it is active is never touched, and a retry never re-stamps (nor un-stamps) a
@@ -918,6 +918,46 @@ describe("sendDueJobs", () => {
     expect((await attemptedAtFor(subs[0]!.id))!.getTime()).toBe(stamp0First!.getTime()); // unchanged by the retry
     expect((await attemptedAtFor(subs[2]!.id))!.getTime()).toBe(stamp2First!.getTime()); // unchanged by the retry — stamped on attempt 1, before the throw
     expect(await attemptedAtFor(subs[1]!.id)).toBeNull(); // still inactive, still never handed off
+  });
+
+  // claimOneJob used to order strictly by (next_attempt_at, id), so an older digest job
+  // was always claimed ahead of a due immediate job created after it. The digest job here is
+  // due well before the immediate one (and so would win under the old ordering); priority
+  // must still put the immediate job first.
+  it("claims a due immediate job before an earlier-due digest job (priority, then next_attempt_at)", async () => {
+    const sub = await insertSubscriber(tdb.db, "priority@example.com");
+
+    const digestJob = await insertJob(tdb.db, null, {
+      jobKey: "digest:priority-test",
+      kind: "digest",
+      priority: "digest",
+      subject: "Digest",
+      html: "<p>digest</p>",
+      text: "digest",
+      nextAttemptAt: new Date("2000-01-01T00:00:00Z"), // long overdue -- first under the old ordering
+    });
+    await tdb.db.insert(jobRecipients).values({ jobId: digestJob.id, subscriberId: sub.id });
+
+    const immediateJob = await insertJob(tdb.db, "release-priority-immediate", {
+      priority: "immediate",
+      subject: "Immediate",
+      html: "<p>immediate</p>",
+      text: "immediate",
+      // Due, but created (and thus next_attempt_at'd) after the digest job above.
+    });
+    await tdb.db.insert(jobRecipients).values({ jobId: immediateJob.id, subscriberId: sub.id });
+
+    const distribution = dedupingDistribution();
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, batchSize: 1 });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+
+    expect(distribution.calls).toHaveLength(1);
+    expect(distribution.calls[0]!.subject).toBe("Immediate");
+
+    const remainingDigest = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, digestJob.id)))[0]!;
+    expect(remainingDigest.status).toBe("pending"); // not claimed this round, despite being far more overdue
+    const sentImmediate = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, immediateJob.id)))[0]!;
+    expect(sentImmediate.status).toBe("sent");
   });
 });
 

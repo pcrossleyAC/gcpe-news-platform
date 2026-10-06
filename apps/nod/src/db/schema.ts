@@ -98,6 +98,10 @@ export const deliveries = pgTable(
   (t) => [
     primaryKey({ columns: [t.itemKey, t.subscriberId, t.mode] }),
     check("deliveries_mode_check", sql`${t.mode} IN ('as_it_happens','digest','media')`),
+    // Filtered by the per-part attempted_at stamp (send-jobs.ts's sendAllChunks), the digest
+    // claim's own read of this job's items, withdrawItem/createItemSend's deletes, and the
+    // ON DELETE SET NULL FK check on sendJobs — none of which had an index to use.
+    index("deliveries_job_id_idx").on(t.jobId),
   ],
 );
 export type DeliveryRow = typeof deliveries.$inferSelect;

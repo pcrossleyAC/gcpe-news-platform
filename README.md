@@ -232,7 +232,7 @@ npm --workspace @gcpe/nod run dev
 | `DISTRIBUTION_SCOPE` | no* | | OAuth2 scope requested for the client-credentials grant |
 | `DISTRIBUTION_TIMEOUT_MS` | no | `30000` | Per-chunk request timeout against Distribution; also sizes the send-jobs claim lock |
 | `PUBLIC_SITE_URL` | yes | | Embedded in As-It-Happens emails as the link back to the public site |
-| `NOD_BANNER_URL` | no | | Full URL of the "Government of B.C. / News on Demand" banner image shown in every outbound email's shell; unset shows a plain blue text heading instead. Kept doubly-prefixed in the schema even under the stack (see `start.ts`) |
+| `BANNER_URL` | no | | Full URL of the "Government of B.C. / News on Demand" banner image shown in every outbound email's shell; unset shows a plain blue text heading instead (set as `NOD_BANNER_URL` on the deployed stack, which strips the `NOD_` prefix before this schema sees it) |
 | `LINK_SECRET` | yes | | HMAC key (32+ chars) for unsubscribe tokens (the stack derives it from `STACK_EVENT_SECRET`) |
 | `OPS_EMAIL` | no | | Operator inbox emailed whenever sending is paused or resumed (set as `NOD_OPS_EMAIL` on the deployed stack, which strips the `NOD_` prefix before this schema sees it) |
 | `SUBSCRIBE_PAGE_URL` | no | `${PUBLIC_SITE_URL}/subscribe/manage/` | The page emailed verify/manage links open |

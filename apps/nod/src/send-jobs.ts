@@ -55,9 +55,9 @@ export interface SendJobsOptions {
   perChunkMs?: number;
   /** Override for {@link MAX_CHUNK_BYTES}, for tests. */
   maxChunkBytes?: number;
-  /** Test hook (fix round 1, F1): called inside the withdrawn-check transaction, after the
-   * `FOR SHARE` read confirms the item is withdrawn, before the cancel write — see
-   * {@link sendDueJobs}'s doc comment. Production call sites never pass it. */
+  /** Test hook: called inside the withdrawn-check transaction, after the `FOR SHARE` read
+   * confirms the item is withdrawn, before the cancel write — see {@link sendDueJobs}'s doc
+   * comment. Production call sites never pass it. */
   onWithdrawnCheck?: () => void | Promise<void>;
 }
 
@@ -95,7 +95,12 @@ async function claimOneJob(db: Db, now: SQL, lockMs: number): Promise<ClaimedJob
         WHERE status = 'pending'
           AND next_attempt_at <= ${now}
           AND (locked_until IS NULL OR locked_until < ${now})
-        ORDER BY next_attempt_at, id
+        -- Immediate (As-It-Happens/emergency) jobs are claimed ahead of digest jobs due at the
+        -- same time -- (priority = 'digest') is false (sorts first) for immediate/media/
+        -- system priorities and true (sorts after) for digest, so a 17:00 digest batch never
+        -- delays an emergency/As-It-Happens job created just after it. Ties within the same
+        -- priority bucket still break on next_attempt_at, then id, as before.
+        ORDER BY (priority = 'digest'), next_attempt_at, id
         LIMIT 1
         FOR UPDATE SKIP LOCKED
      )
@@ -326,12 +331,12 @@ function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex
  * is currently active, and never for the inactive members of a part that *is* sent (R3: those
  * stay in `partMembers` for frozen partitioning but never carry their own links).
  *
- * Fix round 1, I3 (controller ruling, overrides the brief's "after a successful send"):
- * `deliveries.attempted_at` is stamped *immediately before* `distribution.send` — handed off,
- * not confirmed — because a response that was actually accepted by Distribution but lost to us
- * (a timeout, a dropped connection after Distribution already committed) must still count as
- * "attempted": otherwise a withdraw racing the sender (I2) could see an unattempted delivery,
- * delete it, and a later republish would double-send. The `attempted_at IS NULL` guard means a
+ * Controller ruling (overrides the brief's "after a successful send"): `deliveries.attempted_at`
+ * is stamped *immediately before* `distribution.send` — handed off, not confirmed — because a
+ * response that was actually accepted by Distribution but lost to us (a timeout, a dropped
+ * connection after Distribution already committed) must still count as "attempted": otherwise a
+ * withdraw racing the sender could see an unattempted delivery, delete it, and a later republish
+ * would double-send. The `attempted_at IS NULL` guard means a
  * retry of a part already handed off (including one that's resent whole on a later attempt,
  * same as every other chunk) never re-stamps it — retries still work regardless, since
  * recipients are re-derived from `job_recipients`, never from `deliveries`.
@@ -349,7 +354,7 @@ async function sendAllChunks(
       if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
       try {
         const substitutions = await recipientSubstitutions(opts.db, activeMembers, opts.links);
-        // I3: stamped before the handoff, not after — see the doc comment above.
+        // Stamped before the handoff, not after — see the doc comment above.
         await opts.db
           .update(deliveries)
           .set({ attemptedAt: sqlNow(opts.now) })
@@ -367,7 +372,7 @@ async function sendAllChunks(
         // distribution-client.ts itself deliberately classified it otherwise — an *unexpected*
         // error (anything not already a DistributionError) must never permanently fail a job.
         //
-        // Fix round 1, I1 (logs constraint): `e.message` is only safe when `e` is already a
+        // Logs constraint: `e.message` is only safe when `e` is already a
         // DistributionError (its message is Distribution's own HTTP status/body text, never a
         // bound SQL value). Any other error — notably a `recipientSubstitutions` DB failure,
         // whose drizzle `DrizzleQueryError` message is `Failed query: <sql>\nparams: <params>`
@@ -407,7 +412,7 @@ async function sendAllChunks(
  * never the content built back when the digest was first assembled. If none are withdrawn, the
  * job is sent unchanged, same as always.
  *
- * Fix round 1, I2: the withdrawn check reads `items.withdrawn_at` with `FOR SHARE` — a row
+ * The withdrawn check reads `items.withdrawn_at` with `FOR SHARE` — a row
  * lock, not a plain read. `withdrawItem` (items.ts) never locks the `items` row itself before
  * selecting the unclaimed jobs to delete; without a lock here, this read could land in the gap
  * between that `withdrawItem` transaction's `UPDATE items SET withdrawn_at = now()` and its
@@ -417,10 +422,10 @@ async function sendAllChunks(
  * row-level lock) until that transaction commits or rolls back, so it only ever sees the
  * committed value — items.ts itself is untouched.
  *
- * Fix round 2, F1: that `FOR SHARE` read and the cancel write it guards must happen in one
+ * That `FOR SHARE` read and the cancel write it guards must happen in one
  * transaction (`opts.db.transaction`, not two separate `opts.db` statements) — otherwise the
  * read's own row lock is released the instant it finishes (a standalone statement is its own
- * implicit transaction), reopening a gap of exactly the kind I2 closed: a republish
+ * implicit transaction), reopening a gap of exactly the kind the lock above closed: a republish
  * (`upsertReleaseItem` clearing `withdrawn_at`, then `createItemSend` in the same transaction,
  * as-it-happens.ts) can run and commit *between* this call's read and its cancel write. Seen
  * from the republish's side, the job still reads `pending` (this call hasn't cancelled it yet),
@@ -459,13 +464,13 @@ export async function sendDueJobs(
     if (!job) break;
 
     if (job.item_key) {
-      // I2 / F1: FOR SHARE and the cancel write in one transaction — see the doc comment above.
+      // FOR SHARE and the cancel write happen in one transaction — see the doc comment above.
       const outcome = await opts.db.transaction(async (tx) => {
         const { rows: itemRows } = await tx.execute<{ withdrawn_at: Date | null }>(
           sql`SELECT withdrawn_at FROM items WHERE key = ${job.item_key} FOR SHARE`,
         );
         if (!itemRows[0]?.withdrawn_at) return { withdrawn: false, cancelled: false };
-        // F1 test hook: fires while this transaction still holds the FOR SHARE lock, so a test
+        // Test hook: fires while this transaction still holds the FOR SHARE lock, so a test
         // can start a concurrent republish and prove it blocks behind this transaction rather
         // than racing it. Production call sites never pass it.
         await opts.onWithdrawnCheck?.();
@@ -494,6 +499,13 @@ export async function sendDueJobs(
         if (withdrawnKeys.length === 0) return { kind: "unchanged" as const };
 
         if (withdrawnKeys.length === itemKeys.length) {
+          // Every one of this job's deliveries is for a now-withdrawn item, so (same as the
+          // "some withdrawn" path below) its not-yet-attempted deliveries must be deleted here,
+          // in the same transaction as the cancel write. Left behind, a `mode='digest'` row for
+          // a since-republished item would permanently block that item's As-It-Happens send to a
+          // both-timings subscriber (as-it-happens.ts's `NOT EXISTS ... mode='digest'` guard),
+          // so a republish would reach them neither by digest (job cancelled) nor As-It-Happens.
+          await tx.delete(deliveries).where(and(eq(deliveries.jobId, job.id), isNull(deliveries.attemptedAt)));
           const res = await tx
             .update(sendJobs)
             .set({ status: "cancelled", lockedUntil: null })
@@ -581,7 +593,7 @@ export async function sendDueJobs(
     const age = Number(job.age_ms) + sinceClaim();
     if (!error.retryable || age >= maxAgeMs) {
       const res = await opts.db.update(sendJobs).set({ status: "failed", attempts, batchIds, lockedUntil: null, lastError: error.message }).where(where);
-      // I5: a job going failed is otherwise silent — nothing else notices a release that
+      // A job going failed is otherwise silent — nothing else notices a release that
       // stopped mailing. Logged once, only when this call actually made the write (the
       // ownership-guarded `where` matched), not on every attempt that merely observes it.
       if (res.rowCount) {

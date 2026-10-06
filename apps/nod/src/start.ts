@@ -6,7 +6,7 @@ import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } f
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
-import { runDigestIfDue } from "./digest";
+import { runDigestIfDue, startDigestLoop } from "./digest";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
 import { needsReferenceData } from "./lists";
@@ -30,16 +30,19 @@ export const nodEnvSchema = z.object({
   DISTRIBUTION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   PUBLIC_SITE_URL: z.string().url(),
   // Task 5: optional banner image for every outbound email's shell (render.ts); no banner image
-  // host exists yet, so the default is the plain blue heading fallback.
-  NOD_BANNER_URL: z.string().url().optional(),
+  // host exists yet, so the default is the plain blue heading fallback. Operators set this as
+  // `NOD_BANNER_URL` on the stack; apps/stack/src/env.ts's envFor strips the "NOD_" prefix
+  // before this schema sees it (same convention as OPS_EMAIL below), so this schema's own key
+  // is the stripped `BANNER_URL` -- it used to be the doubly-prefixed `NOD_BANNER_URL`, which
+  // envFor's stripping silently dropped on the floor on the stack.
+  BANNER_URL: z.string().url().optional(),
   // Phase 4a: HMAC key for unsubscribe tokens (the stack derives it from STACK_EVENT_SECRET).
   LINK_SECRET: z.string().min(32),
   // Task 7: operator inbox notified (system-priority email) whenever sending is paused or
   // resumed, alongside the always-written operations_log row. Optional -- a deployment with
   // no operator inbox configured still records the operations_log row, just sends no email.
   // The operator sets `NOD_OPS_EMAIL`; by the time this schema sees it, apps/stack/src/env.ts's
-  // envFor has already stripped the "NOD_" prefix (same as DATABASE_URL, PORT, etc. above --
-  // NOD_BANNER_URL is this schema's one exception, kept doubly-prefixed).
+  // envFor has already stripped the "NOD_" prefix (same as DATABASE_URL, PORT, etc. above).
   OPS_EMAIL: z.string().email().optional(),
   // The page emailed verify/manage links open. Default: the public site's test page.
   SUBSCRIBE_PAGE_URL: z.string().url().optional(),
@@ -104,7 +107,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
 
   // Task 5: siteUrl is the public site home ("See more from BC Gov News" in every email's
   // footer) — the same URL as items' own publicSiteUrl.
-  const render: RenderOptions = { siteUrl: parsed.PUBLIC_SITE_URL, bannerUrl: parsed.NOD_BANNER_URL ?? null };
+  const render: RenderOptions = { siteUrl: parsed.PUBLIC_SITE_URL, bannerUrl: parsed.BANNER_URL ?? null };
 
   // Both the subscribe journeys' own manage-link page and Task 3's per-recipient manage links
   // (recipient-links.ts) open the same page — one default, shared.
@@ -137,9 +140,10 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     timeZone: tenant.timeZone,
   });
 
-  // Set by startLoops(); the closer below references it lazily so it's safe to call even if
-  // startLoops() was never invoked.
+  // Set by startLoops(); the closers below reference these lazily so they're safe to call even
+  // if startLoops() was never invoked.
   let stopJobSender: (() => Promise<void>) | undefined;
+  let stopDigestLoop: (() => Promise<void>) | undefined;
 
   return {
     app,
@@ -155,10 +159,14 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     },
     startLoops() {
       stopJobSender = startJobSender(sendJobsOptions);
+      // The standalone NoD image and STACK_LOOPS=true must also run the digest -- the
+      // workers.digest hook above only ever fires once, when a caller asks for it.
+      stopDigestLoop = startDigestLoop({ db, timeZone: tenant.timeZone, render });
     },
     closeBeforeServer: [],
     closers: [
       { name: "job sender", close: async () => { await stopJobSender?.(); } },
+      { name: "digest loop", close: async () => { await stopDigestLoop?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],
   };

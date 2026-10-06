@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
-import { deliveries, items, jobRecipients, sendJobs } from "./db/schema";
+import { deliveries, items, sendJobs } from "./db/schema";
 import { matchesItem } from "./matching";
 import { itemCategories, renderAsItHappens, renderEmergency, type RenderItem, type RenderOptions } from "./render";
 

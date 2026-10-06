@@ -33,7 +33,7 @@ describe("subjects", () => {
     expect(renderDigest([], RENDER).subject).toBe("BCNews - Daily Digest");
   });
 
-  // Fix round 1, F3 (controller ruling): an empty title's subject still carries the prefix —
+  // Controller ruling: an empty title's subject still carries the prefix —
   // "<prefix> - <key>", not the bare key alone.
   it("falls back to '<prefix> - <key>' (not the bare key) for an empty or whitespace-only title", () => {
     expect(renderAsItHappens(item({ key: "2026CITZ0001-000004", title: "" }), RENDER).subject).toBe("BC Gov News - 2026CITZ0001-000004");
@@ -51,9 +51,9 @@ describe("subjects", () => {
     expect(subject).not.toContain("{{");
   });
 
-  // Ported from the old as-it-happens.test.ts (F2 — these pins must not be lost in the
+  // Ported from the old as-it-happens.test.ts (these pins must not be lost in the
   // render.ts move): collapses CR/LF/tabs to single spaces, trims, and still neutralises '{{'.
-  // I4: a raw title with embedded CR/LF/tabs would otherwise smuggle extra header lines into
+  // A raw title with embedded CR/LF/tabs would otherwise smuggle extra header lines into
   // the SMTP Subject header (Distribution 400s on line breaks — terminal, nobody mailed).
   it("collapses CR/LF/tabs in the subject to single spaces, trims, and neutralises '{{'", () => {
     const subject = renderAsItHappens(item({ title: "  Highway 11\r\nclosure\tand {{manageUrl}} update  " }), RENDER).subject;
@@ -61,7 +61,7 @@ describe("subjects", () => {
     expect(subject).not.toMatch(/[\r\n\t]/);
   });
 
-  // Ported from the old as-it-happens.test.ts (F2). R2: Distribution's own max(998) is
+  // Ported from the old as-it-happens.test.ts. Distribution's own max(998) is
   // `z.string().max(998)`, which counts UTF-16 *code units* — a code-point-based truncation
   // would let a 600-emoji title (600 code points, but 1200 UTF-16 units — astral emoji are
   // surrogate pairs) straight through unmodified, well over the real limit. Also proves no
@@ -79,7 +79,7 @@ describe("subjects", () => {
     expect([...emoji].every((ch) => ch === "😀")).toBe(true);
   });
 
-  // Ported from the old as-it-happens.test.ts (F2). P2-R25 item 2: replacing each `{{` pair
+  // Ported from the old as-it-happens.test.ts. P2-R25 item 2: replacing each `{{` pair
   // once left a bypass — `{{{manageUrl}}` became `{ {{manageUrl}}`, whose tail is a live
   // placeholder again. Every `{` next to another `{` is broken up, so no `{{name}}` can survive
   // in item content, however many braces lead it. (Distribution matches

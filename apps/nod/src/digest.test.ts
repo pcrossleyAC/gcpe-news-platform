@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
+import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb } from "../test/helpers";
 import { createItemSending } from "./as-it-happens";
 import type { DistributionClient } from "./distribution-client";
 import { deliveries, items, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
-import { DIGEST_HOUR, digestCutoff, runDigestIfDue } from "./digest";
+import { DIGEST_HOUR, digestCutoff, runDigestIfDue, startDigestLoop } from "./digest";
+import { upsertReleaseItem } from "./items";
 import type { RecipientLinkOptions } from "./recipient-links";
 import { sendDueJobs } from "./send-jobs";
 import { addSubscriber } from "./subscribers";
@@ -175,6 +177,30 @@ describe("runDigestIfDue", () => {
       (d) => d.itemKey,
     );
     expect(deliveredKeys).toEqual([kOk]);
+  });
+
+  // The window is published_at > windowStart AND published_at <= cutoff (digest.ts's
+  // runDigestIfDue) -- cutoff itself is the last instant still in this run's window (an item
+  // published exactly at 17:00 belongs to *this* digest, not the next one), while windowStart
+  // itself belongs to the *previous* run's window (it was that run's own cutoff) and so is
+  // excluded here.
+  it("includes an item published exactly at the cutoff, excludes one published exactly at windowStart", async () => {
+    const windowStart = new Date(cutoff.getTime() - DAY_MS);
+    await setLastCutoff(windowStart);
+    const sub = await digestSubscriber(tdb.db, "edge@example.com", ["ministries:health"]);
+
+    const kAtCutoff = itemKey("ATCUTOFF");
+    const kAtWindowStart = itemKey("ATWINDOWSTART");
+    await insertItem(tdb.db, { key: kAtCutoff, listKeys: ["ministries:health"], publishedAt: cutoff });
+    await insertItem(tdb.db, { key: kAtWindowStart, listKeys: ["ministries:health"], publishedAt: windowStart });
+
+    const result = await runDigestIfDue(tdb.db, TZ, RENDER);
+    expect(result.ran).toBe(true);
+
+    const deliveredKeys = (await tdb.db.select({ itemKey: deliveries.itemKey }).from(deliveries).where(eq(deliveries.subscriberId, sub))).map(
+      (d) => d.itemKey,
+    );
+    expect(deliveredKeys).toEqual([kAtCutoff]);
   });
 
   it("As-It-Happens-only subscribers (digest=false) get nothing", async () => {
@@ -354,5 +380,92 @@ describe("runDigestIfDue", () => {
 
     const cancelledJob = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job!.id)))[0]!;
     expect(cancelledJob.status).toBe("cancelled");
+  });
+
+  // Cancelling a digest job whose items are *all* withdrawn used to leave its mode='digest'
+  // deliveries behind. as-it-happens.ts's createItemSend skips anyone who already has a
+  // mode='digest' delivery for the item (so a later As-It-Happens send never double-sends to a
+  // subscriber who got it in a digest) -- but a withdrawn item whose digest job was cancelled
+  // was never actually delivered, so that guard must not apply once the job is cancelled. Pins
+  // the full round trip: digest built -> item withdrawn -> job cancelled (deliveries deleted
+  // here, not just the job) -> republished -> a both-timings subscriber gets it As-It-Happens.
+  it("after a cancelled all-withdrawn digest job, republishing the item reaches a both-timings subscriber As-It-Happens", async () => {
+    await setLastCutoff(new Date(cutoff.getTime() - DAY_MS));
+    const both = await digestSubscriber(tdb.db, "cancel-republish@example.com", ["ministries:health"], true); // as_it_happens true, digest true
+    const k = itemKey("CANCEL-REPUBLISH");
+    await insertItem(tdb.db, { key: k, listKeys: ["ministries:health"], publishedAt: new Date(cutoff.getTime() - HOUR_MS) });
+
+    const digestResult = await runDigestIfDue(tdb.db, TZ, RENDER);
+    expect(digestResult.ran).toBe(true);
+    const [job] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.kind, "digest"));
+    const beforeCancel = await tdb.db.select().from(deliveries).where(and(eq(deliveries.subscriberId, both), eq(deliveries.itemKey, k)));
+    expect(beforeCancel).toHaveLength(1);
+    expect(beforeCancel[0]!.mode).toBe("digest");
+
+    await tdb.db.update(items).set({ withdrawnAt: new Date() }).where(eq(items.key, k));
+
+    const distribution = { send: vi.fn() } as unknown as DistributionClient & { send: ReturnType<typeof vi.fn> };
+    const cancelResult = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    expect(cancelResult).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 1, paused: false });
+    expect((await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job!.id)))[0]!.status).toBe("cancelled");
+    // The digest delivery is gone -- it was never attempted, and must not keep blocking
+    // As-It-Happens for this item/subscriber once the job that would have sent it is cancelled.
+    expect(await tdb.db.select().from(deliveries).where(and(eq(deliveries.subscriberId, both), eq(deliveries.itemKey, k)))).toHaveLength(0);
+
+    const republished = { ...sampleRelease, key: k, ministryKeys: ["health"], sectorKeys: [], tagKeys: [], themeKeys: [] };
+    const { createItemSend } = createItemSending({ render: RENDER });
+    await tdb.db.transaction(async (tx) => {
+      await upsertReleaseItem(tx, republished, PUBLIC_SITE_URL);
+      await createItemSend(tx, k, "as_it_happens");
+    });
+
+    const aihDeliveries = await tdb.db
+      .select()
+      .from(deliveries)
+      .where(and(eq(deliveries.subscriberId, both), eq(deliveries.itemKey, k), eq(deliveries.mode, "as_it_happens")));
+    expect(aihDeliveries).toHaveLength(1);
+  });
+});
+
+describe("startDigestLoop", () => {
+  let tdb: TestDatabase;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE deliveries, send_jobs, job_recipients, items, digest_runs, subscriptions, subscribers CASCADE");
+    await tdb.db.update(nodSettings).set({ lastDigestCutoff: null, paused: false }).where(eq(nodSettings.id, 1));
+  });
+
+  // startLoops() (start.ts) wires this into the standalone NoD image/STACK_LOOPS=true the
+  // same way send-jobs.ts's startJobSender is wired -- this exercises the loop itself (a short
+  // intervalMs stands in for the real once-a-minute tick), since waiting for the real wall
+  // clock to reach DIGEST_HOUR isn't practical in a unit test. startLoops()'s own wiring is
+  // covered end to end by start.test.ts's "closers close cleanly, with or without startLoops()
+  // having run" -- it already calls startNod(...).startLoops() against a real db and then
+  // closes every closer (including this one) without throwing, proving the interval this
+  // function creates is both registered and cleared cleanly; it just can't observe a tick
+  // firing without a live DIGEST_HOUR wait, which this test covers directly instead.
+  it("runs the digest worker on each tick until due, and stop() clears the interval", async () => {
+    const dueCutoff = digestCutoff(new Date(), TZ);
+    await tdb.db.update(nodSettings).set({ lastDigestCutoff: new Date(dueCutoff.getTime() - DAY_MS) }).where(eq(nodSettings.id, 1));
+    const sub = await digestSubscriber(tdb.db, "loop@example.com", ["ministries:health"]);
+    await insertItem(tdb.db, { key: itemKey("LOOP"), listKeys: ["ministries:health"], publishedAt: new Date(dueCutoff.getTime() - HOUR_MS) });
+
+    const stop = startDigestLoop({ db: tdb.db, timeZone: TZ, render: RENDER, intervalMs: 20 });
+    await vi.waitFor(async () => {
+      expect(await tdb.db.select().from(sendJobs).where(eq(sendJobs.kind, "digest"))).toHaveLength(1);
+    });
+    await stop();
+
+    const jobsAtStop = await tdb.db.select().from(sendJobs).where(eq(sendJobs.kind, "digest"));
+    await new Promise((r) => setTimeout(r, 60));
+    // No further tick ran after stop() resolved -- same job count, same subscriber delivered.
+    expect(await tdb.db.select().from(sendJobs).where(eq(sendJobs.kind, "digest"))).toEqual(jobsAtStop);
+    expect(await tdb.db.select().from(deliveries).where(eq(deliveries.subscriberId, sub))).toHaveLength(1);
   });
 });

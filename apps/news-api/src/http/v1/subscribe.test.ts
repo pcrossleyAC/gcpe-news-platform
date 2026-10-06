@@ -78,7 +78,7 @@ describe("Subscribe proxy", () => {
     expect(res.text).toBe("unsubscribed");
   });
 
-  // Fix round 1 finding: this proxy sits on a public, unauthenticated, token-bearing route, so
+  // This proxy sits on a public, unauthenticated, token-bearing route, so
   // an upstream text/html response must never be served as HTML from the News API origin.
   it("downgrades an upstream text/html response to text/plain and sets X-Content-Type-Options: nosniff", async () => {
     const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 100 });

@@ -33,7 +33,7 @@ export type Rendered = { subject: string; html: string; text: string };
 export const neutralizeHtml = (s: string): string => escapeHtml(s).replace(/(?<=\{)\{/g, "&#123;");
 export const neutralizeText = (s: string): string => s.replace(/\{(?=\{)/g, "{ ");
 
-// I4/R2 fix: Distribution rejects (400, terminal) a subject containing CR/LF or longer than
+// Distribution rejects (400, terminal) a subject containing CR/LF or longer than
 // 998 characters (apps/distribution/src/messages.ts's `z.string().max(998)`, which — like
 // every JS/zod string length check — counts UTF-16 *code units*, not Unicode code points) —
 // and a raw title can be either (a release imported with embedded newlines, or simply a very
@@ -74,7 +74,7 @@ function sanitizeSubject(raw: string, fallback: string): string {
   return truncateByUtf16Units(base, MAX_SUBJECT_UTF16_UNITS);
 }
 
-/** Global constraints: "`<prefix> - <title>`". Fix round 1, F3 (controller ruling): an empty or
+/** Global constraints: "`<prefix> - <title>`". Controller ruling: an empty or
  * whitespace-only title still gets the prefix — the fallback is `<prefix> - <key>`
  * (e.g. "BC Gov News - 2026CITZ0001-000004"), not the bare key alone. */
 function subjectFor(prefix: string, item: RenderItem): string {

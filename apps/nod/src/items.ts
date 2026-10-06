@@ -82,7 +82,7 @@ export async function refreshReleaseItem(tx: DbOrTx, r: ReleaseRecord, publicSit
  * out and must not be re-sent by a later republish; `deliveries.job_id`'s `ON DELETE SET NULL`
  * detaches it from the now-gone job instead of deleting it too.
  *
- * Fix round 2: a job the sender has currently claimed (`locked_until` in the future, status
+ * A job the sender has currently claimed (`locked_until` in the future, status
  * still `pending` -- the lock-guarded terminal `sent`/`failed` write hasn't happened yet, see
  * send-jobs.ts's `claimOneJob`) must NOT be swept up here, even though its status still reads
  * `pending`. The send may already be in flight at Distribution with no record of that yet
