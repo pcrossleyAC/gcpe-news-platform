@@ -2,11 +2,12 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createTestDatabase, dbClock } from "@gcpe/db-kit";
 import { DistributionError, distributionClient, type DistributionClient, type MessageRequest } from "./distribution-client";
-import { deliveries, items, jobRecipients, sendJobs, subscribers } from "./db/schema";
+import { deliveries, items, jobRecipients, sendJobs, subscriberLinks, subscribers } from "./db/schema";
+import { withdrawItem } from "./items";
 import type { RecipientLinkOptions } from "./recipient-links";
 import { MAX_CHUNK_BYTES, MAX_RECIPIENTS_PER_CHUNK, ensureChunksAssigned, sendDueJobs } from "./send-jobs";
 
@@ -84,6 +85,36 @@ function dedupingDistribution(opts: { failKeyOnce?: string } = {}): Distribution
       return { batchId };
     },
   };
+}
+
+/**
+ * Fix round 1, I1: wraps a real test `db` so that the very first `INSERT INTO subscriber_links`
+ * it sees (recipientSubstitutions' own insert, called from inside sendAllChunks) runs
+ * `onBeforeInsert` first — lands a subscriber deletion exactly in the gap between
+ * `fetchAssignedMembers` reading the row and `recipientSubstitutions` writing a link row for
+ * it, the real-world trigger the review called out (subscriber_links.subscriber_id's FK),
+ * without needing to actually win a race. Every other call is forwarded to the real `db`,
+ * bound to it so drizzle's own `this` usage is untouched.
+ */
+function dbThatRunsBeforeLinkInsert(db: TestDatabase["db"], onBeforeInsert: () => Promise<void>): TestDatabase["db"] {
+  return new Proxy(db, {
+    get(target, prop) {
+      if (prop === "insert") {
+        return (table: unknown) => {
+          const builder = (target.insert as (t: unknown) => { values: (v: unknown) => unknown })(table as never);
+          if (table !== subscriberLinks) return builder;
+          return {
+            values: async (rows: unknown) => {
+              await onBeforeInsert();
+              return builder.values(rows);
+            },
+          };
+        };
+      }
+      const value = (target as unknown as Record<PropertyKey, unknown>)[prop as string];
+      return typeof value === "function" ? value.bind(target) : value;
+    },
+  }) as TestDatabase["db"];
 }
 
 describe("sendDueJobs", () => {
@@ -685,6 +716,147 @@ describe("sendDueJobs", () => {
     expect(distribution.send).toHaveBeenCalledTimes(1);
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
     expect(req.recipients).toHaveLength(2);
+  });
+
+  // Fix round 1, I1 (logs constraint): a DB error from recipientSubstitutions must never leak
+  // a bound email address into send_jobs.last_error or the console — drizzle's own
+  // DrizzleQueryError message binds every param of the failed query (including each row's
+  // email), so `e.message` is unsafe for anything that isn't already a DistributionError.
+  it("never leaks an email address into last_error or the console when recipientSubstitutions fails", async () => {
+    const leaky = await insertSubscriber(tdb.db, "address-must-not-leak@example.com");
+    const job = await insertJob(tdb.db, "release-leak");
+    await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: leaky.id }]);
+
+    // Deletes the subscriber right as recipientSubstitutions goes to insert its manage-link
+    // row — subscriber_links.subscriber_id's FK then rejects the insert, the realistic trigger
+    // the review called out (a subscriber deleted between fetchAssignedMembers and the write).
+    const dbForTest = dbThatRunsBeforeLinkInsert(tdb.db, () => tdb.pool.query("DELETE FROM subscribers WHERE id = $1", [leaky.id]).then(() => undefined));
+
+    const distribution = stubDistribution();
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let result: Awaited<ReturnType<typeof sendDueJobs>>;
+    try {
+      result = await sendDueJobs({ db: dbForTest, distribution, links: LINKS });
+    } finally {
+      const logged = [...warnSpy.mock.calls, ...errorSpy.mock.calls].flat().map(String).join("\n");
+      expect(logged).not.toContain("address-must-not-leak@example.com");
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    }
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
+    expect(distribution.send).not.toHaveBeenCalled();
+
+    const row = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job.id)))[0]!;
+    expect(row.lastError).toContain("unexpected send error");
+    expect(row.lastError).not.toContain("address-must-not-leak@example.com");
+  });
+
+  // Fix round 1, I2: withdrawItem (items.ts) never locks the `items` row before selecting the
+  // unclaimed jobs to delete, so sendDueJobs's own withdrawn-item check must take its own lock
+  // (FOR SHARE) to avoid reading an uncommitted (pre-withdraw) NULL. Here withdrawItem's
+  // transaction is held open — committing only after a delay — while a job for the very item
+  // it just marked withdrawn is created and claimed; the claim's withdrawn_at read must block
+  // behind the open transaction and see the committed value once it lands.
+  it("a withdraw racing the sender is linearized: the sender never reads an uncommitted withdrawn_at", async () => {
+    await tdb.db.insert(items).values({
+      key: "release-race",
+      kind: "release",
+      title: "Race release",
+      url: "https://news.example/releases/release-race",
+      publishedAt: new Date(),
+    });
+
+    let committed = false;
+    const withdrawDone = tdb.db.transaction(async (tx) => {
+      // No jobs exist for this item yet, so withdrawItem's own cleanup has nothing to do —
+      // the race under test is purely about the withdrawn_at read below, not job deletion.
+      await withdrawItem(tx, "release-race");
+      await new Promise((r) => setTimeout(r, 300));
+      committed = true;
+    });
+
+    // Let withdrawItem's UPDATE land (and its row lock take hold) before the job even exists.
+    await new Promise((r) => setTimeout(r, 50));
+    const sub = await insertSubscriber(tdb.db, "race@example.com");
+    const job = await insertJob(tdb.db, "release-race");
+    await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "should-not-be-called" });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    await withdrawDone;
+
+    // sendDueJobs only returned because its FOR SHARE read unblocked — which only happens once
+    // withdrawItem's transaction committed, so this must already be true.
+    expect(committed).toBe(true);
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 1, paused: false });
+    expect(distribution.send).not.toHaveBeenCalled();
+
+    const row = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job.id)))[0]!;
+    expect(row.status).toBe("cancelled");
+  });
+
+  // Fix round 1, I3/I4: deliveries.attempted_at is stamped right before a part is handed to
+  // Distribution, not after a successful response — so every part actually handed off this
+  // attempt is stamped, whether or not it ultimately succeeds, while a part skipped because
+  // nobody in it is active is never touched, and a retry never re-stamps (nor un-stamps) a
+  // part already marked. chunkSize 1 over 3 recipients ordered active, inactive, active: chunk
+  // 0 (active) succeeds, chunk 1 (inactive) is skipped entirely, chunk 2 (active) fails
+  // retryably — stopping the attempt before any chunk 3 would exist anyway.
+  it("stamps deliveries.attempted_at before handing a part to Distribution, once, leaving inactive members and other jobs untouched", async () => {
+    const subs = await Promise.all([
+      insertSubscriber(tdb.db, "attempted-active-0@example.com", { id: lowId(0) }),
+      insertSubscriber(tdb.db, "attempted-inactive-1@example.com", { id: lowId(1), active: false }),
+      insertSubscriber(tdb.db, "attempted-active-2@example.com", { id: lowId(2) }),
+    ]);
+    const job = await insertJob(tdb.db, "release-attempted");
+    await tdb.db.insert(jobRecipients).values(subs.map((s) => ({ jobId: job.id, subscriberId: s.id })));
+    await tdb.db.insert(deliveries).values(subs.map((s) => ({ itemKey: "release-attempted", subscriberId: s.id, mode: "as_it_happens" as const, jobId: job.id })));
+
+    // A delivery for a different job must never be touched by this job's sends.
+    const otherSub = await insertSubscriber(tdb.db, "attempted-other-job@example.com");
+    // Not pending — never claimed by this test's sendDueJobs calls, so it can't itself skew
+    // `result` (only its untouched attempted_at is what this test cares about).
+    const otherJob = await insertJob(tdb.db, "release-attempted-other", { status: "sent" });
+    await tdb.db.insert(deliveries).values([{ itemKey: "release-attempted-other", subscriberId: otherSub.id, mode: "as_it_happens" as const, jobId: otherJob.id }]);
+
+    const distribution = stubDistribution();
+    // Calls happen only for the two active chunks (0 and 2) — chunk 1 (inactive) never calls
+    // distribution.send at all.
+    distribution.send.mockImplementationOnce(async () => ({ batchId: "b0" })).mockImplementationOnce(async () => {
+      throw new DistributionError("HTTP 503", true);
+    });
+
+    const attemptedAtFor = async (subscriberId: string) => {
+      const [row] = await tdb.db.select({ attemptedAt: deliveries.attemptedAt }).from(deliveries).where(and(eq(deliveries.jobId, job.id), eq(deliveries.subscriberId, subscriberId)));
+      return row?.attemptedAt ?? null;
+    };
+
+    const now = await dbClock(tdb.db);
+    const result1 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, chunkSize: 1, now: () => now });
+    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
+    expect(distribution.send).toHaveBeenCalledTimes(2); // chunk 0 and chunk 2; chunk 1 (inactive) skipped
+
+    const stamp0First = await attemptedAtFor(subs[0]!.id);
+    expect(stamp0First).not.toBeNull(); // chunk 0: handed off and accepted
+    const stamp2First = await attemptedAtFor(subs[2]!.id);
+    expect(stamp2First).not.toBeNull(); // chunk 2: handed off even though the send then failed
+    expect(await attemptedAtFor(subs[1]!.id)).toBeNull(); // chunk 1: inactive, never handed off
+    const otherStamp = (await tdb.db.select({ attemptedAt: deliveries.attemptedAt }).from(deliveries).where(eq(deliveries.jobId, otherJob.id)))[0]!.attemptedAt;
+    expect(otherStamp).toBeNull(); // a different job's delivery is never touched
+
+    // Retry: chunk 0 is resent (already stamped — must not move) and chunk 2 now succeeds.
+    distribution.send.mockReset();
+    distribution.send.mockResolvedValueOnce({ batchId: "b0-again" }).mockResolvedValueOnce({ batchId: "b2" });
+    const afterFirst = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job.id)))[0]!;
+    const result2 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, chunkSize: 1, now: () => afterFirst.nextAttemptAt });
+    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+
+    expect((await attemptedAtFor(subs[0]!.id))!.getTime()).toBe(stamp0First!.getTime()); // unchanged by the retry
+    expect((await attemptedAtFor(subs[2]!.id))!.getTime()).toBe(stamp2First!.getTime()); // unchanged by the retry — stamped on attempt 1, before the throw
+    expect(await attemptedAtFor(subs[1]!.id)).toBeNull(); // still inactive, still never handed off
   });
 });
 

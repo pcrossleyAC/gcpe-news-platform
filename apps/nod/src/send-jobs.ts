@@ -2,8 +2,9 @@ import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from "drizzle-orm"
 import { ageMsOf, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
-import { deliveries, items, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
+import { deliveries, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
 import { recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
+import { safeErrorLabel } from "./subscribe/journeys";
 
 /** Distribution refuses a request with more than 20,000 recipients (P2-R15): a release that
  * targets more subscribers than this is sent as several requests instead of one. Exported so
@@ -313,9 +314,17 @@ function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex
  * Per-recipient links (Task 3): `recipientSubstitutions` is called for a part's active members
  * only right before that part is actually sent — never for a part skipped because nobody in it
  * is currently active, and never for the inactive members of a part that *is* sent (R3: those
- * stay in `partMembers` for frozen partitioning but never carry their own links). On success,
- * `deliveries.attempted_at` is stamped (database clock) for exactly this job's rows belonging
- * to the members just sent to — the "sent part" the global constraints call for.
+ * stay in `partMembers` for frozen partitioning but never carry their own links).
+ *
+ * Fix round 1, I3 (controller ruling, overrides the brief's "after a successful send"):
+ * `deliveries.attempted_at` is stamped *immediately before* `distribution.send` — handed off,
+ * not confirmed — because a response that was actually accepted by Distribution but lost to us
+ * (a timeout, a dropped connection after Distribution already committed) must still count as
+ * "attempted": otherwise a withdraw racing the sender (I2) could see an unattempted delivery,
+ * delete it, and a later republish would double-send. The `attempted_at IS NULL` guard means a
+ * retry of a part already handed off (including one that's resent whole on a later attempt,
+ * same as every other chunk) never re-stamps it — retries still work regardless, since
+ * recipients are re-derived from `job_recipients`, never from `deliveries`.
  */
 async function sendAllChunks(
   opts: { db: Db; distribution: DistributionClient; links: RecipientLinkOptions; now?: TestClock },
@@ -330,17 +339,32 @@ async function sendAllChunks(
       if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
       try {
         const substitutions = await recipientSubstitutions(opts.db, activeMembers, opts.links);
-        const { batchId } = await opts.distribution.send(buildMessageRequest(job, activeMembers, key, substitutions));
-        batchIds[key] = batchId;
+        // I3: stamped before the handoff, not after — see the doc comment above.
         await opts.db
           .update(deliveries)
           .set({ attemptedAt: sqlNow(opts.now) })
-          .where(and(eq(deliveries.jobId, job.id), inArray(deliveries.subscriberId, activeMembers.map((m) => m.subscriberId))));
+          .where(
+            and(
+              eq(deliveries.jobId, job.id),
+              inArray(deliveries.subscriberId, activeMembers.map((m) => m.subscriberId)),
+              isNull(deliveries.attemptedAt),
+            ),
+          );
+        const { batchId } = await opts.distribution.send(buildMessageRequest(job, activeMembers, key, substitutions));
+        batchIds[key] = batchId;
       } catch (e) {
         // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless
         // distribution-client.ts itself deliberately classified it otherwise — an *unexpected*
         // error (anything not already a DistributionError) must never permanently fail a job.
-        const error = e instanceof DistributionError ? e : new DistributionError(e instanceof Error ? e.message : String(e), true);
+        //
+        // Fix round 1, I1 (logs constraint): `e.message` is only safe when `e` is already a
+        // DistributionError (its message is Distribution's own HTTP status/body text, never a
+        // bound SQL value). Any other error — notably a `recipientSubstitutions` DB failure,
+        // whose drizzle `DrizzleQueryError` message is `Failed query: <sql>\nparams: <params>`
+        // and binds each row's email/subscriberId — must never have its raw message stored in
+        // `send_jobs.last_error` or logged; `safeErrorLabel` (a Postgres error code, or failing
+        // that the error's name) is informative without carrying the bound value.
+        const error = e instanceof DistributionError ? e : new DistributionError(`unexpected send error: ${safeErrorLabel(e)}`, true);
         return { batchIds, error };
       }
     }
@@ -363,6 +387,16 @@ async function sendAllChunks(
  * Cancellation (review focus 2): a job claimed for an item that has since been withdrawn
  * (`items.withdrawn_at`) is marked `cancelled` and released, unsent — checked right after the
  * claim, before any chunk work, so a withdrawn release's job never reaches Distribution.
+ *
+ * Fix round 1, I2: the withdrawn check reads `items.withdrawn_at` with `FOR SHARE` — a row
+ * lock, not a plain read. `withdrawItem` (items.ts) never locks the `items` row itself before
+ * selecting the unclaimed jobs to delete; without a lock here, this read could land in the gap
+ * between that `withdrawItem` transaction's `UPDATE items SET withdrawn_at = now()` and its
+ * commit, see the old (uncommitted) NULL, and send — after which `withdrawItem` deletes the job
+ * out from under a send already in flight. `FOR SHARE` makes this read block behind any
+ * concurrent `UPDATE ... WHERE key = ...` on the same row (every UPDATE takes an implicit
+ * row-level lock) until that transaction commits or rolls back, so it only ever sees the
+ * committed value — items.ts itself is untouched.
  */
 export async function sendDueJobs(
   opts: SendJobsOptions,
@@ -389,8 +423,11 @@ export async function sendDueJobs(
     if (!job) break;
 
     if (job.item_key) {
-      const [item] = await opts.db.select({ withdrawnAt: items.withdrawnAt }).from(items).where(eq(items.key, job.item_key));
-      if (item?.withdrawnAt) {
+      // I2: FOR SHARE, not a plain select — see the doc comment above.
+      const { rows: itemRows } = await opts.db.execute<{ withdrawn_at: Date | null }>(
+        sql`SELECT withdrawn_at FROM items WHERE key = ${job.item_key} FOR SHARE`,
+      );
+      if (itemRows[0]?.withdrawn_at) {
         const res = await opts.db
           .update(sendJobs)
           .set({ status: "cancelled", lockedUntil: null })
