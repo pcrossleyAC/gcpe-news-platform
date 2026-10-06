@@ -1,0 +1,271 @@
+{
+  "name": "featured-posts",
+  "path": "/api/Posts?postKeys=2026WLRS0034-001107,2026HLTH0085-001117,2026HLTH0085-001117,2026INF0034-001103&api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "kind": "releases",
+      "atomId": "uuid:92173dc5-fc3c-405c-a02f-62015b10e747",
+      "summary": "Updated Sept. 21, 2026   Persistent drought means water-conserving efforts vital as communities prepare for seasonal storms",
+      "socialMediaSummary": "",
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2026-09-21T12:30:00-07:00",
+      "leadMinistryKey": "water-land-and-resource-stewardship",
+      "hasMediaAssets": false,
+      "hasTranslations": false,
+      "isNewsOnDemand": true,
+      "assetUrl": "",
+      "location": "Victoria",
+      "documents": [
+        {
+          "pageTitle": "Information Bulletin",
+          "languageId": 4105,
+          "headline": "Province urges continued water conservation, fall flood preparedness",
+          "subheadline": "Persistent drought means water-conserving efforts vital as communities prepare for seasonal storms",
+          "detailsHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>Drought and water-scarcity challenges persist in B.C., with some areas expected to remain affected through the winter and potentially into 2027</em></li>\n\t<li><em>While some recent rainfall has provided local relief, the snowpack is forecast to be low in the coming months, so&nbsp;water conservation must continue through winter</em></li>\n\t<li><em>People, businesses, farms, water suppliers, First Nations and local governments are being urged to continue conserving water and planning ahead</em></li>\n\t<li><em>Communities, particularly those in and below areas affected by wildfire, should also prepare for flooding, debris flows, landslides and erosion during intense fall, winter storms</em></li>\n</ul><p>__________</p><p>People in British Columbia&nbsp;are urged to continue conserving water through the fall and winter while preparing for flooding and other hazards, as persistent drought and more intense storms create risks throughout the province.</p><p>Though recent rainfall provided local relief, in some&nbsp;regions&nbsp;it has not been enough to reverse drought conditions that have persisted for the past several years. These conditions and water-scarcity risks are ongoing&nbsp;and in many parts of B.C.&nbsp;are expected to continue through the winter and into 2027.</p><p>Drought conditions have been especially severe in parts of the southern Interior. Okanagan Lake is currently at its lowest level recorded for this time of year in more than 80 years, while the basin remains under severe drought and high water-scarcity conditions.</p><p><strong>Conserving water now helps prepare for 2027&nbsp;</strong></p><p>It will take sustained precipitation over months to support recovery from persistent drought. Winter precipitation may first be absorbed by depleted soils and groundwater before it reaches rivers,&nbsp;lakes&nbsp;and reservoirs.&nbsp;</p><p>Forecasts suggest below-normal snowpack conditions in many regions of British Columbia this winter. Recovery may take several years because this winter&rsquo;s rain and snowpack may not be enough to restore water levels. In some watersheds, water users may already be drawing down water storage that would normally help communities, agriculture, fish and wildlife, and local economies get through summer 2027.</p><p>The&nbsp;Province&nbsp;is encouraging all water users, including residents, businesses, industries, farms, water suppliers, local&nbsp;governments&nbsp;and First Nations, to continue conservation measures and&nbsp;plan ahead.</p><p>The Province is working with First Nations, local government, water suppliers, industry and farmers to respond to drought conditions and water-scarcity risks. Significant, targeted investments, including the $100-million Watershed Security Fund, are helping secure clean, reliable water that stays on the land base for the benefit of future generations. Since 2023, the Province has invested $120 million in the Agriculture Water Infrastructure Program and supported more than 700 projects to help build or improve water storage and supply systems for irrigation and livestock in water-scarce and drought-prone areas.</p><p><strong>Communities should prepare for fall, winter flooding&nbsp;</strong></p><p>While many parts of B.C. remain in severe drought, communities must also be prepared for flooding this fall and winter as a watershed can remain in drought and still experience flooding. Longer dry periods can be followed by intense rainfall, and recent wildfires can also change how watersheds respond to storms. Communities in and below burned watersheds may face increased risks of flooding, debris flows, landslides, erosion and sediment movement during heavy rainfall.&nbsp;</p><p>The&nbsp;Province&nbsp;continues to work with First Nations, local governments, emergency-management&nbsp;partners&nbsp;and communities to prepare for flood risks as well as ongoing drought and water-scarcity challenges in the months ahead. The River Forecast Centre monitors conditions and issues advisories and warnings when&nbsp;warranted, while provincial work&nbsp;continues on&nbsp;flood-risk mapping, forecasting, monitoring, early-warning&nbsp;systems&nbsp;and community preparedness.&nbsp;</p><p>In addition, the Ministry of Emergency Management and Climate Readiness maintains flood assets that can be deployed 24/7 to support communities, including:</p><ul>\n\t<li>4.8 million sandbags</li>\n\t<li>37 km of water dams</li>\n\t<li>17 km of gabion baskets</li>\n\t<li>15 sandbag machines</li>\n</ul><p>These efforts support B.C.&rsquo;s work to help communities prepare for changing water conditions, adapt to climate-related&nbsp;hazards&nbsp;and build long-term resilience.&nbsp;</p><p><strong>Wildfire season continues as crews urge vigilance</strong></p><p>Throughout a challenging wildfire season, BC Wildfire Service crews, local fire departments, first responders, contractors and out-of-province personnel worked together to support communities throughout B.C. Lower fire activity in northern B.C. allowed resources to be quickly repositioned to respond to increased activity in the south.</p><p>While late-summer rainfall has helped calm conditions, the wildfire season is not over and large areas of the province remain at risk for&nbsp;wildfire activity, including the potential for increased activity in October.</p><p>People are encouraged to remain vigilant with open fires, including campfires, follow all restrictions in their region and continue taking FireSmart actions around their homes and properties. FireSmart and other wildfire-mitigation projects made a meaningful difference this season, helping strengthen community resilience and reduce wildfire risk.</p><p><strong>Quick Facts: </strong></p><ul>\n\t<li>Since 2017, the Province has provided more than $590 million for approximately 3,000 disaster-preparedness and mitigation projects.</li>\n\t<li>From July 1 to September 9, 2026, conservation officers on weekend patrols with the BC Wildfire Service handed out 98 tickets under the Wildfire Act, for a total of $112,700.</li>\n\t<li>The majority of the tickets were issued in the South Coast region, which includes the Sea-to-Sky corridor and the Lower Mainland.</li>\n\t<li>The Squamish area was the hot spot for illegal campfires this year, with $36,800 in fines (32 tickets at $1,150 each).</li>\n</ul><p><strong>Learn More:</strong></p><ul>\n\t<li>To learn more about drought and tips to reduce water use, visit: <a href=\"https://gov.bc.ca/Drought\">https://gov.bc.ca/Drought</a></li>\n\t<li>For the B.C. Drought Information Portal and to sign up for the new Drought and Water Scarcity Bulletin, visit: <a href=\"https://droughtportal.gov.bc.ca/\">https://droughtportal.gov.bc.ca/</a></li>\n\t<li>To read the latest snowpack bulletin and learn about flood conditions and advisories, visit: <a href=\"https://gov.bc.ca/riverforecast\">https://gov.bc.ca/riverforecast</a></li>\n\t<li>For the latest information about evacuation alerts and evacuation orders in B.C., visit: <a href=\"https://EmergencyInfoBC.ca\">https://EmergencyInfoBC.ca</a> or follow @EmergencyInfoBC on X and Facebook at EmergencyInfoBC.</li>\n\t<li>For more info on the fire season heading into fall, visit:&nbsp;<a href=\"https://blog.gov.bc.ca/bcwildfire/fall-2026-seasonal-outlook/\">https://blog.gov.bc.ca/bcwildfire/fall-2026-seasonal-outlook/</a></li>\n\t<li>For BC Wildfire Service information and updates, visit: <a href=\"https://wildfiresituation.nrs.gov.bc.ca/dashboard\">https://wildfiresituation.nrs.gov.bc.ca/dashboard</a></li>\n\t<li>For information about fire prohibitions and restrictions, visit: <a href=\"https://www2.gov.bc.ca/gov/content/safety/wildfire-status/prevention/fire-bans-and-restrictions\">https://www2.gov.bc.ca/gov/content/safety/wildfire-status/prevention/fire-bans-and-restrictions</a></li>\n\t<li>For more information about how to FireSmart your home, visit: <a href=\"https://firesmartbc.ca\">https://firesmartbc.ca</a></li>\n\t<li>For information about how to prepare for emergencies, including information about emergency kits, household emergency plans and hazard-specific guides, visit: <a href=\"https://PreparedBC.ca\">https://PreparedBC.ca</a></li>\n</ul>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Ministry of Water, Land and Resource Stewardship",
+              "details": "Media Relations\nGCPE.WLRSMedia@gov.bc.ca \n250-419-8775"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-34322",
+      "redirectUri": null,
+      "ministryKeys": [
+        "emergency-management-and-climate-readiness",
+        "forests",
+        "water-land-and-resource-stewardship"
+      ],
+      "sectorKeys": [
+        "services"
+      ],
+      "tagKeys": [
+        "natural-resources"
+      ],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "environmental-protection-and-sustainability",
+        "farming-natural-resources-and-industry",
+        "public-safety-and-emergency-services"
+      ],
+      "azureAssets": null,
+      "azureTranslations": null,
+      "key": "2026WLRS0034-001107",
+      "timestamp": "2026-09-22T12:09:33.6381164-07:00"
+    },
+    {
+      "kind": "releases",
+      "atomId": "uuid:d4727aed-a383-4a45-ad88-b8ebb507ac31",
+      "summary": "Seniors with the highest risk of serious illness from RSV will get free vaccine starting next week",
+      "socialMediaSummary": "",
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2026-09-22T11:45:00-07:00",
+      "leadMinistryKey": "health",
+      "hasMediaAssets": false,
+      "hasTranslations": true,
+      "isNewsOnDemand": true,
+      "assetUrl": "",
+      "location": "Victoria",
+      "documents": [
+        {
+          "pageTitle": "Information Bulletin",
+          "languageId": 4105,
+          "headline": "RSV vaccines available to seniors in B.C.",
+          "subheadline": "Seniors with the highest risk of serious illness from RSV will get free vaccine starting next week",
+          "detailsHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>Starting Tuesday, Sept. 29, 2026, RSV vaccine will be available free to adults 75 and older, residents of long-term care homes and assisted living facilities who are 75 and older and First Nations, Inuit and M</em><em>&eacute;</em><em>tis individuals 60 and older </em><em>as part of a time-limited program BC is offering</em></li>\n\t<li><em>Only one dose of RSV vaccine is currently required as it provides long-lasting protection&nbsp; </em></li>\n\t<li><em>It is safe to get an RSV vaccine at the same time as other vaccines such as influenza and COVID-19 vaccines</em></li>\n\t<li><em>RSV vaccine will be available year-round at local pharmacies, public-health units, long-term care and seniors&rsquo; assisted living residences and at community health centres or nursing stations in First Nations communities</em></li>\n</ul><p>Seniors in B.C. with the highest risk of serious illness from Respiratory Syncytial Virus (RSV) will be able to get the vaccine at no-cost, starting Tuesday, Sept. 29, 2026.</p><p>RSV is a common virus that causes a respiratory illness similar to other viruses like influenza, with symptoms such as fever, headache, sore throat and cough. While most people recover from an RSV infection without any issues, it can cause severe illness, including hospitalization and death in older adults, infants and those with underlying health conditions.</p><p>Notifications will go out beginning Tuesday, Sept. 22, 2026, and appointments are expected to be available starting Sept. 29.</p><p>RSV vaccine will be available free of charge, as part of a time-limited program, to:</p><ul>\n\t<li>adults 75 and older</li>\n\t<li>residents who are 75 and older living in long-term care homes and assisted living facilities</li>\n\t<li>First Nations, Inuit and M&eacute;tis individuals 60 and older</li>\n</ul><p>Seniors in long-term care homes and assisted living facilities will get vaccinated first.</p><p>Only one dose of RSV vaccine is currently recommended as it provides long-lasting protection. It is safe to get an RSV vaccine at the same time as influenza and COVID-19 vaccines.</p><p>RSV vaccine will be available year-round at many local pharmacies, public-health units, long-term care homes or assisted living facilities and at community health centres or nursing stations in First Nations communities.</p><p><strong>Quick Fact:</strong></p><ul>\n\t<li>Notifications will include information on how to book appointments and will be sent out to eligible individuals who are registered in the Get Vaccinated system.</li>\n\t<li>The Province&rsquo;s RSV immunization program eligibility is based on the National Advisory Committee on Immunization&rsquo;s (NACI) strong recommendation that all adults 75 years and older get immunized for RSV, due to their higher risk of serious disease.</li>\n</ul><p><strong>Learn More:</strong></p><ul>\n\t<li>People who want to register by phone at 1-833-838-2323,&nbsp; or online are encouraged to do so by visiting: <a href=\"https://www.getvaccinated.gov.bc.ca/s/\">https://www.getvaccinated.gov.bc.ca/s/</a></li>\n\t<li>For more information on RSV vaccine, visit: <a href=\"https://www.healthlinkbc.ca/healthlinkbc-files/respiratory-syncytial-virus-rsv-vaccine\">https://www.healthlinkbc.ca/healthlinkbc-files/respiratory-syncytial-virus-rsv-vaccine</a></li>\n</ul><p>&nbsp;</p>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Ministry of Health",
+              "details": "Media Relations\n250-952-1887"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-34332",
+      "redirectUri": null,
+      "ministryKeys": [
+        "health"
+      ],
+      "sectorKeys": [
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [
+        "covid-19"
+      ],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "family-and-social-supports",
+        "health"
+      ],
+      "azureAssets": null,
+      "azureTranslations": [
+        {
+          "key": "releases/2026HLTH0085-001117/RSVVaccine2026_Chinese(simplified).pdf",
+          "label": "RSVVaccine2026_Chinese(simplified).pdf",
+          "length": 372084
+        },
+        {
+          "key": "releases/2026HLTH0085-001117/RSVVaccine2026_Chinese(traditional).pdf",
+          "label": "RSVVaccine2026_Chinese(traditional).pdf",
+          "length": 430197
+        }
+      ],
+      "key": "2026HLTH0085-001117",
+      "timestamp": "2026-09-22T12:12:34.935202-07:00"
+    },
+    {
+      "kind": "releases",
+      "atomId": "uuid:d4727aed-a383-4a45-ad88-b8ebb507ac31",
+      "summary": "Seniors with the highest risk of serious illness from RSV will get free vaccine starting next week",
+      "socialMediaSummary": "",
+      "socialMediaHeadline": null,
+      "keywords": "",
+      "publishDate": "2026-09-22T11:45:00-07:00",
+      "leadMinistryKey": "health",
+      "hasMediaAssets": false,
+      "hasTranslations": true,
+      "isNewsOnDemand": true,
+      "assetUrl": "",
+      "location": "Victoria",
+      "documents": [
+        {
+          "pageTitle": "Information Bulletin",
+          "languageId": 4105,
+          "headline": "RSV vaccines available to seniors in B.C.",
+          "subheadline": "Seniors with the highest risk of serious illness from RSV will get free vaccine starting next week",
+          "detailsHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>Starting Tuesday, Sept. 29, 2026, RSV vaccine will be available free to adults 75 and older, residents of long-term care homes and assisted living facilities who are 75 and older and First Nations, Inuit and M</em><em>&eacute;</em><em>tis individuals 60 and older </em><em>as part of a time-limited program BC is offering</em></li>\n\t<li><em>Only one dose of RSV vaccine is currently required as it provides long-lasting protection&nbsp; </em></li>\n\t<li><em>It is safe to get an RSV vaccine at the same time as other vaccines such as influenza and COVID-19 vaccines</em></li>\n\t<li><em>RSV vaccine will be available year-round at local pharmacies, public-health units, long-term care and seniors&rsquo; assisted living residences and at community health centres or nursing stations in First Nations communities</em></li>\n</ul><p>Seniors in B.C. with the highest risk of serious illness from Respiratory Syncytial Virus (RSV) will be able to get the vaccine at no-cost, starting Tuesday, Sept. 29, 2026.</p><p>RSV is a common virus that causes a respiratory illness similar to other viruses like influenza, with symptoms such as fever, headache, sore throat and cough. While most people recover from an RSV infection without any issues, it can cause severe illness, including hospitalization and death in older adults, infants and those with underlying health conditions.</p><p>Notifications will go out beginning Tuesday, Sept. 22, 2026, and appointments are expected to be available starting Sept. 29.</p><p>RSV vaccine will be available free of charge, as part of a time-limited program, to:</p><ul>\n\t<li>adults 75 and older</li>\n\t<li>residents who are 75 and older living in long-term care homes and assisted living facilities</li>\n\t<li>First Nations, Inuit and M&eacute;tis individuals 60 and older</li>\n</ul><p>Seniors in long-term care homes and assisted living facilities will get vaccinated first.</p><p>Only one dose of RSV vaccine is currently recommended as it provides long-lasting protection. It is safe to get an RSV vaccine at the same time as influenza and COVID-19 vaccines.</p><p>RSV vaccine will be available year-round at many local pharmacies, public-health units, long-term care homes or assisted living facilities and at community health centres or nursing stations in First Nations communities.</p><p><strong>Quick Fact:</strong></p><ul>\n\t<li>Notifications will include information on how to book appointments and will be sent out to eligible individuals who are registered in the Get Vaccinated system.</li>\n\t<li>The Province&rsquo;s RSV immunization program eligibility is based on the National Advisory Committee on Immunization&rsquo;s (NACI) strong recommendation that all adults 75 years and older get immunized for RSV, due to their higher risk of serious disease.</li>\n</ul><p><strong>Learn More:</strong></p><ul>\n\t<li>People who want to register by phone at 1-833-838-2323,&nbsp; or online are encouraged to do so by visiting: <a href=\"https://www.getvaccinated.gov.bc.ca/s/\">https://www.getvaccinated.gov.bc.ca/s/</a></li>\n\t<li>For more information on RSV vaccine, visit: <a href=\"https://www.healthlinkbc.ca/healthlinkbc-files/respiratory-syncytial-virus-rsv-vaccine\">https://www.healthlinkbc.ca/healthlinkbc-files/respiratory-syncytial-virus-rsv-vaccine</a></li>\n</ul><p>&nbsp;</p>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Ministry of Health",
+              "details": "Media Relations\n250-952-1887"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-34332",
+      "redirectUri": null,
+      "ministryKeys": [
+        "health"
+      ],
+      "sectorKeys": [
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [
+        "covid-19"
+      ],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "family-and-social-supports",
+        "health"
+      ],
+      "azureAssets": null,
+      "azureTranslations": [
+        {
+          "key": "releases/2026HLTH0085-001117/RSVVaccine2026_Chinese(simplified).pdf",
+          "label": "RSVVaccine2026_Chinese(simplified).pdf",
+          "length": 372084
+        },
+        {
+          "key": "releases/2026HLTH0085-001117/RSVVaccine2026_Chinese(traditional).pdf",
+          "label": "RSVVaccine2026_Chinese(traditional).pdf",
+          "length": 430197
+        }
+      ],
+      "key": "2026HLTH0085-001117",
+      "timestamp": "2026-09-22T12:12:34.935202-07:00"
+    },
+    {
+      "kind": "releases",
+      "atomId": "uuid:8cb864a6-cfec-42ef-a930-3d70aca6f4b2",
+      "summary": "New home will expand access to care for seniors in Nanaimo area",
+      "socialMediaSummary": "",
+      "socialMediaHeadline": "Aerial rendering of Lantzville seniors housing",
+      "keywords": "",
+      "publishDate": "2026-09-21T10:15:00-07:00",
+      "leadMinistryKey": "infrastructure",
+      "hasMediaAssets": false,
+      "hasTranslations": false,
+      "isNewsOnDemand": true,
+      "assetUrl": "https://live.staticflickr.com/65535/55542671734_0e72f610a5_b.jpg",
+      "location": "Lantzville",
+      "documents": [
+        {
+          "pageTitle": "News Release",
+          "languageId": 4105,
+          "headline": "Construction starting on long-term care home in Lantzville",
+          "subheadline": "New home will expand access to care for seniors in Nanaimo area",
+          "detailsHtml": "<p>&nbsp;</p><p><strong><em>Summary</em></strong></p><ul>\n\t<li><em>Construction is underway on a new six-storey long-term care home in Lantzville, with completion expected in 2029</em></li>\n\t<li><em>Amenities for seniors include living rooms and dining areas, activity spaces, a self-serve refreshment area and a hair salon&nbsp;</em></li>\n\t<li><em>The home will also include a child care centre and an adult day program&nbsp;</em></li>\n\t<li><em>It will provide almost 300 long-term care beds, including 18 hospice beds, in private rooms with ensuite bathrooms, along with larger rooms to support residents who need specialized equipment or additional space</em></li>\n</ul><p>__________</p><p>Nanaimo area seniors will benefit from increased access to long-term care and support services as construction begins on a new long-term care home in Lantzville.</p><p>&ldquo;As more seniors need long-term care, investments like this help people stay close to their families and communities,&rdquo; said Bowinn Ma, Minister of Infrastructure. &ldquo;This new home will provide quality care in the Nanaimo region while we also work to drive down per-bed costs to support the delivery of more projects in communities across the province.&rdquo;</p><p><strong>Features of the new home: </strong></p><p>The new six-storey long-term care home will include:</p><ul>\n\t<li>298 new long-term care beds, including an 18-bed hospice unit, and private rooms with ensuite bathrooms</li>\n\t<li>larger rooms for residents who need specialized equipment or extra space</li>\n\t<li>small, home-like living areas with shared dining, lounge, recreation and outdoor spaces</li>\n</ul><p>Other amenities include&nbsp;a hair salon, a self-serve refreshment area, activity and event spaces and outdoor spaces, a 37-space child care centre, and an adult day program to help people live independently, while accessing health and wellness services.</p><p><strong>Construction details: </strong></p><p>The new long-term care home at 6910 Lantzville Rd. in Lantzville will be built in partnership with the Nanaimo Regional Hospital District and Island Health. It is expected to open in 2029.</p><p>The Province is providing $236 million toward this $350 million project, with the Nanaimo Regional Hospital District contributing $114 million. As part of Budget 2026, additional funding was allocated to advance the project, which was originally budgeted at $286 million.</p><p>&ldquo;It is critical to the quality of life of residents of long-term care and their families that living environments support hope, choice and meaning,&rdquo; said Dr. Margaret Manville, medical director of long-term care, Island Health. &ldquo;It is equally critical for staff, physicians and nurse practitioners that their workplace enables excellent care, co-operation and community. We aspire to achieve both these aims.&rdquo;</p><p>The long-term care home has been designed to make day-to-day operations run more smoothly and reduce construction costs, while maintaining high-quality care. Resident rooms have been slightly reduced in size, while continuing to meet care standards. Above-ground parking is being provided on site instead of a more expensive underground parkade. These practical design choices help lower the overall cost per bed, allowing public funding to go further and support the construction of more long-term care beds for seniors throughout British Columbia.</p><p><strong>Investing in the future of long-term care</strong></p><p>&ldquo;Seniors and their families in the Nanaimo area deserve access to high-quality long-term care close to the people and communities they know,&rdquo; said Ravi Kahlon, Minister of Health. &ldquo;With construction underway in Lantzville, we are expanding access to long-term care and hospice services, while creating spaces that support residents. This new home will help seniors stay connected to their communities and give families peace of mind as their loved ones receive care.&rdquo;&nbsp;</p><p>Long-term care capacity continues to expand to meet the needs of B.C.&rsquo;s aging population. Since 2017, 16 projects have been completed and approximately&nbsp;1,600 beds have been opened, more than half of them&nbsp;new. Six projects are under construction, including this project in Lantzville and the Colwood (Western Communities) long-term care home, which is set to break ground this year.</p><p>The Lantzville Long-Term Care Home is part of the Province&rsquo;s broader commitment to strengthen health care and expand access to quality long-term care and supports for seniors on Vancouver Island and throughout British Columbia.</p><p><strong>Learn More:</strong></p><ul>\n\t<li>To learn more&nbsp;about the Nanaimo Lantzville Long-term care home project, visit:&nbsp;<br />\n\t<a href=\"https://www.islandhealth.ca/about-us/plans-reports-and-policies/annual-reports/health-priorities-and-community-data/building-health/long-term-care-home-projects\">https://www.islandhealth.ca/about-us/plans-reports-and-policies/annual-reports/health-priorities-and-community-data/building-health/long-term-care-home-projects</a></li>\n\t<li>For more information about health capital projects in B.C., visit:&nbsp;<br />\n\t<a href=\"https://www2.gov.bc.ca/gov/content/health/accessing-health-care/capital-projects\">https://www2.gov.bc.ca/gov/content/health/accessing-health-care/capital-projects</a></li>\n\t<li>To see the last news release about&nbsp;this announcement from October 2023, visit: <a href=\"https://news.gov.bc.ca/releases/2023HLTH0128-001620\">https://news.gov.bc.ca/releases/2023HLTH0128-001620</a>&nbsp;&nbsp;&nbsp;</li>\n</ul><p>&nbsp;A backgrounder follows.&nbsp;</p>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Ministry of Infrastructure",
+              "details": "Media Relations\n250-880-1112"
+            },
+            {
+              "title": "Ministry of Health",
+              "details": "Media Relations\n250-952-1887"
+            },
+            {
+              "title": "Island Health ",
+              "details": "Communications\n250-668-3098"
+            }
+          ]
+        },
+        {
+          "pageTitle": "Backgrounder",
+          "languageId": 4105,
+          "headline": "What people are saying about the Nanaimo Lantzville long-term care home project",
+          "subheadline": "",
+          "detailsHtml": "<p><strong>Susie Chant, parliamentary secretary for seniors&rsquo; services and long-term care &ndash; </strong></p><p>&ldquo;Our government is making significant investments to strengthen seniors&#39; care across British Columbia. New long-term care homes like this one will help meet growing demand, provide residents with modern, comfortable spaces, and ensure more people can access quality care in the communities they call home.&rdquo;</p><p><strong>George Anderson, MLA for Nanaimo-Lantzville &ndash;</strong></p><p>&ldquo;Families in our community know how important it is to have quality care close to home. This new long-term care home will help ensure seniors in Lantzville and the Nanaimo area can stay connected to the people and places they love, while receiving the support they need.&rdquo;</p><p><strong>Sheila Malcolmson, MLA for Nanaimo-Gabriola Island &ndash;</strong></p><p>&ldquo;We want people in Nanaimo to have health-care support through each chapter of their lives. Together, we&#39;re building long-term care in our region to help our aging population stay happy and healthy longer.&rdquo;</p><p><strong>Stephanie Higginson, MLA for Ladysmith-Oceanside &ndash; </strong></p><p>&ldquo;Expanding long-term care capacity across the region means better access and support for families. This new home will make a real difference by providing modern, compassionate care closer to where people live and build their lives.&rdquo;</p><p><strong>Leah Hollins, board chair, Island Health &ndash;</strong></p><p>&ldquo;We are excited to celebrate this important milestone as construction begins on a new long-term care home in Lantzville. This project will increase access to long-term care and hospice services, helping more people receive compassionate, person-centred care, close to their families and communities.&rdquo;</p><p><strong>Douglas Holmes, CAO, Regional District of Nanaimo &ndash; </strong></p><p>&ldquo;By working together with the Province and Island Health, the Nanaimo Regional Hospital District Board is helping deliver a much-needed long-term care home that will support residents who need this level of care and families who want to stay close to their loved ones. This partnership shows what can be achieved when regional and provincial partners align around a shared goal: building the care spaces our communities need now and into the future.&rdquo;</p>",
+          "byline": "",
+          "contacts": [
+            {
+              "title": "Ministry of Infrastructure",
+              "details": "Media Relations\n250-880-1112"
+            },
+            {
+              "title": "Ministry of Health",
+              "details": "Media Relations\n250-952-1887"
+            },
+            {
+              "title": "Island Health ",
+              "details": "Communications\n250-668-3098"
+            }
+          ]
+        }
+      ],
+      "reference": "NEWS-34318",
+      "redirectUri": null,
+      "ministryKeys": [
+        "health",
+        "infrastructure"
+      ],
+      "sectorKeys": [
+        "government-operations",
+        "services"
+      ],
+      "tagKeys": [
+        "look-west-strategy"
+      ],
+      "themeKeys": [
+        "british-columbians-and-our-governments",
+        "family-and-social-supports",
+        "health"
+      ],
+      "azureAssets": null,
+      "azureTranslations": null,
+      "key": "2026INF0034-001103",
+      "timestamp": "2026-09-22T09:54:51.1824509-07:00"
+    }
+  ]
+}

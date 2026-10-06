@@ -1,0 +1,9 @@
+{
+  "tenantId": "bc",
+  "siteName": "BC Gov News",
+  "timeZone": "America/Vancouver",
+  "defaultLanguageId": 4105,
+  "organizationLabel": { "singular": "Ministry", "plural": "Ministries" },
+  "publicSiteBaseUrl": "https://news.gov.bc.ca",
+  "branding": { "primaryColor": "#003366", "logoUrl": null }
+}

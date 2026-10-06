@@ -1,0 +1,10 @@
+{
+  "name": "keys-reference",
+  "path": "/api/Posts/Keys/news-34336?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": {
+    "key": "2026TT0103-001121",
+    "value": "releases"
+  }
+}

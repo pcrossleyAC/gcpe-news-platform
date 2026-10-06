@@ -1,0 +1,16 @@
+{
+  "name": "keys-home-skip",
+  "path": "/api/Posts/Keys/home/default?count=2&skip=1&api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": [
+    {
+      "key": "2026AG0068-001112",
+      "value": "releases"
+    },
+    {
+      "key": "2026HLTH0085-001117",
+      "value": "releases"
+    }
+  ]
+}

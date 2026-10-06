@@ -1,0 +1,13 @@
+{
+  "name": "home-no-version",
+  "path": "/api/Home",
+  "status": 400,
+  "contentType": "application/json; charset=utf-8",
+  "body": {
+    "error": {
+      "code": "ApiVersionUnspecified",
+      "message": "An API version is required, but was not specified.",
+      "innerError": null
+    }
+  }
+}

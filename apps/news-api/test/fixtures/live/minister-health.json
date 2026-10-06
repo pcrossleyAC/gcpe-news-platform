@@ -1,0 +1,16 @@
+{
+  "name": "minister-health",
+  "path": "/api/Ministries/health/Minister?api-version=1.0",
+  "status": 200,
+  "contentType": "application/json; charset=utf-8",
+  "body": {
+    "headline": "Honourable Ravi Kahlon",
+    "summary": "Honourable Ravi Kahlon",
+    "details": "<p>Ravi Kahlon was first elected as MLA for Delta North in 2017.&nbsp;</p><p>In July 2025, Ravi was appointed Minister of Jobs and Economic Growth. Ravi brings considerable economic experience to British Columbia&rsquo;s cabinet from his previous role as Minister of Jobs, Economic Recovery, and Innovation where he oversaw the economic recovery after COVID.&nbsp;</p><p>He previously held roles as Minister of Jobs, Economic Recovery and Innovation, Minister of Housing and Municipal Affairs and Minister of Housing. In addition, he has served as Parliamentary Secretary for Sport and Multiculturalism, Parliamentary Secretary for Forests, Lands, Natural Resource Operations and Rural Development.&nbsp;</p><p>Born and raised in Victoria, Ravi was introduced to field hockey by his father and grandfather. He is a two-time Olympian in the sport for Team Canada and has been inducted into the Delta Sports Hall of Fame.&nbsp;</p><p>Prior to his election as an MLA, Ravi spent seven years in banking and another six years working with the New Democrat Caucus as Director of Stakeholder Relations.&nbsp;</p><p>Ravi has been active in the North Delta community for many years as a volunteer on the boards of the Delta Parks and Recreation Committee and Men&rsquo;s High Performance Field Hockey BC.&nbsp;</p><p>He is also a certified coach and mentor to many youth in North Delta, and spends time coaching field hockey and soccer.&nbsp;</p><p>Ravi lives in North Delta with his wife and son.&nbsp;</p>",
+    "emailHtml": "<a href=\"mailto: HLTH.Minister@gov.bc.ca\">HLTH.Minister@gov.bc.ca</a>",
+    "photo": "https://www2.gov.bc.ca/assets/download/F41BD93F51AE4923A6B7E059AB96B133",
+    "post": "PO BOX 9050</br>\r\nSTN PROV GOV </br>\r\nVICTORIA, BC</br>\r\nV8W 9E2</br>\r\nTelephone: 250 953-3547\r\nFax: 250 356-9587</br>\r\n",
+    "key": "health",
+    "timestamp": "2026-10-02T16:46:05.527-07:00"
+  }
+}
