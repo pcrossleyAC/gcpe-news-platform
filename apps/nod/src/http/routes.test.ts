@@ -7,6 +7,8 @@ import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb, envelope, sendEvent } from "../../test/helpers";
 import type { DistributionClient, MessageRequest } from "../distribution-client";
 import { deliveries, nodSettings, operationsLog, sendJobs, subscribers, subscriptions } from "../db/schema";
+import type { MediaHubContact } from "../media-hub/contract";
+import type { MediaHubClient } from "../media-hub/client";
 import { addMediaMember } from "../media-members";
 import { addSubscriber } from "../subscribers";
 import { createApp } from "../app";
@@ -378,6 +380,141 @@ describe("/api/media-lists", () => {
     expect(res.status).toBe(204);
     const members = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId));
     expect(members).toHaveLength(0);
+  });
+});
+
+const sampleHubContact: MediaHubContact = {
+  id: 42,
+  firstName: "Sam",
+  lastName: "Lee",
+  outlet: "Capital Ledger",
+  emails: [
+    { ref: "personal", address: "sam.lee.42@example.test", kind: "personal", organization: null, preferred: false },
+    { ref: "workplace:1", address: "sam.1@capitalledger.example.test", kind: "workplace", organization: "Capital Ledger", preferred: true },
+  ],
+  deletedAt: null,
+};
+
+describe("media-lists Media Hub integration (search proxy, add-from-hub)", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  let admin: string;
+  let mediaHub: MediaHubClient & { search: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    const pair = await generateKeyPair("RS256");
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: "k", alg: "RS256" }] });
+    admin = await new SignJWT({ roles: ["NoD.Admin"] })
+      .setProtectedHeader({ alg: "RS256", kid: "k" })
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setSubject("svc")
+      .setExpirationTime("5m")
+      .sign(pair.privateKey);
+    mediaHub = {
+      search: vi.fn().mockResolvedValue({ contacts: [sampleHubContact], page: 1, pageSize: 25, total: 1 }),
+      get: vi.fn(async (id: number) => (id === sampleHubContact.id ? sampleHubContact : null)),
+      changes: vi.fn(),
+    } as unknown as MediaHubClient & { search: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
+    app = createApp({
+      db: tdb.db,
+      auth: { issuer, audience, keys },
+      eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
+      mediaHub,
+    });
+    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name) VALUES ('media-distribution-lists:hub', 'media-distribution-lists', 'hub', 'Hub List')`);
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("GET /api/media-hub/contacts proxies search with a fixed pageSize of 25", async () => {
+    const res = await request(app).get("/api/media-hub/contacts").query({ q: "Sam", page: 1 }).set("authorization", `Bearer ${admin}`);
+    expect(res.status).toBe(200);
+    expect(mediaHub.search).toHaveBeenCalledWith("Sam", 1, 25);
+    expect(res.body.contacts).toEqual([sampleHubContact]);
+  });
+
+  it("POST /api/media-lists/:key/members with mediaHubContactId stores the contact id/ref and uses that email's address", async () => {
+    const res = await request(app)
+      .post("/api/media-lists/hub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ mediaHubContactId: sampleHubContact.id, emailRef: "workplace:1" });
+    expect(res.status).toBe(201);
+
+    const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, res.body.subscriberId));
+    expect(row).toMatchObject({
+      email: "sam.1@capitalledger.example.test",
+      source: "media-hub",
+      mediaHubContactId: sampleHubContact.id,
+      mediaHubEmailRef: "workplace:1",
+    });
+  });
+
+  it("POST /api/media-lists/:key/members 404s an unknown emailRef, and 404s an unknown/deleted contact", async () => {
+    const badRef = await request(app)
+      .post("/api/media-lists/hub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ mediaHubContactId: sampleHubContact.id, emailRef: "workplace:9" });
+    expect(badRef.status).toBe(404);
+
+    const unknownContact = await request(app)
+      .post("/api/media-lists/hub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ mediaHubContactId: 999999, emailRef: "personal" });
+    expect(unknownContact.status).toBe(404);
+  });
+});
+
+describe("media-lists with no Media Hub configured (MEDIA_HUB_URL unset)", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  let admin: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    const pair = await generateKeyPair("RS256");
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: "k", alg: "RS256" }] });
+    admin = await new SignJWT({ roles: ["NoD.Admin"] })
+      .setProtectedHeader({ alg: "RS256", kid: "k" })
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setSubject("svc")
+      .setExpirationTime("5m")
+      .sign(pair.privateKey);
+    // mediaHub omitted entirely -- createApp defaults it to null, same as start.ts does when
+    // MEDIA_HUB_URL is unset.
+    app = createApp({
+      db: tdb.db,
+      auth: { issuer, audience, keys },
+      eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
+    });
+    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name) VALUES ('media-distribution-lists:nohub', 'media-distribution-lists', 'nohub', 'No Hub List')`);
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("503s the search proxy and add-from-hub, while manual add still works", async () => {
+    const search = await request(app).get("/api/media-hub/contacts").query({ q: "x" }).set("authorization", `Bearer ${admin}`);
+    expect(search.status).toBe(503);
+    expect(search.body).toEqual({ error: "media hub not configured" });
+
+    const fromHub = await request(app)
+      .post("/api/media-lists/nohub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ mediaHubContactId: 1, emailRef: "personal" });
+    expect(fromHub.status).toBe(503);
+    expect(fromHub.body).toEqual({ error: "media hub not configured" });
+
+    const manual = await request(app)
+      .post("/api/media-lists/nohub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ email: "manual-still-works@example.com" });
+    expect(manual.status).toBe(201);
   });
 });
 

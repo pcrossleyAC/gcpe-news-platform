@@ -10,6 +10,7 @@ import { apiRoutes } from "./http/routes";
 import { subscribeApiRoutes } from "./http/subscribe-routes";
 import { itemHandlers } from "./items";
 import { listsHandler } from "./lists";
+import type { MediaHubClient } from "./media-hub/client";
 import type { RenderOptions } from "./render";
 import type { JourneyDeps } from "./subscribe/journeys";
 
@@ -31,6 +32,9 @@ export interface AppDeps {
   distribution?: Pick<DistributionClient, "send">;
   opsEmail?: string | null;
   timeZone?: string;
+  /** The Media Hub contacts client, when `MEDIA_HUB_URL` is configured -- null (the default)
+   * means search and add-from-hub answer 503 while manual entry still works. */
+  mediaHub?: MediaHubClient | null;
 }
 
 const noDistribution: Pick<DistributionClient, "send"> = {
@@ -66,11 +70,16 @@ export function createApp(deps: AppDeps): express.Express {
     "/api",
     requireBearer(deps.auth),
     express.json({ limit: "100kb" }),
-    apiRoutes(deps.db, { recordEmergencyItem }, {
-      distribution: deps.distribution ?? deps.subscribe?.distribution ?? noDistribution,
-      opsEmail: deps.opsEmail ?? null,
-      timeZone: deps.timeZone ?? "UTC",
-    }),
+    apiRoutes(
+      deps.db,
+      { recordEmergencyItem },
+      {
+        distribution: deps.distribution ?? deps.subscribe?.distribution ?? noDistribution,
+        opsEmail: deps.opsEmail ?? null,
+        timeZone: deps.timeZone ?? "UTC",
+      },
+      deps.mediaHub ?? null,
+    ),
   );
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
   // escape stay JSON instead of finalhandler's default HTML.

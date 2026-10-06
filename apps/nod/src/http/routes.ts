@@ -4,6 +4,7 @@ import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import type { ItemSending } from "../as-it-happens";
 import type { DistributionClient } from "../distribution-client";
+import { MediaHubError, type MediaHubClient } from "../media-hub/client";
 import { addMediaMember, listMediaLists, listMediaMembers, MediaListNotFoundError, OptedOutError, removeMediaMember } from "../media-members";
 import { getSettings, setPaused } from "../settings";
 import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
@@ -18,10 +19,10 @@ export const addSubscriberSchema = z.object({
   lists: z.union([z.literal("all"), z.array(listKeySchema)]),
 });
 
-export const addMediaMemberSchema = z.object({
-  email: z.string().email(),
-  confirmOptOut: z.boolean().optional(),
-});
+export const addMediaMemberSchema = z.union([
+  z.object({ email: z.string().email(), confirmOptOut: z.boolean().optional() }),
+  z.object({ mediaHubContactId: z.number().int(), emailRef: z.string().min(1), confirmOptOut: z.boolean().optional() }),
+]);
 
 export const emergencyItemSchema = z.object({
   guid: z.string().min(1),
@@ -43,6 +44,10 @@ function handleError(e: unknown, res: Response): boolean {
   if (e instanceof SubscriberExistsError) return void res.status(409).json({ error: "subscriber exists" }), true;
   if (e instanceof MediaListNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   if (e instanceof OptedOutError) return void res.status(409).json({ error: "opted-out", at: e.at.toISOString() }), true;
+  // A MediaHubError's message/kind is safe to log (never carries a response body or address --
+  // see client.ts) but is never handed to the caller verbatim; the client just sees that Media
+  // Hub itself is unavailable right now.
+  if (e instanceof MediaHubError) return void (console.error("[nod] Media Hub call failed", e.kind, e.message), res.status(502).json({ error: "media hub unavailable" })), true;
   return false;
 }
 
@@ -54,7 +59,16 @@ export interface SettingsRouteDeps {
   timeZone: string;
 }
 
-export function apiRoutes(db: Db, items: Pick<ItemSending, "recordEmergencyItem">, settings: SettingsRouteDeps): Router {
+/** Fixed page size NoD's own search proxy asks Media Hub for (brief: "proxies search
+ * (pageSize 25)") -- staff never choose a page size directly, only a query and page number. */
+const MEDIA_HUB_SEARCH_PAGE_SIZE = 25;
+
+export function apiRoutes(
+  db: Db,
+  items: Pick<ItemSending, "recordEmergencyItem">,
+  settings: SettingsRouteDeps,
+  mediaHub: MediaHubClient | null = null,
+): Router {
   const r = Router();
   const run = <P>(h: Handler<P>): ReturnType<typeof safe<P>> =>
     safe<P>(async (req, res) => {
@@ -105,11 +119,37 @@ export function apiRoutes(db: Db, items: Pick<ItemSending, "recordEmergencyItem"
     }),
   );
 
+  r.get(
+    "/media-hub/contacts",
+    requireRole("NoD.Admin"),
+    run(async (req, res) => {
+      if (!mediaHub) return void res.status(503).json({ error: "media hub not configured" });
+      const q = typeof req.query.q === "string" ? req.query.q : "";
+      const page = Math.max(1, Number.parseInt(String(req.query.page ?? "1"), 10) || 1);
+      res.json(await mediaHub.search(q, page, MEDIA_HUB_SEARCH_PAGE_SIZE));
+    }),
+  );
+
   r.post(
     "/media-lists/:key/members",
     requireRole("NoD.Admin"),
     run<{ key: string }>(async (req, res) => {
       const parsed = addMediaMemberSchema.parse(req.body);
+
+      if ("mediaHubContactId" in parsed) {
+        if (!mediaHub) return void res.status(503).json({ error: "media hub not configured" });
+        const contact = await mediaHub.get(parsed.mediaHubContactId);
+        const email = contact?.deletedAt ? undefined : contact?.emails.find((e) => e.ref === parsed.emailRef);
+        if (!contact || contact.deletedAt || !email) return void res.status(404).json({ error: "not found" });
+        const { subscriberId, created } = await addMediaMember(
+          db,
+          req.params.key,
+          { email: email.address, source: "media-hub", mediaHubContactId: parsed.mediaHubContactId, mediaHubEmailRef: parsed.emailRef, confirmOptOut: parsed.confirmOptOut },
+          actorOf(req).name,
+        );
+        return void res.status(created ? 201 : 200).json({ subscriberId, created });
+      }
+
       const { subscriberId, created } = await addMediaMember(
         db,
         req.params.key,

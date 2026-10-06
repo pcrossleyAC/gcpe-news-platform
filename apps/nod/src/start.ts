@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
-import { authFromEnv } from "@gcpe/auth";
+import { authFromEnv, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
@@ -10,6 +10,7 @@ import { runDigestIfDue, startDigestLoop } from "./digest";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
 import { needsReferenceData } from "./lists";
+import { mediaHubClient, type MediaHubClient } from "./media-hub/client";
 import type { RecipientLinkOptions } from "./recipient-links";
 import type { RenderOptions } from "./render";
 import { sendDueJobs, startJobSender } from "./send-jobs";
@@ -49,6 +50,15 @@ export const nodEnvSchema = z.object({
   // Base URL of the public Subscribe API, carrying the one-click unsubscribe path
   // (recipient-links.ts, Task 3). Default: PUBLIC_SITE_URL's own origin's /api/Subscribe.
   SUBSCRIBE_API_URL: z.string().url().optional(),
+  // Media Hub contacts contract. Unset -> search and add-from-hub answer 503 "media hub not
+  // configured" while manual entry still works; the stack points this at its own fake Media
+  // Hub when no real one is configured (see apps/stack/src/env.ts).
+  MEDIA_HUB_URL: z.string().url().optional(),
+  MEDIA_HUB_TOKEN_URL: z.string().optional(),
+  MEDIA_HUB_CLIENT_ID: z.string().optional(),
+  MEDIA_HUB_CLIENT_SECRET: z.string().optional(),
+  MEDIA_HUB_SCOPE: z.string().optional(),
+  MEDIA_HUB_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   // Task 6: the tenant's time zone (digest.ts's 17:00 cutoff) and its tzdata self-check, same
   // default as apps/news-api/src/env.ts.
@@ -122,6 +132,25 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
 
   const sendJobsOptions = { db, distribution, links: recipientLinks, render, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS };
 
+  // Only built when a Media Hub is actually configured -- search and add-from-hub answer 503
+  // otherwise (routes.ts), and there is then no token provider to fail at startup.
+  const mediaHub: MediaHubClient | null = parsed.MEDIA_HUB_URL
+    ? mediaHubClient({
+        baseUrl: parsed.MEDIA_HUB_URL,
+        getToken: serviceTokenProvider({
+          tokenUrl: parsed.MEDIA_HUB_TOKEN_URL,
+          clientId: parsed.MEDIA_HUB_CLIENT_ID,
+          clientSecret: parsed.MEDIA_HUB_CLIENT_SECRET,
+          scope: parsed.MEDIA_HUB_SCOPE,
+          local: auth.local,
+          subject: "nod",
+          roles: ["MediaHub.ContactsRead"],
+          envPrefix: "NOD_MEDIA_HUB",
+        }),
+        timeoutMs: parsed.MEDIA_HUB_TIMEOUT_MS,
+      })
+    : null;
+
   const app = createApp({
     db,
     auth: auth.bearer,
@@ -138,6 +167,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     distribution,
     opsEmail: parsed.OPS_EMAIL ?? null,
     timeZone: tenant.timeZone,
+    mediaHub,
   });
 
   // Set by startLoops(); the closers below reference these lazily so they're safe to call even

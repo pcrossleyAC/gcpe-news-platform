@@ -804,6 +804,29 @@ describe("apps/stack", () => {
     const toAddress = mail!.to && "value" in mail!.to ? mail!.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");
   });
+
+  describe("fake Media Hub (no NOD_MEDIA_HUB_URL configured)", () => {
+    it("NoD's own default points at the in-stack fake: the search proxy round-trips through it end to end", async () => {
+      const res = await fetch(`${instance.stackUrl}/nod/api/media-hub/contacts?page=1`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { contacts: unknown[]; page: number; pageSize: number; total: number };
+      expect(body).toMatchObject({ page: 1, pageSize: 25 });
+      expect(Array.isArray(body.contacts)).toBe(true);
+      expect(body.total).toBeGreaterThan(0);
+    });
+
+    it("the fake's own service routes need a bearer with MediaHub.ContactsRead; /__fake needs Core.Admin, same as fake Flickr's", async () => {
+      expect((await fetch(`${instance.stackUrl}/fake-media-hub/api/service/contacts`)).status).toBe(401);
+      const editor = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
+      expect((await fetch(`${instance.stackUrl}/fake-media-hub/api/service/contacts`, { headers: { authorization: `Bearer ${editor}` } })).status).toBe(403);
+
+      const reset = (headers: Record<string, string>) =>
+        fetch(`${instance.stackUrl}/fake-media-hub/__fake/reset`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: "{}" });
+      expect((await reset({})).status).toBe(401);
+      expect((await reset({ authorization: `Bearer ${editor}` })).status).toBe(403);
+      expect((await reset({ authorization: `Bearer ${instance.adminToken}` })).status).toBe(200);
+    });
+  });
 });
 
 // Task 2 (Phase 4a) fix round 1: the shared instance above only proves the live CORE->NOD
