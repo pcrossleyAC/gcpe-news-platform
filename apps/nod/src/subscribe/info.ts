@@ -4,6 +4,14 @@ import type { DbOrTx } from "@gcpe/db-kit";
 import { subscribers, subscriptions, type SubscriberPrefs } from "../db/schema";
 import { activeListKeys, MEDIA_CATEGORY } from "../lists";
 
+/** The one schema every address NoD writes to `subscribers.email` is validated against,
+ * wherever it's written -- the public Subscribe routes (via subscriberInfoSchema below), the
+ * add-from-hub and manual-media-add routes (http/routes.ts), the nightly Media Hub sync, and
+ * staff's manual resolve (media-hub/sync.ts). Media Hub's own contract (media-hub/contract.ts)
+ * deliberately doesn't require this -- an address only has to pass it at the point NoD would
+ * actually store or send to it. */
+export const emailAddressSchema = z.string().email();
+
 /** Legacy SubscriberInfo (docs/contracts/news-api-v1.swagger.json). Unknown fields ignored;
  * `isAdminRegistration` and `notifyIfNewCategories` are accepted but never acted on (C57, C60). */
 export const subscriberInfoSchema = z.object({

@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
-import { subscribers, subscriptions } from "./db/schema";
+import { lists, subscribers, subscriptions } from "./db/schema";
+import { MEDIA_CATEGORY } from "./lists";
 import { matchesItem } from "./matching";
 
 /** Thrown by {@link addSubscriber} on a case-insensitive email clash (subscribers_email_lower_idx). */
@@ -57,7 +58,14 @@ export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<
  * DistributionProvider.cs:296) — case-insensitively, lowercased here same as
  * {@link addSubscriber} stores them. Backs both NoD's own `/api/subscribers/count` route and
  * NRMS's "notify ~N subscribers" preview (Task 6's `WorkflowDeps.countSubscribers`, wired
- * through NRMS's own `nodClient`).
+ * through NRMS's own `nodClient`) and, with a `media-distribution-lists:<key>` key, NRMS's media
+ * contact count (`WorkflowDeps.countMediaContacts`, same client, same route).
+ *
+ * A media-category match additionally requires the list itself to still be active (`lists.active`
+ * — the `LEFT JOIN` below is against the list's primary key, so it can never multiply rows),
+ * matching `createMediaSend`'s own recipient rule (media-send.ts): a member of a list staff has
+ * since deactivated must never be counted. Every other category's match is untouched — its
+ * `lists` row (if any) is never even consulted — preserving today's semantics exactly.
  */
 export async function countSubscribers(db: Db, listKeys: string[]): Promise<number> {
   const keys = listKeys.map((k) => k.toLowerCase());
@@ -67,7 +75,11 @@ export async function countSubscribers(db: Db, listKeys: string[]): Promise<numb
   // value IS the array, which node-postgres then serializes as a Postgres array literal.
   const r = await db.execute<{ n: number }>(sql`
     SELECT count(DISTINCT s.id)::int AS n
-    FROM ${subscribers} s JOIN ${subscriptions} sub ON sub.subscriber_id = s.id
-    WHERE s.status = 'active' AND ${matchesItem(sql`sub.list_key`, sql`${sql.param(keys)}::text[]`)}`);
+    FROM ${subscribers} s
+    JOIN ${subscriptions} sub ON sub.subscriber_id = s.id
+    LEFT JOIN ${lists} l ON l.list_key = sub.list_key
+    WHERE s.status = 'active'
+      AND ${matchesItem(sql`sub.list_key`, sql`${sql.param(keys)}::text[]`)}
+      AND (l.category IS DISTINCT FROM ${MEDIA_CATEGORY} OR l.active = true)`);
   return r.rows[0]!.n;
 }

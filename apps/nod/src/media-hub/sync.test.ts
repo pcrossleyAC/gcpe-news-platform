@@ -158,6 +158,29 @@ describe("runMediaSync", () => {
     expect(history.map((h) => h.action)).toContain("media-hub-flagged");
   });
 
+  it("a chosen email change to an invalid address flags email-invalid and changes nothing", async () => {
+    const { client, controls } = await startFake();
+    const { contact, ref, address } = liveWorkplaceContact(controls);
+
+    const { subscriberId } = await addMediaMember(tdb.db, "press", { email: address, source: "media-hub", mediaHubContactId: contact.id, mediaHubEmailRef: ref }, "staff:jamie");
+    controls.changeEmail(contact.id, ref, "not-an-email");
+
+    const outcome = expectRan(await runMediaSync(tdb.db, client));
+    const result = expectCounts(outcome.result);
+    expect(result.flagged).toBe(1);
+    expect(result.updated).toBe(0);
+
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(after).toMatchObject({ email: address.toLowerCase(), needsAttention: "email-invalid" });
+    expect(after!.attentionAt).not.toBeNull();
+
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, subscriberId));
+    expect(history.map((h) => h.action)).toContain("media-hub-flagged");
+    const flagged = history.find((h) => h.action === "media-hub-flagged")!;
+    expect(flagged.detail).toBe(ref);
+    expect(flagged.detail).not.toContain("@");
+  });
+
   it("the chosen ref vanishing flags email-gone and keeps the membership", async () => {
     const { client, controls } = await startFake();
     const { contact, ref, address } = liveWorkplaceContact(controls);
@@ -505,6 +528,27 @@ describe("resolveMediaMember", () => {
   it("returns ref-not-found for an unknown ref, and media-hub-unavailable when no client is configured", async () => {
     const { subscriberId } = await addMediaMember(tdb.db, "press", { email: "noclient@example.test", source: "manual-media" }, "staff:jamie");
     expect(await resolveMediaMember(tdb.db, null, subscriberId, "workplace:1", "staff:jamie")).toBe("media-hub-unavailable");
+  });
+
+  it("a ref whose address is invalid returns invalid-email, writing nothing", async () => {
+    const { client, controls } = await startFake();
+    const live = controls.contacts().find((c) => !c.deletedAt && c.emails.length > 1)!;
+    const firstRef = live.emails[0]!;
+    const secondRef = live.emails[1]!;
+    controls.changeEmail(live.id, secondRef.ref, "not-an-email");
+
+    const { subscriberId } = await addMediaMember(
+      tdb.db,
+      "press",
+      { email: firstRef.address, source: "media-hub", mediaHubContactId: live.id, mediaHubEmailRef: firstRef.ref },
+      "staff:jamie",
+    );
+
+    const outcome = await resolveMediaMember(tdb.db, client, subscriberId, secondRef.ref, "staff:jamie");
+    expect(outcome).toBe("invalid-email");
+
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(after).toMatchObject({ email: firstRef.address.toLowerCase(), mediaHubEmailRef: firstRef.ref });
   });
 
   it("a ref whose address is already taken by another subscriber returns email-taken, re-flagging rather than merging", async () => {

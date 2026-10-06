@@ -6,6 +6,7 @@ import { deliveries, jobRecipients, nodSettings, sendJobs, subscribers } from ".
 import { renderDigestItems } from "./digest";
 import { placeholderLinkLengths, recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
 import type { RenderOptions } from "./render";
+import { emailAddressSchema } from "./subscribe/info";
 import { safeErrorLabel } from "./subscribe/journeys";
 
 /** Distribution refuses a request with more than 20,000 recipients (P2-R15): a release that
@@ -348,6 +349,19 @@ function partitionChunkByBytes(
  * is currently active, and never for the inactive members of a part that *is* sent (R3: those
  * stay in `partMembers` for frozen partitioning but never carry their own links).
  *
+ * Defence in depth: Media Hub's own contract doesn't require `.email()`
+ * on `address` (media-hub/contract.ts), and although both the nightly sync and staff resolve now
+ * validate at write time, a row written before that existed (or any other path into
+ * `subscribers.email`) must never reach Distribution's own `z.string().email()` check — which
+ * answers 400 for the *whole* request and isn't retryable, failing this part and every later
+ * part of the job, on every attempt. So each part's active members are filtered against that
+ * same schema immediately before the request is built; anyone failing it is dropped from this
+ * part (logged by subscriber id only, never the address — global constraints "Logs"; counted,
+ * not treated as an error) and left unattempted, so they're not stamped `attempted_at` and stay
+ * eligible once their address is fixed. A part left with no valid recipients sends nothing and
+ * is not an error. Counts are logged rather than threaded through this function's return value,
+ * to avoid changing `sendDueJobs`'s result shape (and the many tests asserting it exactly).
+ *
  * Controller ruling (overrides the brief's "after a successful send"): `deliveries.attempted_at`
  * is stamped *immediately before* `distribution.send` — handed off, not confirmed — because a
  * response that was actually accepted by Distribution but lost to us (a timeout, a dropped
@@ -371,8 +385,17 @@ async function sendAllChunks(
     for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes, linkPlaceholder)) {
       const activeMembers = partMembers.filter((m) => m.active);
       if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
+
+      // Defence in depth — see the doc comment above.
+      const validMembers = activeMembers.filter((m) => emailAddressSchema.safeParse(m.email).success);
+      if (validMembers.length < activeMembers.length) {
+        const invalidIds = activeMembers.filter((m) => !validMembers.includes(m)).map((m) => m.subscriberId);
+        console.error(`[nod] job ${job.id} part ${key}: dropping ${invalidIds.length} recipient(s) with an invalid email address, subscriber ids: ${invalidIds.join(",")}`);
+      }
+      if (validMembers.length === 0) continue; // nothing left to send in this part — not an error
+
       try {
-        const substitutions = await recipientSubstitutions(opts.db, activeMembers, opts.links);
+        const substitutions = await recipientSubstitutions(opts.db, validMembers, opts.links);
         // Stamped before the handoff, not after — see the doc comment above.
         await opts.db
           .update(deliveries)
@@ -380,11 +403,11 @@ async function sendAllChunks(
           .where(
             and(
               eq(deliveries.jobId, job.id),
-              inArray(deliveries.subscriberId, activeMembers.map((m) => m.subscriberId)),
+              inArray(deliveries.subscriberId, validMembers.map((m) => m.subscriberId)),
               isNull(deliveries.attemptedAt),
             ),
           );
-        const { batchId } = await opts.distribution.send(buildMessageRequest(job, activeMembers, key, substitutions));
+        const { batchId } = await opts.distribution.send(buildMessageRequest(job, validMembers, key, substitutions));
         batchIds[key] = batchId;
       } catch (e) {
         // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless

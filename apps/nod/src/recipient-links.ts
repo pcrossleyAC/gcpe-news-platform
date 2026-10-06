@@ -30,12 +30,14 @@ const MAC_LEN = 43;
 /**
  * The exact length a real `{{manageUrl}}`/`{{unsubscribeUrl}}` substitution will be for this
  * deployment's `opts` (and, for the unsubscribe token, a subscriber whose `unsubscribe_version`
- * is `unsubscribeVersionDigits` digits wide -- 1 by default, true of every subscriber until
- * their 10th email change). Used only to size send-jobs.ts's byte-size probe placeholders with
- * same-length (but not real) strings, never to build an actual link -- see
- * {@link recipientSubstitutions} for that.
+ * is `unsubscribeVersionDigits` digits wide). Defaults to 10 digits -- a safe overestimate for
+ * any version this deployment will plausibly reach, rather than 1 (true only through a
+ * subscriber's 9th email change), which under-measures every version from 10 on and makes the
+ * byte-size probe this sizes (send-jobs.ts) under-count a part's real request size. Used only to
+ * size that probe's placeholders with same-length (but not real) strings, never to build an
+ * actual link -- see {@link recipientSubstitutions} for that.
  */
-export function placeholderLinkLengths(opts: RecipientLinkOptions, unsubscribeVersionDigits = 1): { manageUrlLen: number; unsubscribeUrlLen: number } {
+export function placeholderLinkLengths(opts: RecipientLinkOptions, unsubscribeVersionDigits = 10): { manageUrlLen: number; unsubscribeUrlLen: number } {
   const manageUrlLen = linkUrl(opts.pageUrl, "x".repeat(MANAGE_TOKEN_LEN)).length;
   const tokenLen = UUID_LEN + 1 + unsubscribeVersionDigits + 1 + MAC_LEN;
   const apiBase = opts.subscribeApiUrl.replace(/\/$/, "");

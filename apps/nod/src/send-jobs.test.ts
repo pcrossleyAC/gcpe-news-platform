@@ -941,6 +941,41 @@ describe("sendDueJobs", () => {
     expect(await attemptedAtFor(subs[1]!.id)).toBeNull(); // still inactive, still never handed off
   });
 
+  // Defence in depth: Media Hub's own contract doesn't require `.email()` on `address`
+  // (media-hub/contract.ts), so a stale row with an invalid stored address must never reach
+  // Distribution's own z.string().email() check -- that answers 400 for the *whole* request,
+  // failing this part and every later part of the job. One recipient in the part has an
+  // invalid address (inserted directly, bypassing the app's own write-time validation, to
+  // stand in for a row written before that validation existed); the other is valid.
+  it("drops a recipient with an invalid stored email address, sending only the valid one; the job still succeeds and the invalid one's delivery stays unattempted", async () => {
+    const valid = await insertSubscriber(tdb.db, "valid@example.com", { id: lowId(0) });
+    const invalid = await insertSubscriber(tdb.db, "not-an-email", { id: lowId(1) });
+    const job = await insertJob(tdb.db, "release-invalid-email");
+    await tdb.db.insert(jobRecipients).values([
+      { jobId: job.id, subscriberId: valid.id },
+      { jobId: job.id, subscriberId: invalid.id },
+    ]);
+    await tdb.db.insert(deliveries).values([
+      { itemKey: "release-invalid-email", subscriberId: valid.id, mode: "as_it_happens" as const, jobId: job.id },
+      { itemKey: "release-invalid-email", subscriberId: invalid.id, mode: "as_it_happens" as const, jobId: job.id },
+    ]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "batch-1" });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+
+    expect(distribution.send).toHaveBeenCalledTimes(1);
+    const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+    expect(req.recipients.map((r) => r.email)).toEqual(["valid@example.com"]);
+
+    const [validRow] = await tdb.db.select({ attemptedAt: deliveries.attemptedAt }).from(deliveries).where(and(eq(deliveries.jobId, job.id), eq(deliveries.subscriberId, valid.id)));
+    expect(validRow!.attemptedAt).not.toBeNull();
+    const [invalidRow] = await tdb.db.select({ attemptedAt: deliveries.attemptedAt }).from(deliveries).where(and(eq(deliveries.jobId, job.id), eq(deliveries.subscriberId, invalid.id)));
+    expect(invalidRow!.attemptedAt).toBeNull();
+  });
+
   // claimOneJob used to order strictly by (next_attempt_at, id), so an older digest job
   // was always claimed ahead of a due immediate job created after it. The digest job here is
   // due well before the immediate one (and so would win under the old ordering); priority

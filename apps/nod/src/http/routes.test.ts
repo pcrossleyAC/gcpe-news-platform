@@ -195,6 +195,26 @@ describe("GET /api/subscribers/count", () => {
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ count: 2 });
   });
+
+  // NRMS's media contact count (WorkflowDeps.countMediaContacts) calls this same route with
+  // media-distribution-lists:<key> keys -- previously 400 every time (listKeySchema only allowed
+  // ministries|sectors|themes|tags). A member of an active list counts; a member of a list
+  // staff has since deactivated does not, matching createMediaSend's own recipient rule.
+  it("counts a media-key query, excluding a member of a deactivated list", async () => {
+    await tdb.db.execute(sql`
+      INSERT INTO lists (list_key, category, key, name, active) VALUES
+        ('media-distribution-lists:active-press', 'media-distribution-lists', 'active-press', 'Active Press', true),
+        ('media-distribution-lists:inactive-press', 'media-distribution-lists', 'inactive-press', 'Inactive Press', false)
+    `);
+    await addMediaMember(tdb.db, "active-press", { email: "media-active@example.test", source: "manual-media" }, "staff:jamie");
+    await addMediaMember(tdb.db, "inactive-press", { email: "media-inactive@example.test", source: "manual-media" }, "staff:jamie");
+
+    const res = await request(app)
+      .get("/api/subscribers/count?lists=media-distribution-lists:active-press,media-distribution-lists:inactive-press")
+      .set("authorization", `Bearer ${editor}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ count: 1 });
+  });
 });
 
 describe("POST /api/emergency-items", () => {
@@ -602,6 +622,29 @@ describe("media-lists Media Hub integration (search proxy, add-from-hub)", () =>
       .set("authorization", `Bearer ${admin}`)
       .send({});
     expect(res.status).toBe(404);
+  });
+
+  it("POST /api/media-members/:subscriberId/resolve 400s an invalid address, same status as a manual add's bad email", async () => {
+    const { subscriberId } = await request(app)
+      .post("/api/media-lists/hub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ mediaHubContactId: resolveHubContact.id, emailRef: "personal" })
+      .then((r) => r.body as { subscriberId: string });
+    // Points this subscriber at badEmailHubContact (whose only ref's address is invalid) under
+    // a ref name that isn't its own, as if an earlier resolve or sync had already set it up --
+    // what matters for this test is only that the ref the resolve call asks for, "personal",
+    // resolves (via mediaHub.get) to that contact's invalid address.
+    await tdb.db.update(subscribers).set({ mediaHubContactId: badEmailHubContact.id, mediaHubEmailRef: "some-other-ref" }).where(eq(subscribers.id, subscriberId));
+
+    const res = await request(app)
+      .post(`/api/media-members/${subscriberId}/resolve`)
+      .set("authorization", `Bearer ${admin}`)
+      .send({ emailRef: "personal" });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "invalid email" });
+
+    const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(row).toMatchObject({ mediaHubEmailRef: "some-other-ref" });
   });
 
   it("POST /api/media-members/:subscriberId/resolve 409s email-taken when the new ref's address already belongs to someone else", async () => {

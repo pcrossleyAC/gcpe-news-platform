@@ -24,7 +24,7 @@ import { dailyCutoff } from "../digest";
 import { MEDIA_CATEGORY } from "../lists";
 import { removeMediaMember, hasMediaMemberships } from "../media-members";
 import { writeHistory } from "../subscribe/history";
-import { normaliseEmail } from "../subscribe/info";
+import { emailAddressSchema, normaliseEmail } from "../subscribe/info";
 import { safeErrorLabel } from "../subscribe/journeys";
 import { nodSettings, subscribers, subscriptions, type SubscriberRow } from "../db/schema";
 import { MediaHubError, type MediaHubClient } from "./client";
@@ -74,13 +74,18 @@ function isInProgress(value: unknown): value is SyncResult & { inProgress: true 
 
 const SYNC_ACTOR = "media-hub-sync";
 
-type EmailOutcome = "updated" | "email-taken" | "email-gone" | "unchanged" | "cleared";
+type EmailOutcome = "updated" | "email-taken" | "email-gone" | "email-invalid" | "unchanged" | "cleared";
 
 /**
  * Reconciles one subscriber's chosen Media Hub email against `contact`'s current emails (the
- * brief's "Feed" rules): the chosen ref's address moved (update, if free, else flag
- * `email-taken`), the chosen ref vanished (flag `email-gone`, keep the member -- C59), or
- * nothing changed (clearing a stale `email-gone` flag if the ref came back).
+ * brief's "Feed" rules): the chosen ref's address moved (update, if free and a valid email,
+ * else flag `email-taken`/`email-invalid`), the chosen ref vanished (flag `email-gone`, keep the
+ * member -- C59), or nothing changed (clearing a stale flag if the ref came back valid).
+ *
+ * Media Hub's own contract doesn't require `.email()` on `address` (media-hub/contract.ts), so
+ * a changed address is validated here, with the same schema the routes use, before it's ever
+ * written to `subscribers.email` -- an invalid one is flagged `email-invalid` instead, leaving
+ * the subscriber's current (still-valid) address untouched.
  *
  * Runs in its own short transaction: locks the per-address advisory lock(s) implied by
  * `snapshot` (sorted, old and new, so this can never deadlock against a concurrent
@@ -116,6 +121,13 @@ async function applyChosenEmailSafely(db: Db, snapshot: SubscriberRow, contact: 
       await tx.update(subscribers).set({ needsAttention: null, attentionAt: null }).where(eq(subscribers.id, s.id));
       await writeHistory(tx, s.id, actor, "media-hub-resolved", chosenRef ?? "");
       return "cleared";
+    }
+
+    if (!emailAddressSchema.safeParse(newAddress).success) {
+      if (s.needsAttention === "email-invalid") return "unchanged";
+      await tx.update(subscribers).set({ needsAttention: "email-invalid", attentionAt: sql`now()` }).where(eq(subscribers.id, s.id));
+      await writeHistory(tx, s.id, actor, "media-hub-flagged", chosenRef ?? "");
+      return "email-invalid";
     }
 
     const [existing] = await tx.select({ id: subscribers.id }).from(subscribers).where(sql`lower(${subscribers.email}) = ${newAddress}`);
@@ -172,7 +184,7 @@ async function applyContact(db: Db, contact: MediaHubContact, result: SyncResult
         console.error("[nod] media sync: subscriber changed under us, skipped", contact.id);
       } else if (outcome === "updated") {
         result.updated += 1;
-      } else if (outcome === "email-taken" || outcome === "email-gone") {
+      } else if (outcome === "email-taken" || outcome === "email-gone" || outcome === "email-invalid") {
         result.flagged += 1;
       }
     } catch (e) {
@@ -312,8 +324,9 @@ export interface SyncBound {
 export const SCHEDULED_BOUND: SyncBound = { maxPages: 5, maxMs: 20_000 };
 
 /** The manual trigger's bound -- generous, since an operator waiting on the response would
- * rather it just finish (for any feed small enough to fit). */
-export const MANUAL_BOUND: SyncBound = { maxPages: 30, maxMs: 60_000 };
+ * rather it just finish (for any feed small enough to fit), but kept under the stack's proxy
+ * timeout so a big feed still gets a response instead of a gateway timeout. */
+export const MANUAL_BOUND: SyncBound = { maxPages: 30, maxMs: 30_000 };
 
 export interface SyncOutcome {
   /** Whether the *whole* feed (back to the previous run's since) has now been processed, not
@@ -444,7 +457,7 @@ export async function getMediaSyncStatus(db: DbOrTx): Promise<{ since: string | 
   };
 }
 
-export type ResolveOutcome = "resolved" | "not-found" | "ref-not-found" | "media-hub-unavailable" | "email-taken" | "conflict";
+export type ResolveOutcome = "resolved" | "not-found" | "ref-not-found" | "media-hub-unavailable" | "email-taken" | "invalid-email" | "conflict";
 
 /**
  * `POST /api/media-members/:subscriberId/resolve`: staff clearing a `needs_attention` flag by
@@ -457,6 +470,11 @@ export type ResolveOutcome = "resolved" | "not-found" | "ref-not-found" | "media
  * call (which must not happen while holding a lock); the locked re-read is checked against
  * that snapshot, and a mismatch (something else changed this subscriber meanwhile) returns
  * `"conflict"` rather than acting on stale data.
+ *
+ * The ref's address is validated against the same schema the routes use before anything else --
+ * the contract (media-hub/contract.ts) doesn't require `.email()`, and this is a staff action
+ * pointing the subscriber straight at it, so an invalid address is rejected outright
+ * (`"invalid-email"`, the route maps it to 400) rather than written or flagged.
  */
 export async function resolveMediaMember(
   db: Db,
@@ -483,6 +501,7 @@ export async function resolveMediaMember(
   const contact = await mediaHub.get(current.mediaHubContactId);
   const email = contact && !contact.deletedAt ? contact.emails.find((e) => e.ref === emailRef) : undefined;
   if (!contact || contact.deletedAt || !email) return "ref-not-found";
+  if (!emailAddressSchema.safeParse(email.address).success) return "invalid-email";
 
   const newAddress = normaliseEmail(email.address);
   const oldAddress = normaliseEmail(current.email);

@@ -9,16 +9,24 @@ import { getMediaSyncStatus, resolveMediaMember, runMediaSync } from "../media-h
 import { addMediaMember, listMediaLists, listMediaMembers, MediaListNotFoundError, OptedOutError, removeMediaMember } from "../media-members";
 import { getSettings, setPaused } from "../settings";
 import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
+import { emailAddressSchema } from "../subscribe/info";
 
 /** '*' = all news, or '<kind>:<key>' with kind in ministries|sectors|themes|tags (matches indexKeysFor's output shape). */
 export const listKeySchema = z
   .string()
   .regex(/^(ministries|sectors|themes|tags):.+$/i, "must be '<kind>:<key>' with kind in ministries|sectors|themes|tags");
 
-/** Shared with the add-from-hub branch below: the chosen Media Hub email's address is
- * validated against this same schema right before it reaches `addMediaMember`, since the
- * contract itself (media-hub/contract.ts) deliberately doesn't require `.email()`. */
-export const emailAddressSchema = z.string().email();
+/** The count route's own schema -- unlike {@link listKeySchema} (addSubscriberSchema's own
+ * use, left unchanged), this also accepts a `media-distribution-lists:<key>` key, since NRMS's
+ * media contact count (`WorkflowDeps.countMediaContacts`) calls this same route. */
+export const countListKeySchema = z.union([listKeySchema, z.string().regex(/^media-distribution-lists:.+$/i, "must be '<kind>:<key>'")]);
+
+/** Re-exported for callers that import it from here (the add-from-hub branch below validates
+ * the chosen Media Hub email's address against this same schema right before it reaches
+ * `addMediaMember`, since the contract itself -- media-hub/contract.ts -- deliberately doesn't
+ * require `.email()`). The schema itself now lives in subscribe/info.ts so media-hub/sync.ts
+ * can share it too without an import cycle through this file. */
+export { emailAddressSchema };
 
 export const addSubscriberSchema = z.object({
   email: emailAddressSchema,
@@ -106,7 +114,7 @@ export function apiRoutes(
     requireAnyRole("NoD.Admin", "NRMS.Editor", "NoD.SubscriberCount"),
     run(async (req, res) => {
       const raw = typeof req.query.lists === "string" ? req.query.lists : "";
-      const lists = z.array(listKeySchema).parse(raw ? raw.split(",") : []);
+      const lists = z.array(countListKeySchema).parse(raw ? raw.split(",") : []);
       res.json({ count: await countSubscribers(db, lists) });
     }),
   );
@@ -212,6 +220,7 @@ export function apiRoutes(
       const outcome = await resolveMediaMember(db, mediaHub, req.params.subscriberId, parsed.emailRef, actorOf(req).name);
       if (outcome === "not-found" || outcome === "ref-not-found") return void res.status(404).json({ error: "not found" });
       if (outcome === "media-hub-unavailable") return void res.status(503).json({ error: "media hub not configured" });
+      if (outcome === "invalid-email") return void res.status(400).json({ error: "invalid email" });
       if (outcome === "email-taken") return void res.status(409).json({ error: "email-taken" });
       if (outcome === "conflict") return void res.status(409).json({ error: "changed, retry" });
       res.status(200).json({ ok: true });
