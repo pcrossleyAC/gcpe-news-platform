@@ -2,6 +2,7 @@ import type { NewsApiClient } from "./news-api-client";
 import { enqueueSiteWrite, HOME_COUNT, POST_KEY, postPath, resyncPostPages, stateAndBanner, tryHome } from "./rebuild";
 import { renderHomePage, renderPostPage, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
+import { writeSubscribePages } from "./subscribe-pages";
 
 /** How many of the latest posts to rebuild when the output folder is found empty — generous
  * (most sites publish far fewer than this in their whole history) since this only runs once,
@@ -45,6 +46,10 @@ export function selfHeal(deps: { newsApi: NewsApiClient; storage: SiteStorage; s
     if (computed) {
       await resyncPostPages({ newsApi, storage, site }, computed.state, computed.banner);
     }
+
+    // Phase 4a test pages: cheap and stateless, so rewritten on every start (they pick up any
+    // chrome change without a marker bump).
+    await writeSubscribePages(storage, site, { test, banner: computed?.banner ?? null });
 
     if (await storage.exists("index.html")) return null;
 
