@@ -1,4 +1,5 @@
 import express, { Router } from "express";
+import type { Request, Response } from "express";
 import { isIP } from "node:net";
 import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 
@@ -6,6 +7,13 @@ export interface SubscribeProxyOptions {
   baseUrl: string;
   getToken?: () => Promise<string>;
   rateLimitPerMinute: number;
+  /**
+   * ONE_CLICK_RATE_LIMIT_PER_MIN, default 6000: the one-click unsubscribe POST gets its own
+   * rate bucket, separate from rateLimitPerMinute above. Mail providers fan these out from a
+   * small pool of shared sending IPs, so the generic per-client limit (sized for browser
+   * traffic) would 429 legitimate unsubscribes; this bucket is sized for that traffic instead.
+   */
+  oneClickRateLimitPerMinute?: number;
   /**
    * SUBSCRIBE_CLIENT_IP_HEADER: when set (e.g. "x-client-ip"), the rate-limit bucket is keyed
    * on this request header — the end user's IP as forwarded by gcpe-news-webapp — instead of
@@ -15,6 +23,8 @@ export interface SubscribeProxyOptions {
   clientIpHeader?: string;
   fetchImpl?: typeof fetch;
 }
+
+const ONE_CLICK_RATE_LIMIT_PER_MIN_DEFAULT = 6000;
 
 const ROUTES: [method: "get" | "post", path: string][] = [
   ["get", "/Subscribe/SubscriptionItems/:categoryKey"],
@@ -50,8 +60,45 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
     r.all("/Subscribe/{*rest}", (_req, res) => void res.status(503).json({ error: "subscriptions unavailable" }));
     return r;
   }
-  const doFetch = opts.fetchImpl ?? fetch;
-  const clientIpHeader = opts.clientIpHeader;
+  // Narrowed to a plain const: TS doesn't carry the `if (!opts) return` narrowing of a
+  // parameter into the nested `forward` closure below, since a parameter could in principle
+  // be reassigned before the closure runs.
+  const subscribeOpts = opts;
+  const doFetch = subscribeOpts.fetchImpl ?? fetch;
+  const clientIpHeader = subscribeOpts.clientIpHeader;
+  const keyGenerator = (req: Request) => {
+    // A missing/malformed header falls back to req.ip; ipKeyGenerator groups IPv6
+    // addresses by subnet so one host can't rotate through its /64 for fresh buckets.
+    const forwarded = clientIpHeader ? req.get(clientIpHeader)?.split(",")[0]?.trim() : undefined;
+    const ip = forwarded && isIP(forwarded) ? forwarded : (req.ip ?? "");
+    return ipKeyGenerator(ip);
+  };
+
+  // Shared forwarding: token, 15s timeout, status and content-type passthrough (never forced
+  // to application/json — RFC 8058 unsubscribe confirmations and NoD's other responses carry
+  // whatever content-type they choose), and the 502 log line. The log line never includes the
+  // upstream URL: for the one-click route, the path segment IS the subscriber's token.
+  async function forward(req: Request, res: Response, upstreamPath: string, init: { method: string; headers: Record<string, string>; body?: string }) {
+    try {
+      const headers = { ...init.headers };
+      if (subscribeOpts.getToken) headers.authorization = `Bearer ${await subscribeOpts.getToken()}`;
+      const upstream = await doFetch(`${subscribeOpts.baseUrl.replace(/\/$/, "")}/api${upstreamPath}`, {
+        method: init.method,
+        headers,
+        body: init.body,
+        signal: AbortSignal.timeout(15_000),
+      });
+      const text = await upstream.text();
+      res.status(upstream.status);
+      const type = upstream.headers.get("content-type");
+      if (type) res.set("content-type", type);
+      res.send(text);
+    } catch (e) {
+      console.error("[news-api] subscribe proxy failed", e);
+      res.status(502).json({ error: "subscriptions upstream unavailable" });
+    }
+  }
+
   r.use(
     "/Subscribe",
     rateLimit({
@@ -59,13 +106,21 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
       limit: opts.rateLimitPerMinute,
       standardHeaders: "draft-8",
       legacyHeaders: false,
-      keyGenerator: (req) => {
-        // A missing/malformed header falls back to req.ip; ipKeyGenerator groups IPv6
-        // addresses by subnet so one host can't rotate through its /64 for fresh buckets.
-        const forwarded = clientIpHeader ? req.get(clientIpHeader)?.split(",")[0]?.trim() : undefined;
-        const ip = forwarded && isIP(forwarded) ? forwarded : (req.ip ?? "");
-        return ipKeyGenerator(ip);
-      },
+      keyGenerator,
+      // One-click POSTs get their own bucket below — mail providers send these from a small
+      // pool of shared sending IPs, which this per-client limit (sized for browser traffic)
+      // would otherwise throttle.
+      skip: (req) => req.path.startsWith("/OneClickUnsubscribe/"),
+    }),
+  );
+  r.use(
+    "/Subscribe/OneClickUnsubscribe",
+    rateLimit({
+      windowMs: 60_000,
+      limit: opts.oneClickRateLimitPerMinute ?? ONE_CLICK_RATE_LIMIT_PER_MIN_DEFAULT,
+      standardHeaders: "draft-8",
+      legacyHeaders: false,
+      keyGenerator,
     }),
   );
 
@@ -75,17 +130,11 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
   r.post("/Subscribe/OneClickUnsubscribe/:tokenGuid", express.urlencoded({ extended: false, limit: "1kb" }), async (req, res) => {
     const upstreamPath = buildUpstreamPath("/Subscribe/OneClickUnsubscribe/:tokenGuid", req.params);
     if (upstreamPath === undefined) return void res.status(400).json({ error: "invalid parameter" });
-    try {
-      const headers: Record<string, string> = { accept: "application/json", "content-type": "application/x-www-form-urlencoded" };
-      if (opts.getToken) headers.authorization = `Bearer ${await opts.getToken()}`;
-      const upstream = await doFetch(`${opts.baseUrl.replace(/\/$/, "")}/api${upstreamPath}`, {
-        method: "POST", headers, body: "List-Unsubscribe=One-Click", signal: AbortSignal.timeout(15_000),
-      });
-      res.status(upstream.status).type("application/json").send(await upstream.text());
-    } catch (e) {
-      console.error("[news-api] one-click unsubscribe proxy failed", e);
-      res.status(502).json({ error: "subscriptions upstream unavailable" });
-    }
+    await forward(req, res, upstreamPath, {
+      method: "POST",
+      headers: { accept: "application/json", "content-type": "application/x-www-form-urlencoded" },
+      body: "List-Unsubscribe=One-Click",
+    });
   });
 
   for (const [method, path] of ROUTES) {
@@ -100,26 +149,13 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
         for (const value of Array.isArray(v) ? v : [v]) if (typeof value === "string") query.append(k, value);
       }
       const qs = query.toString();
-      const target = `${opts.baseUrl.replace(/\/$/, "")}/api${upstreamPath}${qs ? `?${qs}` : ""}`;
       const headers: Record<string, string> = { accept: "application/json" };
       if (method === "post") headers["content-type"] = "application/json";
-      try {
-        if (opts.getToken) headers.authorization = `Bearer ${await opts.getToken()}`;
-        const upstream = await doFetch(target, {
-          method: method.toUpperCase(),
-          headers,
-          body: method === "post" ? JSON.stringify(req.body ?? null) : undefined,
-          signal: AbortSignal.timeout(15_000),
-        });
-        const text = await upstream.text();
-        res.status(upstream.status);
-        const type = upstream.headers.get("content-type");
-        if (type) res.set("content-type", type);
-        res.send(text);
-      } catch (e) {
-        console.error("[news-api] subscribe proxy failed", e);
-        res.status(502).json({ error: "subscriptions upstream unavailable" });
-      }
+      await forward(req, res, `${upstreamPath}${qs ? `?${qs}` : ""}`, {
+        method: method.toUpperCase(),
+        headers,
+        body: method === "post" ? JSON.stringify(req.body ?? null) : undefined,
+      });
     });
   }
   return r;

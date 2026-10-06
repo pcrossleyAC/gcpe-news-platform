@@ -8,14 +8,16 @@ import { subscribeRoutes } from "./subscribe";
 describe("Subscribe proxy", () => {
   let nod: Server;
   let nodUrl: string;
-  const seen: { method: string; url: string; auth?: string; body: unknown }[] = [];
+  const seen: { method: string; url: string; auth?: string; contentType?: string; body: unknown }[] = [];
 
   beforeAll(async () => {
     const stub = express();
     stub.use(express.json());
+    stub.use(express.urlencoded({ extended: false }));
     stub.all("/{*rest}", (req, res) => {
-      seen.push({ method: req.method, url: req.originalUrl, auth: req.header("authorization"), body: req.body });
+      seen.push({ method: req.method, url: req.originalUrl, auth: req.header("authorization"), contentType: req.header("content-type"), body: req.body });
       if (req.path.endsWith("/CheckEmailActivationToken/bad")) return void res.status(404).json({ message: "nope" });
+      if (req.path.endsWith("/OneClickUnsubscribe/plain-text-token")) return void res.type("text/plain").send("unsubscribed");
       res.json(true);
     });
     nod = await new Promise<Server>((r) => {
@@ -55,7 +57,45 @@ describe("Subscribe proxy", () => {
     expect(res.status).toBe(200);
     expect(res.body).toBe(true);
     const last = seen.at(-1)!;
-    expect(last).toMatchObject({ method: "POST", url: "/api/Subscribe/OneClickUnsubscribe/some-token", auth: "Bearer tok" });
+    expect(last).toMatchObject({
+      method: "POST",
+      url: "/api/Subscribe/OneClickUnsubscribe/some-token",
+      auth: "Bearer tok",
+      contentType: "application/x-www-form-urlencoded",
+      body: { "List-Unsubscribe": "One-Click" },
+    });
+  });
+
+  // Carry-forward: the proxy must not force the response content-type to application/json —
+  // it passes through whatever upstream sends, same as the generic loop below.
+  it("passes through an upstream text/plain response instead of forcing application/json", async () => {
+    const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 100 });
+    const res = await request(a).post("/api/Subscribe/OneClickUnsubscribe/plain-text-token").type("form").send("List-Unsubscribe=One-Click");
+    expect(res.status).toBe(200);
+    expect(res.header["content-type"]).toMatch(/^text\/plain/);
+    expect(res.text).toBe("unsubscribed");
+  });
+
+  // One-click POSTs arrive from a small pool of shared mail-provider sending IPs, so they get
+  // their own rate bucket: the generic /Subscribe limiter must not count them at all.
+  it("skips one-click POSTs in the generic /Subscribe limiter, giving them their own bucket", async () => {
+    const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 2 });
+    const postOneClick = () => request(a).post("/api/Subscribe/OneClickUnsubscribe/some-token").type("form").send("List-Unsubscribe=One-Click");
+    const oneClickStatuses = [await postOneClick(), await postOneClick(), await postOneClick()].map((res) => res.status);
+    expect(oneClickStatuses).toEqual([200, 200, 200]);
+
+    // The generic limiter (limit 2) still applies as normal to ordinary requests from the
+    // same client, proving the skip is specific to the one-click path, not a blanket bypass.
+    const getGeneric = () => request(a).get("/api/Subscribe/SubscriptionItems/x");
+    const genericStatuses = [await getGeneric(), await getGeneric(), await getGeneric()].map((res) => res.status);
+    expect(genericStatuses).toEqual([200, 200, 429]);
+  });
+
+  it("rate limits one-click POSTs on their own configured bucket", async () => {
+    const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 100, oneClickRateLimitPerMinute: 2 });
+    const postOneClick = () => request(a).post("/api/Subscribe/OneClickUnsubscribe/some-token").type("form").send("List-Unsubscribe=One-Click");
+    const statuses = [await postOneClick(), await postOneClick(), await postOneClick()].map((res) => res.status);
+    expect(statuses).toEqual([200, 200, 429]);
   });
 
   it("503 when NoD is not configured", async () => {

@@ -102,7 +102,13 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     // updates. Omitted entirely when the hub is disabled.
     readinessChecks: hubEnabled ? [() => isListening()] : [],
     subscribe: parsed.NOD_BASE_URL
-      ? { baseUrl: parsed.NOD_BASE_URL, getToken, rateLimitPerMinute: parsed.SUBSCRIBE_RATE_LIMIT_PER_MIN, clientIpHeader: parsed.SUBSCRIBE_CLIENT_IP_HEADER }
+      ? {
+          baseUrl: parsed.NOD_BASE_URL,
+          getToken,
+          rateLimitPerMinute: parsed.SUBSCRIBE_RATE_LIMIT_PER_MIN,
+          oneClickRateLimitPerMinute: parsed.ONE_CLICK_RATE_LIMIT_PER_MIN,
+          clientIpHeader: parsed.SUBSCRIBE_CLIENT_IP_HEADER,
+        }
       : undefined,
   });
 
