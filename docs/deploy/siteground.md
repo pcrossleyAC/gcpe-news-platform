@@ -226,6 +226,11 @@ reach NRMS first:
   the admin token so NRMS receives every ministry and category:
   `curl -fsS -X POST https://<domain>/core/api/admin/republish -H "authorization: Bearer <access_token>"`
   (then tick, step 5 below, or wait for the cron job to deliver the events).
+- After deploying Phase 4c (or on any fresh NoD database, including the first tick after a
+  legacy NRMS import run from the CLI — which has no `EVENT_SUBSCRIBERS` to carry the lists
+  over as it runs), run NRMS's own media-lists republish once, signed in as `Core.Admin`, so NoD
+  gets every legacy-imported media list: `POST /nrms/api/media-lists/republish` (then tick, or
+  wait for the cron job, to deliver the events).
 - The smoke test (by hand below, or `scripts/siteground-smoke.sh https://<domain>`) needs a
   `health` ministry with abbreviation `HLTH` and a `health` sector in Core.
 
@@ -302,7 +307,7 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
 - [ ] **Phase 4 item 4** — after a publish, check the following evening that the 17:00 BC-time digest arrives and includes the item. Note: releases published before the 4b deploy have no NoD item, so the first digest after deploy only includes releases published after it.
 - [ ] **Phase 4 item 10** — pause NoD sending; confirm nothing goes out while paused; resume; confirm sends release again.
 - [ ] **Phase 4c item 6** — create a media list, add yourself as a member (`POST /nod/api/media-lists/<key>/members`), publish a release with that media list chosen; confirm the full-text media email arrives, with the standard footer and a working one-click unsubscribe.
-- [ ] **Phase 4c item 7** — add a member from the Media Hub search (real or fake), change that contact's chosen email address, run the sync (`POST /nod/api/media-hub/sync`); confirm the member's address updates. Delete the contact and sync again; confirm the member is gone.
+- [ ] **Phase 4c item 7** — add a member from the Media Hub search (real or fake), change that contact's chosen email address, run the sync (`POST /nod/api/media-hub/sync`); confirm the member's address updates. Delete the contact and sync again; confirm the member is gone. On a fake-Media-Hub site, change or delete a contact with a Core.Admin bearer: `POST /fake-media-hub/__fake/contacts/:id/email { ref, address }` to change one of its emails, or `POST /fake-media-hub/__fake/contacts/:id/delete` to soft-delete the contact.
 - [ ] **Phase 4c item 8** — with `NOD_MEMBERSHIP_API_USERNAME`/`NOD_MEMBERSHIP_API_PASSWORD_HASH` set, curl the legacy membership endpoint directly:
   ```sh
   curl -u '<username>:<password>' 'https://boxs.ca/nod/Subscribe/SubscriberInformation?emailAddress=<member email>'

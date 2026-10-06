@@ -14,6 +14,7 @@ Items the 4a task and final reviews deferred to later sub-plans. Each later plan
 - Legacy Distribution stores bounce mailbox credentials in `dbo.Mailbox.MailboxPassword` — decide where ours live (today: Entra app registration / fake mailbox, no stored password; confirm nothing still needs one).
 - NRMS staff-web media-list screen (4c built the admin API only — `POST`/`PUT /nrms/api/media-lists`, `.../republish`; existing lists arrive via the importer and republish).
 - NoD media-list member screens (4c built the admin API only — `GET /nod/api/media-lists`, `GET`/`POST`/`DELETE .../members`, the Media Hub search/sync endpoints).
+- A read route/screen listing who opted out of each media list (history action `media-list-opted-out`).
 
 ## 4g (retention/purge)
 - Purge expired `origin='send'` `subscriber_links` rows (each send mints one per recipient, holding the address).
