@@ -187,7 +187,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
         auth: nodAuth.bearer,
         loginRouter: nodAuth.loginRouter,
         eventSecrets: { nrms: SECRET_NRMS_TO_NOD },
-        handlerOptions: { publicSiteUrl: publicSite.url, manageUrl: MANAGE_URL },
+        render: { siteUrl: publicSite.url, bannerUrl: null },
       }),
     );
 
@@ -316,8 +316,9 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     const mail = sink!.messages[0]!;
     const toAddress = mail.to && "value" in mail.to ? mail.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");
-    // The email subject is the raw headline (a mail header, not rendered HTML) — never escaped.
-    expect(mail.subject).toBe(HEADLINE);
+    // The email subject is "BC Gov News - <title>" with the raw headline (a mail header, not
+    // rendered HTML) — never escaped.
+    expect(mail.subject).toBe(`BC Gov News - ${HEADLINE}`);
     // Task 4: the header carries the real per-recipient one-click unsubscribe URL (substituted
     // by Distribution from the recipient's own `unsubscribeUrl`), not a manage-page link.
     const headerLine = (key: string) => mail.headerLines.find((l) => l.key === key)?.line ?? "";

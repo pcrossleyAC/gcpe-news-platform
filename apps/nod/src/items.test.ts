@@ -72,10 +72,9 @@ describe("items from NRMS release events", () => {
     expect(republished!.withdrawnAt).toBeNull();
   });
 
-  // Title/summary fallback chain (from the real legacy digest sample): English headline/
-  // subheadline when present, else the first document's headline, else the key for title,
-  // and r.summary for summary when there's no English subheadline.
-  it("falls back to the first document's headline, and to r.summary, when there is no English document", async () => {
+  // Title fallback chain: English headline, else the first document's headline, else the key.
+  // Summary is always r.summary (amendment 2026-10-05) regardless of which title fallback fired.
+  it("falls back to the first document's headline, and uses r.summary, when there is no English document", async () => {
     const r = {
       ...sampleRelease,
       key: "K-NOENGLISH",
@@ -95,16 +94,18 @@ describe("items from NRMS release events", () => {
     expect(row!.title).toBe("K-NODOCS");
   });
 
-  it("uses the English document's subheadline as the summary when it's non-empty", async () => {
+  // Amendment 2026-10-05: the summary is the release's own `summary` field — never the English
+  // document's subheadline, even when one is set (this corrects Task 2's original rule).
+  it("summary is the release's own summary field, never the English document's subheadline", async () => {
     const r = {
       ...sampleRelease,
       key: "K-SUBHEAD",
-      summary: "This should be ignored in favour of the subheadline.",
-      documents: [{ ...sampleRelease.documents[0]!, languageId: 4105, subheadline: "The real digest-style summary line." }],
+      summary: "This is the authoritative release summary.",
+      documents: [{ ...sampleRelease.documents[0]!, languageId: 4105, subheadline: "A subheadline that must be ignored." }],
     };
     await sendEvent(app, envelope("nrms", "release.published", r, r.key));
     const [row] = await tdb.db.select().from(items).where(eq(items.key, "K-SUBHEAD"));
-    expect(row!.summary).toBe("The real digest-style summary line.");
+    expect(row!.summary).toBe("This is the authoritative release summary.");
   });
 });
 

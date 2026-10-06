@@ -25,6 +25,7 @@ describe("subscriber journeys", () => {
       db: tdb.db,
       pageUrl: "https://boxs.ca/site/subscribe/manage/",
       linkSecret: SECRET,
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
       distribution: { send: vi.fn(async (m) => { sent.push({ to: m.recipients[0].email, subject: m.subject, text: m.text }); return { batchId: "b" }; }) },
     };
   });

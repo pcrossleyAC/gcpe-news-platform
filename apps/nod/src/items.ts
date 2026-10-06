@@ -6,19 +6,20 @@ import { deliveries, items, sendJobs } from "./db/schema";
 const ENGLISH_LANGUAGE_ID = 4105;
 
 /**
- * Builds an `items` row from an NRMS release (spec: items are what NoD sends). Title and
- * summary each have their own fallback chain, read from the real legacy digest sample
- * (`docs/parity/samples/daily-digest-2026-09-22.md`):
+ * Builds an `items` row from an NRMS release (spec: items are what NoD sends).
  * - Title: the English document's headline, else the first document's, else the release key
  *   (a release can arrive with no documents at all, or an English one with no headline).
- * - Summary: the English document's subheadline — the line the legacy digest printed under
- *   each title — when it's non-empty, else `r.summary ?? ""`. Only the English document's
- *   subheadline counts here; there's no "first document" fallback for summary.
+ * - Summary (amendment 2026-10-05, from three more legacy samples): the release's own
+ *   `summary` field (`r.summary ?? ""`) — legacy emails print the English release's Summary
+ *   field (`ReleasePublisher.cs:60`), pre-filled from the body trimmed to 500 characters
+ *   (`NewModel.cs:332`) and staff-editable; NRMS mirrors this (`releases/service.ts:348`). This
+ *   corrects the Task 2 rule, which read the English document's subheadline instead — that
+ *   field is never used for the summary.
  */
 export function itemFromRelease(r: ReleaseRecord, publicSiteUrl: string): typeof items.$inferInsert {
   const englishDoc = r.documents.find((d) => d.languageId === ENGLISH_LANGUAGE_ID);
   const title = englishDoc?.headline || r.documents[0]?.headline || r.key;
-  const summary = englishDoc?.subheadline ? englishDoc.subheadline : r.summary ?? "";
+  const summary = r.summary ?? "";
   const url = `${publicSiteUrl.replace(/\/$/, "")}/releases/${encodeURIComponent(r.key)}`;
 
   return {
@@ -113,9 +114,10 @@ export async function withdrawItem(tx: DbOrTx, key: string): Promise<void> {
 
 export interface ItemHandlerOptions {
   publicSiteUrl: string;
-  /** Called after a `release.published` item is upserted. Interim As-It-Happens job creation
-   * today (apps/nod/src/app.ts); Task 5 replaces it with the real send-selection logic. */
-  onPublished: (tx: Tx, r: ReleaseRecord) => Promise<void>;
+  /** Called after a `release.published` item is upserted — As-It-Happens send-selection
+   * (apps/nod/src/as-it-happens.ts's `createItemSend`). The return value (whether a job was
+   * created) isn't used here; typed loosely so any such function fits without an adapter. */
+  onPublished: (tx: Tx, r: ReleaseRecord) => Promise<unknown>;
 }
 
 /**

@@ -2,6 +2,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import type { DistributionClient } from "../distribution-client";
 import { subscribers, subscriptions, type SubscriberPrefs } from "../db/schema";
+import type { RenderOptions } from "../render";
 import { writeHistory } from "./history";
 import { infoFor, normaliseEmail, toPrefs, type SubscriberInfo } from "./info";
 import { claimLink, createLink, findLink, linksSentLastHour, MAX_EMAILS_PER_HOUR, type LinkRow } from "./links";
@@ -15,6 +16,8 @@ export interface JourneyDeps {
   pageUrl: string;
   /** HMAC secret for unsubscribe tokens (≥ 32 chars). */
   linkSecret: string;
+  /** Site URL and optional banner for every verify/manage/change-email email (Task 5). */
+  render: RenderOptions;
 }
 
 const SELF = "subscriber";
@@ -103,7 +106,7 @@ async function issue(deps: JourneyDeps, kind: SystemEmailKind, input: { email: s
     return createLink(tx, { purpose: kind, ...input });
   });
   if (!issued) return false;
-  await sendSystemEmail(deps.distribution, input.email, kind, linkUrl(deps.pageUrl, issued.token), `nod-link-${issued.id}`);
+  await sendSystemEmail(deps.distribution, input.email, kind, linkUrl(deps.pageUrl, issued.token), `nod-link-${issued.id}`, deps.render);
   return true;
 }
 

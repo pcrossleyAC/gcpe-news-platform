@@ -61,6 +61,7 @@ describe("links", () => {
       db: tdb.db,
       pageUrl: "https://example.test/manage/",
       linkSecret: "k".repeat(32),
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
       distribution: {
         send: async (m) => {
           sent.push({ to: m.recipients[0]!.email, subject: m.subject });

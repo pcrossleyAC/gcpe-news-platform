@@ -790,7 +790,9 @@ describe("apps/stack", () => {
     expect(pageRes.status).toBe(200);
 
     await expect.poll(() => instance.sink.messages.length, { timeout: 5000 }).toBeGreaterThan(0);
-    const mail = instance.sink.messages.find((m) => m.subject === headline);
+    // Task 5: NoD's As-It-Happens subject is "BC Gov News - <title>" (legacy NodTask.cs), not
+    // the bare headline.
+    const mail = instance.sink.messages.find((m) => m.subject === `BC Gov News - ${headline}`);
     expect(mail).toBeDefined();
     const toAddress = mail!.to && "value" in mail!.to ? mail!.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");

@@ -1,5 +1,6 @@
 import { escapeHtml } from "@gcpe/http-kit";
 import { DistributionError, type DistributionClient } from "../distribution-client";
+import { renderSystemShell, type RenderOptions } from "../render";
 
 export type SystemEmailKind = "verify" | "manage" | "change-email";
 
@@ -24,14 +25,18 @@ const WORDING: Record<SystemEmailKind, { subject: string; heading: string; lines
   },
 };
 
-export function renderSystemEmail(kind: SystemEmailKind, link: string): { subject: string; html: string; text: string } {
+/** Wraps this kind's heading/lines/action link in the same banner every outbound NoD email
+ * uses, with the one-cell "See more from BC Gov News" system footer (Task 5's amendment: these
+ * aren't subscriber sends, so no manage cell and no unsubscribe link). */
+export function renderSystemEmail(kind: SystemEmailKind, link: string, render: RenderOptions): { subject: string; html: string; text: string } {
   const w = WORDING[kind];
-  const text = [w.heading, "", ...w.lines.flatMap((l) => [l, ""]), `${w.action} ${link}`, "", "This link expires in 24 hours."].join("\n");
-  const html =
+  const bodyText = [w.heading, "", ...w.lines.flatMap((l) => [l, ""]), `${w.action} ${link}`, "", "This link expires in 24 hours."].join("\n");
+  const bodyHtml =
     `<h1>${escapeHtml(w.heading)}</h1>` +
     w.lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("") +
     `<p>${escapeHtml(w.action)} <a href="${escapeHtml(link)}">${escapeHtml(link)}</a></p>` +
     `<p>This link expires in 24 hours.</p>`;
+  const { html, text } = renderSystemShell(render, bodyHtml, bodyText);
   return { subject: w.subject, html, text };
 }
 
@@ -49,8 +54,9 @@ export async function sendSystemEmail(
   kind: SystemEmailKind,
   link: string,
   idempotencyKey: string,
+  render: RenderOptions,
 ): Promise<void> {
-  const { subject, html, text } = renderSystemEmail(kind, link);
+  const { subject, html, text } = renderSystemEmail(kind, link, render);
   try {
     await distribution.send({ priority: "system", idempotencyKey, subject, html, text, headers: {}, recipients: [{ email: to, substitutions: {} }] });
   } catch (e) {

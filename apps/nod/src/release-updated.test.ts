@@ -25,7 +25,7 @@ describe("release.updated from nrms produces no NoD send", () => {
       db: tdb.db,
       auth: {},
       eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
-      handlerOptions: { publicSiteUrl: "https://news.gov.bc.ca", manageUrl: "https://news.gov.bc.ca/manage" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
     });
   });
   afterAll(async () => {

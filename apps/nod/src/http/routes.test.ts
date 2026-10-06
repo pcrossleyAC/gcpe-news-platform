@@ -36,7 +36,7 @@ describe("NoD HTTP API", () => {
       db: tdb.db,
       auth: { issuer, audience, keys },
       eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
-      handlerOptions: { publicSiteUrl: "https://news.gov.bc.ca", manageUrl: "https://news.gov.bc.ca/manage" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
     });
   });
   afterAll(async () => {
@@ -142,7 +142,7 @@ describe("GET /api/subscribers/count", () => {
       db: tdb.db,
       auth: { issuer, audience, keys },
       eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
-      handlerOptions: { publicSiteUrl: "https://news.gov.bc.ca", manageUrl: "https://news.gov.bc.ca/manage" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
     });
 
     await addSubscriber(tdb.db, { email: "count-all@example.com", lists: "all" });
@@ -190,5 +190,86 @@ describe("GET /api/subscribers/count", () => {
     const res = await request(app).get("/api/subscribers/count?lists=ministries:health").set("authorization", `Bearer ${subscriberCountService}`);
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ count: 2 });
+  });
+});
+
+describe("POST /api/emergency-items", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  let admin: string;
+  let reader: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    const pair = await generateKeyPair("RS256");
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: "k", alg: "RS256" }] });
+    const sign = (roles: string[]) =>
+      new SignJWT({ roles })
+        .setProtectedHeader({ alg: "RS256", kid: "k" })
+        .setIssuer(issuer)
+        .setAudience(audience)
+        .setSubject("svc")
+        .setExpirationTime("5m")
+        .sign(pair.privateKey);
+    admin = await sign(["NoD.Admin"]);
+    reader = await sign([]);
+    app = createApp({
+      db: tdb.db,
+      auth: { issuer, audience, keys },
+      eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
+    });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  const body = { guid: "emergency-guid-1", title: "Evacuation order", summary: "Leave the area immediately.", url: "https://news.gov.bc.ca/emergency/1" };
+
+  it("401s without a token, 403s without NoD.Admin", async () => {
+    expect((await request(app).post("/api/emergency-items").send(body)).status).toBe(401);
+    expect((await request(app).post("/api/emergency-items").set("authorization", `Bearer ${reader}`).send(body)).status).toBe(403);
+  });
+
+  it("201s a new guid, then 200s the same guid again with the same key", async () => {
+    const created = await request(app).post("/api/emergency-items").set("authorization", `Bearer ${admin}`).send(body);
+    expect(created.status).toBe(201);
+    expect(typeof created.body.key).toBe("string");
+
+    const again = await request(app).post("/api/emergency-items").set("authorization", `Bearer ${admin}`).send(body);
+    expect(again.status).toBe(200);
+    expect(again.body.key).toBe(created.body.key);
+  });
+
+  it("400s a title over 500 characters and a non-http(s) url", async () => {
+    const longTitle = await request(app)
+      .post("/api/emergency-items")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ ...body, guid: "guid-long-title", title: "x".repeat(501) });
+    expect(longTitle.status).toBe(400);
+
+    const badUrl = await request(app)
+      .post("/api/emergency-items")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ ...body, guid: "guid-bad-url", url: "ftp://news.gov.bc.ca/1" });
+    expect(badUrl.status).toBe(400);
+  });
+
+  it("a subscriber on emergency:alerts gets a delivery even if digest-only; a subscriber not on the list gets none", async () => {
+    const onList = (await addSubscriber(tdb.db, { email: "alerts-subscriber@example.com", lists: ["emergency:alerts"] })).id;
+    // addSubscriber always sets as_it_happens true; flip it to prove emergency sends ignore timing.
+    await tdb.db.update(subscribers).set({ asItHappens: false, digest: true }).where(eq(subscribers.id, onList));
+    const offList = (await addSubscriber(tdb.db, { email: "not-on-alerts@example.com", lists: "all" })).id;
+
+    const created = await request(app)
+      .post("/api/emergency-items")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ ...body, guid: "guid-recipients-1" });
+    expect(created.status).toBe(201);
+    const key = created.body.key as string;
+
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, key));
+    expect(deliveryRows.map((d) => d.subscriberId)).toEqual([onList]);
+    expect(deliveryRows.map((d) => d.subscriberId)).not.toContain(offList);
   });
 });

@@ -2,6 +2,7 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { requireAnyRole, requireRole } from "@gcpe/auth";
+import type { ItemSending } from "../as-it-happens";
 import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
 
 /** '*' = all news, or '<kind>:<key>' with kind in ministries|sectors|themes|tags (matches indexKeysFor's output shape). */
@@ -12,6 +13,14 @@ export const listKeySchema = z
 export const addSubscriberSchema = z.object({
   email: z.string().email(),
   lists: z.union([z.literal("all"), z.array(listKeySchema)]),
+});
+
+export const emergencyItemSchema = z.object({
+  guid: z.string().min(1),
+  title: z.string().min(1).max(500),
+  summary: z.string().optional(),
+  url: z.string().url().refine((u) => u.startsWith("http://") || u.startsWith("https://"), "must be an http(s) URL"),
+  publishedAt: z.string().datetime().optional(),
 });
 
 type Handler<P> = (req: Request<P>, res: Response) => Promise<void>;
@@ -27,7 +36,7 @@ function handleError(e: unknown, res: Response): boolean {
   return false;
 }
 
-export function apiRoutes(db: Db): Router {
+export function apiRoutes(db: Db, items: Pick<ItemSending, "recordEmergencyItem">): Router {
   const r = Router();
   const run = <P>(h: Handler<P>): ReturnType<typeof safe<P>> =>
     safe<P>(async (req, res) => {
@@ -59,6 +68,16 @@ export function apiRoutes(db: Db): Router {
       const raw = typeof req.query.lists === "string" ? req.query.lists : "";
       const lists = z.array(listKeySchema).parse(raw ? raw.split(",") : []);
       res.json({ count: await countSubscribers(db, lists) });
+    }),
+  );
+
+  r.post(
+    "/emergency-items",
+    requireRole("NoD.Admin"),
+    run(async (req, res) => {
+      const parsed = emergencyItemSchema.parse(req.body);
+      const { key, created } = await items.recordEmergencyItem(db, { ...parsed, summary: parsed.summary ?? "" });
+      res.status(created ? 201 : 200).json({ key });
     }),
   );
 

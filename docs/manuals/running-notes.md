@@ -52,3 +52,12 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   takes link tokens only, never an email address in place of a token (C60).
 - **Operations** — Until 4b, As-It-Happens footers link with the old manage token, which the new
   manage page doesn't accept; keep NOD_MANAGE_URL pointed at its old value on test sites.
+- **Operations** — NOD_BANNER_URL is optional. Unset, every NoD email (As-It-Happens, emergency,
+  digest, and the manage/verify emails) shows a plain blue "Government of B.C." heading instead
+  of a banner image.
+- **Administrator** — Emergency alerts go out through `POST /api/emergency-items` (NoD.Admin
+  only), to every active subscriber on the `emergency:alerts` list regardless of their own
+  As-It-Happens/digest preference. The same guid always resolves to the same item (201 the first
+  time, 200 after).
+- **Developer** — An item's email summary is the release's own Summary field (`r.summary`),
+  never the English document's subheadline, even when one is set.

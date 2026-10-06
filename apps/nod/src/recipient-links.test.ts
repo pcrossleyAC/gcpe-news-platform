@@ -23,7 +23,7 @@ describe("recipientSubstitutions", () => {
     };
     // Same pageUrl/linkSecret as opts, so confirm()/unsubscribe() see the links the same way
     // the real app's JourneyDeps would.
-    deps = { db: tdb.db, pageUrl: opts.pageUrl, linkSecret: SECRET, distribution: { send: async () => ({ batchId: "b" }) } };
+    deps = { db: tdb.db, pageUrl: opts.pageUrl, linkSecret: SECRET, render: { siteUrl: "https://news.example/site", bannerUrl: null }, distribution: { send: async () => ({ batchId: "b" }) } };
   });
   afterAll(async () => tdb.drop());
 

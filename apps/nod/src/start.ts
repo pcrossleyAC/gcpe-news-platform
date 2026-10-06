@@ -10,6 +10,7 @@ import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
 import { needsReferenceData } from "./lists";
 import type { RecipientLinkOptions } from "./recipient-links";
+import type { RenderOptions } from "./render";
 import { sendDueJobs, startJobSender } from "./send-jobs";
 
 export const nodEnvSchema = z.object({
@@ -28,6 +29,9 @@ export const nodEnvSchema = z.object({
   DISTRIBUTION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   PUBLIC_SITE_URL: z.string().url(),
   MANAGE_URL: z.string().url(),
+  // Task 5: optional banner image for every outbound email's shell (render.ts); no banner image
+  // host exists yet, so the default is the plain blue heading fallback.
+  NOD_BANNER_URL: z.string().url().optional(),
   // Phase 4a: HMAC key for unsubscribe tokens (the stack derives it from STACK_EVENT_SECRET).
   LINK_SECRET: z.string().min(32),
   // The page emailed verify/manage links open. Default: the public site's test page.
@@ -82,6 +86,10 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     timeoutMs: parsed.DISTRIBUTION_TIMEOUT_MS,
   });
 
+  // Task 5: siteUrl is the public site home ("See more from BC Gov News" in every email's
+  // footer) — the same URL as items' own publicSiteUrl.
+  const render: RenderOptions = { siteUrl: parsed.PUBLIC_SITE_URL, bannerUrl: parsed.NOD_BANNER_URL ?? null };
+
   // Both the subscribe journeys' own manage-link page and Task 3's per-recipient manage links
   // (recipient-links.ts) open the same page — one default, shared.
   const subscribePageUrl = parsed.SUBSCRIBE_PAGE_URL ?? `${parsed.PUBLIC_SITE_URL.replace(/\/$/, "")}/subscribe/manage/`;
@@ -100,12 +108,13 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     auth: auth.bearer,
     loginRouter: auth.loginRouter,
     eventSecrets: parsed.EVENT_SECRETS,
-    handlerOptions: { publicSiteUrl: parsed.PUBLIC_SITE_URL, manageUrl: parsed.MANAGE_URL },
+    render,
     subscribe: {
       db,
       distribution,
       pageUrl: subscribePageUrl,
       linkSecret: parsed.LINK_SECRET,
+      render,
     },
   });
 
