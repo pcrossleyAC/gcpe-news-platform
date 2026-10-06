@@ -9,7 +9,13 @@ import { z } from "zod";
 export const mediaHubEmailSchema = z.object({
   /** "personal" or "workplace:<workplaceId>". */
   ref: z.string().min(1),
-  address: z.string().email(),
+  // Deliberately not `.email()` -- Media Hub's own contract just says "address", and an
+  // unusual-but-valid address (an IDN domain, an uncommon local part, ...) that zod's email
+  // regex happens to reject must not make every search/sync throw MediaHubError("contract")
+  // and 502 wholesale over one contact. Whether the chosen address is usable as an email is
+  // validated where it matters -- the add-from-hub route, right before handing it to
+  // addMediaMember (routes.ts).
+  address: z.string().min(1),
   kind: z.enum(["personal", "workplace"]),
   organization: z.string().nullable(),
   preferred: z.boolean(),

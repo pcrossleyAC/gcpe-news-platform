@@ -50,6 +50,25 @@ describe("mediaHubClient", () => {
     expect(changes.nextCursor).toBeNull();
   });
 
+  it("accepts a contact whose address is unusual but contract-valid (not rejected as a non-email)", async () => {
+    const app = express();
+    app.get("/api/service/contacts/:id", (req, res) => {
+      res.json({
+        id: Number(req.params.id),
+        firstName: "Üma",
+        lastName: "Søren",
+        outlet: null,
+        emails: [{ ref: "personal", address: "üser@exämple.test", kind: "personal", organization: null, preferred: false }],
+        deletedAt: null,
+      });
+    });
+    const baseUrl = await listen(app);
+    const client = mediaHubClient({ baseUrl, getToken: async () => "test-token" });
+
+    const got = await client.get(1);
+    expect(got?.emails[0]?.address).toBe("üser@exämple.test");
+  });
+
   it("throws MediaHubError('contract') when a response fails contract validation", async () => {
     const app = express();
     app.get("/api/service/contacts/:id", (req, res) => {

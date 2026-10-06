@@ -395,6 +395,24 @@ const sampleHubContact: MediaHubContact = {
   deletedAt: null,
 };
 
+const deletedHubContact: MediaHubContact = {
+  id: 43,
+  firstName: "Robin",
+  lastName: "Shaw",
+  outlet: "Pacific Wire News",
+  emails: [{ ref: "personal", address: "robin.shaw.43@example.test", kind: "personal", organization: null, preferred: false }],
+  deletedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const badEmailHubContact: MediaHubContact = {
+  id: 44,
+  firstName: "Jess",
+  lastName: "Okafor",
+  outlet: null,
+  emails: [{ ref: "personal", address: "not-an-email", kind: "personal", organization: null, preferred: false }],
+  deletedAt: null,
+};
+
 describe("media-lists Media Hub integration (search proxy, add-from-hub)", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
@@ -412,9 +430,10 @@ describe("media-lists Media Hub integration (search proxy, add-from-hub)", () =>
       .setSubject("svc")
       .setExpirationTime("5m")
       .sign(pair.privateKey);
+    const byId = new Map([sampleHubContact, deletedHubContact, badEmailHubContact].map((c) => [c.id, c]));
     mediaHub = {
       search: vi.fn().mockResolvedValue({ contacts: [sampleHubContact], page: 1, pageSize: 25, total: 1 }),
-      get: vi.fn(async (id: number) => (id === sampleHubContact.id ? sampleHubContact : null)),
+      get: vi.fn(async (id: number) => byId.get(id) ?? null),
       changes: vi.fn(),
     } as unknown as MediaHubClient & { search: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
     app = createApp({
@@ -465,6 +484,28 @@ describe("media-lists Media Hub integration (search proxy, add-from-hub)", () =>
       .set("authorization", `Bearer ${admin}`)
       .send({ mediaHubContactId: 999999, emailRef: "personal" });
     expect(unknownContact.status).toBe(404);
+  });
+
+  it("POST /api/media-lists/:key/members 404s a soft-deleted contact, creating nothing", async () => {
+    const res = await request(app)
+      .post("/api/media-lists/hub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ mediaHubContactId: deletedHubContact.id, emailRef: "personal" });
+    expect(res.status).toBe(404);
+
+    const rows = await tdb.db.select().from(subscribers).where(eq(subscribers.email, deletedHubContact.emails[0]!.address));
+    expect(rows).toHaveLength(0);
+  });
+
+  it("POST /api/media-lists/:key/members 400s when the chosen Media Hub address isn't a valid email, same status as a manual add's bad email", async () => {
+    const res = await request(app)
+      .post("/api/media-lists/hub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ mediaHubContactId: badEmailHubContact.id, emailRef: "personal" });
+    expect(res.status).toBe(400);
+
+    const rows = await tdb.db.select().from(subscribers).where(eq(subscribers.email, badEmailHubContact.emails[0]!.address));
+    expect(rows).toHaveLength(0);
   });
 });
 

@@ -14,13 +14,18 @@ export const listKeySchema = z
   .string()
   .regex(/^(ministries|sectors|themes|tags):.+$/i, "must be '<kind>:<key>' with kind in ministries|sectors|themes|tags");
 
+/** Shared with the add-from-hub branch below: the chosen Media Hub email's address is
+ * validated against this same schema right before it reaches `addMediaMember`, since the
+ * contract itself (media-hub/contract.ts) deliberately doesn't require `.email()`. */
+export const emailAddressSchema = z.string().email();
+
 export const addSubscriberSchema = z.object({
-  email: z.string().email(),
+  email: emailAddressSchema,
   lists: z.union([z.literal("all"), z.array(listKeySchema)]),
 });
 
 export const addMediaMemberSchema = z.union([
-  z.object({ email: z.string().email(), confirmOptOut: z.boolean().optional() }),
+  z.object({ email: emailAddressSchema, confirmOptOut: z.boolean().optional() }),
   z.object({ mediaHubContactId: z.number().int(), emailRef: z.string().min(1), confirmOptOut: z.boolean().optional() }),
 ]);
 
@@ -141,10 +146,18 @@ export function apiRoutes(
         const contact = await mediaHub.get(parsed.mediaHubContactId);
         const email = contact?.deletedAt ? undefined : contact?.emails.find((e) => e.ref === parsed.emailRef);
         if (!contact || contact.deletedAt || !email) return void res.status(404).json({ error: "not found" });
+
+        // The contract's own `address` field isn't required to be a valid email (contract.ts)
+        // -- this is where that's actually checked, using the same schema and the same
+        // response shape as a manual add's bad email (handleError's ZodError case), so a
+        // caller sees one consistent "this address is bad" answer regardless of which path hit it.
+        const address = emailAddressSchema.safeParse(email.address);
+        if (!address.success) return void res.status(400).json({ error: "invalid request", issues: address.error.issues });
+
         const { subscriberId, created } = await addMediaMember(
           db,
           req.params.key,
-          { email: email.address, source: "media-hub", mediaHubContactId: parsed.mediaHubContactId, mediaHubEmailRef: parsed.emailRef, confirmOptOut: parsed.confirmOptOut },
+          { email: address.data, source: "media-hub", mediaHubContactId: parsed.mediaHubContactId, mediaHubEmailRef: parsed.emailRef, confirmOptOut: parsed.confirmOptOut },
           actorOf(req).name,
         );
         return void res.status(created ? 201 : 200).json({ subscriberId, created });
