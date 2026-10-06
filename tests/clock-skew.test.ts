@@ -139,24 +139,25 @@ describe.each([
     await nodDb.pool.query("INSERT INTO job_recipients (job_id, subscriber_id) VALUES ($1, $2)", [jobRows[0]!.id, subRows[0]!.id]);
     const jobId = jobRows[0]!.id;
     const lockMs = 1 * 30_000 + 30_000 + 30_000; // one chunk, plus getToken, plus the margin
+    const links = { pageUrl: "https://news.example/manage", subscribeApiUrl: "https://news.example/api/Subscribe", linkSecret: "x".repeat(32) };
     let lockFromDbNow: number | undefined;
     let replica: unknown;
     const distribution: DistributionClient = {
       send: async () => {
         lockFromDbNow = await msFromDbNow(nodDb, "send_jobs", "locked_until", "id = $1", [jobId]);
-        replica = await unskewed(() => sendDueJobs({ db: nodDb.db, distribution: { send: async () => ({ batchId: "x" }) }, manageUrl: "https://news.example/manage" }));
+        replica = await unskewed(() => sendDueJobs({ db: nodDb.db, distribution: { send: async () => ({ batchId: "x" }) }, links }));
         throw new DistributionError("HTTP 503", true);
       },
     };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const result = await sendDueJobs({ db: nodDb.db, distribution, manageUrl: "https://news.example/manage", maxAgeMs: SHORT_MAX_AGE_MS });
-      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      const result = await sendDueJobs({ db: nodDb.db, distribution, links, maxAgeMs: SHORT_MAX_AGE_MS });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
     } finally {
       warnSpy.mockRestore();
     }
     expectAbout(lockFromDbNow!, lockMs);
-    expect(replica).toEqual({ sent: 0, retried: 0, failed: 0 });
+    expect(replica).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 0, paused: false });
     expectAbout(await msFromDbNow(nodDb, "send_jobs", "next_attempt_at", "id = $1", [jobId]), dispatchBackoffMs(1));
   });
 

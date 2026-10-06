@@ -6,11 +6,17 @@ import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createTestDatabase, dbClock } from "@gcpe/db-kit";
 import { DistributionError, distributionClient, type DistributionClient, type MessageRequest } from "./distribution-client";
-import { jobRecipients, sendJobs, subscribers } from "./db/schema";
+import { deliveries, items, jobRecipients, sendJobs, subscribers } from "./db/schema";
+import type { RecipientLinkOptions } from "./recipient-links";
 import { MAX_CHUNK_BYTES, MAX_RECIPIENTS_PER_CHUNK, ensureChunksAssigned, sendDueJobs } from "./send-jobs";
 
 const nodMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
-const MANAGE_URL = "https://news.example/subscribe/manage";
+const SUBSCRIBE_API_URL = "https://news.example/api/Subscribe";
+const LINKS: RecipientLinkOptions = {
+  pageUrl: "https://news.example/subscribe/manage",
+  subscribeApiUrl: SUBSCRIBE_API_URL,
+  linkSecret: "test-link-secret-at-least-32-chars-long",
+};
 
 async function insertSubscriber(db: TestDatabase["db"], email: string, opts: { active?: boolean; id?: string } = {}): Promise<{ id: string }> {
   const active = opts.active !== false;
@@ -31,7 +37,7 @@ async function insertSubscriber(db: TestDatabase["db"], email: string, opts: { a
  * unpredictably relative to insertion order). */
 const lowId = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
 
-async function insertJob(db: TestDatabase["db"], itemKey: string, overrides: Partial<typeof sendJobs.$inferInsert> = {}) {
+async function insertJob(db: TestDatabase["db"], itemKey: string | null, overrides: Partial<typeof sendJobs.$inferInsert> = {}) {
   const [row] = await db
     .insert(sendJobs)
     .values({
@@ -90,7 +96,8 @@ describe("sendDueJobs", () => {
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE TABLE send_jobs, job_recipients, subscribers CASCADE");
+    await tdb.pool.query("TRUNCATE TABLE send_jobs, job_recipients, subscribers, items CASCADE");
+    await tdb.pool.query("UPDATE nod_settings SET paused = false");
   });
 
   it("sends one request with every active recipient and list-unsubscribe headers", async () => {
@@ -105,13 +112,13 @@ describe("sendDueJobs", () => {
     const distribution = stubDistribution();
     distribution.send.mockResolvedValue({ batchId: "batch-1" });
 
-    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     expect(distribution.send).toHaveBeenCalledTimes(1);
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
     expect(req.idempotencyKey).toBe(`${job.id}:0`);
-    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{manageUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
     expect(req.recipients.map((r) => r.email).sort()).toEqual(["alex@example.com", "sam@example.com"]);
 
     const updated = (await tdb.db.select().from(sendJobs))[0]!;
@@ -134,7 +141,7 @@ describe("sendDueJobs", () => {
 
     const distribution = stubDistribution();
     distribution.send.mockResolvedValue({ batchId: "batch-x" });
-    await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
+    await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
 
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
     expect(req.recipients.map((r) => r.email)).toEqual(["active@example.com"]);
@@ -149,8 +156,8 @@ describe("sendDueJobs", () => {
     distribution.send.mockRejectedValueOnce(new DistributionError("HTTP 503", true));
 
     const before = Date.now();
-    const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
+    const result1 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
 
     const afterFirst = (await tdb.db.select().from(sendJobs))[0]!;
     expect(afterFirst.status).toBe("pending");
@@ -161,8 +168,8 @@ describe("sendDueJobs", () => {
     distribution.send.mockResolvedValueOnce({ batchId: "batch-2" });
     // The backoff was computed from the database's now() (µs); a JS Date of it is truncated to
     // the millisecond, so the test clock is set 1ms past it to be on or after the real value.
-    const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, now: () => new Date(afterFirst.nextAttemptAt.getTime() + 1) });
-    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0 });
+    const result2 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, now: () => new Date(afterFirst.nextAttemptAt.getTime() + 1) });
+    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     expect(distribution.send).toHaveBeenCalledTimes(2);
     expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0`);
@@ -181,8 +188,8 @@ describe("sendDueJobs", () => {
     const distribution = stubDistribution();
     distribution.send.mockRejectedValue(new DistributionError("HTTP 400: invalid subject", false));
 
-    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-    expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 1, cancelled: 0, paused: false });
 
     const row = (await tdb.db.select().from(sendJobs))[0]!;
     expect(row.status).toBe("failed");
@@ -200,8 +207,8 @@ describe("sendDueJobs", () => {
     distribution.send.mockRejectedValue(new DistributionError("HTTP 400: invalid subject", false));
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-      expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+      const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 1, cancelled: 0, paused: false });
       expect(errorSpy).toHaveBeenCalledTimes(1);
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining(`[nod] job ${job.id} item release-logfail failed: HTTP 400`));
     } finally {
@@ -218,8 +225,8 @@ describe("sendDueJobs", () => {
     distribution.send.mockRejectedValue(new DistributionError("HTTP 503", true));
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining(`[nod] job ${job.id} item release-logretry retrying (attempt 1): HTTP 503`));
     } finally {
@@ -240,8 +247,8 @@ describe("sendDueJobs", () => {
 
     // chunkSize 1 over 3 recipients → 3 chunks; chunk 0 succeeds, chunk 1 fails permanently,
     // chunk 2 is never attempted.
-    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 1 });
-    expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, chunkSize: 1 });
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 1, cancelled: 0, paused: false });
 
     const row = (await tdb.db.select().from(sendJobs))[0]!;
     expect(row.status).toBe("failed");
@@ -259,8 +266,8 @@ describe("sendDueJobs", () => {
     // The job's real created_at is "now"; running as if 25h have passed exceeds the default
     // 24h maxAgeMs even though the error itself is retryable.
     const future = new Date(Date.now() + 25 * 3_600_000);
-    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, now: () => future });
-    expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, now: () => future });
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 1, cancelled: 0, paused: false });
 
     const row = (await tdb.db.select().from(sendJobs))[0]!;
     expect(row.status).toBe("failed");
@@ -280,8 +287,8 @@ describe("sendDueJobs", () => {
       },
     });
 
-    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-    expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
 
     const row = (await tdb.db.select().from(sendJobs))[0]!;
     expect(row.status).toBe("pending");
@@ -299,8 +306,8 @@ describe("sendDueJobs", () => {
     const distribution = stubDistribution();
     distribution.send.mockRejectedValue(new Error("boom"));
 
-    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-    expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
 
     const row = (await tdb.db.select().from(sendJobs))[0]!;
     expect(row.status).toBe("pending");
@@ -325,8 +332,8 @@ describe("sendDueJobs", () => {
       const distribution = distributionClient({ baseUrl: `http://127.0.0.1:${port}`, getToken: async () => "t" });
 
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
-      const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
       expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Distribution rejected our credentials (401/403)"));
       errorSpy.mockRestore();
 
@@ -355,10 +362,10 @@ describe("sendDueJobs", () => {
     await locker.query("SELECT 1 FROM send_jobs WHERE id = $1 FOR UPDATE", [locked.id]);
     try {
       const result = await Promise.race([
-        sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, batchSize: 5 }),
+        sendDueJobs({ db: tdb.db, distribution, links: LINKS, batchSize: 5 }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error("sendDueJobs waited on the locked job instead of skipping it")), 5000)),
       ]);
-      expect(result).toEqual({ sent: 2, retried: 0, failed: 0 });
+      expect(result).toEqual({ sent: 2, retried: 0, failed: 0, cancelled: 0, paused: false });
       const keys = distribution.send.mock.calls.map((c) => (c[0] as MessageRequest).idempotencyKey);
       expect(keys.some((k) => k!.startsWith(locked.id))).toBe(false);
     } finally {
@@ -381,8 +388,8 @@ describe("sendDueJobs", () => {
       return { batchId: "stale" };
     });
 
-    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-    expect(result).toEqual({ sent: 0, retried: 0, failed: 0 });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 0, paused: false });
     const [row] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job.id));
     expect(row!.status).toBe("pending");
     expect(row!.batchIds).toEqual({});
@@ -403,8 +410,8 @@ describe("sendDueJobs", () => {
     distribution.send.mockResolvedValue({ batchId: "batch-concurrent" });
 
     const [r1, r2] = await Promise.all([
-      sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, batchSize: 5 }),
-      sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, batchSize: 5 }),
+      sendDueJobs({ db: tdb.db, distribution, links: LINKS, batchSize: 5 }),
+      sendDueJobs({ db: tdb.db, distribution, links: LINKS, batchSize: 5 }),
     ]);
 
     expect(r1.sent + r2.sent).toBe(2);
@@ -426,8 +433,8 @@ describe("sendDueJobs", () => {
     });
 
     const now = await dbClock(tdb.db);
-    const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 2, now: () => now });
-    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
+    const result1 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, chunkSize: 2, now: () => now });
+    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
     expect(distribution.send).toHaveBeenCalledTimes(2);
     expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0`);
     expect((distribution.send.mock.calls[1]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:1`);
@@ -438,8 +445,8 @@ describe("sendDueJobs", () => {
     // Retry: resends ALL three chunks, including :0 which already succeeded.
     distribution.send.mockReset();
     distribution.send.mockResolvedValueOnce({ batchId: "b0-again" }).mockResolvedValueOnce({ batchId: "b1" }).mockResolvedValueOnce({ batchId: "b2" });
-    const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 2, now: () => afterFirst.nextAttemptAt });
-    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0 });
+    const result2 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, chunkSize: 2, now: () => afterFirst.nextAttemptAt });
+    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     expect(distribution.send).toHaveBeenCalledTimes(3);
     expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0`);
@@ -477,8 +484,8 @@ describe("sendDueJobs", () => {
     const distribution = dedupingDistribution({ failKeyOnce: `${job.id}:1` });
 
     const now = await dbClock(tdb.db);
-    const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 2, now: () => now });
-    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
+    const result1 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, chunkSize: 2, now: () => now });
+    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
 
     const chunk0Call1 = distribution.calls.find((c) => c.idempotencyKey === `${job.id}:0`)!;
     expect(chunk0Call1.recipients.map((r) => r.email).sort()).toEqual(["orig0@example.com", "orig1@example.com"]);
@@ -493,8 +500,8 @@ describe("sendDueJobs", () => {
     const lateSub = await insertSubscriber(tdb.db, "late@example.com", { id: lowId(0) });
     await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: lateSub.id }]);
 
-    const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, chunkSize: 2, now: () => afterFirst.nextAttemptAt });
-    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0 });
+    const result2 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, chunkSize: 2, now: () => afterFirst.nextAttemptAt });
+    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     // This attempt's (second, final) recipient set per chunk — the proof that chunking was
     // frozen: chunk 0 lost exactly its deleted member (shrank in place, 2→1) without anyone
@@ -561,6 +568,124 @@ describe("sendDueJobs", () => {
     expect(Math.max(...counts.values())).toBeLessThanOrEqual(2);
     expect(counts.size).toBe(3);
   });
+
+  // Global constraint: while nod_settings.paused is true the sender claims nothing — items,
+  // deliveries and jobs keep recording normally (elsewhere), but sendDueJobs itself must not
+  // touch send_jobs at all.
+  it("paused: claims nothing; resumed: sends", async () => {
+    const sub = await insertSubscriber(tdb.db, "paused@example.com");
+    const job = await insertJob(tdb.db, "release-paused");
+    await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "batch-paused" });
+
+    await tdb.pool.query("UPDATE nod_settings SET paused = true");
+    const pausedResult = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(pausedResult).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 0, paused: true });
+    expect(distribution.send).not.toHaveBeenCalled();
+    const stillPending = (await tdb.db.select().from(sendJobs))[0]!;
+    expect(stillPending.status).toBe("pending");
+    expect(stillPending.lockedUntil).toBeNull();
+
+    await tdb.pool.query("UPDATE nod_settings SET paused = false");
+    const resumedResult = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(resumedResult).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+  });
+
+  // Global constraint / review focus 2: a release unpublished before the sender ran must
+  // never be mailed — its pending job is cancelled, not sent.
+  it("withdrawn item's job is cancelled, nothing sent", async () => {
+    await tdb.db.insert(items).values({
+      key: "release-withdrawn",
+      kind: "release",
+      title: "Withdrawn release",
+      url: "https://news.example/releases/release-withdrawn",
+      publishedAt: new Date(),
+      withdrawnAt: new Date(),
+    });
+    const sub = await insertSubscriber(tdb.db, "withdrawn@example.com");
+    const job = await insertJob(tdb.db, "release-withdrawn");
+    await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 1, paused: false });
+    expect(distribution.send).not.toHaveBeenCalled();
+
+    const row = (await tdb.db.select().from(sendJobs))[0]!;
+    expect(row.status).toBe("cancelled");
+    expect(row.lockedUntil).toBeNull();
+  });
+
+  // Per-recipient links (Task 3): each active recipient gets a manage link of their own and
+  // the stable one-click unsubscribe URL; the List-Unsubscribe header carries the placeholder
+  // Distribution substitutes per recipient.
+  it("each recipient gets their own manage and one-click URLs, and the List-Unsubscribe header uses the placeholder", async () => {
+    const alex = await insertSubscriber(tdb.db, "alex-links@example.com");
+    const sam = await insertSubscriber(tdb.db, "sam-links@example.com");
+    const job = await insertJob(tdb.db, "release-links");
+    await tdb.db.insert(jobRecipients).values([
+      { jobId: job.id, subscriberId: alex.id },
+      { jobId: job.id, subscriberId: sam.id },
+    ]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "batch-links" });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+
+    const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+    expect(req.recipients).toHaveLength(2);
+    const manageUrls = req.recipients.map((r) => r.substitutions.manageUrl);
+    for (const url of manageUrls) expect(url).toContain("token=");
+    expect(manageUrls[0]).not.toBe(manageUrls[1]);
+    for (const r of req.recipients) expect(r.substitutions.unsubscribeUrl).toMatch(new RegExp(`^${SUBSCRIBE_API_URL}/OneClickUnsubscribe/`));
+  });
+
+  it("uses the job's priority", async () => {
+    const sub = await insertSubscriber(tdb.db, "priority@example.com");
+    const job = await insertJob(tdb.db, "release-priority", { priority: "digest" });
+    await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "batch-priority" });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+
+    const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+    expect(req.priority).toBe("digest");
+  });
+
+  // Recipients come from job_recipients (one row per subscriber per job), not from deliveries
+  // (which can carry several rows per subscriber — one per item a digest bundles) — so a
+  // subscriber is only ever in one recipient list per job, however many deliveries back it.
+  it("a digest job with several delivery rows per subscriber sends each subscriber once", async () => {
+    const subA = await insertSubscriber(tdb.db, "digest-a@example.com");
+    const subB = await insertSubscriber(tdb.db, "digest-b@example.com");
+    const job = await insertJob(tdb.db, null, { jobKey: "digest:2026-10-05T17:00:00Z", priority: "digest", kind: "digest" });
+    await tdb.db.insert(jobRecipients).values([
+      { jobId: job.id, subscriberId: subA.id },
+      { jobId: job.id, subscriberId: subB.id },
+    ]);
+    await tdb.db.insert(deliveries).values([
+      { itemKey: "release-digest-1", subscriberId: subA.id, mode: "digest", jobId: job.id },
+      { itemKey: "release-digest-2", subscriberId: subA.id, mode: "digest", jobId: job.id },
+      { itemKey: "release-digest-1", subscriberId: subB.id, mode: "digest", jobId: job.id },
+    ]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "batch-digest" });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+    expect(distribution.send).toHaveBeenCalledTimes(1);
+    const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+    expect(req.recipients).toHaveLength(2);
+  });
 });
 
 describe("MAX_RECIPIENTS_PER_CHUNK", () => {
@@ -602,8 +727,8 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
 
     // Small enough that a single recipient's own request already exceeds it, forcing a split
     // all the way down to one recipient per request (4 recipients -> 4 requests).
-    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, maxChunkBytes: 50 });
-    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, maxChunkBytes: 50 });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     expect(distribution.send).toHaveBeenCalledTimes(4);
     const keys = distribution.send.mock.calls.map((c) => (c[0] as MessageRequest).idempotencyKey).sort();
@@ -625,8 +750,8 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     const distribution = stubDistribution();
     distribution.send.mockResolvedValue({ batchId: "b" });
 
-    const result = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
-    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
     expect(distribution.send).toHaveBeenCalledTimes(1);
     expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0`);
   });
@@ -652,8 +777,8 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
       });
 
     const now = await dbClock(tdb.db);
-    const result1 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, maxChunkBytes: 50, now: () => now });
-    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0 });
+    const result1 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, maxChunkBytes: 50, now: () => now });
+    expect(result1).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
     expect(distribution.send).toHaveBeenCalledTimes(3);
     expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0.0`);
     expect((distribution.send.mock.calls[1]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0.1`);
@@ -667,8 +792,8 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
 
     distribution.send.mockReset();
     distribution.send.mockResolvedValue({ batchId: "retry" });
-    const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, maxChunkBytes: 50, now: () => afterFirst.nextAttemptAt });
-    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0 });
+    const result2 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, maxChunkBytes: 50, now: () => afterFirst.nextAttemptAt });
+    expect(result2).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     // Part 0.1's sole member is now inactive, so that part is skipped entirely this attempt
     // — but the *other* parts keep their original keys (0.0, 0.2, 0.3), not renumbered as if

@@ -1,8 +1,9 @@
-import { and, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import { ageMsOf, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
-import { jobRecipients, sendJobs, subscribers } from "./db/schema";
+import { deliveries, items, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
+import { recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
 
 /** Distribution refuses a request with more than 20,000 recipients (P2-R15): a release that
  * targets more subscribers than this is sent as several requests instead of one. Exported so
@@ -27,10 +28,10 @@ const LOCK_MARGIN_MS = 30_000;
 export interface SendJobsOptions {
   db: Db;
   distribution: DistributionClient;
-  /** Base URL for the manage/unsubscribe page. Phase 4b (Task 1): `subscribers.manageToken` is
-   * gone and the per-recipient manage link isn't rebuilt yet (Task 3 does that, from
-   * `subscriber_links`) — kept here so callers don't have to change twice. */
-  manageUrl: string;
+  /** Per-recipient manage/unsubscribe link options (Task 3's recipient-links.ts). A fresh
+   * manage link and the stable one-click unsubscribe URL are built for each active recipient
+   * of a chunk part, just before that part is sent (see sendAllChunks). */
+  links: RecipientLinkOptions;
   /** Test hook: when given, its value stands in for SQL `now()` in every statement this call
    * makes (claim, lock, backoff, age). Production omits it and the database's clock is used
    * throughout — see {@link sendDueJobs}. */
@@ -52,6 +53,8 @@ export interface SendJobsOptions {
 type ClaimedJobRow = {
   id: string;
   item_key: string | null;
+  priority: "immediate" | "digest" | "media" | "system";
+  kind: string;
   subject: string | null;
   html: string | null;
   text: string | null;
@@ -85,7 +88,7 @@ async function claimOneJob(db: Db, now: SQL, lockMs: number): Promise<ClaimedJob
         LIMIT 1
         FOR UPDATE SKIP LOCKED
      )
-    RETURNING id, item_key, subject, html, text, attempts, ${ageMsOf(sql`created_at`, now)} AS age_ms, chunks_assigned, batch_ids,
+    RETURNING id, item_key, priority, kind, subject, html, text, attempts, ${ageMsOf(sql`created_at`, now)} AS age_ms, chunks_assigned, batch_ids,
               ${lockTokenOf(sql`locked_until`)} AS lock_token`);
   return claimed.rows[0];
 }
@@ -154,22 +157,22 @@ export async function ensureChunksAssigned(db: Db, jobId: string, chunkSize: num
   });
 }
 
-interface Recipient {
-  email: string;
-}
-
 /** R3: a chunk's byte-split partition (how many parts, and which members fall in which part)
  * must be computed over this — the chunk's *frozen* membership, regardless of each member's
  * *current* active status — not over whatever happens to be active right now. Otherwise a
  * subscriber flipping inactive between attempt 1 and attempt 2 shrinks the recipient list
  * `splitChunkByBytes` sizes against, which can change the part count/boundaries and therefore
  * the idempotencyKey a given recipient's part is sent under — exactly the kind of instability
- * chunk_index freezing (ensureChunksAssigned) already exists to prevent, one level down. */
-interface Member extends Recipient {
+ * chunk_index freezing (ensureChunksAssigned) already exists to prevent, one level down.
+ *
+ * `subscriberId`/`unsubscribeVersion` feed {@link recipientSubstitutions} (Task 3) for this
+ * member's per-recipient manage/unsubscribe links, built just before a part is actually sent. */
+interface Member {
+  subscriberId: string;
+  email: string;
+  unsubscribeVersion: number;
   active: boolean;
 }
-
-const toRecipients = (members: Member[]): Recipient[] => members.map(({ email }) => ({ email }));
 
 /** Every member of this job's frozen chunks (chunk_index IS NOT NULL — see
  * ensureChunksAssigned), grouped by chunk_index, *regardless of current active status* (R3:
@@ -180,7 +183,13 @@ const toRecipients = (members: Member[]): Recipient[] => members.map(({ email })
  * send time, per part (see sendAllChunks). */
 async function fetchAssignedMembers(db: Db, jobId: string): Promise<Map<number, Member[]>> {
   const rows = await db
-    .select({ chunkIndex: jobRecipients.chunkIndex, email: subscribers.email, status: subscribers.status })
+    .select({
+      chunkIndex: jobRecipients.chunkIndex,
+      subscriberId: subscribers.id,
+      email: subscribers.email,
+      status: subscribers.status,
+      unsubscribeVersion: subscribers.unsubscribeVersion,
+    })
     .from(jobRecipients)
     .innerJoin(subscribers, eq(subscribers.id, jobRecipients.subscriberId))
     .where(and(eq(jobRecipients.jobId, jobId), isNotNull(jobRecipients.chunkIndex)))
@@ -189,7 +198,12 @@ async function fetchAssignedMembers(db: Db, jobId: string): Promise<Map<number, 
   const chunks = new Map<number, Member[]>();
   for (const row of rows) {
     const idx = row.chunkIndex!;
-    const member: Member = { email: row.email, active: row.status === "active" };
+    const member: Member = {
+      subscriberId: row.subscriberId,
+      email: row.email,
+      unsubscribeVersion: row.unsubscribeVersion,
+      active: row.status === "active",
+    };
     const bucket = chunks.get(idx);
     if (bucket) bucket.push(member);
     else chunks.set(idx, [member]);
@@ -219,18 +233,25 @@ async function countLateDeliveries(db: Db, jobId: string): Promise<number> {
 /** `key` is the chunk's own idempotency suffix — normally just its `chunk_index` (as a
  * string), or `<chunk_index>.<part>` when {@link splitChunkByBytes} had to split it further.
  *
- * Phase 4b (Task 1): the per-recipient manage link substitution is not rebuilt yet —
- * `subscribers.manageToken` is gone, and its replacement (a fresh `subscriber_links` row per
- * send, Task 3) isn't wired in here. `substitutions` is empty until then. */
-function buildMessageRequest(job: ClaimedJobRow, chunk: Recipient[], key: string): MessageRequest {
+ * `substitutions` (Task 3's recipientSubstitutions, keyed by subscriberId) carries each
+ * recipient's own `{{manageUrl}}`/`{{unsubscribeUrl}}` values; omitted (or a member missing
+ * from the map) during the byte-size probe in {@link partitionChunkByBytes}, where no real
+ * links have been built yet — every member gets `{}` there, same as every other member, so the
+ * probe's *relative* sizing is unaffected. */
+function buildMessageRequest(
+  job: ClaimedJobRow,
+  members: Member[],
+  key: string,
+  substitutions?: Map<string, { manageUrl: string; unsubscribeUrl: string }>,
+): MessageRequest {
   return {
-    priority: "immediate",
+    priority: job.priority,
     idempotencyKey: `${job.id}:${key}`,
     subject: job.subject ?? "",
     html: job.html ?? "",
     text: job.text ?? undefined,
-    headers: { "List-Unsubscribe": "<{{manageUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-    recipients: chunk.map((r) => ({ email: r.email, substitutions: {} })),
+    headers: { "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+    recipients: members.map((m) => ({ email: m.email, substitutions: substitutions?.get(m.subscriberId) ?? {} })),
   };
 }
 
@@ -258,7 +279,7 @@ function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex
   let n = 1;
   while (n < members.length) {
     const size = Math.ceil(members.length / n);
-    const probe = buildMessageRequest(job, toRecipients(members.slice(0, size)), String(chunkIndex));
+    const probe = buildMessageRequest(job, members.slice(0, size), String(chunkIndex));
     if (requestByteSize(probe) <= maxBytes) break;
     n++;
   }
@@ -288,9 +309,16 @@ function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex
  * assignment. A part with zero currently-active members is skipped entirely: no request sent,
  * no batchId recorded for it this attempt (any batchId it already earned on an earlier attempt
  * stays in the merged `batch_ids`, untouched — see sendDueJobs).
+ *
+ * Per-recipient links (Task 3): `recipientSubstitutions` is called for a part's active members
+ * only right before that part is actually sent — never for a part skipped because nobody in it
+ * is currently active, and never for the inactive members of a part that *is* sent (R3: those
+ * stay in `partMembers` for frozen partitioning but never carry their own links). On success,
+ * `deliveries.attempted_at` is stamped (database clock) for exactly this job's rows belonging
+ * to the members just sent to — the "sent part" the global constraints call for.
  */
 async function sendAllChunks(
-  distribution: DistributionClient,
+  opts: { db: Db; distribution: DistributionClient; links: RecipientLinkOptions; now?: TestClock },
   job: ClaimedJobRow,
   chunks: Map<number, Member[]>,
   maxChunkBytes: number,
@@ -301,8 +329,13 @@ async function sendAllChunks(
       const activeMembers = partMembers.filter((m) => m.active);
       if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
       try {
-        const { batchId } = await distribution.send(buildMessageRequest(job, toRecipients(activeMembers), key));
+        const substitutions = await recipientSubstitutions(opts.db, activeMembers, opts.links);
+        const { batchId } = await opts.distribution.send(buildMessageRequest(job, activeMembers, key, substitutions));
         batchIds[key] = batchId;
+        await opts.db
+          .update(deliveries)
+          .set({ attemptedAt: sqlNow(opts.now) })
+          .where(and(eq(deliveries.jobId, job.id), inArray(deliveries.subscriberId, activeMembers.map((m) => m.subscriberId))));
       } catch (e) {
         // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless
         // distribution-client.ts itself deliberately classified it otherwise — an *unexpected*
@@ -322,15 +355,30 @@ async function sendAllChunks(
  * from `now()` at the terminal write, and a job's age is its age at claim time (computed in
  * SQL) plus the monotonic time elapsed since. `opts.now`, a test hook, replaces SQL `now()`
  * with its value in every statement this call makes.
+ *
+ * Pause (global constraints): checked once, before anything is claimed — while
+ * `nod_settings.paused` is true, this call claims nothing at all (items/deliveries/jobs keep
+ * being recorded elsewhere; only the sender stands down).
+ *
+ * Cancellation (review focus 2): a job claimed for an item that has since been withdrawn
+ * (`items.withdrawn_at`) is marked `cancelled` and released, unsent — checked right after the
+ * claim, before any chunk work, so a withdrawn release's job never reaches Distribution.
  */
-export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number; retried: number; failed: number }> {
+export async function sendDueJobs(
+  opts: SendJobsOptions,
+): Promise<{ sent: number; retried: number; failed: number; cancelled: number; paused: boolean }> {
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
   const maxAgeMs = opts.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
   const chunkSize = opts.chunkSize ?? MAX_RECIPIENTS_PER_CHUNK;
   const perChunkMs = opts.perChunkMs ?? DEFAULT_PER_CHUNK_MS;
   const maxChunkBytes = opts.maxChunkBytes ?? MAX_CHUNK_BYTES;
 
-  const result = { sent: 0, retried: 0, failed: 0 };
+  const [settings] = await opts.db.select({ paused: nodSettings.paused }).from(nodSettings);
+  if (settings?.paused) {
+    return { sent: 0, retried: 0, failed: 0, cancelled: 0, paused: true };
+  }
+
+  const result = { sent: 0, retried: 0, failed: 0, cancelled: 0, paused: false };
 
   for (let i = 0; i < batchSize; i++) {
     const sinceClaim = stopwatch();
@@ -339,6 +387,18 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     // that's known, via extendLock.
     const job = await claimOneJob(opts.db, sqlNow(opts.now), perChunkMs + LOCK_MARGIN_MS);
     if (!job) break;
+
+    if (job.item_key) {
+      const [item] = await opts.db.select({ withdrawnAt: items.withdrawnAt }).from(items).where(eq(items.key, job.item_key));
+      if (item?.withdrawnAt) {
+        const res = await opts.db
+          .update(sendJobs)
+          .set({ status: "cancelled", lockedUntil: null })
+          .where(and(eq(sendJobs.id, job.id), ownedPending(sendJobs, job.lock_token)));
+        if (res.rowCount) result.cancelled++;
+        continue;
+      }
+    }
 
     let chunks: Map<number, Member[]>;
     let lockToken: LockToken;
@@ -373,7 +433,12 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     // this call's lock were stolen mid-loop, a concurrent claimant would resend the exact same
     // chunks and Distribution would dedupe every one already accepted. The only write that
     // has to be ownership-checked is the terminal one below (`where`), which is.
-    const { batchIds: newBatchIds, error } = await sendAllChunks(opts.distribution, job, chunks, maxChunkBytes);
+    const { batchIds: newBatchIds, error } = await sendAllChunks(
+      { db: opts.db, distribution: opts.distribution, links: opts.links, now: opts.now },
+      job,
+      chunks,
+      maxChunkBytes,
+    );
     // P2-R16: merge newly-accepted chunk ids into whatever this job already had recorded —
     // persisted below on every attempt, including one that ends in "failed" or "retried", so
     // a chunk accepted before a later chunk failed is never re-sent as if it were unknown.

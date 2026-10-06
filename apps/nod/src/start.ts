@@ -85,14 +85,15 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   // Both the subscribe journeys' own manage-link page and Task 3's per-recipient manage links
   // (recipient-links.ts) open the same page — one default, shared.
   const subscribePageUrl = parsed.SUBSCRIBE_PAGE_URL ?? `${parsed.PUBLIC_SITE_URL.replace(/\/$/, "")}/subscribe/manage/`;
-  // Task 4 wires this into the job sender; it has no consumer yet.
+  // Task 4: the job sender's own consumer — a fresh manage link and the stable one-click
+  // unsubscribe URL for each active recipient, built just before their chunk part is sent.
   const recipientLinks: RecipientLinkOptions = {
     pageUrl: subscribePageUrl,
     subscribeApiUrl: parsed.SUBSCRIBE_API_URL ?? `${new URL(parsed.PUBLIC_SITE_URL).origin}/api/Subscribe`,
     linkSecret: parsed.LINK_SECRET,
   };
 
-  const sendJobsOptions = { db, distribution, manageUrl: parsed.MANAGE_URL, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS, recipientLinks };
+  const sendJobsOptions = { db, distribution, links: recipientLinks, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS };
 
   const app = createApp({
     db,
