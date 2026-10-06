@@ -132,6 +132,23 @@ describe("workflow", () => {
     expect(s.mediaSubscribers).toBeNull();
   });
 
+  // Fix round 1: the two prior tests only vary toMediaLists and mediaListKeys together (today's
+  // only settings-path combinations -- saveSettings derives toMediaLists from
+  // mediaListKeys.length itself, service.ts, so an editor can never submit one without the
+  // other). This exercises the two checks in mediaContactCount's gate independently: lists are
+  // chosen, but toMediaLists is off (set directly, since the app has no path that reaches this
+  // combination on its own -- same as the raw SQL used below to set up nod_subscribers states no
+  // mutation leaves behind).
+  it("schedule never calls countMediaContacts when toMediaLists is off, even with media lists chosen", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional"] }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    await tdb.db.execute(sql`UPDATE news_releases SET to_media_lists = false WHERE id = ${v.id}`);
+    let called = false;
+    const s = await schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, { timeZone: TZ, countMediaContacts: async () => ((called = true), 99) });
+    expect(called).toBe(false);
+    expect(s.mediaSubscribers).toBeNull();
+  });
+
   it("schedule: a failed media contact count never blocks scheduling and gives null", async () => {
     const v = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional"] }, editor);
     const a = await approve(db(), v.id, v.version, editor, deps);
