@@ -11,6 +11,7 @@ Items the 4a task and final reviews deferred to later sub-plans. Each later plan
 - **Must do before any media member exists:** `infoFor` lists `media-distribution-lists:*` keys in a public manage view; `update()` (via `replaceSubscriptions`) deletes media memberships because `toPrefs` drops media lists; a public unsubscribe sets a media member to `deleted` (C59 says media members are flagged, not deleted).
 - Q27: the Media Hub Membership tab most likely calls legacy `Subscribe/SubscriberInformation?emailAddress=`.
 - Add a test for re-activating a deactivated list (`upsertList`).
+- Media-list send layout from a real sample: no banner or footer, the full release text ("For Immediate Release", key, date, ministry, TYPE, headline, body, contact), then READ MORE and the topic line without media-list names. See `docs/parity/samples/media-list-as-it-happens-2026-09-21.md`.
 
 ## 4e / 4f (bounces, staff section)
 - Define `disabled` (bounce- or staff-disabled). 4a already treats it like `active` when someone moves onto that address. Decide whether a disabled subscriber may reactivate themselves through subscribe/confirm (today they can, and a test pins it).

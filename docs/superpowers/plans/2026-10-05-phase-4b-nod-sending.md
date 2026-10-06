@@ -491,6 +491,11 @@ Write each test body in full, following the existing tests in the file (same set
     - Inline styles only (email clients ignore `<style>`). Table-based layout, max width 600px. The text part mirrors it: title, summary, "Read more: <url>", categories, then the footer links.
     
     Footers carry `{{manageUrl}}` and `{{unsubscribeUrl}}`. Keep the existing `neutralizeHtml`/`neutralizeText`/subject sanitising, moved here.
+
+    **Amendment (2026-10-05, from three more legacy samples; see `docs/parity/samples/as-it-happens-2026-08-07.md`, `manage-email-2026-09-24.md`):**
+    - The subscriber As-It-Happens sample confirms the layout above for one item.
+    - **Summary source (corrects Task 2):** an item's summary is the release's own `summary` (`r.summary ?? ""`), not the English subheadline. Legacy emails print the English release's Summary field (`ReleasePublisher.cs:60`), pre-filled from the body trimmed to 500 characters and staff-editable; NRMS mirrors this (`releases/service.ts:348`). Change `itemFromRelease` in `apps/nod/src/items.ts` and its tests (and the doc comment) accordingly. The summary can be ~500 characters: render it as a paragraph.
+    - **System emails share the shell:** `renderSystemEmail` (`apps/nod/src/subscribe/emails.ts`) wraps its heading, lines and action link in the same banner and a footer with a **one-cell** grey bar "See more from BC Gov News" → siteUrl, then "Please do not respond to this message". No manage cell and no unsubscribe link (these emails aren't subscriber sends). Subjects and wording stay as 4a built them (they match the sample). Export a shared shell helper from `render.ts` for this; add a test that a manage email has the banner, the "See more" link and the do-not-respond line.
   - `as-it-happens.ts`:
     - `createItemSend(tx: Tx, itemKey: string, kind: "as_it_happens" | "emergency"): Promise<boolean>` (true if a job was created);
     - `recordEmergencyItem(db: Db, input: { guid: string; title: string; summary: string; url: string; publishedAt?: string }): Promise<{ key: string; created: boolean }>`.
@@ -780,7 +785,7 @@ Replace the "footer links are fixed in 4b" note.
 
 - [ ] **Step 4: Carry-forward:** delete the "4b" section, now done. Move anything left unfinished into the 4c section with a note.
 
-- [ ] **Step 4b: Q24:** in `docs/parity/open-questions.md`, update Q24's working assumption: "Daily digest layout now known from a real 2026-09-22 sample (`docs/parity/samples/daily-digest-2026-09-22.md`) and implemented; still needed: an As-It-Happens sample, a media-list sample, and the banner image URL (legacy `Site.BannerSource`)."
+- [ ] **Step 4b: Q24:** in `docs/parity/open-questions.md`, update Q24's working assumption: "Daily digest layout now known from a real 2026-09-22 sample (`docs/parity/samples/daily-digest-2026-09-22.md`) and implemented; still needed: a verification-email sample and the banner image URL (legacy `Site.BannerSource`)." (As-It-Happens, media-list and manage samples arrived 2026-10-05 and are already recorded.)
 
 - [ ] **Step 5: README:** add `SUBSCRIBE_API_URL`, `TENANT_CONFIG` and `NOD_OPS_EMAIL` to the NoD env table. Remove `MANAGE_URL` if Task 4 removed it.
 
