@@ -231,6 +231,9 @@ reach NRMS first:
   over as it runs), run NRMS's own media-lists republish once, signed in as `Core.Admin`, so NoD
   gets every legacy-imported media list: `POST /nrms/api/media-lists/republish` (then tick, or
   wait for the cron job, to deliver the events).
+  `scripts/siteground-media-lists.sh https://<domain>` does this, waits for NoD to mirror the
+  lists, and checks NoD's media contact count for one of them (it prompts for the break-glass
+  admin password).
 - The smoke test (by hand below, or `scripts/siteground-smoke.sh https://<domain>`) needs a
   `health` ministry with abbreviation `HLTH` and a `health` sector in Core.
 
