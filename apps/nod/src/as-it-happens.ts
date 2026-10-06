@@ -115,18 +115,6 @@ export function createAsItHappensHandler(opts: AsItHappensOptions): EventHandler
     // param per key here is fine — this is not the unbounded list the fix above removes.
     const listKeyMatch = keys.length > 0 ? sql`(sub.list_key = '*' OR sub.list_key IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)}))` : sql`sub.list_key = '*'`;
 
-    // A release matching no active as-it-happens subscriber creates no job, no deliveries and
-    // no job_recipients — an empty job would send nothing. Checked up front (read-only) so
-    // the job insert below never has to be undone.
-    const matched = await tx.execute(sql`
-      SELECT 1
-        FROM subscribers s
-        JOIN subscriptions sub ON sub.subscriber_id = s.id
-       WHERE s.status = 'active' AND s.as_it_happens = true AND ${listKeyMatch}
-       LIMIT 1
-    `);
-    if (matched.rows.length === 0) return;
-
     // Phase 4b sending model: the job comes first (deliveries.job_id and job_recipients both
     // reference it), keyed by a stable job_key so a repeat delivery of the same release (the
     // idempotency case) finds the same job instead of creating a second one.
@@ -137,6 +125,7 @@ export function createAsItHappensHandler(opts: AsItHappensOptions): EventHandler
       .values({ jobKey, itemKey: r.key, kind: "as_it_happens", subject, html, text })
       .onConflictDoNothing({ target: sendJobs.jobKey })
       .returning({ id: sendJobs.id });
+    const wasCreated = createdJob.length > 0;
     const jobId = createdJob[0]?.id ?? (await tx.select({ id: sendJobs.id }).from(sendJobs).where(eq(sendJobs.jobKey, jobKey)))[0]!.id;
 
     const inserted = await tx.execute(sql`
@@ -151,17 +140,27 @@ export function createAsItHappensHandler(opts: AsItHappensOptions): EventHandler
       RETURNING 1
     `);
 
-    // On a repeat delivery of an already-fully-inserted release (the idempotency case), every
-    // row conflicts and this is 0 — harmless, since job_recipients was already populated the
-    // first time.
-    if (inserted.rows.length === 0) return;
+    // A release matching no active as-it-happens subscriber inserts no delivery rows. If the
+    // job was just created by this call it's empty (an empty job would send nothing), so
+    // undo it rather than leave a dead job behind. If the job already existed — a repeat
+    // delivery of an already-fully-inserted release, the idempotency case — leave it alone:
+    // every row conflicted, but job_recipients was already derived from its deliveries the
+    // first time this ran.
+    if (inserted.rows.length === 0) {
+      if (wasCreated) await tx.delete(sendJobs).where(eq(sendJobs.id, jobId));
+      return;
+    }
 
+    // Derived from deliveries itself — not a third re-run of the subscriber/subscription
+    // match — so job_recipients can never disagree with deliveries. Under READ COMMITTED
+    // each statement takes its own snapshot: re-matching independently here could pick up a
+    // subscription change that happened between the two statements, leaving a delivery with
+    // no corresponding recipient (or vice versa). Reading the rows this transaction itself
+    // just wrote/already holds a lock on has no such gap.
     await tx.execute(sql`
       INSERT INTO job_recipients (job_id, subscriber_id)
-      SELECT DISTINCT ${jobId}::uuid, s.id
-        FROM subscribers s
-        JOIN subscriptions sub ON sub.subscriber_id = s.id
-       WHERE s.status = 'active' AND s.as_it_happens = true AND ${listKeyMatch}
+      SELECT job_id, subscriber_id FROM deliveries
+       WHERE item_key = ${r.key} AND mode = 'as_it_happens' AND job_id = ${jobId}::uuid
       ON CONFLICT DO NOTHING
     `);
   };

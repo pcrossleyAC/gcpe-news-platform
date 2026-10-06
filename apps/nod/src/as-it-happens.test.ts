@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb, envelope } from "../test/helpers";
-import { deliveries, sendJobs, subscribers } from "./db/schema";
+import { deliveries, jobRecipients, sendJobs, subscribers } from "./db/schema";
 import { addSubscriber } from "./subscribers";
 import { createAsItHappensHandler, neutralizeHtml, neutralizeText, renderAsItHappens } from "./as-it-happens";
 
@@ -56,6 +56,21 @@ describe("createAsItHappensHandler", () => {
     expect(jobRows).toHaveLength(1);
     expect(jobRows[0]!.subject).toBe(release.documents[0]!.headline);
     expect(jobRows[0]!.kind).toBe("as_it_happens");
+  });
+
+  // job_recipients is derived from deliveries (not re-matched independently) specifically so
+  // the two can never disagree — every job_recipients row for this job must have a matching
+  // deliveries row, and vice versa.
+  it("job_recipients exactly mirrors deliveries for the job (no delivery without a recipient, no recipient without a delivery)", async () => {
+    const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
+
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
+    const [job] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
+    const recipientRows = await tdb.db.select().from(jobRecipients).where(eq(jobRecipients.jobId, job!.id));
+
+    expect(deliveryRows.length).toBeGreaterThan(0);
+    expect(recipientRows.map((r) => r.subscriberId).sort()).toEqual(deliveryRows.map((d) => d.subscriberId).sort());
   });
 
   it("a subscriber on two matching lists ('*' and 'ministries:health') still gets exactly one delivery", async () => {
