@@ -116,6 +116,10 @@ export const releaseRecordSchema = z.object({
   mediaListKeys: z.array(z.string()),
   renditions: z.object({ htmlUrl: z.string().nullable(), textUrl: z.string().nullable(), pdfUrl: z.string().nullable() }).nullable(),
   timestamp: offsetDateTime,
+  // The full-text media copy (NRMS's renderText), filled only when publishFlags.toMediaLists is
+  // true -- else null. Defaulted so an older stored envelope (or the 3e importer's replay),
+  // which never carried this field, still parses.
+  mediaText: z.string().nullable().default(null),
 });
 export type ReleaseRecord = z.infer<typeof releaseRecordSchema>;
 

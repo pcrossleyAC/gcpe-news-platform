@@ -99,6 +99,13 @@
       "when": 1791313406356,
       "tag": "0013_media_sync_lease",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791315192509,
+      "tag": "0014_items_media_columns",
+      "breakpoints": true
     }
   ]
 }

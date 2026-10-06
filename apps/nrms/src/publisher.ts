@@ -24,6 +24,10 @@ export interface PublisherOptions {
   prepareMedia?: (tx: Tx, view: ReleaseView) => Promise<{ assetUrl: string | null }>;
   /** PUBLIC_FILES_BASE: origin prefixed to `/files/…` in the record's translations/assets. */
   filesBase?: string;
+  /** Tenant time zone, for the media copy's CP-style release date (toReleaseRecord's
+   * `rendition.timeZone`, via `renderText`). Defaults to "UTC" -- only releases with
+   * `publishFlags.toMediaLists` set are affected by this. */
+  timeZone?: string;
 }
 
 export interface PublishResult {
@@ -91,7 +95,12 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
     })
     .where(eq(newsReleases.id, id))
     .returning({ releasedAt: newsReleases.releasedAt, atomId: newsReleases.atomId, updatedAt: newsReleases.updatedAt });
-  const record = toReleaseRecord({ ...view, assetUrl, atomId: row!.atomId }, { publishDate: row!.releasedAt!.toISOString(), timestamp: row!.updatedAt.toISOString() }, { filesBase: opts.filesBase });
+  const rendition = { timeZone: opts.timeZone ?? "UTC", nowMs: opts.now ? opts.now().getTime() : Date.now() };
+  const record = toReleaseRecord(
+    { ...view, assetUrl, atomId: row!.atomId },
+    { publishDate: row!.releasedAt!.toISOString(), timestamp: row!.updatedAt.toISOString() },
+    { filesBase: opts.filesBase, rendition },
+  );
   if (goLive) {
     await enqueueEvent(tx, { type: "release.published", source: "nrms", aggregateId: record.key, data: record }, opts.subscribers);
     await writeLog(tx, id, SYSTEM_ACTOR, "Released for Publishing");

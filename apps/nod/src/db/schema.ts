@@ -82,6 +82,12 @@ export const items = pgTable(
     toSubscribers: boolean("to_subscribers").notNull().default(true),
     withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // Phase 4c (Task 5): the release's full-text media copy (NRMS's `renderText`) and the
+    // `media-distribution-lists:<key>` list keys it goes to -- both null/empty unless the
+    // release's `publishFlags.toMediaLists` was set. Kept separate from `listKeys` (which never
+    // carries a media key) so As-It-Happens/digest matching is untouched by media recipients.
+    mediaText: text("media_text"),
+    mediaListKeys: text("media_list_keys").array().notNull().default(sql`'{}'::text[]`),
   },
   (t) => [index("items_published_at_idx").on(t.publishedAt), check("items_kind_check", sql`${t.kind} IN ('release','emergency')`)],
 );

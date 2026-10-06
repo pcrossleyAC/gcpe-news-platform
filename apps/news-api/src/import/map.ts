@@ -106,5 +106,9 @@ export function mapLegacyRelease(
     mediaListKeys: [],
     renditions: null,
     timestamp: row.Timestamp.toISOString(),
+    // The legacy import never rendered a media-list copy (there's nothing to carry over), and
+    // mediaListKeys is always empty here regardless of toMediaLists -- so nothing downstream
+    // ever tries to send one for an imported release.
+    mediaText: null,
   };
 }

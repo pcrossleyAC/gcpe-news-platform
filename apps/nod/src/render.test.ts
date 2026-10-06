@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
-import { itemCategories, neutralizeHtml, neutralizeText, renderAsItHappens, renderDigest, renderEmergency, renderSystemShell, type RenderItem, type RenderOptions } from "./render";
+import { itemCategories, neutralizeHtml, neutralizeText, renderAsItHappens, renderDigest, renderEmergency, renderMedia, renderSystemShell, type RenderItem, type RenderOptions } from "./render";
 
 const RENDER: RenderOptions = { siteUrl: "https://news.gov.bc.ca", bannerUrl: null };
 const RENDER_WITH_BANNER: RenderOptions = { siteUrl: "https://news.gov.bc.ca", bannerUrl: "https://news.gov.bc.ca/assets/banner.png" };
@@ -176,6 +176,78 @@ describe("content", () => {
     expect(html).not.toContain("Manage your subscription</a>");
     expect(text).toContain("See more from BC Gov News");
     expect(text).not.toContain("{{manageUrl}}");
+  });
+});
+
+describe("renderMedia", () => {
+  function mediaItem(over: Partial<RenderItem & { mediaText: string; postKind: string | null }> = {}) {
+    return {
+      ...item(),
+      postKind: "releases" as string | null,
+      mediaText: "Paragraph one.\r\n\r\nParagraph two,\r\nsecond line.",
+      ...over,
+    };
+  }
+
+  it("has no banner, and the standard footer with '{{manageUrl}}'/'{{unsubscribeUrl}}' exactly once each", () => {
+    const { html, text } = renderMedia(mediaItem(), RENDER);
+    expect(html).not.toContain("<img");
+    expect(html).not.toContain("Government of B.C.");
+    expect(html.match(/\{\{manageUrl\}\}/g)).toHaveLength(1);
+    expect(html.match(/\{\{unsubscribeUrl\}\}/g)).toHaveLength(1);
+    expect(text.match(/\{\{manageUrl\}\}/g)).toHaveLength(1);
+    expect(text.match(/\{\{unsubscribeUrl\}\}/g)).toHaveLength(1);
+  });
+
+  it("renders the full text as paragraphs, with its own single newlines as <br>", () => {
+    const { html, text } = renderMedia(mediaItem(), RENDER);
+    expect(html).toContain("<p style=\"margin:0 0 16px;\">Paragraph one.</p>");
+    expect(html).toContain("<p style=\"margin:0 0 16px;\">Paragraph two,<br>second line.</p>");
+    expect(text).toContain("Paragraph one.\n\nParagraph two,\nsecond line.");
+  });
+
+  it("'▶ READ MORE' is present for a release, absent for an advisory", () => {
+    const release = renderMedia(mediaItem({ postKind: "releases" }), RENDER);
+    expect(release.html).toContain("READ MORE");
+    expect(release.text).toContain(`Read more: ${mediaItem().url}`);
+
+    const advisory = renderMedia(mediaItem({ postKind: "advisories" }), RENDER);
+    expect(advisory.html).not.toContain("READ MORE");
+    expect(advisory.text).not.toContain("Read more:");
+  });
+
+  it("the advisory subject is the bare title; the release subject is 'BC Gov News - <title>'", () => {
+    const advisory = renderMedia(mediaItem({ postKind: "advisories", title: "Road closure tour" }), RENDER);
+    expect(advisory.subject).toBe("Road closure tour");
+
+    const release = renderMedia(mediaItem({ postKind: "releases", title: "Road closure tour" }), RENDER);
+    expect(release.subject).toBe("BC Gov News - Road closure tour");
+  });
+
+  it("the advisory subject falls back to the item key when the title is empty", () => {
+    const advisory = renderMedia(mediaItem({ postKind: "advisories", title: "   ", key: "2026ADV0001-000001" }), RENDER);
+    expect(advisory.subject).toBe("2026ADV0001-000001");
+  });
+
+  it("drops the lines following 'MEDIA ADVISORY - EVENT REMINDER' up to the next blank line", () => {
+    const mediaText = "MEDIA ADVISORY - EVENT REMINDER\r\nPremier to announce housing plan\r\nMore details here.\r\n\r\nLocation stays the same.";
+    const { text } = renderMedia(mediaItem({ postKind: "advisories", mediaText }), RENDER);
+    expect(text).toContain("MEDIA ADVISORY - EVENT REMINDER");
+    expect(text).not.toContain("Premier to announce housing plan");
+    expect(text).not.toContain("More details here.");
+    expect(text).toContain("Location stays the same.");
+  });
+
+  it("does not drop the reminder's following lines for a non-advisory post kind", () => {
+    const mediaText = "MEDIA ADVISORY - EVENT REMINDER\r\nPremier to announce housing plan\r\n\r\nLocation stays the same.";
+    const { text } = renderMedia(mediaItem({ postKind: "releases", mediaText }), RENDER);
+    expect(text).toContain("Premier to announce housing plan");
+  });
+
+  it("the text is HTML-escaped", () => {
+    const { html } = renderMedia(mediaItem({ mediaText: "<b>Bold</b> & co" }), RENDER);
+    expect(html).not.toContain("<b>Bold</b>");
+    expect(html).toContain("&lt;b&gt;Bold&lt;/b&gt; &amp; co");
   });
 });
 

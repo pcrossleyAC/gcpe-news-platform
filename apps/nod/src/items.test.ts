@@ -31,6 +31,24 @@ describe("items from NRMS release events", () => {
     expect(row!.listKeys).toEqual(indexKeysFor(r));
   });
 
+  it("published fills mediaText/mediaListKeys only when toMediaLists is set", async () => {
+    const media = {
+      ...sampleRelease,
+      key: "K-MEDIA-ITEM",
+      publishFlags: { ...sampleRelease.publishFlags, toMediaLists: true },
+      mediaListKeys: ["Budget", "Transport"],
+      mediaText: "The full release text.",
+    };
+    expect((await sendEvent(app, envelope("nrms", "release.published", media, media.key))).status).toBe(200);
+    const [row] = await tdb.db.select().from(items).where(eq(items.key, "K-MEDIA-ITEM"));
+    expect(row).toMatchObject({ mediaText: "The full release text.", mediaListKeys: ["media-distribution-lists:budget", "media-distribution-lists:transport"] });
+
+    const nonMedia = { ...sampleRelease, key: "K-NONMEDIA-ITEM" };
+    expect((await sendEvent(app, envelope("nrms", "release.published", nonMedia, nonMedia.key))).status).toBe(200);
+    const [row2] = await tdb.db.select().from(items).where(eq(items.key, "K-NONMEDIA-ITEM"));
+    expect(row2).toMatchObject({ mediaText: null, mediaListKeys: [] });
+  });
+
   it("updated never sends and never creates; it refreshes an existing item", async () => {
     const r = { ...sampleRelease, key: "K-UPD" };
     await sendEvent(app, envelope("nrms", "release.updated", { ...r, notify: true }, r.key));
@@ -41,6 +59,17 @@ describe("items from NRMS release events", () => {
     await sendEvent(app, envelope("nrms", "release.updated", corrected, r.key));
     const [row] = await tdb.db.select().from(items).where(eq(items.key, "K-UPD"));
     expect(row!.title).toBe("Corrected headline");
+    expect(await tdb.db.select().from(sendJobs)).toHaveLength(jobsBefore.length);
+  });
+
+  it("updated refreshes mediaText/mediaListKeys too, without sending anything", async () => {
+    const r = { ...sampleRelease, key: "K-UPD-MEDIA", publishFlags: { ...sampleRelease.publishFlags, toMediaLists: true }, mediaListKeys: ["budget"], mediaText: "Original text." };
+    await sendEvent(app, envelope("nrms", "release.published", r, r.key));
+    const jobsBefore = await tdb.db.select().from(sendJobs);
+    const corrected = { ...r, mediaText: "Corrected text.", notify: true };
+    await sendEvent(app, envelope("nrms", "release.updated", corrected, r.key));
+    const [row] = await tdb.db.select().from(items).where(eq(items.key, "K-UPD-MEDIA"));
+    expect(row).toMatchObject({ mediaText: "Corrected text.", mediaListKeys: ["media-distribution-lists:budget"] });
     expect(await tdb.db.select().from(sendJobs)).toHaveLength(jobsBefore.length);
   });
 

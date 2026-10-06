@@ -91,6 +91,22 @@ describe("createItemSend (as_it_happens)", () => {
     expect(asItHappensRows.map((r) => r.subscriberId).sort()).toEqual([b, e].sort());
   });
 
+  // 4c Task 5 (review focus 2, "media member gets one copy"): media sends are created before
+  // As-It-Happens, in the same transaction, so by the time this runs a media-list member
+  // already has a 'media' delivery for the item — which must exclude them here exactly like an
+  // existing digest delivery does.
+  it("skips a subscriber who already has a media delivery for the item", async () => {
+    const release = { ...sampleRelease, key: "K-MEDIA-SKIP", ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.db.transaction((tx) => upsertReleaseItem(tx, release, PUBLIC_SITE_URL));
+    await tdb.db.insert(deliveries).values({ itemKey: release.key, subscriberId: a, mode: "media" });
+
+    await tdb.db.transaction((tx) => createItemSend(tx, release.key, "as_it_happens"));
+
+    const asItHappensRows = await tdb.db.select().from(deliveries).where(and(eq(deliveries.itemKey, release.key), eq(deliveries.mode, "as_it_happens")));
+    expect(asItHappensRows.map((r) => r.subscriberId)).not.toContain(a);
+    expect(asItHappensRows.map((r) => r.subscriberId).sort()).toEqual([b, e].sort());
+  });
+
   it("creates no job when toSubscribers is false", async () => {
     const release = { ...sampleRelease, key: "K-NO-SEND", ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: false } };
     await publish(release);

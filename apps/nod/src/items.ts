@@ -2,6 +2,7 @@ import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { DbOrTx, Tx } from "@gcpe/db-kit";
 import { indexKeysFor, type EventEnvelope, type EventHandler, type ReleaseRecord } from "@gcpe/events";
 import { deliveries, items, sendJobs } from "./db/schema";
+import { mediaListKey } from "./lists";
 
 const ENGLISH_LANGUAGE_ID = 4105;
 
@@ -15,12 +16,18 @@ const ENGLISH_LANGUAGE_ID = 4105;
  *   (`NewModel.cs:332`) and staff-editable; NRMS mirrors this (`releases/service.ts:348`). This
  *   corrects the Task 2 rule, which read the English document's subheadline instead — that
  *   field is never used for the summary.
+ * - Media (4c Task 5): `mediaText`/`mediaListKeys` are filled only when
+ *   `r.publishFlags.toMediaLists` is set -- NRMS already rendered the full text (events'
+ *   `mediaText`) and this just stores it, converting each plain NRMS media list key to its
+ *   NoD list key (`media-distribution-lists:<key>`). Otherwise both stay null/empty, same as a
+ *   release that never went to media lists.
  */
 export function itemFromRelease(r: ReleaseRecord, publicSiteUrl: string): typeof items.$inferInsert {
   const englishDoc = r.documents.find((d) => d.languageId === ENGLISH_LANGUAGE_ID);
   const title = englishDoc?.headline || r.documents[0]?.headline || r.key;
   const summary = r.summary ?? "";
   const url = `${publicSiteUrl.replace(/\/$/, "")}/releases/${encodeURIComponent(r.key)}`;
+  const toMediaLists = r.publishFlags.toMediaLists;
 
   return {
     key: r.key,
@@ -32,6 +39,8 @@ export function itemFromRelease(r: ReleaseRecord, publicSiteUrl: string): typeof
     url,
     publishedAt: new Date(r.publishDate),
     toSubscribers: r.publishFlags.toSubscribers,
+    mediaText: toMediaLists ? r.mediaText : null,
+    mediaListKeys: toMediaLists ? r.mediaListKeys.map(mediaListKey) : [],
   };
 }
 
@@ -51,15 +60,16 @@ export async function upsertReleaseItem(tx: DbOrTx, r: ReleaseRecord, publicSite
 
 /**
  * `release.updated` (a correction, or the 3e importer's replay of every live release with
- * `notify: false`): refreshes an existing item's title, summary, list keys and URL only — it
- * must never create an item or touch `publishedAt`/`toSubscribers`/`withdrawnAt`, and it must
- * never send anything. Returns whether an item existed to refresh.
+ * `notify: false`): refreshes an existing item's title, summary, list keys, URL and media
+ * fields only — it must never create an item or touch
+ * `publishedAt`/`toSubscribers`/`withdrawnAt`, and it must never send anything (media or
+ * As-It-Happens). Returns whether an item existed to refresh.
  */
 export async function refreshReleaseItem(tx: DbOrTx, r: ReleaseRecord, publicSiteUrl: string): Promise<boolean> {
   const row = itemFromRelease(r, publicSiteUrl);
   const updated = await tx
     .update(items)
-    .set({ title: row.title, summary: row.summary, listKeys: row.listKeys, url: row.url, updatedAt: sql`now()` })
+    .set({ title: row.title, summary: row.summary, listKeys: row.listKeys, url: row.url, mediaText: row.mediaText, mediaListKeys: row.mediaListKeys, updatedAt: sql`now()` })
     .where(eq(items.key, r.key))
     .returning({ key: items.key });
   return updated.length > 0;

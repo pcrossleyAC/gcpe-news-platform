@@ -11,6 +11,7 @@ import { subscribeApiRoutes } from "./http/subscribe-routes";
 import { itemHandlers } from "./items";
 import { listsHandler } from "./lists";
 import type { MediaHubClient } from "./media-hub/client";
+import { createMediaSend } from "./media-send";
 import type { RenderOptions } from "./render";
 import type { JourneyDeps } from "./subscribe/journeys";
 
@@ -53,7 +54,14 @@ export function createApp(deps: AppDeps): express.Express {
   const { createItemSend, recordEmergencyItem } = createItemSending({ render: deps.render });
   const resolveItemHandler = itemHandlers({
     publicSiteUrl: deps.render.siteUrl,
-    onPublished: (tx, r) => createItemSend(tx, r.key, "as_it_happens"),
+    // Media sends are created before As-It-Happens, in the same transaction, so a media-list
+    // member who also matches the release publicly is already excluded from the As-It-Happens
+    // insert's NOT EXISTS check by the time it runs (global constraints: "one copy per person
+    // per release").
+    onPublished: async (tx, r) => {
+      await createMediaSend(tx, r.key, deps.render);
+      await createItemSend(tx, r.key, "as_it_happens");
+    },
   });
   app.use(
     createEventReceiver({

@@ -38,4 +38,5 @@ export const sampleRelease: ReleaseRecord = {
   mediaListKeys: [],
   renditions: null,
   timestamp: "2026-10-01T15:10:28.0375661-07:00",
+  mediaText: null,
 };

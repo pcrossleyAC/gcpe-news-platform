@@ -1,5 +1,7 @@
 import { envelopeByteLength, MAX_EVENT_BYTES, releaseRecordSchema, sizingEnvelope, type ReleaseRecord } from "@gcpe/events";
 import { LANG_EN, LANG_FR, POST_KIND, type ReleaseView } from "@gcpe/nrms-contract";
+import type { RenditionOptions } from "../renditions/model";
+import { renderText } from "../renditions/text";
 import { sanitizeBodyHtml } from "../text/sanitize";
 import { ReleaseTooLargeError } from "./errors";
 
@@ -12,6 +14,11 @@ export interface RecordOptions {
   /** PUBLIC_FILES_BASE: the public origin that `/files/<key>` is served from (e.g.
    * `https://boxs.ca`); "" (the default) leaves file URLs as root-relative paths. */
   filesBase?: string;
+  /** Rendering inputs for the full-text media copy (`renderText`). When `v.publishOptions.
+   * toMediaLists` is set and this is given, `mediaText` is `renderText(v, rendition)`;
+   * otherwise it's null. Omitted by callers that don't need the field filled (e.g. tests
+   * exercising the rest of the record). */
+  rendition?: RenditionOptions;
 }
 
 function fileList(v: ReleaseView, kind: "translation" | "asset", base: string): ReleaseRecord["translations"] {
@@ -21,6 +28,7 @@ function fileList(v: ReleaseView, kind: "translation" | "asset", base: string): 
 
 export function toReleaseRecord(v: ReleaseView, at: { publishDate: string; timestamp: string }, opts: RecordOptions = {}): ReleaseRecord {
   const base = (opts.filesBase ?? "").replace(/\/+$/, "");
+  const mediaText = v.publishOptions.toMediaLists && opts.rendition ? renderText(v, opts.rendition) : null;
   const en = v.languages.find((l) => l.languageId === LANG_EN);
   const docs = [...v.documents].sort((a, b) => a.sortIndex - b.sortIndex);
   const documents = [LANG_EN, LANG_FR].flatMap((lang) =>
@@ -39,7 +47,7 @@ export function toReleaseRecord(v: ReleaseView, at: { publishDate: string; times
     keywords: v.keywords, location: en?.location || null, hasMediaAssets: v.hasMediaAssets, hasTranslations: v.hasTranslations,
     isNewsOnDemand: v.publishOptions.toSubscribers, assetUrl: v.assetUrl, redirectUri: v.redirectUrl, documents,
     ministryKeys: v.ministries, sectorKeys: v.sectors, tagKeys: v.tags, themeKeys: v.themes, assets: fileList(v, "asset", base), translations: fileList(v, "translation", base),
-    publishFlags: { ...v.publishOptions }, mediaListKeys: v.mediaListKeys, renditions: null, timestamp: at.timestamp,
+    publishFlags: { ...v.publishOptions }, mediaListKeys: v.mediaListKeys, renditions: null, timestamp: at.timestamp, mediaText,
   };
 }
 

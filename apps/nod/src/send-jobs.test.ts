@@ -10,7 +10,7 @@ import { createItemSending } from "./as-it-happens";
 import { DistributionError, distributionClient, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, items, jobRecipients, sendJobs, subscriberLinks, subscribers } from "./db/schema";
 import { upsertReleaseItem, withdrawItem } from "./items";
-import type { RecipientLinkOptions } from "./recipient-links";
+import { placeholderLinkLengths, type RecipientLinkOptions } from "./recipient-links";
 import type { RenderOptions } from "./render";
 import { MAX_CHUNK_BYTES, MAX_RECIPIENTS_PER_CHUNK, ensureChunksAssigned, sendDueJobs } from "./send-jobs";
 import { addSubscriber } from "./subscribers";
@@ -698,6 +698,27 @@ describe("sendDueJobs", () => {
     expect(req.priority).toBe("digest");
   });
 
+  // 4c Task 5: a media job carries kind='media'/priority='media' (send-jobs.ts has no special
+  // branch for it -- same chunking, links and List-Unsubscribe header as every other job).
+  it("sends a media job with priority 'media', the List-Unsubscribe header, and per-recipient substitutions", async () => {
+    const sub = await insertSubscriber(tdb.db, "media-job@example.com");
+    const job = await insertJob(tdb.db, "release-media", { jobKey: "media:release-media", kind: "media", priority: "media" });
+    await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "batch-media" });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+
+    const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+    expect(req.priority).toBe("media");
+    expect(req.headers).toEqual({ "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" });
+    expect(req.recipients).toHaveLength(1);
+    expect(req.recipients[0]!.substitutions.manageUrl).toContain("token=");
+    expect(req.recipients[0]!.substitutions.unsubscribeUrl).toMatch(new RegExp(`^${SUBSCRIBE_API_URL}/OneClickUnsubscribe/`));
+  });
+
   // Recipients come from job_recipients (one row per subscriber per job), not from deliveries
   // (which can carry several rows per subscriber — one per item a digest bundles) — so a
   // subscriber is only ever in one recipient list per job, however many deliveries back it.
@@ -1027,6 +1048,72 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
     expect(distribution.send).toHaveBeenCalledTimes(1);
     expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0`);
+  });
+
+  // 4c Task 5 (byte-probe fix): the probe used to size a chunk's split must account for the
+  // real per-recipient `{{manageUrl}}`/`{{unsubscribeUrl}}` substitutions every actual send
+  // adds -- probing with `{}` for every member (the old behaviour) under-measures a request
+  // whose link overhead is a real share of its size, and could let a chunk through whole that,
+  // once real links were added at send time, exceeds maxChunkBytes. This matters most for a
+  // media job's full release text, where the link overhead can otherwise look negligible by
+  // comparison.
+  it("sizes the byte-split probe using real per-recipient link lengths, splitting a part the old empty-substitution probe would have kept whole", async () => {
+    const emails = [0, 1].map((n) => `probe${n}@example.com`);
+    const subs = await Promise.all(emails.map((email, n) => insertSubscriber(tdb.db, email, { id: lowId(n) })));
+    const job = await insertJob(tdb.db, "release-probe", { html: "x".repeat(2000), text: "y".repeat(500) });
+    await tdb.db.insert(jobRecipients).values(subs.map((s) => ({ jobId: job.id, subscriberId: s.id })));
+
+    const requestSize = (key: string, recipients: { email: string; substitutions: Record<string, string> }[]) =>
+      Buffer.byteLength(
+        JSON.stringify({
+          priority: job.priority,
+          idempotencyKey: `${job.id}:${key}`,
+          subject: job.subject,
+          html: job.html,
+          text: job.text,
+          headers: { "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+          recipients,
+        }),
+      );
+
+    const { manageUrlLen, unsubscribeUrlLen } = placeholderLinkLengths(LINKS);
+    const placeholderSubs = { manageUrl: "x".repeat(manageUrlLen), unsubscribeUrl: "x".repeat(unsubscribeUrlLen) };
+    // The whole (unsplit, chunk_index "0") 2-recipient request, as the probe at n=1 would
+    // measure it: once with no substitutions at all (the old bug) and once with real-sized
+    // placeholders (the fix).
+    const emptySize = requestSize("0", emails.map((email) => ({ email, substitutions: {} })));
+    const realSize = requestSize("0", emails.map((email) => ({ email, substitutions: placeholderSubs })));
+    // Sanity: the real per-recipient links really do add meaningful weight over `{}`.
+    expect(realSize).toBeGreaterThan(emptySize);
+    // What a final, split single-recipient part ("0.0"/"0.1") actually weighs once sent, real
+    // links included -- splitting barely shrinks the request, since the html/text payload
+    // (not the recipient list) dominates its size.
+    const onePartSize = Math.max(
+      requestSize("0.0", [{ email: emails[0]!, substitutions: placeholderSubs }]),
+      requestSize("0.1", [{ email: emails[1]!, substitutions: placeholderSubs }]),
+    );
+
+    // A window that (a) the old empty-substitution probe would have judged as fitting whole,
+    // (b) the real-link probe must judge as too big (forcing a split), and (c) each resulting
+    // single-recipient part still fits within.
+    const maxChunkBytes = Math.floor((onePartSize + realSize) / 2);
+    expect(emptySize).toBeLessThanOrEqual(maxChunkBytes);
+    expect(onePartSize).toBeLessThanOrEqual(maxChunkBytes);
+    expect(realSize).toBeGreaterThan(maxChunkBytes);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "b" });
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, maxChunkBytes });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+
+    // Split into one recipient per request -- and critically, every *actual* sent request
+    // (now carrying real per-recipient links) still fits within maxChunkBytes.
+    expect(distribution.send).toHaveBeenCalledTimes(2);
+    for (const call of distribution.send.mock.calls) {
+      const sent = call[0] as MessageRequest;
+      expect(sent.recipients).toHaveLength(1);
+      expect(Buffer.byteLength(JSON.stringify(sent))).toBeLessThanOrEqual(maxChunkBytes);
+    }
   });
 
   // R3: the byte-split partition must be computed over the chunk's *frozen* membership

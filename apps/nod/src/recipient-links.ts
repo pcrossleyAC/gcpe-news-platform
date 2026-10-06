@@ -18,6 +18,31 @@ export interface RecipientLinkOptions {
   linkSecret: string;
 }
 
+// newLinkToken()'s randomBytes(32).toString("base64url") is always exactly this many
+// characters, regardless of value -- a fixed function of the byte count, not the bytes
+// themselves.
+const MANAGE_TOKEN_LEN = 43;
+// unsubscribeToken()'s `<subscriberId>.<version>.<mac>`: a uuid (36), ".", the version's own
+// digits, ".", and an HMAC-SHA256 digest as base64url (also always 43 characters).
+const UUID_LEN = 36;
+const MAC_LEN = 43;
+
+/**
+ * The exact length a real `{{manageUrl}}`/`{{unsubscribeUrl}}` substitution will be for this
+ * deployment's `opts` (and, for the unsubscribe token, a subscriber whose `unsubscribe_version`
+ * is `unsubscribeVersionDigits` digits wide -- 1 by default, true of every subscriber until
+ * their 10th email change). Used only to size send-jobs.ts's byte-size probe placeholders with
+ * same-length (but not real) strings, never to build an actual link -- see
+ * {@link recipientSubstitutions} for that.
+ */
+export function placeholderLinkLengths(opts: RecipientLinkOptions, unsubscribeVersionDigits = 1): { manageUrlLen: number; unsubscribeUrlLen: number } {
+  const manageUrlLen = linkUrl(opts.pageUrl, "x".repeat(MANAGE_TOKEN_LEN)).length;
+  const tokenLen = UUID_LEN + 1 + unsubscribeVersionDigits + 1 + MAC_LEN;
+  const apiBase = opts.subscribeApiUrl.replace(/\/$/, "");
+  const unsubscribeUrlLen = `${apiBase}/OneClickUnsubscribe/${encodeURIComponent("x".repeat(tokenLen))}`.length;
+  return { manageUrlLen, unsubscribeUrlLen };
+}
+
 /**
  * Builds the per-recipient `{{manageUrl}}`/`{{unsubscribeUrl}}` substitutions an outbound email
  * carries (global constraints: "Per-email links"). For each member, issues one fresh 24-hour

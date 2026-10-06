@@ -196,6 +196,87 @@ export function renderEmergency(item: RenderItem, opts: RenderOptions): Rendered
   };
 }
 
+/** Legacy media-advisory convention: a line reading exactly `MEDIA ADVISORY - EVENT REMINDER`
+ * is immediately followed by the event's own headline, repeated -- which the media copy must
+ * not show a second time. */
+const MEDIA_ADVISORY_REMINDER_LINE = "MEDIA ADVISORY - EVENT REMINDER";
+
+const MEDIA_FONT = "'BC Sans', Arial, Helvetica, sans-serif";
+
+/** Normalises line endings to `\n` and, for an advisory, drops the lines immediately following
+ * a {@link MEDIA_ADVISORY_REMINDER_LINE} up to (not including) the next blank line. */
+function normalizeMediaText(mediaText: string, postKind: string | null): string {
+  const normalized = mediaText.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (postKind !== "advisories") return normalized;
+  const lines = normalized.split("\n");
+  const idx = lines.findIndex((l) => l.trim() === MEDIA_ADVISORY_REMINDER_LINE);
+  if (idx === -1) return normalized;
+  let end = idx + 1;
+  while (end < lines.length && lines[end]!.trim() !== "") end++;
+  return [...lines.slice(0, idx + 1), ...lines.slice(end)].join("\n");
+}
+
+/** Splits `text` on blank lines into paragraphs, HTML-escaping each and turning its own single
+ * newlines into `<br>` (global constraints: media body layout). */
+function mediaParagraphsHtml(text: string): string {
+  return text
+    .split(/\n\s*\n/)
+    .map((p) => p.trim())
+    .filter((p) => p !== "")
+    .map((p) => `<p style="margin:0 0 16px;">${neutralizeHtml(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+function readMoreHtml(url: string): string {
+  return `<p style="margin:0 0 16px;"><a href="${escapeHtml(url)}" style="color:#1a5a96;font-weight:bold;text-decoration:underline;">▶ READ MORE</a></p>`;
+}
+
+function categoriesBlockHtml(categories: { name: string; url: string | null }[]): string {
+  const line = categoryLineHtml(categories);
+  return line ? `<p style="margin:0;font-size:12px;color:#666666;">${line}</p>` : "";
+}
+
+/** Bare title for an advisory (`postKind === 'advisories'`), else `BC Gov News - <title>` —
+ * global constraints' media subject rule. Sanitised (and falls back to the item key) the same
+ * way every other subject is. */
+function subjectForMedia(item: RenderItem & { postKind: string | null }): string {
+  if (item.postKind === "advisories") {
+    const title = item.title.replace(/\s+/g, " ").trim();
+    return sanitizeSubject(title, item.key);
+  }
+  return subjectFor("BC Gov News", item);
+}
+
+/**
+ * The media-list version of an item: no banner (legacy media look), BC Sans at 18px, the
+ * release's full text as paragraphs, then "▶ READ MORE" (omitted for an advisory), then the
+ * grey topic line (already excludes media lists -- `item.categories` is resolved from
+ * `items.listKeys`, which never carries a media key), then 4b's standard subscriber footer
+ * (manage/see-more/do-not-respond/unsubscribe) -- global constraints, "Media emails".
+ */
+export function renderMedia(item: RenderItem & { mediaText: string; postKind: string | null }, opts: RenderOptions): Rendered {
+  const isAdvisory = item.postKind === "advisories";
+  const text = normalizeMediaText(item.mediaText, item.postKind);
+
+  const bodyHtml =
+    `<tr><td style="padding:16px 24px;font-family:${MEDIA_FONT};font-size:18px;color:#000000;">` +
+    mediaParagraphsHtml(text) +
+    (isAdvisory ? "" : readMoreHtml(item.url)) +
+    categoriesBlockHtml(item.categories) +
+    `</td></tr>`;
+
+  const bodyTextLines = [text];
+  if (!isAdvisory) bodyTextLines.push(`Read more: ${item.url}`);
+  const categoriesLine = categoryLineText(item.categories);
+  if (categoriesLine) bodyTextLines.push(categoriesLine);
+
+  return {
+    subject: subjectForMedia(item),
+    html: `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;margin:0 auto;">${bodyHtml}${footerHtml(opts, "subscriber")}</table>`,
+    text: `${bodyTextLines.join("\n\n")}\n\n${footerText(opts, "subscriber")}`,
+  };
+}
+
 const DIGEST_SUBJECT = "BCNews - Daily Digest";
 
 /** Lists every item in the order given (callers pass them in `publishedAt` order — no date

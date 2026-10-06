@@ -329,14 +329,14 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     workers: {
       flickr: () => processFlickrJobs(flickrJobsOpts),
       site: () => switchCarousels(db, subscribers),
-      publish: () => publishDue({ db, subscribers, filesBase, prepareMedia }),
+      publish: () => publishDue({ db, subscribers, filesBase, prepareMedia, timeZone: tenant.timeZone }),
       dispatch: () => dispatchOnce({ db, subscribers }),
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopFlickr = startFlickrJobs({ ...flickrJobsOpts, intervalMs: 30_000 });
       stopSite = startSiteLoop({ db, subscribers, intervalMs: parsed.PUBLISH_INTERVAL_MS });
-      stopPublisher = startPublisher({ db, subscribers, filesBase, prepareMedia, intervalMs: parsed.PUBLISH_INTERVAL_MS });
+      stopPublisher = startPublisher({ db, subscribers, filesBase, prepareMedia, timeZone: tenant.timeZone, intervalMs: parsed.PUBLISH_INTERVAL_MS });
     },
     closeBeforeServer: [],
     closers: [

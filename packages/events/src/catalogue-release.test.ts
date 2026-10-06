@@ -30,6 +30,12 @@ describe("release and site events", () => {
     expect(parseEvent(env("release.updated", { ...sampleRelease, notify: false })).type).toBe("release.updated");
   });
 
+  it("a record without mediaText (an older stored envelope) parses with mediaText null", () => {
+    const { mediaText, ...withoutMediaText } = sampleRelease;
+    expect(mediaText).toBeNull(); // sanity: the fixture itself carries the field
+    expect(parseEvent(env("release.published", withoutMediaText)).data).toMatchObject({ mediaText: null });
+  });
+
   it("validates site.content.changed by entity", () => {
     expect(
       parseEvent(env("site.content.changed", { entity: "categoryFeatures", kind: "ministries", key: "health", topPostKey: "a", featurePostKey: null })).data,

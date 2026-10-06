@@ -4,7 +4,7 @@ import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
 import { renderDigestItems } from "./digest";
-import { recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
+import { placeholderLinkLengths, recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
 import type { RenderOptions } from "./render";
 import { safeErrorLabel } from "./subscribe/journeys";
 
@@ -290,12 +290,29 @@ function requestByteSize(req: MessageRequest): number {
  * number of parts and who falls in which one can't shift as subscribers go active/inactive
  * between attempts. Returns the *membership* of each part, not yet filtered to active-only
  * or built into a request — that happens in sendAllChunks, per attempt.
+ *
+ * `linkPlaceholder` stands in for every member's real `{{manageUrl}}`/`{{unsubscribeUrl}}`
+ * substitutions during this probe -- same-length strings (placeholderLinkLengths), not real
+ * tokens, so the probe's measured size already includes what every actual send-time request
+ * will add once `recipientSubstitutions` fills them in for real (see sendAllChunks). Probing
+ * with no substitutions at all (every member getting `{}`) would under-measure a request whose
+ * per-recipient links are a significant share of its size -- most visible for a media job,
+ * whose full release text can otherwise make the link overhead look negligible by comparison
+ * when it isn't, once thousands of recipients are added up.
  */
-function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex: number, maxBytes: number): { key: string; members: Member[] }[] {
+function partitionChunkByBytes(
+  job: ClaimedJobRow,
+  members: Member[],
+  chunkIndex: number,
+  maxBytes: number,
+  linkPlaceholder: { manageUrl: string; unsubscribeUrl: string },
+): { key: string; members: Member[] }[] {
   let n = 1;
   while (n < members.length) {
     const size = Math.ceil(members.length / n);
-    const probe = buildMessageRequest(job, members.slice(0, size), String(chunkIndex));
+    const slice = members.slice(0, size);
+    const probeSubstitutions = new Map(slice.map((m) => [m.subscriberId, linkPlaceholder]));
+    const probe = buildMessageRequest(job, slice, String(chunkIndex), probeSubstitutions);
     if (requestByteSize(probe) <= maxBytes) break;
     n++;
   }
@@ -348,8 +365,10 @@ async function sendAllChunks(
   maxChunkBytes: number,
 ): Promise<{ batchIds: Record<string, string>; error?: DistributionError }> {
   const batchIds: Record<string, string> = {};
+  const { manageUrlLen, unsubscribeUrlLen } = placeholderLinkLengths(opts.links);
+  const linkPlaceholder = { manageUrl: "x".repeat(manageUrlLen), unsubscribeUrl: "x".repeat(unsubscribeUrlLen) };
   for (const [chunkIndex, members] of chunks) {
-    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes)) {
+    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes, linkPlaceholder)) {
       const activeMembers = partMembers.filter((m) => m.active);
       if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
       try {
