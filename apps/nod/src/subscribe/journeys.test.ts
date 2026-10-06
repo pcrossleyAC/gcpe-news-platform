@@ -3,7 +3,8 @@ import { and, eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { subscriberHistory, subscribers, subscriptions } from "../db/schema";
-import { subscriberInfoSchema, PreferencesError } from "./info";
+import { addMediaMember, listMediaMembers, OptedOutError } from "../media-members";
+import { infoFor, subscriberInfoSchema, PreferencesError } from "./info";
 import { checkToken, confirm, requestManageLink, subscribe, unsubscribe, update, type JourneyDeps } from "./journeys";
 import * as linksModule from "./links";
 import { unsubscribeToken } from "./tokens";
@@ -20,7 +21,10 @@ describe("subscriber journeys", () => {
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
-    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name) VALUES ('ministries:health','ministries','health','Health'), ('ministries:agri','ministries','agri','Agriculture')`);
+    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name) VALUES
+      ('ministries:health','ministries','health','Health'),
+      ('ministries:agri','ministries','agri','Agriculture'),
+      ('media-distribution-lists:budget','media-distribution-lists','budget','Budget')`);
     deps = {
       db: tdb.db,
       pageUrl: "https://boxs.ca/site/subscribe/manage/",
@@ -110,6 +114,25 @@ describe("subscriber journeys", () => {
     await confirm(deps, tokenFrom());
     const [s] = await tdb.db.select().from(subscribers);
     expect(s).toMatchObject({ email: "new@example.test", unsubscribeVersion: 2 });
+  });
+
+  // I4: pinned per the brief -- change-email (4a) moves media memberships with the subscriber
+  // row as today; it's one row, so there's nothing media-specific to change, but it's untested.
+  it("change-email moves media memberships with the subscriber row (4a carry-forward pin)", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie");
+
+    await requestManageLink(deps, "pat@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    await update(deps, tokenFrom(), info({ emailAddress: "new@example.test" }));
+    await confirm(deps, tokenFrom());
+
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, s!.id));
+    expect(after).toMatchObject({ email: "new@example.test" });
+    const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, s!.id));
+    expect(subs.map((r) => r.listKey)).toContain("media-distribution-lists:budget");
   });
 
   it("moving to an address that's already subscribed unsubscribes the old record silently", async () => {
@@ -324,5 +347,56 @@ describe("subscriber journeys", () => {
     await unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 1));
     const rows = await tdb.db.select().from(subscriberHistory).where(and(eq(subscriberHistory.subscriberId, s!.id), eq(subscriberHistory.action, "unsubscribed")));
     expect(rows).toHaveLength(1);
+  });
+
+  it("unsubscribe is an opt-out from media lists too (global constraints)", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie");
+
+    await unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 1));
+
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, s!.id));
+    expect(after).toMatchObject({ status: "deleted" });
+    const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, s!.id));
+    expect(subs.map((r) => r.listKey)).toEqual(["ministries:health"]); // only the media subscription is removed
+    const optedOut = await tdb.db
+      .select()
+      .from(subscriberHistory)
+      .where(and(eq(subscriberHistory.subscriberId, s!.id), eq(subscriberHistory.action, "media-list-opted-out")));
+    expect(optedOut).toMatchObject([{ detail: "media-distribution-lists:budget" }]);
+    expect(await listMediaMembers(tdb.db, "budget")).toEqual([]);
+
+    const err = await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie").catch((e) => e);
+    expect(err).toBeInstanceOf(OptedOutError);
+    const reinstated = await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media", confirmOptOut: true }, "staff:jamie");
+    expect(reinstated.subscriberId).toBe(s!.id);
+    expect(await listMediaMembers(tdb.db, "budget")).toMatchObject([{ subscriberId: s!.id }]);
+  });
+
+  it("update() with new public prefs keeps the media subscription", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie");
+
+    await requestManageLink(deps, "pat@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    expect(await update(deps, tokenFrom(), info({ subscribedCategories: { ministries: ["agri"] } }))).toBe("ok");
+
+    const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, s!.id));
+    expect(subs.map((r) => r.listKey).sort()).toEqual(["media-distribution-lists:budget", "ministries:agri"]);
+  });
+
+  it("infoFor omits the media key", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie");
+
+    const view = await infoFor(tdb.db, s!.id);
+    expect(view.subscribedCategories).not.toHaveProperty("media-distribution-lists");
+    expect(view.subscribedCategories).toEqual({ ministries: ["health"] });
   });
 });

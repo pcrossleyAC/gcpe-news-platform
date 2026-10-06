@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
-import { authFromEnv } from "@gcpe/auth";
+import { authFromEnv, isValidPasswordHash, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
@@ -10,6 +10,8 @@ import { runDigestIfDue, startDigestLoop } from "./digest";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
 import { needsReferenceData } from "./lists";
+import { mediaHubClient, type MediaHubClient } from "./media-hub/client";
+import { runMediaSyncIfDue, startMediaSyncLoop } from "./media-hub/sync";
 import type { RecipientLinkOptions } from "./recipient-links";
 import type { RenderOptions } from "./render";
 import { sendDueJobs, startJobSender } from "./send-jobs";
@@ -49,10 +51,31 @@ export const nodEnvSchema = z.object({
   // Base URL of the public Subscribe API, carrying the one-click unsubscribe path
   // (recipient-links.ts, Task 3). Default: PUBLIC_SITE_URL's own origin's /api/Subscribe.
   SUBSCRIBE_API_URL: z.string().url().optional(),
+  // Media Hub contacts contract. Unset -> search and add-from-hub answer 503 "media hub not
+  // configured" while manual entry still works; the stack points this at its own fake Media
+  // Hub when no real one is configured (see apps/stack/src/env.ts).
+  MEDIA_HUB_URL: z.string().url().optional(),
+  MEDIA_HUB_TOKEN_URL: z.string().optional(),
+  MEDIA_HUB_CLIENT_ID: z.string().optional(),
+  MEDIA_HUB_CLIENT_SECRET: z.string().optional(),
+  MEDIA_HUB_SCOPE: z.string().optional(),
+  MEDIA_HUB_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  // Legacy Subscribe/SubscriberInformation (C55) Basic Auth -- either unset means the route
+  // answers 503 instead of ever comparing credentials. MEMBERSHIP_API_PASSWORD_HASH is a
+  // `scrypt$...` string from `npm run nod:membership-hash`, never a plain password.
+  MEMBERSHIP_API_USERNAME: z.string().optional(),
+  MEMBERSHIP_API_PASSWORD_HASH: z.string().optional(),
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   // Task 6: the tenant's time zone (digest.ts's 17:00 cutoff) and its tzdata self-check, same
   // default as apps/news-api/src/env.ts.
   TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
+}).superRefine((e, ctx) => {
+  // Catches a misconfigured hash at startup instead of leaving the route permanently
+  // unauthenticatable (every real credential would fail verifyPassword, with nothing in the
+  // logs to say why) -- same check authFromEnv runs on LOCAL_ADMIN_PASSWORD_HASH.
+  if (e.MEMBERSHIP_API_PASSWORD_HASH !== undefined && !isValidPasswordHash(e.MEMBERSHIP_API_PASSWORD_HASH)) {
+    ctx.addIssue({ code: "custom", message: "MEMBERSHIP_API_PASSWORD_HASH must be the output of `npm run nod:membership-hash`" });
+  }
 });
 
 export interface AppHandle {
@@ -122,6 +145,25 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
 
   const sendJobsOptions = { db, distribution, links: recipientLinks, render, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS };
 
+  // Only built when a Media Hub is actually configured -- search and add-from-hub answer 503
+  // otherwise (routes.ts), and there is then no token provider to fail at startup.
+  const mediaHub: MediaHubClient | null = parsed.MEDIA_HUB_URL
+    ? mediaHubClient({
+        baseUrl: parsed.MEDIA_HUB_URL,
+        getToken: serviceTokenProvider({
+          tokenUrl: parsed.MEDIA_HUB_TOKEN_URL,
+          clientId: parsed.MEDIA_HUB_CLIENT_ID,
+          clientSecret: parsed.MEDIA_HUB_CLIENT_SECRET,
+          scope: parsed.MEDIA_HUB_SCOPE,
+          local: auth.local,
+          subject: "nod",
+          roles: ["MediaHub.ContactsRead"],
+          envPrefix: "NOD_MEDIA_HUB",
+        }),
+        timeoutMs: parsed.MEDIA_HUB_TIMEOUT_MS,
+      })
+    : null;
+
   const app = createApp({
     db,
     auth: auth.bearer,
@@ -138,12 +180,18 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     distribution,
     opsEmail: parsed.OPS_EMAIL ?? null,
     timeZone: tenant.timeZone,
+    mediaHub,
+    membership:
+      parsed.MEMBERSHIP_API_USERNAME && parsed.MEMBERSHIP_API_PASSWORD_HASH
+        ? { username: parsed.MEMBERSHIP_API_USERNAME, passwordHash: parsed.MEMBERSHIP_API_PASSWORD_HASH }
+        : null,
   });
 
   // Set by startLoops(); the closers below reference these lazily so they're safe to call even
   // if startLoops() was never invoked.
   let stopJobSender: (() => Promise<void>) | undefined;
   let stopDigestLoop: (() => Promise<void>) | undefined;
+  let stopMediaSyncLoop: (() => Promise<void>) | undefined;
 
   return {
     app,
@@ -153,6 +201,11 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // Task 6: the 17:00 daily digest -- a no-op call every tick until the tenant's wall
       // clock actually reaches DIGEST_HOUR for a cutoff not already run.
       digest: () => runDigestIfDue(db, tenant.timeZone, render),
+      // The nightly Media Hub sync -- a no-op call every tick until the tenant's wall clock
+      // actually reaches MEDIA_SYNC_HOUR for a day not already run. No Media Hub configured at
+      // all means nothing to sync -- a no-op, same as the search/add-from-hub routes
+      // answering 503.
+      mediaSync: () => (mediaHub ? runMediaSyncIfDue(db, mediaHub, tenant.timeZone) : Promise.resolve({ ran: false })),
       // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
       // data has ever reached this NoD so it knows whether to ask Core to republish.
       needsReferenceData: () => needsReferenceData(db),
@@ -162,11 +215,13 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // The standalone NoD image and STACK_LOOPS=true must also run the digest -- the
       // workers.digest hook above only ever fires once, when a caller asks for it.
       stopDigestLoop = startDigestLoop({ db, timeZone: tenant.timeZone, render });
+      if (mediaHub) stopMediaSyncLoop = startMediaSyncLoop({ db, client: mediaHub, timeZone: tenant.timeZone });
     },
     closeBeforeServer: [],
     closers: [
       { name: "job sender", close: async () => { await stopJobSender?.(); } },
       { name: "digest loop", close: async () => { await stopDigestLoop?.(); } },
+      { name: "media sync loop", close: async () => { await stopMediaSyncLoop?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],
   };

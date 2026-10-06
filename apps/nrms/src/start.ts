@@ -257,7 +257,9 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       }).countSubscribers
     : undefined;
   const filesBase = parsed.PUBLIC_FILES_BASE;
-  const workflow = { timeZone: tenant.timeZone, countSubscribers, filesBase };
+  // Media contact count calls the same NoD count endpoint as the subscriber count — workflow.ts
+  // supplies the `media-distribution-lists:<key>` keys, NoD counts whatever keys it's given.
+  const workflow = { timeZone: tenant.timeZone, countSubscribers, countMediaContacts: countSubscribers, filesBase };
   const store = localStore(parsed.STORAGE_DIR, "/files/");
   const liveFeedDefaults = { manifestUrl: parsed.LIVE_WEBCAST_MANIFEST_URL_DEFAULT ?? "", m3uUrl: parsed.LIVE_WEBCAST_M3U_URL_DEFAULT ?? "" };
   const distribution = parsed.DISTRIBUTION_URL
@@ -329,14 +331,14 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     workers: {
       flickr: () => processFlickrJobs(flickrJobsOpts),
       site: () => switchCarousels(db, subscribers),
-      publish: () => publishDue({ db, subscribers, filesBase, prepareMedia }),
+      publish: () => publishDue({ db, subscribers, filesBase, prepareMedia, timeZone: tenant.timeZone }),
       dispatch: () => dispatchOnce({ db, subscribers }),
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopFlickr = startFlickrJobs({ ...flickrJobsOpts, intervalMs: 30_000 });
       stopSite = startSiteLoop({ db, subscribers, intervalMs: parsed.PUBLISH_INTERVAL_MS });
-      stopPublisher = startPublisher({ db, subscribers, filesBase, prepareMedia, intervalMs: parsed.PUBLISH_INTERVAL_MS });
+      stopPublisher = startPublisher({ db, subscribers, filesBase, prepareMedia, timeZone: tenant.timeZone, intervalMs: parsed.PUBLISH_INTERVAL_MS });
     },
     closeBeforeServer: [],
     closers: [

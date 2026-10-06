@@ -16,19 +16,25 @@ function localDateParts(d: Date, timeZone: string): { y: number; m: number; day:
 }
 
 /**
- * 17:00 local on the local date of `dbNow`, or the day before if that is still ahead. Uses the
- * same wall-clock->instant conversion as the rest of the platform (Node's tzdata, asserted at
- * startup via `assertTimeZoneRules`), never Postgres's (global constraints: clocks).
+ * `hour`:00 local on the local date of `dbNow`, or the day before if that is still ahead. Uses
+ * the same wall-clock->instant conversion as the rest of the platform (Node's tzdata, asserted
+ * at startup via `assertTimeZoneRules`), never Postgres's (global constraints: clocks).
  *
  * `wallClockToInstant`'s contract (packages/config/src/timezone.ts): it takes a `Date` whose
  * *UTC* fields hold the wall-clock fields meant for `timeZone`. `Date.UTC(y, m - 1, day +
- * dayOffset, DIGEST_HOUR, 0, 0)` builds exactly that, so no adaptation is needed here.
+ * dayOffset, hour, 0, 0)` builds exactly that, so no adaptation is needed here.
  */
-export function digestCutoff(dbNow: Date, timeZone: string): Date {
+export function dailyCutoff(dbNow: Date, timeZone: string, hour: number): Date {
   const { y, m, day } = localDateParts(dbNow, timeZone);
-  const at = (dayOffset: number) => wallClockToInstant(new Date(Date.UTC(y, m - 1, day + dayOffset, DIGEST_HOUR, 0, 0)), timeZone);
+  const at = (dayOffset: number) => wallClockToInstant(new Date(Date.UTC(y, m - 1, day + dayOffset, hour, 0, 0)), timeZone);
   const today = at(0);
   return today.getTime() <= dbNow.getTime() ? today : at(-1);
+}
+
+/** The 17:00 daily digest cutoff -- a thin wrapper over {@link dailyCutoff} so its own tests
+ * stay unchanged. */
+export function digestCutoff(dbNow: Date, timeZone: string): Date {
+  return dailyCutoff(dbNow, timeZone, DIGEST_HOUR);
 }
 
 const DAY_MS = 24 * 3_600_000;

@@ -35,7 +35,7 @@ answer the open questions in `docs/parity/open-questions.md`.
    Grid, right-click → Save Results As), named after the query number, e.g. `03-2.4.csv`.
 3. If a query errors, keep going and send the error message with its number. Don't edit the
    query; it's probably a column the source code got wrong, which is itself useful to know.
-4. Put the results in `docs/parity/legacy-survey/results/<database>/`. Since they contain no
+4. Put the results in `docs/parity/legacy-survey/results/<database>/`. An Excel workbook per script (one sheet per query, named by query number) is fine instead of CSVs. Since they contain no
    personal data, they can be committed.
 
 Save the email templates (`06` query 1.10b) and release types (`02` query 2.6) exactly as

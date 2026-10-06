@@ -237,10 +237,18 @@ npm --workspace @gcpe/nod run dev
 | `OPS_EMAIL` | no | | Operator inbox emailed whenever sending is paused or resumed (set as `NOD_OPS_EMAIL` on the deployed stack, which strips the `NOD_` prefix before this schema sees it) |
 | `SUBSCRIBE_PAGE_URL` | no | `${PUBLIC_SITE_URL}/subscribe/manage/` | The page emailed verify/manage links open |
 | `SUBSCRIBE_API_URL` | no | `PUBLIC_SITE_URL`'s origin + `/api/Subscribe` | Base URL of the public Subscribe API, carrying the one-click unsubscribe path |
+| `MEDIA_HUB_URL` | no | | Base URL of the Media Hub contacts service; unset means search and add-from-hub answer 503 while manual entry still works (the stack points this at its own fake Media Hub when no real one is configured — see `apps/stack/src/env.ts`'s `usesFakeMediaHub`) |
+| `MEDIA_HUB_TOKEN_URL` | no* | | Entra client-credentials token endpoint for calling Media Hub |
+| `MEDIA_HUB_CLIENT_ID` | no* | | Entra client id for the client-credentials grant |
+| `MEDIA_HUB_CLIENT_SECRET` | no* | | Entra client secret for the client-credentials grant |
+| `MEDIA_HUB_SCOPE` | no* | | OAuth2 scope requested for the client-credentials grant |
+| `MEDIA_HUB_TIMEOUT_MS` | no | `15000` | Per-request timeout against Media Hub |
+| `MEMBERSHIP_API_USERNAME` | no | | Basic Auth username for the legacy `Subscribe/SubscriberInformation` endpoint (C55, Media Hub's Membership tab); either this or the hash unset means the route always answers 503 |
+| `MEMBERSHIP_API_PASSWORD_HASH` | no | | Basic Auth password hash (`scrypt$...` from `npm run nod:membership-hash`), never a plain password |
 | `MIGRATIONS_FOLDER` | no | `apps/nod/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/nod/migrations` |
 | `TENANT_CONFIG` | no | `config/tenants/bc.json` (resolved next to the bundle) | Tenant config path, see `packages/config` — its time zone decides the digest's 17:00 BC-local cutoff |
 
-\* All four `DISTRIBUTION_*` Entra fields must be set together, or none of them — see "NoD's token selection" below.
+\* All four `DISTRIBUTION_*` Entra fields must be set together, or none of them — see "NoD's token selection" below. The four `MEDIA_HUB_*` Entra fields follow the same all-or-nothing rule; none of them set means the Media Hub client mints a local token instead (test environments only, same as Distribution's).
 
 Plus the shared auth env vars — see [Authentication](#authentication-entra-or-local-admin-login-test-environments-only) below.
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseEvent, termEventType, type OrgRecord } from "./index";
+import { parseEvent, termEventType, type MediaListRecord, type OrgRecord } from "./index";
 
 const org: OrgRecord = {
   key: "health",
@@ -56,5 +56,28 @@ describe("parseEvent", () => {
   it("maps term kinds to event types", () => {
     expect(termEventType("sector", "upserted")).toBe("sector.upserted");
     expect(termEventType("service", "deactivated")).toBe("service.deactivated");
+  });
+});
+
+const mediaList: MediaListRecord = { key: "regional", displayName: "Regional media", sortOrder: 1, isActive: true };
+
+describe("media_list.* events", () => {
+  it("accepts a valid media_list.created envelope", () => {
+    expect(parseEvent(envelope("media_list.created", mediaList)).data).toEqual(mediaList);
+  });
+
+  it("accepts a valid media_list.updated envelope", () => {
+    expect(parseEvent(envelope("media_list.updated", mediaList)).data).toEqual(mediaList);
+  });
+
+  it("accepts a valid media_list.deactivated envelope", () => {
+    expect(parseEvent(envelope("media_list.deactivated", { key: "regional" })).data).toEqual({ key: "regional" });
+  });
+
+  it("rejects media_list.created, media_list.updated and media_list.deactivated with a missing key", () => {
+    const { key: _k, ...bad } = mediaList;
+    expect(() => parseEvent(envelope("media_list.created", bad))).toThrow();
+    expect(() => parseEvent(envelope("media_list.updated", bad))).toThrow();
+    expect(() => parseEvent(envelope("media_list.deactivated", {}))).toThrow();
   });
 });

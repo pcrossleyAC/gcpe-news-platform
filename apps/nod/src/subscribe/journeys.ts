@@ -2,6 +2,8 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import type { DistributionClient } from "../distribution-client";
 import { subscribers, subscriptions, type SubscriberPrefs } from "../db/schema";
+import { MEDIA_CATEGORY } from "../lists";
+import { optOutMediaMemberships } from "../media-members";
 import type { RenderOptions } from "../render";
 import { writeHistory } from "./history";
 import { infoFor, normaliseEmail, toPrefs, type SubscriberInfo } from "./info";
@@ -110,8 +112,14 @@ async function issue(deps: JourneyDeps, kind: SystemEmailKind, input: { email: s
   return true;
 }
 
+/** Replaces a subscriber's non-media subscriptions with `listKeys` (always the public ones `toPrefs`
+ * produced). Media memberships are never in `listKeys` (the public manage page doesn't know the
+ * category) and must survive untouched (global constraints, "the public manage page never shows
+ * or changes media memberships"). */
 async function replaceSubscriptions(tx: DbOrTx, subscriberId: string, listKeys: string[]) {
-  await tx.delete(subscriptions).where(eq(subscriptions.subscriberId, subscriberId));
+  await tx
+    .delete(subscriptions)
+    .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`));
   if (listKeys.length) await tx.insert(subscriptions).values(listKeys.map((listKey) => ({ subscriberId, listKey })));
 }
 
@@ -248,13 +256,19 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
   return infoFor(deps.db, subscriberId);
 }
 
+/** Ends a subscriber (4a) and, in the same transaction, opts them out of every media list
+ * (global constraints, "Unsubscribe means everything") -- shared by one-click, token-link and
+ * every email kind, since they all route through this one function. */
 async function endSubscriber(tx: DbOrTx, subscriberId: string) {
   const ended = await tx
     .update(subscribers)
     .set({ status: "deleted", endedAt: sql`now()` })
     .where(and(eq(subscribers.id, subscriberId), sql`${subscribers.status} <> 'deleted'`))
     .returning({ id: subscribers.id });
-  if (ended.length) await writeHistory(tx, subscriberId, SELF, "unsubscribed");
+  if (ended.length) {
+    await writeHistory(tx, subscriberId, SELF, "unsubscribed");
+    await optOutMediaMemberships(tx, subscriberId, SELF);
+  }
 }
 
 /** Whether `link` currently authorises a manage session — `update`, `unsubscribe` and (for a

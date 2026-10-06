@@ -87,6 +87,30 @@ export const FAKE_FLICKR = {
   accessSecret: "fake-token-secret-0123456789",
 } as const;
 
+/** Where the stack mounts its fake Media Hub when NoD has no real one configured. */
+export const FAKE_MEDIA_HUB_PATH = "/fake-media-hub";
+
+/** What NoD's env view gets in fake mode: its own in-process URL. Unlike Flickr, the fake
+ * Media Hub needs no credentials of its own -- its service routes are gated by a bearer+role
+ * check the stack supplies at mount time (stack.ts), the same bearer verifier as everywhere
+ * else in this stack. */
+export const FAKE_MEDIA_HUB_ENV: Readonly<Record<string, string>> = {
+  MEDIA_HUB_URL: `self:${FAKE_MEDIA_HUB_PATH}`,
+};
+
+/**
+ * True when the stack runs, and points NoD at, its fake Media Hub: NoD has no effective
+ * `MEDIA_HUB_URL` ("" counts as none) AND this is not a real production deployment -- same
+ * safety net as {@link usesFakeFlickr} (NODE_ENV isn't "production", or it's a test deployment
+ * via LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true). Production with no Media Hub configured fails
+ * closed instead: no Media Hub at all, so search/add-from-hub answer 503 rather than serving
+ * made-up contacts that could get added to a real media list.
+ */
+export function usesFakeMediaHub(env: NodeJS.ProcessEnv): boolean {
+  if (env.NOD_MEDIA_HUB_URL) return false;
+  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true";
+}
+
 /** What NRMS's env view gets in fake mode: the fake's credentials and its in-process URLs. */
 export const FAKE_FLICKR_ENV: Readonly<Record<string, string>> = {
   FLICKR_MODE: "fake",
@@ -187,6 +211,8 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // No Flickr key at all → the stack's fake Flickr (see stack.ts), whatever else FLICKR_* says;
   // FLICKR_ALERT_EMAILS is left as configured.
   if (prefix === "NRMS" && usesFakeFlickr(env)) Object.assign(view, FAKE_FLICKR_ENV);
+  // No Media Hub configured at all → the stack's fake Media Hub (see stack.ts).
+  if (prefix === "NOD" && usesFakeMediaHub(env)) Object.assign(view, FAKE_MEDIA_HUB_ENV);
   if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
     view.OUTPUT_DIR = join(dataDir, view.OUTPUT_DIR);
   }
@@ -198,7 +224,9 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
  * process this never varies by deployment, so the operator shouldn't have to spell it out.
  * Core and NRMS send every event type to the News API (it restricts by source itself); NoD
  * consumes release.published/updated/unpublished (NRMS: Phase 4b Task 2 — items.ts records
- * and refreshes/withdraws items from these, release.updated never sending) and Core's
+ * and refreshes/withdraws items from these, release.updated never sending), NRMS's
+ * media_list.created/updated/deactivated (from NRMS's media-list admin API and importer, mirrored
+ * by NoD so a release's media-list keys resolve to real NoD list keys) and Core's
  * taxonomy events (Phase 4a: its own `lists` mirror Core's ministries/sectors/themes/tags —
  * see apps/nod/src/lists.ts); the site builder
  * only site.rebuild_requested; NRMS also keeps its own local copy of Core's ministries and
@@ -218,7 +246,7 @@ export const INTERNAL_EVENT_ROUTES = [
   { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
   {
     from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events",
-    types: ["release.published", "release.updated", "release.unpublished"],
+    types: ["release.published", "release.updated", "release.unpublished", "media_list.created", "media_list.updated", "media_list.deactivated"],
   },
   { from: "NEWSAPI", source: "news-api", to: "SITE", name: "public-site", url: "self:/site-builder/events", types: ["site.rebuild_requested"] },
 ] as const satisfies readonly { from: AppPrefix; source: string; to: AppPrefix; name: string; url: string; types: readonly string[] }[];

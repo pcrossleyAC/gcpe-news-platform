@@ -12,9 +12,16 @@
  * instead of a select-then-insert-or-update that raced under concurrent imports and had no
  * database-level guarantee against duplicate legacy ids. The `WHERE <changed>` on the DO
  * UPDATE keeps the "unchanged row is not rewritten" behaviour without a separate read.
+ *
+ * media_lists is the one reference table NoD also needs a copy of (spec §5.3, C47), so its
+ * upsert additionally emits `media_list.updated` — in this same transaction — for every row
+ * actually inserted or changed. `RETURNING` after the `onConflictDoUpdate`'s `setWhere`
+ * naturally gives us exactly those rows and none of the unchanged ones (same technique as
+ * apps/news-api/src/projections.ts's `applyRelease`).
  */
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
+import { enqueueEvent, type MediaListRecord, type SubscriberConfig } from "@gcpe/events";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { governmentTerms, mediaLists, pageImageLanguages, pageImages, pageTypes } from "../db/schema";
 import { layoutFromLegacy, newestTerm, releaseTypeFromLegacy } from "./map";
@@ -174,13 +181,13 @@ async function importPageTypes(tx: Tx, rows: LegacyPageTypeRow[], pageImageIds: 
   }
 }
 
-async function importMediaLists(tx: Tx, rows: LegacyMediaListRow[], report: ImportReport): Promise<Map<string, string>> {
+async function importMediaLists(tx: Tx, rows: LegacyMediaListRow[], report: ImportReport, subscribers: SubscriberConfig[]): Promise<Map<string, string>> {
   const ids = new Map<string, string>();
   for (const row of rows) {
     report.count("media_lists", "legacy");
     const legacyId = row.Id.toLowerCase();
     const values = { key: row.Key, displayName: row.DisplayName, sortOrder: row.SortOrder, isActive: Boolean(row.IsActive), legacyId };
-    await tx
+    const [changed] = await tx
       .insert(mediaLists)
       .values(values)
       .onConflictDoUpdate({
@@ -191,7 +198,12 @@ async function importMediaLists(tx: Tx, rows: LegacyMediaListRow[], report: Impo
           OR ${mediaLists.displayName} IS DISTINCT FROM ${values.displayName}
           OR ${mediaLists.sortOrder} IS DISTINCT FROM ${values.sortOrder}
           OR ${mediaLists.isActive} IS DISTINCT FROM ${values.isActive}`,
-      });
+      })
+      .returning({ key: mediaLists.key, displayName: mediaLists.displayName, sortOrder: mediaLists.sortOrder, isActive: mediaLists.isActive });
+    if (changed) {
+      const record: MediaListRecord = changed;
+      await enqueueEvent(tx, { type: "media_list.updated", source: "nrms", aggregateId: `media-list:${record.key}`, data: record }, subscribers);
+    }
     const [row_] = await tx.select({ id: mediaLists.id }).from(mediaLists).where(eq(mediaLists.legacyId, legacyId));
     ids.set(legacyId, row_!.id);
     report.count("media_lists", "imported");
@@ -256,12 +268,13 @@ export async function importReference(
   db: Db,
   source: LegacySource,
   report: ImportReport,
+  subscribers: SubscriberConfig[] = [],
 ): Promise<{ pageImageIds: Map<string, string>; mediaListIds: Map<string, string>; termIds: Map<string, string> }> {
   return db.transaction(async (tx) => {
     const pageImageIds = await importPageImages(tx, await source.query<LegacyPageImageRow>(Q_PAGE_IMAGES), report);
     await importPageImageLanguages(tx, await source.query<LegacyPageImageLanguageRow>(Q_PAGE_IMAGE_LANGUAGES), pageImageIds, report);
     await importPageTypes(tx, await source.query<LegacyPageTypeRow>(Q_PAGE_TYPES), pageImageIds, report);
-    const mediaListIds = await importMediaLists(tx, await source.query<LegacyMediaListRow>(Q_MEDIA_LISTS), report);
+    const mediaListIds = await importMediaLists(tx, await source.query<LegacyMediaListRow>(Q_MEDIA_LISTS), report, subscribers);
     const termIds = await importTerms(tx, await source.query<LegacyCollectionRow>(Q_COLLECTIONS), report);
     return { pageImageIds, mediaListIds, termIds };
   });

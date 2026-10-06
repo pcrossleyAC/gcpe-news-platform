@@ -4,8 +4,9 @@ import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
 import { renderDigestItems } from "./digest";
-import { recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
+import { placeholderLinkLengths, recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
 import type { RenderOptions } from "./render";
+import { emailAddressSchema } from "./subscribe/info";
 import { safeErrorLabel } from "./subscribe/journeys";
 
 /** Distribution refuses a request with more than 20,000 recipients (P2-R15): a release that
@@ -290,12 +291,29 @@ function requestByteSize(req: MessageRequest): number {
  * number of parts and who falls in which one can't shift as subscribers go active/inactive
  * between attempts. Returns the *membership* of each part, not yet filtered to active-only
  * or built into a request — that happens in sendAllChunks, per attempt.
+ *
+ * `linkPlaceholder` stands in for every member's real `{{manageUrl}}`/`{{unsubscribeUrl}}`
+ * substitutions during this probe -- same-length strings (placeholderLinkLengths), not real
+ * tokens, so the probe's measured size already includes what every actual send-time request
+ * will add once `recipientSubstitutions` fills them in for real (see sendAllChunks). Probing
+ * with no substitutions at all (every member getting `{}`) would under-measure a request whose
+ * per-recipient links are a significant share of its size -- most visible for a media job,
+ * whose full release text can otherwise make the link overhead look negligible by comparison
+ * when it isn't, once thousands of recipients are added up.
  */
-function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex: number, maxBytes: number): { key: string; members: Member[] }[] {
+function partitionChunkByBytes(
+  job: ClaimedJobRow,
+  members: Member[],
+  chunkIndex: number,
+  maxBytes: number,
+  linkPlaceholder: { manageUrl: string; unsubscribeUrl: string },
+): { key: string; members: Member[] }[] {
   let n = 1;
   while (n < members.length) {
     const size = Math.ceil(members.length / n);
-    const probe = buildMessageRequest(job, members.slice(0, size), String(chunkIndex));
+    const slice = members.slice(0, size);
+    const probeSubstitutions = new Map(slice.map((m) => [m.subscriberId, linkPlaceholder]));
+    const probe = buildMessageRequest(job, slice, String(chunkIndex), probeSubstitutions);
     if (requestByteSize(probe) <= maxBytes) break;
     n++;
   }
@@ -331,6 +349,19 @@ function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex
  * is currently active, and never for the inactive members of a part that *is* sent (R3: those
  * stay in `partMembers` for frozen partitioning but never carry their own links).
  *
+ * Defence in depth: Media Hub's own contract doesn't require `.email()`
+ * on `address` (media-hub/contract.ts), and although both the nightly sync and staff resolve now
+ * validate at write time, a row written before that existed (or any other path into
+ * `subscribers.email`) must never reach Distribution's own `z.string().email()` check — which
+ * answers 400 for the *whole* request and isn't retryable, failing this part and every later
+ * part of the job, on every attempt. So each part's active members are filtered against that
+ * same schema immediately before the request is built; anyone failing it is dropped from this
+ * part (logged by subscriber id only, never the address — global constraints "Logs"; counted,
+ * not treated as an error) and left unattempted, so they're not stamped `attempted_at` and stay
+ * eligible once their address is fixed. A part left with no valid recipients sends nothing and
+ * is not an error. Counts are logged rather than threaded through this function's return value,
+ * to avoid changing `sendDueJobs`'s result shape (and the many tests asserting it exactly).
+ *
  * Controller ruling (overrides the brief's "after a successful send"): `deliveries.attempted_at`
  * is stamped *immediately before* `distribution.send` — handed off, not confirmed — because a
  * response that was actually accepted by Distribution but lost to us (a timeout, a dropped
@@ -348,12 +379,23 @@ async function sendAllChunks(
   maxChunkBytes: number,
 ): Promise<{ batchIds: Record<string, string>; error?: DistributionError }> {
   const batchIds: Record<string, string> = {};
+  const { manageUrlLen, unsubscribeUrlLen } = placeholderLinkLengths(opts.links);
+  const linkPlaceholder = { manageUrl: "x".repeat(manageUrlLen), unsubscribeUrl: "x".repeat(unsubscribeUrlLen) };
   for (const [chunkIndex, members] of chunks) {
-    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes)) {
+    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes, linkPlaceholder)) {
       const activeMembers = partMembers.filter((m) => m.active);
       if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
+
+      // Defence in depth — see the doc comment above.
+      const validMembers = activeMembers.filter((m) => emailAddressSchema.safeParse(m.email).success);
+      if (validMembers.length < activeMembers.length) {
+        const invalidIds = activeMembers.filter((m) => !validMembers.includes(m)).map((m) => m.subscriberId);
+        console.error(`[nod] job ${job.id} part ${key}: dropping ${invalidIds.length} recipient(s) with an invalid email address, subscriber ids: ${invalidIds.join(",")}`);
+      }
+      if (validMembers.length === 0) continue; // nothing left to send in this part — not an error
+
       try {
-        const substitutions = await recipientSubstitutions(opts.db, activeMembers, opts.links);
+        const substitutions = await recipientSubstitutions(opts.db, validMembers, opts.links);
         // Stamped before the handoff, not after — see the doc comment above.
         await opts.db
           .update(deliveries)
@@ -361,11 +403,11 @@ async function sendAllChunks(
           .where(
             and(
               eq(deliveries.jobId, job.id),
-              inArray(deliveries.subscriberId, activeMembers.map((m) => m.subscriberId)),
+              inArray(deliveries.subscriberId, validMembers.map((m) => m.subscriberId)),
               isNull(deliveries.attemptedAt),
             ),
           );
-        const { batchId } = await opts.distribution.send(buildMessageRequest(job, activeMembers, key, substitutions));
+        const { batchId } = await opts.distribution.send(buildMessageRequest(job, validMembers, key, substitutions));
         batchIds[key] = batchId;
       } catch (e) {
         // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless

@@ -16,6 +16,7 @@
     "@gcpe/events": "0.0.0",
     "@gcpe/flickr-fake": "0.0.0",
     "@gcpe/http-kit": "0.0.0",
+    "@gcpe/media-hub-fake": "0.0.0",
     "@gcpe/news-api": "0.0.0",
     "@gcpe/nod": "0.0.0",
     "@gcpe/nrms": "0.0.0",

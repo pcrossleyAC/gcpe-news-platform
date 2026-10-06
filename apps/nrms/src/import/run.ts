@@ -12,6 +12,7 @@
 import { writeFile } from "node:fs/promises";
 import pg from "pg";
 import type { Db } from "@gcpe/db-kit";
+import type { SubscriberConfig } from "@gcpe/events";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { importLegacyUsers } from "../../../core/src/import/users";
 import { legacyUserMap, type LegacyUserRow } from "./map";
@@ -90,6 +91,9 @@ export interface RunImportOptions {
   /** The tenant's time zone (e.g. "America/Vancouver"): the releases stage uses it to turn legacy
    * `ReleaseDateTime` (a BC wall-clock DATETIME) into a real instant. */
   timeZone: string;
+  /** Outbound event subscribers, so the reference stage's media_list.updated events (one per
+   * changed media list) actually reach NoD; unset → enqueued but delivered to no one. */
+  subscribers?: SubscriberConfig[];
   log?: (message: string) => void;
 }
 
@@ -117,7 +121,7 @@ export async function runImport(db: Db, coreDb: Db, source: LegacySource, opts: 
       log(`[nrms:import] users: ${legacyUserRows.length} legacy, ${skipped.length} skipped`);
 
       stage = "reference";
-      const { pageImageIds, mediaListIds, termIds } = await importReference(db, source, report);
+      const { pageImageIds, mediaListIds, termIds } = await importReference(db, source, report, opts.subscribers ?? []);
       log("[nrms:import] reference data imported");
 
       stage = "releases";
@@ -172,6 +176,8 @@ export interface RunImportCliOptions {
   force: boolean;
   timeZone: string;
   reportPath: string;
+  /** See {@link RunImportOptions.subscribers}. */
+  subscribers?: SubscriberConfig[];
   log?: (message: string) => void;
 }
 
@@ -188,7 +194,7 @@ export interface RunImportCliOptions {
 export async function runImportCli(opts: RunImportCliOptions): Promise<number> {
   const log = opts.log ?? (() => {});
   try {
-    const report = await runImport(opts.db, opts.coreDb, opts.source, { force: opts.force, timeZone: opts.timeZone, log });
+    const report = await runImport(opts.db, opts.coreDb, opts.source, { force: opts.force, timeZone: opts.timeZone, subscribers: opts.subscribers, log });
     await writeReportFiles(report, opts.reportPath);
     log(report.toText());
     return reportExitCode(report);

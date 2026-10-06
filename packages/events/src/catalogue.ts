@@ -48,6 +48,14 @@ export type OrgRecord = z.infer<typeof orgRecordSchema>;
 export const termKindSchema = z.enum(["sector", "theme", "tag", "service"]);
 export type TermKind = z.infer<typeof termKindSchema>;
 
+export const mediaListRecordSchema = z.object({
+  key: z.string().min(1),
+  displayName: z.string().min(1),
+  sortOrder: z.number().int(),
+  isActive: z.boolean(),
+});
+export type MediaListRecord = z.infer<typeof mediaListRecordSchema>;
+
 export const termRecordSchema = z.object({
   kind: termKindSchema,
   key: z.string().min(1),
@@ -108,6 +116,10 @@ export const releaseRecordSchema = z.object({
   mediaListKeys: z.array(z.string()),
   renditions: z.object({ htmlUrl: z.string().nullable(), textUrl: z.string().nullable(), pdfUrl: z.string().nullable() }).nullable(),
   timestamp: offsetDateTime,
+  // The full-text media copy (NRMS's renderText), filled only when publishFlags.toMediaLists is
+  // true -- else null. Defaulted so an older stored envelope (or the 3e importer's replay),
+  // which never carried this field, still parses.
+  mediaText: z.string().nullable().default(null),
 });
 export type ReleaseRecord = z.infer<typeof releaseRecordSchema>;
 
@@ -183,6 +195,9 @@ export const eventDataSchemas = {
   "release.published": releaseRecordSchema,
   "release.updated": releaseRecordSchema.extend({ notify: z.boolean() }),
   "release.unpublished": z.object({ key: z.string().min(1) }),
+  "media_list.created": mediaListRecordSchema,
+  "media_list.updated": mediaListRecordSchema,
+  "media_list.deactivated": z.object({ key: z.string().min(1) }),
   "site.content.changed": siteContentChangedSchema,
   "site.rebuild_requested": siteRebuildRequestedSchema,
 } as const;

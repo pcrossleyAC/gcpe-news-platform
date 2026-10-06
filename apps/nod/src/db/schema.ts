@@ -27,6 +27,14 @@ export const subscribers = pgTable(
     digest: boolean("digest").notNull().default(false),
     source: text("source").$type<SubscriberSource>().notNull().default("self"),
     mediaHubContactId: integer("media_hub_contact_id"),
+    // The chosen email's contract `ref` ("personal" or "workplace:<id>") for a Media Hub-sourced
+    // member (4c Task 4's sync writes/reads this; Task 2 only adds the column).
+    mediaHubEmailRef: text("media_hub_email_ref"),
+    // A short reason a media-list member needs staff attention instead of being silently
+    // deleted (C59) -- e.g. a bounced or collided Media Hub email. Null = fine. Set together
+    // with attentionAt; neither is written by this task.
+    needsAttention: text("needs_attention"),
+    attentionAt: timestamp("attention_at", { withTimezone: true }),
     // Set when the subscriber unsubscribes, is deleted, or moves to a new address; drives the
     // 90-day purge (4g).
     endedAt: timestamp("ended_at", { withTimezone: true }),
@@ -74,6 +82,12 @@ export const items = pgTable(
     toSubscribers: boolean("to_subscribers").notNull().default(true),
     withdrawnAt: timestamp("withdrawn_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // The release's full-text media copy (NRMS's `renderText`) and the
+    // `media-distribution-lists:<key>` list keys it goes to -- both null/empty unless the
+    // release's `publishFlags.toMediaLists` was set. Kept separate from `listKeys` (which never
+    // carries a media key) so As-It-Happens/digest matching is untouched by media recipients.
+    mediaText: text("media_text"),
+    mediaListKeys: text("media_list_keys").array().notNull().default(sql`'{}'::text[]`),
   },
   (t) => [index("items_published_at_idx").on(t.publishedAt), check("items_kind_check", sql`${t.kind} IN ('release','emergency')`)],
 );
@@ -169,6 +183,24 @@ export const nodSettings = pgTable(
     id: integer("id").primaryKey().default(1),
     paused: boolean("paused").notNull().default(false),
     lastDigestCutoff: timestamp("last_digest_cutoff", { withTimezone: true }),
+    // The Media Hub changes feed's own cursor -- the `since` to pass `changes()` next time,
+    // advanced only once a whole run's feed has been processed to completion.
+    mediaSyncSince: timestamp("media_sync_since", { withTimezone: true }),
+    // When a sync (scheduled or manual) last ran -- drives "is it due" the same way
+    // last_digest_cutoff drives the digest, and distinguishes a flagged-but-in-progress day
+    // from one no sync has touched yet.
+    mediaSyncAt: timestamp("media_sync_at", { withTimezone: true }),
+    // That run's result (a SyncResult, or `{ error }` on an aborted run) -- for the status route.
+    mediaSyncResult: jsonb("media_sync_result"),
+    // A lease, not a held transaction, protects an in-progress sync (one run can
+    // span many ticks/pages). A non-null `media_sync_lease` with `media_sync_lease_until` still
+    // in the future means some invocation is actively working it; past that instant, it's
+    // abandoned (crashed mid-run) and the next caller takes it over. `media_sync_run_start` and
+    // `media_sync_cursor` carry a multi-tick run's own progress across invocations.
+    mediaSyncLease: uuid("media_sync_lease"),
+    mediaSyncLeaseUntil: timestamp("media_sync_lease_until", { withTimezone: true }),
+    mediaSyncRunStart: timestamp("media_sync_run_start", { withTimezone: true }),
+    mediaSyncCursor: text("media_sync_cursor"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],

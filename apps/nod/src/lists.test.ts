@@ -79,4 +79,25 @@ describe("lists from Core events", () => {
     await sendEvent(app, org("health", "Health"));
     expect(await needsReferenceData(tdb.db)).toBe(false);
   });
+
+  const mediaList = (key: string, displayName: string, isActive = true, sortOrder = 1) =>
+    envelope("nrms", "media_list.created", { key, displayName, sortOrder, isActive }, `media_list:${key}`);
+
+  it("media_list.created creates an active media-distribution-lists entry", async () => {
+    expect((await sendEvent(app, mediaList("budget", "Budget"))).status).toBe(200);
+    const r = await tdb.db.execute<{ list_key: string; active: boolean }>(sql`SELECT list_key, active FROM lists WHERE list_key = 'media-distribution-lists:budget'`);
+    expect(r.rows[0]).toMatchObject({ list_key: "media-distribution-lists:budget", active: true });
+  });
+
+  it("deactivate then media_list.updated with isActive true re-activates (4a carry-forward)", async () => {
+    await sendEvent(app, mediaList("transport", "Transport"));
+    await sendEvent(app, envelope("nrms", "media_list.deactivated", { key: "transport" }, "media_list:transport"));
+    const afterDeactivate = await tdb.db.execute<{ active: boolean }>(sql`SELECT active FROM lists WHERE list_key = 'media-distribution-lists:transport'`);
+    expect(afterDeactivate.rows[0]!.active).toBe(false);
+
+    const updated = envelope("nrms", "media_list.updated", { key: "transport", displayName: "Transport", sortOrder: 1, isActive: true }, "media_list:transport");
+    expect((await sendEvent(app, updated)).status).toBe(200);
+    const afterReactivate = await tdb.db.execute<{ active: boolean }>(sql`SELECT active FROM lists WHERE list_key = 'media-distribution-lists:transport'`);
+    expect(afterReactivate.rows[0]!.active).toBe(true);
+  });
 });

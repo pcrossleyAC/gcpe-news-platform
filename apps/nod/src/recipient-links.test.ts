@@ -3,7 +3,7 @@ import { eq, inArray } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
 import { subscriberLinks, subscribers } from "./db/schema";
-import { recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
+import { placeholderLinkLengths, recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
 import { addSubscriber } from "./subscribers";
 import { confirm, unsubscribe, type JourneyDeps } from "./subscribe/journeys";
 
@@ -71,5 +71,17 @@ describe("recipientSubstitutions", () => {
   it("returns an empty map for no members, without querying the database", async () => {
     const result = await recipientSubstitutions(tdb.db, [], opts);
     expect(result.size).toBe(0);
+  });
+
+  it("placeholderLinkLengths never under-measures a real substitution, at version 1 or version 12", async () => {
+    const { manageUrlLen, unsubscribeUrlLen } = placeholderLinkLengths(opts);
+
+    for (const unsubscribeVersion of [1, 12]) {
+      const { id } = await addSubscriber(tdb.db, { email: `v${unsubscribeVersion}@example.test`, lists: "all" });
+      const result = await recipientSubstitutions(tdb.db, [{ subscriberId: id, email: `v${unsubscribeVersion}@example.test`, unsubscribeVersion }], opts);
+      const links = result.get(id)!;
+      expect(links.manageUrl.length).toBeLessThanOrEqual(manageUrlLen);
+      expect(links.unsubscribeUrl.length).toBeLessThanOrEqual(unsubscribeUrlLen);
+    }
   });
 });

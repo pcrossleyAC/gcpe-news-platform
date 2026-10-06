@@ -10,6 +10,7 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "auth:hash-password": "tsx packages/auth/src/cli/hash-password.ts",
+    "nod:membership-hash": "tsx scripts/hash-membership-password.ts",
     "core:seed-test-users": "npm --workspace @gcpe/core run seed:test-users",
     "nrms:flickr-authorize": "npm --workspace @gcpe/nrms run flickr:authorize",
     "nrms:import": "npm --workspace @gcpe/nrms run import:legacy --",

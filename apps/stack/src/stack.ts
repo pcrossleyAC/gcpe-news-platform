@@ -9,6 +9,7 @@ import type { ZodTypeAny } from "zod";
 import { authFromEnv, requireBearer, requireRole } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createFakeFlickr } from "@gcpe/flickr-fake";
+import { createFakeMediaHub } from "@gcpe/media-hub-fake";
 import type { Closer } from "@gcpe/http-kit";
 
 import { coreEnvSchema, startCore, type AppHandle as CoreHandle } from "../../core/src/start";
@@ -25,7 +26,17 @@ import { noStoreByDefault, noStoreOnRedirect } from "./cache-control";
 import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture, type ErrorEntry } from "./errors";
-import { envFor, FAKE_FLICKR, FAKE_FLICKR_PATH, resolveSelfUrls, type AppPrefix, stackEnvSchema, usesFakeFlickr } from "./env";
+import {
+  envFor,
+  FAKE_FLICKR,
+  FAKE_FLICKR_PATH,
+  FAKE_MEDIA_HUB_PATH,
+  resolveSelfUrls,
+  type AppPrefix,
+  stackEnvSchema,
+  usesFakeFlickr,
+  usesFakeMediaHub,
+} from "./env";
 import { createTickRunner, tickRouter, type TickStep } from "./tick";
 
 export interface StackHandle {
@@ -385,6 +396,24 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     app.use(FAKE_FLICKR_PATH, fake.router);
   }
 
+  // No Media Hub configured at all (NOD_MEDIA_HUB_URL unset) on a non-production (or test, or
+  // explicitly allowed) deployment → a fake Media Hub (deterministic, made-up
+  // contacts under example.test) that NoD's own env view already points at (envFor sets
+  // MEDIA_HUB_URL=self:/fake-media-hub; see usesFakeMediaHub). Its own service routes
+  // (/api/service/*) are gated by the same bearer verifier as everywhere else in this stack,
+  // plus the MediaHub.ContactsRead role NoD's service token carries -- the fake package itself
+  // has no @gcpe/auth dependency, so it takes that check as an injected middleware rather than
+  // building it. The /__fake/* test switches stay Core.Admin-only, same as fake Flickr's.
+  if (usesFakeMediaHub(env)) {
+    console.warn(`[stack] MEDIA HUB: using the FAKE Media Hub at ${FAKE_MEDIA_HUB_PATH} — set NOD_MEDIA_HUB_URL etc. for a real Media Hub`);
+    const fakeMediaHub = createFakeMediaHub({
+      statePath: join(dataDir, "fake-media-hub-state.json"),
+      requireServiceAuth: [requireBearer(errorsAuth.bearer), requireRole("MediaHub.ContactsRead")],
+    });
+    app.use(`${FAKE_MEDIA_HUB_PATH}/__fake`, requireBearer(errorsAuth.bearer), requireRole("Core.Admin"));
+    app.use(FAKE_MEDIA_HUB_PATH, fakeMediaHub.router);
+  }
+
   // Fix round 1, P2-R30 M7: one combined login-attempt budget (10/min/IP) across every
   // app's local-admin login route, mounted on those exact paths *before* the apps themselves
   // are mounted below — each app's own localLoginRouter still has its own independent
@@ -414,6 +443,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         { name: "nrms.dispatch", run: worker(nrms, "dispatch") },
         { name: "core.dispatch", run: worker(core, "dispatch") },
         { name: "news-api.dispatch", run: worker(newsApi, "dispatch") },
+        // The nightly Media Hub sync before the digest: an email address or flag it fixes up
+        // this tick should already be current by the time the digest (and anything else this
+        // tick does) looks at that subscriber.
+        { name: "nod.media-sync", run: worker(nod, "mediaSync") },
         // The daily digest, immediately before the sender: a digest job this step just
         // created is picked up by the very same tick's own nod.send, not left for the next one.
         { name: "nod.digest", run: worker(nod, "digest") },

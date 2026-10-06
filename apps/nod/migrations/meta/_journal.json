@@ -78,6 +78,34 @@
       "when": 1791279488021,
       "tag": "0010_deliveries_job_id_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791306511210,
+      "tag": "0011_media_members_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1791312036085,
+      "tag": "0012_media_sync_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1791313406356,
+      "tag": "0013_media_sync_lease",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1791315192509,
+      "tag": "0014_items_media_columns",
+      "breakpoints": true
     }
   ]
 }

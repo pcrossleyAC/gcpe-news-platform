@@ -28,6 +28,11 @@ import { fakeFlickrPublicBase, publicFilesBase, startStack } from "./stack";
 
 const LOCAL_AUTH_SECRET = "stack-test-local-auth-secret-32-characters!";
 const ADMIN_PASSWORD = "stack-test-password-99";
+// C55: NoD's legacy Subscribe/SubscriberInformation Basic Auth, configured through the stack
+// the same way an operator would (NOD_-prefixed, stripped by envFor before NoD's own schema
+// sees it) -- see the "/nod/Subscribe/SubscriberInformation" reachability test below.
+const MEMBERSHIP_API_USERNAME = "media-hub-stack-test";
+const MEMBERSHIP_API_PASSWORD = "stack-test-membership-password-99";
 
 // Important fix 1 (P2-R30): Core -> News API, over a self: URL, same as NRMS -> News API.
 const STACK_EVENT_SECRET = "stack-e2e-event-secret-" + "s".repeat(32);
@@ -137,6 +142,7 @@ async function setupStack(opts: {
 
   const port = await probeFreePort();
   const passwordHash = await hashPassword(ADMIN_PASSWORD);
+  const membershipPasswordHash = await hashPassword(MEMBERSHIP_API_PASSWORD);
   const tickToken = `tick-token-${port}-${"x".repeat(32)}`;
 
   const env: NodeJS.ProcessEnv = {
@@ -170,6 +176,8 @@ async function setupStack(opts: {
     // M9: NoD -> Distribution, also over a self: URL.
     NOD_DISTRIBUTION_URL: "self:/distribution",
     NOD_PUBLIC_SITE_URL: "self:/site",
+    NOD_MEMBERSHIP_API_USERNAME: MEMBERSHIP_API_USERNAME,
+    NOD_MEMBERSHIP_API_PASSWORD_HASH: membershipPasswordHash,
 
     DIST_DATABASE_URL: distribution.url,
     DIST_SMTP_HOST: "127.0.0.1",
@@ -321,6 +329,40 @@ describe("apps/stack", () => {
       body,
     });
     expect(res.status).toBe(401);
+  });
+
+  // C55: News API's app is mounted at the stack root with no prefix (app.use(newsApi.app)),
+  // after every prefixed app including /nod, and ends in its own `{error:"not found"}` 404
+  // catch-all for anything unmatched. If NoD's own membership route ever stopped being
+  // mounted (or stopped matching this path), the request would fall through /nod and get
+  // swallowed by that catch-all instead of ever reaching NoD -- this proves it doesn't: a
+  // real Basic Auth round-trip through the stack's own NOD_MEMBERSHIP_API_* env (stripped by
+  // envFor the same way every other NOD_-prefixed var is) gets NoD's real 200, not News API's
+  // 404.
+  it("/nod/Subscribe/SubscriberInformation is reachable under its stack prefix, not swallowed by News API's root catch-all (C55)", async () => {
+    const auth = `Basic ${Buffer.from(`${MEMBERSHIP_API_USERNAME}:${MEMBERSHIP_API_PASSWORD}`).toString("base64")}`;
+    const res = await fetch(`${instance.stackUrl}/nod/Subscribe/SubscriberInformation?emailAddress=nobody@example.test`, {
+      headers: { authorization: auth },
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { EmailAddress: string; SubscribedCategories: Record<string, string[]> };
+    expect(body).toEqual({
+      EmailAddress: "nobody@example.test",
+      SubscribedCategories: {},
+      IsAllNews: false,
+      IsAsItHappens: false,
+      IsDailyDigest: false,
+      IsAdminRegistration: false,
+      NotifyIfNewCategories: false,
+      ExpiredLinkOrUnverifiedEmail: false,
+    });
+
+    // The same request with no credentials at all is NoD's own 401 (WWW-Authenticate) --
+    // News API's catch-all 404 has no such header -- a second, cheap discriminator that this
+    // reached NoD and not the fallthrough.
+    const unauthed = await fetch(`${instance.stackUrl}/nod/Subscribe/SubscriberInformation?emailAddress=nobody@example.test`);
+    expect(unauthed.status).toBe(401);
+    expect(unauthed.headers.get("www-authenticate")).toBe('Basic realm="NoD"');
   });
 
   it("/site/ serves a file written into OUTPUT_DIR with Cache-Control: public, max-age=60", async () => {
@@ -615,11 +657,12 @@ describe("apps/stack", () => {
         "nrms.dispatch",
         "core.dispatch",
         "news-api.dispatch",
+        "nod.media-sync",
         "nod.digest",
         "nod.send",
         "distribution.send",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 
@@ -803,6 +846,29 @@ describe("apps/stack", () => {
     expect(mail).toBeDefined();
     const toAddress = mail!.to && "value" in mail!.to ? mail!.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");
+  });
+
+  describe("fake Media Hub (no NOD_MEDIA_HUB_URL configured)", () => {
+    it("NoD's own default points at the in-stack fake: the search proxy round-trips through it end to end", async () => {
+      const res = await fetch(`${instance.stackUrl}/nod/api/media-hub/contacts?page=1`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+      expect(res.status).toBe(200);
+      const body = (await res.json()) as { contacts: unknown[]; page: number; pageSize: number; total: number };
+      expect(body).toMatchObject({ page: 1, pageSize: 25 });
+      expect(Array.isArray(body.contacts)).toBe(true);
+      expect(body.total).toBeGreaterThan(0);
+    });
+
+    it("the fake's own service routes need a bearer with MediaHub.ContactsRead; /__fake needs Core.Admin, same as fake Flickr's", async () => {
+      expect((await fetch(`${instance.stackUrl}/fake-media-hub/api/service/contacts`)).status).toBe(401);
+      const editor = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
+      expect((await fetch(`${instance.stackUrl}/fake-media-hub/api/service/contacts`, { headers: { authorization: `Bearer ${editor}` } })).status).toBe(403);
+
+      const reset = (headers: Record<string, string>) =>
+        fetch(`${instance.stackUrl}/fake-media-hub/__fake/reset`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: "{}" });
+      expect((await reset({})).status).toBe(401);
+      expect((await reset({ authorization: `Bearer ${editor}` })).status).toBe(403);
+      expect((await reset({ authorization: `Bearer ${instance.adminToken}` })).status).toBe(200);
+    });
   });
 });
 

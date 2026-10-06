@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb, editor, sampleCreate, seedTaxonomy } from "../../test/helpers";
 import { governmentTerms } from "../db/schema";
-import { ReleaseRuleError, ReleaseStateError } from "./errors";
+import { ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError } from "./errors";
 import { bcYear, nextCounter } from "./numbering";
 import { createRelease, saveCategories } from "./service";
 import { loadView } from "./store";
@@ -112,6 +112,60 @@ describe("workflow", () => {
     const s = await schedule(db(), v.id, { version: fixed.version, publishAt: "now" }, editor, { timeZone: TZ, countSubscribers: async (k) => ((seen = k), 42) });
     expect(seen).toEqual(["ministries:health", "sectors:health"]);
     expect(s.nodSubscribers).toBe(42);
+  });
+
+  it("schedule caches the media contact count, prefixed for NoD, only when toMediaLists is set with lists chosen", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional", "national"] }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    let seen: string[] = [];
+    const s = await schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, { timeZone: TZ, countMediaContacts: async (k) => ((seen = k), 7) });
+    expect(seen).toEqual(["media-distribution-lists:regional", "media-distribution-lists:national"]);
+    expect(s.mediaSubscribers).toBe(7);
+  });
+
+  it("schedule never calls countMediaContacts without toMediaLists and chosen lists", async () => {
+    const v = await createRelease(db(), sampleCreate, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    let called = false;
+    const s = await schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, { timeZone: TZ, countMediaContacts: async () => ((called = true), 99) });
+    expect(called).toBe(false);
+    expect(s.mediaSubscribers).toBeNull();
+  });
+
+  // Fix round 1: the two prior tests only vary toMediaLists and mediaListKeys together (today's
+  // only settings-path combinations -- saveSettings derives toMediaLists from
+  // mediaListKeys.length itself, service.ts, so an editor can never submit one without the
+  // other). This exercises the two checks in mediaContactCount's gate independently: lists are
+  // chosen, but toMediaLists is off (set directly, since the app has no path that reaches this
+  // combination on its own -- same as the raw SQL used below to set up nod_subscribers states no
+  // mutation leaves behind).
+  it("schedule never calls countMediaContacts when toMediaLists is off, even with media lists chosen", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional"] }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    await tdb.db.execute(sql`UPDATE news_releases SET to_media_lists = false WHERE id = ${v.id}`);
+    let called = false;
+    const s = await schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, { timeZone: TZ, countMediaContacts: async () => ((called = true), 99) });
+    expect(called).toBe(false);
+    expect(s.mediaSubscribers).toBeNull();
+  });
+
+  it("schedule: a failed media contact count never blocks scheduling and gives null", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional"] }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    const failing = { timeZone: TZ, countMediaContacts: async () => { throw new Error("down"); } };
+    const s = await schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, failing);
+    expect(s.status).toBe("scheduled");
+    expect(s.mediaSubscribers).toBeNull();
+  });
+
+  // Controller ruling: schedule's size pre-check must count mediaText too (the same rendition
+  // the publisher itself fills it with) -- a body that fits without it but not with it must be
+  // rejected here, before it can later blow past MAX_EVENT_BYTES at actual publish time.
+  it("the schedule-time size check counts mediaText, rejecting a media release that only fits without it", async () => {
+    const bigBody = `<p>${"x".repeat(600_000)}</p>`;
+    const v = await createRelease(db(), { ...sampleCreate, bodyHtml: bigBody, mediaListKeys: ["regional"] }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    await expect(schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, deps)).rejects.toBeInstanceOf(ReleaseTooLargeError);
   });
 
   it("schedule: a time up to 5 min past is immediate; a failed count never blocks; a re-publish keeps its count", async () => {

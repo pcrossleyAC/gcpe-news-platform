@@ -4,6 +4,8 @@ import {
   envFor,
   FAKE_FLICKR,
   FAKE_FLICKR_ENV,
+  FAKE_MEDIA_HUB_ENV,
+  FAKE_MEDIA_HUB_PATH,
   internalEventEnv,
   INTERNAL_EVENT_ROUTES,
   resolveSelfSubscribers,
@@ -12,6 +14,7 @@ import {
   sessionSecretFrom,
   stackEnvSchema,
   usesFakeFlickr,
+  usesFakeMediaHub,
 } from "./env";
 
 describe("envFor", () => {
@@ -59,7 +62,9 @@ describe("envFor", () => {
 
   it("doesn't confuse NOD_ with NODE_ENV (shared) or any other prefix's name as a substring", () => {
     const env = { NODE_ENV: "test", NOD_PORT: "3004" };
-    expect(envFor(env, "NOD")).toEqual({ NODE_ENV: "test", PORT: "3004" });
+    // No NOD_MEDIA_HUB_URL and NODE_ENV isn't "production" -> NoD's view also gets the fake
+    // Media Hub's URL (usesFakeMediaHub), same as every other envFor(..., "NOD") call here.
+    expect(envFor(env, "NOD")).toEqual({ NODE_ENV: "test", PORT: "3004", ...FAKE_MEDIA_HUB_ENV });
   });
 
   it("ignores undefined values", () => {
@@ -263,7 +268,7 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
     ]);
     expect(nrms.map((s: { name: string; types: string[] }) => [s.name, s.types])).toEqual([
       ["news-api", ["*"]],
-      ["nod", ["release.published", "release.updated", "release.unpublished"]],
+      ["nod", ["release.published", "release.updated", "release.unpublished", "media_list.created", "media_list.updated", "media_list.deactivated"]],
     ]);
     expect(newsApiSubs).toEqual([{ name: "public-site", url: "self:/site-builder/events", secret: expect.any(String), types: ["site.rebuild_requested"] }]);
     // Receivers hold exactly the secret their sender signs with, keyed by the sender's source name.
@@ -444,5 +449,40 @@ describe("when the stack uses the fake Flickr (fix round 1: never silently in pr
     expect(usesFakeFlickr({ FLICKR_API_KEY: "shared", NRMS_FLICKR_API_KEY: "" })).toBe(true);
     expect(usesFakeFlickr({ ...prod, FLICKR_API_KEY: "shared", NRMS_FLICKR_API_KEY: "" })).toBe(false);
     expect(usesFakeFlickr({ ...prod, FLICKR_API_KEY: "shared" })).toBe(false);
+  });
+});
+
+describe("Media Hub in the stack", () => {
+  const prod = { NODE_ENV: "production" };
+
+  it("with no NOD_MEDIA_HUB_URL anywhere, NoD is pointed at the in-stack fake", () => {
+    expect(usesFakeMediaHub({})).toBe(true);
+    expect(envFor({}, "NOD")).toMatchObject(FAKE_MEDIA_HUB_ENV);
+    expect(FAKE_MEDIA_HUB_ENV.MEDIA_HUB_URL).toBe(`self:${FAKE_MEDIA_HUB_PATH}`);
+    expect(resolveSelfUrls(envFor({}, "NOD")).MEDIA_HUB_URL).toBe(`http://stack.internal${FAKE_MEDIA_HUB_PATH}`);
+  });
+
+  it("a NOD_MEDIA_HUB_URL means the real Media Hub: nothing of the fake is set", () => {
+    const env = { NOD_MEDIA_HUB_URL: "https://media-hub.example.gov.bc.ca" };
+    expect(usesFakeMediaHub(env)).toBe(false);
+    const view = envFor(env, "NOD");
+    expect(view.MEDIA_HUB_URL).toBe("https://media-hub.example.gov.bc.ca");
+  });
+
+  it("a NOD_MEDIA_HUB_URL set to the empty string still counts as none", () => {
+    expect(usesFakeMediaHub({ NOD_MEDIA_HUB_URL: "" })).toBe(true);
+  });
+
+  it("other apps never get a MEDIA_HUB_URL from this", () => {
+    for (const p of APP_PREFIXES.filter((x) => x !== "NOD")) {
+      expect(envFor({}, p).MEDIA_HUB_URL).toBeUndefined();
+    }
+  });
+
+  it("never silently fakes in production (fix round 1's own rule for Flickr, applied here too)", () => {
+    expect(usesFakeMediaHub(prod)).toBe(false);
+    expect(envFor(prod, "NOD").MEDIA_HUB_URL).toBeUndefined();
+    expect(usesFakeMediaHub({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
+    expect(envFor({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }, "NOD")).toMatchObject(FAKE_MEDIA_HUB_ENV);
   });
 });

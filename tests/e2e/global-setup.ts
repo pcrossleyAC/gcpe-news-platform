@@ -29,7 +29,7 @@ import { createDistributionTestDb } from "../../apps/distribution/test/helpers";
 import { startSmtpSink } from "../../apps/distribution/test/smtp-sink";
 import { startStack } from "../../apps/stack/src/stack";
 import { runBuild } from "../../scripts/build-staff-web.mjs";
-import { TEST_USER_PASSWORDS, TICK_TOKEN, ADMIN_PASSWORD } from "./constants";
+import { TEST_USER_PASSWORDS, TICK_TOKEN, ADMIN_PASSWORD, MEMBERSHIP_API_USERNAME, MEMBERSHIP_API_PASSWORD } from "./constants";
 
 const repoRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 const LOCAL_AUTH_SECRET = "e2e-local-auth-secret-32-characters-long!";
@@ -143,6 +143,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   const port = await probeFreePort();
   const passwordHash = await hashPassword(ADMIN_PASSWORD);
+  // Legacy Subscribe/SubscriberInformation (C55): media-lists.spec.ts's membership-endpoint
+  // items call this with MEMBERSHIP_API_USERNAME/PASSWORD in the clear (constants.ts) — the
+  // stack only ever sees the hash, same treatment as the break-glass admin password above.
+  const membershipPasswordHash = await hashPassword(MEMBERSHIP_API_PASSWORD);
 
   const env: NodeJS.ProcessEnv = {
     PORT: String(port),
@@ -169,6 +173,8 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     NOD_DATABASE_URL: nod.url,
     NOD_DISTRIBUTION_URL: "self:/distribution",
     NOD_PUBLIC_SITE_URL: "self:/site",
+    NOD_MEMBERSHIP_API_USERNAME: MEMBERSHIP_API_USERNAME,
+    NOD_MEMBERSHIP_API_PASSWORD_HASH: membershipPasswordHash,
 
     DIST_DATABASE_URL: distribution.url,
     DIST_SMTP_HOST: "127.0.0.1",

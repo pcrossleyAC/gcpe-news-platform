@@ -39,7 +39,7 @@ export function postToRelease(p: Json): ReleaseRecord {
     assetUrl: p.assetUrl, redirectUri: p.redirectUri, documents: p.documents, ministryKeys: p.ministryKeys, sectorKeys: p.sectorKeys,
     tagKeys: p.tagKeys, themeKeys: p.themeKeys, assets: p.azureAssets, translations: p.azureTranslations,
     publishFlags: { toWeb: true, toSubscribers: p.isNewsOnDemand, toMediaLists: false }, mediaListKeys: [], renditions: null,
-    timestamp: p.timestamp,
+    timestamp: p.timestamp, mediaText: null,
   };
 }
 

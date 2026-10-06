@@ -1,0 +1,247 @@
+/**
+ * Media list membership (4c Task 2, spec §5.3): a member is a `subscriptions` row on the
+ * email-unique `subscribers` row for that address, whose list key is in the
+ * `media-distribution-lists` category (global constraints, "Members").
+ */
+import { and, asc, eq, sql } from "drizzle-orm";
+import type { Db, DbOrTx } from "@gcpe/db-kit";
+import { lists, subscribers, subscriptions, type SubscriberSource, type SubscriptionRow } from "./db/schema";
+import { MEDIA_CATEGORY, mediaListKey } from "./lists";
+import { writeHistory } from "./subscribe/history";
+import { normaliseEmail } from "./subscribe/info";
+
+/** → HTTP 404: no active-or-not media list with that key in the `media-distribution-lists` category. */
+export class MediaListNotFoundError extends Error {
+  constructor(public readonly key: string) {
+    super(`No media list with key "${key}".`);
+  }
+}
+
+/** → HTTP 409 `{ error: "opted-out", at }`: the address left this subscriber's lists by
+ * unsubscribing more recently than it was last added to a media list, and the caller didn't
+ * pass `confirmOptOut`. */
+export class OptedOutError extends Error {
+  constructor(public readonly at: Date) {
+    super("opted-out");
+  }
+}
+
+export interface AddMediaMemberInput {
+  email: string;
+  source: Extract<SubscriberSource, "media-hub" | "manual-media">;
+  mediaHubContactId?: number;
+  mediaHubEmailRef?: string;
+  /** Required (and must be true) to re-add someone who opted out since their last media-list add. */
+  confirmOptOut?: boolean;
+}
+
+export interface MediaMember {
+  subscriberId: string;
+  email: string;
+  source: string;
+  mediaHubContactId: number | null;
+  needsAttention: string | null;
+}
+
+export interface MediaListSummary {
+  listKey: string;
+  key: string;
+  name: string;
+  active: boolean;
+  members: number;
+}
+
+async function mediaListRow(tx: DbOrTx, key: string): Promise<{ listKey: string } | null> {
+  const [row] = await tx.select({ listKey: lists.listKey }).from(lists).where(and(eq(lists.listKey, key), eq(lists.category, MEDIA_CATEGORY)));
+  return row ?? null;
+}
+
+/** Same advisory-lock keyspace as 4a's `journeys.ts` `lockAddress` (always called with a
+ * lowercased email) -- serialises this module's reads/writes of a subscriber row against the
+ * public journeys' for the same address, so e.g. an add can never read a stale pre-unsubscribe
+ * row (fix round 1, I2). */
+async function lockAddress(tx: DbOrTx, email: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${email}))`);
+}
+
+/** True if `subscriberId` has any subscription left, media or public. */
+async function hasAnySubscriptions(tx: DbOrTx, subscriberId: string): Promise<boolean> {
+  const rows = await tx.select({ listKey: subscriptions.listKey }).from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId)).limit(1);
+  return rows.length > 0;
+}
+
+/** Latest `subscriber_history` row's `at` for `action` on this subscriber, or null. */
+async function latestHistoryAt(tx: DbOrTx, subscriberId: string, action: string): Promise<Date | null> {
+  const r = await tx.execute<{ at: string | Date }>(sql`
+    SELECT at FROM subscriber_history WHERE subscriber_id = ${subscriberId} AND action = ${action}
+    ORDER BY at DESC LIMIT 1`);
+  const at = r.rows[0]?.at;
+  return at === undefined ? null : new Date(at);
+}
+
+/** True if `subscriberId` currently has at least one subscription in the media category. */
+export async function hasMediaMemberships(tx: DbOrTx, subscriberId: string): Promise<boolean> {
+  const rows = await tx
+    .select({ listKey: subscriptions.listKey })
+    .from(subscriptions)
+    .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} LIKE ${`${MEDIA_CATEGORY}:%`}`))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/** Deletes every media subscription for `subscriberId`, writing `media-list-opted-out` history
+ * (detail: the list key) for each. Called from inside `endSubscriber`'s transaction so an
+ * unsubscribe -- one-click, link, or any email kind -- is also an opt-out from every media list
+ * (global constraints, "Unsubscribe means everything"). */
+export async function optOutMediaMemberships(tx: DbOrTx, subscriberId: string, actor: string): Promise<void> {
+  const removed = await tx
+    .delete(subscriptions)
+    .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} LIKE ${`${MEDIA_CATEGORY}:%`}`))
+    .returning({ listKey: subscriptions.listKey });
+  for (const { listKey } of removed) await writeHistory(tx, subscriberId, actor, "media-list-opted-out", listKey);
+}
+
+/**
+ * Adds (or reactivates) a media list member, in one transaction. Lowercases the email; finds
+ * the subscriber by email or inserts a new one, active at once, with no timing flags and no
+ * public subscriptions (C51 -- staff/media-list additions never send a verification email).
+ * Takes the per-address advisory lock (same keyspace as 4a's journeys) before reading the
+ * subscriber row `FOR UPDATE`, so a concurrent add of the same new address never double-inserts
+ * and an add can never race a concurrent unsubscribe into reading a stale, not-yet-opted-out row
+ * (fix round 1, I2).
+ *
+ * A found subscriber that's `deleted` and opted out at or after their last `media-list-added`
+ * needs `confirmOptOut: true`, else throws {@link OptedOutError} (a timestamp tie fails closed).
+ * Reactivating a `deleted` subscriber -- confirmed opt-out or not (they may simply never have
+ * resubscribed publicly since) -- must not restart their old public mail: their timing flags are
+ * reset to off and their non-media subscriptions are dropped (controller ruling, fix round 1,
+ * I3). From `pending`/`disabled`, public state is left untouched, as before. `source` is never
+ * changed on an existing row.
+ */
+export async function addMediaMember(db: Db, listKey: string, input: AddMediaMemberInput, actor: string): Promise<{ subscriberId: string; created: boolean }> {
+  const key = mediaListKey(listKey);
+  const email = normaliseEmail(input.email);
+  return db.transaction(async (tx) => {
+    await lockAddress(tx, email);
+    if (!(await mediaListRow(tx, key))) throw new MediaListNotFoundError(listKey);
+
+    const [existing] = await tx.select().from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`).for("update");
+    let subscriberId: string;
+    let created = false;
+
+    if (existing) {
+      const wasDeleted = existing.status === "deleted";
+      if (wasDeleted) {
+        const unsubscribedAt = await latestHistoryAt(tx, existing.id, "unsubscribed");
+        const addedAt = await latestHistoryAt(tx, existing.id, "media-list-added");
+        const optedOut = unsubscribedAt !== null && (addedAt === null || unsubscribedAt >= addedAt);
+        if (optedOut && !input.confirmOptOut) throw new OptedOutError(unsubscribedAt!);
+      }
+      subscriberId = existing.id;
+      const fields: Partial<typeof subscribers.$inferInsert> = { endedAt: null };
+      if (existing.status === "pending" || existing.status === "deleted" || existing.status === "disabled") fields.status = "active";
+      if (input.mediaHubContactId !== undefined) fields.mediaHubContactId = input.mediaHubContactId;
+      if (input.mediaHubEmailRef !== undefined) fields.mediaHubEmailRef = input.mediaHubEmailRef;
+      if (wasDeleted) {
+        fields.asItHappens = false;
+        fields.digest = false;
+      }
+      await tx.update(subscribers).set(fields).where(eq(subscribers.id, subscriberId));
+      if (wasDeleted) {
+        await tx
+          .delete(subscriptions)
+          .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`));
+      }
+    } else {
+      const [row] = await tx
+        .insert(subscribers)
+        .values({
+          email,
+          status: "active",
+          source: input.source,
+          asItHappens: false,
+          digest: false,
+          mediaHubContactId: input.mediaHubContactId ?? null,
+          mediaHubEmailRef: input.mediaHubEmailRef ?? null,
+        })
+        .returning({ id: subscribers.id });
+      subscriberId = row!.id;
+      created = true;
+    }
+
+    await tx.insert(subscriptions).values({ subscriberId, listKey: key }).onConflictDoNothing();
+    await writeHistory(tx, subscriberId, actor, "media-list-added", key);
+    return { subscriberId, created };
+  });
+}
+
+/**
+ * Removes one media list membership, writing `media-list-removed` history. If the subscriber
+ * was added only for media (`source` `media-hub` or `manual-media`) and *no subscription of any
+ * kind* -- media or public -- remains, ends them the way an unsubscribe does (`status:
+ * 'deleted'`, `ended_at`), but writes history `media-ended`, never `unsubscribed`: that action is
+ * reserved for the subscriber's own unsubscribe, since `addMediaMember`'s opt-out check reads it
+ * (fix round 1, C1 + I1 -- a media-created subscriber who picked up a public subscription via
+ * `update()` keeps their own mail; and a staff-ended member can be re-added without
+ * `confirmOptOut`). Takes the same per-address advisory lock and row-level `FOR UPDATE` as
+ * {@link addMediaMember}, so two concurrent removes of a subscriber's last two lists end them
+ * exactly once (fix round 1, I2). Returns whether a membership was actually removed.
+ */
+export async function removeMediaMember(db: Db, listKey: string, subscriberId: string, actor: string): Promise<boolean> {
+  const key = mediaListKey(listKey);
+  return db.transaction(async (tx) => {
+    const [before] = await tx.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, subscriberId));
+    if (!before) return false;
+    await lockAddress(tx, before.email.toLowerCase());
+    const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId)).for("update");
+    if (!s) return false;
+
+    const removed: SubscriptionRow[] = await tx
+      .delete(subscriptions)
+      .where(and(eq(subscriptions.subscriberId, subscriberId), eq(subscriptions.listKey, key)))
+      .returning();
+    if (!removed.length) return false;
+    await writeHistory(tx, subscriberId, actor, "media-list-removed", key);
+
+    if ((s.source === "media-hub" || s.source === "manual-media") && s.status !== "deleted" && !(await hasAnySubscriptions(tx, subscriberId))) {
+      await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, subscriberId));
+      await writeHistory(tx, subscriberId, actor, "media-ended");
+    }
+    return true;
+  });
+}
+
+/** Every member of `listKey`, for the staff member-management screen. */
+export async function listMediaMembers(db: DbOrTx, listKey: string): Promise<MediaMember[]> {
+  const key = mediaListKey(listKey);
+  if (!(await mediaListRow(db, key))) throw new MediaListNotFoundError(listKey);
+  return db
+    .select({
+      subscriberId: subscribers.id,
+      email: subscribers.email,
+      source: subscribers.source,
+      mediaHubContactId: subscribers.mediaHubContactId,
+      needsAttention: subscribers.needsAttention,
+    })
+    .from(subscriptions)
+    .innerJoin(subscribers, eq(subscribers.id, subscriptions.subscriberId))
+    .where(eq(subscriptions.listKey, key))
+    .orderBy(asc(subscribers.email));
+}
+
+/** Every media list, with a live member count, for the staff media-lists screen. */
+export async function listMediaLists(db: DbOrTx): Promise<MediaListSummary[]> {
+  return db
+    .select({
+      listKey: lists.listKey,
+      key: lists.key,
+      name: lists.name,
+      active: lists.active,
+      members: sql<number>`count(${subscriptions.subscriberId})::int`,
+    })
+    .from(lists)
+    .leftJoin(subscriptions, eq(subscriptions.listKey, lists.listKey))
+    .where(eq(lists.category, MEDIA_CATEGORY))
+    .groupBy(lists.listKey, lists.key, lists.name, lists.active, lists.sortOrder)
+    .orderBy(asc(lists.sortOrder), asc(lists.name));
+}
