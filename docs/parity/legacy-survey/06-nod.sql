@@ -58,7 +58,7 @@ FROM dbo.Article a
 JOIN dbo.SubscriberArticle sa ON sa.ArticleGuid = a.ArticleGuid
 WHERE a.PublishDateTimeUtc >= DATEADD(day, -365, SYSDATETIMEOFFSET())
 GROUP BY a.ArticleSourceID, a.PublishDateTimeUtc
-ORDER BY immediate_attempted + digest_attempted DESC;
+ORDER BY SUM(CAST(sa.ImmediateAttempted AS INT)) + SUM(CAST(sa.DigestAttempted AS INT)) DESC;
 
 SELECT COUNT(*) AS articles_365d,
        AVG(recipients * 1.0) AS avg_recipients,
