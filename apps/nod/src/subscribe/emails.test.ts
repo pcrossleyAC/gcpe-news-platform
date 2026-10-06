@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { DistributionError } from "../distribution-client";
 import { linkUrl, renderSystemEmail, sendSystemEmail } from "./emails";
 
 describe("system emails", () => {
@@ -25,5 +26,19 @@ describe("system emails", () => {
     await sendSystemEmail({ send }, "pat@example.test", "verify", "https://x.test/l", "link-1");
     expect(send.mock.calls[0]![0]).toMatchObject({ priority: "system", idempotencyKey: "link-1", recipients: [{ email: "pat@example.test", substitutions: {} }] });
     await expect(sendSystemEmail({ send }, "pat@example.test", "manage", "https://x.test/l", "link-2")).resolves.toBeUndefined();
+  });
+
+  it("logs only the Distribution status on a failed send, never its response body (Minor 10)", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const send = vi.fn().mockRejectedValueOnce(new DistributionError('Distribution responded HTTP 400: {"secret":"shh"}', false, 400));
+      await sendSystemEmail({ send }, "pat@example.test", "verify", "https://x.test/l", "link-1");
+      const logged = errSpy.mock.calls.flat().map(String).join(" ");
+      expect(logged).toContain("400");
+      expect(logged).not.toContain("shh");
+      expect(logged).not.toContain("secret");
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 });

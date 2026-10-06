@@ -1,5 +1,5 @@
 import { escapeHtml } from "@gcpe/http-kit";
-import type { DistributionClient } from "../distribution-client";
+import { DistributionError, type DistributionClient } from "../distribution-client";
 
 export type SystemEmailKind = "verify" | "manage" | "change-email";
 
@@ -54,6 +54,10 @@ export async function sendSystemEmail(
   try {
     await distribution.send({ priority: "system", idempotencyKey, subject, html, text, headers: {}, recipients: [{ email: to, substitutions: {} }] });
   } catch (e) {
-    console.error(`[nod] ${kind} email ${idempotencyKey} failed: ${e instanceof Error ? e.message : String(e)}`);
+    // Never e.message: a DistributionError's message can carry Distribution's raw HTTP response
+    // body (Minor 10, reviewer finding). Its status (or, failing that, its error name) says
+    // enough to triage without risking whatever Distribution put in that body.
+    const label = e instanceof DistributionError ? (e.status !== undefined ? `HTTP ${e.status}` : e.name) : e instanceof Error ? e.name : "error";
+    console.error(`[nod] ${kind} email ${idempotencyKey} failed: ${label}`);
   }
 }

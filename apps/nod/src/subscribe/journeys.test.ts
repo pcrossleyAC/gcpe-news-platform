@@ -121,6 +121,20 @@ describe("subscriber journeys", () => {
     expect(a!.status).toBe("deleted");
   });
 
+  it("moving to an address held by a disabled row unsubscribes the mover and leaves the disabled row untouched (R-I3)", async () => {
+    await subscribe(deps, info({ emailAddress: "a@example.test" }));
+    await confirm(deps, tokenFrom());
+    await tdb.db.execute(sql`INSERT INTO subscribers (email, manage_token, status, source) VALUES ('b@example.test', ${"y".repeat(43)}, 'disabled', 'admin')`);
+    await requestManageLink(deps, "a@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    await update(deps, tokenFrom(), info({ emailAddress: "b@example.test" }));
+    expect(await confirm(deps, tokenFrom())).toBeNull();
+    const [a] = await tdb.db.select().from(subscribers).where(eq(subscribers.email, "a@example.test"));
+    expect(a!.status).toBe("deleted");
+    const [b] = await tdb.db.select().from(subscribers).where(eq(subscribers.email, "b@example.test"));
+    expect(b).toMatchObject({ status: "disabled" }); // untouched
+  });
+
   it("moving to an address whose old row is inactive deletes the dead row and completes the move", async () => {
     for (const email of ["a@example.test", "b@example.test"]) { await subscribe(deps, info({ emailAddress: email })); await confirm(deps, tokenFrom()); }
     const [bRow] = await tdb.db.select().from(subscribers).where(eq(subscribers.email, "b@example.test"));
@@ -151,6 +165,12 @@ describe("subscriber journeys", () => {
   it("caps verification/manage emails at 3 per address per hour without changing the response", async () => {
     for (let i = 0; i < 5; i++) await subscribe(deps, info({ emailAddress: "flood@example.test" }));
     expect(sent.filter((m) => m.to === "flood@example.test")).toHaveLength(3);
+  });
+
+  it("caps at 3 per hour even under 20 concurrent subscribes for the same address (I2)", async () => {
+    await Promise.all(Array.from({ length: 20 }, () => subscribe(deps, info({ emailAddress: "par@example.test" }))));
+    await new Promise((r) => setTimeout(r, 50)); // flush any pending (unexpected) async work
+    expect(sent.filter((m) => m.to === "par@example.test")).toHaveLength(3);
   });
 
   it("refuses a subscription that can receive nothing", async () => {
@@ -205,17 +225,37 @@ describe("subscriber journeys", () => {
     expect(history).toHaveLength(0);
   });
 
-  it("a change-email link does not authorise update or unsubscribe", async () => {
+  it("a change-email link does not authorise update, unsubscribe or checkToken before confirmation (C1)", async () => {
     await subscribe(deps, info());
     await confirm(deps, tokenFrom());
     await requestManageLink(deps, "pat@example.test");
     await vi.waitFor(() => expect(sent).toHaveLength(2));
     await update(deps, tokenFrom(), info({ emailAddress: "new@example.test" }));
     const changeToken = tokenFrom();
+    expect(await checkToken(deps, changeToken)).toBe(false);
     expect(await update(deps, changeToken, info())).toBe("invalid");
     expect(await unsubscribe(deps, changeToken)).toBe(true); // C50: always true
     const [s] = await tdb.db.select().from(subscribers);
     expect(s).toMatchObject({ status: "active", email: "pat@example.test" }); // unaffected
+  });
+
+  it("a confirmed change-email link becomes a session: checkToken, update and unsubscribe act on it (C1)", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    await requestManageLink(deps, "pat@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    await update(deps, tokenFrom(), info({ emailAddress: "new@example.test" }));
+    const changeToken = tokenFrom();
+    expect(await checkToken(deps, changeToken)).toBe(false); // before confirmation
+    expect(await confirm(deps, changeToken)).toMatchObject({ emailAddress: "new@example.test" });
+    expect(await checkToken(deps, changeToken)).toBe(true); // after confirmation
+
+    expect(await update(deps, changeToken, info({ emailAddress: "new@example.test", subscribedCategories: { ministries: ["agri"] } }))).toBe("ok");
+    expect((await tdb.db.select().from(subscriptions)).map((r) => r.listKey)).toEqual(["ministries:agri"]);
+
+    expect(await unsubscribe(deps, changeToken)).toBe(true);
+    const [after] = await tdb.db.select().from(subscribers);
+    expect(after).toMatchObject({ status: "deleted" });
   });
 
   it("writes email-change-requested only when the change-email link was actually issued (not rate-limited)", async () => {

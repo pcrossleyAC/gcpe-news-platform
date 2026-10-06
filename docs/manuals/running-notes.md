@@ -50,3 +50,5 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   Core to republish once at startup when NoD has no ministry lists.
 - **Developer** — The public Subscribe API never reveals whether an address is subscribed, and
   takes link tokens only, never an email address in place of a token (C60).
+- **Operations** — Until 4b, As-It-Happens footers link with the old manage token, which the new
+  manage page doesn't accept; keep NOD_MANAGE_URL pointed at its old value on test sites.

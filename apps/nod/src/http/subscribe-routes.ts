@@ -1,16 +1,22 @@
-import express, { Router, type NextFunction, type Request, type Response } from "express";
+import express, { Router, type Request, type Response } from "express";
 import { ZodError } from "zod";
 import { requireAnyRole, NOD_SUBSCRIBE_API_ROLE } from "@gcpe/auth";
 import { publicListItems } from "../lists";
 import { PreferencesError, subscriberInfoSchema } from "../subscribe/info";
-import { checkToken, confirm, requestManageLink, subscribe, unsubscribe, update, type JourneyDeps } from "../subscribe/journeys";
+import { checkToken, confirm, requestManageLink, safeErrorLabel, subscribe, unsubscribe, update, type JourneyDeps } from "../subscribe/journeys";
 
 type H = (req: Request, res: Response) => Promise<void>;
-const run = (h: H) => (req: Request, res: Response, next: NextFunction) =>
+// Anything other than a validation error is never passed to `next(e)` / jsonErrorHandler here:
+// a journey error can be a DrizzleQueryError, whose message is "Failed query: <sql>\nparams:
+// <params>" — every query in this module binds an email address, so jsonErrorHandler logging the
+// whole error would put addresses in the logs (I4, reviewer finding). Log a fixed string plus
+// safeErrorLabel(e) instead, which never carries a bound value.
+const run = (h: H) => (req: Request, res: Response) =>
   h(req, res).catch((e: unknown) => {
     if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
     if (e instanceof PreferencesError) return void res.status(400).json({ error: e.message });
-    next(e);
+    console.error("[nod] subscribe route failed", safeErrorLabel(e));
+    res.status(500).json({ error: "internal error" });
   });
 const param = (req: Request, name: string) => String(req.params[name] ?? "");
 

@@ -12,7 +12,7 @@ async function newestTo(email: string, subject: string) {
   return (await fetchSentMessages()).filter((m) => m.to.includes(email) && m.subject === subject).at(-1)!;
 }
 
-test("subscribe, confirm, manage and unsubscribe through the test pages", async ({ page }) => {
+test("subscribe, confirm, manage and unsubscribe through the test pages", async ({ page, request }) => {
   const email = `journey-${Date.now()}@example.test`;
   await tick(); // Core's reference data reaches NoD's lists
   await page.goto(`${baseUrl()}/site/subscribe/`);
@@ -32,6 +32,57 @@ test("subscribe, confirm, manage and unsubscribe through the test pages", async 
   await page.getByRole("button", { name: "Unsubscribe" }).click();
   await page.getByRole("button", { name: "Unsubscribe" }).click();
   await expect(page.getByRole("status")).toHaveText("You're unsubscribed.");
+
+  // I3: the page unsubscribe actually deactivated the subscriber — re-creating the same address
+  // through the proxy must start a fresh verify journey, never a manage email, which would mean
+  // the old row was still active.
+  const recreate = await request.post(`${baseUrl()}/api/Subscribe/CreateNewsOnDemandEmailSubscriptionWithPreferences?api-version=1.0`, {
+    data: { emailAddress: email, isAllNews: true, isAsItHappens: true, isDailyDigest: false, subscribedCategories: {} },
+  });
+  expect(recreate.status()).toBe(204);
+  await tick();
+  await expect.poll(async () => (await fetchSentMessages()).filter((m) => m.to.includes(email) && m.subject === VERIFY).length).toBe(2);
+  expect((await fetchSentMessages()).filter((m) => m.to.includes(email) && m.subject === MANAGE)).toHaveLength(0);
+});
+
+test("manage link request and RFC 8058 one-click unsubscribe through the proxy prove the subscriber actually becomes inactive", async ({ request }) => {
+  const email = `oneclick-${Date.now()}@example.test`;
+  const body = { emailAddress: email, isAllNews: true, isAsItHappens: true, isDailyDigest: false, subscribedCategories: {} };
+  await tick();
+  await request.post(`${baseUrl()}/api/Subscribe/CreateNewsOnDemandEmailSubscriptionWithPreferences?api-version=1.0`, { data: body });
+  await tick();
+  const verifyToken = new URL(linkIn((await newestTo(email, VERIFY)).text)).searchParams.get("token");
+  await request.get(`${baseUrl()}/api/Subscribe/ConfirmUpdateCreateSubscription/${verifyToken}?api-version=1.0`);
+
+  // Item 2: ManageNewsOnDemandEmailSubscription for an active subscriber sends a Subscription
+  // Management email; take its token.
+  const manageRes = await request.get(`${baseUrl()}/api/Subscribe/ManageNewsOnDemandEmailSubscription/${encodeURIComponent(email)}?api-version=1.0`);
+  expect(manageRes.status()).toBe(204);
+  await tick();
+  const manageToken = new URL(linkIn((await newestTo(email, MANAGE)).text)).searchParams.get("token");
+
+  // Item 3: a real one-click unsubscribe POST — no api-version, RFC 8058 form body — through
+  // the proxy.
+  const oneClick = await request.post(`${baseUrl()}/api/Subscribe/OneClickUnsubscribe/${manageToken}`, {
+    form: { "List-Unsubscribe": "One-Click" },
+  });
+  expect(oneClick.status()).toBe(200);
+  expect(await oneClick.json()).toBe(true);
+
+  // Prove it actually took effect: re-creating the address now starts a fresh verify journey,
+  // never a manage email.
+  await tick();
+  const recreate = await request.post(`${baseUrl()}/api/Subscribe/CreateNewsOnDemandEmailSubscriptionWithPreferences?api-version=1.0`, { data: body });
+  expect(recreate.status()).toBe(204);
+  await tick();
+  await expect.poll(async () => (await fetchSentMessages()).filter((m) => m.to.includes(email) && m.subject === VERIFY).length).toBe(2);
+  expect((await fetchSentMessages()).filter((m) => m.to.includes(email) && m.subject === MANAGE)).toHaveLength(1); // only the one above
+});
+
+test("subscribe page stays usable at 320px wide", async ({ page }) => {
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.goto(`${baseUrl()}/site/subscribe/`);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(320);
 });
 
 test("subscribing an address that's already subscribed looks identical and sends a manage email", async ({ page, request }) => {

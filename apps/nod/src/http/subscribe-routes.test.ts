@@ -6,6 +6,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { createApp } from "../app";
 import type { JourneyDeps } from "../subscribe/journeys";
+import * as journeysModule from "../subscribe/journeys";
 
 const issuer = "https://login.microsoftonline.com/t/v2.0";
 const audience = "api://nod";
@@ -98,10 +99,38 @@ describe("NoD Subscribe API HTTP routes", () => {
     expect(c.body).toBeNull();
   });
 
-  it("one-click unsubscribe accepts the RFC 8058 form body", async () => {
-    const res = await request(app).post("/api/Subscribe/OneClickUnsubscribe/whatever").set({ authorization: `Bearer ${svc}` })
-      .type("form").send("List-Unsubscribe=One-Click");
+  it("one-click unsubscribe accepts the RFC 8058 form body and actually deletes the subscriber (I3)", async () => {
+    const auth = { authorization: `Bearer ${svc}` };
+    const created = await request(app).post("/api/Subscribe/CreateNewsOnDemandEmailSubscriptionWithPreferences").set(auth)
+      .send({ emailAddress: "oneclick@example.test", subscribedCategories: { ministries: ["health"] }, isAllNews: false, isAsItHappens: true, isDailyDigest: false });
+    expect(created.status).toBe(204);
+    const token = tokenFrom();
+    await request(app).get(`/api/Subscribe/ConfirmUpdateCreateSubscription/${token}`).set(auth);
+
+    const res = await request(app).post(`/api/Subscribe/OneClickUnsubscribe/${token}`).set(auth).type("form").send("List-Unsubscribe=One-Click");
     expect(res.status).toBe(200);
     expect(res.body).toBe(true);
+
+    const [row] = await tdb.db.execute<{ status: string }>(sql`SELECT status FROM subscribers WHERE email = 'oneclick@example.test'`).then((r) => r.rows);
+    expect(row).toMatchObject({ status: "deleted" });
+  });
+
+  it("a journey error carrying an address and 'params:' never reaches the response or the logs (I4)", async () => {
+    const auth = { authorization: `Bearer ${svc}` };
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const confirmSpy = vi
+      .spyOn(journeysModule, "confirm")
+      .mockRejectedValueOnce(new Error('Failed query: select * from "subscriber_links" where ...\nparams: pat@example.test,abcDEF123xyz'));
+    try {
+      const res = await request(app).get("/api/Subscribe/ConfirmUpdateCreateSubscription/whatever").set(auth);
+      expect(res.status).toBe(500);
+      expect(res.body).toEqual({ error: "internal error" });
+      const logged = errSpy.mock.calls.flat().map(String).join(" ");
+      expect(logged).not.toContain("pat@example.test");
+      expect(logged).not.toContain("params:");
+    } finally {
+      confirmSpy.mockRestore();
+      errSpy.mockRestore();
+    }
   });
 });

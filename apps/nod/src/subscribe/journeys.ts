@@ -19,8 +19,9 @@ export interface JourneyDeps {
 }
 
 const SELF = "subscriber";
-// Purposes that authorise `update`/`unsubscribe`: a change-email link was sent to an address
-// that hasn't been confirmed yet, so it must never act as a manage session (reviewer finding).
+// Purposes that unconditionally authorise `update`/`unsubscribe` once they carry a subscriber id
+// (a change-email link needs its own conditional rule below — a link sent to an address that
+// hasn't been confirmed yet must never act as a manage session (reviewer finding)).
 const SESSION_PURPOSES = new Set(["verify", "manage"]);
 
 // 23505 unique_violation: another confirm of the same address won the insert race. 40P01
@@ -38,7 +39,7 @@ function isRetryableConflict(e: unknown): boolean {
  * query inside `issue()` binds the target email address — logging it would put the address in
  * the logs (the thing C-anti-enumeration/"no addresses in logs" forbids). The Postgres error
  * code (or, failing that, the error's name) is informative without carrying any bound value. */
-function safeErrorLabel(e: unknown): string {
+export function safeErrorLabel(e: unknown): string {
   const code = (e as { cause?: { code?: unknown } })?.cause?.code ?? (e as { code?: unknown })?.code;
   if (typeof code === "string") return code;
   return e instanceof Error ? e.name : "error";
@@ -87,11 +88,23 @@ async function manageViewByEmail(db: DbOrTx, email: string): Promise<SubscriberI
 }
 
 /** Sends a link email, rate-limited; reports whether it actually issued one (false when the
- * address is over its hourly cap) so callers can avoid logging history for a no-op. */
+ * address is over its hourly cap) so callers can avoid logging history for a no-op.
+ *
+ * The count-then-insert is done inside one transaction holding the same per-address advisory
+ * lock `lockAddress` uses for confirms: without it, N concurrent calls for the same address can
+ * each read the same (stale) count before any of them inserts, and all N pass the cap check
+ * (reviewer finding, I2 — 20 parallel subscribes sent 18 emails). The lock serialises the
+ * check-and-insert so at most MAX_EMAILS_PER_HOUR ever get created. The email itself is sent
+ * after commit — same for both callers (kind="verify" or "manage"), so neither subscribe()
+ * branch does more or less work than the other (anti-enumeration). */
 async function issue(deps: JourneyDeps, kind: SystemEmailKind, input: { email: string; subscriberId: string | null; pending: SubscriberPrefs | null }): Promise<boolean> {
-  if ((await linksSentLastHour(deps.db, input.email)) >= MAX_EMAILS_PER_HOUR) return false;
-  const { id, token } = await createLink(deps.db, { purpose: kind, ...input });
-  await sendSystemEmail(deps.distribution, input.email, kind, linkUrl(deps.pageUrl, token), `nod-link-${id}`);
+  const issued = await deps.db.transaction(async (tx) => {
+    await lockAddress(tx, input.email);
+    if ((await linksSentLastHour(tx, input.email)) >= MAX_EMAILS_PER_HOUR) return null;
+    return createLink(tx, { purpose: kind, ...input });
+  });
+  if (!issued) return false;
+  await sendSystemEmail(deps.distribution, input.email, kind, linkUrl(deps.pageUrl, issued.token), `nod-link-${issued.id}`);
   return true;
 }
 
@@ -208,13 +221,17 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
 
     const taken = await bySubscriberEmail(tx, link.email);
     if (taken && taken.id !== subscriberId) {
-      if (taken.status === "active") {
+      if (taken.status === "pending" || taken.status === "deleted") {
+        // Dead weight, not a live subscriber to protect: clear it out (links/history cascade)
+        // and move in.
+        await tx.delete(subscribers).where(eq(subscribers.id, taken.id));
+      } else {
+        // active, or disabled (R-I3: disabled will mean bounce-/staff-disabled in 4e/4f, so it's
+        // treated like active now) — a row worth protecting. The mover is unsubscribed instead
+        // of displacing it; the row at the target address is left untouched.
         await endSubscriber(tx, subscriberId);
         return "moved-unsubscribed";
       }
-      // The address is held by a non-active row (pending/disabled/deleted): it's dead weight,
-      // not a live subscriber to protect. Clear it out (links/history cascade) and move in.
-      await tx.delete(subscribers).where(eq(subscribers.id, taken.id));
     }
     await tx
       .update(subscribers)
@@ -238,10 +255,25 @@ async function endSubscriber(tx: DbOrTx, subscriberId: string) {
   if (ended.length) await writeHistory(tx, subscriberId, SELF, "unsubscribed");
 }
 
+/** Whether `link` currently authorises a manage session — `update`, `unsubscribe` and (for a
+ * change-email link only) `checkToken` all gate on this. A verify or manage link does as soon as
+ * it carries a subscriber id. A change-email link is different (controller ruling, C1): before
+ * confirmation it authorises nothing — the email hasn't moved yet, so there's nothing to manage —
+ * and it only starts authorising once `used_at` is set (confirmed) AND the subscriber it names
+ * has actually ended up at `link.email` (the move could instead have unsubscribed the mover, or
+ * found the subscriber no longer active, in which case there is still no session). */
+async function isSession(db: DbOrTx, link: LinkRow): Promise<boolean> {
+  if (!link.subscriberId) return false;
+  if (SESSION_PURPOSES.has(link.purpose)) return true;
+  if (link.purpose !== "change-email" || link.usedAt === null) return false;
+  const [s] = await db.select().from(subscribers).where(eq(subscribers.id, link.subscriberId));
+  return !!s && s.email.toLowerCase() === link.email;
+}
+
 export async function update(deps: JourneyDeps, token: string, info: SubscriberInfo): Promise<"ok" | "invalid"> {
   const link = await findLink(deps.db, token);
-  if (!link || link.expired || !link.subscriberId || !SESSION_PURPOSES.has(link.purpose)) return "invalid";
-  const [s] = await deps.db.select().from(subscribers).where(eq(subscribers.id, link.subscriberId));
+  if (!link || link.expired || !(await isSession(deps.db, link))) return "invalid";
+  const [s] = await deps.db.select().from(subscribers).where(eq(subscribers.id, link.subscriberId!)); // isSession(true) implies non-null
   if (!s || s.status !== "active") return "invalid";
   const { email, prefs } = await toPrefs(deps.db, info);
   await deps.db.transaction(async (tx) => {
@@ -270,13 +302,18 @@ export async function requestManageLink(deps: JourneyDeps, rawEmail: string): Pr
 
 export async function checkToken(deps: JourneyDeps, token: string): Promise<boolean> {
   const link = await findLink(deps.db, token);
-  return !!link && !link.expired;
+  if (!link || link.expired) return false;
+  // verify/manage: the activation link itself is still live, regardless of whether it's been
+  // confirmed yet. change-email: only once it has become a session (C1) — before that, the
+  // move hasn't happened, so there's nothing valid to report.
+  if (link.purpose === "change-email") return isSession(deps.db, link);
+  return true;
 }
 
 export async function unsubscribe(deps: JourneyDeps, token: string): Promise<true> {
   let subscriberId: string | null = null;
   const link = await findLink(deps.db, token);
-  if (link && !link.expired && link.subscriberId && SESSION_PURPOSES.has(link.purpose)) subscriberId = link.subscriberId;
+  if (link && !link.expired && (await isSession(deps.db, link))) subscriberId = link.subscriberId;
   if (!subscriberId) {
     const parsed = parseUnsubscribeToken(deps.linkSecret, token);
     if (parsed) {
