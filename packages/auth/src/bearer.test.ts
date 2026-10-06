@@ -51,6 +51,23 @@ describe("requireBearer / requireRole", () => {
     expect(res.status).toBe(403);
   });
 
+  // Fix round 1, Minor #7: partial Entra config (some but not all of issuer/audience/keys)
+  // used to be silently treated as "no Entra verifier" -- that's a config mistake, not a
+  // deliberate choice, so it must fail loudly at construction instead of quietly accepting
+  // only local tokens (or no tokens at all) in production.
+  it.each([
+    [{ issuer: "https://login.microsoftonline.com/t/v2.0" }],
+    [{ audience: "api://core" }],
+    [{ issuer: "https://login.microsoftonline.com/t/v2.0", audience: "api://core" }],
+  ])("throws at construction when only some of issuer/audience/keys are given: %j", (partial) => {
+    expect(() => requireBearer(partial)).toThrow(/issuer, audience and keys must all be provided together/);
+  });
+
+  it("401 (not 500) for a malformed token that isn't even a JWT", async () => {
+    const res = await request(app).get("/read").set("authorization", "Bearer not-a-jwt-at-all");
+    expect(res.status).toBe(401);
+  });
+
   it("401 for a token signed with a different algorithm (HS256)", async () => {
     const hsToken = await new SignJWT({})
       .setProtectedHeader({ alg: "HS256" })

@@ -1,0 +1,31 @@
+{
+  "name": "@gcpe/stack",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "node ../../scripts/build-app.mjs apps/stack"
+  },
+  "dependencies": {
+    "@gcpe/auth": "0.0.0",
+    "@gcpe/config": "0.0.0",
+    "@gcpe/core": "0.0.0",
+    "@gcpe/db-kit": "0.0.0",
+    "@gcpe/distribution": "0.0.0",
+    "@gcpe/events": "0.0.0",
+    "@gcpe/http-kit": "0.0.0",
+    "@gcpe/news-api": "0.0.0",
+    "@gcpe/nod": "0.0.0",
+    "@gcpe/nrms": "0.0.0",
+    "@gcpe/public-site": "0.0.0",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.3.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/supertest": "^7.2.1",
+    "supertest": "^7.1.0"
+  }
+}

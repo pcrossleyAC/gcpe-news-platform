@@ -1,0 +1,1 @@
+ALTER TABLE "send_jobs" ADD COLUMN "batch_ids" jsonb DEFAULT '[]'::jsonb NOT NULL;

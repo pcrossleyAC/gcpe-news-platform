@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { eq } from "drizzle-orm";
-import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
+import { createTestDatabase, dbClock, type TestDatabase } from "@gcpe/db-kit";
 import { backoffMs, defaultLockMs, dispatchOnce } from "./dispatcher";
 import { enqueueEvent } from "./publisher";
 import { verifySignature } from "./signing";
@@ -67,7 +67,9 @@ describe("dispatchOnce", () => {
   it("schedules a retry with backoff on failure", async () => {
     respondWith = 503;
     const env = await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: "org:y", data: { key: "y" } }, subs);
-    const now = new Date();
+    // A fixed test clock (to assert the exact backoff), seeded from the database's clock —
+    // a JS `new Date()` can read as earlier than the row's own DB-stamped next_attempt_at.
+    const now = await dbClock(tdb.db);
     expect(await dispatchOnce({ db: tdb.db, subscribers: subs, now: () => now })).toEqual({ delivered: 0, retried: 1, dead: 0 });
     const [d] = await tdb.db.select().from(outboxDeliveries).where(eq(outboxDeliveries.eventId, env.id));
     expect(d!.status).toBe("pending");
@@ -82,6 +84,29 @@ describe("dispatchOnce", () => {
     const later = new Date(Date.now() + 25 * 3_600_000);
     expect(await dispatchOnce({ db: tdb.db, subscribers: subs, now: () => later })).toEqual({ delivered: 0, retried: 0, dead: 1 });
   });
+
+  // P2-R26: SKIP LOCKED, not just the lock predicate, keeps a claim from *waiting* on a row
+  // another transaction holds — the earliest-due delivery here — instead of delivering the rest.
+  it("does not wait on a delivery row locked by another transaction (FOR UPDATE SKIP LOCKED)", async () => {
+    const envs = [];
+    for (let i = 0; i < 3; i++) {
+      envs.push(await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: `org:sk${i}`, data: { key: `sk${i}` } }, subs));
+    }
+    const locker = await tdb.pool.connect();
+    await locker.query("BEGIN");
+    await locker.query("SELECT 1 FROM outbox_deliveries WHERE event_id = $1 FOR UPDATE", [envs[0]!.id]);
+    try {
+      const result = await Promise.race([
+        dispatchOnce({ db: tdb.db, subscribers: subs }),
+        new Promise<never>((_, reject) => setTimeout(() => reject(new Error("dispatchOnce waited on the locked row instead of skipping it")), 5000)),
+      ]);
+      expect(result).toEqual({ delivered: 2, retried: 0, dead: 0 });
+      expect(new Set(received.map((r) => r.headers["x-event-id"]))).toEqual(new Set([envs[1]!.id, envs[2]!.id]));
+    } finally {
+      await locker.query("ROLLBACK");
+      locker.release();
+    }
+  }, 7000);
 
   it("concurrent dispatchOnce calls deliver each event once", async () => {
     for (let i = 0; i < 10; i++) {
@@ -165,7 +190,7 @@ describe("dispatchOnce", () => {
     const ghost: SubscriberConfig = { name: "ghost", url: "http://127.0.0.1:1/events", secret: "k", types: ["*"] };
     const env = await enqueueEvent(tdb.db, { type: "org.deactivated", source: "core", aggregateId: "org:ghost", data: { key: "g" } }, [ghost]);
 
-    const now = new Date();
+    const now = await dbClock(tdb.db);
     expect(await dispatchOnce({ db: tdb.db, subscribers: [], now: () => now })).toEqual({ delivered: 0, retried: 1, dead: 0 });
     const [d] = await tdb.db.select().from(outboxDeliveries).where(eq(outboxDeliveries.eventId, env.id));
     expect(d!.status).toBe("pending");

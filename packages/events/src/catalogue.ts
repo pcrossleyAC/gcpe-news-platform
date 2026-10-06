@@ -155,6 +155,20 @@ export const siteContentChangedSchema = z.discriminatedUnion("entity", [
 ]);
 export type SiteContentChanged = z.infer<typeof siteContentChangedSchema>;
 
+/** Page identifiers the public site builder understands: "home" and `post:<key>`. Unknown ids are skipped by the builder. */
+export const siteRebuildRequestedSchema = z.object({ pages: z.array(z.string().min(1)).min(1) });
+export type SiteRebuildRequested = z.infer<typeof siteRebuildRequestedSchema>;
+
+/** Index keys a release is listed under (`ministries:health`, …), lowercased. Shared by the News API and NoD. */
+export function indexKeysFor(r: Pick<ReleaseRecord, "ministryKeys" | "sectorKeys" | "tagKeys" | "themeKeys">): string[] {
+  return [
+    ...r.ministryKeys.map((k) => `ministries:${k}`),
+    ...r.sectorKeys.map((k) => `sectors:${k}`),
+    ...r.tagKeys.map((k) => `tags:${k}`),
+    ...r.themeKeys.map((k) => `themes:${k}`),
+  ].map((s) => s.toLowerCase());
+}
+
 export const eventDataSchemas = {
   "org.upserted": orgRecordSchema,
   "org.deactivated": z.object({ key: z.string().min(1) }),
@@ -170,6 +184,7 @@ export const eventDataSchemas = {
   "release.updated": releaseRecordSchema.extend({ notify: z.boolean() }),
   "release.unpublished": z.object({ key: z.string().min(1) }),
   "site.content.changed": siteContentChangedSchema,
+  "site.rebuild_requested": siteRebuildRequestedSchema,
 } as const;
 
 export type EventType = keyof typeof eventDataSchemas;

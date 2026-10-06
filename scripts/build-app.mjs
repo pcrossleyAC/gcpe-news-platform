@@ -22,7 +22,7 @@ await build({
   bundle: true,
   platform: "node",
   format: "esm",
-  target: "node22",
+  target: "node24",
   external: [...deps],
   banner: { js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);" },
 });

@@ -7,7 +7,7 @@ Node.js + PostgreSQL replatform of the GCPE news toolchain: Corporate Calendar �
 
 ## Prerequisites
 
-- Node ≥ 22.12 (`.nvmrc`; required by tedious/@azure and vite/rolldown), npm 10
+- Node ≥ 24 (`.nvmrc`; bumped from 22 so the bundled ICU/tzdata is new enough to know BC stays UTC−7 permanently from 2026-11-01 — Node 22's bundled tzdata (2025b–2026a depending on patch release) predates that rule), npm 11 (Node 24 ships npm 11)
 - PostgreSQL ≥ 14 with the `vector` extension available (Homebrew `postgresql@14` + `pgvector`, or `docker compose -f deploy/docker-compose.yml up postgres`)
 
 ## Setup
@@ -29,7 +29,19 @@ npm test               # unit + integration tests (creates/drops throwaway datab
 | `packages/auth` | Entra bearer tokens, role guard, client-credentials tokens |
 | `packages/legacy-import` | Legacy SQL Server reader and enum maps |
 | `packages/http-kit` | Shared HTTP plumbing: `/health/live` + `/health/ready` (pluggable checks), JSON error handler, ordered graceful shutdown |
-| `apps/core` | Reference data (organizations, sectors, themes, tags, services) |
+
+## Apps
+
+| App | Path | Port (default) | Purpose |
+|---|---|---|---|
+| Core | `apps/core` | `3001` | Reference data (organizations, sectors, themes, tags, services) |
+| News API | `apps/news-api` | `3002` | Drop-in replacement for the BC Gov News API v1, incl. the `/updates` SignalR hub |
+| Public Site | `apps/public-site` | `3003` | Rebuilds the static public site from News API content on `site.rebuild_requested` |
+| NoD (News on Demand) | `apps/nod` | `3004` | Subscriptions + As-It-Happens email delivery, hands off to Distribution |
+| Distribution | `apps/distribution` | `3005` | Sends mail batches over SMTP for NoD (and any other internal caller) |
+| NRMS (News Release Management System) | `apps/nrms` | `3006` | Drafts/schedules/publishes releases; emits `release.*` events to News API and NoD |
+
+Ports are each app's `PORT` env default; override per environment as needed. **NRMS was moved from `3002` to `3006`** (its original default collided with News API's `3002`) — controller ruling P2-R21.
 
 ## Running Core locally
 
@@ -143,3 +155,227 @@ Requires the .NET 5 SDK. This is not automated.
 1. `git clone https://github.com/bcgov/gcpe-news-webapp && cd gcpe-news-webapp/Gov.News.WebApp`
 2. Set `NewsApi` to `http://localhost:3002/` in `appsettings.Development.json` and run `dotnet run`.
 3. Open the home page, a release page, and a ministry page. Confirm they render, and that the log shows `SignalR Client Started`.
+
+## NRMS (`apps/nrms`)
+
+Drafts, schedules and publishes releases; the only app in the slice that *emits* `release.*` events (via its outbox/dispatcher) and runs its own `PUBLISH_INTERVAL_MS` poller to flip scheduled releases to published. It has no inbound `/events` receiver.
+
+```bash
+createdb nrms_dev
+DATABASE_URL=postgres://localhost:5432/nrms_dev LOCAL_ADMIN_ENABLED=true \
+LOCAL_ADMIN_PASSWORD_HASH=<hash from `npm run auth:hash-password`> LOCAL_AUTH_SECRET=<32+ char secret> \
+EVENT_SUBSCRIBERS='[]' npm --workspace @gcpe/nrms run dev
+```
+
+### NRMS environment
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `DATABASE_URL` | yes | | Postgres connection string |
+| `PORT` | no | `3006` | HTTP port (the Docker healthcheck follows it; moved from `3002` — controller ruling P2-R21 — to stop colliding with News API's `3002`) |
+| `EVENT_SUBSCRIBERS` | no | `[]` | JSON array of webhook subscribers that receive NRMS's `release.*` events, see [Event wiring](#event-wiring) below |
+| `MIGRATIONS_FOLDER` | no | `apps/nrms/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/nrms/migrations` |
+| `PUBLISH_INTERVAL_MS` | no | `60000` | How often the scheduled-publish poller runs |
+
+Plus the shared auth env vars — see [Authentication](#authentication-entra-or-local-admin-login-test-environments-only) below.
+
+## Public Site (`apps/public-site`)
+
+Rebuilds the static public site (HTML + assets, under `OUTPUT_DIR`) by reading back from News API whenever it receives a `site.rebuild_requested` event. It has **no** `/api` and no bearer auth at all — its only inbound traffic is the signed `/events` receiver and `/health/*`.
+
+```bash
+createdb public_site_dev
+DATABASE_URL=postgres://localhost:5432/public_site_dev NEWS_API_URL=http://localhost:3002 \
+OUTPUT_DIR=./output EVENT_SECRETS='{"news-api":"dev"}' npm --workspace @gcpe/public-site run dev
+```
+
+### Public Site environment
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `DATABASE_URL` | yes | | Postgres connection string |
+| `PORT` | no | `3003` | HTTP port (the Docker healthcheck follows it) |
+| `NEWS_API_URL` | yes | | Base URL of the News API this instance rebuilds from |
+| `OUTPUT_DIR` | yes | | Directory the rendered static site is written to (the Docker image mounts this as a volume) |
+| `SITE_NAME` | only if `TENANT_CONFIG` has no default | from `TENANT_CONFIG`, else required | Site display name |
+| `PUBLIC_SITE_URL` | only if `TENANT_CONFIG` has no default | from `TENANT_CONFIG`, else required | Public base URL the rendered site is served from |
+| `EVENT_SECRETS` | no | `{}` | JSON object of event source → shared HMAC secret; only `"news-api"` is ever accepted (see [Event wiring](#event-wiring)) |
+| `TENANT_CONFIG` | no | `config/tenants/bc.json` (resolved next to the bundle) | Tenant config path, see `packages/config` |
+| `MIGRATIONS_FOLDER` | no | `apps/public-site/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/public-site/migrations` |
+
+## NoD — News on Demand (`apps/nod`)
+
+Subscriptions API plus "As-It-Happens" email delivery: on `release.published` it builds per-subscriber delivery records and a send job, then its own `send-jobs` poller forwards chunks to Distribution.
+
+```bash
+createdb nod_dev
+DATABASE_URL=postgres://localhost:5432/nod_dev EVENT_SECRETS='{"nrms":"dev"}' \
+DISTRIBUTION_URL=http://localhost:3005 PUBLIC_SITE_URL=http://localhost:3003 MANAGE_URL=http://localhost:3004/manage \
+LOCAL_ADMIN_ENABLED=true LOCAL_ADMIN_PASSWORD_HASH=<hash> LOCAL_AUTH_SECRET=<32+ char secret> \
+npm --workspace @gcpe/nod run dev
+```
+
+### NoD environment
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `DATABASE_URL` | yes | | Postgres connection string |
+| `PORT` | no | `3004` | HTTP port (the Docker healthcheck follows it) |
+| `EVENT_SECRETS` | no | `{}` | JSON object of event source → shared HMAC secret; only `"nrms"`'s `release.published` is ever accepted (see [Event wiring](#event-wiring)) |
+| `DISTRIBUTION_URL` | yes | | Base URL of the Distribution app NoD forwards send jobs to |
+| `DISTRIBUTION_TOKEN_URL` | no* | | Entra client-credentials token endpoint for calling Distribution |
+| `DISTRIBUTION_CLIENT_ID` | no* | | Entra client id for the client-credentials grant |
+| `DISTRIBUTION_CLIENT_SECRET` | no* | | Entra client secret for the client-credentials grant |
+| `DISTRIBUTION_SCOPE` | no* | | OAuth2 scope requested for the client-credentials grant |
+| `DISTRIBUTION_TIMEOUT_MS` | no | `30000` | Per-chunk request timeout against Distribution; also sizes the send-jobs claim lock |
+| `PUBLIC_SITE_URL` | yes | | Embedded in As-It-Happens emails as the link back to the public site |
+| `MANAGE_URL` | yes | | Embedded in As-It-Happens emails as the subscription-management link |
+| `MIGRATIONS_FOLDER` | no | `apps/nod/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/nod/migrations` |
+
+\* All four `DISTRIBUTION_*` Entra fields must be set together, or none of them — see "NoD's token selection" below.
+
+Plus the shared auth env vars — see [Authentication](#authentication-entra-or-local-admin-login-test-environments-only) below.
+
+### NoD's token selection: Entra vs. local, and why you can't switch mid-retry
+
+NoD authenticates its own calls to Distribution one of two ways, chosen once at startup by `distributionTokenProvider` (`apps/nod/src/distribution-token.ts`):
+
+- **Entra client credentials** — used when `DISTRIBUTION_TOKEN_URL`, `DISTRIBUTION_CLIENT_ID`, `DISTRIBUTION_CLIENT_SECRET` and `DISTRIBUTION_SCOPE` are **all** set.
+- **A locally minted token** — used when none of the four are set and `LOCAL_ADMIN_ENABLED=true` (test environments only); NoD mints its own short-lived `Distribution.Send` token using the shared `LOCAL_AUTH_SECRET`, with `azp: "nod"`.
+
+Setting some but not all four Entra fields is a startup error.
+
+Distribution scopes both idempotency and a batch's owning app by the calling token's `azp` claim (the Entra client id, or `"nod"` for a local token). **Do not switch which branch is active while any `send_jobs` are mid-retry** — a retry after the switch would carry a different `azp` than earlier attempts of the same job, so Distribution would treat it as a different caller and never dedupe against chunks the old identity already got accepted, silently double-sending them.
+
+## Distribution (`apps/distribution`)
+
+Sends mail batches over SMTP. Has no event wiring of its own — NoD (and any other internal caller) calls its `/api` directly, authenticated the same way as every other app (Entra bearer, or a local token).
+
+```bash
+DATABASE_URL=postgres://localhost:5432/distribution_dev SMTP_HOST=localhost SMTP_PORT=1025 \
+MAIL_FROM='"BC Gov News" <news@gov.bc.ca>' MAIL_REDIRECT_TO=you@example.com \
+LOCAL_ADMIN_ENABLED=true LOCAL_ADMIN_PASSWORD_HASH=<hash> LOCAL_AUTH_SECRET=<32+ char secret> \
+npm --workspace @gcpe/distribution run dev
+```
+
+### Distribution environment
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `DATABASE_URL` | yes | | Postgres connection string |
+| `PORT` | no | `3005` | HTTP port (the Docker healthcheck follows it) |
+| `SMTP_HOST` | yes | | SMTP server host |
+| `SMTP_PORT` | no | `587` | SMTP server port |
+| `SMTP_SECURE` | no | `false` | Use implicit TLS |
+| `SMTP_USER` / `SMTP_PASS` | no | | SMTP auth credentials (omit both for unauthenticated SMTP, e.g. Mailpit) |
+| `SMTP_TLS_REJECT_UNAUTHORIZED` | no | `true` | Set `false` only for local/self-signed SMTP |
+| `SMTP_CONNECTION_TIMEOUT_MS` / `SMTP_GREETING_TIMEOUT_MS` / `SMTP_SOCKET_TIMEOUT_MS` | no | `10000` / `10000` / `30000` | nodemailer per-connection timeouts; their sum, plus `SMTP_VERIFY_TIMEOUT_MS`, sizes the sender's claim lock per message |
+| `SMTP_MAX_CONNECTIONS` | no | `3` | nodemailer pool size |
+| `SMTP_VERIFY_TIMEOUT_MS` | no | `10000` | Budget for the `transport.verify()` that tells an SMTP outage from a poison message after a connection-level error; counted per message in the claim lock and stop margin |
+| `MAIL_MAX_AGE_MS` | no | `86400000` | Age backstop: a message still pending this long after its batch was created is marked failed |
+| `MAIL_FROM` | yes | | `From` header for every sent message |
+| `MAIL_REDIRECT_TO` | no† | | Comma-separated list of real addresses every message is actually sent to instead of its real recipients — see the mail-redirect rule below |
+| `MAIL_ALLOW_REAL_RECIPIENTS` | no† | `false` | Opt-in to delivering to real recipients (disables the redirect) |
+| `INTERNAL_DOMAINS` | no | `` (empty) | Comma-separated list of domains treated as internal by the API's recipient checks |
+| `SEND_INTERVAL_MS` | no | `2000` | How often the send poller runs |
+| `SEND_OUTAGE_COOLDOWN_MAX_MS` | no | `300000` | Longest the sender pauses after an SMTP outage deferral (the pause is the deferred message's backoff, capped at this) |
+| `MIGRATIONS_FOLDER` | no | `apps/distribution/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/distribution/migrations` |
+
+† Startup refuses to boot unless at least one of `MAIL_REDIRECT_TO` or `MAIL_ALLOW_REAL_RECIPIENTS=true` is set — see below.
+
+Plus the shared auth env vars — see [Authentication](#authentication-entra-or-local-admin-login-test-environments-only) below.
+
+### Distribution's mail-redirect safety rule
+
+Distribution refuses to start unless it's told explicitly what to do with real recipients: either
+
+- `MAIL_REDIRECT_TO` is a non-empty, comma-separated list of valid email addresses — every message is sent to **that list instead of its real recipients** (the real recipient list is simply never used at send time), or
+- `MAIL_ALLOW_REAL_RECIPIENTS=true` is set — messages go to their real recipients.
+
+If neither is set, startup fails fast with a validation error rather than silently mailing real citizens from a test environment. When both are set, the redirect wins — `MAIL_ALLOW_REAL_RECIPIENTS` is only consulted when `MAIL_REDIRECT_TO` is empty. Every address in `MAIL_REDIRECT_TO` is itself validated as an email address at startup, so a typo (e.g. a bare `qa@`) fails loudly at boot instead of becoming an unroutable `To:` at send time.
+
+## Event wiring
+
+Only three events cross app boundaries in this slice, all signed HMAC webhooks delivered to each receiver's `/events`:
+
+| Source | Event type(s) | Delivered to |
+|---|---|---|
+| `nrms` | `release.published`, `release.updated`, `release.unpublished` | News API (`apps/news-api`) |
+| `nrms` | `release.published` | NoD (`apps/nod`) |
+| `news-api` | `site.rebuild_requested` | Public Site (`apps/public-site`) |
+
+Each sender configures `EVENT_SUBSCRIBERS` (a JSON array: one entry per receiver, each with its own secret and the event types it's allowed to see); each receiver configures `EVENT_SECRETS` (a JSON object mapping the sender's `source` name to the **same** secret). A receiver rejects anything signed with the wrong secret, and also rejects event types its source isn't allowed to send (e.g. an `nrms`-signed `org.deactivated` is "ignored", not applied) — see `SOURCE_EVENT_TYPES` in `apps/news-api/src/projections.ts`.
+
+Worked example for NRMS → News API and NoD:
+
+```bash
+# NRMS's EVENT_SUBSCRIBERS (sender side)
+EVENT_SUBSCRIBERS='[
+  { "name": "news-api", "url": "http://localhost:3002/events", "secret": "shared-nrms-to-news-api-secret", "types": ["release.published", "release.updated", "release.unpublished"] },
+  { "name": "nod",      "url": "http://localhost:3004/events", "secret": "shared-nrms-to-nod-secret",      "types": ["release.published"] }
+]'
+
+# News API's EVENT_SECRETS (receiver side) — the "nrms" key must match NRMS's "news-api" subscriber secret above
+EVENT_SECRETS='{"nrms":"shared-nrms-to-news-api-secret"}'
+
+# NoD's EVENT_SECRETS (receiver side) — the "nrms" key must match NRMS's "nod" subscriber secret above
+EVENT_SECRETS='{"nrms":"shared-nrms-to-nod-secret"}'
+```
+
+News API then emits its own `site.rebuild_requested` to Public Site the same way: News API's `EVENT_SUBSCRIBERS` would include `{ "name": "public-site", "url": "http://localhost:3003/events", "secret": "shared-news-api-to-public-site-secret", "types": ["site.rebuild_requested"] }`, and Public Site's `EVENT_SECRETS` would be `{"news-api":"shared-news-api-to-public-site-secret"}`.
+
+A subscriber's `name` identifies it in `outbox_deliveries`; renaming one mid-flight means deliveries already queued under the old name fail as "not configured" and are dead-lettered after 24 h.
+
+## Authentication: Entra, or local admin login (test environments only)
+
+Every app with an `/api` (Core, News API's admin routes, NRMS, NoD, Distribution) authenticates the same way via `@gcpe/auth`'s `authFromEnv`: Entra bearer tokens in production, or — for test/local environments with no Entra tenant available — a single shared local admin login.
+
+Set, on **every** app sharing the login (same username/password/secret across all of them, so one token minted on any app authenticates admin calls on any other):
+
+| Variable | Required | Default | Meaning |
+|---|---|---|---|
+| `LOCAL_ADMIN_ENABLED` | no | `false` | Turns the local login on. Without `ENTRA_TENANT_ID`/`AUTH_AUDIENCE` set too, at least one of the two auth methods must be enabled or startup fails |
+| `LOCAL_ADMIN_USERNAME` | no | `admin` | Username accepted by `POST /auth/local/token` |
+| `LOCAL_ADMIN_PASSWORD_HASH` | yes, when enabled | | Output of `npm run auth:hash-password` — never a plaintext password |
+| `LOCAL_AUTH_SECRET` | yes, when enabled | | HMAC secret used to sign minted tokens; must be ≥ 32 characters and **identical** across every app in the shared login |
+| `LOCAL_ADMIN_ALLOW_IN_PRODUCTION` | no | `false` | `LOCAL_ADMIN_ENABLED` is refused outright when `NODE_ENV=production` unless this is also `true` — Entra remains the only production identity provider |
+
+Generate a hash once and reuse it everywhere:
+
+```bash
+npm run auth:hash-password
+# prompts for a password, prints the hash to paste into LOCAL_ADMIN_PASSWORD_HASH
+
+curl -X POST http://localhost:3001/auth/local/token \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin","password":"<the password you hashed above>"}'
+# {"access_token":"...", "token_type":"Bearer", "expires_in":28800}
+```
+
+The returned token carries every admin role (`Core.Admin`, `NRMS.Editor`, `NoD.Admin`, `Distribution.Send`), so one login authenticates admin calls against any of Core, NRMS, NoD or Distribution. Public Site has no `/api` and never checks bearer auth at all.
+
+A boot-time warning (`[auth] LOCAL ADMIN LOGIN ENABLED — test environments only`) is printed on every app that has it on — expect to see it in local/CI logs, never in a production one.
+
+## Running the whole slice locally (Postgres + Mailpit + MinIO)
+
+```bash
+docker compose -f deploy/docker-compose.yml up -d
+# postgres on localhost:5432, Mailpit SMTP on localhost:1025 (UI at http://localhost:8025), MinIO on localhost:9000/9001
+```
+
+Without Docker, `brew install mailpit && mailpit` gives the same SMTP/UI pair directly.
+
+Point Distribution at it with `SMTP_HOST=localhost SMTP_PORT=1025` (no `SMTP_USER`/`SMTP_PASS` — Mailpit accepts unauthenticated SMTP) and open http://localhost:8025 to watch messages arrive instead of hitting a real mail server. Remember Distribution still needs `MAIL_REDIRECT_TO` or `MAIL_ALLOW_REAL_RECIPIENTS=true` set regardless (see the mail-redirect rule above) — Mailpit being a sink doesn't exempt it from that check.
+
+## Known limitations
+
+Deferred by the Phase 2 final-review controller rulings (P2-R22, P2-R25) — tracked here rather than fixed in this pass:
+
+- **Deleting a NoD subscriber mid-job shifts byte partitions**: a send job freezes each chunk's *membership* (`deliveries.chunk_index`), but when a chunk is too large for one request it is split into parts by byte size over that membership at send time. Deleting a subscriber (which cascades their delivery row away) between attempts of the same job shrinks their chunk, which can move the part boundaries — and so the Distribution idempotency key — of other members of that chunk, risking a duplicate or skipped email for them on the retry. No delete path exists yet; when Phase 4 adds one, it must soft-delete (or otherwise keep a pending job's chunk membership frozen) rather than delete the row.
+- **NRMS publish loop and a failing failure-mark**: if marking a poison release `failed` itself throws (e.g. the database drops mid-loop), `publishDue` propagates that error and the releases it already published in the same call are not reported in its return value (they are published and their events enqueued; only the log line is lost).
+- **SMTP outage pacing is per process, and recovery is not instant**: after an outage deferral, each Distribution replica pauses its own sender for that message's deferral backoff, capped at `SEND_OUTAGE_COOLDOWN_MAX_MS` (5 min); replicas don't share the pause, so N replicas still probe a down server up to N times per pause. Once the server is back, sending resumes within that cap plus one `SEND_INTERVAL_MS` (≤ ~5 min by default); messages that were themselves deferred during the outage go out when their own backoff (escalating, up to 1h) comes due.
+- **`detailsHtml` is rendered unsanitised on the public site** (matches legacy behaviour; content is staff-authored, not public input) — a sanitiser is planned before Phase 6. Relatedly, the home page may briefly render an older list under concurrent rebuilds, and `site.content.changed` doesn't trigger a home-page rebuild on its own — both are Phase 6 work.
+- **Static URL casing**: the public site's generated URLs are case-sensitive, while the legacy IIS site treated them case-insensitively. Whether (and how) to normalize this is deferred to a Phase 6 decision.
+- **Docker builds are only verified in CI**, not locally as part of this fix wave (no local Docker daemon available here) — rebuild and smoke-test the changed `apps/public-site` image in CI before relying on it. Separately, NoD's legacy array-shaped `batch_ids` column values are currently only exercised against dev databases, not a migrated-from-production fixture.
+
+Then start each app (`npm --workspace @gcpe/<app> run dev`) pointed at its own `createdb`'d database, wired together per [Event wiring](#event-wiring) and [Authentication](#authentication-entra-or-local-admin-login-test-environments-only) above. `tests/e2e/thin-slice.test.ts` is the automated version of this same chain (NRMS release → publish → News API → static page → NoD → Distribution → email), wired in-process over real HTTP instead of separate `npm run dev` processes.

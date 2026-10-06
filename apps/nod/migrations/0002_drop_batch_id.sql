@@ -1,0 +1,1 @@
+ALTER TABLE "send_jobs" DROP COLUMN "batch_id";

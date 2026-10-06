@@ -35,3 +35,19 @@ jobs:
         run: npm --workspace @gcpe/news-api run build
       - name: Build News API image
         run: docker build -f apps/news-api/Dockerfile -t gcpe-news-api:ci .
+      - name: Build NRMS bundle
+        run: npm --workspace @gcpe/nrms run build
+      - name: Build NRMS image
+        run: docker build -f apps/nrms/Dockerfile -t gcpe-nrms:ci .
+      - name: Build Public Site bundle
+        run: npm --workspace @gcpe/public-site run build
+      - name: Build Public Site image
+        run: docker build -f apps/public-site/Dockerfile -t gcpe-public-site:ci .
+      - name: Build NoD bundle
+        run: npm --workspace @gcpe/nod run build
+      - name: Build NoD image
+        run: docker build -f apps/nod/Dockerfile -t gcpe-nod:ci .
+      - name: Build Distribution bundle
+        run: npm --workspace @gcpe/distribution run build
+      - name: Build Distribution image
+        run: docker build -f apps/distribution/Dockerfile -t gcpe-distribution:ci .

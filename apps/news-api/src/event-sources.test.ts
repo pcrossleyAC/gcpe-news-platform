@@ -16,4 +16,10 @@ describe("SOURCE_EVENT_TYPES", () => {
       expect(owners, type).toHaveLength(1);
     }
   });
+
+  it("site.rebuild_requested is owned by news-api, not nrms", () => {
+    expect(SOURCE_EVENT_TYPES.nrms!("site.rebuild_requested")).toBe(false);
+    const newsApiChecker = SOURCE_EVENT_TYPES["news-api"] as (type: string) => boolean;
+    expect(newsApiChecker("site.rebuild_requested")).toBe(true);
+  });
 });

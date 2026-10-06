@@ -5,5 +5,6 @@
   "defaultLanguageId": 4105,
   "organizationLabel": { "singular": "Ministry", "plural": "Ministries" },
   "publicSiteBaseUrl": "https://news.gov.bc.ca",
-  "branding": { "primaryColor": "#003366", "logoUrl": null }
+  "branding": { "primaryColor": "#003366", "logoUrl": null },
+  "timeZoneCheck": { "at": "2027-01-15T19:00:00Z", "expectedOffset": "-07:00" }
 }

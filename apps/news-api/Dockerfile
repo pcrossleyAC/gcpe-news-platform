@@ -1,4 +1,4 @@
-FROM node:22-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /repo
 COPY package.json package-lock.json ./
 COPY packages ./packages
@@ -8,7 +8,7 @@ COPY config ./config
 RUN npm ci --workspace @gcpe/news-api --include-workspace-root
 RUN node scripts/build-app.mjs apps/news-api
 
-FROM node:22-alpine
+FROM node:24-alpine
 WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /repo/package.json /repo/package-lock.json ./
