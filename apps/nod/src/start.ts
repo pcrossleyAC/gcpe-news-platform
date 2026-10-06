@@ -111,7 +111,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     linkSecret: parsed.LINK_SECRET,
   };
 
-  const sendJobsOptions = { db, distribution, links: recipientLinks, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS };
+  const sendJobsOptions = { db, distribution, links: recipientLinks, render, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS };
 
   const app = createApp({
     db,

@@ -3,7 +3,7 @@ import { eq, inArray, sql } from "drizzle-orm";
 import { wallClockToInstant } from "@gcpe/config";
 import type { Db, Tx } from "@gcpe/db-kit";
 import { matchesItem } from "./matching";
-import { itemCategories, renderDigest, type RenderItem, type RenderOptions } from "./render";
+import { itemCategories, renderDigest, type Rendered, type RenderItem, type RenderOptions } from "./render";
 import { digestRuns, items, nodSettings, sendJobs } from "./db/schema";
 
 export const DIGEST_HOUR = 17;
@@ -55,10 +55,18 @@ async function loadGroupItems(tx: Tx, keys: string[]): Promise<RenderItem[]> {
   return renderItems;
 }
 
+/** Renders a digest's content from exactly the given item keys (`loadGroupItems`' own order
+ * and categories, through `renderDigest`). Used both to build a group's job here and by the
+ * sender (send-jobs.ts) to re-render a digest job already built once some of its items are
+ * withdrawn before it's sent. */
+export async function renderDigestItems(tx: Tx, keys: string[], render: RenderOptions): Promise<Rendered> {
+  const renderItems = await loadGroupItems(tx, keys);
+  return renderDigest(renderItems, render);
+}
+
 /** Builds and inserts one group's digest job, recipients and deliveries. */
 async function createDigestJob(tx: Tx, cutoff: Date, group: DigestGroup, render: RenderOptions): Promise<void> {
-  const renderItems = await loadGroupItems(tx, group.keys);
-  const rendered = renderDigest(renderItems, render);
+  const rendered = await renderDigestItems(tx, group.keys, render);
   const hash = createHash("sha256").update(group.keys.join(",")).digest("hex").slice(0, 16);
   const jobKey = `digest:${cutoff.toISOString()}:${hash}`;
 

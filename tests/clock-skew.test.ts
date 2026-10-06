@@ -23,6 +23,7 @@ import { defaultSendLockMs, sendDue } from "../apps/distribution/src/sender";
 import { createDistributionTestDb, sampleMessageRequest } from "../apps/distribution/test/helpers";
 
 import { DistributionError, type DistributionClient } from "../apps/nod/src/distribution-client";
+import type { RenderOptions } from "../apps/nod/src/render";
 import { sendDueJobs } from "../apps/nod/src/send-jobs";
 import { createNodTestDb } from "../apps/nod/test/helpers";
 
@@ -140,18 +141,19 @@ describe.each([
     const jobId = jobRows[0]!.id;
     const lockMs = 1 * 30_000 + 30_000 + 30_000; // one chunk, plus getToken, plus the margin
     const links = { pageUrl: "https://news.example/manage", subscribeApiUrl: "https://news.example/api/Subscribe", linkSecret: "x".repeat(32) };
+    const render: RenderOptions = { siteUrl: "https://news.example/site", bannerUrl: null };
     let lockFromDbNow: number | undefined;
     let replica: unknown;
     const distribution: DistributionClient = {
       send: async () => {
         lockFromDbNow = await msFromDbNow(nodDb, "send_jobs", "locked_until", "id = $1", [jobId]);
-        replica = await unskewed(() => sendDueJobs({ db: nodDb.db, distribution: { send: async () => ({ batchId: "x" }) }, links }));
+        replica = await unskewed(() => sendDueJobs({ db: nodDb.db, distribution: { send: async () => ({ batchId: "x" }) }, links, render }));
         throw new DistributionError("HTTP 503", true);
       },
     };
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const result = await sendDueJobs({ db: nodDb.db, distribution, links, maxAgeMs: SHORT_MAX_AGE_MS });
+      const result = await sendDueJobs({ db: nodDb.db, distribution, links, render, maxAgeMs: SHORT_MAX_AGE_MS });
       expect(result).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
     } finally {
       warnSpy.mockRestore();

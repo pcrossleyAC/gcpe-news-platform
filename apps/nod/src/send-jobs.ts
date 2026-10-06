@@ -3,7 +3,9 @@ import { ageMsOf, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, st
 import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
+import { renderDigestItems } from "./digest";
 import { recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
+import type { RenderOptions } from "./render";
 import { safeErrorLabel } from "./subscribe/journeys";
 
 /** Distribution refuses a request with more than 20,000 recipients (P2-R15): a release that
@@ -33,6 +35,10 @@ export interface SendJobsOptions {
    * manage link and the stable one-click unsubscribe URL are built for each active recipient
    * of a chunk part, just before that part is sent (see sendAllChunks). */
   links: RecipientLinkOptions;
+  /** Site URL and optional banner for every outbound email this sends -- only actually used to
+   * re-render a digest job (see {@link sendDueJobs}'s doc comment) whose items have partly
+   * withdrawn since it was built; an As-It-Happens/emergency job's content never changes here. */
+  render: RenderOptions;
   /** Test hook: when given, its value stands in for SQL `now()` in every statement this call
    * makes (claim, lock, backoff, age). Production omits it and the database's clock is used
    * throughout — see {@link sendDueJobs}. */
@@ -392,6 +398,15 @@ async function sendAllChunks(
  * (`items.withdrawn_at`) is marked `cancelled` and released, unsent — checked right after the
  * claim, before any chunk work, so a withdrawn release's job never reaches Distribution.
  *
+ * A digest job (`kind: 'digest'`, `item_key` null) carries several items, so the single-item
+ * check above can't see it; its own items are read back from its `deliveries` instead, their
+ * `items.withdrawn_at` locked `FOR SHARE` the same way. If every one of them is withdrawn, the
+ * job is cancelled exactly like a single-item job. If only some are, this call deletes that
+ * job's not-yet-attempted `deliveries` for just the withdrawn items and re-renders the job's
+ * subject/html/text (`renderDigestItems`, digest.ts) from the survivors, then sends that —
+ * never the content built back when the digest was first assembled. If none are withdrawn, the
+ * job is sent unchanged, same as always.
+ *
  * Fix round 1, I2: the withdrawn check reads `items.withdrawn_at` with `FOR SHARE` — a row
  * lock, not a plain read. `withdrawItem` (items.ts) never locks the `items` row itself before
  * selecting the unclaimed jobs to delete; without a lock here, this read could land in the gap
@@ -463,6 +478,52 @@ export async function sendDueJobs(
       if (outcome.withdrawn) {
         if (outcome.cancelled) result.cancelled++;
         continue;
+      }
+    } else if (job.kind === "digest") {
+      // Same FOR SHARE + write-in-one-transaction pattern as the item-job check above, keyed
+      // off every item this job's own deliveries carry (see the doc comment above).
+      const outcome = await opts.db.transaction(async (tx) => {
+        const deliveryRows = await tx.select({ itemKey: deliveries.itemKey }).from(deliveries).where(eq(deliveries.jobId, job.id));
+        const itemKeys = [...new Set(deliveryRows.map((d) => d.itemKey))];
+        if (itemKeys.length === 0) return { kind: "unchanged" as const };
+
+        const { rows: itemRows } = await tx.execute<{ key: string; withdrawn_at: string | null }>(
+          sql`SELECT key, withdrawn_at FROM items WHERE key = ANY(${sql.param(itemKeys)}::text[]) FOR SHARE`,
+        );
+        const withdrawnKeys = itemRows.filter((r) => r.withdrawn_at).map((r) => r.key);
+        if (withdrawnKeys.length === 0) return { kind: "unchanged" as const };
+
+        if (withdrawnKeys.length === itemKeys.length) {
+          const res = await tx
+            .update(sendJobs)
+            .set({ status: "cancelled", lockedUntil: null })
+            .where(and(eq(sendJobs.id, job.id), ownedPending(sendJobs, job.lock_token)));
+          return { kind: "cancelled" as const, wrote: (res.rowCount ?? 0) > 0 };
+        }
+
+        const remainingKeys = itemKeys.filter((k) => !withdrawnKeys.includes(k));
+        await tx
+          .delete(deliveries)
+          .where(and(eq(deliveries.jobId, job.id), inArray(deliveries.itemKey, withdrawnKeys), isNull(deliveries.attemptedAt)));
+        const rendered = await renderDigestItems(tx, remainingKeys, opts.render);
+        await tx
+          .update(sendJobs)
+          .set({ subject: rendered.subject, html: rendered.html, text: rendered.text })
+          .where(and(eq(sendJobs.id, job.id), ownedPending(sendJobs, job.lock_token)));
+        return { kind: "shrunk" as const, rendered };
+      });
+
+      if (outcome.kind === "cancelled") {
+        if (outcome.wrote) result.cancelled++;
+        continue;
+      }
+      if (outcome.kind === "shrunk") {
+        // This attempt's own in-memory copy of the claimed job must reflect the re-render too
+        // -- sendAllChunks/buildMessageRequest below read job.subject/html/text directly, and
+        // the write above only updated the row, not this object.
+        job.subject = outcome.rendered.subject;
+        job.html = outcome.rendered.html;
+        job.text = outcome.rendered.text;
       }
     }
 

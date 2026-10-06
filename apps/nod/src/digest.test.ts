@@ -1,16 +1,24 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { and, eq, inArray } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
 import { createItemSending } from "./as-it-happens";
+import type { DistributionClient } from "./distribution-client";
 import { deliveries, items, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
 import { DIGEST_HOUR, digestCutoff, runDigestIfDue } from "./digest";
+import type { RecipientLinkOptions } from "./recipient-links";
+import { sendDueJobs } from "./send-jobs";
 import { addSubscriber } from "./subscribers";
 import type { RenderOptions } from "./render";
 
 const PUBLIC_SITE_URL = "https://news.example/site";
 const RENDER: RenderOptions = { siteUrl: PUBLIC_SITE_URL, bannerUrl: null };
+const LINKS: RecipientLinkOptions = {
+  pageUrl: "https://news.example/subscribe/manage",
+  subscribeApiUrl: "https://news.example/api/Subscribe",
+  linkSecret: "test-link-secret-at-least-32-chars-long",
+};
 const TZ = "America/Vancouver";
 const HOUR_MS = 3_600_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -294,5 +302,57 @@ describe("runDigestIfDue", () => {
       .from(deliveries)
       .where(and(eq(deliveries.subscriberId, both), eq(deliveries.itemKey, k), eq(deliveries.mode, "as_it_happens")));
     expect(aihDeliveries).toHaveLength(0);
+  });
+
+  it("sendDueJobs drops a withdrawn item from an already-built digest and re-renders around the survivors", async () => {
+    await setLastCutoff(new Date(cutoff.getTime() - DAY_MS));
+    const sub = await digestSubscriber(tdb.db, "withdraw-partial@example.com", ["ministries:health"]);
+    const kA = itemKey("A");
+    const kB = itemKey("B");
+    await insertItem(tdb.db, { key: kA, listKeys: ["ministries:health"], title: "Item A Title", publishedAt: new Date(cutoff.getTime() - 2 * HOUR_MS) });
+    await insertItem(tdb.db, { key: kB, listKeys: ["ministries:health"], title: "Item B Title", publishedAt: new Date(cutoff.getTime() - HOUR_MS) });
+
+    const digestResult = await runDigestIfDue(tdb.db, TZ, RENDER);
+    expect(digestResult.ran).toBe(true);
+    const [job] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.kind, "digest"));
+    expect(job!.html).toContain("Item A Title");
+    expect(job!.html).toContain("Item B Title");
+
+    // Unpublished after the digest was built, before the sender ran.
+    await tdb.db.update(items).set({ withdrawnAt: new Date() }).where(eq(items.key, kB));
+
+    const distribution: DistributionClient = { send: async () => ({ batchId: "batch-withdraw-partial" }) };
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+
+    const sentJob = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job!.id)))[0]!;
+    expect(sentJob.html).toContain("Item A Title");
+    expect(sentJob.html).not.toContain("Item B Title");
+
+    const remainingDeliveries = await tdb.db.select().from(deliveries).where(and(eq(deliveries.jobId, job!.id), eq(deliveries.subscriberId, sub)));
+    expect(remainingDeliveries.map((d) => d.itemKey)).toEqual([kA]);
+  });
+
+  it("sendDueJobs cancels a digest job outright once every one of its items has been withdrawn", async () => {
+    await setLastCutoff(new Date(cutoff.getTime() - DAY_MS));
+    await digestSubscriber(tdb.db, "withdraw-all@example.com", ["ministries:health"]);
+    const kA = itemKey("ALLWD-A");
+    const kB = itemKey("ALLWD-B");
+    await insertItem(tdb.db, { key: kA, listKeys: ["ministries:health"], publishedAt: new Date(cutoff.getTime() - 2 * HOUR_MS) });
+    await insertItem(tdb.db, { key: kB, listKeys: ["ministries:health"], publishedAt: new Date(cutoff.getTime() - HOUR_MS) });
+
+    const digestResult = await runDigestIfDue(tdb.db, TZ, RENDER);
+    expect(digestResult.ran).toBe(true);
+    const [job] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.kind, "digest"));
+
+    await tdb.db.update(items).set({ withdrawnAt: new Date() }).where(inArray(items.key, [kA, kB]));
+
+    const distribution = { send: vi.fn() } as unknown as DistributionClient & { send: ReturnType<typeof vi.fn> };
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 1, paused: false });
+    expect(distribution.send).not.toHaveBeenCalled();
+
+    const cancelledJob = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job!.id)))[0]!;
+    expect(cancelledJob.status).toBe("cancelled");
   });
 });

@@ -306,7 +306,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     // Step 6: NoD's As-It-Happens send job reaches Distribution over real HTTP (NoD's own
     // minted local service token, azp "nod"), and Distribution's sender delivers it to the
     // SMTP sink.
-    const nodSend = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, links: NOD_LINKS });
+    const nodSend = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, links: NOD_LINKS, render: { siteUrl: publicSite!.url, bannerUrl: null } });
     expect(nodSend).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     const distributionSend = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [] });
@@ -335,7 +335,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     expect(nrmsDispatchAgain).toEqual({ delivered: 0, retried: 0, dead: 0 });
     const newsApiDispatchAgain = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers });
     expect(newsApiDispatchAgain).toEqual({ delivered: 0, retried: 0, dead: 0 });
-    const nodSendAgain = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, links: NOD_LINKS });
+    const nodSendAgain = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, links: NOD_LINKS, render: { siteUrl: publicSite!.url, bannerUrl: null } });
     expect(nodSendAgain).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 0, paused: false });
     const distributionSendAgain = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [] });
     expect(distributionSendAgain).toEqual({ sent: 0, retried: 0, failed: 0 });
