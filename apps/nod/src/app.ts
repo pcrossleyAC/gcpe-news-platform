@@ -7,6 +7,7 @@ import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import { createItemSending } from "./as-it-happens";
 import type { DistributionClient } from "./distribution-client";
 import { apiRoutes } from "./http/routes";
+import { membershipRoutes, type MembershipAuth } from "./http/membership";
 import { subscribeApiRoutes } from "./http/subscribe-routes";
 import { itemHandlers } from "./items";
 import { listsHandler } from "./lists";
@@ -36,6 +37,9 @@ export interface AppDeps {
   /** The Media Hub contacts client, when `MEDIA_HUB_URL` is configured -- null (the default)
    * means search and add-from-hub answer 503 while manual entry still works. */
   mediaHub?: MediaHubClient | null;
+  /** Legacy `Subscribe/SubscriberInformation` (C55) Basic Auth credentials -- null (the
+   * default) means the route always answers 503 instead of ever comparing credentials. */
+  membership?: MembershipAuth | null;
 }
 
 const noDistribution: Pick<DistributionClient, "send"> = {
@@ -47,6 +51,11 @@ export function createApp(deps: AppDeps): express.Express {
   app.disable("x-powered-by");
   app.set("trust proxy", 1); // one hop: OpenShift router / SiteGround nginx
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`)]));
+
+  // Mounted at the app root, ahead of everything else -- Basic Auth (C55), never
+  // `requireBearer` (that's only ever applied under "/api" below), and ahead of any future
+  // catch-all this app might grow.
+  app.use(membershipRoutes(deps.db, deps.membership ?? null));
 
   // Mounted before any body parser: signatures cover the raw bytes (see
   // packages/events/src/receiver.ts), so an upstream express.json()/raw() that already

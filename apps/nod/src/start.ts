@@ -1,7 +1,7 @@
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
-import { authFromEnv, serviceTokenProvider } from "@gcpe/auth";
+import { authFromEnv, isValidPasswordHash, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
@@ -60,10 +60,22 @@ export const nodEnvSchema = z.object({
   MEDIA_HUB_CLIENT_SECRET: z.string().optional(),
   MEDIA_HUB_SCOPE: z.string().optional(),
   MEDIA_HUB_TIMEOUT_MS: z.coerce.number().int().positive().default(15_000),
+  // Legacy Subscribe/SubscriberInformation (C55) Basic Auth -- either unset means the route
+  // answers 503 instead of ever comparing credentials. MEMBERSHIP_API_PASSWORD_HASH is a
+  // `scrypt$...` string from `npm run nod:membership-hash`, never a plain password.
+  MEMBERSHIP_API_USERNAME: z.string().optional(),
+  MEMBERSHIP_API_PASSWORD_HASH: z.string().optional(),
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   // Task 6: the tenant's time zone (digest.ts's 17:00 cutoff) and its tzdata self-check, same
   // default as apps/news-api/src/env.ts.
   TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
+}).superRefine((e, ctx) => {
+  // Catches a misconfigured hash at startup instead of leaving the route permanently
+  // unauthenticatable (every real credential would fail verifyPassword, with nothing in the
+  // logs to say why) -- same check authFromEnv runs on LOCAL_ADMIN_PASSWORD_HASH.
+  if (e.MEMBERSHIP_API_PASSWORD_HASH !== undefined && !isValidPasswordHash(e.MEMBERSHIP_API_PASSWORD_HASH)) {
+    ctx.addIssue({ code: "custom", message: "MEMBERSHIP_API_PASSWORD_HASH must be the output of `npm run nod:membership-hash`" });
+  }
 });
 
 export interface AppHandle {
@@ -169,6 +181,10 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     opsEmail: parsed.OPS_EMAIL ?? null,
     timeZone: tenant.timeZone,
     mediaHub,
+    membership:
+      parsed.MEMBERSHIP_API_USERNAME && parsed.MEMBERSHIP_API_PASSWORD_HASH
+        ? { username: parsed.MEMBERSHIP_API_USERNAME, passwordHash: parsed.MEMBERSHIP_API_PASSWORD_HASH }
+        : null,
   });
 
   // Set by startLoops(); the closers below reference these lazily so they're safe to call even
