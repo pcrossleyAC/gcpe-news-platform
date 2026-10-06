@@ -91,7 +91,7 @@ describe("createItemSend (as_it_happens)", () => {
     expect(asItHappensRows.map((r) => r.subscriberId).sort()).toEqual([b, e].sort());
   });
 
-  // 4c Task 5 (review focus 2, "media member gets one copy"): media sends are created before
+  // Review focus: "media member gets one copy" -- media sends are created before
   // As-It-Happens, in the same transaction, so by the time this runs a media-list member
   // already has a 'media' delivery for the item — which must exclude them here exactly like an
   // existing digest delivery does.

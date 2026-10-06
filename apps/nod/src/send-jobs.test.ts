@@ -698,7 +698,7 @@ describe("sendDueJobs", () => {
     expect(req.priority).toBe("digest");
   });
 
-  // 4c Task 5: a media job carries kind='media'/priority='media' (send-jobs.ts has no special
+  // A media job carries kind='media'/priority='media' (send-jobs.ts has no special
   // branch for it -- same chunking, links and List-Unsubscribe header as every other job).
   it("sends a media job with priority 'media', the List-Unsubscribe header, and per-recipient substitutions", async () => {
     const sub = await insertSubscriber(tdb.db, "media-job@example.com");
@@ -1050,7 +1050,7 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     expect((distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0`);
   });
 
-  // 4c Task 5 (byte-probe fix): the probe used to size a chunk's split must account for the
+  // The probe used to size a chunk's split must account for the
   // real per-recipient `{{manageUrl}}`/`{{unsubscribeUrl}}` substitutions every actual send
   // adds -- probing with `{}` for every member (the old behaviour) under-measures a request
   // whose link overhead is a real share of its size, and could let a chunk through whole that,

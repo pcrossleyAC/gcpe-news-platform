@@ -16,7 +16,7 @@ const ENGLISH_LANGUAGE_ID = 4105;
  *   (`NewModel.cs:332`) and staff-editable; NRMS mirrors this (`releases/service.ts:348`). This
  *   corrects the Task 2 rule, which read the English document's subheadline instead — that
  *   field is never used for the summary.
- * - Media (4c Task 5): `mediaText`/`mediaListKeys` are filled only when
+ * - Media: `mediaText`/`mediaListKeys` are filled only when
  *   `r.publishFlags.toMediaLists` is set -- NRMS already rendered the full text (events'
  *   `mediaText`) and this just stores it, converting each plain NRMS media list key to its
  *   NoD list key (`media-distribution-lists:<key>`). Otherwise both stay null/empty, same as a

@@ -27,7 +27,7 @@ export interface ItemSending {
 }
 
 /**
- * Controller ruling (carried from Task 2): a job for `jobKey` already exists but was
+ * Handles the case where a job for `jobKey` already exists but was
  * cancelled — the sender cancelled a claimed job of a withdrawn item, and the release has
  * since been republished. Deletes that job's not-yet-attempted deliveries and the job itself
  * (`job_recipients` cascades), clearing the way for the caller to insert a fresh job with the
@@ -77,10 +77,9 @@ export function createItemSending(opts: AsItHappensOptions): ItemSending {
 
     // As-It-Happens: active subscribers whose own as_it_happens is true, matching the item's
     // list keys, excluding anyone who already has a digest *or media* delivery for this item --
-    // a media-list member who also matches the release publicly gets only the one (media) copy
-    // (review focus 2, "media member gets one copy"). Emergency: every active subscriber
-    // matching the item's list keys, whatever their own timing preference (global constraints:
-    // As-It-Happens/emergency recipients).
+    // a media-list member who also matches the release publicly gets only the one (media) copy,
+    // never both. Emergency: every active subscriber matching the item's list keys, whatever
+    // their own timing preference (global constraints: As-It-Happens/emergency recipients).
     const timingCondition =
       kind === "as_it_happens"
         ? sql`s.as_it_happens = true AND NOT EXISTS (SELECT 1 FROM deliveries d2 WHERE d2.item_key = ${itemKey} AND d2.subscriber_id = s.id AND d2.mode IN ('digest', 'media'))`
