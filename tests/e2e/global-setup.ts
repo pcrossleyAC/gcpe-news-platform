@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Express } from "express";
+import type { ParsedMail } from "mailparser";
 import { hashPassword } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 
@@ -100,6 +101,25 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // Playwright's test workers are separate forked processes, so item 5/14's "email arrives"
   // assertions need an HTTP window into it. A tiny inspector server, queried by
   // support.ts's `fetchSentMessages`.
+  const headerText = (v: unknown): string => String(typeof v === "object" && v && "text" in v ? (v as { text: unknown }).text : v);
+
+  // mailparser merges every `List-*` header into one structured `headers.get("list")` entry
+  // instead of keeping "list-unsubscribe"/"list-unsubscribe-post" as their own flat keys — so
+  // those two (the only List-* headers this stack ever sends — distribution's own
+  // `headersSchema` allows no others) are reconstructed from that structure below, back into
+  // the plain header strings a test (or a real client) would see on the wire.
+  function headers(m: ParsedMail): Record<string, string> {
+    const out: Record<string, string> = {};
+    for (const [k, v] of m.headers) {
+      if (k !== "list") out[k] = headerText(v);
+    }
+    const list = m.headers.get("list") as { unsubscribe?: { url?: string }; "unsubscribe-post"?: { url?: string; mail?: string; name?: string } } | undefined;
+    if (list?.unsubscribe?.url) out["list-unsubscribe"] = `<${list.unsubscribe.url}>`;
+    const post = list?.["unsubscribe-post"];
+    if (post) out["list-unsubscribe-post"] = post.name ?? post.url ?? post.mail ?? "";
+    return out;
+  }
+
   const mailInspector = createServer((req, res) => {
     if (req.url === "/messages") {
       res.setHeader("content-type", "application/json");
@@ -110,6 +130,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
             to: m.to && "value" in m.to ? m.to.value.map((v) => v.address).filter((a): a is string => !!a) : [],
             text: m.text ?? null,
             attachmentNames: (m.attachments ?? []).map((a) => a.filename ?? ""),
+            headers: headers(m),
           })),
         ),
       );
