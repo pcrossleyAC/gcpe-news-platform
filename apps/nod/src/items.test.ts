@@ -193,4 +193,30 @@ describe("withdraw then republish resets the pending job", () => {
     expect(otherJob).toHaveLength(1);
     expect(otherJob[0]!.status).toBe("pending");
   });
+
+  // Fix round 2: a job the sender has currently claimed (locked_until in the future, status
+  // still 'pending' -- claimOneJob doesn't flip status until its terminal write) must survive
+  // an unpublish untouched, deliveries included -- the send may already be in flight with
+  // Distribution, and deleting the job out from under it would let a republish create a second
+  // job and double-send to every recipient.
+  it("leaves a currently-claimed (locked) pending job and its deliveries alone; republishing finds it rather than creating a new one", async () => {
+    const r = { ...sampleRelease, key: "K-LOCKED", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await sendEvent(app, envelope("nrms", "release.published", r, r.key));
+    const [job] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-LOCKED"));
+    await tdb.pool.query("UPDATE send_jobs SET locked_until = now() + interval '5 minutes' WHERE id = $1", [job!.id]);
+
+    await sendEvent(app, envelope("nrms", "release.unpublished", { key: "K-LOCKED" }, r.key));
+
+    const jobsAfterUnpublish = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-LOCKED"));
+    expect(jobsAfterUnpublish).toHaveLength(1);
+    expect(jobsAfterUnpublish[0]!.id).toBe(job!.id);
+    expect(jobsAfterUnpublish[0]!.status).toBe("pending");
+    const deliveriesAfterUnpublish = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, "K-LOCKED"));
+    expect(deliveriesAfterUnpublish.length).toBeGreaterThan(0);
+
+    await sendEvent(app, envelope("nrms", "release.published", r, r.key));
+    const jobsAfterRepublish = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-LOCKED"));
+    expect(jobsAfterRepublish).toHaveLength(1);
+    expect(jobsAfterRepublish[0]!.id).toBe(job!.id); // same job -- no new one created
+  });
 });

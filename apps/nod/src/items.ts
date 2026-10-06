@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import type { DbOrTx, Tx } from "@gcpe/db-kit";
 import { indexKeysFor, type EventEnvelope, type EventHandler, type ReleaseRecord } from "@gcpe/events";
 import { deliveries, items, sendJobs } from "./db/schema";
@@ -80,6 +80,16 @@ export async function refreshReleaseItem(tx: DbOrTx, r: ReleaseRecord, publicSit
  * *attempted* (handed to Distribution before the unpublish) is kept — that email already went
  * out and must not be re-sent by a later republish; `deliveries.job_id`'s `ON DELETE SET NULL`
  * detaches it from the now-gone job instead of deleting it too.
+ *
+ * Fix round 2: a job the sender has currently claimed (`locked_until` in the future, status
+ * still `pending` -- the lock-guarded terminal `sent`/`failed` write hasn't happened yet, see
+ * send-jobs.ts's `claimOneJob`) must NOT be swept up here, even though its status still reads
+ * `pending`. The send may already be in flight at Distribution with no record of that yet
+ * (Task 4 adds `attempted_at` writes at claim time) -- deleting it mid-flight would let a
+ * republish create a fresh job and double-send to every recipient. Only an *unclaimed* pending
+ * job (`locked_until` null or already expired, by the database clock) is safe to delete: a
+ * claimed one is left alone so its in-flight send finishes, and a later republish finds that
+ * same job (and its now-conflicting deliveries) still there and sends nothing new for it.
  */
 export async function withdrawItem(tx: DbOrTx, key: string): Promise<void> {
   await tx.update(items).set({ withdrawnAt: sql`now()`, updatedAt: sql`now()` }).where(eq(items.key, key));
@@ -87,7 +97,13 @@ export async function withdrawItem(tx: DbOrTx, key: string): Promise<void> {
   const pendingJobs = await tx
     .select({ id: sendJobs.id })
     .from(sendJobs)
-    .where(and(eq(sendJobs.itemKey, key), eq(sendJobs.status, "pending")));
+    .where(
+      and(
+        eq(sendJobs.itemKey, key),
+        eq(sendJobs.status, "pending"),
+        or(isNull(sendJobs.lockedUntil), lte(sendJobs.lockedUntil, sql`now()`)),
+      ),
+    );
   if (pendingJobs.length === 0) return;
 
   const jobIds = pendingJobs.map((j) => j.id);
