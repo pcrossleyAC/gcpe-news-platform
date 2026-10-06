@@ -35,6 +35,13 @@ export const nodEnvSchema = z.object({
   NOD_BANNER_URL: z.string().url().optional(),
   // Phase 4a: HMAC key for unsubscribe tokens (the stack derives it from STACK_EVENT_SECRET).
   LINK_SECRET: z.string().min(32),
+  // Task 7: operator inbox notified (system-priority email) whenever sending is paused or
+  // resumed, alongside the always-written operations_log row. Optional -- a deployment with
+  // no operator inbox configured still records the operations_log row, just sends no email.
+  // The operator sets `NOD_OPS_EMAIL`; by the time this schema sees it, apps/stack/src/env.ts's
+  // envFor has already stripped the "NOD_" prefix (same as DATABASE_URL, PORT, etc. above --
+  // NOD_BANNER_URL is this schema's one exception, kept doubly-prefixed).
+  OPS_EMAIL: z.string().email().optional(),
   // The page emailed verify/manage links open. Default: the public site's test page.
   SUBSCRIBE_PAGE_URL: z.string().url().optional(),
   // Base URL of the public Subscribe API, carrying the one-click unsubscribe path
@@ -126,6 +133,9 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       linkSecret: parsed.LINK_SECRET,
       render,
     },
+    distribution,
+    opsEmail: parsed.OPS_EMAIL ?? null,
+    timeZone: tenant.timeZone,
   });
 
   // Set by startLoops(); the closer below references it lazily so it's safe to call even if

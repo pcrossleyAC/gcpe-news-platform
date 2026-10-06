@@ -1,8 +1,10 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
-import { requireAnyRole, requireRole } from "@gcpe/auth";
+import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import type { ItemSending } from "../as-it-happens";
+import type { DistributionClient } from "../distribution-client";
+import { getSettings, setPaused } from "../settings";
 import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
 
 /** '*' = all news, or '<kind>:<key>' with kind in ministries|sectors|themes|tags (matches indexKeysFor's output shape). */
@@ -36,7 +38,15 @@ function handleError(e: unknown, res: Response): boolean {
   return false;
 }
 
-export function apiRoutes(db: Db, items: Pick<ItemSending, "recordEmergencyItem">): Router {
+/** Task 7: what the pause/resume routes need beyond `db` -- a Distribution client and the
+ * resolved `NOD_OPS_EMAIL`/tenant time zone for setPaused's ops email. */
+export interface SettingsRouteDeps {
+  distribution: Pick<DistributionClient, "send">;
+  opsEmail: string | null;
+  timeZone: string;
+}
+
+export function apiRoutes(db: Db, items: Pick<ItemSending, "recordEmergencyItem">, settings: SettingsRouteDeps): Router {
   const r = Router();
   const run = <P>(h: Handler<P>): ReturnType<typeof safe<P>> =>
     safe<P>(async (req, res) => {
@@ -78,6 +88,32 @@ export function apiRoutes(db: Db, items: Pick<ItemSending, "recordEmergencyItem"
       const parsed = emergencyItemSchema.parse(req.body);
       const { key, created } = await items.recordEmergencyItem(db, { ...parsed, summary: parsed.summary ?? "" });
       res.status(created ? 201 : 200).json({ key });
+    }),
+  );
+
+  r.get(
+    "/settings",
+    requireRole("NoD.Admin"),
+    run(async (_req, res) => {
+      res.json(await getSettings(db));
+    }),
+  );
+
+  r.post(
+    "/settings/pause",
+    requireRole("NoD.Admin"),
+    run(async (req, res) => {
+      const { changed } = await setPaused({ db, ...settings }, true, actorOf(req).name);
+      res.json({ paused: true, changed });
+    }),
+  );
+
+  r.post(
+    "/settings/resume",
+    requireRole("NoD.Admin"),
+    run(async (req, res) => {
+      const { changed } = await setPaused({ db, ...settings }, false, actorOf(req).name);
+      res.json({ paused: false, changed });
     }),
   );
 
