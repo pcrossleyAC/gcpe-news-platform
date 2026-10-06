@@ -394,7 +394,7 @@ export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<s
  */
 export const SOURCE_EVENT_TYPES: Record<string, (type: string) => boolean> = {
   core: (type) => /^(org|sector|theme|tag|service)\./.test(type),
-  nrms: (type) => type.startsWith("release.") || type === "site.content.changed",
+  nrms: (type) => type.startsWith("release.") || type === "site.content.changed" || type.startsWith("media_list."),
   "news-api": (type) => type === "site.rebuild_requested",
 };
 

@@ -263,7 +263,7 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
     ]);
     expect(nrms.map((s: { name: string; types: string[] }) => [s.name, s.types])).toEqual([
       ["news-api", ["*"]],
-      ["nod", ["release.published", "release.updated", "release.unpublished"]],
+      ["nod", ["release.published", "release.updated", "release.unpublished", "media_list.created", "media_list.updated", "media_list.deactivated"]],
     ]);
     expect(newsApiSubs).toEqual([{ name: "public-site", url: "self:/site-builder/events", secret: expect.any(String), types: ["site.rebuild_requested"] }]);
     // Receivers hold exactly the secret their sender signs with, keyed by the sender's source name.

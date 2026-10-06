@@ -20,6 +20,9 @@ import {
 } from "../releases/service";
 import { loadView, writeLog } from "../releases/store";
 import { mediaLists, newsReleases, pageImages } from "../db/schema";
+import {
+  createMediaList, createMediaListInputSchema, MediaListConflictError, MediaListNotFoundError, republishMediaLists, updateMediaList, updateMediaListInputSchema,
+} from "../media-lists";
 import type { ObjectStore } from "@gcpe/storage";
 import type { EmbedDeps } from "../media/embeds";
 import type { DistributionClient } from "../clients";
@@ -59,7 +62,7 @@ export interface RouteDeps {
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
-export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string };
+export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string; key: string };
 export type Handler = (req: Request<Params>, res: Response) => Promise<void>;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -89,6 +92,8 @@ export function handleError(e: unknown, res: Response): boolean {
   // `slides` snapshot past the budget before it's ever emitted, so this is a last resort for
   // an emit that's still too large (e.g. pre-existing data from before that fix shipped).
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: e.message }), true;
+  if (e instanceof MediaListConflictError) return void res.status(409).json({ error: e.message }), true;
+  if (e instanceof MediaListNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   return false;
 }
 
@@ -106,6 +111,9 @@ export function apiRoutes(deps: RouteDeps): Router {
   // renders (the shell needs the tenant time zone and site links), so it accepts any signed-in
   // staff role, including Core.Admin — unlike `read`, which is only the three NRMS roles.
   const anySignedIn = requireAnyRole("NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor", "Core.Admin");
+  // Media-list admin (create/edit/deactivate/republish) is Core.Admin only — distinct from
+  // NRMS.Editor, which only ever picks a release's existing media lists.
+  const mediaListAdmin = requireRole("Core.Admin");
   const withStatus = (v: ReleaseView) => ({ ...v, statusText: statusText(v, Date.now()) });
   const version = (req: Request) => versionOnlySchema.parse(req.body).version;
 
@@ -291,6 +299,24 @@ export function apiRoutes(deps: RouteDeps): Router {
   );
 
   r.get("/media-lists", read, run(async (_req, res) => void res.json(await listMediaLists(db))));
+  r.post(
+    "/media-lists",
+    mediaListAdmin,
+    run(async (req, res) => {
+      const record = await createMediaList(db, createMediaListInputSchema.parse(req.body), deps.subscribers ?? []);
+      res.status(201).json(record);
+    }),
+  );
+  r.put(
+    "/media-lists/:key",
+    mediaListAdmin,
+    run(async (req, res) => void res.json(await updateMediaList(db, req.params.key, updateMediaListInputSchema.parse(req.body), deps.subscribers ?? []))),
+  );
+  r.post(
+    "/media-lists/republish",
+    mediaListAdmin,
+    run(async (_req, res) => void res.json({ count: await republishMediaLists(db, deps.subscribers ?? []) })),
+  );
   r.get("/page-types", read, run(async (_req, res) => void res.json(await listPageTypes(db))));
   r.get("/page-images", read, run(async (_req, res) => void res.json(await listPageImages(db))));
 

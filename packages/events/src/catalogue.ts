@@ -48,6 +48,14 @@ export type OrgRecord = z.infer<typeof orgRecordSchema>;
 export const termKindSchema = z.enum(["sector", "theme", "tag", "service"]);
 export type TermKind = z.infer<typeof termKindSchema>;
 
+export const mediaListRecordSchema = z.object({
+  key: z.string().min(1),
+  displayName: z.string().min(1),
+  sortOrder: z.number().int(),
+  isActive: z.boolean(),
+});
+export type MediaListRecord = z.infer<typeof mediaListRecordSchema>;
+
 export const termRecordSchema = z.object({
   kind: termKindSchema,
   key: z.string().min(1),
@@ -183,6 +191,9 @@ export const eventDataSchemas = {
   "release.published": releaseRecordSchema,
   "release.updated": releaseRecordSchema.extend({ notify: z.boolean() }),
   "release.unpublished": z.object({ key: z.string().min(1) }),
+  "media_list.created": mediaListRecordSchema,
+  "media_list.updated": mediaListRecordSchema,
+  "media_list.deactivated": z.object({ key: z.string().min(1) }),
   "site.content.changed": siteContentChangedSchema,
   "site.rebuild_requested": siteRebuildRequestedSchema,
 } as const;

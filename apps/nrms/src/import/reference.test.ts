@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
+import { outboxEvents } from "@gcpe/events";
 import { createFakeSource } from "@gcpe/legacy-import";
 import { createNrmsTestDb } from "../../test/helpers";
 import { governmentTerms, mediaLists, pageImageLanguages, pageImages, pageTypes } from "../db/schema";
@@ -193,6 +194,31 @@ describe("importReference — media lists", () => {
     const [renamed] = await tdb.db.select().from(mediaLists).where(eq(mediaLists.legacyId, "22222222-2222-2222-2222-222222222222"));
     expect(renamed!.displayName).toBe("Regional Media Outlets");
     expect(report.toJSON().tables.media_lists).toEqual({ legacy: 2, imported: 2, skipped: 0 });
+  });
+});
+
+describe("importReference — media list events", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("emits one media_list.updated per upserted row, so an import reaches NoD", async () => {
+    await importReference(tdb.db, source(), new ImportReport(), []);
+    const rows = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.type, "media_list.updated"));
+    expect(rows).toHaveLength(2);
+    const keys = rows.map((r) => (r.envelope as { data: { key: string } }).data.key).sort();
+    expect(keys).toEqual(["national", "regional"]);
+  });
+
+  it("an unchanged re-run emits no further media_list.updated events", async () => {
+    const before = (await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.type, "media_list.updated"))).length;
+    await importReference(tdb.db, source(), new ImportReport(), []);
+    const after = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.type, "media_list.updated"));
+    expect(after).toHaveLength(before);
   });
 });
 

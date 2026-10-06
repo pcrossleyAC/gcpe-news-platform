@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
+import { parseSubscribers } from "@gcpe/events";
 import { createMssqlSource } from "@gcpe/legacy-import";
 import { defaultReportPath, runImportCli } from "./run";
 
@@ -15,6 +16,9 @@ const env = parseEnv(
     LEGACY_SQL_PASSWORD: z.string().min(1),
     LEGACY_SQL_TRUST_CERT: z.enum(["true", "false"]).default("false"),
     TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../../config/tenants/bc.json", import.meta.url))),
+    // So the reference stage's media_list.updated events reach NoD, the same way
+    // apps/nrms/src/start.ts's long-running server parses its own EVENT_SUBSCRIBERS.
+    EVENT_SUBSCRIBERS: z.string().optional(),
   }),
 );
 
@@ -58,6 +62,7 @@ try {
     force: forceWebsite,
     timeZone: tenant.timeZone,
     reportPath: reportPath ?? defaultReportPath(),
+    subscribers: parseSubscribers(env.EVENT_SUBSCRIBERS),
     log: console.log,
   });
 } finally {

@@ -198,7 +198,9 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
  * process this never varies by deployment, so the operator shouldn't have to spell it out.
  * Core and NRMS send every event type to the News API (it restricts by source itself); NoD
  * consumes release.published/updated/unpublished (NRMS: Phase 4b Task 2 — items.ts records
- * and refreshes/withdraws items from these, release.updated never sending) and Core's
+ * and refreshes/withdraws items from these, release.updated never sending), NRMS's
+ * media_list.created/updated/deactivated (from NRMS's media-list admin API and importer, mirrored
+ * by NoD so a release's media-list keys resolve to real NoD list keys) and Core's
  * taxonomy events (Phase 4a: its own `lists` mirror Core's ministries/sectors/themes/tags —
  * see apps/nod/src/lists.ts); the site builder
  * only site.rebuild_requested; NRMS also keeps its own local copy of Core's ministries and
@@ -218,7 +220,7 @@ export const INTERNAL_EVENT_ROUTES = [
   { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
   {
     from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events",
-    types: ["release.published", "release.updated", "release.unpublished"],
+    types: ["release.published", "release.updated", "release.unpublished", "media_list.created", "media_list.updated", "media_list.deactivated"],
   },
   { from: "NEWSAPI", source: "news-api", to: "SITE", name: "public-site", url: "self:/site-builder/events", types: ["site.rebuild_requested"] },
 ] as const satisfies readonly { from: AppPrefix; source: string; to: AppPrefix; name: string; url: string; types: readonly string[] }[];
