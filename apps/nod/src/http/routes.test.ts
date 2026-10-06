@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb, envelope, sendEvent } from "../../test/helpers";
 import type { DistributionClient, MessageRequest } from "../distribution-client";
 import { deliveries, nodSettings, operationsLog, sendJobs, subscribers, subscriptions } from "../db/schema";
+import { addMediaMember } from "../media-members";
 import { addSubscriber } from "../subscribers";
 import { createApp } from "../app";
 
@@ -272,6 +273,111 @@ describe("POST /api/emergency-items", () => {
     const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, key));
     expect(deliveryRows.map((d) => d.subscriberId)).toEqual([onList]);
     expect(deliveryRows.map((d) => d.subscriberId)).not.toContain(offList);
+  });
+});
+
+describe("/api/media-lists", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  let admin: string;
+  let reader: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    const pair = await generateKeyPair("RS256");
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: "k", alg: "RS256" }] });
+    const sign = (roles: string[]) =>
+      new SignJWT({ roles })
+        .setProtectedHeader({ alg: "RS256", kid: "k" })
+        .setIssuer(issuer)
+        .setAudience(audience)
+        .setSubject("svc")
+        .setExpirationTime("5m")
+        .sign(pair.privateKey);
+    admin = await sign(["NoD.Admin"]);
+    reader = await sign([]);
+    app = createApp({
+      db: tdb.db,
+      auth: { issuer, audience, keys },
+      eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
+    });
+    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name) VALUES ('media-distribution-lists:budget', 'media-distribution-lists', 'budget', 'Budget')`);
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("401s without a token, 403s without NoD.Admin, for all four routes", async () => {
+    expect((await request(app).get("/api/media-lists")).status).toBe(401);
+    expect((await request(app).get("/api/media-lists").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    expect((await request(app).get("/api/media-lists/budget/members")).status).toBe(401);
+    expect((await request(app).get("/api/media-lists/budget/members").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    expect((await request(app).post("/api/media-lists/budget/members").send({ email: "x@example.test" })).status).toBe(401);
+    expect((await request(app).post("/api/media-lists/budget/members").set("authorization", `Bearer ${reader}`).send({ email: "x@example.test" })).status).toBe(403);
+    expect((await request(app).delete("/api/media-lists/budget/members/00000000-0000-0000-0000-000000000000")).status).toBe(401);
+    expect((await request(app).delete("/api/media-lists/budget/members/00000000-0000-0000-0000-000000000000").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+  });
+
+  it("GET /api/media-lists lists media lists with live member counts", async () => {
+    await addMediaMember(tdb.db, "budget", { email: "list-member@example.com", source: "manual-media" }, "test");
+    const res = await request(app).get("/api/media-lists").set("authorization", `Bearer ${admin}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 1 }]);
+  });
+
+  it("GET /api/media-lists/:key/members 404s for an unknown media list", async () => {
+    const res = await request(app).get("/api/media-lists/nope/members").set("authorization", `Bearer ${admin}`);
+    expect(res.status).toBe(404);
+  });
+
+  it("GET /api/media-lists/:key/members lists the members", async () => {
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "shown@example.com", source: "manual-media" }, "test");
+    const res = await request(app).get("/api/media-lists/budget/members").set("authorization", `Bearer ${admin}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toContainEqual({ subscriberId, email: "shown@example.com", source: "manual-media", mediaHubContactId: null, needsAttention: null });
+  });
+
+  it("POST /api/media-lists/:key/members creates (201) then is idempotent (200); 404s an unknown list", async () => {
+    const created = await request(app).post("/api/media-lists/budget/members").set("authorization", `Bearer ${admin}`).send({ email: "post-member@example.com" });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ created: true });
+
+    const again = await request(app).post("/api/media-lists/budget/members").set("authorization", `Bearer ${admin}`).send({ email: "post-member@example.com" });
+    expect(again.status).toBe(200);
+    expect(again.body).toMatchObject({ created: false, subscriberId: created.body.subscriberId });
+
+    const unknown = await request(app).post("/api/media-lists/nope/members").set("authorization", `Bearer ${admin}`).send({ email: "x@example.com" });
+    expect(unknown.status).toBe(404);
+
+    const badEmail = await request(app).post("/api/media-lists/budget/members").set("authorization", `Bearer ${admin}`).send({ email: "not-an-email" });
+    expect(badEmail.status).toBe(400);
+  });
+
+  it("POST /api/media-lists/:key/members 409s an opted-out address without confirmOptOut, then 200s with it", async () => {
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "optout@example.com", source: "manual-media" }, "test");
+    await tdb.db.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, subscriberId));
+    await tdb.db.execute(sql`INSERT INTO subscriber_history (subscriber_id, actor, action) VALUES (${subscriberId}, 'subscriber', 'unsubscribed')`);
+
+    const refused = await request(app).post("/api/media-lists/budget/members").set("authorization", `Bearer ${admin}`).send({ email: "optout@example.com" });
+    expect(refused.status).toBe(409);
+    expect(refused.body.error).toBe("opted-out");
+    expect(typeof refused.body.at).toBe("string");
+
+    const confirmed = await request(app)
+      .post("/api/media-lists/budget/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ email: "optout@example.com", confirmOptOut: true });
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body.subscriberId).toBe(subscriberId);
+  });
+
+  it("DELETE /api/media-lists/:key/members/:subscriberId removes the member (204)", async () => {
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "delete-me@example.com", source: "manual-media" }, "test");
+    const res = await request(app).delete(`/api/media-lists/budget/members/${subscriberId}`).set("authorization", `Bearer ${admin}`);
+    expect(res.status).toBe(204);
+    const members = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId));
+    expect(members).toHaveLength(0);
   });
 });
 

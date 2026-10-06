@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
 import type { DbOrTx } from "@gcpe/db-kit";
 import { subscribers, subscriptions, type SubscriberPrefs } from "../db/schema";
-import { activeListKeys } from "../lists";
+import { activeListKeys, MEDIA_CATEGORY } from "../lists";
 
 /** Legacy SubscriberInfo (docs/contracts/news-api-v1.swagger.json). Unknown fields ignored;
  * `isAdminRegistration` and `notifyIfNewCategories` are accepted but never acted on (C57, C60). */
@@ -38,7 +38,9 @@ export async function infoFor(db: DbOrTx, subscriberId: string): Promise<Subscri
   const subs = await db.select({ listKey: subscriptions.listKey }).from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId)).orderBy(asc(subscriptions.listKey));
   const subscribedCategories: Record<string, string[]> = {};
   for (const { listKey } of subs) {
-    if (listKey === "*") continue;
+    // The public manage view never shows media memberships (global constraints: "the real
+    // webapp doesn't know the category").
+    if (listKey === "*" || listKey.startsWith(`${MEDIA_CATEGORY}:`)) continue;
     const i = listKey.indexOf(":");
     (subscribedCategories[listKey.slice(0, i)] ??= []).push(listKey.slice(i + 1));
   }

@@ -4,6 +4,7 @@ import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import type { ItemSending } from "../as-it-happens";
 import type { DistributionClient } from "../distribution-client";
+import { addMediaMember, listMediaLists, listMediaMembers, MediaListNotFoundError, OptedOutError, removeMediaMember } from "../media-members";
 import { getSettings, setPaused } from "../settings";
 import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
 
@@ -15,6 +16,11 @@ export const listKeySchema = z
 export const addSubscriberSchema = z.object({
   email: z.string().email(),
   lists: z.union([z.literal("all"), z.array(listKeySchema)]),
+});
+
+export const addMediaMemberSchema = z.object({
+  email: z.string().email(),
+  confirmOptOut: z.boolean().optional(),
 });
 
 export const emergencyItemSchema = z.object({
@@ -35,6 +41,8 @@ const safe = <P>(h: Handler<P>) => (req: Request<P>, res: Response, next: NextFu
 function handleError(e: unknown, res: Response): boolean {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
   if (e instanceof SubscriberExistsError) return void res.status(409).json({ error: "subscriber exists" }), true;
+  if (e instanceof MediaListNotFoundError) return void res.status(404).json({ error: "not found" }), true;
+  if (e instanceof OptedOutError) return void res.status(409).json({ error: "opted-out", at: e.at.toISOString() }), true;
   return false;
 }
 
@@ -78,6 +86,46 @@ export function apiRoutes(db: Db, items: Pick<ItemSending, "recordEmergencyItem"
       const raw = typeof req.query.lists === "string" ? req.query.lists : "";
       const lists = z.array(listKeySchema).parse(raw ? raw.split(",") : []);
       res.json({ count: await countSubscribers(db, lists) });
+    }),
+  );
+
+  r.get(
+    "/media-lists",
+    requireRole("NoD.Admin"),
+    run(async (_req, res) => {
+      res.json(await listMediaLists(db));
+    }),
+  );
+
+  r.get(
+    "/media-lists/:key/members",
+    requireRole("NoD.Admin"),
+    run<{ key: string }>(async (req, res) => {
+      res.json(await listMediaMembers(db, req.params.key));
+    }),
+  );
+
+  r.post(
+    "/media-lists/:key/members",
+    requireRole("NoD.Admin"),
+    run<{ key: string }>(async (req, res) => {
+      const parsed = addMediaMemberSchema.parse(req.body);
+      const { subscriberId, created } = await addMediaMember(
+        db,
+        req.params.key,
+        { email: parsed.email, source: "manual-media", confirmOptOut: parsed.confirmOptOut },
+        actorOf(req).name,
+      );
+      res.status(created ? 201 : 200).json({ subscriberId, created });
+    }),
+  );
+
+  r.delete(
+    "/media-lists/:key/members/:subscriberId",
+    requireRole("NoD.Admin"),
+    run<{ key: string; subscriberId: string }>(async (req, res) => {
+      await removeMediaMember(db, req.params.key, req.params.subscriberId, actorOf(req).name);
+      res.status(204).end();
     }),
   );
 

@@ -27,6 +27,14 @@ export const subscribers = pgTable(
     digest: boolean("digest").notNull().default(false),
     source: text("source").$type<SubscriberSource>().notNull().default("self"),
     mediaHubContactId: integer("media_hub_contact_id"),
+    // The chosen email's contract `ref` ("personal" or "workplace:<id>") for a Media Hub-sourced
+    // member (4c Task 4's sync writes/reads this; Task 2 only adds the column).
+    mediaHubEmailRef: text("media_hub_email_ref"),
+    // A short reason a media-list member needs staff attention instead of being silently
+    // deleted (C59) -- e.g. a bounced or collided Media Hub email. Null = fine. Set together
+    // with attentionAt; neither is written by this task.
+    needsAttention: text("needs_attention"),
+    attentionAt: timestamp("attention_at", { withTimezone: true }),
     // Set when the subscriber unsubscribes, is deleted, or moves to a new address; drives the
     // 90-day purge (4g).
     endedAt: timestamp("ended_at", { withTimezone: true }),

@@ -1,11 +1,19 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
-import type { EventEnvelope, EventHandler, OrgRecord, TermRecord } from "@gcpe/events";
+import type { EventEnvelope, EventHandler, MediaListRecord, OrgRecord, TermRecord } from "@gcpe/events";
 import { listCategories, lists } from "./db/schema";
 
 /** Categories the public Subscribe API offers (spec §4). Media lists are staff-managed (4c). */
 export const PUBLIC_CATEGORIES = ["ministries", "sectors", "themes", "tags", "emergency"] as const;
 const TERM_CATEGORY = { sector: "sectors", theme: "themes", tag: "tags" } as const;
+
+/** NRMS's media lists mirror into this category -- never a public one (global constraints). */
+export const MEDIA_CATEGORY = "media-distribution-lists";
+
+/** A media list's NoD list key: `media-distribution-lists:<key>`, lowercased. */
+export function mediaListKey(key: string): string {
+  return `${MEDIA_CATEGORY}:${key.toLowerCase()}`;
+}
 
 async function upsertList(tx: DbOrTx, category: string, key: string, name: string, sortOrder: number, active: boolean) {
   const k = key.toLowerCase();
@@ -33,16 +41,31 @@ const onTermGone: EventHandler = async (tx, e) => {
   if (category) await deactivate(tx, category, d.key);
 };
 
-/** Core's org/sector/theme/tag events → NoD's `lists` (spec §3). */
+const onMediaList: EventHandler = async (tx, e) => {
+  const m = e.data as MediaListRecord;
+  await upsertList(tx, MEDIA_CATEGORY, m.key, m.displayName, m.sortOrder, m.isActive);
+};
+const onMediaListGone: EventHandler = async (tx, e) => deactivate(tx, MEDIA_CATEGORY, (e.data as { key: string }).key);
+
+/** Core's org/sector/theme/tag events and NRMS's media_list events → NoD's `lists` (spec §3). */
 export function listsHandler(event: EventEnvelope): EventHandler | undefined {
-  if (event.source !== "core") return undefined;
-  switch (event.type) {
-    case "org.upserted": return onOrg;
-    case "org.deactivated": return onOrgGone;
-    case "sector.upserted": case "theme.upserted": case "tag.upserted": return onTerm;
-    case "sector.deactivated": case "theme.deactivated": case "tag.deactivated": return onTermGone;
-    default: return undefined;
+  if (event.source === "core") {
+    switch (event.type) {
+      case "org.upserted": return onOrg;
+      case "org.deactivated": return onOrgGone;
+      case "sector.upserted": case "theme.upserted": case "tag.upserted": return onTerm;
+      case "sector.deactivated": case "theme.deactivated": case "tag.deactivated": return onTermGone;
+      default: return undefined;
+    }
   }
+  if (event.source === "nrms") {
+    switch (event.type) {
+      case "media_list.created": case "media_list.updated": return onMediaList;
+      case "media_list.deactivated": return onMediaListGone;
+      default: return undefined;
+    }
+  }
+  return undefined;
 }
 
 /** Legacy `SubscriptionItems/{categoryKey}`: active lists of an enabled public category. */
