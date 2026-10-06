@@ -9,6 +9,7 @@ import { createApp } from "./app";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
 import { needsReferenceData } from "./lists";
+import type { RecipientLinkOptions } from "./recipient-links";
 import { sendDueJobs, startJobSender } from "./send-jobs";
 
 export const nodEnvSchema = z.object({
@@ -31,6 +32,9 @@ export const nodEnvSchema = z.object({
   LINK_SECRET: z.string().min(32),
   // The page emailed verify/manage links open. Default: the public site's test page.
   SUBSCRIBE_PAGE_URL: z.string().url().optional(),
+  // Base URL of the public Subscribe API, carrying the one-click unsubscribe path
+  // (recipient-links.ts, Task 3). Default: PUBLIC_SITE_URL's own origin's /api/Subscribe.
+  SUBSCRIBE_API_URL: z.string().url().optional(),
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
 });
 
@@ -78,7 +82,17 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     timeoutMs: parsed.DISTRIBUTION_TIMEOUT_MS,
   });
 
-  const sendJobsOptions = { db, distribution, manageUrl: parsed.MANAGE_URL, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS };
+  // Both the subscribe journeys' own manage-link page and Task 3's per-recipient manage links
+  // (recipient-links.ts) open the same page — one default, shared.
+  const subscribePageUrl = parsed.SUBSCRIBE_PAGE_URL ?? `${parsed.PUBLIC_SITE_URL.replace(/\/$/, "")}/subscribe/manage/`;
+  // Task 4 wires this into the job sender; it has no consumer yet.
+  const recipientLinks: RecipientLinkOptions = {
+    pageUrl: subscribePageUrl,
+    subscribeApiUrl: parsed.SUBSCRIBE_API_URL ?? `${new URL(parsed.PUBLIC_SITE_URL).origin}/api/Subscribe`,
+    linkSecret: parsed.LINK_SECRET,
+  };
+
+  const sendJobsOptions = { db, distribution, manageUrl: parsed.MANAGE_URL, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS, recipientLinks };
 
   const app = createApp({
     db,
@@ -89,7 +103,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     subscribe: {
       db,
       distribution,
-      pageUrl: parsed.SUBSCRIBE_PAGE_URL ?? `${parsed.PUBLIC_SITE_URL.replace(/\/$/, "")}/subscribe/manage/`,
+      pageUrl: subscribePageUrl,
       linkSecret: parsed.LINK_SECRET,
     },
   });

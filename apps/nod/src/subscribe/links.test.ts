@@ -1,8 +1,10 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
+import { addSubscriber } from "../subscribers";
 import { claimLink, createLink, findLink, linksSentLastHour, markLinkUsed } from "./links";
+import { requestManageLink, type JourneyDeps } from "./journeys";
 import { hashToken } from "./tokens";
 
 describe("links", () => {
@@ -43,5 +45,31 @@ describe("links", () => {
     expect(await claimLink(tdb.db, id)).toBe(true);
     expect(await claimLink(tdb.db, id)).toBe(false);
     expect((await findLink(tdb.db, token))?.usedAt).not.toBeNull();
+  });
+
+  // Global constraints, review focus #4: a subscriber who gets several As-It-Happens emails in
+  // an hour, then clicks "Manage", must not find the request blocked by their own mail's links.
+  it("send links don't count toward the cap", async () => {
+    const { id: subscriberId } = await addSubscriber(tdb.db, { email: "send-cap@example.test", lists: "all" });
+    for (let i = 0; i < 5; i++) {
+      await createLink(tdb.db, { purpose: "manage", email: "send-cap@example.test", subscriberId, pending: null, origin: "send" });
+    }
+    expect(await linksSentLastHour(tdb.db, "send-cap@example.test")).toBe(0);
+
+    const sent: { to: string; subject: string }[] = [];
+    const deps: JourneyDeps = {
+      db: tdb.db,
+      pageUrl: "https://example.test/manage/",
+      linkSecret: "k".repeat(32),
+      distribution: {
+        send: async (m) => {
+          sent.push({ to: m.recipients[0]!.email, subject: m.subject });
+          return { batchId: "b" };
+        },
+      },
+    };
+    await requestManageLink(deps, "send-cap@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(1));
+    expect(sent[0]).toMatchObject({ to: "send-cap@example.test", subject: "BC Gov News On Demand Subscription Management" });
   });
 });

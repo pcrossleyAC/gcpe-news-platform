@@ -166,10 +166,14 @@ describe("GET /api/subscribers/count", () => {
     expect(withLists.body).toEqual({ count: 2 });
   });
 
-  it("counts only '*' subscribers when lists is empty", async () => {
+  // Spec "all news" rule (global constraints): '*' only matches when the query carries a
+  // ministries: key, same as an item would need one to reach "all news" subscribers. An empty
+  // query has no keys at all, so count-all@example.com's '*' subscription doesn't match either
+  // — before this rule existed, this asserted `{ count: 1 }`.
+  it("counts nobody when lists is empty (no ministries key for '*' to match)", async () => {
     const empty = await request(app).get("/api/subscribers/count?lists=").set("authorization", `Bearer ${editor}`);
     expect(empty.status).toBe(200);
-    expect(empty.body).toEqual({ count: 1 });
+    expect(empty.body).toEqual({ count: 0 });
   });
 
   it("400s a list key that doesn't match '<kind>:<key>'", async () => {
