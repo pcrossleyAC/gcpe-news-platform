@@ -30,6 +30,24 @@ describe("app-level error handling", () => {
     expect(res.body).toEqual({ error: "request entity too large" });
     expect(res.text).not.toMatch(/at \S+ \(|\.ts:\d+:\d+/);
   });
+
+  // RFC 8058: mail clients never add ?api-version= to the one-click unsubscribe link, so the
+  // version check must let this one POST through unversioned instead of 400ing it before it
+  // ever reaches the subscribe proxy. baseUrl here refuses connections, so a 502 (reached the
+  // proxy, which then failed upstream) — not the 400 ApiVersionUnspecified shape — proves the
+  // exemption works.
+  it("lets the one-click unsubscribe POST through without api-version", async () => {
+    const res = await request(app).post("/api/Subscribe/OneClickUnsubscribe/some-token").type("form").send("List-Unsubscribe=One-Click");
+    expect(res.status).toBe(502);
+    expect(res.body).toEqual({ error: "subscriptions upstream unavailable" });
+  });
+
+  // Every other Subscribe route is unaffected: still requires api-version.
+  it("still requires api-version for every other Subscribe route", async () => {
+    const res = await request(app).get("/api/Subscribe/SubscriptionItems/ministries");
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: { code: "ApiVersionUnspecified", message: "An API version is required, but was not specified.", innerError: null } });
+  });
 });
 
 // Final review M3: unmatched routes used to fall through to Express's HTML "Cannot GET".

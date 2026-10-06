@@ -119,14 +119,14 @@ export function createAsItHappensHandler(opts: AsItHappensOptions): EventHandler
       SELECT DISTINCT ${r.key}, s.id
         FROM subscribers s
         JOIN subscriptions sub ON sub.subscriber_id = s.id
-       WHERE s.verified_at IS NOT NULL
-         AND sub.as_it_happens = true
+       WHERE s.status = 'active'
+         AND s.as_it_happens = true
          AND ${listKeyMatch}
       ON CONFLICT DO NOTHING
       RETURNING 1
     `);
 
-    // A release matching no verified as-it-happens subscriber inserts no delivery rows: skip
+    // A release matching no active as-it-happens subscriber inserts no delivery rows: skip
     // creating a job entirely (an empty job would send nothing). On a repeat delivery of an
     // already-fully-inserted release (the idempotency case), every row conflicts and this is
     // also 0 — harmless, since the job itself already exists by then (its own insert below is

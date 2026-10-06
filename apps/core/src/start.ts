@@ -7,6 +7,7 @@ import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
+import { republishAll } from "./services/republish";
 
 export const coreEnvSchema = z.object({
   DATABASE_URL: z.string().url(),
@@ -66,6 +67,9 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     port: parsed.PORT,
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
+      // Phase 4a: lets the stack ask Core to re-emit every org/term as an upserted event — the
+      // one-time reference-data backfill for a NoD that has never seen them (stack.ts).
+      republish: () => republishAll(db, subscribers),
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });

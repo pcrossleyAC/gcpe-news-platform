@@ -161,27 +161,27 @@ interface Recipient {
 
 /** R3: a chunk's byte-split partition (how many parts, and which members fall in which part)
  * must be computed over this — the chunk's *frozen* membership, regardless of each member's
- * *current* verified status — not over whatever happens to be verified right now. Otherwise a
- * subscriber flipping unverified between attempt 1 and attempt 2 shrinks the recipient list
+ * *current* active status — not over whatever happens to be active right now. Otherwise a
+ * subscriber flipping inactive between attempt 1 and attempt 2 shrinks the recipient list
  * `splitChunkByBytes` sizes against, which can change the part count/boundaries and therefore
  * the idempotencyKey a given recipient's part is sent under — exactly the kind of instability
  * chunk_index freezing (ensureChunksAssigned) already exists to prevent, one level down. */
 interface Member extends Recipient {
-  verified: boolean;
+  active: boolean;
 }
 
 const toRecipients = (members: Member[]): Recipient[] => members.map(({ email, manageToken }) => ({ email, manageToken }));
 
 /** Every member of this release's frozen chunks (chunk_index IS NOT NULL — see
- * ensureChunksAssigned), grouped by chunk_index, *regardless of current verified status* (R3:
+ * ensureChunksAssigned), grouped by chunk_index, *regardless of current active status* (R3:
  * the byte-split partition below must size itself against this frozen membership, not against
- * whichever subset happens to be verified on any given attempt). The query orders by
+ * whichever subset happens to be active on any given attempt). The query orders by
  * (chunk_index, subscriber id), so each chunk's own member order — and therefore every part's
- * membership — is deterministic across attempts. Filtering to only-verified happens later, at
+ * membership — is deterministic across attempts. Filtering to only-active happens later, at
  * send time, per part (see sendAllChunks). */
 async function fetchAssignedMembers(db: Db, releaseKey: string): Promise<Map<number, Member[]>> {
   const rows = await db
-    .select({ chunkIndex: deliveries.chunkIndex, email: subscribers.email, manageToken: subscribers.manageToken, verifiedAt: subscribers.verifiedAt })
+    .select({ chunkIndex: deliveries.chunkIndex, email: subscribers.email, manageToken: subscribers.manageToken, status: subscribers.status })
     .from(deliveries)
     .innerJoin(subscribers, eq(subscribers.id, deliveries.subscriberId))
     .where(and(eq(deliveries.releaseKey, releaseKey), isNotNull(deliveries.chunkIndex)))
@@ -190,7 +190,7 @@ async function fetchAssignedMembers(db: Db, releaseKey: string): Promise<Map<num
   const chunks = new Map<number, Member[]>();
   for (const row of rows) {
     const idx = row.chunkIndex!;
-    const member: Member = { email: row.email, manageToken: row.manageToken, verified: row.verifiedAt != null };
+    const member: Member = { email: row.email, manageToken: row.manageToken, active: row.status === "active" };
     const bucket = chunks.get(idx);
     if (bucket) bucket.push(member);
     else chunks.set(idx, [member]);
@@ -198,22 +198,22 @@ async function fetchAssignedMembers(db: Db, releaseKey: string): Promise<Map<num
   return chunks;
 }
 
-/** Verified deliveries for this release whose *delivery row itself* was inserted after
- * chunking was frozen — chunk_index is still NULL, so they're not part of this (or any) job's
- * chunks (P2-R18: this is not the same thing as "became verified after freezing" —
- * ensureChunksAssigned doesn't filter on verified_at at all, so a subscriber who becomes
- * verified later still has whatever chunk_index their delivery row got assigned at freeze
- * time, and is picked up by fetchAssignedMembers on this job's next attempt. The one case
- * where a late-verified subscriber is never mailed is if their chunk was already sent and
- * accepted in an earlier attempt and the job has since reached a terminal state — by design,
- * not a bug: freezing trades "catch every last-second verification" for stable, safe-to-retry
- * chunk membership). */
+/** Active-subscriber deliveries for this release whose *delivery row itself* was inserted
+ * after chunking was frozen — chunk_index is still NULL, so they're not part of this (or any)
+ * job's chunks (P2-R18: this is not the same thing as "became active after freezing" —
+ * ensureChunksAssigned doesn't filter on status at all, so a subscriber who becomes active
+ * later still has whatever chunk_index their delivery row got assigned at freeze time, and is
+ * picked up by fetchAssignedMembers on this job's next attempt. The one case where a
+ * late-activated subscriber is never mailed is if their chunk was already sent and accepted in
+ * an earlier attempt and the job has since reached a terminal state — by design, not a bug:
+ * freezing trades "catch every last-second activation" for stable, safe-to-retry chunk
+ * membership). */
 async function countLateDeliveries(db: Db, releaseKey: string): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
     .from(deliveries)
     .innerJoin(subscribers, eq(subscribers.id, deliveries.subscriberId))
-    .where(and(eq(deliveries.releaseKey, releaseKey), isNotNull(subscribers.verifiedAt), isNull(deliveries.chunkIndex)));
+    .where(and(eq(deliveries.releaseKey, releaseKey), eq(subscribers.status, "active"), isNull(deliveries.chunkIndex)));
   return row?.count ?? 0;
 }
 
@@ -259,9 +259,9 @@ function requestByteSize(req: MessageRequest): number {
  * address the same sub-parts (and the same Distribution idempotencyKey) every time.
  *
  * R3: sized and partitioned over `members` — this chunk's *entire frozen membership*,
- * verified or not (see fetchAssignedMembers) — never over a verified-only subset, so the
- * number of parts and who falls in which one can't shift as subscribers verify/unverify
- * between attempts. Returns the *membership* of each part, not yet filtered to verified-only
+ * active or not (see fetchAssignedMembers) — never over an active-only subset, so the
+ * number of parts and who falls in which one can't shift as subscribers go active/inactive
+ * between attempts. Returns the *membership* of each part, not yet filtered to active-only
  * or built into a request — that happens in sendAllChunks, per attempt.
  */
 function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex: number, manageUrl: string, maxBytes: number): { key: string; members: Member[] }[] {
@@ -292,10 +292,10 @@ function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex
  * attempt (P2-R16).
  *
  * R3: a part's membership is frozen (partitionChunkByBytes, over the whole chunk regardless of
- * verified status); only now, per attempt, is it filtered down to members currently verified —
- * so a subscriber who unverifies between attempts simply drops out of their part's recipient
+ * active status); only now, per attempt, is it filtered down to members currently active —
+ * so a subscriber who goes inactive between attempts simply drops out of their part's recipient
  * list (the part keeps its key and its other members) rather than shifting anyone's part
- * assignment. A part with zero currently-verified members is skipped entirely: no request sent,
+ * assignment. A part with zero currently-active members is skipped entirely: no request sent,
  * no batchId recorded for it this attempt (any batchId it already earned on an earlier attempt
  * stays in the merged `batch_ids`, untouched — see sendDueJobs).
  */
@@ -309,10 +309,10 @@ async function sendAllChunks(
   const batchIds: Record<string, string> = {};
   for (const [chunkIndex, members] of chunks) {
     for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, manageUrl, maxChunkBytes)) {
-      const verifiedMembers = partMembers.filter((m) => m.verified);
-      if (verifiedMembers.length === 0) continue; // nothing currently verified in this part — skip it this attempt
+      const activeMembers = partMembers.filter((m) => m.active);
+      if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
       try {
-        const { batchId } = await distribution.send(buildMessageRequest(job, toRecipients(verifiedMembers), key, manageUrl));
+        const { batchId } = await distribution.send(buildMessageRequest(job, toRecipients(activeMembers), key, manageUrl));
         batchIds[key] = batchId;
       } catch (e) {
         // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless

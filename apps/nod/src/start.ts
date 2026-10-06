@@ -8,6 +8,7 @@ import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
+import { needsReferenceData } from "./lists";
 import { sendDueJobs, startJobSender } from "./send-jobs";
 
 export const nodEnvSchema = z.object({
@@ -26,6 +27,10 @@ export const nodEnvSchema = z.object({
   DISTRIBUTION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   PUBLIC_SITE_URL: z.string().url(),
   MANAGE_URL: z.string().url(),
+  // Phase 4a: HMAC key for unsubscribe tokens (the stack derives it from STACK_EVENT_SECRET).
+  LINK_SECRET: z.string().min(32),
+  // The page emailed verify/manage links open. Default: the public site's test page.
+  SUBSCRIBE_PAGE_URL: z.string().url().optional(),
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
 });
 
@@ -81,6 +86,12 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     loginRouter: auth.loginRouter,
     eventSecrets: parsed.EVENT_SECRETS,
     handlerOptions: { publicSiteUrl: parsed.PUBLIC_SITE_URL, manageUrl: parsed.MANAGE_URL },
+    subscribe: {
+      db,
+      distribution,
+      pageUrl: parsed.SUBSCRIBE_PAGE_URL ?? `${parsed.PUBLIC_SITE_URL.replace(/\/$/, "")}/subscribe/manage/`,
+      linkSecret: parsed.LINK_SECRET,
+    },
   });
 
   // Set by startLoops(); the closer below references it lazily so it's safe to call even if
@@ -92,6 +103,9 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     port: parsed.PORT,
     workers: {
       send: () => sendDueJobs(sendJobsOptions),
+      // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
+      // data has ever reached this NoD so it knows whether to ask Core to republish.
+      needsReferenceData: () => needsReferenceData(db),
     },
     startLoops() {
       stopJobSender = startJobSender(sendJobsOptions);

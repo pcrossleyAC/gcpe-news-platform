@@ -48,6 +48,16 @@ describe("Subscribe proxy", () => {
     expect((await request(a).get("/api/Subscribe/CheckEmailActivationToken/bad?api-version=1.0")).status).toBe(404);
   });
 
+  // RFC 8058: mail clients POST this with a form body, not JSON, and no ?api-version=.
+  it("forwards a one-click unsubscribe form POST as a raw form body, with the bearer header", async () => {
+    const a = app({ baseUrl: nodUrl, getToken: async () => "tok", rateLimitPerMinute: 100 });
+    const res = await request(a).post("/api/Subscribe/OneClickUnsubscribe/some-token").type("form").send("List-Unsubscribe=One-Click");
+    expect(res.status).toBe(200);
+    expect(res.body).toBe(true);
+    const last = seen.at(-1)!;
+    expect(last).toMatchObject({ method: "POST", url: "/api/Subscribe/OneClickUnsubscribe/some-token", auth: "Bearer tok" });
+  });
+
   it("503 when NoD is not configured", async () => {
     expect((await request(app(undefined)).get("/api/Subscribe/SubscriptionItems/x?api-version=1.0")).status).toBe(503);
   });

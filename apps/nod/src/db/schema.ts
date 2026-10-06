@@ -1,9 +1,14 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 // The event receiver (mounted in app.ts) needs inbox_events/inbox_positions to exist in this
 // app's own database, same as every other app that receives signed events.
 export * from "@gcpe/events/tables";
+
+export const SUBSCRIBER_STATUSES = ["pending", "active", "disabled", "deleted"] as const;
+export type SubscriberStatus = (typeof SUBSCRIBER_STATUSES)[number];
+export const SUBSCRIBER_SOURCES = ["self", "admin", "media-hub", "manual-media"] as const;
+export type SubscriberSource = (typeof SUBSCRIBER_SOURCES)[number];
 
 export const subscribers = pgTable(
   "subscribers",
@@ -18,8 +23,24 @@ export const subscribers = pgTable(
     // (verifiedAt not null) receive mail.
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    // Phase 4 (spec §3). Timing lives on the subscriber, as in legacy (Subscriber.ImmediateDelivery
+    // / DigestDelivery). Only `active` subscribers receive mail.
+    status: text("status").$type<SubscriberStatus>().notNull().default("pending"),
+    asItHappens: boolean("as_it_happens").notNull().default(true),
+    digest: boolean("digest").notNull().default(false),
+    source: text("source").$type<SubscriberSource>().notNull().default("self"),
+    mediaHubContactId: integer("media_hub_contact_id"),
+    // Set when the subscriber unsubscribes, is deleted, or moves to a new address; drives the
+    // 90-day purge (4g).
+    endedAt: timestamp("ended_at", { withTimezone: true }),
+    // Bumped to invalidate every unsubscribe token issued so far (tokens.ts): on email change.
+    unsubscribeVersion: integer("unsubscribe_version").notNull().default(1),
   },
-  (t) => [uniqueIndex("subscribers_email_lower_idx").on(sql`lower(${t.email})`)],
+  (t) => [
+    uniqueIndex("subscribers_email_lower_idx").on(sql`lower(${t.email})`),
+    check("subscribers_status_check", sql`${t.status} IN ('pending','active','disabled','deleted')`),
+    check("subscribers_source_check", sql`${t.source} IN ('self','admin','media-hub','manual-media')`),
+  ],
 );
 export type SubscriberRow = typeof subscribers.$inferSelect;
 
@@ -31,7 +52,6 @@ export const subscriptions = pgTable(
       .references(() => subscribers.id, { onDelete: "cascade" }),
     // '*' = all news, else an index key such as 'ministries:health' (always stored lowercased).
     listKey: text("list_key").notNull(),
-    asItHappens: boolean("as_it_happens").notNull().default(true),
   },
   (t) => [primaryKey({ columns: [t.subscriberId, t.listKey] })],
 );
@@ -94,3 +114,76 @@ export const sendJobs = pgTable(
   ],
 );
 export type SendJobRow = typeof sendJobs.$inferSelect;
+
+export const listCategories = pgTable("list_categories", {
+  key: text("key").primaryKey(),
+  name: text("name").notNull(),
+  enabled: boolean("enabled").notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+});
+
+/** One subscribable list. `listKey` is `<category>:<key>` — the same shape as
+ * `@gcpe/events`' `indexKeysFor` output and `subscriptions.list_key`, so matching a release to
+ * subscribers stays a plain string comparison. */
+export const lists = pgTable(
+  "lists",
+  {
+    listKey: text("list_key").primaryKey(),
+    category: text("category").notNull().references(() => listCategories.key),
+    key: text("key").notNull(),
+    name: text("name").notNull(),
+    active: boolean("active").notNull().default(true),
+    sortOrder: integer("sort_order").notNull().default(0),
+    topicUrl: text("topic_url").notNull().default(""),
+  },
+  (t) => [uniqueIndex("lists_category_key_idx").on(t.category, t.key)],
+);
+
+export const LINK_PURPOSES = ["verify", "manage", "change-email"] as const;
+export type LinkPurpose = (typeof LINK_PURPOSES)[number];
+
+/** What a subscriber asked for — stored on a pending link until it's confirmed. */
+export interface SubscriberPrefs {
+  allNews: boolean;
+  listKeys: string[];
+  asItHappens: boolean;
+  digest: boolean;
+}
+
+/** One-time links (spec §3). Only a SHA-256 of the token is stored (C48). */
+export const subscriberLinks = pgTable(
+  "subscriber_links",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tokenHash: text("token_hash").notNull().unique(),
+    purpose: text("purpose").$type<LinkPurpose>().notNull(),
+    subscriberId: uuid("subscriber_id").references(() => subscribers.id, { onDelete: "cascade" }),
+    // Lowercased target address: the address being verified (verify, change-email) or the
+    // subscriber's own (manage). Also what the per-address rate limit counts on.
+    email: text("email").notNull(),
+    pending: jsonb("pending").$type<SubscriberPrefs>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    // When the pending preferences (or pending email change) were applied. The link keeps
+    // working as a manage session until it expires.
+    usedAt: timestamp("used_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("subscriber_links_email_created_idx").on(t.email, t.createdAt),
+    check("subscriber_links_purpose_check", sql`${t.purpose} IN ('verify','manage','change-email')`),
+  ],
+);
+
+/** Replaces legacy SysLog for subscribers: feeds the History screen and reports (4f). */
+export const subscriberHistory = pgTable(
+  "subscriber_history",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    subscriberId: uuid("subscriber_id").notNull().references(() => subscribers.id, { onDelete: "cascade" }),
+    at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
+    actor: text("actor").notNull(),
+    action: text("action").notNull(),
+    detail: text("detail").notNull().default(""),
+  },
+  (t) => [index("subscriber_history_subscriber_at_idx").on(t.subscriberId, t.at)],
+);

@@ -3,7 +3,7 @@ import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb, envelope } from "../test/helpers";
-import { deliveries, sendJobs, subscribers, subscriptions } from "./db/schema";
+import { deliveries, sendJobs, subscribers } from "./db/schema";
 import { addSubscriber } from "./subscribers";
 import { createAsItHappensHandler, neutralizeHtml, neutralizeText, renderAsItHappens } from "./as-it-happens";
 
@@ -13,12 +13,12 @@ const MANAGE_URL = "https://news.gov.bc.ca/manage";
 describe("createAsItHappensHandler", () => {
   let tdb: TestDatabase;
   let handler: ReturnType<typeof createAsItHappensHandler>;
-  let a: string; // all news, verified
-  let b: string; // ministries:health, verified
-  let c: string; // sectors:mining, verified
-  let d: string; // all news, unverified
-  let e: string; // BOTH '*' and ministries:health, verified — must still get exactly one delivery
-  let f: string; // all news, verified, but as_it_happens=false on its subscription (R6)
+  let a: string; // all news, active
+  let b: string; // ministries:health, active
+  let c: string; // sectors:mining, active
+  let d: string; // all news, pending (never activated)
+  let e: string; // BOTH '*' and ministries:health, active — must still get exactly one delivery
+  let f: string; // all news, active, but as_it_happens=false on the subscriber (R6)
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
@@ -30,11 +30,11 @@ describe("createAsItHappensHandler", () => {
     d = (await addSubscriber(tdb.db, { email: "d.all.unverified@example.com", lists: "all" })).id;
     e = (await addSubscriber(tdb.db, { email: "e.all-and-health@example.com", lists: ["*", "ministries:Health"] })).id;
     f = (await addSubscriber(tdb.db, { email: "f.all.digest-only@example.com", lists: "all" })).id;
-    await tdb.db.update(subscribers).set({ verifiedAt: null }).where(eq(subscribers.id, d));
-    // addSubscriber (the public API) always creates a subscription with as_it_happens=true;
-    // flipping it directly here is the only way to get a digest-only subscription into a
+    await tdb.db.update(subscribers).set({ verifiedAt: null, status: "pending" }).where(eq(subscribers.id, d));
+    // addSubscriber (the public API) always sets the subscriber's own as_it_happens to true;
+    // flipping it directly here is the only way to get a digest-only subscriber into a
     // fixture today (R6) — there's no HTTP/service path yet that sets it to false.
-    await tdb.db.update(subscriptions).set({ asItHappens: false }).where(eq(subscriptions.subscriberId, f));
+    await tdb.db.update(subscribers).set({ asItHappens: false }).where(eq(subscribers.id, f));
   });
   afterAll(async () => {
     await tdb.drop();
@@ -91,10 +91,10 @@ describe("createAsItHappensHandler", () => {
     expect(jobRows).toHaveLength(0);
   });
 
-  // R6: a verified subscriber on a matching list ('*') whose *subscription* has
-  // as_it_happens=false (a digest-only subscriber) must never get an as-it-happens delivery,
-  // even though every other condition matches.
-  it("excludes a verified, list-matching subscriber whose subscription has as_it_happens=false", async () => {
+  // R6: an active, list-matching subscriber whose own as_it_happens is false (a digest-only
+  // subscriber) must never get an as-it-happens delivery, even though every other condition
+  // matches.
+  it("excludes an active, list-matching subscriber whose as_it_happens is false", async () => {
     const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
     await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
 
@@ -103,6 +103,40 @@ describe("createAsItHappensHandler", () => {
 
     const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
     expect(deliveryRows.map((r) => r.subscriberId)).not.toContain(f);
+  });
+});
+
+describe("createAsItHappensHandler subscriber-level timing gate", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  // Pins the subscriber-level gating directly (status = 'active' AND as_it_happens = true):
+  // a pending subscriber (never activated) and an active-but-digest-only subscriber must both
+  // be skipped, even though both are subscribed to a matching list. Its own tdb (no shared
+  // fixtures from the describe block above) so no other subscriber's '*' subscription can
+  // match this release.
+  it("skips pending and digest-only subscribers", async () => {
+    const handler = createAsItHappensHandler({ publicSiteUrl: PUBLIC_SITE_URL, manageUrl: MANAGE_URL });
+    const release = { ...sampleRelease, key: "K-TIMING", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.pool.query(`
+      INSERT INTO subscribers (id, email, manage_token, status, as_it_happens, digest) VALUES
+        ('00000000-0000-0000-0000-0000000000a1', 'on@example.test', 'ta1', 'active', true, false),
+        ('00000000-0000-0000-0000-0000000000a2', 'pending@example.test', 'ta2', 'pending', true, false),
+        ('00000000-0000-0000-0000-0000000000a3', 'digest@example.test', 'ta3', 'active', false, true);
+      INSERT INTO subscriptions (subscriber_id, list_key) VALUES
+        ('00000000-0000-0000-0000-0000000000a1', '*'),
+        ('00000000-0000-0000-0000-0000000000a2', '*'),
+        ('00000000-0000-0000-0000-0000000000a3', '*');
+    `);
+    await tdb.db.transaction((tx) => handler(tx, envelope("nrms", "release.published", release, release.key)));
+
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    expect(deliveryRows.map((r) => r.subscriberId)).toEqual(["00000000-0000-0000-0000-0000000000a1"]);
   });
 });
 
@@ -258,8 +292,8 @@ describe("createAsItHappensHandler at scale (I1)", () => {
   // JS round-trip per row) so the test itself stays fast, proves the fix handles it.
   it("delivers to more than 32,767 matching subscribers without hitting Postgres's bind-parameter limit", async () => {
     await tdb.pool.query(`
-      INSERT INTO subscribers (email, manage_token, verified_at)
-      SELECT 'bulk' || gs || '@example.com', 'bulk-token-' || gs, now()
+      INSERT INTO subscribers (email, manage_token, verified_at, status)
+      SELECT 'bulk' || gs || '@example.com', 'bulk-token-' || gs, now(), 'active'
         FROM generate_series(1, 33000) AS gs
     `);
     await tdb.pool.query(`

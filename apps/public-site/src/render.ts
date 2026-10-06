@@ -42,7 +42,11 @@ function basePath(site: SiteInfo): string {
 
 const releasePath = (site: SiteInfo, key: string) => `${basePath(site)}/releases/${encodeURIComponent(key)}`;
 
-function page(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}): string {
+/** Plan 3d task 4's page chrome: header, canonical link, test noindex, Blue Bridge banner.
+ * Task 7 (Phase 4a): exported so subscribe-pages.ts can reuse the same chrome for the static
+ * subscribe/manage/unsubscribe test pages. `bodyAttr`, if given, is spliced straight into the
+ * `<body>` tag (e.g. ` data-page="manage"`) — every other caller leaves it at its default. */
+export function renderPage(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}, bodyAttr = ""): string {
   const robots = opts.test ? `\n<meta name="robots" content="noindex, nofollow">` : "";
   const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
   return `<!doctype html>
@@ -53,7 +57,7 @@ function page(title: string, site: SiteInfo, canonicalPath: string, body: string
 <title>${e(title)} | ${e(site.name)}</title>
 <link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}
 </head>
-<body>${banner}
+<body${bodyAttr}>${banner}
 <header><a href="${e(basePath(site))}/">${e(site.name)}</a></header>
 <main>
 ${body}
@@ -76,12 +80,12 @@ ${d?.subheadline ? `<h2>${e(d.subheadline)}</h2>` : ""}
 ${d?.detailsHtml ?? ""}
 ${contacts ? `<section><h2>Contacts</h2><ul>\n${contacts}\n</ul></section>` : ""}
 </article>`;
-  return page(headline, site, releasePath(site, p.key), body, opts);
+  return renderPage(headline, site, releasePath(site, p.key), body, opts);
 }
 
 export function renderHomePage(posts: PostDto[], site: SiteInfo, opts: PageOptions = {}): string {
   const items = posts
     .map((p) => `<li><a href="${e(releasePath(site, p.key))}">${e(english(p)?.headline ?? p.key)}</a> <time datetime="${e(p.publishDate)}">${e(p.publishDate)}</time></li>`)
     .join("\n");
-  return page("Home", site, `${basePath(site)}/`, `<h1>Latest news</h1>\n<ul>\n${items}\n</ul>`, opts);
+  return renderPage("Home", site, `${basePath(site)}/`, `<h1>Latest news</h1>\n<ul>\n${items}\n</ul>`, opts);
 }

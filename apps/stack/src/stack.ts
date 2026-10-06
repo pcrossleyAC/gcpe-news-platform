@@ -441,6 +441,20 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     .then((r) => r && console.log(`[public-site] self-heal rebuilt ${r.rebuilt} posts`))
     .catch((e) => console.error(`[public-site] self-heal failed: ${e instanceof Error ? e.message : e}`));
 
+  // Phase 4a: NoD's lists come from Core's events, which only flow on change. A NoD with no
+  // ministry lists yet (first deploy, or a fresh database) asks Core to republish everything
+  // once; the events reach NoD on the next dispatch tick. Fire-and-forget, never throws.
+  void (async () => {
+    try {
+      if (await worker(nod, "needsReferenceData")()) {
+        const n = await worker(core, "republish")();
+        console.log(`[stack] NoD had no lists; Core republished ${String(n)} reference records`);
+      }
+    } catch (e) {
+      console.error("[stack] reference-data backfill failed", e instanceof Error ? e.message : e);
+    }
+  })();
+
   return {
     app,
     port: actualPort,

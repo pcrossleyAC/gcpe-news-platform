@@ -16,11 +16,18 @@ const MANAGE_URL = "https://news.example/subscribe/manage";
 async function insertSubscriber(
   db: TestDatabase["db"],
   email: string,
-  opts: { verified?: boolean; id?: string } = {},
+  opts: { active?: boolean; id?: string } = {},
 ): Promise<{ id: string; manageToken: string }> {
+  const active = opts.active !== false;
   const [row] = await db
     .insert(subscribers)
-    .values({ ...(opts.id ? { id: opts.id } : {}), email, manageToken: randomUUID(), verifiedAt: opts.verified === false ? null : new Date() })
+    .values({
+      ...(opts.id ? { id: opts.id } : {}),
+      email,
+      manageToken: randomUUID(),
+      verifiedAt: active ? new Date() : null,
+      status: active ? "active" : "pending",
+    })
     .returning({ id: subscribers.id, manageToken: subscribers.manageToken });
   return row!;
 }
@@ -91,7 +98,7 @@ describe("sendDueJobs", () => {
     await tdb.pool.query("TRUNCATE TABLE send_jobs, deliveries, subscribers CASCADE");
   });
 
-  it("sends one request with every verified recipient, per-recipient manage links and list-unsubscribe headers", async () => {
+  it("sends one request with every active recipient, per-recipient manage links and list-unsubscribe headers", async () => {
     const alex = await insertSubscriber(tdb.db, "alex@example.com");
     const sam = await insertSubscriber(tdb.db, "sam@example.com");
     const job = await insertJob(tdb.db, "release-1");
@@ -138,21 +145,24 @@ describe("sendDueJobs", () => {
     expect(link.searchParams.get("token")).toBe(sub.manageToken);
   });
 
-  it("only sends to verified subscribers", async () => {
-    const verified = await insertSubscriber(tdb.db, "verified@example.com");
-    await insertSubscriber(tdb.db, "unverified@example.com", { verified: false });
+  it("only sends to active subscribers", async () => {
+    const active = await insertSubscriber(tdb.db, "active@example.com");
+    const pending = await insertSubscriber(tdb.db, "pending@example.com", { active: false });
     await insertJob(tdb.db, "release-2");
-    await tdb.db.insert(deliveries).values([{ releaseKey: "release-2", subscriberId: verified.id }]);
-    // An unverified subscriber was never added to `deliveries` by the Task 9 handler in the
-    // first place (createAsItHappensHandler filters on verifiedAt), but even if a row existed,
-    // the recipient query itself re-checks verifiedAt — belt and suspenders.
+    // A pending subscriber was never added to `deliveries` by the Task 9 handler in the first
+    // place (createAsItHappensHandler filters on status = 'active'), but even if a row
+    // existed, the recipient query itself re-checks status — belt and suspenders.
+    await tdb.db.insert(deliveries).values([
+      { releaseKey: "release-2", subscriberId: active.id },
+      { releaseKey: "release-2", subscriberId: pending.id },
+    ]);
 
     const distribution = stubDistribution();
     distribution.send.mockResolvedValue({ batchId: "batch-x" });
     await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL });
 
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
-    expect(req.recipients.map((r) => r.email)).toEqual(["verified@example.com"]);
+    expect(req.recipients.map((r) => r.email)).toEqual(["active@example.com"]);
   });
 
   it("retries a retryable failure with backoff, then succeeds using the same idempotency key", async () => {
@@ -646,10 +656,10 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
   });
 
   // R3: the byte-split partition must be computed over the chunk's *frozen* membership
-  // (verified or not), not over whichever subset happens to be verified right now — otherwise
-  // a subscriber flipping unverified between attempts shrinks the list splitChunkByBytes sizes
+  // (active or not), not over whichever subset happens to be active right now — otherwise
+  // a subscriber flipping inactive between attempts shrinks the list splitChunkByBytes sizes
   // against, which can renumber every other member's part key out from under them.
-  it("keeps identical byte-split keys on retry when a subscriber in one part becomes unverified between attempts (R3)", async () => {
+  it("keeps identical byte-split keys on retry when a subscriber in one part becomes inactive between attempts (R3)", async () => {
     const subs = await Promise.all([0, 1, 2, 3].map((n) => insertSubscriber(tdb.db, `r3-${n}@example.com`, { id: lowId(n) })));
     const job = await insertJob(tdb.db, "release-r3-stable-keys");
     await tdb.db.insert(deliveries).values(subs.map((s) => ({ releaseKey: "release-r3-stable-keys", subscriberId: s.id })));
@@ -676,15 +686,15 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     const afterFirst = (await tdb.db.select().from(sendJobs))[0]!;
     expect(afterFirst.batchIds).toEqual({ "0.0": "b0", "0.1": "b1" });
 
-    // Between attempts: the subscriber whose sole membership is part 0.1 becomes unverified.
-    await tdb.db.update(subscribers).set({ verifiedAt: null }).where(eq(subscribers.id, subs[1]!.id));
+    // Between attempts: the subscriber whose sole membership is part 0.1 becomes inactive.
+    await tdb.db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.id, subs[1]!.id));
 
     distribution.send.mockReset();
     distribution.send.mockResolvedValue({ batchId: "retry" });
     const result2 = await sendDueJobs({ db: tdb.db, distribution, manageUrl: MANAGE_URL, maxChunkBytes: 50, now: () => afterFirst.nextAttemptAt });
     expect(result2).toEqual({ sent: 1, retried: 0, failed: 0 });
 
-    // Part 0.1's sole member is now unverified, so that part is skipped entirely this attempt
+    // Part 0.1's sole member is now inactive, so that part is skipped entirely this attempt
     // — but the *other* parts keep their original keys (0.0, 0.2, 0.3), not renumbered as if
     // only 3 members had ever existed.
     const keysUsed = distribution.send.mock.calls.map((c) => (c[0] as MessageRequest).idempotencyKey).sort();
@@ -693,7 +703,7 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     const afterSecond = (await tdb.db.select().from(sendJobs))[0]!;
     expect(afterSecond.status).toBe("sent");
     // 0.1's batchId from the first attempt survives untouched — it was never re-sent, just
-    // skipped, since nothing in it is currently verified.
+    // skipped, since nothing in it is currently active.
     expect(Object.keys(afterSecond.batchIds).sort()).toEqual(["0.0", "0.1", "0.2", "0.3"]);
     expect(afterSecond.batchIds["0.1"]).toBe("b1");
   });

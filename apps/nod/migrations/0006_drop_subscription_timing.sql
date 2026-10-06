@@ -1,0 +1,1 @@
+ALTER TABLE "subscriptions" DROP COLUMN "as_it_happens";

@@ -1,4 +1,7 @@
 import { randomUUID } from "node:crypto";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import pg from "pg";
 import { sql } from "drizzle-orm";
 import { createDb, runMigrations, type Db } from "./db";
@@ -8,6 +11,54 @@ export interface TestDatabase {
   db: Db;
   url: string;
   drop(): Promise<void>;
+  /**
+   * Applies any migration in the full `migrationsFolder` (passed to {@link createTestDatabase},
+   * not just the `upTo` subset the database may have been created with) not yet applied —
+   * same tracking drizzle-orm's own migrator uses, so this is safe to call whether or not
+   * `upTo` was given.
+   */
+  migrate(): Promise<void>;
+}
+
+interface JournalEntry {
+  idx: number;
+  version: string;
+  when: number;
+  tag: string;
+  breakpoints: boolean;
+}
+
+/**
+ * A migrations-folder copy holding only the journal entries up to and including `tag`, plus
+ * each entry's own `<tag>.sql` — the only two things drizzle-orm's runtime migrator reads
+ * (`readMigrationFiles` in drizzle-orm/migrator.js). Deliberately skips the `*_snapshot.json`
+ * files drizzle-kit itself generates and reads back when diffing for the *next* migration;
+ * the runtime migrator never opens them, so a test applying this folder doesn't need them.
+ * Lets a test apply an older schema, insert legacy-shaped rows, then call the returned
+ * database's `migrate()` to run the rest of the real folder against them.
+ */
+function truncatedMigrationsFolder(migrationsFolder: string, tag: string): string {
+  const journal = JSON.parse(readFileSync(join(migrationsFolder, "meta", "_journal.json"), "utf8")) as {
+    version: string;
+    dialect: string;
+    entries: JournalEntry[];
+  };
+  const cutIdx = journal.entries.findIndex((e) => e.tag === tag);
+  if (cutIdx === -1) throw new Error(`createTestDatabase: no migration tagged "${tag}" in ${migrationsFolder}`);
+  const entries = journal.entries.slice(0, cutIdx + 1);
+
+  const dir = mkdtempSync(join(tmpdir(), "db-kit-migrations-"));
+  try {
+    mkdirSync(join(dir, "meta"), { recursive: true });
+    writeFileSync(join(dir, "meta", "_journal.json"), JSON.stringify({ ...journal, entries }));
+    for (const entry of entries) {
+      copyFileSync(join(migrationsFolder, `${entry.tag}.sql`), join(dir, `${entry.tag}.sql`));
+    }
+    return dir;
+  } catch (err) {
+    rmSync(dir, { recursive: true, force: true });
+    throw err;
+  }
 }
 
 export function adminUrl(): string {
@@ -28,6 +79,13 @@ export async function createTestDatabase(opts: {
   migrationsFolder: string;
   extensions?: string[];
   namePrefix?: string;
+  /**
+   * Apply only the migrations up to and including this journal tag (e.g. `"0003_freeze_chunks"`)
+   * instead of the whole folder, so a test can insert rows shaped like an earlier schema before
+   * applying the rest itself. Call `migrate()` on the returned database to apply the remainder
+   * of `migrationsFolder`.
+   */
+  upTo?: string;
 }): Promise<TestDatabase> {
   const prefix = opts.namePrefix ?? "test_";
   const name = `${prefix}${randomUUID().replace(/-/g, "").slice(0, 20)}`;
@@ -39,7 +97,16 @@ export async function createTestDatabase(opts: {
     for (const ext of opts.extensions ?? []) {
       await pool.query(`CREATE EXTENSION IF NOT EXISTS "${ext}"`);
     }
-    await runMigrations(db, opts.migrationsFolder);
+    if (opts.upTo) {
+      const truncated = truncatedMigrationsFolder(opts.migrationsFolder, opts.upTo);
+      try {
+        await runMigrations(db, truncated);
+      } finally {
+        rmSync(truncated, { recursive: true, force: true });
+      }
+    } else {
+      await runMigrations(db, opts.migrationsFolder);
+    }
   } catch (err) {
     await pool.end();
     await withAdmin((c) => c.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`));
@@ -49,6 +116,9 @@ export async function createTestDatabase(opts: {
     pool,
     db,
     url: url.toString(),
+    async migrate() {
+      await runMigrations(db, opts.migrationsFolder);
+    },
     async drop() {
       await pool.end();
       await withAdmin((c) => c.query(`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`));

@@ -132,7 +132,7 @@ describe.each([
   it("NoD send-jobs: lock and retry backoff come from the DB clock, no re-claim by a correct-clock replica, age backstop not tripped", async () => {
     await nodDb.pool.query("TRUNCATE TABLE send_jobs, deliveries, subscribers CASCADE");
     const { rows: subRows } = await nodDb.pool.query<{ id: string }>(
-      "INSERT INTO subscribers (email, manage_token, verified_at) VALUES ('skew@example.com', $1, now()) RETURNING id",
+      "INSERT INTO subscribers (email, manage_token, verified_at, status) VALUES ('skew@example.com', $1, now(), 'active') RETURNING id",
       [randomUUID()],
     );
     const { rows: jobRows } = await nodDb.pool.query<{ id: string }>(

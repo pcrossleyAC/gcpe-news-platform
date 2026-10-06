@@ -115,8 +115,16 @@ describe("selfHeal", () => {
 
     await expect(selfHeal({ newsApi, storage, site, test: false })).rejects.toThrow("disk full");
     // The fresh root has no post pages to resync, so the marker (written first) is the only
-    // resync-time write; K1's page (written before K2's failure) did land, but index.html must not have.
-    expect(writes).toEqual([".site-state.json", "releases/K1/index.html", "releases/K2/index.html"]);
+    // resync-time write; the subscribe test pages (Task 7) are written next, unconditionally;
+    // K1's page (written before K2's failure) did land, but index.html must not have.
+    expect(writes).toEqual([
+      ".site-state.json",
+      "subscribe/index.html",
+      "subscribe/manage/index.html",
+      "subscribe/unsubscribe/index.html",
+      "releases/K1/index.html",
+      "releases/K2/index.html",
+    ]);
     expect(await real.exists("index.html")).toBe(false);
     expect(await real.exists("releases/K1/index.html")).toBe(true);
   });
@@ -258,5 +266,31 @@ describe("selfHeal", () => {
     expect(order).toEqual(["start-selfHeal-home(ON, gated)", "end-selfHeal-home(ON)", "rebuild-home(OFF)"]);
     expect(await readFile(join(root, "releases", "K1", "index.html"), "utf8")).not.toContain("blue-bridge-banner");
     expect(JSON.parse((await storage.read(".site-state.json"))!)).toEqual({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
+  });
+
+  // Task 7: the subscribe/manage/unsubscribe test pages are cheap and stateless, so selfHeal
+  // writes them every start regardless of whether the bootstrap render itself ran.
+  const SUBSCRIBE_FILES = ["subscribe/index.html", "subscribe/manage/index.html", "subscribe/unsubscribe/index.html"];
+
+  it("writes the subscribe test pages on an empty storage (bootstrap render runs)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "self-heal-"));
+    made.push(root);
+    const storage = fsStorage(root);
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => null), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+
+    await selfHeal({ newsApi, storage, site, test: false });
+    for (const f of SUBSCRIBE_FILES) expect(await storage.exists(f)).toBe(true);
+  });
+
+  it("writes the subscribe test pages on a storage that already has index.html (bootstrap render skipped)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "self-heal-"));
+    made.push(root);
+    const storage = fsStorage(root);
+    await storage.write("index.html", "<!doctype html><html><body>home, pre-fix</body></html>");
+    const newsApi: NewsApiClient = { getPost: vi.fn(async () => null), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+
+    const result = await selfHeal({ newsApi, storage, site, test: false });
+    expect(result).toBeNull(); // index.html already existed — the bootstrap render was skipped
+    for (const f of SUBSCRIBE_FILES) expect(await storage.exists(f)).toBe(true);
   });
 });

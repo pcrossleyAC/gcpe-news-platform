@@ -15,8 +15,14 @@ export function problemNotFound(res: Response): void {
   res.status(404).set("Content-Type", "application/problem+json; charset=utf-8").send(JSON.stringify(body));
 }
 
+// RFC 8058 one-click unsubscribe (apps/news-api/src/http/v1/subscribe.ts): mail clients POST
+// this link straight from the inbox and never add a ?api-version= query, so it must be let
+// through unversioned rather than 400 with ApiVersionUnspecified.
+const ONE_CLICK_UNSUBSCRIBE_PATH = /^\/Subscribe\/OneClickUnsubscribe\//;
+
 export function requireApiVersion(): RequestHandler {
   return (req, res, next) => {
+    if (req.method === "POST" && ONE_CLICK_UNSUBSCRIBE_PATH.test(req.path)) return next();
     const raw = req.query["api-version"];
     const version = Array.isArray(raw) ? raw[0] : raw;
     if (version === undefined) {

@@ -13,6 +13,7 @@ import { hashPassword, mintLocalToken } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 
 import { createCoreTestDb, healthOrg } from "../../core/test/helpers";
+import { upsertOrganization } from "../../core/src/services/organizations";
 import { createNrmsTestDb, sampleCreate, seedTaxonomy } from "../../nrms/test/helpers";
 import { createNewsTestDb } from "../../news-api/test/helpers";
 import { createPublicSiteTestDb } from "../../public-site/test/helpers";
@@ -98,7 +99,16 @@ interface StackTestInstance {
  * `describe` that needs its *own* isolated instance (M7's combined-login-rate-limit test, M5's
  * startup-error test) calls this again rather than sharing the main one.
  */
-async function setupStack(opts: { fetchAdminToken?: boolean; staffWebDir?: string } = {}): Promise<StackTestInstance> {
+async function setupStack(opts: {
+  fetchAdminToken?: boolean;
+  staffWebDir?: string;
+  // Task 2 fix round 1: lets a test put one of the six fresh test databases into a specific
+  // state *before* startStack(env) runs its own startup work (including the fire-and-forget
+  // reference-data backfill) — e.g. an org written straight into Core's DB, bypassing the
+  // event system entirely, to prove the backfill (not the live CORE->NOD event route another
+  // test already covers) is what delivers it to NoD.
+  beforeStart?: (dbs: StackTestInstanceDbs) => Promise<void>;
+} = {}): Promise<StackTestInstance> {
   const fetchAdminToken = opts.fetchAdminToken ?? true;
 
   const dbResults = await Promise.allSettled([
@@ -173,6 +183,8 @@ async function setupStack(opts: { fetchAdminToken?: boolean; staffWebDir?: strin
   // Task 1 (staff-web): unset leaves the real default (apps/staff-web/dist, almost certainly
   // not built in this test run) in place, so most instances see the 503 "not built" path.
   if (opts.staffWebDir !== undefined) env.STAFF_WEB_DIR = opts.staffWebDir;
+
+  if (opts.beforeStart) await opts.beforeStart(dbs);
 
   const handle = await startStack(env);
   if (handle.port !== port) throw new Error(`expected startStack to keep the requested port ${port}, got ${handle.port}`);
@@ -703,6 +715,28 @@ describe("apps/stack", () => {
     expect(body.ministries).toContainEqual({ key: "health", name: "Health", abbreviation: "HLTH" });
   });
 
+  // Task 2 (Phase 4a): NoD's `lists` mirror Core's taxonomy events over the same CORE->NOD
+  // route NRMS already uses for its own copy (see the test just above). The Subscribe API's
+  // own SubscriptionItems/ministries route isn't wired until Task 6 — this asserts the mirror
+  // directly against NoD's database instead.
+  it("a ministry saved in Core shows up in NoD's lists after a tick", async () => {
+    const putRes = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
+      body: JSON.stringify(healthOrg),
+    });
+    expect(putRes.status).toBe(200);
+
+    const tickRes = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+    expect(tickRes.status).toBe(200);
+
+    const rows = await instance.dbs.nod.pool.query<{ list_key: string; name: string }>(
+      "SELECT list_key, name FROM lists WHERE category = 'ministries' AND key = $1",
+      [healthOrg.key],
+    );
+    expect(rows.rows).toEqual([{ list_key: `ministries:${healthOrg.key}`, name: healthOrg.displayName }]);
+  });
+
   it("Phase 2 exit check: a release created through /nrms/api reaches a static page and an email, driven only by /stack/tick", async () => {
     const admin = { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` };
     // NRMS validates ministries and sectors against its copy of Core's taxonomy and takes the
@@ -760,6 +794,88 @@ describe("apps/stack", () => {
     expect(mail).toBeDefined();
     const toAddress = mail!.to && "value" in mail!.to ? mail!.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");
+  });
+});
+
+// Task 2 (Phase 4a) fix round 1: the shared instance above only proves the live CORE->NOD
+// event route (it PUTs a ministry *after* startup, through Core's own API, which enqueues and
+// delivers the event the ordinary way). These two tests exercise the backfill itself — the
+// fire-and-forget block in stack.ts that runs once at startup — by writing straight into a
+// fresh database before startStack() ever runs, bypassing the event system entirely, so the
+// only way the data could reach NoD is through the backfill.
+describe("apps/stack: reference-data backfill (Task 2 fix round 1)", () => {
+  // A second ministry, distinct from the shared instance's `healthOrg`, so a leftover row from
+  // another test can never be mistaken for one this test produced.
+  const financeOrg = { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "FIN", sectorKeys: ["finance"] };
+
+  it("a NoD with no lists yet gets Core's existing organization once, from the backfill alone", async () => {
+    const stack = await setupStack({
+      fetchAdminToken: false,
+      // Writes the org straight into Core's table with no subscribers (so enqueueOrganization
+      // enqueues no outbox delivery for it) — Core "already has data" the moment the stack
+      // starts, exactly the first-deploy/fresh-database scenario the backfill exists for.
+      beforeStart: async (dbs) => {
+        await upsertOrganization(dbs.core.db, financeOrg, []);
+      },
+    });
+    try {
+      const nodHasFinance = async (): Promise<boolean> => {
+        // The backfill enqueues the republished event asynchronously (fire-and-forget) and it
+        // only reaches NoD on a dispatch tick, so poll both together until it lands.
+        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` } });
+        const rows = await stack.dbs.nod.pool.query<{ list_key: string; name: string }>(
+          "SELECT list_key, name FROM lists WHERE list_key = $1",
+          [`ministries:${financeOrg.key}`],
+        );
+        return rows.rows.length > 0;
+      };
+      await expect.poll(nodHasFinance, { timeout: 5000 }).toBe(true);
+    } finally {
+      await stack.close();
+    }
+  });
+
+  it("a NoD that already has a ministry list is left alone — the backfill never calls republish", async () => {
+    const logSpy = vi.spyOn(console, "log");
+    const stack = await setupStack({
+      fetchAdminToken: false,
+      beforeStart: async (dbs) => {
+        // NoD already has a ministry list (from some other source — doesn't matter which),
+        // so needsReferenceData() is false and the backfill must skip republish entirely.
+        await dbs.nod.pool.query(
+          "INSERT INTO lists (list_key, category, key, name) VALUES ('ministries:placeholder', 'ministries', 'placeholder', 'Placeholder')",
+        );
+        // Core also already has an org — written the same way as the test above, bypassing
+        // the event system — so the only way it could ever reach NoD is through republish.
+        await upsertOrganization(dbs.core.db, financeOrg, []);
+      },
+    });
+    try {
+      // The backfill's whole decision (one DB read, then either nothing or one more DB
+      // write) happens well before this; the wait plus a tick just gives it generous room to
+      // have finished either way before asserting its absence.
+      await new Promise((r) => setTimeout(r, 300));
+      await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` } });
+
+      const backfillLogs = logSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("Core republished"));
+      expect(backfillLogs).toEqual([]);
+
+      // Independent confirmation at the source: republishAll re-enqueues org.upserted (bumping
+      // the aggregate to sequence 2); if republish was never called, Core's own outbox still
+      // holds only the original seed's sequence 1.
+      const outbox = await stack.dbs.core.pool.query<{ sequence: number }>(
+        "SELECT sequence FROM outbox_events WHERE aggregate_id = $1 ORDER BY sequence",
+        [`org:${financeOrg.key}`],
+      );
+      expect(outbox.rows.map((r) => r.sequence)).toEqual([1]);
+
+      // And NoD, correspondingly, never received it.
+      const rows = await stack.dbs.nod.pool.query<{ list_key: string }>("SELECT list_key FROM lists WHERE list_key = $1", [`ministries:${financeOrg.key}`]);
+      expect(rows.rows).toEqual([]);
+    } finally {
+      logSpy.mockRestore();
+      await stack.close();
+    }
   });
 });
 
