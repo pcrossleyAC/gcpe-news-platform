@@ -13,10 +13,19 @@ import {
   tick,
   uniqueHeadline,
   waitForMessageTo,
+  type SentMessage,
 } from "./playwright-support";
 
 const linkIn = (text: string | null) => text!.match(/https?:\/\/\S+\/subscribe\/manage\/\?token=[A-Za-z0-9_-]+/)![0];
 const toBaseUrl = (url: string) => url.replace(/^https?:\/\/[^/]+/, baseUrl());
+
+/** Every sent message with this exact subject addressed to `email` -- same filter
+ * `nod-sending.spec.ts`'s `messagesWithSubject` uses, scoped to the recipient too, so "exactly
+ * one email reached this member" is actually asserted rather than just "at least one" (which is
+ * all `waitForMessageTo`'s return value proves on its own). */
+async function messagesWithSubjectTo(subject: string, email: string): Promise<SentMessage[]> {
+  return (await fetchSentMessages()).filter((m) => m.subject === subject && m.to.includes(email));
+}
 
 interface MediaListSummary {
   listKey: string;
@@ -110,6 +119,7 @@ test.describe("items 6-8: media lists end to end", () => {
     const mail = await waitForMessageTo(subject, memberA);
     expect(mail.to).toEqual([memberA]);
     expect(mail.text).toContain("Clinics will open on weekends starting in November");
+    expect(await messagesWithSubjectTo(subject, memberA)).toHaveLength(1);
 
     // The footer's manage link and RFC 8058 one-click unsubscribe, exactly as every other
     // subscriber email (global constraints, "Media emails": "no media branch for links").
@@ -131,10 +141,10 @@ test.describe("items 6-8: media lists end to end", () => {
     await createApprovedAndPublished(editorCookie, { headline: headline2, mediaListKeys: [LIST_KEY] });
     const subject2 = `BC Gov News - ${headline2}`;
     await waitForMessageTo(subject2, memberB);
+    expect(await messagesWithSubjectTo(subject2, memberB)).toHaveLength(1);
 
     // The opted-out member gets nothing further, media or public, from this list.
-    const stillNothing = (await fetchSentMessages()).filter((m) => m.subject === subject2 && m.to.includes(memberA));
-    expect(stillNothing).toHaveLength(0);
+    expect(await messagesWithSubjectTo(subject2, memberA)).toHaveLength(0);
 
     // An advisory: the bare title as subject (never "BC Gov News - ..."), and no "Read more:"
     // link (global constraints, "Media emails": omitted for advisories).
@@ -150,6 +160,7 @@ test.describe("items 6-8: media lists end to end", () => {
     const advisoryMail = await waitForMessageTo(advisoryHeadline, memberB);
     expect(advisoryMail.subject).toBe(advisoryHeadline);
     expect(advisoryMail.text).not.toContain("Read more:");
+    expect(await messagesWithSubjectTo(advisoryHeadline, memberB)).toHaveLength(1);
   });
 
   test("adding a member from the fake Media Hub, syncing an email change and a deletion, and the legacy membership endpoint", async () => {
