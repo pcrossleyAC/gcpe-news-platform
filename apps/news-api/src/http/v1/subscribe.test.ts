@@ -18,6 +18,8 @@ describe("Subscribe proxy", () => {
       seen.push({ method: req.method, url: req.originalUrl, auth: req.header("authorization"), contentType: req.header("content-type"), body: req.body });
       if (req.path.endsWith("/CheckEmailActivationToken/bad")) return void res.status(404).json({ message: "nope" });
       if (req.path.endsWith("/OneClickUnsubscribe/plain-text-token")) return void res.type("text/plain").send("unsubscribed");
+      if (req.path.endsWith("/OneClickUnsubscribe/html-token")) return void res.type("html").send("<script>evil()</script>");
+      if (req.path.endsWith("/OneClickUnsubscribe/json-charset-token")) return void res.set("content-type", "application/json; charset=utf-8").send(JSON.stringify(true));
       res.json(true);
     });
     nod = await new Promise<Server>((r) => {
@@ -74,6 +76,26 @@ describe("Subscribe proxy", () => {
     expect(res.status).toBe(200);
     expect(res.header["content-type"]).toMatch(/^text\/plain/);
     expect(res.text).toBe("unsubscribed");
+  });
+
+  // Fix round 1 finding: this proxy sits on a public, unauthenticated, token-bearing route, so
+  // an upstream text/html response must never be served as HTML from the News API origin.
+  it("downgrades an upstream text/html response to text/plain and sets X-Content-Type-Options: nosniff", async () => {
+    const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 100 });
+    const res = await request(a).post("/api/Subscribe/OneClickUnsubscribe/html-token").type("form").send("List-Unsubscribe=One-Click");
+    expect(res.status).toBe(200);
+    expect(res.header["content-type"]).toMatch(/^text\/plain/);
+    expect(res.header["x-content-type-options"]).toBe("nosniff");
+    expect(res.text).toBe("<script>evil()</script>");
+  });
+
+  it("passes an upstream application/json; charset=utf-8 response through unchanged", async () => {
+    const a = app({ baseUrl: nodUrl, rateLimitPerMinute: 100 });
+    const res = await request(a).post("/api/Subscribe/OneClickUnsubscribe/json-charset-token").type("form").send("List-Unsubscribe=One-Click");
+    expect(res.status).toBe(200);
+    expect(res.header["content-type"]).toBe("application/json; charset=utf-8");
+    expect(res.header["x-content-type-options"]).toBe("nosniff");
+    expect(res.body).toBe(true);
   });
 
   // One-click POSTs arrive from a small pool of shared mail-provider sending IPs, so they get

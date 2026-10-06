@@ -26,6 +26,14 @@ export interface SubscribeProxyOptions {
 
 const ONE_CLICK_RATE_LIMIT_PER_MIN_DEFAULT = 6000;
 
+// Allow-listed response content-types: this proxy sits on the public, unauthenticated,
+// token-bearing one-click route, so an upstream response of e.g. text/html must never be
+// served as HTML from the News API origin. Only these two media types (the ones NoD and the
+// upstream subscribe API actually use) pass through with their original header, including
+// any charset; anything else — or no content-type at all — is downgraded to text/plain so a
+// browser can't be tricked into rendering it.
+const PASSTHROUGH_MEDIA_TYPES = new Set(["application/json", "text/plain"]);
+
 const ROUTES: [method: "get" | "post", path: string][] = [
   ["get", "/Subscribe/SubscriptionItems/:categoryKey"],
   ["post", "/Subscribe/CreateNewsOnDemandEmailSubscriptionWithPreferences"],
@@ -74,10 +82,10 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
     return ipKeyGenerator(ip);
   };
 
-  // Shared forwarding: token, 15s timeout, status and content-type passthrough (never forced
-  // to application/json — RFC 8058 unsubscribe confirmations and NoD's other responses carry
-  // whatever content-type they choose), and the 502 log line. The log line never includes the
-  // upstream URL: for the one-click route, the path segment IS the subscriber's token.
+  // Shared forwarding: token, 15s timeout, status and (allow-listed) content-type
+  // passthrough, X-Content-Type-Options: nosniff, and the 502 log line. The log line never
+  // includes the upstream URL: for the one-click route, the path segment IS the subscriber's
+  // token.
   async function forward(req: Request, res: Response, upstreamPath: string, init: { method: string; headers: Record<string, string>; body?: string }) {
     try {
       const headers = { ...init.headers };
@@ -90,8 +98,10 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
       });
       const text = await upstream.text();
       res.status(upstream.status);
-      const type = upstream.headers.get("content-type");
-      if (type) res.set("content-type", type);
+      res.set("X-Content-Type-Options", "nosniff");
+      const type = upstream.headers.get("content-type") ?? "";
+      const mediaType = type.split(";")[0]?.trim().toLowerCase();
+      res.set("content-type", mediaType && PASSTHROUGH_MEDIA_TYPES.has(mediaType) ? type : "text/plain; charset=utf-8");
       res.send(text);
     } catch (e) {
       console.error("[news-api] subscribe proxy failed", e);
