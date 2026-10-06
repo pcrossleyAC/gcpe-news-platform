@@ -8,7 +8,7 @@
 - **NRMS:** gains a small media-list admin API and emits `media_list.*` events (outbox). NoD mirrors them into `lists` under the existing `media-distribution-lists` category.
 - **Membership model:** a member is a subscription row on the shared, email-unique `subscribers` table. Media memberships are invisible to the public Subscribe journeys and survive them.
 - **Media Hub:** a contract client in NoD talks to Media Hub's (future) service API. A fake package implements that contract on the stack and in tests. A nightly sync reconciles members from the change feed.
-- **Media sends:** a new `media` send kind on 4b's sending model. One email per recipient, priority `media`. The full text comes from NRMS in the release event. There is no manage or unsubscribe link (legacy parity).
+- **Media sends:** a new `media` send kind on 4b's sending model. One email per recipient, priority `media`. The full text comes from NRMS in the release event. No banner (legacy look), but the standard footer and one-click unsubscribe (Paul's decision, 2026-10-06; C63).
 
 **Tech Stack:** Node 24, TypeScript, Express 5, Drizzle ORM + drizzle-kit, Postgres, zod, Vitest, Playwright.
 
@@ -49,21 +49,26 @@
   - A member is a `subscriptions` row whose list key is in the `media-distribution-lists` category, on the email-unique `subscribers` row for that address.
   - Adding a member never sends a verification email (C51) and never changes the subscriber's public timing flags.
   - Staff-added media subscribers are `active` at once.
-- **Public journeys never touch media memberships:**
-  - `infoFor` omits them.
+- **The public manage page never shows or changes media memberships:**
+  - `infoFor` omits them. The real webapp doesn't know the category.
   - `update()` replaces only non-media subscriptions.
-  - Public unsubscribe (link or one-click) of a subscriber who has media memberships ends their public subscriptions, clears `as_it_happens`/`digest` and writes history. It keeps the media memberships and the subscriber `active`.
+- **Unsubscribe means everything (opt-out):**
+  - An unsubscribe by link or one-click, from any email, ends the subscriber as 4a does (`status 'deleted'`, `ended_at`). It also deletes their media subscriptions, writing history `media-list-opted-out` (detail: the list key) for each.
+  - Staff can see who left each list.
+  - Staff re-adding an opted-out person needs an explicit `confirmOptOut: true`, else 409 `{ error: "opted-out", at }`.
+  - The nightly sync never re-adds anyone.
 - **Media emails (legacy `NodTask.cs`):**
   - **Subject:** `BC Gov News - <title>`; for an advisory (`postKind = 'advisories'`), just `<title>`. Never empty: fall back to the item key. Keep 4b's subject sanitising (998 UTF-16 units, no split surrogate pair).
   - **Body layout:**
-    - no banner and no footer;
+    - no banner (legacy media look);
     - BC Sans font stack at 18px;
     - the full text as paragraphs;
     - then "▶ READ MORE" (bold blue link to the release), omitted for advisories;
-    - then the grey topic line, alphabetical, excluding media lists.
+    - then the grey topic line, alphabetical, excluding media lists;
+    - then 4b's standard footer: the two-cell bar ("Manage your subscription" → `{{manageUrl}}`, "See more from BC Gov News"), "Please do not respond to this message", and the "Unsubscribe" link → `{{unsubscribeUrl}}`.
   - **Advisory reminder:** in an advisory whose text has the line `MEDIA ADVISORY - EVENT REMINDER`, drop the lines that follow it up to the next blank line.
   - **Priority:** `media`. One recipient per Distribution message.
-  - **No links:** no `{{manageUrl}}`, no `{{unsubscribeUrl}}`, no `List-Unsubscribe` header (C63).
+  - **Links:** per-recipient `{{manageUrl}}`/`{{unsubscribeUrl}}` and the `List-Unsubscribe` + `List-Unsubscribe-Post` headers, exactly as 4b's other subscriber emails (C63). The sender needs no media branch for links.
 - **One copy per person per release:**
   - At most one `media` delivery per (item, subscriber), enforced by the deliveries primary key.
   - A subscriber who gets the media version of a release does not also get it As-It-Happens (legacy `NodTask.cs:230`).
@@ -86,7 +91,7 @@
 
 ## Review Focus
 
-1. **A journalist who is also a public subscriber** clicks "Unsubscribe" in an As-It-Happens email. Their public lists end, but they stay on the media lists and keep getting media releases. Pinned in Task 2 ("public unsubscribe keeps media memberships").
+1. **A journalist one-click unsubscribes from a media email.** They get nothing further, public or media, and their media lists record the opt-out. A staff member who tries to re-add them is told they opted out and must confirm. Pinned in Task 2 ("unsubscribe is an opt-out from media lists too").
 2. **A release goes to a media list and also matches that journalist's public As-It-Happens topics.** They get one email, the full-text media version. Pinned in Task 5 ("media member gets one copy").
 3. **A Media Hub contact's chosen workplace email changes to an address that already belongs to another NoD subscriber.** The member is flagged "needs attention" and nothing is merged or lost. Pinned in Task 4 ("email change collides").
 4. **The nightly sync runs twice, or the stack ticks twice in the same minute.** One sync, the cursor advances once, no double history rows. Pinned in Task 4 ("concurrent syncs").
@@ -189,6 +194,7 @@ Rules:
   - A deactivated media list keeps its members but sends nothing (Task 5 checks `lists.active`).
 - **Add member** (in a transaction):
   - Lowercase the email. Find the subscriber by email, or insert one: `status 'active'`, the given `source`, `as_it_happens false`, `digest false`, `media_hub_contact_id`/`media_hub_email_ref` as given, and a new unsubscribe token as 4a's create path makes one.
+  - **Opted out:** a found subscriber with `status 'deleted'` whose most recent `unsubscribed` history row is newer than their last `media-list-added` row needs `confirmOptOut: true`. Otherwise throw `OptedOutError(at)` → 409 `{ error: "opted-out", at }`. The route body accepts `confirmOptOut`.
   - If found: set `status 'active'` when it was `pending`/`deleted`/`disabled`. Set `media_hub_contact_id`/`media_hub_email_ref` when given. Leave `source`, timing flags and public subscriptions unchanged. Clear `ended_at`.
   - Insert the subscription `ON CONFLICT DO NOTHING`.
   - Write `subscriber_history` (`actor`, action `media-list-added`, detail the list key).
@@ -199,7 +205,7 @@ Rules:
 - **Public journeys (4a carry-forward):**
   - `infoFor` skips list keys in the media category.
   - `update()` replaces only non-media subscriptions. Change `replaceSubscriptions` to delete `WHERE subscriber_id = $1 AND list_key NOT LIKE 'media-distribution-lists:%'`.
-  - `unsubscribe()`/`endSubscriber()`: if `hasMediaMemberships`, delete non-media subscriptions and set `as_it_happens = false, digest = false`. Keep `status` and `ended_at` unchanged, write history `unsubscribed-public-only`, and return the same success. Otherwise the existing behaviour stands.
+  - `unsubscribe()`/`endSubscriber()` keep 4a's behaviour (`deleted`, `ended_at`, history `unsubscribed`). In the same transaction they also delete the subscriber's media subscriptions, writing history `media-list-opted-out` (detail: list key) for each. One-click, link and every email kind share this path.
   - Change-email (4a) moves media memberships with the subscriber row as today. It's one row, so nothing to change; pin it with a test.
 
 - [ ] **Step 1: Write the failing tests**
@@ -212,7 +218,10 @@ Rules:
     - adding twice is idempotent (`created: false`, one subscription);
     - remove the last membership of a `manual-media` subscriber → `deleted`;
     - remove from a self subscriber → only the subscription goes.
-  - `journeys.test.ts` (**public unsubscribe keeps media memberships**): a self subscriber with `ministries:health` and a media membership unsubscribes by token → status `active`, timing flags false, only the media subscription left, history `unsubscribed-public-only`.
+  - `journeys.test.ts` (**unsubscribe is an opt-out from media lists too**):
+    - a subscriber with `ministries:health` and a media membership unsubscribes by one-click token → `deleted`, no media subscription left, one `media-list-opted-out` history row;
+    - `listMediaMembers` no longer lists them;
+    - `addMediaMember` for them without `confirmOptOut` → `OptedOutError`; with it → active member again.
   - `journeys.test.ts`: `update()` with new public prefs keeps the media subscription.
   - `journeys.test.ts`: `infoFor` omits the media key.
   - `routes.test.ts`: 401/403 checks and response shapes for the four routes; 404 for an unknown media list.
@@ -372,18 +381,16 @@ Rules:
     - if there are no recipients, delete the job and return false.
   - `app.ts` `onPublished` becomes `createMediaSend` then `createItemSend(…, "as_it_happens")` in the same transaction.
   - `createItemSend("as_it_happens")` also excludes subscribers with a `media` delivery for the item.
-  - Sender, for `kind = 'media'` jobs:
-    - no `recipientSubstitutions` call, no per-recipient substitutions, and no `List-Unsubscribe`/`List-Unsubscribe-Post` headers;
-    - withdrawn-item cancellation works as for item jobs (it has `item_key`).
+  - Sender, for `kind = 'media'` jobs: nothing special beyond priority `media`. Links, headers and withdrawn-item cancellation work as for item jobs (it has `item_key`).
   - **Byte-size probe fix** (4c carry-forward): `partitionChunkByBytes` probes with placeholder substitutions as long as the real ones.
-    - For jobs that use links: `{ manageUrl: "x".repeat(MANAGE_URL_LEN), unsubscribeUrl: "x".repeat(UNSUBSCRIBE_URL_LEN) }`, with the lengths computed from the actual `RecipientLinkOptions` and fixed token lengths.
-    - For media jobs: `{}`.
+    - Probe with `{ manageUrl: "x".repeat(MANAGE_URL_LEN), unsubscribeUrl: "x".repeat(UNSUBSCRIBE_URL_LEN) }`, with the lengths computed from the actual `RecipientLinkOptions` and fixed token lengths.
+    - This matters most for media jobs, whose full text makes each request large.
 
 - [ ] **Step 1: Write the failing tests**
   - `catalogue` test: a record without `mediaText` parses with `null`.
   - NRMS publisher test: with `toMediaLists` the event's `mediaText` equals `renderText(...)` for that release; without it, null.
   - `render.test.ts` (`renderMedia`):
-    - no banner, no footer, no `{{manageUrl}}`/`{{unsubscribeUrl}}`;
+    - no banner; the standard footer with `{{manageUrl}}` and `{{unsubscribeUrl}}` exactly once each;
     - full text paragraphs;
     - READ MORE present for a release, absent for an advisory;
     - advisory subject is the bare title, release subject `BC Gov News - <title>`;
@@ -400,7 +407,7 @@ Rules:
     - withdraw → the pending media job is removed;
     - republish → a fresh job that skips already-attempted recipients.
   - `send-jobs.test.ts`:
-    - a media job's request has priority `media`, no `List-Unsubscribe` header, empty substitutions, and makes no `subscriber_links` rows;
+    - a media job's request has priority `media`, the `List-Unsubscribe: <{{unsubscribeUrl}}>` header, and per-recipient substitutions;
     - the byte probe with real link lengths splits a part that the old empty-substitution probe would have kept whole (construct html near `maxChunkBytes`).
 - [ ] **Step 2: Run; expect FAIL.**
 - [ ] **Step 3: Implement.**
@@ -445,7 +452,7 @@ Rules:
 - `IsAllNews` is true when the subscriber has `*`. `IsAsItHappens`/`IsDailyDigest` come from the timing flags. `IsAdminRegistration` is true when `source` is not `self`.
 - **Unknown email** → 200 with `SubscribedCategories: {}` and all flags false. Media Hub reads `data.SubscribedCategories || {}` and shows "no lists".
 - The endpoint never logs the email address.
-- `media-subscription-services` exists in legacy Media Hub reads but not in NoD. It is omitted; Media Hub defaults it to `[]` (Q30).
+- `media-subscription-services` exists in legacy Media Hub reads but not in NoD. It is omitted; Media Hub defaults it to `[]` (Q29).
 
 - [ ] **Step 1: Write the failing tests** (`membership.test.ts`)
   - Correct credentials + a member of `media-distribution-lists:001-a-daily` and `tags:x` → 200 with both categories and PascalCase keys.
@@ -503,7 +510,7 @@ Rules:
    - `POST /nrms/api/media-lists` creates `"0e2-a-e2e-desk"`; tick until NoD has `media-distribution-lists:0e2-a-e2e-desk`.
    - Add a manual member through `POST /nod/api/media-lists/0e2-a-e2e-desk/members`.
    - Publish a release with `toMediaLists` and that list, then tick.
-   - Exactly one email `BC Gov News - <headline>` to the member. Its text contains the release body. It has no `list-unsubscribe` header and no `/subscribe/manage/` link.
+   - Exactly one email `BC Gov News - <headline>` to the member. Its text contains the release body. It has the `list-unsubscribe` header and a `/subscribe/manage/` link. One-click POST to that header → a later media release to the same list doesn't reach them, and the staff member list no longer shows them.
    - Repeat with an advisory: the subject is the bare title and there's no READ MORE.
 2. **Media Hub member and sync:**
    - Add a member from the fake: search `GET /nod/api/media-hub/contacts?q=…`, then add with a workplace ref.
@@ -513,13 +520,12 @@ Rules:
 
 **Docs:**
 - **`changes-from-legacy.md`** (after the last C row):
-  - **C63:** media-list emails carry no manage or unsubscribe link and no `List-Unsubscribe` header, as in legacy. Journalists ask staff to be removed.
-  - **C64:** a public unsubscribe by someone also on media lists ends only their public subscriptions. Legacy deleted the whole subscriber.
+  - **C63:** media-list emails carry the standard footer (manage link, unsubscribe link) and one-click `List-Unsubscribe`. Legacy media emails had none; journalists had to ask staff.
+  - **C64:** an unsubscribe also records each media list the person leaves ("opted out"), and staff must confirm before re-adding them. Legacy deleted the subscriber silently, and staff could re-add without warning.
   - **C65:** the Media Hub contract gives each email a stable `ref`, so the sync can tell "changed" from "gone".
   - **C66:** NRMS holds media list names and keys with an admin API and events. Legacy keys were hand-matched in the Hub (extends C47).
 - **`open-questions.md`:**
-  - **Q29:** may media-list emails go out without one-click unsubscribe under Gmail/Yahoo bulk-sender rules and CASL? Working assumption: they're requested press distribution, as legacy treated them.
-  - **Q30:** does `media-subscription-services` exist in legacy NoD? Is it needed?
+  - **Q29:** does `media-subscription-services` exist in legacy NoD? Is it needed?
   - Close **Q27**: the path is pinned as `Subscribe/SubscriberInformation?emailAddress=`, served at `/nod/Subscribe/…` on the stack. Media Hub's `NOD_API_URL` must be set to that.
 - **Running notes, Phase 4:**
   - **Editor:** media lists and their members, how media emails look, "needs attention".
@@ -550,7 +556,7 @@ Rules:
   - Carry-forward 4c (`infoFor`, `update`, public unsubscribe, `upsertList` reactivation, byte probe): Tasks 2 and 5.
 - **Rulings:**
   - **Shared subscriber row.** The spec says a member "is a subscriber with source media-hub/manual-media", but `subscribers.email` is unique, so a journalist who also self-subscribed is one row. `source` records who created the row. Membership is the media subscription. *Cost if wrong:* a separate members table later — Tasks 2 and 4 only.
-  - **No unsubscribe in media emails** (C63, Q29). This is legacy parity and matches the real media-list sample (`docs/parity/samples/media-list-as-it-happens-2026-09-21.md`). *Cost if wrong:* add the header later. Task 5's sender branch is the one place.
+  - **Media emails get the standard footer and one-click unsubscribe** (Paul, 2026-10-06; C63), unlike legacy. Unsubscribe is one opt-out from everything, media included, recorded per list. Staff need explicit confirmation to re-add (C64). The public manage page still hides media lists, because the real webapp doesn't know the category. *Cost if wrong:* a journalist who wanted to drop only public topics also leaves media lists. Staff can re-add them with confirmation.
   - **Media version replaces As-It-Happens** for the same release and person (legacy `NodTask.cs:230`). *Cost if wrong:* that person gets both.
   - **Advisory reminder rule** follows the legacy code: it keeps the `MEDIA ADVISORY - EVENT REMINDER` line and drops the headline after it. The spec's wording ("is stripped") is loose; the code is the authority for parity. *Cost if wrong:* one line differs.
   - **`mediaText` in the release event,** filled by NRMS only for media releases, because NoD can't run NRMS's `renderText` on a `ReleaseView`. Legacy did the same (Hub pushed `TextContent` only for media). *Cost if wrong:* a larger event for media releases.
