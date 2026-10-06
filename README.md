@@ -133,6 +133,7 @@ Only `/api/*`, `/updates` (+ `/updates/negotiate`) and `/health/*` belong on the
 | `NOD_CLIENT_SECRET` | no | | Client secret for the client-credentials grant |
 | `NOD_SCOPE` | no | | OAuth2 scope requested for the client-credentials grant |
 | `SUBSCRIBE_RATE_LIMIT_PER_MIN` | no | `300` | Per-client rate limit applied to the `/api/Subscribe/*` proxy |
+| `ONE_CLICK_RATE_LIMIT_PER_MIN` | no | `6000` | Per-IP rate limit applied to one-click unsubscribe POSTs (`/api/Subscribe/OneClickUnsubscribe/*`), its own bucket separate from `SUBSCRIBE_RATE_LIMIT_PER_MIN` — mail providers POST these from shared IPs |
 | `SUBSCRIBE_CLIENT_IP_HEADER` | no | | Request header (e.g. `x-client-ip`) carrying the end user's IP, set by `gcpe-news-webapp`; when set, the subscribe rate limit is keyed on it instead of the caller's IP (falls back to the caller's IP when the header is missing or not an IP). See below |
 | `UPDATES_NEGOTIATE_RATE_LIMIT_PER_MIN` | no | `120` | Per-IP rate limit on `POST /updates/negotiate` (429 past it) |
 | `UPDATES_MAX_CONNECTIONS` | no | `5000` | Cap on open `/updates` WebSockets; negotiate returns 503 at the cap. Outstanding negotiate tokens are capped at 10,000, oldest evicted first |
@@ -211,7 +212,7 @@ Subscriptions API plus "As-It-Happens" email delivery: on `release.published` it
 ```bash
 createdb nod_dev
 DATABASE_URL=postgres://localhost:5432/nod_dev EVENT_SECRETS='{"nrms":"dev"}' \
-DISTRIBUTION_URL=http://localhost:3005 PUBLIC_SITE_URL=http://localhost:3003 MANAGE_URL=http://localhost:3004/manage \
+DISTRIBUTION_URL=http://localhost:3005 PUBLIC_SITE_URL=http://localhost:3003 \
 LINK_SECRET=<32+ char secret> \
 LOCAL_ADMIN_ENABLED=true LOCAL_ADMIN_PASSWORD_HASH=<hash> LOCAL_AUTH_SECRET=<32+ char secret> \
 npm --workspace @gcpe/nod run dev
@@ -231,10 +232,13 @@ npm --workspace @gcpe/nod run dev
 | `DISTRIBUTION_SCOPE` | no* | | OAuth2 scope requested for the client-credentials grant |
 | `DISTRIBUTION_TIMEOUT_MS` | no | `30000` | Per-chunk request timeout against Distribution; also sizes the send-jobs claim lock |
 | `PUBLIC_SITE_URL` | yes | | Embedded in As-It-Happens emails as the link back to the public site |
-| `MANAGE_URL` | yes | | Embedded in As-It-Happens emails as the subscription-management link |
+| `BANNER_URL` | no | | Full URL of the "Government of B.C. / News on Demand" banner image shown in every outbound email's shell; unset shows a plain blue text heading instead (set as `NOD_BANNER_URL` on the deployed stack, which strips the `NOD_` prefix before this schema sees it) |
 | `LINK_SECRET` | yes | | HMAC key (32+ chars) for unsubscribe tokens (the stack derives it from `STACK_EVENT_SECRET`) |
+| `OPS_EMAIL` | no | | Operator inbox emailed whenever sending is paused or resumed (set as `NOD_OPS_EMAIL` on the deployed stack, which strips the `NOD_` prefix before this schema sees it) |
 | `SUBSCRIBE_PAGE_URL` | no | `${PUBLIC_SITE_URL}/subscribe/manage/` | The page emailed verify/manage links open |
+| `SUBSCRIBE_API_URL` | no | `PUBLIC_SITE_URL`'s origin + `/api/Subscribe` | Base URL of the public Subscribe API, carrying the one-click unsubscribe path |
 | `MIGRATIONS_FOLDER` | no | `apps/nod/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/nod/migrations` |
+| `TENANT_CONFIG` | no | `config/tenants/bc.json` (resolved next to the bundle) | Tenant config path, see `packages/config` — its time zone decides the digest's 17:00 BC-local cutoff |
 
 \* All four `DISTRIBUTION_*` Entra fields must be set together, or none of them — see "NoD's token selection" below.
 

@@ -1,142 +1,141 @@
-import { sql } from "drizzle-orm";
-import type { Tx } from "@gcpe/db-kit";
-import { escapeHtml } from "@gcpe/http-kit";
-import { indexKeysFor, type EventHandler, type ReleaseRecord } from "@gcpe/events";
-import { sendJobs } from "./db/schema";
-
-const ENGLISH_LANGUAGE_ID = 4105;
-
-/**
- * Distribution (Task 7) substitutes `{{name}}` placeholders in a single pass over the final
- * html/text, after this module has done its own escaping — so an escaped "{{manageUrl}}"
- * sitting in release text would still read as a live placeholder to Distribution's regex.
- * Breaking up every pair of adjacent braces stops that match, while the one REAL
- * `{{manageUrl}}` — the footer link below — is untouched.
- *
- * P2-R25 item 2: *every* `{` next to another `{` is broken up — not each `{{` match once, which
- * let `{{{manageUrl}}` through as `{ {{manageUrl}}` — so the output never contains `{{` at all,
- * and running it again changes nothing (idempotent). In html, each `{` that follows a `{`
- * becomes the entity `&#123;` (renders identically); in text, each `{` followed by a `{` gets a
- * space after it. Exported for tests.
- */
-export const neutralizeHtml = (s: string): string => escapeHtml(s).replace(/(?<=\{)\{/g, "&#123;");
-export const neutralizeText = (s: string): string => s.replace(/\{(?=\{)/g, "{ ");
-
-// I4/R2 fix: Distribution rejects (400, terminal) a subject containing CR/LF or longer than
-// 998 characters (apps/distribution/src/messages.ts's `z.string().max(998)`, which — like
-// every JS/zod string length check — counts UTF-16 *code units*, not Unicode code points) —
-// and a raw headline can be either (a release imported with embedded newlines, or simply a
-// very long one, including one made of astral-plane characters that are 2 units each). A
-// terminal 400 at that layer means nobody gets mailed, so the subject is sanitised here,
-// before it ever reaches Distribution.
-const MAX_SUBJECT_UTF16_UNITS = 998;
-
-/**
- * Truncates `s` to at most `maxUnits` UTF-16 code units (matching how Distribution's own
- * `z.string().max(998)` measures length), appending "…" when truncation actually happens —
- * without ever splitting a surrogate pair. `string.slice(0, n)` counts units already (unlike
- * `Array.from`, which counts code points — the wrong measure here, since a 600-character
- * string of astral emoji is 600 code points but 1200 UTF-16 units, well over the real limit).
- * The one hazard `slice` alone doesn't guard against: landing exactly between a surrogate
- * pair's two halves, which would store a dangling lone high surrogate — checked for and, if
- * so, the whole pair is dropped instead of just its first half.
- */
-function truncateByUtf16Units(s: string, maxUnits: number): string {
-  if (s.length <= maxUnits) return s;
-  let end = maxUnits - 1; // room for the trailing "…" (1 unit)
-  const codeBefore = s.charCodeAt(end - 1);
-  if (codeBefore >= 0xd800 && codeBefore <= 0xdbff) end -= 1; // would split a surrogate pair — drop it whole
-  return s.slice(0, end) + "…";
-}
-
-/**
- * Collapses all whitespace (including \r\n\t, which would otherwise smuggle extra header
- * lines into the SMTP Subject header) to single spaces, trims, neutralises `{{` the same way
- * the text body does (so a headline that happens to contain `{{manageUrl}}` isn't substituted
- * by Distribution), and truncates to {@link MAX_SUBJECT_UTF16_UNITS}. Falls back to `fallback`
- * (the release key) when the headline is empty or, after trimming, turns out to have been
- * whitespace-only — a subject must never be empty (Distribution's schema requires at least 1
- * character).
- */
-function sanitizeSubject(raw: string, fallback: string): string {
-  const cleaned = neutralizeText(raw.replace(/\s+/g, " ").trim());
-  const base = cleaned.length > 0 ? cleaned : fallback;
-  return truncateByUtf16Units(base, MAX_SUBJECT_UTF16_UNITS);
-}
-
-export function renderAsItHappens(r: ReleaseRecord, publicSiteUrl: string): { subject: string; html: string; text: string } {
-  // Deliberate fallback chain: English document, then whatever document exists, then the
-  // release key itself — this subject line must never be empty, even for a release without
-  // (yet) an English document.
-  const doc = r.documents.find((d) => d.languageId === ENGLISH_LANGUAGE_ID) ?? r.documents[0];
-  const headline = doc?.headline || r.key;
-  const summary = r.summary ?? "";
-  const url = `${publicSiteUrl}/releases/${encodeURIComponent(r.key)}`;
-
-  const subject = sanitizeSubject(headline, r.key);
-  const html =
-    `<h1>${neutralizeHtml(headline)}</h1>` +
-    `<p>${neutralizeHtml(summary)}</p>` +
-    `<p><a href="${escapeHtml(url)}">Read the full release</a></p>` +
-    `<p><a href="{{manageUrl}}">Manage or unsubscribe</a></p>`;
-  const text = `${neutralizeText(headline)}\n\n${neutralizeText(summary)}\n\n${url}\n\nManage or unsubscribe: {{manageUrl}}`;
-
-  return { subject, html, text };
-}
+import { createHash } from "node:crypto";
+import { and, eq, isNull, sql } from "drizzle-orm";
+import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
+import { deliveries, items, sendJobs } from "./db/schema";
+import { matchesItem } from "./matching";
+import { itemCategories, renderAsItHappens, renderEmergency, type RenderItem, type RenderOptions } from "./render";
 
 export interface AsItHappensOptions {
-  publicSiteUrl: string;
-  /**
-   * Base URL for the manage/unsubscribe page. Not used while rendering (the footer carries the
-   * literal `{{manageUrl}}` placeholder; Distribution substitutes it per recipient), but part
-   * of this handler's configuration because the per-recipient manage link Task 10 builds from
-   * a subscriber's manage_token is relative to it.
-   */
-  manageUrl: string;
+  /** Site URL and optional banner for every As-It-Happens/emergency email this sends. */
+  render: RenderOptions;
+}
+
+type SendKind = "as_it_happens" | "emergency";
+
+async function renderItem(db: DbOrTx, row: { key: string; title: string; summary: string; url: string; publishedAt: Date; listKeys: string[] }): Promise<RenderItem> {
+  const categories = await itemCategories(db, row.listKeys);
+  return { key: row.key, title: row.title, summary: row.summary, url: row.url, publishedAt: row.publishedAt, categories };
+}
+
+export interface ItemSending {
+  /** Creates (and populates recipients/deliveries for) the send job for `itemKey`, if one
+   * doesn't already exist. Returns whether a job was created with at least one recipient. */
+  createItemSend(tx: Tx, itemKey: string, kind: SendKind): Promise<boolean>;
+  /** Records a new emergency item (idempotent on `guid`) and, when it's genuinely new, sends it
+   * in the same transaction. */
+  recordEmergencyItem(db: Db, input: { guid: string; title: string; summary: string; url: string; publishedAt?: string }): Promise<{ key: string; created: boolean }>;
 }
 
 /**
- * Turns a `release.published` event into per-subscriber delivery records plus one send job,
- * all inside the receiver's transaction (packages/events/src/receiver.ts).
+ * Builds the two entry points As-It-Happens/emergency sending needs, closed over the render
+ * options (siteUrl/bannerUrl) every email built here carries.
  */
-export function createAsItHappensHandler(opts: AsItHappensOptions): EventHandler {
-  return async (tx: Tx, event) => {
-    const r = event.data as ReleaseRecord;
-    if (!r.publishFlags.toSubscribers) return;
+export function createItemSending(opts: AsItHappensOptions): ItemSending {
+  async function createItemSend(tx: Tx, itemKey: string, kind: SendKind): Promise<boolean> {
+    const [item] = await tx.select().from(items).where(eq(items.key, itemKey));
+    if (!item) return false;
+    // Rule: an As-It-Happens send is skipped for a withdrawn item or one not flagged for
+    // subscribers at all. Emergency items are always sent (recordEmergencyItem creates and
+    // sends an emergency item in the same transaction, before either could apply to it).
+    if (kind === "as_it_happens" && (item.withdrawnAt !== null || !item.toSubscribers)) return false;
 
-    const keys = indexKeysFor(r);
-    // I1 fix: a set-based INSERT...SELECT, entirely server-side — no JS round trip of matched
-    // subscriber ids, and so no bind-parameter list to blow Postgres's 65,535-param limit past
-    // ~32,767 matched subscribers (2 params/row in the old `.values(matched.map(...))` shape).
-    // The list-key match mirrors the old query builder condition: '*' always matches, plus any
-    // of this release's own index keys when it has any. `keys` is always small (a handful of
-    // ministry/sector/tag/theme keys per release, never subscriber-count-sized), so one bind
-    // param per key here is fine — this is not the unbounded list the fix above removes.
-    const listKeyMatch = keys.length > 0 ? sql`(sub.list_key = '*' OR sub.list_key IN (${sql.join(keys.map((k) => sql`${k}`), sql`, `)}))` : sql`sub.list_key = '*'`;
+    const jobKey = `${kind}:${itemKey}`;
 
+    // Controller ruling (carried from Task 2): a job for this key already exists but was
+    // cancelled — the sender cancelled a claimed job of a withdrawn item, and the release has
+    // since been republished. Treated like withdrawItem: delete that job's not-yet-attempted
+    // deliveries and the job itself (job_recipients cascades), then fall through to create a
+    // fresh job below. A delivery already attempted stays (its (item, subscriber, mode) primary
+    // key then keeps that subscriber out of the fresh job's own insert).
+    const [existing] = await tx.select({ id: sendJobs.id, status: sendJobs.status }).from(sendJobs).where(eq(sendJobs.jobKey, jobKey));
+    if (existing?.status === "cancelled") {
+      await tx.delete(deliveries).where(and(eq(deliveries.jobId, existing.id), isNull(deliveries.attemptedAt)));
+      await tx.delete(sendJobs).where(eq(sendJobs.id, existing.id));
+    }
+
+    const rItem = await renderItem(tx, item);
+    const rendered = kind === "emergency" ? renderEmergency(rItem, opts.render) : renderAsItHappens(rItem, opts.render);
+
+    // ON CONFLICT (job_key) DO NOTHING: any *other* existing status (pending/sent/failed) keeps
+    // this a no-op, same as before this ruling — only 'cancelled' is cleared away above.
+    const createdJob = await tx
+      .insert(sendJobs)
+      .values({ jobKey, itemKey, kind, subject: rendered.subject, html: rendered.html, text: rendered.text })
+      .onConflictDoNothing({ target: sendJobs.jobKey })
+      .returning({ id: sendJobs.id });
+    if (createdJob.length === 0) return false;
+    const jobId = createdJob[0]!.id;
+
+    // As-It-Happens: active subscribers whose own as_it_happens is true, matching the item's
+    // list keys, excluding anyone who already has a digest delivery for this item. Emergency:
+    // every active subscriber matching the item's list keys, whatever their own timing
+    // preference (global constraints: As-It-Happens/emergency recipients).
+    const timingCondition =
+      kind === "as_it_happens"
+        ? sql`s.as_it_happens = true AND NOT EXISTS (SELECT 1 FROM deliveries d2 WHERE d2.item_key = ${itemKey} AND d2.subscriber_id = s.id AND d2.mode = 'digest')`
+        : sql`true`;
+
+    // I1-style set-based INSERT...SELECT, entirely server-side — no JS round trip of matched
+    // subscriber ids (same reasoning as the old createAsItHappensHandler this replaces).
     const inserted = await tx.execute(sql`
-      INSERT INTO deliveries (release_key, subscriber_id)
-      SELECT DISTINCT ${r.key}, s.id
+      INSERT INTO deliveries (item_key, subscriber_id, mode, job_id)
+      SELECT DISTINCT ${itemKey}, s.id, 'as_it_happens', ${jobId}::uuid
         FROM subscribers s
         JOIN subscriptions sub ON sub.subscriber_id = s.id
        WHERE s.status = 'active'
-         AND s.as_it_happens = true
-         AND ${listKeyMatch}
+         AND ${timingCondition}
+         AND ${matchesItem(sql`sub.list_key`, sql`${sql.param(item.listKeys)}::text[]`)}
       ON CONFLICT DO NOTHING
       RETURNING 1
     `);
 
-    // A release matching no active as-it-happens subscriber inserts no delivery rows: skip
-    // creating a job entirely (an empty job would send nothing). On a repeat delivery of an
-    // already-fully-inserted release (the idempotency case), every row conflicts and this is
-    // also 0 — harmless, since the job itself already exists by then (its own insert below is
-    // onConflictDoNothing too).
-    if (inserted.rows.length === 0) return;
+    // No matching recipient: an empty job would send nothing, so undo it rather than leave a
+    // dead job behind.
+    if (inserted.rows.length === 0) {
+      await tx.delete(sendJobs).where(eq(sendJobs.id, jobId));
+      return false;
+    }
 
-    const { subject, html, text } = renderAsItHappens(r, opts.publicSiteUrl);
-    await tx
-      .insert(sendJobs)
-      .values({ releaseKey: r.key, kind: "as_it_happens", subject, html, text })
-      .onConflictDoNothing({ target: [sendJobs.releaseKey, sendJobs.kind] });
-  };
+    // Derived from deliveries itself — not a third re-run of the subscriber/subscription match
+    // — so job_recipients can never disagree with deliveries (same reasoning as the handler
+    // this replaces).
+    await tx.execute(sql`
+      INSERT INTO job_recipients (job_id, subscriber_id)
+      SELECT job_id, subscriber_id FROM deliveries
+       WHERE item_key = ${itemKey} AND mode = 'as_it_happens' AND job_id = ${jobId}::uuid
+      ON CONFLICT DO NOTHING
+    `);
+    return true;
+  }
+
+  async function recordEmergencyItem(
+    db: Db,
+    input: { guid: string; title: string; summary: string; url: string; publishedAt?: string },
+  ): Promise<{ key: string; created: boolean }> {
+    // Deterministic from the guid, so a repeat of the same guid always resolves to the same
+    // item key — ON CONFLICT DO NOTHING below is then the whole idempotency story; no separate
+    // guid column is needed.
+    const key = `emergency:${createHash("sha256").update(input.guid).digest("hex").slice(0, 32)}`;
+    return db.transaction(async (tx) => {
+      const insertedRows = await tx
+        .insert(items)
+        .values({
+          key,
+          kind: "emergency",
+          listKeys: ["emergency:alerts"],
+          title: input.title,
+          summary: input.summary,
+          url: input.url,
+          publishedAt: input.publishedAt ? new Date(input.publishedAt) : sql`now()`,
+          toSubscribers: true,
+        })
+        .onConflictDoNothing({ target: items.key })
+        .returning({ key: items.key });
+      const created = insertedRows.length > 0;
+      if (created) await createItemSend(tx, key, "emergency");
+      return { key, created };
+    });
+  }
+
+  return { createItemSend, recordEmergencyItem };
 }

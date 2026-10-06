@@ -32,15 +32,6 @@ describe("subscribers", () => {
     await expect(addSubscriber(tdb.db, { email: "Casing@Example.com", lists: "all" })).rejects.toThrow(SubscriberExistsError);
   });
 
-  it("gives each subscriber a unique manage_token of at least 40 characters", async () => {
-    const a = await addSubscriber(tdb.db, { email: "token-a@example.com", lists: "all" });
-    const b = await addSubscriber(tdb.db, { email: "token-b@example.com", lists: "all" });
-    const { rows } = await tdb.pool.query<{ manage_token: string }>("SELECT manage_token FROM subscribers WHERE id = ANY($1)", [[a.id, b.id]]);
-    expect(rows).toHaveLength(2);
-    for (const row of rows) expect(row.manage_token.length).toBeGreaterThanOrEqual(40);
-    expect(rows[0]!.manage_token).not.toBe(rows[1]!.manage_token);
-  });
-
   it("rejects an invalid list key (not '<kind>:<key>' with a known kind) via the routes' schema", () => {
     expect(() => addSubscriberSchema.parse({ email: "bad-list@example.com", lists: ["bogus"] })).toThrow();
     expect(addSubscriberSchema.safeParse({ email: "bad-list@example.com", lists: ["bogus"] }).success).toBe(false);

@@ -1,7 +1,7 @@
-import { randomBytes } from "node:crypto";
 import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { subscribers, subscriptions } from "./db/schema";
+import { matchesItem } from "./matching";
 
 /** Thrown by {@link addSubscriber} on a case-insensitive email clash (subscribers_email_lower_idx). */
 export class SubscriberExistsError extends Error {}
@@ -24,13 +24,12 @@ export interface AddSubscriberInput {
  * (subscriberId, listKey) primary key mid-insert.
  */
 export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<{ id: string }> {
-  const manageToken = randomBytes(32).toString("base64url");
   const listKeys = input.lists === "all" ? ["*"] : [...new Set(input.lists.map((key) => key.toLowerCase()))];
   try {
     return await db.transaction(async (tx) => {
       const [row] = await tx
         .insert(subscribers)
-        .values({ email: input.email, manageToken, verifiedAt: new Date(), status: "active", source: "admin", asItHappens: true })
+        .values({ email: input.email, verifiedAt: new Date(), status: "active", source: "admin", asItHappens: true })
         .returning({ id: subscribers.id });
       const subscriberId = row!.id;
       if (listKeys.length > 0) {
@@ -51,20 +50,24 @@ export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<
 }
 
 /**
- * Counts distinct active subscribers subscribed to '*' or any of `listKeys` (case-
- * insensitively — lowercased here, same as {@link addSubscriber} stores them). Backs both
- * NoD's own `/api/subscribers/count` route and NRMS's "notify ~N subscribers" preview
- * (Task 6's `WorkflowDeps.countSubscribers`, wired through NRMS's own `nodClient`).
+ * Counts distinct active subscribers whose own list key matches `listKeys` under the same
+ * "matches" rule items are sent by (`matching.ts`'s `matchesItem`, used identically by
+ * As-It-Happens and the digest): subscribed to one of `listKeys` directly, or subscribed to
+ * "all news" (`*`) when `listKeys` carries a `ministries:` key (legacy
+ * DistributionProvider.cs:296) — case-insensitively, lowercased here same as
+ * {@link addSubscriber} stores them. Backs both NoD's own `/api/subscribers/count` route and
+ * NRMS's "notify ~N subscribers" preview (Task 6's `WorkflowDeps.countSubscribers`, wired
+ * through NRMS's own `nodClient`).
  */
 export async function countSubscribers(db: Db, listKeys: string[]): Promise<number> {
-  const keys = ["*", ...listKeys.map((k) => k.toLowerCase())];
+  const keys = listKeys.map((k) => k.toLowerCase());
   // sql.param, not a bare `${keys}` interpolation: drizzle's sql`` template spreads a plain
   // array into a parenthesized, comma-joined param list (built for `IN (${array})`), which
-  // `= ANY(...)` can't take — it needs exactly one bind parameter whose value IS the array,
-  // which node-postgres then serializes as a Postgres array literal.
+  // `= ANY(...)` (inside matchesItem) can't take — it needs exactly one bind parameter whose
+  // value IS the array, which node-postgres then serializes as a Postgres array literal.
   const r = await db.execute<{ n: number }>(sql`
     SELECT count(DISTINCT s.id)::int AS n
     FROM ${subscribers} s JOIN ${subscriptions} sub ON sub.subscriber_id = s.id
-    WHERE s.status = 'active' AND sub.list_key = ANY(${sql.param(keys)})`);
+    WHERE s.status = 'active' AND ${matchesItem(sql`sub.list_key`, sql`${sql.param(keys)}::text[]`)}`);
   return r.rows[0]!.n;
 }

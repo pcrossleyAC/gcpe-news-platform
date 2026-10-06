@@ -18,7 +18,6 @@ const SCRIPT_PATH = fileURLToPath(new URL("../scripts/siteground-env.ts", import
 function sampleInput(overrides: Partial<SiteGroundEnvInput> = {}): SiteGroundEnvInput {
   return {
     domain: "news.example.invalid",
-    manageUrl: "https://legacy.example.invalid/manage",
     adminUsername: "admin",
     adminPasswordHash: "scrypt$16384$8$1$c2FsdA$a2V5",
     dbUser: "gcpe_app",
@@ -126,7 +125,6 @@ describe("collectNonInteractiveInput", () => {
   it("builds a full SiteGroundEnvInput from env vars, hashing the raw admin password", async () => {
     const input = await collectNonInteractiveInput({
       SITEGROUND_DOMAIN: "news.example.invalid",
-      SITEGROUND_MANAGE_URL: "https://legacy.example.invalid/manage",
       SITEGROUND_ADMIN_PASSWORD: "a-test-password-123",
       SITEGROUND_DB_USER: "gcpe_app",
       SITEGROUND_DB_PASSWORD: "db-pass",
@@ -145,7 +143,6 @@ describe("collectNonInteractiveInput", () => {
   it("honors an explicit SITEGROUND_DB_PREFIX and per-app db name overrides", async () => {
     const input = await collectNonInteractiveInput({
       SITEGROUND_DOMAIN: "news.example.invalid",
-      SITEGROUND_MANAGE_URL: "https://legacy.example.invalid/manage",
       SITEGROUND_ADMIN_PASSWORD: "a-test-password-123",
       SITEGROUND_DB_USER: "gcpe_app",
       SITEGROUND_DB_PASSWORD: "db-pass",
@@ -166,7 +163,6 @@ describe("collectNonInteractiveInput", () => {
     await expect(
       collectNonInteractiveInput({
         SITEGROUND_DOMAIN: "news.example.invalid",
-        SITEGROUND_MANAGE_URL: "https://legacy.example.invalid/manage",
         SITEGROUND_ADMIN_PASSWORD: "short1",
         SITEGROUND_DB_USER: "gcpe_app",
         SITEGROUND_DB_PASSWORD: "db-pass",
@@ -181,7 +177,6 @@ describe("collectNonInteractiveInput", () => {
     await expect(
       collectNonInteractiveInput({
         SITEGROUND_DOMAIN: "news.example.invalid",
-        SITEGROUND_MANAGE_URL: "https://legacy.example.invalid/manage",
         SITEGROUND_ADMIN_PASSWORD: "",
         SITEGROUND_DB_USER: "gcpe_app",
         SITEGROUND_DB_PASSWORD: "db-pass",
@@ -195,7 +190,6 @@ describe("collectNonInteractiveInput", () => {
   it("accepts a SITEGROUND_ADMIN_PASSWORD exactly 12 characters long", async () => {
     const input = await collectNonInteractiveInput({
       SITEGROUND_DOMAIN: "news.example.invalid",
-      SITEGROUND_MANAGE_URL: "https://legacy.example.invalid/manage",
       SITEGROUND_ADMIN_PASSWORD: "exactly12chr",
       SITEGROUND_DB_USER: "gcpe_app",
       SITEGROUND_DB_PASSWORD: "db-pass",
@@ -216,7 +210,6 @@ describe("CLI entry point, --non-interactive (real child process)", () => {
         env: {
           ...process.env,
           SITEGROUND_DOMAIN: "news.example.invalid",
-          SITEGROUND_MANAGE_URL: "https://legacy.example.invalid/manage",
           SITEGROUND_ADMIN_PASSWORD: "cli-test-password-999",
           SITEGROUND_DB_USER: "gcpe_app",
           SITEGROUND_DB_PASSWORD: "cli-db-password",

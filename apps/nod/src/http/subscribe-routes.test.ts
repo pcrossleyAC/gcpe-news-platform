@@ -40,6 +40,7 @@ describe("NoD Subscribe API HTTP routes", () => {
       db: tdb.db,
       pageUrl: "https://boxs.ca/site/subscribe/manage/",
       linkSecret: SECRET,
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
       distribution: { send: vi.fn(async (m) => { sent.push({ to: m.recipients[0].email, subject: m.subject, text: m.text }); return { batchId: "b" }; }) },
     };
 
@@ -47,7 +48,7 @@ describe("NoD Subscribe API HTTP routes", () => {
       db: tdb.db,
       auth: { issuer, audience, keys },
       eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
-      handlerOptions: { publicSiteUrl: "https://news.gov.bc.ca", manageUrl: "https://news.gov.bc.ca/manage" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
       subscribe: deps,
     });
   });

@@ -253,6 +253,10 @@ export interface SentMessage {
   to: string[];
   text: string | null;
   attachmentNames: string[];
+  /** Every header the sink received, lowercased keys (mailparser's own `Map` normalises header
+   * names to lower case), string values — used to check `List-Unsubscribe`/
+   * `List-Unsubscribe-Post` on a subscriber send. */
+  headers: Record<string, string>;
 }
 
 /** Reads back every message the SMTP sink has received so far — see global-setup.ts's

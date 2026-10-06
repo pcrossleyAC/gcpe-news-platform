@@ -20,4 +20,26 @@ describe("subscribe test pages", () => {
     const html = SUBSCRIBE_PAGES.find((p) => p.path === "subscribe/unsubscribe/index.html")!.render(site, {});
     expect(html).toMatch(/<button[^>]*>Unsubscribe<\/button>/);
   });
+  it("offers the emergency category alongside ministries, sectors, themes and tags", () => {
+    for (const path of ["subscribe/index.html", "subscribe/manage/index.html"]) {
+      const html = SUBSCRIBE_PAGES.find((p) => p.path === path)!.render(site, {});
+      expect(html).toContain('<fieldset data-category="emergency">');
+    }
+  });
+  it("has two fixed live regions instead of switching one element's role", () => {
+    for (const page of SUBSCRIBE_PAGES) {
+      const html = page.render(site, {});
+      expect(html).toContain('<p id="message" role="status"></p>');
+      expect(html).toContain('<p id="message-alert" role="alert"></p>');
+      expect(html).not.toContain("setAttribute(\"role\"");
+    }
+  });
+  it("the manage page shows the request box immediately and never queries Confirm when there is no token", () => {
+    const html = SUBSCRIBE_PAGES.find((p) => p.path === "subscribe/manage/index.html")!.render(site, {});
+    expect(html).toMatch(/if\s*\(!token\)\s*\{\s*requestForm\.hidden = false;\s*\}\s*else\s*\{/);
+  });
+  it("pins the expired-link wording", () => {
+    const html = SUBSCRIBE_PAGES.find((p) => p.path === "subscribe/manage/index.html")!.render(site, {});
+    expect(html).toContain("This link has expired. Request a new one below.");
+  });
 });

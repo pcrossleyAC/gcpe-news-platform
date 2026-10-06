@@ -25,6 +25,7 @@ describe("subscriber journeys", () => {
       db: tdb.db,
       pageUrl: "https://boxs.ca/site/subscribe/manage/",
       linkSecret: SECRET,
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
       distribution: { send: vi.fn(async (m) => { sent.push({ to: m.recipients[0].email, subject: m.subject, text: m.text }); return { batchId: "b" }; }) },
     };
   });
@@ -124,7 +125,7 @@ describe("subscriber journeys", () => {
   it("moving to an address held by a disabled row unsubscribes the mover and leaves the disabled row untouched (R-I3)", async () => {
     await subscribe(deps, info({ emailAddress: "a@example.test" }));
     await confirm(deps, tokenFrom());
-    await tdb.db.execute(sql`INSERT INTO subscribers (email, manage_token, status, source) VALUES ('b@example.test', ${"y".repeat(43)}, 'disabled', 'admin')`);
+    await tdb.db.execute(sql`INSERT INTO subscribers (email, status, source) VALUES ('b@example.test', 'disabled', 'admin')`);
     await requestManageLink(deps, "a@example.test");
     await vi.waitFor(() => expect(sent).toHaveLength(2));
     await update(deps, tokenFrom(), info({ emailAddress: "b@example.test" }));
@@ -271,7 +272,7 @@ describe("subscriber journeys", () => {
   });
 
   it("reactivating an existing non-self row through subscribe/confirm resets source to self", async () => {
-    await tdb.db.execute(sql`INSERT INTO subscribers (email, manage_token, status, source) VALUES ('legacy@example.test', ${"z".repeat(43)}, 'disabled', 'admin')`);
+    await tdb.db.execute(sql`INSERT INTO subscribers (email, status, source) VALUES ('legacy@example.test', 'disabled', 'admin')`);
     await subscribe(deps, info({ emailAddress: "legacy@example.test" }));
     await confirm(deps, tokenFrom());
     const [s] = await tdb.db.select().from(subscribers).where(eq(subscribers.email, "legacy@example.test"));
@@ -301,17 +302,6 @@ describe("subscriber journeys", () => {
       createLinkSpy.mockRestore();
       errSpy.mockRestore();
     }
-  });
-
-  it("unsubscribes via a legacy Phase 2 manage_token", async () => {
-    await subscribe(deps, info());
-    await confirm(deps, tokenFrom());
-    const [s] = await tdb.db.select().from(subscribers);
-    const legacyToken = "a".repeat(43);
-    await tdb.db.update(subscribers).set({ manageToken: legacyToken }).where(eq(subscribers.id, s!.id));
-    expect(await unsubscribe(deps, legacyToken)).toBe(true);
-    const [after] = await tdb.db.select().from(subscribers);
-    expect(after).toMatchObject({ status: "deleted" });
   });
 
   it("confirm of a manage link for a deleted subscriber returns null", async () => {

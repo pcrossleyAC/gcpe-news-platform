@@ -50,6 +50,34 @@
       "when": 1791239357260,
       "tag": "0006_drop_subscription_timing",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1791249351845,
+      "tag": "0007_sending_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791249358872,
+      "tag": "0008_backfill_sending_model",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1791249453469,
+      "tag": "0009_drop_legacy_send_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1791279488021,
+      "tag": "0010_deliveries_job_id_idx",
+      "breakpoints": true
     }
   ]
 }

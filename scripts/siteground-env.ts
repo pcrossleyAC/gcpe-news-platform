@@ -2,8 +2,8 @@
 // Task 15: generates the KEY=value env vars to paste into SiteGround's Site Tools > Devs >
 // Environment Variables for the apps/stack artifact (see docs/deploy/siteground.md).
 //
-// Interactive (default): prompts for everything needed (domain, the NoD manage-page URL, the
-// admin username/password, the database user/password/names, and SMTP), hiding the admin and
+// Interactive (default): prompts for everything needed (domain, the admin username/password,
+// the database user/password/names, and SMTP), hiding the admin and
 // database/SMTP passwords the same way `npm run auth:hash-password` hides its password (never
 // echoed to the terminal) — see packages/auth/src/cli/hidden-input.ts, reused here rather than
 // reimplemented.
@@ -26,7 +26,6 @@ import { applyKeypress, INITIAL_KEYPRESS_STATE, type KeypressState } from "../pa
 
 export interface SiteGroundEnvInput {
   domain: string;
-  manageUrl: string;
   adminUsername: string;
   /** Already hashed (output of hashPassword) — the CLI hashes the raw password itself; tests
    * that want a deterministic, pre-hashed value pass one in directly. */
@@ -110,7 +109,6 @@ export function buildEnvLines(input: SiteGroundEnvInput, secrets: GeneratedSecre
     `NOD_DATABASE_URL=${dbUrl(input.dbUser, input.dbPassword, input.dbNames.nod)}`,
     "NOD_DISTRIBUTION_URL=self:/distribution",
     `NOD_PUBLIC_SITE_URL=${publicSiteUrl}`,
-    `NOD_MANAGE_URL=${input.manageUrl}`,
     "",
     `DIST_DATABASE_URL=${dbUrl(input.dbUser, input.dbPassword, input.dbNames.distribution)}`,
     `DIST_SMTP_HOST=${input.smtp.host}`,
@@ -127,7 +125,6 @@ export function buildEnvLines(input: SiteGroundEnvInput, secrets: GeneratedSecre
 
 const REQUIRED_NON_INTERACTIVE_VARS = [
   "SITEGROUND_DOMAIN",
-  "SITEGROUND_MANAGE_URL",
   "SITEGROUND_ADMIN_PASSWORD",
   "SITEGROUND_DB_USER",
   "SITEGROUND_DB_PASSWORD",
@@ -170,7 +167,6 @@ export async function collectNonInteractiveInput(env: NodeJS.ProcessEnv): Promis
   const dbPrefix = env.SITEGROUND_DB_PREFIX ?? "gcpe";
   return {
     domain: env.SITEGROUND_DOMAIN!,
-    manageUrl: env.SITEGROUND_MANAGE_URL!,
     adminUsername: env.SITEGROUND_ADMIN_USERNAME ?? "admin",
     adminPasswordHash: await hashPassword(adminPassword),
     dbUser: env.SITEGROUND_DB_USER!,
@@ -282,7 +278,6 @@ async function collectInteractiveInput(): Promise<SiteGroundEnvInput> {
   const p = new Prompter();
   try {
     const domain = await p.plain("Public domain (e.g. news.gov.bc.ca)");
-    const manageUrl = await p.plain("Subscriber manage/unsubscribe page URL (external)");
     const adminUsername = await p.plain("Admin username", "admin");
     const adminPassword = await p.hidden("Admin password");
     if (adminPassword.length < 12) throw new Error("Admin password must be at least 12 characters.");
@@ -312,7 +307,6 @@ async function collectInteractiveInput(): Promise<SiteGroundEnvInput> {
 
     return {
       domain,
-      manageUrl,
       adminUsername,
       adminPasswordHash: await hashPassword(adminPassword),
       dbUser,

@@ -1,6 +1,6 @@
 import { eq, sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
-import { subscriberLinks, type LinkPurpose, type SubscriberPrefs } from "../db/schema";
+import { subscriberLinks, type LinkOrigin, type LinkPurpose, type SubscriberPrefs } from "../db/schema";
 import { hashToken, newLinkToken } from "./tokens";
 
 export const LINK_TTL_MS = 24 * 3_600_000;
@@ -9,7 +9,7 @@ export type LinkRow = typeof subscriberLinks.$inferSelect & { expired: boolean }
 
 export async function createLink(
   tx: DbOrTx,
-  input: { purpose: LinkPurpose; email: string; subscriberId: string | null; pending: SubscriberPrefs | null },
+  input: { purpose: LinkPurpose; email: string; subscriberId: string | null; pending: SubscriberPrefs | null; origin?: LinkOrigin },
 ): Promise<{ id: string; token: string }> {
   const token = newLinkToken();
   const [row] = await tx
@@ -20,6 +20,7 @@ export async function createLink(
       email: input.email.trim().toLowerCase(),
       subscriberId: input.subscriberId,
       pending: input.pending,
+      origin: input.origin ?? "request",
       expiresAt: sql`now() + make_interval(secs => ${LINK_TTL_MS / 1000})`,
     })
     .returning({ id: subscriberLinks.id });
@@ -48,9 +49,15 @@ export async function claimLink(tx: DbOrTx, id: string): Promise<boolean> {
   return r.rows.length > 0;
 }
 
+/** Counts links an address has had issued in the last hour, for the 3-per-hour request cap
+ * (MAX_EMAILS_PER_HOUR). Only `origin = 'request'` links count — a `manage` link stamped into
+ * an outbound email (`origin: 'send'`, recipient-links.ts) doesn't (global constraints: "send
+ * links don't count toward the cap"), or a subscriber who gets several As-It-Happens emails in
+ * an hour would find "Manage" blocked by their own mail. */
 export async function linksSentLastHour(db: DbOrTx, email: string): Promise<number> {
   const r = await db.execute<{ n: number }>(sql`
     SELECT count(*)::int AS n FROM ${subscriberLinks}
-     WHERE ${subscriberLinks.email} = ${email.trim().toLowerCase()} AND ${subscriberLinks.createdAt} > now() - interval '1 hour'`);
+     WHERE ${subscriberLinks.email} = ${email.trim().toLowerCase()} AND ${subscriberLinks.createdAt} > now() - interval '1 hour'
+       AND ${subscriberLinks.origin} = 'request'`);
   return r.rows[0]!.n;
 }

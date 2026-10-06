@@ -2,27 +2,29 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
-import { createNodTestDb, envelope } from "../test/helpers";
-import { deliveries, sendJobs, subscribers } from "./db/schema";
+import { createNodTestDb } from "../test/helpers";
+import { deliveries, items, jobRecipients, sendJobs, subscribers } from "./db/schema";
+import { upsertReleaseItem } from "./items";
 import { addSubscriber } from "./subscribers";
-import { createAsItHappensHandler, neutralizeHtml, neutralizeText, renderAsItHappens } from "./as-it-happens";
+import { createItemSending } from "./as-it-happens";
+import type { RenderOptions } from "./render";
 
-const PUBLIC_SITE_URL = "https://news.gov.bc.ca";
-const MANAGE_URL = "https://news.gov.bc.ca/manage";
+const PUBLIC_SITE_URL = "https://news.example/site";
+const RENDER: RenderOptions = { siteUrl: PUBLIC_SITE_URL, bannerUrl: null };
 
-describe("createAsItHappensHandler", () => {
+describe("createItemSend (as_it_happens)", () => {
   let tdb: TestDatabase;
-  let handler: ReturnType<typeof createAsItHappensHandler>;
+  let createItemSend: ReturnType<typeof createItemSending>["createItemSend"];
   let a: string; // all news, active
   let b: string; // ministries:health, active
   let c: string; // sectors:mining, active
   let d: string; // all news, pending (never activated)
   let e: string; // BOTH '*' and ministries:health, active — must still get exactly one delivery
-  let f: string; // all news, active, but as_it_happens=false on the subscriber (R6)
+  let f: string; // all news, active, but as_it_happens=false on the subscriber (digest-only)
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
-    handler = createAsItHappensHandler({ publicSiteUrl: PUBLIC_SITE_URL, manageUrl: MANAGE_URL });
+    ({ createItemSend } = createItemSending({ render: RENDER }));
 
     a = (await addSubscriber(tdb.db, { email: "a.all@example.com", lists: "all" })).id;
     b = (await addSubscriber(tdb.db, { email: "b.health@example.com", lists: ["ministries:Health"] })).id;
@@ -32,284 +34,257 @@ describe("createAsItHappensHandler", () => {
     f = (await addSubscriber(tdb.db, { email: "f.all.digest-only@example.com", lists: "all" })).id;
     await tdb.db.update(subscribers).set({ verifiedAt: null, status: "pending" }).where(eq(subscribers.id, d));
     // addSubscriber (the public API) always sets the subscriber's own as_it_happens to true;
-    // flipping it directly here is the only way to get a digest-only subscriber into a
-    // fixture today (R6) — there's no HTTP/service path yet that sets it to false.
+    // flipping it directly here is the only way to get a digest-only subscriber into a fixture.
     await tdb.db.update(subscribers).set({ asItHappens: false }).where(eq(subscribers.id, f));
   });
   afterAll(async () => {
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE deliveries, send_jobs");
+    await tdb.pool.query("TRUNCATE deliveries, send_jobs, job_recipients, items CASCADE");
   });
 
-  const releaseEvent = (release = sampleRelease) => envelope("nrms", "release.published", release, release.key);
+  async function publish(release: typeof sampleRelease): Promise<void> {
+    await tdb.db.transaction(async (tx) => {
+      await upsertReleaseItem(tx, release, PUBLIC_SITE_URL);
+      await createItemSend(tx, release.key, "as_it_happens");
+    });
+  }
 
-  it("delivers to subscribers matching '*' or the release's index keys (case-insensitively), and creates one send job", async () => {
+  it("delivers to matching active As-It-Happens subscribers (one each), excluding a digest-only subscriber, and creates one send job mirrored by job_recipients", async () => {
     const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
-    await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
+    await publish(release);
 
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
     expect(deliveryRows.map((r) => r.subscriberId).sort()).toEqual([a, b, e].sort());
-
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
-    expect(jobRows).toHaveLength(1);
-    expect(jobRows[0]!.subject).toBe(release.documents[0]!.headline);
-    expect(jobRows[0]!.kind).toBe("as_it_happens");
-  });
-
-  it("a subscriber on two matching lists ('*' and 'ministries:health') still gets exactly one delivery", async () => {
-    const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
-    await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
-
-    const eDeliveries = await tdb.db.select().from(deliveries).where(and(eq(deliveries.releaseKey, release.key), eq(deliveries.subscriberId, e)));
-    expect(eDeliveries).toHaveLength(1);
-
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
-    expect(jobRows).toHaveLength(1);
-  });
-
-  it("is idempotent: applying the same release again adds no new deliveries and no new send job", async () => {
-    const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
-    await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
-    await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
-
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
-    expect(deliveryRows).toHaveLength(3);
-
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
-    expect(jobRows).toHaveLength(1);
-  });
-
-  it("does nothing when publishFlags.toSubscribers is false", async () => {
-    const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: false } };
-    await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
-
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
-    expect(deliveryRows).toHaveLength(0);
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
-    expect(jobRows).toHaveLength(0);
-  });
-
-  // R6: an active, list-matching subscriber whose own as_it_happens is false (a digest-only
-  // subscriber) must never get an as-it-happens delivery, even though every other condition
-  // matches.
-  it("excludes an active, list-matching subscriber whose as_it_happens is false", async () => {
-    const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
-    await tdb.db.transaction((tx) => handler(tx, releaseEvent(release)));
-
-    const fDeliveries = await tdb.db.select().from(deliveries).where(and(eq(deliveries.releaseKey, release.key), eq(deliveries.subscriberId, f)));
-    expect(fDeliveries).toHaveLength(0);
-
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
     expect(deliveryRows.map((r) => r.subscriberId)).not.toContain(f);
-  });
-});
 
-describe("createAsItHappensHandler subscriber-level timing gate", () => {
-  let tdb: TestDatabase;
-  beforeAll(async () => {
-    tdb = await createNodTestDb();
-  });
-  afterAll(async () => {
-    await tdb.drop();
+    const [job] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
+    expect(job).toBeTruthy();
+    expect(job!.kind).toBe("as_it_happens");
+    expect(job!.subject).toContain(release.documents[0]!.headline);
+
+    const recipientRows = await tdb.db.select().from(jobRecipients).where(eq(jobRecipients.jobId, job!.id));
+    expect(recipientRows.map((r) => r.subscriberId).sort()).toEqual(deliveryRows.map((dd) => dd.subscriberId).sort());
   });
 
-  // Pins the subscriber-level gating directly (status = 'active' AND as_it_happens = true):
-  // a pending subscriber (never activated) and an active-but-digest-only subscriber must both
-  // be skipped, even though both are subscribed to a matching list. Its own tdb (no shared
-  // fixtures from the describe block above) so no other subscriber's '*' subscription can
-  // match this release.
-  it("skips pending and digest-only subscribers", async () => {
-    const handler = createAsItHappensHandler({ publicSiteUrl: PUBLIC_SITE_URL, manageUrl: MANAGE_URL });
-    const release = { ...sampleRelease, key: "K-TIMING", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
-    await tdb.pool.query(`
-      INSERT INTO subscribers (id, email, manage_token, status, as_it_happens, digest) VALUES
-        ('00000000-0000-0000-0000-0000000000a1', 'on@example.test', 'ta1', 'active', true, false),
-        ('00000000-0000-0000-0000-0000000000a2', 'pending@example.test', 'ta2', 'pending', true, false),
-        ('00000000-0000-0000-0000-0000000000a3', 'digest@example.test', 'ta3', 'active', false, true);
-      INSERT INTO subscriptions (subscriber_id, list_key) VALUES
-        ('00000000-0000-0000-0000-0000000000a1', '*'),
-        ('00000000-0000-0000-0000-0000000000a2', '*'),
-        ('00000000-0000-0000-0000-0000000000a3', '*');
-    `);
-    await tdb.db.transaction((tx) => handler(tx, envelope("nrms", "release.published", release, release.key)));
+  it("a second release.published for the same key creates nothing new", async () => {
+    const release = { ...sampleRelease, ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await publish(release);
+    await publish(release);
 
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
-    expect(deliveryRows.map((r) => r.subscriberId)).toEqual(["00000000-0000-0000-0000-0000000000a1"]);
-  });
-});
-
-describe("createAsItHappensHandler with no subscribers at all", () => {
-  let tdb: TestDatabase;
-  beforeAll(async () => {
-    tdb = await createNodTestDb();
-  });
-  afterAll(async () => {
-    await tdb.drop();
-  });
-
-  it("creates no deliveries and no send job when no subscriber matches (an empty job would send nothing)", async () => {
-    const handler = createAsItHappensHandler({ publicSiteUrl: PUBLIC_SITE_URL, manageUrl: MANAGE_URL });
-    const release = { ...sampleRelease, publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
-    await tdb.db.transaction((tx) => handler(tx, envelope("nrms", "release.published", release, release.key)));
-
-    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.releaseKey, release.key));
-    expect(deliveryRows).toHaveLength(0);
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
-    expect(jobRows).toHaveLength(0);
-  });
-});
-
-describe("renderAsItHappens", () => {
-  it("escapes '<script>' in the headline and neutralises '{{manageUrl}}' inside release text, keeping exactly one real placeholder in the footer", () => {
-    const release = {
-      ...sampleRelease,
-      summary: "Contains {{manageUrl}} right here.",
-      documents: [{ ...sampleRelease.documents[0]!, headline: "<script>alert(1)</script> and {{manageUrl}}" }],
-    };
-    const { html, text } = renderAsItHappens(release, "https://news.gov.bc.ca");
-
-    expect(html).not.toContain("<script>");
-    expect(html).toContain("&lt;script&gt;");
-    // Exactly one real, matchable {{manageUrl}} placeholder: the footer link.
-    expect(html.match(/\{\{manageUrl\}\}/g)).toEqual(["{{manageUrl}}"]);
-    expect(html).toContain('<a href="{{manageUrl}}">Manage or unsubscribe</a>');
-    // The headline/summary's own "{{manageUrl}}" text is neutralised, not a live placeholder.
-    expect(html).toContain("{&#123;manageUrl}}");
-
-    expect(text.match(/\{\{manageUrl\}\}/g)).toEqual(["{{manageUrl}}"]);
-    expect(text).toContain("{ {manageUrl}}");
-  });
-
-  // P2-R25 item 2: replacing each `{{` pair once left a bypass — `{{{manageUrl}}` became
-  // `{ {{manageUrl}}`, whose tail is a live placeholder again. Every `{` next to another `{` is
-  // now broken up, so no `{{name}}` can survive in release text, however many braces lead it.
-  // (Distribution matches /\{\{([A-Za-z0-9_]+)\}\}/ — apps/distribution/src/substitute.ts.)
-  const livePlaceholders = (s: string) => s.match(/\{\{([A-Za-z0-9_]+)\}\}/g) ?? [];
-
-  it.each([
-    ["{{{manageUrl}}", "{ { {manageUrl}}", "{&#123;&#123;manageUrl}}"],
-    ["{{{{manageUrl}}}}", "{ { { {manageUrl}}}}", "{&#123;&#123;&#123;manageUrl}}}}"],
-    ["{ {manageUrl}}", "{ {manageUrl}}", "{ {manageUrl}}"],
-  ])("neutralises %j in release text so only the footer placeholder is live", (raw, expectedText, expectedHtml) => {
-    const release = { ...sampleRelease, summary: raw, documents: [{ ...sampleRelease.documents[0]!, headline: raw }] };
-    const { subject, html, text } = renderAsItHappens(release, "https://news.gov.bc.ca");
-
-    expect(livePlaceholders(text)).toEqual(["{{manageUrl}}"]);
-    expect(livePlaceholders(html)).toEqual(["{{manageUrl}}"]);
-    expect(livePlaceholders(subject)).toEqual([]);
-    expect(text.startsWith(`${expectedText}\n\n${expectedText}\n\n`)).toBe(true);
-    expect(html).toContain(`<h1>${expectedHtml}</h1>`);
-    expect(subject).toBe(expectedText);
-  });
-
-  it("neutralising is idempotent: neutralised text passes through a second time unchanged, and never contains '{{'", () => {
-    for (const raw of ["{{{x}}", "{{{{x}}}}", "{ {x}}", "a {{b}} c"]) {
-      expect(neutralizeText(neutralizeText(raw))).toBe(neutralizeText(raw));
-      expect(neutralizeText(raw)).not.toContain("{{");
-      // neutralizeHtml also HTML-escapes (which is never idempotent: & -> &amp;), so only its
-      // brace-breaking is checked here.
-      expect(neutralizeHtml(raw)).not.toContain("{{");
-    }
-  });
-
-  it("falls back to the release key when there is no English headline", () => {
-    const release = { ...sampleRelease, key: "NO-HEADLINE-1", documents: [] };
-    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
-    expect(subject).toBe("NO-HEADLINE-1");
-  });
-
-  // I4: a raw headline with embedded CR/LF/tabs or a real "{{manageUrl}}" would otherwise be
-  // sent to Distribution verbatim as the subject — Distribution 400s on line breaks (terminal,
-  // nobody mailed) and would substitute the headline's own placeholder.
-  it("collapses CR/LF/tabs in the subject to single spaces, trims, and neutralises '{{'", () => {
-    const release = {
-      ...sampleRelease,
-      documents: [{ ...sampleRelease.documents[0]!, headline: "  Highway 11\r\nclosure\tand {{manageUrl}} update  " }],
-    };
-    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
-    expect(subject).toBe("Highway 11 closure and { {manageUrl}} update");
-    expect(subject).not.toMatch(/[\r\n\t]/);
-  });
-
-  it("truncates a subject over 998 UTF-16 units, ending in '…'", () => {
-    const longHeadline = "x".repeat(1200);
-    const release = { ...sampleRelease, documents: [{ ...sampleRelease.documents[0]!, headline: longHeadline }] };
-    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
-    expect(subject.length).toBe(998);
-    expect(subject.endsWith("…")).toBe(true);
-    expect(subject.slice(0, 997)).toBe("x".repeat(997));
-  });
-
-  // R2: Distribution's own max(998) is `z.string().max(998)`, which counts UTF-16 *code
-  // units* — the previous (reverted) code-point-based truncation let a 600-emoji headline
-  // (600 code points, but 1200 UTF-16 units — astral emoji are surrogate pairs) straight
-  // through unmodified, well over the real limit. Also proves no lone surrogate is left
-  // dangling at the cut point.
-  it("truncates a subject measured in UTF-16 units, not code points, without splitting a surrogate pair (600 emoji)", () => {
-    const longHeadline = "😀".repeat(600); // 600 code points, 1200 UTF-16 units
-    const release = { ...sampleRelease, documents: [{ ...sampleRelease.documents[0]!, headline: longHeadline }] };
-    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
-    expect(subject.length).toBeLessThanOrEqual(998);
-    expect(subject.endsWith("…")).toBe(true);
-    const withoutEllipsis = subject.slice(0, -1);
-    // An even number of units and every code point a complete "😀" proves no dangling half
-    // of a surrogate pair was left in.
-    expect(withoutEllipsis.length % 2).toBe(0);
-    expect([...withoutEllipsis].every((ch) => ch === "😀")).toBe(true);
-  });
-
-  it("leaves a short, already-clean subject untouched (no truncation marker)", () => {
-    const release = { ...sampleRelease, documents: [{ ...sampleRelease.documents[0]!, headline: "Short clean headline" }] };
-    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
-    expect(subject).toBe("Short clean headline");
-  });
-
-  // R2: a headline that's present but whitespace-only must not produce an empty subject
-  // (Distribution's schema requires at least 1 character) — falls back to the release key,
-  // same as a genuinely missing headline.
-  it("falls back to the release key when the headline is whitespace-only", () => {
-    const release = { ...sampleRelease, key: "WHITESPACE-ONLY-1", documents: [{ ...sampleRelease.documents[0]!, headline: "   \t\n  " }] };
-    const { subject } = renderAsItHappens(release, "https://news.gov.bc.ca");
-    expect(subject).toBe("WHITESPACE-ONLY-1");
-  });
-});
-
-describe("createAsItHappensHandler at scale (I1)", () => {
-  let tdb: TestDatabase;
-  beforeAll(async () => {
-    tdb = await createNodTestDb();
-  });
-  afterAll(async () => {
-    await tdb.drop();
-  });
-
-  // I1: the old implementation sent matched subscriber ids as JS-side bind params, 2 per row —
-  // past ~32,767 matched subscribers that blows Postgres's 65,535 bind-parameter limit and the
-  // whole insert throws (0 deliveries, the event effectively dead). 33,000 subscribers,
-  // inserted server-side via a single INSERT...SELECT...FROM generate_series (not one
-  // JS round-trip per row) so the test itself stays fast, proves the fix handles it.
-  it("delivers to more than 32,767 matching subscribers without hitting Postgres's bind-parameter limit", async () => {
-    await tdb.pool.query(`
-      INSERT INTO subscribers (email, manage_token, verified_at, status)
-      SELECT 'bulk' || gs || '@example.com', 'bulk-token-' || gs, now(), 'active'
-        FROM generate_series(1, 33000) AS gs
-    `);
-    await tdb.pool.query(`
-      INSERT INTO subscriptions (subscriber_id, list_key)
-      SELECT id, '*' FROM subscribers WHERE email LIKE 'bulk%@example.com'
-    `);
-
-    const handler = createAsItHappensHandler({ publicSiteUrl: PUBLIC_SITE_URL, manageUrl: MANAGE_URL });
-    const release = { ...sampleRelease, key: "BULK-RELEASE-1", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
-
-    await tdb.db.transaction((tx) => handler(tx, envelope("nrms", "release.published", release, release.key)));
-
-    const rows = (await tdb.pool.query(`SELECT count(*)::int FROM deliveries WHERE release_key = $1`, [release.key])).rows as { count: number }[];
-    expect(rows[0]!.count).toBe(33000);
-
-    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.releaseKey, release.key));
+    const deliveryRows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
+    expect(deliveryRows).toHaveLength(3); // a, b, e -- not doubled
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
     expect(jobRows).toHaveLength(1);
-  }, 10_000);
+  });
+
+  it("skips a subscriber who already has a digest delivery for the item", async () => {
+    const release = { ...sampleRelease, key: "K-DIGEST-SKIP", ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.db.transaction((tx) => upsertReleaseItem(tx, release, PUBLIC_SITE_URL));
+    await tdb.db.insert(deliveries).values({ itemKey: release.key, subscriberId: a, mode: "digest" });
+
+    await tdb.db.transaction((tx) => createItemSend(tx, release.key, "as_it_happens"));
+
+    const asItHappensRows = await tdb.db.select().from(deliveries).where(and(eq(deliveries.itemKey, release.key), eq(deliveries.mode, "as_it_happens")));
+    expect(asItHappensRows.map((r) => r.subscriberId)).not.toContain(a);
+    expect(asItHappensRows.map((r) => r.subscriberId).sort()).toEqual([b, e].sort());
+  });
+
+  it("creates no job when toSubscribers is false", async () => {
+    const release = { ...sampleRelease, key: "K-NO-SEND", ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: false } };
+    await publish(release);
+    expect(await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key))).toHaveLength(0);
+    expect(await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key))).toHaveLength(0);
+  });
+
+  it("creates no job when the item has no matching recipients at all", async () => {
+    const release = { ...sampleRelease, key: "K-NO-MATCH", ministryKeys: [], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.db.transaction(async (tx) => {
+      await upsertReleaseItem(tx, release, PUBLIC_SITE_URL);
+      await tx.update(items).set({ listKeys: [] }).where(eq(items.key, release.key));
+      await createItemSend(tx, release.key, "as_it_happens");
+    });
+    expect(await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key))).toHaveLength(0);
+  });
+});
+
+describe("createItemSend: '*' matches a ministry-tagged release but not an emergency item", () => {
+  let tdb: TestDatabase;
+  let createItemSend: ReturnType<typeof createItemSending>["createItemSend"];
+  let allNews: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    ({ createItemSend } = createItemSending({ render: RENDER }));
+    allNews = (await addSubscriber(tdb.db, { email: "star@example.com", lists: "all" })).id;
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("'*' gets a ministry-tagged release", async () => {
+    const release = { ...sampleRelease, key: "K-STAR-MINISTRY", ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.db.transaction(async (tx) => {
+      await upsertReleaseItem(tx, release, PUBLIC_SITE_URL);
+      await createItemSend(tx, release.key, "as_it_happens");
+    });
+    const rows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, release.key));
+    expect(rows.map((r) => r.subscriberId)).toContain(allNews);
+  });
+
+  it("'*' does not get an emergency item (no ministries: key)", async () => {
+    await tdb.db.insert(items).values({
+      key: "emergency:K-STAR-EMERGENCY",
+      kind: "emergency",
+      listKeys: ["emergency:alerts"],
+      title: "Evacuation order",
+      summary: "Leave the area immediately.",
+      url: "https://news.example/site/emergency/1",
+      publishedAt: new Date(),
+      toSubscribers: true,
+    });
+    await tdb.db.transaction((tx) => createItemSend(tx, "emergency:K-STAR-EMERGENCY", "emergency"));
+    const rows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, "emergency:K-STAR-EMERGENCY"));
+    expect(rows).toHaveLength(0);
+    expect(await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "emergency:K-STAR-EMERGENCY"))).toHaveLength(0);
+  });
+});
+
+describe("createItemSend: emergency recipients ignore the subscriber's own timing preference", () => {
+  let tdb: TestDatabase;
+  let createItemSend: ReturnType<typeof createItemSending>["createItemSend"];
+  let onList: string;
+  let notOnList: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    ({ createItemSend } = createItemSending({ render: RENDER }));
+    onList = (await addSubscriber(tdb.db, { email: "alerts@example.com", lists: ["emergency:alerts"] })).id;
+    // Digest-only, as_it_happens false: an emergency send must reach them anyway.
+    await tdb.db.update(subscribers).set({ asItHappens: false, digest: true }).where(eq(subscribers.id, onList));
+    notOnList = (await addSubscriber(tdb.db, { email: "not-on-alerts@example.com", lists: "all" })).id;
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("delivers to a digest-only subscriber on the emergency list, and not to an unrelated '*' subscriber", async () => {
+    await tdb.db.insert(items).values({
+      key: "emergency:K-TIMING",
+      kind: "emergency",
+      listKeys: ["emergency:alerts"],
+      title: "Evacuation order",
+      summary: "Leave the area immediately.",
+      url: "https://news.example/site/emergency/2",
+      publishedAt: new Date(),
+      toSubscribers: true,
+    });
+    await tdb.db.transaction((tx) => createItemSend(tx, "emergency:K-TIMING", "emergency"));
+    const rows = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, "emergency:K-TIMING"));
+    expect(rows.map((r) => r.subscriberId)).toEqual([onList]);
+    expect(rows.map((r) => r.subscriberId)).not.toContain(notOnList);
+  });
+});
+
+// Controller ruling (carried from Task 2): the sender cancels a claimed job of a withdrawn item;
+// the release is then republished. createItemSend must clear the cancelled job's unattempted
+// deliveries and the job itself, then create a fresh one -- the already-attempted delivery stays
+// (its (item, subscriber, mode) primary key then keeps that subscriber out of the fresh insert).
+describe("createItemSend re-creates a cancelled job on republish", () => {
+  let tdb: TestDatabase;
+  let createItemSend: ReturnType<typeof createItemSending>["createItemSend"];
+  let attemptedSub: string;
+  let freshSub: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    ({ createItemSend } = createItemSending({ render: RENDER }));
+    attemptedSub = (await addSubscriber(tdb.db, { email: "attempted@example.com", lists: "all" })).id;
+    freshSub = (await addSubscriber(tdb.db, { email: "fresh@example.com", lists: "all" })).id;
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("deletes the cancelled job's unattempted deliveries, keeps the attempted one, and creates a fresh pending job whose recipients exclude the attempted subscriber", async () => {
+    const release = { ...sampleRelease, key: "K-CANCELLED-REDO", ministryKeys: ["Health"], publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.db.transaction(async (tx) => {
+      await upsertReleaseItem(tx, release, PUBLIC_SITE_URL);
+      await createItemSend(tx, release.key, "as_it_happens");
+    });
+    const [firstJob] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
+    expect(firstJob).toBeTruthy();
+
+    // The sender claimed, then cancelled, the job (it raced a withdraw): one delivery already
+    // attempted, one not.
+    await tdb.db.update(deliveries).set({ attemptedAt: new Date() }).where(and(eq(deliveries.itemKey, release.key), eq(deliveries.subscriberId, attemptedSub)));
+    await tdb.db.update(sendJobs).set({ status: "cancelled" }).where(eq(sendJobs.id, firstJob!.id));
+
+    // Republish.
+    await tdb.db.transaction(async (tx) => {
+      await upsertReleaseItem(tx, release, PUBLIC_SITE_URL);
+      await createItemSend(tx, release.key, "as_it_happens");
+    });
+
+    const jobs = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]!.id).not.toBe(firstJob!.id);
+    expect(jobs[0]!.status).toBe("pending");
+
+    const recipientRows = await tdb.db.select().from(jobRecipients).where(eq(jobRecipients.jobId, jobs[0]!.id));
+    expect(recipientRows.map((r) => r.subscriberId)).toEqual([freshSub]);
+    expect(recipientRows.map((r) => r.subscriberId)).not.toContain(attemptedSub);
+
+    // The already-attempted delivery survives, detached from the deleted job.
+    const attemptedDeliveryRows = await tdb.db.select().from(deliveries).where(and(eq(deliveries.itemKey, release.key), eq(deliveries.subscriberId, attemptedSub)));
+    expect(attemptedDeliveryRows).toHaveLength(1);
+    expect(attemptedDeliveryRows[0]!.jobId).toBeNull();
+  });
+});
+
+describe("recordEmergencyItem", () => {
+  let tdb: TestDatabase;
+  let sending: ReturnType<typeof createItemSending>;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    sending = createItemSending({ render: RENDER });
+    // emergency:alerts already exists as a seeded list (migration 0005) — a subscriber on it
+    // so createItemSend actually has a recipient and keeps the job (an empty job is deleted).
+    await addSubscriber(tdb.db, { email: "alerts@example.com", lists: ["emergency:alerts"] });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("is idempotent on guid: a repeat call returns the same key, reports created: false, and creates no second job", async () => {
+    const input = { guid: "guid-abc", title: "Evacuation order", summary: "Leave the area immediately.", url: "https://news.example/site/emergency/1" };
+    const first = await sending.recordEmergencyItem(tdb.db, input);
+    expect(first.created).toBe(true);
+
+    const second = await sending.recordEmergencyItem(tdb.db, input);
+    expect(second).toEqual({ key: first.key, created: false });
+
+    const jobRows = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, first.key));
+    expect(jobRows).toHaveLength(1);
+    expect(jobRows[0]!.kind).toBe("emergency");
+  });
+
+  it("stamps the given publishedAt, or now() when omitted", async () => {
+    const withDate = await sending.recordEmergencyItem(tdb.db, {
+      guid: "guid-with-date",
+      title: "t",
+      summary: "s",
+      url: "https://news.example/site/emergency/2",
+      publishedAt: "2026-01-01T00:00:00.000Z",
+    });
+    const [row] = await tdb.db.select().from(items).where(eq(items.key, withDate.key));
+    expect(row!.publishedAt.toISOString()).toBe("2026-01-01T00:00:00.000Z");
+
+    const before = new Date();
+    const withoutDate = await sending.recordEmergencyItem(tdb.db, { guid: "guid-no-date", title: "t2", summary: "s2", url: "https://news.example/site/emergency/3" });
+    const [row2] = await tdb.db.select().from(items).where(eq(items.key, withoutDate.key));
+    expect(row2!.publishedAt.getTime()).toBeGreaterThanOrEqual(before.getTime() - 1000);
+  });
 });

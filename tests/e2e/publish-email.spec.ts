@@ -37,7 +37,7 @@ test.describe("item 5: publish now reaches the News API, the static site and a N
     expect(siteRes.status).toBe(200);
     expect(await siteRes.text()).toContain(headline);
 
-    const mail = await waitForMessageWithSubject(headline);
+    const mail = await waitForMessageWithSubject(`BC Gov News - ${headline}`);
     expect(mail.to).toContain(subscriberEmail);
   });
 });

@@ -1,7 +1,7 @@
 // Phase 4 acceptance items 1–2: subscribe → verify → manage → unsubscribe, through the News
 // API proxy and the test-site pages, with every email read back from the SMTP sink.
 import { test, expect } from "@playwright/test";
-import { baseUrl, expectNoSeriousA11yViolations, fetchSentMessages, tick, waitForMessageWithSubject } from "./playwright-support";
+import { baseUrl, expectNoSeriousA11yViolations, fetchSentMessages, tick } from "./playwright-support";
 
 const VERIFY = "BC Gov News On Demand Email Verification";
 const MANAGE = "BC Gov News On Demand Subscription Management";

@@ -4,10 +4,13 @@ import type { Db } from "@gcpe/db-kit";
 import { requireBearer, type BearerOptions } from "@gcpe/auth";
 import { createEventReceiver } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
-import { createAsItHappensHandler, type AsItHappensOptions } from "./as-it-happens";
+import { createItemSending } from "./as-it-happens";
+import type { DistributionClient } from "./distribution-client";
 import { apiRoutes } from "./http/routes";
 import { subscribeApiRoutes } from "./http/subscribe-routes";
+import { itemHandlers } from "./items";
 import { listsHandler } from "./lists";
+import type { RenderOptions } from "./render";
 import type { JourneyDeps } from "./subscribe/journeys";
 
 export interface AppDeps {
@@ -15,10 +18,24 @@ export interface AppDeps {
   auth: BearerOptions;
   loginRouter?: Router | null;
   eventSecrets: Record<string, string>;
-  handlerOptions: AsItHappensOptions;
+  /** Site URL (also used as `items`' own publicSiteUrl) and optional banner for every
+   * As-It-Happens/emergency email this sends (Task 5). */
+  render: RenderOptions;
   /** Phase 4a: the legacy public Subscribe API, mounted at /api/Subscribe when set. */
   subscribe?: JourneyDeps;
+  /** Task 7: the pause/resume routes' own Distribution client, resolved NOD_OPS_EMAIL and
+   * tenant time zone. `distribution` defaults to `subscribe`'s client when omitted (both are
+   * the same real client in production -- start.ts passes one Distribution client everywhere);
+   * `opsEmail` defaults to null (no ops email sent) and `timeZone` to "UTC" -- both only matter
+   * when an actual pause/resume fires an email, which a null `opsEmail` already rules out. */
+  distribution?: Pick<DistributionClient, "send">;
+  opsEmail?: string | null;
+  timeZone?: string;
 }
+
+const noDistribution: Pick<DistributionClient, "send"> = {
+  send: () => Promise.reject(new Error("createApp: no Distribution client configured for the settings routes")),
+};
 
 export function createApp(deps: AppDeps): express.Express {
   const app = express();
@@ -29,19 +46,32 @@ export function createApp(deps: AppDeps): express.Express {
   // Mounted before any body parser: signatures cover the raw bytes (see
   // packages/events/src/receiver.ts), so an upstream express.json()/raw() that already
   // consumed the body would make every event fail verification.
-  const handler = createAsItHappensHandler(deps.handlerOptions);
+  const { createItemSend, recordEmergencyItem } = createItemSending({ render: deps.render });
+  const resolveItemHandler = itemHandlers({
+    publicSiteUrl: deps.render.siteUrl,
+    onPublished: (tx, r) => createItemSend(tx, r.key, "as_it_happens"),
+  });
   app.use(
     createEventReceiver({
       db: deps.db,
       secrets: deps.eventSecrets,
-      handlers: (ev) => (ev.source === "nrms" && ev.type === "release.published" ? handler : listsHandler(ev)),
+      handlers: (ev) => resolveItemHandler(ev) ?? listsHandler(ev),
     }),
   );
 
   if (deps.loginRouter) app.use(deps.loginRouter);
   if (deps.subscribe) app.use("/api/Subscribe", requireBearer(deps.auth), express.json({ limit: "100kb" }), subscribeApiRoutes(deps.subscribe));
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.
-  app.use("/api", requireBearer(deps.auth), express.json({ limit: "100kb" }), apiRoutes(deps.db));
+  app.use(
+    "/api",
+    requireBearer(deps.auth),
+    express.json({ limit: "100kb" }),
+    apiRoutes(deps.db, { recordEmergencyItem }, {
+      distribution: deps.distribution ?? deps.subscribe?.distribution ?? noDistribution,
+      opsEmail: deps.opsEmail ?? null,
+      timeZone: deps.timeZone ?? "UTC",
+    }),
+  );
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
   // escape stay JSON instead of finalhandler's default HTML.
   app.use(jsonErrorHandler({ logPrefix: "[nod]" }));

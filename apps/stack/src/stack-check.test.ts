@@ -52,7 +52,6 @@ function baseEnv(): NodeJS.ProcessEnv {
     NOD_EVENT_SECRETS: JSON.stringify({ nrms: "s" }),
     NOD_DISTRIBUTION_URL: "self:/distribution",
     NOD_PUBLIC_SITE_URL: "https://news.example.invalid/site",
-    NOD_MANAGE_URL: "https://news.example.invalid/manage",
     NOD_LINK_SECRET: "l".repeat(32),
 
     DIST_DATABASE_URL: DB("distribution"),

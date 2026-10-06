@@ -1,8 +1,12 @@
-import { and, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import { ageMsOf, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
-import { deliveries, sendJobs, subscribers } from "./db/schema";
+import { deliveries, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
+import { renderDigestItems } from "./digest";
+import { recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
+import type { RenderOptions } from "./render";
+import { safeErrorLabel } from "./subscribe/journeys";
 
 /** Distribution refuses a request with more than 20,000 recipients (P2-R15): a release that
  * targets more subscribers than this is sent as several requests instead of one. Exported so
@@ -27,10 +31,14 @@ const LOCK_MARGIN_MS = 30_000;
 export interface SendJobsOptions {
   db: Db;
   distribution: DistributionClient;
-  /** Base URL for the manage/unsubscribe page; each recipient's substitution is this URL with
-   * a `token` query parameter set to their `manageToken` (any existing query string on
-   * `manageUrl` is preserved — see manageLinkFor). */
-  manageUrl: string;
+  /** Per-recipient manage/unsubscribe link options (Task 3's recipient-links.ts). A fresh
+   * manage link and the stable one-click unsubscribe URL are built for each active recipient
+   * of a chunk part, just before that part is sent (see sendAllChunks). */
+  links: RecipientLinkOptions;
+  /** Site URL and optional banner for every outbound email this sends -- only actually used to
+   * re-render a digest job (see {@link sendDueJobs}'s doc comment) whose items have partly
+   * withdrawn since it was built; an As-It-Happens/emergency job's content never changes here. */
+  render: RenderOptions;
   /** Test hook: when given, its value stands in for SQL `now()` in every statement this call
    * makes (claim, lock, backoff, age). Production omits it and the database's clock is used
    * throughout — see {@link sendDueJobs}. */
@@ -47,11 +55,17 @@ export interface SendJobsOptions {
   perChunkMs?: number;
   /** Override for {@link MAX_CHUNK_BYTES}, for tests. */
   maxChunkBytes?: number;
+  /** Test hook: called inside the withdrawn-check transaction, after the `FOR SHARE` read
+   * confirms the item is withdrawn, before the cancel write — see {@link sendDueJobs}'s doc
+   * comment. Production call sites never pass it. */
+  onWithdrawnCheck?: () => void | Promise<void>;
 }
 
 type ClaimedJobRow = {
   id: string;
-  release_key: string;
+  item_key: string | null;
+  priority: "immediate" | "digest" | "media" | "system";
+  kind: string;
   subject: string | null;
   html: string | null;
   text: string | null;
@@ -81,11 +95,16 @@ async function claimOneJob(db: Db, now: SQL, lockMs: number): Promise<ClaimedJob
         WHERE status = 'pending'
           AND next_attempt_at <= ${now}
           AND (locked_until IS NULL OR locked_until < ${now})
-        ORDER BY next_attempt_at, id
+        -- Immediate (As-It-Happens/emergency) jobs are claimed ahead of digest jobs due at the
+        -- same time -- (priority = 'digest') is false (sorts first) for immediate/media/
+        -- system priorities and true (sorts after) for digest, so a 17:00 digest batch never
+        -- delays an emergency/As-It-Happens job created just after it. Ties within the same
+        -- priority bucket still break on next_attempt_at, then id, as before.
+        ORDER BY (priority = 'digest'), next_attempt_at, id
         LIMIT 1
         FOR UPDATE SKIP LOCKED
      )
-    RETURNING id, release_key, subject, html, text, attempts, ${ageMsOf(sql`created_at`, now)} AS age_ms, chunks_assigned, batch_ids,
+    RETURNING id, item_key, priority, kind, subject, html, text, attempts, ${ageMsOf(sql`created_at`, now)} AS age_ms, chunks_assigned, batch_ids,
               ${lockTokenOf(sql`locked_until`)} AS lock_token`);
   return claimed.rows[0];
 }
@@ -137,26 +156,21 @@ async function releaseLock(db: Db, jobId: string, token: LockToken): Promise<voi
  * caused the overflow. `onBeforeFlagWrite` exists only so a test can force a failure between
  * the two writes and assert the whole thing rolled back; production call sites never pass it.
  */
-export async function ensureChunksAssigned(db: Db, jobId: string, releaseKey: string, chunkSize: number, opts: { onBeforeFlagWrite?: () => void } = {}): Promise<void> {
+export async function ensureChunksAssigned(db: Db, jobId: string, chunkSize: number, opts: { onBeforeFlagWrite?: () => void } = {}): Promise<void> {
   await db.transaction(async (tx) => {
     const [row] = await tx.select({ chunksAssigned: sendJobs.chunksAssigned }).from(sendJobs).where(eq(sendJobs.id, jobId));
     if (row?.chunksAssigned) return; // already fully assigned (and flagged) — nothing to do
     await tx.execute(sql`
-      UPDATE deliveries SET chunk_index = sub.idx
+      UPDATE job_recipients SET chunk_index = sub.idx
         FROM (
           SELECT subscriber_id, ((row_number() OVER (ORDER BY subscriber_id) - 1) / ${chunkSize})::int AS idx
-            FROM deliveries
-           WHERE release_key = ${releaseKey} AND chunk_index IS NULL
+            FROM job_recipients
+           WHERE job_id = ${jobId} AND chunk_index IS NULL
         ) sub
-       WHERE deliveries.release_key = ${releaseKey} AND deliveries.subscriber_id = sub.subscriber_id`);
+       WHERE job_recipients.job_id = ${jobId} AND job_recipients.subscriber_id = sub.subscriber_id`);
     opts.onBeforeFlagWrite?.();
     await tx.update(sendJobs).set({ chunksAssigned: true }).where(and(eq(sendJobs.id, jobId), eq(sendJobs.chunksAssigned, false)));
   });
-}
-
-interface Recipient {
-  email: string;
-  manageToken: string;
 }
 
 /** R3: a chunk's byte-split partition (how many parts, and which members fall in which part)
@@ -165,32 +179,47 @@ interface Recipient {
  * subscriber flipping inactive between attempt 1 and attempt 2 shrinks the recipient list
  * `splitChunkByBytes` sizes against, which can change the part count/boundaries and therefore
  * the idempotencyKey a given recipient's part is sent under — exactly the kind of instability
- * chunk_index freezing (ensureChunksAssigned) already exists to prevent, one level down. */
-interface Member extends Recipient {
+ * chunk_index freezing (ensureChunksAssigned) already exists to prevent, one level down.
+ *
+ * `subscriberId`/`unsubscribeVersion` feed {@link recipientSubstitutions} (Task 3) for this
+ * member's per-recipient manage/unsubscribe links, built just before a part is actually sent. */
+interface Member {
+  subscriberId: string;
+  email: string;
+  unsubscribeVersion: number;
   active: boolean;
 }
 
-const toRecipients = (members: Member[]): Recipient[] => members.map(({ email, manageToken }) => ({ email, manageToken }));
-
-/** Every member of this release's frozen chunks (chunk_index IS NOT NULL — see
+/** Every member of this job's frozen chunks (chunk_index IS NOT NULL — see
  * ensureChunksAssigned), grouped by chunk_index, *regardless of current active status* (R3:
  * the byte-split partition below must size itself against this frozen membership, not against
  * whichever subset happens to be active on any given attempt). The query orders by
  * (chunk_index, subscriber id), so each chunk's own member order — and therefore every part's
  * membership — is deterministic across attempts. Filtering to only-active happens later, at
  * send time, per part (see sendAllChunks). */
-async function fetchAssignedMembers(db: Db, releaseKey: string): Promise<Map<number, Member[]>> {
+async function fetchAssignedMembers(db: Db, jobId: string): Promise<Map<number, Member[]>> {
   const rows = await db
-    .select({ chunkIndex: deliveries.chunkIndex, email: subscribers.email, manageToken: subscribers.manageToken, status: subscribers.status })
-    .from(deliveries)
-    .innerJoin(subscribers, eq(subscribers.id, deliveries.subscriberId))
-    .where(and(eq(deliveries.releaseKey, releaseKey), isNotNull(deliveries.chunkIndex)))
-    .orderBy(deliveries.chunkIndex, subscribers.id);
+    .select({
+      chunkIndex: jobRecipients.chunkIndex,
+      subscriberId: subscribers.id,
+      email: subscribers.email,
+      status: subscribers.status,
+      unsubscribeVersion: subscribers.unsubscribeVersion,
+    })
+    .from(jobRecipients)
+    .innerJoin(subscribers, eq(subscribers.id, jobRecipients.subscriberId))
+    .where(and(eq(jobRecipients.jobId, jobId), isNotNull(jobRecipients.chunkIndex)))
+    .orderBy(jobRecipients.chunkIndex, subscribers.id);
 
   const chunks = new Map<number, Member[]>();
   for (const row of rows) {
     const idx = row.chunkIndex!;
-    const member: Member = { email: row.email, manageToken: row.manageToken, active: row.status === "active" };
+    const member: Member = {
+      subscriberId: row.subscriberId,
+      email: row.email,
+      unsubscribeVersion: row.unsubscribeVersion,
+      active: row.status === "active",
+    };
     const bucket = chunks.get(idx);
     if (bucket) bucket.push(member);
     else chunks.set(idx, [member]);
@@ -198,49 +227,47 @@ async function fetchAssignedMembers(db: Db, releaseKey: string): Promise<Map<num
   return chunks;
 }
 
-/** Active-subscriber deliveries for this release whose *delivery row itself* was inserted
+/** Active-subscriber recipients of this job whose *job_recipients row itself* was inserted
  * after chunking was frozen — chunk_index is still NULL, so they're not part of this (or any)
- * job's chunks (P2-R18: this is not the same thing as "became active after freezing" —
+ * attempt's chunks (P2-R18: this is not the same thing as "became active after freezing" —
  * ensureChunksAssigned doesn't filter on status at all, so a subscriber who becomes active
- * later still has whatever chunk_index their delivery row got assigned at freeze time, and is
- * picked up by fetchAssignedMembers on this job's next attempt. The one case where a
+ * later still has whatever chunk_index their job_recipients row got assigned at freeze time,
+ * and is picked up by fetchAssignedMembers on this job's next attempt. The one case where a
  * late-activated subscriber is never mailed is if their chunk was already sent and accepted in
  * an earlier attempt and the job has since reached a terminal state — by design, not a bug:
  * freezing trades "catch every last-second activation" for stable, safe-to-retry chunk
  * membership). */
-async function countLateDeliveries(db: Db, releaseKey: string): Promise<number> {
+async function countLateDeliveries(db: Db, jobId: string): Promise<number> {
   const [row] = await db
     .select({ count: sql<number>`count(*)::int` })
-    .from(deliveries)
-    .innerJoin(subscribers, eq(subscribers.id, deliveries.subscriberId))
-    .where(and(eq(deliveries.releaseKey, releaseKey), eq(subscribers.status, "active"), isNull(deliveries.chunkIndex)));
+    .from(jobRecipients)
+    .innerJoin(subscribers, eq(subscribers.id, jobRecipients.subscriberId))
+    .where(and(eq(jobRecipients.jobId, jobId), eq(subscribers.status, "active"), isNull(jobRecipients.chunkIndex)));
   return row?.count ?? 0;
 }
 
-/** Builds the per-recipient manage/unsubscribe link from `manageUrl` plus a `token` query
- * parameter, preserving any query string `manageUrl` already has (P2-R16) — a naive
- * `${manageUrl}?token=...` would instead produce a second, malformed `?` if `manageUrl` ever
- * carries its own query. */
-function manageLinkFor(manageUrl: string, token: string): string {
-  const url = new URL(manageUrl);
-  url.searchParams.set("token", token);
-  return url.toString();
-}
-
 /** `key` is the chunk's own idempotency suffix — normally just its `chunk_index` (as a
- * string), or `<chunk_index>.<part>` when {@link splitChunkByBytes} had to split it further. */
-function buildMessageRequest(job: ClaimedJobRow, chunk: Recipient[], key: string, manageUrl: string): MessageRequest {
+ * string), or `<chunk_index>.<part>` when {@link splitChunkByBytes} had to split it further.
+ *
+ * `substitutions` (Task 3's recipientSubstitutions, keyed by subscriberId) carries each
+ * recipient's own `{{manageUrl}}`/`{{unsubscribeUrl}}` values; omitted (or a member missing
+ * from the map) during the byte-size probe in {@link partitionChunkByBytes}, where no real
+ * links have been built yet — every member gets `{}` there, same as every other member, so the
+ * probe's *relative* sizing is unaffected. */
+function buildMessageRequest(
+  job: ClaimedJobRow,
+  members: Member[],
+  key: string,
+  substitutions?: Map<string, { manageUrl: string; unsubscribeUrl: string }>,
+): MessageRequest {
   return {
-    priority: "immediate",
+    priority: job.priority,
     idempotencyKey: `${job.id}:${key}`,
     subject: job.subject ?? "",
     html: job.html ?? "",
     text: job.text ?? undefined,
-    headers: { "List-Unsubscribe": "<{{manageUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
-    recipients: chunk.map((r) => ({
-      email: r.email,
-      substitutions: { manageUrl: manageLinkFor(manageUrl, r.manageToken) },
-    })),
+    headers: { "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
+    recipients: members.map((m) => ({ email: m.email, substitutions: substitutions?.get(m.subscriberId) ?? {} })),
   };
 }
 
@@ -264,11 +291,11 @@ function requestByteSize(req: MessageRequest): number {
  * between attempts. Returns the *membership* of each part, not yet filtered to active-only
  * or built into a request — that happens in sendAllChunks, per attempt.
  */
-function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex: number, manageUrl: string, maxBytes: number): { key: string; members: Member[] }[] {
+function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex: number, maxBytes: number): { key: string; members: Member[] }[] {
   let n = 1;
   while (n < members.length) {
     const size = Math.ceil(members.length / n);
-    const probe = buildMessageRequest(job, toRecipients(members.slice(0, size)), String(chunkIndex), manageUrl);
+    const probe = buildMessageRequest(job, members.slice(0, size), String(chunkIndex));
     if (requestByteSize(probe) <= maxBytes) break;
     n++;
   }
@@ -298,27 +325,61 @@ function partitionChunkByBytes(job: ClaimedJobRow, members: Member[], chunkIndex
  * assignment. A part with zero currently-active members is skipped entirely: no request sent,
  * no batchId recorded for it this attempt (any batchId it already earned on an earlier attempt
  * stays in the merged `batch_ids`, untouched — see sendDueJobs).
+ *
+ * Per-recipient links (Task 3): `recipientSubstitutions` is called for a part's active members
+ * only right before that part is actually sent — never for a part skipped because nobody in it
+ * is currently active, and never for the inactive members of a part that *is* sent (R3: those
+ * stay in `partMembers` for frozen partitioning but never carry their own links).
+ *
+ * Controller ruling (overrides the brief's "after a successful send"): `deliveries.attempted_at`
+ * is stamped *immediately before* `distribution.send` — handed off, not confirmed — because a
+ * response that was actually accepted by Distribution but lost to us (a timeout, a dropped
+ * connection after Distribution already committed) must still count as "attempted": otherwise a
+ * withdraw racing the sender could see an unattempted delivery, delete it, and a later republish
+ * would double-send. The `attempted_at IS NULL` guard means a
+ * retry of a part already handed off (including one that's resent whole on a later attempt,
+ * same as every other chunk) never re-stamps it — retries still work regardless, since
+ * recipients are re-derived from `job_recipients`, never from `deliveries`.
  */
 async function sendAllChunks(
-  distribution: DistributionClient,
+  opts: { db: Db; distribution: DistributionClient; links: RecipientLinkOptions; now?: TestClock },
   job: ClaimedJobRow,
   chunks: Map<number, Member[]>,
-  manageUrl: string,
   maxChunkBytes: number,
 ): Promise<{ batchIds: Record<string, string>; error?: DistributionError }> {
   const batchIds: Record<string, string> = {};
   for (const [chunkIndex, members] of chunks) {
-    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, manageUrl, maxChunkBytes)) {
+    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes)) {
       const activeMembers = partMembers.filter((m) => m.active);
       if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
       try {
-        const { batchId } = await distribution.send(buildMessageRequest(job, toRecipients(activeMembers), key, manageUrl));
+        const substitutions = await recipientSubstitutions(opts.db, activeMembers, opts.links);
+        // Stamped before the handoff, not after — see the doc comment above.
+        await opts.db
+          .update(deliveries)
+          .set({ attemptedAt: sqlNow(opts.now) })
+          .where(
+            and(
+              eq(deliveries.jobId, job.id),
+              inArray(deliveries.subscriberId, activeMembers.map((m) => m.subscriberId)),
+              isNull(deliveries.attemptedAt),
+            ),
+          );
+        const { batchId } = await opts.distribution.send(buildMessageRequest(job, activeMembers, key, substitutions));
         batchIds[key] = batchId;
       } catch (e) {
         // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless
         // distribution-client.ts itself deliberately classified it otherwise — an *unexpected*
         // error (anything not already a DistributionError) must never permanently fail a job.
-        const error = e instanceof DistributionError ? e : new DistributionError(e instanceof Error ? e.message : String(e), true);
+        //
+        // Logs constraint: `e.message` is only safe when `e` is already a
+        // DistributionError (its message is Distribution's own HTTP status/body text, never a
+        // bound SQL value). Any other error — notably a `recipientSubstitutions` DB failure,
+        // whose drizzle `DrizzleQueryError` message is `Failed query: <sql>\nparams: <params>`
+        // and binds each row's email/subscriberId — must never have its raw message stored in
+        // `send_jobs.last_error` or logged; `safeErrorLabel` (a Postgres error code, or failing
+        // that the error's name) is informative without carrying the bound value.
+        const error = e instanceof DistributionError ? e : new DistributionError(`unexpected send error: ${safeErrorLabel(e)}`, true);
         return { batchIds, error };
       }
     }
@@ -333,15 +394,66 @@ async function sendAllChunks(
  * from `now()` at the terminal write, and a job's age is its age at claim time (computed in
  * SQL) plus the monotonic time elapsed since. `opts.now`, a test hook, replaces SQL `now()`
  * with its value in every statement this call makes.
+ *
+ * Pause (global constraints): checked once, before anything is claimed — while
+ * `nod_settings.paused` is true, this call claims nothing at all (items/deliveries/jobs keep
+ * being recorded elsewhere; only the sender stands down).
+ *
+ * Cancellation (review focus 2): a job claimed for an item that has since been withdrawn
+ * (`items.withdrawn_at`) is marked `cancelled` and released, unsent — checked right after the
+ * claim, before any chunk work, so a withdrawn release's job never reaches Distribution.
+ *
+ * A digest job (`kind: 'digest'`, `item_key` null) carries several items, so the single-item
+ * check above can't see it; its own items are read back from its `deliveries` instead, their
+ * `items.withdrawn_at` locked `FOR SHARE` the same way. If every one of them is withdrawn, the
+ * job is cancelled exactly like a single-item job. If only some are, this call deletes that
+ * job's not-yet-attempted `deliveries` for just the withdrawn items and re-renders the job's
+ * subject/html/text (`renderDigestItems`, digest.ts) from the survivors, then sends that —
+ * never the content built back when the digest was first assembled. If none are withdrawn, the
+ * job is sent unchanged, same as always.
+ *
+ * The withdrawn check reads `items.withdrawn_at` with `FOR SHARE` — a row
+ * lock, not a plain read. `withdrawItem` (items.ts) never locks the `items` row itself before
+ * selecting the unclaimed jobs to delete; without a lock here, this read could land in the gap
+ * between that `withdrawItem` transaction's `UPDATE items SET withdrawn_at = now()` and its
+ * commit, see the old (uncommitted) NULL, and send — after which `withdrawItem` deletes the job
+ * out from under a send already in flight. `FOR SHARE` makes this read block behind any
+ * concurrent `UPDATE ... WHERE key = ...` on the same row (every UPDATE takes an implicit
+ * row-level lock) until that transaction commits or rolls back, so it only ever sees the
+ * committed value — items.ts itself is untouched.
+ *
+ * That `FOR SHARE` read and the cancel write it guards must happen in one
+ * transaction (`opts.db.transaction`, not two separate `opts.db` statements) — otherwise the
+ * read's own row lock is released the instant it finishes (a standalone statement is its own
+ * implicit transaction), reopening a gap of exactly the kind the lock above closed: a republish
+ * (`upsertReleaseItem` clearing `withdrawn_at`, then `createItemSend` in the same transaction,
+ * as-it-happens.ts) can run and commit *between* this call's read and its cancel write. Seen
+ * from the republish's side, the job still reads `pending` (this call hasn't cancelled it yet),
+ * so its `ON CONFLICT (job_key) DO NOTHING` is a no-op — and then this call's cancel write lands
+ * right after, cancelling the one job that would ever have been sent, while the item is now
+ * live. Holding the `FOR SHARE` lock for the lifetime of one transaction that also does the
+ * cancel write forces the republish's own `UPDATE items` to serialise with it: either the
+ * republish's update blocks until this transaction commits (cancel already written) and its
+ * `createItemSend` then finds the job `cancelled` — which the controller ruling (as-it-
+ * happens.ts) replaces with a fresh pending job — or the republish commits first and this read
+ * sees the committed, cleared `withdrawn_at`, so nothing is cancelled and the job sends
+ * normally. Either way, never "live item, only a cancelled job, nothing fresh".
  */
-export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number; retried: number; failed: number }> {
+export async function sendDueJobs(
+  opts: SendJobsOptions,
+): Promise<{ sent: number; retried: number; failed: number; cancelled: number; paused: boolean }> {
   const batchSize = opts.batchSize ?? DEFAULT_BATCH_SIZE;
   const maxAgeMs = opts.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
   const chunkSize = opts.chunkSize ?? MAX_RECIPIENTS_PER_CHUNK;
   const perChunkMs = opts.perChunkMs ?? DEFAULT_PER_CHUNK_MS;
   const maxChunkBytes = opts.maxChunkBytes ?? MAX_CHUNK_BYTES;
 
-  const result = { sent: 0, retried: 0, failed: 0 };
+  const [settings] = await opts.db.select({ paused: nodSettings.paused }).from(nodSettings);
+  if (settings?.paused) {
+    return { sent: 0, retried: 0, failed: 0, cancelled: 0, paused: true };
+  }
+
+  const result = { sent: 0, retried: 0, failed: 0, cancelled: 0, paused: false };
 
   for (let i = 0; i < batchSize; i++) {
     const sinceClaim = stopwatch();
@@ -351,18 +463,94 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     const job = await claimOneJob(opts.db, sqlNow(opts.now), perChunkMs + LOCK_MARGIN_MS);
     if (!job) break;
 
+    if (job.item_key) {
+      // FOR SHARE and the cancel write happen in one transaction — see the doc comment above.
+      const outcome = await opts.db.transaction(async (tx) => {
+        const { rows: itemRows } = await tx.execute<{ withdrawn_at: Date | null }>(
+          sql`SELECT withdrawn_at FROM items WHERE key = ${job.item_key} FOR SHARE`,
+        );
+        if (!itemRows[0]?.withdrawn_at) return { withdrawn: false, cancelled: false };
+        // Test hook: fires while this transaction still holds the FOR SHARE lock, so a test
+        // can start a concurrent republish and prove it blocks behind this transaction rather
+        // than racing it. Production call sites never pass it.
+        await opts.onWithdrawnCheck?.();
+        const res = await tx
+          .update(sendJobs)
+          .set({ status: "cancelled", lockedUntil: null })
+          .where(and(eq(sendJobs.id, job.id), ownedPending(sendJobs, job.lock_token)));
+        return { withdrawn: true, cancelled: (res.rowCount ?? 0) > 0 };
+      });
+      if (outcome.withdrawn) {
+        if (outcome.cancelled) result.cancelled++;
+        continue;
+      }
+    } else if (job.kind === "digest") {
+      // Same FOR SHARE + write-in-one-transaction pattern as the item-job check above, keyed
+      // off every item this job's own deliveries carry (see the doc comment above).
+      const outcome = await opts.db.transaction(async (tx) => {
+        const deliveryRows = await tx.select({ itemKey: deliveries.itemKey }).from(deliveries).where(eq(deliveries.jobId, job.id));
+        const itemKeys = [...new Set(deliveryRows.map((d) => d.itemKey))];
+        if (itemKeys.length === 0) return { kind: "unchanged" as const };
+
+        const { rows: itemRows } = await tx.execute<{ key: string; withdrawn_at: string | null }>(
+          sql`SELECT key, withdrawn_at FROM items WHERE key = ANY(${sql.param(itemKeys)}::text[]) FOR SHARE`,
+        );
+        const withdrawnKeys = itemRows.filter((r) => r.withdrawn_at).map((r) => r.key);
+        if (withdrawnKeys.length === 0) return { kind: "unchanged" as const };
+
+        if (withdrawnKeys.length === itemKeys.length) {
+          // Every one of this job's deliveries is for a now-withdrawn item, so (same as the
+          // "some withdrawn" path below) its not-yet-attempted deliveries must be deleted here,
+          // in the same transaction as the cancel write. Left behind, a `mode='digest'` row for
+          // a since-republished item would permanently block that item's As-It-Happens send to a
+          // both-timings subscriber (as-it-happens.ts's `NOT EXISTS ... mode='digest'` guard),
+          // so a republish would reach them neither by digest (job cancelled) nor As-It-Happens.
+          await tx.delete(deliveries).where(and(eq(deliveries.jobId, job.id), isNull(deliveries.attemptedAt)));
+          const res = await tx
+            .update(sendJobs)
+            .set({ status: "cancelled", lockedUntil: null })
+            .where(and(eq(sendJobs.id, job.id), ownedPending(sendJobs, job.lock_token)));
+          return { kind: "cancelled" as const, wrote: (res.rowCount ?? 0) > 0 };
+        }
+
+        const remainingKeys = itemKeys.filter((k) => !withdrawnKeys.includes(k));
+        await tx
+          .delete(deliveries)
+          .where(and(eq(deliveries.jobId, job.id), inArray(deliveries.itemKey, withdrawnKeys), isNull(deliveries.attemptedAt)));
+        const rendered = await renderDigestItems(tx, remainingKeys, opts.render);
+        await tx
+          .update(sendJobs)
+          .set({ subject: rendered.subject, html: rendered.html, text: rendered.text })
+          .where(and(eq(sendJobs.id, job.id), ownedPending(sendJobs, job.lock_token)));
+        return { kind: "shrunk" as const, rendered };
+      });
+
+      if (outcome.kind === "cancelled") {
+        if (outcome.wrote) result.cancelled++;
+        continue;
+      }
+      if (outcome.kind === "shrunk") {
+        // This attempt's own in-memory copy of the claimed job must reflect the re-render too
+        // -- sendAllChunks/buildMessageRequest below read job.subject/html/text directly, and
+        // the write above only updated the row, not this object.
+        job.subject = outcome.rendered.subject;
+        job.html = outcome.rendered.html;
+        job.text = outcome.rendered.text;
+      }
+    }
+
     let chunks: Map<number, Member[]>;
     let lockToken: LockToken;
     try {
       if (!job.chunks_assigned) {
-        await ensureChunksAssigned(opts.db, job.id, job.release_key, chunkSize);
+        await ensureChunksAssigned(opts.db, job.id, chunkSize);
       }
-      const lateCount = await countLateDeliveries(opts.db, job.release_key);
+      const lateCount = await countLateDeliveries(opts.db, job.id);
       if (lateCount > 0) {
-        console.log(`[nod] release ${job.release_key}: ${lateCount} delivery(ies) arrived after chunking was frozen and are not part of job ${job.id}`);
+        console.log(`[nod] job ${job.id} item ${job.item_key}: ${lateCount} recipient(s) arrived after chunking was frozen and are not part of this attempt`);
       }
 
-      chunks = await fetchAssignedMembers(opts.db, job.release_key);
+      chunks = await fetchAssignedMembers(opts.db, job.id);
       // Total budget, from the claim's own now(): chunks.size (every chunk this attempt will
       // actually send) * perChunkMs (worst case every one hits the request timeout) +
       // perChunkMs once more (getToken's own timeout — it can only block the whole attempt
@@ -384,7 +572,12 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     // this call's lock were stolen mid-loop, a concurrent claimant would resend the exact same
     // chunks and Distribution would dedupe every one already accepted. The only write that
     // has to be ownership-checked is the terminal one below (`where`), which is.
-    const { batchIds: newBatchIds, error } = await sendAllChunks(opts.distribution, job, chunks, opts.manageUrl, maxChunkBytes);
+    const { batchIds: newBatchIds, error } = await sendAllChunks(
+      { db: opts.db, distribution: opts.distribution, links: opts.links, now: opts.now },
+      job,
+      chunks,
+      maxChunkBytes,
+    );
     // P2-R16: merge newly-accepted chunk ids into whatever this job already had recorded —
     // persisted below on every attempt, including one that ends in "failed" or "retried", so
     // a chunk accepted before a later chunk failed is never re-sent as if it were unknown.
@@ -400,12 +593,12 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
     const age = Number(job.age_ms) + sinceClaim();
     if (!error.retryable || age >= maxAgeMs) {
       const res = await opts.db.update(sendJobs).set({ status: "failed", attempts, batchIds, lockedUntil: null, lastError: error.message }).where(where);
-      // I5: a job going failed is otherwise silent — nothing else notices a release that
+      // A job going failed is otherwise silent — nothing else notices a release that
       // stopped mailing. Logged once, only when this call actually made the write (the
       // ownership-guarded `where` matched), not on every attempt that merely observes it.
       if (res.rowCount) {
         result.failed++;
-        console.error(`[nod] job ${job.id} release ${job.release_key} failed: ${error.message}`);
+        console.error(`[nod] job ${job.id} item ${job.item_key} failed: ${error.message}`);
       }
     } else {
       const res = await opts.db
@@ -414,7 +607,7 @@ export async function sendDueJobs(opts: SendJobsOptions): Promise<{ sent: number
         .where(where);
       if (res.rowCount) {
         result.retried++;
-        console.warn(`[nod] job ${job.id} release ${job.release_key} retrying (attempt ${attempts}): ${error.message}`);
+        console.warn(`[nod] job ${job.id} item ${job.item_key} retrying (attempt ${attempts}): ${error.message}`);
       }
     }
   }

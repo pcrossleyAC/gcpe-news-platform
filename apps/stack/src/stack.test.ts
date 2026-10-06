@@ -31,7 +31,6 @@ const ADMIN_PASSWORD = "stack-test-password-99";
 
 // Important fix 1 (P2-R30): Core -> News API, over a self: URL, same as NRMS -> News API.
 const STACK_EVENT_SECRET = "stack-e2e-event-secret-" + "s".repeat(32);
-const MANAGE_URL = "http://nod.invalid/manage";
 
 /** Binds a throwaway server to learn a free port, then closes it — same probe-then-rebind
  * trick stack.ts itself uses for PORT=0, needed here because the cross-app loopback URLs
@@ -171,7 +170,6 @@ async function setupStack(opts: {
     // M9: NoD -> Distribution, also over a self: URL.
     NOD_DISTRIBUTION_URL: "self:/distribution",
     NOD_PUBLIC_SITE_URL: "self:/site",
-    NOD_MANAGE_URL: MANAGE_URL, // external (fake) — never resolved as self:
 
     DIST_DATABASE_URL: distribution.url,
     DIST_SMTP_HOST: "127.0.0.1",
@@ -569,7 +567,6 @@ describe("apps/stack", () => {
         NOD_DATABASE_URL: instance.dbs.nod.url,
         NOD_DISTRIBUTION_URL: "self:/distribution",
         NOD_PUBLIC_SITE_URL: "self:/site",
-        NOD_MANAGE_URL: MANAGE_URL,
         DIST_DATABASE_URL: instance.dbs.distribution.url,
         DIST_SMTP_HOST: "127.0.0.1",
         DIST_SMTP_PORT: String(instance.sink.port),
@@ -611,8 +608,18 @@ describe("apps/stack", () => {
       const res = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { ran: Record<string, string>; ms: number };
-      expect(Object.keys(body.ran)).toEqual(["nrms.flickr", "nrms.site", "nrms.publish", "nrms.dispatch", "core.dispatch", "news-api.dispatch", "nod.send", "distribution.send"]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.keys(body.ran)).toEqual([
+        "nrms.flickr",
+        "nrms.site",
+        "nrms.publish",
+        "nrms.dispatch",
+        "core.dispatch",
+        "news-api.dispatch",
+        "nod.digest",
+        "nod.send",
+        "distribution.send",
+      ]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 
@@ -790,7 +797,9 @@ describe("apps/stack", () => {
     expect(pageRes.status).toBe(200);
 
     await expect.poll(() => instance.sink.messages.length, { timeout: 5000 }).toBeGreaterThan(0);
-    const mail = instance.sink.messages.find((m) => m.subject === headline);
+    // Task 5: NoD's As-It-Happens subject is "BC Gov News - <title>" (legacy NodTask.cs), not
+    // the bare headline.
+    const mail = instance.sink.messages.find((m) => m.subject === `BC Gov News - ${headline}`);
     expect(mail).toBeDefined();
     const toAddress = mail!.to && "value" in mail!.to ? mail!.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");

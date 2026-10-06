@@ -40,9 +40,12 @@ import { startSmtpSink } from "../../apps/distribution/test/smtp-sink";
 import { listen, localAuthEnv, reserve, type Listening } from "./support";
 
 // Not a real page; never fetched by this test (or by Distribution/NoD) — only ever embedded
-// as a string in the As-It-Happens email, whose {{manageUrl}} substitution the test asserts
-// the shape of (?token=...).
+// as a string in the As-It-Happens email, whose {{manageUrl}}/{{unsubscribeUrl}} substitutions
+// the test asserts the shape of.
 const MANAGE_URL = "http://nod.invalid/manage";
+// Task 4: per-recipient manage/unsubscribe links (apps/nod/src/recipient-links.ts), passed to
+// sendDueJobs directly since this test builds NoD's app without going through start.ts.
+const NOD_LINKS = { pageUrl: MANAGE_URL, subscribeApiUrl: "http://nod.invalid/api/Subscribe", linkSecret: "e2e-thin-slice-link-secret-32-chars" };
 
 // Signing secrets between each pair of apps (sender's `subscribers[].secret` must equal the
 // receiver's `eventSecrets[source]`) — distinct per pair so a misrouted signature would be
@@ -184,7 +187,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
         auth: nodAuth.bearer,
         loginRouter: nodAuth.loginRouter,
         eventSecrets: { nrms: SECRET_NRMS_TO_NOD },
-        handlerOptions: { publicSiteUrl: publicSite.url, manageUrl: MANAGE_URL },
+        render: { siteUrl: publicSite.url, bannerUrl: null },
       }),
     );
 
@@ -303,8 +306,8 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     // Step 6: NoD's As-It-Happens send job reaches Distribution over real HTTP (NoD's own
     // minted local service token, azp "nod"), and Distribution's sender delivers it to the
     // SMTP sink.
-    const nodSend = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, manageUrl: MANAGE_URL });
-    expect(nodSend).toEqual({ sent: 1, retried: 0, failed: 0 });
+    const nodSend = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, links: NOD_LINKS, render: { siteUrl: publicSite!.url, bannerUrl: null } });
+    expect(nodSend).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     const distributionSend = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [] });
     expect(distributionSend).toEqual({ sent: 1, retried: 0, failed: 0 });
@@ -313,10 +316,13 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     const mail = sink!.messages[0]!;
     const toAddress = mail.to && "value" in mail.to ? mail.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");
-    // The email subject is the raw headline (a mail header, not rendered HTML) — never escaped.
-    expect(mail.subject).toBe(HEADLINE);
+    // The email subject is "BC Gov News - <title>" with the raw headline (a mail header, not
+    // rendered HTML) — never escaped.
+    expect(mail.subject).toBe(`BC Gov News - ${HEADLINE}`);
+    // Task 4: the header carries the real per-recipient one-click unsubscribe URL (substituted
+    // by Distribution from the recipient's own `unsubscribeUrl`), not a manage-page link.
     const headerLine = (key: string) => mail.headerLines.find((l) => l.key === key)?.line ?? "";
-    expect(headerLine("list-unsubscribe")).toContain("?token=");
+    expect(headerLine("list-unsubscribe")).toContain(`<${NOD_LINKS.subscribeApiUrl}/OneClickUnsubscribe/`);
     expect(headerLine("list-unsubscribe-post").replace(/\s+/g, " ")).toContain("List-Unsubscribe=One-Click");
     // Pin the link format (fix round 1 item 4): the email's own link is the full absolute URL.
     expect(mail.html).toContain(`${publicSite!.url}/releases/${key}`);
@@ -329,8 +335,8 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     expect(nrmsDispatchAgain).toEqual({ delivered: 0, retried: 0, dead: 0 });
     const newsApiDispatchAgain = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers });
     expect(newsApiDispatchAgain).toEqual({ delivered: 0, retried: 0, dead: 0 });
-    const nodSendAgain = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, manageUrl: MANAGE_URL });
-    expect(nodSendAgain).toEqual({ sent: 0, retried: 0, failed: 0 });
+    const nodSendAgain = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, links: NOD_LINKS, render: { siteUrl: publicSite!.url, bannerUrl: null } });
+    expect(nodSendAgain).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 0, paused: false });
     const distributionSendAgain = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [] });
     expect(distributionSendAgain).toEqual({ sent: 0, retried: 0, failed: 0 });
 
@@ -364,12 +370,12 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     expect(nrmsRedeliver).toEqual({ delivered: 1, retried: 0, dead: 0 });
     expect(redeliveryOutcome).toBe("duplicate");
     expect(sink!.messages).toHaveLength(1);
-    const deliveries = await nodDb.pool.query<{ count: number }>("SELECT count(*)::int AS count FROM deliveries WHERE release_key = $1", [key]);
+    const deliveries = await nodDb.pool.query<{ count: number }>("SELECT count(*)::int AS count FROM deliveries WHERE item_key = $1", [key]);
     expect(deliveries.rows[0]?.count).toBe(1);
 
     // Step 8: every ID is linked end to end.
-    const sendJobs = await nodDb.pool.query<{ release_key: string }>("SELECT release_key FROM send_jobs");
-    expect(sendJobs.rows.map((r) => r.release_key)).toEqual([key]);
+    const sendJobs = await nodDb.pool.query<{ item_key: string }>("SELECT item_key FROM send_jobs");
+    expect(sendJobs.rows.map((r) => r.item_key)).toEqual([key]);
 
     const nrmsOutbox = await nrmsDb.pool.query<{ correlation_id: string }>(
       "SELECT envelope->>'correlationId' AS correlation_id FROM outbox_events WHERE type = 'release.published'",
