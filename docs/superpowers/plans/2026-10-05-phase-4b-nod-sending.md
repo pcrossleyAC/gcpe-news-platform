@@ -292,7 +292,7 @@ git commit -m "feat(nod): sending model — items, job recipients, settings, dig
 
 Rules:
 - **Title:** the English document's headline, else the first document's, else the key. Language 4105 is English.
-- **Summary:** `r.summary ?? ""`.
+- **Summary:** the English document's `subheadline` when it's non-empty, else `r.summary ?? ""`. The legacy digest's line under each title is the subheadline (`docs/parity/samples/daily-digest-2026-09-22.md`).
 - **URL:** `` `${publicSiteUrl.replace(/\/$/, "")}/releases/${encodeURIComponent(r.key)}` ``.
 - **Other fields:** `listKeys = indexKeysFor(r)`, `postKind = r.kind`, `publishedAt = r.publishDate`, `toSubscribers = r.publishFlags.toSubscribers`.
 - **`release.published`:** upsert the item, clearing `withdrawn_at`, then `onPublished`.
@@ -475,10 +475,20 @@ Write each test body in full, following the existing tests in the file (same set
 - Consumes: `items`, `deliveries`, `jobRecipients`, `sendJobs` (Task 1); `upsertReleaseItem` and `itemHandlers` (Task 2); `matchesItem` (Task 3).
 - Produces:
   - `render.ts`:
-    - `renderAsItHappens(item: Pick<ItemRow, "key" | "title" | "summary" | "url">): Rendered`;
-    - `renderEmergency(item): Rendered`;
-    - `renderDigest(items: Pick<ItemRow, "key" | "title" | "summary" | "url" | "publishedAt">[], timeZone: string): Rendered`;
+    - `type RenderItem = Pick<ItemRow, "key" | "title" | "summary" | "url" | "publishedAt"> & { categories: { name: string; url: string | null }[] }`;
+    - `type RenderOptions = { siteUrl: string; bannerUrl: string | null }` (siteUrl = public site home for "See more from BC Gov News"; bannerUrl from optional env `NOD_BANNER_URL`);
+    - `renderAsItHappens(item: RenderItem, opts: RenderOptions): Rendered`;
+    - `renderEmergency(item: RenderItem, opts: RenderOptions): Rendered`;
+    - `renderDigest(items: RenderItem[], opts: RenderOptions): Rendered`;
+    - `itemCategories(db: DbOrTx, listKeys: string[]): Promise<{ name: string; url: string | null }[]>` (names from `lists`, sorted alphabetically case-insensitively, url = `lists.topic_url` or null when empty; keys with no `lists` row are skipped; `emergency:*` keys included);
     - `type Rendered = { subject: string; html: string; text: string }`.
+
+    **Layout, from the real legacy digest** (`docs/parity/samples/daily-digest-2026-09-22.md`; it answers Q24 for the digest):
+    - Banner: `<img src=bannerUrl alt="Government of B.C. News on Demand">` when bannerUrl is set, else a blue heading "Government of B.C. — News on Demand".
+    - One block per item: the title as a bold blue link to `url`; the summary line; "▶ READ MORE" as a bold blue link to `url`; then a grey line of category names, comma-separated, each a grey link when it has a url.
+    - Footer: a two-cell grey bar, "Manage your subscription" → `{{manageUrl}}` and "See more from BC Gov News" → siteUrl. Below it: "Please do not respond to this message", then a small "Unsubscribe" link → `{{unsubscribeUrl}}` (C62; legacy had none in the body).
+    - The digest lists items in `publishedAt` order, with no date heading. As-It-Happens and emergency emails use the same layout for one item.
+    - Inline styles only (email clients ignore `<style>`). Table-based layout, max width 600px. The text part mirrors it: title, summary, "Read more: <url>", categories, then the footer links.
     
     Footers carry `{{manageUrl}}` and `{{unsubscribeUrl}}`. Keep the existing `neutralizeHtml`/`neutralizeText`/subject sanitising, moved here.
   - `as-it-happens.ts`:
@@ -498,7 +508,13 @@ Rules:
 - [ ] **Step 1: Write the failing tests**
 - `render.test.ts`:
   - **Subjects:** `BC Gov News - <title>`, `Emergency Info BC - <title>`, `BCNews - Daily Digest`; key fallback for an empty title; 998-unit truncation; no `{{` survives from the content.
-  - **Content:** footers contain `{{manageUrl}}` and `{{unsubscribeUrl}}` exactly once each; the digest lists every item's title and url in published order; the HTML escapes titles.
+  - **Content:**
+    - Footers contain `{{manageUrl}}` and `{{unsubscribeUrl}}` exactly once each.
+    - The digest lists every item's title and url in published order, each with "▶ READ MORE" and its category line.
+    - The banner uses `<img>` when bannerUrl is set, else the heading.
+    - "See more from BC Gov News" links to siteUrl, and "Please do not respond to this message" is present.
+    - The HTML escapes titles and category names.
+  - `itemCategories`: alphabetical, skips unknown keys, null url for an empty topic_url.
 - `as-it-happens.test.ts` (rewrite against the new model):
   - matching active As-It-Happens subscribers get one delivery each, and a digest-only subscriber gets none;
   - a second `release.published` for the same key creates nothing new;
@@ -577,7 +593,7 @@ SELECT keys, array_agg(subscriber_id ORDER BY subscriber_id) AS subscriber_ids F
 ```
 
 6. For each group:
-   - load its items in `published_at` order and `renderDigest`;
+   - load its items in `published_at` order, attach `itemCategories(tx, item.listKeys)` to each, and `renderDigest(items, renderOptions)`;
    - insert `send_jobs` with `jobKey = \`digest:${cutoff.toISOString()}:${sha256(keys.join(",")).slice(0, 16)}\``, kind `digest`, priority `digest`, `itemKey` null;
    - insert `job_recipients` (`unnest(subscriber_ids)`) and `deliveries` (every key × every subscriber, mode `digest`, `job_id`), both `ON CONFLICT DO NOTHING`.
 7. Update `digest_runs` counts and `nod_settings.last_digest_cutoff = cutoff`.
@@ -763,6 +779,8 @@ Remove the 4a-era bullet about footers not working with the new manage page.
 Replace the "footer links are fixed in 4b" note.
 
 - [ ] **Step 4: Carry-forward:** delete the "4b" section, now done. Move anything left unfinished into the 4c section with a note.
+
+- [ ] **Step 4b: Q24:** in `docs/parity/open-questions.md`, update Q24's working assumption: "Daily digest layout now known from a real 2026-09-22 sample (`docs/parity/samples/daily-digest-2026-09-22.md`) and implemented; still needed: an As-It-Happens sample, a media-list sample, and the banner image URL (legacy `Site.BannerSource`)."
 
 - [ ] **Step 5: README:** add `SUBSCRIBE_API_URL`, `TENANT_CONFIG` and `NOD_OPS_EMAIL` to the NoD env table. Remove `MANAGE_URL` if Task 4 removed it.
 
