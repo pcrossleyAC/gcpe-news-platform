@@ -114,6 +114,33 @@ describe("workflow", () => {
     expect(s.nodSubscribers).toBe(42);
   });
 
+  it("schedule caches the media contact count, prefixed for NoD, only when toMediaLists is set with lists chosen", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional", "national"] }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    let seen: string[] = [];
+    const s = await schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, { timeZone: TZ, countMediaContacts: async (k) => ((seen = k), 7) });
+    expect(seen).toEqual(["media-distribution-lists:regional", "media-distribution-lists:national"]);
+    expect(s.mediaSubscribers).toBe(7);
+  });
+
+  it("schedule never calls countMediaContacts without toMediaLists and chosen lists", async () => {
+    const v = await createRelease(db(), sampleCreate, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    let called = false;
+    const s = await schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, { timeZone: TZ, countMediaContacts: async () => ((called = true), 99) });
+    expect(called).toBe(false);
+    expect(s.mediaSubscribers).toBeNull();
+  });
+
+  it("schedule: a failed media contact count never blocks scheduling and gives null", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional"] }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    const failing = { timeZone: TZ, countMediaContacts: async () => { throw new Error("down"); } };
+    const s = await schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, failing);
+    expect(s.status).toBe("scheduled");
+    expect(s.mediaSubscribers).toBeNull();
+  });
+
   // Controller ruling: schedule's size pre-check must count mediaText too (the same rendition
   // the publisher itself fills it with) -- a body that fits without it but not with it must be
   // rejected here, before it can later blow past MAX_EVENT_BYTES at actual publish time.

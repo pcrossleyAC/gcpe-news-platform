@@ -13,8 +13,16 @@ import { loadView, mutateRelease, type Actor } from "./store";
 export interface WorkflowDeps {
   timeZone: string;
   countSubscribers?: (listKeys: string[]) => Promise<number>;
+  countMediaContacts?: (listKeys: string[]) => Promise<number>;
   /** PUBLIC_FILES_BASE — only affects the size check here (absolute file URLs are longer). */
   filesBase?: string;
+}
+
+/** A media list's NoD list key: `media-distribution-lists:<key>`, lowercased. Mirrors
+ * apps/nod/src/lists.ts's `mediaListKey` (deliberately duplicated — apps never import another
+ * app's src, only shared packages). */
+function mediaListKey(key: string): string {
+  return `media-distribution-lists:${key.toLowerCase()}`;
 }
 
 const PAST_LIMIT_MS = 5 * 60_000;
@@ -111,9 +119,21 @@ async function subscriberCount(v: ReleaseView, deps: WorkflowDeps): Promise<{ co
   }
 }
 
+/** Media contact count for a first publish — best effort, outside the transaction, never blocks scheduling. */
+async function mediaContactCount(v: ReleaseView, deps: WorkflowDeps): Promise<{ count: number | null } | null> {
+  if (v.releasedAt !== null || !v.publishOptions.toMediaLists || v.mediaListKeys.length === 0 || !deps.countMediaContacts) return null;
+  try {
+    return { count: await deps.countMediaContacts(v.mediaListKeys.map(mediaListKey)) };
+  } catch {
+    console.error("[nrms] media contact count unavailable");
+    return { count: null };
+  }
+}
+
 export async function schedule(db: Db, id: string, input: ScheduleInput, actor: Actor, deps: WorkflowDeps): Promise<ReleaseView> {
   const before = await loadView(db, id);
   const subscribers = before ? await subscriberCount(before, deps) : null;
+  const mediaContacts = before ? await mediaContactCount(before, deps) : null;
   return mutateRelease(
     db, id, input.version, actor,
     async (tx, row) => {
@@ -151,6 +171,7 @@ export async function schedule(db: Db, id: string, input: ScheduleInput, actor: 
         .set({
           status: "scheduled", publishAt, lastError: null,
           ...(subscribers && row.releasedAt === null ? { nodSubscribers: subscribers.count } : {}),
+          ...(mediaContacts && row.releasedAt === null ? { mediaSubscribers: mediaContacts.count } : {}),
         })
         .where(eq(newsReleases.id, id));
       await dropUnfinishedFlickrJob(tx, id);
