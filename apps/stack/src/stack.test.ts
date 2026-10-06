@@ -31,7 +31,6 @@ const ADMIN_PASSWORD = "stack-test-password-99";
 
 // Important fix 1 (P2-R30): Core -> News API, over a self: URL, same as NRMS -> News API.
 const STACK_EVENT_SECRET = "stack-e2e-event-secret-" + "s".repeat(32);
-const MANAGE_URL = "http://nod.invalid/manage";
 
 /** Binds a throwaway server to learn a free port, then closes it — same probe-then-rebind
  * trick stack.ts itself uses for PORT=0, needed here because the cross-app loopback URLs
@@ -171,7 +170,6 @@ async function setupStack(opts: {
     // M9: NoD -> Distribution, also over a self: URL.
     NOD_DISTRIBUTION_URL: "self:/distribution",
     NOD_PUBLIC_SITE_URL: "self:/site",
-    NOD_MANAGE_URL: MANAGE_URL, // external (fake) — never resolved as self:
 
     DIST_DATABASE_URL: distribution.url,
     DIST_SMTP_HOST: "127.0.0.1",
@@ -569,7 +567,6 @@ describe("apps/stack", () => {
         NOD_DATABASE_URL: instance.dbs.nod.url,
         NOD_DISTRIBUTION_URL: "self:/distribution",
         NOD_PUBLIC_SITE_URL: "self:/site",
-        NOD_MANAGE_URL: MANAGE_URL,
         DIST_DATABASE_URL: instance.dbs.distribution.url,
         DIST_SMTP_HOST: "127.0.0.1",
         DIST_SMTP_PORT: String(instance.sink.port),

@@ -34,7 +34,6 @@ import { TEST_USER_PASSWORDS, TICK_TOKEN, ADMIN_PASSWORD } from "./constants";
 const repoRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 const LOCAL_AUTH_SECRET = "e2e-local-auth-secret-32-characters-long!";
 const STACK_EVENT_SECRET = `e2e-event-secret-${"s".repeat(32)}`;
-const MANAGE_URL = "http://nod.invalid/manage";
 
 async function probeFreePort(): Promise<number> {
   return new Promise((res, reject) => {
@@ -170,7 +169,6 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     NOD_DATABASE_URL: nod.url,
     NOD_DISTRIBUTION_URL: "self:/distribution",
     NOD_PUBLIC_SITE_URL: "self:/site",
-    NOD_MANAGE_URL: MANAGE_URL,
 
     DIST_DATABASE_URL: distribution.url,
     DIST_SMTP_HOST: "127.0.0.1",

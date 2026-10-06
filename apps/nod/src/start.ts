@@ -29,7 +29,6 @@ export const nodEnvSchema = z.object({
   // (chunks * this + margin), so a hung request can't outlive the lock protecting it.
   DISTRIBUTION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
   PUBLIC_SITE_URL: z.string().url(),
-  MANAGE_URL: z.string().url(),
   // Task 5: optional banner image for every outbound email's shell (render.ts); no banner image
   // host exists yet, so the default is the plain blue heading fallback.
   NOD_BANNER_URL: z.string().url().optional(),

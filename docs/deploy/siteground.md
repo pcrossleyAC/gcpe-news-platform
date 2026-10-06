@@ -58,9 +58,9 @@ Generate the full set with:
 npm run siteground:env
 ```
 
-This prompts for the domain, the six databases' user/password, SMTP details, the admin
-username/password (hidden input — never echoed), and the subscriber manage/unsubscribe page
-URL, and prints a block of `KEY=value` lines — generating every internal secret
+This prompts for the domain, the six databases' user/password, SMTP details, and the admin
+username/password (hidden input — never echoed), and prints a block of `KEY=value` lines —
+generating every internal secret
 (`TICK_TOKEN`, `LOCAL_AUTH_SECRET`, and `STACK_EVENT_SECRET`, from which the stack derives every internal event subscription and per-pair signing secret — no JSON settings to paste) itself, with
 `crypto.randomBytes`. Paste the output into Site Tools → Devs → Node.js → your project →
 Environment Variables.
@@ -297,7 +297,10 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
 - [ ] **Item 7** — edit a field on an already-published release; confirm it shows "Republishing…" and comes back as "Published" with a new entry in its History ("Show all") and an extra frozen copy.
 - [ ] **Item 9** — with a real `NRMS_FLICKR_API_KEY` configured, run `scripts/siteground-flickr-walkthrough.sh https://boxs.ca --outage` (see "Flickr" below) and confirm the release goes out on time without the photo, the alert shows, and the photo appears once recovered.
 - [ ] **Item 12** — schedule a carousel go-live a minute or two out and confirm it switches over on its own; confirm an emergency pin survives an unrelated carousel change; confirm Project Blue Bridge needs the Core.Admin phrase and (off production) shows "TEST —" on the public banner.
-- [ ] **Phase 4 item 1** — on `https://boxs.ca/site/subscribe/`, subscribe an address you control (it arrives at the redirect addresses with a `[to: …]` prefix); open the link, change a preference, save; unsubscribe from the manage page. Footer links are fixed in 4b — until then, As-It-Happens footers still link with the old manage token, which the new manage page doesn't accept (see running-notes.md's Phase 4 section).
+- [ ] **Phase 4 item 1** — on `https://boxs.ca/site/subscribe/`, subscribe an address you control (it arrives at the redirect addresses with a `[to: …]` prefix); open the link, change a preference, save; unsubscribe from the manage page. The footer manage link and one-click unsubscribe now work against the new manage page (fixed in 4b — see Phase 4 item 3 below).
+- [ ] **Phase 4 item 3** — publish a release that reaches your test address; confirm the As-It-Happens email arrives exactly once, and that both its footer manage link and its one-click unsubscribe (`List-Unsubscribe`) work.
+- [ ] **Phase 4 item 4** — after a publish, check the following evening that the 17:00 BC-time digest arrives and includes the item.
+- [ ] **Phase 4 item 10** — pause NoD sending; confirm nothing goes out while paused; resume; confirm sends release again.
 
 Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET`, so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
 

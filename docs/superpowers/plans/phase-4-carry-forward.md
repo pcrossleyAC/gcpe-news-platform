@@ -2,11 +2,6 @@
 
 Items the 4a task and final reviews deferred to later sub-plans. Each later plan must pick up its section, then delete those lines here.
 
-## 4b (sending)
-- **Must do:** As-It-Happens footers still link `MANAGE_URL?token=<manage_token>` (`send-jobs.ts`), which the new manage page rejects. Switch footers to fresh `manage` links, then retire `subscribers.manage_token` and its unsubscribe fallback.
-- **Must do:** point `List-Unsubscribe` at `/api/Subscribe/OneClickUnsubscribe/<stable token>` (`tokens.ts`). Before that: give one-click POSTs their own rate-limit bucket (mail providers POST from shared IPs), pass the upstream content-type through and share forwarding code with the generic proxy loop, and assert the forwarded body in its test.
-- Test pages polish: `loadCategories` swallows fetch errors; a manage page with no token sends `"null"`; the unsubscribe button has no network-failure handling; a bad email shows the generic "invalid request"; the status role switches at runtime; the emergency category isn't offered; rename `id="unsubscribe-link"` (it's a button); the expired-link wording is unpinned. The e2e spec has a dead `waitForMessageWithSubject` import.
-
 ## 4c (media lists)
 - **Must do before any media member exists:** `infoFor` lists `media-distribution-lists:*` keys in a public manage view; `update()` (via `replaceSubscriptions`) deletes media memberships because `toPrefs` drops media lists; a public unsubscribe sets a media member to `deleted` (C59 says media members are flagged, not deleted).
 - Q27: the Media Hub Membership tab most likely calls legacy `Subscribe/SubscriberInformation?emailAddress=`.

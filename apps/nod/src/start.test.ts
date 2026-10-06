@@ -25,7 +25,6 @@ describe("startNod", () => {
       // but the schema still requires valid URLs.
       DISTRIBUTION_URL: "http://127.0.0.1:1",
       PUBLIC_SITE_URL: "http://127.0.0.1:1",
-      MANAGE_URL: "http://127.0.0.1:1/manage",
       LINK_SECRET: "x".repeat(32),
       LOCAL_ADMIN_ENABLED: "true",
       LOCAL_ADMIN_PASSWORD_HASH: hash,
