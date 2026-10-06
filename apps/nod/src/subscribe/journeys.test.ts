@@ -116,6 +116,25 @@ describe("subscriber journeys", () => {
     expect(s).toMatchObject({ email: "new@example.test", unsubscribeVersion: 2 });
   });
 
+  // I4: pinned per the brief -- change-email (4a) moves media memberships with the subscriber
+  // row as today; it's one row, so there's nothing media-specific to change, but it's untested.
+  it("change-email moves media memberships with the subscriber row (4a carry-forward pin)", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie");
+
+    await requestManageLink(deps, "pat@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    await update(deps, tokenFrom(), info({ emailAddress: "new@example.test" }));
+    await confirm(deps, tokenFrom());
+
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, s!.id));
+    expect(after).toMatchObject({ email: "new@example.test" });
+    const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, s!.id));
+    expect(subs.map((r) => r.listKey)).toContain("media-distribution-lists:budget");
+  });
+
   it("moving to an address that's already subscribed unsubscribes the old record silently", async () => {
     for (const email of ["a@example.test", "b@example.test"]) { await subscribe(deps, info({ emailAddress: email })); await confirm(deps, tokenFrom()); }
     await requestManageLink(deps, "a@example.test");

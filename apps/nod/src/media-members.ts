@@ -56,6 +56,20 @@ async function mediaListRow(tx: DbOrTx, key: string): Promise<{ listKey: string 
   return row ?? null;
 }
 
+/** Same advisory-lock keyspace as 4a's `journeys.ts` `lockAddress` (always called with a
+ * lowercased email) -- serialises this module's reads/writes of a subscriber row against the
+ * public journeys' for the same address, so e.g. an add can never read a stale pre-unsubscribe
+ * row (fix round 1, I2). */
+async function lockAddress(tx: DbOrTx, email: string): Promise<void> {
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${email}))`);
+}
+
+/** True if `subscriberId` has any subscription left, media or public. */
+async function hasAnySubscriptions(tx: DbOrTx, subscriberId: string): Promise<boolean> {
+  const rows = await tx.select({ listKey: subscriptions.listKey }).from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId)).limit(1);
+  return rows.length > 0;
+}
+
 /** Latest `subscriber_history` row's `at` for `action` on this subscriber, or null. */
 async function latestHistoryAt(tx: DbOrTx, subscriberId: string, action: string): Promise<Date | null> {
   const r = await tx.execute<{ at: string | Date }>(sql`
@@ -91,27 +105,36 @@ export async function optOutMediaMemberships(tx: DbOrTx, subscriberId: string, a
  * Adds (or reactivates) a media list member, in one transaction. Lowercases the email; finds
  * the subscriber by email or inserts a new one, active at once, with no timing flags and no
  * public subscriptions (C51 -- staff/media-list additions never send a verification email).
+ * Takes the per-address advisory lock (same keyspace as 4a's journeys) before reading the
+ * subscriber row `FOR UPDATE`, so a concurrent add of the same new address never double-inserts
+ * and an add can never race a concurrent unsubscribe into reading a stale, not-yet-opted-out row
+ * (fix round 1, I2).
  *
- * A found subscriber that's `deleted` and opted out more recently than their last
- * `media-list-added` needs `confirmOptOut: true`, else throws {@link OptedOutError}. Otherwise an
- * existing subscriber's `source`, timing flags and public subscriptions are left untouched;
- * only their status (when not already active), `ended_at`, and the given Media Hub fields move.
+ * A found subscriber that's `deleted` and opted out at or after their last `media-list-added`
+ * needs `confirmOptOut: true`, else throws {@link OptedOutError} (a timestamp tie fails closed).
+ * Reactivating a `deleted` subscriber -- confirmed opt-out or not (they may simply never have
+ * resubscribed publicly since) -- must not restart their old public mail: their timing flags are
+ * reset to off and their non-media subscriptions are dropped (controller ruling, fix round 1,
+ * I3). From `pending`/`disabled`, public state is left untouched, as before. `source` is never
+ * changed on an existing row.
  */
 export async function addMediaMember(db: Db, listKey: string, input: AddMediaMemberInput, actor: string): Promise<{ subscriberId: string; created: boolean }> {
   const key = mediaListKey(listKey);
   const email = normaliseEmail(input.email);
   return db.transaction(async (tx) => {
+    await lockAddress(tx, email);
     if (!(await mediaListRow(tx, key))) throw new MediaListNotFoundError(listKey);
 
-    const [existing] = await tx.select().from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`);
+    const [existing] = await tx.select().from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`).for("update");
     let subscriberId: string;
     let created = false;
 
     if (existing) {
-      if (existing.status === "deleted") {
+      const wasDeleted = existing.status === "deleted";
+      if (wasDeleted) {
         const unsubscribedAt = await latestHistoryAt(tx, existing.id, "unsubscribed");
         const addedAt = await latestHistoryAt(tx, existing.id, "media-list-added");
-        const optedOut = unsubscribedAt !== null && (addedAt === null || unsubscribedAt > addedAt);
+        const optedOut = unsubscribedAt !== null && (addedAt === null || unsubscribedAt >= addedAt);
         if (optedOut && !input.confirmOptOut) throw new OptedOutError(unsubscribedAt!);
       }
       subscriberId = existing.id;
@@ -119,7 +142,16 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
       if (existing.status === "pending" || existing.status === "deleted" || existing.status === "disabled") fields.status = "active";
       if (input.mediaHubContactId !== undefined) fields.mediaHubContactId = input.mediaHubContactId;
       if (input.mediaHubEmailRef !== undefined) fields.mediaHubEmailRef = input.mediaHubEmailRef;
+      if (wasDeleted) {
+        fields.asItHappens = false;
+        fields.digest = false;
+      }
       await tx.update(subscribers).set(fields).where(eq(subscribers.id, subscriberId));
+      if (wasDeleted) {
+        await tx
+          .delete(subscriptions)
+          .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`));
+      }
     } else {
       const [row] = await tx
         .insert(subscribers)
@@ -145,14 +177,25 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
 
 /**
  * Removes one media list membership, writing `media-list-removed` history. If the subscriber
- * was added only for media (`source` `media-hub` or `manual-media`) and this was their last
- * media subscription, ends them the way an unsubscribe does (`status: 'deleted'`, `ended_at`,
- * history `unsubscribed`) -- there's nothing left for a staff-only subscriber to be active for.
- * Returns whether a membership was actually removed.
+ * was added only for media (`source` `media-hub` or `manual-media`) and *no subscription of any
+ * kind* -- media or public -- remains, ends them the way an unsubscribe does (`status:
+ * 'deleted'`, `ended_at`), but writes history `media-ended`, never `unsubscribed`: that action is
+ * reserved for the subscriber's own unsubscribe, since `addMediaMember`'s opt-out check reads it
+ * (fix round 1, C1 + I1 -- a media-created subscriber who picked up a public subscription via
+ * `update()` keeps their own mail; and a staff-ended member can be re-added without
+ * `confirmOptOut`). Takes the same per-address advisory lock and row-level `FOR UPDATE` as
+ * {@link addMediaMember}, so two concurrent removes of a subscriber's last two lists end them
+ * exactly once (fix round 1, I2). Returns whether a membership was actually removed.
  */
 export async function removeMediaMember(db: Db, listKey: string, subscriberId: string, actor: string): Promise<boolean> {
   const key = mediaListKey(listKey);
   return db.transaction(async (tx) => {
+    const [before] = await tx.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, subscriberId));
+    if (!before) return false;
+    await lockAddress(tx, before.email.toLowerCase());
+    const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId)).for("update");
+    if (!s) return false;
+
     const removed: SubscriptionRow[] = await tx
       .delete(subscriptions)
       .where(and(eq(subscriptions.subscriberId, subscriberId), eq(subscriptions.listKey, key)))
@@ -160,10 +203,9 @@ export async function removeMediaMember(db: Db, listKey: string, subscriberId: s
     if (!removed.length) return false;
     await writeHistory(tx, subscriberId, actor, "media-list-removed", key);
 
-    const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId));
-    if (s && (s.source === "media-hub" || s.source === "manual-media") && s.status !== "deleted" && !(await hasMediaMemberships(tx, subscriberId))) {
+    if ((s.source === "media-hub" || s.source === "manual-media") && s.status !== "deleted" && !(await hasAnySubscriptions(tx, subscriberId))) {
       await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, subscriberId));
-      await writeHistory(tx, subscriberId, actor, "unsubscribed");
+      await writeHistory(tx, subscriberId, actor, "media-ended");
     }
     return true;
   });
