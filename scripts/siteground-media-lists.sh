@@ -7,6 +7,8 @@
 #   3. asks NoD's count endpoint for one media list key -- the same call NRMS makes when an editor
 #      schedules a media release -- and prints the answer;
 #   4. prints the Media Hub sync status.
+# If NRMS has no media lists at all (no legacy import on this stack), it first creates one test
+# list, 999-t-boxs-check, so steps 2 and 3 have something to work with.
 #
 # Usage: scripts/siteground-media-lists.sh https://boxs.ca
 #
@@ -37,6 +39,18 @@ REPUBLISH="$(curl_api -X POST "$BASE/nrms/api/media-lists/republish" -d '{}')"
 SENT="$(echo "$REPUBLISH" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("count",""))')"
 [ -n "$SENT" ] || { echo "republish failed: $REPUBLISH"; exit 1; }
 echo "NRMS emitted $SENT media_list.updated events"
+
+if [ "$SENT" -eq 0 ]; then
+  # No legacy import has been run against this stack (the importer reads the legacy SQL Server
+  # and is never run on SiteGround), so NRMS has no media lists. Create one clearly labelled test
+  # list so NoD has something to mirror and the count check has something to count.
+  echo "NRMS has no media lists; creating the test list 999-t-boxs-check..."
+  CREATE_STATUS="$(curl_api -o /dev/null -w '%{http_code}' -X POST "$BASE/nrms/api/media-lists" -d '{"key":"999-t-boxs-check","displayName":"boxs.ca check list (test)"}')"
+  case "$CREATE_STATUS" in
+    201|409) SENT=1 ;;
+    *) echo "FAILED: creating the test list returned HTTP $CREATE_STATUS"; exit 1 ;;
+  esac
+fi
 
 echo "waiting for NoD to mirror them (up to 5 minutes, checking every 20 s)..."
 MIRRORED=0
