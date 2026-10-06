@@ -2,10 +2,11 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv } from "@gcpe/auth";
-import { eventSecretsSchema, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
+import { runDigestIfDue } from "./digest";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
 import { needsReferenceData } from "./lists";
@@ -40,6 +41,9 @@ export const nodEnvSchema = z.object({
   // (recipient-links.ts, Task 3). Default: PUBLIC_SITE_URL's own origin's /api/Subscribe.
   SUBSCRIBE_API_URL: z.string().url().optional(),
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
+  // Task 6: the tenant's time zone (digest.ts's 17:00 cutoff) and its tzdata self-check, same
+  // default as apps/news-api/src/env.ts.
+  TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
 });
 
 export interface AppHandle {
@@ -69,6 +73,12 @@ export interface AppHandle {
  */
 export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const parsed = parseEnv(nodEnvSchema, env);
+
+  const tenant = loadTenantConfig(parsed.TENANT_CONFIG);
+  // P2-R17: fail fast, loudly, before anything else starts, if this runtime's tzdata
+  // disagrees with the tenant's pinned (at, expectedOffset) self-check.
+  assertTimeZoneRules(tenant);
+
   const auth = authFromEnv(env);
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
@@ -127,6 +137,9 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     port: parsed.PORT,
     workers: {
       send: () => sendDueJobs(sendJobsOptions),
+      // Task 6: the 17:00 daily digest -- a no-op call every tick until the tenant's wall
+      // clock actually reaches DIGEST_HOUR for a cutoff not already run.
+      digest: () => runDigestIfDue(db, tenant.timeZone, render),
       // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
       // data has ever reached this NoD so it knows whether to ask Core to republish.
       needsReferenceData: () => needsReferenceData(db),
