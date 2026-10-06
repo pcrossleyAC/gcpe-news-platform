@@ -13,6 +13,7 @@ import {
   loginForCookie,
   tick,
   uniqueHeadline,
+  waitForMessageTo,
   type SentMessage,
 } from "./playwright-support";
 
@@ -23,20 +24,6 @@ const toBaseUrl = (url: string) => url.replace(/^https?:\/\/[^/]+/, baseUrl());
 
 async function messagesWithSubject(subject: string): Promise<SentMessage[]> {
   return (await fetchSentMessages()).filter((m) => m.subject === subject);
-}
-
-/** Polls the SMTP sink for a message with this exact subject addressed to `email` — unlike
- * playwright-support.ts's `waitForMessageWithSubject`, scoped to the recipient too, since this
- * suite's fixed system-email subjects (e.g. the verify email) repeat across many specs sharing
- * one SMTP sink for the whole run. */
-async function waitForMessageTo(subject: string, email: string, timeoutMs = 10_000): Promise<SentMessage> {
-  const start = Date.now();
-  for (;;) {
-    const found = (await fetchSentMessages()).filter((m) => m.subject === subject && m.to.includes(email)).at(-1);
-    if (found) return found;
-    if (Date.now() - start > timeoutMs) throw new Error(`no message with subject ${JSON.stringify(subject)} to ${email} within ${timeoutMs}ms`);
-    await new Promise((r) => setTimeout(r, 250));
-  }
 }
 
 async function createAndConfirm(request: import("@playwright/test").APIRequestContext, body: Record<string, unknown>): Promise<void> {

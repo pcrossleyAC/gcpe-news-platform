@@ -68,3 +68,21 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   sent and keeps the release out of later digests.
 - **Editor** — Subscriber emails show the release's Summary (pre-filled from the body,
   editable), not the subheadline — the same as legacy.
+- **Editor** — A release's media lists (if any) are chosen in Publish settings; picking any
+  media list sends the full-text media version to that list's members, replacing the
+  As-It-Happens copy for anyone who's both (one email, never two). Media lists lock once a
+  Release or Factsheet has gone live; an Advisory must have at least one.
+- **Editor** — The NoD Subscribers section shows each media list's members, where they came
+  from (Media Hub or added by hand), and flags anyone "needs attention" — a Media Hub contact
+  whose chosen address collided with someone else's, or whose address disappeared. Nothing is
+  merged or removed automatically; staff resolve the flag by hand.
+- **Operations** — Media list names and keys are created and edited through NRMS's admin API
+  (`POST`/`PUT /nrms/api/media-lists`); there's no staff-web screen for this yet (4f). After a
+  legacy NRMS import run from the CLI — which has no `EVENT_SUBSCRIBERS` to carry the lists over
+  — call `POST /nrms/api/media-lists/republish` once so NoD picks them all up.
+- **Operations** — `NOD_MEDIA_HUB_*` unset means the stack uses its own fake Media Hub
+  (deterministic, made-up contacts) instead of a real one — fine on test sites, never set this
+  up to run unset on production.
+- **Operations** — The legacy Membership tab's lookup (`Subscribe/SubscriberInformation`) needs
+  `NOD_MEMBERSHIP_API_USERNAME` and `NOD_MEMBERSHIP_API_PASSWORD_HASH` (the hash from
+  `npm run nod:membership-hash`, never a plain password) — unset, the route always answers 503.

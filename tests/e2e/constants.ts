@@ -24,6 +24,12 @@ export const VIEWER_EMAIL = "viewer@example.test";
 
 export const SESSION_COOKIE = "gcpe_session";
 
+/** Legacy `Subscribe/SubscriberInformation` (C55) Basic Auth credentials — global-setup.ts hashes
+ * the password with `hashPassword` (the same function `npm run nod:membership-hash` wraps) and
+ * passes `NOD_MEMBERSHIP_API_USERNAME`/`NOD_MEMBERSHIP_API_PASSWORD_HASH` to the stack. */
+export const MEMBERSHIP_API_USERNAME = "e2e-media-hub";
+export const MEMBERSHIP_API_PASSWORD = "e2e-membership-password-7";
+
 /** apps/nrms/test/helpers.ts's seedTaxonomy — ministries, sectors, themes, tags, media lists
  * this suite can rely on existing. */
 export const MINISTRY_HEALTH = "health";

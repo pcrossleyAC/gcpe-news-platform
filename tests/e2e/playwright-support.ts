@@ -282,6 +282,21 @@ export async function waitForMessageWithSubject(subject: string, timeoutMs = 10_
   }
 }
 
+/** Polls the SMTP sink for a message with this exact subject addressed to `email` — unlike
+ * {@link waitForMessageWithSubject}, scoped to the recipient too, since several specs' fixed or
+ * repeated subjects (e.g. a system email's subject, or two specs publishing releases with
+ * similar headlines) can otherwise match a message meant for someone else sharing this one SMTP
+ * sink for the whole run. */
+export async function waitForMessageTo(subject: string, email: string, timeoutMs = 10_000): Promise<SentMessage> {
+  const start = Date.now();
+  for (;;) {
+    const found = (await fetchSentMessages()).filter((m) => m.subject === subject && m.to.includes(email)).at(-1);
+    if (found) return found;
+    if (Date.now() - start > timeoutMs) throw new Error(`no message with subject ${JSON.stringify(subject)} to ${email} within ${timeoutMs}ms`);
+    await new Promise((r) => setTimeout(r, 250));
+  }
+}
+
 /** `POST /nod/api/subscribers` — a NoD subscriber on a ministry list, for item 5's "publish now
  * -> ... -> NoD email" chain. Tolerates 409 (a prior test's subscriber row surviving, same hedge
  * apps/stack/src/stack.test.ts uses). */
