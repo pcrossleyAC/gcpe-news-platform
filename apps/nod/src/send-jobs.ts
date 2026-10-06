@@ -49,6 +49,10 @@ export interface SendJobsOptions {
   perChunkMs?: number;
   /** Override for {@link MAX_CHUNK_BYTES}, for tests. */
   maxChunkBytes?: number;
+  /** Test hook (fix round 1, F1): called inside the withdrawn-check transaction, after the
+   * `FOR SHARE` read confirms the item is withdrawn, before the cancel write — see
+   * {@link sendDueJobs}'s doc comment. Production call sites never pass it. */
+  onWithdrawnCheck?: () => void | Promise<void>;
 }
 
 type ClaimedJobRow = {
@@ -397,6 +401,23 @@ async function sendAllChunks(
  * concurrent `UPDATE ... WHERE key = ...` on the same row (every UPDATE takes an implicit
  * row-level lock) until that transaction commits or rolls back, so it only ever sees the
  * committed value — items.ts itself is untouched.
+ *
+ * Fix round 2, F1: that `FOR SHARE` read and the cancel write it guards must happen in one
+ * transaction (`opts.db.transaction`, not two separate `opts.db` statements) — otherwise the
+ * read's own row lock is released the instant it finishes (a standalone statement is its own
+ * implicit transaction), reopening a gap of exactly the kind I2 closed: a republish
+ * (`upsertReleaseItem` clearing `withdrawn_at`, then `createItemSend` in the same transaction,
+ * as-it-happens.ts) can run and commit *between* this call's read and its cancel write. Seen
+ * from the republish's side, the job still reads `pending` (this call hasn't cancelled it yet),
+ * so its `ON CONFLICT (job_key) DO NOTHING` is a no-op — and then this call's cancel write lands
+ * right after, cancelling the one job that would ever have been sent, while the item is now
+ * live. Holding the `FOR SHARE` lock for the lifetime of one transaction that also does the
+ * cancel write forces the republish's own `UPDATE items` to serialise with it: either the
+ * republish's update blocks until this transaction commits (cancel already written) and its
+ * `createItemSend` then finds the job `cancelled` — which the controller ruling (as-it-
+ * happens.ts) replaces with a fresh pending job — or the republish commits first and this read
+ * sees the committed, cleared `withdrawn_at`, so nothing is cancelled and the job sends
+ * normally. Either way, never "live item, only a cancelled job, nothing fresh".
  */
 export async function sendDueJobs(
   opts: SendJobsOptions,
@@ -423,16 +444,24 @@ export async function sendDueJobs(
     if (!job) break;
 
     if (job.item_key) {
-      // I2: FOR SHARE, not a plain select — see the doc comment above.
-      const { rows: itemRows } = await opts.db.execute<{ withdrawn_at: Date | null }>(
-        sql`SELECT withdrawn_at FROM items WHERE key = ${job.item_key} FOR SHARE`,
-      );
-      if (itemRows[0]?.withdrawn_at) {
-        const res = await opts.db
+      // I2 / F1: FOR SHARE and the cancel write in one transaction — see the doc comment above.
+      const outcome = await opts.db.transaction(async (tx) => {
+        const { rows: itemRows } = await tx.execute<{ withdrawn_at: Date | null }>(
+          sql`SELECT withdrawn_at FROM items WHERE key = ${job.item_key} FOR SHARE`,
+        );
+        if (!itemRows[0]?.withdrawn_at) return { withdrawn: false, cancelled: false };
+        // F1 test hook: fires while this transaction still holds the FOR SHARE lock, so a test
+        // can start a concurrent republish and prove it blocks behind this transaction rather
+        // than racing it. Production call sites never pass it.
+        await opts.onWithdrawnCheck?.();
+        const res = await tx
           .update(sendJobs)
           .set({ status: "cancelled", lockedUntil: null })
           .where(and(eq(sendJobs.id, job.id), ownedPending(sendJobs, job.lock_token)));
-        if (res.rowCount) result.cancelled++;
+        return { withdrawn: true, cancelled: (res.rowCount ?? 0) > 0 };
+      });
+      if (outcome.withdrawn) {
+        if (outcome.cancelled) result.cancelled++;
         continue;
       }
     }

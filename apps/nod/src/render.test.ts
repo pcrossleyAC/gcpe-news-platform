@@ -33,9 +33,11 @@ describe("subjects", () => {
     expect(renderDigest([], RENDER).subject).toBe("BCNews - Daily Digest");
   });
 
-  it("falls back to the item key (no prefix) for an empty or whitespace-only title", () => {
-    expect(renderAsItHappens(item({ key: "K-EMPTY", title: "" }), RENDER).subject).toBe("K-EMPTY");
-    expect(renderEmergency(item({ key: "K-WS", title: "   \t\n  " }), RENDER).subject).toBe("K-WS");
+  // Fix round 1, F3 (controller ruling): an empty title's subject still carries the prefix —
+  // "<prefix> - <key>", not the bare key alone.
+  it("falls back to '<prefix> - <key>' (not the bare key) for an empty or whitespace-only title", () => {
+    expect(renderAsItHappens(item({ key: "2026CITZ0001-000004", title: "" }), RENDER).subject).toBe("BC Gov News - 2026CITZ0001-000004");
+    expect(renderEmergency(item({ key: "K-WS", title: "   \t\n  " }), RENDER).subject).toBe("Emergency Info BC - K-WS");
   });
 
   it("truncates a subject over 998 UTF-16 units, ending in '…'", () => {
@@ -47,6 +49,59 @@ describe("subjects", () => {
   it("no '{{' survives in the subject from title content", () => {
     const subject = renderAsItHappens(item({ title: "Update {{manageUrl}} now" }), RENDER).subject;
     expect(subject).not.toContain("{{");
+  });
+
+  // Ported from the old as-it-happens.test.ts (F2 — these pins must not be lost in the
+  // render.ts move): collapses CR/LF/tabs to single spaces, trims, and still neutralises '{{'.
+  // I4: a raw title with embedded CR/LF/tabs would otherwise smuggle extra header lines into
+  // the SMTP Subject header (Distribution 400s on line breaks — terminal, nobody mailed).
+  it("collapses CR/LF/tabs in the subject to single spaces, trims, and neutralises '{{'", () => {
+    const subject = renderAsItHappens(item({ title: "  Highway 11\r\nclosure\tand {{manageUrl}} update  " }), RENDER).subject;
+    expect(subject).toBe("BC Gov News - Highway 11 closure and { {manageUrl}} update");
+    expect(subject).not.toMatch(/[\r\n\t]/);
+  });
+
+  // Ported from the old as-it-happens.test.ts (F2). R2: Distribution's own max(998) is
+  // `z.string().max(998)`, which counts UTF-16 *code units* — a code-point-based truncation
+  // would let a 600-emoji title (600 code points, but 1200 UTF-16 units — astral emoji are
+  // surrogate pairs) straight through unmodified, well over the real limit. Also proves no
+  // lone surrogate is left dangling at the cut point.
+  it("truncates a subject measured in UTF-16 units, not code points, without splitting a surrogate pair (600 emoji)", () => {
+    const subject = renderAsItHappens(item({ title: "😀".repeat(600) }), RENDER).subject; // 600 code points, 1200 UTF-16 units
+    expect(subject.length).toBeLessThanOrEqual(998);
+    expect(subject.endsWith("…")).toBe(true);
+    const prefix = "BC Gov News - ";
+    expect(subject.startsWith(prefix)).toBe(true);
+    const emoji = subject.slice(prefix.length, -1);
+    // An even number of units and every code point a complete "😀" proves no dangling half
+    // of a surrogate pair was left in.
+    expect(emoji.length % 2).toBe(0);
+    expect([...emoji].every((ch) => ch === "😀")).toBe(true);
+  });
+
+  // Ported from the old as-it-happens.test.ts (F2). P2-R25 item 2: replacing each `{{` pair
+  // once left a bypass — `{{{manageUrl}}` became `{ {{manageUrl}}`, whose tail is a live
+  // placeholder again. Every `{` next to another `{` is broken up, so no `{{name}}` can survive
+  // in item content, however many braces lead it. (Distribution matches
+  // /\{\{([A-Za-z0-9_]+)\}\}/ — apps/distribution/src/substitute.ts.) Only the two real footer
+  // placeholders (`{{manageUrl}}`, `{{unsubscribeUrl}}`) stay live, in both html and text.
+  describe("the '{{{manageUrl}}' bypass stays closed", () => {
+    const livePlaceholders = (s: string) => s.match(/\{\{([A-Za-z0-9_]+)\}\}/g) ?? [];
+
+    it.each([
+      ["{{{manageUrl}}", "{ { {manageUrl}}", "{&#123;&#123;manageUrl}}"],
+      ["{{{{manageUrl}}}}", "{ { { {manageUrl}}}}", "{&#123;&#123;&#123;manageUrl}}}}"],
+      ["{ {manageUrl}}", "{ {manageUrl}}", "{ {manageUrl}}"],
+    ])("neutralises %j in item content so only the two footer placeholders are live", (raw, expectedText, expectedHtml) => {
+      const { subject, html, text } = renderAsItHappens(item({ title: raw, summary: raw }), RENDER);
+
+      expect(livePlaceholders(text)).toEqual(["{{manageUrl}}", "{{unsubscribeUrl}}"]);
+      expect(livePlaceholders(html)).toEqual(["{{manageUrl}}", "{{unsubscribeUrl}}"]);
+      expect(livePlaceholders(subject)).toEqual([]);
+      expect(text).toContain(`${expectedText}\n\n${expectedText}`);
+      expect(html).toContain(expectedHtml);
+      expect(subject).toBe(`BC Gov News - ${expectedText}`);
+    });
   });
 });
 

@@ -5,11 +5,18 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createTestDatabase, dbClock } from "@gcpe/db-kit";
+import { sampleRelease } from "@gcpe/events/testing";
+import { createItemSending } from "./as-it-happens";
 import { DistributionError, distributionClient, type DistributionClient, type MessageRequest } from "./distribution-client";
 import { deliveries, items, jobRecipients, sendJobs, subscriberLinks, subscribers } from "./db/schema";
-import { withdrawItem } from "./items";
+import { upsertReleaseItem, withdrawItem } from "./items";
 import type { RecipientLinkOptions } from "./recipient-links";
+import type { RenderOptions } from "./render";
 import { MAX_CHUNK_BYTES, MAX_RECIPIENTS_PER_CHUNK, ensureChunksAssigned, sendDueJobs } from "./send-jobs";
+import { addSubscriber } from "./subscribers";
+
+const PUBLIC_SITE_URL = "https://news.example/site";
+const RENDER: RenderOptions = { siteUrl: PUBLIC_SITE_URL, bannerUrl: null };
 
 const nodMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
 const SUBSCRIBE_API_URL = "https://news.example/api/Subscribe";
@@ -797,6 +804,60 @@ describe("sendDueJobs", () => {
     const row = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job.id)))[0]!;
     expect(row.status).toBe("cancelled");
   });
+
+  // Fix round 1, F1: the withdrawn-check read and the cancel write must happen in one
+  // transaction, or a republish that lands entirely in the gap between them (upsertReleaseItem
+  // clearing withdrawn_at, then createItemSend, both inside one transaction — as-it-happens.ts)
+  // can leave the item live with only a cancelled job and nothing fresh to send it. The
+  // republish is kicked off (not awaited) from onWithdrawnCheck — which fires while this call's
+  // own transaction still holds the FOR SHARE lock — so its own UPDATE on the same items row
+  // must block behind this call's transaction rather than racing it: either this call's cancel
+  // commits first and the republish's createItemSend then finds the job 'cancelled' (replacing
+  // it with a fresh one, per the controller ruling), or the republish commits first and this
+  // call's read sees the already-cleared withdrawn_at and sends normally. Either way, the item
+  // never ends up live with only a cancelled job.
+  it("a republish racing the sender's cancel write is linearized: the item ends with one live job, never a live item with only a cancelled one", async () => {
+    const release = { ...sampleRelease, key: "release-republish-race", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await tdb.db.transaction((tx) => upsertReleaseItem(tx, release, PUBLIC_SITE_URL));
+    await tdb.db.update(items).set({ withdrawnAt: new Date() }).where(eq(items.key, release.key));
+
+    // addSubscriber (not the local insertSubscriber helper) because createItemSend's own
+    // recipient match (matchesItem, inside the republish below) needs a real `subscriptions`
+    // row, not just a `subscribers` row — '*' matches this release via its ministries key.
+    const sub = await addSubscriber(tdb.db, { email: "republish-race@example.com", lists: "all" });
+    const job = await insertJob(tdb.db, release.key);
+    await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
+
+    const { createItemSend } = createItemSending({ render: RENDER });
+    let republishDone: Promise<boolean> | undefined;
+    const onWithdrawnCheck = () => {
+      // Fire-and-forget: must not be awaited here, or the sender's own transaction (which the
+      // republish's UPDATE needs to wait out) could never reach its cancel write and commit.
+      republishDone = tdb.db.transaction(async (tx) => {
+        await upsertReleaseItem(tx, release, PUBLIC_SITE_URL);
+        return createItemSend(tx, release.key, "as_it_happens");
+      });
+    };
+
+    const distribution = stubDistribution();
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, onWithdrawnCheck });
+    expect(result).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 1, paused: false });
+    expect(distribution.send).not.toHaveBeenCalled();
+
+    expect(republishDone).toBeDefined();
+    expect(await republishDone).toBe(true);
+
+    const [item] = await tdb.db.select().from(items).where(eq(items.key, release.key));
+    expect(item!.withdrawnAt).toBeNull();
+
+    const jobs = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, release.key));
+    expect(jobs).toHaveLength(1);
+    expect(jobs[0]!.status).toBe("pending");
+    expect(jobs[0]!.id).not.toBe(job.id); // the original job was deleted, not revived
+
+    const recipientRows = await tdb.db.select().from(jobRecipients).where(eq(jobRecipients.jobId, jobs[0]!.id));
+    expect(recipientRows.map((r) => r.subscriberId)).toEqual([sub.id]);
+  }, 7000);
 
   // Fix round 1, I3/I4: deliveries.attempted_at is stamped right before a part is handed to
   // Distribution, not after a successful response — so every part actually handed off this

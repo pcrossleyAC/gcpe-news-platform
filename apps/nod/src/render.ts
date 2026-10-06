@@ -74,14 +74,13 @@ function sanitizeSubject(raw: string, fallback: string): string {
   return truncateByUtf16Units(base, MAX_SUBJECT_UTF16_UNITS);
 }
 
-/** Global constraints: "`<prefix> - <title>`", falling back to the bare item key (no prefix)
- * when the title is empty or whitespace-only — a subject must never be empty, and prefixing an
- * empty title would hide that fallback behind "`<prefix> - `", which is not what "fall back to
- * the item key" means. */
+/** Global constraints: "`<prefix> - <title>`". Fix round 1, F3 (controller ruling): an empty or
+ * whitespace-only title still gets the prefix — the fallback is `<prefix> - <key>`
+ * (e.g. "BC Gov News - 2026CITZ0001-000004"), not the bare key alone. */
 function subjectFor(prefix: string, item: RenderItem): string {
   const title = item.title.replace(/\s+/g, " ").trim();
-  if (!title) return sanitizeSubject(item.key, item.key);
-  return sanitizeSubject(`${prefix} - ${title}`, item.key);
+  const raw = `${prefix} - ${title || item.key}`;
+  return sanitizeSubject(raw, raw);
 }
 
 function categoryLineHtml(categories: { name: string; url: string | null }[]): string {
