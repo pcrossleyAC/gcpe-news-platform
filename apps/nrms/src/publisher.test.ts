@@ -8,7 +8,7 @@ import { deleteRelease, saveCategories } from "./releases/service";
 import { loadView } from "./releases/store";
 import { cancel, schedule, unpublish } from "./releases/workflow";
 import { publishDue, startPublisher } from "./publisher";
-import { renderText } from "./renditions/text";
+import { renderTextBody, TEXT_FOOTER } from "./renditions/text";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://news.invalid/events", secret: "s".repeat(40), types: ["*"] }];
 const deps = { timeZone: "America/Vancouver" };
@@ -56,13 +56,14 @@ describe("publisher", () => {
     expect((await tdb.pool.query("SELECT count(*)::int AS n FROM release_publications WHERE release_id = $1", [due.id])).rows[0].n).toBe(1);
   });
 
-  it("fills mediaText with the full-text media copy when toMediaLists is set", async () => {
+  it("fills mediaText with the full-text media copy (no trailing TEXT_FOOTER) when toMediaLists is set", async () => {
     const media = await createScheduledRelease(tdb.db, { mediaListKeys: ["regional"] });
     const preView = (await loadView(tdb.db, media.id))!;
     const r = await publishDue({ db: tdb.db, subscribers: subs, timeZone: "America/Vancouver" });
     expect(r.published).toEqual([media.key]);
     const [ev] = await events();
-    expect(ev!.envelope.data).toMatchObject({ mediaText: renderText(preView, { timeZone: "America/Vancouver", nowMs: 0 }) });
+    expect(ev!.envelope.data).toMatchObject({ mediaText: renderTextBody(preView, { timeZone: "America/Vancouver", nowMs: 0 }) });
+    expect(ev!.envelope.data.mediaText).not.toContain(TEXT_FOOTER);
   });
 
   it("leaves mediaText null when toMediaLists is false", async () => {

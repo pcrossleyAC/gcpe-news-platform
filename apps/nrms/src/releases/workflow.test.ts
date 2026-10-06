@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb, editor, sampleCreate, seedTaxonomy } from "../../test/helpers";
 import { governmentTerms } from "../db/schema";
-import { ReleaseRuleError, ReleaseStateError } from "./errors";
+import { ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError } from "./errors";
 import { bcYear, nextCounter } from "./numbering";
 import { createRelease, saveCategories } from "./service";
 import { loadView } from "./store";
@@ -112,6 +112,16 @@ describe("workflow", () => {
     const s = await schedule(db(), v.id, { version: fixed.version, publishAt: "now" }, editor, { timeZone: TZ, countSubscribers: async (k) => ((seen = k), 42) });
     expect(seen).toEqual(["ministries:health", "sectors:health"]);
     expect(s.nodSubscribers).toBe(42);
+  });
+
+  // Controller ruling: schedule's size pre-check must count mediaText too (the same rendition
+  // the publisher itself fills it with) -- a body that fits without it but not with it must be
+  // rejected here, before it can later blow past MAX_EVENT_BYTES at actual publish time.
+  it("the schedule-time size check counts mediaText, rejecting a media release that only fits without it", async () => {
+    const bigBody = `<p>${"x".repeat(600_000)}</p>`;
+    const v = await createRelease(db(), { ...sampleCreate, bodyHtml: bigBody, mediaListKeys: ["regional"] }, editor);
+    const a = await approve(db(), v.id, v.version, editor, deps);
+    await expect(schedule(db(), v.id, { version: a.version, publishAt: "now" }, editor, deps)).rejects.toBeInstanceOf(ReleaseTooLargeError);
   });
 
   it("schedule: a time up to 5 min past is immediate; a failed count never blocks; a re-publish keeps its count", async () => {

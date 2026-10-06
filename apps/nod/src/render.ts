@@ -265,7 +265,11 @@ export function renderMedia(item: RenderItem & { mediaText: string; postKind: st
     categoriesBlockHtml(item.categories) +
     `</td></tr>`;
 
-  const bodyTextLines = [text];
+  // The text part must be neutralised too (every other renderer's own text part is) -- a media
+  // body containing a literal "{{unsubscribeUrl}}" or "{{manageUrl}}" would otherwise read as a
+  // live placeholder to Distribution's substitution pass, handing every recipient someone
+  // else's (or no one's) real link.
+  const bodyTextLines = [neutralizeText(text)];
   if (!isAdvisory) bodyTextLines.push(`Read more: ${item.url}`);
   const categoriesLine = categoryLineText(item.categories);
   if (categoriesLine) bodyTextLines.push(categoriesLine);

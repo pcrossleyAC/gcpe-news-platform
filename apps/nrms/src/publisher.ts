@@ -25,7 +25,7 @@ export interface PublisherOptions {
   /** PUBLIC_FILES_BASE: origin prefixed to `/files/…` in the record's translations/assets. */
   filesBase?: string;
   /** Tenant time zone, for the media copy's CP-style release date (toReleaseRecord's
-   * `rendition.timeZone`, via `renderText`). Defaults to "UTC" -- only releases with
+   * `rendition.timeZone`, via `renderTextBody`). Defaults to "UTC" -- only releases with
    * `publishFlags.toMediaLists` set are affected by this. */
   timeZone?: string;
 }

@@ -139,7 +139,12 @@ export async function schedule(db: Db, id: string, input: ScheduleInput, actor: 
         publishAt = immediate ? clock.minute : t;
       }
       if (row.live && !immediate) throw new ReleaseRuleError(["A live release's correction goes out immediately — choose Publish now."]);
-      assertPublishable(toReleaseRecord(view, { publishDate: publishAt.toISOString(), timestamp: clock.now.toISOString() }, { filesBase: deps.filesBase }));
+      // Controller ruling: this pre-check must count mediaText too (same rendition shape as
+      // publisher.ts's own record build) -- otherwise a media release that fits here without it
+      // can still exceed MAX_EVENT_BYTES once actually published, and this schedule-time check
+      // would have missed it.
+      const rendition = { timeZone: deps.timeZone, nowMs: clock.now.getTime() };
+      assertPublishable(toReleaseRecord(view, { publishDate: publishAt.toISOString(), timestamp: clock.now.toISOString() }, { filesBase: deps.filesBase, rendition }));
 
       await tx
         .update(newsReleases)

@@ -19,8 +19,10 @@ export function titleLines(d: RenditionDoc): string[] {
   return d.pageTitle === "Media Advisory" ? [d.pageTitle.toUpperCase()] : [d.pageTitle.toUpperCase(), d.headline];
 }
 
-/** Port of legacy Release.ToTextDocument (ReleaseText.txt + DocumentText.txt templates). */
-export function renderText(v: ReleaseView, opts: RenditionOptions): string {
+/** Port of legacy Release.ToTextDocumentAsString: the same body as {@link renderText}, but
+ * without its trailing TEXT_FOOTER -- the real media-email sample ends at the contact block.
+ * `renderText` (the .txt download and "email me a copy") adds the footer on top of this. */
+export function renderTextBody(v: ReleaseView, opts: RenditionOptions): string {
   const m = buildRenditionModel(v, opts);
   const first = m.docs[0];
   let docs = "";
@@ -42,5 +44,12 @@ export function renderText(v: ReleaseView, opts: RenditionOptions): string {
     crlf(first?.organizations ?? "") + NL +
     NL +
     docs;
-  return asciiPunctuation(collapseBlankLines(package_)) + NL + NL + NL + TEXT_FOOTER;
+  return asciiPunctuation(collapseBlankLines(package_));
+}
+
+/** Port of legacy Release.ToTextDocument (ReleaseText.txt + DocumentText.txt templates): the
+ * .txt download and "email me a copy" version, which is {@link renderTextBody} plus the fixed
+ * TEXT_FOOTER. */
+export function renderText(v: ReleaseView, opts: RenditionOptions): string {
+  return renderTextBody(v, opts) + NL + NL + NL + TEXT_FOOTER;
 }

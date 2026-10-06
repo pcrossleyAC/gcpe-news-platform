@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb } from "../test/helpers";
@@ -163,5 +163,52 @@ describe("createMediaSend", () => {
     expect(rows.map((r) => r.subscriberId).sort()).toEqual([already, fresh].sort());
     const [job] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.jobKey, `media:${release.key}`));
     expect(job!.status).toBe("pending");
+  });
+
+  // Controller ruling: the sender (send-jobs.ts) cancels a claimed job of a withdrawn item
+  // directly on the row (status 'cancelled'), rather than deleting it the way withdrawItem
+  // does -- a republish must find and replace that cancelled job exactly like createItemSend
+  // does (replaceCancelledJob, shared by both), skipping a recipient whose delivery was
+  // already attempted before the cancel.
+  it("replaces a sender-cancelled job on republish, excluding an already-attempted recipient from the fresh job", async () => {
+    const attempted = (await addMediaMember(tdb.db, "budget", { email: "cancelled-attempted@example.test", source: "manual-media" }, ACTOR)).subscriberId;
+    const pending = (await addMediaMember(tdb.db, "budget", { email: "cancelled-pending@example.test", source: "manual-media" }, ACTOR)).subscriberId;
+    // Both also match the release publicly, so the one-copy guard can be checked below too.
+    for (const id of [attempted, pending]) {
+      await tdb.db.execute(sql`INSERT INTO subscriptions (subscriber_id, list_key) VALUES (${id}, '*')`);
+      await tdb.db.update(subscribers).set({ asItHappens: true }).where(eq(subscribers.id, id));
+    }
+
+    const release = mediaRelease({ ministryKeys: ["Health"] });
+    expect(await publishMedia(release)).toBe(true);
+
+    // Simulate the sender: it claimed this job, handed `attempted`'s delivery off, then found
+    // the item withdrawn and cancelled the job (sendDueJobs' own cancel write) before reaching
+    // `pending`'s part.
+    await tdb.db.update(deliveries).set({ attemptedAt: new Date() }).where(eq(deliveries.subscriberId, attempted));
+    await tdb.db.update(sendJobs).set({ status: "cancelled" }).where(eq(sendJobs.jobKey, `media:${release.key}`));
+
+    // Republish (the release is live again): createMediaSend must replace the cancelled job.
+    expect(await publishMedia(release)).toBe(true);
+
+    const [freshJob] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.jobKey, `media:${release.key}`));
+    expect(freshJob!.status).toBe("pending");
+
+    const freshRecipients = await tdb.db.select({ subscriberId: deliveries.subscriberId }).from(deliveries).where(and(eq(deliveries.itemKey, release.key), eq(deliveries.jobId, freshJob!.id)));
+    expect(freshRecipients.map((r) => r.subscriberId)).toEqual([pending]);
+
+    // `attempted`'s delivery row itself survives (detached, job_id null — ON DELETE SET NULL),
+    // which is exactly what keeps them out of the fresh job above (their (item, subscriber,
+    // mode) row already exists, so the fresh set-based insert's ON CONFLICT DO NOTHING skips
+    // them rather than re-attaching them to the new job).
+    const attemptedDelivery = await tdb.db.select().from(deliveries).where(eq(deliveries.subscriberId, attempted));
+    expect(attemptedDelivery).toHaveLength(1);
+    expect(attemptedDelivery[0]).toMatchObject({ mode: "media", jobId: null });
+
+    // One copy per person: `attempted`'s stale media delivery still blocks the public
+    // As-It-Happens send, even though it's no longer attached to any job.
+    await tdb.db.transaction((tx) => createItemSend(tx, release.key, "as_it_happens"));
+    const aihRows = await tdb.db.select().from(deliveries).where(and(eq(deliveries.itemKey, release.key), eq(deliveries.mode, "as_it_happens")));
+    expect(aihRows.map((r) => r.subscriberId)).not.toContain(attempted);
   });
 });

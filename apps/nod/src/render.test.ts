@@ -249,6 +249,22 @@ describe("renderMedia", () => {
     expect(html).not.toContain("<b>Bold</b>");
     expect(html).toContain("&lt;b&gt;Bold&lt;/b&gt; &amp; co");
   });
+
+  // A media body's own text is subscriber-authored content via NRMS, same risk as any other
+  // item field: a literal "{{unsubscribeUrl}}"/"{{manageUrl}}" in it must not read as a live
+  // placeholder to Distribution's substitution pass (same bypass this file's other "'{{{...'
+  // stays closed" tests guard against), in *either* output -- the html part already ran its
+  // paragraphs through neutralizeHtml, but the text part previously inserted the media text raw.
+  it("neutralises a literal '{{unsubscribeUrl}}'/'{{manageUrl}}' in the media text -- only the real footer placeholders stay live, in both html and text", () => {
+    const livePlaceholders = (s: string) => s.match(/\{\{([A-Za-z0-9_]+)\}\}/g) ?? [];
+    const mediaText = "Call {{manageUrl}} or use {{unsubscribeUrl}} for details.";
+    const { html, text } = renderMedia(mediaItem({ mediaText }), RENDER);
+
+    expect(livePlaceholders(text)).toEqual(["{{manageUrl}}", "{{unsubscribeUrl}}"]);
+    expect(livePlaceholders(html)).toEqual(["{{manageUrl}}", "{{unsubscribeUrl}}"]);
+    expect(text).toContain("Call { {manageUrl}} or use { {unsubscribeUrl}} for details.");
+    expect(html).toContain("Call {&#123;manageUrl}} or use {&#123;unsubscribeUrl}} for details.");
+  });
 });
 
 describe("neutralizeHtml / neutralizeText", () => {
@@ -272,7 +288,8 @@ describe("itemCategories", () => {
       INSERT INTO lists (list_key, category, key, name, topic_url) VALUES
         ('ministries:health', 'ministries', 'health', 'Health', 'https://news.gov.bc.ca/topics/health'),
         ('ministries:education', 'ministries', 'education', 'Education', ''),
-        ('sectors:mining', 'sectors', 'mining', 'Mining', 'https://news.gov.bc.ca/topics/mining');
+        ('sectors:mining', 'sectors', 'mining', 'Mining', 'https://news.gov.bc.ca/topics/mining'),
+        ('media-distribution-lists:budget', 'media-distribution-lists', 'budget', 'Budget Press Corps', '');
     `);
   });
   afterAll(async () => tdb.drop());
@@ -297,5 +314,19 @@ describe("itemCategories", () => {
 
   it("returns an empty array for an empty list of keys", async () => {
     expect(await itemCategories(tdb.db, [])).toEqual([]);
+  });
+
+  // The topic line must never carry a media list's name, even though a media list is a row in
+  // this same `lists` table -- `createMediaSend` only ever calls this with `item.listKeys`
+  // (the general match keys `indexKeysFor` produced), never `item.mediaListKeys`, so the
+  // exclusion is structural rather than something `itemCategories` itself filters. This is the
+  // real call createMediaSend makes, exercised end to end: an item whose own `listKeys` (set by
+  // `itemFromRelease`) never contains its media list key, even when that item also went to a
+  // media list sharing this same `lists` row.
+  it("the topic line excludes media lists: resolving an item's own listKeys never surfaces a media list's name", async () => {
+    const itemListKeys = ["ministries:health"]; // itemFromRelease never puts a media key here
+    const result = await itemCategories(tdb.db, itemListKeys);
+    expect(result.map((c) => c.name)).not.toContain("Budget Press Corps");
+    expect(result).toEqual([{ name: "Health", url: "https://news.gov.bc.ca/topics/health" }]);
   });
 });
