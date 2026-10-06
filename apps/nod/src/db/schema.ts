@@ -177,6 +177,15 @@ export const nodSettings = pgTable(
     id: integer("id").primaryKey().default(1),
     paused: boolean("paused").notNull().default(false),
     lastDigestCutoff: timestamp("last_digest_cutoff", { withTimezone: true }),
+    // The Media Hub changes feed's own cursor -- the `since` to pass `changes()` next time,
+    // advanced only once a whole run's feed has been processed to completion.
+    mediaSyncSince: timestamp("media_sync_since", { withTimezone: true }),
+    // When a sync (scheduled or manual) last ran -- drives "is it due" the same way
+    // last_digest_cutoff drives the digest, and distinguishes a flagged-but-in-progress day
+    // from one no sync has touched yet.
+    mediaSyncAt: timestamp("media_sync_at", { withTimezone: true }),
+    // That run's result (a SyncResult, or `{ error }` on an aborted run) -- for the status route.
+    mediaSyncResult: jsonb("media_sync_result"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],

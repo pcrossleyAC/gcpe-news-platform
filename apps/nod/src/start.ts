@@ -11,6 +11,7 @@ import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
 import { needsReferenceData } from "./lists";
 import { mediaHubClient, type MediaHubClient } from "./media-hub/client";
+import { runMediaSyncIfDue, startMediaSyncLoop } from "./media-hub/sync";
 import type { RecipientLinkOptions } from "./recipient-links";
 import type { RenderOptions } from "./render";
 import { sendDueJobs, startJobSender } from "./send-jobs";
@@ -174,6 +175,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   // if startLoops() was never invoked.
   let stopJobSender: (() => Promise<void>) | undefined;
   let stopDigestLoop: (() => Promise<void>) | undefined;
+  let stopMediaSyncLoop: (() => Promise<void>) | undefined;
 
   return {
     app,
@@ -183,6 +185,11 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // Task 6: the 17:00 daily digest -- a no-op call every tick until the tenant's wall
       // clock actually reaches DIGEST_HOUR for a cutoff not already run.
       digest: () => runDigestIfDue(db, tenant.timeZone, render),
+      // The nightly Media Hub sync -- a no-op call every tick until the tenant's wall clock
+      // actually reaches MEDIA_SYNC_HOUR for a day not already run. No Media Hub configured at
+      // all means nothing to sync -- a no-op, same as the search/add-from-hub routes
+      // answering 503.
+      mediaSync: () => (mediaHub ? runMediaSyncIfDue(db, mediaHub, tenant.timeZone) : Promise.resolve({ ran: false })),
       // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
       // data has ever reached this NoD so it knows whether to ask Core to republish.
       needsReferenceData: () => needsReferenceData(db),
@@ -192,11 +199,13 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // The standalone NoD image and STACK_LOOPS=true must also run the digest -- the
       // workers.digest hook above only ever fires once, when a caller asks for it.
       stopDigestLoop = startDigestLoop({ db, timeZone: tenant.timeZone, render });
+      if (mediaHub) stopMediaSyncLoop = startMediaSyncLoop({ db, client: mediaHub, timeZone: tenant.timeZone });
     },
     closeBeforeServer: [],
     closers: [
       { name: "job sender", close: async () => { await stopJobSender?.(); } },
       { name: "digest loop", close: async () => { await stopDigestLoop?.(); } },
+      { name: "media sync loop", close: async () => { await stopMediaSyncLoop?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],
   };

@@ -11,7 +11,10 @@ export type HistoryAction =
   | "media-list-added"
   | "media-list-removed"
   | "media-list-opted-out"
-  | "media-ended";
+  | "media-ended"
+  | "media-hub-email-changed"
+  | "media-hub-flagged"
+  | "media-hub-resolved";
 
 export async function writeHistory(tx: DbOrTx, subscriberId: string, actor: string, action: HistoryAction, detail = ""): Promise<void> {
   await tx.insert(subscriberHistory).values({ subscriberId, actor, action, detail });

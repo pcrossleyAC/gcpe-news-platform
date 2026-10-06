@@ -615,11 +615,12 @@ describe("apps/stack", () => {
         "nrms.dispatch",
         "core.dispatch",
         "news-api.dispatch",
+        "nod.media-sync",
         "nod.digest",
         "nod.send",
         "distribution.send",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 

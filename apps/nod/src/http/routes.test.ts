@@ -321,6 +321,17 @@ describe("/api/media-lists", () => {
     expect((await request(app).delete("/api/media-lists/budget/members/00000000-0000-0000-0000-000000000000").set("authorization", `Bearer ${reader}`)).status).toBe(403);
   });
 
+  it("401s without a token, 403s without NoD.Admin, for the sync status/trigger and resolve routes", async () => {
+    expect((await request(app).get("/api/media-hub/sync")).status).toBe(401);
+    expect((await request(app).get("/api/media-hub/sync").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    expect((await request(app).post("/api/media-hub/sync")).status).toBe(401);
+    expect((await request(app).post("/api/media-hub/sync").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    expect((await request(app).post("/api/media-members/00000000-0000-0000-0000-000000000000/resolve")).status).toBe(401);
+    expect(
+      (await request(app).post("/api/media-members/00000000-0000-0000-0000-000000000000/resolve").set("authorization", `Bearer ${reader}`)).status,
+    ).toBe(403);
+  });
+
   it("GET /api/media-lists lists media lists with live member counts", async () => {
     await addMediaMember(tdb.db, "budget", { email: "list-member@example.com", source: "manual-media" }, "test");
     const res = await request(app).get("/api/media-lists").set("authorization", `Bearer ${admin}`);
@@ -413,11 +424,23 @@ const badEmailHubContact: MediaHubContact = {
   deletedAt: null,
 };
 
+const resolveHubContact: MediaHubContact = {
+  id: 45,
+  firstName: "Casey",
+  lastName: "Nolan",
+  outlet: "Riverbend Times",
+  emails: [
+    { ref: "personal", address: "casey.nolan.45@example.test", kind: "personal", organization: null, preferred: false },
+    { ref: "workplace:1", address: "casey.1@riverbend.example.test", kind: "workplace", organization: "Riverbend Times", preferred: true },
+  ],
+  deletedAt: null,
+};
+
 describe("media-lists Media Hub integration (search proxy, add-from-hub)", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
   let admin: string;
-  let mediaHub: MediaHubClient & { search: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
+  let mediaHub: MediaHubClient & { search: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn>; changes: ReturnType<typeof vi.fn> };
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
@@ -430,12 +453,12 @@ describe("media-lists Media Hub integration (search proxy, add-from-hub)", () =>
       .setSubject("svc")
       .setExpirationTime("5m")
       .sign(pair.privateKey);
-    const byId = new Map([sampleHubContact, deletedHubContact, badEmailHubContact].map((c) => [c.id, c]));
+    const byId = new Map([sampleHubContact, deletedHubContact, badEmailHubContact, resolveHubContact].map((c) => [c.id, c]));
     mediaHub = {
       search: vi.fn().mockResolvedValue({ contacts: [sampleHubContact], page: 1, pageSize: 25, total: 1 }),
       get: vi.fn(async (id: number) => byId.get(id) ?? null),
       changes: vi.fn(),
-    } as unknown as MediaHubClient & { search: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn> };
+    } as unknown as MediaHubClient & { search: ReturnType<typeof vi.fn>; get: ReturnType<typeof vi.fn>; changes: ReturnType<typeof vi.fn> };
     app = createApp({
       db: tdb.db,
       auth: { issuer, audience, keys },
@@ -506,6 +529,46 @@ describe("media-lists Media Hub integration (search proxy, add-from-hub)", () =>
 
     const rows = await tdb.db.select().from(subscribers).where(eq(subscribers.email, badEmailHubContact.emails[0]!.address));
     expect(rows).toHaveLength(0);
+  });
+
+  it("POST then GET /api/media-hub/sync runs a sync now and reports its result", async () => {
+    mediaHub.changes.mockResolvedValue({ contacts: [], nextCursor: null });
+
+    const posted = await request(app).post("/api/media-hub/sync").set("authorization", `Bearer ${admin}`);
+    expect(posted.status).toBe(200);
+    expect(posted.body).toEqual({ contacts: 0, updated: 0, flagged: 0, removed: 0, errors: 0 });
+
+    const got = await request(app).get("/api/media-hub/sync").set("authorization", `Bearer ${admin}`);
+    expect(got.status).toBe(200);
+    expect(got.body.result).toEqual({ contacts: 0, updated: 0, flagged: 0, removed: 0, errors: 0 });
+    expect(typeof got.body.since).toBe("string");
+    expect(typeof got.body.at).toBe("string");
+  });
+
+  it("POST /api/media-members/:subscriberId/resolve re-points to a new ref and clears the flag", async () => {
+    const { subscriberId } = await request(app)
+      .post("/api/media-lists/hub/members")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ mediaHubContactId: resolveHubContact.id, emailRef: "personal" })
+      .then((r) => r.body as { subscriberId: string });
+    await tdb.db.update(subscribers).set({ needsAttention: "email-gone", attentionAt: sql`now()` }).where(eq(subscribers.id, subscriberId));
+
+    const resolved = await request(app)
+      .post(`/api/media-members/${subscriberId}/resolve`)
+      .set("authorization", `Bearer ${admin}`)
+      .send({ emailRef: "workplace:1" });
+    expect(resolved.status).toBe(200);
+
+    const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(row).toMatchObject({ email: "casey.1@riverbend.example.test", mediaHubEmailRef: "workplace:1", needsAttention: null });
+  });
+
+  it("POST /api/media-members/:subscriberId/resolve 404s an unknown subscriber", async () => {
+    const res = await request(app)
+      .post("/api/media-members/00000000-0000-0000-0000-000000000000/resolve")
+      .set("authorization", `Bearer ${admin}`)
+      .send({});
+    expect(res.status).toBe(404);
   });
 });
 

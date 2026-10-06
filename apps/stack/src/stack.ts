@@ -443,6 +443,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         { name: "nrms.dispatch", run: worker(nrms, "dispatch") },
         { name: "core.dispatch", run: worker(core, "dispatch") },
         { name: "news-api.dispatch", run: worker(newsApi, "dispatch") },
+        // The nightly Media Hub sync before the digest: an email address or flag it fixes up
+        // this tick should already be current by the time the digest (and anything else this
+        // tick does) looks at that subscriber.
+        { name: "nod.media-sync", run: worker(nod, "mediaSync") },
         // The daily digest, immediately before the sender: a digest job this step just
         // created is picked up by the very same tick's own nod.send, not left for the next one.
         { name: "nod.digest", run: worker(nod, "digest") },

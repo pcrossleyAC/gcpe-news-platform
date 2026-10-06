@@ -5,6 +5,7 @@ import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import type { ItemSending } from "../as-it-happens";
 import type { DistributionClient } from "../distribution-client";
 import { MediaHubError, type MediaHubClient } from "../media-hub/client";
+import { getMediaSyncStatus, resolveMediaMember, runMediaSync } from "../media-hub/sync";
 import { addMediaMember, listMediaLists, listMediaMembers, MediaListNotFoundError, OptedOutError, removeMediaMember } from "../media-members";
 import { getSettings, setPaused } from "../settings";
 import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
@@ -28,6 +29,8 @@ export const addMediaMemberSchema = z.union([
   z.object({ email: emailAddressSchema, confirmOptOut: z.boolean().optional() }),
   z.object({ mediaHubContactId: z.number().int(), emailRef: z.string().min(1), confirmOptOut: z.boolean().optional() }),
 ]);
+
+export const resolveMediaMemberSchema = z.object({ emailRef: z.string().min(1).optional() });
 
 export const emergencyItemSchema = z.object({
   guid: z.string().min(1),
@@ -179,6 +182,35 @@ export function apiRoutes(
     run<{ key: string; subscriberId: string }>(async (req, res) => {
       await removeMediaMember(db, req.params.key, req.params.subscriberId, actorOf(req).name);
       res.status(204).end();
+    }),
+  );
+
+  r.get(
+    "/media-hub/sync",
+    requireRole("NoD.Admin"),
+    run(async (_req, res) => {
+      res.json(await getMediaSyncStatus(db));
+    }),
+  );
+
+  r.post(
+    "/media-hub/sync",
+    requireRole("NoD.Admin"),
+    run(async (_req, res) => {
+      if (!mediaHub) return void res.status(503).json({ error: "media hub not configured" });
+      res.json(await runMediaSync(db, mediaHub));
+    }),
+  );
+
+  r.post(
+    "/media-members/:subscriberId/resolve",
+    requireRole("NoD.Admin"),
+    run<{ subscriberId: string }>(async (req, res) => {
+      const parsed = resolveMediaMemberSchema.parse(req.body ?? {});
+      const outcome = await resolveMediaMember(db, mediaHub, req.params.subscriberId, parsed.emailRef, actorOf(req).name);
+      if (outcome === "not-found" || outcome === "ref-not-found") return void res.status(404).json({ error: "not found" });
+      if (outcome === "media-hub-unavailable") return void res.status(503).json({ error: "media hub not configured" });
+      res.status(200).json({ ok: true });
     }),
   );
 
