@@ -793,10 +793,16 @@ describe("sendDue", () => {
       await sleep(100);
       expect(sendCalls).toBe(1); // still paused just short of 5 min
       fakeMonotonicMs += 1;
-      await vi.waitFor(async () => {
-        const rows = await tdb.db.select().from(messages);
-        expect(rows.find((r) => r.email === "waiting@example.com")!.status).toBe("sent");
-      });
+      // The sender has to finish its paused loop iteration, re-verify the transport and send two
+      // rows; on a slow CI runner that has taken just over vi.waitFor's 1 s default (flaked 3x on
+      // 2026-10-05). The pause assertion above is what this test is about, so give the drain room.
+      await vi.waitFor(
+        async () => {
+          const rows = await tdb.db.select().from(messages);
+          expect(rows.find((r) => r.email === "waiting@example.com")!.status).toBe("sent");
+        },
+        { timeout: 10_000 },
+      );
     } finally {
       await stop();
       errorSpy.mockRestore();
