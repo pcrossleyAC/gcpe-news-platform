@@ -1,7 +1,7 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { DbOrTx, Tx } from "@gcpe/db-kit";
 import { indexKeysFor, type EventEnvelope, type EventHandler, type ReleaseRecord } from "@gcpe/events";
-import { items, sendJobs } from "./db/schema";
+import { deliveries, items, sendJobs } from "./db/schema";
 
 const ENGLISH_LANGUAGE_ID = 4105;
 
@@ -66,15 +66,33 @@ export async function refreshReleaseItem(tx: DbOrTx, r: ReleaseRecord, publicSit
 
 /**
  * `release.unpublished`: marks the item withdrawn (so the digest and any future match excludes
- * it) and cancels its still-pending send jobs (so a sender that hasn't run yet skips it). A job
- * already sent or failed is left alone — withdrawing doesn't undo a send that already happened.
+ * it), then for each of the item's still-`pending` jobs deletes that job's not-yet-attempted
+ * deliveries and the job itself (`job_recipients` cascades on the job's delete). A job already
+ * `sent`/`failed`/`cancelled` is left untouched — withdrawing doesn't undo a send that already
+ * happened.
+ *
+ * Deleting (not just cancelling) the pending job matters for a republish: `deliveries`' primary
+ * key is (item_key, subscriber_id, mode), so a stale, not-yet-attempted delivery row left behind
+ * would conflict with the fresh `INSERT ... ON CONFLICT DO NOTHING` the As-It-Happens handler
+ * runs on republish and silently swallow that subscriber forever — the old job would stay
+ * cancelled, nobody ever re-sending to it. Deleting the row (not just cancelling the job) clears
+ * the way for a brand-new job with fresh deliveries on republish. A delivery that was already
+ * *attempted* (handed to Distribution before the unpublish) is kept — that email already went
+ * out and must not be re-sent by a later republish; `deliveries.job_id`'s `ON DELETE SET NULL`
+ * detaches it from the now-gone job instead of deleting it too.
  */
 export async function withdrawItem(tx: DbOrTx, key: string): Promise<void> {
   await tx.update(items).set({ withdrawnAt: sql`now()`, updatedAt: sql`now()` }).where(eq(items.key, key));
-  await tx
-    .update(sendJobs)
-    .set({ status: "cancelled" })
+
+  const pendingJobs = await tx
+    .select({ id: sendJobs.id })
+    .from(sendJobs)
     .where(and(eq(sendJobs.itemKey, key), eq(sendJobs.status, "pending")));
+  if (pendingJobs.length === 0) return;
+
+  const jobIds = pendingJobs.map((j) => j.id);
+  await tx.delete(deliveries).where(and(inArray(deliveries.jobId, jobIds), isNull(deliveries.attemptedAt)));
+  await tx.delete(sendJobs).where(inArray(sendJobs.id, jobIds));
 }
 
 export interface ItemHandlerOptions {

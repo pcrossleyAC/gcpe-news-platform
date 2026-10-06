@@ -1,11 +1,12 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { indexKeysFor } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createApp } from "./app";
 import { createNodTestDb, createTestApp, envelope, sendEvent } from "../test/helpers";
-import { items, sendJobs } from "./db/schema";
+import { deliveries, items, jobRecipients, sendJobs } from "./db/schema";
+import { addSubscriber } from "./subscribers";
 
 describe("items from NRMS release events", () => {
   let tdb: TestDatabase;
@@ -43,7 +44,11 @@ describe("items from NRMS release events", () => {
     expect(await tdb.db.select().from(sendJobs)).toHaveLength(jobsBefore.length);
   });
 
-  it("unpublished withdraws the item and cancels its pending jobs", async () => {
+  // Fix round 1: the brief's original wording was "cancels its pending jobs", but the required
+  // behaviour (see the fix-round describe block below for why) is to delete the pending job
+  // outright, not flip its status -- so a later republish starts clean instead of finding a
+  // cancelled job and stale deliveries in its way.
+  it("unpublished withdraws the item and deletes its pending jobs", async () => {
     const r = { ...sampleRelease, key: "K-WD" };
     await sendEvent(app, envelope("nrms", "release.published", r, r.key));
     await tdb.db.insert(sendJobs).values({ jobKey: "as_it_happens:K-WD", itemKey: "K-WD", kind: "as_it_happens", subject: "s" }).onConflictDoNothing();
@@ -51,7 +56,7 @@ describe("items from NRMS release events", () => {
     const [row] = await tdb.db.select().from(items).where(eq(items.key, "K-WD"));
     expect(row!.withdrawnAt).not.toBeNull();
     const jobs = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-WD"));
-    expect(jobs.every((j) => j.status === "cancelled")).toBe(true);
+    expect(jobs).toHaveLength(0);
   });
 
   // A release republished after being withdrawn must not stay marked withdrawn.
@@ -100,5 +105,92 @@ describe("items from NRMS release events", () => {
     await sendEvent(app, envelope("nrms", "release.published", r, r.key));
     const [row] = await tdb.db.select().from(items).where(eq(items.key, "K-SUBHEAD"));
     expect(row!.summary).toBe("The real digest-style summary line.");
+  });
+});
+
+// Fix round 1: unpublish -> republish must send again. Cancelling the pending job (leaving its
+// deliveries behind) silently broke this -- a republish's INSERT...ON CONFLICT DO NOTHING found
+// the stale, never-attempted delivery rows already there and inserted nothing, so the cancelled
+// job's recipients never got re-matched into a job that would actually send. withdrawItem now
+// deletes the pending job's not-yet-attempted deliveries and the job itself, so a republish
+// starts clean. A delivery already attempted before the unpublish is kept (that email already
+// went out) and is excluded from the republished job.
+describe("withdraw then republish resets the pending job", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  let subscriberId: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    app = createTestApp(tdb.db);
+    subscriberId = (await addSubscriber(tdb.db, { email: "resend@example.com", lists: "all" })).id;
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE deliveries, send_jobs, job_recipients, items CASCADE");
+  });
+
+  it("publish -> unpublish -> republish creates a new pending job whose recipients are the matching subscribers", async () => {
+    const r = { ...sampleRelease, key: "K-RESEND", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await sendEvent(app, envelope("nrms", "release.published", r, r.key));
+    const [firstJob] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-RESEND"));
+    expect(firstJob).toBeTruthy();
+
+    await sendEvent(app, envelope("nrms", "release.unpublished", { key: "K-RESEND" }, r.key));
+    expect(await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-RESEND"))).toHaveLength(0);
+    expect(await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, "K-RESEND"))).toHaveLength(0);
+
+    await sendEvent(app, envelope("nrms", "release.published", r, r.key));
+    const jobsAfter = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-RESEND"));
+    expect(jobsAfter).toHaveLength(1);
+    expect(jobsAfter[0]!.status).toBe("pending");
+    expect(jobsAfter[0]!.id).not.toBe(firstJob!.id);
+
+    const recipientRows = await tdb.db.select().from(jobRecipients).where(eq(jobRecipients.jobId, jobsAfter[0]!.id));
+    expect(recipientRows.map((rr) => rr.subscriberId)).toEqual([subscriberId]);
+  });
+
+  it("excludes a subscriber whose delivery was already attempted before the unpublish", async () => {
+    const alreadySent = (await addSubscriber(tdb.db, { email: "already-sent@example.com", lists: "all" })).id;
+    const r = { ...sampleRelease, key: "K-RESEND-2", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await sendEvent(app, envelope("nrms", "release.published", r, r.key));
+
+    await tdb.db
+      .update(deliveries)
+      .set({ attemptedAt: new Date() })
+      .where(and(eq(deliveries.itemKey, "K-RESEND-2"), eq(deliveries.subscriberId, alreadySent)));
+
+    await sendEvent(app, envelope("nrms", "release.unpublished", { key: "K-RESEND-2" }, r.key));
+    // The already-attempted delivery survives the withdrawal, detached from the deleted job.
+    const survivingDeliveries = await tdb.db.select().from(deliveries).where(eq(deliveries.itemKey, "K-RESEND-2"));
+    expect(survivingDeliveries.map((d) => d.subscriberId)).toEqual([alreadySent]);
+    expect(survivingDeliveries[0]!.jobId).toBeNull();
+
+    await sendEvent(app, envelope("nrms", "release.published", r, r.key));
+    const [newJob] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-RESEND-2"));
+    const recipientRows = await tdb.db.select().from(jobRecipients).where(eq(jobRecipients.jobId, newJob!.id));
+    expect(recipientRows.map((rr) => rr.subscriberId)).toEqual([subscriberId]);
+    expect(recipientRows.map((rr) => rr.subscriberId)).not.toContain(alreadySent);
+  });
+
+  it("leaves a 'sent' job of the same item, and a pending job of a different item, untouched", async () => {
+    const r = { ...sampleRelease, key: "K-MIXED", publishFlags: { ...sampleRelease.publishFlags, toSubscribers: true } };
+    await sendEvent(app, envelope("nrms", "release.published", r, r.key));
+    const [job] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-MIXED"));
+    await tdb.db.update(sendJobs).set({ status: "sent" }).where(eq(sendJobs.id, job!.id));
+
+    await tdb.db.insert(sendJobs).values({ jobKey: "as_it_happens:K-OTHER", itemKey: "K-OTHER", kind: "as_it_happens", subject: "s" });
+
+    await sendEvent(app, envelope("nrms", "release.unpublished", { key: "K-MIXED" }, r.key));
+
+    const sentJob = await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job!.id));
+    expect(sentJob).toHaveLength(1);
+    expect(sentJob[0]!.status).toBe("sent");
+
+    const otherJob = await tdb.db.select().from(sendJobs).where(eq(sendJobs.itemKey, "K-OTHER"));
+    expect(otherJob).toHaveLength(1);
+    expect(otherJob[0]!.status).toBe("pending");
   });
 });
