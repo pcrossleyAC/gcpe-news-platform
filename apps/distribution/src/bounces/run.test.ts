@@ -138,6 +138,44 @@ describe("runBouncesIfDue", () => {
     expect(source.markProcessed).not.toHaveBeenCalled();
   });
 
+  it("does not double-count bounces/ignored for a duplicate sourceId, mirroring matched's own skip", async () => {
+    // In practice a duplicate arises from the *same* message being fetched again across runs
+    // (e.g. after a markProcessed failure leaves it unprocessed) -- fed twice in one fetchNew
+    // here only to exercise run.ts's own counting logic deterministically, in one run.
+    const source = stubSource([
+      { id: "dup-1", raw: UNDELIVERABLE_RAW },
+      { id: "dup-1", raw: UNDELIVERABLE_RAW },
+    ]);
+
+    const result = await runBouncesIfDue(tdb.db, source);
+
+    expect(result.fetched).toBe(2);
+    expect(result.bounces).toBe(1);
+    expect(result.ignored).toBe(0);
+    expect(source.markProcessed).toHaveBeenCalledWith(["dup-1", "dup-1"]);
+  });
+
+  it("resolves with its counts, logging only a count, when source.markProcessed itself throws", async () => {
+    // A fresh, never-used-elsewhere source id -- run.test.ts never truncates `bounces` between
+    // tests, so reusing an id another test already recorded (e.g. "m1") would read back as a
+    // duplicate here and make this assertion about *this* fix's counting, not that one's.
+    const entries = [{ id: "markprocessed-throws-1", raw: UNDELIVERABLE_RAW }];
+    const source: BounceSource = {
+      fetchNew: vi.fn().mockResolvedValue(entries),
+      markProcessed: vi.fn().mockRejectedValue(new Error("simulated source failure")),
+    };
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await runBouncesIfDue(tdb.db, source);
+
+    expect(result).toEqual({ ran: true, fetched: 1, bounces: 1, matched: 0, ignored: 0 });
+    expect(errorSpy).toHaveBeenCalled();
+    const logged = errorSpy.mock.calls.flat().map(String).join(" ");
+    expect(logged).not.toContain("markprocessed-throws-1");
+    expect(logged).toContain("1");
+    errorSpy.mockRestore();
+  });
+
   it("defaults the fetch limit to 200, honours an override", async () => {
     const source = stubSource([]);
     await runBouncesIfDue(tdb.db, source);

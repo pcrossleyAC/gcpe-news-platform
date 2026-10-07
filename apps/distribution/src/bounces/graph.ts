@@ -88,6 +88,9 @@ export function graphBounceSource(opts: GraphBounceSourceOptions): BounceSource 
   return {
     async fetchNew(limit) {
       const filter = encodeURIComponent("isRead eq false");
+      // Deliberately one page: $top=limit and no @odata.nextLink following, so a mailbox with
+      // more than `limit` unread messages only has its first page read this run -- the rest is
+      // still unread and gets picked up on a later (15-minute) run instead.
       const listed = await call(
         "list unread messages",
         `${mailboxPath}/mailFolders/inbox/messages?$filter=${filter}&$top=${limit}&$select=id`,
@@ -104,18 +107,29 @@ export function graphBounceSource(opts: GraphBounceSourceOptions): BounceSource 
     async markProcessed(ids) {
       if (ids.length === 0) return;
       const folderId = await ensureProcessedFolderId();
+      // Each id's mark-read + move is isolated -- one id's failure (e.g. its move failing
+      // after mark-read already succeeded) must not stop the rest from being marked and
+      // moved, which would otherwise leave them unread and re-fetched (and re-recorded as a
+      // harmless but noisy duplicate) next run. Every id is still attempted; a summary (count
+      // only, never which ids) is thrown once all of them have been.
+      let failures = 0;
       for (const id of ids) {
-        await call("mark message read", `${mailboxPath}/messages/${id}`, {
-          method: "PATCH",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ isRead: true }),
-        });
-        await call("move message to Processed", `${mailboxPath}/messages/${id}/move`, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ destinationId: folderId }),
-        });
+        try {
+          await call("mark message read", `${mailboxPath}/messages/${id}`, {
+            method: "PATCH",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ isRead: true }),
+          });
+          await call("move message to Processed", `${mailboxPath}/messages/${id}/move`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({ destinationId: folderId }),
+          });
+        } catch {
+          failures++;
+        }
       }
+      if (failures > 0) throw new GraphBounceSourceError(`markProcessed failed for ${failures}/${ids.length} message(s)`);
     },
   };
 }

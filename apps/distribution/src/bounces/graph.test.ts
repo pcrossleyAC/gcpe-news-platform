@@ -17,15 +17,20 @@ function textResponse(body: string, status = 200): Response {
 }
 
 type Step = { method?: string; match: RegExp; response: () => Response };
+/** A fetchImpl with how many of its recorded steps were actually consumed, so a test can
+ * assert every expected call happened (not just that the ones that did happen were in order —
+ * `recordedFetch` alone only catches an out-of-order/extra call, not an early stop that simply
+ * never reaches the later steps). */
+type RecordedFetch = typeof fetch & { callCount: () => number };
 
 /**
  * A fetchImpl that asserts each call happens in the given order and matches the expected
  * method/URL pattern before answering with its recorded response — so a test failure points at
  * exactly which call went wrong, not just a generic assertion mismatch deep inside graph.ts.
  */
-function recordedFetch(steps: Step[]): typeof fetch {
+function recordedFetch(steps: Step[]): RecordedFetch {
   let i = 0;
-  return (async (input: string | URL | Request, init?: RequestInit) => {
+  const impl = (async (input: string | URL | Request, init?: RequestInit) => {
     const step = steps[i];
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -34,7 +39,9 @@ function recordedFetch(steps: Step[]): typeof fetch {
     if (step.method && step.method !== method) throw new Error(`call ${i}: expected method ${step.method}, got ${method} (${url})`);
     if (!step.match.test(url)) throw new Error(`call ${i}: URL did not match ${step.match}: ${url}`);
     return step.response();
-  }) as unknown as typeof fetch;
+  }) as RecordedFetch;
+  impl.callCount = () => i;
+  return impl;
 }
 
 const baseOpts = { tenantId: "tenant-1", clientId: "client-1", clientSecret: "secret-1", mailbox: "bounces@example.test" };
@@ -79,6 +86,32 @@ describe("graphBounceSource", () => {
 
     const source = graphBounceSource({ ...baseOpts, fetchImpl });
     await expect(source.markProcessed(["AAMkAGI-graph-message-1"])).resolves.toBeUndefined();
+  });
+
+  it("markProcessed isolates per-id failures: a failing move for one id doesn't stop the others from being marked and moved", async () => {
+    const fetchImpl = recordedFetch([
+      { method: "POST", match: /oauth2\/v2\.0\/token/, response: () => jsonResponse(TOKEN_JSON) },
+      { match: /\/mailFolders\?.*displayName/, response: () => jsonResponse(fixture("folder-found.json")) },
+      // id-1: mark-read and move both succeed.
+      { method: "PATCH", match: /\/messages\/id-1$/, response: () => jsonResponse(fixture("mark-read.json")) },
+      { method: "POST", match: /\/messages\/id-1\/move$/, response: () => jsonResponse(fixture("move.json")) },
+      // id-2: mark-read succeeds, the move fails -- must not stop id-3 below from being tried.
+      { method: "PATCH", match: /\/messages\/id-2$/, response: () => jsonResponse(fixture("mark-read.json")) },
+      { method: "POST", match: /\/messages\/id-2\/move$/, response: () => jsonResponse('{"error":{"code":"ErrorItemNotFound"}}', 500) },
+      // id-3: mark-read and move both succeed, despite id-2's failure just above.
+      { method: "PATCH", match: /\/messages\/id-3$/, response: () => jsonResponse(fixture("mark-read.json")) },
+      { method: "POST", match: /\/messages\/id-3\/move$/, response: () => jsonResponse(fixture("move.json")) },
+    ]);
+
+    const source = graphBounceSource({ ...baseOpts, fetchImpl });
+    const error = await source.markProcessed(["id-1", "id-2", "id-3"]).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(GraphBounceSourceError);
+    expect((error as Error).message).not.toContain("id-2");
+    // The decisive check: every one of the 8 recorded steps was reached, including id-3's
+    // mark-read and move *after* id-2's move failed -- an implementation that aborts on the
+    // first failure would stop at step 6 (id-2's failed move) and never get here.
+    expect(fetchImpl.callCount()).toBe(8);
   });
 
   it("markProcessed with an empty array makes no request at all", async () => {

@@ -75,8 +75,13 @@ export async function runBouncesIfDue(
     try {
       const parsed = await parseBounce(message.raw);
       const result = await db.transaction((tx) => recordBounce(tx, message.id, message.raw, parsed, subscribers));
-      if (parsed.kind === "bounce") bounces++;
-      else ignored++;
+      // A duplicate (the same sourceId recorded again -- e.g. refetched after a markProcessed
+      // failure below left it unprocessed) contributes nothing new, so it's skipped here
+      // exactly like `matched` already skips it (duplicate's own `matched` is always null).
+      if (!result.duplicate) {
+        if (parsed.kind === "bounce") bounces++;
+        else ignored++;
+      }
       if (result.matched) matched++;
     } catch (e) {
       // Per-message errors are counted (this message contributes to `fetched` but not to
@@ -87,7 +92,18 @@ export async function runBouncesIfDue(
     }
   }
 
-  if (processedIds.length > 0) await source.markProcessed(processedIds);
+  // A source whose markProcessed itself throws (one id's failure the source couldn't isolate
+  // on its own, or any other transient fault) must not take this run's already-computed counts
+  // down with it -- every message above is already recorded; only the "don't re-read it"
+  // bookkeeping failed. Logged as a count only, never the ids themselves (they could in
+  // principle be correlated back to a mailbox) and never raw content.
+  if (processedIds.length > 0) {
+    try {
+      await source.markProcessed(processedIds);
+    } catch (e) {
+      console.error(`[distribution] markProcessed failed for ${processedIds.length} message(s):`, e instanceof Error ? e.message : e);
+    }
+  }
 
   return { ran: true, fetched: fetched.length, bounces, matched, ignored };
 }
