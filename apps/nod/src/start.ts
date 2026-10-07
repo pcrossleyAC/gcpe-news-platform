@@ -61,10 +61,10 @@ export const nodEnvSchema = z.object({
   // ever sent. The operator sets `NOD_BOUNCE_SUMMARY_EMAIL`; envFor strips the "NOD_" prefix
   // the same way as OPS_EMAIL above.
   BOUNCE_SUMMARY_EMAIL: z.string().email().optional(),
-  // Every email NoD sends carries this as its Reply-To (distribution-client.ts's send,
-  // applied whenever a request doesn't set its own) — unset on boxs.ca: a reply to redirected
-  // test mail must never reach a real government mailbox. The operator sets `NOD_REPLY_TO`;
-  // envFor strips the "NOD_" prefix the same way as OPS_EMAIL above.
+  // Reply-To for NRMS release emails (reply-to.ts); every other email NoD sends carries none.
+  // Unset on boxs.ca: a reply to redirected test mail must never reach a real government
+  // mailbox. The operator sets `NOD_REPLY_TO`; envFor strips the "NOD_" prefix the same way
+  // as OPS_EMAIL above.
   REPLY_TO: z.string().email().optional(),
   // The page emailed verify/manage links open. Default: the public site's test page.
   SUBSCRIBE_PAGE_URL: z.string().url().optional(),
@@ -146,7 +146,6 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     baseUrl: parsed.DISTRIBUTION_URL,
     getToken: getDistributionToken,
     timeoutMs: parsed.DISTRIBUTION_TIMEOUT_MS,
-    replyTo: parsed.REPLY_TO,
   });
 
   // Task 5: siteUrl is the public site home ("See more from BC Gov News" in every email's
@@ -164,7 +163,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     linkSecret: parsed.LINK_SECRET,
   };
 
-  const sendJobsOptions = { db, distribution, links: recipientLinks, render, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS };
+  const sendJobsOptions = { db, distribution, links: recipientLinks, render, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS, replyTo: { news: parsed.REPLY_TO } };
 
   // Only built when a Media Hub is actually configured -- search and add-from-hub answer 503
   // otherwise (routes.ts), and there is then no token provider to fail at startup.
@@ -201,6 +200,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     distribution,
     opsEmail: parsed.OPS_EMAIL ?? null,
     timeZone: tenant.timeZone,
+    bounceSummaryFallback: parsed.BOUNCE_SUMMARY_EMAIL ?? null,
     distributionAppId: parsed.DISTRIBUTION_APP_ID ?? parsed.DISTRIBUTION_CLIENT_ID ?? "nod",
     mediaHub,
     membership:
@@ -209,8 +209,8 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
         : null,
   });
 
-  // Unset means no summary is ever sent (runBounceSummaryIfDue's own early-out).
-  const bounceSummaryEmail = parsed.BOUNCE_SUMMARY_EMAIL ?? null;
+  // The server default; a staff-set address on Operations wins (resolveBounceSummaryAddress).
+  const bounceSummaryFallback = parsed.BOUNCE_SUMMARY_EMAIL ?? null;
 
   // Set by startLoops(); the closers below reference these lazily so they're safe to call even
   // if startLoops() was never invoked.
@@ -234,8 +234,8 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       mediaSync: () => (mediaHub ? runMediaSyncIfDue(db, mediaHub, tenant.timeZone) : Promise.resolve({ ran: false })),
       // The daily bounce summary -- a no-op call every tick until the tenant's wall clock
       // actually reaches BOUNCE_SUMMARY_HOUR for a day not already summarised (or, with no
-      // BOUNCE_SUMMARY_EMAIL configured, always a no-op).
-      bounceSummary: () => runBounceSummaryIfDue(db, distribution, tenant.timeZone, bounceSummaryEmail),
+      // staff-set address and no BOUNCE_SUMMARY_EMAIL fallback configured, always a no-op).
+      bounceSummary: () => runBounceSummaryIfDue(db, distribution, tenant.timeZone, bounceSummaryFallback),
       // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
       // data has ever reached this NoD so it knows whether to ask Core to republish.
       needsReferenceData: () => needsReferenceData(db),
@@ -246,7 +246,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // workers.digest hook above only ever fires once, when a caller asks for it.
       stopDigestLoop = startDigestLoop({ db, timeZone: tenant.timeZone, render });
       if (mediaHub) stopMediaSyncLoop = startMediaSyncLoop({ db, client: mediaHub, timeZone: tenant.timeZone });
-      stopBounceSummaryLoop = startBounceSummaryLoop({ db, distribution, timeZone: tenant.timeZone, to: bounceSummaryEmail });
+      stopBounceSummaryLoop = startBounceSummaryLoop({ db, distribution, timeZone: tenant.timeZone, to: bounceSummaryFallback });
     },
     closeBeforeServer: [],
     closers: [

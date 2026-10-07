@@ -39,12 +39,26 @@ export class PreferencesError extends Error {}
 
 export const normaliseEmail = (raw: string): string => raw.trim().toLowerCase();
 
-export async function toPrefs(db: DbOrTx, info: SubscriberInfo): Promise<{ email: string; prefs: SubscriberPrefs }> {
+/** The public lists `subscriberId` holds that the manage page no longer offers (a list or
+ * category staff switched off, or a list its source retired). The page has no checkbox for
+ * them, so it can never send them back: a public save keeps them, as a staff save does. */
+export async function heldUnofferedKeys(db: DbOrTx, subscriberId: string): Promise<string[]> {
+  const rows = await db.select({ listKey: subscriptions.listKey }).from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId));
+  const held = rows.map((r) => r.listKey).filter((k) => !k.startsWith(`${MEDIA_CATEGORY}:`));
+  const offered = new Set(await activeListKeys(db, held));
+  return held.filter((k) => !offered.has(k));
+}
+
+/** `keep` (see {@link heldUnofferedKeys}) is added to whatever offered lists `info` asks for,
+ * and counts towards "at least one topic", so a subscriber whose every list was switched off
+ * can still save a timing change. */
+export async function toPrefs(db: DbOrTx, info: SubscriberInfo, keep: string[] = []): Promise<{ email: string; prefs: SubscriberPrefs }> {
   if (!info.isAsItHappens && !info.isDailyDigest) throw new PreferencesError("Choose As It Happens, Daily Digest, or both.");
   const requested = info.isAllNews
     ? ["*"]
     : Object.entries(info.subscribedCategories).flatMap(([category, keys]) => keys.map((k) => `${category.toLowerCase()}:${k.toLowerCase()}`));
-  const listKeys = await activeListKeys(db, requested);
+  const offered = await activeListKeys(db, requested);
+  const listKeys = [...offered, ...keep.filter((k) => !offered.includes(k))];
   if (listKeys.length === 0) throw new PreferencesError("Choose at least one topic, or all news.");
   return { email: normaliseEmail(info.emailAddress), prefs: { allNews: listKeys.includes("*"), listKeys, asItHappens: info.isAsItHappens, digest: info.isDailyDigest } };
 }

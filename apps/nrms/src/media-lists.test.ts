@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { mintSession } from "@gcpe/auth";
@@ -70,6 +70,16 @@ describe("media-lists (business logic)", () => {
     expect(events.map((e) => e.type).sort()).toEqual(["media_list.created", "media_list.deactivated"]);
     const deactivated = events.find((e) => e.type === "media_list.deactivated")!;
     expect((deactivated.envelope as { data: unknown }).data).toEqual({ key: "campus-press" });
+  });
+
+  it("renaming, reordering and retiring in one save sends the new name and order before the deactivation", async () => {
+    await createMediaList(tdb.db, { key: "campus-press", displayName: "Campus Press", sortOrder: 4 }, subscribers);
+    await updateMediaList(tdb.db, "campus-press", { displayName: "Campus Press (old)", sortOrder: 99, isActive: false }, subscribers);
+
+    const events = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "media-list:campus-press")).orderBy(asc(outboxEvents.sequence));
+    expect(events.map((e) => e.type)).toEqual(["media_list.created", "media_list.updated", "media_list.deactivated"]);
+    expect((events[1]!.envelope as { data: unknown }).data).toEqual({ key: "campus-press", displayName: "Campus Press (old)", sortOrder: 99, isActive: false });
+    expect((events[2]!.envelope as { data: unknown }).data).toEqual({ key: "campus-press" });
   });
 
   it("an unknown key throws MediaListNotFoundError", async () => {

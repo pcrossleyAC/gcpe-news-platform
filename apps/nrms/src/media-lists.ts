@@ -6,7 +6,7 @@
  */
 import { asc, eq } from "drizzle-orm";
 import { z } from "zod";
-import type { Db } from "@gcpe/db-kit";
+import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { enqueueEvent, type MediaListRecord, type SubscriberConfig } from "@gcpe/events";
 import { mediaLists } from "./db/schema";
 
@@ -75,8 +75,8 @@ export async function createMediaList(db: Db, input: CreateMediaListInput, subsc
 
 /**
  * Updates a media list and emits `media_list.updated`, or `media_list.deactivated` (data: `{ key
- * }`) specifically when `isActive` is being set to `false` on a list that was active. 404 on an
- * unknown key. The key itself is immutable and never part of the input.
+ * }`) specifically when `isActive` is being set to `false` on a list that was active -- preceded
+ * by a `media_list.updated` when the same save also renames or reorders it. 404 on an unknown key. The key itself is immutable and never part of the input.
  */
 export async function updateMediaList(db: Db, key: string, input: UpdateMediaListInput, subscribers: SubscriberConfig[]): Promise<MediaListRecord> {
   return db.transaction(async (tx) => {
@@ -93,12 +93,23 @@ export async function updateMediaList(db: Db, key: string, input: UpdateMediaLis
 
     const deactivating = existing.isActive && input.isActive === false;
     if (deactivating) {
+      // `deactivated` carries only the key, so a rename or reorder made in the same save goes
+      // first as an `updated`, or NoD would keep the old name and order.
+      if (record.displayName !== existing.displayName || record.sortOrder !== existing.sortOrder) {
+        await enqueueEvent(tx, { type: "media_list.updated", source: "nrms", aggregateId: aggregateId(key), data: record }, subscribers);
+      }
       await enqueueEvent(tx, { type: "media_list.deactivated", source: "nrms", aggregateId: aggregateId(key), data: { key } }, subscribers);
     } else {
       await enqueueEvent(tx, { type: "media_list.updated", source: "nrms", aggregateId: aggregateId(key), data: record }, subscribers);
     }
     return record;
   });
+}
+
+/** Every media list, active and retired, in sort order — the release composer (which keeps
+ * only the active ones itself) and NRMS's own media-list admin screen both read this. */
+export async function listMediaLists(db: DbOrTx): Promise<MediaListRecord[]> {
+  return db.select(COLUMNS).from(mediaLists).orderBy(asc(mediaLists.sortOrder), asc(mediaLists.displayName));
 }
 
 /** Emits `media_list.updated` for every row (active or not), e.g. so a newly-wired NoD can catch up. Returns the count. */

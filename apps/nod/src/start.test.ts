@@ -66,12 +66,9 @@ describe("startNod", () => {
     await expect(Promise.all([...started.closeBeforeServer, ...started.closers].map((c) => c.close()))).resolves.not.toThrow();
   });
 
-  // startNod builds its one distributionClient() with replyTo: parsed.REPLY_TO —
-  // distribution-client.ts's own tests pass that option in directly, so nothing else exercises
-  // this wiring. An actual send through the real handle (the pause ops email, which every
-  // caller of distribution.send ultimately shares the same client instance with) is what fails
-  // if that line were ever dropped.
-  it("carries REPLY_TO through to every send made through the handle's Distribution client", async () => {
+  // NOD_REPLY_TO is now per type of news (reply-to.ts): system and ops mail carry none even
+  // when it is set, so a reply reaches the From mailbox as legacy's "only noreply" did.
+  it("an ops email carries no Reply-To even with REPLY_TO set", async () => {
     let capturedBody: { replyTo?: string } | undefined;
     const fakeDistribution: Server = createServer((req, res) => {
       let raw = "";
@@ -95,7 +92,7 @@ describe("startNod", () => {
         const token = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "wiring-test-admin", roles: ["NoD.Admin"] });
         const res = await request(handle.app).post("/api/settings/pause").set("authorization", `Bearer ${token}`);
         expect(res.status).toBe(200);
-        expect(capturedBody?.replyTo).toBe("reply-wiring@example.com");
+        expect(capturedBody?.replyTo).toBeUndefined();
       } finally {
         await Promise.all([...handle.closeBeforeServer, ...handle.closers].map((c) => c.close()));
       }

@@ -223,6 +223,51 @@ blocks or fails startup (the News API may not be reachable yet); a failure is on
    `<PREFIX>_*` prefix is misconfigured.
 5. Run the smoke test below.
 
+### Migrations on populated `deliveries` or `messages` tables
+
+Drizzle runs every migration inside one transaction, so a `CREATE INDEX` on a large, populated
+`deliveries` (NoD) or `messages` (Distribution) table blocks writes while it builds — about 8 s
+at legacy volume, measured locally. Where that matters, either run migrations before the table
+holds data, or pre-build the indexes `CONCURRENTLY` with drizzle's exact index names and then
+record the migrations as applied, so the deploy's own migrate skips them:
+
+1. **Only for pending migrations that are nothing but `CREATE INDEX` statements** (NoD `0023`,
+   `0024`; Distribution `0010`). Any other statement would have to be run by hand, so for those
+   use a quiet window instead. Drizzle's migrator applies every migration newer than the
+   *latest* row it has recorded, so pre-build and record **every** pending migration, in journal
+   order — recording a later one alone would make it skip the earlier ones forever.
+2. Over SSH, from the new release's folder (the deployed artifact keeps migrations under
+   `migrations/<app>`, not `apps/<app>/migrations`), before the app next starts. On SiteGround
+   the push *is* the deploy, so stop the Node app in Site Tools before pushing and start it again
+   after step 3; if it starts first, startup fails with "already exists" until the rows are
+   recorded (loud, and fixed by finishing these steps). Example for NoD; for Distribution use
+   `DIR=migrations/distribution`, `DB="$DIST_DATABASE_URL"` and `TAGS="0010_report_indexes"`:
+
+   ```sh
+   export DB="$NOD_DATABASE_URL" DIR=migrations/nod TAGS="0023_report_history_index 0024_report_delivery_indexes"
+   # Pre-build each index without blocking writes. psql runs each statement on its own, outside
+   # a transaction, which CONCURRENTLY requires.
+   for tag in $TAGS; do
+     sed -e 's/--> statement-breakpoint/\n/g' -e 's/^CREATE INDEX "/CREATE INDEX CONCURRENTLY IF NOT EXISTS "/' "$DIR/$tag.sql" \
+       | psql "$DB" -v ON_ERROR_STOP=1
+   done
+   # A failed concurrent build leaves an INVALID index behind: this must print 0. If it doesn't,
+   # DROP INDEX CONCURRENTLY the index it names and run the loop above again.
+   psql "$DB" -Atc "SELECT count(*) FROM pg_index WHERE NOT indisvalid"
+   # Record each migration exactly as drizzle would: the SHA-256 of its file, and its journal time.
+   for tag in $TAGS; do
+     row=$(node -e "const f = require('fs'), d = process.argv[1], t = process.argv[2];
+       const when = JSON.parse(f.readFileSync(d + '/meta/_journal.json', 'utf8')).entries.find((e) => e.tag === t).when;
+       const hash = require('crypto').createHash('sha256').update(f.readFileSync(d + '/' + t + '.sql').toString()).digest('hex');
+       console.log(\`'\${hash}', \${when}\`)" "$DIR" "$tag")
+     psql "$DB" -v ON_ERROR_STOP=1 -c "INSERT INTO drizzle.__drizzle_migrations (hash, created_at) VALUES ($row)"
+   done
+   ```
+
+3. Restart the app. Its migrate finds nothing newer than the last recorded row and does nothing.
+   (Rehearsed locally: a database migrated through `0022`, the steps above, then the real
+   migrator — no error, and the recorded hashes match drizzle's own.)
+
 ### How MIGRATIONS_FOLDER and TENANT_CONFIG resolve in the artifact
 
 Each app's own default `MIGRATIONS_FOLDER` (and the stack's own default `TENANT_CONFIG`) is
@@ -369,6 +414,24 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
   preferences/Delete/Change email/status controls and no bulk actions; the Editor has all of
   those plus Add a subscriber; the Admin sees the same controls as the Editor. Confirm an
   NRMS-only user (the test editor or site editor) never sees the Subscribers link at all.
+- [ ] **Phase 4g items 10 and 14** — Lists & categories, Media lists and Operations on boxs.ca:
+  1. As the admin, open Subscribers → Operations.
+  2. Confirm the Test bounce upload panel shows on boxs.ca (it only does while Distribution
+     reports `source: "fake"`).
+  3. Pause and resume News On Demand sending, and confirm the ops email arrives at the redirect
+     address each time.
+  4. As `nod-editor`, open a media list and add and remove a member from the fake Media Hub.
+- [ ] **Phase 4h (reports)** — Subscribers → Reports on boxs.ca:
+  1. As `nod-viewer`, open each of the five reports under Subscribers → Reports and confirm each
+     loads.
+  2. Download Sends per release and confirm it opens in Excel with accents intact.
+  3. Confirm the address-CSV links (a list's members, Recent unsubscribes' address list) are
+     absent for `nod-viewer`.
+  4. As `nod-editor`, download Active subscribers by list → everyone. The operations log has no
+     screen, so confirm the export was recorded over SSH with psql:
+     `psql "$NOD_DATABASE_URL" -c "SELECT at, actor, action, detail FROM operations_log WHERE action = 'report-exported' ORDER BY at DESC LIMIT 5"`
+     — the newest row's actor is the editor's display name and its detail is `subscribers all any`
+     (report and list key, never an address).
 
 Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET`, so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
 

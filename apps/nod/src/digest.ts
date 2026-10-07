@@ -9,6 +9,14 @@ import { safeErrorLabel } from "./subscribe/journeys";
 
 export const DIGEST_HOUR = 17;
 
+/** Every digest job of one run has a key starting with this; the digest-run report finds a run's
+ * jobs by it. */
+export function digestJobKeyPrefix(cutoff: Date): string {
+  return `digest:${cutoff.toISOString()}:`;
+}
+/** toISOString is always 24 characters ("2026-10-07T00:00:00.000Z"), so every prefix is 32. */
+export const DIGEST_JOB_PREFIX_LENGTH = 32;
+
 function localDateParts(d: Date, timeZone: string): { y: number; m: number; day: number } {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(d);
   const get = (t: string) => Number(parts.find((p) => p.type === t)!.value);
@@ -84,7 +92,7 @@ export async function renderDigestItems(tx: Tx, keys: string[], render: RenderOp
 async function createDigestJob(tx: Tx, cutoff: Date, group: DigestGroup, render: RenderOptions): Promise<void> {
   const rendered = await renderDigestItems(tx, group.keys, render);
   const hash = createHash("sha256").update(group.keys.join(",")).digest("hex").slice(0, 16);
-  const jobKey = `digest:${cutoff.toISOString()}:${hash}`;
+  const jobKey = `${digestJobKeyPrefix(cutoff)}${hash}`;
 
   const [job] = await tx
     .insert(sendJobs)

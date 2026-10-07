@@ -12,7 +12,11 @@ import { SubscribersScreen } from "./SubscribersScreen";
 import { AddSubscriberScreen } from "./AddSubscriberScreen";
 import { SubscriberScreen } from "./SubscriberScreen";
 import { HistoryScreen } from "./HistoryScreen";
-import type { SubscriberDetail, SubscriberPage } from "./types";
+import { MediaListsScreen } from "./MediaListsScreen";
+import { MediaListScreen } from "./MediaListScreen";
+import { OperationsScreen } from "./OperationsScreen";
+import { ListsScreen } from "./ListsScreen";
+import type { MediaMember, OperationsStatus, StaffListsView, SubscriberDetail, SubscriberPage } from "./types";
 
 async function seriousViolations(container: Element, options?: Parameters<typeof axe.run>[1]) {
   const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, ...options });
@@ -58,6 +62,44 @@ const HISTORY = {
   ],
 };
 
+const MEDIA_LISTS = [
+  { listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 2, needsAttention: 2 },
+  { listKey: "media-distribution-lists:old", key: "old", name: "Old list", active: false, members: 0, needsAttention: 0 },
+];
+const MEDIA_SYNC = { since: null, at: "2026-10-07T09:00:00.000Z", result: { contacts: 5, updated: 1, flagged: 1, removed: 0, errors: 0 }, running: false };
+const MEDIA_MEMBERS: MediaMember[] = [
+  { subscriberId: "44444444-4444-4444-4444-444444444444", email: "sam@riverbend.example.test", source: "media-hub", mediaHubContactId: 42, mediaHubEmailRef: "personal", needsAttention: "email-gone", attentionAt: "2026-10-06T09:00:00.000Z" },
+  { subscriberId: "55555555-5555-5555-5555-555555555555", email: "lee@example.test", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: "bouncing", attentionAt: "2026-10-06T09:00:00.000Z" },
+];
+const MEDIA_OPTED = { items: [{ subscriberId: "33333333-3333-3333-3333-333333333333", email: "gone@example.test", at: "2026-09-01T17:00:00.000Z", member: false }], truncated: false };
+const OPS: OperationsStatus = {
+  nod: { paused: false, lastDigestCutoff: "2026-10-07T00:00:00.000Z" },
+  distribution: { paused: false },
+  bounceSource: "fake",
+  bounceSummary: { address: "server@example.test", from: "server" },
+  softCodesCounted: [],
+};
+const LISTS_VIEW: StaffListsView = {
+  allNews: 12,
+  categories: [
+    {
+      key: "ministries", name: "Ministries", enabled: true, namesFrom: "Core", editable: true,
+      lists: [
+        { listKey: "ministries:health", key: "health", name: "Health", active: true, enabled: true, subscribers: 40 },
+        { listKey: "ministries:old", key: "old", name: "Old ministry", active: false, enabled: true, subscribers: 0 },
+      ],
+    },
+    { key: "media-distribution-lists", name: "Media distribution lists", enabled: true, namesFrom: "NRMS", editable: false, lists: [{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, enabled: true, subscribers: 9 }] },
+  ],
+};
+const MEDIA_CONTACT = {
+  id: 42, firstName: "Sam", lastName: "Reporter", outlet: "Riverbend Gazette", deletedAt: null,
+  emails: [
+    { ref: "personal", address: "sam@riverbend.example.test", kind: "personal", organization: null, preferred: true },
+    { ref: "workplace:1", address: "sam@gazette.example.test", kind: "workplace", organization: "Riverbend Gazette", preferred: false },
+  ],
+};
+
 function stubCommon(roles: string[]) {
   vi.stubGlobal(
     "fetch",
@@ -69,6 +111,13 @@ function stubCommon(roles: string[]) {
       if (url === "/nod/api/subscribers/bulk") return jsonResponse(200, { changed: 0, skipped: [] });
       if (url === `/nod/api/subscribers/${SUBSCRIBER_ID}`) return jsonResponse(200, DETAIL);
       if (url === `/nod/api/subscribers/${SUBSCRIBER_ID}/history`) return jsonResponse(200, HISTORY);
+      if (url === "/nod/api/media-lists") return jsonResponse(200, MEDIA_LISTS);
+      if (url === "/nod/api/media-hub/sync") return jsonResponse(200, MEDIA_SYNC);
+      if (url === "/nod/api/media-lists/budget/members") return jsonResponse(200, MEDIA_MEMBERS);
+      if (url === "/nod/api/media-lists/budget/opted-out") return jsonResponse(200, MEDIA_OPTED);
+      if (url === "/nod/api/media-hub/contacts/42") return jsonResponse(200, MEDIA_CONTACT);
+      if (url === "/nod/api/operations") return jsonResponse(200, OPS);
+      if (url === "/nod/api/list-categories") return jsonResponse(200, LISTS_VIEW);
       return jsonResponse(200, {});
     }),
   );
@@ -79,6 +128,20 @@ function withAuth(children: React.ReactNode) {
     <SessionProvider>
       <MemoryRouter>
         <RequireAuth>{children}</RequireAuth>
+      </MemoryRouter>
+    </SessionProvider>
+  );
+}
+
+function withAuthAt(path: string, pattern: string, element: React.ReactNode) {
+  return (
+    <SessionProvider>
+      <MemoryRouter initialEntries={[path]}>
+        <RequireAuth>
+          <Routes>
+            <Route path={pattern} element={element} />
+          </Routes>
+        </RequireAuth>
       </MemoryRouter>
     </SessionProvider>
   );
@@ -186,5 +249,58 @@ describe("accessibility — Subscribers", () => {
     );
     await screen.findByRole("link", { name: "Back to subscriber" });
     expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("Lists and categories (Admin, with controls) has no serious violations", async () => {
+    stubCommon(["NoD.Admin"]);
+    const { container } = render(withAuthAt("/subscribers/lists", "/subscribers/lists", <ListsScreen />));
+    await screen.findByRole("checkbox", { name: "Offer Health" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("Media lists has no serious violations", async () => {
+    stubCommon(["NoD.Editor"]);
+    const { container } = render(withAuthAt("/subscribers/media-lists", "/subscribers/media-lists", <MediaListsScreen />));
+    await screen.findByRole("link", { name: "Budget" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("A media list (Editor, populated) has no serious violations", async () => {
+    stubCommon(["NoD.Editor"]);
+    const { container } = render(withAuthAt("/subscribers/media-lists/budget", "/subscribers/media-lists/:key", <MediaListScreen />));
+    await screen.findByRole("button", { name: "Remove lee@example.test" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("A media list, with the remove dialog open, has no serious violations", async () => {
+    stubCommon(["NoD.Editor"]);
+    const { container } = render(withAuthAt("/subscribers/media-lists/budget", "/subscribers/media-lists/:key", <MediaListScreen />));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Remove lee@example.test" }));
+    await screen.findByRole("alertdialog");
+    // See the note on the bulk delete dialog above: jsdom has no `inert`, so this one rule is
+    // excluded here too. The dialog itself is checked, since it renders outside the container.
+    const noInert = { rules: { "aria-hidden-focus": { enabled: false } } };
+    expect(await seriousViolations(document.body, noInert)).toEqual([]);
+    expect(await seriousViolations(container, noInert)).toEqual([]);
+  });
+
+  it("A media list, with the resolve dialog offering Media Hub emails, has no serious violations", async () => {
+    stubCommon(["NoD.Editor"]);
+    render(withAuthAt("/subscribers/media-lists/budget", "/subscribers/media-lists/:key", <MediaListScreen />));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Resolve sam@riverbend.example.test" }));
+    await screen.findByRole("radio", { name: /sam@gazette\.example\.test/ });
+    // jsdom has no `inert` (see the bulk delete dialog's note above).
+    expect(await seriousViolations(document.body, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
+  });
+
+  it("Operations, with the pause dialog open, has no serious violations", async () => {
+    stubCommon(["NoD.Admin"]);
+    const { container } = render(withAuthAt("/subscribers/operations", "/subscribers/operations", <OperationsScreen />));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Pause News On Demand sending" }));
+    await screen.findByRole("alertdialog");
+    // jsdom has no `inert` (see the bulk delete dialog's note above).
+    const noInert = { rules: { "aria-hidden-focus": { enabled: false } } };
+    expect(await seriousViolations(document.body, noInert)).toEqual([]);
+    expect(await seriousViolations(container, noInert)).toEqual([]);
   });
 });

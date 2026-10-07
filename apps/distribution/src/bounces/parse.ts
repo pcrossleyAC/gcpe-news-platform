@@ -1,7 +1,18 @@
 import { simpleParser, type ParsedMail } from "mailparser";
 
 export type ParsedBounce =
-  | { kind: "bounce"; recipient: string; status: string; hard: boolean; originalMessageId: string | null; method: "rfc3464" | "heuristic" }
+  | {
+      kind: "bounce";
+      recipient: string;
+      status: string;
+      hard: boolean;
+      originalMessageId: string | null;
+      method: "rfc3464" | "heuristic";
+      /** What the remote server said, for staff (the daily summary): whitespace-collapsed and capped. */
+      diagnostic: string | null;
+      /** The bounced email's own subject, when the report carries it. */
+      originalSubject: string | null;
+    }
   | { kind: "ignored"; reason: string };
 
 // Legacy BounceManager.cs:60-67 (research-4e.md A.1), ported for the heuristic fallback:
@@ -21,6 +32,37 @@ const UNDELIVERABLE_PREFIX = "Undeliverable:";
 // pass instead of leaning on the regex engine's own retry-at-every-start-position behaviour.
 const MAX_SCAN_CHARS = 65_536;
 const EMAIL_CHAR = /[\w.-]/;
+
+// Diagnostic and subject text end up in a staff email and a DB column; both come from whoever
+// sent the bounce, so they are bounded before anything else touches them.
+const MAX_DETAIL_CHARS = 200;
+
+function cleanDetail(s: string | null | undefined): string | null {
+  if (!s) return null;
+  const collapsed = s.slice(0, MAX_DETAIL_CHARS * 4).replace(/\s+/g, " ").trim();
+  if (!collapsed) return null;
+  return collapsed.length > MAX_DETAIL_CHARS ? `${collapsed.slice(0, MAX_DETAIL_CHARS - 1)}…` : collapsed;
+}
+
+/** "smtp; 550 5.1.1 ..." -> "550 5.1.1 ..." (RFC 3464 §2.3.6: the diagnostic-type prefix). */
+function stripDiagnosticType(value: string): string {
+  return value.replace(/^\s*[A-Za-z0-9-]+\s*;\s*/, "");
+}
+
+/** The bounced email's Subject, decoded (RFC 2047) by handing just its header block to mailparser. */
+async function subjectOfHeaders(content: string): Promise<string | null> {
+  const headerBlock = content.split(/\r?\n\r?\n/)[0] ?? "";
+  try {
+    return (await simpleParser(`${headerBlock}\r\n\r\n`)).subject ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function subjectAfterUndeliverable(mail: ParsedMail): string | null {
+  const subject = mail.subject ?? "";
+  return subject.startsWith(UNDELIVERABLE_PREFIX) ? subject.slice(UNDELIVERABLE_PREFIX.length) : null;
+}
 
 function isHard(code: string): boolean {
   return code.trim().startsWith("5");
@@ -82,7 +124,7 @@ function extractAddress(value: string): string | null {
   return firstEmailLike(value);
 }
 
-type DsnResult = { recipient: string; status: string } | null;
+type DsnResult = { recipient: string; status: string; diagnostic: string | null } | null;
 
 /** RFC 3464 §2's per-message/per-recipient block structure: fields separated by a blank line,
  * one block per recipient. Ours always has exactly one recipient (Distribution sends one
@@ -96,7 +138,7 @@ function parseDeliveryStatus(content: string): DsnResult {
     if (!status || !recipientField) continue;
     const recipient = extractAddress(recipientField);
     if (!recipient) continue;
-    return { recipient, status: status.trim() };
+    return { recipient, status: status.trim(), diagnostic: cleanDetail(stripDiagnosticType(fields.get("diagnostic-code") ?? "")) };
   }
   return null;
 }
@@ -113,21 +155,33 @@ function isDeliveryStatusReport(mail: ParsedMail): boolean {
   return contentType?.value?.toLowerCase() === "multipart/report" && contentType.params?.["report-type"]?.toLowerCase() === "delivery-status";
 }
 
-function parseRfc3464(mail: ParsedMail): (ParsedBounce & { kind: "bounce" }) | null {
+async function parseRfc3464(mail: ParsedMail): Promise<(ParsedBounce & { kind: "bounce" }) | null> {
   if (!isDeliveryStatusReport(mail)) return null;
 
   let dsn: DsnResult = null;
   let originalMessageId: string | null = null;
+  let originalSubject: string | null = null;
   for (const att of mail.attachments) {
     const contentType = att.contentType.toLowerCase();
     if (contentType === "message/delivery-status" && !dsn) {
       dsn = parseDeliveryStatus(att.content.toString("utf8"));
     } else if ((contentType === "message/rfc822" || contentType === "text/rfc822-headers") && originalMessageId === null) {
-      originalMessageId = extractOriginalMessageId(att.content.toString("utf8"));
+      const content = att.content.toString("utf8");
+      originalMessageId = extractOriginalMessageId(content);
+      originalSubject = await subjectOfHeaders(content);
     }
   }
   if (!dsn) return null;
-  return { kind: "bounce", recipient: dsn.recipient, status: dsn.status, hard: isHard(dsn.status), originalMessageId, method: "rfc3464" };
+  return {
+    kind: "bounce",
+    recipient: dsn.recipient,
+    status: dsn.status,
+    hard: isHard(dsn.status),
+    originalMessageId,
+    method: "rfc3464",
+    diagnostic: dsn.diagnostic,
+    originalSubject: cleanDetail(originalSubject ?? subjectAfterUndeliverable(mail)),
+  };
 }
 
 /** Legacy BounceManager.cs:89-156: subject substring check, first email address anywhere in
@@ -143,10 +197,24 @@ function parseHeuristic(mail: ParsedMail): (ParsedBounce & { kind: "bounce" }) |
   // decide how much work one bounce costs.
   const body = fullBody.length > MAX_SCAN_CHARS ? fullBody.slice(0, MAX_SCAN_CHARS) : fullBody;
   const recipient = firstEmailLike(body);
-  const code = DOTTED_CODE.exec(body)?.[1] ?? SHORT_CODE.exec(body)?.[1];
-  if (!recipient || !code) return null;
+  const match = DOTTED_CODE.exec(body) ?? SHORT_CODE.exec(body);
+  const code = match?.[1];
+  if (!recipient || !match || !code) return null;
 
-  return { kind: "bounce", recipient, status: code, hard: isHard(code), originalMessageId: null, method: "heuristic" };
+  const lineStart = body.lastIndexOf("\n", match.index) + 1;
+  const lineEndAt = body.indexOf("\n", match.index);
+  const line = body.slice(lineStart, lineEndAt < 0 ? body.length : lineEndAt).trim().replace(/^</, "").replace(/>$/, "");
+
+  return {
+    kind: "bounce",
+    recipient,
+    status: code,
+    hard: isHard(code),
+    originalMessageId: null,
+    method: "heuristic",
+    diagnostic: cleanDetail(line),
+    originalSubject: cleanDetail(subjectAfterUndeliverable(mail)),
+  };
 }
 
 /**
@@ -164,7 +232,7 @@ export async function parseBounce(raw: string): Promise<ParsedBounce> {
   }
 
   try {
-    const rfc3464 = parseRfc3464(mail);
+    const rfc3464 = await parseRfc3464(mail);
     if (rfc3464) return rfc3464;
 
     const heuristic = parseHeuristic(mail);

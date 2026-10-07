@@ -6,12 +6,12 @@ import { actorOf, requireAnyRole } from "@gcpe/auth";
 import { subscribers } from "../db/schema";
 import { addSubscriber, SubscriberExistsError } from "../subscribers";
 import { normaliseEmail, subscriberEmailSchema } from "../subscribe/info";
-import { safeErrorLabel } from "../subscribe/journeys";
 import {
   BULK_ACTIONS, BULK_MAX, bulkAction, changeEmail, deleteSubscriber, EmailTakenError, MediaHubManagedError, setStatus,
   StaffPreferencesError, SubscriberNotFoundError, SubscriberStateError, updatePreferences,
 } from "../staff-subscribers/actions";
 import { getSubscriberDetail, listHistory, listOptions, searchSubscribers, STATUS_FILTERS } from "../staff-subscribers/read";
+import { privateErrorsWith } from "./private-errors";
 
 /** Spec §8: Viewer reads the Subscribers section; Editor and Admin also change it. */
 export const NOD_READ_ROLES = ["NoD.Viewer", "NoD.Editor", "NoD.Admin"] as const;
@@ -60,21 +60,8 @@ function mapError(e: unknown, res: Response): boolean {
   return false;
 }
 
-/**
- * Every handler here runs through this instead of `next(err)`: these routes' queries bind
- * email addresses and search terms, a DrizzleQueryError's message carries its bound params,
- * and the shared jsonErrorHandler logs the whole error. So an unexpected error is answered
- * here as a bare 500 and logged by its Postgres code or error name only.
- */
-export function privateErrors<P>(handler: (req: Request<P>, res: Response) => Promise<void>) {
-  return (req: Request<P>, res: Response): void => {
-    handler(req, res).catch((e: unknown) => {
-      if (mapError(e, res)) return;
-      console.error("[nod] staff subscriber request failed", safeErrorLabel(e));
-      if (!res.headersSent) res.status(500).json({ error: "internal error" });
-    });
-  };
-}
+/** Every handler here binds addresses or search terms (see private-errors.ts). */
+export const privateErrors = privateErrorsWith(mapError, "staff subscriber request");
 
 const notFound = (res: Response) => void res.status(404).json({ error: "not found" });
 

@@ -174,3 +174,91 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   other links in those emails, such as manage preferences, stop working.
 - **Viewer** — For an all-news subscriber, the subscriber page shows "All news" and also their
   timing (As it happens, Daily digest, or both).
+- **Administrator** — "Lists and categories" (Subscribers) shows each list's active subscribers.
+  NoD Admins can stop offering a list or a whole category (existing subscribers keep it and
+  still get its releases) and set the order the public sees. Names come from Core, and media
+  lists from NRMS.
+- **Administrator** — "Media list names" (Core Admins) adds, renames, orders and retires media
+  lists. Retiring stops releases going to a list but keeps its members. Changes reach News On
+  Demand within a minute.
+- **Editor** — Media lists: add a reporter from Media Hub (choose which of their emails) or type
+  an address for someone not in Media Hub. If they unsubscribed, you'll be asked to confirm, and
+  you'll see when they left; add them only if they've asked to come back.
+- **Editor** — A flagged member shows why. "Bouncing": clear it once the mailbox works, and
+  their bounce count starts again. A Media Hub email problem: pick another of their emails, or
+  clear the flag.
+- **Viewer** — Each media list shows who left it by unsubscribing, and whether they're back on
+  it.
+- **Operations** — Operations (NoD Admins) pauses and resumes News On Demand sending and
+  Distribution. Each asks first and emails the operations inbox. Pausing holds email; nothing is
+  dropped. The bounce summary address is set here; clearing it goes back to the server default.
+- **Operations** — On test sites, Operations has a "Test bounce upload" for a `.eml` bounce
+  message. Bounce processing picks it up within 15 minutes.
+- **Developer** — A route that binds an address or a search term uses `privateErrorsWith`
+  (`apps/nod/src/http/private-errors.ts`), and search terms go in POST bodies, never URLs.
+- **Editor** — Adding someone to a media list they left by unsubscribing always asks first, even
+  if they've since signed up again for public news. Confirm only if they've asked to receive
+  media releases again.
+- **Editor** — A retired media list can't be put on a release. If a release already had it when
+  it was retired, Publish settings shows it ticked and greyed out, marked "(retired)"; it stays
+  on the release, but nothing is sent to it.
+- **Operations** — When Operations says "Using the server default: …", the bounce summary field
+  is empty on purpose. Type an address only to override the default; saving the field empty
+  keeps using the default.
+- **Viewer** — Subscribers → Reports has five reports: active subscribers by list, recent
+  unsubscribes, sends per release, daily digest runs, and Distribution sent and bounced. Dates
+  are BC days; pick up to 92 at a time, or leave them empty for the last 30.
+- **Viewer** — Every report downloads as a CSV that opens in Excel. Viewers get counts only;
+  CSVs with email addresses (a list's members, recent unsubscribes) are for NoD Editors and
+  Admins.
+- **Editor** — Each address CSV you download is recorded in the operations log (who, which
+  report; never the addresses).
+- **Viewer** — In Sends per release and Daily digest runs, "Handed off, not bounced" counts
+  emails News On Demand handed to Distribution, minus bounces. It isn't delivery: an email still
+  queued in Distribution, or one Distribution failed to send, still counts as handed off. "Not
+  sent" means not yet handed to Distribution, including a send still going out. Digest emails
+  are in Daily digest runs, counted once per subscriber.
+- **Viewer** — Totals in Sends per release or Daily digest runs won't match Distribution sent
+  and bounced, and aren't meant to: Distribution's report has its own Failed column, counts by
+  the day it sent (the other two go by the day the release was published, or the digest's 17:00
+  cutoff), and counts every bounce recorded against one of its emails, while News On Demand
+  counts only the bounces it could match back to one of its own sends.
+- **Viewer** — In Daily digest runs, "Items in window" is worked out when you open the report,
+  from the releases in that run's window as they stand now: a release withdrawn since the run no
+  longer counts, so an older run's number can go down.
+- **Viewer** — While a report is still loading you can already type new dates; what you type
+  stays when the report arrives.
+- **Operations** — The Distribution report comes from Distribution itself. If Distribution is
+  down, that report says so and the others still work.
+- **Developer** — Report day boundaries are computed in Node (`apps/nod/src/reports/range.ts`)
+  and passed to SQL as instants; never use `AT TIME ZONE` in a report query. CSVs go through
+  `streamCsv` (`reports/csv.ts`), which neutralises formula cells and aborts, rather than
+  truncates, on error. The legacy-volume probes run with `REPORT_PROBE=1`.
+- **Operations** — Adding an index to a big, populated `deliveries` or `messages` table blocks
+  sending for a few seconds while the migration runs. `docs/deploy/siteground.md` ("Migrations on
+  populated deliveries or messages tables") has the steps to pre-build those indexes without
+  blocking and record the migrations as applied.
+
+## Phase 4e.1 — bounce summary parity and Reply-To
+
+- **Operations** — The daily bounce summary has four parts: totals, hard bounces (these count toward
+  disabling), soft bounces (mailbox full and the like; usually nothing to do) and unrecorded bounces
+  (they matched no email we sent, or bounced a verification email). For an address that keeps
+  appearing as unrecorded, check the bounce mailbox; if the line says "NoD subscriber", remove it on
+  Subscribers. Bold means a media-list member: tell Media Relations.
+- **Operations** — A summary list stops at 500 lines and says how many more there were; the rest are
+  in the bounce mailbox.
+- **Administrator** — Operations → "Soft bounces counted as hard" lists 4.x.x codes that count like a
+  hard bounce. It is empty until the business supplies its list (Q42). A change applies from the
+  next bounce on, never to earlier ones, and is recorded in the operations log.
+- **Editor** — Replies to a release, advisory, story or factsheet email go to the address set as
+  `NOD_REPLY_TO` (gcpe.news in production). Replies to the digest, emergency alerts and
+  subscription emails go to the sending mailbox (noreply.newsondemand), as in legacy.
+- **Operations** — Keep `DIST_MAIL_REPLY_TO` unset in production: if set, it becomes the Reply-To of
+  every NoD email that has none (digest, emergency, subscription emails).
+- **Developer** — Distribution's `GET /api/bounces/summary` (Distribution.Operate) replaced
+  `/api/bounces/stats`. Its rows carry addresses in the response body only; never log them or put
+  them in a URL. Soft rows are scoped to the calling app's token identity.
+- **Operations** — A media-list member already flagged "bouncing" still shows, in bold, every time
+  they bounce again — not just the first time. Tell Media Relations each time it reappears; the flag
+  alone doesn't mean anyone has fixed the mailbox.

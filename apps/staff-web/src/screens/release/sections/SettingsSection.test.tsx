@@ -35,7 +35,7 @@ describe("SettingsSection", () => {
   });
 
   it("reflects the release's current toSubscribers and mediaListKeys", async () => {
-    stubFetch({ mediaLists: [{ id: "m1", key: "list1", name: "List One" }] });
+    stubFetch({ mediaLists: [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }] });
     renderSettings(
       releaseView({
         type: "release",
@@ -45,6 +45,38 @@ describe("SettingsSection", () => {
     );
     expect(await screen.findByLabelText("List One")).toBeChecked();
     expect(screen.getByLabelText("Send to News On Demand subscribers")).toBeChecked();
+  });
+
+  it("never offers a retired media list the release doesn't already target", async () => {
+    stubFetch({
+      mediaLists: [
+        { key: "list1", displayName: "List One", sortOrder: 1, isActive: true },
+        { key: "old-desk", displayName: "Old desk", sortOrder: 2, isActive: false },
+      ],
+    });
+    renderSettings(releaseView({ type: "release", mediaListKeys: [] }));
+    expect(await screen.findByLabelText("List One")).toBeInTheDocument();
+    expect(screen.queryByText(/Old desk/)).not.toBeInTheDocument();
+  });
+
+  it("shows a retired list the release already targets as a disabled, ticked \"(retired)\" box, and keeps it on save", async () => {
+    const calls = stubFetch({
+      mediaLists: [
+        { key: "list1", displayName: "List One", sortOrder: 1, isActive: true },
+        { key: "old-desk", displayName: "Old desk", sortOrder: 2, isActive: false },
+      ],
+      onPut: () => jsonResponse(200, releaseView({ version: 2 })),
+    });
+    const v = releaseView({ type: "release", version: 1, mediaListKeys: ["old-desk"], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: true } });
+    renderSettings(v);
+    const retired = await screen.findByLabelText("Old desk (retired)");
+    expect(retired).toBeChecked();
+    expect(retired).toBeDisabled();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("List One"));
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["old-desk", "list1"] }));
   });
 
   it("disables the subscribers checkbox and explains why, for a type that doesn't allow it", () => {
@@ -63,7 +95,7 @@ describe("SettingsSection", () => {
   it("saves with PUT /settings, including the current version and chosen media lists", async () => {
     const saved = releaseView({ version: 2 });
     const calls = stubFetch({
-      mediaLists: [{ id: "m1", key: "list1", name: "List One" }],
+      mediaLists: [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }],
       onPut: () => jsonResponse(200, saved),
     });
     const v = releaseView({ type: "release", version: 1, mediaListKeys: [] });
@@ -118,7 +150,7 @@ describe("SettingsSection", () => {
   });
 
   it("read-only disables every control and hides the Save button", async () => {
-    stubFetch({ mediaLists: [{ id: "m1", key: "list1", name: "List One" }] });
+    stubFetch({ mediaLists: [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }] });
     renderSettings(releaseView({ type: "release" }), () => {}, true);
     expect(await screen.findByLabelText("List One")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Save settings" })).not.toBeInTheDocument();

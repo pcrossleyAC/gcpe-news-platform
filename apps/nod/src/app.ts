@@ -34,9 +34,11 @@ export interface AppDeps {
    * Distribution client here. `opsEmail` defaults to null (no ops email sent) and `timeZone`
    * to "UTC" -- both only matter when an actual pause/resume fires an email, which a null
    * `opsEmail` already rules out. */
-  distribution?: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "uploadBounce">;
+  distribution?: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "uploadBounce" | "bounceSource" | "dailyReport">;
   opsEmail?: string | null;
   timeZone?: string;
+  /** NOD_BOUNCE_SUMMARY_EMAIL; null = none. */
+  bounceSummaryFallback?: string | null;
   /** The Media Hub contacts client, when `MEDIA_HUB_URL` is configured -- null (the default)
    * means search and add-from-hub answer 503 while manual entry still works. */
   mediaHub?: MediaHubClient | null;
@@ -49,11 +51,13 @@ export interface AppDeps {
   distributionAppId?: string;
 }
 
-const noDistribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "uploadBounce"> = {
+const noDistribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "uploadBounce" | "bounceSource" | "dailyReport"> = {
   send: () => Promise.reject(new Error("createApp: no Distribution client configured for the settings routes")),
   getSettings: () => Promise.reject(new Error("createApp: no Distribution client configured for the distribution routes")),
   setPaused: () => Promise.reject(new Error("createApp: no Distribution client configured for the distribution routes")),
   uploadBounce: () => Promise.reject(new Error("createApp: no Distribution client configured for the bounces/inbox route")),
+  bounceSource: () => Promise.reject(new Error("createApp: no Distribution client configured for the operations route")),
+  dailyReport: () => Promise.reject(new Error("createApp: no Distribution client configured for the reports")),
 };
 
 export function createApp(deps: AppDeps): express.Express {
@@ -117,6 +121,8 @@ export function createApp(deps: AppDeps): express.Express {
         distribution: deps.distribution ?? noDistribution,
         opsEmail: deps.opsEmail ?? null,
         timeZone: deps.timeZone ?? "UTC",
+        bounceSummaryFallback: deps.bounceSummaryFallback ?? null,
+        nodAppId: deps.distributionAppId ?? "nod",
       },
       deps.mediaHub ?? null,
     ),

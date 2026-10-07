@@ -398,6 +398,8 @@ describe("NRMS HTTP API", () => {
     await tdb.pool.query("INSERT INTO page_types (page_title, language_id, release_type, sort_order) VALUES ('News Release', 4105, 'release', 1) ON CONFLICT DO NOTHING");
     const lists = await get("/api/media-lists");
     expect(lists.status).toBe(200);
+    // Core.Admin creates and edits media lists, so it must be able to list them too.
+    expect((await get("/api/media-lists", await cookieFor(["Core.Admin"]))).status).toBe(200);
     expect(lists.body.map((l: { key: string }) => l.key)).toEqual(["regional", "national"]);
     const types = await get("/api/page-types");
     expect(types.status).toBe(200);
@@ -407,6 +409,23 @@ describe("NRMS HTTP API", () => {
     expect(images.body).toHaveLength(1);
     expect(images.body[0]).toMatchObject({ name: "BC Logo", altTexts: { 4105: "BC logo" } });
     expect(images.body[0]).not.toHaveProperty("bytes");
+  });
+
+  it("a retired media list is still listed, marked inactive, and a new release can't pick it (422)", async () => {
+    await tdb.pool.query("INSERT INTO media_lists (key, display_name, sort_order, is_active) VALUES ('retired-desk', 'Retired desk', 50, false)");
+    try {
+      const lists = await get("/api/media-lists");
+      expect(lists.status).toBe(200);
+      const retired = lists.body.find((l: { key: string }) => l.key === "retired-desk");
+      expect(retired).toEqual({ key: "retired-desk", displayName: "Retired desk", sortOrder: 50, isActive: false });
+      for (const l of lists.body) expect(Object.keys(l).sort()).toEqual(["displayName", "isActive", "key", "sortOrder"]);
+
+      const refused = await post("/api/releases", editorCookie, { ...sampleCreate, mediaListKeys: ["retired-desk"] });
+      expect(refused.status).toBe(422);
+      expect(refused.body.error).toBe("The media distribution list Retired desk has been retired.");
+    } finally {
+      await tdb.pool.query("DELETE FROM media_lists WHERE key = 'retired-desk'");
+    }
   });
 
   it("text and PDF versions: a viewer reads both; the PDF carries the page image; a malformed id is a 404", async () => {

@@ -64,7 +64,12 @@ export const subscriptions = pgTable(
     // '*' = all news, else an index key such as 'ministries:health' (always stored lowercased).
     listKey: text("list_key").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.subscriberId, t.listKey] })],
+  (t) => [
+    primaryKey({ columns: [t.subscriberId, t.listKey] }),
+    // Per-list member reads (media-members.ts) and per-list counts (staff-lists.ts): the
+    // primary key leads with subscriber_id, so it can't serve a lookup by list.
+    index("subscriptions_list_key_idx").on(t.listKey),
+  ],
 );
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 
@@ -138,6 +143,19 @@ export const deliveries = pgTable(
     // bounces.ts's fallback match and its threshold query: both scan this subscriber's own
     // deliveries ordered by attempted_at.
     index("deliveries_subscriber_attempted_at_idx").on(t.subscriberId, t.attemptedAt),
+    // Digest-run report (reports/digest-runs.ts): a run's emails not yet handed to Distribution,
+    // and its bounced ones, found among a few thousand job rows without reading them all.
+    index("deliveries_job_unsent_idx").on(t.jobId).where(sql`${t.distributionBatchId} IS NULL`),
+    index("deliveries_job_bounced_idx").on(t.jobId).where(sql`${t.bounceStatus} IS NOT NULL`),
+    // Sends-per-release report (reports/release-sends.ts): one item's as-it-happens/media counts,
+    // without touching the heap. The primary key alone (item_key, subscriber_id, mode) still
+    // makes every row for a busy item's digest deliveries a random heap fetch just to read
+    // distribution_batch_id/bounce_status; carrying those two columns in the index as well lets
+    // Postgres answer the whole per-item aggregate as an index-only scan. Digest rows (most of
+    // the table) are never read by that report, so they're left out of the index.
+    index("deliveries_item_mode_idx")
+      .on(t.itemKey, t.mode, t.distributionBatchId, t.bounceStatus)
+      .where(sql`${t.mode} IN ('as_it_happens','media')`),
   ],
 );
 export type DeliveryRow = typeof deliveries.$inferSelect;
@@ -182,6 +200,10 @@ export const sendJobs = pgTable(
   },
   (t) => [
     uniqueIndex("send_jobs_job_key_idx").on(t.jobKey),
+    // Digest-run report (reports/digest-runs.ts): a run's jobs by their shared key prefix,
+    // `digest:<cutoff ISO>:` -- 32 characters, digest.ts's DIGEST_JOB_PREFIX_LENGTH, which the
+    // report's query must spell as the same literal for Postgres to match this expression.
+    index("send_jobs_digest_run_idx").on(sql`left(${t.jobKey}, 32)`).where(sql`${t.kind} = 'digest'`),
     check("send_jobs_status_check", sql`${t.status} IN ('pending','sent','failed','cancelled')`),
     check("send_jobs_priority_check", sql`${t.priority} IN ('immediate','digest','media','system')`),
   ],
@@ -244,6 +266,13 @@ export const nodSettings = pgTable(
     // eventual `finish` is a no-op against the lease it no longer holds.
     bounceSummaryLease: uuid("bounce_summary_lease"),
     bounceSummaryLeaseUntil: timestamp("bounce_summary_lease_until", { withTimezone: true }),
+    // The daily bounce summary's recipient, set by staff on Operations (spec §8). Null = use
+    // NOD_BOUNCE_SUMMARY_EMAIL, the server default.
+    bounceSummaryEmail: text("bounce_summary_email"),
+    // Soft (4.x.x) status codes staff count toward the 10-in-15-days rule like a hard bounce
+    // (Operations). Empty until the business supplies its list; applies to bounces processed
+    // after it is saved.
+    bounceSoftCodesCounted: text("bounce_soft_codes_counted").array().notNull().default(sql`'{}'::text[]`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],
@@ -286,6 +315,13 @@ export const lists = pgTable(
     active: boolean("active").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
     topicUrl: text("topic_url").notNull().default(""),
+    // Staff's own switch (spec §8), separate from `active`, which Core/NRMS own and every
+    // upsert overwrites. Off = not offered for new subscriptions; existing subscriptions are
+    // kept and still sent.
+    enabled: boolean("enabled").notNull().default(true),
+    // Staff's order within the category. Null = after every staff-ordered list, by the source's
+    // own sort_order: a list Core adds later appears at the end until staff place it.
+    staffSortOrder: integer("staff_sort_order"),
   },
   (t) => [uniqueIndex("lists_category_key_idx").on(t.category, t.key)],
 );
@@ -344,5 +380,12 @@ export const subscriberHistory = pgTable(
     action: text("action").notNull(),
     detail: text("detail").notNull().default(""),
   },
-  (t) => [index("subscriber_history_subscriber_at_idx").on(t.subscriberId, t.at)],
+  (t) => [
+    index("subscriber_history_subscriber_at_idx").on(t.subscriberId, t.at),
+    // The per-media-list opt-out view (media-members.ts listMediaOptOuts): equality on action
+    // and detail (the list key), newest first.
+    index("subscriber_history_action_detail_at_idx").on(t.action, t.detail, t.at),
+    // Report windows (reports/unsubscribes.ts): equality on action, a range on at, any list key.
+    index("subscriber_history_action_at_idx").on(t.action, t.at),
+  ],
 );

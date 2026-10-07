@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { test, expect, type APIRequestContext } from "@playwright/test";
 import { mintLocalToken } from "@gcpe/auth";
-import { ADMIN_PASSWORD, ADMIN_USERNAME, BOUNCE_SUMMARY_EMAIL, EDITOR_EMAIL, LOCAL_AUTH_SECRET, TEST_USER_PASSWORDS } from "./constants";
+import { ADMIN_PASSWORD, ADMIN_USERNAME, BOUNCE_SUMMARY_EMAIL, EDITOR_EMAIL, LOCAL_AUTH_SECRET, NEWS_REPLY_TO, TEST_USER_PASSWORDS } from "./constants";
 import {
   apiCall,
   baseUrl,
@@ -64,13 +64,23 @@ async function publishAndCaptureMessageId(editorCookie: string, email: string, n
   return messageId;
 }
 
+/** The `Status:`/`Diagnostic-Code:` pair for each status {@link buildBounceEml} is asked to
+ * produce — just the two this suite ever uploads: the default hard bounce, and one soft code. */
+const BOUNCE_DIAGNOSTICS: Record<string, string> = {
+  "5.1.1": "550 5.1.1 The email account that you tried to reach does not exist.",
+  "4.2.2": "452 4.2.2 Mailbox full",
+};
+
 /** An RFC 3464 delivery-status bounce for `messageId`/`recipient`, the same shape as
  * apps/distribution/test/fixtures/bounces/gmail-dsn.eml (already unit-tested against
- * parseBounce) — `550 5.1.1`, hard, with the original message's own Message-ID attached so
- * matching is by Message-ID (Global Constraints "Matching" §1), never the recipient fallback. */
-function buildBounceEml(recipient: string, messageId: string): string {
+ * parseBounce) — hard (`5.1.1`) by default, with the original message's own Message-ID attached
+ * so matching is by Message-ID (Global Constraints "Matching" §1), never the recipient
+ * fallback. `status` drives both the `Status:` field and the `Diagnostic-Code:` text. */
+function buildBounceEml(recipient: string, messageId: string, status = "5.1.1"): string {
   const boundary = `E2E-BOUNCE-${randomUUID()}`;
   const now = new Date().toUTCString();
+  const diagnostic = BOUNCE_DIAGNOSTICS[status];
+  if (!diagnostic) throw new Error(`buildBounceEml: no diagnostic text configured for status ${status}`);
   return [
     "From: Mail Delivery Subsystem <mailer-daemon@mail.example.test>",
     "To: distribution@example.test",
@@ -95,8 +105,8 @@ function buildBounceEml(recipient: string, messageId: string): string {
     "",
     `Final-Recipient: rfc822; ${recipient}`,
     "Action: failed",
-    "Status: 5.1.1",
-    "Diagnostic-Code: smtp; 550 5.1.1 The email account that you tried to reach does not exist.",
+    `Status: ${status}`,
+    `Diagnostic-Code: smtp; ${diagnostic}`,
     "",
     `--${boundary}`,
     "Content-Type: message/rfc822",
@@ -117,8 +127,8 @@ function buildBounceEml(recipient: string, messageId: string): string {
 }
 
 /** `POST /nod/api/bounces/inbox` (NoD.Admin) — NoD's own proxy into Distribution's fake inbox. */
-async function uploadBounce(adminCookie: string, recipient: string, messageId: string): Promise<void> {
-  await apiCall(adminCookie, "/nod/api/bounces/inbox", { method: "POST", body: { raw: buildBounceEml(recipient, messageId) } });
+async function uploadBounce(adminCookie: string, recipient: string, messageId: string, status = "5.1.1"): Promise<void> {
+  await apiCall(adminCookie, "/nod/api/bounces/inbox", { method: "POST", body: { raw: buildBounceEml(recipient, messageId, status) } });
 }
 
 /** Bypasses distribution.bounces' own 15-minute gate (apps/distribution/src/bounces/run.ts's
@@ -167,6 +177,25 @@ function pastBounceSummaryCutoff(): Date {
   const cutoffPlus5 = new Date(todaysCutoff(r, TENANT_TIME_ZONE, BOUNCE_SUMMARY_HOUR).getTime() + 5 * 60_000);
   const rPlus1 = new Date(r.getTime() + 60_000);
   return cutoffPlus5.getTime() > rPlus1.getTime() ? cutoffPlus5 : rPlus1;
+}
+
+/** Tomorrow's cutoff (fixed by calendar date, not by how far off real "now" happens to be) —
+ * this suite's own first test already claims and sends *today's* summary, and
+ * `distribution.send`'s idempotency key is keyed only by calendar day
+ * (`nod-bounce-summary-<dateLabel>`, bounce-summary.ts), shared by every call on the same day
+ * regardless of how many times the gate is reset. A second real send within this run needs a
+ * cutoff on a different day, or it is silently deduped against the batch the first test
+ * already sent, with none of this test's own content in it.
+ *
+ * Unlike {@link pastBounceSummaryCutoff}, this has no real-clock fallback branch: the window's
+ * own start (`dbNow` minus 24h, when `bounce_summary_at` is reset to null — see
+ * `resetBounceSummaryGate`) must still land before this test's own bounce was processed, which
+ * only holds when the suite runs after today's cutoff hour (08:00 BC) — true for any normal
+ * working-hours run, the same assumption `pastBounceSummaryCutoff`'s own comment already
+ * documents for the opposite direction. */
+function pastNextBounceSummaryCutoff(): Date {
+  const tomorrow = new Date(Date.now() + 24 * 3_600_000);
+  return new Date(todaysCutoff(tomorrow, TENANT_TIME_ZONE, BOUNCE_SUMMARY_HOUR).getTime() + 5 * 60_000);
 }
 
 /** A Distribution client authenticated exactly the way NoD's own (local-mode) one is
@@ -232,5 +261,44 @@ test.describe("item 9: bounces end to end", () => {
     expect(summaryMails).toHaveLength(1);
     expect(summaryMails[0]!.text).toContain(email);
     expect(summaryMails[0]!.text).toContain("disabled (10/15d)");
+  });
+
+  test("a soft bounce is listed in the summary with its code and message, and the release replied to NOD_REPLY_TO", async ({ request }) => {
+    test.setTimeout(90_000);
+    // Hoisted so the finally block below can clean up by address even if something above it
+    // throws before the subscriber is ever created.
+    let email = "";
+    try {
+      const adminCookie = await loginForCookie(ADMIN_USERNAME, ADMIN_PASSWORD);
+      const editorCookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
+      email = `soft-${Date.now()}@example.test`;
+      await subscribeAndConfirm(request, email);
+
+      const verify = await waitForMessageTo(VERIFY, email);
+      expect(verify.headers["reply-to"]).toBeUndefined();
+
+      const headline = uniqueHeadline("Soft bounce test");
+      await createApprovedAndPublished(editorCookie, { headline });
+      const mail = await waitForMessageTo(`BC Gov News - ${headline}`, email);
+      expect(mail.headers["reply-to"]).toContain(NEWS_REPLY_TO);
+
+      await resetBounceGate();
+      await uploadBounce(adminCookie, email, mail.headers["message-id"]!, "4.2.2");
+      await tickTwice();
+
+      await resetBounceSummaryGate();
+      const clock = pastNextBounceSummaryCutoff();
+      const result = await runBounceSummaryIfDue(nodDb(), await distributionClientForSummary(), TENANT_TIME_ZONE, BOUNCE_SUMMARY_EMAIL, () => clock);
+      expect(result.sent).toBe(true);
+      await tickTwice();
+      const summary = (await fetchSentMessages()).filter((m) => m.subject?.startsWith("News On Demand - Bounce Manager - ") && m.to.includes(BOUNCE_SUMMARY_EMAIL)).at(-1)!;
+      expect(summary.text).toContain(`${email} (4.2.2 452 4.2.2 Mailbox full) - BC Gov News - ${headline}`);
+    } finally {
+      // A soft bounce alone never disables a subscriber (it doesn't count toward
+      // 10-in-15-days), so without this, an All News/As-It-Happens subscriber would stay
+      // active and keep receiving every release the rest of this suite publishes afterwards.
+      // In `finally` so a failed assertion above still leaves no residue for later specs.
+      if (email) await nodDb().execute(sql`UPDATE subscribers SET status = 'disabled' WHERE lower(email) = ${email.toLowerCase()}`);
+    }
   });
 });

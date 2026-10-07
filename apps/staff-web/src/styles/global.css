@@ -44,12 +44,12 @@ body {
   gap: 0.5rem;
 }
 
-/* Task 6 (Playwright axe sweep) found these three unstyled link/tab groups genuinely failing
- * WCAG 2.5.8 (target size, wcag22aa) — a plain inline `<a>`/`<button>` with no padding is only
+/* WCAG 2.5.8 (target size, wcag22aa): a plain inline `<a>`/`<button>` with no padding is only
  * as tall as its text (well under the 24px minimum) and, stacked with no gap, sits closer than
- * 24px to its neighbour too. jsdom has no real layout engine, so none of the existing
- * component-level axe tests could have caught a *sizing* violation — this fix's regression
- * coverage is exactly the Playwright axe check that found it (tests/e2e/axe-sweep.spec.ts). */
+ * 24px to its neighbour too. These navigation links and tabs are unstyled otherwise, so they get
+ * a minimum height and padding here. jsdom has no layout engine, so component-level axe tests
+ * can't catch a sizing violation; the Playwright axe sweep (tests/e2e/axe-sweep.spec.ts) does. */
+.gcpe-shell__nav a,
 .gcpe-website nav a,
 .gcpe-subscribers nav a,
 .gcpe-document-tabs [role="tab"],

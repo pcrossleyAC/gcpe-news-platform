@@ -29,7 +29,7 @@ import { createDistributionTestDb } from "../../apps/distribution/test/helpers";
 import { startSmtpSink } from "../../apps/distribution/test/smtp-sink";
 import { startStack } from "../../apps/stack/src/stack";
 import { runBuild } from "../../scripts/build-staff-web.mjs";
-import { TEST_USER_PASSWORDS, TICK_TOKEN, ADMIN_PASSWORD, MEMBERSHIP_API_USERNAME, MEMBERSHIP_API_PASSWORD, LOCAL_AUTH_SECRET, BOUNCE_SUMMARY_EMAIL } from "./constants";
+import { TEST_USER_PASSWORDS, TICK_TOKEN, ADMIN_PASSWORD, MEMBERSHIP_API_USERNAME, MEMBERSHIP_API_PASSWORD, LOCAL_AUTH_SECRET, BOUNCE_SUMMARY_EMAIL, NEWS_REPLY_TO } from "./constants";
 
 const repoRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
 const STACK_EVENT_SECRET = `e2e-event-secret-${"s".repeat(32)}`;
@@ -178,6 +178,9 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     // tick(), this is what turns NoD's nod.bounce-summary tick step from a permanent no-op
     // into a real (self-gated, real-wall-clock) check on every tick for the rest of the suite.
     NOD_BOUNCE_SUMMARY_EMAIL: BOUNCE_SUMMARY_EMAIL,
+    // Item 9's Reply-To coverage (bounces.spec.ts): release emails carry this; nothing else NoD
+    // sends does (reply-to.ts).
+    NOD_REPLY_TO: NEWS_REPLY_TO,
 
     DIST_DATABASE_URL: distribution.url,
     DIST_SMTP_HOST: "127.0.0.1",

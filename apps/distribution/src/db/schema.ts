@@ -68,6 +68,11 @@ export const messages = pgTable(
     // (case-insensitively), within a few days -- without this, that lookup falls back to a
     // sequential scan on any table of real size.
     index("messages_sent_email_lower_idx").on(sql`lower(${t.email})`, t.sentAt).where(sql`${t.status} = 'sent'`),
+    // Daily report (reports.ts): sent messages by send time with their batch and bounce kind, so a
+    // month's counts read this index alone instead of the table.
+    index("messages_sent_at_idx").on(t.sentAt, t.batchId, t.bounceHard).where(sql`${t.status} = 'sent'`),
+    // Daily report: failed messages are few; find them without a scan.
+    index("messages_failed_batch_idx").on(t.batchId).where(sql`${t.status} = 'failed'`),
     check("messages_status_check", sql`${t.status} IN ('pending','sent','failed')`),
   ],
 );
@@ -138,7 +143,17 @@ export const bounces = pgTable(
     messageId: uuid("message_id").references(() => messages.id, { onDelete: "set null" }),
     matched: boolean("matched").notNull().default(false),
     processedAt: timestamp("processed_at", { withTimezone: true }),
+    // Shown to staff in NoD's daily bounce summary: what the remote server said, and the
+    // subject of the email that bounced (parse.ts caps both). Null on rows recorded before
+    // these existed.
+    diagnostic: text("diagnostic"),
+    originalSubject: text("original_subject"),
   },
-  (t) => [uniqueIndex("bounces_source_id_idx").on(t.sourceId), check("bounces_kind_check", sql`${t.kind} IN ('bounce','ignored')`)],
+  (t) => [
+    uniqueIndex("bounces_source_id_idx").on(t.sourceId),
+    // The daily summary windows rows by processing time (bounces/summary.ts).
+    index("bounces_processed_at_idx").on(t.processedAt),
+    check("bounces_kind_check", sql`${t.kind} IN ('bounce','ignored')`),
+  ],
 );
 export type BounceRow = typeof bounces.$inferSelect;

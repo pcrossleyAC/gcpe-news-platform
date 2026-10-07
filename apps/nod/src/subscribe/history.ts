@@ -23,6 +23,7 @@ export const HISTORY_ACTIONS = [
   "bounce-recorded",
   "bounce-disabled",
   "bounce-flagged",
+  "bounce-resolved",
   "staff-added",
   "staff-preferences-updated",
   "staff-email-changed",

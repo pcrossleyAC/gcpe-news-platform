@@ -5,11 +5,75 @@ import type { DistributionClient } from "./distribution-client";
 import { nodSettings, operationsLog } from "./db/schema";
 import { safeErrorLabel } from "./subscribe/journeys";
 
-export type OperationsAction = "paused" | "resumed" | "distribution-paused" | "distribution-resumed";
+export type OperationsAction =
+  | "paused"
+  | "resumed"
+  | "distribution-paused"
+  | "distribution-resumed"
+  | "category-enabled"
+  | "category-disabled"
+  | "categories-reordered"
+  | "lists-reordered"
+  | "list-enabled"
+  | "list-disabled"
+  | "bounce-summary-address-changed"
+  | "bounce-soft-codes-changed"
+  | "report-exported";
 
 export async function getSettings(db: Db): Promise<{ paused: boolean; lastDigestCutoff: string | null }> {
   const [row] = await db.select({ paused: nodSettings.paused, lastDigestCutoff: nodSettings.lastDigestCutoff }).from(nodSettings).where(eq(nodSettings.id, 1));
   return { paused: row?.paused ?? false, lastDigestCutoff: row?.lastDigestCutoff ? row.lastDigestCutoff.toISOString() : null };
+}
+
+export interface BounceSummaryAddress {
+  address: string | null;
+  /** "setting": staff chose it; "server": NOD_BOUNCE_SUMMARY_EMAIL; null: none, nothing is sent. */
+  from: "setting" | "server" | null;
+}
+
+export async function resolveBounceSummaryAddress(db: DbOrTx, fallback: string | null): Promise<BounceSummaryAddress> {
+  const [row] = await db.select({ stored: nodSettings.bounceSummaryEmail }).from(nodSettings).where(eq(nodSettings.id, 1));
+  if (row?.stored) return { address: row.stored, from: "setting" };
+  if (fallback) return { address: fallback, from: "server" };
+  return { address: null, from: null };
+}
+
+/** Sets (or, with null, clears back to the server default) the summary address. The log
+ * records that it changed, never the address. */
+export async function setBounceSummaryAddress(db: Db, address: string | null, actor: string): Promise<{ changed: boolean }> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(nodSettings)
+      .set({ bounceSummaryEmail: address, updatedAt: sql`now()` })
+      .where(and(eq(nodSettings.id, 1), sql`${nodSettings.bounceSummaryEmail} IS DISTINCT FROM ${address}`))
+      .returning({ id: nodSettings.id });
+    if (!row) return { changed: false };
+    await writeOpsLog(tx, actor, "bounce-summary-address-changed", address === null ? "cleared" : "set");
+    return { changed: true };
+  });
+}
+
+/** An enhanced status code in the 4.x.x (transient) class -- the only form staff may count. */
+export const SOFT_CODE_RE = /^4\.\d{1,3}\.\d{1,3}$/;
+
+export async function getSoftCodesCounted(db: DbOrTx): Promise<string[]> {
+  const [row] = await db.select({ codes: nodSettings.bounceSoftCodesCounted }).from(nodSettings).where(eq(nodSettings.id, 1));
+  return row?.codes ?? [];
+}
+
+/** Replaces the list. The log detail holds the codes themselves (never an address). */
+export async function setSoftCodesCounted(db: Db, codes: string[], actor: string): Promise<{ changed: boolean; codes: string[] }> {
+  const next = [...new Set(codes.map((c) => c.trim()))].sort();
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(nodSettings)
+      .set({ bounceSoftCodesCounted: next, updatedAt: sql`now()` })
+      .where(and(eq(nodSettings.id, 1), sql`${nodSettings.bounceSoftCodesCounted} IS DISTINCT FROM ${sql.param(next)}::text[]`))
+      .returning({ id: nodSettings.id });
+    if (!row) return { changed: false, codes: next };
+    await writeOpsLog(tx, actor, "bounce-soft-codes-changed", next.length > 0 ? next.join(",") : "none");
+    return { changed: true, codes: next };
+  });
 }
 
 interface OpsEmailDeps {
@@ -28,10 +92,12 @@ function formatTenantTime(at: Date, timeZone: string): string {
 }
 
 /** Writes one `operations_log` row for `action` by `actor` -- callable inside an existing
- * transaction (NoD's own setPaused) or standalone (setDistributionPaused, below, which has no
- * local settings row of its own to update atomically with it). */
-async function writeOpsLog(dbOrTx: DbOrTx, actor: string, action: OperationsAction): Promise<{ id: string; at: Date }> {
-  const [log] = await dbOrTx.insert(operationsLog).values({ actor, action }).returning({ id: operationsLog.id, at: operationsLog.at });
+ * transaction (NoD's own setPaused, or staff-lists.ts's category/list changes) or standalone
+ * (setDistributionPaused, below, which has no local settings row of its own to update
+ * atomically with it). `detail` names what changed (a list or category key) and never holds
+ * an email address: the log is staff-visible and kept indefinitely. */
+export async function writeOpsLog(dbOrTx: DbOrTx, actor: string, action: OperationsAction, detail = ""): Promise<{ id: string; at: Date }> {
+  const [log] = await dbOrTx.insert(operationsLog).values({ actor, action, detail }).returning({ id: operationsLog.id, at: operationsLog.at });
   return log!;
 }
 

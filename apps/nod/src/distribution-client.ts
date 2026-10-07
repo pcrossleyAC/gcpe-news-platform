@@ -8,6 +8,32 @@ export interface MessageRecipient {
   substitutions: Record<string, string>;
 }
 
+/** One day × sending app of Distribution's daily report (apps/distribution/src/reports.ts). */
+export interface DailyReportRow {
+  day: number;
+  appId: string;
+  sent: number;
+  hardBounced: number;
+  softBounced: number;
+  failed: number;
+}
+
+/** One soft or unrecorded bounce row (apps/distribution/src/bounces/summary.ts). */
+export interface BounceSummaryRow {
+  address: string;
+  status: string | null;
+  message: string | null;
+  subject: string | null;
+  processedAt: string;
+}
+export interface DistributionBounceSummary {
+  processed: number;
+  bounces: number;
+  ignored: number;
+  unrecorded: { count: number; rows: BounceSummaryRow[] };
+  soft: { count: number; rows: BounceSummaryRow[] };
+}
+
 export interface MessageRequest {
   priority: "system" | "media" | "immediate" | "digest";
   idempotencyKey?: string;
@@ -16,8 +42,7 @@ export interface MessageRequest {
   text?: string;
   headers: Record<string, string>;
   recipients: MessageRecipient[];
-  /** Beats DistributionClientOptions.replyTo (NoD's REPLY_TO) when a particular send wants its
-   * own; omitted here, {@link distributionClient}'s `send` fills in the configured one. */
+  /** Set per send (reply-to.ts for news); omitted means no Reply-To from NoD. */
   replyTo?: string;
 }
 
@@ -55,10 +80,6 @@ export interface DistributionClientOptions {
    * also used by send-jobs.ts to size its claim lock, since a hung request or token fetch
    * must not outlive the lock it's running under. */
   timeoutMs?: number;
-  /** NoD's own REPLY_TO, applied to every send whose request doesn't already carry its own
-   * `replyTo` — so every caller (As-It-Happens, digest, emergency, media, system emails, ops
-   * emails) gets it without each one having to set it. */
-  replyTo?: string;
 }
 
 export interface DistributionClient {
@@ -78,12 +99,15 @@ export interface DistributionClient {
    * callDistribution's 4xx handling) and NoD's own route (http/routes.ts) maps it to its own
    * 404 for the caller, rather than the generic 502 every other DistributionError gets. */
   uploadBounce(raw: string): Promise<{ id: string }>;
-  /** The daily bounce summary's own counts Distribution alone can answer — bounces that never
-   * matched a message NoD sent, and messages that weren't bounces at all (`GET
-   * /api/bounces/stats?since=&until=`, gated on `Distribution.Operate`). Both are ISO
-   * instants; `until` is this call's own `dbNow`, closing the window so two successive
-   * summaries can never double-count the same row. */
-  bounceStats(since: string, until: string): Promise<{ unmatched: number; ignored: number }>;
+  /** The daily bounce summary's rows and counts for (since, until] (`GET
+   * /api/bounces/summary`, Distribution.Operate). Addresses come back in the body only. */
+  bounceSummary(since: string, until: string): Promise<DistributionBounceSummary>;
+  /** Distribution's bounce source (GET /api/bounces/source, Distribution.Operate): "fake" only where the test-site upload works. */
+  bounceSource(): Promise<{ source: "fake" | "graph" }>;
+  /** Sent, bounced and failed counts per day and app (`POST /api/reports/daily`,
+   * Distribution.Operate) between the given increasing ISO instants (day i is
+   * [bounds[i], bounds[i + 1])). NoD computes the boundaries in its tenant zone. */
+  dailyReport(bounds: string[]): Promise<{ rows: DailyReportRow[] }>;
 }
 
 // P2-R18: Distribution's 2xx body is network input like any other — `res.json()` succeeding
@@ -95,7 +119,20 @@ const batchResponseSchema = z.object({ batchId: z.string().min(1) });
 const settingsResponseSchema = z.object({ paused: z.boolean() });
 const pauseResponseSchema = z.object({ paused: z.boolean(), changed: z.boolean() });
 const uploadBounceResponseSchema = z.object({ id: z.string().min(1) });
-const bounceStatsResponseSchema = z.object({ unmatched: z.number().int().nonnegative(), ignored: z.number().int().nonnegative() });
+const summaryRowSchema = z.object({ address: z.string(), status: z.string().nullable(), message: z.string().nullable(), subject: z.string().nullable(), processedAt: z.string() });
+const summaryListSchema = z.object({ count: z.number().int().nonnegative(), rows: z.array(summaryRowSchema) });
+const bounceSummaryResponseSchema = z.object({
+  processed: z.number().int().nonnegative(),
+  bounces: z.number().int().nonnegative(),
+  ignored: z.number().int().nonnegative(),
+  unrecorded: summaryListSchema,
+  soft: summaryListSchema,
+});
+const bounceSourceResponseSchema = z.object({ source: z.enum(["fake", "graph"]) });
+const nonNegative = z.number().int().nonnegative();
+const dailyReportResponseSchema = z.object({
+  rows: z.array(z.object({ day: nonNegative, appId: z.string(), sent: nonNegative, hardBounced: nonNegative, softBounced: nonNegative, failed: nonNegative })),
+});
 
 /** Races `getToken()` against a timer so a hung token endpoint can't hang `send` forever —
  * mirrors the request's own `AbortSignal.timeout` below, just via Promise.race since
@@ -198,8 +235,7 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
 
   return {
     async send(req: MessageRequest): Promise<{ batchId: string }> {
-      const requestBody: MessageRequest = { ...req, replyTo: req.replyTo ?? opts.replyTo };
-      return callDistribution(opts, doFetch, timeoutMs, "/api/messages", { method: "POST", body: requestBody }, batchResponseSchema, "Distribution response missing batchId");
+      return callDistribution(opts, doFetch, timeoutMs, "/api/messages", { method: "POST", body: req }, batchResponseSchema, "Distribution response missing batchId");
     },
     async getSettings(): Promise<{ paused: boolean }> {
       return callDistribution(opts, doFetch, timeoutMs, "/api/settings", { method: "GET" }, settingsResponseSchema, "Distribution response missing paused");
@@ -211,9 +247,15 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
     async uploadBounce(raw: string): Promise<{ id: string }> {
       return callDistribution(opts, doFetch, timeoutMs, "/api/bounces/inbox", { method: "POST", body: { raw } }, uploadBounceResponseSchema, "Distribution response missing id");
     },
-    async bounceStats(since: string, until: string): Promise<{ unmatched: number; ignored: number }> {
-      const path = `/api/bounces/stats?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
-      return callDistribution(opts, doFetch, timeoutMs, path, { method: "GET" }, bounceStatsResponseSchema, "Distribution response missing unmatched/ignored");
+    async bounceSummary(since: string, until: string): Promise<DistributionBounceSummary> {
+      const path = `/api/bounces/summary?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
+      return callDistribution(opts, doFetch, timeoutMs, path, { method: "GET" }, bounceSummaryResponseSchema, "Distribution response missing bounce summary fields");
+    },
+    async bounceSource(): Promise<{ source: "fake" | "graph" }> {
+      return callDistribution(opts, doFetch, timeoutMs, "/api/bounces/source", { method: "GET" }, bounceSourceResponseSchema, "Distribution response missing source");
+    },
+    async dailyReport(bounds: string[]): Promise<{ rows: DailyReportRow[] }> {
+      return callDistribution(opts, doFetch, timeoutMs, "/api/reports/daily", { method: "POST", body: { bounds } }, dailyReportResponseSchema, "Distribution response missing rows");
     },
   };
 }

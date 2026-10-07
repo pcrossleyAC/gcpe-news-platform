@@ -16,8 +16,26 @@ const NO_SUBSCRIBERS: SubscriberConfig[] = [];
 // cares about Message-ID matching passes this as recordBounce's own `messageIdDomain`.
 const DOMAIN = "dist.example.test";
 
-const HARD_BOUNCE: ParsedBounce = { kind: "bounce", recipient: "alex@example.test", status: "5.1.1", hard: true, originalMessageId: null, method: "rfc3464" };
-const SOFT_BOUNCE: ParsedBounce = { kind: "bounce", recipient: "alex@example.test", status: "4.4.7", hard: false, originalMessageId: null, method: "rfc3464" };
+const HARD_BOUNCE: ParsedBounce = {
+  kind: "bounce",
+  recipient: "alex@example.test",
+  status: "5.1.1",
+  hard: true,
+  originalMessageId: null,
+  method: "rfc3464",
+  diagnostic: null,
+  originalSubject: null,
+};
+const SOFT_BOUNCE: ParsedBounce = {
+  kind: "bounce",
+  recipient: "alex@example.test",
+  status: "4.4.7",
+  hard: false,
+  originalMessageId: null,
+  method: "rfc3464",
+  diagnostic: null,
+  originalSubject: null,
+};
 
 async function seedMessage(
   db: Db,
@@ -261,6 +279,14 @@ describe("recordBounce", () => {
     expect(row?.matched).toBe(false);
   });
 
+  it("stores the diagnostic and original subject, NUL-stripped", async () => {
+    const parsed: ParsedBounce = { ...HARD_BOUNCE, diagnostic: "550 5.1.1 gone\u0000", originalSubject: "Clinics\u0000 open" };
+    const { bounceId } = await tdb.db.transaction((tx) => recordBounce(tx, "src-detail", "raw", parsed, NO_SUBSCRIBERS, DOMAIN));
+    const [row] = await tdb.db.select().from(bounces).where(eq(bounces.id, bounceId));
+    expect(row!.diagnostic).toBe("550 5.1.1 gone");
+    expect(row!.originalSubject).toBe("Clinics open");
+  });
+
   describe("recipient fallback query plan", () => {
     it("uses the lower(email)/sent_at index instead of a sequential scan, on a seeded table", async () => {
       const [batch] = await tdb.db.insert(batches).values({ appId: "nod", subject: "s", html: "<p>h</p>" }).returning({ id: batches.id });
@@ -292,7 +318,16 @@ describe("recordBounce", () => {
 
   describe("NUL bytes", () => {
     it("strips NUL bytes from raw and every parsed text field before storing", async () => {
-      const parsed: ParsedBounce = { kind: "bounce", recipient: "alex@example.test\u0000evil", status: "5.1.1\u0000", hard: true, originalMessageId: null, method: "rfc3464" };
+      const parsed: ParsedBounce = {
+        kind: "bounce",
+        recipient: "alex@example.test\u0000evil",
+        status: "5.1.1\u0000",
+        hard: true,
+        originalMessageId: null,
+        method: "rfc3464",
+        diagnostic: null,
+        originalSubject: null,
+      };
 
       const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-nul-1", "raw\u0000content", parsed, NO_SUBSCRIBERS, DOMAIN));
 

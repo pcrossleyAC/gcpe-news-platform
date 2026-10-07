@@ -68,20 +68,23 @@ export function listsHandler(event: EventEnvelope): EventHandler | undefined {
   return undefined;
 }
 
-/** Legacy `SubscriptionItems/{categoryKey}`: active lists of an enabled public category. */
+/** Display order for lists: staff's own order first (nulls last), then the source's, then name. */
+export const LIST_ORDER = [sql`${lists.staffSortOrder} ASC NULLS LAST`, asc(lists.sortOrder), asc(lists.name)];
+
+/** Legacy `SubscriptionItems/{categoryKey}`: active, staff-enabled lists of an enabled public category. */
 export async function publicListItems(db: DbOrTx, categoryKey: string): Promise<{ key: string; value: string }[]> {
   if (!(PUBLIC_CATEGORIES as readonly string[]).includes(categoryKey)) return [];
   const rows = await db
     .select({ key: lists.key, value: lists.name })
     .from(lists)
     .innerJoin(listCategories, eq(listCategories.key, lists.category))
-    .where(and(eq(lists.category, categoryKey), eq(lists.active, true), eq(listCategories.enabled, true)))
-    .orderBy(asc(lists.sortOrder), asc(lists.name));
+    .where(and(eq(lists.category, categoryKey), eq(lists.active, true), eq(lists.enabled, true), eq(listCategories.enabled, true)))
+    .orderBy(...LIST_ORDER);
   return rows;
 }
 
-/** The subset of `listKeys` a member of the public may subscribe to: `*`, or an active list in
- * an enabled public category. Order follows the input; duplicates removed. */
+/** The subset of `listKeys` a member of the public may subscribe to: `*`, or an active,
+ * staff-enabled list in an enabled public category. Order follows the input; duplicates removed. */
 export async function activeListKeys(db: DbOrTx, listKeys: string[]): Promise<string[]> {
   const wanted = [...new Set(listKeys.map((k) => k.toLowerCase()))];
   const named = wanted.filter((k) => k !== "*");
@@ -90,7 +93,7 @@ export async function activeListKeys(db: DbOrTx, listKeys: string[]): Promise<st
         .select({ listKey: lists.listKey })
         .from(lists)
         .innerJoin(listCategories, eq(listCategories.key, lists.category))
-        .where(and(inArray(lists.listKey, named), eq(lists.active, true), eq(listCategories.enabled, true), inArray(lists.category, [...PUBLIC_CATEGORIES])))
+        .where(and(inArray(lists.listKey, named), eq(lists.active, true), eq(lists.enabled, true), eq(listCategories.enabled, true), inArray(lists.category, [...PUBLIC_CATEGORIES])))
     : [];
   const ok = new Set(found.map((r) => r.listKey));
   return wanted.filter((k) => k === "*" || ok.has(k));

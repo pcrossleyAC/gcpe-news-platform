@@ -1,0 +1,1 @@
+ALTER TABLE "nod_settings" ADD COLUMN "bounce_summary_email" text;

@@ -330,7 +330,7 @@ describe("/api/media-lists", () => {
     await tdb.drop();
   });
 
-  it("401s without a token, 403s without NoD.Admin, for all four routes", async () => {
+  it("401s without a token, 403s with no NoD role, for all four routes", async () => {
     expect((await request(app).get("/api/media-lists")).status).toBe(401);
     expect((await request(app).get("/api/media-lists").set("authorization", `Bearer ${reader}`)).status).toBe(403);
     expect((await request(app).get("/api/media-lists/budget/members")).status).toBe(401);
@@ -341,7 +341,7 @@ describe("/api/media-lists", () => {
     expect((await request(app).delete("/api/media-lists/budget/members/00000000-0000-0000-0000-000000000000").set("authorization", `Bearer ${reader}`)).status).toBe(403);
   });
 
-  it("401s without a token, 403s without NoD.Admin, for the sync status/trigger and resolve routes", async () => {
+  it("401s without a token, 403s with no NoD role, for the sync status/trigger and resolve routes", async () => {
     expect((await request(app).get("/api/media-hub/sync")).status).toBe(401);
     expect((await request(app).get("/api/media-hub/sync").set("authorization", `Bearer ${reader}`)).status).toBe(403);
     expect((await request(app).post("/api/media-hub/sync")).status).toBe(401);
@@ -356,7 +356,7 @@ describe("/api/media-lists", () => {
     await addMediaMember(tdb.db, "budget", { email: "list-member@example.com", source: "manual-media" }, "test");
     const res = await request(app).get("/api/media-lists").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 1 }]);
+    expect(res.body).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 1, needsAttention: 0 }]);
   });
 
   it("GET /api/media-lists/:key/members 404s for an unknown media list", async () => {
@@ -368,7 +368,7 @@ describe("/api/media-lists", () => {
     const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "shown@example.com", source: "manual-media" }, "test");
     const res = await request(app).get("/api/media-lists/budget/members").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(200);
-    expect(res.body).toContainEqual({ subscriberId, email: "shown@example.com", source: "manual-media", mediaHubContactId: null, needsAttention: null });
+    expect(res.body).toContainEqual({ subscriberId, email: "shown@example.com", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: null, attentionAt: null });
   });
 
   it("POST /api/media-lists/:key/members creates (201) then is idempotent (200); 404s an unknown list", async () => {
@@ -507,8 +507,8 @@ describe("media-lists Media Hub integration (search proxy, add-from-hub)", () =>
     await tdb.drop();
   });
 
-  it("GET /api/media-hub/contacts proxies search with a fixed pageSize of 25", async () => {
-    const res = await request(app).get("/api/media-hub/contacts").query({ q: "Sam", page: 1 }).set("authorization", `Bearer ${admin}`);
+  it("POST /api/media-hub/contacts/search proxies search with a fixed pageSize of 25", async () => {
+    const res = await request(app).post("/api/media-hub/contacts/search").send({ q: "Sam", page: 1 }).set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(200);
     expect(mediaHub.search).toHaveBeenCalledWith("Sam", 1, 25);
     expect(res.body.contacts).toEqual([sampleHubContact]);
@@ -697,7 +697,7 @@ describe("media-lists with no Media Hub configured (MEDIA_HUB_URL unset)", () =>
   });
 
   it("503s the search proxy and add-from-hub, while manual add still works", async () => {
-    const search = await request(app).get("/api/media-hub/contacts").query({ q: "x" }).set("authorization", `Bearer ${admin}`);
+    const search = await request(app).post("/api/media-hub/contacts/search").send({ q: "x" }).set("authorization", `Bearer ${admin}`);
     expect(search.status).toBe(503);
     expect(search.body).toEqual({ error: "media hub not configured" });
 

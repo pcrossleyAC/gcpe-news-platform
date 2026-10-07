@@ -1,0 +1,1 @@
+CREATE INDEX "subscriber_history_action_at_idx" ON "subscriber_history" USING btree ("action","at");

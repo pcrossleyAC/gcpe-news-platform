@@ -1,10 +1,11 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
-import { sql } from "drizzle-orm";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { requireRole } from "@gcpe/auth";
-import { bounceInbox, bounces } from "../db/schema";
+import { bounceInbox } from "../db/schema";
+import { bounceSummary } from "../bounces/summary";
 import * as messagesService from "../messages";
+import { dailyReport, dailyReportSchema } from "../reports";
 import * as settingsService from "../settings";
 
 const uuidSchema = z.string().uuid();
@@ -22,7 +23,7 @@ const bounceInboxUploadSchema = z.object({
 // NoD's daily bounce summary's own query (bounce-summary.ts) -- both bounds are validated as
 // parseable instants before they ever reach the database.
 const isoInstant = z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "must be a valid date" });
-const bounceStatsQuerySchema = z.object({ since: isoInstant, until: isoInstant });
+const bounceSummaryQuerySchema = z.object({ since: isoInstant, until: isoInstant });
 
 /**
  * Maps the validation layer's ZodError to a response. Returns false for anything else so the
@@ -138,25 +139,27 @@ export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake
     }),
   );
 
-  // Feeds NoD's daily bounce summary (bounce-summary.ts) the two counts it can't get from its
-  // own database -- bounces that never matched a message NoD sent, and messages that weren't
-  // bounces at all (Global Constraints "Summary email": "counts of unmatched and ignored
-  // messages"). `processed_at` (not `received_at`) is what bounds the window, the same instant
-  // run.ts stamps every row with when it fetched and classified it. `until` (NoD passes its own
-  // `dbNow`) closes the window so two successive summaries can never double-count the same row.
+  // NoD's daily bounce summary: counts plus the soft and unrecorded rows for (since, until]
+  // (bounces/summary.ts). Addresses travel only in this response body; the query string is
+  // just the two instants. Soft rows are scoped to the calling app, the same identity that
+  // stamped batches.app_id when it sent.
   r.get(
-    "/bounces/stats",
+    "/bounces/summary",
     requireRole("Distribution.Operate"),
     run(async (req, res) => {
-      const { since, until } = bounceStatsQuerySchema.parse(req.query);
-      const { rows } = await db.execute<{ unmatched: number; ignored: number }>(sql`
-        SELECT
-          count(*) FILTER (WHERE kind = 'bounce' AND matched = false)::int AS unmatched,
-          count(*) FILTER (WHERE kind = 'ignored')::int AS ignored
-        FROM ${bounces}
-        WHERE processed_at > ${new Date(since)} AND processed_at <= ${new Date(until)}
-      `);
-      res.json({ unmatched: rows[0]?.unmatched ?? 0, ignored: rows[0]?.ignored ?? 0 });
+      const { since, until } = bounceSummaryQuerySchema.parse(req.query);
+      res.json(await bounceSummary(db, { since: new Date(since), until: new Date(until), appId: appIdFrom(req) }));
+    }),
+  );
+
+  // NoD's staff report (spec §8): sent vs bounced per day and app, between day boundaries NoD
+  // computes from its tenant zone. A read, but POST: up to 93 instants don't belong in a URL.
+  r.post(
+    "/reports/daily",
+    requireRole("Distribution.Operate"),
+    run(async (req, res) => {
+      const { bounds } = dailyReportSchema.parse(req.body);
+      res.json({ rows: await dailyReport(db, bounds.map((b) => new Date(b))) });
     }),
   );
 

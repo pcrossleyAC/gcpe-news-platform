@@ -18,9 +18,8 @@ export class MediaListNotFoundError extends Error {
   }
 }
 
-/** → HTTP 409 `{ error: "opted-out", at }`: the address left this subscriber's lists by
- * unsubscribing more recently than it was last added to a media list, and the caller didn't
- * pass `confirmOptOut`. */
+/** → HTTP 409 `{ error: "opted-out", at }`: the address left this media list by its own choice
+ * more recently than staff last added it, and the caller didn't pass `confirmOptOut`. */
 export class OptedOutError extends Error {
   constructor(public readonly at: Date) {
     super("opted-out");
@@ -41,7 +40,10 @@ export interface MediaMember {
   email: string;
   source: string;
   mediaHubContactId: number | null;
+  /** The chosen Media Hub email's ref; what the resolve screen preselects against. */
+  mediaHubEmailRef: string | null;
   needsAttention: string | null;
+  attentionAt: Date | null;
 }
 
 export interface MediaListSummary {
@@ -50,6 +52,8 @@ export interface MediaListSummary {
   name: string;
   active: boolean;
   members: number;
+  /** Members with a needs-attention flag (C59): what the index screen surfaces first. */
+  needsAttention: number;
 }
 
 async function mediaListRow(tx: DbOrTx, key: string): Promise<{ listKey: string } | null> {
@@ -63,13 +67,41 @@ async function hasAnySubscriptions(tx: DbOrTx, subscriberId: string): Promise<bo
   return rows.length > 0;
 }
 
-/** Latest `subscriber_history` row's `at` for `action` on this subscriber, or null. */
-async function latestHistoryAt(tx: DbOrTx, subscriberId: string, action: string): Promise<Date | null> {
+/** Latest `subscriber_history` row's `at` for `action` on this subscriber (and, when given,
+ * with that `detail`), or null. */
+async function latestHistoryAt(tx: DbOrTx, subscriberId: string, action: string, detail?: string): Promise<Date | null> {
   const r = await tx.execute<{ at: string | Date }>(sql`
-    SELECT at FROM subscriber_history WHERE subscriber_id = ${subscriberId} AND action = ${action}
-    ORDER BY at DESC LIMIT 1`);
+    SELECT at FROM subscriber_history
+     WHERE subscriber_id = ${subscriberId} AND action = ${action} ${detail === undefined ? sql`` : sql`AND detail = ${detail}`}
+     ORDER BY at DESC LIMIT 1`);
   const at = r.rows[0]?.at;
   return at === undefined ? null : new Date(at);
+}
+
+const newerOrTie = (a: Date | null, b: Date | null): boolean => a !== null && (b === null || a >= b);
+
+/**
+ * When this subscriber last left media list `key` by their own choice, if that's more recent
+ * than staff last added them to it -- else null. Checked whatever their current status: someone
+ * who unsubscribed and has since re-subscribed to public news has not thereby asked to be back
+ * on a media list. Leaving counts if it's a `media-list-opted-out` for this key, or an
+ * `unsubscribed` that came after their last add to it with no staff removal in between (so the
+ * membership was still live when they unsubscribed). A deleted subscriber also counts as opted
+ * out of every list after an `unsubscribed` newer than their last add to any media list. Ties
+ * fail closed.
+ */
+async function optedOutOf(tx: DbOrTx, subscriberId: string, key: string, deleted: boolean): Promise<Date | null> {
+  const addedToKey = await latestHistoryAt(tx, subscriberId, "media-list-added", key);
+  const optedOutOfKey = await latestHistoryAt(tx, subscriberId, "media-list-opted-out", key);
+  if (newerOrTie(optedOutOfKey, addedToKey)) return optedOutOfKey;
+
+  const unsubscribedAt = await latestHistoryAt(tx, subscriberId, "unsubscribed");
+  if (addedToKey !== null && newerOrTie(unsubscribedAt, addedToKey)) {
+    const removedFromKey = await latestHistoryAt(tx, subscriberId, "media-list-removed", key);
+    if (removedFromKey === null || removedFromKey < addedToKey) return unsubscribedAt;
+  }
+  if (deleted && newerOrTie(unsubscribedAt, await latestHistoryAt(tx, subscriberId, "media-list-added"))) return unsubscribedAt;
+  return null;
 }
 
 /** True if `subscriberId` currently has at least one subscription in the media category. */
@@ -100,16 +132,15 @@ export async function optOutMediaMemberships(tx: DbOrTx, subscriberId: string, a
  * public subscriptions (C51 -- staff/media-list additions never send a verification email).
  * Takes the per-address advisory lock (same keyspace as 4a's journeys) before reading the
  * subscriber row `FOR UPDATE`, so a concurrent add of the same new address never double-inserts
- * and an add can never race a concurrent unsubscribe into reading a stale, not-yet-opted-out row
- * (fix round 1, I2).
+ * and an add can never race a concurrent unsubscribe into reading a stale, not-yet-opted-out row.
  *
- * A found subscriber that's `deleted` and opted out at or after their last `media-list-added`
- * needs `confirmOptOut: true`, else throws {@link OptedOutError} (a timestamp tie fails closed).
+ * A found subscriber who left this list by their own choice since staff last added them to it
+ * ({@link optedOutOf} -- whatever their status now, so a public re-subscribe doesn't count as
+ * consent) needs `confirmOptOut: true`, else throws {@link OptedOutError}.
  * Reactivating a `deleted` subscriber -- confirmed opt-out or not (they may simply never have
  * resubscribed publicly since) -- must not restart their old public mail: their timing flags are
- * reset to off and their non-media subscriptions are dropped (controller ruling, fix round 1,
- * I3). From `pending`/`disabled`, public state is left untouched, as before. `source` is never
- * changed on an existing row.
+ * reset to off and their non-media subscriptions are dropped. From `pending`/`disabled`, public
+ * state is left untouched. `source` is never changed on an existing row.
  */
 export async function addMediaMember(db: Db, listKey: string, input: AddMediaMemberInput, actor: string): Promise<{ subscriberId: string; created: boolean }> {
   const key = mediaListKey(listKey);
@@ -124,11 +155,9 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
 
     if (existing) {
       const wasDeleted = existing.status === "deleted";
-      if (wasDeleted) {
-        const unsubscribedAt = await latestHistoryAt(tx, existing.id, "unsubscribed");
-        const addedAt = await latestHistoryAt(tx, existing.id, "media-list-added");
-        const optedOut = unsubscribedAt !== null && (addedAt === null || unsubscribedAt >= addedAt);
-        if (optedOut && !input.confirmOptOut) throw new OptedOutError(unsubscribedAt!);
+      if (!input.confirmOptOut) {
+        const optedOutAt = await optedOutOf(tx, existing.id, key, wasDeleted);
+        if (optedOutAt) throw new OptedOutError(optedOutAt);
       }
       subscriberId = existing.id;
       const fields: Partial<typeof subscribers.$inferInsert> = { endedAt: null };
@@ -200,7 +229,8 @@ export async function removeMediaMember(db: Db, listKey: string, subscriberId: s
   });
 }
 
-/** Every member of `listKey`, for the staff member-management screen. */
+/** Every member of `listKey`, for the staff member-management screen. Not paged: media lists
+ * hold hundreds of members, and legacy showed them all on one page. */
 export async function listMediaMembers(db: DbOrTx, listKey: string): Promise<MediaMember[]> {
   const key = mediaListKey(listKey);
   if (!(await mediaListRow(db, key))) throw new MediaListNotFoundError(listKey);
@@ -210,7 +240,9 @@ export async function listMediaMembers(db: DbOrTx, listKey: string): Promise<Med
       email: subscribers.email,
       source: subscribers.source,
       mediaHubContactId: subscribers.mediaHubContactId,
+      mediaHubEmailRef: subscribers.mediaHubEmailRef,
       needsAttention: subscribers.needsAttention,
+      attentionAt: subscribers.attentionAt,
     })
     .from(subscriptions)
     .innerJoin(subscribers, eq(subscribers.id, subscriptions.subscriberId))
@@ -218,7 +250,7 @@ export async function listMediaMembers(db: DbOrTx, listKey: string): Promise<Med
     .orderBy(asc(subscribers.email));
 }
 
-/** Every media list, with a live member count, for the staff media-lists screen. */
+/** Every media list, with live member and needs-attention counts, for the staff media-lists screen. */
 export async function listMediaLists(db: DbOrTx): Promise<MediaListSummary[]> {
   return db
     .select({
@@ -227,10 +259,49 @@ export async function listMediaLists(db: DbOrTx): Promise<MediaListSummary[]> {
       name: lists.name,
       active: lists.active,
       members: sql<number>`count(${subscriptions.subscriberId})::int`,
+      needsAttention: sql<number>`count(${subscribers.id}) FILTER (WHERE ${subscribers.needsAttention} IS NOT NULL)::int`,
     })
     .from(lists)
     .leftJoin(subscriptions, eq(subscriptions.listKey, lists.listKey))
+    .leftJoin(subscribers, eq(subscribers.id, subscriptions.subscriberId))
     .where(eq(lists.category, MEDIA_CATEGORY))
     .groupBy(lists.listKey, lists.key, lists.name, lists.active, lists.sortOrder)
     .orderBy(asc(lists.sortOrder), asc(lists.name));
+}
+
+/** How many opt-outs the per-list view returns; the newest are what staff act on. */
+export const OPT_OUT_LIMIT = 200;
+
+export interface MediaOptOut {
+  subscriberId: string;
+  /** The subscriber's current address (it may have moved since they opted out). */
+  email: string;
+  at: Date;
+  /** Whether they're on this list again now (re-added by staff with confirmation). */
+  member: boolean;
+}
+
+/**
+ * Who left `listKey` by unsubscribing (history `media-list-opted-out`, whose detail is the full
+ * list key), newest first, at most {@link OPT_OUT_LIMIT}. One row per subscriber, for their latest
+ * opt-out: someone re-added and opted out again is still one person to act on. Staff removals
+ * are not opt-outs and never appear here (C82). Served by subscriber_history_action_detail_at_idx.
+ */
+export async function listMediaOptOuts(db: DbOrTx, listKey: string): Promise<{ items: MediaOptOut[]; truncated: boolean }> {
+  const key = mediaListKey(listKey);
+  if (!(await mediaListRow(db, key))) throw new MediaListNotFoundError(listKey);
+  const { rows } = await db.execute<{ subscriber_id: string; email: string; at: string | Date; member: boolean }>(sql`
+    SELECT latest.subscriber_id, s.email, latest.at,
+           EXISTS (SELECT 1 FROM subscriptions x WHERE x.subscriber_id = latest.subscriber_id AND x.list_key = ${key}) AS member
+      FROM (SELECT DISTINCT ON (h.subscriber_id, h.detail) h.subscriber_id, h.at
+              FROM subscriber_history h
+             WHERE h.action = 'media-list-opted-out' AND h.detail = ${key}
+             ORDER BY h.subscriber_id, h.detail, h.at DESC) latest
+      JOIN subscribers s ON s.id = latest.subscriber_id
+     ORDER BY latest.at DESC
+     LIMIT ${OPT_OUT_LIMIT + 1}`);
+  return {
+    items: rows.slice(0, OPT_OUT_LIMIT).map((r) => ({ subscriberId: r.subscriber_id, email: r.email, at: new Date(r.at), member: r.member })),
+    truncated: rows.length > OPT_OUT_LIMIT,
+  };
 }

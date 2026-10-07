@@ -7,7 +7,7 @@ import { createNodTestDb } from "../test/helpers";
 import { createItemSending } from "./as-it-happens";
 import type { DistributionClient } from "./distribution-client";
 import { deliveries, items, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
-import { DIGEST_HOUR, digestCutoff, runDigestIfDue, startDigestLoop, todaysCutoff } from "./digest";
+import { DIGEST_HOUR, DIGEST_JOB_PREFIX_LENGTH, digestCutoff, digestJobKeyPrefix, runDigestIfDue, startDigestLoop, todaysCutoff } from "./digest";
 import { upsertReleaseItem } from "./items";
 import type { RecipientLinkOptions } from "./recipient-links";
 import { sendDueJobs } from "./send-jobs";
@@ -482,5 +482,13 @@ describe("startDigestLoop", () => {
     // No further tick ran after stop() resolved -- same job count, same subscriber delivered.
     expect(await tdb.db.select().from(sendJobs).where(eq(sendJobs.kind, "digest"))).toEqual(jobsAtStop);
     expect(await tdb.db.select().from(deliveries).where(eq(deliveries.subscriberId, sub))).toHaveLength(1);
+  });
+});
+
+describe("digestJobKeyPrefix", () => {
+  it("is 'digest:<cutoff ISO>:' and always DIGEST_JOB_PREFIX_LENGTH long", () => {
+    const prefix = digestJobKeyPrefix(new Date("2026-10-08T00:00:00Z"));
+    expect(prefix).toBe("digest:2026-10-08T00:00:00.000Z:");
+    expect(prefix).toHaveLength(DIGEST_JOB_PREFIX_LENGTH);
   });
 });

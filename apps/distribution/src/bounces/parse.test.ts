@@ -16,6 +16,8 @@ describe("parseBounce", () => {
       hard: true,
       originalMessageId: "<exchange-row-1@dist.example.test>",
       method: "rfc3464",
+      diagnostic: "550 5.1.1 RESOLVER.ADR.RecipNotFound; not found",
+      originalSubject: "Weekend clinics open across B.C.",
     });
   });
 
@@ -28,6 +30,8 @@ describe("parseBounce", () => {
       hard: true,
       originalMessageId: "<gmail-row-2@dist.example.test>",
       method: "rfc3464",
+      diagnostic: "550-5.1.1 The email account that you tried to reach does not exist.",
+      originalSubject: "Weekend clinics open across B.C.",
     });
   });
 
@@ -40,6 +44,8 @@ describe("parseBounce", () => {
       hard: false,
       originalMessageId: "<delay-row-3@dist.example.test>",
       method: "rfc3464",
+      diagnostic: "421 4.4.7 Delivery temporarily delayed",
+      originalSubject: "Weekend clinics open across B.C.",
     });
   });
 
@@ -52,6 +58,8 @@ describe("parseBounce", () => {
       hard: true,
       originalMessageId: null,
       method: "heuristic",
+      diagnostic: "relay.example.test #5.1.1 smtp;550 5.1.1 legacy@example.test User unknown",
+      originalSubject: "Weekend clinics open across B.C.",
     });
   });
 
@@ -86,7 +94,38 @@ describe("parseBounce", () => {
       hard: true,
       originalMessageId: "<folded-row@dist.example.test>",
       method: "rfc3464",
+      diagnostic: "550 5.1.1 User unknown",
+      originalSubject: "Weekend clinics open across B.C.",
     });
+  });
+
+  it("caps a huge Diagnostic-Code at 200 characters and collapses whitespace", async () => {
+    const raw = fixture("gmail-dsn.eml").replace(
+      "Diagnostic-Code: smtp; 550-5.1.1 The email account that you tried to reach does not exist.",
+      `Diagnostic-Code: smtp; 550 5.1.1   ${"<script>x</script> ".repeat(60_000)}`,
+    );
+    const result = await parseBounce(raw);
+    if (result.kind !== "bounce") throw new Error("expected a bounce");
+    expect(result.diagnostic!.length).toBe(200);
+    expect(result.diagnostic!.endsWith("…")).toBe(true);
+    expect(result.diagnostic).not.toMatch(/\s{2}/);
+  });
+
+  it("decodes an RFC 2047 encoded original Subject", async () => {
+    const raw = fixture("gmail-dsn.eml").replace(
+      /\r?\nSubject: Weekend clinics open across B\.C\./,
+      "\r\nSubject: =?UTF-8?Q?Caf=C3=A9_hours_extended?=",
+    );
+    const result = await parseBounce(raw);
+    if (result.kind !== "bounce") throw new Error("expected a bounce");
+    expect(result.originalSubject).toBe("Café hours extended");
+  });
+
+  it("falls back to the bounce's own subject minus Undeliverable: when the original has none", async () => {
+    const raw = fixture("exchange-ndr.eml").replace(/\r?\nSubject: Weekend clinics open across B\.C\.(\r?\n)(?=[\s\S]*--)/, "$1");
+    const result = await parseBounce(raw);
+    if (result.kind !== "bounce") throw new Error("expected a bounce");
+    expect(result.originalSubject).toBe("Weekend clinics open across B.C.");
   });
 });
 

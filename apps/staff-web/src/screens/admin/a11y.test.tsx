@@ -8,6 +8,7 @@ import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { UsersScreen } from "./users/UsersScreen";
 import { ErrorLogScreen } from "./errors/ErrorLogScreen";
+import { MediaListNamesScreen } from "./media-lists/MediaListNamesScreen";
 import type { UserView } from "./users/UsersScreen";
 
 async function seriousViolations(container: Element) {
@@ -27,7 +28,7 @@ function withAuth(children: React.ReactNode) {
 
 const ONE_USER: UserView = { id: "u1", email: "pat@x.invalid", displayName: "Pat", isActive: true, signInMethod: "local", roles: ["Core.Admin"] };
 
-describe("accessibility — Users and error log", () => {
+describe("accessibility — Users, Media list names and error log", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
@@ -45,6 +46,21 @@ describe("accessibility — Users and error log", () => {
     );
     const { container } = render(withAuth(<UsersScreen />));
     await screen.findByText("pat@x.invalid");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("MediaListNamesScreen", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/nrms/api/media-lists") return jsonResponse(200, [{ key: "regional", displayName: "Regional media", sortOrder: 1, isActive: true }]);
+        return jsonResponse(200, {});
+      }),
+    );
+    const { container } = render(withAuth(<MediaListNamesScreen />));
+    await screen.findByText("regional");
     expect(await seriousViolations(container)).toEqual([]);
   });
 

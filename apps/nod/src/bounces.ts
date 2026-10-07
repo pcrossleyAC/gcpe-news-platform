@@ -4,6 +4,7 @@ import type { DeliveryBounced, EventEnvelope, EventHandler } from "@gcpe/events"
 import { deliveries, subscribers, type DeliveryRow } from "./db/schema";
 import { lockAddress } from "./locks";
 import { hasMediaMemberships } from "./media-members";
+import { getSoftCodesCounted } from "./settings";
 import { writeHistory } from "./subscribe/history";
 import { normaliseEmail } from "./subscribe/info";
 
@@ -142,7 +143,10 @@ export async function onDeliveryBounced(tx: Tx, event: EventEnvelope, opts: Boun
   const match = await findDeliveryMatch(tx, subscriber.id, data.batchId);
   if (!match) return { matched: false, action: "none" };
 
-  if (!data.hard) {
+  // Staff may count specific soft codes (Operations) toward the rule; such a bounce is then
+  // handled exactly like a hard one from here on.
+  const countsAsHard = data.hard || (await getSoftCodesCounted(tx)).includes(data.status.trim());
+  if (!countsAsHard) {
     // Soft bounces are recorded and never count toward the threshold (Global Constraints).
     await tx.update(deliveries).set({ bounceStatus: data.status }).where(and(match.where, isNull(deliveries.bounceStatus)));
     return { matched: true, action: "none" };
@@ -178,14 +182,11 @@ export async function onDeliveryBounced(tx: Tx, event: EventEnvelope, opts: Boun
       await writeHistory(tx, subscriber.id, BOUNCE_ACTOR, "bounce-flagged");
       return { matched: true, action: "flagged" };
     }
-    if (subscriber.needsAttention === "bouncing") {
-      // Already flagged "bouncing" by an earlier trip of this same threshold -- nothing new
-      // happened, so nothing new is written (no second bounce-flagged row, no attention_at
-      // reset).
-      return { matched: true, action: "flagged" };
-    }
-    // Flagged for something else entirely (e.g. a Media Hub sync collision) -- that reason is
-    // never overwritten, but staff should still see that this bounce happened.
+    // Already flagged -- "bouncing" from an earlier trip of this same threshold, or something
+    // else entirely (e.g. a Media Hub sync collision). Either way the existing flag and its
+    // attention_at are never overwritten and no second bounce-flagged row is written, but
+    // staff still need to see this bounce: legacy listed every bounce of a flagged media
+    // member, every time.
     await writeHistory(tx, subscriber.id, BOUNCE_ACTOR, "bounce-recorded", data.status);
     return { matched: true, action: "recorded" };
   }

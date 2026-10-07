@@ -44,11 +44,16 @@ async function assertKnownCategories(tx: DbOrTx, c: { ministries: string[]; sect
   if (problems.length) throw new ReleaseRuleError(problems);
 }
 
-async function mediaListIds(tx: DbOrTx, keys: string[]): Promise<string[]> {
+/** The ids of `keys`. Unknown keys are refused, and so is a retired (inactive) list unless it's
+ * in `alreadyOn` -- a release that already targets a list when it's retired keeps it (NoD sends
+ * nothing to an inactive list), but no release can newly pick one. */
+async function mediaListIds(tx: DbOrTx, keys: string[], alreadyOn: readonly string[] = []): Promise<string[]> {
   if (!keys.length) return [];
-  const rows = await tx.select({ id: mediaLists.id, key: mediaLists.key }).from(mediaLists).where(inArray(mediaLists.key, keys));
+  const rows = await tx.select({ id: mediaLists.id, key: mediaLists.key, name: mediaLists.displayName, isActive: mediaLists.isActive }).from(mediaLists).where(inArray(mediaLists.key, keys));
   const missing = keys.filter((k) => !rows.some((r) => r.key === k));
   if (missing.length) throw new ReleaseRuleError(missing.map((k) => `Unknown media distribution list: ${k}`));
+  const retired = rows.filter((r) => !r.isActive && !alreadyOn.includes(r.key));
+  if (retired.length) throw new ReleaseRuleError(retired.map((r) => `The media distribution list ${r.name} has been retired.`));
   return rows.map((r) => r.id);
 }
 
@@ -198,12 +203,12 @@ export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Ac
   return mutateRelease(db, id, input.version, actor, async (tx, row) => {
     const rules = typeRules(row.type);
     assertTypeAllows(row.type, { mediaListKeys: input.mediaListKeys });
-    const listIds = await mediaListIds(tx, input.mediaListKeys);
     const current = await tx
       .select({ key: mediaLists.key })
       .from(releaseMediaLists)
       .innerJoin(mediaLists, eq(mediaLists.id, releaseMediaLists.mediaListId))
       .where(eq(releaseMediaLists.releaseId, row.id));
+    const listIds = await mediaListIds(tx, input.mediaListKeys, current.map((c) => c.key));
     const listsChanged = current.length !== input.mediaListKeys.length || current.some((c) => !input.mediaListKeys.includes(c.key));
     if (listsChanged && rules.mediaListsLockAfterRelease && row.releasedAt) {
       throw new ReleaseStateError(`The media distribution lists of a ${TYPE_LABEL[row.type]} can't change once it has been released.`);
