@@ -97,7 +97,9 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   `DIST_MESSAGE_ID_DOMAIN` (defaults to `DIST_MAIL_FROM`'s own domain) and `DIST_INTERNAL_DOMAINS`
   (default `gov.bc.ca,leg.bc.ca`, the +2 priority bump). NoD's own outgoing mail has its own
   Reply-To, `NOD_REPLY_TO` (unset means none) — never point it at a real government mailbox on a
-  test site, since redirected test mail would put real replies in front of it.
+  test site, since redirected test mail would put real replies in front of it. Production sets
+  `NOD_REPLY_TO=gcpe.news@gov.bc.ca`, matching legacy's own configured reply address; test sites
+  leave it unset.
 - **Operations** — Distribution as a whole can be paused from NoD (`NoD.Admin`), the same as
   NoD's own pause (4b). `npm run distribution:capacity` measures local send throughput and
   confirms the per-minute cap holds under concurrent workers; it only ever runs against
@@ -107,3 +109,8 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   mail, so subscribers can still confirm/unsubscribe and staff still get the pause/resume email
   while paused. Nothing is dropped — held messages send once resumed. A row already claimed by
   the sender when the switch flips still finishes sending; pausing only stops new claims.
+- **Administrator** — A message held by a Distribution pause for longer than `MAIL_MAX_AGE_MS`
+  (24 hours by default) fails on its first post-resume send error rather than retrying further,
+  and otherwise still goes out on resume however old it is — age alone never blocks a send. A
+  long pause (for example, across a writ period) releases whatever stale mail is still pending
+  as soon as sending resumes; decide whether that's acceptable before resuming.
