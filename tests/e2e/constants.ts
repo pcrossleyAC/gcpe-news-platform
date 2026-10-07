@@ -12,6 +12,15 @@ export const TICK_TOKEN = `e2e-tick-token-${"t".repeat(32)}`;
 export const ADMIN_PASSWORD = "e2e-admin-password-99";
 export const ADMIN_USERNAME = "admin";
 
+/** Shared by global-setup.ts (every app's `LOCAL_AUTH_SECRET`) and bounces.spec.ts, which mints
+ * its own short-lived local token (`@gcpe/auth`'s `mintLocalToken`) to call Distribution
+ * directly — the same thing NoD's own `distributionTokenProvider` does in local/test mode
+ * (apps/nod/src/distribution-token.ts), just from the test rather than from NoD's process. */
+export const LOCAL_AUTH_SECRET = "e2e-local-auth-secret-32-characters-long!";
+
+/** `NOD_BOUNCE_SUMMARY_EMAIL` (global-setup.ts) — item 9's daily bounce summary recipient. */
+export const BOUNCE_SUMMARY_EMAIL = "bounce-manager@example.test";
+
 export const TEST_USER_PASSWORDS: Record<string, string> = {
   "editor@example.test": "e2e-editor-password-1",
   "site-editor@example.test": "e2e-site-editor-password-1",

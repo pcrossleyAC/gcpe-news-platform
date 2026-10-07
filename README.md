@@ -246,6 +246,8 @@ npm --workspace @gcpe/nod run dev
 | `MEDIA_HUB_TIMEOUT_MS` | no | `15000` | Per-request timeout against Media Hub |
 | `MEMBERSHIP_API_USERNAME` | no | | Basic Auth username for the legacy `Subscribe/SubscriberInformation` endpoint (C55, Media Hub's Membership tab); either this or the hash unset means the route always answers 503 |
 | `MEMBERSHIP_API_PASSWORD_HASH` | no | | Basic Auth password hash (`scrypt$...` from `npm run nod:membership-hash`), never a plain password |
+| `BOUNCE_SUMMARY_EMAIL` | no | | Recipient of the daily bounce summary, sent only when the window had a bounce to report (set as `NOD_BOUNCE_SUMMARY_EMAIL` on the deployed stack); unset means no summary is ever sent |
+| `DISTRIBUTION_APP_ID` | no | `DISTRIBUTION_CLIENT_ID`, else `"nod"` | The `appId` a `delivery.bounced` event must carry to be acted on (bounces.ts) — a bounce event for any other app is ignored. Production sets this explicitly to NoD's own Entra client id, since relying on the default would silently stop matching if `DISTRIBUTION_CLIENT_ID` ever changed for an unrelated reason |
 | `MIGRATIONS_FOLDER` | no | `apps/nod/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/nod/migrations` |
 | `TENANT_CONFIG` | no | `config/tenants/bc.json` (resolved next to the bundle) | Tenant config path, see `packages/config` — its time zone decides the digest's 17:00 BC-local cutoff |
 
@@ -300,6 +302,10 @@ npm --workspace @gcpe/distribution run dev
 | `INTERNAL_DOMAINS` | no | `gov.bc.ca,leg.bc.ca` | Comma-separated list of domains treated as internal by the API's recipient checks (the +2 priority bump) |
 | `SEND_INTERVAL_MS` | no | `2000` | How often the send poller runs |
 | `SEND_OUTAGE_COOLDOWN_MAX_MS` | no | `300000` | Longest the sender pauses after an SMTP outage deferral (the pause is the deferred message's backoff, capped at this) |
+| `EVENT_SUBSCRIBERS` | no | `[]` | JSON array of webhook subscribers that receive Distribution's `delivery.bounced` events (4e); see [Event wiring](#event-wiring). Distribution never receives events, so there's no `EVENT_SECRETS` here |
+| `BOUNCE_SOURCE` | no | `fake` | `fake` (a plain table, fed by the `Distribution.Operate`-gated `/api/bounces/inbox` upload — test sites only) or `graph` (reads a real mailbox over Microsoft Graph; not run live until Q23 is answered — `docs/parity/open-questions.md`) |
+| `GRAPH_TENANT_ID` / `GRAPH_CLIENT_ID` / `GRAPH_CLIENT_SECRET` | yes, if `BOUNCE_SOURCE=graph` | | Entra client-credentials values for the Graph bounce reader; startup refuses `graph` mode unless all three are set, together with `BOUNCE_MAILBOX` |
+| `BOUNCE_MAILBOX` | yes, if `BOUNCE_SOURCE=graph` | | The shared mailbox Graph reads bounces from and moves processed messages into a `Processed` folder of (never logged) |
 | `MIGRATIONS_FOLDER` | no | `apps/distribution/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/distribution/migrations` |
 
 † Startup refuses to boot unless at least one of `MAIL_REDIRECT_TO` or `MAIL_ALLOW_REAL_RECIPIENTS=true` is set — see below.
@@ -328,13 +334,14 @@ If neither is set, startup fails fast with a validation error rather than silent
 
 ## Event wiring
 
-Only three events cross app boundaries in this slice, all signed HMAC webhooks delivered to each receiver's `/events`:
+All signed HMAC webhooks delivered to each receiver's `/events`:
 
 | Source | Event type(s) | Delivered to |
 |---|---|---|
 | `nrms` | `release.published`, `release.updated`, `release.unpublished` | News API (`apps/news-api`) |
 | `nrms` | `release.published` | NoD (`apps/nod`) |
 | `news-api` | `site.rebuild_requested` | Public Site (`apps/public-site`) |
+| `distribution` | `delivery.bounced` | NoD (`apps/nod`) — only for the app that sent the message (`appId`, see NoD's own `DISTRIBUTION_APP_ID` above) |
 
 Each sender configures `EVENT_SUBSCRIBERS` (a JSON array: one entry per receiver, each with its own secret and the event types it's allowed to see); each receiver configures `EVENT_SECRETS` (a JSON object mapping the sender's `source` name to the **same** secret). A receiver rejects anything signed with the wrong secret, and also rejects event types its source isn't allowed to send (e.g. an `nrms`-signed `org.deactivated` is "ignored", not applied) — see `SOURCE_EVENT_TYPES` in `apps/news-api/src/projections.ts`.
 

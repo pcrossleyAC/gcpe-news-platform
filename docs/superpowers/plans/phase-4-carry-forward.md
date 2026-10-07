@@ -3,12 +3,10 @@
 Items the 4a task and final reviews deferred to later sub-plans. Each later plan must pick up its section, then delete those lines here.
 
 ## 4e / 4f (bounces, staff section)
-- Define `disabled` (bounce- or staff-disabled). 4a already treats it like `active` when someone moves onto that address. Decide whether a disabled subscriber may reactivate themselves through subscribe/confirm (today they can, and a test pins it).
 - When an email move deletes a `pending`/`deleted` row, its `subscriber_history` cascades away. Decide the audit-retention rule.
 - History has no separate "subscribed" action, so a new signup and a reactivation both log "confirmed". Settle this for the 4f reports.
 - After a move, the old address's unexpired manage/verify sessions still work for up to 24 h. Consider using up the subscriber's other session links when the move completes.
 - A superseded verify link (claimed by a sibling confirm, no subscriber id) returns `null` from Confirm but `true` from CheckEmailActivationToken. Align them.
-- Legacy Distribution stores bounce mailbox credentials in `dbo.Mailbox.MailboxPassword` — decide where ours live (today: Entra app registration / fake mailbox, no stored password; confirm nothing still needs one).
 - NRMS staff-web media-list screen (4c built the admin API only — `POST`/`PUT /nrms/api/media-lists`, `.../republish`; existing lists arrive via the importer and republish).
 - NoD media-list member screens (4c built the admin API only — `GET /nod/api/media-lists`, `GET`/`POST`/`DELETE .../members`, the Media Hub search/sync endpoints).
 - A read route/screen listing who opted out of each media list (history action `media-list-opted-out`).
