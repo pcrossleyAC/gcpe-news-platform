@@ -150,6 +150,43 @@ export interface SyncStatus {
   running: boolean;
 }
 
+/** apps/nod/src/purge.ts */
+export interface PurgeCounts {
+  pendingSubscribers: number;
+  endedSubscribers: number;
+  unusedLinks: number;
+  expiredSendLinks: number;
+}
+export interface PurgeRunResult {
+  cutoff: string;
+  counts: PurgeCounts;
+  finished: boolean;
+  enabled: boolean;
+}
+export interface PurgeStatus {
+  enabled: boolean;
+  preview: PurgeCounts;
+  lastRun: PurgeRunResult | null;
+  nextRunAt: string;
+}
+
+/** apps/nod/src/emergency/ingest.ts */
+export interface EmergencyFeedResult {
+  at: string;
+  ok: boolean;
+  seeded: boolean;
+  inFeed: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  error: string | null;
+}
+export interface EmergencyFeedStatus {
+  url: string | null;
+  checkedAt: string | null;
+  result: EmergencyFeedResult | null;
+}
+
 /** apps/nod/src/operations.ts */
 export interface OperationsStatus {
   nod: { paused: boolean; lastDigestCutoff: string | null };
@@ -157,4 +194,6 @@ export interface OperationsStatus {
   bounceSource: "fake" | "graph" | null;
   bounceSummary: { address: string | null; from: "setting" | "server" | null };
   softCodesCounted: string[];
+  purge: PurgeStatus;
+  emergencyFeed: EmergencyFeedStatus;
 }

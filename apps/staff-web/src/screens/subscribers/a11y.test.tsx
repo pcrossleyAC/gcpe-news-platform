@@ -78,6 +78,17 @@ const OPS: OperationsStatus = {
   bounceSource: "fake",
   bounceSummary: { address: "server@example.test", from: "server" },
   softCodesCounted: [],
+  purge: {
+    enabled: false,
+    preview: { pendingSubscribers: 0, endedSubscribers: 3, unusedLinks: 2, expiredSendLinks: 40 },
+    lastRun: null,
+    nextRunAt: "2026-10-08T10:00:00.000Z",
+  },
+  emergencyFeed: {
+    url: "https://emergency.example.test/feed.xml",
+    checkedAt: "2026-10-07T18:00:00.000Z",
+    result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, error: null },
+  },
 };
 const LISTS_VIEW: StaffListsView = {
   allNews: 12,
@@ -297,6 +308,17 @@ describe("accessibility — Subscribers", () => {
     stubCommon(["NoD.Admin"]);
     const { container } = render(withAuthAt("/subscribers/operations", "/subscribers/operations", <OperationsScreen />));
     await userEvent.setup().click(await screen.findByRole("button", { name: "Pause News On Demand sending" }));
+    await screen.findByRole("alertdialog");
+    // jsdom has no `inert` (see the bulk delete dialog's note above).
+    const noInert = { rules: { "aria-hidden-focus": { enabled: false } } };
+    expect(await seriousViolations(document.body, noInert)).toEqual([]);
+    expect(await seriousViolations(container, noInert)).toEqual([]);
+  });
+
+  it("Operations, with the purge dialog open, has no serious violations", async () => {
+    stubCommon(["NoD.Admin"]);
+    const { container } = render(withAuthAt("/subscribers/operations", "/subscribers/operations", <OperationsScreen />));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Turn on the retention purge" }));
     await screen.findByRole("alertdialog");
     // jsdom has no `inert` (see the bulk delete dialog's note above).
     const noInert = { rules: { "aria-hidden-focus": { enabled: false } } };

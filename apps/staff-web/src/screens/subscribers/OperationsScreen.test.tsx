@@ -14,10 +14,25 @@ const OPS: OperationsStatus = {
   bounceSource: "fake",
   bounceSummary: { address: "server@example.test", from: "server" },
   softCodesCounted: [],
+  purge: {
+    enabled: false,
+    preview: { pendingSubscribers: 0, endedSubscribers: 3, unusedLinks: 2, expiredSendLinks: 40 },
+    lastRun: null,
+    nextRunAt: "2026-10-08T10:00:00.000Z",
+  },
+  emergencyFeed: {
+    url: "https://emergency.example.test/feed.xml",
+    checkedAt: "2026-10-07T18:00:00.000Z",
+    result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, error: null },
+  },
 };
 
 type Call = { url: string; method: string; body: unknown };
-function stub(roles: string[], ops: OperationsStatus = OPS, opts: { load?: () => Response; upload?: () => Response; softCodes?: () => Response } = {}) {
+function stub(
+  roles: string[],
+  ops: OperationsStatus = OPS,
+  opts: { load?: () => Response; upload?: () => Response; softCodes?: () => Response; purge?: () => Response } = {},
+) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
@@ -25,6 +40,7 @@ function stub(roles: string[], ops: OperationsStatus = OPS, opts: { load?: () =>
     if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
     if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
     if (url === "/nod/api/operations") return opts.load?.() ?? jsonResponse(200, ops);
+    if (url === "/nod/api/operations/purge") return opts.purge?.() ?? jsonResponse(200, { changed: true, purge: { ...ops.purge, enabled: true } });
     if (url.endsWith("/pause")) return jsonResponse(200, { paused: true, changed: true });
     if (url === "/nod/api/operations/bounce-summary-address") return jsonResponse(200, { changed: true, bounceSummary: { address: "staff@example.test", from: "setting" } });
     if (url === "/nod/api/operations/bounce-soft-codes") return opts.softCodes?.() ?? jsonResponse(200, { changed: true, softCodesCounted: ["4.2.2", "4.4.7"] });
@@ -161,5 +177,78 @@ describe("OperationsScreen", () => {
     await user.type(within(region).getByRole("textbox", { name: "Soft codes counted as hard" }), "5.1.1");
     await user.click(within(region).getByRole("button", { name: "Save codes" }));
     expect(await within(region).findByRole("alert")).toHaveTextContent("Enter codes like 4.2.2, separated by commas.");
+  });
+
+  it("the purge: off, what it would delete if it ran now, and the link cleanup that always runs", async () => {
+    stub(["NoD.Admin"]);
+    renderIt();
+    const purge = await screen.findByRole("region", { name: "Retention purge" });
+    expect(within(purge).getByText("Off")).toBeInTheDocument();
+    expect(purge).toHaveTextContent("0 unconfirmed subscribers");
+    expect(purge).toHaveTextContent("3 ended subscribers");
+    expect(purge).toHaveTextContent("2 unused links");
+    expect(purge).toHaveTextContent("(40 waiting)");
+  });
+
+  it("turning the purge on asks first, says it can't be undone, then saves and reloads", async () => {
+    const calls = stub(["NoD.Admin"]);
+    renderIt();
+    const user = userEvent.setup();
+    const purge = await screen.findByRole("region", { name: "Retention purge" });
+    await user.click(within(purge).getByRole("button", { name: "Turn on the retention purge" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("3 subscribers and 2 unused links");
+    expect(dialog).toHaveTextContent("can’t be undone");
+    await user.click(within(dialog).getByRole("button", { name: "Turn on purge" }));
+    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/purge", method: "PUT", body: { enabled: true } }));
+    await waitFor(() => expect(screen.getAllByRole("status").filter((s) => s.textContent === "Retention purge turned on.")).toHaveLength(1));
+    expect(calls.filter((c) => c.url === "/nod/api/operations").length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("a failed switch keeps the dialog open with the error inside it", async () => {
+    stub(["NoD.Admin"], OPS, { purge: () => jsonResponse(500, { error: "internal" }) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Turn on the retention purge" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Turn on purge" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn’t change it. Nothing changed.");
+  });
+
+  it("an on purge offers to turn it off, and shows its last night", async () => {
+    stub(["NoD.Admin"], {
+      ...OPS,
+      purge: {
+        ...OPS.purge,
+        enabled: true,
+        lastRun: { cutoff: "2026-10-07T10:00:00.000Z", counts: { pendingSubscribers: 1, endedSubscribers: 4, unusedLinks: 2, expiredSendLinks: 300 }, finished: true, enabled: true },
+      },
+    });
+    renderIt();
+    const purge = await screen.findByRole("region", { name: "Retention purge" });
+    expect(within(purge).getByText("On")).toBeInTheDocument();
+    expect(purge).toHaveTextContent("finished; deleted 5 subscribers and 302 links");
+    expect(within(purge).getByRole("button", { name: "Turn off the retention purge" })).toBeInTheDocument();
+  });
+
+  it("the emergency feed: the last check's counts", async () => {
+    stub(["NoD.Admin"]);
+    renderIt();
+    const feed = await screen.findByRole("region", { name: "Emergency alerts feed" });
+    expect(feed).toHaveTextContent("https://emergency.example.test/feed.xml");
+    expect(feed).toHaveTextContent("2 alerts in the feed, 1 new, 0 updated");
+  });
+
+  it("the emergency feed: a failed check is a warning with its label", async () => {
+    stub(["NoD.Admin"], { ...OPS, emergencyFeed: { ...OPS.emergencyFeed, result: { ...OPS.emergencyFeed.result!, ok: false, error: "http-503" } } });
+    renderIt();
+    const feed = await screen.findByRole("region", { name: "Emergency alerts feed" });
+    expect(await within(feed).findByText(/failed: http-503\. It tries again every 5 minutes\./)).toBeInTheDocument();
+  });
+
+  it("the emergency feed: none configured says so", async () => {
+    stub(["NoD.Admin"], { ...OPS, emergencyFeed: { url: null, checkedAt: null, result: null } });
+    renderIt();
+    expect(await screen.findByText("No feed is configured (EMERGENCY_FEED_URL), so no emergency alerts are read.")).toBeInTheDocument();
   });
 });
