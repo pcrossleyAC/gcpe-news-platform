@@ -45,6 +45,10 @@ async function insertSubscriber(db: TestDatabase["db"], email: string, opts: { a
  * unpredictably relative to insertion order). */
 const lowId = (n: number) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
 
+async function insertItem(db: TestDatabase["db"], key: string, kind: "release" | "emergency", postKind: string | null) {
+  await db.insert(items).values({ key, kind, postKind, title: "Clinics open", url: `https://news.example/${key}`, publishedAt: new Date() });
+}
+
 async function insertJob(db: TestDatabase["db"], itemKey: string | null, overrides: Partial<typeof sendJobs.$inferInsert> = {}) {
   const [row] = await db
     .insert(sendJobs)
@@ -697,6 +701,23 @@ describe("sendDueJobs", () => {
 
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
     expect(req.priority).toBe("digest");
+  });
+
+  it("a release's email replies to NOD_REPLY_TO; an emergency item's carries no Reply-To", async () => {
+    const alex = await insertSubscriber(tdb.db, "alex@example.com");
+    await insertItem(tdb.db, "release-r", "release", "stories");
+    await insertItem(tdb.db, "emergency-e", "emergency", null);
+    const release = await insertJob(tdb.db, "release-r");
+    const emergency = await insertJob(tdb.db, "emergency-e", { jobKey: "emergency:emergency-e" });
+    await tdb.db.insert(jobRecipients).values([{ jobId: release.id, subscriberId: alex.id }, { jobId: emergency.id, subscriberId: alex.id }]);
+
+    const distribution = dedupingDistribution();
+    await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, replyTo: { news: "news-reply@example.test" }, batchSize: 10 });
+
+    const byKey = new Map(distribution.calls.map((c) => [c.idempotencyKey!.split(":")[0], c]));
+    expect(byKey.get(release.id)!.replyTo).toBe("news-reply@example.test");
+    expect(byKey.get(emergency.id)!.replyTo).toBeUndefined();
+    expect("replyTo" in byKey.get(emergency.id)!).toBe(false);
   });
 
   // A media job carries kind='media'/priority='media' (send-jobs.ts has no special
@@ -1394,15 +1415,7 @@ describe("distributionClient", () => {
     await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
   });
 
-  it("carries NoD's own REPLY_TO (DistributionClientOptions.replyTo) on a request that doesn't set one", async () => {
-    respondStatus = 202;
-    respondBody = { batchId: "batch-reply-to" };
-    const client = distributionClient({ baseUrl, getToken: async () => "t", replyTo: "nod-reply@example.com" });
-    await client.send(sampleRequest);
-    expect(lastRequestBody?.replyTo).toBe("nod-reply@example.com");
-  });
-
-  it("carries no replyTo when neither the request nor DistributionClientOptions.replyTo is set", async () => {
+  it("carries no replyTo when the request sets none", async () => {
     respondStatus = 202;
     respondBody = { batchId: "batch-no-reply-to" };
     const client = distributionClient({ baseUrl, getToken: async () => "t" });
@@ -1410,10 +1423,10 @@ describe("distributionClient", () => {
     expect(lastRequestBody?.replyTo).toBeUndefined();
   });
 
-  it("a request's own replyTo wins over the configured REPLY_TO", async () => {
+  it("passes a request's own replyTo through unchanged", async () => {
     respondStatus = 202;
     respondBody = { batchId: "batch-own-reply-to" };
-    const client = distributionClient({ baseUrl, getToken: async () => "t", replyTo: "nod-reply@example.com" });
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
     await client.send({ ...sampleRequest, replyTo: "own-reply@example.com" });
     expect(lastRequestBody?.replyTo).toBe("own-reply@example.com");
   });

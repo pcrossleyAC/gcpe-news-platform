@@ -2,9 +2,10 @@ import { and, eq, inArray, isNotNull, isNull, sql, type SQL } from "drizzle-orm"
 import { ageMsOf, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import { backoffMs } from "@gcpe/events";
 import { DistributionError, type DistributionClient, type MessageRequest } from "./distribution-client";
-import { deliveries, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
+import { deliveries, jobRecipients, nodSettings, sendJobs, subscribers, type ItemKind } from "./db/schema";
 import { renderDigestItems } from "./digest";
 import { placeholderLinkLengths, recipientSubstitutions, type RecipientLinkOptions } from "./recipient-links";
+import { replyToFor, type ReplyToOptions } from "./reply-to";
 import type { RenderOptions } from "./render";
 import { emailAddressSchema } from "./subscribe/info";
 import { safeErrorLabel } from "./subscribe/journeys";
@@ -40,6 +41,8 @@ export interface SendJobsOptions {
    * re-render a digest job (see {@link sendDueJobs}'s doc comment) whose items have partly
    * withdrawn since it was built; an As-It-Happens/emergency job's content never changes here. */
   render: RenderOptions;
+  /** Reply-To by type of news (reply-to.ts), chosen per job from its item. */
+  replyTo?: ReplyToOptions;
   /** Test hook: when given, its value stands in for SQL `now()` in every statement this call
    * makes (claim, lock, backoff, age). Production omits it and the database's clock is used
    * throughout — see {@link sendDueJobs}. */
@@ -65,6 +68,7 @@ export interface SendJobsOptions {
 type ClaimedJobRow = {
   id: string;
   item_key: string | null;
+  item_kind: ItemKind | null;
   priority: "immediate" | "digest" | "media" | "system";
   kind: string;
   subject: string | null;
@@ -105,7 +109,9 @@ async function claimOneJob(db: Db, now: SQL, lockMs: number): Promise<ClaimedJob
         LIMIT 1
         FOR UPDATE SKIP LOCKED
      )
-    RETURNING id, item_key, priority, kind, subject, html, text, attempts, ${ageMsOf(sql`created_at`, now)} AS age_ms, chunks_assigned, batch_ids,
+    RETURNING id, item_key,
+              (SELECT i.kind FROM items i WHERE i.key = send_jobs.item_key) AS item_kind,
+              priority, kind, subject, html, text, attempts, ${ageMsOf(sql`created_at`, now)} AS age_ms, chunks_assigned, batch_ids,
               ${lockTokenOf(sql`locked_until`)} AS lock_token`);
   return claimed.rows[0];
 }
@@ -260,6 +266,7 @@ function buildMessageRequest(
   members: Member[],
   key: string,
   substitutions?: Map<string, { manageUrl: string; unsubscribeUrl: string }>,
+  replyTo?: string,
 ): MessageRequest {
   return {
     priority: job.priority,
@@ -269,6 +276,7 @@ function buildMessageRequest(
     text: job.text ?? undefined,
     headers: { "List-Unsubscribe": "<{{unsubscribeUrl}}>", "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" },
     recipients: members.map((m) => ({ email: m.email, substitutions: substitutions?.get(m.subscriberId) ?? {} })),
+    ...(replyTo ? { replyTo } : {}),
   };
 }
 
@@ -307,13 +315,14 @@ function partitionChunkByBytes(
   chunkIndex: number,
   maxBytes: number,
   linkPlaceholder: { manageUrl: string; unsubscribeUrl: string },
+  replyTo: string | undefined,
 ): { key: string; members: Member[] }[] {
   let n = 1;
   while (n < members.length) {
     const size = Math.ceil(members.length / n);
     const slice = members.slice(0, size);
     const probeSubstitutions = new Map(slice.map((m) => [m.subscriberId, linkPlaceholder]));
-    const probe = buildMessageRequest(job, slice, String(chunkIndex), probeSubstitutions);
+    const probe = buildMessageRequest(job, slice, String(chunkIndex), probeSubstitutions, replyTo);
     if (requestByteSize(probe) <= maxBytes) break;
     n++;
   }
@@ -373,16 +382,17 @@ function partitionChunkByBytes(
  * recipients are re-derived from `job_recipients`, never from `deliveries`.
  */
 async function sendAllChunks(
-  opts: { db: Db; distribution: DistributionClient; links: RecipientLinkOptions; now?: TestClock },
+  opts: { db: Db; distribution: DistributionClient; links: RecipientLinkOptions; now?: TestClock; replyTo?: ReplyToOptions },
   job: ClaimedJobRow,
   chunks: Map<number, Member[]>,
   maxChunkBytes: number,
 ): Promise<{ batchIds: Record<string, string>; error?: DistributionError }> {
   const batchIds: Record<string, string> = {};
+  const replyTo = replyToFor(job.item_kind, opts.replyTo ?? {});
   const { manageUrlLen, unsubscribeUrlLen } = placeholderLinkLengths(opts.links);
   const linkPlaceholder = { manageUrl: "x".repeat(manageUrlLen), unsubscribeUrl: "x".repeat(unsubscribeUrlLen) };
   for (const [chunkIndex, members] of chunks) {
-    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes, linkPlaceholder)) {
+    for (const { key, members: partMembers } of partitionChunkByBytes(job, members, chunkIndex, maxChunkBytes, linkPlaceholder, replyTo)) {
       const activeMembers = partMembers.filter((m) => m.active);
       if (activeMembers.length === 0) continue; // nothing currently active in this part — skip it this attempt
 
@@ -407,7 +417,7 @@ async function sendAllChunks(
               isNull(deliveries.attemptedAt),
             ),
           );
-        const { batchId } = await opts.distribution.send(buildMessageRequest(job, validMembers, key, substitutions));
+        const { batchId } = await opts.distribution.send(buildMessageRequest(job, validMembers, key, substitutions, replyTo));
         batchIds[key] = batchId;
         // What bounces.ts's own first match attempt looks for -- stamped only on the
         // deliveries actually handed off in *this* part, right after Distribution accepts it
@@ -622,7 +632,7 @@ export async function sendDueJobs(
     // chunks and Distribution would dedupe every one already accepted. The only write that
     // has to be ownership-checked is the terminal one below (`where`), which is.
     const { batchIds: newBatchIds, error } = await sendAllChunks(
-      { db: opts.db, distribution: opts.distribution, links: opts.links, now: opts.now },
+      { db: opts.db, distribution: opts.distribution, links: opts.links, now: opts.now, replyTo: opts.replyTo },
       job,
       chunks,
       maxChunkBytes,

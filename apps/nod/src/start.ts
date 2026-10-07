@@ -61,10 +61,10 @@ export const nodEnvSchema = z.object({
   // ever sent. The operator sets `NOD_BOUNCE_SUMMARY_EMAIL`; envFor strips the "NOD_" prefix
   // the same way as OPS_EMAIL above.
   BOUNCE_SUMMARY_EMAIL: z.string().email().optional(),
-  // Every email NoD sends carries this as its Reply-To (distribution-client.ts's send,
-  // applied whenever a request doesn't set its own) — unset on boxs.ca: a reply to redirected
-  // test mail must never reach a real government mailbox. The operator sets `NOD_REPLY_TO`;
-  // envFor strips the "NOD_" prefix the same way as OPS_EMAIL above.
+  // Reply-To for NRMS release emails (reply-to.ts); every other email NoD sends carries none.
+  // Unset on boxs.ca: a reply to redirected test mail must never reach a real government
+  // mailbox. The operator sets `NOD_REPLY_TO`; envFor strips the "NOD_" prefix the same way
+  // as OPS_EMAIL above.
   REPLY_TO: z.string().email().optional(),
   // The page emailed verify/manage links open. Default: the public site's test page.
   SUBSCRIBE_PAGE_URL: z.string().url().optional(),
@@ -146,7 +146,6 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     baseUrl: parsed.DISTRIBUTION_URL,
     getToken: getDistributionToken,
     timeoutMs: parsed.DISTRIBUTION_TIMEOUT_MS,
-    replyTo: parsed.REPLY_TO,
   });
 
   // Task 5: siteUrl is the public site home ("See more from BC Gov News" in every email's
@@ -164,7 +163,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     linkSecret: parsed.LINK_SECRET,
   };
 
-  const sendJobsOptions = { db, distribution, links: recipientLinks, render, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS };
+  const sendJobsOptions = { db, distribution, links: recipientLinks, render, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS, replyTo: { news: parsed.REPLY_TO } };
 
   // Only built when a Media Hub is actually configured -- search and add-from-hub answer 503
   // otherwise (routes.ts), and there is then no token provider to fail at startup.
