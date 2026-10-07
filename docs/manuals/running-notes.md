@@ -259,3 +259,6 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Developer** — Distribution's `GET /api/bounces/summary` (Distribution.Operate) replaced
   `/api/bounces/stats`. Its rows carry addresses in the response body only; never log them or put
   them in a URL. Soft rows are scoped to the calling app's token identity.
+- **Operations** — A media-list member already flagged "bouncing" still shows, in bold, every time
+  they bounce again — not just the first time. Tell Media Relations each time it reappears; the flag
+  alone doesn't mean anyone has fixed the mailbox.

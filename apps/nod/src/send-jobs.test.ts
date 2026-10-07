@@ -720,6 +720,18 @@ describe("sendDueJobs", () => {
     expect("replyTo" in byKey.get(emergency.id)!).toBe(false);
   });
 
+  it("a digest job carries no Reply-To", async () => {
+    const sub = await insertSubscriber(tdb.db, "digest-reply@example.com");
+    const job = await insertJob(tdb.db, null, { jobKey: "digest:test-reply", kind: "digest", priority: "digest" });
+    await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000011" });
+    await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, replyTo: { news: "news-reply@example.test" } });
+
+    expect((distribution.send.mock.calls[0]![0] as MessageRequest).replyTo).toBeUndefined();
+  });
+
   // Reply-To is keyed off the item's own kind (reply-to.ts), never the job's -- a media job
   // for a release item is still a release's email, so it carries NOD_REPLY_TO exactly like the
   // release's own As-It-Happens send above.

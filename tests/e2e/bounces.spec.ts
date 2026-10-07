@@ -265,34 +265,40 @@ test.describe("item 9: bounces end to end", () => {
 
   test("a soft bounce is listed in the summary with its code and message, and the release replied to NOD_REPLY_TO", async ({ request }) => {
     test.setTimeout(90_000);
-    const adminCookie = await loginForCookie(ADMIN_USERNAME, ADMIN_PASSWORD);
-    const editorCookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
-    const email = `soft-${Date.now()}@example.test`;
-    await subscribeAndConfirm(request, email);
+    // Hoisted so the finally block below can clean up by address even if something above it
+    // throws before the subscriber is ever created.
+    let email = "";
+    try {
+      const adminCookie = await loginForCookie(ADMIN_USERNAME, ADMIN_PASSWORD);
+      const editorCookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
+      email = `soft-${Date.now()}@example.test`;
+      await subscribeAndConfirm(request, email);
 
-    const verify = await waitForMessageTo(VERIFY, email);
-    expect(verify.headers["reply-to"]).toBeUndefined();
+      const verify = await waitForMessageTo(VERIFY, email);
+      expect(verify.headers["reply-to"]).toBeUndefined();
 
-    const headline = uniqueHeadline("Soft bounce test");
-    await createApprovedAndPublished(editorCookie, { headline });
-    const mail = await waitForMessageTo(`BC Gov News - ${headline}`, email);
-    expect(mail.headers["reply-to"]).toContain(NEWS_REPLY_TO);
+      const headline = uniqueHeadline("Soft bounce test");
+      await createApprovedAndPublished(editorCookie, { headline });
+      const mail = await waitForMessageTo(`BC Gov News - ${headline}`, email);
+      expect(mail.headers["reply-to"]).toContain(NEWS_REPLY_TO);
 
-    await resetBounceGate();
-    await uploadBounce(adminCookie, email, mail.headers["message-id"]!, "4.2.2");
-    await tickTwice();
+      await resetBounceGate();
+      await uploadBounce(adminCookie, email, mail.headers["message-id"]!, "4.2.2");
+      await tickTwice();
 
-    await resetBounceSummaryGate();
-    const clock = pastNextBounceSummaryCutoff();
-    const result = await runBounceSummaryIfDue(nodDb(), await distributionClientForSummary(), TENANT_TIME_ZONE, BOUNCE_SUMMARY_EMAIL, () => clock);
-    expect(result.sent).toBe(true);
-    await tickTwice();
-    const summary = (await fetchSentMessages()).filter((m) => m.subject?.startsWith("News On Demand - Bounce Manager - ") && m.to.includes(BOUNCE_SUMMARY_EMAIL)).at(-1)!;
-    expect(summary.text).toContain(`${email} (4.2.2 452 4.2.2 Mailbox full) - BC Gov News - ${headline}`);
-
-    // A soft bounce alone never disables a subscriber (it doesn't count toward 10-in-15-days),
-    // so without this, an All News/As-It-Happens subscriber would stay active and keep
-    // receiving every release the rest of this suite publishes afterwards.
-    await nodDb().execute(sql`UPDATE subscribers SET status = 'disabled' WHERE lower(email) = ${email.toLowerCase()}`);
+      await resetBounceSummaryGate();
+      const clock = pastNextBounceSummaryCutoff();
+      const result = await runBounceSummaryIfDue(nodDb(), await distributionClientForSummary(), TENANT_TIME_ZONE, BOUNCE_SUMMARY_EMAIL, () => clock);
+      expect(result.sent).toBe(true);
+      await tickTwice();
+      const summary = (await fetchSentMessages()).filter((m) => m.subject?.startsWith("News On Demand - Bounce Manager - ") && m.to.includes(BOUNCE_SUMMARY_EMAIL)).at(-1)!;
+      expect(summary.text).toContain(`${email} (4.2.2 452 4.2.2 Mailbox full) - BC Gov News - ${headline}`);
+    } finally {
+      // A soft bounce alone never disables a subscriber (it doesn't count toward
+      // 10-in-15-days), so without this, an All News/As-It-Happens subscriber would stay
+      // active and keep receiving every release the rest of this suite publishes afterwards.
+      // In `finally` so a failed assertion above still leaves no residue for later specs.
+      if (email) await nodDb().execute(sql`UPDATE subscribers SET status = 'disabled' WHERE lower(email) = ${email.toLowerCase()}`);
+    }
   });
 });

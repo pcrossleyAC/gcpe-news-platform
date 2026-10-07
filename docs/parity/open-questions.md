@@ -46,7 +46,7 @@ Status key: **Open** (no answer yet) · **Answered**.
 | Q39 | Is 92 days enough per report request, or do staff need a year at a time (for example, annual Distribution totals)? | Longer ranges mean slower, heavier queries at legacy volume. | 92 days; a year is four downloads. | 2026-10-07 |
 | Q40 | Should subscribers disabled by bounces appear in Recent unsubscribes? | They stop receiving email but didn't choose to leave. | No; they're found under Subscribers with the Disabled status. | 2026-10-07 |
 | Q41 | Does anyone use legacy's "subscribed to list X between two dates" report (SubscriberListReport)? | It's the one legacy report not carried over. | No; the snapshot by list replaces it. | 2026-10-07 |
-| Q42 | Which soft (4.x.x) bounce codes should count as hard bounces? The business doc (§2d) says Anne would supply the list from Excel. Are they plain codes (e.g. `4.2.2`), or do some need the message text too (e.g. "account disabled" under `4.7.1`)? | Counted codes trip the 10-in-15-days rule (C109). Code-only matching can't tell two messages under one code apart. | None counted; staff can add codes on Operations once the list arrives. | 2026-10-07 |
+| Q42 | Which soft (4.x.x) bounce codes should count as hard bounces? The business doc (§2d) says Anne would supply the list from Excel. Are they plain codes (e.g. `4.2.2`), or do some need the message text too (e.g. "account disabled" under `4.7.1`)? | Counted codes trip the 10-in-15-days rule (C110). Code-only matching can't tell two messages under one code apart. | None counted; staff can add codes on Operations once the list arrives. | 2026-10-07 |
 
 ## Answered
 
