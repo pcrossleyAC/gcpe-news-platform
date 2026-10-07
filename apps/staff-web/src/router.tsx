@@ -1,6 +1,7 @@
 import { createBrowserRouter, Navigate, type RouteObject } from "react-router";
 import { SignIn } from "./screens/SignIn";
 import { AppShell } from "./shell/AppShell";
+import { HomeRedirect } from "./shell/HomeRedirect";
 import { RequireAuth } from "./session/RequireAuth";
 import { ReleaseListScreen } from "./screens/releases/ReleaseListScreen";
 import { SearchScreen } from "./screens/search/SearchScreen";
@@ -17,6 +18,9 @@ import { FeaturedScreen } from "./screens/website/FeaturedScreen";
 import { LogScreen } from "./screens/website/LogScreen";
 import { UsersScreen } from "./screens/admin/users/UsersScreen";
 import { ErrorLogScreen } from "./screens/admin/errors/ErrorLogScreen";
+import { SubscribersSection } from "./screens/subscribers/SubscribersSection";
+import { SubscribersScreen } from "./screens/subscribers/SubscribersScreen";
+import { AddSubscriberScreen } from "./screens/subscribers/AddSubscriberScreen";
 
 /**
  * Library-mode react-router v7, basename "/hub" (the stack hosts the staff app there — see
@@ -40,7 +44,7 @@ export const routes: RouteObject[] = [
       </RequireAuth>
     ),
     children: [
-      { index: true, element: <Navigate to="/releases/drafts" replace /> },
+      { index: true, element: <HomeRedirect /> },
       {
         path: "releases",
         children: [
@@ -66,6 +70,16 @@ export const routes: RouteObject[] = [
           { path: "files", element: <FilesScreen /> },
           { path: "featured", element: <FeaturedScreen /> },
           { path: "log", element: <LogScreen /> },
+        ],
+      },
+      {
+        path: "subscribers",
+        element: <SubscribersSection />,
+        children: [
+          { index: true, element: <SubscribersScreen /> },
+          { path: "new", element: <AddSubscriberScreen /> },
+          { path: ":id", element: null },
+          { path: ":id/history", element: null },
         ],
       },
       { path: "users", element: <UsersScreen /> },

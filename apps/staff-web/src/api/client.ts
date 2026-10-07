@@ -20,6 +20,10 @@ export interface ApiErrorInit {
    * added, and for every other status. Callers that only care about "was this a real version
    * conflict" check `code !== "state"` rather than requiring it to be present. */
   code?: string;
+  /** Task 5: the whole parsed response body, when there was one — e.g. the Subscribers
+   * section's 409 `{ error: "subscriber exists", id }`, whose `id` no other field above
+   * carries. Undefined when the body didn't parse as JSON or there wasn't one. */
+  body?: unknown;
 }
 
 /** Thrown by {@link apiFetch} for any non-2xx response. `problems` (422) and `issues` (400)
@@ -29,6 +33,7 @@ export class ApiError extends Error {
   readonly problems?: string[];
   readonly issues?: unknown[];
   readonly code?: string;
+  readonly body?: unknown;
 
   constructor(init: ApiErrorInit) {
     super(init.message);
@@ -37,6 +42,7 @@ export class ApiError extends Error {
     this.problems = init.problems;
     this.issues = init.issues;
     this.code = init.code;
+    this.body = init.body;
   }
 }
 
@@ -123,6 +129,7 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
       problems,
       issues: Array.isArray(errObj.issues) ? (errObj.issues as unknown[]) : undefined,
       code: typeof errObj.code === "string" ? errObj.code : undefined,
+      body: data,
     });
   }
 

@@ -108,6 +108,17 @@ describe("apiFetch", () => {
     });
   });
 
+  // Task 5: AddSubscriberScreen's 409 (EmailTakenError-shaped `{ error: "subscriber exists",
+  // id }`) needs the whole parsed body, not just `message` — `id` is the existing subscriber's,
+  // used to link to their record.
+  it("ApiError carries the parsed body", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(409, { error: "subscriber exists", id: "44444444-4444-4444-4444-444444444444" })));
+    await expect(apiFetch("/nod/api/subscribers", { method: "POST", body: { email: "x@example.test" } })).rejects.toMatchObject({
+      status: 409,
+      body: { error: "subscriber exists", id: "44444444-4444-4444-4444-444444444444" },
+    });
+  });
+
   it("a `raw` body and a JSON `body` can't both be given", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, {})));
     await expect(apiFetch("/x", { method: "POST", body: { a: 1 }, raw: new Uint8Array() })).rejects.toThrow();
