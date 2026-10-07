@@ -28,6 +28,9 @@ import { ListsScreen } from "./screens/subscribers/ListsScreen";
 import { MediaListsScreen } from "./screens/subscribers/MediaListsScreen";
 import { MediaListScreen } from "./screens/subscribers/MediaListScreen";
 import { OperationsScreen } from "./screens/subscribers/OperationsScreen";
+import { ReportsScreen } from "./screens/subscribers/reports/ReportsScreen";
+import { SubscribersByListReportScreen } from "./screens/subscribers/reports/SubscribersByListReportScreen";
+import { UnsubscribesReportScreen } from "./screens/subscribers/reports/UnsubscribesReportScreen";
 
 /**
  * Library-mode react-router v7, basename "/hub" (the stack hosts the staff app there — see
@@ -89,6 +92,9 @@ export const routes: RouteObject[] = [
           { path: "media-lists", element: <MediaListsScreen /> },
           { path: "media-lists/:key", element: <MediaListScreen /> },
           { path: "operations", element: <OperationsScreen /> },
+          { path: "reports", element: <ReportsScreen /> },
+          { path: "reports/subscribers-by-list", element: <SubscribersByListReportScreen /> },
+          { path: "reports/unsubscribes", element: <UnsubscribesReportScreen /> },
           { path: ":id", element: <SubscriberScreen /> },
           { path: ":id/history", element: <HistoryScreen /> },
         ],

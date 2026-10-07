@@ -37,6 +37,9 @@ export function SubscribersSection(): React.JSX.Element {
           <li>
             <NavLink to="/subscribers/media-lists">Media lists</NavLink>
           </li>
+          <li>
+            <NavLink to="/subscribers/reports">Reports</NavLink>
+          </li>
           {canAdminSubscribers(session) && (
             <li>
               <NavLink to="/subscribers/operations">Operations</NavLink>

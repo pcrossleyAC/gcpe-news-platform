@@ -34,14 +34,14 @@ describe("SubscribersSection nav", () => {
   });
   it("Viewer", async () => {
     renderAs(["NoD.Viewer"]);
-    expect(await links()).toEqual(["Find subscribers", "Lists and categories", "Media lists"]);
+    expect(await links()).toEqual(["Find subscribers", "Lists and categories", "Media lists", "Reports"]);
   });
   it("Editor", async () => {
     renderAs(["NoD.Editor"]);
-    expect(await links()).toEqual(["Find subscribers", "Add a subscriber", "Lists and categories", "Media lists"]);
+    expect(await links()).toEqual(["Find subscribers", "Add a subscriber", "Lists and categories", "Media lists", "Reports"]);
   });
   it("Admin", async () => {
     renderAs(["NoD.Admin"]);
-    expect(await links()).toEqual(["Find subscribers", "Add a subscriber", "Lists and categories", "Media lists", "Operations"]);
+    expect(await links()).toEqual(["Find subscribers", "Add a subscriber", "Lists and categories", "Media lists", "Reports", "Operations"]);
   });
 });
