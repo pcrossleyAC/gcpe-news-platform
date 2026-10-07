@@ -437,3 +437,15 @@ export const mediaOptOuts = pgTable(
   },
   (t) => [primaryKey({ columns: [t.emailHash, t.listKey] })],
 );
+
+/**
+ * What the legacy importer last wrote for each subscriber (import/subscribers.ts), as a
+ * fingerprint. A re-run compares it with NoD's current state: equal means untouched since the
+ * import, so legacy's newer data wins; different means someone changed it here, and NoD wins.
+ * No foreign key on purpose: a row outlives a purged subscriber, so a re-run doesn't recreate them.
+ */
+export const legacySubscriberImports = pgTable("legacy_subscriber_imports", {
+  subscriberId: uuid("subscriber_id").primaryKey(),
+  fingerprint: text("fingerprint").notNull(),
+  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+});

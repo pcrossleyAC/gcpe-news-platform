@@ -51,6 +51,7 @@ export const HISTORY_LABELS: Record<string, string> = {
   "staff-activated": "Activated by staff",
   "staff-deactivated": "Deactivated by staff",
   "staff-deleted": "Deleted by staff",
+  "legacy-imported": "Imported from legacy News On Demand",
 };
 
 export function historyLabel(action: string): string {

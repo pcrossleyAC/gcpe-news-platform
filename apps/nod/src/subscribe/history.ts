@@ -30,6 +30,7 @@ export const HISTORY_ACTIONS = [
   "staff-activated",
   "staff-deactivated",
   "staff-deleted",
+  "legacy-imported",
 ] as const;
 export type HistoryAction = (typeof HISTORY_ACTIONS)[number];
 
