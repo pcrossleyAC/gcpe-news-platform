@@ -143,6 +143,16 @@ export const deliveries = pgTable(
     // bounces.ts's fallback match and its threshold query: both scan this subscriber's own
     // deliveries ordered by attempted_at.
     index("deliveries_subscriber_attempted_at_idx").on(t.subscriberId, t.attemptedAt),
+    // Digest-run report (reports/digest-runs.ts): a run's emails not yet handed to Distribution,
+    // and its bounced ones, found among a few thousand job rows without reading them all.
+    index("deliveries_job_unsent_idx").on(t.jobId).where(sql`${t.distributionBatchId} IS NULL`),
+    index("deliveries_job_bounced_idx").on(t.jobId).where(sql`${t.bounceStatus} IS NOT NULL`),
+    // Sends-per-release report (reports/release-sends.ts): one item's as-it-happens/media counts,
+    // without touching the heap. The primary key alone (item_key, subscriber_id, mode) still
+    // makes every row for a busy item's digest deliveries a random heap fetch just to read
+    // distribution_batch_id/bounce_status; carrying those two columns in the index as well lets
+    // Postgres answer the whole per-item aggregate as an index-only scan.
+    index("deliveries_item_mode_idx").on(t.itemKey, t.mode, t.distributionBatchId, t.bounceStatus),
   ],
 );
 export type DeliveryRow = typeof deliveries.$inferSelect;

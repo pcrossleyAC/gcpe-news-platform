@@ -1,14 +1,16 @@
-import { Router, type Response } from "express";
+import { Router, type Request, type Response } from "express";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole } from "@gcpe/auth";
 import { writeOpsLog } from "../settings";
 import { csvFilename, mapBatches, oneBatch, streamCsv } from "../reports/csv";
-import { bcToday, MAX_RANGE_DAYS, ReportRangeError } from "../reports/range";
+import { bcToday, MAX_RANGE_DAYS, resolveRange, ReportRangeError } from "../reports/range";
 import {
   ALL_NEWS, ALL_SUBSCRIBERS, BY_LIST_CSV_HEADER, byListCsvRows, listLabel, MEMBER_CSV_HEADER, memberBatches, memberCsvRow, membersPage,
   ReportListNotFoundError, subscribersByList, TIMING_FILTERS,
 } from "../reports/by-list";
+import { DIGEST_RUNS_CSV_HEADER, digestRunBatches, digestRunCsvRow, digestRunsPage } from "../reports/digest-runs";
+import { RELEASE_SENDS_CSV_HEADER, releaseSendBatches, releaseSendCsvRow, releaseSendsPage } from "../reports/release-sends";
 import {
   UNSUBSCRIBE_COUNTS_HEADER, UNSUBSCRIBE_CSV_HEADER, unsubscribeBatches, unsubscribeCsvRow, unsubscribeDailyCounts, unsubscribesPage, unsubscribeWindow,
 } from "../reports/unsubscribes";
@@ -25,6 +27,8 @@ const listParam = z.preprocess(
   z.string().max(300).default(ALL_SUBSCRIBERS).transform((s) => (s === ALL_SUBSCRIBERS || s === ALL_NEWS ? s : s.toLowerCase())),
 );
 const membersQuery = z.object({ list: listParam, timing: z.preprocess(emptyToUndefined, z.enum(TIMING_FILTERS).default("any")), page: pageParam });
+const dateParam = z.preprocess(emptyToUndefined, z.string().max(10).optional());
+export const rangeQuery = z.object({ from: dateParam, to: dateParam, page: pageParam });
 
 function mapError(e: unknown, res: Response): boolean {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
@@ -49,6 +53,12 @@ export function reportRoutes(db: Db, deps: ReportRouteDeps): Router {
   const r = Router();
   const read = requireAnyRole(...NOD_READ_ROLES);
   const exportAddresses = requireAnyRole(...NOD_WRITE_ROLES);
+
+  const rangeOf = async (req: Request) => {
+    const q = rangeQuery.parse(req.query);
+    const today = await bcToday(db, deps.timeZone);
+    return { range: resolveRange(q, today, deps.timeZone), page: q.page, today };
+  };
 
   r.get("/reports/subscribers-by-list", read, privateErrors(async (_req, res) => {
     res.json(await subscribersByList(db));
@@ -101,6 +111,26 @@ export function reportRoutes(db: Db, deps: ReportRouteDeps): Router {
       mapBatches(unsubscribeBatches(db, window), (u) => unsubscribeCsvRow(u, deps.timeZone)),
       () => writeOpsLog(db, actorOf(req).name, "report-exported", "unsubscribes"),
     );
+  }));
+
+  r.get("/reports/release-sends", read, privateErrors(async (req, res) => {
+    const { range, page } = await rangeOf(req);
+    res.json(await releaseSendsPage(db, range, page));
+  }));
+
+  r.get("/reports/release-sends.csv", read, privateErrors(async (req, res) => {
+    const { range, today } = await rangeOf(req);
+    await streamCsv(res, csvFilename("release-sends", today), RELEASE_SENDS_CSV_HEADER, mapBatches(releaseSendBatches(db, range), (s) => releaseSendCsvRow(s, deps.timeZone)));
+  }));
+
+  r.get("/reports/digest-runs", read, privateErrors(async (req, res) => {
+    const { range, page } = await rangeOf(req);
+    res.json(await digestRunsPage(db, range, page));
+  }));
+
+  r.get("/reports/digest-runs.csv", read, privateErrors(async (req, res) => {
+    const { range, today } = await rangeOf(req);
+    await streamCsv(res, csvFilename("digest-runs", today), DIGEST_RUNS_CSV_HEADER, mapBatches(digestRunBatches(db, range), (d) => digestRunCsvRow(d, deps.timeZone)));
   }));
 
   return r;

@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { randomUUID } from "node:crypto";
 import express from "express";
 import request from "supertest";
 import { eq } from "drizzle-orm";
@@ -6,7 +7,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
-import { lists, operationsLog, subscriberHistory, subscribers, subscriptions } from "../db/schema";
+import { deliveries, items, lists, operationsLog, subscriberHistory, subscribers, subscriptions } from "../db/schema";
 import type { DistributionClient } from "../distribution-client";
 import { ClientGoneError } from "../reports/csv";
 import { addDays, MAX_RANGE_DAYS, resolveRange } from "../reports/range";
@@ -160,6 +161,39 @@ describe("report routes", () => {
       expect(text).toMatch(/\r\ngone@example\.test,Unsubscribed,\d{4}-\d{2}-\d{2} \d{2}:\d{2},Deleted,/);
       const logs = await tdb.db.select().from(operationsLog).where(eq(operationsLog.detail, "unsubscribes"));
       expect(logs).toHaveLength(1);
+    });
+  });
+
+  describe("sends per release and digest runs", () => {
+    beforeAll(async () => {
+      const [s] = await tdb.db.insert(subscribers).values({ email: "reader@example.test", status: "active" }).returning({ id: subscribers.id });
+      await tdb.db.insert(items).values({ key: "rr1", kind: "release", postKind: "releases", title: "-1 days to go", url: "https://news.example/rr1", publishedAt: new Date() });
+      await tdb.db.insert(deliveries).values({ itemKey: "rr1", subscriberId: s!.id, mode: "as_it_happens", attemptedAt: new Date(), distributionBatchId: randomUUID() });
+    });
+
+    it("a Viewer reads and exports sends per release; a hostile title is neutralised", async () => {
+      const page = await request(app).get("/api/reports/release-sends").set("authorization", `Bearer ${viewer}`);
+      expect(page.status).toBe(200);
+      expect(page.body).toMatchObject({ total: 1, page: 1, pageSize: 25, items: [{ itemKey: "rr1", asItHappens: { recipients: 1, delivered: 1 } }] });
+      const csv = await getCsv(app, "/api/reports/release-sends.csv", viewer);
+      expect(csv.status).toBe(200);
+      expect(csv.headers["content-disposition"]).toMatch(/filename="release-sends-\d{4}-\d{2}-\d{2}\.csv"/);
+      expect((csv.body as Buffer).toString("utf8")).toContain(",'-1 days to go,News release,1,1,0,0,0,0,0,0\r\n");
+    });
+
+    it("refuses a range longer than 92 days, a reversed one and an impossible date", async () => {
+      const get = (q: string) => request(app).get(`/api/reports/release-sends?${q}`).set("authorization", `Bearer ${viewer}`);
+      expect((await get("from=2026-01-01&to=2026-04-03")).body).toEqual({ error: "range-too-long", maxDays: 92 });
+      expect((await get("from=2026-01-01&to=2026-04-02")).status).toBe(200);
+      expect((await get("from=2026-02-02&to=2026-02-01")).body).toMatchObject({ error: "range-reversed" });
+      expect((await get("from=2026-02-30")).body).toMatchObject({ error: "invalid-date" });
+    });
+
+    it("a Viewer reads and exports digest runs", async () => {
+      const page = await request(app).get("/api/reports/digest-runs?from=2026-09-01&to=2026-09-30").set("authorization", `Bearer ${viewer}`);
+      expect(page.body).toMatchObject({ from: "2026-09-01", to: "2026-09-30", total: 0, items: [] });
+      const csv = await getCsv(app, "/api/reports/digest-runs.csv?from=2026-09-01&to=2026-09-30", viewer);
+      expect((csv.body as Buffer).toString("utf8")).toBe("﻿Run (BC time),Ran at (BC time),Items in window,Subscribers,Delivered,Bounced,Not sent\r\n");
     });
   });
 

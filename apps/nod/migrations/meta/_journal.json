@@ -169,6 +169,13 @@
       "when": 1791379945208,
       "tag": "0023_report_history_index",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1791382473032,
+      "tag": "0024_report_delivery_indexes",
+      "breakpoints": true
     }
   ]
 }
