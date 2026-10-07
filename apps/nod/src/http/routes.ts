@@ -10,6 +10,7 @@ import { countSubscribers } from "../subscribers";
 import { emailAddressSchema } from "../subscribe/info";
 import { safeErrorLabel } from "../subscribe/journeys";
 import { operationsRoutes } from "./operations-routes";
+import { reportRoutes } from "./report-routes";
 import { staffListRoutes } from "./staff-list-routes";
 import { staffMediaRoutes } from "./staff-media-routes";
 import { listKeySchema, staffSubscriberRoutes } from "./staff-subscriber-routes";
@@ -169,6 +170,7 @@ export function apiRoutes(
   r.use(operationsRoutes(db, settings));
   r.use(staffListRoutes(db));
   r.use(staffMediaRoutes(db, mediaHub));
+  r.use(reportRoutes(db, settings));
   r.use(staffSubscriberRoutes(db));
 
   return r;

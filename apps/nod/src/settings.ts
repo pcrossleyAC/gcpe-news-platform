@@ -16,7 +16,8 @@ export type OperationsAction =
   | "lists-reordered"
   | "list-enabled"
   | "list-disabled"
-  | "bounce-summary-address-changed";
+  | "bounce-summary-address-changed"
+  | "report-exported";
 
 export async function getSettings(db: Db): Promise<{ paused: boolean; lastDigestCutoff: string | null }> {
   const [row] = await db.select({ paused: nodSettings.paused, lastDigestCutoff: nodSettings.lastDigestCutoff }).from(nodSettings).where(eq(nodSettings.id, 1));

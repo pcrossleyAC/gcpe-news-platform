@@ -1,0 +1,71 @@
+import { Router, type Response } from "express";
+import { z, ZodError } from "zod";
+import type { Db } from "@gcpe/db-kit";
+import { actorOf, requireAnyRole } from "@gcpe/auth";
+import { writeOpsLog } from "../settings";
+import { csvFilename, mapBatches, oneBatch, streamCsv } from "../reports/csv";
+import { bcToday, MAX_RANGE_DAYS, ReportRangeError } from "../reports/range";
+import {
+  ALL_NEWS, ALL_SUBSCRIBERS, BY_LIST_CSV_HEADER, byListCsvRows, listLabel, MEMBER_CSV_HEADER, memberBatches, memberCsvRow, membersPage,
+  ReportListNotFoundError, subscribersByList, TIMING_FILTERS,
+} from "../reports/by-list";
+import { privateErrorsWith } from "./private-errors";
+import type { SettingsRouteDeps } from "./routes";
+import { NOD_READ_ROLES, NOD_WRITE_ROLES } from "./staff-subscriber-routes";
+
+export type ReportRouteDeps = Pick<SettingsRouteDeps, "timeZone">;
+
+const emptyToUndefined = (v: unknown) => (v === "" ? undefined : v);
+export const pageParam = z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(10_000).default(1));
+const listParam = z.preprocess(
+  emptyToUndefined,
+  z.string().max(300).default(ALL_SUBSCRIBERS).transform((s) => (s === ALL_SUBSCRIBERS || s === ALL_NEWS ? s : s.toLowerCase())),
+);
+const membersQuery = z.object({ list: listParam, timing: z.preprocess(emptyToUndefined, z.enum(TIMING_FILTERS).default("any")), page: pageParam });
+
+function mapError(e: unknown, res: Response): boolean {
+  if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
+  if (e instanceof ReportRangeError) return void res.status(400).json({ error: e.code, maxDays: MAX_RANGE_DAYS }), true;
+  if (e instanceof ReportListNotFoundError) return void res.status(404).json({ error: "not found" }), true;
+  return false;
+}
+/** Report queries bind no addresses, but their rows hold them; errors stay label-only. */
+const privateErrors = privateErrorsWith(mapError, "report request");
+
+/** "ministries:health" -> "ministries-health", for a filename. */
+function slug(list: string): string {
+  if (list === ALL_NEWS) return "all-news";
+  return list.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "list";
+}
+
+/** Spec §8 Reports. Reads: NoD.Viewer and up. Address CSVs: NoD.Editor and NoD.Admin (Q37). */
+export function reportRoutes(db: Db, deps: ReportRouteDeps): Router {
+  const r = Router();
+  const read = requireAnyRole(...NOD_READ_ROLES);
+  const exportAddresses = requireAnyRole(...NOD_WRITE_ROLES);
+
+  r.get("/reports/subscribers-by-list", read, privateErrors(async (_req, res) => {
+    res.json(await subscribersByList(db));
+  }));
+
+  r.get("/reports/subscribers-by-list.csv", read, privateErrors(async (_req, res) => {
+    const report = await subscribersByList(db);
+    const today = await bcToday(db, deps.timeZone);
+    await streamCsv(res, csvFilename("subscribers-by-list", today), BY_LIST_CSV_HEADER, oneBatch(byListCsvRows(report)));
+  }));
+
+  r.get("/reports/subscribers-by-list/members", read, privateErrors(async (req, res) => {
+    res.json(await membersPage(db, membersQuery.parse(req.query)));
+  }));
+
+  r.get("/reports/subscribers-by-list/members.csv", exportAddresses, privateErrors(async (req, res) => {
+    const { list, timing } = membersQuery.parse(req.query);
+    await listLabel(db, list); // 404 before any byte of CSV
+    const today = await bcToday(db, deps.timeZone);
+    // Who took addresses out of the system, and which; never the addresses themselves.
+    await writeOpsLog(db, actorOf(req).name, "report-exported", `subscribers ${list} ${timing}`);
+    await streamCsv(res, csvFilename(`subscribers-${slug(list)}`, today), MEMBER_CSV_HEADER, mapBatches(memberBatches(db, list, timing), (m) => memberCsvRow(m, deps.timeZone)));
+  }));
+
+  return r;
+}
