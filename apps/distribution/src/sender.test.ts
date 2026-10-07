@@ -1018,6 +1018,12 @@ describe("sendDue", () => {
     ).rejects.toThrow(/lockMs.*lockMarginMs/);
   });
 
+  it.each([0, -1, 1.5, NaN])("rejects a concurrency of %s, at sendDue's entry", async (concurrency) => {
+    await expect(
+      sendDue({ db: tdb.db, transport: {} as unknown as Transporter, from: "news@example.com", redirectTo: [], concurrency }),
+    ).rejects.toThrow(/concurrency/);
+  });
+
   it("defaults the stop margin to perMessageMs + verifyTimeoutMs, not a fixed 30s, so a short-but-valid lock for a fast batch still sends", async () => {
     // lockMs (1000ms) is smaller than the fixed 30s margin this loop's check used to use — a
     // fixed 30s default would have tripped it before the very first row, sending nothing. With
@@ -1087,6 +1093,10 @@ describe("sendDue", () => {
     expect(() => startSender({ db: tdb.db, transport: {} as unknown as Transporter, from: "news@example.com", redirectTo: [], lockMs: 1000, lockMarginMs: 2000 })).toThrow(
       /lockMs.*lockMarginMs/,
     );
+  });
+
+  it("rejects a non-positive-integer concurrency, at startSender's entry (synchronously, before the first tick)", () => {
+    expect(() => startSender({ db: tdb.db, transport: {} as unknown as Transporter, from: "news@example.com", redirectTo: [], concurrency: 0 })).toThrow(/concurrency/);
   });
 
   it("retries and logs a configuration error for an EHLO/greeting-stage failure", async () => {
@@ -1390,9 +1400,38 @@ describe("sendDue", () => {
   });
 
   describe("concurrency", () => {
-    it("runs up to `concurrency` sends in parallel: 8 messages at a 200ms-per-send sink finish well under the 1,600ms a sequential run would take", async () => {
-      const sink = await startSmtpSink({ delayMs: 200 });
-      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    it("runs up to `concurrency` sends in parallel, with at most `concurrency` in flight at once: 8 messages at a 200ms-per-send sink finish well under the 1,600ms a sequential run would take", async () => {
+      const { SMTPServer } = await import("smtp-server");
+      const { simpleParser } = await import("mailparser");
+      const delivered: string[] = [];
+      // Tracked around the DATA phase (where the 200ms delay below lives): the highest number
+      // of messages simultaneously mid-transfer is a direct measurement of how many sendMail
+      // calls sender.ts actually had in flight at once, not just an elapsed-time proxy for it.
+      let active = 0;
+      let peak = 0;
+      const server = new SMTPServer({
+        disabledCommands: ["STARTTLS", "AUTH"],
+        onData(stream, _session, cb) {
+          active++;
+          peak = Math.max(peak, active);
+          simpleParser(stream).then(
+            (m) => {
+              setTimeout(() => {
+                active--;
+                delivered.push((m.to && "value" in m.to ? m.to.value[0]!.address : "") ?? "");
+                cb();
+              }, 200);
+            },
+            (err) => {
+              active--;
+              cb(err);
+            },
+          );
+        },
+      });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      const port = (server.server.address() as { port: number }).port;
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port, secure: false, ignoreTLS: true });
       try {
         await createBatch(
           tdb.db,
@@ -1406,56 +1445,193 @@ describe("sendDue", () => {
         const elapsed = Date.now() - started;
 
         expect(result).toEqual({ sent: 8, retried: 0, failed: 0, rateLimited: false });
-        expect(sink.messages).toHaveLength(8);
+        expect(delivered).toHaveLength(8);
         // Robust, not tight: sequential would need ~1,600ms (8 * 200ms); concurrency 4 should
         // finish in ~2 batches of 200ms plus overhead, nowhere near that.
         expect(elapsed).toBeLessThan(1100);
+        // The actual bound this test is about: never more than `concurrency` in flight, and
+        // genuinely overlapping (not accidentally still sequential).
+        expect(peak).toBeLessThanOrEqual(4);
+        expect(peak).toBeGreaterThanOrEqual(2);
 
-        const recipients = sink.messages.map((m) => (m.to && "value" in m.to ? m.to.value[0]!.address : undefined));
-        expect(new Set(recipients).size).toBe(8); // every message sent exactly once
+        expect(new Set(delivered).size).toBe(8); // every message sent exactly once
       } finally {
         await transport.close();
-        await sink.close();
+        await new Promise<void>((r) => server.close(() => r()));
       }
     }, 10000);
 
     // Review Focus item 2: a sender-level error mid-run with concurrency > 1 — in-flight sends
-    // finish, unreached rows are released, nothing is double-sent or left locked.
-    it("an outage mid-run with concurrency releases the rest: in-flight sends finish, unreached rows stay pending and unlocked, nothing is sent", async () => {
-      const sink = await startSmtpSink({ requireAuth: true });
-      // No `auth` configured on the client: the server's 530 fires at MAIL FROM on every
-      // connection — a sender-level config error (R24), not ambiguous, no verify() involved.
-      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    // finish (exactly once each), unreached rows are released untouched, and the failing row
+    // itself is deferred, not failed. Only the 2nd connection's MAIL FROM is rejected (not every
+    // connection, as a blanket requireAuth sink would do), and DATA is slow enough that the
+    // sibling handlers are still genuinely mid-send when that happens.
+    it("an outage mid-run with concurrency releases the rest: in-flight sends finish exactly once, the failing row is deferred, unreached rows are released untouched", async () => {
+      const { SMTPServer } = await import("smtp-server");
+      const { simpleParser } = await import("mailparser");
+      let mailFromCount = 0;
+      const delivered: string[] = [];
+      const server = new SMTPServer({
+        disabledCommands: ["STARTTLS", "AUTH"],
+        onMailFrom(_address, _session, cb) {
+          mailFromCount++;
+          if (mailFromCount === 2) {
+            const err = new Error("mailbox unavailable") as Error & { responseCode: number };
+            err.responseCode = 535;
+            cb(err);
+            return;
+          }
+          cb();
+        },
+        onData(stream, _session, cb) {
+          simpleParser(stream).then((m) => {
+            // Slow enough that the other in-flight handlers are still mid-send when the 2nd
+            // connection's MAIL FROM above is rejected.
+            setTimeout(() => {
+              delivered.push((m.to && "value" in m.to ? m.to.value[0]!.address : "") ?? "");
+              cb();
+            }, 100);
+          }, cb);
+        },
+      });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      const port = (server.server.address() as { port: number }).port;
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port, secure: false, ignoreTLS: true });
       const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
       try {
         await createBatch(
           tdb.db,
           "app",
-          { ...sampleMessageRequest, recipients: Array.from({ length: 6 }, (_, i) => ({ email: `auth${i}@example.com`, substitutions: {} })) },
+          { ...sampleMessageRequest, recipients: Array.from({ length: 6 }, (_, i) => ({ email: `o${i}@example.com`, substitutions: {} })) },
           internalDomains,
         );
 
         const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], concurrency: 3 });
 
-        expect(result.sent).toBe(0);
+        expect(result.sent).toBe(2);
         expect(result.failed).toBe(0);
-        // Exactly the rows the 3 concurrent handlers had in flight when the first one hit the
-        // sender-level error and set the shared stop flag.
-        expect(result.retried).toBe(3);
-        expect(sink.messages).toHaveLength(0); // nothing ever got past MAIL FROM
+        expect(result.retried).toBe(1);
+
+        // The two siblings claimed alongside the failing row were delivered exactly once each —
+        // no duplicate recipients at the sink.
+        expect(delivered).toHaveLength(2);
+        expect(new Set(delivered).size).toBe(2);
 
         const rows = await tdb.db.select().from(messages);
-        expect(rows).toHaveLength(6);
-        expect(rows.every((r) => r.status === "pending")).toBe(true);
-        expect(rows.every((r) => r.lockedUntil === null)).toBe(true); // unreached rows released, attempted ones deferred — both unlocked
-        expect(rows.filter((r) => r.deferrals === 1)).toHaveLength(3); // attempted, deferred
-        expect(rows.filter((r) => r.deferrals === 0)).toHaveLength(3); // never reached, released untouched
+        const sent = rows.filter((r) => r.status === "sent");
+        const deferred = rows.filter((r) => r.deferrals === 1);
+        const untouched = rows.filter((r) => r.deferrals === 0 && r.status === "pending");
+        expect(sent).toHaveLength(2);
+        expect(deferred).toHaveLength(1);
+        expect(deferred[0]!.attempts).toBe(0); // deferred, not a spent attempt
+        expect(deferred[0]!.status).toBe("pending");
+        expect(deferred[0]!.lockedUntil).toBeNull();
+        expect(untouched).toHaveLength(3); // never started — released untouched
+        expect(untouched.every((r) => r.status === "pending" && r.lockedUntil === null)).toBe(true);
       } finally {
         errorSpy.mockRestore();
         await transport.close();
+        await new Promise<void>((r) => server.close(() => r()));
+      }
+    }, 10000);
+
+    // Same stop condition, but connection-level (ambiguous, resolved by transport.verify()):
+    // with concurrency > 1, more than one handler can independently hit the connection error
+    // and each calls verify() for itself. Asserts the end state is consistent — no row deferred
+    // or released more than once — however many handlers raced to set the shared stop flag.
+    it("an outage detected via transport.verify() by more than one concurrent handler doesn't defer or release any row twice", async () => {
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, recipients: Array.from({ length: 6 }, (_, i) => ({ email: `v${i}@example.com`, substitutions: {} })) },
+        internalDomains,
+      );
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let verifyCalls = 0;
+      const stubTransport = {
+        sendMail: async () => {
+          throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED", command: "CONN" });
+        },
+        verify: async () => {
+          verifyCalls++;
+          throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+        },
+      } as unknown as Transporter;
+      try {
+        const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], concurrency: 3 });
+
+        expect(result.sent).toBe(0);
+        expect(result.failed).toBe(0);
+        expect(result.retried).toBe(3); // exactly the 3 in-flight handlers, each deferred once
+        expect(verifyCalls).toBeGreaterThanOrEqual(2); // more than one handler independently verified
+
+        const rows = await tdb.db.select().from(messages);
+        expect(rows.filter((r) => r.deferrals === 1)).toHaveLength(3);
+        expect(rows.every((r) => r.deferrals <= 1)).toBe(true); // never deferred twice
+        expect(rows.filter((r) => r.deferrals === 0)).toHaveLength(3);
+        expect(rows.every((r) => r.lockedUntil === null)).toBe(true);
+        expect(rows.every((r) => r.status === "pending")).toBe(true);
+      } finally {
+        errorSpy.mockRestore();
+      }
+    }, 10000);
+
+    // Review Focus item 2 / fix round 1, I1: a thrown error (not an SMTP classification, a
+    // genuine DB failure) out of one handler must not abandon the run — siblings already in
+    // flight still get their own terminal write, rows never reached are still released, and
+    // sendDue still surfaces the error to its caller once everything has settled.
+    it("a DB error on one row doesn't abandon sibling in-flight sends or skip releasing unreached rows, and sendDue still rejects", async () => {
+      const sink = await startSmtpSink();
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+      let executeCalls = 0;
+      const boom = new Error("simulated DB failure on lock re-assert");
+      // Only the per-row lock re-assert goes through the top-level db.execute (the claim's own
+      // SQL runs inside its own transaction object, a different one); throwing on exactly the
+      // 2nd such call deterministically targets the 2nd row claimed, since claiming (and issuing
+      // that row's re-assert) happens synchronously, in order, before any of the 3 concurrent
+      // handlers' first await resolves.
+      const throwingDb = new Proxy(tdb.db, {
+        get(target, prop, receiver) {
+          if (prop === "execute") {
+            return (...args: Parameters<TestDatabase["db"]["execute"]>) => {
+              executeCalls++;
+              if (executeCalls === 2) return Promise.reject(boom);
+              return Reflect.get(target, prop, receiver).apply(target, args);
+            };
+          }
+          const value = Reflect.get(target, prop, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as unknown as TestDatabase["db"];
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, recipients: Array.from({ length: 6 }, (_, i) => ({ email: `e${i}@example.com`, substitutions: {} })) },
+          internalDomains,
+        );
+
+        await expect(
+          sendDue({ db: throwingDb, transport, from: "news@example.com", redirectTo: [], concurrency: 3 }),
+        ).rejects.toBe(boom);
+
+        // The siblings claimed alongside the erroring row (2 of the 3 concurrent handlers)
+        // finished their own send normally rather than being abandoned mid-flight.
+        await vi.waitFor(() => expect(sink.messages).toHaveLength(2));
+        await sleep(100); // nothing more arrives after that — no orphaned handler kept going
+        expect(sink.messages).toHaveLength(2);
+
+        const rows = await tdb.db.select().from(messages);
+        expect(rows.filter((r) => r.status === "sent")).toHaveLength(2);
+        // Rows never reached (claimed by neither of the 2 siblings nor the erroring handler)
+        // were still released, exactly as any other stop condition releases them.
+        const untouched = rows.filter((r) => r.status === "pending" && r.lockedUntil === null);
+        expect(untouched.length).toBeGreaterThanOrEqual(3);
+      } finally {
+        await transport.close();
         await sink.close();
       }
-    }, 15000);
+    }, 10000);
 
     it("a permanent RCPT rejection on one row doesn't stop the others, even with concurrency > 1", async () => {
       const { SMTPServer } = await import("smtp-server");

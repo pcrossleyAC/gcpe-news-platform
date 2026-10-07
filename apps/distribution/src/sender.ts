@@ -140,6 +140,19 @@ function resolveLock(opts: { batchSize: number; perMessageMs: number; verifyTime
   return { lockMs, lockMarginMs };
 }
 
+/**
+ * Validated eagerly (sendDue's entry, and startSender's entry before the first tick) rather
+ * than left to surface as a confusing `Array.from({ length: NaN/-1 })` failure deep inside the
+ * pool below — mirrors resolveLock's own eager validation of lockMs/lockMarginMs.
+ */
+function resolveConcurrency(concurrency: number | undefined): number {
+  const resolved = concurrency ?? DEFAULT_CONCURRENCY;
+  if (!Number.isInteger(resolved) || resolved < 1) {
+    throw new Error(`sendDue: concurrency (${resolved}) must be a positive integer`);
+  }
+  return resolved;
+}
+
 function backoffMs(attempts: number): number {
   return Math.min(BASE_BACKOFF_MS * 2 ** attempts, MAX_BACKOFF_MS);
 }
@@ -322,6 +335,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
   const maxMessageAgeMs = opts.maxMessageAgeMs ?? DEFAULT_MAX_MESSAGE_AGE_MS;
   const ratePerMinute = opts.ratePerMinute ?? DEFAULT_RATE_PER_MINUTE;
   const { lockMs, lockMarginMs } = resolveLock({ batchSize, perMessageMs, verifyTimeoutMs, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
+  const concurrency = resolveConcurrency(opts.concurrency);
   const redirect = opts.redirectTo.length > 0;
 
   // Phase 1: claim, inside one explicit transaction — the rate-window row's lock and the
@@ -538,7 +552,10 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     // back for that specific misconfiguration).
     if (senderLevel) {
       const deferrals = row.deferrals + 1;
-      outageBackoffMs = backoffMs(deferrals);
+      // Concurrent handlers can each independently hit a sender-level/outage deferral in the
+      // same run (see the comment on `stop`/`nextIndex`) — keep the longest backoff any of them
+      // reported, not whichever happened to write last, so startSender's pacing never under-waits.
+      outageBackoffMs = Math.max(outageBackoffMs ?? 0, backoffMs(deferrals));
       const res = await opts.db
         .update(messages)
         .set({ deferrals, nextAttemptAt: sqlNowPlus(backoffMs(deferrals), opts.now), lockedUntil: null, lastError, originalRecipient })
@@ -568,7 +585,9 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       const serverHealthy = await isTransportHealthy(opts.transport, verifyTimeoutMs);
       if (!serverHealthy) {
         const deferrals = row.deferrals + 1;
-        outageBackoffMs = backoffMs(deferrals);
+        // Same reasoning as the sender-level branch above: keep the longest backoff reported by
+        // any concurrent handler's deferral, not whichever happened to write last.
+        outageBackoffMs = Math.max(outageBackoffMs ?? 0, backoffMs(deferrals));
         const res = await opts.db
           .update(messages)
           .set({ deferrals, nextAttemptAt: sqlNowPlus(backoffMs(deferrals), opts.now), lockedUntil: null, lastError, originalRecipient })
@@ -623,6 +642,14 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     }
   }
 
+  // An error thrown out of handleRow (a DB error on the re-assert/terminal UPDATE, a rejected
+  // attachments load, ...) must not abandon this run mid-flight: it's caught here, exactly like
+  // any other stop condition, so the row's siblings already in flight still finish and get their
+  // own terminal write, and the rows never reached still get released below. Only the first
+  // such error is kept (and rethrown once every worker has settled) — later ones are the same
+  // kind of fallout (siblings losing their claim, etc.), not new information.
+  let firstError: unknown;
+
   // One worker per pool slot, each taking the next unclaimed row (by `nextIndex`) in turn.
   // Claiming a row (reading then incrementing `nextIndex`) happens synchronously, with no
   // `await` in between, so two workers can never claim the same row. The pre-claim check below
@@ -640,18 +667,31 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       }
       if (nextIndex >= rows.length) return;
       const row = rows[nextIndex++]!;
-      await handleRow(row);
+      try {
+        await handleRow(row);
+      } catch (e) {
+        stop = true;
+        if (firstError === undefined) firstError = e;
+        return;
+      }
     }
   }
 
-  const concurrency = Math.min(opts.concurrency ?? DEFAULT_CONCURRENCY, rows.length);
-  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+  const workerCount = Math.min(concurrency, rows.length);
+  // allSettled, not all: every worker promise above already catches its own handleRow errors
+  // and returns normally, so none of these should ever reject — but settling instead of racing
+  // on the first rejection is what guarantees every in-flight handler's own terminal write (and
+  // the single release below) happens before this call returns or rethrows, even if some future
+  // change to worker() let an error through unhandled.
+  await Promise.allSettled(Array.from({ length: workerCount }, () => worker()));
 
   // Whatever `nextIndex` never reached — because of a stop condition, stopRequested, the
   // lock-margin threshold, or simply running out of rows — is released once here rather than
   // per-handler, so multiple handlers hitting a stop condition at the same time can't
   // double-release the same rows (see the comment above `stop`/`nextIndex`).
   await releaseUnreachedRows(opts.db, rows.slice(nextIndex).map((r) => r.id), lockToken);
+
+  if (firstError !== undefined) throw firstError;
 
   return { result, outageBackoffMs };
 }
@@ -669,9 +709,9 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
  * `performance.now`) is a test hook.
  */
 export function startSender(opts: SendOptions & { intervalMs?: number; outageCooldownMaxMs?: number; cooldownClock?: () => number }): () => Promise<void> {
-  // Validated eagerly, at call time: a misconfigured lockMs/lockMarginMs would otherwise only
-  // surface once the first tick fires, inside the interval's own catch — logged and silently
-  // retried forever rather than failing the process fast and loudly at startup.
+  // Validated eagerly, at call time: a misconfigured lockMs/lockMarginMs (or concurrency) would
+  // otherwise only surface once the first tick fires, inside the interval's own catch — logged
+  // and silently retried forever rather than failing the process fast and loudly at startup.
   resolveLock({
     batchSize: opts.batchSize ?? DEFAULT_BATCH_SIZE,
     perMessageMs: opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS,
@@ -679,6 +719,7 @@ export function startSender(opts: SendOptions & { intervalMs?: number; outageCoo
     lockMs: opts.lockMs,
     lockMarginMs: opts.lockMarginMs,
   });
+  resolveConcurrency(opts.concurrency);
 
   const monotonicNow = opts.cooldownClock ?? (() => performance.now());
   const cooldownMaxMs = opts.outageCooldownMaxMs ?? DEFAULT_OUTAGE_COOLDOWN_MAX_MS;
