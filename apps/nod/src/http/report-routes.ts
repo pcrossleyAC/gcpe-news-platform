@@ -9,6 +9,9 @@ import {
   ALL_NEWS, ALL_SUBSCRIBERS, BY_LIST_CSV_HEADER, byListCsvRows, listLabel, MEMBER_CSV_HEADER, memberBatches, memberCsvRow, membersPage,
   ReportListNotFoundError, subscribersByList, TIMING_FILTERS,
 } from "../reports/by-list";
+import {
+  UNSUBSCRIBE_COUNTS_HEADER, UNSUBSCRIBE_CSV_HEADER, unsubscribeBatches, unsubscribeCsvRow, unsubscribeDailyCounts, unsubscribesPage, unsubscribeWindow,
+} from "../reports/unsubscribes";
 import { privateErrorsWith } from "./private-errors";
 import type { SettingsRouteDeps } from "./routes";
 import { NOD_READ_ROLES, NOD_WRITE_ROLES } from "./staff-subscriber-routes";
@@ -65,6 +68,24 @@ export function reportRoutes(db: Db, deps: ReportRouteDeps): Router {
     // Who took addresses out of the system, and which; never the addresses themselves.
     await writeOpsLog(db, actorOf(req).name, "report-exported", `subscribers ${list} ${timing}`);
     await streamCsv(res, csvFilename(`subscribers-${slug(list)}`, today), MEMBER_CSV_HEADER, mapBatches(memberBatches(db, list, timing), (m) => memberCsvRow(m, deps.timeZone)));
+  }));
+
+  const pageQuery = z.object({ page: pageParam });
+
+  r.get("/reports/unsubscribes", read, privateErrors(async (req, res) => {
+    const { page } = pageQuery.parse(req.query);
+    res.json(await unsubscribesPage(db, await unsubscribeWindow(db, deps.timeZone), page));
+  }));
+
+  r.get("/reports/unsubscribes/daily.csv", read, privateErrors(async (_req, res) => {
+    const window = await unsubscribeWindow(db, deps.timeZone);
+    await streamCsv(res, csvFilename("unsubscribe-counts", window.today), UNSUBSCRIBE_COUNTS_HEADER, oneBatch(await unsubscribeDailyCounts(db, window)));
+  }));
+
+  r.get("/reports/unsubscribes.csv", exportAddresses, privateErrors(async (req, res) => {
+    const window = await unsubscribeWindow(db, deps.timeZone);
+    await writeOpsLog(db, actorOf(req).name, "report-exported", "unsubscribes");
+    await streamCsv(res, csvFilename("unsubscribes", window.today), UNSUBSCRIBE_CSV_HEADER, mapBatches(unsubscribeBatches(db, window), (u) => unsubscribeCsvRow(u, deps.timeZone)));
   }));
 
   return r;

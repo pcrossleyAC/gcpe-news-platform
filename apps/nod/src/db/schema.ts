@@ -364,5 +364,7 @@ export const subscriberHistory = pgTable(
     // The per-media-list opt-out view (media-members.ts listMediaOptOuts): equality on action
     // and detail (the list key), newest first.
     index("subscriber_history_action_detail_at_idx").on(t.action, t.detail, t.at),
+    // Report windows (reports/unsubscribes.ts): equality on action, a range on at, any list key.
+    index("subscriber_history_action_at_idx").on(t.action, t.at),
   ],
 );

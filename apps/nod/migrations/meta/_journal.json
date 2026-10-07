@@ -162,6 +162,13 @@
       "when": 1791372163530,
       "tag": "0022_bounce_summary_email",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1791379945208,
+      "tag": "0023_report_history_index",
+      "breakpoints": true
     }
   ]
 }

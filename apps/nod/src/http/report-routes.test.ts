@@ -5,7 +5,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
-import { lists, operationsLog, subscribers, subscriptions } from "../db/schema";
+import { lists, operationsLog, subscriberHistory, subscribers, subscriptions } from "../db/schema";
 import type { DistributionClient } from "../distribution-client";
 
 /** A GET whose body stays raw bytes, so a test sees the BOM exactly as sent. */
@@ -114,5 +114,34 @@ describe("report routes", () => {
     await request(app).get("/api/reports/subscribers-by-list/members?list=all").set("authorization", `Bearer ${viewer}`);
     const logged = spies.flatMap((s) => s.mock.calls.flat()).map(String).join("\n");
     expect(logged).not.toContain("pat@example.test");
+  });
+
+  describe("recent unsubscribes", () => {
+    beforeAll(async () => {
+      const [gone] = await tdb.db.insert(subscribers).values({ email: "gone@example.test", status: "deleted" }).returning({ id: subscribers.id });
+      await tdb.db.insert(subscriberHistory).values({ subscriberId: gone!.id, actor: "subscriber", action: "unsubscribed" });
+    });
+
+    it("a Viewer reads the page and the daily counts CSV, but not the address CSV", async () => {
+      const page = await request(app).get("/api/reports/unsubscribes").set("authorization", `Bearer ${viewer}`);
+      expect(page.status).toBe(200);
+      expect(page.body.items.map((i: { email: string }) => i.email)).toContain("gone@example.test");
+      const counts = await getCsv(app, "/api/reports/unsubscribes/daily.csv", viewer);
+      expect(counts.status).toBe(200);
+      expect((counts.body as Buffer).toString("utf8").split("\r\n")[0]).toBe("﻿Date,New subscriptions,Returning,Unsubscribed,Deleted by staff");
+      expect((counts.body as Buffer).toString("utf8")).not.toContain("@");
+      expect((await getCsv(app, "/api/reports/unsubscribes.csv", viewer)).status).toBe(403);
+    });
+
+    it("an Editor exports the addresses, and the export is logged", async () => {
+      const res = await getCsv(app, "/api/reports/unsubscribes.csv", editor);
+      expect(res.status).toBe(200);
+      expect(res.headers["content-disposition"]).toMatch(/^attachment; filename="unsubscribes-\d{4}-\d{2}-\d{2}\.csv"$/);
+      const text = (res.body as Buffer).toString("utf8");
+      expect(text.split("\r\n")[0]).toBe("﻿Email,How,When (BC time),Status now,Registered (BC time)");
+      expect(text).toMatch(/\r\ngone@example\.test,Unsubscribed,\d{4}-\d{2}-\d{2} \d{2}:\d{2},Deleted,/);
+      const logs = await tdb.db.select().from(operationsLog).where(eq(operationsLog.detail, "unsubscribes"));
+      expect(logs).toHaveLength(1);
+    });
   });
 });
