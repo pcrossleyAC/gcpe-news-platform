@@ -720,6 +720,25 @@ describe("sendDueJobs", () => {
     expect("replyTo" in byKey.get(emergency.id)!).toBe(false);
   });
 
+  // Reply-To is keyed off the item's own kind (reply-to.ts), never the job's -- a media job
+  // for a release item is still a release's email, so it carries NOD_REPLY_TO exactly like the
+  // release's own As-It-Happens send above.
+  it("a media job for a release item also replies to NOD_REPLY_TO", async () => {
+    const sub = await insertSubscriber(tdb.db, "media-reply@example.com");
+    await insertItem(tdb.db, "release-media-reply", "release", "stories");
+    const job = await insertJob(tdb.db, "release-media-reply", { jobKey: "media:release-media-reply", kind: "media", priority: "media" });
+    await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
+
+    const distribution = stubDistribution();
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-00000000000f" });
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, replyTo: { news: "news-reply@example.test" } });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
+
+    const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+    expect(req.replyTo).toBe("news-reply@example.test");
+  });
+
   // A media job carries kind='media'/priority='media' (send-jobs.ts has no special
   // branch for it -- same chunking, links and List-Unsubscribe header as every other job).
   it("sends a media job with priority 'media', the List-Unsubscribe header, and per-recipient substitutions", async () => {

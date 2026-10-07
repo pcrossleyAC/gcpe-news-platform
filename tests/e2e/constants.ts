@@ -21,6 +21,9 @@ export const LOCAL_AUTH_SECRET = "e2e-local-auth-secret-32-characters-long!";
 /** `NOD_BOUNCE_SUMMARY_EMAIL` (global-setup.ts) — item 9's daily bounce summary recipient. */
 export const BOUNCE_SUMMARY_EMAIL = "bounce-manager@example.test";
 
+/** `NOD_REPLY_TO` (global-setup.ts): release emails reply here; nothing else NoD sends does. */
+export const NEWS_REPLY_TO = "news-reply@example.test";
+
 export const TEST_USER_PASSWORDS: Record<string, string> = {
   "editor@example.test": "e2e-editor-password-1",
   "site-editor@example.test": "e2e-site-editor-password-1",

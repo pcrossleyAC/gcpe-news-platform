@@ -238,3 +238,24 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   sending for a few seconds while the migration runs. `docs/deploy/siteground.md` ("Migrations on
   populated deliveries or messages tables") has the steps to pre-build those indexes without
   blocking and record the migrations as applied.
+
+## Phase 4e.1 — bounce summary parity and Reply-To
+
+- **Operations** — The daily bounce summary has four parts: totals, hard bounces (these count toward
+  disabling), soft bounces (mailbox full and the like; usually nothing to do) and unrecorded bounces
+  (they matched no email we sent, or bounced a verification email). For an address that keeps
+  appearing as unrecorded, check the bounce mailbox; if the line says "NoD subscriber", remove it on
+  Subscribers. Bold means a media-list member: tell Media Relations.
+- **Operations** — A summary list stops at 500 lines and says how many more there were; the rest are
+  in the bounce mailbox.
+- **Administrator** — Operations → "Soft bounces counted as hard" lists 4.x.x codes that count like a
+  hard bounce. It is empty until the business supplies its list (Q42). A change applies from the
+  next bounce on, never to earlier ones, and is recorded in the operations log.
+- **Editor** — Replies to a release, advisory, story or factsheet email go to the address set as
+  `NOD_REPLY_TO` (gcpe.news in production). Replies to the digest, emergency alerts and
+  subscription emails go to the sending mailbox (noreply.newsondemand), as in legacy.
+- **Operations** — Keep `DIST_MAIL_REPLY_TO` unset in production: if set, it becomes the Reply-To of
+  every NoD email that has none (digest, emergency, subscription emails).
+- **Developer** — Distribution's `GET /api/bounces/summary` (Distribution.Operate) replaced
+  `/api/bounces/stats`. Its rows carry addresses in the response body only; never log them or put
+  them in a URL. Soft rows are scoped to the calling app's token identity.
