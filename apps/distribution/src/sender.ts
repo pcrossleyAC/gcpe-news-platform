@@ -342,12 +342,17 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     const { rows: windowRows } = await tx.execute<{ claimed: number }>(
       sql`SELECT claimed FROM send_rate_windows WHERE window_start = ${windowStart} FOR UPDATE`,
     );
-    const claimedThisMinute = windowRows[0]?.claimed ?? 0;
+    // Defensive: the INSERT just above, in this same transaction, guarantees this row exists by
+    // the time this SELECT runs, and nothing else in this transaction can have removed it since
+    // — so this should be unreachable. Falling back to a default of 0 instead of throwing would
+    // hand out a full, unbounded budget and then silently fail to record it (the increment
+    // below would match no rows), bypassing the cap rather than merely miscounting it.
+    if (windowRows.length === 0) {
+      throw new Error(`sendDue: send_rate_windows row for ${windowStart} is missing right after its own INSERT`);
+    }
+    const claimedThisMinute = windowRows[0]!.claimed;
     const budget = ratePerMinute - claimedThisMinute;
-    // True whenever the rate cap — not batchSize — is what bounds (or would bound) the claim
-    // below, regardless of how many rows were actually due to fill it.
-    const rateLimited = budget < batchSize;
-    if (budget <= 0) return { rows: [] as ClaimedRow[], rateLimited };
+    if (budget <= 0) return { rows: [] as ClaimedRow[], rateLimited: true };
 
     // The `due` CTE picks the rows in priority order under FOR UPDATE SKIP LOCKED; the outer
     // UPDATE joins batches for the template content so the claim and the read happen in one
@@ -371,8 +376,20 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       RETURNING m.id, m.batch_id, jsonb_array_length(b.attachments) > 0 AS has_attachments, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at,
                 b.subject, b.html, b.text, b.headers, b.reply_to, ${ageMsOf(sql`b.created_at`, now)} AS batch_age_ms, ${lockTokenOf(sql`m.locked_until`)} AS lock_token`);
 
+    // True only when the cap — not batchSize, and not simply running out of due rows — is what
+    // actually bound this claim: the budget was smaller than batchSize *and* every bit of it
+    // was used. A budget that's merely smaller than batchSize but idle (fewer rows were due
+    // than the remaining budget) must report false: "exhausted before batchSize" means
+    // exhausted, not just smaller.
+    const rateLimited = budget < batchSize && claimed.rows.length === budget;
+
     if (claimed.rows.length > 0) {
-      await tx.execute(sql`UPDATE send_rate_windows SET claimed = claimed + ${claimed.rows.length} WHERE window_start = ${windowStart}`);
+      const inc = await tx.execute(sql`UPDATE send_rate_windows SET claimed = claimed + ${claimed.rows.length} WHERE window_start = ${windowStart}`);
+      // Same defensive reasoning as above: if this row were gone by now, the increment would
+      // silently match nothing and the next claimer would see yesterday's (too-low) count.
+      if (inc.rowCount !== 1) {
+        throw new Error(`sendDue: send_rate_windows row for ${windowStart} vanished mid-claim — the rate cap would otherwise be silently bypassed`);
+      }
     }
     return { rows: claimed.rows, rateLimited };
   });

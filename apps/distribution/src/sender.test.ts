@@ -1245,10 +1245,55 @@ describe("sendDue", () => {
     }
   });
 
+  it("rateLimited is false when the cap isn't the binding constraint — fewer rows due than the remaining budget", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    const now = () => new Date("2030-01-07T00:00:00.000Z");
+    try {
+      // Cap (10) well under the default batchSize (50), but only 3 rows are due: the cap has
+      // 7 of headroom left over, so it never actually bound this claim.
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, recipients: Array.from({ length: 3 }, (_, i) => ({ email: `idle${i}@example.com`, substitutions: {} })) },
+        internalDomains,
+      );
+
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 10, now });
+      expect(result).toEqual({ sent: 3, retried: 0, failed: 0, rateLimited: false });
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("rateLimited is true when the cap is reached exactly — claimed equals the remaining budget", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    const now = () => new Date("2030-01-08T00:00:00.000Z");
+    try {
+      // Exactly as many rows due as the cap allows: every bit of the budget is used, even
+      // though nothing was left waiting beyond it.
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, recipients: Array.from({ length: 10 }, (_, i) => ({ email: `exact${i}@example.com`, substitutions: {} })) },
+        internalDomains,
+      );
+
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 10, now });
+      expect(result).toEqual({ sent: 10, retried: 0, failed: 0, rateLimited: true });
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
   it("two concurrent workers racing the same minute never claim more than the cap combined", async () => {
     const sink = await startSmtpSink();
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
     const now = () => new Date("2030-01-02T00:00:00.000Z");
+    const windowStart = "2030-01-02T00:00:00.000Z";
     try {
       await createBatch(
         tdb.db,
@@ -1257,10 +1302,33 @@ describe("sendDue", () => {
         internalDomains,
       );
 
-      const [a, b] = await Promise.all([
-        sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 7, now }),
-        sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 7, now }),
-      ]);
+      // Pre-insert the window row for the pinned minute, so both calls below race on an
+      // EXISTING row — the first worker's own `INSERT ... ON CONFLICT DO NOTHING` (which is
+      // what actually serialises two workers racing a *fresh* row: whichever inserts it holds
+      // an exclusive lock on the new row until its own commit) is a no-op for both, and only
+      // the `SELECT ... FOR UPDATE` on the window row (sender.ts) can be what serialises them.
+      await tdb.db.execute(sql`INSERT INTO send_rate_windows (window_start, claimed) VALUES (${windowStart}::timestamptz, 0)`);
+
+      // Hold that row's lock on a separate connection, started before either sendDue call, so
+      // both calls' own `SELECT ... FOR UPDATE` must block on it until this transaction
+      // commits — without that statement in sender.ts, a plain SELECT would never block here
+      // at all, and both calls would run straight through concurrently (each would successfully
+      // claim its own disjoint set of message rows via FOR UPDATE SKIP LOCKED, overspending the
+      // cap, since nothing would make either of them wait to see the other's committed count).
+      const holder = await tdb.pool.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT claimed FROM send_rate_windows WHERE window_start = $1 FOR UPDATE", [windowStart]);
+
+      const first = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 7, now });
+      const second = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 7, now });
+
+      // Give both calls time to reach (and, with the fix, block on) their own SELECT ... FOR
+      // UPDATE before releasing the holder's lock.
+      await sleep(200);
+      await holder.query("COMMIT");
+      holder.release();
+
+      const [a, b] = await Promise.all([first, second]);
 
       expect(a.sent + b.sent).toBe(7);
       expect(sink.messages).toHaveLength(7);
