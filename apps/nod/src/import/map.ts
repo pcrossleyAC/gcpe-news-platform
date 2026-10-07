@@ -158,9 +158,10 @@ export function mapSubscriber(s: LegacySubscriberRow, memberships: MappedList[],
 
 /**
  * Which NoD deliveries one legacy SubscriberArticle row stands for. Legacy marks a mode the
- * subscriber doesn't take as attempted, to stop it being sent (DistributionProvider.cs:313-320),
- * so a release's modes are checked against the subscriber's own timing. A media-list member got
- * the release as a media send; an emergency alert went to everyone on its list.
+ * subscriber doesn't take as attempted, to stop it being sent (DistributionProvider.cs:308-327),
+ * so a release's modes are checked against the subscriber's own timing. That holds for media
+ * lists too (every list is sent under the newsroom site): a media-list member got the release as
+ * a media send only if they take as-it-happens. An emergency alert went to everyone on its list.
  */
 export function deliveryModes(
   row: { ImmediateAttempted: boolean; DigestAttempted: boolean },
@@ -168,7 +169,7 @@ export function deliveryModes(
   item: { kind: "release" | "emergency"; mediaListKeys: string[] },
 ): DeliveryMode[] {
   if (item.kind === "emergency") return row.ImmediateAttempted || row.DigestAttempted ? ["as_it_happens"] : [];
-  if (row.ImmediateAttempted && item.mediaListKeys.some((k) => sub.mediaKeys.has(k))) return ["media"];
+  if (row.ImmediateAttempted && sub.asItHappens && item.mediaListKeys.some((k) => sub.mediaKeys.has(k))) return ["media"];
   const modes: DeliveryMode[] = [];
   if (row.ImmediateAttempted && sub.asItHappens) modes.push("as_it_happens");
   if (row.DigestAttempted && sub.digest) modes.push("digest");

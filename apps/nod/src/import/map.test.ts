@@ -124,6 +124,9 @@ describe("deliveryModes", () => {
   it("a release on a media list the subscriber is on is a media send", () => {
     expect(deliveryModes(flags(true, false), sub, { kind: "release", mediaListKeys: ["media-distribution-lists:000-0-victoria"] })).toEqual(["media"]);
   });
+  it("a media-list member who doesn't take as-it-happens wasn't sent the release: legacy marks it attempted only to suppress it", () => {
+    expect(deliveryModes(flags(true, false), { ...sub, asItHappens: false }, { kind: "release", mediaListKeys: ["media-distribution-lists:000-0-victoria"] })).toEqual([]);
+  });
   it("an emergency alert went to everyone on the list, whatever their timing", () => {
     expect(deliveryModes(flags(false, true), { ...sub, asItHappens: false }, { kind: "emergency", mediaListKeys: [] })).toEqual(["as_it_happens"]);
   });
