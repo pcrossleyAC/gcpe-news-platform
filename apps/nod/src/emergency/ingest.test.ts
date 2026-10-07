@@ -1,9 +1,11 @@
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, like, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { renderFeedXml, type FakeAlert } from "@gcpe/emergency-feed-fake";
 import { createNodTestDb } from "../../test/helpers";
-import { createItemSending, emergencyItemKey } from "../as-it-happens";
+import { createItemSending, emergencyItemKey, type ItemSending } from "../as-it-happens";
 import { deliveries, items, nodSettings, sendJobs, subscribers, subscriptions } from "../db/schema";
 import { fetchFeed, FeedFetchError, getEmergencyFeedStatus, MAX_FEED_BYTES, runEmergencyFeedIfDue } from "./ingest";
 
@@ -127,6 +129,52 @@ describe("emergency feed ingester", () => {
     const { rows } = await tdb.db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM deliveries WHERE item_key = ${emergencyItemKey("g-2")}`);
     expect(rows[0]!.n).toBe(1);
   });
+
+  it("a raw control character in one alert's title no longer stops the alerts around it", async () => {
+    const feed = renderFeedXml([alert(1), alert(2, { title: "Evac\u0000uation order" }), alert(3)]);
+    const r = await run(serving(feed));
+    expect(r.result).toMatchObject({ ok: true, inFeed: 3, created: 3, failed: 0 });
+    const [row] = await tdb.db.select({ title: items.title }).from(items).where(eq(items.key, emergencyItemKey("g-2")));
+    expect(row!.title).toBe("Evacuation order");
+  });
+
+  it("a bad item doesn't stop the alerts around it; seeding leaves the run not-ok and re-seeds next time", async () => {
+    const badGuid = "g-bad";
+    const throwingItems: Pick<ItemSending, "recordEmergencyItem"> = {
+      recordEmergencyItem(db, input, opts) {
+        if (input.guid === badGuid) throw new Error("boom");
+        return sending.recordEmergencyItem(db, input, opts);
+      },
+    };
+    const feed = renderFeedXml([alert(1), alert(2, { guid: badGuid }), alert(3)]);
+
+    const r1 = await runEmergencyFeedIfDue({ db: tdb.db, url: URL_A, items: throwingItems, fetch: serving(feed), now });
+    expect(r1.result).toMatchObject({ ok: false, seeded: true, inFeed: 3, created: 2, failed: 1 });
+    expect(await emergencyJobs()).toBe(0);
+    const [settingsRow] = await tdb.db.select({ seededUrl: nodSettings.emergencyFeedSeededUrl }).from(nodSettings).where(eq(nodSettings.id, 1));
+    expect(settingsRow!.seededUrl).toBeNull();
+
+    later(5);
+    const r2 = await run(serving(feed));
+    expect(r2.result).toMatchObject({ ok: true, seeded: true, inFeed: 3, created: 1, failed: 0 });
+    // Still seeding (the first run never committed a seeded url), so the alert that failed
+    // last time is recorded now but, same as any other seeded alert, never emailed as new.
+    expect(await emergencyJobs()).toBe(0);
+  });
+
+  it("recognizes a known alert whose link only changed case, scheme or a trailing slash", async () => {
+    await run(serving(renderFeedXml([alert(1, { link: "https://emergency.example.test/alerts/1" })])));
+    later(5);
+    const r = await run(serving(renderFeedXml([alert(1, { guid: "g-1-renamed", link: "HTTP://Emergency.Example.Test/alerts/1/" })])));
+    expect(r.result).toMatchObject({ created: 0, updated: 0 });
+    expect(await emergencyJobs()).toBe(0);
+  });
+
+  it("two concurrent checks produce exactly one ran:true", async () => {
+    const f = serving(renderFeedXml([alert(1)]));
+    const [a, b] = await Promise.all([run(f), run(f)]);
+    expect([a.ran, b.ran].filter(Boolean)).toHaveLength(1);
+  });
 });
 
 describe("fetchFeed", () => {
@@ -134,11 +182,34 @@ describe("fetchFeed", () => {
     const big = new Response(new Uint8Array(MAX_FEED_BYTES + 1));
     await expect(fetchFeed("https://emergency.example.test/feed.xml", asFetch(async () => big))).rejects.toMatchObject({ kind: "too-large" });
   });
+  it("rejects a body whose chunks only exceed the cap cumulatively, not on their own", async () => {
+    const chunkSize = Math.floor(MAX_FEED_BYTES / 4);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < 6; i++) controller.enqueue(new Uint8Array(chunkSize));
+        controller.close();
+      },
+    });
+    await expect(fetchFeed("https://emergency.example.test/feed.xml", asFetch(async () => new Response(stream)))).rejects.toMatchObject({ kind: "too-large" });
+  });
   it("names a timeout as such", async () => {
     const abort = asFetch(async () => {
       throw Object.assign(new Error("t"), { name: "TimeoutError" });
     });
     await expect(fetchFeed("https://emergency.example.test/feed.xml", abort)).rejects.toBeInstanceOf(FeedFetchError);
     await expect(fetchFeed("https://emergency.example.test/feed.xml", abort)).rejects.toMatchObject({ kind: "timeout" });
+  });
+  it("follows no redirects; the operator must configure the feed's own final URL", async () => {
+    const server = createServer((_req, res) => {
+      res.writeHead(301, { Location: "https://example.test/elsewhere" });
+      res.end();
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+    try {
+      const { port } = server.address() as AddressInfo;
+      await expect(fetchFeed(`http://127.0.0.1:${port}/`, fetch)).rejects.toMatchObject({ kind: "redirect" });
+    } finally {
+      server.close();
+    }
   });
 });

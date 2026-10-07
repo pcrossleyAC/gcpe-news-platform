@@ -998,6 +998,14 @@ describe("apps/stack", () => {
       expect((await add({ authorization: `Bearer ${editor}` })).status).toBe(403);
       expect((await add({ authorization: `Bearer ${instance.adminToken}` })).status).toBe(201);
     });
+
+    it("GET /__fake/alerts needs Core.Admin too, not just the POST switch", async () => {
+      const editor = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
+      const list = (headers: Record<string, string>) => fetch(`${instance.stackUrl}/fake-emergency-feed/__fake/alerts`, { headers });
+      expect((await list({})).status).toBe(401);
+      expect((await list({ authorization: `Bearer ${editor}` })).status).toBe(403);
+      expect((await list({ authorization: `Bearer ${instance.adminToken}` })).status).toBe(200);
+    });
   });
 });
 

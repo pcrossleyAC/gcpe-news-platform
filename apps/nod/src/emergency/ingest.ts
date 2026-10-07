@@ -3,7 +3,7 @@ import { sqlInterval, sqlNow, type Db, type DbOrTx, type TestClock } from "@gcpe
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { emergencyItemKey, type ItemSending } from "../as-it-happens";
 import { items, nodSettings } from "../db/schema";
-import { FeedFormatError, parseEmergencyFeed, type FeedAlert } from "./feed";
+import { FeedFormatError, normalizeLinkIdentity, parseEmergencyFeed, type FeedAlert } from "./feed";
 
 export const EMERGENCY_FEED_INTERVAL_MS = 5 * 60_000;
 export const FEED_TIMEOUT_MS = 15_000;
@@ -19,6 +19,8 @@ export interface EmergencyFeedResult {
   created: number;
   updated: number;
   skipped: number;
+  /** Alerts whose own create/update failed -- logged by label only, never stopping the rest. */
+  failed: number;
   error: string | null;
 }
 
@@ -36,17 +38,23 @@ export class FeedFetchError extends Error {
 }
 
 const isTimeout = (e: unknown) => e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+/** `fetch`'s own redirect:"error" rejection -- a `TypeError` whose `cause` names the redirect
+ * (undici: "unexpected redirect"). The operator must configure the feed's real, final URL;
+ * silently following a redirect would let whoever controls the redirect's target choose what
+ * the ingester reads instead. */
+const isRedirect = (e: unknown) => e instanceof Error && e.cause instanceof Error && /redirect/i.test(e.cause.message);
 
-/** GETs the feed with a time limit (covering the body too) and a size cap. */
+/** GETs the feed with a time limit (covering the body too), a size cap, and no redirects. */
 export async function fetchFeed(url: string, fetchImpl: typeof fetch = fetch): Promise<string> {
   let res: Response;
   try {
     res = await fetchImpl(url, {
       signal: AbortSignal.timeout(FEED_TIMEOUT_MS),
+      redirect: "error",
       headers: { accept: "application/rss+xml, application/atom+xml, application/xml;q=0.9, */*;q=0.1" },
     });
   } catch (e) {
-    throw new FeedFetchError(isTimeout(e) ? "timeout" : "network");
+    throw new FeedFetchError(isTimeout(e) ? "timeout" : isRedirect(e) ? "redirect" : "network");
   }
   if (!res.ok) {
     await res.body?.cancel().catch(() => {});
@@ -91,15 +99,31 @@ async function claimFeedGate(db: Db, now?: TestClock): Promise<{ seededUrl: stri
   return row ? { seededUrl: row.seededUrl, checkedAt: row.checkedAt! } : null;
 }
 
-/** An alert is known by its key or by its link, so a guid change alone never re-sends it. */
-async function knownAlert(db: DbOrTx, alert: FeedAlert): Promise<{ key: string; title: string; summary: string } | null> {
-  const [row] = await db
-    .select({ key: items.key, title: items.title, summary: items.summary })
+interface KnownEmergencyRow {
+  key: string;
+  title: string;
+  summary: string;
+  url: string;
+}
+
+/** Every emergency item NoD already has, oldest first -- loaded once per check (not once per
+ * alert): cheap given how few emergency alerts there ever are, and it lets a later alert in the
+ * same feed see one an earlier alert in the *same* run just created. */
+async function loadKnownEmergencyItems(db: DbOrTx): Promise<KnownEmergencyRow[]> {
+  return db
+    .select({ key: items.key, title: items.title, summary: items.summary, url: items.url })
     .from(items)
-    .where(and(eq(items.kind, "emergency"), or(eq(items.key, emergencyItemKey(alert.identity)), eq(items.url, alert.link))))
-    .orderBy(items.publishedAt)
-    .limit(1);
-  return row ?? null;
+    .where(eq(items.kind, "emergency"))
+    .orderBy(items.publishedAt);
+}
+
+/** An alert is known by its key or by its link, so a guid change alone never re-sends it --
+ * matched by {@link normalizeLinkIdentity} on both sides, so a link that only changed case,
+ * scheme or a trailing slash still matches. */
+function findKnownEmergencyItem(known: KnownEmergencyRow[], alert: FeedAlert): KnownEmergencyRow | undefined {
+  const wantKey = emergencyItemKey(alert.identity);
+  const wantLink = normalizeLinkIdentity(alert.link);
+  return known.find((row) => row.key === wantKey || normalizeLinkIdentity(row.url) === wantLink);
 }
 
 export interface EmergencyFeedDeps {
@@ -124,27 +148,44 @@ export async function runEmergencyFeedIfDue(deps: EmergencyFeedDeps): Promise<{ 
   if (!gate) return { ran: false };
 
   const seeding = gate.seededUrl !== deps.url;
-  const result: EmergencyFeedResult = { at: gate.checkedAt.toISOString(), ok: false, seeded: seeding, inFeed: 0, created: 0, updated: 0, skipped: 0, error: null };
+  const result: EmergencyFeedResult = { at: gate.checkedAt.toISOString(), ok: false, seeded: seeding, inFeed: 0, created: 0, updated: 0, skipped: 0, failed: 0, error: null };
   try {
     const parsed = parseEmergencyFeed(await fetchFeed(deps.url, deps.fetch));
     result.inFeed = parsed.alerts.length;
     result.skipped = parsed.skipped;
+    const known = await loadKnownEmergencyItems(deps.db);
     for (const alert of parsed.alerts) {
-      const known = await knownAlert(deps.db, alert);
-      if (known) {
-        if (known.title === alert.title && known.summary === alert.text) continue;
-        await deps.db.update(items).set({ title: alert.title, summary: alert.text, updatedAt: sql`now()` }).where(eq(items.key, known.key));
-        result.updated += 1;
-        continue;
+      try {
+        const row = findKnownEmergencyItem(known, alert);
+        if (row) {
+          if (row.title === alert.title && row.summary === alert.text) continue;
+          await deps.db.update(items).set({ title: alert.title, summary: alert.text, updatedAt: sql`now()` }).where(eq(items.key, row.key));
+          row.title = alert.title;
+          row.summary = alert.text;
+          result.updated += 1;
+          continue;
+        }
+        const { key, created } = await deps.items.recordEmergencyItem(
+          deps.db,
+          { guid: alert.identity, title: alert.title, summary: alert.text, url: alert.link, publishedAt: alert.publishedAt?.toISOString() },
+          { send: !seeding },
+        );
+        if (created) {
+          result.created += 1;
+          known.push({ key, title: alert.title, summary: alert.text, url: alert.link });
+        }
+      } catch (e) {
+        // One alert's own failure (e.g. a value the database itself rejects) never stops the
+        // rest of the feed -- logged by label only, counted, never the alert's own content.
+        result.failed += 1;
+        console.error(`[nod] emergency feed item failed: ${safeErrorLabel(e)}`);
       }
-      const { created } = await deps.items.recordEmergencyItem(
-        deps.db,
-        { guid: alert.identity, title: alert.title, summary: alert.text, url: alert.link, publishedAt: alert.publishedAt?.toISOString() },
-        { send: !seeding },
-      );
-      if (created) result.created += 1;
     }
-    result.ok = true;
+    // Any per-item failure leaves the whole check not-ok -- while seeding, that also means
+    // nodSettings.emergencyFeedSeededUrl below is left unset, so the next check seeds again
+    // instead of treating the alert that failed as newly arrived (and sending it) once it
+    // eventually succeeds.
+    result.ok = result.failed === 0;
   } catch (e) {
     result.error = e instanceof FeedFetchError ? e.kind : e instanceof FeedFormatError ? "not-a-feed" : safeErrorLabel(e);
     console.error(`[nod] emergency feed check failed: ${result.error}`);

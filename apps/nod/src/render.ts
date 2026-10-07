@@ -99,7 +99,11 @@ const SUMMARY_STYLE = "margin:0 0 8px;font-size:14px;color:#333333;";
  * text, so its blank-line paragraphs and line breaks are kept. */
 function summaryHtml(summary: string, paragraphs: boolean): string {
   if (!paragraphs) return `<p style="${SUMMARY_STYLE}">${neutralizeHtml(summary)}</p>`;
+  // Normalises line endings first, same as normalizeMediaText below -- otherwise "\r\n\r\n"
+  // isn't two adjacent "\n"s and the blank line between paragraphs goes unrecognised.
   return summary
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
     .split(/\n{2,}/)
     .filter((p) => p.trim() !== "")
     .map((p) => `<p style="${SUMMARY_STYLE}">${neutralizeHtml(p).replace(/\n/g, "<br>")}</p>`)

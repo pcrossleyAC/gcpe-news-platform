@@ -107,6 +107,14 @@ the moment staff try to pause or resume Distribution from NoD's admin in product
 on boxs.ca, with `LOCAL_ADMIN_ENABLED=true`, the locally minted token already carries both roles
 — see `apps/nod/src/distribution-token.ts` — so this only bites once Entra is configured.)
 
+**`NOD_EMERGENCY_FEED_URL` must be the feed's final URL — no redirect.** The ingester fetches it
+with `redirect: "error"` and fails the check closed rather than follow one (so an attacker who
+could redirect that URL elsewhere can't get the ingester to read it instead). EMCR's real feed,
+`https://emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true`, 301s to the `www.`
+host (confirmed with a single `HEAD` request on 2026-10-07) — configure
+`NOD_EMERGENCY_FEED_URL` as `https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true`
+instead, or every check fails with `error: "redirect"`.
+
 For a non-interactive/scripted run (CI, or re-generating without re-typing everything), see
 `npm run siteground:env -- --non-interactive` and the `SITEGROUND_*` env vars it reads
 (`scripts/siteground-env.ts`'s module doc comment has the full list) — intended for tests, not
@@ -232,7 +240,7 @@ holds data, or pre-build the indexes `CONCURRENTLY` with drizzle's exact index n
 record the migrations as applied, so the deploy's own migrate skips them:
 
 1. **Only for pending migrations that are nothing but `CREATE INDEX` statements** (NoD `0023`,
-   `0024`; Distribution `0010`). Any other statement would have to be run by hand, so for those
+   `0024`, `0027`; Distribution `0010`). Any other statement would have to be run by hand, so for those
    use a quiet window instead. Drizzle's migrator applies every migration newer than the
    *latest* row it has recorded, so pre-build and record **every** pending migration, in journal
    order — recording a later one alone would make it skip the earlier ones forever.
@@ -244,7 +252,7 @@ record the migrations as applied, so the deploy's own migrate skips them:
    `DIR=migrations/distribution`, `DB="$DIST_DATABASE_URL"` and `TAGS="0010_report_indexes"`:
 
    ```sh
-   export DB="$NOD_DATABASE_URL" DIR=migrations/nod TAGS="0023_report_history_index 0024_report_delivery_indexes"
+   export DB="$NOD_DATABASE_URL" DIR=migrations/nod TAGS="0023_report_history_index 0024_report_delivery_indexes 0027_items_emergency_url_index"
    # Pre-build each index without blocking writes. psql runs each statement on its own, outside
    # a transaction, which CONCURRENTLY requires.
    for tag in $TAGS; do

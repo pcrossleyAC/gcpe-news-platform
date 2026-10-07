@@ -32,6 +32,56 @@ export const MAX_ALERT_TEXT = 20_000;
 const isHttpUrl = (s: string): boolean => /^https?:\/\/\S+$/i.test(s);
 const squash = (s: string): string => s.replace(/\s+/g, " ").trim();
 
+/** Every C0 control character except tab/LF/CR, plus DEL -- a raw one of these (most often a
+ * NUL from a legacy export) makes Postgres reject the whole insert (22021), which otherwise
+ * stops the ingester partway through a feed, every 5 minutes, until the feed changes again. */
+const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
+const stripControl = (s: string): string => s.replace(CONTROL_CHARS, "");
+
+/** Unicode bidi override codepoints (LRE/RLE/PDF/LRO/RLO, 0x202A-0x202E) and isolate codepoints
+ * (LRI/RLI/FSI/PDI, 0x2066-0x2069) -- named by codepoint, not written as literal characters,
+ * so the characters this guards against never themselves sit in this source file. Removing
+ * them keeps an alert's title reading the same order it's actually made of, rather than
+ * whatever order these could otherwise force an email subject line to display it in. */
+function isBidiOverrideCodePoint(code: number): boolean {
+  return (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
+}
+const stripBidiOverrides = (s: string): string => Array.from(s, (ch) => (isBidiOverrideCodePoint(ch.codePointAt(0)!) ? "" : ch)).join("");
+
+/**
+ * A comparison key for "is this the same alert link" -- lower-cases the host, treats `http`
+ * and `https` as the same scheme, and trims one trailing slash from the path. Never stored
+ * itself (the real link, `toAlert`'s own `link`, keeps its actual scheme/case/slash); used only
+ * for the no-guid identity fallback below and, identically, by the ingester's own known-alert
+ * match (emergency/ingest.ts), so a link that merely changed case or scheme is still the same
+ * alert on both sides. Falls back to the raw string when it isn't a parseable URL at all, so an
+ * already-stored, pre-this-fix value still compares as itself rather than throwing.
+ */
+export function normalizeLinkIdentity(raw: string): string {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return raw;
+  }
+  const scheme = url.protocol === "http:" ? "https:" : url.protocol;
+  const path = url.pathname.length > 1 && url.pathname.endsWith("/") ? url.pathname.slice(0, -1) : url.pathname;
+  return `${scheme}//${url.host.toLowerCase()}${path}${url.search}`;
+}
+
+/** A clean, absolute http(s) URL for `raw` -- percent-encoded via `URL#href` so an odd
+ * character (accented, embedded unicode) can never make the stored url fail the item API's
+ * `z.string().url()` -- or null when `raw` isn't an http(s) URL at all. */
+function canonicalLink(raw: string): string | null {
+  const cleaned = stripControl(raw).trim();
+  if (!isHttpUrl(cleaned)) return null;
+  try {
+    return new URL(cleaned).href;
+  } catch {
+    return null;
+  }
+}
+
 function elementsOf(nodes: ChildNode[]): Element[] {
   return nodes.filter((c): c is Element => DomUtils.isTag(c));
 }
@@ -42,20 +92,29 @@ function childText(el: Element, name: string): string {
   const c = child(el, name);
   return c ? DomUtils.textContent(c).trim() : "";
 }
+/** Null for anything outside Postgres's practical `timestamptz` range -- years 1-9999 is
+ * enough; a feed date `Date.parse` happily accepts outside that (a garbled "99999", or an
+ * all-zero "0000-01-01") would otherwise reach the database and fail the whole insert. */
 function parseDate(raw: string): Date | null {
   if (!raw) return null;
   const t = Date.parse(raw);
-  return Number.isNaN(t) ? null : new Date(t);
+  if (Number.isNaN(t)) return null;
+  const d = new Date(t);
+  const year = d.getUTCFullYear();
+  return year >= 1 && year <= 9999 ? d : null;
 }
 
 function toAlert(r: { identity: string; link: string; title: string; html: string; published: string }): FeedAlert | null {
-  const title = squash(r.title).slice(0, MAX_TITLE_LENGTH);
-  if (!isHttpUrl(r.link) || !title) return null;
+  const link = canonicalLink(r.link);
+  if (!link) return null;
+  const title = stripControl(stripBidiOverrides(squash(r.title))).slice(0, MAX_TITLE_LENGTH);
+  if (!title) return null;
+  const identity = stripControl(r.identity).trim() || normalizeLinkIdentity(link);
   return {
-    identity: r.identity || r.link,
-    link: r.link,
+    identity,
+    link,
     title,
-    text: htmlToText(r.html).slice(0, MAX_ALERT_TEXT),
+    text: stripControl(htmlToText(r.html)).slice(0, MAX_ALERT_TEXT),
     publishedAt: parseDate(r.published),
   };
 }
@@ -88,22 +147,33 @@ function fromAtomEntry(entry: Element): FeedAlert | null {
  * would otherwise yield its last alert with half its text, and that alert would be emailed.
  */
 export function parseEmergencyFeed(xml: string): ParsedFeed {
-  if (!/<\/(rss|feed)>\s*$/.test(xml)) throw new FeedFormatError();
-  const doc = parseDocument(xml, { xmlMode: true });
-  const root = elementsOf(doc.children).find((c) => c.name === "rss" || c.name === "feed");
-  if (!root) throw new FeedFormatError();
-  const entries =
-    root.name === "rss"
-      ? elementsOf((child(root, "channel") ?? root).children).filter((c) => c.name === "item")
-      : elementsOf(root.children).filter((c) => c.name === "entry");
-  const alerts: FeedAlert[] = [];
-  let skipped = 0;
-  for (const e of entries) {
-    const alert = root.name === "rss" ? fromRssItem(e) : fromAtomEntry(e);
-    if (alert) alerts.push(alert);
-    else skipped += 1;
+  // Trailing whitespace or a comment (e.g. a caching proxy's own `<!-- cached -->`) after the
+  // real close is fine; anything else there means the body was cut off before its end.
+  if (!/<\/(rss|feed)>(?:\s|<!--[\s\S]*?-->)*$/.test(xml)) throw new FeedFormatError();
+  try {
+    const doc = parseDocument(xml, { xmlMode: true });
+    const root = elementsOf(doc.children).find((c) => c.name === "rss" || c.name === "feed");
+    if (!root) throw new FeedFormatError();
+    const entries =
+      root.name === "rss"
+        ? elementsOf((child(root, "channel") ?? root).children).filter((c) => c.name === "item")
+        : elementsOf(root.children).filter((c) => c.name === "entry");
+    const alerts: FeedAlert[] = [];
+    let skipped = 0;
+    for (const e of entries) {
+      const alert = root.name === "rss" ? fromRssItem(e) : fromAtomEntry(e);
+      if (alert) alerts.push(alert);
+      else skipped += 1;
+    }
+    return { alerts, skipped };
+  } catch (e) {
+    // Pathologically deep markup (nested far enough) overflows the stack in our own recursive
+    // walk below rather than in anything bounded by MAX_FEED_BYTES -- treated the same as any
+    // other unparseable body, not as a crash.
+    if (e instanceof FeedFormatError) throw e;
+    if (e instanceof RangeError) throw new FeedFormatError();
+    throw e;
   }
-  return { alerts, skipped };
 }
 
 const BLOCK = new Set(["p", "div", "section", "article", "header", "footer", "ul", "ol", "table", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "figure", "hr"]);

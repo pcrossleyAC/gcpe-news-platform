@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { renderFeedXml } from "@gcpe/emergency-feed-fake";
-import { FeedFormatError, htmlToText, MAX_ALERT_TEXT, MAX_TITLE_LENGTH, parseEmergencyFeed } from "./feed";
+import { FeedFormatError, htmlToText, MAX_ALERT_TEXT, MAX_TITLE_LENGTH, normalizeLinkIdentity, parseEmergencyFeed } from "./feed";
 
 /** The shape of a WordPress category feed (legacy's production feed was one). */
 const WORDPRESS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -82,6 +82,79 @@ describe("parseEmergencyFeed", () => {
     expect(parseEmergencyFeed(xml).alerts).toEqual([
       { identity: "g", link: "https://emergency.example.test/x", title: "A & B", text: "odd ]]> text", publishedAt: new Date("2026-10-06T21:15:00Z") },
     ]);
+  });
+
+  it("strips a raw NUL and other control characters from the title, the text and the guid", () => {
+    const xml = `<rss version="2.0"><channel><item><title>Evac\u0000uation order</title><link>https://emergency.example.test/a</link><guid>g\u0000uid-1</guid><description>Body\u0007text</description></item></channel></rss>`;
+    expect(parseEmergencyFeed(xml).alerts).toEqual([
+      { identity: "guid-1", link: "https://emergency.example.test/a", title: "Evacuation order", text: "Bodytext", publishedAt: null },
+    ]);
+  });
+
+  it("strips bidi override characters from the title, which could otherwise spoof the email subject", () => {
+    const xml = `<rss version="2.0"><channel><item><title>Safe‮evil.exe⁦hidden⁩</title><link>https://emergency.example.test/a</link></item></channel></rss>`;
+    expect(parseEmergencyFeed(xml).alerts[0]!.title).toBe("Safeevil.exehidden");
+  });
+
+  it("a 10,000-deep nesting is rejected as a format error, not a crash", () => {
+    const deep = "<div>".repeat(10_000) + "x" + "</div>".repeat(10_000);
+    const xml = `<rss version="2.0"><channel><item><title>T</title><link>https://emergency.example.test/a</link><description><![CDATA[${deep}]]></description></item></channel></rss>`;
+    expect(() => parseEmergencyFeed(xml)).toThrow(FeedFormatError);
+  });
+
+  it("never expands a billion-laughs DOCTYPE; the entity reference passes through literally", () => {
+    const xml =
+      `<?xml version="1.0"?><!DOCTYPE rss [` +
+      `<!ENTITY lol "lol"><!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">` +
+      `<!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">]>` +
+      `<rss version="2.0"><channel><item><title>Bomb &lol3; end</title><link>https://emergency.example.test/a</link></item></channel></rss>`;
+    const { alerts, skipped } = parseEmergencyFeed(xml);
+    expect(skipped).toBe(0);
+    expect(alerts[0]!.title).toBe("Bomb &lol3; end");
+  });
+
+  it("never resolves a SYSTEM (XXE) entity; the reference passes through literally", () => {
+    const xml =
+      `<?xml version="1.0"?><!DOCTYPE rss [<!ENTITY xxe SYSTEM "file:///etc/passwd">]>` +
+      `<rss version="2.0"><channel><item><title>Leak: &xxe;</title><link>https://emergency.example.test/a</link></item></channel></rss>`;
+    const { alerts, skipped } = parseEmergencyFeed(xml);
+    expect(skipped).toBe(0);
+    expect(alerts[0]!.title).toBe("Leak: &xxe;");
+  });
+
+  it("allows trailing whitespace and a comment after the closing tag", () => {
+    const xml = `<rss version="2.0"><channel><item><title>T</title><link>https://emergency.example.test/a</link></item></channel></rss>\n<!-- cached -->`;
+    expect(parseEmergencyFeed(xml).alerts).toHaveLength(1);
+  });
+
+  it("falls back to the normalized link as identity, not the raw one", () => {
+    const xml = `<rss version="2.0"><channel><item><title>T</title><link>HTTP://Emergency.Example.Test/a/</link></item></channel></rss>`;
+    expect(parseEmergencyFeed(xml).alerts[0]).toMatchObject({ identity: normalizeLinkIdentity("https://emergency.example.test/a") });
+  });
+
+  it("stores the link percent-encoded (URL#href), so odd characters never fail the item API's url check", () => {
+    const xml = `<rss version="2.0"><channel><item><title>T</title><link>https://emergency.example.test/café</link></item></channel></rss>`;
+    expect(parseEmergencyFeed(xml).alerts[0]!.link).toBe("https://emergency.example.test/caf%C3%A9");
+  });
+
+  it("rejects a date outside Postgres's timestamptz-friendly range (year 1-9999) instead of an unusable one", () => {
+    const farFuture = `<rss version="2.0"><channel><item><title>T</title><link>https://emergency.example.test/a</link><pubDate>Tue, 07 Oct 99999 12:00:00 GMT</pubDate></item></channel></rss>`;
+    expect(parseEmergencyFeed(farFuture).alerts[0]!.publishedAt).toBeNull();
+
+    const xml2 = `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><entry><id>1</id><title>T</title><link rel="alternate" href="https://emergency.example.test/b"/><published>0000-01-01T00:00:00Z</published></entry></feed>`;
+    expect(parseEmergencyFeed(xml2).alerts[0]!.publishedAt).toBeNull();
+  });
+});
+
+describe("normalizeLinkIdentity", () => {
+  it("treats a trailing slash as the same link", () => {
+    expect(normalizeLinkIdentity("https://emergency.example.test/a/")).toBe(normalizeLinkIdentity("https://emergency.example.test/a"));
+  });
+  it("treats http and https as the same link", () => {
+    expect(normalizeLinkIdentity("http://emergency.example.test/a")).toBe(normalizeLinkIdentity("https://emergency.example.test/a"));
+  });
+  it("treats the host's case as insignificant", () => {
+    expect(normalizeLinkIdentity("https://Emergency.Example.Test/a")).toBe(normalizeLinkIdentity("https://emergency.example.test/a"));
   });
 });
 

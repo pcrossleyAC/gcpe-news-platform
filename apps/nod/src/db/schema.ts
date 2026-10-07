@@ -100,7 +100,14 @@ export const items = pgTable(
     mediaText: text("media_text"),
     mediaListKeys: text("media_list_keys").array().notNull().default(sql`'{}'::text[]`),
   },
-  (t) => [index("items_published_at_idx").on(t.publishedAt), check("items_kind_check", sql`${t.kind} IN ('release','emergency')`)],
+  (t) => [
+    index("items_published_at_idx").on(t.publishedAt),
+    // The emergency feed ingester's own known-alert lookup (emergency/ingest.ts) scans this
+    // column filtered to kind = 'emergency' every 5 minutes; partial so it costs nothing on the
+    // much larger set of ordinary release rows.
+    index("items_emergency_url_idx").on(t.url).where(sql`${t.kind} = 'emergency'`),
+    check("items_kind_check", sql`${t.kind} IN ('release','emergency')`),
+  ],
 );
 export type ItemRow = typeof items.$inferSelect;
 
