@@ -9,7 +9,9 @@ import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { SubscribersScreen } from "./SubscribersScreen";
 import { AddSubscriberScreen } from "./AddSubscriberScreen";
-import type { SubscriberPage } from "./types";
+import { SubscriberScreen } from "./SubscriberScreen";
+import { HistoryScreen } from "./HistoryScreen";
+import type { SubscriberDetail, SubscriberPage } from "./types";
 
 async function seriousViolations(container: Element, options?: Parameters<typeof axe.run>[1]) {
   const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, ...options });
@@ -27,6 +29,33 @@ const PAGE: SubscriberPage = {
 };
 const OPTIONS = { categories: [{ key: "ministries", name: "Ministries", lists: [{ listKey: "ministries:health", name: "Health" }] }] };
 
+const SUBSCRIBER_ID = "11111111-1111-1111-1111-111111111111";
+const DETAIL: SubscriberDetail = {
+  id: SUBSCRIBER_ID,
+  email: "pat@example.test",
+  status: "active",
+  source: "self",
+  asItHappens: true,
+  digest: false,
+  createdAt: "2026-09-01T17:00:00.000Z",
+  needsAttention: null,
+  verifiedAt: "2026-09-01T17:05:00.000Z",
+  endedAt: null,
+  attentionAt: null,
+  allNews: false,
+  listKeys: ["ministries:health"],
+  mediaLists: [],
+  disabledReason: null,
+  bouncedEmails: 0,
+  bounceWindowDays: 15,
+};
+const HISTORY = {
+  items: [
+    { at: "2026-10-02T17:00:00.000Z", actor: "Jamie Staff", action: "staff-activated", detail: "" },
+    { at: "2026-10-01T17:00:00.000Z", actor: "subscriber", action: "subscribed", detail: "ministries:health" },
+  ],
+};
+
 function stubCommon(roles: string[]) {
   vi.stubGlobal(
     "fetch",
@@ -36,6 +65,8 @@ function stubCommon(roles: string[]) {
       if (url === "/nod/api/subscribers/search") return jsonResponse(200, PAGE);
       if (url === "/nod/api/subscriber-list-options") return jsonResponse(200, OPTIONS);
       if (url === "/nod/api/subscribers/bulk") return jsonResponse(200, { changed: 0, skipped: [] });
+      if (url === `/nod/api/subscribers/${SUBSCRIBER_ID}`) return jsonResponse(200, DETAIL);
+      if (url === `/nod/api/subscribers/${SUBSCRIBER_ID}/history`) return jsonResponse(200, HISTORY);
       return jsonResponse(200, {});
     }),
   );
@@ -96,6 +127,62 @@ describe("accessibility — Subscribers", () => {
       </SessionProvider>,
     );
     await screen.findByRole("checkbox", { name: "Health" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("SubscriberScreen (Editor, populated)", async () => {
+    stubCommon(["NoD.Editor"]);
+    const { container } = render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={[`/subscribers/${SUBSCRIBER_ID}`]}>
+          <RequireAuth>
+            <Routes>
+              <Route path="/subscribers/:id" element={<SubscriberScreen />} />
+            </Routes>
+          </RequireAuth>
+        </MemoryRouter>
+      </SessionProvider>,
+    );
+    await screen.findByText("pat@example.test");
+    await screen.findByRole("button", { name: "Save preferences" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("SubscriberScreen with the delete dialog open", async () => {
+    stubCommon(["NoD.Editor"]);
+    const { container } = render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={[`/subscribers/${SUBSCRIBER_ID}`]}>
+          <RequireAuth>
+            <Routes>
+              <Route path="/subscribers/:id" element={<SubscriberScreen />} />
+            </Routes>
+          </RequireAuth>
+        </MemoryRouter>
+      </SessionProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+    await screen.findByRole("alertdialog");
+    // See the matching note on the bulk delete dialog above: jsdom has no `inert`, so this one
+    // rule is excluded from the check here too, for the same reason.
+    expect(await seriousViolations(container, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
+  });
+
+  it("HistoryScreen (populated)", async () => {
+    stubCommon(["NoD.Viewer"]);
+    const { container } = render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={[`/subscribers/${SUBSCRIBER_ID}/history`]}>
+          <RequireAuth>
+            <Routes>
+              <Route path="/subscribers/:id/history" element={<HistoryScreen />} />
+            </Routes>
+          </RequireAuth>
+        </MemoryRouter>
+      </SessionProvider>,
+    );
+    await screen.findByRole("link", { name: "Back to subscriber" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 });
