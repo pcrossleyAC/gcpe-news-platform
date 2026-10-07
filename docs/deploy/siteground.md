@@ -355,7 +355,11 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
      EOF
      ```
   3. Within 15 minutes (or sooner, once the scheduler ticks), confirm the subscriber shows a
-     hard bounce — repeat nine more times within 15 days and confirm the tenth disables them (no
+     hard bounce. The 10-in-15-days rule counts *emails* (one release send), not uploads — each
+     of the nine remaining repeats needs its own new release reaching the address, each with its
+     own fresh `Message-ID` in a fresh `.eml`; re-uploading the exact same `.eml` again only
+     re-confirms the same one email and counts once by design, never advancing the count.
+     Repeat with nine genuinely new sends within 15 days and confirm the tenth disables them (no
      further mail reaches them, and the membership endpoint still lists them). Re-subscribing
      the same address (verify → confirm) reactivates them.
   4. The next day at 08:00 BC time, confirm `BOUNCE_SUMMARY_EMAIL` received exactly one

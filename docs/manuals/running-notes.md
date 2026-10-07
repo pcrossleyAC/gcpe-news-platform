@@ -130,8 +130,19 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   reactivated by re-subscribing themselves — the verify email reaching them again proves the
   mailbox works. Never deleted, unlike legacy. A media-list member is flagged "needs attention"
   instead and is never disabled; staff clear the flag by hand.
+- **Administrator** — The 10-in-15-days disable/flag rule counts *emails*, not delivery rows: a
+  digest that lands in a subscriber's inbox as one message is one count toward the 10, even
+  though it leaves several delivery rows (one per item). Ten consecutive bounced digests disable
+  (or flag) a subscriber just as fast as ten consecutive bounced As-It-Happens emails would — it
+  is never easier to trip for a digest subscriber than for anyone else.
 - **Administrator** — The daily bounce summary (`BOUNCE_SUMMARY_EMAIL`, unset means none) goes
   out at 08:00 BC time, only when there was a bounce to report since the last one — one line per
   bounced subscriber (address, hard/soft and status code, and the outcome: recorded/disabled/
   flagged, media-list members shown in bold), then the counts of unmatched and ignored messages.
   Soft bounces are recorded on the subscriber's deliveries but never counted or listed.
+- **Administrator** — "Something to report" (what decides whether that daily summary sends at
+  all) includes an *unmatched* bounce (a bounce report Distribution couldn't tie to any message
+  it sent) — it still shows up in the unmatched count even with no subscriber line of its own.
+  Mail Distribution classified `ignored` (not recognisable as a bounce at all — an auto-reply, a
+  calendar response, anything else that landed in the inbox) never does; a window with only
+  ignored mail sends no summary.

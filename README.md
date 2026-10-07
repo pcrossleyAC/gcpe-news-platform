@@ -211,7 +211,7 @@ Subscriptions API plus "As-It-Happens" email delivery: on `release.published` it
 
 ```bash
 createdb nod_dev
-DATABASE_URL=postgres://localhost:5432/nod_dev EVENT_SECRETS='{"nrms":"dev"}' \
+DATABASE_URL=postgres://localhost:5432/nod_dev EVENT_SECRETS='{"nrms":"dev","distribution":"dev"}' \
 DISTRIBUTION_URL=http://localhost:3005 PUBLIC_SITE_URL=http://localhost:3003 \
 LINK_SECRET=<32+ char secret> \
 LOCAL_ADMIN_ENABLED=true LOCAL_ADMIN_PASSWORD_HASH=<hash> LOCAL_AUTH_SECRET=<32+ char secret> \
@@ -224,7 +224,7 @@ npm --workspace @gcpe/nod run dev
 |---|---|---|---|
 | `DATABASE_URL` | yes | | Postgres connection string |
 | `PORT` | no | `3004` | HTTP port (the Docker healthcheck follows it) |
-| `EVENT_SECRETS` | no | `{}` | JSON object of event source → shared HMAC secret; only `"nrms"`'s `release.published` is ever accepted (see [Event wiring](#event-wiring)) |
+| `EVENT_SECRETS` | no | `{}` | JSON object of event source → shared HMAC secret; accepts `"nrms"`'s `release.published` and `"distribution"`'s `delivery.bounced` (4e) — nothing else (see [Event wiring](#event-wiring)) |
 | `DISTRIBUTION_URL` | yes | | Base URL of the Distribution app NoD forwards send jobs to |
 | `DISTRIBUTION_TOKEN_URL` | no* | | Entra client-credentials token endpoint for calling Distribution |
 | `DISTRIBUTION_CLIENT_ID` | no* | | Entra client id for the client-credentials grant |
@@ -345,7 +345,7 @@ All signed HMAC webhooks delivered to each receiver's `/events`:
 
 Each sender configures `EVENT_SUBSCRIBERS` (a JSON array: one entry per receiver, each with its own secret and the event types it's allowed to see); each receiver configures `EVENT_SECRETS` (a JSON object mapping the sender's `source` name to the **same** secret). A receiver rejects anything signed with the wrong secret, and also rejects event types its source isn't allowed to send (e.g. an `nrms`-signed `org.deactivated` is "ignored", not applied) — see `SOURCE_EVENT_TYPES` in `apps/news-api/src/projections.ts`.
 
-Worked example for NRMS → News API and NoD:
+Worked example for NRMS → News API and NoD, and Distribution → NoD:
 
 ```bash
 # NRMS's EVENT_SUBSCRIBERS (sender side)
@@ -354,11 +354,17 @@ EVENT_SUBSCRIBERS='[
   { "name": "nod",      "url": "http://localhost:3004/events", "secret": "shared-nrms-to-nod-secret",      "types": ["release.published"] }
 ]'
 
+# Distribution's EVENT_SUBSCRIBERS (sender side) — 4e's delivery.bounced, NoD only
+EVENT_SUBSCRIBERS='[
+  { "name": "nod", "url": "http://localhost:3004/events", "secret": "shared-distribution-to-nod-secret", "types": ["delivery.bounced"] }
+]'
+
 # News API's EVENT_SECRETS (receiver side) — the "nrms" key must match NRMS's "news-api" subscriber secret above
 EVENT_SECRETS='{"nrms":"shared-nrms-to-news-api-secret"}'
 
-# NoD's EVENT_SECRETS (receiver side) — the "nrms" key must match NRMS's "nod" subscriber secret above
-EVENT_SECRETS='{"nrms":"shared-nrms-to-nod-secret"}'
+# NoD's EVENT_SECRETS (receiver side) — the "nrms" key must match NRMS's "nod" subscriber secret above, and
+# the "distribution" key must match Distribution's "nod" subscriber secret above
+EVENT_SECRETS='{"nrms":"shared-nrms-to-nod-secret","distribution":"shared-distribution-to-nod-secret"}'
 ```
 
 News API then emits its own `site.rebuild_requested` to Public Site the same way: News API's `EVENT_SUBSCRIBERS` would include `{ "name": "public-site", "url": "http://localhost:3003/events", "secret": "shared-news-api-to-public-site-secret", "types": ["site.rebuild_requested"] }`, and Public Site's `EVENT_SECRETS` would be `{"news-api":"shared-news-api-to-public-site-secret"}`.
