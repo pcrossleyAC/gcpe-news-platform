@@ -28,12 +28,26 @@ const DAY1_1405 = new Date(DAY1_1400.getTime() + 5 * 60_000);
 const DAYMINUS2_0800 = new Date(DAY1_0800.getTime() - 2 * DAY_MS); // two days earlier's 08:00
 const DAY2_0800 = new Date(DAY1_0800.getTime() + DAY_MS); // the next day's 08:00
 const DAY2_0805 = new Date(DAY2_0800.getTime() + 5 * 60_000);
+const DAY3_0800 = new Date(DAY2_0800.getTime() + DAY_MS);
 
-function stubDistribution(): DistributionClient & { send: ReturnType<typeof vi.fn>; bounceStats: ReturnType<typeof vi.fn> } {
+type Row = { address: string; status?: string | null; message?: string | null; subject?: string | null };
+const row = (r: Row) => ({ status: null, message: null, subject: null, processedAt: new Date().toISOString(), ...r });
+function summaryOf(o: { soft?: Row[]; unrecorded?: Row[]; ignored?: number } = {}) {
+  const soft = (o.soft ?? []).map(row);
+  const unrecorded = (o.unrecorded ?? []).map(row);
+  return {
+    processed: soft.length + unrecorded.length + (o.ignored ?? 0),
+    bounces: soft.length + unrecorded.length,
+    ignored: o.ignored ?? 0,
+    soft: { count: soft.length, rows: soft },
+    unrecorded: { count: unrecorded.length, rows: unrecorded },
+  };
+}
+function stubDistribution(): DistributionClient & { send: ReturnType<typeof vi.fn>; bounceSummary: ReturnType<typeof vi.fn> } {
   return {
     send: vi.fn().mockResolvedValue({ batchId: "batch-summary" }),
-    bounceStats: vi.fn().mockResolvedValue({ unmatched: 0, ignored: 0 }),
-  } as unknown as DistributionClient & { send: ReturnType<typeof vi.fn>; bounceStats: ReturnType<typeof vi.fn> };
+    bounceSummary: vi.fn().mockResolvedValue(summaryOf()),
+  } as unknown as DistributionClient & { send: ReturnType<typeof vi.fn>; bounceSummary: ReturnType<typeof vi.fn> };
 }
 
 async function insertSubscriber(db: TestDatabase["db"], email: string): Promise<string> {
@@ -79,7 +93,7 @@ describe("runBounceSummaryIfDue", () => {
     await tdb.pool.query("TRUNCATE TABLE subscriber_history, deliveries, subscriptions, subscribers CASCADE");
     await tdb.db
       .update(nodSettings)
-      .set({ bounceSummaryAt: null, bounceSummaryCheckedAt: null, bounceSummaryLease: null, bounceSummaryLeaseUntil: null, bounceSummaryEmail: null })
+      .set({ bounceSummaryAt: null, bounceSummaryCheckedAt: null, bounceSummaryLease: null, bounceSummaryLeaseUntil: null, bounceSummaryEmail: null, bounceSoftCodesCounted: [] })
       .where(eq(nodSettings.id, 1));
   });
 
@@ -92,7 +106,7 @@ describe("runBounceSummaryIfDue", () => {
     const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, null, () => DAY1_0800);
     expect(result).toEqual({ sent: false, lines: 0 });
     expect(distribution.send).not.toHaveBeenCalled();
-    expect(distribution.bounceStats).not.toHaveBeenCalled();
+    expect(distribution.bounceSummary).not.toHaveBeenCalled();
   });
 
   it("before 08:00 BC time: an older checked_at stamp still doesn't send", async () => {
@@ -105,7 +119,7 @@ describe("runBounceSummaryIfDue", () => {
     const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0300);
     expect(result).toEqual({ sent: false, lines: 0 });
     expect(distribution.send).not.toHaveBeenCalled();
-    expect(distribution.bounceStats).not.toHaveBeenCalled();
+    expect(distribution.bounceSummary).not.toHaveBeenCalled();
   });
 
   it("before 08:00 BC time: a null checked_at (first run ever) still doesn't send", async () => {
@@ -118,7 +132,7 @@ describe("runBounceSummaryIfDue", () => {
     const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0300);
     expect(result).toEqual({ sent: false, lines: 0 });
     expect(distribution.send).not.toHaveBeenCalled();
-    expect(distribution.bounceStats).not.toHaveBeenCalled();
+    expect(distribution.bounceSummary).not.toHaveBeenCalled();
   });
 
   it("a no-op 08:00 run doesn't fire again that same day once a bounce lands, but the next day's run includes it", async () => {
@@ -180,9 +194,9 @@ describe("runBounceSummaryIfDue", () => {
     expect(row!.bounceSummaryAt).toEqual(stampedAt); // unchanged -- only the first-ever run stamps it on a no-op
   });
 
-  it("ruling: an ignored-only window sends no email; an unmatched-bounce-only window still does", async () => {
+  it("ruling: an ignored-only window sends no email; an unrecorded-only or soft-only window does", async () => {
     const ignoredOnly = stubDistribution();
-    ignoredOnly.bounceStats.mockResolvedValue({ unmatched: 0, ignored: 3 });
+    ignoredOnly.bounceSummary.mockResolvedValue(summaryOf({ unrecorded: Array.from({ length: 0 }, (_, i) => ({ address: `u${i}@example.test` })), ignored: 3 }));
     const resultIgnored = await runBounceSummaryIfDue(tdb.db, ignoredOnly, TZ, "ops@example.com", () => DAY1_0800);
     expect(resultIgnored).toEqual({ sent: false, lines: 0 });
     expect(ignoredOnly.send).not.toHaveBeenCalled();
@@ -192,13 +206,19 @@ describe("runBounceSummaryIfDue", () => {
     // bounce_summary_at to its own window start.
     expect(afterIgnored!.bounceSummaryAt).toEqual(new Date(DAY1_0800.getTime() - DAY_MS));
 
-    const unmatchedOnly = stubDistribution();
-    unmatchedOnly.bounceStats.mockResolvedValue({ unmatched: 2, ignored: 1 });
-    const resultUnmatched = await runBounceSummaryIfDue(tdb.db, unmatchedOnly, TZ, "ops@example.com", () => DAY2_0800);
-    expect(resultUnmatched).toEqual({ sent: true, lines: 0 });
-    expect(unmatchedOnly.send).toHaveBeenCalledTimes(1);
-    const req = unmatchedOnly.send.mock.calls[0]![0] as MessageRequest;
-    expect(req.text).toContain("Unmatched: 2; ignored: 1.");
+    const unrecordedOnly = stubDistribution();
+    unrecordedOnly.bounceSummary.mockResolvedValue(summaryOf({ unrecorded: Array.from({ length: 2 }, (_, i) => ({ address: `u${i}@example.test` })), ignored: 1 }));
+    const resultUnrecorded = await runBounceSummaryIfDue(tdb.db, unrecordedOnly, TZ, "ops@example.com", () => DAY2_0800);
+    expect(resultUnrecorded).toEqual({ sent: true, lines: 0 });
+    expect(unrecordedOnly.send).toHaveBeenCalledTimes(1);
+    const req = unrecordedOnly.send.mock.calls[0]![0] as MessageRequest;
+    expect(req.text).toContain("Unrecorded bounces (2)");
+
+    const softOnly = stubDistribution();
+    softOnly.bounceSummary.mockResolvedValue(summaryOf({ soft: [{ address: "soft-only@example.test", status: "4.2.2" }] }));
+    const resultSoft = await runBounceSummaryIfDue(tdb.db, softOnly, TZ, "ops@example.com", () => DAY3_0800);
+    expect(resultSoft).toEqual({ sent: true, lines: 0 });
+    expect((softOnly.send.mock.calls[0]![0] as MessageRequest).text).toContain("Soft bounces (1)");
   });
 
   it("default window with no prior summary: 24h before dbNow, not before", async () => {
@@ -219,7 +239,7 @@ describe("runBounceSummaryIfDue", () => {
     expect(req.text).not.toContain("toolold@example.test");
   });
 
-  it("body lines: recorded, disabled and flagged, media members bold, with the unmatched/ignored counts and the subject format", async () => {
+  it("body lines: recorded, disabled and flagged, media members bold, with the unrecorded/ignored counts and the subject format", async () => {
     const at = new Date(DAY1_0800.getTime() - HOUR_MS);
 
     const recorded = await insertSubscriber(tdb.db, "recorded@example.test");
@@ -236,11 +256,11 @@ describe("runBounceSummaryIfDue", () => {
     await insertHistory(tdb.db, flagged, "bounce-flagged", "", at);
 
     const distribution = stubDistribution();
-    distribution.bounceStats.mockResolvedValue({ unmatched: 4, ignored: 2 });
+    distribution.bounceSummary.mockResolvedValue(summaryOf({ unrecorded: Array.from({ length: 4 }, (_, i) => ({ address: `u${i}@example.test` })), ignored: 2 }));
 
     const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
     expect(result).toEqual({ sent: true, lines: 3 });
-    expect(distribution.bounceStats).toHaveBeenCalledWith(new Date(DAY1_0800.getTime() - 24 * HOUR_MS).toISOString(), DAY1_0800.toISOString());
+    expect(distribution.bounceSummary).toHaveBeenCalledWith(new Date(DAY1_0800.getTime() - 24 * HOUR_MS).toISOString(), DAY1_0800.toISOString());
 
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
     expect(req.priority).toBe("system");
@@ -251,7 +271,8 @@ describe("runBounceSummaryIfDue", () => {
     expect(req.text).toContain("recorded@example.test - hard (5.1.1): recorded (1/15d)");
     expect(req.text).toContain("disabled@example.test - hard (5.2.1): disabled (10/15d)");
     expect(req.text).toContain("flagged@example.test - hard (5.1.1): flagged — media list member");
-    expect(req.text).toContain("Unmatched: 4; ignored: 2.");
+    expect(req.text).toContain("Unrecorded bounces (4)");
+    expect(req.text).toContain("2 other messages");
 
     expect(req.html).toContain("<b>flagged@example.test - hard (5.1.1): flagged — media list member</b>");
     expect(req.html).not.toContain("<b>recorded@example.test");
@@ -291,7 +312,7 @@ describe("runBounceSummaryIfDue", () => {
     expect(distribution.send).toHaveBeenCalledTimes(1);
   });
 
-  it("an active lease: a concurrent call skips without calling bounceStats", async () => {
+  it("an active lease: a concurrent call skips without calling bounceSummary", async () => {
     const sub = await insertSubscriber(tdb.db, "lease-active@example.test");
     const at = new Date(DAY1_0800.getTime() - HOUR_MS);
     await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
@@ -302,9 +323,9 @@ describe("runBounceSummaryIfDue", () => {
       release = resolve;
     });
     const distributionA = stubDistribution();
-    distributionA.bounceStats.mockImplementation(async () => {
+    distributionA.bounceSummary.mockImplementation(async () => {
       await gate;
-      return { unmatched: 0, ignored: 0 };
+      return summaryOf();
     });
 
     const callA = runBounceSummaryIfDue(tdb.db, distributionA, TZ, "a@example.com", () => DAY1_0800);
@@ -316,7 +337,7 @@ describe("runBounceSummaryIfDue", () => {
     const distributionB = stubDistribution();
     const resultB = await runBounceSummaryIfDue(tdb.db, distributionB, TZ, "b@example.com", () => DAY1_0800);
     expect(resultB).toEqual({ sent: false, lines: 0 });
-    expect(distributionB.bounceStats).not.toHaveBeenCalled();
+    expect(distributionB.bounceSummary).not.toHaveBeenCalled();
     expect(distributionB.send).not.toHaveBeenCalled();
 
     release();
@@ -395,9 +416,9 @@ describe("runBounceSummaryIfDue", () => {
       release = resolve;
     });
     const distributionA = stubDistribution();
-    distributionA.bounceStats.mockImplementation(async () => {
+    distributionA.bounceSummary.mockImplementation(async () => {
       await gate;
-      return { unmatched: 0, ignored: 0 };
+      return summaryOf();
     });
 
     const callA = runBounceSummaryIfDue(tdb.db, distributionA, TZ, "a@example.com", () => DAY1_0800);
@@ -458,10 +479,67 @@ describe("runBounceSummaryIfDue", () => {
     }
   });
 
+  it("lists soft and unrecorded bounces, marks subscribers and bolds media members", async () => {
+    const media = await insertSubscriber(tdb.db, "Soft-Media@example.test");
+    await makeMediaMember(tdb.db, media);
+    await insertSubscriber(tdb.db, "known@example.test");
+    const distribution = stubDistribution();
+    distribution.bounceSummary.mockResolvedValue(
+      summaryOf({
+        soft: [{ address: "soft-media@example.test", status: "4.2.2", message: "452 4.2.2 mailbox full", subject: "BC Gov News - Clinics" }],
+        unrecorded: [
+          { address: "KNOWN@example.test", status: "5.1.1", message: "550 5.1.1 not found", subject: "BC Gov News On Demand Email Verification" },
+          { address: "stranger@example.test", status: "5.4.316", message: "Message expired", subject: "Old release" },
+        ],
+      }),
+    );
+    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
+    expect(result).toEqual({ sent: true, lines: 0 });
+    const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+    expect(req.text).toContain("soft-media@example.test (4.2.2 452 4.2.2 mailbox full) - BC Gov News - Clinics");
+    expect(req.html).toContain("<b>soft-media@example.test (4.2.2");
+    expect(req.text).toContain("KNOWN@example.test (5.1.1 550 5.1.1 not found) - BC Gov News On Demand Email Verification - NoD subscriber (active)");
+    expect(req.text).toContain("stranger@example.test (5.4.316 Message expired) - Old release - not a NoD subscriber");
+  });
+
+  it("a soft code staff count as hard is not listed again among soft bounces", async () => {
+    await tdb.db.update(nodSettings).set({ bounceSoftCodesCounted: ["4.2.2"] }).where(eq(nodSettings.id, 1));
+    try {
+      const sub = await insertSubscriber(tdb.db, "counted@example.test");
+      await insertHardBounceDelivery(tdb.db, sub, { at: DAY1_0300, status: "4.2.2" });
+      await insertHistory(tdb.db, sub, "bounce-recorded", "4.2.2", DAY1_0300);
+      const distribution = stubDistribution();
+      distribution.bounceSummary.mockResolvedValue(summaryOf({ soft: [{ address: "counted@example.test", status: "4.2.2" }, { address: "full@example.test", status: "4.4.7" }] }));
+      await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
+      const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+      expect(req.text).toContain("counted@example.test - soft, counted as hard (4.2.2): recorded (1/15d)");
+      expect(req.text).toContain("Soft bounces (1)");
+      expect(req.text).not.toContain("counted@example.test (4.2.2");
+    } finally {
+      await tdb.db.update(nodSettings).set({ bounceSoftCodesCounted: [] }).where(eq(nodSettings.id, 1));
+    }
+  });
+
+  it("Distribution down: no partial summary, lease cleared, retried on the next due check", async () => {
+    const sub = await insertSubscriber(tdb.db, "partial@example.test");
+    await insertHardBounceDelivery(tdb.db, sub, { at: DAY1_0300, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", DAY1_0300);
+    const down = stubDistribution();
+    down.bounceSummary.mockRejectedValue(new Error("Distribution responded HTTP 503"));
+    await expect(runBounceSummaryIfDue(tdb.db, down, TZ, "ops@example.com", () => DAY1_0805)).rejects.toThrow();
+    expect(down.send).not.toHaveBeenCalled();
+    const [s] = await tdb.db.select().from(nodSettings);
+    expect(s!.bounceSummaryLease).toBeNull();
+    expect(s!.bounceSummaryCheckedAt).toBeNull();
+
+    const up = stubDistribution();
+    expect((await runBounceSummaryIfDue(tdb.db, up, TZ, "ops@example.com", () => DAY1_0805)).sent).toBe(true);
+  });
+
   it("sends to the staff-set address ahead of the server default", async () => {
     await tdb.db.update(nodSettings).set({ bounceSummaryEmail: "summary-staff@example.test" }).where(eq(nodSettings.id, 1));
     const distribution = stubDistribution();
-    distribution.bounceStats.mockResolvedValue({ unmatched: 1, ignored: 0 });
+    distribution.bounceSummary.mockResolvedValue(summaryOf({ unrecorded: Array.from({ length: 1 }, (_, i) => ({ address: `u${i}@example.test` })), ignored: 0 }));
     const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "server-default@example.test", () => DAY1_0805);
     expect(result.sent).toBe(true);
     expect((distribution.send.mock.calls[0]![0] as MessageRequest).recipients).toEqual([{ email: "summary-staff@example.test", substitutions: {} }]);
@@ -470,7 +548,7 @@ describe("runBounceSummaryIfDue", () => {
   it("a staff-set address sends even with no server default", async () => {
     await tdb.db.update(nodSettings).set({ bounceSummaryEmail: "summary-staff@example.test" }).where(eq(nodSettings.id, 1));
     const distribution = stubDistribution();
-    distribution.bounceStats.mockResolvedValue({ unmatched: 1, ignored: 0 });
+    distribution.bounceSummary.mockResolvedValue(summaryOf({ unrecorded: Array.from({ length: 1 }, (_, i) => ({ address: `u${i}@example.test` })), ignored: 0 }));
     expect((await runBounceSummaryIfDue(tdb.db, distribution, TZ, null, () => DAY1_0805)).sent).toBe(true);
   });
 });

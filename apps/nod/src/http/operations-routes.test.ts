@@ -15,7 +15,7 @@ describe("operations routes", () => {
     getSettings: vi.fn().mockResolvedValue({ paused: false }),
     setPaused: vi.fn(),
     uploadBounce: vi.fn(),
-    bounceStats: vi.fn(),
+    bounceSummary: vi.fn(),
     bounceSource: vi.fn().mockResolvedValue({ source: "fake" }),
   } as unknown as DistributionClient;
 

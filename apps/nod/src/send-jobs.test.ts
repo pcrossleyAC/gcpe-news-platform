@@ -1471,9 +1471,9 @@ describe("distributionClient", () => {
     });
   });
 
-  // uploadBounce/bounceStats hit Distribution's own bounce routes -- same token/error handling
+  // uploadBounce/bounceSummary hit Distribution's own bounce routes -- same token/error handling
   // as everything else (callDistribution), just a different path/method/body/response shape.
-  describe("uploadBounce / bounceStats", () => {
+  describe("uploadBounce / bounceSummary", () => {
     it("uploadBounce POSTs /api/bounces/inbox with the raw message and returns the id", async () => {
       respondStatus = 201;
       respondBody = { id: "bounce-inbox-1" };
@@ -1499,23 +1499,30 @@ describe("distributionClient", () => {
       await expect(client.uploadBounce("x")).rejects.toMatchObject({ retryable: true, status: 201 });
     });
 
-    it("bounceStats GETs /api/bounces/stats with since and until as query params and returns the parsed counts", async () => {
+    it("bounceSummary GETs /api/bounces/summary with since and until only, and returns the parsed body", async () => {
+      const SUMMARY = {
+        processed: 2,
+        bounces: 2,
+        ignored: 0,
+        soft: { count: 0, rows: [] },
+        unrecorded: { count: 1, rows: [{ address: "x@example.test", status: "5.1.1", message: null, subject: null, processedAt: "2026-10-06T09:00:00.000Z" }] },
+      };
       respondStatus = 200;
-      respondBody = { unmatched: 3, ignored: 5 };
+      respondBody = SUMMARY;
       const client = distributionClient({ baseUrl, getToken: async () => "the-token" });
-      expect(await client.bounceStats("2026-10-05T08:00:00.000Z", "2026-10-06T08:00:00.000Z")).toEqual({ unmatched: 3, ignored: 5 });
+      expect(await client.bounceSummary("2026-10-05T08:00:00.000Z", "2026-10-06T08:00:00.000Z")).toEqual(SUMMARY);
       expect(lastMethod).toBe("GET");
       expect(lastPath).toBe(
-        `/api/bounces/stats?since=${encodeURIComponent("2026-10-05T08:00:00.000Z")}&until=${encodeURIComponent("2026-10-06T08:00:00.000Z")}`,
+        `/api/bounces/summary?since=${encodeURIComponent("2026-10-05T08:00:00.000Z")}&until=${encodeURIComponent("2026-10-06T08:00:00.000Z")}`,
       );
       expect(lastAuthHeader).toBe("Bearer the-token");
     });
 
-    it("bounceStats maps a 2xx body missing unmatched/ignored to a retryable DistributionError", async () => {
+    it("bounceSummary maps a malformed 2xx body to a retryable DistributionError", async () => {
       respondStatus = 200;
-      respondBody = { unmatched: 1 };
+      respondBody = { processed: 1 };
       const client = distributionClient({ baseUrl, getToken: async () => "t" });
-      await expect(client.bounceStats("2026-10-05T08:00:00.000Z", "2026-10-06T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 200 });
+      await expect(client.bounceSummary("2026-10-05T08:00:00.000Z", "2026-10-06T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 200 });
     });
 
     it("maps a 503 from either bounce route to a retryable DistributionError", async () => {
@@ -1523,7 +1530,7 @@ describe("distributionClient", () => {
       respondBody = "service unavailable";
       const client = distributionClient({ baseUrl, getToken: async () => "t" });
       await expect(client.uploadBounce("x")).rejects.toMatchObject({ retryable: true, status: 503 });
-      await expect(client.bounceStats("2026-10-05T08:00:00.000Z", "2026-10-06T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 503 });
+      await expect(client.bounceSummary("2026-10-05T08:00:00.000Z", "2026-10-06T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 503 });
     });
   });
 });

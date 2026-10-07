@@ -2,13 +2,14 @@ import { randomUUID } from "node:crypto";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx, TestClock } from "@gcpe/db-kit";
 import { sqlNow } from "@gcpe/db-kit";
-import { escapeHtml } from "@gcpe/http-kit";
 import { BOUNCE_ACTOR, countBouncedEmails, THRESHOLD_WINDOW_DAYS } from "./bounces";
 import { todaysCutoff } from "./digest";
-import type { DistributionClient } from "./distribution-client";
-import { nodSettings } from "./db/schema";
+import { buildSummaryBody, type HardLine, type ListedBounce } from "./bounce-summary-body";
+import type { BounceSummaryRow, DistributionClient } from "./distribution-client";
+import { nodSettings, subscribers, subscriptions, type SubscriberRow } from "./db/schema";
+import { MEDIA_CATEGORY } from "./lists";
 import { hasMediaMemberships } from "./media-members";
-import { resolveBounceSummaryAddress } from "./settings";
+import { getSoftCodesCounted, resolveBounceSummaryAddress } from "./settings";
 import { safeErrorLabel } from "./subscribe/journeys";
 
 /** Daily at 08:00 BC time (Global Constraints "Summary email"), the same `dailyCutoff`/
@@ -91,18 +92,23 @@ function outcomeFor(row: SummaryRow, count: number): string {
   return "flagged — media list member";
 }
 
-/** The address, hard/soft and status code, and the outcome (Global Constraints "Summary
- * email"). Every row here traces back to a hard bounce (the only kind bounces.ts ever writes
- * history for), so `hard` is always true; `status` falls back to the history row's own detail
- * for `bounce-recorded` (identically the status code bounces.ts wrote there) when no delivery
- * row survived to join against. A media-list member's whole line is wrapped in `<b>` in the
- * html part, as legacy did -- never in the text part, which has no markup at all. */
-function formatLine(row: SummaryRow, outcome: string, mediaMember: boolean): { html: string; text: string } {
-  const status = row.bounce_status ?? (row.action === "bounce-recorded" ? row.detail || null : null);
-  const statusSuffix = status ? ` (${status})` : "";
-  const text = `${row.email} - hard${statusSuffix}: ${outcome}`;
-  const html = `${escapeHtml(row.email)} - hard${status ? ` (${escapeHtml(status)})` : ""}: ${escapeHtml(outcome)}`;
-  return mediaMember ? { html: `<b>${html}</b>`, text } : { html, text };
+/** What NoD knows about each listed address: its subscriber status (case-insensitively) and
+ * whether it is on a media list (bold, as legacy did). One query for the whole list. */
+async function annotate(db: DbOrTx, rows: BounceSummaryRow[]): Promise<ListedBounce[]> {
+  const addresses = [...new Set(rows.map((r) => r.address.toLowerCase()))];
+  const known = new Map<string, { status: SubscriberRow["status"]; media: boolean }>();
+  if (addresses.length > 0) {
+    const { rows: found } = await db.execute<{ email: string; status: SubscriberRow["status"]; media: boolean }>(sql`
+      SELECT lower(s.email) AS email, s.status,
+             EXISTS (SELECT 1 FROM ${subscriptions} x WHERE x.subscriber_id = s.id AND x.list_key LIKE ${`${MEDIA_CATEGORY}:%`}) AS media
+        FROM ${subscribers} s
+       WHERE lower(s.email) = ANY(${sql.param(addresses)}::text[])`);
+    for (const f of found) known.set(f.email, { status: f.status, media: f.media });
+  }
+  return rows.map((r) => {
+    const k = known.get(r.address.toLowerCase());
+    return { address: r.address, status: r.status, message: r.message, subject: r.subject, subscriber: k?.status ?? null, mediaMember: k?.media ?? false };
+  });
 }
 
 function localDateLabel(d: Date, timeZone: string): string {
@@ -191,9 +197,9 @@ async function finish(db: Db, lease: string, stamp: { checkedAt: Date; at?: Date
 
 /**
  * Runs the daily bounce summary if it's due (Global Constraints "Summary email"): claim (see
- * {@link claim}), then work with no transaction held (fetch the rows, call
- * `distribution.bounceStats`, then `distribution.send` -- each of which can take up to the
- * full request timeout), then {@link finish}.
+ * {@link claim}), then work with no transaction held (fetch the hard lines, fetch the soft and
+ * unrecorded bounces from Distribution (`distribution.bounceSummary`), then `distribution.send`
+ * -- each call can take up to the full request timeout), then {@link finish}.
  *
  * the recipient is the staff-set address, else `fallbackTo` (NOD_BOUNCE_SUMMARY_EMAIL), else
  * nothing is sent.
@@ -202,16 +208,16 @@ async function finish(db: Db, lease: string, stamp: { checkedAt: Date; at?: Date
  * its `cutoff` -- the two can differ by however late this tick ran past 08:00) or, on the very
  * first run, 24h before `dbNow`.
  *
- * An *ignored-only* window -- no subscriber lines and no unmatched bounces, only non-bounce
- * mail Distribution classified `ignored` -- sends no email. Only bounces (matched or not)
- * count as "there were bounces"; `ignored` alone never does.
+ * An *ignored-only* window -- no hard lines and no soft or unrecorded bounces, only non-bounce
+ * mail Distribution classified `ignored` -- sends no email. Only bounces count as "there were
+ * bounces"; `ignored` alone never does.
  *
  * `now` is a test hook (see `@gcpe/db-kit`'s `TestClock`): production call sites never pass
  * one.
  */
 export async function runBounceSummaryIfDue(
   db: Db,
-  distribution: Pick<DistributionClient, "send" | "bounceStats">,
+  distribution: Pick<DistributionClient, "send" | "bounceSummary">,
   timeZone: string,
   fallbackTo: string | null,
   now?: TestClock,
@@ -225,15 +231,24 @@ export async function runBounceSummaryIfDue(
 
   try {
     const rows = await fetchSummaryRows(db, windowStart, dbNow);
-    const lines: { html: string; text: string }[] = [];
+    const hard: HardLine[] = [];
     for (const row of rows) {
       const count = row.action === "bounce-recorded" ? await countBouncedEmails(db, row.subscriber_id) : 0;
-      const mediaMember = await hasMediaMemberships(db, row.subscriber_id);
-      lines.push(formatLine(row, outcomeFor(row, count), mediaMember));
+      const status = row.bounce_status ?? (row.action === "bounce-recorded" ? row.detail || null : null);
+      hard.push({ email: row.email, status, outcome: outcomeFor(row, count), mediaMember: await hasMediaMemberships(db, row.subscriber_id) });
     }
 
-    const stats = await distribution.bounceStats(windowStart.toISOString(), dbNow.toISOString());
-    if (lines.length === 0 && stats.unmatched === 0) {
+    // Fetched before anything is sent: if Distribution can't answer, nothing goes out and the
+    // whole run is retried, rather than sending hard lines alone.
+    const dist = await distribution.bounceSummary(windowStart.toISOString(), dbNow.toISOString());
+
+    // A soft code staff count as hard was handled as a hard bounce and is already a hard line.
+    const counted = new Set(await getSoftCodesCounted(db));
+    const softRows = dist.soft.rows.filter((r) => !(r.status && counted.has(r.status.trim())));
+    const softCount = dist.soft.count - (dist.soft.rows.length - softRows.length);
+
+    // Only bounces count as "there were bounces"; a window of ignored mail alone sends nothing.
+    if (hard.length === 0 && softCount === 0 && dist.unrecorded.count === 0) {
       // Before this call's very first-ever send, `bounce_summary_at` is still unset, so a
       // no-op run still stamps it to this call's own `windowStart` -- closing the gap that
       // would otherwise leave the next (eventually non-empty) run's window starting from 24h
@@ -245,11 +260,16 @@ export async function runBounceSummaryIfDue(
     const dateLabel = localDateLabel(cutoff, timeZone);
     const generatedAt = new Intl.DateTimeFormat("en-CA", { timeZone, dateStyle: "long", timeStyle: "short" }).format(dbNow);
     const subject = `News On Demand - Bounce Manager - ${dateLabel}`;
-
-    const htmlLines = lines.length > 0 ? lines.map((l) => `<p>${l.html}</p>`).join("\n") : "<p>No bounced subscribers in this window.</p>";
-    const textLines = lines.length > 0 ? lines.map((l) => l.text).join("\n") : "No bounced subscribers in this window.";
-    const html = `${htmlLines}\n<p>Unmatched: ${stats.unmatched}; ignored: ${stats.ignored}.</p>\n<p>Generated on ${escapeHtml(generatedAt)} (${escapeHtml(timeZone)}).</p>`;
-    const text = `${textLines}\nUnmatched: ${stats.unmatched}; ignored: ${stats.ignored}.\nGenerated on ${generatedAt} (${timeZone}).`;
+    const { html, text } = buildSummaryBody({
+      processed: dist.processed,
+      bounces: dist.bounces,
+      ignored: dist.ignored,
+      hard,
+      soft: { count: softCount, rows: await annotate(db, softRows) },
+      unrecorded: { count: dist.unrecorded.count, rows: await annotate(db, dist.unrecorded.rows) },
+      generatedAt,
+      timeZone,
+    });
 
     await distribution.send({
       priority: "system",
@@ -262,7 +282,7 @@ export async function runBounceSummaryIfDue(
     });
 
     await finish(db, lease, { checkedAt: cutoff, at: dbNow });
-    return { sent: true, lines: lines.length };
+    return { sent: true, lines: hard.length };
   } catch (e) {
     // `finish` itself failing (a transient DB error while just clearing the lease) must never
     // replace the original failure -- that's the one the next due check actually needs to see
@@ -284,7 +304,7 @@ export async function runBounceSummaryIfDue(
  * message happens to carry one) and never thrown out of the loop. */
 export function startBounceSummaryLoop(opts: {
   db: Db;
-  distribution: Pick<DistributionClient, "send" | "bounceStats">;
+  distribution: Pick<DistributionClient, "send" | "bounceSummary">;
   timeZone: string;
   /** The fallback (NOD_BOUNCE_SUMMARY_EMAIL); a staff-set address on Operations wins
    * (resolveBounceSummaryAddress, read fresh on every run, never just once at startup). */

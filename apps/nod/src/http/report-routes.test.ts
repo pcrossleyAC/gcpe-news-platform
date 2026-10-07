@@ -35,7 +35,7 @@ describe("report routes", () => {
     getSettings: vi.fn(),
     setPaused: vi.fn(),
     uploadBounce: vi.fn(),
-    bounceStats: vi.fn(),
+    bounceSummary: vi.fn(),
     bounceSource: vi.fn(),
     dailyReport: vi.fn(),
   } as unknown as DistributionClient;
