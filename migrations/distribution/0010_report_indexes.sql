@@ -1,0 +1,2 @@
+CREATE INDEX "messages_sent_at_idx" ON "messages" USING btree ("sent_at","batch_id","bounce_hard") WHERE "messages"."status" = 'sent';--> statement-breakpoint
+CREATE INDEX "messages_failed_batch_idx" ON "messages" USING btree ("batch_id") WHERE "messages"."status" = 'failed';
