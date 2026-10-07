@@ -291,6 +291,13 @@ export const lists = pgTable(
     active: boolean("active").notNull().default(true),
     sortOrder: integer("sort_order").notNull().default(0),
     topicUrl: text("topic_url").notNull().default(""),
+    // Staff's own switch (spec §8), separate from `active`, which Core/NRMS own and every
+    // upsert overwrites. Off = not offered for new subscriptions; existing subscriptions are
+    // kept and still sent.
+    enabled: boolean("enabled").notNull().default(true),
+    // Staff's order within the category. Null = after every staff-ordered list, by the source's
+    // own sort_order: a list Core adds later appears at the end until staff place it.
+    staffSortOrder: integer("staff_sort_order"),
   },
   (t) => [uniqueIndex("lists_category_key_idx").on(t.category, t.key)],
 );

@@ -148,6 +148,13 @@
       "when": 1791371067377,
       "tag": "0020_staff_media_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1791371756851,
+      "tag": "0021_list_staff_fields",
+      "breakpoints": true
     }
   ]
 }

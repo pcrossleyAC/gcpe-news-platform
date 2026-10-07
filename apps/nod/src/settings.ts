@@ -5,7 +5,18 @@ import type { DistributionClient } from "./distribution-client";
 import { nodSettings, operationsLog } from "./db/schema";
 import { safeErrorLabel } from "./subscribe/journeys";
 
-export type OperationsAction = "paused" | "resumed" | "distribution-paused" | "distribution-resumed";
+export type OperationsAction =
+  | "paused"
+  | "resumed"
+  | "distribution-paused"
+  | "distribution-resumed"
+  | "category-enabled"
+  | "category-disabled"
+  | "categories-reordered"
+  | "lists-reordered"
+  | "list-enabled"
+  | "list-disabled"
+  | "bounce-summary-address-changed";
 
 export async function getSettings(db: Db): Promise<{ paused: boolean; lastDigestCutoff: string | null }> {
   const [row] = await db.select({ paused: nodSettings.paused, lastDigestCutoff: nodSettings.lastDigestCutoff }).from(nodSettings).where(eq(nodSettings.id, 1));
@@ -28,10 +39,12 @@ function formatTenantTime(at: Date, timeZone: string): string {
 }
 
 /** Writes one `operations_log` row for `action` by `actor` -- callable inside an existing
- * transaction (NoD's own setPaused) or standalone (setDistributionPaused, below, which has no
- * local settings row of its own to update atomically with it). */
-async function writeOpsLog(dbOrTx: DbOrTx, actor: string, action: OperationsAction): Promise<{ id: string; at: Date }> {
-  const [log] = await dbOrTx.insert(operationsLog).values({ actor, action }).returning({ id: operationsLog.id, at: operationsLog.at });
+ * transaction (NoD's own setPaused, or staff-lists.ts's category/list changes) or standalone
+ * (setDistributionPaused, below, which has no local settings row of its own to update
+ * atomically with it). `detail` names what changed (a list or category key) and never holds
+ * an email address: the log is staff-visible and kept indefinitely. */
+export async function writeOpsLog(dbOrTx: DbOrTx, actor: string, action: OperationsAction, detail = ""): Promise<{ id: string; at: Date }> {
+  const [log] = await dbOrTx.insert(operationsLog).values({ actor, action, detail }).returning({ id: operationsLog.id, at: operationsLog.at });
   return log!;
 }
 

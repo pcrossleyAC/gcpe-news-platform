@@ -2,7 +2,7 @@ import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
 import { countBouncedEmails, THRESHOLD_WINDOW_DAYS } from "../bounces";
 import { listCategories, lists, subscriberHistory, subscribers, subscriptions, SUBSCRIBER_STATUSES, type SubscriberStatus } from "../db/schema";
-import { MEDIA_CATEGORY, PUBLIC_CATEGORIES } from "../lists";
+import { LIST_ORDER, MEDIA_CATEGORY, PUBLIC_CATEGORIES } from "../lists";
 
 export const STATUS_FILTERS = ["all", ...SUBSCRIBER_STATUSES] as const;
 export type StatusFilter = (typeof STATUS_FILTERS)[number];
@@ -143,8 +143,8 @@ export async function listOptions(db: DbOrTx): Promise<ListOptions> {
     .select({ category: listCategories.key, categoryName: listCategories.name, listKey: lists.listKey, name: lists.name })
     .from(lists)
     .innerJoin(listCategories, eq(listCategories.key, lists.category))
-    .where(and(inArray(lists.category, [...PUBLIC_CATEGORIES]), eq(lists.active, true), eq(listCategories.enabled, true)))
-    .orderBy(asc(listCategories.sortOrder), asc(lists.sortOrder), asc(lists.name));
+    .where(and(inArray(lists.category, [...PUBLIC_CATEGORIES]), eq(lists.active, true), eq(lists.enabled, true), eq(listCategories.enabled, true)))
+    .orderBy(asc(listCategories.sortOrder), ...LIST_ORDER);
   const categories: ListOptions["categories"] = [];
   for (const r of rows) {
     let c = categories.at(-1);
