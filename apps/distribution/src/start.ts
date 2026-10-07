@@ -107,7 +107,7 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
     port: parsed.PORT,
     workers: {
       send: () => sendDue(sendOptions),
-      bounces: () => runBouncesIfDue(db, bounceSource, { subscribers }),
+      bounces: () => runBouncesIfDue(db, bounceSource, { subscribers, messageIdDomain: parsed.MESSAGE_ID_DOMAIN }),
       dispatch: () => dispatchOnce({ db, subscribers }),
     },
     startLoops() {
@@ -116,7 +116,7 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
         intervalMs: parsed.SEND_INTERVAL_MS,
         outageCooldownMaxMs: parsed.SEND_OUTAGE_COOLDOWN_MAX_MS,
       });
-      stopBounceLoop = startBounceLoop({ db, source: bounceSource, subscribers });
+      stopBounceLoop = startBounceLoop({ db, source: bounceSource, subscribers, messageIdDomain: parsed.MESSAGE_ID_DOMAIN });
       stopDispatcher = startDispatcher({ db, subscribers });
     },
     closeBeforeServer: [],

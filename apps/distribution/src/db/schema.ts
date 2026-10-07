@@ -64,6 +64,10 @@ export const messages = pgTable(
   },
   (t) => [
     index("messages_due_idx").on(t.priority.desc(), t.nextAttemptAt).where(sql`${t.status} = 'pending'`),
+    // bounces/store.ts's recipient fallback: the most recent `sent` message to a recipient
+    // (case-insensitively), within a few days -- without this, that lookup falls back to a
+    // sequential scan on any table of real size.
+    index("messages_sent_email_lower_idx").on(sql`lower(${t.email})`, t.sentAt).where(sql`${t.status} = 'sent'`),
     check("messages_status_check", sql`${t.status} IN ('pending','sent','failed')`),
   ],
 );

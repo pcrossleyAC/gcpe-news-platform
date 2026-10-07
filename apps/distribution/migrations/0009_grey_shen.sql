@@ -1,0 +1,1 @@
+CREATE INDEX "messages_sent_email_lower_idx" ON "messages" USING btree (lower("email"),"sent_at") WHERE "messages"."status" = 'sent';

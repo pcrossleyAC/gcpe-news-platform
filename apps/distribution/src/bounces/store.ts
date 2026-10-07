@@ -35,24 +35,51 @@ function splitMessageId(id: string): { local: string; domain: string } | null {
   return { local: bare.slice(0, at), domain: bare.slice(at + 1) };
 }
 
-async function findMatch(tx: Tx, parsed: ParsedBounce & { kind: "bounce" }): Promise<MatchRow | null> {
+// sender.ts's messageIdFor always derives the local part from the row's own uuid primary key —
+// a local part that isn't shaped like one was never ours, so it's never looked up as a primary
+// key (and never falls through to a scan of `messages` either; see findMatch below).
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Message-ID match (Global Constraints "Matching" §1), then the recipient fallback (§2).
+ *
+ * The Message-ID's local part *is* the matched message's own row id (sender.ts's
+ * messageIdFor), so a usable one is looked up by primary key — `messages.id = $local::uuid` —
+ * instead of a string split-and-compare over every row, which a large `messages` table (final
+ * review: ~500ms at 2M rows) turned into a sequential scan. A local part that isn't uuid-shaped
+ * never reaches the database at all: it was never one of ours, so there's nothing to look up.
+ * The found row's own domain is still compared case-insensitively against the bounce's parsed
+ * one, exactly as the old string comparison did.
+ *
+ * Ruling (final review): the recipient fallback below runs only for a bounce that could
+ * plausibly be naming one of ours — no Message-ID at all, or one on our own domain
+ * (`messageIdDomain`) that simply didn't resolve to a row (purged, or a race). A Message-ID on a
+ * foreign domain (legacy's, or another system's, during a parallel run) never named a message
+ * we sent, so it's left unmatched rather than pinned onto an unrelated recent send to the same
+ * recipient.
+ */
+async function findMatch(tx: Tx, parsed: ParsedBounce & { kind: "bounce" }, messageIdDomain: string): Promise<MatchRow | null> {
   const matchColumns = { id: messages.id, batchId: messages.batchId, appId: batches.appId, email: messages.email, bounceHard: messages.bounceHard };
 
   const parts = parsed.originalMessageId ? splitMessageId(parsed.originalMessageId) : null;
-  if (parts) {
+
+  if (parts && UUID_RE.test(parts.local)) {
     const [row] = await tx
-      .select(matchColumns)
+      .select({ ...matchColumns, messageId: messages.messageId })
       .from(messages)
       .innerJoin(batches, eq(batches.id, messages.batchId))
-      .where(
-        sql`split_part(trim(both '<> ' from ${messages.messageId}), '@', 1) = ${parts.local}
-          AND lower(split_part(trim(both '<> ' from ${messages.messageId}), '@', 2)) = lower(${parts.domain})`,
-      );
-    if (row) return row;
+      .where(eq(messages.id, parts.local));
+    const rowDomain = row?.messageId ? splitMessageId(row.messageId)?.domain : undefined;
+    if (row && rowDomain !== undefined && rowDomain.toLowerCase() === parts.domain.toLowerCase()) {
+      return { id: row.id, batchId: row.batchId, appId: row.appId, email: row.email, bounceHard: row.bounceHard };
+    }
   }
 
-  // Fallback (Global Constraints "Matching" §2): no Message-ID, or it matched nothing — the
-  // most recent `sent` message to this recipient, case-insensitively, within the window.
+  if (parts && parts.domain.toLowerCase() !== messageIdDomain.toLowerCase()) return null;
+
+  // Fallback (Global Constraints "Matching" §2): no Message-ID, or it's one of ours that
+  // matched nothing — the most recent `sent` message to this recipient, case-insensitively,
+  // within the window.
   const [row] = await tx
     .select(matchColumns)
     .from(messages)
@@ -70,6 +97,14 @@ async function findMatch(tx: Tx, parsed: ParsedBounce & { kind: "bounce" }): Pro
   return row ?? null;
 }
 
+/** Postgres `text` columns reject an embedded NUL outright, and bounce content is externally
+ * controlled (an upload, or whatever a mailbox handed back) — stripped from every text value
+ * this module stores, rather than trusting the source (or the earlier upload route) to have
+ * done it already. */
+function stripNul(s: string): string {
+  return s.includes("\u0000") ? s.replaceAll("\u0000", "") : s;
+}
+
 /**
  * Records one fetched bounce report, matches it to the message it's about, and updates that
  * message's bounce columns — all inside the caller's transaction. When the bounce matched (and
@@ -85,20 +120,36 @@ async function findMatch(tx: Tx, parsed: ParsedBounce & { kind: "bounce" }): Pro
  * The recipient reported back is always the message's own `email` (its intended recipient),
  * never a redirect address — matching is what finds the message; the message already knows who
  * it was meant for.
+ *
+ * `messageIdDomain` is env.ts's own resolved `MESSAGE_ID_DOMAIN` — what makes a Message-ID
+ * "ours" for the recipient-fallback gate inside {@link findMatch}.
  */
-export async function recordBounce(tx: Tx, sourceId: string, raw: string, parsed: ParsedBounce, subscribers: SubscriberConfig[]): Promise<RecordBounceResult> {
-  const matched = parsed.kind === "bounce" ? await findMatch(tx, parsed) : null;
+export async function recordBounce(
+  tx: Tx,
+  sourceId: string,
+  raw: string,
+  parsed: ParsedBounce,
+  subscribers: SubscriberConfig[],
+  messageIdDomain: string,
+): Promise<RecordBounceResult> {
+  // Stripped once, up front: `parsed`'s own text fields feed both the match query below (a NUL
+  // byte in a bound parameter is itself rejected by Postgres, not just by storing it) and the
+  // insert further down, so both need the clean value, not just the one that's stored.
+  const clean: ParsedBounce =
+    parsed.kind === "bounce" ? { ...parsed, recipient: stripNul(parsed.recipient), status: stripNul(parsed.status) } : parsed;
+
+  const matched = clean.kind === "bounce" ? await findMatch(tx, clean, messageIdDomain) : null;
 
   const [inserted] = await tx
     .insert(bounces)
     .values({
       sourceId,
-      raw,
-      kind: parsed.kind,
-      recipient: parsed.kind === "bounce" ? parsed.recipient : null,
-      status: parsed.kind === "bounce" ? parsed.status : null,
-      hard: parsed.kind === "bounce" ? parsed.hard : null,
-      method: parsed.kind === "bounce" ? parsed.method : null,
+      raw: stripNul(raw),
+      kind: clean.kind,
+      recipient: clean.kind === "bounce" ? clean.recipient : null,
+      status: clean.kind === "bounce" ? clean.status : null,
+      hard: clean.kind === "bounce" ? clean.hard : null,
+      method: clean.kind === "bounce" ? clean.method : null,
       messageId: matched?.id ?? null,
       matched: matched !== null,
       processedAt: sql`now()`,

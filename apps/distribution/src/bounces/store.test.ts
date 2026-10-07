@@ -1,13 +1,20 @@
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { Db, TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { createDistributionTestDb } from "../../test/helpers";
 import { batches, bounces, messages, outboxDeliveries, outboxEvents } from "../db/schema";
-import type { ParsedBounce } from "./parse";
+import { messageIdFor } from "../sender";
+import { parseBounce, type ParsedBounce } from "./parse";
 import { recordBounce } from "./store";
 
 const NO_SUBSCRIBERS: SubscriberConfig[] = [];
+
+// The domain env.ts's MESSAGE_ID_DOMAIN resolves to in production -- every test below that
+// cares about Message-ID matching passes this as recordBounce's own `messageIdDomain`.
+const DOMAIN = "dist.example.test";
 
 const HARD_BOUNCE: ParsedBounce = { kind: "bounce", recipient: "alex@example.test", status: "5.1.1", hard: true, originalMessageId: null, method: "rfc3464" };
 const SOFT_BOUNCE: ParsedBounce = { kind: "bounce", recipient: "alex@example.test", status: "4.4.7", hard: false, originalMessageId: null, method: "rfc3464" };
@@ -19,7 +26,11 @@ async function seedMessage(
     email?: string;
     status?: "pending" | "sent" | "failed";
     sentAt?: Date | null;
-    messageId?: string | null;
+    /** When given, `messages.message_id` is set to `messageIdFor(<this row's own id>, domain)`
+     * -- real sends always derive their stored Message-ID from their own primary key
+     * (sender.ts's messageIdFor), so a test fixture does the same rather than writing some
+     * other arbitrary string. */
+    domain?: string;
     originalRecipient?: string | null;
     bounceHard?: boolean | null;
   } = {},
@@ -34,15 +45,21 @@ async function seedMessage(
       priority: 0,
       status: opts.status ?? "sent",
       sentAt: opts.sentAt === undefined ? new Date() : (opts.sentAt ?? undefined),
-      messageId: opts.messageId ?? null,
       originalRecipient: opts.originalRecipient ?? null,
       bounceHard: opts.bounceHard ?? null,
     })
     .returning({ id: messages.id });
-  return { batchId: batch!.id, messageId: message!.id, appId };
+  const id = message!.id;
+  if (opts.domain) {
+    await db.update(messages).set({ messageId: messageIdFor(id, opts.domain) }).where(eq(messages.id, id));
+  }
+  return { batchId: batch!.id, messageId: id, appId };
 }
 
 const daysAgo = (n: number): Date => new Date(Date.now() - n * 24 * 3_600_000);
+
+const fixturesDir = fileURLToPath(new URL("../../test/fixtures/bounces", import.meta.url));
+const fixture = (name: string): string => readFileSync(`${fixturesDir}/${name}`, "utf8");
 
 describe("recordBounce", () => {
   let tdb: TestDatabase;
@@ -57,11 +74,11 @@ describe("recordBounce", () => {
     await tdb.db.execute(sql`TRUNCATE TABLE bounces, messages, batches, outbox_deliveries, outbox_events`);
   });
 
-  it("matches by Message-ID, with or without brackets and surrounding whitespace", async () => {
-    const seeded = await seedMessage(tdb.db, { messageId: "<row-1@dist.example.test>" });
+  it("matches by Message-ID (the local part is the row's own id), with or without brackets and surrounding whitespace", async () => {
+    const seeded = await seedMessage(tdb.db, { domain: DOMAIN });
 
     const result = await tdb.db.transaction((tx) =>
-      recordBounce(tx, "src-1", "raw", { ...HARD_BOUNCE, originalMessageId: "  row-1@dist.example.test  " }, NO_SUBSCRIBERS),
+      recordBounce(tx, "src-1", "raw", { ...HARD_BOUNCE, originalMessageId: `  ${seeded.messageId}@${DOMAIN}  ` }, NO_SUBSCRIBERS, DOMAIN),
     );
 
     expect(result.duplicate).toBe(false);
@@ -73,7 +90,7 @@ describe("recordBounce", () => {
     const newer = await seedMessage(tdb.db, { email: "alex@example.test", sentAt: daysAgo(1) });
     void older;
 
-    const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-2", "raw", HARD_BOUNCE, NO_SUBSCRIBERS));
+    const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-2", "raw", HARD_BOUNCE, NO_SUBSCRIBERS, DOMAIN));
 
     expect(result.matched?.messageId).toBe(newer.messageId);
   });
@@ -81,13 +98,13 @@ describe("recordBounce", () => {
   it("does not match a sent message older than 4 days", async () => {
     await seedMessage(tdb.db, { email: "alex@example.test", sentAt: daysAgo(5) });
 
-    const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-3", "raw", HARD_BOUNCE, NO_SUBSCRIBERS));
+    const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-3", "raw", HARD_BOUNCE, NO_SUBSCRIBERS, DOMAIN));
 
     expect(result.matched).toBeNull();
   });
 
   it("records an unmatched bounce with matched: false and no message row touched", async () => {
-    const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-4", "raw", HARD_BOUNCE, NO_SUBSCRIBERS));
+    const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-4", "raw", HARD_BOUNCE, NO_SUBSCRIBERS, DOMAIN));
 
     expect(result.matched).toBeNull();
     expect(result.duplicate).toBe(false);
@@ -97,14 +114,17 @@ describe("recordBounce", () => {
   });
 
   it("reports the intended recipient (messages.email), not the redirect address, for a redirected message", async () => {
-    const seeded = await seedMessage(tdb.db, {
-      email: "alex@example.test",
-      originalRecipient: "alex@example.test",
-      messageId: "<row-redirect@dist.example.test>",
-    });
+    const seeded = await seedMessage(tdb.db, { email: "alex@example.test", originalRecipient: "alex@example.test", domain: DOMAIN });
 
     const result = await tdb.db.transaction((tx) =>
-      recordBounce(tx, "src-5", "raw", { ...HARD_BOUNCE, recipient: "tester@mailtrap.example.test", originalMessageId: "<row-redirect@dist.example.test>" }, NO_SUBSCRIBERS),
+      recordBounce(
+        tx,
+        "src-5",
+        "raw",
+        { ...HARD_BOUNCE, recipient: "tester@mailtrap.example.test", originalMessageId: `<${seeded.messageId}@${DOMAIN}>` },
+        NO_SUBSCRIBERS,
+        DOMAIN,
+      ),
     );
 
     expect(result.matched?.email).toBe("alex@example.test");
@@ -112,11 +132,11 @@ describe("recordBounce", () => {
   });
 
   it("a duplicate source_id reports duplicate: true and changes nothing", async () => {
-    const seeded = await seedMessage(tdb.db, { messageId: "<row-dup@dist.example.test>" });
-    const parsed: ParsedBounce = { ...HARD_BOUNCE, originalMessageId: "<row-dup@dist.example.test>" };
+    const seeded = await seedMessage(tdb.db, { domain: DOMAIN });
+    const parsed: ParsedBounce = { ...HARD_BOUNCE, originalMessageId: `<${seeded.messageId}@${DOMAIN}>` };
 
-    const first = await tdb.db.transaction((tx) => recordBounce(tx, "src-6", "raw-1", parsed, NO_SUBSCRIBERS));
-    const second = await tdb.db.transaction((tx) => recordBounce(tx, "src-6", "raw-2", parsed, NO_SUBSCRIBERS));
+    const first = await tdb.db.transaction((tx) => recordBounce(tx, "src-6", "raw-1", parsed, NO_SUBSCRIBERS, DOMAIN));
+    const second = await tdb.db.transaction((tx) => recordBounce(tx, "src-6", "raw-2", parsed, NO_SUBSCRIBERS, DOMAIN));
 
     expect(second).toEqual({ bounceId: first.bounceId, matched: null, duplicate: true });
     const rows = await tdb.db.select().from(bounces).where(sql`source_id = 'src-6'`);
@@ -128,14 +148,15 @@ describe("recordBounce", () => {
   });
 
   it("a soft bounce after a hard one keeps the hard", async () => {
-    const seeded = await seedMessage(tdb.db, { messageId: "<row-7@dist.example.test>" });
+    const seeded = await seedMessage(tdb.db, { domain: DOMAIN });
+    const originalMessageId = `<${seeded.messageId}@${DOMAIN}>`;
 
-    await tdb.db.transaction((tx) => recordBounce(tx, "src-7a", "raw", { ...HARD_BOUNCE, originalMessageId: "<row-7@dist.example.test>" }, NO_SUBSCRIBERS));
+    await tdb.db.transaction((tx) => recordBounce(tx, "src-7a", "raw", { ...HARD_BOUNCE, originalMessageId }, NO_SUBSCRIBERS, DOMAIN));
     const [afterHard] = await tdb.db.select().from(messages).where(sql`id = ${seeded.messageId}`);
     expect(afterHard!.bounceHard).toBe(true);
     const hardBouncedAt = afterHard!.bouncedAt;
 
-    await tdb.db.transaction((tx) => recordBounce(tx, "src-7b", "raw", { ...SOFT_BOUNCE, originalMessageId: "<row-7@dist.example.test>" }, NO_SUBSCRIBERS));
+    await tdb.db.transaction((tx) => recordBounce(tx, "src-7b", "raw", { ...SOFT_BOUNCE, originalMessageId }, NO_SUBSCRIBERS, DOMAIN));
     const [afterSoft] = await tdb.db.select().from(messages).where(sql`id = ${seeded.messageId}`);
     expect(afterSoft!.bounceHard).toBe(true);
     expect(afterSoft!.bounceStatus).toBe("5.1.1");
@@ -148,9 +169,9 @@ describe("recordBounce", () => {
   });
 
   it("records an ignored message with matched: false and no bounce columns touched", async () => {
-    const seeded = await seedMessage(tdb.db, { messageId: "<row-8@dist.example.test>" });
+    const seeded = await seedMessage(tdb.db, { domain: DOMAIN });
 
-    const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-8", "raw", { kind: "ignored", reason: "auto-reply" }, NO_SUBSCRIBERS));
+    const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-8", "raw", { kind: "ignored", reason: "auto-reply" }, NO_SUBSCRIBERS, DOMAIN));
 
     expect(result.matched).toBeNull();
     const [row] = await tdb.db.select().from(bounces).where(sql`source_id = 'src-8'`);
@@ -159,15 +180,15 @@ describe("recordBounce", () => {
     expect(message!.bouncedAt).toBeNull();
   });
 
-  // Fix round 1, controller ruling: two recordBounce calls racing on the same source_id, in
-  // separate (genuinely concurrent, not just sequential) transactions — the unique index must
-  // settle it with no thrown error, exactly one stored row, and exactly one duplicate: true.
+  // Controller ruling: two recordBounce calls racing on the same source_id, in separate
+  // (genuinely concurrent, not just sequential) transactions — the unique index must settle it
+  // with no thrown error, exactly one stored row, and exactly one duplicate: true.
   it("two concurrent recordBounce calls with the same source_id: exactly one bounce row, one duplicate: true, no error", async () => {
     const parsed: ParsedBounce = { ...HARD_BOUNCE, originalMessageId: null, recipient: "racer@example.test" };
 
     const [first, second] = await Promise.all([
-      tdb.db.transaction((tx) => recordBounce(tx, "src-race", "raw-a", parsed, NO_SUBSCRIBERS)),
-      tdb.db.transaction((tx) => recordBounce(tx, "src-race", "raw-b", parsed, NO_SUBSCRIBERS)),
+      tdb.db.transaction((tx) => recordBounce(tx, "src-race", "raw-a", parsed, NO_SUBSCRIBERS, DOMAIN)),
+      tdb.db.transaction((tx) => recordBounce(tx, "src-race", "raw-b", parsed, NO_SUBSCRIBERS, DOMAIN)),
     ]);
 
     const outcomes = [first, second];
@@ -177,39 +198,116 @@ describe("recordBounce", () => {
     expect(rows).toHaveLength(1);
   });
 
-  // Fix round 1, controller ruling: Message-ID domains are case-insensitive (RFC 5321/5322);
-  // the local part (the row id) is not, and must stay an exact match.
-  it("matches the Message-ID domain case-insensitively, keeping the local part case-sensitive", async () => {
-    // Deliberately a message the recipient fallback can't reach (wrong recipient, not `sent`),
-    // so the only possible path to a match is the Message-ID — isolating the case-folding
-    // behaviour under test from the fallback that would otherwise mask it.
-    const seeded = await seedMessage(tdb.db, { email: "other@example.test", status: "pending", messageId: "<row-ci@Dist.Example.TEST>" });
+  // Message-ID domains are case-insensitive (RFC 5321/5322); the local part (the row's own
+  // uuid) is matched by primary key, which Postgres's uuid type already treats
+  // case-insensitively.
+  it("matches the Message-ID domain case-insensitively", async () => {
+    const seeded = await seedMessage(tdb.db, { domain: "Dist.Example.TEST" });
 
     const result = await tdb.db.transaction((tx) =>
-      recordBounce(tx, "src-ci", "raw", { ...HARD_BOUNCE, recipient: "nobody@example.test", originalMessageId: "<row-ci@dist.example.test>" }, NO_SUBSCRIBERS),
+      recordBounce(tx, "src-ci", "raw", { ...HARD_BOUNCE, originalMessageId: `<${seeded.messageId}@dist.example.test>` }, NO_SUBSCRIBERS, DOMAIN),
     );
 
     expect(result.matched?.messageId).toBe(seeded.messageId);
   });
 
-  it("does not match when only the local part's case differs", async () => {
-    // Deliberately a message the recipient fallback can't reach either (wrong recipient, not
-    // `sent`), so the only possible path to a match is the Message-ID — which must not fire.
-    await seedMessage(tdb.db, { email: "someone-else@example.test", status: "pending", messageId: "<Row-CS@dist.example.test>" });
+  it("a non-uuid local part is never looked up by primary key, but still falls back to the recipient when the domain is ours", async () => {
+    // Deliberately *not* this row's real id -- a legacy/hand-crafted Message-ID whose local
+    // part was never one of ours to begin with.
+    const seeded = await seedMessage(tdb.db, { email: "alex@example.test", sentAt: daysAgo(1) });
 
     const result = await tdb.db.transaction((tx) =>
-      recordBounce(tx, "src-cs", "raw", { ...HARD_BOUNCE, recipient: "nobody@example.test", originalMessageId: "<row-cs@dist.example.test>" }, NO_SUBSCRIBERS),
+      recordBounce(tx, "src-non-uuid", "raw", { ...HARD_BOUNCE, originalMessageId: `<legacy-id-123@${DOMAIN}>` }, NO_SUBSCRIBERS, DOMAIN),
+    );
+
+    expect(result.matched?.messageId).toBe(seeded.messageId);
+  });
+
+  it("a Message-ID on a foreign domain is left unmatched, even with a recent sent message to the recipient", async () => {
+    await seedMessage(tdb.db, { email: "alex@example.test", sentAt: daysAgo(1) });
+
+    const result = await tdb.db.transaction((tx) =>
+      recordBounce(tx, "src-foreign", "raw", { ...HARD_BOUNCE, originalMessageId: "<some-id@legacy.example.com>" }, NO_SUBSCRIBERS, DOMAIN),
     );
 
     expect(result.matched).toBeNull();
+    const [row] = await tdb.db.select().from(bounces).where(sql`source_id = 'src-foreign'`);
+    expect(row?.matched).toBe(false);
+  });
+
+  it("a uuid-shaped Message-ID on our own domain that resolves to no row still falls back to the recipient", async () => {
+    const seeded = await seedMessage(tdb.db, { email: "alex@example.test", sentAt: daysAgo(1) });
+
+    const result = await tdb.db.transaction((tx) =>
+      recordBounce(tx, "src-ours-not-found", "raw", { ...HARD_BOUNCE, originalMessageId: `<00000000-0000-0000-0000-000000000099@${DOMAIN}>` }, NO_SUBSCRIBERS, DOMAIN),
+    );
+
+    expect(result.matched?.messageId).toBe(seeded.messageId);
+  });
+
+  describe("recipient fallback query plan", () => {
+    it("uses the lower(email)/sent_at index instead of a sequential scan, on a seeded table", async () => {
+      const [batch] = await tdb.db.insert(batches).values({ appId: "nod", subject: "s", html: "<p>h</p>" }).returning({ id: batches.id });
+      // Enough rows, and enough distinct emails, that the planner's own cost estimates (not a
+      // forced setting) prefer the partial index over a sequential scan -- the same shape of
+      // check the final reviewer's probe (scratchpad/probe/scan.test.ts) ran at 2M rows, just
+      // at a size this suite can afford to seed on every run.
+      await tdb.db.execute(sql.raw(`
+        INSERT INTO messages (batch_id, email, priority, status, sent_at)
+        SELECT '${batch!.id}', 'user' || g || '@example.test', 30, 'sent', now() - (g || ' seconds')::interval
+        FROM generate_series(1, 50000) g
+      `));
+      await tdb.db.execute(sql`ANALYZE messages`);
+
+      const { rows } = await tdb.db.execute<{ "QUERY PLAN": string }>(sql`
+        EXPLAIN SELECT messages.id FROM messages
+         WHERE status = 'sent'
+           AND lower(email) = lower('user-25000@example.test')
+           AND sent_at >= now() - interval '4 days'
+           AND sent_at <= now()
+         ORDER BY sent_at DESC
+         LIMIT 1
+      `);
+      const plan = rows.map((r) => r["QUERY PLAN"]).join("\n");
+      expect(plan).toContain("messages_sent_email_lower_idx");
+      expect(plan).not.toContain("Seq Scan");
+    }, 30_000);
+  });
+
+  describe("NUL bytes", () => {
+    it("strips NUL bytes from raw and every parsed text field before storing", async () => {
+      const parsed: ParsedBounce = { kind: "bounce", recipient: "alex@example.test\u0000evil", status: "5.1.1\u0000", hard: true, originalMessageId: null, method: "rfc3464" };
+
+      const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-nul-1", "raw\u0000content", parsed, NO_SUBSCRIBERS, DOMAIN));
+
+      expect(result.duplicate).toBe(false);
+      const [row] = await tdb.db.select().from(bounces).where(sql`source_id = 'src-nul-1'`);
+      expect(row!.raw).toBe("rawcontent");
+      expect(row!.recipient).toBe("alex@example.testevil");
+      expect(row!.status).toBe("5.1.1");
+    });
+
+    it("feeds the repo's malformed.eml (containing 0x00) through, and a row is stored", async () => {
+      const raw = fixture("malformed.eml");
+      expect(raw).toContain("\u0000");
+      const parsed = await parseBounce(raw);
+
+      const result = await tdb.db.transaction((tx) => recordBounce(tx, "src-nul-2", raw, parsed, NO_SUBSCRIBERS, DOMAIN));
+
+      expect(result.duplicate).toBe(false);
+      const [row] = await tdb.db.select().from(bounces).where(sql`source_id = 'src-nul-2'`);
+      expect(row).toBeDefined();
+      expect(row!.raw).not.toContain("\u0000");
+      expect(row!.kind).toBe("ignored");
+    });
   });
 
   describe("delivery.bounced outbox event", () => {
     it("a matched bounce writes exactly one outbox row, carrying the matched message's own data", async () => {
-      const seeded = await seedMessage(tdb.db, { appId: "nod", email: "alex@example.test", messageId: "<row-outbox-1@dist.example.test>" });
+      const seeded = await seedMessage(tdb.db, { appId: "nod", email: "alex@example.test", domain: DOMAIN });
 
       const result = await tdb.db.transaction((tx) =>
-        recordBounce(tx, "src-outbox-1", "raw", { ...HARD_BOUNCE, originalMessageId: "<row-outbox-1@dist.example.test>" }, NO_SUBSCRIBERS),
+        recordBounce(tx, "src-outbox-1", "raw", { ...HARD_BOUNCE, originalMessageId: `<${seeded.messageId}@${DOMAIN}>` }, NO_SUBSCRIBERS, DOMAIN),
       );
 
       const rows = await tdb.db.select().from(outboxEvents).where(sql`type = 'delivery.bounced'`);
@@ -230,38 +328,38 @@ describe("recordBounce", () => {
     });
 
     it("an unmatched bounce writes no outbox row", async () => {
-      await tdb.db.transaction((tx) => recordBounce(tx, "src-outbox-2", "raw", HARD_BOUNCE, NO_SUBSCRIBERS));
+      await tdb.db.transaction((tx) => recordBounce(tx, "src-outbox-2", "raw", HARD_BOUNCE, NO_SUBSCRIBERS, DOMAIN));
 
       const rows = await tdb.db.select().from(outboxEvents).where(sql`type = 'delivery.bounced'`);
       expect(rows).toHaveLength(0);
     });
 
     it("an ignored message writes no outbox row", async () => {
-      await seedMessage(tdb.db, { messageId: "<row-outbox-3@dist.example.test>" });
+      await seedMessage(tdb.db, { domain: DOMAIN });
 
-      await tdb.db.transaction((tx) => recordBounce(tx, "src-outbox-3", "raw", { kind: "ignored", reason: "auto-reply" }, NO_SUBSCRIBERS));
+      await tdb.db.transaction((tx) => recordBounce(tx, "src-outbox-3", "raw", { kind: "ignored", reason: "auto-reply" }, NO_SUBSCRIBERS, DOMAIN));
 
       const rows = await tdb.db.select().from(outboxEvents).where(sql`type = 'delivery.bounced'`);
       expect(rows).toHaveLength(0);
     });
 
     it("a duplicate source_id writes no additional outbox row", async () => {
-      await seedMessage(tdb.db, { messageId: "<row-outbox-4@dist.example.test>" });
-      const parsed: ParsedBounce = { ...HARD_BOUNCE, originalMessageId: "<row-outbox-4@dist.example.test>" };
+      const seeded = await seedMessage(tdb.db, { domain: DOMAIN });
+      const parsed: ParsedBounce = { ...HARD_BOUNCE, originalMessageId: `<${seeded.messageId}@${DOMAIN}>` };
 
-      await tdb.db.transaction((tx) => recordBounce(tx, "src-outbox-4", "raw-1", parsed, NO_SUBSCRIBERS));
-      await tdb.db.transaction((tx) => recordBounce(tx, "src-outbox-4", "raw-2", parsed, NO_SUBSCRIBERS));
+      await tdb.db.transaction((tx) => recordBounce(tx, "src-outbox-4", "raw-1", parsed, NO_SUBSCRIBERS, DOMAIN));
+      await tdb.db.transaction((tx) => recordBounce(tx, "src-outbox-4", "raw-2", parsed, NO_SUBSCRIBERS, DOMAIN));
 
       const rows = await tdb.db.select().from(outboxEvents).where(sql`type = 'delivery.bounced'`);
       expect(rows).toHaveLength(1);
     });
 
     it("queues a delivery for every subscriber configured for delivery.bounced", async () => {
-      await seedMessage(tdb.db, { messageId: "<row-outbox-5@dist.example.test>" });
+      const seeded = await seedMessage(tdb.db, { domain: DOMAIN });
       const subscribers: SubscriberConfig[] = [{ name: "nod", url: "https://nod.example.test/events", secret: "s".repeat(16), types: ["delivery.bounced"] }];
 
       await tdb.db.transaction((tx) =>
-        recordBounce(tx, "src-outbox-5", "raw", { ...HARD_BOUNCE, originalMessageId: "<row-outbox-5@dist.example.test>" }, subscribers),
+        recordBounce(tx, "src-outbox-5", "raw", { ...HARD_BOUNCE, originalMessageId: `<${seeded.messageId}@${DOMAIN}>` }, subscribers, DOMAIN),
       );
 
       const deliveries = await tdb.db.select().from(outboxDeliveries);
