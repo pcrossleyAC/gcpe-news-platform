@@ -115,6 +115,11 @@ describe("emergency feed ingester", () => {
     spy.mockRestore();
   });
 
+  it("the status never shows credentials written into the feed URL", async () => {
+    const status = await getEmergencyFeedStatus(tdb.db, "https://reader:s3cret@emergency.example.test/feed.xml?region=all");
+    expect(status.url).toBe("https://emergency.example.test/feed.xml?region=all");
+  });
+
   it("an HTTP error is recorded by status, and the log carries only that label", async () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     expect((await run(serving("nope", 503))).result).toMatchObject({ ok: false, error: "http-503" });

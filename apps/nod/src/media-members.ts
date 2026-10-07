@@ -8,7 +8,7 @@ import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { lists, subscribers, subscriptions, type SubscriberSource, type SubscriptionRow } from "./db/schema";
 import { MEDIA_CATEGORY, mediaListKey } from "./lists";
 import { lockAddress, withLockedSubscriber } from "./locks";
-import { suppressedOptOutAt } from "./opt-outs";
+import { mediaOptOutAt } from "./opt-outs";
 import { writeHistory } from "./subscribe/history";
 import { normaliseEmail } from "./subscribe/info";
 
@@ -68,43 +68,6 @@ async function hasAnySubscriptions(tx: DbOrTx, subscriberId: string): Promise<bo
   return rows.length > 0;
 }
 
-/** Latest `subscriber_history` row's `at` for `action` on this subscriber (and, when given,
- * with that `detail`), or null. */
-async function latestHistoryAt(tx: DbOrTx, subscriberId: string, action: string, detail?: string): Promise<Date | null> {
-  const r = await tx.execute<{ at: string | Date }>(sql`
-    SELECT at FROM subscriber_history
-     WHERE subscriber_id = ${subscriberId} AND action = ${action} ${detail === undefined ? sql`` : sql`AND detail = ${detail}`}
-     ORDER BY at DESC LIMIT 1`);
-  const at = r.rows[0]?.at;
-  return at === undefined ? null : new Date(at);
-}
-
-const newerOrTie = (a: Date | null, b: Date | null): boolean => a !== null && (b === null || a >= b);
-
-/**
- * When this subscriber last left media list `key` by their own choice, if that's more recent
- * than staff last added them to it -- else null. Checked whatever their current status: someone
- * who unsubscribed and has since re-subscribed to public news has not thereby asked to be back
- * on a media list. Leaving counts if it's a `media-list-opted-out` for this key, or an
- * `unsubscribed` that came after their last add to it with no staff removal in between (so the
- * membership was still live when they unsubscribed). A deleted subscriber also counts as opted
- * out of every list after an `unsubscribed` newer than their last add to any media list. Ties
- * fail closed.
- */
-async function optedOutOf(tx: DbOrTx, subscriberId: string, key: string, deleted: boolean): Promise<Date | null> {
-  const addedToKey = await latestHistoryAt(tx, subscriberId, "media-list-added", key);
-  const optedOutOfKey = await latestHistoryAt(tx, subscriberId, "media-list-opted-out", key);
-  if (newerOrTie(optedOutOfKey, addedToKey)) return optedOutOfKey;
-
-  const unsubscribedAt = await latestHistoryAt(tx, subscriberId, "unsubscribed");
-  if (addedToKey !== null && newerOrTie(unsubscribedAt, addedToKey)) {
-    const removedFromKey = await latestHistoryAt(tx, subscriberId, "media-list-removed", key);
-    if (removedFromKey === null || removedFromKey < addedToKey) return unsubscribedAt;
-  }
-  if (deleted && newerOrTie(unsubscribedAt, await latestHistoryAt(tx, subscriberId, "media-list-added"))) return unsubscribedAt;
-  return null;
-}
-
 /** True if `subscriberId` currently has at least one subscription in the media category. */
 export async function hasMediaMemberships(tx: DbOrTx, subscriberId: string): Promise<boolean> {
   const rows = await tx
@@ -136,14 +99,15 @@ export async function optOutMediaMemberships(tx: DbOrTx, subscriberId: string, a
  * and an add can never race a concurrent unsubscribe into reading a stale, not-yet-opted-out row.
  *
  * A found subscriber who left this list by their own choice since staff last added them to it
- * ({@link optedOutOf} -- whatever their status now, so a public re-subscribe doesn't count as
- * consent) needs `confirmOptOut: true`, else throws {@link OptedOutError}.
+ * (opt-outs.ts `optedOutOf` -- whatever their status now, so a public re-subscribe doesn't count
+ * as consent), or an address with an opt-out kept from a purged record (opt-outs.ts
+ * `mediaOptOutAt`, whether or not it has a new record since), needs `confirmOptOut: true`, else
+ * throws {@link OptedOutError}.
  * Reactivating a `deleted` subscriber -- confirmed opt-out or not (they may simply never have
  * resubscribed publicly since) -- must not restart their old public mail: their timing flags are
  * reset to off and their non-media subscriptions are dropped. From `pending`/`disabled`, public
  * state is left untouched. `source` is never changed on an existing row.
  *
- * A new address with a kept opt-out for this list (a purged record) needs `confirmOptOut: true` too.
  */
 export async function addMediaMember(db: Db, listKey: string, input: AddMediaMemberInput, actor: string): Promise<{ subscriberId: string; created: boolean }> {
   const key = mediaListKey(listKey);
@@ -153,15 +117,16 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
     if (!(await mediaListRow(tx, key))) throw new MediaListNotFoundError(listKey);
 
     const [existing] = await tx.select().from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`).for("update");
+    // The record's own opt-out, or one kept from a purged record of this address (opt-outs.ts).
+    if (!input.confirmOptOut) {
+      const optedOutAt = await mediaOptOutAt(tx, email, key, existing ?? null);
+      if (optedOutAt) throw new OptedOutError(optedOutAt);
+    }
     let subscriberId: string;
     let created = false;
 
     if (existing) {
       const wasDeleted = existing.status === "deleted";
-      if (!input.confirmOptOut) {
-        const optedOutAt = await optedOutOf(tx, existing.id, key, wasDeleted);
-        if (optedOutAt) throw new OptedOutError(optedOutAt);
-      }
       subscriberId = existing.id;
       const fields: Partial<typeof subscribers.$inferInsert> = { endedAt: null };
       if (existing.status === "pending" || existing.status === "deleted" || existing.status === "disabled") fields.status = "active";
@@ -178,12 +143,6 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
           .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`));
       }
     } else {
-      // A record purged after its owner opted out of this list is gone, but the opt-out was
-      // kept (opt-outs.ts): the same confirmation as for a subscriber who still exists.
-      if (!input.confirmOptOut) {
-        const keptAt = await suppressedOptOutAt(tx, email, key);
-        if (keptAt) throw new OptedOutError(keptAt);
-      }
       const [row] = await tx
         .insert(subscribers)
         .values({

@@ -198,10 +198,22 @@ export async function runEmergencyFeedIfDue(deps: EmergencyFeedDeps): Promise<{ 
   return { ran: true, result };
 }
 
+/** The feed URL as Operations may show it: any user name and password written into it removed. */
+function withoutCredentials(url: string): string {
+  try {
+    const u = new URL(url);
+    u.username = "";
+    u.password = "";
+    return u.href;
+  } catch {
+    return "";
+  }
+}
+
 export async function getEmergencyFeedStatus(db: DbOrTx, url: string | null): Promise<EmergencyFeedStatus> {
   const [row] = await db
     .select({ checkedAt: nodSettings.emergencyFeedCheckedAt, result: nodSettings.emergencyFeedResult })
     .from(nodSettings)
     .where(eq(nodSettings.id, 1));
-  return { url, checkedAt: row?.checkedAt ? row.checkedAt.toISOString() : null, result: (row?.result as EmergencyFeedResult | null) ?? null };
+  return { url: url === null ? null : withoutCredentials(url), checkedAt: row?.checkedAt ? row.checkedAt.toISOString() : null, result: (row?.result as EmergencyFeedResult | null) ?? null };
 }

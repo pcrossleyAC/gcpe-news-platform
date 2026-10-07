@@ -5,7 +5,7 @@ import { createNodTestDb, waitForLockWaiter } from "../test/helpers";
 import { lockAddress } from "./locks";
 import { mediaOptOuts, subscriberHistory, subscribers, subscriptions } from "./db/schema";
 import { addMediaMember, hasMediaMemberships, listMediaLists, listMediaMembers, MediaListNotFoundError, OptedOutError, removeMediaMember } from "./media-members";
-import { optOutHash } from "./opt-outs";
+import { ALL_MEDIA_LISTS, optOutHash } from "./opt-outs";
 
 const ACTOR = "staff:jamie";
 
@@ -249,6 +249,31 @@ describe("media list members", () => {
     expect((err as OptedOutError).at).toEqual(new Date("2026-06-01T17:00:00Z"));
     expect(await tdb.db.select().from(subscribers).where(eq(subscribers.email, "purged@example.test"))).toEqual([]);
     expect((await addMediaMember(tdb.db, "budget", { email: "purged@example.test", source: "manual-media", confirmOptOut: true }, ACTOR)).created).toBe(true);
+  });
+
+  it("an address purged after opting out needs confirmation even once it has a new record", async () => {
+    await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash("returned@example.test"), listKey: "media-distribution-lists:budget", optedOutAt: new Date("2026-06-01T17:00:00Z") });
+    await tdb.db.insert(subscribers).values({ email: "returned@example.test", status: "active", source: "self" });
+    const err = await addMediaMember(tdb.db, "budget", { email: "returned@example.test", source: "manual-media" }, ACTOR).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OptedOutError);
+    expect((err as OptedOutError).at).toEqual(new Date("2026-06-01T17:00:00Z"));
+    expect((await addMediaMember(tdb.db, "budget", { email: "returned@example.test", source: "manual-media", confirmOptOut: true }, ACTOR)).created).toBe(false);
+  });
+
+  it("a kept opt-out from every list asks too, for a new record as for none", async () => {
+    await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash("everywhere@example.test"), listKey: ALL_MEDIA_LISTS, optedOutAt: new Date("2026-06-01T17:00:00Z") });
+    expect(await addMediaMember(tdb.db, "budget", { email: "nobody@example.test", source: "manual-media" }, ACTOR)).toMatchObject({ created: true });
+    expect(await addMediaMember(tdb.db, "budget", { email: "everywhere@example.test", source: "manual-media" }, ACTOR).catch((e: unknown) => e)).toBeInstanceOf(OptedOutError);
+    await tdb.db.insert(subscribers).values({ email: "everywhere@example.test", status: "active", source: "self" });
+    expect(await addMediaMember(tdb.db, "budget", { email: "everywhere@example.test", source: "manual-media" }, ACTOR).catch((e: unknown) => e)).toBeInstanceOf(OptedOutError);
+    expect((await addMediaMember(tdb.db, "budget", { email: "everywhere@example.test", source: "manual-media", confirmOptOut: true }, ACTOR)).created).toBe(false);
+  });
+
+  it("once staff confirm a kept opt-out, a later re-add of that record doesn't ask again", async () => {
+    await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash("confirmed@example.test"), listKey: "media-distribution-lists:budget", optedOutAt: new Date("2026-06-01T17:00:00Z") });
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "confirmed@example.test", source: "manual-media", confirmOptOut: true }, ACTOR);
+    expect(await removeMediaMember(tdb.db, "budget", subscriberId, ACTOR)).toBe(true);
+    expect((await addMediaMember(tdb.db, "budget", { email: "confirmed@example.test", source: "manual-media" }, ACTOR)).created).toBe(false);
   });
 
   it("a kept opt-out from another list doesn't block this one", async () => {

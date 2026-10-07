@@ -292,7 +292,7 @@ export const nodSettings = pgTable(
     emergencyFeedSeededUrl: text("emergency_feed_seeded_url"),
     // The last check's outcome (EmergencyFeedResult), shown on Operations.
     emergencyFeedResult: jsonb("emergency_feed_result"),
-    // The retention purge (purge.ts). Off until the business sets retention windows (Q25).
+    // The retention purge (purge.ts). Off until the business confirms the retention windows.
     purgeEnabled: boolean("purge_enabled").notNull().default(false),
     // The 03:00 BC cutoff of the last night whose purge finished: that night is done.
     purgeDoneCutoff: timestamp("purge_done_cutoff", { withTimezone: true }),
@@ -396,7 +396,7 @@ export const subscriberLinks = pgTable(
     index("subscriber_links_subscriber_idx").on(t.subscriberId),
     // The nightly sweep of expired send links, and of unused request links (purge.ts).
     index("subscriber_links_send_expiry_idx").on(t.expiresAt).where(sql`${t.origin} = 'send'`),
-    index("subscriber_links_request_unused_idx").on(t.createdAt).where(sql`${t.origin} = 'request' AND ${t.usedAt} IS NULL`),
+    index("subscriber_links_request_unused_idx").on(t.createdAt).where(sql`${t.origin} = 'request' AND (${t.usedAt} IS NULL OR ${t.subscriberId} IS NULL)`),
     check("subscriber_links_purpose_check", sql`${t.purpose} IN ('verify','manage','change-email')`),
     check("subscriber_links_origin_check", sql`${t.origin} IN ('request','send')`),
   ],

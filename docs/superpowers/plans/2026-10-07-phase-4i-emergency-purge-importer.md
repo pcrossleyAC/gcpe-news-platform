@@ -155,7 +155,7 @@ Decided for this plan. Task 9 writes the parity rows for each.
 - **R9. What the purge removes** (spec §9; one definition, `purgeSelection`). Durations are rolling, by the database clock, strictly older than the limit:
   - **Unconfirmed subscribers:** `status = 'pending'` and `created_at` more than 10 days ago.
   - **Ended subscribers:** `status = 'deleted'` and `ended_at` more than 90 days ago. They go with their deliveries, history, subscriptions, links and job recipients, all by FK cascade.
-  - **Unused links:** `origin = 'request'`, `used_at IS NULL`, created more than 10 days ago. Unconfirmed signups live here (spec §3), so this is Q25's "unverified signups".
+  - **Unused links:** `origin = 'request'`, `used_at IS NULL OR subscriber_id IS NULL`, created more than 10 days ago. Unconfirmed signups live here (spec §3), so this is Q25's "unverified signups". So do a signup's other verify links, which confirming one marks used without binding to the subscriber; without the `subscriber_id IS NULL` arm they would keep the address after the subscriber is purged.
   - **Expired send links:** `origin = 'send'`, expired more than 10 days ago.
 - **R10. Link housekeeping runs whether the purge is on or off.**
   - Only expired send links are cleared. These are the manage links stamped into every sent email, unusable after 24 hours. They are not signups and not consent records, and they grow by about 23,000 a day.
@@ -175,8 +175,10 @@ Decided for this plan. Task 9 writes the parity rows for each.
   - Nightly at 03:00 BC (`dailyCutoff(…, 3)`). That is after the 02:00 Media Hub sync, and clear of the 08:00 summary and 17:00 digest.
   - A missed night catches up on the next tick, like the digest. The very first tick after deploy runs housekeeping.
 - **R14. Media-list opt-outs survive the purge without the address.**
-  - Before a purged subscriber's row goes, each media list they opted out of (`media-list-opted-out` history) is written to `media_opt_outs(email_hash, list_key, opted_out_at)`. `email_hash` is SHA-256 of `"gcpe-nod-media-opt-out:" + lowercased address`.
-  - `addMediaMember` checks it when it would **create** a subscriber. A match needs the same `confirmOptOut` the history-based check asks for today.
+  - Before a purged subscriber's row goes, every opt-out the live history check (`optedOutOf`, opt-outs.ts) would enforce is written to `media_opt_outs(email_hash, list_key, opted_out_at)`. `email_hash` is SHA-256 of `"gcpe-nod-media-opt-out:" + lowercased address`. That is:
+    - one row per media list they left: a `media-list-opted-out`, or an `unsubscribed` after their last add to that list with no staff removal in between;
+    - for an ended (`deleted`) record whose `unsubscribed` is newer than its last add to any media list, one row with `list_key = '*'`, meaning every media list.
+  - `addMediaMember` checks it on **every** add, whether or not the address has a new record by then (public subscribe, another list). A match on that list or on `'*'` needs the same `confirmOptOut` the history-based check asks for. Once staff confirm, that record's own `media-list-added` supersedes the kept row, as for a live opt-out.
   - It is unkeyed on purpose. Rotating `LINK_SECRET` (a legitimate response to token compromise) must never forget an opt-out.
   - Public unsubscribes need no record: re-subscribing goes through double opt-in.
   - Q44 asks Paul to confirm keeping these indefinitely.
@@ -4667,7 +4669,7 @@ Re-check the highest C number first. It was C111 at planning. Add:
 | C115 | Alert emails: the Emergency Info BC site template and banner, `content:encoded` HTML, Emergency Info BC's own Reply-To. | The BC Gov News email shell with the alert's full content as plain-text paragraphs (links kept as "text (url)"), subject "Emergency Info BC - <title>", no Reply-To. | EMBC-specific branding and Reply-To are out of scope (Paul and Anne, 2026-10-07); the EMCR category and feed stay. | Agreed |
 | C116 | The purge never ran; 7.9 M expired links and every ended subscriber were kept. | Retention purge, off by default (Q25). When on, nightly at 03:00 BC: unconfirmed subscribers and unused links older than 10 days; subscribers ended more than 90 days ago, with their deliveries, history, links and subscriptions. In bounded batches, each subscriber in its own transaction under its address lock; anyone who came back meanwhile is kept. Operations shows what it would delete now and the last night's totals; turning it on or off and each night that removed anything are in the operations log. | Spec §9; one selection feeds the preview and the purge (acceptance item 12). | Proposed (Q25) |
 | C117 | Every manage link ever emailed was kept. | Links in sent emails are cleared 10 days after they expire, whether the purge is on or off. | They are unusable after 24 hours, grow by about 23,000 a day, and hold an address; they are not signups or consent records. | Agreed |
-| C118 | N/A (the purge never ran). | When the purge deletes a subscriber who had opted out of a media list, the opt-out is kept as a hash of the address (no address); re-adding that address to that list asks staff to confirm, as for a subscriber who still exists. | A purge must not quietly undo an opt-out. | Proposed (Q44) |
+| C118 | N/A (the purge never ran). | When the purge deletes a subscriber who had opted out of a media list (or, once ended, unsubscribed from everything), each opt-out the live check enforces is kept as a hash of the address (no address), per list or for every list; re-adding that address to such a list asks staff to confirm, as for a subscriber who still exists, even if the address has a new record by then. | A purge must not quietly undo an opt-out. | Proposed (Q44) |
 | C119 | Bounce-disabled records stayed (`IsEnabled = 0`). | Disabled subscribers are never purged. | Staff can reactivate them; spec §9 covers only unconfirmed and ended records. | Proposed (Q25) |
 | C120 | Legacy NoD data. | `npm run nod:import` imports subscribers (legacy GUIDs kept as ids; deleted → `deleted`, else enabled → `active`, else `disabled`; timing as is), their lists (`all-news` → All news; deleted lists and the Featured Programs, regions and newsletters categories not carried), and one record per address (active > disabled > deleted, then newest). Media-list members who didn't sign up themselves import as "Added by hand" until matched to Media Hub. Unconfirmed signups (only in `SubscriberLink`) aren't imported; the report counts them. | Spec §9; Q21. | Agreed |
 | C121 | Media-list removals were only `SysLog` rows (action 106). | Each becomes a "media-list-opted-out" history row (actor "Legacy import") when the person isn't on that list now, so staff are asked before re-adding them. | Legacy can't tell an opt-out from a staff removal; asking is the safe side. | Agreed |
@@ -4712,14 +4714,14 @@ Add a new heading `## Phase 4i — emergency alerts feed, retention purge, legac
   Run `nrms:import` first and let Core's lists reach NoD. Read the report before trusting the data:
   every skipped row is grouped by reason. Re-running is safe; records changed in NoD since the last
   import are left alone and listed.
-- **Operations** — The NoD migrations `0028_purge_indexes` add indexes to `job_recipients` and
+- **Operations** — The NoD migration `0029_purge_indexes` adds indexes to `job_recipients` and
   `subscriber_links`. On a populated database, pre-build them with the CONCURRENTLY steps in
   docs/deploy/siteground.md.
 ```
 
 - [ ] **Step 6: `docs/deploy/siteground.md`**
 
-- **"Migrations on populated deliveries or messages tables":** add `0028_purge_indexes` to the list of index-only NoD migrations, and to the example `TAGS` (`TAGS="0023_report_history_index 0024_report_delivery_indexes 0028_purge_indexes"`). Note that `0026`, `0027` and `0029` are not index-only (columns and tables) and run in the normal deploy.
+- **"Migrations on populated deliveries or messages tables":** add `0029_purge_indexes` to the list of index-only NoD migrations (which already names `0027`), and to the example `TAGS` (`TAGS="0023_report_history_index 0024_report_delivery_indexes 0027_items_emergency_url_index 0029_purge_indexes"`). Note that `0026` and `0028` are not index-only (columns and tables) and run in the normal deploy.
 - **New section "Emergency alerts feed (Phase 4i)":**
   - On test sites the stack serves a fake feed at `/fake-emergency-feed/feed.xml`.
   - Add an alert with `curl -X POST -H "Authorization: Bearer <admin token>" -H "content-type: application/json" -d '{"title":"Test alert","html":"<p>Test.</p>"}' https://boxs.ca/fake-emergency-feed/__fake/alerts`, then wait up to 5 minutes (or tick).

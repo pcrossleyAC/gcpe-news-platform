@@ -1,13 +1,17 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql, type SQL } from "drizzle-orm";
-import type { TestDatabase } from "@gcpe/db-kit";
+import { PgDialect } from "drizzle-orm/pg-core";
+import type { Db, TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb, waitForLockWaiter } from "../test/helpers";
 import {
   deliveries, jobRecipients, mediaOptOuts, nodSettings, operationsLog, sendJobs, subscriberHistory, subscriberLinks, subscribers, subscriptions,
   type SubscriberStatus,
 } from "./db/schema";
 import { lockAddress } from "./locks";
+import { addMediaMember, OptedOutError } from "./media-members";
+import { subscriberInfoSchema } from "./subscribe/info";
+import { confirm, subscribe, unsubscribe, type JourneyDeps } from "./subscribe/journeys";
 import { getPurgeStatus, previewPurge, purgeBatch, purgeSelection, runPurgeIfDue, setPurgeEnabled } from "./purge";
 
 const TZ = "America/Vancouver";
@@ -47,10 +51,29 @@ describe("retention purge", () => {
     return l!.id;
   }
   const exists = async (id: string) => (await tdb.db.select({ id: subscribers.id }).from(subscribers).where(eq(subscribers.id, id))).length === 1;
+  const emailOf = async (id: string) => (await tdb.db.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, id)))[0]!.email;
+  /** Holds `email`'s address lock until the returned release() is called. */
+  async function holdAddress(email: string): Promise<{ release: () => void; done: Promise<void> }> {
+    let locked!: () => void;
+    let release!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    const released = new Promise<void>((r) => (release = r));
+    const done = tdb.db.transaction(async (tx) => {
+      await lockAddress(tx, email);
+      locked();
+      await released;
+    });
+    await isLocked;
+    return { release, done };
+  }
   const linkExists = async (id: string) => (await tdb.db.select({ id: subscriberLinks.id }).from(subscriberLinks).where(eq(subscriberLinks.id, id))).length === 1;
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
+    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name) VALUES
+      ('ministries:health', 'ministries', 'health', 'Health'),
+      ('media-distribution-lists:budget', 'media-distribution-lists', 'budget', 'Budget'),
+      ('media-distribution-lists:transport', 'media-distribution-lists', 'transport', 'Transport')`);
   });
   afterAll(async () => tdb.drop());
   beforeEach(async () => {
@@ -70,13 +93,14 @@ describe("retention purge", () => {
     const keptActive = await subscriber("active");
     const keptDisabled = await subscriber("disabled");
     const goneUnused = await link("request", { createdAt: ago(11) });
-    const keptUsed = await link("request", { createdAt: ago(11), usedAt: ago(10.5) });
+    const keptUsed = await link("request", { createdAt: ago(11), usedAt: ago(10.5), subscriberId: keptActive });
+    const goneUsedUnbound = await link("request", { createdAt: ago(11), usedAt: ago(10.5) });
     const keptRecent = await link("request", { createdAt: ago(9) });
     const goneSend = await link("send", { createdAt: ago(12), expiresAt: ago(11) });
     const keptSend = await link("send", { createdAt: ago(10), expiresAt: ago(9) });
 
     const preview = await previewPurge(tdb.db, now);
-    expect(preview).toEqual({ pendingSubscribers: 1, endedSubscribers: 1, unusedLinks: 1, expiredSendLinks: 1 });
+    expect(preview).toEqual({ pendingSubscribers: 1, endedSubscribers: 1, unusedLinks: 2, expiredSendLinks: 1 });
 
     const run = await purgeBatch(tdb.db, { enabled: true, deadline: Infinity, now });
     expect(run).toEqual({ counts: preview, finished: true });
@@ -84,7 +108,7 @@ describe("retention purge", () => {
 
     for (const id of [goneUnconfirmed, goneEnded]) expect(await exists(id)).toBe(false);
     for (const id of [keptUnconfirmed9, keptUnconfirmed10, keptEnded89, keptEnded90, keptDeletedNoEnd, keptActive, keptDisabled]) expect(await exists(id)).toBe(true);
-    for (const id of [goneUnused, goneSend]) expect(await linkExists(id)).toBe(false);
+    for (const id of [goneUnused, goneUsedUnbound, goneSend]) expect(await linkExists(id)).toBe(false);
     for (const id of [keptUsed, keptRecent, keptSend]) expect(await linkExists(id)).toBe(true);
   });
 
@@ -153,6 +177,67 @@ describe("retention purge", () => {
     expect(calls.reduce((t, c) => t + c.counts.endedSubscribers, 0)).toBe(preview.endedSubscribers);
   });
 
+  it("an address confirmed from one of two signup emails leaves nothing behind once purged", async () => {
+    const sent: string[] = [];
+    const deps: JourneyDeps = {
+      db: tdb.db,
+      pageUrl: "https://news.example.test/subscribe/manage/",
+      linkSecret: "k".repeat(32),
+      render: { siteUrl: "https://news.example.test", bannerUrl: null },
+      distribution: { send: vi.fn(async (m) => { sent.push(m.text); return { batchId: "b" }; }) },
+    };
+    const tokenOf = (i: number) => new URL(sent[i]!.match(/https:\S+/)![0]).searchParams.get("token")!;
+    const address = "twice.signup@example.test";
+    const info = subscriberInfoSchema.parse({ emailAddress: address, subscribedCategories: { ministries: ["health"] }, isAsItHappens: true });
+    await subscribe(deps, info);
+    await subscribe(deps, info);
+    await confirm(deps, tokenOf(1));
+    await unsubscribe(deps, tokenOf(1));
+    expect((await tdb.db.select({ status: subscribers.status }).from(subscribers))[0]!.status).toBe("deleted");
+
+    const later = () => new Date(Date.now() + 91 * DAY);
+    await purgeBatch(tdb.db, { enabled: true, deadline: Infinity, now: later });
+    const tables = await tdb.db.execute<{ t: string }>(sql`
+      SELECT table_name AS t FROM information_schema.tables WHERE table_schema = current_schema() AND table_type = 'BASE TABLE'`);
+    const holding: string[] = [];
+    for (const { t } of tables.rows) {
+      const r = await tdb.db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM ${sql.identifier(t)} x WHERE x::text ILIKE ${`%${address}%`}`);
+      if (r.rows[0]!.n > 0) holding.push(t);
+    }
+    expect(holding).toEqual([]);
+  });
+
+  describe("kept opt-outs ask staff before a re-add", () => {
+    const add = (list: string, email: string, confirmOptOut = false) =>
+      addMediaMember(tdb.db, list, { email, source: "manual-media", confirmOptOut }, "staff:test").catch((e: unknown) => e);
+
+    it("an unsubscribe that ended a media membership", async () => {
+      const id = await subscriber("deleted", { endedAt: ago(100) });
+      const email = await emailOf(id);
+      await tdb.db.insert(subscriberHistory).values([
+        { subscriberId: id, actor: "staff", action: "media-list-added", detail: "media-distribution-lists:budget", at: ago(200) },
+        { subscriberId: id, actor: "self", action: "unsubscribed", at: ago(150) },
+        { subscriberId: id, actor: "staff", action: "media-list-added", detail: "media-distribution-lists:transport", at: ago(120) },
+      ]);
+      expect((await purgeBatch(tdb.db, { enabled: true, deadline: Infinity, now })).counts.endedSubscribers).toBe(1);
+      expect(await add("budget", email)).toBeInstanceOf(OptedOutError);
+      expect(await add("transport", email)).toMatchObject({ created: true });
+      expect(await add("budget", email, true)).toMatchObject({ created: false });
+    });
+
+    it("an ended record's unsubscribe, for every list", async () => {
+      const id = await subscriber("deleted", { endedAt: ago(100) });
+      const email = await emailOf(id);
+      await tdb.db.insert(subscriberHistory).values([
+        { subscriberId: id, actor: "staff", action: "media-list-added", detail: "media-distribution-lists:budget", at: ago(200) },
+        { subscriberId: id, actor: "self", action: "unsubscribed", at: ago(100) },
+      ]);
+      await purgeBatch(tdb.db, { enabled: true, deadline: Infinity, now });
+      expect(await add("transport", email)).toBeInstanceOf(OptedOutError);
+      expect(await add("transport", email, true)).toMatchObject({ created: true });
+    });
+  });
+
   it("cascades and sweeps read through indexes", async () => {
     await tdb.db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL enable_seqscan = off`);
@@ -191,6 +276,72 @@ describe("retention purge", () => {
       expect(log).toHaveLength(1);
       expect(log[0]!.detail).toContain("ended subscribers 3");
       expect(JSON.stringify(log)).not.toContain("@");
+    });
+
+    const purgeRanLog = async () => (await tdb.db.select().from(operationsLog).where(eq(operationsLog.action, "purge-ran"))).map((l) => l.detail);
+    const stored = async () => (await tdb.db.select().from(nodSettings).where(eq(nodSettings.id, 1)))[0]!;
+
+    it("a run that lost its lease still counts what it deleted, and the night's log includes it", async () => {
+      await setPurgeEnabled(tdb.db, true, "Avery Admin", now);
+      const ids = [await subscriber("deleted", { endedAt: ago(100) }), await subscriber("deleted", { endedAt: ago(100) }), await subscriber("deleted", { endedAt: ago(100) })];
+      const held = await holdAddress(await emailOf(ids[0]!));
+      const run = runPurgeIfDue(tdb.db, TZ, { now });
+      await waitForLockWaiter(tdb.db);
+      await tdb.db.update(nodSettings).set({ purgeLease: randomUUID() }).where(eq(nodSettings.id, 1));
+      held.release();
+      await held.done;
+      expect((await run).result).toMatchObject({ counts: { endedSubscribers: 3 } });
+      expect((await stored()).purgeResult).toMatchObject({ cutoff: today0300.toISOString(), finished: false, counts: { endedSubscribers: 3 } });
+
+      await tdb.db.update(nodSettings).set({ purgeLease: null, purgeLeaseUntil: null }).where(eq(nodSettings.id, 1));
+      expect((await runPurgeIfDue(tdb.db, TZ, { now })).result).toMatchObject({ finished: true, counts: { endedSubscribers: 3 } });
+      expect(await purgeRanLog()).toEqual([expect.stringContaining("ended subscribers 3")]);
+    });
+
+    it("a run that lost its lease after the night was finished logs what it deleted itself", async () => {
+      await setPurgeEnabled(tdb.db, true, "Avery Admin", now);
+      const ids = [await subscriber("deleted", { endedAt: ago(100) }), await subscriber("deleted", { endedAt: ago(100) })];
+      const held = await holdAddress(await emailOf(ids[0]!));
+      const run = runPurgeIfDue(tdb.db, TZ, { now });
+      await waitForLockWaiter(tdb.db);
+      const zero = { pendingSubscribers: 0, endedSubscribers: 0, unusedLinks: 0, expiredSendLinks: 0 };
+      await tdb.db
+        .update(nodSettings)
+        .set({ purgeLease: null, purgeLeaseUntil: null, purgeDoneCutoff: today0300, purgeResult: { cutoff: today0300.toISOString(), counts: zero, finished: true, enabled: true } })
+        .where(eq(nodSettings.id, 1));
+      held.release();
+      await held.done;
+      await run;
+      expect((await stored()).purgeResult).toMatchObject({ finished: true, counts: { endedSubscribers: 2 } });
+      expect(await purgeRanLog()).toEqual([expect.stringContaining("ended subscribers 2")]);
+    });
+
+    it("a run that fails partway still counts what it deleted, and the night's log includes it", async () => {
+      await setPurgeEnabled(tdb.db, true, "Avery Admin", now);
+      await subscriber("pending", { createdAt: ago(20) });
+      await subscriber("pending", { createdAt: ago(20) });
+      await subscriber("deleted", { endedAt: ago(100) });
+      // The connection drops on the second subscriber batch query: after both unconfirmed
+      // subscribers were deleted, before the ended one is read.
+      let batches = 0;
+      const dialect = new PgDialect();
+      const dropping = new Proxy(tdb.db, {
+        get(target, prop) {
+          const value = Reflect.get(target, prop, target) as unknown;
+          if (prop !== "execute") return typeof value === "function" ? (value as (...a: unknown[]) => unknown).bind(target) : value;
+          return async (q: SQL) => {
+            if (dialect.sqlToQuery(q).sql.includes("= ANY(") && ++batches === 2) throw new Error("connection lost");
+            return target.execute(q);
+          };
+        },
+      }) as Db;
+      await expect(runPurgeIfDue(dropping, TZ, { now })).rejects.toThrow("connection lost");
+      const after = await stored();
+      expect(after.purgeResult).toMatchObject({ finished: false, counts: { pendingSubscribers: 2, endedSubscribers: 0 } });
+      expect(after.purgeLease).toBeNull();
+
+      expect((await runPurgeIfDue(tdb.db, TZ, { now })).result).toMatchObject({ finished: true, counts: { pendingSubscribers: 2, endedSubscribers: 1 } });
+      expect(await purgeRanLog()).toEqual([expect.stringContaining("unconfirmed subscribers 2, ended subscribers 1")]);
     });
 
     it("enabling logs what it would remove now; a repeat changes nothing", async () => {

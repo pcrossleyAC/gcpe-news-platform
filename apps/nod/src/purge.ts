@@ -46,7 +46,9 @@ export function describeCounts(c: PurgeCounts): string {
  * - unconfirmed (pending) subscribers created more than 10 days ago;
  * - ended (deleted) subscribers whose ended_at is more than 90 days ago, with everything that
  *   cascades from them;
- * - request links never used, created more than 10 days ago (unconfirmed signups live here);
+ * - request links created more than 10 days ago that were never used, or never bound to a
+ *   subscriber (unconfirmed signups live here, and so does a signup's other verify links, which
+ *   confirming one marks used without binding them -- so they wouldn't go with the subscriber);
  * - send links (the manage link in each sent email) expired more than 10 days ago.
  */
 export function purgeSelection(now?: TestClock): Record<keyof PurgeCounts, SQL> {
@@ -55,7 +57,7 @@ export function purgeSelection(now?: TestClock): Record<keyof PurgeCounts, SQL> 
   return {
     pendingSubscribers: sql`${subscribers.status} = 'pending' AND ${olderThan(subscribers.createdAt, UNCONFIRMED_DAYS)}`,
     endedSubscribers: sql`${subscribers.status} = 'deleted' AND ${subscribers.endedAt} IS NOT NULL AND ${olderThan(subscribers.endedAt, ENDED_DAYS)}`,
-    unusedLinks: sql`${subscriberLinks.origin} = 'request' AND ${subscriberLinks.usedAt} IS NULL AND ${olderThan(subscriberLinks.createdAt, LINK_DAYS)}`,
+    unusedLinks: sql`${subscriberLinks.origin} = 'request' AND (${subscriberLinks.usedAt} IS NULL OR ${subscriberLinks.subscriberId} IS NULL) AND ${olderThan(subscriberLinks.createdAt, LINK_DAYS)}`,
     expiredSendLinks: sql`${subscriberLinks.origin} = 'send' AND ${olderThan(subscriberLinks.expiresAt, LINK_DAYS)}`,
   };
 }
@@ -113,12 +115,18 @@ export interface PurgeBatchOptions {
  * left for the next night, never retried in a loop.
  */
 export async function purgeBatch(db: Db, opts: PurgeBatchOptions): Promise<{ counts: PurgeCounts; finished: boolean }> {
-  const sel = purgeSelection(opts.now);
   const counts = { ...NO_COUNTS };
+  return { counts, finished: await purgeInto(db, opts, counts) };
+}
+
+/** {@link purgeBatch}'s work, adding to `counts` as each delete commits, so a caller still
+ * knows what was removed when a later step throws. Returns whether the pass finished. */
+async function purgeInto(db: Db, opts: PurgeBatchOptions, counts: PurgeCounts): Promise<boolean> {
+  const sel = purgeSelection(opts.now);
   const batchSize = opts.batchSize ?? SUBSCRIBER_BATCH;
   const maxSubscribers = opts.maxSubscribers ?? Infinity;
   const outOfTime = () => Date.now() >= opts.deadline;
-  const unfinished = () => ({ counts, finished: false });
+  const unfinished = () => false;
 
   const sweep = async (kind: "expiredSendLinks" | "unusedLinks"): Promise<boolean> => {
     for (;;) {
@@ -130,7 +138,7 @@ export async function purgeBatch(db: Db, opts: PurgeBatchOptions): Promise<{ cou
   };
 
   if (!(await sweep("expiredSendLinks"))) return unfinished();
-  if (!opts.enabled) return { counts, finished: true };
+  if (!opts.enabled) return true;
   if (!(await sweep("unusedLinks"))) return unfinished();
 
   let purged = 0;
@@ -157,7 +165,7 @@ export async function purgeBatch(db: Db, opts: PurgeBatchOptions): Promise<{ cou
       if (rows.length < batchSize) break;
     }
   }
-  return { counts, finished: true };
+  return true;
 }
 
 export interface PurgeRunResult {
@@ -170,7 +178,7 @@ export interface PurgeRunResult {
 
 type Claim =
   | { kind: "not-due" | "busy" }
-  | { kind: "claimed"; lease: string; cutoff: Date; enabled: boolean; prior: PurgeRunResult | null };
+  | { kind: "claimed"; lease: string; cutoff: Date; enabled: boolean };
 
 /** Claims tonight's run in one short transaction (nod_settings FOR UPDATE), never across the
  * work itself. Due when tonight's 03:00 has passed and isn't done; a missed night catches up. */
@@ -180,7 +188,7 @@ async function claim(db: Db, timeZone: string, now?: TestClock): Promise<Claim> 
     const dbNow = new Date(rows[0]!.now);
     const cutoff = dailyCutoff(dbNow, timeZone, PURGE_HOUR);
     const [s] = await tx
-      .select({ done: nodSettings.purgeDoneCutoff, leaseUntil: nodSettings.purgeLeaseUntil, enabled: nodSettings.purgeEnabled, result: nodSettings.purgeResult })
+      .select({ done: nodSettings.purgeDoneCutoff, leaseUntil: nodSettings.purgeLeaseUntil, enabled: nodSettings.purgeEnabled })
       .from(nodSettings)
       .where(eq(nodSettings.id, 1))
       .for("update");
@@ -188,16 +196,57 @@ async function claim(db: Db, timeZone: string, now?: TestClock): Promise<Claim> 
     if (s.leaseUntil && s.leaseUntil.getTime() > dbNow.getTime()) return { kind: "busy" };
     const lease = randomUUID();
     await tx.update(nodSettings).set({ purgeLease: lease, purgeLeaseUntil: new Date(dbNow.getTime() + LEASE_MS) }).where(eq(nodSettings.id, 1));
-    const last = s.result as PurgeRunResult | null;
-    return { kind: "claimed", lease, cutoff, enabled: s.enabled, prior: last?.cutoff === cutoff.toISOString() ? last : null };
+    return { kind: "claimed", lease, cutoff, enabled: s.enabled };
+  });
+}
+
+/**
+ * Adds one tick's deletes to its night's totals, whether or not this runner still holds the
+ * lease: every row it deleted is gone for good, so it is always counted. Only the lease holder
+ * closes the night (done stamp, lease cleared) and writes the night's log row. A runner whose
+ * night was already closed by another, logs its own deletes in a row of their own, since that
+ * night's row is already written without them.
+ */
+async function record(db: Db, c: Extract<Claim, { kind: "claimed" }>, tick: PurgeCounts, finished: boolean): Promise<PurgeRunResult> {
+  const night = c.cutoff.toISOString();
+  return db.transaction(async (tx) => {
+    const [s] = await tx
+      .select({ lease: nodSettings.purgeLease, done: nodSettings.purgeDoneCutoff, result: nodSettings.purgeResult })
+      .from(nodSettings)
+      .where(eq(nodSettings.id, 1))
+      .for("update");
+    const stored = (s?.result as PurgeRunResult | null) ?? null;
+    const sameNight = stored?.cutoff === night;
+    const laterNight = stored !== null && !sameNight && stored.cutoff > night;
+    const ours = s?.lease === c.lease;
+    const removed = (x: PurgeCounts) => Object.values(x).some((n) => n > 0);
+    const result: PurgeRunResult = {
+      cutoff: night,
+      counts: addCounts(sameNight ? stored!.counts : NO_COUNTS, tick),
+      finished: ours ? finished : sameNight ? stored!.finished : false,
+      enabled: ours || !sameNight ? c.enabled : stored!.enabled,
+    };
+    if (ours) {
+      await tx
+        .update(nodSettings)
+        .set({ purgeResult: result, purgeLease: null, purgeLeaseUntil: null, ...(finished ? { purgeDoneCutoff: c.cutoff } : {}), updatedAt: sql`now()` })
+        .where(eq(nodSettings.id, 1));
+      if (finished && removed(result.counts)) await writeOpsLog(tx, PURGE_ACTOR, "purge-ran", describeCounts(result.counts));
+      return result;
+    }
+    if (!laterNight) await tx.update(nodSettings).set({ purgeResult: result, updatedAt: sql`now()` }).where(eq(nodSettings.id, 1));
+    const nightClosed = laterNight || (s?.done != null && s.done.getTime() >= c.cutoff.getTime());
+    if (nightClosed && removed(tick)) await writeOpsLog(tx, PURGE_ACTOR, "purge-ran", describeCounts(tick));
+    return result;
   });
 }
 
 /**
  * The nightly purge (03:00 BC). Link housekeeping runs every night; subscribers and request
  * links only while the switch is on. A night that runs out of budget is picked up by the next
- * tick and its counts add up. The operations log gets one row when a night that removed
- * anything finishes.
+ * tick and its counts add up, as do those of a tick that failed or lost its lease. The
+ * operations log gets one row when a night that removed anything finishes (plus one for any
+ * deletes that land after that).
  */
 export async function runPurgeIfDue(
   db: Db,
@@ -206,35 +255,24 @@ export async function runPurgeIfDue(
 ): Promise<{ ran: boolean; result?: PurgeRunResult }> {
   const c = await claim(db, timeZone, opts.now);
   if (c.kind !== "claimed") return { ran: false };
-  let outcome: { counts: PurgeCounts; finished: boolean };
+  const tick = { ...NO_COUNTS };
+  let finished: boolean;
   try {
-    outcome = await purgeBatch(db, {
-      enabled: c.enabled,
-      deadline: Date.now() + (opts.budgetMs ?? RUN_BUDGET_MS),
-      maxSubscribers: opts.maxSubscribers ?? RUN_MAX_SUBSCRIBERS,
-      now: opts.now,
-    });
+    finished = await purgeInto(
+      db,
+      { enabled: c.enabled, deadline: Date.now() + (opts.budgetMs ?? RUN_BUDGET_MS), maxSubscribers: opts.maxSubscribers ?? RUN_MAX_SUBSCRIBERS, now: opts.now },
+      tick,
+    );
   } catch (e) {
-    await db.update(nodSettings).set({ purgeLease: null, purgeLeaseUntil: null }).where(and(eq(nodSettings.id, 1), eq(nodSettings.purgeLease, c.lease)));
+    // What was deleted before the failure is recorded (and the lease freed) before rethrowing.
+    try {
+      await record(db, c, tick, false);
+    } catch (r) {
+      console.error(`[nod] purge could not record a failed run: ${safeErrorLabel(r)}`);
+    }
     throw e;
   }
-  const result: PurgeRunResult = {
-    cutoff: c.cutoff.toISOString(),
-    counts: addCounts(c.prior?.counts ?? NO_COUNTS, outcome.counts),
-    finished: outcome.finished,
-    enabled: c.enabled,
-  };
-  await db.transaction(async (tx) => {
-    const kept = await tx
-      .update(nodSettings)
-      .set({ purgeResult: result, purgeLease: null, purgeLeaseUntil: null, ...(outcome.finished ? { purgeDoneCutoff: c.cutoff } : {}), updatedAt: sql`now()` })
-      .where(and(eq(nodSettings.id, 1), eq(nodSettings.purgeLease, c.lease)))
-      .returning({ id: nodSettings.id });
-    if (kept.length > 0 && outcome.finished && Object.values(result.counts).some((x) => x > 0)) {
-      await writeOpsLog(tx, PURGE_ACTOR, "purge-ran", describeCounts(result.counts));
-    }
-  });
-  return { ran: true, result };
+  return { ran: true, result: await record(db, c, tick, finished) };
 }
 
 /** The Operations switch. Turning it on records what it would remove at that moment. */

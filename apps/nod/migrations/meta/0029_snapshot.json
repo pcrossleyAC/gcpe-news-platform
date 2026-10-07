@@ -1,5 +1,5 @@
 {
-  "id": "d3dcaa43-8663-4198-a09c-20641f5bf470",
+  "id": "deba09ec-a73a-4f28-8977-c2c8b4a47929",
   "prevId": "498382df-f348-4c4e-8655-6b673b6b5ab7",
   "version": "7",
   "dialect": "postgresql",
@@ -1324,7 +1324,7 @@
             }
           ],
           "isUnique": false,
-          "where": "\"subscriber_links\".\"origin\" = 'request' AND \"subscriber_links\".\"used_at\" IS NULL",
+          "where": "\"subscriber_links\".\"origin\" = 'request' AND (\"subscriber_links\".\"used_at\" IS NULL OR \"subscriber_links\".\"subscriber_id\" IS NULL)",
           "concurrently": false,
           "method": "btree",
           "with": {}
