@@ -18,11 +18,19 @@ SELECT SubscriberGuid, RegisteredDateTime, EmailAddress, IsSelfSubscription, IsE
 export const Q_SUBSCRIBER_LISTS = `-- name: subscriberLists
 SELECT SubscriberGuid, ListGuid FROM dbo.SubscriberList`;
 
-/** When each subscriber last unsubscribed (104) or was deleted (8); EntityType 1 = Subscriber. */
+/** When staff last deleted each subscriber (8 Delete, 108 PermanentlyDeleteSubscriber); EntityType 1 = Subscriber. */
 export const Q_ENDED = `-- name: ended
 SELECT EntityGuid AS SubscriberGuid, MAX(EventDate) AS EndedAt
   FROM dbo.SysLog
- WHERE Action IN ('104', '8') AND EntityType = '1' AND EntityGuid IS NOT NULL
+ WHERE Action IN ('8', '108') AND EntityType = '1' AND EntityGuid IS NOT NULL
+ GROUP BY EntityGuid`;
+
+/** When each subscriber last unsubscribed themselves (104 Unsubscribe). Kept apart from staff
+ * deletes: it is the subscriber's own opt-out, which NoD's media-list checks read. */
+export const Q_UNSUBSCRIBED = `-- name: unsubscribed
+SELECT EntityGuid AS SubscriberGuid, MAX(EventDate) AS UnsubscribedAt
+  FROM dbo.SysLog
+ WHERE Action = '104' AND EntityType = '1' AND EntityGuid IS NOT NULL
  GROUP BY EntityGuid`;
 
 /** Each subscriber's latest removal from each media list (106 UnsubscribedFromList; EventGuid is the list). */
@@ -42,7 +50,7 @@ SELECT COUNT(*) AS Signups FROM dbo.SubscriberLink
 export const Q_DIGEST_END = `-- name: digestEnd
 SELECT ConfigValue FROM dbo.SysConfig WHERE ConfigKey = 'DailyDigestEndDateTimeUtc'`;
 
-export const ALL_QUERIES = [Q_LISTS, Q_SUBSCRIBERS, Q_SUBSCRIBER_LISTS, Q_ENDED, Q_MEDIA_LIST_LEAVES, Q_UNCONFIRMED_SIGNUPS, Q_DIGEST_END];
+export const ALL_QUERIES = [Q_LISTS, Q_SUBSCRIBERS, Q_SUBSCRIBER_LISTS, Q_ENDED, Q_UNSUBSCRIBED, Q_MEDIA_LIST_LEAVES, Q_UNCONFIRMED_SIGNUPS, Q_DIGEST_END];
 
 export const MAX_SINCE_DAYS = 92;
 

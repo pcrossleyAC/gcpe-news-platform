@@ -86,8 +86,15 @@ export async function keepMediaOptOuts(tx: DbOrTx, s: Pick<SubscriberRow, "id" |
     const at = await optedOutOfAll(tx, s.id);
     if (at) kept.push({ listKey: ALL_MEDIA_LISTS, at });
   }
+  return keepOptOutHashes(tx, s.email, kept);
+}
+
+/** Writes opt-outs for an address NoD holds no record of, under its hash: one row per media list
+ * key (or {@link ALL_MEDIA_LISTS}), keeping the later date when one is already kept. The caller
+ * holds the address lock. Returns the number of rows written. */
+export async function keepOptOutHashes(tx: DbOrTx, email: string, kept: { listKey: string; at: Date }[]): Promise<number> {
   if (kept.length === 0) return 0;
-  const hash = optOutHash(s.email);
+  const hash = optOutHash(email);
   await tx
     .insert(mediaOptOuts)
     .values(kept.map((k) => ({ emailHash: hash, listKey: k.listKey, optedOutAt: k.at })))

@@ -84,6 +84,7 @@ export function legacyNodTables(): Record<string, Record<string, unknown>[]> {
       { SubscriberGuid: G.subLeftMedia, ListGuid: G.listHealth },
     ],
     ended: [{ SubscriberGuid: G.subDeleted, EndedAt: wall("2026-05-01T10:00:00") }],
+    unsubscribed: [],
     mediaListLeaves: [
       { SubscriberGuid: G.subLeftMedia, ListGuid: G.listVictoria, LeftAt: wall("2026-04-01T09:00:00") },
       { SubscriberGuid: G.subMedia, ListGuid: G.listVictoria, LeftAt: wall("2025-01-01T09:00:00") },
