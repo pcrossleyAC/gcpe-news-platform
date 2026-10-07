@@ -1,8 +1,11 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
+import { countBouncedEmails } from "../bounces";
+import { deliveries, subscriberHistory, subscribers, subscriptions } from "../db/schema";
 import { createNodTestDb } from "../../test/helpers";
-import { subscriberHistory, subscribers, subscriptions } from "../db/schema";
+import { lockAddress } from "../locks";
 import { addMediaMember, listMediaMembers, OptedOutError } from "../media-members";
 import { infoFor, subscriberInfoSchema, PreferencesError } from "./info";
 import { checkToken, confirm, requestManageLink, subscribe, unsubscribe, update, type JourneyDeps } from "./journeys";
@@ -430,15 +433,68 @@ describe("subscriber journeys", () => {
     expect(actions).toEqual(["resubscribed", "subscribed"]);
   });
 
-  it("re-confirming from disabled restarts the bounce count", async () => {
+  it("re-confirming from disabled zeroes a previously tripped bounce count; the first confirm leaves the window null", async () => {
     await subscribe(deps, info());
     await confirm(deps, tokenFrom());
-    await tdb.db.update(subscribers).set({ status: "disabled" });
+    const [s0] = await tdb.db.select().from(subscribers);
+    expect(s0!.bounceWindowFrom).toBeNull();
+    for (let i = 0; i < 10; i++) {
+      await tdb.db.insert(deliveries).values({
+        subscriberId: s0!.id,
+        itemKey: `disabled-window-${i}`,
+        mode: "as_it_happens",
+        attemptedAt: sql`now() - interval '1 hour'`,
+        distributionBatchId: randomUUID(),
+        hardBouncedAt: sql`now() - interval '1 hour'`,
+      });
+    }
+    expect(await countBouncedEmails(tdb.db, s0!.id)).toBe(10);
+    await tdb.db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.id, s0!.id));
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, s0!.id));
+    expect(after!.status).toBe("active");
+    expect(await countBouncedEmails(tdb.db, s0!.id)).toBe(0);
+  });
+
+  it("unsubscribing then resubscribing at the same address writes 'resubscribed' and restarts the bounce count", async () => {
     await subscribe(deps, info());
     await confirm(deps, tokenFrom());
     const [s] = await tdb.db.select().from(subscribers);
-    expect(s!.status).toBe("active");
-    expect(s!.bounceWindowFrom).not.toBeNull();
+    for (let i = 0; i < 10; i++) {
+      await tdb.db.insert(deliveries).values({
+        subscriberId: s!.id,
+        itemKey: `deleted-window-${i}`,
+        mode: "as_it_happens",
+        attemptedAt: sql`now() - interval '1 hour'`,
+        distributionBatchId: randomUUID(),
+        hardBouncedAt: sql`now() - interval '1 hour'`,
+      });
+    }
+    expect(await countBouncedEmails(tdb.db, s!.id)).toBe(10);
+    await unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 1));
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, s!.id));
+    expect(after!.status).toBe("active");
+    expect(await countBouncedEmails(tdb.db, s!.id)).toBe(0);
+    const actions = (await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, s!.id))).map((h) => h.action);
+    expect(actions).toContain("resubscribed");
+  });
+
+  it("a verify link confirmed while the address is already active writes 'subscribed', not 'resubscribed'", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    const { token } = await linksModule.createLink(tdb.db, {
+      purpose: "verify",
+      email: "pat@example.test",
+      subscriberId: s!.id,
+      pending: { allNews: false, listKeys: ["ministries:health"], asItHappens: true, digest: false },
+    });
+    await confirm(deps, token);
+    const actions = (await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, s!.id))).map((h) => h.action);
+    expect(actions).toEqual(["subscribed", "subscribed"]);
   });
 
   it("a move over a dead row keeps that row's history on the mover, with a record-merged line", async () => {
@@ -453,6 +509,43 @@ describe("subscriber journeys", () => {
     const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, mover!.id));
     expect(history.map((h) => h.action)).toEqual(expect.arrayContaining(["unsubscribed", "record-merged", "email-changed"]));
     expect(history.find((h) => h.action === "record-merged")!.detail).toBe("deleted");
+  });
+
+  it("a concurrent disable during a move over a dead row leaves the dead row and its history in place", async () => {
+    for (const email of ["a@example.test", "b@example.test"]) { await subscribe(deps, info({ emailAddress: email })); await confirm(deps, tokenFrom()); }
+    const [bRow] = await tdb.db.select().from(subscribers).where(eq(subscribers.email, "b@example.test"));
+    const [aRow] = await tdb.db.select().from(subscribers).where(eq(subscribers.email, "a@example.test"));
+    await unsubscribe(deps, unsubscribeToken(SECRET, bRow!.id, 1));
+    await requestManageLink(deps, "a@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(3));
+    await update(deps, tokenFrom(), info({ emailAddress: "b@example.test" }));
+    const changeToken = tokenFrom();
+
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const lockedP = new Promise<void>((r) => (locked = r));
+    const disableTx = tdb.db.transaction(async (tx) => {
+      await lockAddress(tx, "a@example.test");
+      await tx.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.id, aRow!.id));
+      locked();
+      await gate;
+    });
+    await lockedP;
+    const confirmed = confirm(deps, changeToken);
+    await new Promise((r) => setTimeout(r, 300));
+    release();
+    await disableTx;
+    expect(await confirmed).toBeNull();
+
+    const [mover] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, aRow!.id));
+    expect(mover).toMatchObject({ status: "disabled", email: "a@example.test" });
+    const deadRows = await tdb.db.select().from(subscribers).where(eq(subscribers.email, "b@example.test"));
+    expect(deadRows).toHaveLength(1);
+    expect(deadRows[0]).toMatchObject({ status: "deleted" });
+    const history = (await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, aRow!.id))).map((h) => h.action);
+    expect(history).not.toContain("record-merged");
+    expect(history).not.toContain("email-changed");
   });
 
   it("after a completed move, the subscriber's other links stop working; the change-email link stays a session", async () => {

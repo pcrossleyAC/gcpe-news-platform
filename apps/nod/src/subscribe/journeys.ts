@@ -152,9 +152,11 @@ async function applyVerify(deps: JourneyDeps, link: LinkRow): Promise<Subscriber
     if (!(await claimVerifyLink(tx, link))) return "unclaimed";
 
     const existing = await bySubscriberEmail(tx, link.email);
-    // A first confirmation, or a pending row's, is a new subscription; a disabled or deleted
-    // row coming back is a resubscription -- reports count the two separately.
-    const historyAction = !existing || existing.status === "pending" ? "subscribed" : "resubscribed";
+    // Only a disabled or deleted row coming back counts as a resubscription for reports; a
+    // first confirmation, a pending row's, or one that was already active (confirming a second,
+    // otherwise-superseded verify link) logs the plain "subscribed" action instead.
+    const wasInactive = existing?.status === "disabled" || existing?.status === "deleted";
+    const historyAction = wasInactive ? "resubscribed" : "subscribed";
     const fields = {
       status: "active" as const,
       verifiedAt: sql`now()`,
@@ -163,7 +165,7 @@ async function applyVerify(deps: JourneyDeps, link: LinkRow): Promise<Subscriber
       endedAt: null,
       source: "self" as const,
       // Their own confirmation proves the mailbox works again: restart the bounce count.
-      ...(existing?.status === "disabled" ? { bounceWindowFrom: sql`now()` } : {}),
+      ...(wasInactive ? { bounceWindowFrom: sql`now()` } : {}),
     };
     let subscriberId: string;
     if (existing) {
@@ -205,12 +207,23 @@ type EmailChangeOutcome = "unclaimed" | "not-active" | "moved" | "moved-unsubscr
 async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<SubscriberInfo | null> {
   if (!link.subscriberId) return null;
   const subscriberId = link.subscriberId;
+  // Read the mover's current address first, unlocked -- purely to know which two addresses need
+  // locking. The FOR UPDATE re-read below (same pattern as media-hub/sync.ts's own address-move
+  // handling) re-checks it's still the mover's address once the locks are actually held.
+  const [pre] = await deps.db.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, subscriberId));
+  if (!pre) return null;
+  const oldAddress = normaliseEmail(pre.email);
+  const addresses = oldAddress === link.email ? [oldAddress] : ([oldAddress, link.email].sort() as [string, string]);
+
   const outcome = await deps.db.transaction<EmailChangeOutcome>(async (tx) => {
-    await lockAddress(tx, link.email);
+    // A change of email locks both addresses, in sorted order (global constraints) -- the old
+    // one too, not just the target, or a concurrent writer of the *old* address (a bounce
+    // disabling it, say) can race this move to completion unserialised.
+    for (const addr of addresses) await lockAddress(tx, addr);
     if (!(await claimLink(tx, link.id))) return "unclaimed";
 
-    const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId));
-    if (!s || s.status !== "active") return "not-active";
+    const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId)).for("update");
+    if (!s || s.status !== "active" || normaliseEmail(s.email) !== oldAddress) return "not-active";
 
     const taken = await bySubscriberEmail(tx, link.email);
     if (taken && taken.id !== subscriberId) {
@@ -247,17 +260,19 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
 
 /** Ends a subscriber (4a) and, in the same transaction, opts them out of every media list
  * (global constraints, "Unsubscribe means everything") -- shared by one-click, token-link and
- * every email kind, since they all route through this one function. */
+ * every email kind, since they all route through this one function. Takes the per-address lock
+ * and re-reads the row FOR UPDATE itself, rather than trusting a caller to have done it, because
+ * one caller (the public `unsubscribe()` token path) otherwise reaches this with no lock at all. */
 async function endSubscriber(tx: DbOrTx, subscriberId: string) {
-  const ended = await tx
-    .update(subscribers)
-    .set({ status: "deleted", endedAt: sql`now()` })
-    .where(and(eq(subscribers.id, subscriberId), sql`${subscribers.status} <> 'deleted'`))
-    .returning({ id: subscribers.id });
-  if (ended.length) {
-    await writeHistory(tx, subscriberId, SELF, "unsubscribed");
-    await optOutMediaMemberships(tx, subscriberId, SELF);
-  }
+  const [pre] = await tx.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, subscriberId));
+  if (!pre) return;
+  const address = normaliseEmail(pre.email);
+  await lockAddress(tx, address);
+  const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId)).for("update");
+  if (!s || s.status === "deleted" || normaliseEmail(s.email) !== address) return;
+  await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, subscriberId));
+  await writeHistory(tx, subscriberId, SELF, "unsubscribed");
+  await optOutMediaMemberships(tx, subscriberId, SELF);
 }
 
 /** Whether `link` currently authorises a manage session — `update`, `unsubscribe` and (for a
