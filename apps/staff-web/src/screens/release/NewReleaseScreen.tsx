@@ -24,9 +24,9 @@ interface PageImageOption {
   sortOrder: number;
 }
 interface MediaListOption {
-  id: string;
   key: string;
-  name: string;
+  displayName: string;
+  isActive: boolean;
 }
 
 const EMPTY_CATEGORIES: Categories = { ministries: [], sectors: [], themes: [], tags: [] };
@@ -103,7 +103,9 @@ export function NewReleaseScreen(): React.JSX.Element {
     );
     apiFetch<PageImageOption[]>("/nrms/api/page-images").then(setPageImages, () => {});
     apiFetch<Categories>("/nrms/api/categories").then(setCategories, () => {});
-    apiFetch<MediaListOption[]>("/nrms/api/media-lists").then(setMediaLists, () => {});
+    // GET /media-lists also returns retired lists (NRMS's own admin screen needs those); the
+    // composer only ever offers active ones.
+    apiFetch<MediaListOption[]>("/nrms/api/media-lists").then((all) => setMediaLists(all.filter((l) => l.isActive)), () => {});
   }, []);
 
   // Fix round 1, finding 1: this route had no role gate at all — a Viewer or Site Editor
@@ -336,9 +338,9 @@ export function NewReleaseScreen(): React.JSX.Element {
               Media distribution lists{rules.mediaListRequired ? " (required)" : ""}
             </legend>
             {mediaLists.map((l) => (
-              <label key={l.id}>
+              <label key={l.key}>
                 <input type="checkbox" checked={mediaListKeys.includes(l.key)} onChange={() => toggle(mediaListKeys, setMediaListKeys, l.key)} />
-                {l.name}
+                {l.displayName}
               </label>
             ))}
           </fieldset>

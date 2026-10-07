@@ -101,6 +101,12 @@ export async function updateMediaList(db: Db, key: string, input: UpdateMediaLis
   });
 }
 
+/** Every media list, active and retired, in sort order — the release composer (which keeps
+ * only the active ones itself) and NRMS's own media-list admin screen both read this. */
+export async function listMediaLists(db: Db): Promise<MediaListRecord[]> {
+  return db.select(COLUMNS).from(mediaLists).orderBy(asc(mediaLists.sortOrder), asc(mediaLists.displayName));
+}
+
 /** Emits `media_list.updated` for every row (active or not), e.g. so a newly-wired NoD can catch up. Returns the count. */
 export async function republishMediaLists(db: Db, subscribers: SubscriberConfig[]): Promise<number> {
   return db.transaction(async (tx) => {

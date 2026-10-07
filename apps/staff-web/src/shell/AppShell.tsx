@@ -20,8 +20,9 @@ const hasAnyReadRole = (s: SessionValue) => s.has("NRMS.Viewer") || s.has("NRMS.
  * decide what's shown, but the server is the authority"). Website is visible to every read
  * role (minors: Featured/the log are read-only for all of them; canReadWebsite) — WebsiteScreen
  * itself (and each manage-only sub-screen) still restricts the other six sections to
- * NRMS.SiteEditor/Core.Admin; Users and the error log are Core.Admin only. Subscribers is
- * visible to any NoD role (canReadSubscribers) — an NRMS-only user never sees it, and vice versa.
+ * NRMS.SiteEditor/Core.Admin; Users, Media list names and the error log are Core.Admin only.
+ * Subscribers is visible to any NoD role (canReadSubscribers) — an NRMS-only user never sees
+ * it, and vice versa.
  */
 const NAV_ITEMS: NavItem[] = [
   { to: "/releases", label: "Releases", show: hasAnyReadRole },
@@ -29,6 +30,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/website", label: "Website", show: canReadWebsite },
   { to: "/subscribers", label: "Subscribers", show: canReadSubscribers },
   { to: "/users", label: "Users", show: (s) => s.has("Core.Admin") },
+  { to: "/media-list-names", label: "Media list names", show: (s) => s.has("Core.Admin") },
   { to: "/error-log", label: "Error log", show: (s) => s.has("Core.Admin") },
 ];
 

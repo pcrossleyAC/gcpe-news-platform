@@ -50,6 +50,7 @@ body {
  * 24px to its neighbour too. jsdom has no real layout engine, so none of the existing
  * component-level axe tests could have caught a *sizing* violation — this fix's regression
  * coverage is exactly the Playwright axe check that found it (tests/e2e/axe-sweep.spec.ts). */
+.gcpe-shell__nav a,
 .gcpe-website nav a,
 .gcpe-subscribers nav a,
 .gcpe-document-tabs [role="tab"],

@@ -46,7 +46,7 @@ function stubFetch({ roles = ["NRMS.Editor"], onPost }: StubOptions = {}) {
           tags: [],
         });
       }
-      if (url === "/nrms/api/media-lists") return jsonResponse(200, [{ id: "m1", key: "list1", name: "List One" }]);
+      if (url === "/nrms/api/media-lists") return jsonResponse(200, [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }]);
       if (url === "/nrms/api/releases" && init?.method === "POST") {
         return onPost ? onPost(body) : jsonResponse(201, releaseView());
       }

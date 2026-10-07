@@ -5,7 +5,7 @@ import {
   LANG_EN, POST_KIND, statusText, type ListQuery, type ReleaseListItem, type ReleasePage, type ReleaseStatus, type ReleaseType, type SearchQuery,
 } from "@gcpe/nrms-contract";
 import {
-  documentLanguages, mediaLists, newsReleases, organizations, pageImageLanguages, pageImages, pageTypes, releaseCategories, releaseDocuments,
+  documentLanguages, newsReleases, organizations, pageImageLanguages, pageImages, pageTypes, releaseCategories, releaseDocuments,
   releaseLanguages, releaseLog as releaseLogTable, releasePublications, type NewsReleaseRow,
 } from "../db/schema";
 
@@ -221,14 +221,6 @@ export async function publication(db: DbOrTx, id: string, pubId: number): Promis
     .from(releasePublications)
     .where(and(eq(releasePublications.releaseId, id), eq(releasePublications.id, pubId)));
   return row?.record ?? null;
-}
-
-export async function listMediaLists(db: DbOrTx): Promise<{ id: string; key: string; name: string }[]> {
-  return db
-    .select({ id: mediaLists.id, key: mediaLists.key, name: mediaLists.displayName })
-    .from(mediaLists)
-    .where(eq(mediaLists.isActive, true))
-    .orderBy(asc(mediaLists.sortOrder), asc(mediaLists.displayName));
 }
 
 export async function listPageTypes(db: DbOrTx) {

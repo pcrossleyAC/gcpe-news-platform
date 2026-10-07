@@ -15,9 +15,9 @@ export interface SettingsSectionProps {
 }
 
 interface MediaListOption {
-  id: string;
   key: string;
-  name: string;
+  displayName: string;
+  isActive: boolean;
 }
 
 interface FormState {
@@ -55,9 +55,13 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   const [lists, setLists] = useState<MediaListOption[]>([]);
 
   useEffect(() => {
-    apiFetch<MediaListOption[]>("/nrms/api/media-lists").then(setLists, () => {
-      // The checkbox list just won't be offered — the rest of the form still works.
-    });
+    // GET /media-lists also returns retired lists; this form only ever offers active ones.
+    apiFetch<MediaListOption[]>("/nrms/api/media-lists").then(
+      (all) => setLists(all.filter((l) => l.isActive)),
+      () => {
+        // The checkbox list just won't be offered — the rest of the form still works.
+      },
+    );
   }, []);
 
   const resetFrom = (next: ReleaseView) => {
@@ -163,9 +167,9 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
               Send to media distribution lists
             </label>
             {lists.map((l) => (
-              <label key={l.id}>
+              <label key={l.key}>
                 <input type="checkbox" checked={form.mediaListKeys.includes(l.key)} disabled={readOnly} onChange={() => toggleMediaList(l.key)} />
-                {l.name}
+                {l.displayName}
               </label>
             ))}
           </fieldset>

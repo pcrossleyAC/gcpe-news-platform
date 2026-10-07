@@ -398,6 +398,8 @@ describe("NRMS HTTP API", () => {
     await tdb.pool.query("INSERT INTO page_types (page_title, language_id, release_type, sort_order) VALUES ('News Release', 4105, 'release', 1) ON CONFLICT DO NOTHING");
     const lists = await get("/api/media-lists");
     expect(lists.status).toBe(200);
+    // Core.Admin creates and edits media lists, so it must be able to list them too.
+    expect((await get("/api/media-lists", await cookieFor(["Core.Admin"]))).status).toBe(200);
     expect(lists.body.map((l: { key: string }) => l.key)).toEqual(["regional", "national"]);
     const types = await get("/api/page-types");
     expect(types.status).toBe(200);

@@ -35,7 +35,7 @@ describe("SettingsSection", () => {
   });
 
   it("reflects the release's current toSubscribers and mediaListKeys", async () => {
-    stubFetch({ mediaLists: [{ id: "m1", key: "list1", name: "List One" }] });
+    stubFetch({ mediaLists: [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }] });
     renderSettings(
       releaseView({
         type: "release",
@@ -63,7 +63,7 @@ describe("SettingsSection", () => {
   it("saves with PUT /settings, including the current version and chosen media lists", async () => {
     const saved = releaseView({ version: 2 });
     const calls = stubFetch({
-      mediaLists: [{ id: "m1", key: "list1", name: "List One" }],
+      mediaLists: [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }],
       onPut: () => jsonResponse(200, saved),
     });
     const v = releaseView({ type: "release", version: 1, mediaListKeys: [] });
@@ -118,7 +118,7 @@ describe("SettingsSection", () => {
   });
 
   it("read-only disables every control and hides the Save button", async () => {
-    stubFetch({ mediaLists: [{ id: "m1", key: "list1", name: "List One" }] });
+    stubFetch({ mediaLists: [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }] });
     renderSettings(releaseView({ type: "release" }), () => {}, true);
     expect(await screen.findByLabelText("List One")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Save settings" })).not.toBeInTheDocument();

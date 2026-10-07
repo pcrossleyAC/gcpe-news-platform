@@ -12,7 +12,7 @@ import {
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError, VersionConflictError } from "../releases/errors";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "../website/errors";
 import {
-  goTo, listFolder, listItems, listMediaLists, listPageImages, listPageTypes, publication, publications, releaseLog, releaseVisible, searchReleases,
+  goTo, listFolder, listItems, listPageImages, listPageTypes, publication, publications, releaseLog, releaseVisible, searchReleases,
 } from "../releases/queries";
 import {
   addDocument, addTranslation, createRelease, deleteRelease, removeDocument, removeTranslation, reorderDocuments, saveAsset, saveCategories,
@@ -21,7 +21,7 @@ import {
 import { loadView, writeLog } from "../releases/store";
 import { mediaLists, newsReleases, pageImages } from "../db/schema";
 import {
-  createMediaList, createMediaListInputSchema, MediaListConflictError, MediaListNotFoundError, republishMediaLists, updateMediaList, updateMediaListInputSchema,
+  createMediaList, createMediaListInputSchema, listMediaLists, MediaListConflictError, MediaListNotFoundError, republishMediaLists, updateMediaList, updateMediaListInputSchema,
 } from "../media-lists";
 import type { ObjectStore } from "@gcpe/storage";
 import type { EmbedDeps } from "../media/embeds";
@@ -298,7 +298,11 @@ export function apiRoutes(deps: RouteDeps): Router {
     }),
   );
 
-  r.get("/media-lists", read, run(async (_req, res) => void res.json(await listMediaLists(db))));
+  // Core.Admin creates and edits media lists (mediaListAdmin, below), so it reads them too —
+  // every list, active and retired, since that admin screen is also where a retired one gets
+  // reactivated. The release composer (NRMS.Viewer/Editor/SiteEditor) keeps only the active
+  // ones itself.
+  r.get("/media-lists", anySignedIn, run(async (_req, res) => void res.json(await listMediaLists(db))));
   r.post(
     "/media-lists",
     mediaListAdmin,
