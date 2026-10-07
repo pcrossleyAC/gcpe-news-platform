@@ -235,6 +235,7 @@ npm --workspace @gcpe/nod run dev
 | `BANNER_URL` | no | | Full URL of the "Government of B.C. / News on Demand" banner image shown in every outbound email's shell; unset shows a plain blue text heading instead (set as `NOD_BANNER_URL` on the deployed stack, which strips the `NOD_` prefix before this schema sees it) |
 | `LINK_SECRET` | yes | | HMAC key (32+ chars) for unsubscribe tokens (the stack derives it from `STACK_EVENT_SECRET`) |
 | `OPS_EMAIL` | no | | Operator inbox emailed whenever sending is paused or resumed (set as `NOD_OPS_EMAIL` on the deployed stack, which strips the `NOD_` prefix before this schema sees it) |
+| `REPLY_TO` | no | | `Reply-To` applied to every send whose own request doesn't already carry one (As-It-Happens, digest, emergency, media, system/ops mail) — passed through to Distribution's `replyTo`; unset means no `Reply-To` header (set as `NOD_REPLY_TO` on the deployed stack). Never point this at a real government mailbox on a test site. |
 | `SUBSCRIBE_PAGE_URL` | no | `${PUBLIC_SITE_URL}/subscribe/manage/` | The page emailed verify/manage links open |
 | `SUBSCRIBE_API_URL` | no | `PUBLIC_SITE_URL`'s origin + `/api/Subscribe` | Base URL of the public Subscribe API, carrying the one-click unsubscribe path |
 | `MEDIA_HUB_URL` | no | | Base URL of the Media Hub contacts service; unset means search and add-from-hub answer 503 while manual entry still works (the stack points this at its own fake Media Hub when no real one is configured — see `apps/stack/src/env.ts`'s `usesFakeMediaHub`) |
@@ -292,12 +293,27 @@ npm --workspace @gcpe/distribution run dev
 | `MAIL_FROM` | yes | | `From` header for every sent message |
 | `MAIL_REDIRECT_TO` | no† | | Comma-separated list of real addresses every message is actually sent to instead of its real recipients — see the mail-redirect rule below |
 | `MAIL_ALLOW_REAL_RECIPIENTS` | no† | `false` | Opt-in to delivering to real recipients (disables the redirect) |
-| `INTERNAL_DOMAINS` | no | `` (empty) | Comma-separated list of domains treated as internal by the API's recipient checks |
+| `MAIL_REPLY_TO` | no | | `Reply-To` header used when a request doesn't carry its own; unset means no `Reply-To` header at all. Never point this at a real mailbox on a test site — see "Distribution's mail-redirect safety rule" below |
+| `MESSAGE_ID_DOMAIN` | no | `MAIL_FROM`'s own domain | Domain of every outgoing message's `Message-ID` (`<row id>@<domain>`), stable across retries of the same message — 4e's bounce matching keys off it |
+| `MAIL_RATE_PER_MINUTE` | no | `60` | Database-enforced send cap shared across every worker (C58); minimum 1 — there is no "unlimited" value, so a typo can't remove the cap. In production, set this from the relay's own per-minute limit (Q22), not from this script's own measured throughput — see `distribution:capacity` below |
+| `MAIL_CONCURRENCY` | no | `1` | Number of `sendMail` calls kept in flight at once within one sender run; max 16, and must not exceed `SMTP_MAX_CONNECTIONS` |
+| `INTERNAL_DOMAINS` | no | `gov.bc.ca,leg.bc.ca` | Comma-separated list of domains treated as internal by the API's recipient checks (the +2 priority bump) |
 | `SEND_INTERVAL_MS` | no | `2000` | How often the send poller runs |
 | `SEND_OUTAGE_COOLDOWN_MAX_MS` | no | `300000` | Longest the sender pauses after an SMTP outage deferral (the pause is the deferred message's backoff, capped at this) |
 | `MIGRATIONS_FOLDER` | no | `apps/distribution/migrations` (resolved next to the bundle) | Drizzle migrations applied at boot; the Docker image sets `/app/apps/distribution/migrations` |
 
 † Startup refuses to boot unless at least one of `MAIL_REDIRECT_TO` or `MAIL_ALLOW_REAL_RECIPIENTS=true` is set — see below.
+
+### Measuring local send capacity
+
+`npm run distribution:capacity` queues synthetic `@example.test` recipients into a throwaway
+local Postgres database and drains them against a local SMTP sink (the in-process `smtp-server`
+sink by default, or `--smtp host:port` for a running Mailpit), to measure sender throughput at a
+few concurrencies and confirm the per-minute cap holds under concurrent workers. **Local only**:
+it refuses to run against any SMTP target other than localhost/127.0.0.1, never addresses a real
+recipient, and never reads `.env`. Never run it against SiteGround or any other deployed
+environment — see `docs/deploy/siteground.md`. Measured numbers (machine, Node/Postgres versions,
+throughput and drain-time table) are recorded in `docs/parity/open-questions.md` (Q21/Q22).
 
 Plus the shared auth env vars — see [Authentication](#authentication-entra-or-local-admin-login-test-environments-only) below.
 

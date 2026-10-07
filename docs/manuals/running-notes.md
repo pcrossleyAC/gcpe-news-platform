@@ -91,3 +91,19 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Operations** — The legacy Membership tab's lookup (`Subscribe/SubscriberInformation`) needs
   `NOD_MEMBERSHIP_API_USERNAME` and `NOD_MEMBERSHIP_API_PASSWORD_HASH` (the hash from
   `npm run nod:membership-hash`, never a plain password) — unset, the route always answers 503.
+- **Operations** — Distribution's own send settings, set on the stack as `DIST_MAIL_RATE_PER_MINUTE`
+  (default 60/min, minimum 1 — no "unlimited" value), `DIST_MAIL_CONCURRENCY` (default 1, capped
+  by `DIST_SMTP_MAX_CONNECTIONS`), `DIST_MAIL_REPLY_TO` (unset means no Reply-To header),
+  `DIST_MESSAGE_ID_DOMAIN` (defaults to `DIST_MAIL_FROM`'s own domain) and `DIST_INTERNAL_DOMAINS`
+  (default `gov.bc.ca,leg.bc.ca`, the +2 priority bump). NoD's own outgoing mail has its own
+  Reply-To, `NOD_REPLY_TO` (unset means none) — never point it at a real government mailbox on a
+  test site, since redirected test mail would put real replies in front of it.
+- **Operations** — Distribution as a whole can be paused from NoD (`NoD.Admin`), the same as
+  NoD's own pause (4b). `npm run distribution:capacity` measures local send throughput and
+  confirms the per-minute cap holds under concurrent workers; it only ever runs against
+  localhost and is never run against SiteGround (see `docs/deploy/siteground.md`).
+- **Administrator** — Pausing Distribution holds every message below `system` priority
+  (As-It-Happens, digests, media lists). It does not hold verification, manage-link or ops-notice
+  mail, so subscribers can still confirm/unsubscribe and staff still get the pause/resume email
+  while paused. Nothing is dropped — held messages send once resumed. A row already claimed by
+  the sender when the switch flips still finishes sending; pausing only stops new claims.

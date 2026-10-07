@@ -2,9 +2,6 @@
 
 Items the 4a task and final reviews deferred to later sub-plans. Each later plan must pick up its section, then delete those lines here.
 
-## 4d (email templates/polish)
-- Legacy BC Gov News Reply-To is `gcpe.news@gov.bc.ca` — check whether our sends set a Reply-To at all, and if not, decide whether they should.
-
 ## 4e / 4f (bounces, staff section)
 - Define `disabled` (bounce- or staff-disabled). 4a already treats it like `active` when someone moves onto that address. Decide whether a disabled subscriber may reactivate themselves through subscribe/confirm (today they can, and a test pins it).
 - When an email move deletes a `pending`/`deleted` row, its `subscriber_history` cascades away. Decide the audit-retention rule.
