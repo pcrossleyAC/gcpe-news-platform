@@ -17,6 +17,11 @@ describe("distribution-capacity", () => {
       // retried/failed, or if anything was still pending after the drain loop exited, so this
       // also covers "no duplicates, nothing missed".
       expect(row.delivered).toBe(50);
+      // Fix round 1 (I2): don't just trust sendDue's own "sent" count — independently confirm
+      // the in-process sink actually received exactly N messages, to exactly N distinct
+      // recipients, for each concurrency.
+      expect(row.sinkReceived).toBe(50);
+      expect(row.duplicateRecipients).toBe(0);
     }
 
     expect(result.markdown).toContain("| 1 |");
@@ -45,5 +50,16 @@ describe("distribution-capacity", () => {
 
   it("refuses a non-local --smtp target", async () => {
     await expect(runCapacityMeasurement({ n: 1, concurrencies: [1], smtp: "mail.example.com:25" })).rejects.toThrow(/refusing non-local/);
+  });
+
+  it("refuses a non-local database admin target (I1), before doing any database work", async () => {
+    const original = process.env.TEST_DATABASE_ADMIN_URL;
+    process.env.TEST_DATABASE_ADMIN_URL = "postgres://db.example.com:5432/postgres";
+    try {
+      await expect(runCapacityMeasurement({ n: 1, concurrencies: [1] })).rejects.toThrow(/refusing a non-local database admin target/);
+    } finally {
+      if (original === undefined) delete process.env.TEST_DATABASE_ADMIN_URL;
+      else process.env.TEST_DATABASE_ADMIN_URL = original;
+    }
   });
 });

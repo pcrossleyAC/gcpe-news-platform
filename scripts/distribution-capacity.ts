@@ -11,13 +11,15 @@
 //   npm run distribution:capacity -- --smtp 127.0.0.1:1025      # against a running Mailpit
 //   npm run distribution:capacity -- --skip-phase-b             # throughput only
 //
-// Safety: refuses to run against any SMTP target (the --smtp argument, or an inherited
-// SMTP_HOST) that isn't localhost/127.0.0.1/::1, never addresses anyone but <local
+// Safety: refuses to run against any SMTP target (the --smtp argument) or database admin
+// target (TEST_DATABASE_ADMIN_URL, or db-kit's own localhost default) that isn't
+// localhost/127.0.0.1/::1 (or a unix-socket path), never addresses anyone but <local
 // part>@example.test, and never reads a .env file (nothing here imports dotenv; only the
 // process's own already-set env vars, e.g. TEST_DATABASE_ADMIN_URL, are read).
 import { pathToFileURL } from "node:url";
 import nodemailer, { type Transporter } from "nodemailer";
 import { sql } from "drizzle-orm";
+import type { ParsedMail } from "mailparser";
 import { createDistributionTestDb } from "../apps/distribution/test/helpers";
 import { startSmtpSink } from "../apps/distribution/test/smtp-sink";
 import { createBatch, type MessageRequest } from "../apps/distribution/src/messages";
@@ -29,11 +31,20 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
-/** Refuses anything but a local SMTP target — this script's only real safety rail, since it's
- * the one thing standing between "throwaway sink" and "a batch of made-up addresses hitting a
- * real relay". */
+/** True for localhost/127.0.0.1/::1 (brackets stripped, so `new URL(...)`'s own `[::1]`
+ * spelling for IPv6 hostnames still matches), or a unix-socket directory path (which can only
+ * ever name something on this machine). */
+function isLocalHost(host: string): boolean {
+  const normalized = host.replace(/^\[/, "").replace(/\]$/, "").toLowerCase();
+  if (LOCAL_HOSTS.has(normalized)) return true;
+  return normalized.startsWith("/");
+}
+
+/** Refuses anything but a local SMTP target — one of this script's two real safety rails
+ * (the other is {@link assertLocalDatabaseAdminTarget}), since it's what stands between
+ * "throwaway sink" and "a batch of made-up addresses hitting a real relay". */
 function assertLocalHost(host: string, source: string): void {
-  if (!LOCAL_HOSTS.has(host)) {
+  if (!isLocalHost(host)) {
     throw new Error(`distribution-capacity: refusing non-local SMTP target "${host}" (from ${source}) — this script only ever runs against localhost`);
   }
 }
@@ -46,6 +57,36 @@ function parseSmtpTarget(value: string): { host: string; port: number } {
   }
   assertLocalHost(host, "--smtp");
   return { host, port };
+}
+
+/** Mirrors packages/db-kit/src/test-db.ts's own `adminUrl()` default exactly — that function
+ * isn't importable here (the package's "exports" field exposes only its index, which doesn't
+ * re-export it), so the same default is replicated for this pre-flight check. */
+function effectiveDatabaseAdminUrl(): string {
+  return process.env.TEST_DATABASE_ADMIN_URL ?? "postgres://localhost:5432/postgres";
+}
+
+/** Fix round 1 (I1): `createDistributionTestDb()` creates, migrates and drops its throwaway
+ * database against whatever `TEST_DATABASE_ADMIN_URL` names (or db-kit's own localhost
+ * default) — the SMTP-target guard above says nothing about that. Refuses anything but a local
+ * target, the same way, before any `CREATE DATABASE` happens. */
+function assertLocalDatabaseAdminTarget(rawUrl: string): void {
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error(`distribution-capacity: could not parse the database admin URL "${rawUrl}"`);
+  }
+  // An empty hostname (e.g. "postgres:///dbname") falls back to libpq's own default, which is
+  // never a remote host; a "?host=/path" query param names a unix-socket directory instead of
+  // a TCP host — both are handled by isLocalHost itself, given the right candidate string.
+  const hostParam = parsed.searchParams.get("host");
+  const candidate = parsed.hostname !== "" ? parsed.hostname : hostParam ?? "localhost";
+  if (!isLocalHost(candidate)) {
+    throw new Error(
+      `distribution-capacity: refusing a non-local database admin target "${candidate}" (TEST_DATABASE_ADMIN_URL, or db-kit's own default) — this script only ever creates/migrates/drops its throwaway database on localhost`,
+    );
+  }
 }
 
 function baseMessageRequest(subjectTag: string): Omit<MessageRequest, "recipients"> {
@@ -64,13 +105,18 @@ function baseMessageRequest(subjectTag: string): Omit<MessageRequest, "recipient
 const MAX_RECIPIENTS_PER_BATCH = 20_000;
 
 /** Queues `count` fresh synthetic recipients (never reused across calls — each gets a globally
- * unique local part) across as many batches as `createBatch`'s 20,000-recipient cap requires. */
-async function queueRecipients(db: Db, count: number, tag: string): Promise<void> {
+ * unique local part) across as many batches as `createBatch`'s 20,000-recipient cap requires.
+ * Returns every address queued, so a caller can cross-check what actually arrived at the sink
+ * against exactly this list (addresses and count), not just a count. */
+async function queueRecipients(db: Db, count: number, tag: string): Promise<string[]> {
+  const queued: string[] = [];
   for (let start = 0; start < count; start += MAX_RECIPIENTS_PER_BATCH) {
     const chunk = Math.min(MAX_RECIPIENTS_PER_BATCH, count - start);
     const recipients = Array.from({ length: chunk }, (_, i) => ({ email: `cap-${tag}-${start + i}@example.test`, substitutions: {} }));
     await createBatch(db, "distribution-capacity", { ...baseMessageRequest(tag), recipients }, []);
+    queued.push(...recipients.map((r) => r.email));
   }
+  return queued;
 }
 
 async function countPending(db: Db): Promise<number> {
@@ -78,11 +124,26 @@ async function countPending(db: Db): Promise<number> {
   return rows[0]?.n ?? 0;
 }
 
+/** The single recipient address mailparser recorded for a sink message — same extraction
+ * `sender.test.ts` uses to look up a delivered message by its "to". */
+function addressOf(m: ParsedMail): string | undefined {
+  return m.to && "value" in m.to ? m.to.value[0]?.address : undefined;
+}
+
 export interface PhaseARow {
   concurrency: number;
   elapsedMs: number;
   sendsPerMinute: number;
   delivered: number;
+  /** How many messages the in-process sink actually recorded for this concurrency's run, cross-
+   * checked against `delivered` and `n` (see runPhaseA). `null` when running against an
+   * external `--smtp` target, which has no equivalent in-process message list to check. */
+  sinkReceived: number | null;
+  /** Count of recipient addresses the sink saw more than once in this run. Always 0 when
+   * `sinkReceived` isn't null and nothing is wrong; `0` (not null) when there's no sink, since
+   * "no sink to check" and "checked, no duplicates" are different states only `sinkReceived`
+   * needs to distinguish. */
+  duplicateRecipients: number;
 }
 
 export interface PhaseBWindow {
@@ -153,13 +214,18 @@ async function runPhaseA(opts: {
   n: number;
   concurrencies: number[];
   batchSize: number;
+  /** The in-process sink's own message list, when one is running (omitted for an external
+   * `--smtp` target) — I2: cross-checked against `delivered`/`n` per concurrency, not just
+   * trusted from sendDue's own result. */
+  sink?: { messages: ParsedMail[] };
 }): Promise<PhaseARow[]> {
   const rows: PhaseARow[] = [];
   for (const concurrency of opts.concurrencies) {
     // One rate-window row per wall-clock minute shared by every call in this script; the cap
     // here (1,000,000/min) is set so high it can never bind, so Phase A measures the sender and
     // transport, not the cap.
-    await queueRecipients(opts.db, opts.n, `a-${concurrency}`);
+    const queuedAddresses = await queueRecipients(opts.db, opts.n, `a-${concurrency}`);
+    const sinkStartIndex = opts.sink?.messages.length ?? 0;
     const start = performance.now();
     let delivered = 0;
     while (true) {
@@ -185,8 +251,33 @@ async function runPhaseA(opts: {
     if (pending !== 0) {
       throw new Error(`distribution-capacity: ${pending} messages still pending after draining at concurrency ${concurrency}`);
     }
+
+    // I2: don't just trust sendDue's own "sent" count — cross-check what the sink actually
+    // recorded. Catches, for instance, a transport that silently drops a message after
+    // nodemailer resolves its sendMail() promise, which `delivered` alone could never see.
+    let sinkReceived: number | null = null;
+    let duplicateRecipients = 0;
+    if (opts.sink) {
+      const receivedAddresses = opts.sink.messages.slice(sinkStartIndex).map(addressOf).filter((a): a is string => a !== undefined);
+      sinkReceived = receivedAddresses.length;
+      duplicateRecipients = receivedAddresses.length - new Set(receivedAddresses).size;
+      if (sinkReceived !== delivered || sinkReceived !== opts.n) {
+        throw new Error(
+          `distribution-capacity: sink received ${sinkReceived} message(s) at concurrency ${concurrency}, but sendDue reported ${delivered} sent and ${opts.n} were queued — these must all agree`,
+        );
+      }
+      if (duplicateRecipients > 0) {
+        throw new Error(`distribution-capacity: sink received ${duplicateRecipients} duplicate recipient(s) at concurrency ${concurrency}`);
+      }
+      const queuedSet = new Set(queuedAddresses);
+      const unexpected = receivedAddresses.filter((a) => !queuedSet.has(a));
+      if (unexpected.length > 0) {
+        throw new Error(`distribution-capacity: sink received ${unexpected.length} message(s) to unexpected recipient(s) at concurrency ${concurrency}`);
+      }
+    }
+
     const sendsPerMinute = opts.n / (elapsedMs / 60_000);
-    rows.push({ concurrency, elapsedMs, sendsPerMinute, delivered });
+    rows.push({ concurrency, elapsedMs, sendsPerMinute, delivered, sinkReceived, duplicateRecipients });
   }
   return rows;
 }
@@ -259,10 +350,11 @@ function buildMarkdown(opts: {
   lines.push("");
   lines.push(`## Phase A: throughput (N=${opts.n})`);
   lines.push("");
-  lines.push("| concurrency | elapsed | sends/min | delivered |");
-  lines.push("|---|---|---|---|");
+  lines.push("| concurrency | elapsed | sends/min | delivered | sink-received |");
+  lines.push("|---|---|---|---|---|");
   for (const row of opts.phaseA) {
-    lines.push(`| ${row.concurrency} | ${formatDuration(row.elapsedMs)} | ${Math.round(row.sendsPerMinute).toLocaleString("en-US")} | ${row.delivered} |`);
+    const sinkCell = row.sinkReceived === null ? "n/a (external SMTP target)" : row.duplicateRecipients > 0 ? `${row.sinkReceived} (${row.duplicateRecipients} dup!)` : `${row.sinkReceived}`;
+    lines.push(`| ${row.concurrency} | ${formatDuration(row.elapsedMs)} | ${Math.round(row.sendsPerMinute).toLocaleString("en-US")} | ${row.delivered} | ${sinkCell} |`);
   }
   lines.push("");
 
@@ -316,8 +408,14 @@ export async function runCapacityMeasurement(opts: CapacityOptions = {}): Promis
     throw new Error(`distribution-capacity: --concurrencies must be a non-empty list of positive integers (got ${concurrencies.join(",")})`);
   }
 
-  if (process.env.SMTP_HOST) assertLocalHost(process.env.SMTP_HOST, "SMTP_HOST");
+  // Fix round 1 (M1): there is no SMTP_HOST env var this script itself consults for the SMTP
+  // target — only --smtp does that — so a check against process.env.SMTP_HOST validated a
+  // value that could never steer where mail actually goes, a guard in name only. Removed
+  // rather than wired up, since nothing here needs SMTP_HOST to mean anything.
   const target = opts.smtp ? parseSmtpTarget(opts.smtp) : null;
+  // I1: the real non-SMTP risk — createDistributionTestDb() creates/migrates/drops its
+  // database against this URL, with no guard of its own.
+  assertLocalDatabaseAdminTarget(effectiveDatabaseAdminUrl());
 
   const maxConcurrency = Math.max(...concurrencies, phaseBWorkers);
   let tdb: TestDatabase | undefined;
@@ -339,7 +437,7 @@ export async function runCapacityMeasurement(opts: CapacityOptions = {}): Promis
     transport = nodemailer.createTransport({ host, port, secure: false, ignoreTLS: true, pool: true, maxConnections: maxConcurrency });
 
     const { machine, postgresVersion } = await describeMachine(tdb.db);
-    const phaseA = await runPhaseA({ db: tdb.db, transport, from: "news@example.test", n, concurrencies, batchSize });
+    const phaseA = await runPhaseA({ db: tdb.db, transport, from: "news@example.test", n, concurrencies, batchSize, sink });
     const phaseB = runPhaseBFlag
       ? await runPhaseB({ db: tdb.db, transport, from: "news@example.test", capPerMinute, workers: phaseBWorkers, durationMs: phaseBDurationMs, batchSize })
       : undefined;
