@@ -31,6 +31,9 @@ import { OperationsScreen } from "./screens/subscribers/OperationsScreen";
 import { ReportsScreen } from "./screens/subscribers/reports/ReportsScreen";
 import { SubscribersByListReportScreen } from "./screens/subscribers/reports/SubscribersByListReportScreen";
 import { UnsubscribesReportScreen } from "./screens/subscribers/reports/UnsubscribesReportScreen";
+import { ReleaseSendsReportScreen } from "./screens/subscribers/reports/ReleaseSendsReportScreen";
+import { DigestRunsReportScreen } from "./screens/subscribers/reports/DigestRunsReportScreen";
+import { DistributionReportScreen } from "./screens/subscribers/reports/DistributionReportScreen";
 
 /**
  * Library-mode react-router v7, basename "/hub" (the stack hosts the staff app there — see
@@ -95,6 +98,9 @@ export const routes: RouteObject[] = [
           { path: "reports", element: <ReportsScreen /> },
           { path: "reports/subscribers-by-list", element: <SubscribersByListReportScreen /> },
           { path: "reports/unsubscribes", element: <UnsubscribesReportScreen /> },
+          { path: "reports/release-sends", element: <ReleaseSendsReportScreen /> },
+          { path: "reports/digest-runs", element: <DigestRunsReportScreen /> },
+          { path: "reports/distribution", element: <DistributionReportScreen /> },
           { path: ":id", element: <SubscriberScreen /> },
           { path: ":id/history", element: <HistoryScreen /> },
         ],

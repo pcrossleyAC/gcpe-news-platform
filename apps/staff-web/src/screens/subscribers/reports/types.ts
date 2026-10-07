@@ -48,3 +48,48 @@ export interface UnsubscribesPage {
   pageSize: number;
   items: UnsubscribeRow[];
 }
+export interface ModeCounts {
+  recipients: number;
+  delivered: number;
+  bounced: number;
+  notSent: number;
+}
+export interface ReleaseSendRow {
+  itemKey: string;
+  title: string;
+  type: string;
+  publishedAt: string;
+  asItHappens: ModeCounts;
+  media: ModeCounts;
+}
+export interface RangedPage<T> {
+  from: string;
+  to: string;
+  total: number;
+  page: number;
+  pageSize: number;
+  items: T[];
+}
+export interface DigestRunRow {
+  cutoff: string;
+  ranAt: string;
+  items: number;
+  subscribers: number;
+  delivered: number;
+  bounced: number;
+  notSent: number;
+}
+export interface DeliveryCounts {
+  sent: number;
+  delivered: number;
+  hardBounced: number;
+  softBounced: number;
+  failed: number;
+}
+export interface DistributionReport {
+  from: string;
+  to: string;
+  totals: DeliveryCounts;
+  apps: ({ app: string } & DeliveryCounts)[];
+  days: ({ date: string; app: string } & DeliveryCounts)[];
+}

@@ -3,6 +3,9 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen } from "@testing-library/react";
 import axe from "axe-core";
 import { renderAt, stubReports } from "../../../../test/reportFixtures";
+import { DigestRunsReportScreen } from "./DigestRunsReportScreen";
+import { DistributionReportScreen } from "./DistributionReportScreen";
+import { ReleaseSendsReportScreen } from "./ReleaseSendsReportScreen";
 import { ReportsScreen } from "./ReportsScreen";
 import { SubscribersByListReportScreen } from "./SubscribersByListReportScreen";
 import { UnsubscribesReportScreen } from "./UnsubscribesReportScreen";
@@ -39,6 +42,18 @@ describe("accessibility — Reports", () => {
     const path = "/subscribers/reports/unsubscribes";
     const { container } = renderAt(path, path, <UnsubscribesReportScreen />);
     await screen.findByRole("link", { name: "gone@example.test" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it.each([
+    ["release-sends", () => <ReleaseSendsReportScreen />, "Budget 2027"],
+    ["digest-runs", () => <DigestRunsReportScreen />, "2750"],
+    ["distribution", () => <DistributionReportScreen />, "nrms-client"],
+  ])("%s report", async (slug, element, text) => {
+    stubReports(["NoD.Viewer"]);
+    const path = `/subscribers/reports/${slug}`;
+    const { container } = renderAt(path, path, element());
+    await screen.findAllByText(text);
     expect(await seriousViolations(container)).toEqual([]);
   });
 });
