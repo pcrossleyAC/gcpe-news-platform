@@ -8,21 +8,66 @@ export type ParsedBounce =
 // the enhanced-status-code form is tried first, then the bare 3-digit form — both anchored on
 // the delimiter the legacy code required ("#", ";" or whitespace) immediately before the code,
 // so a stray "45" or "5.1.1" elsewhere in the body (a date, a price) isn't mistaken for one.
+// Both quantifiers are bounded ({1,3}), so neither is vulnerable to the backtracking blowup
+// EMAIL_CHAR/firstEmailLike below exists to avoid.
 const DOTTED_CODE = /[#;\s]([45]\.\d{1,3}\.\d{1,3})/;
 const SHORT_CODE = /[#;\s]([45]\d{2})/;
-const EMAIL_IN_BODY = /[\w.-]+@[\w.-]+/;
 const UNDELIVERABLE_PREFIX = "Undeliverable:";
+
+// Fix round 1, C1: a backtracking regex equivalent to `[\w.-]+@[\w.-]+`, run over
+// attacker-controlled, unbounded content (the body, or a padded DSN address field) with no
+// match, is quadratic — the reviewer measured ~514s on a 1MB body of "a". MAX_SCAN_CHARS bounds
+// the work regardless of input size, and firstEmailLike below does the same match in one linear
+// pass instead of leaning on the regex engine's own retry-at-every-start-position behaviour.
+const MAX_SCAN_CHARS = 65_536;
+const EMAIL_CHAR = /[\w.-]/;
 
 function isHard(code: string): boolean {
   return code.trim().startsWith("5");
 }
 
-/** A loose header-line block (no RFC 2231/folding support — the DSN/original-headers parts we
- * read here are short, machine-generated blocks; nothing in them needs it). Returns the first
- * value for each lowercased header name. */
+/**
+ * The leftmost `[\w.-]+@[\w.-]+`-shaped span in `input` — found by locating each '@' and
+ * expanding outward over the allowed character class, so the cost is linear in
+ * `min(input.length, MAX_SCAN_CHARS)` regardless of whether (or how late) a match exists.
+ */
+function firstEmailLike(input: string): string | null {
+  const s = input.length > MAX_SCAN_CHARS ? input.slice(0, MAX_SCAN_CHARS) : input;
+  let i = 0;
+  while (i < s.length) {
+    if (s[i] !== "@") {
+      i++;
+      continue;
+    }
+    let start = i;
+    while (start > 0 && EMAIL_CHAR.test(s[start - 1]!)) start--;
+    let end = i + 1;
+    while (end < s.length && EMAIL_CHAR.test(s[end]!)) end++;
+    if (start < i && end > i + 1) return s.slice(start, end);
+    i = end; // no usable local-part/domain around this '@' — resume scanning after it
+  }
+  return null;
+}
+
+/** RFC 5322 §2.2.3 unfolding: a header value may continue onto following lines that start with
+ * whitespace (folding, done purely so a generator can keep lines short) — each continuation
+ * line is reattached to the field it belongs to before the line is parsed as `name: value`. */
+function unfoldHeaderLines(block: string): string[] {
+  const unfolded: string[] = [];
+  for (const line of block.split(/\r?\n/)) {
+    if (/^[ \t]/.test(line) && unfolded.length > 0) {
+      unfolded[unfolded.length - 1] += line;
+    } else {
+      unfolded.push(line);
+    }
+  }
+  return unfolded;
+}
+
+/** A loose header-line block. Returns the first value for each lowercased header name. */
 function parseHeaderBlock(block: string): Map<string, string> {
   const fields = new Map<string, string>();
-  for (const line of block.split(/\r?\n/)) {
+  for (const line of unfoldHeaderLines(block)) {
     const m = /^([^:\s][^:]*):\s*(.*)$/.exec(line);
     if (!m) continue;
     const name = m[1]!.trim().toLowerCase();
@@ -34,7 +79,7 @@ function parseHeaderBlock(block: string): Map<string, string> {
 /** Pulls the bare address out of a DSN address-type field ("rfc822;user@example.test", or
  * just the address on its own) — the type prefix is informational and not always present. */
 function extractAddress(value: string): string | null {
-  return EMAIL_IN_BODY.exec(value)?.[0] ?? null;
+  return firstEmailLike(value);
 }
 
 type DsnResult = { recipient: string; status: string } | null;
@@ -92,8 +137,12 @@ function parseHeuristic(mail: ParsedMail): (ParsedBounce & { kind: "bounce" }) |
   const subject = mail.subject ?? "";
   if (!subject.startsWith(UNDELIVERABLE_PREFIX)) return null;
 
-  const body = mail.text ?? (typeof mail.html === "string" ? mail.html : "");
-  const recipient = EMAIL_IN_BODY.exec(body)?.[0];
+  const fullBody = mail.text ?? (typeof mail.html === "string" ? mail.html : "");
+  // C1: cap what's scanned — the body is attacker-controlled bounce content; a real NDR body
+  // is a handful of lines, so 64 KB leaves generous room without ever letting the input size
+  // decide how much work one bounce costs.
+  const body = fullBody.length > MAX_SCAN_CHARS ? fullBody.slice(0, MAX_SCAN_CHARS) : fullBody;
+  const recipient = firstEmailLike(body);
   const code = DOTTED_CODE.exec(body)?.[1] ?? SHORT_CODE.exec(body)?.[1];
   if (!recipient || !code) return null;
 

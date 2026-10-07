@@ -23,16 +23,30 @@ function normalizeMessageId(id: string): string {
   return id.trim().replace(/^</, "").replace(/>$/, "").trim();
 }
 
+/** Splits a normalised Message-ID into its local part (the row id — kept exactly as given) and
+ * its domain (matched case-insensitively below, per RFC 5321/5322: domains are
+ * case-insensitive, unlike the local part). Null when there's no usable "local@domain" shape —
+ * no '@', or an empty side — so callers can fall through to the recipient fallback instead. */
+function splitMessageId(id: string): { local: string; domain: string } | null {
+  const bare = normalizeMessageId(id);
+  const at = bare.lastIndexOf("@");
+  if (at <= 0 || at === bare.length - 1) return null;
+  return { local: bare.slice(0, at), domain: bare.slice(at + 1) };
+}
+
 async function findMatch(tx: Tx, parsed: ParsedBounce & { kind: "bounce" }): Promise<MatchRow | null> {
   const matchColumns = { id: messages.id, batchId: messages.batchId, appId: batches.appId, email: messages.email, bounceHard: messages.bounceHard };
 
-  if (parsed.originalMessageId) {
-    const wrapped = `<${normalizeMessageId(parsed.originalMessageId)}>`;
+  const parts = parsed.originalMessageId ? splitMessageId(parsed.originalMessageId) : null;
+  if (parts) {
     const [row] = await tx
       .select(matchColumns)
       .from(messages)
       .innerJoin(batches, eq(batches.id, messages.batchId))
-      .where(eq(messages.messageId, wrapped));
+      .where(
+        sql`split_part(trim(both '<> ' from ${messages.messageId}), '@', 1) = ${parts.local}
+          AND lower(split_part(trim(both '<> ' from ${messages.messageId}), '@', 2)) = lower(${parts.domain})`,
+      );
     if (row) return row;
   }
 

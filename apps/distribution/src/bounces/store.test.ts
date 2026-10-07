@@ -155,4 +155,49 @@ describe("recordBounce", () => {
     const [message] = await tdb.db.select().from(messages).where(sql`id = ${seeded.messageId}`);
     expect(message!.bouncedAt).toBeNull();
   });
+
+  // Fix round 1, controller ruling: two recordBounce calls racing on the same source_id, in
+  // separate (genuinely concurrent, not just sequential) transactions — the unique index must
+  // settle it with no thrown error, exactly one stored row, and exactly one duplicate: true.
+  it("two concurrent recordBounce calls with the same source_id: exactly one bounce row, one duplicate: true, no error", async () => {
+    const parsed: ParsedBounce = { ...HARD_BOUNCE, originalMessageId: null, recipient: "racer@example.test" };
+
+    const [first, second] = await Promise.all([
+      tdb.db.transaction((tx) => recordBounce(tx, "src-race", "raw-a", parsed)),
+      tdb.db.transaction((tx) => recordBounce(tx, "src-race", "raw-b", parsed)),
+    ]);
+
+    const outcomes = [first, second];
+    expect(outcomes.filter((r) => r.duplicate)).toHaveLength(1);
+    expect(outcomes.filter((r) => !r.duplicate)).toHaveLength(1);
+    const rows = await tdb.db.select().from(bounces).where(sql`source_id = 'src-race'`);
+    expect(rows).toHaveLength(1);
+  });
+
+  // Fix round 1, controller ruling: Message-ID domains are case-insensitive (RFC 5321/5322);
+  // the local part (the row id) is not, and must stay an exact match.
+  it("matches the Message-ID domain case-insensitively, keeping the local part case-sensitive", async () => {
+    // Deliberately a message the recipient fallback can't reach (wrong recipient, not `sent`),
+    // so the only possible path to a match is the Message-ID — isolating the case-folding
+    // behaviour under test from the fallback that would otherwise mask it.
+    const seeded = await seedMessage(tdb.db, { email: "other@example.test", status: "pending", messageId: "<row-ci@Dist.Example.TEST>" });
+
+    const result = await tdb.db.transaction((tx) =>
+      recordBounce(tx, "src-ci", "raw", { ...HARD_BOUNCE, recipient: "nobody@example.test", originalMessageId: "<row-ci@dist.example.test>" }),
+    );
+
+    expect(result.matched?.messageId).toBe(seeded.messageId);
+  });
+
+  it("does not match when only the local part's case differs", async () => {
+    // Deliberately a message the recipient fallback can't reach either (wrong recipient, not
+    // `sent`), so the only possible path to a match is the Message-ID — which must not fire.
+    await seedMessage(tdb.db, { email: "someone-else@example.test", status: "pending", messageId: "<Row-CS@dist.example.test>" });
+
+    const result = await tdb.db.transaction((tx) =>
+      recordBounce(tx, "src-cs", "raw", { ...HARD_BOUNCE, recipient: "nobody@example.test", originalMessageId: "<row-cs@dist.example.test>" }),
+    );
+
+    expect(result.matched).toBeNull();
+  });
 });
