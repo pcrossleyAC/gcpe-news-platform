@@ -157,8 +157,9 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   detail screen says so) or staff did. Activate restarts the bounce count. "Unsubscribed or
   deleted" subscribers can't be reactivated; only their own re-subscribe brings them back.
 - **Editor** — A staff email change sends no confirmation, stops every link in emails already
-  sent, and is refused if another record has that address (open that record instead). A Media
-  Hub contact's address is changed in Media Hub.
+  sent except the unsubscribe links, and is refused if another record has that address (open
+  that record instead). The address of a Media Hub contact, or of anyone linked to one, is
+  changed in Media Hub: the subscriber page says so instead of offering Change email.
 - **Editor** — Deleting a subscriber removes them from every media list too. That's recorded as
   a staff removal, so adding them back to a media list later needs no opt-out confirmation.
 - **Viewer** — The History screen shows "Subscriber" for the person's own actions, staff names
@@ -168,3 +169,8 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Developer** — Staff subscriber routes answer unexpected errors themselves and log only an
   error code, because their queries bind addresses (`privateErrors`). Use it for any new route
   that binds an address.
+- **Editor** — After any email change (by staff, by the subscriber, or from Media Hub), the
+  unsubscribe link in every email the subscriber already received still unsubscribes them. The
+  other links in those emails, such as manage preferences, stop working.
+- **Viewer** — For an all-news subscriber, the subscriber page shows "All news" and also their
+  timing (As it happens, Daily digest, or both).
