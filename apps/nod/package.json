@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "db:generate": "drizzle-kit generate",
-    "build": "node ../../scripts/build-app.mjs apps/nod"
+    "build": "node ../../scripts/build-app.mjs apps/nod",
+    "import:legacy": "tsx src/import/cli.ts"
   },
   "dependencies": {
     "@gcpe/auth": "0.0.0",
