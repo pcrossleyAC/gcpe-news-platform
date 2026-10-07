@@ -2,7 +2,9 @@
  * Daily digest runs (spec §8): one row per run (its 17:00 cutoff) in the range. Units are emails,
  * one per subscriber per run, not delivery rows (a digest leaves one row per item). A run's jobs
  * are found by their key prefix; cancelled jobs (every item withdrawn) sent nothing and are left
- * out. "Items" counts what the run's window offered: the digest's own filter, before matching.
+ * out. "Items" counts what the run's window offers now: the digest's own filter, before matching,
+ * computed live, so an item withdrawn since the run drops out (nothing records the run's own
+ * count). "Handed off, not bounced" is given to Distribution less bounces, not delivery.
  */
 import { and, desc, gte, lt, sql, type SQL } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
@@ -19,7 +21,7 @@ export interface DigestRunRow {
   ranAt: string;
   items: number;
   subscribers: number;
-  delivered: number;
+  handedOffNotBounced: number;
   bounced: number;
   notSent: number;
 }
@@ -43,14 +45,18 @@ function runs(db: DbOrTx, range: ReportRange, limit: number, offset: number) {
     .offset(offset);
 }
 
+/** The prefix expression exactly as send_jobs_digest_run_idx is built: a literal length, not a
+ * bound parameter, or Postgres can't match the query to the index. */
+const jobPrefix = sql.raw(`left(j.job_key, ${DIGEST_JOB_PREFIX_LENGTH})`);
+
 /** Emails per run prefix: all, not yet handed to Distribution, and bounced. */
 export function digestRunCountsSql(prefixes: string[]): SQL {
   return sql`
     WITH jobs AS (
-      SELECT left(j.job_key, ${DIGEST_JOB_PREFIX_LENGTH}) AS prefix, j.id
+      SELECT ${jobPrefix} AS prefix, j.id
         FROM send_jobs j
        WHERE j.kind = 'digest' AND j.status <> 'cancelled'
-         AND left(j.job_key, ${DIGEST_JOB_PREFIX_LENGTH}) = ANY(${sql.param(prefixes)}::text[])),
+         AND ${jobPrefix} = ANY(${sql.param(prefixes)}::text[])),
     per AS (SELECT prefix, array_agg(id) AS ids FROM jobs GROUP BY prefix)
     SELECT per.prefix,
            (SELECT count(*) FROM job_recipients jr WHERE jr.job_id = ANY(per.ids))::int AS emails,
@@ -77,7 +83,7 @@ async function withCounts(db: DbOrTx, rows: { cutoff: Date; ranAt: Date; items: 
       ranAt: r.ranAt.toISOString(),
       items: r.items,
       subscribers: emails,
-      delivered: Math.max(0, emails - notSent - bounced),
+      handedOffNotBounced: Math.max(0, emails - notSent - bounced),
       bounced,
       notSent,
     };
@@ -95,7 +101,7 @@ export async function* digestRunBatches(db: DbOrTx, range: ReportRange): AsyncGe
   yield await withCounts(db, await runs(db, range, 1000, 0));
 }
 
-export const DIGEST_RUNS_CSV_HEADER = ["Run (BC time)", "Ran at (BC time)", "Items in window", "Subscribers", "Delivered", "Bounced", "Not sent"];
+export const DIGEST_RUNS_CSV_HEADER = ["Run (BC time)", "Ran at (BC time)", "Items in window", "Subscribers", "Handed off, not bounced", "Bounced", "Not sent"];
 export function digestRunCsvRow(r: DigestRunRow, timeZone: string): CsvCell[] {
-  return [localDateTime(new Date(r.cutoff), timeZone), localDateTime(new Date(r.ranAt), timeZone), r.items, r.subscribers, r.delivered, r.bounced, r.notSent];
+  return [localDateTime(new Date(r.cutoff), timeZone), localDateTime(new Date(r.ranAt), timeZone), r.items, r.subscribers, r.handedOffNotBounced, r.bounced, r.notSent];
 }

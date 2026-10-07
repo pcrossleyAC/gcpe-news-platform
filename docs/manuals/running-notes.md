@@ -213,12 +213,28 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   Admins.
 - **Editor** — Each address CSV you download is recorded in the operations log (who, which
   report; never the addresses).
-- **Viewer** — In Sends per release, "delivered" means handed to Distribution and not bounced;
-  "not sent" includes a send still going out. Digest emails are in Daily digest runs, counted
-  once per subscriber.
+- **Viewer** — In Sends per release and Daily digest runs, "Handed off, not bounced" counts
+  emails News On Demand handed to Distribution, minus bounces. It isn't delivery: an email still
+  queued in Distribution, or one Distribution failed to send, still counts as handed off. "Not
+  sent" means not yet handed to Distribution, including a send still going out. Digest emails
+  are in Daily digest runs, counted once per subscriber.
+- **Viewer** — Totals in Sends per release or Daily digest runs won't match Distribution sent
+  and bounced, and aren't meant to: Distribution's report has its own Failed column, counts by
+  the day it sent (the other two go by the day the release was published, or the digest's 17:00
+  cutoff), and counts every bounce recorded against one of its emails, while News On Demand
+  counts only the bounces it could match back to one of its own sends.
+- **Viewer** — In Daily digest runs, "Items in window" is worked out when you open the report,
+  from the releases in that run's window as they stand now: a release withdrawn since the run no
+  longer counts, so an older run's number can go down.
+- **Viewer** — While a report is still loading you can already type new dates; what you type
+  stays when the report arrives.
 - **Operations** — The Distribution report comes from Distribution itself. If Distribution is
   down, that report says so and the others still work.
 - **Developer** — Report day boundaries are computed in Node (`apps/nod/src/reports/range.ts`)
   and passed to SQL as instants; never use `AT TIME ZONE` in a report query. CSVs go through
   `streamCsv` (`reports/csv.ts`), which neutralises formula cells and aborts, rather than
   truncates, on error. The legacy-volume probes run with `REPORT_PROBE=1`.
+- **Operations** — Adding an index to a big, populated `deliveries` or `messages` table blocks
+  sending for a few seconds while the migration runs. `docs/deploy/siteground.md` ("Migrations on
+  populated deliveries or messages tables") has the steps to pre-build those indexes without
+  blocking and record the migrations as applied.

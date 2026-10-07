@@ -9,10 +9,18 @@ import type { DbOrTx } from "@gcpe/db-kit";
 
 /** NoD caps a report at 92 days; one more boundary closes the last day. */
 export const MAX_REPORT_DAYS = 92;
+/** The longest first-to-last span accepted: 92 local days can run an hour over 92 x 24 h when
+ * they cross a fall-back, so a day of slack; the boundary count alone doesn't bound it, since
+ * two boundaries can be any distance apart. */
+const MAX_SPAN_MS = (MAX_REPORT_DAYS + 1) * 86_400_000;
 const isoInstant = z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "must be a valid date" });
 export const dailyReportSchema = z
   .object({ bounds: z.array(isoInstant).min(2).max(MAX_REPORT_DAYS + 1) })
-  .refine((b) => b.bounds.every((v, i) => i === 0 || Date.parse(v) > Date.parse(b.bounds[i - 1]!)), { message: "bounds must increase", path: ["bounds"] });
+  .refine((b) => b.bounds.every((v, i) => i === 0 || Date.parse(v) > Date.parse(b.bounds[i - 1]!)), { message: "bounds must increase", path: ["bounds"] })
+  .refine((b) => Date.parse(b.bounds[b.bounds.length - 1]!) - Date.parse(b.bounds[0]!) <= MAX_SPAN_MS, {
+    message: `bounds must span at most ${MAX_REPORT_DAYS + 1} days`,
+    path: ["bounds"],
+  });
 
 export interface DailyReportRow {
   day: number;

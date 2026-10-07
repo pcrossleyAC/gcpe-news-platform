@@ -174,7 +174,7 @@ describe("report routes", () => {
     it("a Viewer reads and exports sends per release; a hostile title is neutralised", async () => {
       const page = await request(app).get("/api/reports/release-sends").set("authorization", `Bearer ${viewer}`);
       expect(page.status).toBe(200);
-      expect(page.body).toMatchObject({ total: 1, page: 1, pageSize: 25, items: [{ itemKey: "rr1", asItHappens: { recipients: 1, delivered: 1 } }] });
+      expect(page.body).toMatchObject({ total: 1, page: 1, pageSize: 25, items: [{ itemKey: "rr1", asItHappens: { recipients: 1, handedOffNotBounced: 1 } }] });
       const csv = await getCsv(app, "/api/reports/release-sends.csv", viewer);
       expect(csv.status).toBe(200);
       expect(csv.headers["content-disposition"]).toMatch(/filename="release-sends-\d{4}-\d{2}-\d{2}\.csv"/);
@@ -183,17 +183,23 @@ describe("report routes", () => {
 
     it("refuses a range longer than 92 days, a reversed one and an impossible date", async () => {
       const get = (q: string) => request(app).get(`/api/reports/release-sends?${q}`).set("authorization", `Bearer ${viewer}`);
-      expect((await get("from=2026-01-01&to=2026-04-03")).body).toEqual({ error: "range-too-long", maxDays: 92 });
+      const tooLong = await get("from=2026-01-01&to=2026-04-03");
+      expect(tooLong.status).toBe(400);
+      expect(tooLong.body).toEqual({ error: "range-too-long", maxDays: 92 });
       expect((await get("from=2026-01-01&to=2026-04-02")).status).toBe(200);
-      expect((await get("from=2026-02-02&to=2026-02-01")).body).toMatchObject({ error: "range-reversed" });
-      expect((await get("from=2026-02-30")).body).toMatchObject({ error: "invalid-date" });
+      const reversed = await get("from=2026-02-02&to=2026-02-01");
+      expect(reversed.status).toBe(400);
+      expect(reversed.body).toMatchObject({ error: "range-reversed" });
+      const impossible = await get("from=2026-02-30");
+      expect(impossible.status).toBe(400);
+      expect(impossible.body).toMatchObject({ error: "invalid-date" });
     });
 
     it("a Viewer reads and exports digest runs", async () => {
       const page = await request(app).get("/api/reports/digest-runs?from=2026-09-01&to=2026-09-30").set("authorization", `Bearer ${viewer}`);
       expect(page.body).toMatchObject({ from: "2026-09-01", to: "2026-09-30", total: 0, items: [] });
       const csv = await getCsv(app, "/api/reports/digest-runs.csv?from=2026-09-01&to=2026-09-30", viewer);
-      expect((csv.body as Buffer).toString("utf8")).toBe("﻿Run (BC time),Ran at (BC time),Items in window,Subscribers,Delivered,Bounced,Not sent\r\n");
+      expect((csv.body as Buffer).toString("utf8")).toBe("﻿Run (BC time),Ran at (BC time),Items in window,Subscribers,\"Handed off, not bounced\",Bounced,Not sent\r\n");
     });
   });
 
@@ -205,6 +211,19 @@ describe("report routes", () => {
       expect(res.body.days).toEqual([{ date: "2026-09-01", app: "News On Demand", sent: 4, delivered: 3, hardBounced: 1, softBounced: 0, failed: 0 }]);
       const csv = await getCsv(app, "/api/reports/distribution.csv?from=2026-09-01&to=2026-09-02", viewer);
       expect((csv.body as Buffer).toString("utf8")).toBe("﻿Date,Sent by,Sent,Delivered,Hard bounces,Soft bounces,Failed\r\n2026-09-01,News On Demand,4,3,1,0,0\r\n");
+    });
+
+    it("refuses a bad range on screen and as CSV without asking Distribution", async () => {
+      vi.mocked(distribution.dailyReport).mockClear();
+      for (const path of ["/api/reports/distribution", "/api/reports/distribution.csv"]) {
+        const tooLong = await request(app).get(`${path}?from=2026-01-01&to=2026-04-03`).set("authorization", `Bearer ${viewer}`);
+        expect(tooLong.status).toBe(400);
+        expect(tooLong.body).toEqual({ error: "range-too-long", maxDays: 92 });
+        const reversed = await request(app).get(`${path}?from=2026-02-02&to=2026-02-01`).set("authorization", `Bearer ${viewer}`);
+        expect(reversed.status).toBe(400);
+        expect(reversed.body).toEqual({ error: "range-reversed", maxDays: 92 });
+      }
+      expect(distribution.dailyReport).not.toHaveBeenCalled();
     });
 
     it("Distribution down: 502, and the log carries a label, not Distribution's body", async () => {

@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createDistributionTestDb } from "../test/helpers";
 import { batches, messages } from "./db/schema";
-import { dailyReport, dailyReportSql } from "./reports";
+import { dailyReport, dailyReportSchema, dailyReportSql } from "./reports";
 
 // BC midnights either side of 2026-11-01: 07:00Z both, BC stays on UTC−7 (NoD computes these).
 const BOUNDS = ["2026-10-31T07:00:00.000Z", "2026-11-01T07:00:00.000Z", "2026-11-02T07:00:00.000Z"].map((s) => new Date(s));
@@ -55,5 +55,14 @@ describe("Distribution daily report", () => {
     const plan = rows.map((r) => r["QUERY PLAN"]).join("\n");
     expect(plan).toContain("messages_sent_at_idx");
     expect(plan).not.toMatch(/Seq Scan on messages/);
+  });
+
+  it("accepts at most 93 days from the first boundary to the last, however few boundaries there are", () => {
+    const ok = (bounds: string[]) => dailyReportSchema.safeParse({ bounds }).success;
+    // 92 BC days across a fall-back: one hour longer than 92 x 24 h.
+    expect(ok(["2025-09-01T07:00:00.000Z", "2025-12-02T08:00:00.000Z"])).toBe(true);
+    expect(ok(["2026-01-01T08:00:00.000Z", "2026-04-04T08:00:00.000Z"])).toBe(true);
+    expect(ok(["2026-01-01T08:00:00.000Z", "2026-04-04T08:00:00.001Z"])).toBe(false);
+    expect(ok(["2026-01-01T08:00:00.000Z", "2026-02-01T08:00:00.000Z", "2026-12-31T08:00:00.000Z"])).toBe(false);
   });
 });

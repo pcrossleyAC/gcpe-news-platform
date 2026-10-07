@@ -8,7 +8,7 @@ import { createNodTestDb } from "../../test/helpers";
 import { memberBatches, membersPage, subscribersByList } from "./by-list";
 import { digestRunBatches, digestRunsPage } from "./digest-runs";
 import { localDate, resolveRange, addDays } from "./range";
-import { releaseSendBatches, releaseSendsPage } from "./release-sends";
+import { releaseSendBatches, releaseSendsPage, releaseSendsSql } from "./release-sends";
 import { unsubscribeBatches, unsubscribesPage, unsubscribeWindow } from "./unsubscribes";
 
 const BC = "America/Vancouver";
@@ -104,6 +104,11 @@ describe.runIf(process.env.REPORT_PROBE === "1")("report volume probe (legacy vo
     };
     console.log("[probe] NoD report timings (ms, best of 3):", JSON.stringify(t));
     expect(await drain(releaseSendBatches(tdb.db, range90))).toBeGreaterThan(1700);
+    // At this volume the planner itself, not a test's enable_seqscan, picks the partial index.
+    const { rows: plan } = await tdb.db.execute<{ "QUERY PLAN": string }>(sql`EXPLAIN ${releaseSendsSql(range90, 500, 0)}`);
+    expect(plan.map((r) => r["QUERY PLAN"]).join("\n")).toContain("Index Only Scan using deliveries_item_mode_idx");
+    // The digest timings mean something only if each run's jobs were actually found.
+    expect((await digestRunsPage(tdb.db, range90, 1)).items[0]!.subscribers).toBe(2750);
     expect(t.byList).toBeLessThan(300);
     expect(t.membersPage).toBeLessThan(300);
     expect(t.membersAll).toBeLessThan(1000);

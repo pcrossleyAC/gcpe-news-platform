@@ -410,13 +410,14 @@ describe("Distribution HTTP API", () => {
       expect((await post(reader, { bounds })).status).toBe(403);
     });
 
-    it("400s bounds that are missing, too few, too many, not increasing or not dates", async () => {
+    it("400s bounds that are missing, too few, too many, not increasing, not dates or too far apart", async () => {
       expect((await post(operator, {})).status).toBe(400);
       expect((await post(operator, { bounds: [bounds[0]] })).status).toBe(400);
       expect((await post(operator, { bounds: [bounds[1], bounds[0]] })).status).toBe(400);
       expect((await post(operator, { bounds: [bounds[0], "not-a-date"] })).status).toBe(400);
       const tooMany = Array.from({ length: 94 }, (_, i) => new Date(Date.UTC(2026, 0, 1 + i, 8)).toISOString());
       expect((await post(operator, { bounds: tooMany })).status).toBe(400);
+      expect((await post(operator, { bounds: ["2026-01-01T08:00:00.000Z", "2026-07-01T07:00:00.000Z"] })).status).toBe(400);
     });
 
     it("returns the rows for a valid range", async () => {

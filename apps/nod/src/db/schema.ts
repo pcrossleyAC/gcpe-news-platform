@@ -151,8 +151,11 @@ export const deliveries = pgTable(
     // without touching the heap. The primary key alone (item_key, subscriber_id, mode) still
     // makes every row for a busy item's digest deliveries a random heap fetch just to read
     // distribution_batch_id/bounce_status; carrying those two columns in the index as well lets
-    // Postgres answer the whole per-item aggregate as an index-only scan.
-    index("deliveries_item_mode_idx").on(t.itemKey, t.mode, t.distributionBatchId, t.bounceStatus),
+    // Postgres answer the whole per-item aggregate as an index-only scan. Digest rows (most of
+    // the table) are never read by that report, so they're left out of the index.
+    index("deliveries_item_mode_idx")
+      .on(t.itemKey, t.mode, t.distributionBatchId, t.bounceStatus)
+      .where(sql`${t.mode} IN ('as_it_happens','media')`),
   ],
 );
 export type DeliveryRow = typeof deliveries.$inferSelect;
@@ -197,6 +200,10 @@ export const sendJobs = pgTable(
   },
   (t) => [
     uniqueIndex("send_jobs_job_key_idx").on(t.jobKey),
+    // Digest-run report (reports/digest-runs.ts): a run's jobs by their shared key prefix,
+    // `digest:<cutoff ISO>:` -- 32 characters, digest.ts's DIGEST_JOB_PREFIX_LENGTH, which the
+    // report's query must spell as the same literal for Postgres to match this expression.
+    index("send_jobs_digest_run_idx").on(sql`left(${t.jobKey}, 32)`).where(sql`${t.kind} = 'digest'`),
     check("send_jobs_status_check", sql`${t.status} IN ('pending','sent','failed','cancelled')`),
     check("send_jobs_priority_check", sql`${t.priority} IN ('immediate','digest','media','system')`),
   ],

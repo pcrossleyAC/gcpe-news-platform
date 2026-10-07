@@ -24,7 +24,7 @@ function CountCells({ c }: { c: DeliveryCounts }): React.JSX.Element {
  * app. Distribution answers this itself; when it's down, the screen says so. */
 export function DistributionReportScreen(): React.JSX.Element {
   useDocumentTitle("Distribution sent and bounced");
-  const { report, shown, csvHref, apply } = useRangedReport<DistributionReport>("/nod/api/reports/distribution");
+  const { report, shown, formKey, csvHref, apply } = useRangedReport<DistributionReport>("/nod/api/reports/distribution");
   const d = report.data;
   return (
     <div className="gcpe-reports">
@@ -33,7 +33,7 @@ export function DistributionReportScreen(): React.JSX.Element {
         Every email Distribution sent, by BC day and sending app. Delivered is sent less bounces. Failed emails were never sent and are
         counted on the day they were queued.
       </p>
-      <RangeForm key={`${shown.from}|${shown.to}`} from={shown.from} to={shown.to} onApply={apply} />
+      <RangeForm key={formKey} from={shown.from} to={shown.to} onApply={apply} />
       {report.error ? <InlineAlert variant="danger" role="alert" description={reportErrorText(report.error)} /> : null}
       {!d && !report.error && <p>Loading…</p>}
       {d && (

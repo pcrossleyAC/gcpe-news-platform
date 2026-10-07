@@ -43,7 +43,9 @@ function mapError(e: unknown, res: Response): boolean {
   }
   return false;
 }
-/** Report queries bind no addresses, but their rows hold them; errors stay label-only. Exported
+/** Report rows hold addresses, and the members export binds one: each batch resumes after the
+ * last address it wrote (by-list.ts memberBatches), and a DrizzleQueryError's message carries its
+ * bound params. So errors stay label-only. Exported
  * for its own tests (a bare express app, same pattern as staff-subscriber-routes.ts's), which
  * check this error mapping directly rather than hunting for a production route that happens to
  * throw every error this maps. */

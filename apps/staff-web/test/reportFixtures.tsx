@@ -67,8 +67,8 @@ export const RELEASE_SENDS: RangedPage<ReleaseSendRow> = {
       title: "Budget 2027",
       type: "News release",
       publishedAt: "2026-10-06T16:30:00.000Z",
-      asItHappens: { recipients: 4, delivered: 1, bounced: 2, notSent: 1 },
-      media: { recipients: 1, delivered: 1, bounced: 0, notSent: 0 },
+      asItHappens: { recipients: 4, handedOffNotBounced: 1, bounced: 2, notSent: 1 },
+      media: { recipients: 1, handedOffNotBounced: 1, bounced: 0, notSent: 0 },
     },
   ],
 };
@@ -79,7 +79,7 @@ export const DIGEST_RUNS: RangedPage<DigestRunRow> = {
   total: 1,
   page: 1,
   pageSize: 31,
-  items: [{ cutoff: "2026-10-07T00:00:00.000Z", ranAt: "2026-10-07T00:00:05.000Z", items: 7, subscribers: 2750, delivered: 2740, bounced: 6, notSent: 4 }],
+  items: [{ cutoff: "2026-10-07T00:00:00.000Z", ranAt: "2026-10-07T00:00:05.000Z", items: 7, subscribers: 2750, handedOffNotBounced: 2740, bounced: 6, notSent: 4 }],
 };
 
 export const DISTRIBUTION: DistributionReport = {
@@ -96,25 +96,35 @@ export const DISTRIBUTION: DistributionReport = {
   ],
 };
 
-type Responder = () => Response;
+export type Responder = (url: string) => Response | Promise<Response>;
+
+/** A ranged report answers with the range it was asked for, as the server does; asked for none,
+ * with the fixture's own (standing in for the server's 30-day default). */
+function ranged(body: { from: string; to: string }): Responder {
+  return (url) => {
+    const q = new URL(url, "http://localhost").searchParams;
+    return jsonResponse(200, { ...body, from: q.get("from") ?? body.from, to: q.get("to") ?? body.to });
+  };
+}
+
 /** Default answers by URL prefix, most specific first. */
 const DEFAULTS: [string, Responder][] = [
   ["/nod/api/reports/subscribers-by-list/members", () => jsonResponse(200, MEMBERS)],
   ["/nod/api/reports/subscribers-by-list", () => jsonResponse(200, BY_LIST)],
   ["/nod/api/reports/unsubscribes", () => jsonResponse(200, UNSUBSCRIBES)],
-  ["/nod/api/reports/release-sends", () => jsonResponse(200, RELEASE_SENDS)],
-  ["/nod/api/reports/digest-runs", () => jsonResponse(200, DIGEST_RUNS)],
-  ["/nod/api/reports/distribution", () => jsonResponse(200, DISTRIBUTION)],
+  ["/nod/api/reports/release-sends", ranged(RELEASE_SENDS)],
+  ["/nod/api/reports/digest-runs", ranged(DIGEST_RUNS)],
+  ["/nod/api/reports/distribution", ranged(DISTRIBUTION)],
 ];
 
 /** Stubs fetch: the session (with `roles`), the tenant config, and every report route. An
  * `overrides` entry wins for any URL starting with its key. */
 export function stubReports(roles: string[], overrides: Record<string, Responder> = {}) {
   const fetchMock = vi.fn(async (url: string) => {
-    for (const [prefix, respond] of Object.entries(overrides)) if (url.startsWith(prefix)) return respond();
+    for (const [prefix, respond] of Object.entries(overrides)) if (url.startsWith(prefix)) return respond(url);
     if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
     if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-    for (const [prefix, respond] of DEFAULTS) if (url.startsWith(prefix)) return respond();
+    for (const [prefix, respond] of DEFAULTS) if (url.startsWith(prefix)) return respond(url);
     throw new Error(`unhandled: ${url}`);
   });
   vi.stubGlobal("fetch", fetchMock);

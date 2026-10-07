@@ -1,12 +1,13 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { deliveries, digestRuns, items, jobRecipients, sendJobs, subscribers } from "../db/schema";
 import { digestJobKeyPrefix } from "../digest";
-import { localDate, resolveRange } from "./range";
-import { digestRunBatches, digestRunCountsSql, digestRunsPage } from "./digest-runs";
+import { wallClockToInstant } from "@gcpe/config";
+import { addDays, localDate, resolveRange } from "./range";
+import { DIGEST_RUNS_CSV_HEADER, digestRunBatches, digestRunCountsSql, digestRunsPage } from "./digest-runs";
 
 const BC = "America/Vancouver";
 const ms = (d: Date) => new Date(Math.floor(d.getTime() / 1000) * 1000);
@@ -72,11 +73,11 @@ describe("daily digest runs", () => {
   });
   afterAll(async () => tdb.drop());
 
-  it("counts each run in the range by email: delivered, bounced, not sent; cancelled jobs left out", async () => {
+  it("counts each run in the range by email: handed off and not bounced, bounced, not sent; cancelled jobs left out", async () => {
     const page = await digestRunsPage(tdb.db, range(), 1);
     expect(page.total).toBe(1);
     expect(page.items).toEqual([
-      { cutoff: cutoff.toISOString(), ranAt: expect.any(String), items: 2, subscribers: 3, delivered: 1, bounced: 1, notSent: 1 },
+      { cutoff: cutoff.toISOString(), ranAt: expect.any(String), items: 2, subscribers: 3, handedOffNotBounced: 1, bounced: 1, notSent: 1 },
     ]);
   });
 
@@ -84,6 +85,39 @@ describe("daily digest runs", () => {
     const all = [];
     for await (const b of digestRunBatches(tdb.db, range())) all.push(...b);
     expect(all.map((r) => r.cutoff)).toEqual([cutoff.toISOString()]);
+  });
+
+  it("names the count what it is: handed to Distribution and not bounced, not delivered", () => {
+    expect(DIGEST_RUNS_CSV_HEADER).toEqual(["Run (BC time)", "Ran at (BC time)", "Items in window", "Subscribers", "Handed off, not bounced", "Bounced", "Not sent"]);
+  });
+
+  it("includes the 17:00 BC run on the range's last day, and not the next day's", async () => {
+    const to = localDate(daysAgo(20), BC);
+    const at17 = (date: string) => {
+      const [y, m, d] = date.split("-").map(Number) as [number, number, number];
+      return wallClockToInstant(new Date(Date.UTC(y, m - 1, d, 17, 0, 0)), BC);
+    };
+    const last = at17(to);
+    const next = at17(addDays(to, 1));
+    await tdb.db.insert(digestRuns).values([
+      { cutoff: last, windowStart: new Date(last.getTime() - 86_400_000), subscribers: 0, groups: 0 },
+      { cutoff: next, windowStart: last, subscribers: 0, groups: 0 },
+    ]);
+    try {
+      const page = await digestRunsPage(tdb.db, resolveRange({ from: addDays(to, -6), to }, localDate(new Date(), BC), BC), 1);
+      expect(page.items.map((r) => r.cutoff)).toEqual([last.toISOString()]);
+    } finally {
+      await tdb.db.delete(digestRuns).where(inArray(digestRuns.cutoff, [last, next]));
+    }
+  });
+
+  it("finds a run's jobs by key prefix through an index", async () => {
+    const plan = await tdb.db.transaction(async (tx) => {
+      await tx.execute(sql`SET LOCAL enable_seqscan = off`);
+      const { rows } = await tx.execute<{ "QUERY PLAN": string }>(sql`EXPLAIN ${digestRunCountsSql([digestJobKeyPrefix(cutoff)])}`);
+      return rows.map((r) => r["QUERY PLAN"]).join("\n");
+    });
+    expect(plan).toContain("send_jobs_digest_run_idx");
   });
 
   it("finds unsent and bounced emails through the partial indexes", async () => {

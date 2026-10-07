@@ -1,3 +1,4 @@
 CREATE INDEX "deliveries_job_unsent_idx" ON "deliveries" USING btree ("job_id") WHERE "deliveries"."distribution_batch_id" IS NULL;--> statement-breakpoint
 CREATE INDEX "deliveries_job_bounced_idx" ON "deliveries" USING btree ("job_id") WHERE "deliveries"."bounce_status" IS NOT NULL;--> statement-breakpoint
-CREATE INDEX "deliveries_item_mode_idx" ON "deliveries" USING btree ("item_key","mode","distribution_batch_id","bounce_status");
+CREATE INDEX "deliveries_item_mode_idx" ON "deliveries" USING btree ("item_key","mode","distribution_batch_id","bounce_status") WHERE "deliveries"."mode" IN ('as_it_happens','media');--> statement-breakpoint
+CREATE INDEX "send_jobs_digest_run_idx" ON "send_jobs" USING btree (left("job_key", 32)) WHERE "send_jobs"."kind" = 'digest';

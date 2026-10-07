@@ -4,8 +4,8 @@ import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 const REPORTS = [
   { to: "subscribers-by-list", name: "Active subscribers by list", about: "who receives each list now, with as-it-happens and digest counts." },
   { to: "unsubscribes", name: "Recent unsubscribes", about: "everyone who unsubscribed or was deleted in the last 90 days." },
-  { to: "release-sends", name: "Sends per release", about: "as-it-happens and media-list emails for each release: delivered, bounced and not sent." },
-  { to: "digest-runs", name: "Daily digest runs", about: "each 17:00 digest: subscribers, delivered, bounced and not sent." },
+  { to: "release-sends", name: "Sends per release", about: "as-it-happens and media-list emails for each release: handed off and not bounced, bounced, and not sent." },
+  { to: "digest-runs", name: "Daily digest runs", about: "each 17:00 digest: subscribers, handed off and not bounced, bounced, and not sent." },
   { to: "distribution", name: "Distribution sent and bounced", about: "everything Distribution sent, by day and sending app." },
 ];
 

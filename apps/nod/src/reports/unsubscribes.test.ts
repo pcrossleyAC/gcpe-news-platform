@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { subscriberHistory, subscribers } from "../db/schema";
@@ -60,6 +60,35 @@ describe("recent unsubscribes", () => {
     const all: string[] = [];
     for await (const b of unsubscribeBatches(tdb.db, window, 2)) all.push(...b.map((r) => r.email));
     expect(all).toEqual(["blake@example.test", "dana@example.test", "alex@example.test"]);
+  });
+
+  it("an unsubscribe that lands while the CSV is being written neither repeats nor drops anyone", async () => {
+    const window = await unsubscribeWindow(tdb.db, BC);
+    const [erin] = await tdb.db.insert(subscribers).values({ email: "erin@example.test", status: "active" }).returning({ id: subscribers.id });
+    const [alex] = await tdb.db.select({ id: subscribers.id }).from(subscribers).where(eq(subscribers.email, "alex@example.test"));
+    const landed: string[] = [];
+    try {
+      const all: string[] = [];
+      for await (const b of unsubscribeBatches(tdb.db, window, 1)) {
+        all.push(...b.map((r) => r.email));
+        if (all.length === 1) {
+          // Both go to the top of the newest-first order: someone new, and alex (still to come)
+          // unsubscribing again.
+          const rows = await tdb.db
+            .insert(subscriberHistory)
+            .values([
+              { subscriberId: erin!.id, at: new Date(), actor: "subscriber", action: "unsubscribed" },
+              { subscriberId: alex!.id, at: new Date(), actor: "subscriber", action: "unsubscribed" },
+            ])
+            .returning({ id: subscriberHistory.id });
+          landed.push(...rows.map((r) => r.id));
+        }
+      }
+      expect(all).toEqual(["blake@example.test", "dana@example.test", "alex@example.test"]);
+    } finally {
+      if (landed.length > 0) await tdb.db.delete(subscriberHistory).where(inArray(subscriberHistory.id, landed));
+      await tdb.db.delete(subscribers).where(eq(subscribers.id, erin!.id));
+    }
   });
 
   it("counts each BC day of the window, zeros included, without addresses", async () => {

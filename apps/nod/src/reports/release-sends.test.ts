@@ -1,11 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { deliveries, items, subscribers } from "../db/schema";
 import { resolveRange, localDate } from "./range";
-import { releaseSendBatches, releaseSendCsvRow, releaseSendsPage, releaseSendsSql } from "./release-sends";
+import { RELEASE_SENDS_CSV_HEADER, releaseSendBatches, releaseSendCsvRow, releaseSendsPage, releaseSendsSql } from "./release-sends";
 import { csvLine } from "./csv";
 
 const BC = "America/Vancouver";
@@ -51,8 +51,8 @@ describe("sends per release", () => {
     ]);
     const r1 = page.items[1]!;
     expect(r1.title).toBe(HOSTILE);
-    expect(r1.asItHappens).toEqual({ recipients: 4, delivered: 1, bounced: 2, notSent: 1 });
-    expect(r1.media).toEqual({ recipients: 1, delivered: 1, bounced: 0, notSent: 0 });
+    expect(r1.asItHappens).toEqual({ recipients: 4, handedOffNotBounced: 1, bounced: 2, notSent: 1 });
+    expect(r1.media).toEqual({ recipients: 1, handedOffNotBounced: 1, bounced: 0, notSent: 0 });
   });
 
   it("batches the same rows for the CSV, with the hostile title neutralised", async () => {
@@ -63,13 +63,44 @@ describe("sends per release", () => {
     expect(line).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2},"'=HYPERLINK\(""http:\/\/x"",""y""\)",News release,4,1,2,1,1,1,0,0\r\n$/);
   });
 
+  it("names the count what it is: handed to Distribution and not bounced, not delivered", () => {
+    expect(RELEASE_SENDS_CSV_HEADER).toContain("As it happens: handed off, not bounced");
+    expect(RELEASE_SENDS_CSV_HEADER).toContain("Media: handed off, not bounced");
+    expect(RELEASE_SENDS_CSV_HEADER.join(",")).not.toMatch(/delivered/i);
+  });
+
+  it("a release published while the CSV is being written is neither repeated nor skipped", async () => {
+    const [late] = await tdb.db.insert(subscribers).values({ email: "late@example.test", status: "active" }).returning({ id: subscribers.id });
+    try {
+      const keys: string[] = [];
+      for await (const b of releaseSendBatches(tdb.db, range(), 1)) {
+        keys.push(...b.map((r) => r.itemKey));
+        if (keys.length === 1) {
+          // Lands at the top of the newest-first order, ahead of every row still to come.
+          await tdb.db.insert(items).values({ key: "late", kind: "release", postKind: "releases", title: "Late", url: "https://news.example/late", publishedAt: new Date() });
+          await tdb.db.insert(deliveries).values({ itemKey: "late", subscriberId: late!.id, mode: "as_it_happens" });
+        }
+      }
+      expect(keys).toEqual(["e1", "r1"]);
+    } finally {
+      await tdb.db.delete(deliveries).where(inArray(deliveries.itemKey, ["late"]));
+      await tdb.db.delete(items).where(inArray(items.key, ["late"]));
+    }
+  });
+
+  it("indexes only as-it-happens and media deliveries for this report", async () => {
+    const { rows } = await tdb.db.execute<{ indexdef: string }>(sql`SELECT indexdef FROM pg_indexes WHERE indexname = 'deliveries_item_mode_idx'`);
+    expect(rows[0]!.indexdef).toMatch(/WHERE \(mode = ANY \(ARRAY\['as_it_happens'::text, 'media'::text\]\)\)/);
+  });
+
   it("reads deliveries through the item/mode covering index and items by publish time", async () => {
+    await tdb.db.execute(sql`VACUUM ANALYZE deliveries`);
     const plan = await tdb.db.transaction(async (tx) => {
       await tx.execute(sql`SET LOCAL enable_seqscan = off`);
       const { rows } = await tx.execute<{ "QUERY PLAN": string }>(sql`EXPLAIN ${releaseSendsSql(range(), 25, 0)}`);
       return rows.map((r) => r["QUERY PLAN"]).join("\n");
     });
-    expect(plan).toContain("deliveries_item_mode_idx");
+    expect(plan).toContain("Index Only Scan using deliveries_item_mode_idx");
     expect(plan).toContain("items_published_at_idx");
   });
 });

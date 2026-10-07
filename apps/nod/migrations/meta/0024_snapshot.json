@@ -1,5 +1,5 @@
 {
-  "id": "a4d305c8-5ee2-41c6-a7f7-249509ac2a16",
+  "id": "606015b0-c4f7-4454-a987-dae1dc76d3fc",
   "prevId": "f9afbc8f-3271-4839-b282-f3ca95bade97",
   "version": "7",
   "dialect": "postgresql",
@@ -178,6 +178,7 @@
             }
           ],
           "isUnique": false,
+          "where": "\"deliveries\".\"mode\" IN ('as_it_happens','media')",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -891,6 +892,22 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "send_jobs_digest_run_idx": {
+          "name": "send_jobs_digest_run_idx",
+          "columns": [
+            {
+              "expression": "left(\"job_key\", 32)",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"send_jobs\".\"kind\" = 'digest'",
           "concurrently": false,
           "method": "btree",
           "with": {}

@@ -64,8 +64,8 @@ test.describe("Reports", () => {
       .poll(
         async () => {
           await tick();
-          const r = await apiCall<{ items: { title: string; asItHappens: { delivered: number } }[] }>(admin, "/nod/api/reports/release-sends");
-          return r.items.find((i) => i.title === headline)?.asItHappens.delivered ?? 0;
+          const r = await apiCall<{ items: { title: string; asItHappens: { handedOffNotBounced: number } }[] }>(admin, "/nod/api/reports/release-sends");
+          return r.items.find((i) => i.title === headline)?.asItHappens.handedOffNotBounced ?? 0;
         },
         { timeout: 30_000 },
       )

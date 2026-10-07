@@ -57,18 +57,28 @@ export async function unsubscribeWindow(db: DbOrTx, timeZone: string): Promise<U
 
 const actionList = (actions: readonly string[]): SQL => sql.join(actions.map((a) => sql`${a}`), sql`, `);
 
-/** One row per person, their latest unsubscribe at or after `start`, newest first. */
-export function unsubscribesSql(start: Date, limit: number, offset: number): SQL {
+/** Where a CSV export stands: history is read as of `asOf` (the database clock when it began), and
+ * each batch starts strictly after the previous one's last row. Times are kept exactly as Postgres
+ * returned them, to the microsecond. */
+type Resume = { asOf: string; after: { at: string; subscriberId: string } | null };
+
+/** One row per person, their latest unsubscribe at or after `start`, newest first. A page uses
+ * LIMIT/OFFSET; a CSV batch passes `resume`, so an unsubscribe landing mid-export can neither
+ * shift a row into two batches nor move someone not yet written past the point already reached. */
+export function unsubscribesSql(start: Date, limit: number, offset: number, resume: Resume | null = null): SQL {
+  const asOf = resume ? sql`AND h.at <= ${resume.asOf}::timestamptz` : sql``;
+  const after = resume?.after ? sql`WHERE (l.at, l.subscriber_id) < (${resume.after.at}::timestamptz, ${resume.after.subscriberId}::uuid)` : sql``;
   return sql`
     WITH latest AS (
       SELECT DISTINCT ON (h.subscriber_id) h.subscriber_id, h.action, h.at
         FROM subscriber_history h
-       WHERE h.action IN (${actionList(UNSUBSCRIBE_ACTIONS)}) AND h.at >= ${start}
+       WHERE h.action IN (${actionList(UNSUBSCRIBE_ACTIONS)}) AND h.at >= ${start} ${asOf}
        ORDER BY h.subscriber_id, h.at DESC, h.id DESC)
     SELECT l.subscriber_id, l.action, l.at, s.email, s.status, s.created_at
       FROM latest l
       JOIN subscribers s ON s.id = l.subscriber_id
-     ORDER BY l.at DESC, l.subscriber_id
+     ${after}
+     ORDER BY l.at DESC, l.subscriber_id DESC
      LIMIT ${limit} OFFSET ${offset}`;
 }
 
@@ -117,10 +127,14 @@ export async function unsubscribesPage(db: DbOrTx, window: UnsubscribeWindow, pa
 }
 
 export async function* unsubscribeBatches(db: DbOrTx, window: UnsubscribeWindow, batchSize = 1000): AsyncGenerator<UnsubscribeRow[]> {
-  for (let offset = 0; ; offset += batchSize) {
-    const { rows } = await db.execute<RawRow>(unsubscribesSql(window.start, batchSize, offset));
+  const { rows: clock } = await db.execute<{ now: string }>(sql`SELECT now() AS now`);
+  const resume: Resume = { asOf: clock[0]!.now, after: null };
+  for (;;) {
+    const { rows } = await db.execute<RawRow>(unsubscribesSql(window.start, batchSize, 0, resume));
     if (rows.length > 0) yield rows.map(toRow);
     if (rows.length < batchSize) return;
+    const last = rows[rows.length - 1]!;
+    resume.after = { at: last.at, subscriberId: last.subscriber_id };
   }
 }
 

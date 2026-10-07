@@ -3,6 +3,7 @@ import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { Pagination } from "../../releases/Pagination";
 import { CsvLink } from "./CsvLink";
+import { HandedOffNote } from "./HandedOffNote";
 import { reportErrorText } from "./errors";
 import { bcDateTime } from "./format";
 import { RangeForm } from "./RangeForm";
@@ -14,13 +15,17 @@ import type { DigestRunRow, RangedPage } from "./types";
 export function DigestRunsReportScreen(): React.JSX.Element {
   useDocumentTitle("Daily digest runs");
   const timeZone = useTenantTimeZone();
-  const { report, params, shown, csvHref, apply } = useRangedReport<RangedPage<DigestRunRow>>("/nod/api/reports/digest-runs");
+  const { report, params, shown, formKey, csvHref, apply } = useRangedReport<RangedPage<DigestRunRow>>("/nod/api/reports/digest-runs");
   const d = report.data;
   return (
     <div className="gcpe-reports">
       <h1>Daily digest runs</h1>
-      <p>Each daily digest run: one email per subscriber. Items are the releases the run&rsquo;s window offered.</p>
-      <RangeForm key={`${shown.from}|${shown.to}`} from={shown.from} to={shown.to} onApply={apply} />
+      <p>
+        Each daily digest run: one email per subscriber. Items in window are the releases in the run&rsquo;s window as they stand now: an
+        item withdrawn since the run no longer counts.
+      </p>
+      <HandedOffNote />
+      <RangeForm key={formKey} from={shown.from} to={shown.to} onApply={apply} />
       {report.error ? <InlineAlert variant="danger" role="alert" description={reportErrorText(report.error)} /> : null}
       {!d && !report.error && <p>Loading…</p>}
       {d && (
@@ -34,7 +39,7 @@ export function DigestRunsReportScreen(): React.JSX.Element {
                   <th scope="col">Ran at</th>
                   <th scope="col">Items in window</th>
                   <th scope="col">Subscribers</th>
-                  <th scope="col">Delivered</th>
+                  <th scope="col">Handed off, not bounced</th>
                   <th scope="col">Bounced</th>
                   <th scope="col">Not sent</th>
                 </tr>
@@ -46,7 +51,7 @@ export function DigestRunsReportScreen(): React.JSX.Element {
                     <td>{bcDateTime(r.ranAt, timeZone)}</td>
                     <td>{r.items}</td>
                     <td>{r.subscribers}</td>
-                    <td>{r.delivered}</td>
+                    <td>{r.handedOffNotBounced}</td>
                     <td>{r.bounced}</td>
                     <td>{r.notSent}</td>
                   </tr>

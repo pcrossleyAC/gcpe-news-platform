@@ -50,7 +50,7 @@ export interface UnsubscribesPage {
 }
 export interface ModeCounts {
   recipients: number;
-  delivered: number;
+  handedOffNotBounced: number;
   bounced: number;
   notSent: number;
 }
@@ -75,7 +75,7 @@ export interface DigestRunRow {
   ranAt: string;
   items: number;
   subscribers: number;
-  delivered: number;
+  handedOffNotBounced: number;
   bounced: number;
   notSent: number;
 }
