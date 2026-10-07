@@ -146,3 +146,31 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   Mail Distribution classified `ignored` (not recognisable as a bounce at all — an auto-reply, a
   calendar response, anything else that landed in the inbox) never does; a window with only
   ignored mail sends no summary.
+- **Administrator** — Staff roles for subscribers: **NoD Viewer** finds subscribers and reads
+  their details and history; **NoD Editor** also adds, edits, deactivates, reactivates, deletes
+  and changes email; **NoD Admin** can do everything an Editor can. Grant them on the Users
+  screen.
+- **Editor** — Bulk actions apply to the rows ticked on the current page only, always after a
+  confirmation. Skipped rows (already in that state, or a deleted subscriber you tried to
+  activate) are counted in the message, not treated as errors.
+- **Editor** — "Disabled" means no email is sent: either bounces disabled the subscriber (the
+  detail screen says so) or staff did. Activate restarts the bounce count. "Unsubscribed or
+  deleted" subscribers can't be reactivated; only their own re-subscribe brings them back.
+- **Editor** — A staff email change sends no confirmation, stops every link in emails already
+  sent except the unsubscribe links, and is refused if another record has that address (open
+  that record instead). The address of a Media Hub contact, or of anyone linked to one, is
+  changed in Media Hub: the subscriber page says so instead of offering Change email.
+- **Editor** — Deleting a subscriber removes them from every media list too. That's recorded as
+  a staff removal, so adding them back to a media list later needs no opt-out confirmation.
+- **Viewer** — The History screen shows "Subscriber" for the person's own actions, staff names
+  for staff actions, and "Bounce processing" / "Media Hub sync" for automatic ones.
+- **Operations** — Two more test users: `nod-viewer@example.test` and `nod-editor@example.test`.
+  `scripts/siteground-seed-users.sh` creates all five.
+- **Developer** — Staff subscriber routes answer unexpected errors themselves and log only an
+  error code, because their queries bind addresses (`privateErrors`). Use it for any new route
+  that binds an address.
+- **Editor** — After any email change (by staff, by the subscriber, or from Media Hub), the
+  unsubscribe link in every email the subscriber already received still unsubscribes them. The
+  other links in those emails, such as manage preferences, stop working.
+- **Viewer** — For an all-news subscriber, the subscriber page shows "All news" and also their
+  timing (As it happens, Daily digest, or both).

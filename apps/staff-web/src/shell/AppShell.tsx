@@ -5,6 +5,7 @@ import { useTimeZoneWarning } from "../format/timeZoneWarning";
 import { AnnouncerProvider } from "../shared/Announcer";
 import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
 import { canReadWebsite } from "../screens/website/access";
+import { canReadSubscribers } from "../screens/subscribers/access";
 
 interface NavItem {
   to: string;
@@ -19,12 +20,14 @@ const hasAnyReadRole = (s: SessionValue) => s.has("NRMS.Viewer") || s.has("NRMS.
  * decide what's shown, but the server is the authority"). Website is visible to every read
  * role (minors: Featured/the log are read-only for all of them; canReadWebsite) — WebsiteScreen
  * itself (and each manage-only sub-screen) still restricts the other six sections to
- * NRMS.SiteEditor/Core.Admin; Users and the error log are Core.Admin only.
+ * NRMS.SiteEditor/Core.Admin; Users and the error log are Core.Admin only. Subscribers is
+ * visible to any NoD role (canReadSubscribers) — an NRMS-only user never sees it, and vice versa.
  */
 const NAV_ITEMS: NavItem[] = [
   { to: "/releases", label: "Releases", show: hasAnyReadRole },
   { to: "/search", label: "Search", show: hasAnyReadRole },
   { to: "/website", label: "Website", show: canReadWebsite },
+  { to: "/subscribers", label: "Subscribers", show: canReadSubscribers },
   { to: "/users", label: "Users", show: (s) => s.has("Core.Admin") },
   { to: "/error-log", label: "Error log", show: (s) => s.has("Core.Admin") },
 ];

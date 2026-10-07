@@ -72,7 +72,7 @@ describe("apiFetch", () => {
     });
   });
 
-  // Task 4: file uploads (POST .../files?kind=...) are raw bodies, not JSON — `raw` sends the
+  // File uploads (POST .../files?kind=...) are raw bodies, not JSON — `raw` sends the
   // bytes untouched (no JSON.stringify, no Content-Type forced to application/json) while every
   // other apiFetch behaviour (CSRF header, credentials, 401/409/422 handling) stays the same.
   it("a `raw` body is sent untouched, with no Content-Type forced and no JSON encoding", async () => {
@@ -95,7 +95,7 @@ describe("apiFetch", () => {
     expect(call.init.body).toBe(bytes);
   });
 
-  // Task 5: the Website section's 422s (SiteRuleError) send `{ errors: [...] }` instead of
+  // The Website section's 422s (SiteRuleError) send `{ errors: [...] }` instead of
   // `{ error, problems }` — apiFetch must still surface those as `problems`, with a message
   // built from them, so every Website screen can use the exact same problems-list rendering
   // the release screens already use.
@@ -105,6 +105,17 @@ describe("apiFetch", () => {
       status: 422,
       problems: ["Add the M3U playlist URL before turning the Live Feed on."],
       message: "Add the M3U playlist URL before turning the Live Feed on.",
+    });
+  });
+
+  // AddSubscriberScreen's 409 (EmailTakenError-shaped `{ error: "subscriber exists",
+  // id }`) needs the whole parsed body, not just `message` — `id` is the existing subscriber's,
+  // used to link to their record.
+  it("ApiError carries the parsed body", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(409, { error: "subscriber exists", id: "44444444-4444-4444-4444-444444444444" })));
+    await expect(apiFetch("/nod/api/subscribers", { method: "POST", body: { email: "x@example.test" } })).rejects.toMatchObject({
+      status: 409,
+      body: { error: "subscriber exists", id: "44444444-4444-4444-4444-444444444444" },
     });
   });
 

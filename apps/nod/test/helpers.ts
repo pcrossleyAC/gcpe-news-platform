@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import type express from "express";
 import request from "supertest";
+import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
 import { signPayload } from "@gcpe/events";
@@ -11,6 +12,21 @@ export const nodMigrations = fileURLToPath(new URL("../migrations", import.meta.
 
 export function createNodTestDb(): Promise<TestDatabase> {
   return createTestDatabase({ migrationsFolder: nodMigrations });
+}
+
+/** Resolves once some session in this test database is blocked waiting for a lock — the point
+ * at which a concurrency test knows the call under test has done its unlocked read and is
+ * queued behind the transaction the test is holding open. */
+export async function waitForLockWaiter(db: Db, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const r = await db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`,
+    );
+    if (r.rows[0]!.n > 0) return;
+    if (Date.now() > deadline) throw new Error("no session started waiting for a lock");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 // "core" is included so tests can send a correctly-signed event from Core (lists.ts's

@@ -7,7 +7,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { lists, subscribers, subscriptions, type SubscriberSource, type SubscriptionRow } from "./db/schema";
 import { MEDIA_CATEGORY, mediaListKey } from "./lists";
-import { lockAddress } from "./locks";
+import { lockAddress, withLockedSubscriber } from "./locks";
 import { writeHistory } from "./subscribe/history";
 import { normaliseEmail } from "./subscribe/info";
 
@@ -174,19 +174,15 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
  * kind* -- media or public -- remains, ends them the way an unsubscribe does (`status:
  * 'deleted'`, `ended_at`), but writes history `media-ended`, never `unsubscribed`: that action is
  * reserved for the subscriber's own unsubscribe, since `addMediaMember`'s opt-out check reads it
- * (fix round 1, C1 + I1 -- a media-created subscriber who picked up a public subscription via
- * `update()` keeps their own mail; and a staff-ended member can be re-added without
- * `confirmOptOut`). Takes the same per-address advisory lock and row-level `FOR UPDATE` as
- * {@link addMediaMember}, so two concurrent removes of a subscriber's last two lists end them
- * exactly once (fix round 1, I2). Returns whether a membership was actually removed.
+ * (a media-created subscriber who picked up a public subscription via `update()` keeps their own
+ * mail; and a staff-ended member can be re-added without `confirmOptOut`). Runs under the
+ * shared lock discipline (locks.ts `withLockedSubscriber`), so two concurrent removes of a
+ * subscriber's last two lists end them exactly once, and a remove that waited out a change of
+ * address re-locks the new one. Returns whether a membership was actually removed.
  */
 export async function removeMediaMember(db: Db, listKey: string, subscriberId: string, actor: string): Promise<boolean> {
   const key = mediaListKey(listKey);
-  return db.transaction(async (tx) => {
-    const [before] = await tx.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, subscriberId));
-    if (!before) return false;
-    await lockAddress(tx, before.email.toLowerCase());
-    const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId)).for("update");
+  return withLockedSubscriber(db, subscriberId, null, async (tx, s) => {
     if (!s) return false;
 
     const removed: SubscriptionRow[] = await tx

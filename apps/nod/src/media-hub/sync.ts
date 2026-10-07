@@ -26,6 +26,7 @@ import { lockAddress } from "../locks";
 import { removeMediaMember, hasMediaMemberships } from "../media-members";
 import { writeHistory } from "../subscribe/history";
 import { emailAddressSchema, normaliseEmail } from "../subscribe/info";
+import { expireSessionLinks } from "../subscribe/links";
 import { safeErrorLabel } from "../subscribe/journeys";
 import { nodSettings, subscribers, subscriptions, type SubscriberRow } from "../db/schema";
 import { MediaHubError, type MediaHubClient } from "./client";
@@ -136,6 +137,8 @@ async function applyChosenEmailSafely(db: Db, snapshot: SubscriberRow, contact: 
       .update(subscribers)
       .set({ email: newAddress!, unsubscribeVersion: sql`${subscribers.unsubscribeVersion} + 1`, needsAttention: null, attentionAt: null })
       .where(eq(subscribers.id, s.id));
+    // Links mailed to the old address stop working, as for a public or staff move.
+    await expireSessionLinks(tx, s.id, null);
     await writeHistory(tx, s.id, actor, "media-hub-email-changed", chosenRef ?? "");
     return "updated";
   });
@@ -525,6 +528,7 @@ export async function resolveMediaMember(
       .update(subscribers)
       .set({ email: newAddress, mediaHubEmailRef: emailRef, unsubscribeVersion: sql`${subscribers.unsubscribeVersion} + 1`, needsAttention: null, attentionAt: null })
       .where(eq(subscribers.id, s.id));
+    await expireSessionLinks(tx, s.id, null);
     await writeHistory(tx, s.id, actor, "media-hub-email-changed", emailRef);
     return "resolved";
   });

@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { createNodTestDb } from "../test/helpers";
+import { createNodTestDb, waitForLockWaiter } from "../test/helpers";
+import { lockAddress } from "./locks";
 import { subscriberHistory, subscribers, subscriptions } from "./db/schema";
 import { addMediaMember, hasMediaMemberships, listMediaLists, listMediaMembers, MediaListNotFoundError, OptedOutError, removeMediaMember } from "./media-members";
 
@@ -198,5 +199,45 @@ describe("media list members", () => {
     await addMediaMember(tdb.db, "budget", { email: "b@example.test", source: "manual-media" }, ACTOR);
     const rows = await listMediaLists(tdb.db);
     expect(rows).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 2 }]);
+  });
+  it("a remove that waited out a change of address locks the new address before changing anything", async () => {
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "old@example.test", source: "manual-media" }, ACTOR);
+    let releaseMove!: () => void;
+    const moveGate = new Promise<void>((r) => (releaseMove = r));
+    let moveHeld!: () => void;
+    const moveReady = new Promise<void>((r) => (moveHeld = r));
+    const move = tdb.db.transaction(async (tx) => {
+      await lockAddress(tx, "old@example.test");
+      moveHeld();
+      await moveGate;
+      await tx.update(subscribers).set({ email: "new@example.test" }).where(eq(subscribers.id, subscriberId));
+    });
+    await moveReady;
+    const removing = removeMediaMember(tdb.db, "budget", subscriberId, ACTOR);
+    await waitForLockWaiter(tdb.db);
+
+    // A writer on the new address holds its lock while the move commits.
+    let releaseOther!: () => void;
+    const otherGate = new Promise<void>((r) => (releaseOther = r));
+    let otherHeld!: () => void;
+    const otherReady = new Promise<void>((r) => (otherHeld = r));
+    const other = tdb.db.transaction(async (tx) => {
+      await lockAddress(tx, "new@example.test");
+      otherHeld();
+      await otherGate;
+    });
+    await otherReady;
+    releaseMove();
+    await move;
+
+    let settled = false;
+    void removing.then(() => (settled = true), () => (settled = true));
+    await new Promise((r) => setTimeout(r, 300));
+    expect(settled).toBe(false);
+    releaseOther();
+    await other;
+    expect(await removing).toBe(true);
+    const [s] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(s).toMatchObject({ email: "new@example.test", status: "deleted" });
   });
 });

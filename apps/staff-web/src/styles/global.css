@@ -51,6 +51,7 @@ body {
  * component-level axe tests could have caught a *sizing* violation — this fix's regression
  * coverage is exactly the Playwright axe check that found it (tests/e2e/axe-sweep.spec.ts). */
 .gcpe-website nav a,
+.gcpe-subscribers nav a,
 .gcpe-document-tabs [role="tab"],
 .gcpe-sidebar__view-links a {
   display: inline-block;
@@ -60,6 +61,7 @@ body {
 }
 
 .gcpe-website nav ul,
+.gcpe-subscribers nav ul,
 .gcpe-sidebar__view-links ul {
   list-style: none;
   padding: 0;

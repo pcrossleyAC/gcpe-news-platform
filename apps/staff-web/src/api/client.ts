@@ -1,5 +1,5 @@
 /**
- * The staff web app's one HTTP client (Task 1). Every API call goes through {@link apiFetch}
+ * The staff web app's one HTTP client. Every API call goes through {@link apiFetch}
  * so the CSRF header, credentials, and error shape (constraints.md) are applied exactly once,
  * in exactly one place.
  */
@@ -20,6 +20,10 @@ export interface ApiErrorInit {
    * added, and for every other status. Callers that only care about "was this a real version
    * conflict" check `code !== "state"` rather than requiring it to be present. */
   code?: string;
+  /** The whole parsed response body, when there was one — e.g. the Subscribers section's 409
+   * `{ error: "subscriber exists", id }`, whose `id` no other field above carries. Undefined
+   * when the body didn't parse as JSON or there wasn't one. */
+  body?: unknown;
 }
 
 /** Thrown by {@link apiFetch} for any non-2xx response. `problems` (422) and `issues` (400)
@@ -29,6 +33,7 @@ export class ApiError extends Error {
   readonly problems?: string[];
   readonly issues?: unknown[];
   readonly code?: string;
+  readonly body?: unknown;
 
   constructor(init: ApiErrorInit) {
     super(init.message);
@@ -37,6 +42,7 @@ export class ApiError extends Error {
     this.problems = init.problems;
     this.issues = init.issues;
     this.code = init.code;
+    this.body = init.body;
   }
 }
 
@@ -56,10 +62,10 @@ function notifyUnauthorized(returnTo: string): void {
 export interface ApiFetchInit extends Omit<RequestInit, "body"> {
   /** Plain data, JSON-stringified here — never a pre-encoded string/FormData/Blob. */
   body?: unknown;
-  /** Task 4: a raw upload body (release file/translation uploads, `POST .../files?...`) — sent
-   * exactly as given, with no JSON encoding and no Content-Type forced (the browser sets its
-   * own for a Blob; the server judges bytes by magic number, not the declared type). Mutually
-   * exclusive with `body`. */
+  /** A raw upload body (release file/translation uploads, `POST .../files?...`) — sent exactly
+   * as given, with no JSON encoding and no Content-Type forced (the browser sets its own for a
+   * Blob; the server judges bytes by magic number, not the declared type). Mutually exclusive
+   * with `body`. */
   raw?: BodyInit;
 }
 
@@ -106,7 +112,7 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
   if (!res.ok) {
     if (res.status === 401) notifyUnauthorized(currentReturnPath());
     const errObj = data && typeof data === "object" ? (data as Record<string, unknown>) : {};
-    // Task 5: the Website section's 422s (apps/nrms/src/website/errors.ts's SiteRuleError,
+    // The Website section's 422s (apps/nrms/src/website/errors.ts's SiteRuleError,
     // mapped in apps/nrms/src/http/routes.ts's handleError) send `{ errors: string[] }` with no
     // `error`/`problems` at all — a different shape from every release 422 (`{error, problems}`).
     // `errors` is read here as a `problems` fallback (never the reverse) so one error shape
@@ -123,6 +129,7 @@ export async function apiFetch<T = unknown>(path: string, init: ApiFetchInit = {
       problems,
       issues: Array.isArray(errObj.issues) ? (errObj.issues as unknown[]) : undefined,
       code: typeof errObj.code === "string" ? errObj.code : undefined,
+      body: data,
     });
   }
 

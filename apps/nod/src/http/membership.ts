@@ -5,7 +5,7 @@ import { ipKeyGenerator, rateLimit } from "express-rate-limit";
 import { verifyPassword } from "@gcpe/auth";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { subscribers, subscriptions } from "../db/schema";
-import { normaliseEmail, subscriberInfoSchema } from "../subscribe/info";
+import { lookupEmailSchema, normaliseEmail } from "../subscribe/info";
 import { safeErrorLabel } from "../subscribe/journeys";
 
 /** Legacy `Gcpe.NewsOnDemand.Library.SubscriberInfo` shape (C55): PascalCase keys, unlike
@@ -112,7 +112,9 @@ async function handle(db: Db, auth: MembershipAuth | null, req: Request, res: Re
   if (!creds || !(await credentialsMatch(creds, auth))) return void unauthorized(res);
 
   const raw = req.query.emailAddress;
-  const parsed = typeof raw === "string" ? subscriberInfoSchema.shape.emailAddress.safeParse(raw) : undefined;
+  // Trimmed but not lowercased: legacy echoes an unknown address back as the caller sent it,
+  // and Media Hub may compare it case-sensitively. The lookup itself is case-insensitive.
+  const parsed = typeof raw === "string" ? lookupEmailSchema.safeParse(raw) : undefined;
   if (!parsed || !parsed.success) {
     res.status(400).json({ error: "invalid emailAddress" });
     return;

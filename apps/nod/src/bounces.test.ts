@@ -467,6 +467,23 @@ describe("onDeliveryBounced", () => {
     const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "no-delivery@example.test", batchId: randomUUID(), hard: true }), OPTS));
     expect(result).toEqual({ matched: false, action: "none" });
   });
+
+  it("reactivation restarts the bounce count: only emails after bounce_window_from count", async () => {
+    const s = await insertSubscriber(tdb.db, "window@example.test");
+    for (let i = 0; i < 9; i++) {
+      await insertEmail(tdb.db, { subscriberId: s.id, itemKeyPrefix: `win-old-${i}`, n: 1, attemptedAt: daysAgo(3), distributionBatchId: randomUUID(), hardBounced: true });
+    }
+    await tdb.db.update(subscribers).set({ bounceWindowFrom: daysAgo(1) }).where(eq(subscribers.id, s.id));
+    expect(await countBouncedEmails(tdb.db, s.id)).toBe(0);
+
+    const batchId = randomUUID();
+    await insertEmail(tdb.db, { subscriberId: s.id, itemKeyPrefix: "win-new", n: 1, attemptedAt: new Date(), distributionBatchId: batchId });
+    const r = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "window@example.test", batchId }), OPTS));
+    expect(r.action).toBe("recorded");
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, s.id));
+    expect(after!.status).toBe("active");
+    expect(await countBouncedEmails(tdb.db, s.id)).toBe(1);
+  });
 });
 
 describe("countBouncedEmails", () => {

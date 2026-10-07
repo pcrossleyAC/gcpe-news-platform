@@ -1,16 +1,32 @@
-import { sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import { and, eq, sql } from "drizzle-orm";
+import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { lists, subscribers, subscriptions } from "./db/schema";
 import { MEDIA_CATEGORY } from "./lists";
+import { lockAddress } from "./locks";
 import { matchesItem } from "./matching";
+import { writeHistory } from "./subscribe/history";
+import { normaliseEmail } from "./subscribe/info";
 
 /** Thrown by {@link addSubscriber} on a case-insensitive email clash (subscribers_email_lower_idx). */
 export class SubscriberExistsError extends Error {}
+
+/** Replaces a subscriber's non-media subscriptions with `listKeys`. Media memberships
+ * (`media-distribution-lists:*`) are never in `listKeys` -- neither the public manage page nor
+ * the staff preferences form offers them -- and must survive untouched. */
+export async function replacePublicSubscriptions(tx: DbOrTx, subscriberId: string, listKeys: string[]): Promise<void> {
+  await tx
+    .delete(subscriptions)
+    .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`));
+  if (listKeys.length) await tx.insert(subscriptions).values(listKeys.map((listKey) => ({ subscriberId, listKey })));
+}
 
 export interface AddSubscriberInput {
   email: string;
   /** "all" subscribes to every list ('*'); otherwise one or more index keys (e.g. "ministries:Health"). */
   lists: string[] | "all";
+  /** Default true, and digest default false: Phase 2's admin adds were as-it-happens only. */
+  asItHappens?: boolean;
+  digest?: boolean;
 }
 
 /**
@@ -19,23 +35,28 @@ export interface AddSubscriberInput {
  * immediately and goes straight to `status: "active"` (source `"admin"`), skipping the
  * pending/verify-link step a self-service signup goes through.
  * List keys are lowercased here (the receiver compares against indexKeysFor's lowercased
- * output); validating their shape ('<kind>:<key>') is the HTTP layer's job (routes.ts).
+ * output); validating their shape ('<kind>:<key>') is the HTTP layer's job (staff-subscriber-routes.ts).
  * Deduped after lowercasing: two input keys that only differ by casing (e.g.
  * "ministries:Health" and "ministries:health") would otherwise collide on the
  * (subscriberId, listKey) primary key mid-insert.
+ * Lowercases the address, takes the address lock like every other writer, and writes
+ * `staff-added` history.
  */
-export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<{ id: string }> {
+export async function addSubscriber(db: Db, input: AddSubscriberInput, actor = "admin-api"): Promise<{ id: string }> {
+  const email = normaliseEmail(input.email);
   const listKeys = input.lists === "all" ? ["*"] : [...new Set(input.lists.map((key) => key.toLowerCase()))];
   try {
     return await db.transaction(async (tx) => {
+      await lockAddress(tx, email);
       const [row] = await tx
         .insert(subscribers)
-        .values({ email: input.email, verifiedAt: new Date(), status: "active", source: "admin", asItHappens: true })
+        .values({ email, verifiedAt: new Date(), status: "active", source: "admin", asItHappens: input.asItHappens ?? true, digest: input.digest ?? false })
         .returning({ id: subscribers.id });
       const subscriberId = row!.id;
       if (listKeys.length > 0) {
         await tx.insert(subscriptions).values(listKeys.map((listKey) => ({ subscriberId, listKey })));
       }
+      await writeHistory(tx, subscriberId, actor, "staff-added", listKeys.join(", "));
       return { id: subscriberId };
     });
   } catch (e) {
@@ -45,7 +66,7 @@ export async function addSubscriber(db: Db, input: AddSubscriberInput): Promise<
     // Only the case-insensitive email index means "already subscribed"; any other unique
     // violation is a bug and must surface as one, not as a misleading 409.
     const cause = (e as { cause?: { code?: string; constraint?: string } }).cause;
-    if (cause?.code === "23505" && cause.constraint === "subscribers_email_lower_idx") throw new SubscriberExistsError(input.email);
+    if (cause?.code === "23505" && cause.constraint === "subscribers_email_lower_idx") throw new SubscriberExistsError("subscriber exists");
     throw e;
   }
 }

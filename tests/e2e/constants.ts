@@ -25,11 +25,15 @@ export const TEST_USER_PASSWORDS: Record<string, string> = {
   "editor@example.test": "e2e-editor-password-1",
   "site-editor@example.test": "e2e-site-editor-password-1",
   "viewer@example.test": "e2e-viewer-password-1",
+  "nod-viewer@example.test": "e2e-nod-viewer-password-1",
+  "nod-editor@example.test": "e2e-nod-editor-password-1",
 };
 
 export const EDITOR_EMAIL = "editor@example.test";
 export const SITE_EDITOR_EMAIL = "site-editor@example.test";
 export const VIEWER_EMAIL = "viewer@example.test";
+export const NOD_VIEWER_EMAIL = "nod-viewer@example.test";
+export const NOD_EDITOR_EMAIL = "nod-editor@example.test";
 
 export const SESSION_COOKIE = "gcpe_session";
 

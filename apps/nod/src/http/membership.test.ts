@@ -95,6 +95,16 @@ describe("legacy Subscribe/SubscriberInformation (C55)", () => {
     });
   });
 
+  it("matches case-insensitively, and echoes an unknown address back in the caller's own casing, trimmed", async () => {
+    const found = await request(app).get(`${ROUTE}?emailAddress=Journo@Example.TEST`).set("authorization", basicAuth(USERNAME, PASSWORD));
+    expect(found.body).toMatchObject({ EmailAddress: "journo@example.test", IsAsItHappens: true });
+    const unknown = await request(app)
+      .get(`${ROUTE}?emailAddress=${encodeURIComponent(" Nobody.Here@Example.TEST ")}`)
+      .set("authorization", basicAuth(USERNAME, PASSWORD));
+    expect(unknown.status).toBe(200);
+    expect(unknown.body).toMatchObject({ EmailAddress: "Nobody.Here@Example.TEST", SubscribedCategories: {} });
+  });
+
   it("a pending (unverified) subscriber reads exactly like an unknown email -- only active/disabled count", async () => {
     await tdb.db.insert(subscribers).values({ email: "pending@example.test", status: "pending", source: "self" });
     const res = await request(app).get(`${ROUTE}?emailAddress=pending@example.test`).set("authorization", basicAuth(USERNAME, PASSWORD));

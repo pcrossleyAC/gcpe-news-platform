@@ -138,4 +138,53 @@ describe("router (basename /hub)", () => {
     router.navigate("/error-log");
     expect(await screen.findByRole("heading", { level: 1, name: "Error log" })).toBeInTheDocument();
   });
+
+  // Decided after the plan was written: search is a POST to /nod/api/subscribers/search, never
+  // a GET with the term in the query string.
+  it("a NoD-only user lands on Subscribers; /hub/subscribers/new is the Add screen for an Editor", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") {
+          return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NoD.Editor"] }, expiresAt: new Date().toISOString() });
+        }
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/nod/api/subscribers/search") return jsonResponse(200, { total: 0, page: 1, pageSize: 50, items: [] });
+        if (url === "/nod/api/subscriber-list-options") return jsonResponse(200, { categories: [] });
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const router = createMemoryRouter(routes, { basename: "/hub", initialEntries: ["/hub/"] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: "Subscribers" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/hub/subscribers");
+    router.navigate("/subscribers/new");
+    expect(await screen.findByRole("heading", { level: 1, name: "Add a subscriber" })).toBeInTheDocument();
+  });
+
+  it("a Viewer sees no Add a subscriber link", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") {
+          return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NoD.Viewer"] }, expiresAt: new Date().toISOString() });
+        }
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/nod/api/subscribers/search") return jsonResponse(200, { total: 0, page: 1, pageSize: 50, items: [] });
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const router = createMemoryRouter(routes, { basename: "/hub", initialEntries: ["/hub/subscribers"] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: "Subscribers" })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Add a subscriber" })).toBeNull();
+  });
 });

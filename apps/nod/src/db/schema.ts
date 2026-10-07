@@ -41,6 +41,11 @@ export const subscribers = pgTable(
     endedAt: timestamp("ended_at", { withTimezone: true }),
     // Bumped to invalidate every unsubscribe token issued so far (tokens.ts): on email change.
     unsubscribeVersion: integer("unsubscribe_version").notNull().default(1),
+    // When the bounce threshold (bounces.ts) starts counting from: set on every reactivation
+    // (staff activate, or the subscriber's own re-confirm from `disabled`), so emails that
+    // bounced before someone judged the mailbox fixed never count toward disabling it again.
+    // Null = count everything in the 15-day window.
+    bounceWindowFrom: timestamp("bounce_window_from", { withTimezone: true }),
   },
   (t) => [
     uniqueIndex("subscribers_email_lower_idx").on(sql`lower(${t.email})`),

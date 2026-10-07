@@ -33,7 +33,7 @@ async function renderShell(roles: string[], tzCheck?: { at: string; offsetMinute
   await waitFor(() => expect(screen.getByText("Signed in as Pat")).toBeInTheDocument());
 }
 
-const allLabels = ["Releases", "Search", "Website", "Users", "Error log"];
+const allLabels = ["Releases", "Search", "Website", "Subscribers", "Users", "Error log"];
 const visibleLabels = () => allLabels.filter((label) => screen.queryByRole("link", { name: label }) !== null);
 
 describe("AppShell nav — roles decide what's shown", () => {
@@ -58,6 +58,14 @@ describe("AppShell nav — roles decide what's shown", () => {
   it("Core.Admin sees Website (to reach Project Blue Bridge), Users and the error log", async () => {
     await renderShell(["Core.Admin"]);
     expect(visibleLabels()).toEqual(["Website", "Users", "Error log"]);
+  });
+
+  it("each NoD role sees Subscribers; NRMS roles don't", async () => {
+    await renderShell(["NoD.Viewer"]);
+    expect(visibleLabels()).toEqual(["Subscribers"]);
+    cleanup();
+    await renderShell(["NoD.Editor", "NRMS.Editor"]);
+    expect(visibleLabels()).toEqual(["Releases", "Search", "Website", "Subscribers"]);
   });
 });
 
