@@ -11,6 +11,7 @@ import { getSettings, setDistributionPaused, setPaused } from "../settings";
 import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
 import { emailAddressSchema } from "../subscribe/info";
 import { safeErrorLabel } from "../subscribe/journeys";
+import { staffSubscriberRoutes } from "./staff-subscriber-routes";
 
 /** '*' = all news, or '<kind>:<key>' with kind in ministries|sectors|themes|tags (matches indexKeysFor's output shape). */
 export const listKeySchema = z
@@ -299,6 +300,8 @@ export function apiRoutes(
       res.json(result);
     }),
   );
+
+  r.use(staffSubscriberRoutes(db));
 
   return r;
 }
