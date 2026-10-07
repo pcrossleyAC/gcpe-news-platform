@@ -213,6 +213,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     timeZone: tenant.timeZone,
     bounceSummaryFallback: parsed.BOUNCE_SUMMARY_EMAIL ?? null,
     distributionAppId: parsed.DISTRIBUTION_APP_ID ?? parsed.DISTRIBUTION_CLIENT_ID ?? "nod",
+    emergencyFeedUrl: parsed.EMERGENCY_FEED_URL ?? null,
     mediaHub,
     membership:
       parsed.MEMBERSHIP_API_USERNAME && parsed.MEMBERSHIP_API_PASSWORD_HASH

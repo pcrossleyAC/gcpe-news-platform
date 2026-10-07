@@ -1,5 +1,7 @@
 import type { Db } from "@gcpe/db-kit";
 import type { DistributionClient } from "./distribution-client";
+import { getEmergencyFeedStatus, type EmergencyFeedStatus } from "./emergency/ingest";
+import { getPurgeStatus, type PurgeStatus } from "./purge";
 import { getSettings, getSoftCodesCounted, resolveBounceSummaryAddress, type BounceSummaryAddress } from "./settings";
 import { safeErrorLabel } from "./subscribe/journeys";
 
@@ -11,16 +13,24 @@ export interface OperationsStatus {
   bounceSource: "fake" | "graph" | null;
   bounceSummary: BounceSummaryAddress;
   softCodesCounted: string[];
+  purge: PurgeStatus;
+  emergencyFeed: EmergencyFeedStatus;
+}
+
+export interface OperationsOptions {
+  bounceSummaryFallback: string | null;
+  timeZone: string;
+  emergencyFeedUrl: string | null;
 }
 
 export async function getOperations(
   db: Db,
   distribution: Pick<DistributionClient, "getSettings" | "bounceSource">,
-  bounceSummaryFallback: string | null,
+  opts: OperationsOptions,
 ): Promise<OperationsStatus> {
-  const [nod, bounceSummary, dist, bounceSource, softCodesCounted] = await Promise.all([
+  const [nod, bounceSummary, dist, bounceSource, softCodesCounted, purge, emergencyFeed] = await Promise.all([
     getSettings(db),
-    resolveBounceSummaryAddress(db, bounceSummaryFallback),
+    resolveBounceSummaryAddress(db, opts.bounceSummaryFallback),
     distribution.getSettings().then(
       (s) => ({ paused: s.paused }),
       (e: unknown) => {
@@ -36,6 +46,8 @@ export async function getOperations(
       },
     ),
     getSoftCodesCounted(db),
+    getPurgeStatus(db, opts.timeZone),
+    getEmergencyFeedStatus(db, opts.emergencyFeedUrl),
   ]);
-  return { nod, distribution: dist, bounceSource, bounceSummary, softCodesCounted };
+  return { nod, distribution: dist, bounceSource, bounceSummary, softCodesCounted, purge, emergencyFeed };
 }

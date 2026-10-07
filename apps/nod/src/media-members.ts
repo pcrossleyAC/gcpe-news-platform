@@ -8,6 +8,7 @@ import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { lists, subscribers, subscriptions, type SubscriberSource, type SubscriptionRow } from "./db/schema";
 import { MEDIA_CATEGORY, mediaListKey } from "./lists";
 import { lockAddress, withLockedSubscriber } from "./locks";
+import { suppressedOptOutAt } from "./opt-outs";
 import { writeHistory } from "./subscribe/history";
 import { normaliseEmail } from "./subscribe/info";
 
@@ -141,6 +142,8 @@ export async function optOutMediaMemberships(tx: DbOrTx, subscriberId: string, a
  * resubscribed publicly since) -- must not restart their old public mail: their timing flags are
  * reset to off and their non-media subscriptions are dropped. From `pending`/`disabled`, public
  * state is left untouched. `source` is never changed on an existing row.
+ *
+ * A new address with a kept opt-out for this list (a purged record) needs `confirmOptOut: true` too.
  */
 export async function addMediaMember(db: Db, listKey: string, input: AddMediaMemberInput, actor: string): Promise<{ subscriberId: string; created: boolean }> {
   const key = mediaListKey(listKey);
@@ -175,6 +178,12 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
           .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`));
       }
     } else {
+      // A record purged after its owner opted out of this list is gone, but the opt-out was
+      // kept (opt-outs.ts): the same confirmation as for a subscriber who still exists.
+      if (!input.confirmOptOut) {
+        const keptAt = await suppressedOptOutAt(tx, email, key);
+        if (keptAt) throw new OptedOutError(keptAt);
+      }
       const [row] = await tx
         .insert(subscribers)
         .values({

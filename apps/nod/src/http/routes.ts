@@ -71,6 +71,8 @@ export interface SettingsRouteDeps {
   bounceSummaryFallback: string | null;
   /** NoD's own appId as Distribution records it (bounces.ts): the reports label its messages. */
   nodAppId: string;
+  /** EMERGENCY_FEED_URL, shown on Operations; null = no feed configured. */
+  emergencyFeedUrl: string | null;
 }
 
 export function apiRoutes(

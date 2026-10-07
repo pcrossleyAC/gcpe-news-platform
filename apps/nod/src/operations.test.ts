@@ -37,13 +37,15 @@ describe("operations", () => {
       getSettings: vi.fn().mockRejectedValue(new Error("connect ECONNREFUSED ops@example.test")),
       bounceSource: vi.fn().mockRejectedValue(new Error("timeout")),
     } as unknown as Pick<DistributionClient, "getSettings" | "bounceSource">;
-    const ops = await getOperations(tdb.db, distribution, "server@example.test");
+    const ops = await getOperations(tdb.db, distribution, { bounceSummaryFallback: "server@example.test", timeZone: "America/Vancouver", emergencyFeedUrl: null });
     expect(ops).toEqual({
       nod: { paused: false, lastDigestCutoff: null },
       distribution: null,
       bounceSource: null,
       bounceSummary: { address: "server@example.test", from: "server" },
       softCodesCounted: [],
+      purge: expect.objectContaining({ enabled: false }),
+      emergencyFeed: { url: null, checkedAt: null, result: null },
     });
     expect(JSON.stringify(spy.mock.calls)).not.toContain("@");
     spy.mockRestore();
@@ -54,6 +56,8 @@ describe("operations", () => {
       getSettings: vi.fn().mockResolvedValue({ paused: true }),
       bounceSource: vi.fn().mockResolvedValue({ source: "fake" }),
     } as unknown as Pick<DistributionClient, "getSettings" | "bounceSource">;
-    expect(await getOperations(tdb.db, distribution, null)).toMatchObject({ distribution: { paused: true }, bounceSource: "fake" });
+    expect(
+      await getOperations(tdb.db, distribution, { bounceSummaryFallback: null, timeZone: "America/Vancouver", emergencyFeedUrl: null }),
+    ).toMatchObject({ distribution: { paused: true }, bounceSource: "fake" });
   });
 });
