@@ -27,11 +27,18 @@ function handleError(e: unknown, res: Response): boolean {
   return false;
 }
 
-/** `azp` (the Entra v2 client id, or a local token's own azp) identifies the calling app;
- * falls back to the token's subject for callers that don't set one. */
+/** `azp` (the Entra v2 client id, or a local token's own azp) identifies the calling app.
+ * Falls back to `appid` -- an Entra v1 access token carries the client id there instead, never
+ * in `azp` -- and only then to the token's subject (which for an Entra client-credentials
+ * token is the service principal's object id, not anything the caller chose; subject is what's
+ * left for a caller that sets neither). */
 function appIdFrom(req: Request): string {
-  const azp = req.auth?.claims.azp;
-  return typeof azp === "string" && azp ? azp : req.auth!.subject;
+  const claims = req.auth?.claims ?? {};
+  const azp = claims.azp;
+  if (typeof azp === "string" && azp) return azp;
+  const appid = claims.appid;
+  if (typeof appid === "string" && appid) return appid;
+  return req.auth!.subject;
 }
 
 export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake" | "graph"): Router {

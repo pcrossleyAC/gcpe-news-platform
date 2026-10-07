@@ -28,10 +28,14 @@ export const nodEnvSchema = z.object({
   DISTRIBUTION_CLIENT_SECRET: z.string().optional(),
   DISTRIBUTION_SCOPE: z.string().optional(),
   // NoD's own appId, exactly as Distribution would record it for a message NoD sent (apps/
-  // distribution/src/http/routes.ts's appIdFrom: the calling token's `azp`, else its subject)
-  // -- what a `delivery.bounced` event's own appId is checked against (bounces.ts). Default:
-  // DISTRIBUTION_CLIENT_ID when Entra client credentials are configured, else "nod", the
-  // subject/azp distribution-token.ts always mints a local token with.
+  // distribution/src/http/routes.ts's appIdFrom: the calling token's `azp`, else `appid`, else
+  // its subject) -- what a `delivery.bounced` event's own appId is checked against
+  // (bounces.ts). Default: DISTRIBUTION_CLIENT_ID when Entra client credentials are
+  // configured, else "nod", the subject/azp distribution-token.ts always mints a local token
+  // with -- but production should set this explicitly to NoD's Entra client id rather than
+  // rely on the default: whether an Entra access token even carries `azp` (v2) or only
+  // `appid` (v1) depends on how NoD's app registration is configured, and getting this wrong
+  // means every bounce for a message NoD sent is silently ignored (appIdFrom step 1, above).
   DISTRIBUTION_APP_ID: z.string().optional(),
   // Bounds a single chunk request to Distribution; also sizes send-jobs.ts's claim lock
   // (chunks * this + margin), so a hung request can't outlive the lock protecting it.

@@ -19,6 +19,7 @@ describe("Distribution HTTP API", () => {
   let reader: string;
   let operator: string;
   let firstBatchId: string;
+  let appidOnlySender: string;
 
   beforeAll(async () => {
     tdb = await createDistributionTestDb();
@@ -36,6 +37,14 @@ describe("Distribution HTTP API", () => {
     otherAppSender = await sign("other-client", ["Distribution.Send"]);
     reader = await sign("nod-client", []);
     operator = await sign("nod", ["Distribution.Operate"]);
+    // An Entra v1 access token: the client id arrives as `appid`, never `azp`.
+    appidOnlySender = await new SignJWT({ roles: ["Distribution.Send"], appid: "v1-client" })
+      .setProtectedHeader({ alg: "RS256", kid: "k" })
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setSubject("svc-v1-object-id")
+      .setExpirationTime("5m")
+      .sign(pair.privateKey);
     app = createApp({ db: tdb.db, auth: { issuer, audience, keys }, internalDomains });
     graphModeApp = createApp({ db: tdb.db, auth: { issuer, audience, keys }, internalDomains, bounceSource: "graph" });
   });
@@ -225,6 +234,21 @@ describe("Distribution HTTP API", () => {
 
     const { rows } = await tdb.pool.query("SELECT app_id FROM batches WHERE id = $1", [res.body.batchId]);
     expect(rows).toEqual([{ app_id: "nod" }]);
+  });
+
+  // ruling: an Entra v1 access token carries the client id in `appid`, not `azp` -- without
+  // the fallback, this would record the batch under the service principal's own object id
+  // (the subject), and NoD would never recognise it as its own appId in a delivery.bounced
+  // event.
+  it("an Entra v1 token with no azp but an appid claim sends a batch with app_id from appid", async () => {
+    const res = await request(app)
+      .post("/api/messages")
+      .set("authorization", `Bearer ${appidOnlySender}`)
+      .send({ ...sampleMessageRequest, idempotencyKey: "appid-only-1" });
+    expect(res.status).toBe(202);
+
+    const { rows } = await tdb.pool.query("SELECT app_id FROM batches WHERE id = $1", [res.body.batchId]);
+    expect(rows).toEqual([{ app_id: "v1-client" }]);
   });
 
   describe("GET /api/settings, POST /api/settings/pause|resume", () => {

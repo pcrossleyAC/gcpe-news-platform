@@ -130,6 +130,9 @@ export const deliveries = pgTable(
     // bounces.ts's own first match attempt: a delivery.bounced event's batchId against this
     // subscriber's deliveries.
     index("deliveries_distribution_batch_id_idx").on(t.distributionBatchId),
+    // bounces.ts's fallback match and its threshold query: both scan this subscriber's own
+    // deliveries ordered by attempted_at.
+    index("deliveries_subscriber_attempted_at_idx").on(t.subscriberId, t.attemptedAt),
   ],
 );
 export type DeliveryRow = typeof deliveries.$inferSelect;

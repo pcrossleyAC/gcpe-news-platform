@@ -37,20 +37,32 @@ async function findSubscriberForUpdate(tx: Tx, email: string) {
   return row ?? null;
 }
 
-/** Step 3 of the rule: `distribution_batch_id = batchId` for this subscriber first; falling
- * back to their most recent attempted delivery within {@link FALLBACK_MATCH_WINDOW_DAYS} days
- * when nothing matches the batch id (no delivery was ever stamped with it, or none of this
- * subscriber's deliveries happen to carry it). A digest send can leave more than one delivery
- * row carrying the same batch id (one per item in that digest, all part of the same Distribution
- * message) -- any one of them is as good as another for recording the bounce against. */
-async function findDelivery(tx: Tx, subscriberId: string, batchId: string): Promise<DeliveryRow | null> {
-  const [byBatch] = await tx
-    .select()
-    .from(deliveries)
-    .where(and(eq(deliveries.subscriberId, subscriberId), eq(deliveries.distributionBatchId, batchId)))
-    .orderBy(deliveries.itemKey)
-    .limit(1);
-  if (byBatch) return byBatch;
+interface DeliveryMatch {
+  rows: DeliveryRow[];
+  /** Reaches exactly {@link rows} -- built alongside the query that found them, never
+   * re-inferred from the rows themselves, so the UPDATEs below touch precisely what was
+   * matched. */
+  where: ReturnType<typeof and>;
+}
+
+/**
+ * Step 3 of the rule, and what it marks: the threshold's unit is an *email*, not a delivery
+ * row -- a digest send leaves one delivery row per item, all stamped with the same
+ * `distribution_batch_id` by send-jobs.ts's sendAllChunks (one Distribution message, one
+ * bounce, if it bounces at all). So a match returns every row that email touched, and the
+ * caller marks all of them together, not just one.
+ *
+ * `distribution_batch_id = batchId` for this subscriber first; falling back to their most
+ * recent attempted delivery within {@link FALLBACK_MATCH_WINDOW_DAYS} days when nothing
+ * matches the batch id (no delivery was ever stamped with it, or none of this subscriber's
+ * deliveries happen to carry it) -- and then every delivery sharing *that* row's `job_id`
+ * (same reasoning: one job, one send, one email). A fallback row with no `job_id` at all (its
+ * send_jobs row was since deleted) has nothing to group by beyond itself.
+ */
+async function findDeliveryMatch(tx: Tx, subscriberId: string, batchId: string): Promise<DeliveryMatch | null> {
+  const byBatchWhere = and(eq(deliveries.subscriberId, subscriberId), eq(deliveries.distributionBatchId, batchId));
+  const byBatch = await tx.select().from(deliveries).where(byBatchWhere);
+  if (byBatch.length > 0) return { rows: byBatch, where: byBatchWhere };
 
   const [fallback] = await tx
     .select()
@@ -64,31 +76,49 @@ async function findDelivery(tx: Tx, subscriberId: string, batchId: string): Prom
     )
     .orderBy(desc(deliveries.attemptedAt))
     .limit(1);
-  return fallback ?? null;
+  if (!fallback) return null;
+  if (fallback.jobId === null) {
+    const where = and(eq(deliveries.subscriberId, subscriberId), eq(deliveries.itemKey, fallback.itemKey), eq(deliveries.mode, fallback.mode));
+    return { rows: [fallback], where };
+  }
+
+  const byJobWhere = and(eq(deliveries.subscriberId, subscriberId), eq(deliveries.jobId, fallback.jobId));
+  const byJob = await tx.select().from(deliveries).where(byJobWhere);
+  return { rows: byJob, where: byJobWhere };
 }
 
-/** Whether this subscriber's {@link HARD_BOUNCE_THRESHOLD} most recent attempted deliveries,
- * within {@link THRESHOLD_WINDOW_DAYS} days, are all hard-bounced -- fewer than the threshold
- * qualifying (whether because they simply don't have that many, or because older ones fall
- * outside the window) never trips it. */
+/**
+ * Whether this subscriber's {@link HARD_BOUNCE_THRESHOLD} most recent *emails* -- deliveries
+ * grouped by whatever identifies one send (`distribution_batch_id`, falling back to `job_id`,
+ * falling back to the row itself for a delivery with neither), attempted within
+ * {@link THRESHOLD_WINDOW_DAYS} days -- are all hard-bounced. A digest's several item rows
+ * count as the one email they actually were; fewer than the threshold qualifying (whether
+ * because there simply aren't that many, or because older ones fall outside the window) never
+ * trips it.
+ */
 async function thresholdTripped(tx: Tx, subscriberId: string): Promise<boolean> {
-  const recent = await tx
-    .select({ hardBouncedAt: deliveries.hardBouncedAt })
-    .from(deliveries)
-    .where(and(eq(deliveries.subscriberId, subscriberId), isNotNull(deliveries.attemptedAt), sql`${deliveries.attemptedAt} >= now() - ${sqlInterval(THRESHOLD_WINDOW_MS)}`))
-    .orderBy(desc(deliveries.attemptedAt))
-    .limit(HARD_BOUNCE_THRESHOLD);
-  return recent.length === HARD_BOUNCE_THRESHOLD && recent.every((d) => d.hardBouncedAt !== null);
+  const { rows } = await tx.execute<{ bounced: boolean }>(sql`
+    SELECT bool_or(hard_bounced_at IS NOT NULL) AS bounced
+      FROM deliveries
+     WHERE subscriber_id = ${subscriberId}
+       AND attempted_at IS NOT NULL
+       AND attempted_at >= now() - ${sqlInterval(THRESHOLD_WINDOW_MS)}
+     GROUP BY COALESCE(distribution_batch_id::text, job_id::text, item_key || mode)
+     ORDER BY max(attempted_at) DESC
+     LIMIT ${HARD_BOUNCE_THRESHOLD}
+  `);
+  return rows.length === HARD_BOUNCE_THRESHOLD && rows.every((r) => r.bounced === true);
 }
 
 /**
  * Records one `delivery.bounced` event and, on a hard bounce, applies the 10-in-15-days rule
  * (spec §7). Idempotent two ways over: the event receiver's own inbox dedupe (packages/events)
  * catches an exact outbox retry, and this function is idempotent in its own right against a
- * second, genuinely new hard-bounce event for a delivery already marked -- the guarded UPDATE
- * below only ever marks `hard_bounced_at` once per delivery, so a replay (or a second bounce
- * report Distribution matched to the same delivery) writes no second history row and
- * re-evaluates nothing.
+ * second, genuinely new hard-bounce event for the same email -- the guarded UPDATE below only
+ * ever marks a delivery's `hard_bounced_at` once, so if every one of this email's rows is
+ * already marked, nothing is newly updated, and a replay (or a second bounce report
+ * Distribution matched to the same email) writes no second history row and re-evaluates
+ * nothing.
  *
  * Takes the per-address advisory lock and the subscriber row `FOR UPDATE` before anything else
  * (same as 4c's media-member code, media-members.ts), serialising this against every other
@@ -103,24 +133,23 @@ export async function onDeliveryBounced(tx: Tx, event: EventEnvelope, opts: Boun
   const subscriber = await findSubscriberForUpdate(tx, email);
   if (!subscriber) return { matched: false, action: "none" };
 
-  const delivery = await findDelivery(tx, subscriber.id, data.batchId);
-  if (!delivery) return { matched: false, action: "none" };
-
-  const deliveryKey = and(eq(deliveries.itemKey, delivery.itemKey), eq(deliveries.subscriberId, delivery.subscriberId), eq(deliveries.mode, delivery.mode));
+  const match = await findDeliveryMatch(tx, subscriber.id, data.batchId);
+  if (!match) return { matched: false, action: "none" };
 
   if (!data.hard) {
     // Soft bounces are recorded and never count toward the threshold (Global Constraints).
-    await tx.update(deliveries).set({ bounceStatus: data.status }).where(and(deliveryKey, isNull(deliveries.bounceStatus)));
+    await tx.update(deliveries).set({ bounceStatus: data.status }).where(and(match.where, isNull(deliveries.bounceStatus)));
     return { matched: true, action: "none" };
   }
 
-  // First-wins, race-free: only a delivery with no hard_bounced_at yet is actually updated, so
-  // a duplicate hard-bounce event for a delivery already marked updates nothing here -- caught
-  // by this one guarded statement rather than a separate read-then-write.
+  // First-wins, race-free: only a row with no hard_bounced_at yet is actually updated, across
+  // every row this email touched -- a duplicate hard-bounce event for an email already fully
+  // marked updates nothing here, caught by this one guarded statement rather than a separate
+  // read-then-write.
   const updated = await tx
     .update(deliveries)
     .set({ hardBouncedAt: sql`now()`, bounceStatus: data.status })
-    .where(and(deliveryKey, isNull(deliveries.hardBouncedAt)))
+    .where(and(match.where, isNull(deliveries.hardBouncedAt)))
     .returning({ itemKey: deliveries.itemKey });
   if (updated.length === 0) return { matched: true, action: "none" };
 
@@ -130,8 +159,16 @@ export async function onDeliveryBounced(tx: Tx, event: EventEnvelope, opts: Boun
   }
 
   if (await hasMediaMemberships(tx, subscriber.id)) {
-    await tx.update(subscribers).set({ needsAttention: "bouncing", attentionAt: sql`now()` }).where(eq(subscribers.id, subscriber.id));
-    await writeHistory(tx, subscriber.id, BOUNCE_ACTOR, "bounce-flagged");
+    // Flagged once: never overwrites an existing reason (e.g. a Media Hub sync's own
+    // "email-gone"/"email-taken") and, once already "bouncing", a later hard bounce that
+    // re-trips the threshold (chronically so, for a media member who keeps being sent to)
+    // writes no second bounce-flagged row and doesn't reset attention_at.
+    const flagged = await tx
+      .update(subscribers)
+      .set({ needsAttention: "bouncing", attentionAt: sql`now()` })
+      .where(and(eq(subscribers.id, subscriber.id), isNull(subscribers.needsAttention)))
+      .returning({ id: subscribers.id });
+    if (flagged.length > 0) await writeHistory(tx, subscriber.id, BOUNCE_ACTOR, "bounce-flagged");
     return { matched: true, action: "flagged" };
   }
 
