@@ -23,6 +23,34 @@ export async function getSettings(db: Db): Promise<{ paused: boolean; lastDigest
   return { paused: row?.paused ?? false, lastDigestCutoff: row?.lastDigestCutoff ? row.lastDigestCutoff.toISOString() : null };
 }
 
+export interface BounceSummaryAddress {
+  address: string | null;
+  /** "setting": staff chose it; "server": NOD_BOUNCE_SUMMARY_EMAIL; null: none, nothing is sent. */
+  from: "setting" | "server" | null;
+}
+
+export async function resolveBounceSummaryAddress(db: DbOrTx, fallback: string | null): Promise<BounceSummaryAddress> {
+  const [row] = await db.select({ stored: nodSettings.bounceSummaryEmail }).from(nodSettings).where(eq(nodSettings.id, 1));
+  if (row?.stored) return { address: row.stored, from: "setting" };
+  if (fallback) return { address: fallback, from: "server" };
+  return { address: null, from: null };
+}
+
+/** Sets (or, with null, clears back to the server default) the summary address. The log
+ * records that it changed, never the address. */
+export async function setBounceSummaryAddress(db: Db, address: string | null, actor: string): Promise<{ changed: boolean }> {
+  return db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(nodSettings)
+      .set({ bounceSummaryEmail: address, updatedAt: sql`now()` })
+      .where(and(eq(nodSettings.id, 1), sql`${nodSettings.bounceSummaryEmail} IS DISTINCT FROM ${address}`))
+      .returning({ id: nodSettings.id });
+    if (!row) return { changed: false };
+    await writeOpsLog(tx, actor, "bounce-summary-address-changed", address === null ? "cleared" : "set");
+    return { changed: true };
+  });
+}
+
 interface OpsEmailDeps {
   distribution: Pick<DistributionClient, "send">;
   /** NOD_OPS_EMAIL, resolved; null when no operator inbox is configured -- then a change

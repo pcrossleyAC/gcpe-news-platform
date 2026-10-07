@@ -9,6 +9,7 @@ import { getSettings, setDistributionPaused, setPaused } from "../settings";
 import { countSubscribers } from "../subscribers";
 import { emailAddressSchema } from "../subscribe/info";
 import { safeErrorLabel } from "../subscribe/journeys";
+import { operationsRoutes } from "./operations-routes";
 import { staffListRoutes } from "./staff-list-routes";
 import { staffMediaRoutes } from "./staff-media-routes";
 import { listKeySchema, staffSubscriberRoutes } from "./staff-subscriber-routes";
@@ -62,9 +63,11 @@ function handleError(e: unknown, res: Response): boolean {
  * switch) and the resolved `NOD_OPS_EMAIL`/tenant time zone for the ops email both setPaused
  * and setDistributionPaused send. */
 export interface SettingsRouteDeps {
-  distribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused">;
+  distribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "bounceSource">;
   opsEmail: string | null;
   timeZone: string;
+  /** NOD_BOUNCE_SUMMARY_EMAIL, used when staff haven't set an address. */
+  bounceSummaryFallback: string | null;
 }
 
 export function apiRoutes(
@@ -163,6 +166,7 @@ export function apiRoutes(
     }),
   );
 
+  r.use(operationsRoutes(db, settings));
   r.use(staffListRoutes(db));
   r.use(staffMediaRoutes(db, mediaHub));
   r.use(staffSubscriberRoutes(db));

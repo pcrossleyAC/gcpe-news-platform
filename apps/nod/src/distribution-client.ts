@@ -84,6 +84,8 @@ export interface DistributionClient {
    * instants; `until` is this call's own `dbNow`, closing the window so two successive
    * summaries can never double-count the same row. */
   bounceStats(since: string, until: string): Promise<{ unmatched: number; ignored: number }>;
+  /** Distribution's bounce source (GET /api/bounces/source, Distribution.Operate): "fake" only where the test-site upload works. */
+  bounceSource(): Promise<{ source: "fake" | "graph" }>;
 }
 
 // P2-R18: Distribution's 2xx body is network input like any other — `res.json()` succeeding
@@ -96,6 +98,7 @@ const settingsResponseSchema = z.object({ paused: z.boolean() });
 const pauseResponseSchema = z.object({ paused: z.boolean(), changed: z.boolean() });
 const uploadBounceResponseSchema = z.object({ id: z.string().min(1) });
 const bounceStatsResponseSchema = z.object({ unmatched: z.number().int().nonnegative(), ignored: z.number().int().nonnegative() });
+const bounceSourceResponseSchema = z.object({ source: z.enum(["fake", "graph"]) });
 
 /** Races `getToken()` against a timer so a hung token endpoint can't hang `send` forever —
  * mirrors the request's own `AbortSignal.timeout` below, just via Promise.race since
@@ -214,6 +217,9 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
     async bounceStats(since: string, until: string): Promise<{ unmatched: number; ignored: number }> {
       const path = `/api/bounces/stats?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
       return callDistribution(opts, doFetch, timeoutMs, path, { method: "GET" }, bounceStatsResponseSchema, "Distribution response missing unmatched/ignored");
+    },
+    async bounceSource(): Promise<{ source: "fake" | "graph" }> {
+      return callDistribution(opts, doFetch, timeoutMs, "/api/bounces/source", { method: "GET" }, bounceSourceResponseSchema, "Distribution response missing source");
     },
   };
 }

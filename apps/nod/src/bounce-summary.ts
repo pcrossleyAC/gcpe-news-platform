@@ -8,6 +8,7 @@ import { todaysCutoff } from "./digest";
 import type { DistributionClient } from "./distribution-client";
 import { nodSettings } from "./db/schema";
 import { hasMediaMemberships } from "./media-members";
+import { resolveBounceSummaryAddress } from "./settings";
 import { safeErrorLabel } from "./subscribe/journeys";
 
 /** Daily at 08:00 BC time (Global Constraints "Summary email"), the same `dailyCutoff`/
@@ -194,8 +195,8 @@ async function finish(db: Db, lease: string, stamp: { checkedAt: Date; at?: Date
  * `distribution.bounceStats`, then `distribution.send` -- each of which can take up to the
  * full request timeout), then {@link finish}.
  *
- * `to` unset means no operator inbox is configured for this -- a no-op, same shape as
- * settings.ts's own `opsEmail: null` case, checked before ever touching the database.
+ * the recipient is the staff-set address, else `fallbackTo` (NOD_BOUNCE_SUMMARY_EMAIL), else
+ * nothing is sent.
  *
  * The window is `(windowStart, dbNow]`, where `windowStart` is the last run's own `dbNow` (not
  * its `cutoff` -- the two can differ by however late this tick ran past 08:00) or, on the very
@@ -212,9 +213,10 @@ export async function runBounceSummaryIfDue(
   db: Db,
   distribution: Pick<DistributionClient, "send" | "bounceStats">,
   timeZone: string,
-  to: string | null,
+  fallbackTo: string | null,
   now?: TestClock,
 ): Promise<{ sent: boolean; lines: number }> {
+  const { address: to } = await resolveBounceSummaryAddress(db, fallbackTo);
   if (!to) return { sent: false, lines: 0 };
 
   const claimed = await claim(db, timeZone, now);
@@ -284,6 +286,8 @@ export function startBounceSummaryLoop(opts: {
   db: Db;
   distribution: Pick<DistributionClient, "send" | "bounceStats">;
   timeZone: string;
+  /** The fallback (NOD_BOUNCE_SUMMARY_EMAIL); a staff-set address on Operations wins
+   * (resolveBounceSummaryAddress, read fresh on every run, never just once at startup). */
   to: string | null;
   intervalMs?: number;
   now?: TestClock;

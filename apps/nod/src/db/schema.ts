@@ -249,6 +249,9 @@ export const nodSettings = pgTable(
     // eventual `finish` is a no-op against the lease it no longer holds.
     bounceSummaryLease: uuid("bounce_summary_lease"),
     bounceSummaryLeaseUntil: timestamp("bounce_summary_lease_until", { withTimezone: true }),
+    // The daily bounce summary's recipient, set by staff on Operations (spec §8). Null = use
+    // NOD_BOUNCE_SUMMARY_EMAIL, the server default.
+    bounceSummaryEmail: text("bounce_summary_email"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],

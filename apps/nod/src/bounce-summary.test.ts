@@ -79,7 +79,7 @@ describe("runBounceSummaryIfDue", () => {
     await tdb.pool.query("TRUNCATE TABLE subscriber_history, deliveries, subscriptions, subscribers CASCADE");
     await tdb.db
       .update(nodSettings)
-      .set({ bounceSummaryAt: null, bounceSummaryCheckedAt: null, bounceSummaryLease: null, bounceSummaryLeaseUntil: null })
+      .set({ bounceSummaryAt: null, bounceSummaryCheckedAt: null, bounceSummaryLease: null, bounceSummaryLeaseUntil: null, bounceSummaryEmail: null })
       .where(eq(nodSettings.id, 1));
   });
 
@@ -456,6 +456,22 @@ describe("runBounceSummaryIfDue", () => {
       logSpy.mockRestore();
       errorSpy.mockRestore();
     }
+  });
+
+  it("sends to the staff-set address ahead of the server default", async () => {
+    await tdb.db.update(nodSettings).set({ bounceSummaryEmail: "summary-staff@example.test" }).where(eq(nodSettings.id, 1));
+    const distribution = stubDistribution();
+    distribution.bounceStats.mockResolvedValue({ unmatched: 1, ignored: 0 });
+    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "server-default@example.test", () => DAY1_0805);
+    expect(result.sent).toBe(true);
+    expect((distribution.send.mock.calls[0]![0] as MessageRequest).recipients).toEqual([{ email: "summary-staff@example.test", substitutions: {} }]);
+  });
+
+  it("a staff-set address sends even with no server default", async () => {
+    await tdb.db.update(nodSettings).set({ bounceSummaryEmail: "summary-staff@example.test" }).where(eq(nodSettings.id, 1));
+    const distribution = stubDistribution();
+    distribution.bounceStats.mockResolvedValue({ unmatched: 1, ignored: 0 });
+    expect((await runBounceSummaryIfDue(tdb.db, distribution, TZ, null, () => DAY1_0805)).sent).toBe(true);
   });
 });
 

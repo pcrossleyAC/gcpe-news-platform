@@ -201,6 +201,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     distribution,
     opsEmail: parsed.OPS_EMAIL ?? null,
     timeZone: tenant.timeZone,
+    bounceSummaryFallback: parsed.BOUNCE_SUMMARY_EMAIL ?? null,
     distributionAppId: parsed.DISTRIBUTION_APP_ID ?? parsed.DISTRIBUTION_CLIENT_ID ?? "nod",
     mediaHub,
     membership:
@@ -209,8 +210,8 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
         : null,
   });
 
-  // Unset means no summary is ever sent (runBounceSummaryIfDue's own early-out).
-  const bounceSummaryEmail = parsed.BOUNCE_SUMMARY_EMAIL ?? null;
+  // The server default; a staff-set address on Operations wins (resolveBounceSummaryAddress).
+  const bounceSummaryFallback = parsed.BOUNCE_SUMMARY_EMAIL ?? null;
 
   // Set by startLoops(); the closers below reference these lazily so they're safe to call even
   // if startLoops() was never invoked.
@@ -234,8 +235,8 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       mediaSync: () => (mediaHub ? runMediaSyncIfDue(db, mediaHub, tenant.timeZone) : Promise.resolve({ ran: false })),
       // The daily bounce summary -- a no-op call every tick until the tenant's wall clock
       // actually reaches BOUNCE_SUMMARY_HOUR for a day not already summarised (or, with no
-      // BOUNCE_SUMMARY_EMAIL configured, always a no-op).
-      bounceSummary: () => runBounceSummaryIfDue(db, distribution, tenant.timeZone, bounceSummaryEmail),
+      // staff-set address and no BOUNCE_SUMMARY_EMAIL fallback configured, always a no-op).
+      bounceSummary: () => runBounceSummaryIfDue(db, distribution, tenant.timeZone, bounceSummaryFallback),
       // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
       // data has ever reached this NoD so it knows whether to ask Core to republish.
       needsReferenceData: () => needsReferenceData(db),
@@ -246,7 +247,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // workers.digest hook above only ever fires once, when a caller asks for it.
       stopDigestLoop = startDigestLoop({ db, timeZone: tenant.timeZone, render });
       if (mediaHub) stopMediaSyncLoop = startMediaSyncLoop({ db, client: mediaHub, timeZone: tenant.timeZone });
-      stopBounceSummaryLoop = startBounceSummaryLoop({ db, distribution, timeZone: tenant.timeZone, to: bounceSummaryEmail });
+      stopBounceSummaryLoop = startBounceSummaryLoop({ db, distribution, timeZone: tenant.timeZone, to: bounceSummaryFallback });
     },
     closeBeforeServer: [],
     closers: [
