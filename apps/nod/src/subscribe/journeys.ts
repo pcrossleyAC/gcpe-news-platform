@@ -2,8 +2,8 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import type { DistributionClient } from "../distribution-client";
-import { subscriberHistory, subscribers, type SubscriberPrefs } from "../db/schema";
-import { lockAddress } from "../locks";
+import { subscriberHistory, subscribers, type SubscriberPrefs, type SubscriberRow } from "../db/schema";
+import { lockAddress, withLockedSubscriber } from "../locks";
 import { optOutMediaMemberships } from "../media-members";
 import type { RenderOptions } from "../render";
 import { replacePublicSubscriptions } from "../subscribers";
@@ -207,23 +207,14 @@ type EmailChangeOutcome = "unclaimed" | "not-active" | "moved" | "moved-unsubscr
 async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<SubscriberInfo | null> {
   if (!link.subscriberId) return null;
   const subscriberId = link.subscriberId;
-  // Read the mover's current address first, unlocked -- purely to know which two addresses need
-  // locking. The FOR UPDATE re-read below (same pattern as media-hub/sync.ts's own address-move
-  // handling) re-checks it's still the mover's address once the locks are actually held.
-  const [pre] = await deps.db.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, subscriberId));
-  if (!pre) return null;
-  const oldAddress = normaliseEmail(pre.email);
-  const addresses = oldAddress === link.email ? [oldAddress] : ([oldAddress, link.email].sort() as [string, string]);
-
-  const outcome = await deps.db.transaction<EmailChangeOutcome>(async (tx) => {
-    // A change of email locks both addresses, in sorted order (global constraints) -- the old
-    // one too, not just the target, or a concurrent writer of the *old* address (a bounce
-    // disabling it, say) can race this move to completion unserialised.
-    for (const addr of addresses) await lockAddress(tx, addr);
+  // A change of email locks both addresses, in sorted order (global constraints) -- the old
+  // one too, not just the target, or a concurrent writer of the *old* address (a bounce
+  // disabling it, say) can race this move to completion unserialised.
+  const outcome = await withLockedSubscriber<EmailChangeOutcome>(deps.db, subscriberId, link.email, async (tx, s) => {
+    // Checked before the link is claimed: a move refused now (the subscriber is disabled, say)
+    // leaves the link usable for when it can go ahead, within its expiry.
+    if (!s || s.status !== "active") return "not-active";
     if (!(await claimLink(tx, link.id))) return "unclaimed";
-
-    const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId)).for("update");
-    if (!s || s.status !== "active" || normaliseEmail(s.email) !== oldAddress) return "not-active";
 
     const taken = await bySubscriberEmail(tx, link.email);
     if (taken && taken.id !== subscriberId) {
@@ -239,7 +230,7 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
         // a disabled subscriber is kept, not purged, and can reactivate themselves by
         // subscribing again (bounces.ts). The mover is unsubscribed instead of displacing it;
         // the row at the target address is left untouched.
-        await endSubscriber(tx, subscriberId);
+        await endLockedSubscriber(tx, s);
         return "moved-unsubscribed";
       }
     }
@@ -260,19 +251,13 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
 
 /** Ends a subscriber (4a) and, in the same transaction, opts them out of every media list
  * (global constraints, "Unsubscribe means everything") -- shared by one-click, token-link and
- * every email kind, since they all route through this one function. Takes the per-address lock
- * and re-reads the row FOR UPDATE itself, rather than trusting a caller to have done it, because
- * one caller (the public `unsubscribe()` token path) otherwise reaches this with no lock at all. */
-async function endSubscriber(tx: DbOrTx, subscriberId: string) {
-  const [pre] = await tx.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, subscriberId));
-  if (!pre) return;
-  const address = normaliseEmail(pre.email);
-  await lockAddress(tx, address);
-  const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId)).for("update");
-  if (!s || s.status === "deleted" || normaliseEmail(s.email) !== address) return;
-  await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, subscriberId));
-  await writeHistory(tx, subscriberId, SELF, "unsubscribed");
-  await optOutMediaMemberships(tx, subscriberId, SELF);
+ * every email kind, since they all route through here. `s` must have been read FOR UPDATE
+ * under its address lock (`withLockedSubscriber`). Already ended is a no-op. */
+async function endLockedSubscriber(tx: DbOrTx, s: SubscriberRow) {
+  if (s.status === "deleted") return;
+  await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, s.id));
+  await writeHistory(tx, s.id, SELF, "unsubscribed");
+  await optOutMediaMemberships(tx, s.id, SELF);
 }
 
 /** Whether `link` currently authorises a manage session — `update`, `unsubscribe` and (for a
@@ -293,14 +278,18 @@ async function isSession(db: DbOrTx, link: LinkRow): Promise<boolean> {
 export async function update(deps: JourneyDeps, token: string, info: SubscriberInfo): Promise<"ok" | "invalid"> {
   const link = await findLink(deps.db, token);
   if (!link || link.expired || !(await isSession(deps.db, link))) return "invalid";
-  const [s] = await deps.db.select().from(subscribers).where(eq(subscribers.id, link.subscriberId!)); // isSession(true) implies non-null
-  if (!s || s.status !== "active") return "invalid";
-  const { email, prefs } = await toPrefs(deps.db, info);
-  await deps.db.transaction(async (tx) => {
+  // Under the address lock, like every other writer of this subscriber's subscriptions: staff
+  // may have deleted or disabled them (or a move may have ended this session) while it waited.
+  const outcome = await withLockedSubscriber(deps.db, link.subscriberId!, null, async (tx, s) => { // isSession(true) implies non-null
+    if (!s || s.status !== "active" || !(await isSession(tx, link))) return null;
+    const { email, prefs } = await toPrefs(tx, info);
     await tx.update(subscribers).set({ asItHappens: prefs.asItHappens, digest: prefs.digest }).where(eq(subscribers.id, s.id));
     await replacePublicSubscriptions(tx, s.id, prefs.listKeys);
     await writeHistory(tx, s.id, SELF, "preferences-updated", prefs.listKeys.join(", "));
+    return { s, email };
   });
+  if (!outcome) return "invalid";
+  const { s, email } = outcome;
   if (email !== normaliseEmail(s.email)) {
     const issued = await issue(deps, "change-email", { email, subscriberId: s.id, pending: null });
     if (issued) await writeHistory(deps.db, s.id, SELF, "email-change-requested");
@@ -333,6 +322,14 @@ export async function checkToken(deps: JourneyDeps, token: string): Promise<bool
   return true;
 }
 
+/** Always answers true (an unknown or spent token reads the same as a good one). A valid
+ * token always ends the subscription, or finds it already ended, before answering: if the
+ * address keeps moving under it, this throws rather than report an unsubscribe it never made.
+ *
+ * A stable `List-Unsubscribe` token from any earlier `unsubscribe_version` of the subscriber
+ * still unsubscribes them: a change of address bumps the version, but the emails already sent
+ * keep their links, and over-honouring an unsubscribe is the safe direction. Nothing else
+ * accepts these tokens at all. */
 export async function unsubscribe(deps: JourneyDeps, token: string): Promise<true> {
   let subscriberId: string | null = null;
   const link = await findLink(deps.db, token);
@@ -341,9 +338,13 @@ export async function unsubscribe(deps: JourneyDeps, token: string): Promise<tru
     const parsed = parseUnsubscribeToken(deps.linkSecret, token);
     if (parsed) {
       const [s] = await deps.db.select().from(subscribers).where(eq(subscribers.id, parsed.subscriberId));
-      if (s && s.unsubscribeVersion === parsed.version) subscriberId = s.id;
+      if (s && parsed.version >= 1 && parsed.version <= s.unsubscribeVersion) subscriberId = s.id;
     }
   }
-  if (subscriberId) await deps.db.transaction((tx) => endSubscriber(tx, subscriberId!));
+  if (subscriberId) {
+    await withLockedSubscriber(deps.db, subscriberId, null, async (tx, s) => {
+      if (s) await endLockedSubscriber(tx, s);
+    });
+  }
   return true;
 }

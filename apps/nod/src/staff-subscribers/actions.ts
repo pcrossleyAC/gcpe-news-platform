@@ -7,7 +7,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
 import { subscribers, subscriptions, type SubscriberRow, type SubscriberStatus } from "../db/schema";
 import { activeListKeys, MEDIA_CATEGORY } from "../lists";
-import { lockAddress } from "../locks";
+import { withLockedSubscriber as lockedSubscriber } from "../locks";
 import { hasMediaMemberships } from "../media-members";
 import { replacePublicSubscriptions } from "../subscribers";
 import { writeHistory } from "../subscribe/history";
@@ -49,38 +49,12 @@ export interface BulkResult { changed: number; skipped: { id: string; reason: Bu
 
 const isMediaKey = (k: string) => k.startsWith(`${MEDIA_CATEGORY}:`);
 
-/** The row's address changed between the unlocked read and the lock being granted. */
-class AddressMovedError extends Error {
-  constructor() { super("subscriber address changed while waiting for its lock"); }
-}
-const LOCK_ATTEMPTS = 3;
-
-/**
- * Runs `work` in a transaction holding the subscriber's address lock (plus `alsoLock`, for a
- * change of email), all taken in sorted order before the row is read FOR UPDATE — the same
- * discipline as the public journeys, so two writers can never wait on each other's locks.
- * The address to lock is learned from an unlocked read; if it has moved by the time the lock
- * is held, the transaction is rolled back and retried against the new address rather than
- * taking a second lock out of order.
- */
-async function withLockedSubscriber<T>(db: Db, id: string, alsoLock: string | null, work: (tx: Tx, s: SubscriberRow) => Promise<T>): Promise<T> {
-  for (let attempt = 1; ; attempt++) {
-    const [before] = await db.select({ email: subscribers.email }).from(subscribers).where(eq(subscribers.id, id));
-    if (!before) throw new SubscriberNotFoundError();
-    const address = normaliseEmail(before.email);
-    try {
-      return await db.transaction(async (tx) => {
-        for (const a of [...new Set([address, ...(alsoLock ? [alsoLock] : [])])].sort()) await lockAddress(tx, a);
-        const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, id)).for("update");
-        if (!s) throw new SubscriberNotFoundError();
-        if (normaliseEmail(s.email) !== address) throw new AddressMovedError();
-        return work(tx, s);
-      });
-    } catch (e) {
-      if (e instanceof AddressMovedError && attempt < LOCK_ATTEMPTS) continue;
-      throw e;
-    }
-  }
+/** The shared lock discipline (locks.ts), with a missing subscriber reported as not found. */
+function withLockedSubscriber<T>(db: Db, id: string, alsoLock: string | null, work: (tx: Tx, s: SubscriberRow) => Promise<T>): Promise<T> {
+  return lockedSubscriber(db, id, alsoLock, async (tx, s) => {
+    if (!s) throw new SubscriberNotFoundError();
+    return work(tx, s);
+  });
 }
 
 /** `*`, an active list in an enabled public category, or a public key this subscriber already

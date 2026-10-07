@@ -141,6 +141,17 @@ describe("staff subscriber routes — writes", () => {
     expect((await send("post", "/api/subscribers", admin, { email: "a@example.test", lists: "all" })).status).toBe(201);
   });
 
+  it("Viewer can't change, delete or bulk-act on a subscriber either", async () => {
+    const { body: { id } } = await send("post", "/api/subscribers", editor, { email: "viewed@example.test", lists: "all" });
+    expect((await send("put", `/api/subscribers/${id}/preferences`, viewer, { asItHappens: true, digest: false, allNews: true, listKeys: [] })).status).toBe(403);
+    expect((await send("post", `/api/subscribers/${id}/status`, viewer, { status: "disabled" })).status).toBe(403);
+    expect((await send("post", `/api/subscribers/${id}/email`, viewer, { email: "elsewhere@example.test" })).status).toBe(403);
+    expect((await send("delete", `/api/subscribers/${id}`, viewer)).status).toBe(403);
+    expect((await send("post", "/api/subscribers/bulk", viewer, { action: "delete", ids: [id] })).status).toBe(403);
+    const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, id));
+    expect(row).toMatchObject({ email: "viewed@example.test", status: "active" });
+  });
+
   it("adding an existing address answers 409 with that subscriber's id; neither timing is 400", async () => {
     const first = await send("post", "/api/subscribers", editor, { email: "dupe@example.test", lists: "all" });
     const dup = await send("post", "/api/subscribers", editor, { email: "DUPE@example.test", lists: "all" });

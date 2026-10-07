@@ -8,7 +8,8 @@ export const STATUS_FILTERS = ["all", ...SUBSCRIBER_STATUSES] as const;
 export type StatusFilter = (typeof STATUS_FILTERS)[number];
 /** Fixed, like legacy's paginator: staff page through results, they don't choose a size. */
 export const PAGE_SIZE = 50;
-/** A subscriber with more history than this is vanishingly rare; the screen shows the newest. */
+/** A subscriber with more history than this is vanishingly rare; the screen shows the newest.
+ * staff-web's HistoryScreen.tsx keeps a copy for its "most recent N" notice: change both. */
 export const HISTORY_LIMIT = 500;
 
 export interface SubscriberSummary {
@@ -30,6 +31,9 @@ export interface SubscriberDetail extends SubscriberSummary {
   /** Public list keys (`<category>:<key>`), never `*` (see allNews) or a media key. */
   listKeys: string[];
   mediaLists: { listKey: string; name: string }[];
+  /** Media Hub manages this address (sourced from it, or linked to a contact): the nightly sync
+   * rewrites it, so staff change it in Media Hub, not here (actions.ts's MediaHubManagedError). */
+  mediaHubLinked: boolean;
   /** Why a `disabled` subscriber is disabled — the latest of bounce-disabled / staff-deactivated in their history; null when not disabled or unexplained (e.g. imported that way). */
   disabledReason: "bounces" | "staff" | null;
   /** Hard-bounced emails counted toward the threshold right now (bounces.ts's own count). */
@@ -106,6 +110,7 @@ export async function getSubscriberDetail(db: DbOrTx, id: string): Promise<Subsc
     allNews: subs.some((r) => r.listKey === "*"),
     listKeys: subs.filter((r) => r.listKey !== "*" && !isMedia(r.listKey)).map((r) => r.listKey),
     mediaLists: subs.filter((r) => isMedia(r.listKey)).map((r) => ({ listKey: r.listKey, name: r.name ?? r.listKey })),
+    mediaHubLinked: s.mediaHubContactId !== null || s.source === "media-hub",
     disabledReason,
     bouncedEmails: await countBouncedEmails(db, id),
     bounceWindowDays: THRESHOLD_WINDOW_DAYS,

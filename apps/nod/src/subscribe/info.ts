@@ -17,6 +17,10 @@ export const emailAddressSchema = z.string().email();
  * journey and for staff, so both accept exactly the same addresses. */
 export const subscriberEmailSchema = z.string().trim().max(150).email().toLowerCase();
 
+/** The same check without the lowercasing, for a lookup that has to answer in the caller's
+ * own casing (the membership endpoint's legacy echo of `EmailAddress`). */
+export const lookupEmailSchema = z.string().trim().max(150).email();
+
 /** Legacy SubscriberInfo (docs/contracts/news-api-v1.swagger.json). Unknown fields ignored;
  * `isAdminRegistration` and `notifyIfNewCategories` are accepted but never acted on (C57, C60). */
 export const subscriberInfoSchema = z.object({

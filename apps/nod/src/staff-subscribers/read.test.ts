@@ -79,6 +79,15 @@ describe("staff subscriber reads", () => {
     expect(await getSubscriberDetail(tdb.db, "00000000-0000-0000-0000-000000000000")).toBeNull();
   });
 
+  it("detail says whether Media Hub manages the address: sourced from it, or linked to a contact", async () => {
+    const own = await add("own@example.test");
+    const sourced = await add("sourced@example.test", { source: "media-hub" });
+    const linked = await add("linked@example.test", { mediaHubContactId: 1 });
+    expect((await getSubscriberDetail(tdb.db, own.id))!.mediaHubLinked).toBe(false);
+    expect((await getSubscriberDetail(tdb.db, sourced.id))!.mediaHubLinked).toBe(true);
+    expect((await getSubscriberDetail(tdb.db, linked.id))!.mediaHubLinked).toBe(true);
+  });
+
   it("history is newest first; an unknown subscriber is null", async () => {
     const s = await add("h@example.test");
     await tdb.db.insert(subscriberHistory).values([

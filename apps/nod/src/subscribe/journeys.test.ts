@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
-import type { TestDatabase } from "@gcpe/db-kit";
+import type { Db, TestDatabase, Tx } from "@gcpe/db-kit";
 import { countBouncedEmails } from "../bounces";
 import { deliveries, subscriberHistory, subscribers, subscriptions } from "../db/schema";
-import { createNodTestDb } from "../../test/helpers";
+import { createNodTestDb, waitForLockWaiter } from "../../test/helpers";
 import { lockAddress } from "../locks";
+import { changeEmail, setStatus, updatePreferences } from "../staff-subscribers/actions";
 import { addMediaMember, listMediaMembers, OptedOutError } from "../media-members";
 import { infoFor, subscriberInfoSchema, PreferencesError } from "./info";
 import { checkToken, confirm, requestManageLink, subscribe, unsubscribe, update, type JourneyDeps } from "./journeys";
@@ -13,6 +14,23 @@ import * as linksModule from "./links";
 import { unsubscribeToken } from "./tokens";
 
 const SECRET = "k".repeat(32);
+
+/** Opens a transaction that runs `first`, then holds everything it took until `release()`,
+ * then runs `then` and commits — so a test can queue a call behind its locks and change the
+ * row underneath it. */
+function heldTransaction(db: Db, first: (tx: Tx) => Promise<void>, then: (tx: Tx) => Promise<void>) {
+  let release!: () => void;
+  const gate = new Promise<void>((r) => (release = r));
+  let held!: () => void;
+  const ready = new Promise<void>((r) => (held = r));
+  const done = db.transaction(async (tx) => {
+    await first(tx);
+    held();
+    await gate;
+    await then(tx);
+  });
+  return { ready, release, done };
+}
 
 describe("subscriber journeys", () => {
   let tdb: TestDatabase;
@@ -176,11 +194,12 @@ describe("subscriber journeys", () => {
     expect(rows[0]).toMatchObject({ email: "b@example.test", status: "active" });
   });
 
-  it("unsubscribe by link or stable token is idempotent; an old-version token does nothing", async () => {
+  it("unsubscribe by link or stable token is idempotent; a token for a version never issued does nothing", async () => {
     await subscribe(deps, info());
     await confirm(deps, tokenFrom());
     const [s] = await tdb.db.select().from(subscribers);
     expect(await unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 0))).toBe(true);
+    expect(await unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 2))).toBe(true);
     expect((await tdb.db.select().from(subscribers))[0]!.status).toBe("active");
     expect(await unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 1))).toBe(true);
     expect(await unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 1))).toBe(true);
@@ -573,5 +592,125 @@ describe("subscriber journeys", () => {
     expect(await confirm(deps, second)).toBeNull();
     expect(await checkToken(deps, second)).toBe(false);
     expect(await checkToken(deps, first)).toBe(true);
+  });
+  it("an unsubscribe link from an email sent before a staff change of address still unsubscribes", async () => {
+    await subscribe(deps, info({ emailAddress: "old@example.test" }));
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    const earlier = unsubscribeToken(SECRET, s!.id, s!.unsubscribeVersion);
+    await changeEmail(tdb.db, s!.id, "moved@example.test", "Jamie");
+    expect(await unsubscribe(deps, earlier)).toBe(true);
+    const [after] = await tdb.db.select().from(subscribers);
+    expect(after).toMatchObject({ email: "moved@example.test", status: "deleted", unsubscribeVersion: 2 });
+  });
+
+  it("an unsubscribe link from before a public change of address still unsubscribes", async () => {
+    await subscribe(deps, info({ emailAddress: "old@example.test" }));
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    const earlier = unsubscribeToken(SECRET, s!.id, s!.unsubscribeVersion);
+    await requestManageLink(deps, "old@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    await update(deps, tokenFrom(), info({ emailAddress: "moved@example.test" }));
+    await confirm(deps, tokenFrom());
+    expect(await unsubscribe(deps, earlier)).toBe(true);
+    expect((await tdb.db.select().from(subscribers))[0]).toMatchObject({ email: "moved@example.test", status: "deleted" });
+  });
+
+  it("an earlier-version unsubscribe token authorises nothing except unsubscribe", async () => {
+    await subscribe(deps, info({ emailAddress: "old@example.test" }));
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    const earlier = unsubscribeToken(SECRET, s!.id, s!.unsubscribeVersion);
+    await changeEmail(tdb.db, s!.id, "moved@example.test", "Jamie");
+    expect(await update(deps, earlier, info({ emailAddress: "moved@example.test", isDailyDigest: true }))).toBe("invalid");
+    expect(await checkToken(deps, earlier)).toBe(false);
+    expect(await confirm(deps, earlier)).toBeNull();
+    expect((await tdb.db.select().from(subscribers))[0]).toMatchObject({ status: "active", digest: false });
+  });
+
+  it("an unsubscribe still ends the subscriber when their address moves while it waits for the lock", async () => {
+    await subscribe(deps, info({ emailAddress: "old@example.test" }));
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    const move = heldTransaction(
+      tdb.db,
+      (tx) => lockAddress(tx, "old@example.test"),
+      async (tx) => {
+        await tx.update(subscribers).set({ email: "new@example.test", unsubscribeVersion: sql`${subscribers.unsubscribeVersion} + 1` }).where(eq(subscribers.id, s!.id));
+      },
+    );
+    await move.ready;
+    const unsubscribed = unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 1));
+    await waitForLockWaiter(tdb.db);
+    move.release();
+    await move.done;
+    expect(await unsubscribed).toBe(true);
+    const [after] = await tdb.db.select().from(subscribers);
+    expect(after).toMatchObject({ email: "new@example.test", status: "deleted" });
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, s!.id));
+    expect(history.filter((h) => h.action === "unsubscribed")).toHaveLength(1);
+  });
+
+  it("a change-email link refused while the subscriber is disabled still works once they're active again", async () => {
+    await subscribe(deps, info({ emailAddress: "old@example.test" }));
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await requestManageLink(deps, "old@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    await update(deps, tokenFrom(), info({ emailAddress: "new@example.test" }));
+    const changeToken = tokenFrom();
+    await setStatus(tdb.db, s!.id, "disabled", "Jamie");
+    expect(await confirm(deps, changeToken)).toBeNull();
+    await setStatus(tdb.db, s!.id, "active", "Jamie");
+    expect(await confirm(deps, changeToken)).toMatchObject({ emailAddress: "new@example.test" });
+    expect((await tdb.db.select().from(subscribers))[0]).toMatchObject({ email: "new@example.test", status: "active" });
+  });
+
+  it("a public preferences update and a staff one at the same time both apply, one after the other", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await requestManageLink(deps, "pat@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    const manage = tokenFrom();
+    for (let i = 0; i < 10; i++) {
+      const results = await Promise.allSettled([
+        update(deps, manage, info({ subscribedCategories: { ministries: ["health", "agri"] } })),
+        updatePreferences(tdb.db, s!.id, { asItHappens: true, digest: false, allNews: false, listKeys: ["ministries:agri", "ministries:health"] }, "Jamie"),
+      ]);
+      expect(results.map((r) => r.status)).toEqual(["fulfilled", "fulfilled"]);
+    }
+    const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, s!.id));
+    expect(subs.map((r) => r.listKey).sort()).toEqual(["ministries:agri", "ministries:health"]);
+  });
+
+  it("a public preferences update queued behind a staff delete answers invalid and changes nothing", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await requestManageLink(deps, "pat@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    const manage = tokenFrom();
+    const staffDelete = heldTransaction(
+      tdb.db,
+      async (tx) => {
+        await lockAddress(tx, "pat@example.test");
+        await tx.select().from(subscribers).where(eq(subscribers.id, s!.id)).for("update");
+      },
+      async (tx) => {
+        await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, s!.id));
+      },
+    );
+    await staffDelete.ready;
+    const updated = update(deps, manage, info({ subscribedCategories: { ministries: ["agri"] }, isDailyDigest: true }));
+    await waitForLockWaiter(tdb.db);
+    staffDelete.release();
+    await staffDelete.done;
+    expect(await updated).toBe("invalid");
+    const [after] = await tdb.db.select().from(subscribers);
+    expect(after).toMatchObject({ status: "deleted", digest: false });
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, s!.id));
+    expect(history.map((h) => h.action)).not.toContain("preferences-updated");
   });
 });

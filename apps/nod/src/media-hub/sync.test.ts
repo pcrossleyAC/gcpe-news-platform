@@ -10,6 +10,7 @@ import { dailyCutoff } from "../digest";
 import { nodSettings, subscriberHistory, subscribers, subscriptions } from "../db/schema";
 import { addMediaMember } from "../media-members";
 import { setPaused, type SetPausedDeps } from "../settings";
+import { createLink, findLink } from "../subscribe/links";
 import type { DistributionClient } from "../distribution-client";
 import { MediaHubError, mediaHubClient, type MediaHubClient } from "./client";
 import type { MediaHubChangesPage, MediaHubContact } from "./contract";
@@ -133,6 +134,18 @@ describe("runMediaSync", () => {
     const changed = history.find((h) => h.action === "media-hub-email-changed")!;
     expect(changed.detail).toBe(ref);
     expect(changed.detail).not.toContain("@");
+  });
+
+  it("a chosen email change ends the subscriber's outstanding links, which went to the old address", async () => {
+    const { client, controls } = await startFake();
+    const { contact, ref, address } = liveWorkplaceContact(controls);
+    const { subscriberId } = await addMediaMember(tdb.db, "press", { email: address, source: "media-hub", mediaHubContactId: contact.id, mediaHubEmailRef: ref }, "staff:jamie");
+    const { token } = await createLink(tdb.db, { purpose: "manage", email: address, subscriberId, pending: null });
+    expect((await findLink(tdb.db, token))!.expired).toBe(false);
+
+    controls.changeEmail(contact.id, ref, "moved@newsroom.example.test");
+    expect(expectCounts(expectRan(await runMediaSync(tdb.db, client)).result).updated).toBe(1);
+    expect((await findLink(tdb.db, token))!.expired).toBe(true);
   });
 
   it("a chosen email change that collides with another subscriber flags email-taken and changes nothing", async () => {
@@ -523,6 +536,21 @@ describe("resolveMediaMember", () => {
 
     const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
     expect(after).toMatchObject({ email: secondRef.address.toLowerCase(), mediaHubEmailRef: secondRef.ref, needsAttention: null });
+  });
+
+  it("re-pointing a member to a new address ends their outstanding links, which went to the old address", async () => {
+    const { client, controls } = await startFake();
+    const live = controls.contacts().find((c) => !c.deletedAt && c.emails.length > 1)!;
+    const [firstRef, secondRef] = [live.emails[0]!, live.emails[1]!];
+    const { subscriberId } = await addMediaMember(
+      tdb.db,
+      "press",
+      { email: firstRef.address, source: "media-hub", mediaHubContactId: live.id, mediaHubEmailRef: firstRef.ref },
+      "staff:jamie",
+    );
+    const { token } = await createLink(tdb.db, { purpose: "manage", email: firstRef.address, subscriberId, pending: null });
+    expect(await resolveMediaMember(tdb.db, client, subscriberId, secondRef.ref, "staff:jamie")).toBe("resolved");
+    expect((await findLink(tdb.db, token))!.expired).toBe(true);
   });
 
   it("returns ref-not-found for an unknown ref, and media-hub-unavailable when no client is configured", async () => {

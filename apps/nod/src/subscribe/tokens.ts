@@ -8,7 +8,9 @@ const mac = (secret: string, id: string, version: number) =>
   createHmac("sha256", secret).update(`nod-unsubscribe:${id}:${version}`).digest("base64url");
 
 /** Stable per-subscriber unsubscribe token for `List-Unsubscribe` (C48): `<id>.<version>.<mac>`.
- * Derived, never stored; bumping `subscribers.unsubscribe_version` invalidates every earlier one. */
+ * Derived, never stored. A change of address bumps `subscribers.unsubscribe_version`, so mail sent
+ * from then on carries a new token; `unsubscribe()` still honours the earlier ones, and nothing
+ * else accepts any of them. */
 export function unsubscribeToken(secret: string, subscriberId: string, version: number): string {
   return `${subscriberId}.${version}.${mac(secret, subscriberId, version)}`;
 }
