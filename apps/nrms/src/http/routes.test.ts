@@ -411,6 +411,23 @@ describe("NRMS HTTP API", () => {
     expect(images.body[0]).not.toHaveProperty("bytes");
   });
 
+  it("a retired media list is still listed, marked inactive, and a new release can't pick it (422)", async () => {
+    await tdb.pool.query("INSERT INTO media_lists (key, display_name, sort_order, is_active) VALUES ('retired-desk', 'Retired desk', 50, false)");
+    try {
+      const lists = await get("/api/media-lists");
+      expect(lists.status).toBe(200);
+      const retired = lists.body.find((l: { key: string }) => l.key === "retired-desk");
+      expect(retired).toEqual({ key: "retired-desk", displayName: "Retired desk", sortOrder: 50, isActive: false });
+      for (const l of lists.body) expect(Object.keys(l).sort()).toEqual(["displayName", "isActive", "key", "sortOrder"]);
+
+      const refused = await post("/api/releases", editorCookie, { ...sampleCreate, mediaListKeys: ["retired-desk"] });
+      expect(refused.status).toBe(422);
+      expect(refused.body.error).toBe("The media distribution list Retired desk has been retired.");
+    } finally {
+      await tdb.pool.query("DELETE FROM media_lists WHERE key = 'retired-desk'");
+    }
+  });
+
   it("text and PDF versions: a viewer reads both; the PDF carries the page image; a malformed id is a 404", async () => {
     const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64");
     const img = await tdb.pool.query<{ id: string }>(

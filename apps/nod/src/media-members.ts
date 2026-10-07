@@ -18,9 +18,8 @@ export class MediaListNotFoundError extends Error {
   }
 }
 
-/** → HTTP 409 `{ error: "opted-out", at }`: the address left this subscriber's lists by
- * unsubscribing more recently than it was last added to a media list, and the caller didn't
- * pass `confirmOptOut`. */
+/** → HTTP 409 `{ error: "opted-out", at }`: the address left this media list by its own choice
+ * more recently than staff last added it, and the caller didn't pass `confirmOptOut`. */
 export class OptedOutError extends Error {
   constructor(public readonly at: Date) {
     super("opted-out");
@@ -68,13 +67,41 @@ async function hasAnySubscriptions(tx: DbOrTx, subscriberId: string): Promise<bo
   return rows.length > 0;
 }
 
-/** Latest `subscriber_history` row's `at` for `action` on this subscriber, or null. */
-async function latestHistoryAt(tx: DbOrTx, subscriberId: string, action: string): Promise<Date | null> {
+/** Latest `subscriber_history` row's `at` for `action` on this subscriber (and, when given,
+ * with that `detail`), or null. */
+async function latestHistoryAt(tx: DbOrTx, subscriberId: string, action: string, detail?: string): Promise<Date | null> {
   const r = await tx.execute<{ at: string | Date }>(sql`
-    SELECT at FROM subscriber_history WHERE subscriber_id = ${subscriberId} AND action = ${action}
-    ORDER BY at DESC LIMIT 1`);
+    SELECT at FROM subscriber_history
+     WHERE subscriber_id = ${subscriberId} AND action = ${action} ${detail === undefined ? sql`` : sql`AND detail = ${detail}`}
+     ORDER BY at DESC LIMIT 1`);
   const at = r.rows[0]?.at;
   return at === undefined ? null : new Date(at);
+}
+
+const newerOrTie = (a: Date | null, b: Date | null): boolean => a !== null && (b === null || a >= b);
+
+/**
+ * When this subscriber last left media list `key` by their own choice, if that's more recent
+ * than staff last added them to it -- else null. Checked whatever their current status: someone
+ * who unsubscribed and has since re-subscribed to public news has not thereby asked to be back
+ * on a media list. Leaving counts if it's a `media-list-opted-out` for this key, or an
+ * `unsubscribed` that came after their last add to it with no staff removal in between (so the
+ * membership was still live when they unsubscribed). A deleted subscriber also counts as opted
+ * out of every list after an `unsubscribed` newer than their last add to any media list. Ties
+ * fail closed.
+ */
+async function optedOutOf(tx: DbOrTx, subscriberId: string, key: string, deleted: boolean): Promise<Date | null> {
+  const addedToKey = await latestHistoryAt(tx, subscriberId, "media-list-added", key);
+  const optedOutOfKey = await latestHistoryAt(tx, subscriberId, "media-list-opted-out", key);
+  if (newerOrTie(optedOutOfKey, addedToKey)) return optedOutOfKey;
+
+  const unsubscribedAt = await latestHistoryAt(tx, subscriberId, "unsubscribed");
+  if (addedToKey !== null && newerOrTie(unsubscribedAt, addedToKey)) {
+    const removedFromKey = await latestHistoryAt(tx, subscriberId, "media-list-removed", key);
+    if (removedFromKey === null || removedFromKey < addedToKey) return unsubscribedAt;
+  }
+  if (deleted && newerOrTie(unsubscribedAt, await latestHistoryAt(tx, subscriberId, "media-list-added"))) return unsubscribedAt;
+  return null;
 }
 
 /** True if `subscriberId` currently has at least one subscription in the media category. */
@@ -105,16 +132,15 @@ export async function optOutMediaMemberships(tx: DbOrTx, subscriberId: string, a
  * public subscriptions (C51 -- staff/media-list additions never send a verification email).
  * Takes the per-address advisory lock (same keyspace as 4a's journeys) before reading the
  * subscriber row `FOR UPDATE`, so a concurrent add of the same new address never double-inserts
- * and an add can never race a concurrent unsubscribe into reading a stale, not-yet-opted-out row
- * (fix round 1, I2).
+ * and an add can never race a concurrent unsubscribe into reading a stale, not-yet-opted-out row.
  *
- * A found subscriber that's `deleted` and opted out at or after their last `media-list-added`
- * needs `confirmOptOut: true`, else throws {@link OptedOutError} (a timestamp tie fails closed).
+ * A found subscriber who left this list by their own choice since staff last added them to it
+ * ({@link optedOutOf} -- whatever their status now, so a public re-subscribe doesn't count as
+ * consent) needs `confirmOptOut: true`, else throws {@link OptedOutError}.
  * Reactivating a `deleted` subscriber -- confirmed opt-out or not (they may simply never have
  * resubscribed publicly since) -- must not restart their old public mail: their timing flags are
- * reset to off and their non-media subscriptions are dropped (controller ruling, fix round 1,
- * I3). From `pending`/`disabled`, public state is left untouched, as before. `source` is never
- * changed on an existing row.
+ * reset to off and their non-media subscriptions are dropped. From `pending`/`disabled`, public
+ * state is left untouched. `source` is never changed on an existing row.
  */
 export async function addMediaMember(db: Db, listKey: string, input: AddMediaMemberInput, actor: string): Promise<{ subscriberId: string; created: boolean }> {
   const key = mediaListKey(listKey);
@@ -129,11 +155,9 @@ export async function addMediaMember(db: Db, listKey: string, input: AddMediaMem
 
     if (existing) {
       const wasDeleted = existing.status === "deleted";
-      if (wasDeleted) {
-        const unsubscribedAt = await latestHistoryAt(tx, existing.id, "unsubscribed");
-        const addedAt = await latestHistoryAt(tx, existing.id, "media-list-added");
-        const optedOut = unsubscribedAt !== null && (addedAt === null || unsubscribedAt >= addedAt);
-        if (optedOut && !input.confirmOptOut) throw new OptedOutError(unsubscribedAt!);
+      if (!input.confirmOptOut) {
+        const optedOutAt = await optedOutOf(tx, existing.id, key, wasDeleted);
+        if (optedOutAt) throw new OptedOutError(optedOutAt);
       }
       subscriberId = existing.id;
       const fields: Partial<typeof subscribers.$inferInsert> = { endedAt: null };

@@ -8,7 +8,7 @@ import { optOutMediaMemberships } from "../media-members";
 import type { RenderOptions } from "../render";
 import { replacePublicSubscriptions } from "../subscribers";
 import { writeHistory } from "./history";
-import { infoFor, normaliseEmail, toPrefs, type SubscriberInfo } from "./info";
+import { heldUnofferedKeys, infoFor, normaliseEmail, toPrefs, type SubscriberInfo } from "./info";
 import { claimLink, createLink, expireSessionLinks, findLink, linksSentLastHour, MAX_EMAILS_PER_HOUR, type LinkRow } from "./links";
 import { linkUrl, sendSystemEmail, type SystemEmailKind } from "./emails";
 import { parseUnsubscribeToken } from "./tokens";
@@ -284,7 +284,7 @@ export async function update(deps: JourneyDeps, token: string, info: SubscriberI
   const outcome = await withLockedSubscriber(deps.db, link.subscriberId!, null, async (tx, s) => { // isSession(true) implies non-null
     const current = await findLink(tx, token);
     if (!s || s.status !== "active" || !current || current.expired || !(await isSession(tx, current))) return null;
-    const { email, prefs } = await toPrefs(tx, info);
+    const { email, prefs } = await toPrefs(tx, info, await heldUnofferedKeys(tx, s.id));
     await tx.update(subscribers).set({ asItHappens: prefs.asItHappens, digest: prefs.digest }).where(eq(subscribers.id, s.id));
     await replacePublicSubscriptions(tx, s.id, prefs.listKeys);
     await writeHistory(tx, s.id, SELF, "preferences-updated", prefs.listKeys.join(", "));

@@ -95,4 +95,22 @@ describe("release editing service — further rules", () => {
     expect(re.publishAt).toBe("2030-01-01T00:00:00.000Z");
     expect(await deleteRelease(db(), v.id, re.version, editor)).toBe("hidden");
   });
+  it("a retired media list can't be newly put on a release, but one already on it stays", async () => {
+    await tdb.db.execute(sql`INSERT INTO media_lists (key, display_name, sort_order, is_active) VALUES ('old-desk', 'Old desk', 90, true) ON CONFLICT (key) DO UPDATE SET is_active = true`);
+    const retire = () => tdb.db.execute(sql`UPDATE media_lists SET is_active = false WHERE key = 'old-desk'`);
+    const kept = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional", "old-desk"] }, editor);
+    const fresh = await createRelease(db(), { ...sampleCreate, mediaListKeys: ["regional"] }, editor);
+    await retire();
+
+    const refused = new ReleaseRuleError(["The media distribution list Old desk has been retired."]);
+    await expect(createRelease(db(), { ...sampleCreate, mediaListKeys: ["old-desk"] }, editor)).rejects.toEqual(refused);
+    await expect(saveSettings(db(), fresh.id, { ...settings, version: fresh.version, mediaListKeys: ["regional", "old-desk"] }, editor, deps)).rejects.toEqual(refused);
+
+    const resaved = await saveSettings(db(), kept.id, { ...settings, version: kept.version, activityId: 3, mediaListKeys: ["regional", "old-desk"] }, editor, deps);
+    expect(resaved).toMatchObject({ activityId: 3, mediaListKeys: expect.arrayContaining(["regional", "old-desk"]) });
+    // Dropping it is fine too; once dropped, it can't come back.
+    const dropped = await saveSettings(db(), kept.id, { ...settings, version: resaved.version, mediaListKeys: ["regional"] }, editor, deps);
+    expect(dropped.mediaListKeys).toEqual(["regional"]);
+    await expect(saveSettings(db(), kept.id, { ...settings, version: dropped.version, mediaListKeys: ["regional", "old-desk"] }, editor, deps)).rejects.toEqual(refused);
+  });
 });

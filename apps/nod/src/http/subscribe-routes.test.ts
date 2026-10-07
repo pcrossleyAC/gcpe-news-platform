@@ -83,6 +83,25 @@ describe("NoD Subscribe API HTTP routes", () => {
     expect((await request(app).get(`/api/Subscribe/UnsubscribeSubscriber/${token}`).set(auth)).body).toBe(true);
   });
 
+  it("Update keeps a held list that's no longer offered, even when it was the subscriber's only one", async () => {
+    const auth = { authorization: `Bearer ${svc}` };
+    await request(app).post("/api/Subscribe/CreateNewsOnDemandEmailSubscriptionWithPreferences").set(auth)
+      .send({ emailAddress: "held@example.test", subscribedCategories: { ministries: ["health"] }, isAllNews: false, isAsItHappens: true, isDailyDigest: false });
+    const token = tokenFrom();
+    await request(app).get(`/api/Subscribe/ConfirmUpdateCreateSubscription/${token}`).set(auth);
+    await tdb.db.execute(sql`UPDATE lists SET enabled = false WHERE list_key = 'ministries:health'`);
+    try {
+      const updated = await request(app).post(`/api/Subscribe/UpdateNewsOnDemandEmailSubscriptionWithPreferences/${token}`).set(auth)
+        .send({ emailAddress: "held@example.test", subscribedCategories: {}, isAllNews: false, isAsItHappens: false, isDailyDigest: true });
+      expect(updated.status).toBe(204);
+      const { rows } = await tdb.db.execute<{ list_key: string; digest: boolean }>(sql`
+        SELECT x.list_key, s.digest FROM subscriptions x JOIN subscribers s ON s.id = x.subscriber_id WHERE s.email = 'held@example.test'`);
+      expect(rows).toEqual([{ list_key: "ministries:health", digest: true }]);
+    } finally {
+      await tdb.db.execute(sql`UPDATE lists SET enabled = true WHERE list_key = 'ministries:health'`);
+    }
+  });
+
   it("answers Manage identically for known, unknown and malformed addresses", async () => {
     const auth = { authorization: `Bearer ${svc}` };
     const a = await request(app).get("/api/Subscribe/ManageNewsOnDemandEmailSubscription/web@example.test").set(auth);

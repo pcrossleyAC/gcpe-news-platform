@@ -57,7 +57,7 @@ describe("subscriber journeys", () => {
   afterAll(async () => tdb.drop());
   beforeEach(async () => {
     sent.length = 0;
-    await tdb.db.execute(sql`DELETE FROM subscriber_links; DELETE FROM subscribers;`);
+    await tdb.db.execute(sql`DELETE FROM subscriber_links; DELETE FROM subscribers; UPDATE lists SET enabled = true; UPDATE list_categories SET enabled = true;`);
   });
 
   it("subscribe → verify email → confirm activates with the chosen lists and timing", async () => {
@@ -122,6 +122,36 @@ describe("subscriber journeys", () => {
     const [s] = await tdb.db.select().from(subscribers);
     expect(s).toMatchObject({ asItHappens: false, digest: true });
     expect((await tdb.db.select().from(subscriptions)).map((r) => r.listKey)).toEqual(["ministries:agri"]);
+  });
+
+  it("a public save keeps a held list staff have since switched off, though the page no longer offers it", async () => {
+    await subscribe(deps, info({ subscribedCategories: { ministries: ["health", "agri"] } }));
+    await confirm(deps, tokenFrom());
+    await tdb.db.execute(sql`UPDATE lists SET enabled = false WHERE list_key = 'ministries:health'`);
+    await requestManageLink(deps, "pat@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+
+    // The manage page has no checkbox for Health any more, so it never sends it back.
+    expect(await update(deps, tokenFrom(), info({ subscribedCategories: { ministries: ["agri"] }, isDailyDigest: true }))).toBe("ok");
+    expect((await tdb.db.select().from(subscriptions)).map((r) => r.listKey).sort()).toEqual(["ministries:agri", "ministries:health"]);
+
+    // An offered list the subscriber unticks still goes.
+    await tdb.db.execute(sql`UPDATE lists SET enabled = true WHERE list_key = 'ministries:health'`);
+    expect(await update(deps, tokenFrom(), info({ subscribedCategories: { ministries: ["agri"] } }))).toBe("ok");
+    expect((await tdb.db.select().from(subscriptions)).map((r) => r.listKey)).toEqual(["ministries:agri"]);
+  });
+
+  it("a subscriber whose every held list is switched off can still change their timing", async () => {
+    await subscribe(deps, info({ subscribedCategories: { ministries: ["health"] } }));
+    await confirm(deps, tokenFrom());
+    await tdb.db.execute(sql`UPDATE list_categories SET enabled = false WHERE key = 'ministries'`);
+    await requestManageLink(deps, "pat@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+
+    expect(await update(deps, tokenFrom(), info({ subscribedCategories: {}, isAsItHappens: false, isDailyDigest: true }))).toBe("ok");
+    const [s] = await tdb.db.select().from(subscribers);
+    expect(s).toMatchObject({ asItHappens: false, digest: true });
+    expect((await tdb.db.select().from(subscriptions)).map((r) => r.listKey)).toEqual(["ministries:health"]);
   });
 
   it("changing email verifies the new address before switching (C49)", async () => {
@@ -414,6 +444,45 @@ describe("subscriber journeys", () => {
     const reinstated = await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media", confirmOptOut: true }, "staff:jamie");
     expect(reinstated.subscriberId).toBe(s!.id);
     expect(await listMediaMembers(tdb.db, "budget")).toMatchObject([{ subscriberId: s!.id }]);
+  });
+
+  it("re-adding a media member who unsubscribed and then re-subscribed publicly still asks first", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie");
+    await unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 1));
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [back] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, s!.id));
+    expect(back).toMatchObject({ status: "active" });
+
+    const err = await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie").catch((e) => e);
+    expect(err).toBeInstanceOf(OptedOutError);
+    expect(await listMediaMembers(tdb.db, "budget")).toEqual([]);
+
+    await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media", confirmOptOut: true }, "staff:jamie");
+    expect(await listMediaMembers(tdb.db, "budget")).toMatchObject([{ subscriberId: s!.id }]);
+    const added = await tdb.db
+      .select()
+      .from(subscriberHistory)
+      .where(and(eq(subscriberHistory.subscriberId, s!.id), eq(subscriberHistory.action, "media-list-added")));
+    expect(added).toHaveLength(2);
+    // Once re-added with confirmation, a later add of the same list needs no second confirm.
+    await expect(addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie")).resolves.toMatchObject({ subscriberId: s!.id });
+  });
+
+  it("an opt-out from one media list doesn't ask again when staff add the member to a different list", async () => {
+    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name) VALUES ('media-distribution-lists:health-desk','media-distribution-lists','health-desk','Health desk') ON CONFLICT DO NOTHING`);
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await addMediaMember(tdb.db, "budget", { email: "pat@example.test", source: "manual-media" }, "staff:jamie");
+    await unsubscribe(deps, unsubscribeToken(SECRET, s!.id, 1));
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+
+    await expect(addMediaMember(tdb.db, "health-desk", { email: "pat@example.test", source: "manual-media" }, "staff:jamie")).resolves.toMatchObject({ subscriberId: s!.id });
   });
 
   it("update() with new public prefs keeps the media subscription", async () => {
