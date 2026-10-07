@@ -249,6 +249,10 @@ export const INTERNAL_EVENT_ROUTES = [
     types: ["release.published", "release.updated", "release.unpublished", "media_list.created", "media_list.updated", "media_list.deactivated"],
   },
   { from: "NEWSAPI", source: "news-api", to: "SITE", name: "public-site", url: "self:/site-builder/events", types: ["site.rebuild_requested"] },
+  // Phase 4e: Distribution's recorded bounces, back to the app that sent the original
+  // message -- for now always NoD, the only sender wired up (apps/nod/src/app.ts has no
+  // handler for delivery.bounced yet; it only records receipt until that handler exists).
+  { from: "DIST", source: "distribution", to: "NOD", name: "nod", url: "self:/nod/events", types: ["delivery.bounced"] },
 ] as const satisfies readonly { from: AppPrefix; source: string; to: AppPrefix; name: string; url: string; types: readonly string[] }[];
 
 /** Per-route signing secret: HMAC-SHA256(STACK_EVENT_SECRET, "gcpe-event:<source>-><receiver>"),

@@ -38,6 +38,10 @@ export const distributionEnvSchema = z
   .object({
     DATABASE_URL: z.string().url(),
     PORT: z.coerce.number().int().default(3005),
+    // Phase 4e: Distribution's own outbox (recordBounce's delivery.bounced, dispatched by the
+    // tick's "dispatch" worker) — same shape and default as every other sending app (Core,
+    // NRMS). Distribution never receives events, so there's no EVENT_SECRETS here.
+    EVENT_SUBSCRIBERS: z.string().optional(),
     SMTP_HOST: z.string().min(1),
     SMTP_PORT: z.coerce.number().int().default(587),
     SMTP_SECURE: boolEnv("false"),

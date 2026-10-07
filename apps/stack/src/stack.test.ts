@@ -665,8 +665,9 @@ describe("apps/stack", () => {
         "nod.send",
         "distribution.send",
         "distribution.bounces",
+        "distribution.dispatch",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 
@@ -911,6 +912,49 @@ describe("apps/stack", () => {
       "SELECT status FROM messages WHERE email = 'held-release@example.test'",
     );
     expect(releasedRows).toEqual([{ status: "sent" }]);
+  });
+
+  // Phase 4e: a bounce recorded by Distribution reaches NoD as a delivery.bounced event, over
+  // the stack's own DIST -> NOD route, driven only by /stack/tick. NoD has no handler for it
+  // yet, so this only asserts receipt (an inbox_events row) -- same pattern as the Core ->
+  // News API test above for org.upserted.
+  it("a bounce uploaded to the fake inbox reaches NoD's event receiver as delivery.bounced, driven by /stack/tick", async () => {
+    const recipient = "bounce-target@example.test";
+    const { rows: batchRows } = await instance.dbs.distribution.pool.query<{ id: string }>(
+      `INSERT INTO batches (app_id, subject, html, text, headers) VALUES ('nod', 'Weekend clinics open', '<p>hi</p>', 'hi', '{}'::jsonb) RETURNING id`,
+    );
+    await instance.dbs.distribution.pool.query(
+      `INSERT INTO messages (batch_id, email, substitutions, priority, status, sent_at) VALUES ($1, $2, '{}'::jsonb, 30, 'sent', now())`,
+      [batchRows[0]!.id, recipient],
+    );
+
+    const raw = [
+      "Subject: Undeliverable: Weekend clinics open",
+      "",
+      `Your message could not be delivered to ${recipient} [#;550]`,
+    ].join("\r\n");
+    const operateToken = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "nod", azp: "nod", roles: ["Distribution.Operate"] });
+    const upload = await fetch(`${instance.stackUrl}/distribution/api/bounces/inbox`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${operateToken}` },
+      body: JSON.stringify({ raw }),
+    });
+    expect(upload.status).toBe(201);
+
+    // The 15-minute gate may already have been claimed by an earlier test's tick against this
+    // same shared instance -- force it due again so this bounce is actually fetched this tick.
+    await instance.dbs.distribution.pool.query("UPDATE distribution_settings SET bounces_checked_at = NULL WHERE id = 1");
+
+    const tickRes = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+    expect(tickRes.status).toBe(200);
+    const tickBody = (await tickRes.json()) as { ran: Record<string, string> };
+    expect(tickBody.ran["distribution.bounces"]).toBe("ok");
+    expect(tickBody.ran["distribution.dispatch"]).toBe("ok");
+
+    const inbox = await instance.dbs.nod.pool.query<{ source: string; type: string; outcome: string }>(
+      "SELECT source, type, outcome FROM inbox_events WHERE source = 'distribution' AND type = 'delivery.bounced'",
+    );
+    expect(inbox.rows).toEqual([{ source: "distribution", type: "delivery.bounced", outcome: "ignored" }]);
   });
 
   describe("fake Media Hub (no NOD_MEDIA_HUB_URL configured)", () => {

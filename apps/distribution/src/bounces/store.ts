@@ -1,5 +1,6 @@
 import { and, desc, eq, sql } from "drizzle-orm";
 import { sqlInterval, type Tx } from "@gcpe/db-kit";
+import { enqueueEvent, type SubscriberConfig } from "@gcpe/events";
 import { batches, bounces, messages } from "../db/schema";
 import type { ParsedBounce } from "./parse";
 
@@ -71,8 +72,11 @@ async function findMatch(tx: Tx, parsed: ParsedBounce & { kind: "bounce" }): Pro
 
 /**
  * Records one fetched bounce report, matches it to the message it's about, and updates that
- * message's bounce columns — all inside the caller's transaction, so a caller that also emits
- * `delivery.bounced` (4e Task 2) does so atomically with this write.
+ * message's bounce columns — all inside the caller's transaction. When the bounce matched (and
+ * wasn't a duplicate), a `delivery.bounced` event is enqueued to the same outbox, in the same
+ * transaction, so the record and the notification are atomic: either both happen or neither
+ * does. `subscribers` is passed straight through to {@link enqueueEvent}; an empty list still
+ * records the outbox event, it just queues no deliveries.
  *
  * A duplicate `sourceId` (the same bounce fetched twice) is detected by the table's own unique
  * index rather than a separate check-then-insert, so it's race-free: nothing else happens, and
@@ -82,7 +86,7 @@ async function findMatch(tx: Tx, parsed: ParsedBounce & { kind: "bounce" }): Pro
  * never a redirect address — matching is what finds the message; the message already knows who
  * it was meant for.
  */
-export async function recordBounce(tx: Tx, sourceId: string, raw: string, parsed: ParsedBounce): Promise<RecordBounceResult> {
+export async function recordBounce(tx: Tx, sourceId: string, raw: string, parsed: ParsedBounce, subscribers: SubscriberConfig[]): Promise<RecordBounceResult> {
   const matched = parsed.kind === "bounce" ? await findMatch(tx, parsed) : null;
 
   const [inserted] = await tx
@@ -100,7 +104,7 @@ export async function recordBounce(tx: Tx, sourceId: string, raw: string, parsed
       processedAt: sql`now()`,
     })
     .onConflictDoNothing({ target: bounces.sourceId })
-    .returning({ id: bounces.id });
+    .returning({ id: bounces.id, processedAt: bounces.processedAt });
 
   if (!inserted) {
     const [existing] = await tx.select({ id: bounces.id }).from(bounces).where(eq(bounces.sourceId, sourceId));
@@ -117,6 +121,31 @@ export async function recordBounce(tx: Tx, sourceId: string, raw: string, parsed
   // still recorded and matched above, regardless).
   if (matched && parsed.kind === "bounce" && !matched.bounceHard) {
     await tx.update(messages).set({ bouncedAt: sql`now()`, bounceStatus: parsed.status, bounceHard: parsed.hard }).where(eq(messages.id, matched.id));
+  }
+
+  // The event only fires for a matched, non-duplicate bounce -- an unmatched or ignored report
+  // has nothing for the originating app to act on, and a duplicate never gets here (its own
+  // early return above skips straight past this). Same transaction as the row above it, so the
+  // two commit or roll back together.
+  if (matched && parsed.kind === "bounce") {
+    await enqueueEvent(
+      tx,
+      {
+        type: "delivery.bounced",
+        source: "distribution",
+        aggregateId: `message:${matched.id}`,
+        data: {
+          appId: matched.appId,
+          batchId: matched.batchId,
+          messageId: matched.id,
+          email: matched.email,
+          hard: parsed.hard,
+          status: parsed.status,
+          at: inserted.processedAt!.toISOString(),
+        },
+      },
+      subscribers,
+    );
   }
 
   return {

@@ -1,5 +1,6 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { sqlInterval, type Db } from "@gcpe/db-kit";
+import type { SubscriberConfig } from "@gcpe/events";
 import { distributionSettings } from "../db/schema";
 import { parseBounce } from "./parse";
 import { recordBounce } from "./store";
@@ -54,10 +55,15 @@ async function claimBounceGate(db: Db): Promise<boolean> {
  * retry that would just read it again (Global Constraints "Parsing": "every fetched message
  * is marked processed, as legacy did").
  */
-export async function runBouncesIfDue(db: Db, source: BounceSource, opts: { limit?: number } = {}): Promise<RunBouncesResult> {
+export async function runBouncesIfDue(
+  db: Db,
+  source: BounceSource,
+  opts: { limit?: number; subscribers?: SubscriberConfig[] } = {},
+): Promise<RunBouncesResult> {
   const due = await claimBounceGate(db);
   if (!due) return { ran: false, fetched: 0, bounces: 0, matched: 0, ignored: 0 };
 
+  const subscribers = opts.subscribers ?? [];
   const fetched = await source.fetchNew(opts.limit ?? DEFAULT_LIMIT);
   let bounces = 0;
   let matched = 0;
@@ -68,7 +74,7 @@ export async function runBouncesIfDue(db: Db, source: BounceSource, opts: { limi
     processedIds.push(message.id);
     try {
       const parsed = await parseBounce(message.raw);
-      const result = await db.transaction((tx) => recordBounce(tx, message.id, message.raw, parsed));
+      const result = await db.transaction((tx) => recordBounce(tx, message.id, message.raw, parsed, subscribers));
       if (parsed.kind === "bounce") bounces++;
       else ignored++;
       if (result.matched) matched++;
@@ -92,12 +98,12 @@ export async function runBouncesIfDue(db: Db, source: BounceSource, opts: { limi
  * call often enough that the gate is never missed by much. Mirrors
  * apps/nod/src/digest.ts's startDigestLoop.
  */
-export function startBounceLoop(opts: { db: Db; source: BounceSource; limit?: number; intervalMs?: number }): () => Promise<void> {
+export function startBounceLoop(opts: { db: Db; source: BounceSource; limit?: number; subscribers?: SubscriberConfig[]; intervalMs?: number }): () => Promise<void> {
   let stopped = false;
   let running: Promise<unknown> | null = null;
   const timer = setInterval(() => {
     if (stopped || running) return;
-    running = runBouncesIfDue(opts.db, opts.source, { limit: opts.limit })
+    running = runBouncesIfDue(opts.db, opts.source, { limit: opts.limit, subscribers: opts.subscribers })
       .catch((e) => console.error("[distribution] bounce run failed:", e instanceof Error ? e.message : e))
       .finally(() => {
         running = null;
