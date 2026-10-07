@@ -9,6 +9,7 @@ import { SubscriberScreen } from "./SubscriberScreen";
 import type { SubscriberDetail } from "./types";
 
 const ID = "11111111-1111-1111-1111-111111111111";
+const MEDIA_HUB_COPY = "This address is managed in Media Hub. Change it there.";
 const OTHER_ID = "99999999-9999-9999-9999-999999999999";
 
 const OPTIONS = {
@@ -40,6 +41,7 @@ function detail(overrides: Partial<SubscriberDetail> = {}): SubscriberDetail {
     allNews: false,
     listKeys: ["ministries:health"],
     mediaLists: [{ listKey: "media-distribution-lists:budget", name: "Budget" }],
+    mediaHubLinked: false,
     disabledReason: "bounces",
     bouncedEmails: 0,
     bounceWindowDays: 15,
@@ -231,11 +233,45 @@ describe("SubscriberScreen", () => {
   });
 
   it("a Media Hub member's email can't be changed here", async () => {
-    stub(["NoD.Editor"], () => detail({ status: "active", disabledReason: null, source: "media-hub" }));
+    stub(["NoD.Editor"], () => detail({ status: "active", disabledReason: null, source: "media-hub", mediaHubLinked: true }));
     renderAt();
     await screen.findByText("pat@example.test");
     expect(screen.queryByRole("button", { name: "Change email" })).toBeNull();
-    expect(screen.getByText("This address comes from Media Hub.")).toBeInTheDocument();
+    expect(screen.getByText(MEDIA_HUB_COPY)).toBeInTheDocument();
+  });
+
+  it("a subscriber who signed up themselves but is linked to a Media Hub contact can't have their email changed here either", async () => {
+    stub(["NoD.Editor"], () => detail({ status: "active", disabledReason: null, source: "self", mediaHubLinked: true }));
+    renderAt();
+    await screen.findByText("pat@example.test");
+    expect(screen.queryByRole("button", { name: "Change email" })).toBeNull();
+    expect(screen.getByText(MEDIA_HUB_COPY)).toBeInTheDocument();
+  });
+
+  it("a Viewer sees the timing of an all-news subscriber as well as All news", async () => {
+    stub(["NoD.Viewer"], () => detail({ status: "active", disabledReason: null, allNews: true, listKeys: [], digest: true }));
+    renderAt();
+    await screen.findByText("pat@example.test");
+    expect(screen.getByText("All news")).toBeInTheDocument();
+    expect(screen.getByText("Daily digest")).toBeInTheDocument();
+  });
+
+  it("unsaved preference edits survive an Activate", async () => {
+    let current = detail({ status: "disabled", disabledReason: "staff" });
+    stub(["NoD.Editor"], () => current, {
+      [`POST /nod/api/subscribers/${ID}/status`]: () => {
+        current = { ...current, status: "active", disabledReason: null };
+        return [200, { changed: true }];
+      },
+    });
+    renderAt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: "Agriculture" }));
+    await user.click(screen.getByRole("checkbox", { name: "Daily digest" }));
+    await user.click(screen.getByRole("button", { name: "Activate" }));
+    expect(await screen.findByText("Active")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Agriculture" })).toBeChecked();
+    expect(screen.getByRole("checkbox", { name: "Daily digest" })).toBeChecked();
   });
 
   it("change email is hidden for a pending subscriber", async () => {
@@ -243,7 +279,7 @@ describe("SubscriberScreen", () => {
     renderAt();
     await screen.findByText("pat@example.test");
     expect(screen.queryByRole("button", { name: "Change email" })).toBeNull();
-    expect(screen.queryByText("This address comes from Media Hub.")).toBeNull();
+    expect(screen.queryByText(MEDIA_HUB_COPY)).toBeNull();
   });
 
   it("a 409 status error during change email shows clear copy with no address in it", async () => {

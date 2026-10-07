@@ -8,9 +8,9 @@ import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { actorLabel, historyLabel } from "./labels";
 import type { HistoryEntry } from "./types";
 
-/** apps/nod/src/staff-subscribers/read.ts's HISTORY_LIMIT — the server sends `truncated` but
- * not the limit itself, so the exact count in the notice below is this constant, not a value
- * read from the response. */
+/** A copy of apps/nod/src/staff-subscribers/read.ts's HISTORY_LIMIT: change both together. The
+ * server sends `truncated` but not the limit itself, so the exact count in the notice below is
+ * this constant, not a value read from the response. */
 const HISTORY_LIMIT = 500;
 
 /** `/hub/subscribers/:id/history` (legacy SubscriberHistory.aspx): read-only, newest first —

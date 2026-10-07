@@ -19,6 +19,10 @@ const SOURCE_LABELS: Record<string, string> = {
   "manual-media": "Added to a media list by staff",
 };
 
+/** The nightly Media Hub sync rewrites the address of a subscriber sourced from or linked to a
+ * Media Hub contact, so an edit here would be undone. */
+const MEDIA_HUB_MANAGED = "This address is managed in Media Hub. Change it there.";
+
 /** The address is capped at 150 characters server-side (subscribe/info.ts's subscriberEmailSchema). */
 const MAX_EMAIL_LENGTH = 150;
 
@@ -46,7 +50,8 @@ function PreferencesView({ detail, options }: { detail: SubscriberDetail; option
   return (
     <div className="gcpe-subscriber__preferences">
       <h2>Preferences</h2>
-      <p>{detail.allNews ? "All news" : timingLabel(detail)}</p>
+      {detail.allNews && <p>All news</p>}
+      <p>{timingLabel(detail)}</p>
       {!detail.allNews && (
         <ul>
           {detail.listKeys.map((k) => (
@@ -58,6 +63,8 @@ function PreferencesView({ detail, options }: { detail: SubscriberDetail; option
   );
 }
 
+/** Seeded once per subscriber (the caller keys it by id): a reload after Activate, Deactivate
+ * or this form's own save keeps whatever the staff member has ticked but not yet saved. */
 function PreferencesForm({ detail, options, onSaved }: { detail: SubscriberDetail; options: ListOptions | null; onSaved(): void }): React.JSX.Element {
   const [allNews, setAllNews] = useState(detail.allNews);
   const [listKeys, setListKeys] = useState(detail.listKeys);
@@ -66,15 +73,6 @@ function PreferencesForm({ detail, options, onSaved }: { detail: SubscriberDetai
   const [messages, setMessages] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [saving, setSaving] = useState(false);
-
-  // Reseeds whenever the server's own copy changes (every reload, including this form's own
-  // successful save) — never while the staff member is mid-edit with no reload in between.
-  useEffect(() => {
-    setAllNews(detail.allNews);
-    setListKeys(detail.listKeys);
-    setAsItHappens(detail.asItHappens);
-    setDigest(detail.digest);
-  }, [detail]);
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -222,8 +220,8 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
   const [takenId, setTakenId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  if (detail.source === "media-hub") {
-    return <p>This address comes from Media Hub.</p>;
+  if (detail.mediaHubLinked) {
+    return <p>{MEDIA_HUB_MANAGED}</p>;
   }
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -251,7 +249,7 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
         setMessages(["Another subscriber record already has that address."]);
         setTakenId(typeof body.id === "string" ? body.id : null);
       } else if (body?.error === "media-hub-managed") {
-        setMessages(["This address comes from Media Hub."]);
+        setMessages([MEDIA_HUB_MANAGED]);
       } else if (body?.error === "status") {
         // SubscriberStateError, from a race (e.g. another staff member just deleted this row,
         // or it's pending) — the UI already hides this form for pending/deleted, so this is a
@@ -303,7 +301,7 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
       <Button type="submit" isDisabled={busy}>
         Change email
       </Button>
-      <p>No confirmation email is sent. Links in emails already sent to the old address stop working.</p>
+      <p>No confirmation email is sent. Links in emails already sent to the old address stop working, except unsubscribe links.</p>
     </Form>
   );
 }
@@ -469,7 +467,7 @@ export function SubscriberScreen(): React.JSX.Element {
         <Link to={`/subscribers/${detail.id}/history`}>History</Link>
       </p>
 
-      {showPreferences && (canEdit ? <PreferencesForm detail={detail} options={options} onSaved={reload} /> : <PreferencesView detail={detail} options={options} />)}
+      {showPreferences && (canEdit ? <PreferencesForm key={detail.id} detail={detail} options={options} onSaved={reload} /> : <PreferencesView detail={detail} options={options} />)}
 
       {canEdit && detail.status !== "deleted" && (
         <>

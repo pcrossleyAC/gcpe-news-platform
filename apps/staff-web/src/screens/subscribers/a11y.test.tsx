@@ -46,6 +46,7 @@ const DETAIL: SubscriberDetail = {
   allNews: false,
   listKeys: ["ministries:health"],
   mediaLists: [],
+  mediaHubLinked: false,
   disabledReason: null,
   bouncedEmails: 0,
   bounceWindowDays: 15,

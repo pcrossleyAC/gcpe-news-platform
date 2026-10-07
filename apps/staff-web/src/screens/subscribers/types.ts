@@ -34,6 +34,9 @@ export interface SubscriberDetail extends SubscriberSummary {
   /** Public list keys (`<category>:<key>`), never `*` (see allNews) or a media key. */
   listKeys: string[];
   mediaLists: { listKey: string; name: string }[];
+  /** Media Hub manages this address (sourced from it, or linked to a contact), so it's changed
+   * there, not here. */
+  mediaHubLinked: boolean;
   /** Why a `disabled` subscriber is disabled; null when not disabled or unexplained. */
   disabledReason: "bounces" | "staff" | null;
   bouncedEmails: number;

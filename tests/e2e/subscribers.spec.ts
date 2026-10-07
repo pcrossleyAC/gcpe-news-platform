@@ -88,9 +88,9 @@ test.describe("§8 Subscribers flows (NoD Editor)", () => {
 
     await page.getByRole("checkbox", { name: "Daily digest" }).check();
     await page.getByRole("button", { name: "Save preferences" }).click();
-    // Not getByRole("status"): AnnouncerProvider's own shared live region (Announcer.tsx) also
-    // carries that role, so the role alone resolves to two elements in the staff shell.
-    await expect(page.getByText("Preferences saved.")).toBeVisible();
+    // Filtered by text: AnnouncerProvider's own shared live region (Announcer.tsx) also carries
+    // the status role, so the role alone resolves to two elements in the staff shell.
+    await expect(page.getByRole("status").filter({ hasText: "Preferences saved." })).toBeVisible();
 
     // The search box, not a `?q=` link — the screen never puts the term in the URL (same rule
     // as above); both seeded addresses share this substring.
@@ -109,13 +109,13 @@ test.describe("§8 Subscribers flows (NoD Editor)", () => {
     await settleModalTransition(page);
     await expectNoSeriousA11yViolations(page, "bulk deactivate dialog");
     await page.getByRole("button", { name: "Confirm deactivate" }).click();
-    await expect(page.getByText("2 changed.")).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "2 changed." })).toBeVisible();
     await page.getByRole("checkbox", { name: `Select ${email}` }).check();
     // exact: true — "Activate selected (1)" is otherwise a substring match of the sibling
     // "Deactivate selected (1)" button, which shows at the same time for the same selection.
     await page.getByRole("button", { name: "Activate selected (1)", exact: true }).click();
     await page.getByRole("button", { name: "Confirm activate" }).click();
-    await expect(page.getByText("1 changed.")).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: "1 changed." })).toBeVisible();
 
     await page.getByRole("link", { name: email }).click();
     // exact: true — "New email" would otherwise also match the sibling "Confirm new email" field.

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router";
 import { AlertDialog, Button, DialogTrigger, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
@@ -32,14 +32,26 @@ const BULK_COPY: Record<BulkAction, { verb: string; title: (n: number) => string
   },
 };
 
+/** The search route's own ceiling (apps/nod/src/http/staff-subscriber-routes.ts). */
+const MAX_PAGE = 100_000;
+
 /** apps/nod/src/staff-subscribers/actions.ts's BulkSkipReason, "error" included — an
  * unexpected failure on that one row, worth retrying. */
 const SKIP_TEXT: Record<BulkSkipReason, string> = {
   unchanged: "already in that state",
   status: "not allowed from their status",
   "not-found": "no longer exist",
-  error: "Couldn't change – try again",
+  error: "couldn't change – try again",
 };
+
+function statusFrom(raw: string | null): StatusFilter {
+  return STATUS_FILTER_OPTIONS.find((o) => o.value === raw)?.value ?? "all";
+}
+
+function pageFrom(raw: string | null): number {
+  const n = Number(raw);
+  return Number.isInteger(n) && n >= 1 && n <= MAX_PAGE ? n : 1;
+}
 
 export function describeBulk(r: BulkResult): string {
   const parts = [`${r.changed} changed.`];
@@ -65,8 +77,9 @@ export function SubscribersScreen(): React.JSX.Element {
   const timeZone = useTenantTimeZone();
   const canEdit = canEditSubscribers(session);
   const [params, setParams] = useSearchParams();
-  const status = (params.get("status") ?? "all") as StatusFilter;
-  const page = Number(params.get("page") ?? "1") || 1;
+  // A hand-edited or stale URL falls back to the defaults rather than being sent as a bad request.
+  const status = statusFrom(params.get("status"));
+  const page = pageFrom(params.get("page"));
 
   const [q, setQ] = useState("");
   const [qInput, setQInput] = useState("");
@@ -79,18 +92,25 @@ export function SubscribersScreen(): React.JSX.Element {
   const [outcome, setOutcome] = useState<string | null>(null);
   const [bulkError, setBulkError] = useState<string | null>(null);
 
+  // Only the latest search may land: an earlier, slower response arriving after it would
+  // otherwise replace the results for what the staff member is now looking at.
+  const latestSearch = useRef(0);
   const reload = useCallback(() => {
     const body: { q?: string; status?: StatusFilter; page?: number } = {};
     if (q) body.q = q;
     if (status !== "all") body.status = status;
     if (page !== 1) body.page = page;
+    const seq = ++latestSearch.current;
     apiFetch<SubscriberPage>("/nod/api/subscribers/search", { method: "POST", body }).then(
       (r) => {
+        if (seq !== latestSearch.current) return;
         setResult(r);
         setSelected([]);
         setLoadError(null);
       },
-      () => setLoadError("Couldn't load subscribers."),
+      () => {
+        if (seq === latestSearch.current) setLoadError("Couldn't load subscribers.");
+      },
     );
   }, [q, status, page]);
   useEffect(() => reload(), [reload]);
