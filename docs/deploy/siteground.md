@@ -223,6 +223,15 @@ blocks or fails startup (the News API may not be reachable yet); a failure is on
    `<PREFIX>_*` prefix is misconfigured.
 5. Run the smoke test below.
 
+### Migrations on populated `deliveries` or `messages` tables
+
+Drizzle runs every migration inside one transaction, so a `CREATE INDEX` on a large, populated
+`deliveries` (NoD) or `messages` (Distribution) table blocks writes while it builds — about 8 s
+at legacy volume, measured locally. Before production cutover, either run migrations before
+either table holds data, or pre-build the big indexes `CONCURRENTLY` outside drizzle (so they
+don't block writes) and reconcile drizzle's own migration-tracking table afterwards so it still
+considers the migration applied.
+
 ### How MIGRATIONS_FOLDER and TENANT_CONFIG resolve in the artifact
 
 Each app's own default `MIGRATIONS_FOLDER` (and the stack's own default `TENANT_CONFIG`) is
@@ -376,6 +385,14 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
   3. Pause and resume News On Demand sending, and confirm the ops email arrives at the redirect
      address each time.
   4. As `nod-editor`, open a media list and add and remove a member from the fake Media Hub.
+- [ ] **Phase 4h (reports)** — Subscribers → Reports on boxs.ca:
+  1. As `nod-viewer`, open each of the five reports under Subscribers → Reports and confirm each
+     loads.
+  2. Download Sends per release and confirm it opens in Excel with accents intact.
+  3. Confirm the address-CSV links (a list's members, Recent unsubscribes' address list) are
+     absent for `nod-viewer`.
+  4. As `nod-editor`, download Active subscribers by list → everyone, and confirm the download
+     and an operations log row recording the export (report and list key, never the addresses).
 
 Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET`, so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
 

@@ -2,9 +2,6 @@
 
 Items the 4a task and final reviews deferred to later sub-plans. Each later plan must pick up its section, then delete those lines here.
 
-## 4h (reports)
-- Reports read `subscribed`/`resubscribed` (new vs returning) and count `unsubscribed` + `staff-deleted` as unsubscribes; old `confirmed` rows count as `subscribed`.
-
 ## 4i (emergency feed, retention purge, importer)
 - Purge on/off switch and next-run preview on Operations (deferred from 4g, Ruling R2).
 - Purge expired `origin='send'` `subscriber_links` rows (each send mints one per recipient, holding the address).

@@ -205,3 +205,20 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Operations** — When Operations says "Using the server default: …", the bounce summary field
   is empty on purpose. Type an address only to override the default; saving the field empty
   keeps using the default.
+- **Viewer** — Subscribers → Reports has five reports: active subscribers by list, recent
+  unsubscribes, sends per release, daily digest runs, and Distribution sent and bounced. Dates
+  are BC days; pick up to 92 at a time, or leave them empty for the last 30.
+- **Viewer** — Every report downloads as a CSV that opens in Excel. Viewers get counts only;
+  CSVs with email addresses (a list's members, recent unsubscribes) are for NoD Editors and
+  Admins.
+- **Editor** — Each address CSV you download is recorded in the operations log (who, which
+  report; never the addresses).
+- **Viewer** — In Sends per release, "delivered" means handed to Distribution and not bounced;
+  "not sent" includes a send still going out. Digest emails are in Daily digest runs, counted
+  once per subscriber.
+- **Operations** — The Distribution report comes from Distribution itself. If Distribution is
+  down, that report says so and the others still work.
+- **Developer** — Report day boundaries are computed in Node (`apps/nod/src/reports/range.ts`)
+  and passed to SQL as instants; never use `AT TIME ZONE` in a report query. CSVs go through
+  `streamCsv` (`reports/csv.ts`), which neutralises formula cells and aborts, rather than
+  truncates, on error. The legacy-volume probes run with `REPORT_PROBE=1`.
