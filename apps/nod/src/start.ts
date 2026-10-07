@@ -6,6 +6,7 @@ import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } f
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
+import { runBounceSummaryIfDue, startBounceSummaryLoop } from "./bounce-summary";
 import { runDigestIfDue, startDigestLoop } from "./digest";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
@@ -27,6 +28,16 @@ export const nodEnvSchema = z.object({
   DISTRIBUTION_CLIENT_ID: z.string().optional(),
   DISTRIBUTION_CLIENT_SECRET: z.string().optional(),
   DISTRIBUTION_SCOPE: z.string().optional(),
+  // NoD's own appId, exactly as Distribution would record it for a message NoD sent (apps/
+  // distribution/src/http/routes.ts's appIdFrom: the calling token's `azp`, else `appid`, else
+  // its subject) -- what a `delivery.bounced` event's own appId is checked against
+  // (bounces.ts). Default: DISTRIBUTION_CLIENT_ID when Entra client credentials are
+  // configured, else "nod", the subject/azp distribution-token.ts always mints a local token
+  // with -- but production should set this explicitly to NoD's Entra client id rather than
+  // rely on the default: whether an Entra access token even carries `azp` (v2) or only
+  // `appid` (v1) depends on how NoD's app registration is configured, and getting this wrong
+  // means every bounce for a message NoD sent is silently ignored (appIdFrom step 1, above).
+  DISTRIBUTION_APP_ID: z.string().optional(),
   // Bounds a single chunk request to Distribution; also sizes send-jobs.ts's claim lock
   // (chunks * this + margin), so a hung request can't outlive the lock protecting it.
   DISTRIBUTION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
@@ -46,6 +57,10 @@ export const nodEnvSchema = z.object({
   // The operator sets `NOD_OPS_EMAIL`; by the time this schema sees it, apps/stack/src/env.ts's
   // envFor has already stripped the "NOD_" prefix (same as DATABASE_URL, PORT, etc. above).
   OPS_EMAIL: z.string().email().optional(),
+  // Staff inbox for the daily bounce summary (bounce-summary.ts) -- unset means no summary is
+  // ever sent. The operator sets `NOD_BOUNCE_SUMMARY_EMAIL`; envFor strips the "NOD_" prefix
+  // the same way as OPS_EMAIL above.
+  BOUNCE_SUMMARY_EMAIL: z.string().email().optional(),
   // Every email NoD sends carries this as its Reply-To (distribution-client.ts's send,
   // applied whenever a request doesn't set its own) — unset on boxs.ca: a reply to redirected
   // test mail must never reach a real government mailbox. The operator sets `NOD_REPLY_TO`;
@@ -186,6 +201,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     distribution,
     opsEmail: parsed.OPS_EMAIL ?? null,
     timeZone: tenant.timeZone,
+    distributionAppId: parsed.DISTRIBUTION_APP_ID ?? parsed.DISTRIBUTION_CLIENT_ID ?? "nod",
     mediaHub,
     membership:
       parsed.MEMBERSHIP_API_USERNAME && parsed.MEMBERSHIP_API_PASSWORD_HASH
@@ -193,11 +209,15 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
         : null,
   });
 
+  // Unset means no summary is ever sent (runBounceSummaryIfDue's own early-out).
+  const bounceSummaryEmail = parsed.BOUNCE_SUMMARY_EMAIL ?? null;
+
   // Set by startLoops(); the closers below reference these lazily so they're safe to call even
   // if startLoops() was never invoked.
   let stopJobSender: (() => Promise<void>) | undefined;
   let stopDigestLoop: (() => Promise<void>) | undefined;
   let stopMediaSyncLoop: (() => Promise<void>) | undefined;
+  let stopBounceSummaryLoop: (() => Promise<void>) | undefined;
 
   return {
     app,
@@ -212,6 +232,10 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // all means nothing to sync -- a no-op, same as the search/add-from-hub routes
       // answering 503.
       mediaSync: () => (mediaHub ? runMediaSyncIfDue(db, mediaHub, tenant.timeZone) : Promise.resolve({ ran: false })),
+      // The daily bounce summary -- a no-op call every tick until the tenant's wall clock
+      // actually reaches BOUNCE_SUMMARY_HOUR for a day not already summarised (or, with no
+      // BOUNCE_SUMMARY_EMAIL configured, always a no-op).
+      bounceSummary: () => runBounceSummaryIfDue(db, distribution, tenant.timeZone, bounceSummaryEmail),
       // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
       // data has ever reached this NoD so it knows whether to ask Core to republish.
       needsReferenceData: () => needsReferenceData(db),
@@ -222,12 +246,14 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // workers.digest hook above only ever fires once, when a caller asks for it.
       stopDigestLoop = startDigestLoop({ db, timeZone: tenant.timeZone, render });
       if (mediaHub) stopMediaSyncLoop = startMediaSyncLoop({ db, client: mediaHub, timeZone: tenant.timeZone });
+      stopBounceSummaryLoop = startBounceSummaryLoop({ db, distribution, timeZone: tenant.timeZone, to: bounceSummaryEmail });
     },
     closeBeforeServer: [],
     closers: [
       { name: "job sender", close: async () => { await stopJobSender?.(); } },
       { name: "digest loop", close: async () => { await stopDigestLoop?.(); } },
       { name: "media sync loop", close: async () => { await stopMediaSyncLoop?.(); } },
+      { name: "bounce summary loop", close: async () => { await stopBounceSummaryLoop?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],
   };

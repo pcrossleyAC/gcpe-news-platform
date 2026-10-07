@@ -7,7 +7,7 @@ import { createNodTestDb } from "../test/helpers";
 import { createItemSending } from "./as-it-happens";
 import type { DistributionClient } from "./distribution-client";
 import { deliveries, items, jobRecipients, nodSettings, sendJobs, subscribers } from "./db/schema";
-import { DIGEST_HOUR, digestCutoff, runDigestIfDue, startDigestLoop } from "./digest";
+import { DIGEST_HOUR, digestCutoff, runDigestIfDue, startDigestLoop, todaysCutoff } from "./digest";
 import { upsertReleaseItem } from "./items";
 import type { RecipientLinkOptions } from "./recipient-links";
 import { sendDueJobs } from "./send-jobs";
@@ -44,6 +44,21 @@ describe("digestCutoff", () => {
     expect(digestCutoff(new Date("2026-03-09T01:00:00Z"), tz).toISOString()).toBe("2026-03-09T00:00:00.000Z");
     // Before it, in standard time (UTC-8): 17:00 = 01:00Z.
     expect(digestCutoff(new Date("2026-02-10T02:00:00Z"), tz).toISOString()).toBe("2026-02-10T01:00:00.000Z");
+  });
+});
+
+describe("todaysCutoff", () => {
+  const tz = TZ;
+
+  it("is always today's, even still ahead of dbNow -- unlike dailyCutoff, it never falls back a day", () => {
+    // 00:30Z Oct 6 = 17:30 PDT Oct 5 -- dailyCutoff falls back to Oct 5's 17:00, but
+    // todaysCutoff(..., 17) stays on Oct 5 too (dbNow's own local date), same answer here.
+    expect(todaysCutoff(new Date("2026-10-06T00:30:00Z"), tz, 17).toISOString()).toBe("2026-10-06T00:00:00.000Z");
+    // 08:00 PDT Oct 5 (15:00Z) is still ahead of 03:00 PDT Oct 5 (10:00Z) -- dailyCutoff would
+    // fall back to Oct 4's 08:00; todaysCutoff stays on Oct 5's, still in the future.
+    const result = todaysCutoff(new Date("2026-10-05T10:00:00Z"), tz, 8);
+    expect(result.toISOString()).toBe("2026-10-05T15:00:00.000Z");
+    expect(result.getTime()).toBeGreaterThan(new Date("2026-10-05T10:00:00Z").getTime());
   });
 });
 
@@ -347,7 +362,7 @@ describe("runDigestIfDue", () => {
     // Unpublished after the digest was built, before the sender ran.
     await tdb.db.update(items).set({ withdrawnAt: new Date() }).where(eq(items.key, kB));
 
-    const distribution = { send: async () => ({ batchId: "batch-withdraw-partial" }) } as unknown as DistributionClient;
+    const distribution = { send: async () => ({ batchId: "00000000-0000-4000-8000-0000000000ab" }) } as unknown as DistributionClient;
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 

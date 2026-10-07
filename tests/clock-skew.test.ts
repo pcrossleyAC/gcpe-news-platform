@@ -110,7 +110,7 @@ describe.each([
   });
 
   it("sender: lock and retry backoff come from the DB clock, no re-claim by a correct-clock replica, age backstop not tripped", async () => {
-    await distributionDb.pool.query("TRUNCATE TABLE messages, batches");
+    await distributionDb.pool.query("TRUNCATE TABLE bounces, messages, batches");
     await createBatch(distributionDb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "skew@example.com", substitutions: {} }] }, []);
     const lockMs = defaultSendLockMs({ batchSize: 50, perMessageMs: 50_000, verifyTimeoutMs: 10_000 });
     let lockFromDbNow: number | undefined;

@@ -22,4 +22,11 @@ describe("SOURCE_EVENT_TYPES", () => {
     const newsApiChecker = SOURCE_EVENT_TYPES["news-api"] as (type: string) => boolean;
     expect(newsApiChecker("site.rebuild_requested")).toBe(true);
   });
+
+  it("delivery.bounced is owned by distribution alone", () => {
+    expect(SOURCE_EVENT_TYPES.distribution!("delivery.bounced")).toBe(true);
+    for (const [source, allows] of Object.entries(SOURCE_EVENT_TYPES)) {
+      if (source !== "distribution") expect(allows("delivery.bounced")).toBe(false);
+    }
+  });
 });

@@ -5,8 +5,9 @@ import { requireBearer, type BearerOptions } from "@gcpe/auth";
 import { createEventReceiver } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import { createItemSending } from "./as-it-happens";
+import { bounceHandler } from "./bounces";
 import type { DistributionClient } from "./distribution-client";
-import { apiRoutes } from "./http/routes";
+import { apiRoutes, bouncesInboxRoutes } from "./http/routes";
 import { membershipRoutes, type MembershipAuth } from "./http/membership";
 import { subscribeApiRoutes } from "./http/subscribe-routes";
 import { itemHandlers } from "./items";
@@ -33,7 +34,7 @@ export interface AppDeps {
    * Distribution client here. `opsEmail` defaults to null (no ops email sent) and `timeZone`
    * to "UTC" -- both only matter when an actual pause/resume fires an email, which a null
    * `opsEmail` already rules out. */
-  distribution?: Pick<DistributionClient, "send" | "getSettings" | "setPaused">;
+  distribution?: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "uploadBounce">;
   opsEmail?: string | null;
   timeZone?: string;
   /** The Media Hub contacts client, when `MEDIA_HUB_URL` is configured -- null (the default)
@@ -42,12 +43,17 @@ export interface AppDeps {
   /** Legacy `Subscribe/SubscriberInformation` (C55) Basic Auth credentials -- null (the
    * default) means the route always answers 503 instead of ever comparing credentials. */
   membership?: MembershipAuth | null;
+  /** NoD's own appId, as Distribution records it for a message NoD sent (bounces.ts) --
+   * defaults to "nod", the subject/azp every local (non-Entra) Distribution token carries
+   * (distribution-token.ts). start.ts always passes the real configured value. */
+  distributionAppId?: string;
 }
 
-const noDistribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused"> = {
+const noDistribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "uploadBounce"> = {
   send: () => Promise.reject(new Error("createApp: no Distribution client configured for the settings routes")),
   getSettings: () => Promise.reject(new Error("createApp: no Distribution client configured for the distribution routes")),
   setPaused: () => Promise.reject(new Error("createApp: no Distribution client configured for the distribution routes")),
+  uploadBounce: () => Promise.reject(new Error("createApp: no Distribution client configured for the bounces/inbox route")),
 };
 
 export function createApp(deps: AppDeps): express.Express {
@@ -76,16 +82,26 @@ export function createApp(deps: AppDeps): express.Express {
       await createItemSend(tx, r.key, "as_it_happens");
     },
   });
+  const resolveBounceHandler = bounceHandler({ appId: deps.distributionAppId ?? "nod" });
   app.use(
     createEventReceiver({
       db: deps.db,
       secrets: deps.eventSecrets,
-      handlers: (ev) => resolveItemHandler(ev) ?? listsHandler(ev),
+      handlers: (ev) => resolveItemHandler(ev) ?? listsHandler(ev) ?? resolveBounceHandler(ev),
     }),
   );
 
   if (deps.loginRouter) app.use(deps.loginRouter);
   if (deps.subscribe) app.use("/api/Subscribe", requireBearer(deps.auth), express.json({ limit: "100kb" }), subscribeApiRoutes(deps.subscribe));
+  // Its own mount, ahead of the shared "/api" one below: a raw bounce report can be close to
+  // Distribution's own 1 MB limit (Global Constraints "Bounce source"), well over every other
+  // /api route's shared 100kb express.json limit.
+  app.use(
+    "/api/bounces/inbox",
+    requireBearer(deps.auth),
+    express.json({ limit: "2mb" }),
+    bouncesInboxRoutes(deps.distribution ?? noDistribution),
+  );
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.
   app.use(
     "/api",

@@ -31,8 +31,9 @@ export const subscribers = pgTable(
     // member (4c Task 4's sync writes/reads this; Task 2 only adds the column).
     mediaHubEmailRef: text("media_hub_email_ref"),
     // A short reason a media-list member needs staff attention instead of being silently
-    // deleted (C59) -- e.g. a bounced or collided Media Hub email. Null = fine. Set together
-    // with attentionAt; neither is written by this task.
+    // deleted (C59) -- a collided Media Hub email (media-hub/sync.ts: "email-gone",
+    // "email-invalid", "email-taken"), or a hard-bounced address (bounces.ts: "bouncing").
+    // Null = fine. Set together with attentionAt.
     needsAttention: text("needs_attention"),
     attentionAt: timestamp("attention_at", { withTimezone: true }),
     // Set when the subscriber unsubscribes, is deleted, or moves to a new address; drives the
@@ -108,6 +109,16 @@ export const deliveries = pgTable(
     mode: text("mode").$type<DeliveryMode>().notNull().default("as_it_happens"),
     jobId: uuid("job_id").references(() => sendJobs.id, { onDelete: "set null" }),
     attemptedAt: timestamp("attempted_at", { withTimezone: true }),
+    // Distribution's own batch id for the chunk/part this delivery was actually handed off in
+    // (send-jobs.ts's sendAllChunks, stamped right after distribution.send returns) -- what a
+    // `delivery.bounced` event's own batchId is matched against first (bounces.ts).
+    distributionBatchId: uuid("distribution_batch_id"),
+    // Set once, on this delivery's first hard bounce (bounces.ts); never cleared, and never
+    // moved by a later bounce of either kind for the same delivery.
+    hardBouncedAt: timestamp("hard_bounced_at", { withTimezone: true }),
+    // The bounce's own status code/string (e.g. "5.1.1", or legacy's numeric "550"), from
+    // whichever bounce -- hard or soft -- first set it for this delivery.
+    bounceStatus: text("bounce_status"),
   },
   (t) => [
     primaryKey({ columns: [t.itemKey, t.subscriberId, t.mode] }),
@@ -116,6 +127,12 @@ export const deliveries = pgTable(
     // claim's own read of this job's items, withdrawItem/createItemSend's deletes, and the
     // ON DELETE SET NULL FK check on sendJobs — none of which had an index to use.
     index("deliveries_job_id_idx").on(t.jobId),
+    // bounces.ts's own first match attempt: a delivery.bounced event's batchId against this
+    // subscriber's deliveries.
+    index("deliveries_distribution_batch_id_idx").on(t.distributionBatchId),
+    // bounces.ts's fallback match and its threshold query: both scan this subscriber's own
+    // deliveries ordered by attempted_at.
+    index("deliveries_subscriber_attempted_at_idx").on(t.subscriberId, t.attemptedAt),
   ],
 );
 export type DeliveryRow = typeof deliveries.$inferSelect;
@@ -201,6 +218,27 @@ export const nodSettings = pgTable(
     mediaSyncLeaseUntil: timestamp("media_sync_lease_until", { withTimezone: true }),
     mediaSyncRunStart: timestamp("media_sync_run_start", { withTimezone: true }),
     mediaSyncCursor: text("media_sync_cursor"),
+    // When the daily bounce summary (bounce-summary.ts) last actually sent -- the start of the
+    // next summary's own window (the brief: "from the last bounce_summary_at (or 24h) to
+    // now"). Left unset on a run with nothing to report, so that run's whole window is folded
+    // into the next one instead of ever being silently dropped. Separate from
+    // bounce_summary_checked_at below: this is the window boundary, that is the due gate.
+    bounceSummaryAt: timestamp("bounce_summary_at", { withTimezone: true }),
+    // The last 08:00-BC-time cutoff this was checked for, whether or not it sent anything --
+    // what makes "is it due" correct for a day with nothing to report: a no-op run still
+    // stamps this alone, so it isn't re-checked every minute for the rest of that same day,
+    // and a day it never even checked (null) is still due the moment it's past that day's
+    // cutoff.
+    bounceSummaryCheckedAt: timestamp("bounce_summary_checked_at", { withTimezone: true }),
+    // A lease, not a held transaction, protects the window between claiming the day's run and
+    // stamping it done -- the same shape as media_sync_lease above, just without a resumable
+    // cursor (bounce-summary.ts's own work has nothing to resume). Once `bounce_summary_lease_
+    // until` has passed, another caller takes it over even if the original run is still
+    // mid-flight (just slow, not crashed) -- there's no cursor to hand off, so the new runner
+    // simply starts over from the subscriber list as it stands then, and the stale runner's own
+    // eventual `finish` is a no-op against the lease it no longer holds.
+    bounceSummaryLease: uuid("bounce_summary_lease"),
+    bounceSummaryLeaseUntil: timestamp("bounce_summary_lease_until", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],

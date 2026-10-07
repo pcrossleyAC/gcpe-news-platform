@@ -18,7 +18,7 @@ const LINKS: RecipientLinkOptions = {
 const TIME_ZONE = "America/Vancouver";
 
 function stubDistribution(): DistributionClient & { send: ReturnType<typeof vi.fn> } {
-  return { send: vi.fn().mockResolvedValue({ batchId: "batch-ops" }) } as unknown as DistributionClient & { send: ReturnType<typeof vi.fn> };
+  return { send: vi.fn().mockResolvedValue({ batchId: "00000000-0000-4000-8000-0000000000aa" }) } as unknown as DistributionClient & { send: ReturnType<typeof vi.fn> };
 }
 
 describe("settings", () => {
@@ -172,7 +172,7 @@ describe("setDistributionPaused", () => {
 
   function stubDistributionWithPause(): DistributionClient & { send: ReturnType<typeof vi.fn>; setPaused: ReturnType<typeof vi.fn> } {
     return {
-      send: vi.fn().mockResolvedValue({ batchId: "batch-ops" }),
+      send: vi.fn().mockResolvedValue({ batchId: "00000000-0000-4000-8000-0000000000aa" }),
       setPaused: vi.fn().mockResolvedValue({ paused: true, changed: true }),
     } as unknown as DistributionClient & { send: ReturnType<typeof vi.fn>; setPaused: ReturnType<typeof vi.fn> };
   }

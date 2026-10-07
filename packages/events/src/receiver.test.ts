@@ -66,7 +66,7 @@ describe("createEventReceiver", () => {
         },
         onApplied: async (event) => {
           onAppliedCalls.push(event.id);
-          if (onAppliedShouldThrow) throw new Error("onApplied boom");
+          if (onAppliedShouldThrow) throw new Error("onApplied boom for someone@example.test");
         },
       }),
     );
@@ -111,8 +111,11 @@ describe("createEventReceiver", () => {
       const e = makeEvent(1, "org:fail");
       failNext = true;
       expect((await post(app, e)).status).toBe(500);
-      // D10: the failure can be in the inbox bookkeeping as well as the handler itself.
-      expect(errSpy).toHaveBeenCalledWith("[events] processing failed", e.type, e.id, expect.any(Error));
+      // The failure can be in the inbox bookkeeping as well as the handler itself -- the
+      // handler here (a lockAddress/findSubscriberForUpdate-style bind, in a real caller) may
+      // throw an error whose own message carries a bound value, so only a safe label is ever
+      // logged, never the error itself.
+      expect(errSpy).toHaveBeenCalledWith("[events] processing failed", e.type, e.id, e.source, "Error");
       const side = await tdb.pool.query("SELECT 1 FROM side_effects WHERE event_id = $1", [e.id]);
       expect(side.rowCount).toBe(0);
       expect((await post(app, e)).body.outcome).toBe("applied");
@@ -145,7 +148,7 @@ describe("createEventReceiver", () => {
     }
   });
 
-  it("onApplied throwing still returns 200 applied and does not block the duplicate check", async () => {
+  it("onApplied throwing still returns 200 applied, does not block the duplicate check, and logs no address", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       onAppliedShouldThrow = true;
@@ -154,6 +157,9 @@ describe("createEventReceiver", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ outcome: "applied" });
       expect(onAppliedCalls).toEqual([e.id]);
+      expect(errSpy).toHaveBeenCalledWith("[events] onApplied failed", e.type, e.id, "Error");
+      const logged = errSpy.mock.calls.flat().map(String).join(" ");
+      expect(logged).not.toContain("someone@example.test");
       // The event is already committed as applied, so a retry is a duplicate — onApplied
       // does not rerun just because it failed last time.
       onAppliedShouldThrow = false;

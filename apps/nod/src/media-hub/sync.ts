@@ -22,6 +22,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { dailyCutoff } from "../digest";
 import { MEDIA_CATEGORY } from "../lists";
+import { lockAddress } from "../locks";
 import { removeMediaMember, hasMediaMemberships } from "../media-members";
 import { writeHistory } from "../subscribe/history";
 import { emailAddressSchema, normaliseEmail } from "../subscribe/info";
@@ -56,13 +57,6 @@ export interface SyncResult {
 /** What a stopped-without-finishing run (an error, or hitting its own bound) records: either
  * the normal counts (possibly partial -- see `inProgress` below) or an abort reason. */
 export type StoredSyncResult = (SyncResult & { inProgress?: true }) | { error: string; kind?: string };
-
-/** Same advisory-lock keyspace as 4a's `journeys.ts`/4c's `media-members.ts` `lockAddress`
- * (always called with a lowercased email) -- serialises this module's writes against theirs
- * for the same address. */
-async function lockAddress(tx: DbOrTx, email: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${email}))`);
-}
 
 function zeroResult(): SyncResult {
   return { contacts: 0, updated: 0, flagged: 0, removed: 0, errors: 0 };

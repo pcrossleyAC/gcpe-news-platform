@@ -1,0 +1,1 @@
+CREATE INDEX "deliveries_subscriber_attempted_at_idx" ON "deliveries" USING btree ("subscriber_id","attempted_at");

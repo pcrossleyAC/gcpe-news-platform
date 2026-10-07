@@ -171,6 +171,20 @@ export type SiteContentChanged = z.infer<typeof siteContentChangedSchema>;
 export const siteRebuildRequestedSchema = z.object({ pages: z.array(z.string().min(1)).min(1) });
 export type SiteRebuildRequested = z.infer<typeof siteRebuildRequestedSchema>;
 
+/** Phase 4e's recorded bounce, matched to a Distribution message: emitted by Distribution's
+ * outbox (source "distribution") and routed to NoD alone. `at` is the bounce's own processed
+ * time, by the database's clock. */
+export const deliveryBouncedSchema = z.object({
+  appId: z.string(),
+  batchId: z.string().uuid(),
+  messageId: z.string(),
+  email: z.string(),
+  hard: z.boolean(),
+  status: z.string(),
+  at: offsetDateTime,
+});
+export type DeliveryBounced = z.infer<typeof deliveryBouncedSchema>;
+
 /** Index keys a release is listed under (`ministries:health`, …), lowercased. Shared by the News API and NoD. */
 export function indexKeysFor(r: Pick<ReleaseRecord, "ministryKeys" | "sectorKeys" | "tagKeys" | "themeKeys">): string[] {
   return [
@@ -200,6 +214,7 @@ export const eventDataSchemas = {
   "media_list.deactivated": z.object({ key: z.string().min(1) }),
   "site.content.changed": siteContentChangedSchema,
   "site.rebuild_requested": siteRebuildRequestedSchema,
+  "delivery.bounced": deliveryBouncedSchema,
 } as const;
 
 export type EventType = keyof typeof eventDataSchemas;

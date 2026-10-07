@@ -29,10 +29,9 @@ import { createDistributionTestDb } from "../../apps/distribution/test/helpers";
 import { startSmtpSink } from "../../apps/distribution/test/smtp-sink";
 import { startStack } from "../../apps/stack/src/stack";
 import { runBuild } from "../../scripts/build-staff-web.mjs";
-import { TEST_USER_PASSWORDS, TICK_TOKEN, ADMIN_PASSWORD, MEMBERSHIP_API_USERNAME, MEMBERSHIP_API_PASSWORD } from "./constants";
+import { TEST_USER_PASSWORDS, TICK_TOKEN, ADMIN_PASSWORD, MEMBERSHIP_API_USERNAME, MEMBERSHIP_API_PASSWORD, LOCAL_AUTH_SECRET, BOUNCE_SUMMARY_EMAIL } from "./constants";
 
 const repoRoot = resolve(fileURLToPath(new URL(".", import.meta.url)), "../..");
-const LOCAL_AUTH_SECRET = "e2e-local-auth-secret-32-characters-long!";
 const STACK_EVENT_SECRET = `e2e-event-secret-${"s".repeat(32)}`;
 
 async function probeFreePort(): Promise<number> {
@@ -175,6 +174,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     NOD_PUBLIC_SITE_URL: "self:/site",
     NOD_MEMBERSHIP_API_USERNAME: MEMBERSHIP_API_USERNAME,
     NOD_MEMBERSHIP_API_PASSWORD_HASH: membershipPasswordHash,
+    // Item 9's daily bounce summary (bounces.spec.ts) — unset in every other spec file's own
+    // tick(), this is what turns NoD's nod.bounce-summary tick step from a permanent no-op
+    // into a real (self-gated, real-wall-clock) check on every tick for the rest of the suite.
+    NOD_BOUNCE_SUMMARY_EMAIL: BOUNCE_SUMMARY_EMAIL,
 
     DIST_DATABASE_URL: distribution.url,
     DIST_SMTP_HOST: "127.0.0.1",
@@ -198,6 +201,13 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // period without actually sleeping two minutes — support.ts's `nrmsDb()` opens its own
   // connection to this same test database from the worker process to do that.
   process.env.E2E_NRMS_DATABASE_URL = nrms.url;
+  // Item 9 (bounces) needs the same trick twice over: distribution.bounces' own 15-minute gate
+  // (distribution_settings.bounces_checked_at) has to be reset directly to upload more than one
+  // wave of bounce .eml reports inside one test, and the daily summary's 08:00-BC-time gate
+  // (nod_settings) has no real-wall-clock-independent path at all without it — support.ts's
+  // `distDb()`/`nodDb()` open their own connections to these same test databases to do both.
+  process.env.E2E_NOD_DATABASE_URL = nod.url;
+  process.env.E2E_DIST_DATABASE_URL = distribution.url;
   console.log(`[e2e global-setup] stack ready at ${baseUrl}`);
 
   return async function globalTeardown(): Promise<void> {

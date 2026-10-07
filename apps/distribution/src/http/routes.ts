@@ -1,13 +1,28 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
+import { sql } from "drizzle-orm";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { requireRole } from "@gcpe/auth";
+import { bounceInbox, bounces } from "../db/schema";
 import * as messagesService from "../messages";
 import * as settingsService from "../settings";
 
 const uuidSchema = z.string().uuid();
 type Handler<P> = (req: Request<P>, res: Response) => Promise<void>;
 const safe = <P>(h: Handler<P>) => (req: Request<P>, res: Response, next: NextFunction) => h(req, res).catch(next);
+
+// 4e: the fake bounce inbox's own body limit (Global Constraints "Bounce source") — enforced
+// here rather than by shrinking the app-wide express.json limit (app.ts's 10mb covers every
+// other route too), since a raw .eml is text and this is the one route that should cap it.
+const BOUNCE_INBOX_MAX_BYTES = 1024 * 1024;
+const bounceInboxUploadSchema = z.object({
+  raw: z.string().refine((s) => Buffer.byteLength(s, "utf8") <= BOUNCE_INBOX_MAX_BYTES, { message: `raw exceeds ${BOUNCE_INBOX_MAX_BYTES} bytes` }),
+});
+
+// NoD's daily bounce summary's own query (bounce-summary.ts) -- both bounds are validated as
+// parseable instants before they ever reach the database.
+const isoInstant = z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "must be a valid date" });
+const bounceStatsQuerySchema = z.object({ since: isoInstant, until: isoInstant });
 
 /**
  * Maps the validation layer's ZodError to a response. Returns false for anything else so the
@@ -18,14 +33,21 @@ function handleError(e: unknown, res: Response): boolean {
   return false;
 }
 
-/** `azp` (the Entra v2 client id, or a local token's own azp) identifies the calling app;
- * falls back to the token's subject for callers that don't set one. */
+/** `azp` (the Entra v2 client id, or a local token's own azp) identifies the calling app.
+ * Falls back to `appid` -- an Entra v1 access token carries the client id there instead, never
+ * in `azp` -- and only then to the token's subject (which for an Entra client-credentials
+ * token is the service principal's object id, not anything the caller chose; subject is what's
+ * left for a caller that sets neither). */
 function appIdFrom(req: Request): string {
-  const azp = req.auth?.claims.azp;
-  return typeof azp === "string" && azp ? azp : req.auth!.subject;
+  const claims = req.auth?.claims ?? {};
+  const azp = claims.azp;
+  if (typeof azp === "string" && azp) return azp;
+  const appid = claims.appid;
+  if (typeof appid === "string" && appid) return appid;
+  return req.auth!.subject;
 }
 
-export function apiRoutes(db: Db, internalDomains: string[]): Router {
+export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake" | "graph"): Router {
   const r = Router();
   const run = <P>(h: Handler<P>): ReturnType<typeof safe<P>> =>
     safe<P>(async (req, res) => {
@@ -83,6 +105,58 @@ export function apiRoutes(db: Db, internalDomains: string[]): Router {
     requireRole("Distribution.Operate"),
     run(async (_req, res) => {
       res.json(await settingsService.setPaused(db, false));
+    }),
+  );
+
+  // 4e: the fake bounce inbox's own upload route (Global Constraints "Roles": gated the same
+  // as the settings routes above — NoD's own Distribution.Operate-scoped token is the only
+  // caller this is meant for, never staff directly). Only meaningful in fake mode; in graph
+  // mode there's no fake inbox to upload into, so this 404s rather than silently accepting and
+  // discarding a post.
+  r.post(
+    "/bounces/inbox",
+    requireRole("Distribution.Operate"),
+    run(async (req, res) => {
+      if (bounceSource !== "fake") return void res.status(404).json({ error: "not found" });
+      const parsed = bounceInboxUploadSchema.parse(req.body);
+      // Postgres `text` columns reject an embedded NUL outright -- stripped here (mirroring
+      // bounces/store.ts's own stripNul) so an upload that happens to carry one still succeeds,
+      // rather than 500ing on the insert below.
+      const raw = parsed.raw.includes("\u0000") ? parsed.raw.replaceAll("\u0000", "") : parsed.raw;
+      const [inserted] = await db.insert(bounceInbox).values({ raw }).returning({ id: bounceInbox.id });
+      res.status(201).json({ id: inserted!.id });
+    }),
+  );
+
+  // Lets NoD's own admin route (Global Constraints "Roles") decide whether to offer its
+  // fake-inbox proxy upload at all, without NoD having to know Distribution's env directly.
+  r.get(
+    "/bounces/source",
+    requireRole("Distribution.Operate"),
+    run(async (_req, res) => {
+      res.json({ source: bounceSource });
+    }),
+  );
+
+  // Feeds NoD's daily bounce summary (bounce-summary.ts) the two counts it can't get from its
+  // own database -- bounces that never matched a message NoD sent, and messages that weren't
+  // bounces at all (Global Constraints "Summary email": "counts of unmatched and ignored
+  // messages"). `processed_at` (not `received_at`) is what bounds the window, the same instant
+  // run.ts stamps every row with when it fetched and classified it. `until` (NoD passes its own
+  // `dbNow`) closes the window so two successive summaries can never double-count the same row.
+  r.get(
+    "/bounces/stats",
+    requireRole("Distribution.Operate"),
+    run(async (req, res) => {
+      const { since, until } = bounceStatsQuerySchema.parse(req.query);
+      const { rows } = await db.execute<{ unmatched: number; ignored: number }>(sql`
+        SELECT
+          count(*) FILTER (WHERE kind = 'bounce' AND matched = false)::int AS unmatched,
+          count(*) FILTER (WHERE kind = 'ignored')::int AS ignored
+        FROM ${bounces}
+        WHERE processed_at > ${new Date(since)} AND processed_at <= ${new Date(until)}
+      `);
+      res.json({ unmatched: rows[0]?.unmatched ?? 0, ignored: rows[0]?.ignored ?? 0 });
     }),
   );
 

@@ -388,7 +388,10 @@ export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<s
 
 /**
  * Which source may drive which event types (final review M1). Core owns reference data;
- * NRMS owns releases and site content; news-api owns site.rebuild_requested (it emits it; the News API itself has no handler for it, so a received one is "ignored"). A signed event of the wrong family from a source —
+ * NRMS owns releases and site content; news-api owns site.rebuild_requested (it emits it; the News API itself has no handler for it, so a received one is "ignored"); distribution owns
+ * delivery.bounced the same way (Phase 4e: emitted to NoD, not the News API — News API never
+ * receives one, but still must own it so the catalogue-coverage test below has exactly one
+ * owner for every type). A signed event of the wrong family from a source —
  * e.g. an nrms-signed `org.deactivated` — is recorded as "ignored" rather than applied, so
  * one source's credentials can't rewrite the other's data.
  */
@@ -396,6 +399,7 @@ export const SOURCE_EVENT_TYPES: Record<string, (type: string) => boolean> = {
   core: (type) => /^(org|sector|theme|tag|service)\./.test(type),
   nrms: (type) => type.startsWith("release.") || type === "site.content.changed" || type.startsWith("media_list."),
   "news-api": (type) => type === "site.rebuild_requested",
+  distribution: (type) => type.startsWith("delivery."),
 };
 
 /** The receiver's handler lookup: `createProjectionHandlers()`, restricted by event.source. */

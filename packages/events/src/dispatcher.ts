@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { ageMsOf, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import type { EventEnvelope } from "./envelope";
 import { signPayload } from "./signing";
 import type { SubscriberConfig } from "./subscribers";
@@ -144,7 +145,9 @@ export function startDispatcher(opts: DispatchOptions & { intervalMs?: number })
   const timer = setInterval(() => {
     if (running) return;
     running = dispatchOnce(opts)
-      .catch((e) => console.error("[events] dispatch failed", e))
+      // Never `e` itself: a whole-run failure (e.g. the claim query itself erroring) can carry
+      // a query error whose own message embeds bound values. A safe label is enough to triage.
+      .catch((e) => console.error("[events] dispatch failed", safeErrorLabel(e)))
       .finally(() => {
         running = null;
       });

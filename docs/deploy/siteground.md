@@ -338,6 +338,32 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
   curl -u '<username>:<password>' 'https://boxs.ca/nod/Subscribe/SubscriberInformation?emailAddress=<member email>'
   ```
   confirm it 200s with `SubscribedCategories["media-distribution-lists"]` listing the member's lists, and that a wrong password 401s with a `WWW-Authenticate` header.
+- [ ] **Phase 4e item 9** — bounces end to end. boxs.ca always runs `BOUNCE_SOURCE=fake` (the
+  Graph source isn't run live until Q23 is answered), so a bounce is hand-fed through the fake
+  inbox rather than actually failing an SMTP send:
+  1. Subscribe and confirm an address you control, then publish a release that reaches it; note
+     the `Message-ID` header on the email it receives (view source, or check the redirect
+     mailbox's own headers).
+  2. Build a `.eml` with a `550 5.1.1` RFC 3464 delivery-status report carrying that
+     `Message-ID` (see `apps/distribution/test/fixtures/bounces/gmail-dsn.eml` for the shape),
+     then upload it as the admin:
+     ```sh
+     curl -X POST https://boxs.ca/nod/api/bounces/inbox \
+       -H "authorization: Bearer <admin access_token>" -H 'content-type: application/json' \
+       --data-binary @- <<'EOF'
+     {"raw": "<the .eml's full text, with embedded newlines escaped>"}
+     EOF
+     ```
+  3. Within 15 minutes (or sooner, once the scheduler ticks), confirm the subscriber shows a
+     hard bounce. The 10-in-15-days rule counts *emails* (one release send), not uploads — each
+     of the nine remaining repeats needs its own new release reaching the address, each with its
+     own fresh `Message-ID` in a fresh `.eml`; re-uploading the exact same `.eml` again only
+     re-confirms the same one email and counts once by design, never advancing the count.
+     Repeat with nine genuinely new sends within 15 days and confirm the tenth disables them (no
+     further mail reaches them, and the membership endpoint still lists them). Re-subscribing
+     the same address (verify → confirm) reactivates them.
+  4. The next day at 08:00 BC time, confirm `BOUNCE_SUMMARY_EMAIL` received exactly one
+     "News On Demand - Bounce Manager - <date>" email listing the address as disabled.
 
 Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET`, so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
 

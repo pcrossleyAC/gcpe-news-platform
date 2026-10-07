@@ -4,6 +4,7 @@ import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { mintLocalToken } from "@gcpe/auth";
 import { createDistributionTestDb, sampleMessageRequest } from "../../test/helpers";
+import { bounces } from "../db/schema";
 import { createApp } from "../app";
 
 const issuer = "https://login.microsoftonline.com/t/v2.0";
@@ -13,11 +14,13 @@ const internalDomains = ["gov.bc.ca"];
 describe("Distribution HTTP API", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
+  let graphModeApp: ReturnType<typeof createApp>;
   let sender: string;
   let otherAppSender: string;
   let reader: string;
   let operator: string;
   let firstBatchId: string;
+  let appidOnlySender: string;
 
   beforeAll(async () => {
     tdb = await createDistributionTestDb();
@@ -35,7 +38,16 @@ describe("Distribution HTTP API", () => {
     otherAppSender = await sign("other-client", ["Distribution.Send"]);
     reader = await sign("nod-client", []);
     operator = await sign("nod", ["Distribution.Operate"]);
+    // An Entra v1 access token: the client id arrives as `appid`, never `azp`.
+    appidOnlySender = await new SignJWT({ roles: ["Distribution.Send"], appid: "v1-client" })
+      .setProtectedHeader({ alg: "RS256", kid: "k" })
+      .setIssuer(issuer)
+      .setAudience(audience)
+      .setSubject("svc-v1-object-id")
+      .setExpirationTime("5m")
+      .sign(pair.privateKey);
     app = createApp({ db: tdb.db, auth: { issuer, audience, keys }, internalDomains });
+    graphModeApp = createApp({ db: tdb.db, auth: { issuer, audience, keys }, internalDomains, bounceSource: "graph" });
   });
   afterAll(async () => {
     await tdb.drop();
@@ -225,6 +237,21 @@ describe("Distribution HTTP API", () => {
     expect(rows).toEqual([{ app_id: "nod" }]);
   });
 
+  // ruling: an Entra v1 access token carries the client id in `appid`, not `azp` -- without
+  // the fallback, this would record the batch under the service principal's own object id
+  // (the subject), and NoD would never recognise it as its own appId in a delivery.bounced
+  // event.
+  it("an Entra v1 token with no azp but an appid claim sends a batch with app_id from appid", async () => {
+    const res = await request(app)
+      .post("/api/messages")
+      .set("authorization", `Bearer ${appidOnlySender}`)
+      .send({ ...sampleMessageRequest, idempotencyKey: "appid-only-1" });
+    expect(res.status).toBe(202);
+
+    const { rows } = await tdb.pool.query("SELECT app_id FROM batches WHERE id = $1", [res.body.batchId]);
+    expect(rows).toEqual([{ app_id: "v1-client" }]);
+  });
+
   describe("GET /api/settings, POST /api/settings/pause|resume", () => {
     afterAll(async () => {
       await tdb.pool.query("UPDATE distribution_settings SET paused = false");
@@ -268,6 +295,106 @@ describe("Distribution HTTP API", () => {
 
       const settingsAfterResume = await request(app).get("/api/settings").set("authorization", `Bearer ${operator}`);
       expect(settingsAfterResume.body).toEqual({ paused: false });
+    });
+  });
+
+  describe("POST /api/bounces/inbox, GET /api/bounces/source", () => {
+    it("401s without a token, 403s without Distribution.Operate", async () => {
+      expect((await request(app).post("/api/bounces/inbox").send({ raw: "x" })).status).toBe(401);
+      expect((await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${reader}`).send({ raw: "x" })).status).toBe(403);
+      expect((await request(app).get("/api/bounces/source")).status).toBe(401);
+      expect((await request(app).get("/api/bounces/source").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    });
+
+    it("GET /api/bounces/source reports fake for this app", async () => {
+      const res = await request(app).get("/api/bounces/source").set("authorization", `Bearer ${operator}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ source: "fake" });
+    });
+
+    it("201s a valid upload and stores the raw message in bounce_inbox", async () => {
+      const res = await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${operator}`).send({ raw: "Subject: Undeliverable: x\r\n\r\nbody" });
+      expect(res.status).toBe(201);
+      expect(typeof res.body.id).toBe("string");
+
+      const { rows } = await tdb.pool.query("SELECT raw, processed_at FROM bounce_inbox WHERE id = $1", [res.body.id]);
+      expect(rows).toEqual([{ raw: "Subject: Undeliverable: x\r\n\r\nbody", processed_at: null }]);
+    });
+
+    it("201s a NUL-containing upload, storing it with the NUL stripped", async () => {
+      const res = await request(app)
+        .post("/api/bounces/inbox")
+        .set("authorization", `Bearer ${operator}`)
+        .send({ raw: "Subject: Undeliverable: x\r\n\r\nbody\u0000trailing" });
+      expect(res.status).toBe(201);
+
+      const { rows } = await tdb.pool.query("SELECT raw FROM bounce_inbox WHERE id = $1", [res.body.id]);
+      expect(rows[0].raw).toBe("Subject: Undeliverable: x\r\n\r\nbodytrailing");
+    });
+
+    it("400s a missing raw field and a raw over 1 MB", async () => {
+      expect((await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${operator}`).send({})).status).toBe(400);
+      const over = "x".repeat(1024 * 1024 + 1);
+      expect((await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${operator}`).send({ raw: over })).status).toBe(400);
+    });
+
+    it("404s the upload route (even with Distribution.Operate) when this app reports BOUNCE_SOURCE=graph, but still reports its source", async () => {
+      const upload = await request(graphModeApp).post("/api/bounces/inbox").set("authorization", `Bearer ${operator}`).send({ raw: "x" });
+      expect(upload.status).toBe(404);
+
+      const source = await request(graphModeApp).get("/api/bounces/source").set("authorization", `Bearer ${operator}`);
+      expect(source.status).toBe(200);
+      expect(source.body).toEqual({ source: "graph" });
+    });
+  });
+
+  describe("GET /api/bounces/stats", () => {
+    const sourceId = (n: number) => `stats-src-${n}`;
+    const q = (since: string, until: string) => `/api/bounces/stats?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
+
+    it("401s without a token, 403s without Distribution.Operate", async () => {
+      const since = new Date(Date.now() - 60_000).toISOString();
+      const until = new Date().toISOString();
+      expect((await request(app).get(q(since, until))).status).toBe(401);
+      expect((await request(app).get(q(since, until)).set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    });
+
+    it("400s a missing or invalid since/until", async () => {
+      const until = new Date().toISOString();
+      expect((await request(app).get("/api/bounces/stats").set("authorization", `Bearer ${operator}`)).status).toBe(400);
+      expect((await request(app).get(`/api/bounces/stats?since=not-a-date&until=${until}`).set("authorization", `Bearer ${operator}`)).status).toBe(400);
+      expect((await request(app).get(`/api/bounces/stats?since=${until}`).set("authorization", `Bearer ${operator}`)).status).toBe(400); // until missing
+      expect((await request(app).get(`/api/bounces/stats?since=${until}&until=not-a-date`).set("authorization", `Bearer ${operator}`)).status).toBe(400);
+    });
+
+    it("counts unmatched bounces and ignored messages processed in (since, until], excluding matched bounces and anything outside it", async () => {
+      const since = new Date();
+      const until = new Date(since.getTime() + 10_000);
+      await tdb.db.insert(bounces).values([
+        // Before the window -- excluded no matter its kind/matched state.
+        { sourceId: sourceId(1), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() - 60_000) },
+        // Inside the window: an unmatched hard bounce (counts), a matched one (doesn't), and
+        // two ignored (non-bounce) messages (count as ignored, not unmatched).
+        { sourceId: sourceId(2), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() + 1_000) },
+        { sourceId: sourceId(3), raw: "x", kind: "bounce", matched: true, processedAt: new Date(since.getTime() + 2_000) },
+        { sourceId: sourceId(4), raw: "x", kind: "ignored", matched: false, processedAt: new Date(since.getTime() + 3_000) },
+        { sourceId: sourceId(5), raw: "x", kind: "ignored", matched: false, processedAt: new Date(since.getTime() + 4_000) },
+        // After the window -- excluded, same as a row before it (prevents double-counting
+        // across two successive summaries whose windows abut).
+        { sourceId: sourceId(6), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() + 20_000) },
+      ]);
+
+      const res = await request(app).get(q(since.toISOString(), until.toISOString())).set("authorization", `Bearer ${operator}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ unmatched: 1, ignored: 2 });
+    });
+
+    it("zero counts when nothing was processed in the given window", async () => {
+      const since = new Date(Date.now() + 364 * 24 * 3_600_000).toISOString();
+      const until = new Date(Date.now() + 365 * 24 * 3_600_000).toISOString();
+      const res = await request(app).get(q(since, until)).set("authorization", `Bearer ${operator}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ unmatched: 0, ignored: 0 });
     });
   });
 });

@@ -1,0 +1,17 @@
+From: Mail Delivery System <mail@relay.example.test>
+To: distribution@example.test
+Subject: Undeliverable: Weekend clinics open across B.C.
+Date: Mon, 5 Oct 2026 13:00:05 -0700
+Content-Type: text/plain; charset="us-ascii"
+MIME-Version: 1.0
+
+Your message
+
+  To:      legacy@example.test
+  Subject: Weekend clinics open across B.C.
+
+could not be delivered.
+
+The following organization rejected your message: relay.example.test.
+
+<relay.example.test #5.1.1 smtp;550 5.1.1 legacy@example.test User unknown>

@@ -194,7 +194,9 @@ export async function dragReorder(page: Page, source: Locator, target: Locator):
   await target.dispatchEvent("drop", { dataTransfer });
 }
 
-const TENANT_TIME_ZONE = "America/Vancouver";
+/** The tenant's own time zone (`config/tenants/bc.json`) — exported for specs (bounces.spec.ts)
+ * that need it directly rather than through a BC-local-time helper below. */
+export const TENANT_TIME_ZONE = "America/Vancouver";
 
 /** `date`'s BC wall-clock date/time, as `{date: "YYYY-MM-DD", time: "HH:mm"}` — the exact shape
  * the SchedulePicker inputs and `publishAtLocal`/`goLiveAtLocal` take. Used to schedule "a
@@ -246,6 +248,40 @@ export function nrmsDb(): Db {
     cachedNrmsDb = createDb(url, { max: 2 }).db;
   }
   return cachedNrmsDb;
+}
+
+let cachedNodDb: Db | undefined;
+
+/** A direct connection to the same NoD test database the running stack uses — item 9's bounces
+ * spec uses this both to poll delivery/subscriber rows the public API surface doesn't expose
+ * (a delivery's own `hard_bounced_at`, a subscriber's `status`) and to reset the daily bounce
+ * summary's own gate (`nod_settings.bounce_summary_checked_at`/`_at`/`_lease*`) directly, the
+ * DB-level equivalent of the test-clock hook `runBounceSummaryIfDue` takes in its own unit
+ * tests but that the stack's `/stack/tick` never threads through. See global-setup.ts's
+ * `E2E_NOD_DATABASE_URL`. */
+export function nodDb(): Db {
+  if (!cachedNodDb) {
+    const url = process.env.E2E_NOD_DATABASE_URL;
+    if (!url) throw new Error("E2E_NOD_DATABASE_URL is not set — tests/e2e/global-setup.ts must run first.");
+    cachedNodDb = createDb(url, { max: 2 }).db;
+  }
+  return cachedNodDb;
+}
+
+let cachedDistDb: Db | undefined;
+
+/** A direct connection to the same Distribution test database the running stack uses — item 9's
+ * bounces spec uses this to reset `distribution_settings.bounces_checked_at` to null between two
+ * waves of fake-inbox uploads in the same test, bypassing the real 15-minute gate
+ * (apps/distribution/src/bounces/run.ts's `claimBounceGate`) the same way {@link nodDb}'s
+ * caller bypasses the bounce summary's own gate. See global-setup.ts's `E2E_DIST_DATABASE_URL`. */
+export function distDb(): Db {
+  if (!cachedDistDb) {
+    const url = process.env.E2E_DIST_DATABASE_URL;
+    if (!url) throw new Error("E2E_DIST_DATABASE_URL is not set — tests/e2e/global-setup.ts must run first.");
+    cachedDistDb = createDb(url, { max: 2 }).db;
+  }
+  return cachedDistDb;
 }
 
 export interface SentMessage {

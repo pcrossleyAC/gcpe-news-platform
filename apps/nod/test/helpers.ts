@@ -17,7 +17,7 @@ export function createNodTestDb(): Promise<TestDatabase> {
 // listsHandler) as well as prove the receiver resolves an unhandled source/type to "ignored"
 // (never 401, since a wrong signature would mask whether the source-restriction logic itself
 // works).
-export const EVENT_SECRETS = { nrms: "nrms-secret", core: "core-secret" } as const;
+export const EVENT_SECRETS = { nrms: "nrms-secret", core: "core-secret", distribution: "distribution-secret" } as const;
 
 // Same createApp options as routes.test.ts uses — issuer/audience/keys are omitted (no test
 // here needs the bearer-protected /api routes), events need only eventSecrets, and the

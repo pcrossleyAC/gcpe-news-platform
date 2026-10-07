@@ -114,3 +114,35 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   and otherwise still goes out on resume however old it is — age alone never blocks a send. A
   long pause (for example, across a writ period) releases whatever stale mail is still pending
   as soon as sending resumes; decide whether that's acceptable before resuming.
+- **Operations** — Bounce handling's own env keys: Distribution's `BOUNCE_SOURCE` (`fake` on
+  every test site, including boxs.ca — `graph` is built but not run live until Q23 is answered),
+  and, in `graph` mode only, `GRAPH_TENANT_ID`/`GRAPH_CLIENT_ID`/`GRAPH_CLIENT_SECRET`/
+  `BOUNCE_MAILBOX` (all four, or startup refuses to boot). NoD's own `BOUNCE_SUMMARY_EMAIL`
+  (unset means the daily bounce summary is never sent) and `DISTRIBUTION_APP_ID` (production
+  sets this explicitly to NoD's own Entra client id, rather than relying on its default).
+- **Operations** — To hand-test a bounce on a test site (boxs.ca always runs the fake inbox —
+  `BOUNCE_SOURCE=fake`): `POST /nod/api/bounces/inbox` (`NoD.Admin`) with
+  `{"raw": "<the .eml's full text>"}`; the next scheduled bounce run (every 15 minutes, or the
+  next tick in dev) picks it up. Distribution's own `/api/bounces/inbox`
+  (`Distribution.Operate`) 404s unless it's actually running in fake mode.
+- **Administrator** — A bounce-disabled subscriber is `disabled`, exactly like a staff-disabled
+  one (4a): kept, sent nothing, still shown as a member by the membership endpoint, and
+  reactivated by re-subscribing themselves — the verify email reaching them again proves the
+  mailbox works. Never deleted, unlike legacy. A media-list member is flagged "needs attention"
+  instead and is never disabled; staff clear the flag by hand.
+- **Administrator** — The 10-in-15-days disable/flag rule counts *emails*, not delivery rows: a
+  digest that lands in a subscriber's inbox as one message is one count toward the 10, even
+  though it leaves several delivery rows (one per item). Ten consecutive bounced digests disable
+  (or flag) a subscriber just as fast as ten consecutive bounced As-It-Happens emails would — it
+  is never easier to trip for a digest subscriber than for anyone else.
+- **Administrator** — The daily bounce summary (`BOUNCE_SUMMARY_EMAIL`, unset means none) goes
+  out at 08:00 BC time, only when there was a bounce to report since the last one — one line per
+  bounced subscriber (address, hard/soft and status code, and the outcome: recorded/disabled/
+  flagged, media-list members shown in bold), then the counts of unmatched and ignored messages.
+  Soft bounces are recorded on the subscriber's deliveries but never counted or listed.
+- **Administrator** — "Something to report" (what decides whether that daily summary sends at
+  all) includes an *unmatched* bounce (a bounce report Distribution couldn't tie to any message
+  it sent) — it still shows up in the unmatched count even with no subscriber line of its own.
+  Mail Distribution classified `ignored` (not recognisable as a bounce at all — an auto-reply, a
+  calendar response, anything else that landed in the inbox) never does; a window with only
+  ignored mail sends no summary.

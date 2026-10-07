@@ -3,11 +3,30 @@ import express from "express";
 import { authFromEnv } from "@gcpe/auth";
 import { parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
-import { createDb, runMigrations } from "@gcpe/db-kit";
+import { createDb, runMigrations, type Db } from "@gcpe/db-kit";
+import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
-import { distributionEnvSchema } from "./env";
+import { graphBounceSource } from "./bounces/graph";
+import { runBouncesIfDue, startBounceLoop } from "./bounces/run";
+import { fakeBounceSource, type BounceSource } from "./bounces/source";
+import { distributionEnvSchema, type DistributionEnv } from "./env";
 import { sendDue, startSender } from "./sender";
 import { smtpTransportOptions } from "./transport";
+
+/** env.ts's superRefine already refuses to boot in "graph" mode without all four of these, so
+ * the non-null assertions below are safe — this is just where that already-validated shape is
+ * turned into bounces/graph.ts's own options. */
+function bounceSourceFor(db: Db, parsed: DistributionEnv): BounceSource {
+  if (parsed.BOUNCE_SOURCE === "graph") {
+    return graphBounceSource({
+      tenantId: parsed.GRAPH_TENANT_ID!,
+      clientId: parsed.GRAPH_CLIENT_ID!,
+      clientSecret: parsed.GRAPH_CLIENT_SECRET!,
+      mailbox: parsed.BOUNCE_MAILBOX!,
+    });
+  }
+  return fakeBounceSource(db);
+}
 
 export interface AppHandle {
   app: express.Express;
@@ -39,6 +58,7 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
   const auth = authFromEnv(env);
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
+  const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
   const transport = nodemailer.createTransport(smtpTransportOptions(parsed));
 
@@ -69,17 +89,26 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
     auth: auth.bearer,
     loginRouter: auth.loginRouter,
     internalDomains: parsed.INTERNAL_DOMAINS,
+    bounceSource: parsed.BOUNCE_SOURCE,
   });
 
-  // Set by startLoops(); the closer below references it lazily so it's safe to call even if
-  // startLoops() was never invoked.
+  // Built once and reused by both the tick worker and startLoops()'s own interval — a Graph
+  // source's token cache and resolved Processed-folder id are worth keeping across calls.
+  const bounceSource = bounceSourceFor(db, parsed);
+
+  // Set by startLoops(); the closers below reference them lazily so they're safe to call even
+  // if startLoops() was never invoked.
   let stopSender: (() => Promise<void>) | undefined;
+  let stopBounceLoop: (() => Promise<void>) | undefined;
+  let stopDispatcher: (() => Promise<void>) | undefined;
 
   return {
     app,
     port: parsed.PORT,
     workers: {
       send: () => sendDue(sendOptions),
+      bounces: () => runBouncesIfDue(db, bounceSource, { subscribers, messageIdDomain: parsed.MESSAGE_ID_DOMAIN }),
+      dispatch: () => dispatchOnce({ db, subscribers }),
     },
     startLoops() {
       stopSender = startSender({
@@ -87,10 +116,14 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
         intervalMs: parsed.SEND_INTERVAL_MS,
         outageCooldownMaxMs: parsed.SEND_OUTAGE_COOLDOWN_MAX_MS,
       });
+      stopBounceLoop = startBounceLoop({ db, source: bounceSource, subscribers, messageIdDomain: parsed.MESSAGE_ID_DOMAIN });
+      stopDispatcher = startDispatcher({ db, subscribers });
     },
     closeBeforeServer: [],
     closers: [
       { name: "sender", close: async () => { await stopSender?.(); } },
+      { name: "bounce loop", close: async () => { await stopBounceLoop?.(); } },
+      { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
       { name: "transport", close: () => transport.close() },
       { name: "db pool", close: () => pool.end() },
     ],

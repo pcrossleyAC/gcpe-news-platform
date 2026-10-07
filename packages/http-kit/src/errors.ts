@@ -22,14 +22,30 @@ export function exposedMessage(err: unknown): string {
   return "request error";
 }
 
+/** A log-safe label for an arbitrary caught error. Never `e.message` or `e.cause.message`:
+ * a query error's message routinely embeds whatever values the failing query bound (an SQL
+ * driver's own `DrizzleQueryError`, for instance, formats as `"Failed query: <sql>\nparams:
+ * <params>"`), so logging it risks putting an address, token or other sensitive value straight
+ * into the logs. The error's own code (a Postgres error code, say, or one from `cause`) is
+ * informative without ever carrying a bound value; failing that, its name. Shared so every
+ * caller logs errors the same safe way instead of each reinventing this. */
+export function safeErrorLabel(e: unknown): string {
+  const code = (e as { cause?: { code?: unknown } })?.cause?.code ?? (e as { code?: unknown })?.code;
+  if (typeof code === "string") return code;
+  return e instanceof Error ? e.name : "error";
+}
+
 /**
  * Terminal Express error handler: keeps failures as JSON, never finalhandler's default
  * HTML-with-stack. 4xx errors keep their status and (only if exposable) their message;
  * everything else is a generic 500.
  */
 export function jsonErrorHandler(opts: { logPrefix: string }): ErrorRequestHandler {
-  return (err, _req, res, next) => {
-    console.error(`${opts.logPrefix} request failed`, err);
+  return (err, req, res, next) => {
+    // Never `err` itself (or its message/stack): an arbitrary thrown error's message can embed
+    // whatever a failing query bound -- an address, a token -- same risk safeErrorLabel exists
+    // to close everywhere else. The method and path are enough to triage without it.
+    console.error(`${opts.logPrefix} request failed`, req.method, req.path, safeErrorLabel(err));
     if (res.headersSent) return next(err);
     const status = clientErrorStatus(err);
     if (status !== undefined) {
