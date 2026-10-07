@@ -14,7 +14,8 @@ import { SubscriberScreen } from "./SubscriberScreen";
 import { HistoryScreen } from "./HistoryScreen";
 import { MediaListsScreen } from "./MediaListsScreen";
 import { MediaListScreen } from "./MediaListScreen";
-import type { MediaMember, SubscriberDetail, SubscriberPage } from "./types";
+import { OperationsScreen } from "./OperationsScreen";
+import type { MediaMember, OperationsStatus, SubscriberDetail, SubscriberPage } from "./types";
 
 async function seriousViolations(container: Element, options?: Parameters<typeof axe.run>[1]) {
   const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, ...options });
@@ -70,6 +71,12 @@ const MEDIA_MEMBERS: MediaMember[] = [
   { subscriberId: "55555555-5555-5555-5555-555555555555", email: "lee@example.test", source: "manual-media", mediaHubContactId: null, mediaHubEmailRef: null, needsAttention: "bouncing", attentionAt: "2026-10-06T09:00:00.000Z" },
 ];
 const MEDIA_OPTED = { items: [{ subscriberId: "33333333-3333-3333-3333-333333333333", email: "gone@example.test", at: "2026-09-01T17:00:00.000Z", member: false }], truncated: false };
+const OPS: OperationsStatus = {
+  nod: { paused: false, lastDigestCutoff: "2026-10-07T00:00:00.000Z" },
+  distribution: { paused: false },
+  bounceSource: "fake",
+  bounceSummary: { address: "server@example.test", from: "server" },
+};
 const MEDIA_CONTACT = {
   id: 42, firstName: "Sam", lastName: "Reporter", outlet: "Riverbend Gazette", deletedAt: null,
   emails: [
@@ -94,6 +101,7 @@ function stubCommon(roles: string[]) {
       if (url === "/nod/api/media-lists/budget/members") return jsonResponse(200, MEDIA_MEMBERS);
       if (url === "/nod/api/media-lists/budget/opted-out") return jsonResponse(200, MEDIA_OPTED);
       if (url === "/nod/api/media-hub/contacts/42") return jsonResponse(200, MEDIA_CONTACT);
+      if (url === "/nod/api/operations") return jsonResponse(200, OPS);
       return jsonResponse(200, {});
     }),
   );
@@ -260,5 +268,16 @@ describe("accessibility — Subscribers", () => {
     await screen.findByRole("radio", { name: /sam@gazette\.example\.test/ });
     // jsdom has no `inert` (see the bulk delete dialog's note above).
     expect(await seriousViolations(document.body, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
+  });
+
+  it("Operations, with the pause dialog open, has no serious violations", async () => {
+    stubCommon(["NoD.Admin"]);
+    const { container } = render(withAuthAt("/subscribers/operations", "/subscribers/operations", <OperationsScreen />));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Pause News On Demand sending" }));
+    await screen.findByRole("alertdialog");
+    // jsdom has no `inert` (see the bulk delete dialog's note above).
+    const noInert = { rules: { "aria-hidden-focus": { enabled: false } } };
+    expect(await seriousViolations(document.body, noInert)).toEqual([]);
+    expect(await seriousViolations(container, noInert)).toEqual([]);
   });
 });
