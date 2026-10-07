@@ -47,6 +47,11 @@ describe("buildSummaryBody", () => {
     expect(text).toContain("…and 1999 more not listed here; see the bounce mailbox.");
   });
 
+  it("shows only the not-listed line, without None., when a section's rows were all left out", () => {
+    const { text } = buildSummaryBody({ ...base, soft: { count: 3, rows: [] } });
+    expect(text).toMatch(/Soft bounces \(3\)[^\n]*\n…and 3 more not listed here; see the bounce mailbox\./);
+  });
+
   it("says not a NoD subscriber for an unknown unrecorded address", () => {
     const { text } = buildSummaryBody({ ...base, unrecorded: { count: 1, rows: [listed({ address: "x@example.test", subscriber: null })] } });
     expect(text).toContain("x@example.test (4.2.2 452 4.2.2 mailbox full) - BC Gov News - Clinics open - not a NoD subscriber");

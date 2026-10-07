@@ -47,8 +47,9 @@ function listedText(b: ListedBounce, withSubscriber: boolean): string {
 }
 
 function section(heading: string, lines: Line[], notListed: number): { html: string; text: string } {
-  const shown = lines.length > 0 ? lines : [{ text: "None.", bold: false }];
-  const all = notListed > 0 ? [...shown, { text: `…and ${notListed} more not listed here; see the bounce mailbox.`, bold: false }] : shown;
+  const more = notListed > 0 ? [{ text: `…and ${notListed} more not listed here; see the bounce mailbox.`, bold: false }] : [];
+  // "None." only when the section is truly empty, never above a "…and N more" line.
+  const all = lines.length > 0 || more.length > 0 ? [...lines, ...more] : [{ text: "None.", bold: false }];
   return {
     html: [`<h3>${escapeHtml(heading)}</h3>`, ...all.map((l) => `<p>${l.bold ? `<b>${escapeHtml(l.text)}</b>` : escapeHtml(l.text)}</p>`)].join("\n"),
     text: [heading, ...all.map((l) => l.text)].join("\n"),

@@ -9,7 +9,7 @@ import type { BounceSummaryRow, DistributionClient } from "./distribution-client
 import { nodSettings, subscribers, subscriptions, type SubscriberRow } from "./db/schema";
 import { MEDIA_CATEGORY } from "./lists";
 import { hasMediaMemberships } from "./media-members";
-import { getSoftCodesCounted, resolveBounceSummaryAddress } from "./settings";
+import { resolveBounceSummaryAddress } from "./settings";
 import { safeErrorLabel } from "./subscribe/journeys";
 
 /** Daily at 08:00 BC time (Global Constraints "Summary email"), the same `dailyCutoff`/
@@ -242,9 +242,13 @@ export async function runBounceSummaryIfDue(
     // whole run is retried, rather than sending hard lines alone.
     const dist = await distribution.bounceSummary(windowStart.toISOString(), dbNow.toISOString());
 
-    // A soft code staff count as hard was handled as a hard bounce and is already a hard line.
-    const counted = new Set(await getSoftCodesCounted(db));
-    const softRows = dist.soft.rows.filter((r) => !(r.status && counted.has(r.status.trim())));
+    // A soft bounce NoD counted as hard (a code staff count) is already a hard line, so it is
+    // dropped here -- but only when this window's hard lines hold that same address and code.
+    // A counted code alone isn't enough: NoD never counts system mail, addresses it has no
+    // subscriber for, media members already flagged, or bounces from before the code was
+    // added, and those must still be listed somewhere.
+    const hardKeys = new Set(hard.filter((h) => h.status).map((h) => `${h.email.toLowerCase()}|${h.status!.trim()}`));
+    const softRows = dist.soft.rows.filter((r) => !(r.status && hardKeys.has(`${r.address.toLowerCase()}|${r.status.trim()}`)));
     const softCount = dist.soft.count - (dist.soft.rows.length - softRows.length);
 
     // Only bounces count as "there were bounces"; a window of ignored mail alone sends nothing.

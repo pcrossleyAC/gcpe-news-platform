@@ -194,9 +194,9 @@ describe("runBounceSummaryIfDue", () => {
     expect(row!.bounceSummaryAt).toEqual(stampedAt); // unchanged -- only the first-ever run stamps it on a no-op
   });
 
-  it("ruling: an ignored-only window sends no email; an unrecorded-only or soft-only window does", async () => {
+  it("an ignored-only window sends no email; an unrecorded-only or soft-only window does", async () => {
     const ignoredOnly = stubDistribution();
-    ignoredOnly.bounceSummary.mockResolvedValue(summaryOf({ unrecorded: Array.from({ length: 0 }, (_, i) => ({ address: `u${i}@example.test` })), ignored: 3 }));
+    ignoredOnly.bounceSummary.mockResolvedValue(summaryOf({ ignored: 3 }));
     const resultIgnored = await runBounceSummaryIfDue(tdb.db, ignoredOnly, TZ, "ops@example.com", () => DAY1_0800);
     expect(resultIgnored).toEqual({ sent: false, lines: 0 });
     expect(ignoredOnly.send).not.toHaveBeenCalled();
@@ -515,6 +515,31 @@ describe("runBounceSummaryIfDue", () => {
       expect(req.text).toContain("counted@example.test - soft, counted as hard (4.2.2): recorded (1/15d)");
       expect(req.text).toContain("Soft bounces (1)");
       expect(req.text).not.toContain("counted@example.test (4.2.2");
+    } finally {
+      await tdb.db.update(nodSettings).set({ bounceSoftCodesCounted: [] }).where(eq(nodSettings.id, 1));
+    }
+  });
+
+  it("a soft bounce with a counted code but no hard line in the window is still listed among soft bounces", async () => {
+    await tdb.db.update(nodSettings).set({ bounceSoftCodesCounted: ["4.2.2"] }).where(eq(nodSettings.id, 1));
+    try {
+      const sub = await insertSubscriber(tdb.db, "counted-hard@example.test");
+      await insertHardBounceDelivery(tdb.db, sub, { at: DAY1_0300, status: "4.2.2" });
+      await insertHistory(tdb.db, sub, "bounce-recorded", "4.2.2", DAY1_0300);
+      const distribution = stubDistribution();
+      distribution.bounceSummary.mockResolvedValue(
+        summaryOf({
+          soft: [
+            { address: "COUNTED-HARD@example.test", status: "4.2.2" },
+            { address: "verify-only@example.test", status: "4.2.2", message: "452 4.2.2 mailbox full" },
+          ],
+        }),
+      );
+      await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
+      const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+      expect(req.text).toContain("Soft bounces (1)");
+      expect(req.text).toContain("verify-only@example.test (4.2.2 452 4.2.2 mailbox full)");
+      expect(req.text).not.toContain("COUNTED-HARD@example.test (4.2.2");
     } finally {
       await tdb.db.update(nodSettings).set({ bounceSoftCodesCounted: [] }).where(eq(nodSettings.id, 1));
     }
