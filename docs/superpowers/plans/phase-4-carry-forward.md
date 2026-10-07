@@ -2,14 +2,12 @@
 
 Items the 4a task and final reviews deferred to later sub-plans. Each later plan must pick up its section, then delete those lines here.
 
-## 4e / 4f (bounces, staff section)
-- When an email move deletes a `pending`/`deleted` row, its `subscriber_history` cascades away. Decide the audit-retention rule.
-- History has no separate "subscribed" action, so a new signup and a reactivation both log "confirmed". Settle this for the 4f reports.
-- After a move, the old address's unexpired manage/verify sessions still work for up to 24 h. Consider using up the subscriber's other session links when the move completes.
-- A superseded verify link (claimed by a sibling confirm, no subscriber id) returns `null` from Confirm but `true` from CheckEmailActivationToken. Align them.
+## 4g (staff screens: lists, media lists, reports, operations)
 - NRMS staff-web media-list screen (4c built the admin API only — `POST`/`PUT /nrms/api/media-lists`, `.../republish`; existing lists arrive via the importer and republish).
 - NoD media-list member screens (4c built the admin API only — `GET /nod/api/media-lists`, `GET`/`POST`/`DELETE .../members`, the Media Hub search/sync endpoints).
 - A read route/screen listing who opted out of each media list (history action `media-list-opted-out`).
+- Open the NoD media-list member/sync/resolve routes to `NoD.Editor` (spec §8) together with their screens.
+- Reports read `subscribed`/`resubscribed` (new vs returning) and count `unsubscribed` + `staff-deleted` as unsubscribes; old `confirmed` rows count as `subscribed`.
 
 ## 4g (retention/purge)
 - Purge expired `origin='send'` `subscriber_links` rows (each send mints one per recipient, holding the address).

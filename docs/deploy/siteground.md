@@ -321,7 +321,7 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
 
 **Hand-check list.** The items below are automated against the whole stack running locally (`npm run test:e2e`, Phase 3's acceptance list, `docs/superpowers/specs/2026-10-03-nrms-parity-design.md` §9) but are also marked `*` there for a hand check on boxs.ca itself, since production Flickr, real SMTP delivery and the real SiteGround cron cadence can't be faked:
 
-- [ ] **Item 1** — sign in as the test editor (`scripts/siteground-seed-users.sh` creates/resets the three test users); confirm a viewer can read a release but has no write controls, and a site editor reaches the Website section but never sees Approve.
+- [ ] **Item 1** — sign in as the test editor (`scripts/siteground-seed-users.sh` creates/resets the five test users); confirm a viewer can read a release but has no write controls, and a site editor reaches the Website section but never sees Approve.
 - [ ] **Item 2** — create one of each type (Release, Story, Factsheet, Advisory) through `/hub/releases/new`; confirm the form's required/allowed fields match the type (e.g. an Advisory offers no Sectors/Themes/Tags).
 - [ ] **Item 5** — approve and publish a release now; confirm it reaches the public site (`https://boxs.ca/site/releases/<key>/`) and a subscriber actually receives the NoD email, within one scheduled `/stack/tick` run (see "Background work scheduler" above).
 - [ ] **Item 7** — edit a field on an already-published release; confirm it shows "Republishing…" and comes back as "Published" with a new entry in its History ("Show all") and an extra frozen copy.
@@ -364,10 +364,15 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
      the same address (verify → confirm) reactivates them.
   4. The next day at 08:00 BC time, confirm `BOUNCE_SUMMARY_EMAIL` received exactly one
      "News On Demand - Bounce Manager - <date>" email listing the address as disabled.
+- [ ] **Phase 4f item 14** — sign in as `nod-viewer`, `nod-editor` and the admin in turn and confirm
+  what each sees on Subscribers: the Viewer finds and reads subscribers but has no Save
+  preferences/Delete/Change email/status controls and no bulk actions; the Editor has all of
+  those plus Add a subscriber; the Admin sees the same controls as the Editor. Confirm an
+  NRMS-only user (the test editor or site editor) never sees the Subscribers link at all.
 
 Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET`, so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
 
-The break-glass `admin` account signs in through the same endpoint. To create or reset the three test users (`editor@example.test`, `site-editor@example.test`, `viewer@example.test`), run from your Mac:
+The break-glass `admin` account signs in through the same endpoint. To create or reset the five test users (`editor@example.test`, `site-editor@example.test`, `viewer@example.test`, `nod-viewer@example.test`, `nod-editor@example.test`), run from your Mac:
 
     scripts/siteground-seed-users.sh https://boxs.ca
 
