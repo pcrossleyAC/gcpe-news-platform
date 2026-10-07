@@ -56,6 +56,11 @@ export const messages = pgTable(
     // Set when a send is attempted (sender.ts, in the same update that re-asserts the row's
     // lock) and stable across retries of the same row — 4e matches bounces by it.
     messageId: text("message_id"),
+    // 4e: set by bounces/store.ts's recordBounce, from the matched bounce. Left untouched by a
+    // later bounce once bounceHard is true — a hard bounce is never downgraded back to soft.
+    bouncedAt: timestamp("bounced_at", { withTimezone: true }),
+    bounceStatus: text("bounce_status"),
+    bounceHard: boolean("bounce_hard"),
   },
   (t) => [
     index("messages_due_idx").on(t.priority.desc(), t.nextAttemptAt).where(sql`${t.status} = 'pending'`),
@@ -87,3 +92,29 @@ export const distributionSettings = pgTable(
   (t) => [check("distribution_settings_singleton", sql`${t.id} = 1`)],
 );
 export type DistributionSettingsRow = typeof distributionSettings.$inferSelect;
+
+export type BounceKind = "bounce" | "ignored";
+export type BounceMethod = "rfc3464" | "heuristic";
+
+// 4e: one row per bounce report fetched from the bounce source (fake or Graph), keyed by that
+// source's own id so re-fetching the same message (the source is polled, not drained) never
+// double-processes it. The raw message is kept here only — never logged — as evidence.
+export const bounces = pgTable(
+  "bounces",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    sourceId: text("source_id").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    raw: text("raw").notNull(),
+    kind: text("kind").$type<BounceKind>().notNull(),
+    recipient: text("recipient"),
+    status: text("status"),
+    hard: boolean("hard"),
+    method: text("method").$type<BounceMethod>(),
+    messageId: uuid("message_id").references(() => messages.id, { onDelete: "set null" }),
+    matched: boolean("matched").notNull().default(false),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+  },
+  (t) => [uniqueIndex("bounces_source_id_idx").on(t.sourceId), check("bounces_kind_check", sql`${t.kind} IN ('bounce','ignored')`)],
+);
+export type BounceRow = typeof bounces.$inferSelect;

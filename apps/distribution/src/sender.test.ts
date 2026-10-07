@@ -49,7 +49,7 @@ describe("sendDue", () => {
   // be empty of any other test's leftovers (e.g. a test that deliberately leaves a row
   // pending) before it starts.
   beforeEach(async () => {
-    await tdb.db.execute(sql`TRUNCATE TABLE messages, batches, send_rate_windows`);
+    await tdb.db.execute(sql`TRUNCATE TABLE bounces, messages, batches, send_rate_windows`);
     await tdb.db.execute(sql`UPDATE distribution_settings SET paused = false`);
   });
 
