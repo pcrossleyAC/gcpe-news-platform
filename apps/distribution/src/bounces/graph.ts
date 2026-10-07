@@ -88,14 +88,21 @@ export function graphBounceSource(opts: GraphBounceSourceOptions): BounceSource 
 
   return {
     async fetchNew(limit) {
-      const filter = encodeURIComponent("isRead eq false");
       // Deliberately one page: $top=limit and no @odata.nextLink following, so a mailbox with
       // more than `limit` unread messages only has its first page read this run -- the rest is
       // still unread and gets picked up on a later (15-minute) run instead. $orderby makes that
       // page the oldest `limit` unread messages, not Graph's own default (newest first) -- a
       // mailbox with a backlog works through it in arrival order instead of starving the oldest
       // messages every run.
-      const filterAndOrder = `$filter=${filter}&$orderby=receivedDateTime asc`;
+      //
+      // Graph's List messages requires every $orderby property to also appear in $filter,
+      // first and in the same order -- an $orderby with no matching leading $filter clause
+      // answers 400 InefficientFilter, failing every run. `receivedDateTime ge
+      // 1900-01-01T00:00:00Z` is otherwise a no-op (every real message is newer) that exists
+      // purely to satisfy that requirement.
+      const filter = encodeURIComponent("receivedDateTime ge 1900-01-01T00:00:00Z and isRead eq false");
+      const orderBy = encodeURIComponent("receivedDateTime asc");
+      const filterAndOrder = `$filter=${filter}&$orderby=${orderBy}`;
       const listed = await call(
         "list unread messages",
         `${mailboxPath}/mailFolders/inbox/messages?${filterAndOrder}&$top=${limit}&$select=id`,
