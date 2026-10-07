@@ -2,6 +2,7 @@ import { useState, type FormEvent } from "react";
 import { Button, Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { typeRules, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
+import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import { releaseLanguageOf } from "../viewHelpers";
 
@@ -89,6 +90,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
           ))}
         </ul>
       )}
+      {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
       <Form onSubmit={onSubmit}>
         <TextField
@@ -120,6 +122,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
             Save page details
           </Button>
         )}
+        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
     </section>
   );

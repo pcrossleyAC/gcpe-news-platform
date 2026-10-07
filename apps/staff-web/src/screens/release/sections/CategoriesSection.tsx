@@ -3,6 +3,7 @@ import { Button, Form, InlineAlert } from "@bcgov/design-system-react-components
 import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
+import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import type { Categories, Term } from "../categories";
 import { FeatureSwitches, type FeaturePlace } from "./FeatureSwitches";
@@ -115,6 +116,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
           ))}
         </ul>
       )}
+      {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
       <Form onSubmit={onSubmit}>
         {categoryList("ministries", "Ministries", categories.ministries)}
@@ -146,6 +148,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
             Save categories
           </Button>
         )}
+        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
 
       <FeatureSwitches view={view} setView={setView} places={places} readOnly={readOnly} />

@@ -3,6 +3,7 @@ import { Button, Form, InlineAlert, NumberField } from "@bcgov/design-system-rea
 import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
+import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import { instantToBcLocal } from "../timezone";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
@@ -193,6 +194,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
             Save settings
           </Button>
         )}
+        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
     </section>
   );

@@ -262,3 +262,8 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Operations** — A media-list member already flagged "bouncing" still shows, in bold, every time
   they bounce again — not just the first time. Tell Media Relations each time it reappears; the flag
   alone doesn't mean anyone has fixed the mailbox.
+- **Editor** — In the release editor you can save one section while another is still saving (or
+  press several Save buttons in the sticky bar in a row). Each save waits its turn — the section
+  shows "Waiting to save…", then "Saving…" — and nothing you typed is lost. "Someone else changed
+  this — reload to see their changes" now only appears when another person really did change the
+  release.

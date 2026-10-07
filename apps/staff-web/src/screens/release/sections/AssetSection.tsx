@@ -3,6 +3,7 @@ import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react
 import { assetUrlProblem, typeRules, TYPE_LABEL, type AssetStatus, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
+import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
 
 export interface AssetSectionProps {
@@ -107,6 +108,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
           ))}
         </ul>
       )}
+      {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
       <Form onSubmit={onSubmit}>
         <TextField
@@ -127,6 +129,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
             Save media asset
           </Button>
         )}
+        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
     </section>
   );

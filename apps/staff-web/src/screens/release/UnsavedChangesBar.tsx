@@ -20,8 +20,9 @@ function sectionName(label: string): string {
  * duplicate of that logic. A section's own inline Save button at the bottom of its form keeps
  * working exactly as before; this is an additional, always-visible way to reach it.
  *
- * Deliberately no single "Save all": every section save bumps the release's `version`, so
- * saving two sections at once would 409 the second.
+ * Pressing several buttons in a row is safe: section saves go through the page's save queue
+ * (saveQueue.tsx), so each one waits for the save before it and sends the version that save
+ * returned rather than 409ing against it.
  */
 export function UnsavedChangesBar({ sections }: UnsavedChangesBarProps): React.JSX.Element | null {
   const [pending, setPending] = useState<ReadonlySet<string>>(new Set());

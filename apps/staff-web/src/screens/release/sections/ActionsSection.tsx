@@ -6,6 +6,8 @@ import { apiFetch, ApiError } from "../../../api/client";
 import { scrollToAndFocus } from "../../../shared/scrollToSection";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { useRegisterDirty } from "../useUnsavedChanges";
+import { useSaveQueue, withVersion } from "../saveQueue";
+import { SaveStatus } from "../SaveStatus";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
 
 /** apps/nrms/src/releases/service.ts's DELETABLE_STATUSES. */
@@ -29,6 +31,7 @@ export interface ActionsSectionProps {
 export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps): React.JSX.Element {
   const navigate = useNavigate();
   const section = useReleaseSection(view, setView);
+  const queue = useSaveQueue();
   const rules = typeRules(view.type);
 
   const [schedulerOpen, setSchedulerOpen] = useState(false);
@@ -79,7 +82,7 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
     setDeleteError(null);
     setDeleteConflict(false);
     try {
-      await apiFetch(`/nrms/api/releases/${view.id}/delete`, { method: "POST", body: { version: view.version } });
+      await queue.run((version) => apiFetch(`/nrms/api/releases/${view.id}/delete`, { method: "POST", body: withVersion({ version: view.version }, version) }));
       navigate("/releases/drafts");
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409) setDeleteConflict(true);
@@ -104,6 +107,7 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
           ))}
         </ul>
       )}
+      <SaveStatus saving={section.saving} waiting={section.waiting} />
 
       <div className="gcpe-release-editor__action-buttons">
         {canApprove && (

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "react-router";
 import { AlertDialog, Button, Modal } from "@bcgov/design-system-react-components";
 import { statusText, type ReleaseView } from "@gcpe/nrms-contract";
@@ -18,6 +18,7 @@ import { PageDetailsSection } from "./sections/PageDetailsSection";
 import { DocumentsSection } from "./documents/DocumentsSection";
 import { FilesSection } from "./documents/FilesSection";
 import { SideBar } from "./sidebar/SideBar";
+import { SaveQueueContext, useSaveQueueController } from "./saveQueue";
 
 /**
  * `/hub/releases/:id` (task-3-brief.md): loads the view once, holds it in one piece of state
@@ -25,6 +26,10 @@ import { SideBar } from "./sidebar/SideBar";
  * independently (via its own {@link useReleaseSection} call) and, on success, replaces the
  * *whole* `view` with the server's response — so every other section's `version` field stays
  * current too, even though only one section's fields actually changed.
+ *
+ * Section saves never overlap: they go through one page-wide queue (saveQueue.tsx), so a save
+ * requested while another is still in flight waits for it and then sends the version it
+ * returned, instead of sending the old version and 409ing against our own earlier save.
  *
  * Task 4 adds Documents, Translations/files, History and a side bar (DocumentsSection,
  * FilesSection, SideBar below) after Task 3's sections, without needing to touch anything above
@@ -55,7 +60,18 @@ export function ReleaseEditorPage(): React.JSX.Element {
   const { id } = useParams<{ id: string }>();
   const session = useSession();
   const timeZone = useTenantTimeZone();
-  const [view, setView] = useState<ReleaseView | null>(null);
+  const [view, setViewState] = useState<ReleaseView | null>(null);
+  const saveQueue = useSaveQueueController();
+  // Every new view (load, background refresh, a section's save or Reload) also tells the save
+  // queue the release's latest version, which the next queued save sends.
+  const { noteVersion } = saveQueue;
+  const setView = useCallback(
+    (v: ReleaseView) => {
+      noteVersion(v.version);
+      setViewState(v);
+    },
+    [noteVersion],
+  );
   const [error, setError] = useState<string | null>(null);
   const guard = useUnsavedChangesGuard();
   const { announce } = useAnnouncer();
@@ -70,7 +86,8 @@ export function ReleaseEditorPage(): React.JSX.Element {
   useEffect(() => {
     if (!id) return;
     let active = true;
-    setView(null);
+    setViewState(null);
+    saveQueue.reset();
     setError(null);
     apiFetch<ReleaseView>(`/nrms/api/releases/${id}`).then(
       (v) => {
@@ -84,7 +101,7 @@ export function ReleaseEditorPage(): React.JSX.Element {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, setView, saveQueue]);
 
   // Re-fetch on its own while the release is on its way somewhere (see settlingDelay). Each
   // successful fetch replaces `view`, which re-runs this effect — the loop ends by itself once
@@ -114,7 +131,7 @@ export function ReleaseEditorPage(): React.JSX.Element {
       active = false;
       clearTimeout(timer);
     };
-  }, [view, retry]);
+  }, [view, retry, setView]);
 
   // Say so when a refresh (or anything else) moves the release to a new status.
   useEffect(() => {
@@ -142,41 +159,43 @@ export function ReleaseEditorPage(): React.JSX.Element {
   const settling = settlingDelay(view, Date.now()) === SETTLING_REFRESH_MS;
 
   return (
-    <guard.Provider>
-      <div className={`gcpe-release-editor${guard.dirtySections.length > 0 ? " gcpe-release-editor--save-bar-open" : ""}`}>
-        <HeaderSection view={view} />
-        {settling && <p className="gcpe-release-editor__settling">This page updates on its own until the release is done — no need to reload.</p>}
+    <SaveQueueContext.Provider value={saveQueue.queue}>
+      <guard.Provider>
+        <div className={`gcpe-release-editor${guard.dirtySections.length > 0 ? " gcpe-release-editor--save-bar-open" : ""}`}>
+          <HeaderSection view={view} />
+          {settling && <p className="gcpe-release-editor__settling">This page updates on its own until the release is done — no need to reload.</p>}
 
-        {/* Fix round 1, finding 2: a real Modal/AlertDialog instead of an inline div — traps
-         * focus, restores it on close, and closes on Escape (treated the same as "Stay": the
-         * blocker is simply left blocked, so the in-app navigation stays cancelled). */}
-        <Modal isOpen={guard.blocker.state === "blocked"} onOpenChange={(open) => { if (!open) guard.blocker.reset?.(); }} isDismissable>
-          <AlertDialog
-            variant="warning"
-            title="Unsaved changes"
-            buttons={
-              <>
-                <Button onPress={() => guard.blocker.reset?.()}>Stay</Button>
-                <Button danger onPress={() => guard.blocker.proceed?.()}>
-                  Leave
-                </Button>
-              </>
-            }
-          >
-            <p>You have unsaved changes on this page. Leave anyway and discard them?</p>
-          </AlertDialog>
-        </Modal>
+          {/* Fix round 1, finding 2: a real Modal/AlertDialog instead of an inline div — traps
+           * focus, restores it on close, and closes on Escape (treated the same as "Stay": the
+           * blocker is simply left blocked, so the in-app navigation stays cancelled). */}
+          <Modal isOpen={guard.blocker.state === "blocked"} onOpenChange={(open) => { if (!open) guard.blocker.reset?.(); }} isDismissable>
+            <AlertDialog
+              variant="warning"
+              title="Unsaved changes"
+              buttons={
+                <>
+                  <Button onPress={() => guard.blocker.reset?.()}>Stay</Button>
+                  <Button danger onPress={() => guard.blocker.proceed?.()}>
+                    Leave
+                  </Button>
+                </>
+              }
+            >
+              <p>You have unsaved changes on this page. Leave anyway and discard them?</p>
+            </AlertDialog>
+          </Modal>
 
-        {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} />}
-        <SettingsSection view={view} setView={setView} timeZone={timeZone} readOnly={!canEdit} />
-        <CategoriesSection view={view} setView={setView} readOnly={!canEdit} />
-        <AssetSection view={view} setView={setView} readOnly={!canEdit} />
-        <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />
-        <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
-        <FilesSection view={view} setView={setView} readOnly={!canEdit} />
-        <SideBar view={view} />
-      </div>
-      <UnsavedChangesBar sections={guard.dirtySections} />
-    </guard.Provider>
+          {canEdit && <ActionsSection view={view} setView={setView} timeZone={timeZone} />}
+          <SettingsSection view={view} setView={setView} timeZone={timeZone} readOnly={!canEdit} />
+          <CategoriesSection view={view} setView={setView} readOnly={!canEdit} />
+          <AssetSection view={view} setView={setView} readOnly={!canEdit} />
+          <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />
+          <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
+          <FilesSection view={view} setView={setView} readOnly={!canEdit} />
+          <SideBar view={view} />
+        </div>
+        <UnsavedChangesBar sections={guard.dirtySections} />
+      </guard.Provider>
+    </SaveQueueContext.Provider>
   );
 }
