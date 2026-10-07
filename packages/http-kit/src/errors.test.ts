@@ -38,13 +38,27 @@ describe("jsonErrorHandler", () => {
     expect(res.body).toEqual({ error: "request error" });
   });
 
-  it("turns anything else into a generic 500 and logs it with the prefix", async () => {
+  it("turns anything else into a generic 500 and logs the method, path and a safe label with the prefix", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await request(app(() => { throw new Error("secret db detail at /srv/x.ts:1"); })).get("/throw");
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: "internal error" });
     expect(res.text).not.toContain("secret");
-    expect(log).toHaveBeenCalledWith("[test] request failed", expect.any(Error));
+    expect(log).toHaveBeenCalledWith("[test] request failed", "GET", "/throw", "Error");
+  });
+
+  // A thrown error's own message can embed whatever a failing query bound -- an address, a
+  // token -- the same risk safeErrorLabel exists to close everywhere else. jsonErrorHandler
+  // must never log the error itself, only method/path/label.
+  it("never logs an address that a thrown error's own message carries", async () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const err = Object.assign(new Error("Failed query: ...\nparams: someone@example.test"), { code: "23505" });
+    const res = await request(app(() => { throw err; })).get("/throw");
+    expect(res.status).toBe(500);
+    for (const call of log.mock.calls) {
+      expect(call.join(" ")).not.toContain("someone@example.test");
+    }
+    expect(log).toHaveBeenCalledWith("[test] request failed", "GET", "/throw", "23505");
   });
 });
 

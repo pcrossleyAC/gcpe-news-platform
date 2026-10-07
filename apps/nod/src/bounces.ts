@@ -1,4 +1,4 @@
-import { and, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
+import { and, eq, isNull, sql, type SQL } from "drizzle-orm";
 import { sqlInterval, type DbOrTx, type Tx } from "@gcpe/db-kit";
 import type { DeliveryBounced, EventEnvelope, EventHandler } from "@gcpe/events";
 import { deliveries, subscribers, type DeliveryRow } from "./db/schema";
@@ -15,13 +15,6 @@ const HARD_BOUNCE_THRESHOLD = 10;
  * a subscriber who hasn't yet tripped the threshold. */
 export const THRESHOLD_WINDOW_DAYS = 15;
 const THRESHOLD_WINDOW_MS = THRESHOLD_WINDOW_DAYS * 24 * 3_600_000;
-
-/** Matching fallback (Global Constraints "NoD threshold"), mirroring Distribution's own
- * recipient-fallback window (bounces/store.ts's RECIPIENT_FALLBACK_WINDOW_MS): when no delivery
- * carries the event's own batchId, the subscriber's most recent attempted delivery, as long as
- * it's recent enough to plausibly be the one that bounced. */
-const FALLBACK_MATCH_WINDOW_DAYS = 4;
-const FALLBACK_MATCH_WINDOW_MS = FALLBACK_MATCH_WINDOW_DAYS * 24 * 3_600_000;
 
 /** Exported so the daily bounce summary (bounce-summary.ts) can find the same history rows
  * this module writes, by the same actor, without duplicating the literal string. */
@@ -56,47 +49,19 @@ interface DeliveryMatch {
  * bounce, if it bounces at all). So a match returns every row that email touched, and the
  * caller marks all of them together, not just one.
  *
- * `distribution_batch_id = batchId` for this subscriber first; falling back to their most
- * recent attempted delivery within {@link FALLBACK_MATCH_WINDOW_DAYS} days when nothing
- * matches the batch id (no delivery was ever stamped with it, or none of this subscriber's
- * deliveries happen to carry it) -- and then every delivery sharing *that* row's `job_id`
- * (same reasoning: one job, one send, one email). A fallback row with no `job_id` at all (its
- * send_jobs row was since deleted) has nothing to group by beyond itself.
+ * Controller ruling: NoD has no recipient fallback of its own. Distribution's event always
+ * carries a real batchId -- it has already done its own recipient-within-4-days fallback on
+ * its side (bounces/store.ts) before ever emitting this event, so the batchId it hands over
+ * always names the message that actually bounced. If no delivery row of this subscriber's own
+ * carries it (a verification/manage-link email, which gets no deliveries row at all, or a
+ * handoff whose own batch-id stamp never landed), there is nothing here to mark -- guessing at
+ * a different, unrelated send by recency would risk misattributing the bounce.
  */
 async function findDeliveryMatch(tx: Tx, subscriberId: string, batchId: string): Promise<DeliveryMatch | null> {
-  const byBatchWhere = and(eq(deliveries.subscriberId, subscriberId), eq(deliveries.distributionBatchId, batchId));
-  const byBatch = await tx.select().from(deliveries).where(byBatchWhere);
-  if (byBatch.length > 0) return { rows: byBatch, where: byBatchWhere };
-
-  const [fallback] = await tx
-    .select()
-    .from(deliveries)
-    .where(
-      and(
-        eq(deliveries.subscriberId, subscriberId),
-        isNotNull(deliveries.attemptedAt),
-        sql`${deliveries.attemptedAt} >= now() - ${sqlInterval(FALLBACK_MATCH_WINDOW_MS)}`,
-      ),
-    )
-    .orderBy(desc(deliveries.attemptedAt))
-    .limit(1);
-  if (!fallback) return null;
-  // Ruling (final review): only ever fall back to a delivery that was never itself stamped
-  // with a batch id of its own. One that already carries one (send-jobs.ts's own successful
-  // handoff) is definitely a different, already-identified send -- attributing this event's
-  // bounce to it (e.g. a bounce on a verification/manage-link email, which gets no deliveries
-  // row at all, landing near a genuine release send for the same subscriber) would misattribute
-  // it. A row with no distribution_batch_id of its own is the pre-existing stamp-defect this
-  // fallback exists to recover from, and the only candidate left standing.
-  if (fallback.distributionBatchId !== null) return null;
-  if (fallback.jobId === null) {
-    const where = and(eq(deliveries.subscriberId, subscriberId), eq(deliveries.itemKey, fallback.itemKey), eq(deliveries.mode, fallback.mode));
-    return { rows: [fallback], where };
-  }
-
-  const byJobWhere = and(eq(deliveries.subscriberId, subscriberId), eq(deliveries.jobId, fallback.jobId));
-  const byJob = await tx.select().from(deliveries).where(byJobWhere);
-  return { rows: byJob, where: byJobWhere };
+  const where = and(eq(deliveries.subscriberId, subscriberId), eq(deliveries.distributionBatchId, batchId));
+  const rows = await tx.select().from(deliveries).where(where);
+  if (rows.length === 0) return null;
+  return { rows, where };
 }
 
 /**

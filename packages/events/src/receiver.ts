@@ -105,7 +105,8 @@ export function createEventReceiver(opts: ReceiverOptions): express.Router {
         try {
           await opts.onApplied(event);
         } catch (e) {
-          console.error("[events] onApplied failed", event.type, event.id, e);
+          // Same reasoning as the "processing failed" catch below: never `e` itself.
+          console.error("[events] onApplied failed", event.type, event.id, safeErrorLabel(e));
         }
       }
       res.status(200).json({ outcome });

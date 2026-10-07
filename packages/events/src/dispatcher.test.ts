@@ -1,9 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { eq } from "drizzle-orm";
-import { createTestDatabase, dbClock, type TestDatabase } from "@gcpe/db-kit";
-import { backoffMs, defaultLockMs, dispatchOnce } from "./dispatcher";
+import { createTestDatabase, dbClock, type Db, type TestDatabase } from "@gcpe/db-kit";
+import { backoffMs, defaultLockMs, dispatchOnce, startDispatcher } from "./dispatcher";
 import { enqueueEvent } from "./publisher";
 import { verifySignature } from "./signing";
 import type { SubscriberConfig } from "./subscribers";
@@ -206,5 +206,27 @@ describe("dispatchOnce", () => {
     expect(backoffMs(1)).toBe(10_000);
     expect(backoffMs(2)).toBe(20_000);
     expect(backoffMs(20)).toBe(3_600_000);
+  });
+});
+
+describe("startDispatcher", () => {
+  // A query error's own message routinely embeds whatever the failing query bound -- an
+  // address, a token -- so a whole-run failure must never log the error itself, only a safe
+  // label.
+  it("logs no address when a run fails, only a safe label", async () => {
+    const badDb = {
+      execute: () => Promise.reject(Object.assign(new Error("Failed query: ...\nparams: someone@example.test"), { code: "23505" })),
+    } as unknown as Db;
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const stop = startDispatcher({ db: badDb, subscribers: [], intervalMs: 20 });
+    try {
+      await vi.waitFor(() => expect(errorSpy).toHaveBeenCalled());
+      const logged = errorSpy.mock.calls.flat().map(String).join(" ");
+      expect(logged).not.toContain("someone@example.test");
+      expect(logged).toContain("23505");
+    } finally {
+      await stop();
+      errorSpy.mockRestore();
+    }
   });
 });

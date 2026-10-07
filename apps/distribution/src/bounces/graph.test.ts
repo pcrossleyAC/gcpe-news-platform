@@ -74,6 +74,33 @@ describe("graphBounceSource", () => {
     await expect(source.fetchNew(50)).resolves.toEqual([{ id: "AAMkAGI-graph-message-1", raw: BOUNCE_EML }]);
   });
 
+  // Graph's List messages requires every $orderby property to also appear in $filter, first
+  // and in the same order -- an $orderby with nothing matching in $filter answers 400
+  // InefficientFilter, which would fail every single run in graph mode.
+  it("fetchNew's $filter leads with the $orderby property, so Graph doesn't reject it as InefficientFilter", async () => {
+    let listUrl = "";
+    const fetchImpl = recordedFetch([
+      { method: "POST", match: /oauth2\/v2\.0\/token/, response: () => jsonResponse(TOKEN_JSON) },
+      {
+        match: /\/mailFolders\/inbox\/messages/,
+        response: () => jsonResponse(fixture("list-one-unread.json")),
+      },
+      { match: /\/messages\/AAMkAGI-graph-message-1\/\$value/, response: () => textResponse(BOUNCE_EML) },
+    ]);
+    const capturing = Object.assign((input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes("/mailFolders/inbox/messages")) listUrl = String(input);
+      return fetchImpl(input, init);
+    }, { callCount: fetchImpl.callCount }) as RecordedFetch;
+
+    const source = graphBounceSource({ ...baseOpts, fetchImpl: capturing });
+    await source.fetchNew(50);
+
+    const filterParam = new URL(listUrl).searchParams.get("$filter") ?? "";
+    expect(filterParam.startsWith("receivedDateTime")).toBe(true);
+    expect(filterParam).toContain("isRead eq false");
+    expect(new URL(listUrl).searchParams.get("$orderby")).toBe("receivedDateTime asc");
+  });
+
   it("fetchNew skips a message whose $value download fails, logging only a safe label and its id, and still returns the rest", async () => {
     const fetchImpl = recordedFetch([
       { method: "POST", match: /oauth2\/v2\.0\/token/, response: () => jsonResponse(TOKEN_JSON) },
