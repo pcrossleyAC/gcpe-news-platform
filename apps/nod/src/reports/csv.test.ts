@@ -58,6 +58,17 @@ describe("csvCell", () => {
     expect(csvCell(undefined)).toBe("");
   });
 
+  it("neutralises a formula lead hidden behind whitespace, a stray BOM, or a full-width operator", () => {
+    expect(csvCell(" =1+1")).toBe("' =1+1");
+    expect(csvCell("\n=1+1")).toBe(`"'\n=1+1"`);
+    expect(csvCell(" =1+1")).toBe("' =1+1");
+    expect(csvCell("﻿=1+1")).toBe("'﻿=1+1");
+    expect(csvCell("＝1+1")).toBe("'＝1+1");
+    expect(csvCell(" ＋1")).toBe("' ＋1");
+    expect(csvCell("－1")).toBe("'－1");
+    expect(csvCell("＠SUM(A1)")).toBe("'＠SUM(A1)");
+  });
+
   it("joins a line with CRLF", () => {
     expect(csvLine(["a", 1, null])).toBe("a,1,\r\n");
   });
@@ -119,5 +130,69 @@ describe("streamCsv", () => {
     expect(r.status).toBe(500);
     expect(r.headers["content-type"]).toMatch(/^application\/json/);
     expect(r.headers["content-disposition"]).toBeUndefined();
+  });
+
+  it("runs onStart only once the first batch is in hand, so a pre-stream failure never runs it", async () => {
+    let started = 0;
+    const onStart = async () => {
+      started++;
+    };
+
+    async function* failsAtOnce(): AsyncGenerator<CsvCell[][]> {
+      throw new Error("boom");
+    }
+    const failed = await serve(async (_req, res) => {
+      await streamCsv(res, "t-2026-10-07.csv", ["Email"], failsAtOnce(), onStart).catch(() => void res.status(500).json({ error: "internal error" }));
+    });
+    expect(failed.status).toBe(500);
+    expect(started).toBe(0);
+
+    const ok = await serve(async (_req, res) => {
+      await streamCsv(res, "t-2026-10-07.csv", ["Email"], oneBatch([["pat@example.test"]]), onStart);
+    });
+    expect(ok.status).toBe(200);
+    expect(started).toBe(1);
+  });
+
+  it("stops pulling batches and closes the generator soon after the client disconnects", async () => {
+    let fetched = 0;
+    let closed = false;
+
+    async function* manyOneRowBatches(): AsyncGenerator<CsvCell[][]> {
+      try {
+        for (let i = 0; i < 500; i++) {
+          fetched++;
+          yield [[`row-${i}`]];
+          await new Promise((r) => setTimeout(r, 2)); // give the client's abort time to reach the server
+        }
+      } finally {
+        closed = true;
+      }
+    }
+
+    const app = express();
+    app.get("/x", async (_req, res) => {
+      await streamCsv(res, "many-2026-10-07.csv", ["Row"], manyOneRowBatches()).catch(() => undefined);
+    });
+    await new Promise<void>((resolve) => {
+      const server = app.listen(0, () => {
+        const { port } = server.address() as AddressInfo;
+        const req = http.get({ port, path: "/x" }, (res) => {
+          res.once("data", () => req.destroy()); // the client gives up right after the first chunk
+        });
+        req.on("error", () => undefined);
+        req.on("close", () => {
+          // The server notices the disconnect (and runs the generator's own cleanup) a moment
+          // after the client's own socket close fires; give that a moment before asserting.
+          setTimeout(() => {
+            server.close();
+            resolve();
+          }, 100);
+        });
+      });
+    });
+
+    expect(closed).toBe(true);
+    expect(fetched).toBeLessThan(100); // nowhere near the full 500 -- the generator was closed, not drained
   });
 });

@@ -1,4 +1,5 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import express from "express";
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
@@ -7,6 +8,9 @@ import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
 import { lists, operationsLog, subscriberHistory, subscribers, subscriptions } from "../db/schema";
 import type { DistributionClient } from "../distribution-client";
+import { ClientGoneError } from "../reports/csv";
+import { addDays, MAX_RANGE_DAYS, resolveRange } from "../reports/range";
+import { privateErrors } from "./report-routes";
 
 /** A GET whose body stays raw bytes, so a test sees the BOM exactly as sent. */
 function getCsv(app: ReturnType<typeof createApp>, path: string, token: string) {
@@ -24,7 +28,7 @@ function getCsv(app: ReturnType<typeof createApp>, path: string, token: string) 
 describe("report routes", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
-  let viewer: string, editor: string, outsider: string;
+  let viewer: string, editor: string, admin: string, outsider: string;
   const distribution = {
     send: vi.fn(),
     getSettings: vi.fn(),
@@ -40,6 +44,7 @@ describe("report routes", () => {
     const { auth, token } = await staffAuth();
     viewer = await token(["NoD.Viewer"], "Vic Viewer");
     editor = await token(["NoD.Editor"], "Eddie Editor");
+    admin = await token(["NoD.Admin"], "Ada Admin");
     outsider = await token(["NRMS.Editor"]);
     app = createApp({
       db: tdb.db,
@@ -89,6 +94,11 @@ describe("report routes", () => {
     expect(res.status).toBe(403);
   });
 
+  it("an outsider can't export addresses either", async () => {
+    const res = await getCsv(app, "/api/reports/subscribers-by-list/members.csv?list=ministries%3Ahealth", outsider);
+    expect(res.status).toBe(403);
+  });
+
   it("an Editor exports a list's members with neutralised cells, and the export is logged without addresses", async () => {
     const res = await getCsv(app, "/api/reports/subscribers-by-list/members.csv?list=ministries%3Ahealth", editor);
     expect(res.status).toBe(200);
@@ -105,7 +115,15 @@ describe("report routes", () => {
   it("an unknown list is a 404 before any CSV starts", async () => {
     const res = await request(app).get("/api/reports/subscribers-by-list/members.csv?list=ministries%3Anope").set("authorization", `Bearer ${editor}`);
     expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "not found" });
     expect(res.headers["content-disposition"]).toBeUndefined();
+  });
+
+  it("NoD.Admin can download the members CSV too", async () => {
+    const res = await getCsv(app, "/api/reports/subscribers-by-list/members.csv?list=ministries%3Ahealth", admin);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-disposition"]).toMatch(/^attachment; filename="subscribers-ministries-health-\d{4}-\d{2}-\d{2}\.csv"$/);
+    expect((res.body as Buffer).toString("utf8")).toContain("pat@example.test");
   });
 
   it("nothing about an export reaches the logs", async () => {
@@ -142,6 +160,53 @@ describe("report routes", () => {
       expect(text).toMatch(/\r\ngone@example\.test,Unsubscribed,\d{4}-\d{2}-\d{2} \d{2}:\d{2},Deleted,/);
       const logs = await tdb.db.select().from(operationsLog).where(eq(operationsLog.detail, "unsubscribes"));
       expect(logs).toHaveLength(1);
+    });
+  });
+
+  describe("a cancelled download", () => {
+    it("is never logged as a failure", async () => {
+      const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const bare = express();
+      bare.get("/x", privateErrors(async (_req, res) => {
+        res.status(200).end("partial"); // the browser already has some bytes
+        throw new ClientGoneError();
+      }));
+      const res = await request(bare).get("/x");
+      expect(res.status).toBe(200);
+      expect(spy).not.toHaveBeenCalled();
+      spy.mockRestore();
+    });
+  });
+
+  describe("a bad date range", () => {
+    const BC = "America/Vancouver";
+    function rangeApp() {
+      const bare = express();
+      bare.get("/x", privateErrors(async (req, res) => {
+        const from = typeof req.query.from === "string" ? req.query.from : undefined;
+        const to = typeof req.query.to === "string" ? req.query.to : undefined;
+        resolveRange({ from, to }, "2026-10-07", BC);
+        res.json({ ok: true });
+      }));
+      return bare;
+    }
+
+    it("a reversed range is a 400", async () => {
+      const res = await request(rangeApp()).get("/x?from=2026-10-07&to=2026-10-06");
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: "range-reversed", maxDays: MAX_RANGE_DAYS });
+    });
+
+    it("a range longer than the maximum is a 400", async () => {
+      const res = await request(rangeApp()).get(`/x?from=2026-01-01&to=${addDays("2026-01-01", MAX_RANGE_DAYS)}`);
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: "range-too-long", maxDays: MAX_RANGE_DAYS });
+    });
+
+    it("a date that doesn't exist is a 400", async () => {
+      const res = await request(rangeApp()).get("/x?from=2026-02-30");
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: "invalid-date", maxDays: MAX_RANGE_DAYS });
     });
   });
 });

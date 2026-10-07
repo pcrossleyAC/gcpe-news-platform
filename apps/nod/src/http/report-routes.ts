@@ -32,8 +32,11 @@ function mapError(e: unknown, res: Response): boolean {
   if (e instanceof ReportListNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   return false;
 }
-/** Report queries bind no addresses, but their rows hold them; errors stay label-only. */
-const privateErrors = privateErrorsWith(mapError, "report request");
+/** Report queries bind no addresses, but their rows hold them; errors stay label-only. Exported
+ * for its own tests (a bare express app, same pattern as staff-subscriber-routes.ts's), which
+ * check this error mapping directly rather than hunting for a production route that happens to
+ * throw every error this maps. */
+export const privateErrors = privateErrorsWith(mapError, "report request");
 
 /** "ministries:health" -> "ministries-health", for a filename. */
 function slug(list: string): string {
@@ -65,9 +68,16 @@ export function reportRoutes(db: Db, deps: ReportRouteDeps): Router {
     const { list, timing } = membersQuery.parse(req.query);
     await listLabel(db, list); // 404 before any byte of CSV
     const today = await bcToday(db, deps.timeZone);
-    // Who took addresses out of the system, and which; never the addresses themselves.
-    await writeOpsLog(db, actorOf(req).name, "report-exported", `subscribers ${list} ${timing}`);
-    await streamCsv(res, csvFilename(`subscribers-${slug(list)}`, today), MEMBER_CSV_HEADER, mapBatches(memberBatches(db, list, timing), (m) => memberCsvRow(m, deps.timeZone)));
+    await streamCsv(
+      res,
+      csvFilename(`subscribers-${slug(list)}`, today),
+      MEMBER_CSV_HEADER,
+      mapBatches(memberBatches(db, list, timing), (m) => memberCsvRow(m, deps.timeZone)),
+      // Only once the first batch is in hand -- who took addresses out of the system, and
+      // which, never the addresses themselves -- so a query that fails before any row is
+      // fetched is never recorded as an export that happened.
+      () => writeOpsLog(db, actorOf(req).name, "report-exported", `subscribers ${list} ${timing}`),
+    );
   }));
 
   const pageQuery = z.object({ page: pageParam });
@@ -84,8 +94,13 @@ export function reportRoutes(db: Db, deps: ReportRouteDeps): Router {
 
   r.get("/reports/unsubscribes.csv", exportAddresses, privateErrors(async (req, res) => {
     const window = await unsubscribeWindow(db, deps.timeZone);
-    await writeOpsLog(db, actorOf(req).name, "report-exported", "unsubscribes");
-    await streamCsv(res, csvFilename("unsubscribes", window.today), UNSUBSCRIBE_CSV_HEADER, mapBatches(unsubscribeBatches(db, window), (u) => unsubscribeCsvRow(u, deps.timeZone)));
+    await streamCsv(
+      res,
+      csvFilename("unsubscribes", window.today),
+      UNSUBSCRIBE_CSV_HEADER,
+      mapBatches(unsubscribeBatches(db, window), (u) => unsubscribeCsvRow(u, deps.timeZone)),
+      () => writeOpsLog(db, actorOf(req).name, "report-exported", "unsubscribes"),
+    );
   }));
 
   return r;

@@ -9,7 +9,11 @@ import type { Response } from "express";
 export type CsvCell = string | number | null | undefined;
 export const CSV_BOM = "﻿";
 
-const FORMULA_START = /^[=+\-@\t\r]/;
+// A formula-lead character still counts as one once it's hidden behind leading whitespace
+// (plain space, NBSP, a stray BOM) or a leading newline a spreadsheet's own cell-start scan skips
+// past, and the full-width equals/plus/minus/at (U+FF1D/FF0B/FF0D/FF20) that an IME-aware formula
+// parser treats the same as their ASCII counterparts.
+const FORMULA_START = /^[\s﻿]*[=+\-@\t\r\n＝＋－＠]/;
 const NEEDS_QUOTES = /[",\r\n]/;
 /** Flushes to the socket once this much is buffered: fewer, larger writes. */
 const FLUSH_AT = 64 * 1024;
@@ -40,7 +44,10 @@ export async function* mapBatches<T>(batches: AsyncIterable<T[]>, toRow: (t: T) 
   for await (const batch of batches) yield batch.map(toRow);
 }
 
-class ClientGoneError extends Error {
+/** The browser closed the connection (navigated away, cancelled a download) while a report was
+ * streaming. `privateErrorsWith` (http/private-errors.ts) knows this one by name: it's an
+ * everyday cancellation, not a failure, and is never logged. */
+export class ClientGoneError extends Error {
   constructor() {
     super("client went away");
     this.name = "ClientGoneError";
@@ -68,15 +75,44 @@ async function write(res: Response, chunk: string): Promise<void> {
   });
 }
 
+/** Closes `it` (a DB cursor, typically) without letting a cleanup failure mask the real error. */
+async function close(it: AsyncIterator<CsvCell[][]>): Promise<void> {
+  try {
+    await it.return?.();
+  } catch {
+    // The caller is already unwinding on its own error (or the connection is gone); a failure
+    // closing the generator has nothing useful to add.
+  }
+}
+
 /**
  * Streams `batches` as a CSV attachment and returns how many rows went out. The first batch is
  * fetched before anything is sent, so a query that fails at once still gets the caller's JSON
  * error. After the first byte, a failure destroys the connection: the browser shows a failed
  * download, never a short file that looks whole. Rows are never logged.
+ *
+ * `onStart`, if given, runs once the first batch is already in hand -- after the point a failure
+ * would have meant no export happened at all, so a caller that logs an audit row for the export
+ * (report-routes.ts) logs one only for an export that actually started.
  */
-export async function streamCsv(res: Response, filename: string, header: string[], batches: AsyncIterable<CsvCell[][]>): Promise<number> {
+export async function streamCsv(
+  res: Response,
+  filename: string,
+  header: string[],
+  batches: AsyncIterable<CsvCell[][]>,
+  onStart?: () => Promise<unknown>,
+): Promise<number> {
   const it = batches[Symbol.asyncIterator]();
-  let next = await it.next();
+  let next: IteratorResult<CsvCell[][]>;
+  try {
+    next = await it.next();
+    if (onStart) await onStart();
+  } catch (e) {
+    // Before any byte: nothing was sent and nothing should look like it was -- the caller's own
+    // handler turns this into a plain JSON error, same as any other pre-stream failure.
+    await close(it);
+    throw e;
+  }
   res.status(200);
   res.setHeader("Content-Type", "text/csv; charset=utf-8");
   res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
@@ -89,6 +125,10 @@ export async function streamCsv(res: Response, filename: string, header: string[
     await write(res, CSV_BOM + csvLine(header));
     let buffer = "";
     while (!next.done) {
+      // A tiny batch may never trigger the flush below, so `write` alone would only notice a
+      // disconnected client on some later batch, long after the client gave up: checked here,
+      // once per batch, instead of once per flush.
+      if (res.destroyed || res.writableEnded) throw new ClientGoneError();
       for (const row of next.value) {
         buffer += csvLine(row);
         count++;
@@ -103,6 +143,7 @@ export async function streamCsv(res: Response, filename: string, header: string[
     res.end();
     return count;
   } catch (e) {
+    await close(it);
     res.destroy();
     throw e;
   }

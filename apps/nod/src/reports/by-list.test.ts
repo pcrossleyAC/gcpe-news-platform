@@ -13,13 +13,15 @@ describe("active subscribers by list", () => {
       { listKey: "ministries:health", category: "ministries", key: "health", name: "Health" },
       { listKey: "ministries:finance", category: "ministries", key: "finance", name: "Finance" },
     ]);
-    const [a, b, c, d] = await tdb.db
+    const [a, b, c, d, e, f] = await tdb.db
       .insert(subscribers)
       .values([
         { email: "alex@example.test", status: "active", asItHappens: true, digest: false },
         { email: "Blake@example.test", status: "active", asItHappens: false, digest: true },
         { email: "casey@example.test", status: "disabled", asItHappens: true, digest: false },
         { email: "dana@example.test", status: "active", asItHappens: true, digest: true },
+        { email: "erin@example.test", status: "pending", asItHappens: true, digest: false },
+        { email: "frank@example.test", status: "deleted", asItHappens: true, digest: false },
       ])
       .returning({ id: subscribers.id });
     await tdb.db.insert(subscriptions).values([
@@ -28,6 +30,10 @@ describe("active subscribers by list", () => {
       { subscriberId: b!.id, listKey: "ministries:finance" },
       { subscriberId: c!.id, listKey: "ministries:health" },
       { subscriberId: d!.id, listKey: "*" },
+      // Not yet verified, and already gone: neither should show up anywhere below, even though
+      // both hold a live subscription row.
+      { subscriberId: e!.id, listKey: "ministries:health" },
+      { subscriberId: f!.id, listKey: "ministries:health" },
     ]);
   });
   afterAll(async () => tdb.drop());
@@ -39,6 +45,16 @@ describe("active subscribers by list", () => {
     const ministries = r.categories.find((c) => c.key === "ministries")!;
     expect(ministries.lists.find((l) => l.listKey === "ministries:health")).toMatchObject({ name: "Health", subscribers: 2, asItHappens: 1, digest: 1 });
     expect(ministries.lists.find((l) => l.listKey === "ministries:finance")).toMatchObject({ subscribers: 1, asItHappens: 0, digest: 1 });
+  });
+
+  it("excludes pending and deleted subscribers, even when they hold a live subscription", async () => {
+    const r = await subscribersByList(tdb.db);
+    const health = r.categories.find((c) => c.key === "ministries")!.lists.find((l) => l.listKey === "ministries:health")!;
+    // erin (pending) and frank (deleted) both subscribe to ministries:health in beforeAll;
+    // neither moves this count past the 2 (alex, Blake) the first test already pins.
+    expect(health.subscribers).toBe(2);
+    const members = await membersPage(tdb.db, { list: "ministries:health", timing: "any", page: 1 });
+    expect(members.items.map((m) => m.email)).toEqual(["alex@example.test", "Blake@example.test"]);
   });
 
   it("pages a list's active members by address, case-insensitively, filtered by timing", async () => {
