@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
-import { subscriberHistory, subscribers, subscriptions } from "../db/schema";
-import { escapeLike, getSubscriberDetail, listHistory, listOptions, PAGE_SIZE, searchSubscribers } from "./read";
+import { deliveries, subscriberHistory, subscribers, subscriptions } from "../db/schema";
+import { escapeLike, getSubscriberDetail, HISTORY_LIMIT, listHistory, listOptions, PAGE_SIZE, searchSubscribers } from "./read";
 
 describe("staff subscriber reads", () => {
   let tdb: TestDatabase;
@@ -87,6 +87,41 @@ describe("staff subscriber reads", () => {
     ]);
     expect((await listHistory(tdb.db, s.id))!.map((h) => h.action)).toEqual(["staff-deactivated", "subscribed"]);
     expect(await listHistory(tdb.db, "00000000-0000-0000-0000-000000000000")).toBeNull();
+  });
+
+  it("history is truncated to HISTORY_LIMIT, keeping the newest rows", async () => {
+    const s = await add("many-history@example.test");
+    const base = Date.parse("2026-10-01T00:00:00Z");
+    await tdb.db.insert(subscriberHistory).values(
+      Array.from({ length: HISTORY_LIMIT + 1 }, (_, i) => ({
+        subscriberId: s.id,
+        actor: "system",
+        action: "preferences-updated",
+        at: new Date(base + i * 1000),
+      })),
+    );
+    const h = await listHistory(tdb.db, s.id);
+    expect(h).toHaveLength(HISTORY_LIMIT);
+    // Newest is index HISTORY_LIMIT (HISTORY_LIMIT + 1 rows, 0-indexed); the oldest row
+    // (index 0) is the one that falls off the limit.
+    expect(h![0]!.at.getTime()).toBe(base + HISTORY_LIMIT * 1000);
+    expect(h![h!.length - 1]!.at.getTime()).toBe(base + 1000);
+  });
+
+  it("detail counts bounced emails within the window, excluding any attempted before bounce_window_from", async () => {
+    const s = await add("bounced@example.test");
+    const old = new Date(Date.now() - 10 * 24 * 3_600_000);
+    const recent = new Date(Date.now() - 1 * 24 * 3_600_000);
+    await tdb.db.insert(deliveries).values([
+      { subscriberId: s.id, itemKey: "old-item", mode: "as_it_happens", attemptedAt: old, hardBouncedAt: old },
+      { subscriberId: s.id, itemKey: "recent-item", mode: "as_it_happens", attemptedAt: recent, hardBouncedAt: recent },
+    ]);
+    expect((await getSubscriberDetail(tdb.db, s.id))!.bouncedEmails).toBe(2);
+
+    // A reactivation (Task 2's bounce_window_from) restarts the count: only emails attempted
+    // after it count toward the threshold, so the detail's own count must agree.
+    await tdb.db.update(subscribers).set({ bounceWindowFrom: new Date(Date.now() - 5 * 24 * 3_600_000) }).where(eq(subscribers.id, s.id));
+    expect((await getSubscriberDetail(tdb.db, s.id))!.bouncedEmails).toBe(1);
   });
 
   it("list options are enabled public categories' active lists only — never media", async () => {

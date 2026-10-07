@@ -90,7 +90,12 @@ export async function getSubscriberDetail(db: DbOrTx, id: string): Promise<Subsc
       .select({ action: subscriberHistory.action })
       .from(subscriberHistory)
       .where(and(eq(subscriberHistory.subscriberId, id), inArray(subscriberHistory.action, ["bounce-disabled", "staff-deactivated"])))
-      .orderBy(desc(subscriberHistory.at))
+      // `at` ties happen: Postgres's `now()` is stable for a whole transaction, so two history
+      // rows written in the same transaction share the exact same default. `id` (a random
+      // uuid) breaks the tie deterministically across repeated calls, but which of the two
+      // "wins" is arbitrary — there's no sequence or other ordering column on this table to
+      // resolve it chronologically instead.
+      .orderBy(desc(subscriberHistory.at), desc(subscriberHistory.id))
       .limit(1);
     disabledReason = last ? (last.action === "bounce-disabled" ? "bounces" : "staff") : null;
   }
@@ -113,6 +118,9 @@ export async function listHistory(db: DbOrTx, id: string): Promise<HistoryEntry[
     .select({ at: subscriberHistory.at, actor: subscriberHistory.actor, action: subscriberHistory.action, detail: subscriberHistory.detail })
     .from(subscriberHistory)
     .where(eq(subscriberHistory.subscriberId, id))
+    // `id` only breaks a tie on `at` (see the same tiebreaker in getSubscriberDetail above);
+    // it isn't chronological, just deterministic, since `subscriber_history` has no sequence
+    // column and two rows written in the same transaction can share an identical `at`.
     .orderBy(desc(subscriberHistory.at), desc(subscriberHistory.id))
     .limit(HISTORY_LIMIT);
 }

@@ -10,10 +10,14 @@ export const NOD_READ_ROLES = ["NoD.Viewer", "NoD.Editor", "NoD.Admin"] as const
 export const NOD_WRITE_ROLES = ["NoD.Editor", "NoD.Admin"] as const;
 
 const idParam = z.string().uuid();
-const searchQuery = z.object({
+/** An empty string in the JSON body (a form field cleared rather than removed) means the same
+ * as the field being absent — handled by preprocessing it to `undefined` before the field's
+ * own `.default()` runs, rather than letting it fail validation. */
+const emptyToUndefined = (v: unknown) => (v === "" ? undefined : v);
+const searchBody = z.object({
   q: z.string().max(254).default(""),
-  status: z.enum(STATUS_FILTERS).default("all"),
-  page: z.coerce.number().int().min(1).max(100_000).default(1),
+  status: z.preprocess(emptyToUndefined, z.enum(STATUS_FILTERS).default("all")),
+  page: z.preprocess(emptyToUndefined, z.coerce.number().int().min(1).max(100_000).default(1)),
 });
 
 /** Maps this router's domain errors to responses; false for anything else. Grows with the
@@ -45,8 +49,13 @@ export function staffSubscriberRoutes(db: Db): Router {
   const r = Router();
   const read = requireAnyRole(...NOD_READ_ROLES);
 
-  r.get("/subscribers", read, privateErrors(async (req, res) => {
-    res.json(await searchSubscribers(db, searchQuery.parse(req.query)));
+  // A search term is usually an email address, and a GET's query string is recorded by every
+  // reverse proxy in front of this (SiteGround nginx, the OpenShift router) and by browsers —
+  // so the term travels in a POST body instead, never in the URL. Registered ahead of
+  // `/subscribers/:id` below so a literal path segment of "search" is never mistaken for an
+  // id, and distinct from a future `POST /subscribers` (add, Task 4) by path, not just method.
+  r.post("/subscribers/search", read, privateErrors(async (req, res) => {
+    res.json(await searchSubscribers(db, searchBody.parse(req.body)));
   }));
 
   r.get("/subscriber-list-options", read, privateErrors(async (_req, res) => {

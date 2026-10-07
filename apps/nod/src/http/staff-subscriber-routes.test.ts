@@ -11,7 +11,7 @@ import { privateErrors } from "./staff-subscriber-routes";
 describe("staff subscriber routes — reads", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
-  let viewer: string, nrmsEditor: string, admin: string;
+  let viewer: string, nrmsEditor: string, admin: string, countOnly: string;
   let patId: string;
 
   beforeAll(async () => {
@@ -20,6 +20,7 @@ describe("staff subscriber routes — reads", () => {
     viewer = await token(["NoD.Viewer"]);
     nrmsEditor = await token(["NRMS.Editor"]);
     admin = await token(["NoD.Admin"]);
+    countOnly = await token(["NoD.SubscriberCount"]);
     app = createApp({ db: tdb.db, auth, eventSecrets: { nrms: "nrms-secret", core: "core-secret" }, render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null } });
     const r = await tdb.db.execute<{ id: string }>(sql`INSERT INTO subscribers (email, status) VALUES ('pat@example.test','active') RETURNING id`);
     patId = r.rows[0]!.id;
@@ -27,17 +28,29 @@ describe("staff subscriber routes — reads", () => {
   afterAll(async () => tdb.drop());
 
   const get = (path: string, tok?: string) => (tok ? request(app).get(path).set("authorization", `Bearer ${tok}`) : request(app).get(path));
+  // Search terms never travel in a URL (a reverse proxy or browser history would record them,
+  // and the term is usually an email address) — the client POSTs a JSON body instead.
+  const search = (body: Record<string, unknown>, tok?: string) => {
+    const req = request(app).post("/api/subscribers/search");
+    return tok ? req.set("authorization", `Bearer ${tok}`).send(body) : req.send(body);
+  };
 
   it("401 without a token; 403 for a non-NoD role; 200 for NoD.Viewer", async () => {
-    expect((await get("/api/subscribers")).status).toBe(401);
-    expect((await get("/api/subscribers", nrmsEditor)).status).toBe(403);
-    const ok = await get("/api/subscribers?q=pat&status=active", viewer);
+    expect((await search({})).status).toBe(401);
+    expect((await search({}, nrmsEditor)).status).toBe(403);
+    const ok = await search({ q: "pat", status: "active" }, viewer);
     expect(ok.status).toBe(200);
     expect(ok.body).toMatchObject({ total: 1, page: 1, pageSize: 50, items: [{ id: patId, email: "pat@example.test", status: "active" }] });
   });
 
   it("400 for an unknown status filter", async () => {
-    expect((await get("/api/subscribers?status=bogus", viewer)).status).toBe(400);
+    expect((await search({ status: "bogus" }, viewer)).status).toBe(400);
+  });
+
+  it("an empty-string status or page counts as absent, not invalid", async () => {
+    const res = await search({ status: "", page: "" }, viewer);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ page: 1 });
   });
 
   it("detail and history: 404 for a non-uuid or unknown id", async () => {
@@ -66,5 +79,39 @@ describe("staff subscriber routes — reads", () => {
     expect(JSON.stringify(spy.mock.calls)).not.toContain("@");
     expect(JSON.stringify(spy.mock.calls)).toContain("XX000");
     spy.mockRestore();
+  });
+
+  it("a malformed search body is a safe 400, never echoing it back", async () => {
+    const res = await request(app)
+      .post("/api/subscribers/search")
+      .set("authorization", `Bearer ${viewer}`)
+      .set("content-type", "application/json")
+      .send("{not json, secret@example.test");
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).not.toContain("secret@example.test");
+    expect(JSON.stringify(res.body)).not.toContain("@");
+  });
+
+  it("an oversized search body is rejected at the body parser, never echoing it back", async () => {
+    const res = await search({ q: `big-${"x".repeat(200_000)}-secret@example.test` }, viewer);
+    expect(res.status).toBe(413);
+    expect(JSON.stringify(res.body)).not.toContain("secret@example.test");
+  });
+
+  it('a "100%" search matches that literal substring, not as a wildcard', async () => {
+    await tdb.db.execute(sql`
+      INSERT INTO subscribers (email, status) VALUES
+        ('deal100%off@example.test','active'),
+        ('deal100xoff@example.test','active')`);
+    const res = await search({ q: "100%" }, viewer);
+    expect(res.status).toBe(200);
+    expect(res.body.items.map((s: { email: string }) => s.email)).toEqual(["deal100%off@example.test"]);
+  });
+
+  it("403s every read route for a NoD.SubscriberCount-only token", async () => {
+    expect((await search({}, countOnly)).status).toBe(403);
+    expect((await get(`/api/subscribers/${patId}`, countOnly)).status).toBe(403);
+    expect((await get(`/api/subscribers/${patId}/history`, countOnly)).status).toBe(403);
+    expect((await get("/api/subscriber-list-options", countOnly)).status).toBe(403);
   });
 });
