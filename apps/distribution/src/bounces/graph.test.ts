@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { graphBounceSource, GraphBounceSourceError } from "./graph";
 
 const fixturesDir = fileURLToPath(new URL("../../test/fixtures/graph/", import.meta.url));
@@ -61,6 +61,37 @@ describe("graphBounceSource", () => {
     const fetched = await source.fetchNew(50);
 
     expect(fetched).toEqual([{ id: "AAMkAGI-graph-message-1", raw: BOUNCE_EML }]);
+  });
+
+  it("fetchNew lists unread messages oldest-received first", async () => {
+    const fetchImpl = recordedFetch([
+      { method: "POST", match: /oauth2\/v2\.0\/token/, response: () => jsonResponse(TOKEN_JSON) },
+      { match: /\/mailFolders\/inbox\/messages\?.*\$orderby=receivedDateTime(%20| )asc/, response: () => jsonResponse(fixture("list-one-unread.json")) },
+      { match: /\/messages\/AAMkAGI-graph-message-1\/\$value/, response: () => textResponse(BOUNCE_EML) },
+    ]);
+
+    const source = graphBounceSource({ ...baseOpts, fetchImpl });
+    await expect(source.fetchNew(50)).resolves.toEqual([{ id: "AAMkAGI-graph-message-1", raw: BOUNCE_EML }]);
+  });
+
+  it("fetchNew skips a message whose $value download fails, logging only a safe label and its id, and still returns the rest", async () => {
+    const fetchImpl = recordedFetch([
+      { method: "POST", match: /oauth2\/v2\.0\/token/, response: () => jsonResponse(TOKEN_JSON) },
+      { match: /\/mailFolders\/inbox\/messages/, response: () => jsonResponse(fixture("list-two-unread.json")) },
+      { match: /\/messages\/AAMkAGI-graph-poison\/\$value/, response: () => jsonResponse('{"error":{"code":"ErrorItemNotFound","message":"secret diagnostic text"}}', 404) },
+      { match: /\/messages\/AAMkAGI-graph-ok\/\$value/, response: () => textResponse(BOUNCE_EML) },
+    ]);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const source = graphBounceSource({ ...baseOpts, fetchImpl });
+    const fetched = await source.fetchNew(50);
+
+    expect(fetched).toEqual([{ id: "AAMkAGI-graph-ok", raw: BOUNCE_EML }]);
+    expect(errorSpy).toHaveBeenCalled();
+    const logged = errorSpy.mock.calls.flat().map(String).join(" ");
+    expect(logged).toContain("AAMkAGI-graph-poison");
+    expect(logged).not.toContain("secret diagnostic text");
+    errorSpy.mockRestore();
   });
 
   it("markProcessed marks each message read and moves it, creating the Processed folder when it doesn't exist yet", async () => {

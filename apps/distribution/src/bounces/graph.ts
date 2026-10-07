@@ -1,4 +1,5 @@
 import { createClientCredentialsProvider } from "@gcpe/auth";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import type { BounceSource } from "./source";
 
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
@@ -90,17 +91,29 @@ export function graphBounceSource(opts: GraphBounceSourceOptions): BounceSource 
       const filter = encodeURIComponent("isRead eq false");
       // Deliberately one page: $top=limit and no @odata.nextLink following, so a mailbox with
       // more than `limit` unread messages only has its first page read this run -- the rest is
-      // still unread and gets picked up on a later (15-minute) run instead.
+      // still unread and gets picked up on a later (15-minute) run instead. $orderby makes that
+      // page the oldest `limit` unread messages, not Graph's own default (newest first) -- a
+      // mailbox with a backlog works through it in arrival order instead of starving the oldest
+      // messages every run.
+      const filterAndOrder = `$filter=${filter}&$orderby=receivedDateTime asc`;
       const listed = await call(
         "list unread messages",
-        `${mailboxPath}/mailFolders/inbox/messages?$filter=${filter}&$top=${limit}&$select=id`,
+        `${mailboxPath}/mailFolders/inbox/messages?${filterAndOrder}&$top=${limit}&$select=id`,
       );
       const { value } = (await listed.json()) as { value: { id: string }[] };
 
       const fetched: { id: string; raw: string }[] = [];
       for (const { id } of value) {
-        const mime = await call("download message", `${mailboxPath}/messages/${id}/$value`);
-        fetched.push({ id, raw: await mime.text() });
+        // A poison message (one id's $value download failing -- a transient Graph error, or
+        // content Graph itself can't serve) must not abort the rest of this run's page: skipped,
+        // logged with a safe label and the Graph message id only (never a response body), and
+        // left unread -- markProcessed is never called for it, so it's retried on a later run.
+        try {
+          const mime = await call("download message", `${mailboxPath}/messages/${id}/$value`);
+          fetched.push({ id, raw: await mime.text() });
+        } catch (e) {
+          console.error(`[distribution] Graph message ${id} failed to download:`, safeErrorLabel(e));
+        }
       }
       return fetched;
     },
