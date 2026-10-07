@@ -22,6 +22,13 @@
       "when": 1791099477658,
       "tag": "0002_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791331138486,
+      "tag": "0003_message_id_reply_to",
+      "breakpoints": true
     }
   ]
 }

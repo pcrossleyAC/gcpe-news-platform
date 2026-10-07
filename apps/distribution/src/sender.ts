@@ -8,6 +8,15 @@ export interface SendOptions {
   db: Db;
   transport: Transporter;
   from: string;
+  /** The domain of every outgoing message's Message-ID (see {@link messageIdFor}) — env.ts's
+   * MESSAGE_ID_DOMAIN, already resolved (an explicit value, or MAIL_FROM's own domain).
+   * Defaults to {@link DEFAULT_MESSAGE_ID_DOMAIN} when omitted; start.ts always supplies env.ts's
+   * resolved value, which fails startup rather than ever falling through to that default. */
+  messageIdDomain?: string;
+  /** Used when a message's own batch carries no Reply-To (messages.ts's replyTo) — env.ts's
+   * MAIL_REPLY_TO. Undefined means no Reply-To header at all. Redirect mode leaves this
+   * unchanged, same as the Message-ID. */
+  replyTo?: string;
   /** Non-empty in every non-prod environment: every message is sent here instead of its real
    * recipient (the non-prod mail redirect safety rule). Empty only when an operator has
    * explicitly opted in to real delivery (enforced at the env layer, not here). */
@@ -53,6 +62,9 @@ export interface SendOptions {
 }
 
 const DEFAULT_BATCH_SIZE = 50;
+// Only reached when a caller omits messageIdDomain (mainly tests exercising something else);
+// start.ts always supplies env.ts's own resolved MESSAGE_ID_DOMAIN in production.
+const DEFAULT_MESSAGE_ID_DOMAIN = "localhost";
 // Mirrors packages/events/src/dispatcher.ts's LOCK_MARGIN_MS: extra slack baked into the
 // *size* of the default lock, on top of the worst-case processing time. Distinct from
 // lockMarginMs (the loop's "stop claiming more rows" threshold, below), which is sized off one
@@ -119,6 +131,16 @@ function backoffMs(attempts: number): number {
  */
 export function truncateError(message: string, maxCodePoints = MAX_ERROR_CODE_POINTS): string {
   return Array.from(message).slice(0, maxCodePoints).join("");
+}
+
+/**
+ * A message's Message-ID, derived from its own row id (stable across every retry of the same
+ * message — no randomness, nothing to lose between attempts) and the configured domain
+ * (env.ts's MESSAGE_ID_DOMAIN). Exported so 4e's bounce matching can derive the same value from
+ * a bounce report's own In-Reply-To/References.
+ */
+export function messageIdFor(rowId: string, domain: string): string {
+  return `<${rowId}@${domain}>`;
 }
 
 /**
@@ -193,6 +215,7 @@ type ClaimedRow = {
   html: string | null;
   text: string | null;
   headers: Record<string, string> | null;
+  reply_to: string | null;
   // R1(b): messages have no creation timestamp of their own; every message in a batch is
   // created at the same instant as its batch, so the batch's age (at claim time, by the
   // database's clock) is the age backstop's clock.
@@ -302,7 +325,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       FROM batches b, due
      WHERE b.id = m.batch_id AND m.id = due.id
     RETURNING m.id, m.batch_id, jsonb_array_length(b.attachments) > 0 AS has_attachments, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at,
-              b.subject, b.html, b.text, b.headers, ${ageMsOf(sql`b.created_at`, now)} AS batch_age_ms, ${lockTokenOf(sql`m.locked_until`)} AS lock_token`);
+              b.subject, b.html, b.text, b.headers, b.reply_to, ${ageMsOf(sql`b.created_at`, now)} AS batch_age_ms, ${lockTokenOf(sql`m.locked_until`)} AS lock_token`);
 
   const rows = claimed.rows.slice().sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
@@ -338,14 +361,19 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       break;
     }
 
+    // Derived from the row's own id, so it's the same value on every attempt — the write
+    // below records it, but a retry after a lost reply recomputes (not regenerates) it.
+    const messageId = messageIdFor(row.id, opts.messageIdDomain ?? DEFAULT_MESSAGE_ID_DOMAIN);
+
     // Re-assert ownership right before using it: a near-no-op UPDATE (rewriting the same
-    // value) that fails to match if another worker's claim already reclaimed this row because
-    // this call's lock had expired. Cheaper than a second SELECT FOR UPDATE, and closes the
-    // window between the batch claim above and this particular row's turn to send. Losing a
-    // row this way means another worker is already active on this batch, so the rest of this
-    // call's claim is abandoned (and released) too rather than racing it row by row.
+    // locked_until, alongside this attempt's Message-ID) that fails to match if another
+    // worker's claim already reclaimed this row because this call's lock had expired. Cheaper
+    // than a second SELECT FOR UPDATE, and closes the window between the batch claim above and
+    // this particular row's turn to send. Losing a row this way means another worker is already
+    // active on this batch, so the rest of this call's claim is abandoned (and released) too
+    // rather than racing it row by row.
     const stillOwned = await opts.db.execute<{ id: string }>(sql`
-      UPDATE messages SET locked_until = locked_until
+      UPDATE messages SET locked_until = locked_until, message_id = ${messageId}
        WHERE id = ${row.id} AND ${heldBy(messages.lockedUntil, lockToken)} AND status = 'pending'
       RETURNING id`);
     if (stillOwned.rows.length === 0) {
@@ -376,6 +404,9 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
 
     const to = redirect ? opts.redirectTo : [row.email];
     const attachments = await attachmentsFor(row);
+    // The request's own Reply-To beats MAIL_REPLY_TO; neither set means no Reply-To header at
+    // all. Unaffected by redirect mode, same as the Message-ID.
+    const replyTo = row.reply_to ?? opts.replyTo ?? undefined;
 
     let error: string | null = null;
     let permanent = false;
@@ -383,7 +414,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     let connectionLevel = false;
     let droppedBeforeSend = false;
     try {
-      await opts.transport.sendMail({ from: opts.from, to, subject: sentSubject, html, text, headers, attachments });
+      await opts.transport.sendMail({ from: opts.from, to, subject: sentSubject, html, text, headers, attachments, messageId, replyTo });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       permanent = isPermanentRecipientRejection(e);

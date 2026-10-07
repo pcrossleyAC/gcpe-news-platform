@@ -16,6 +16,9 @@ export interface MessageRequest {
   text?: string;
   headers: Record<string, string>;
   recipients: MessageRecipient[];
+  /** Beats DistributionClientOptions.replyTo (NoD's REPLY_TO) when a particular send wants its
+   * own; omitted here, {@link distributionClient}'s `send` fills in the configured one. */
+  replyTo?: string;
 }
 
 /**
@@ -52,6 +55,10 @@ export interface DistributionClientOptions {
    * also used by send-jobs.ts to size its claim lock, since a hung request or token fetch
    * must not outlive the lock it's running under. */
   timeoutMs?: number;
+  /** NoD's own REPLY_TO, applied to every send whose request doesn't already carry its own
+   * `replyTo` — so every caller (As-It-Happens, digest, emergency, media, system emails, ops
+   * emails) gets it without each one having to set it. */
+  replyTo?: string;
 }
 
 export interface DistributionClient {
@@ -103,12 +110,14 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
         throw new DistributionError(`failed to get a Distribution token: ${message}`, true);
       }
 
+      const requestBody: MessageRequest = { ...req, replyTo: req.replyTo ?? opts.replyTo };
+
       let res: Response;
       try {
         res = await doFetch(url, {
           method: "POST",
           headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify(req),
+          body: JSON.stringify(requestBody),
           signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (e) {

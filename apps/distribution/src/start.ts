@@ -54,6 +54,8 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
     db,
     transport,
     from: parsed.MAIL_FROM,
+    messageIdDomain: parsed.MESSAGE_ID_DOMAIN,
+    replyTo: parsed.MAIL_REPLY_TO,
     redirectTo: parsed.MAIL_REDIRECT_TO,
     perMessageMs: parsed.SMTP_CONNECTION_TIMEOUT_MS + parsed.SMTP_GREETING_TIMEOUT_MS + parsed.SMTP_SOCKET_TIMEOUT_MS,
     verifyTimeoutMs: parsed.SMTP_VERIFY_TIMEOUT_MS,

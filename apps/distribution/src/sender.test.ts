@@ -168,6 +168,131 @@ describe("sendDue", () => {
     }
   });
 
+  it("sets the Message-ID from the row id and the configured domain, and records it on the row", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", messageIdDomain: "example.test", redirectTo: [] });
+
+      const [row] = await tdb.db.select().from(messages);
+      expect(sink.messages).toHaveLength(1);
+      expect(sink.messages[0]!.messageId).toBe(`<${row!.id}@example.test>`);
+      expect(row!.messageId).toBe(`<${row!.id}@example.test>`);
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("keeps the same Message-ID across a transient failure and the retry that succeeds", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "retry@example.com", substitutions: {} }] }, internalDomains);
+    let attempt = 0;
+    const sentMessageIds: (string | undefined)[] = [];
+    const stubTransport = {
+      sendMail: async (mail: { messageId?: string }) => {
+        sentMessageIds.push(mail.messageId);
+        attempt++;
+        if (attempt === 1) {
+          throw Object.assign(new Error("Message failed: 452 too many recipients"), { code: "EMESSAGE", command: "DATA", responseCode: 452 });
+        }
+      },
+    } as unknown as Transporter;
+
+    let simulatedNow = (await dbClock(tdb.db)).getTime();
+    const first = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", messageIdDomain: "example.test", redirectTo: [], now: () => new Date(simulatedNow) });
+    expect(first).toEqual({ sent: 0, retried: 1, failed: 0 });
+
+    const [rowAfterFirst] = await tdb.db.select().from(messages);
+    expect(rowAfterFirst!.status).toBe("pending");
+    simulatedNow = rowAfterFirst!.nextAttemptAt.getTime() + 1000; // just past due for the retry
+
+    const second = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", messageIdDomain: "example.test", redirectTo: [], now: () => new Date(simulatedNow) });
+    expect(second).toEqual({ sent: 1, retried: 0, failed: 0 });
+
+    expect(sentMessageIds).toHaveLength(2);
+    expect(sentMessageIds[0]).toBeTruthy();
+    expect(sentMessageIds[0]).toBe(sentMessageIds[1]);
+
+    const [rowAfterSecond] = await tdb.db.select().from(messages);
+    expect(rowAfterSecond!.status).toBe("sent");
+    expect(rowAfterSecond!.messageId).toBe(sentMessageIds[0]);
+  });
+
+  it("the request's own Reply-To wins over MAIL_REPLY_TO", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, replyTo: "batch-reply@example.com", recipients: [{ email: "x@example.com", substitutions: {} }] },
+        internalDomains,
+      );
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", replyTo: "fallback-reply@example.com", redirectTo: [] });
+
+      expect(sink.messages).toHaveLength(1);
+      const replyTo = sink.messages[0]!.replyTo;
+      expect(replyTo?.value[0]?.address).toBe("batch-reply@example.com");
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("falls back to MAIL_REPLY_TO when the request carries none", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", replyTo: "fallback-reply@example.com", redirectTo: [] });
+
+      expect(sink.messages).toHaveLength(1);
+      const replyTo = sink.messages[0]!.replyTo;
+      expect(replyTo?.value[0]?.address).toBe("fallback-reply@example.com");
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("sets no Reply-To header when neither the request nor MAIL_REPLY_TO is set", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+
+      expect(sink.messages).toHaveLength(1);
+      expect(sink.messages[0]!.replyTo).toBeUndefined();
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("keeps the Message-ID and Reply-To unchanged in redirect mode", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, replyTo: "batch-reply@example.com", recipients: [{ email: "victim@example.com", substitutions: {} }] },
+        internalDomains,
+      );
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", messageIdDomain: "example.test", redirectTo: ["qa@example.com"] });
+
+      const [row] = await tdb.db.select().from(messages);
+      expect(sink.messages).toHaveLength(1);
+      expect(sink.messages[0]!.messageId).toBe(`<${row!.id}@example.test>`);
+      expect(sink.messages[0]!.replyTo?.value[0]?.address).toBe("batch-reply@example.com");
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
   it("sends higher-priority messages first within a single claimed batch", async () => {
     const sink = await startSmtpSink();
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });

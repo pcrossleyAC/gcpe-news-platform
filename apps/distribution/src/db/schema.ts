@@ -23,6 +23,9 @@ export const batches = pgTable(
     text: text("text"),
     headers: jsonb("headers").$type<Record<string, string>>(),
     attachments: jsonb("attachments").$type<StoredAttachment[]>().notNull().default([]),
+    // The request's Reply-To, if any — read back at send time (sender.ts) and used ahead of
+    // MAIL_REPLY_TO.
+    replyTo: text("reply_to"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("batches_app_id_idempotency_key_idx").on(t.appId, t.idempotencyKey)],
@@ -50,6 +53,9 @@ export const messages = pgTable(
     lastError: text("last_error"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     originalRecipient: text("original_recipient"),
+    // Set when a send is attempted (sender.ts, in the same update that re-asserts the row's
+    // lock) and stable across retries of the same row — 4e matches bounces by it.
+    messageId: text("message_id"),
   },
   (t) => [
     index("messages_due_idx").on(t.priority.desc(), t.nextAttemptAt).where(sql`${t.status} = 'pending'`),

@@ -1209,6 +1209,7 @@ describe("distributionClient", () => {
   let server: Server;
   let baseUrl: string;
   let lastAuthHeader: string | undefined;
+  let lastRequestBody: MessageRequest | undefined;
   let respondStatus: number;
   let respondBody: unknown;
 
@@ -1218,6 +1219,7 @@ describe("distributionClient", () => {
       let body = "";
       req.on("data", (c) => (body += c));
       req.on("end", () => {
+        lastRequestBody = body ? (JSON.parse(body) as MessageRequest) : undefined;
         res.statusCode = respondStatus;
         res.setHeader("content-type", "application/json");
         res.end(typeof respondBody === "string" ? respondBody : JSON.stringify(respondBody));
@@ -1354,5 +1356,29 @@ describe("distributionClient", () => {
       timeoutMs: 20,
     });
     await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
+  });
+
+  it("carries NoD's own REPLY_TO (DistributionClientOptions.replyTo) on a request that doesn't set one", async () => {
+    respondStatus = 202;
+    respondBody = { batchId: "batch-reply-to" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t", replyTo: "nod-reply@example.com" });
+    await client.send(sampleRequest);
+    expect(lastRequestBody?.replyTo).toBe("nod-reply@example.com");
+  });
+
+  it("carries no replyTo when neither the request nor DistributionClientOptions.replyTo is set", async () => {
+    respondStatus = 202;
+    respondBody = { batchId: "batch-no-reply-to" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
+    await client.send(sampleRequest);
+    expect(lastRequestBody?.replyTo).toBeUndefined();
+  });
+
+  it("a request's own replyTo wins over the configured REPLY_TO", async () => {
+    respondStatus = 202;
+    respondBody = { batchId: "batch-own-reply-to" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t", replyTo: "nod-reply@example.com" });
+    await client.send({ ...sampleRequest, replyTo: "own-reply@example.com" });
+    expect(lastRequestBody?.replyTo).toBe("own-reply@example.com");
   });
 });

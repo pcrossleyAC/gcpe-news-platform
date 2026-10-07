@@ -45,4 +45,32 @@ describe("distribution env", () => {
     expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true" }).SEND_OUTAGE_COOLDOWN_MAX_MS).toBe(300_000);
     expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", SEND_OUTAGE_COOLDOWN_MAX_MS: "60000" }).SEND_OUTAGE_COOLDOWN_MAX_MS).toBe(60_000);
   });
+  it("defaults INTERNAL_DOMAINS to gov.bc.ca,leg.bc.ca", () => {
+    expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true" }).INTERNAL_DOMAINS).toEqual(["gov.bc.ca", "leg.bc.ca"]);
+  });
+  it("accepts an INTERNAL_DOMAINS override, replacing the default entirely", () => {
+    expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", INTERNAL_DOMAINS: "example.com" }).INTERNAL_DOMAINS).toEqual(["example.com"]);
+  });
+  it("derives MESSAGE_ID_DOMAIN from MAIL_FROM's domain when unset", () => {
+    expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_FROM: "news@example.com" }).MESSAGE_ID_DOMAIN).toBe("example.com");
+  });
+  it("derives MESSAGE_ID_DOMAIN from a \"Name <address>\" MAIL_FROM", () => {
+    expect(
+      distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_FROM: "BC Gov News <news@example.com>" }).MESSAGE_ID_DOMAIN,
+    ).toBe("example.com");
+  });
+  it("an explicit MESSAGE_ID_DOMAIN wins over MAIL_FROM's own domain", () => {
+    expect(
+      distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MESSAGE_ID_DOMAIN: "mail.example.com" }).MESSAGE_ID_DOMAIN,
+    ).toBe("mail.example.com");
+  });
+  it("fails startup when neither MESSAGE_ID_DOMAIN nor a MAIL_FROM domain is available", () => {
+    expect(distributionEnvSchema.safeParse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_FROM: "not-an-address" }).success).toBe(false);
+  });
+  it("rejects a malformed MAIL_REPLY_TO", () => {
+    expect(distributionEnvSchema.safeParse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_REPLY_TO: "not-an-address" }).success).toBe(false);
+  });
+  it("accepts a valid MAIL_REPLY_TO", () => {
+    expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_REPLY_TO: "reply@example.com" }).MAIL_REPLY_TO).toBe("reply@example.com");
+  });
 });
