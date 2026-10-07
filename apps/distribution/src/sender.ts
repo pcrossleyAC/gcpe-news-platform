@@ -461,7 +461,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
   // Both `stop` and `nextIndex` are plain variables, not locks: JS is single-threaded and
   // neither is read-then-written across an `await`, so concurrent handlers can't race each
   // other on them. Release of whatever `nextIndex` never reached happens exactly once, after
-  // every handler has settled (see the `Promise.all` below) — centralising it there, rather
+  // every handler has settled (see the `Promise.allSettled` below) — centralising it there, rather
   // than in each handler, is what keeps two handlers hitting a stop condition at the same time
   // from double-releasing the same rows.
   let stop = false;
@@ -588,9 +588,10 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     // ambiguous by command alone — nodemailer tags both "the server is genuinely down" AND
     // "this message stalled/reset mid-DATA against an otherwise-healthy server" (a poison
     // message) the same way (`command: "CONN"`). `transport.verify()` discriminates: if the
-    // server itself can't answer a lightweight check, it's an outage — defer every remaining
-    // claimed row without spending an attempt (so an outage can never drain the queue to
-    // failed) and stop this run. If the server verifies healthy, this specific message is to
+    // server itself can't answer a lightweight check, it's an outage — this row is deferred
+    // below without spending an attempt, and the run stops; rows never started are released,
+    // not deferred, once the pool settles (so an outage can never drain the queue to failed).
+    // If the server verifies healthy, this specific message is to
     // blame: treat it exactly like a normal transient error (spends an attempt, standard
     // backoff, eventually fails and is logged) and keep going — unlike an outage, one poison
     // message must never stop the rest of the batch from sending.

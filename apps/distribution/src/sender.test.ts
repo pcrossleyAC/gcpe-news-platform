@@ -1463,7 +1463,7 @@ describe("sendDue", () => {
       }
     }, 10000);
 
-    // Review Focus item 2: a sender-level error mid-run with concurrency > 1 — in-flight sends
+    // A sender-level error mid-run with concurrency > 1 — in-flight sends
     // finish (exactly once each), unreached rows are released untouched, and the failing row
     // itself is deferred, not failed. Only the 2nd connection's MAIL FROM is rejected (not every
     // connection, as a blanket requireAuth sink would do), and DATA is slow enough that the
@@ -1578,10 +1578,10 @@ describe("sendDue", () => {
       }
     }, 10000);
 
-    // Review Focus item 2 / fix round 1, I1: a thrown error (not an SMTP classification, a
-    // genuine DB failure) out of one handler must not abandon the run — siblings already in
-    // flight still get their own terminal write, rows never reached are still released, and
-    // sendDue still surfaces the error to its caller once everything has settled.
+    // A thrown error (not an SMTP classification, a genuine DB failure) out of one handler
+    // must not abandon the run — siblings already in flight still get their own terminal
+    // write, rows never reached are still released, and sendDue still surfaces the error to
+    // its caller once everything has settled.
     it("a DB error on one row doesn't abandon sibling in-flight sends or skip releasing unreached rows, and sendDue still rejects", async () => {
       const sink = await startSmtpSink();
       const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });

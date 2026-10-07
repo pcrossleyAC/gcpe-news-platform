@@ -29,8 +29,8 @@ export function smtpTransportOptions(env: SmtpEnv) {
     connectionTimeout: env.SMTP_CONNECTION_TIMEOUT_MS,
     greetingTimeout: env.SMTP_GREETING_TIMEOUT_MS,
     socketTimeout: env.SMTP_SOCKET_TIMEOUT_MS,
-    // Sends within a batch stay sequential (sendDue awaits each one before starting the next);
-    // pooling just reuses connections across them instead of reconnecting per message.
+    // Up to MAIL_CONCURRENCY sends are in flight at once (sendDue's bounded pool); pooling
+    // reuses connections across them instead of reconnecting per message.
     pool: true as const,
     maxConnections: env.SMTP_MAX_CONNECTIONS,
     // P2-R25 item 4: no pool-level re-queue. nodemailer (10.0.14, smtp-pool/index.js

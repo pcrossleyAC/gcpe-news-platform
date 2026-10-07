@@ -17,9 +17,9 @@ describe("distribution-capacity", () => {
       // retried/failed, or if anything was still pending after the drain loop exited, so this
       // also covers "no duplicates, nothing missed".
       expect(row.delivered).toBe(50);
-      // Fix round 1 (I2): don't just trust sendDue's own "sent" count — independently confirm
-      // the in-process sink actually received exactly N messages, to exactly N distinct
-      // recipients, for each concurrency.
+      // Don't just trust sendDue's own "sent" count — independently confirm the in-process
+      // sink actually received exactly N messages, to exactly N distinct recipients, for each
+      // concurrency.
       expect(row.sinkReceived).toBe(50);
       expect(row.duplicateRecipients).toBe(0);
     }
@@ -52,7 +52,7 @@ describe("distribution-capacity", () => {
     await expect(runCapacityMeasurement({ n: 1, concurrencies: [1], smtp: "mail.example.com:25" })).rejects.toThrow(/refusing non-local/);
   });
 
-  it("refuses a non-local database admin target (I1), before doing any database work", async () => {
+  it("refuses a non-local database admin target, before doing any database work", async () => {
     const original = process.env.TEST_DATABASE_ADMIN_URL;
     process.env.TEST_DATABASE_ADMIN_URL = "postgres://db.example.com:5432/postgres";
     try {
@@ -60,6 +60,38 @@ describe("distribution-capacity", () => {
     } finally {
       if (original === undefined) delete process.env.TEST_DATABASE_ADMIN_URL;
       else process.env.TEST_DATABASE_ADMIN_URL = original;
+    }
+  });
+
+  it("refuses a local-looking hostname that a \"?host=\" query param overrides to a remote target", async () => {
+    // pg-connection-string takes a "?host=" query param over the URL's own hostname whenever
+    // one is present -- the hostname here is "localhost", but pg would actually connect to
+    // db.remote.example, so the guard must follow the query param, not the hostname.
+    const original = process.env.TEST_DATABASE_ADMIN_URL;
+    process.env.TEST_DATABASE_ADMIN_URL = "postgres://localhost:5432/postgres?host=db.remote.example";
+    try {
+      await expect(runCapacityMeasurement({ n: 1, concurrencies: [1] })).rejects.toThrow(/refusing a non-local database admin target/);
+    } finally {
+      if (original === undefined) delete process.env.TEST_DATABASE_ADMIN_URL;
+      else process.env.TEST_DATABASE_ADMIN_URL = original;
+    }
+  });
+
+  it("refuses a remote PGHOST when the admin URL itself has no host", async () => {
+    // An empty hostname and no "?host=" param falls back to PGHOST (then "localhost"), the same
+    // precedence pg's own connection-parameters.js applies -- a remote PGHOST must not connect
+    // past this guard unseen just because the URL itself names no host.
+    const originalUrl = process.env.TEST_DATABASE_ADMIN_URL;
+    const originalPgHost = process.env.PGHOST;
+    process.env.TEST_DATABASE_ADMIN_URL = "postgres:///postgres";
+    process.env.PGHOST = "db.remote.example";
+    try {
+      await expect(runCapacityMeasurement({ n: 1, concurrencies: [1] })).rejects.toThrow(/refusing a non-local database admin target/);
+    } finally {
+      if (originalUrl === undefined) delete process.env.TEST_DATABASE_ADMIN_URL;
+      else process.env.TEST_DATABASE_ADMIN_URL = originalUrl;
+      if (originalPgHost === undefined) delete process.env.PGHOST;
+      else process.env.PGHOST = originalPgHost;
     }
   });
 });

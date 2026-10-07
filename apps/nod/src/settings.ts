@@ -122,7 +122,16 @@ export async function setDistributionPaused(deps: SetDistributionPausedDeps, pau
   if (!result.changed) return result;
 
   const action: OperationsAction = paused ? "distribution-paused" : "distribution-resumed";
-  const logged = await writeOpsLog(deps.db, actor, action);
+  let logged: { id: string; at: Date };
+  try {
+    logged = await writeOpsLog(deps.db, actor, action);
+  } catch (e) {
+    // Distribution's own flag already changed, above; a retry of this same call now sees
+    // result.changed: false and returns early (no log, no email) for this change, so this is
+    // the only place the gap -- a state change with no audit row -- is ever visible.
+    console.error(`[nod] operations_log write failed after Distribution ${action} (actor ${actor}):`, e);
+    throw e;
+  }
   await emailOpsChange(deps, logged, actor, action, paused ? "paused" : "resumed", "BC Gov News On Demand distribution");
   return result;
 }

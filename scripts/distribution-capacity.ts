@@ -66,10 +66,10 @@ function effectiveDatabaseAdminUrl(): string {
   return process.env.TEST_DATABASE_ADMIN_URL ?? "postgres://localhost:5432/postgres";
 }
 
-/** Fix round 1 (I1): `createDistributionTestDb()` creates, migrates and drops its throwaway
- * database against whatever `TEST_DATABASE_ADMIN_URL` names (or db-kit's own localhost
- * default) — the SMTP-target guard above says nothing about that. Refuses anything but a local
- * target, the same way, before any `CREATE DATABASE` happens. */
+/** `createDistributionTestDb()` creates, migrates and drops its throwaway database against
+ * whatever `TEST_DATABASE_ADMIN_URL` names (or db-kit's own localhost default) — the
+ * SMTP-target guard above says nothing about that. Refuses anything but a local target, the
+ * same way, before any `CREATE DATABASE` happens. */
 function assertLocalDatabaseAdminTarget(rawUrl: string): void {
   let parsed: URL;
   try {
@@ -77,11 +77,15 @@ function assertLocalDatabaseAdminTarget(rawUrl: string): void {
   } catch {
     throw new Error(`distribution-capacity: could not parse the database admin URL "${rawUrl}"`);
   }
-  // An empty hostname (e.g. "postgres:///dbname") falls back to libpq's own default, which is
-  // never a remote host; a "?host=/path" query param names a unix-socket directory instead of
-  // a TCP host — both are handled by isLocalHost itself, given the right candidate string.
+  // pg-connection-string (what `pg` itself uses to parse this URL) takes a "?host=" query
+  // param over the URL's own hostname whenever one is present — not only when the hostname is
+  // empty — so this has to check it first, the same way, or "postgres://localhost/db?host=
+  // evil.example" would read as local here while `pg` actually connects to evil.example. When
+  // neither a host param nor a hostname is set, `pg` falls back to PGHOST (then "localhost"),
+  // the same precedence its own connection-parameters.js applies — hard-coding "localhost" for
+  // an empty host would let a remote PGHOST connect past this guard unseen.
   const hostParam = parsed.searchParams.get("host");
-  const candidate = parsed.hostname !== "" ? parsed.hostname : hostParam ?? "localhost";
+  const candidate = hostParam || parsed.hostname || process.env.PGHOST || "localhost";
   if (!isLocalHost(candidate)) {
     throw new Error(
       `distribution-capacity: refusing a non-local database admin target "${candidate}" (TEST_DATABASE_ADMIN_URL, or db-kit's own default) — this script only ever creates/migrates/drops its throwaway database on localhost`,
@@ -215,7 +219,7 @@ async function runPhaseA(opts: {
   concurrencies: number[];
   batchSize: number;
   /** The in-process sink's own message list, when one is running (omitted for an external
-   * `--smtp` target) — I2: cross-checked against `delivered`/`n` per concurrency, not just
+   * `--smtp` target) — cross-checked against `delivered`/`n` per concurrency, not just
    * trusted from sendDue's own result. */
   sink?: { messages: ParsedMail[] };
 }): Promise<PhaseARow[]> {
@@ -252,7 +256,7 @@ async function runPhaseA(opts: {
       throw new Error(`distribution-capacity: ${pending} messages still pending after draining at concurrency ${concurrency}`);
     }
 
-    // I2: don't just trust sendDue's own "sent" count — cross-check what the sink actually
+    // Don't just trust sendDue's own "sent" count — cross-check what the sink actually
     // recorded. Catches, for instance, a transport that silently drops a message after
     // nodemailer resolves its sendMail() promise, which `delivered` alone could never see.
     let sinkReceived: number | null = null;
@@ -408,13 +412,13 @@ export async function runCapacityMeasurement(opts: CapacityOptions = {}): Promis
     throw new Error(`distribution-capacity: --concurrencies must be a non-empty list of positive integers (got ${concurrencies.join(",")})`);
   }
 
-  // Fix round 1 (M1): there is no SMTP_HOST env var this script itself consults for the SMTP
-  // target — only --smtp does that — so a check against process.env.SMTP_HOST validated a
-  // value that could never steer where mail actually goes, a guard in name only. Removed
-  // rather than wired up, since nothing here needs SMTP_HOST to mean anything.
+  // There is no SMTP_HOST env var this script itself consults for the SMTP target — only
+  // --smtp does that — so a check against process.env.SMTP_HOST validated a value that could
+  // never steer where mail actually goes, a guard in name only. Removed rather than wired up,
+  // since nothing here needs SMTP_HOST to mean anything.
   const target = opts.smtp ? parseSmtpTarget(opts.smtp) : null;
-  // I1: the real non-SMTP risk — createDistributionTestDb() creates/migrates/drops its
-  // database against this URL, with no guard of its own.
+  // The real non-SMTP risk — createDistributionTestDb() creates/migrates/drops its database
+  // against this URL, with no guard of its own.
   assertLocalDatabaseAdminTarget(effectiveDatabaseAdminUrl());
 
   const maxConcurrency = Math.max(...concurrencies, phaseBWorkers);

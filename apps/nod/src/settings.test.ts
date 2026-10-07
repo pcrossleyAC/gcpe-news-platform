@@ -260,4 +260,29 @@ describe("setDistributionPaused", () => {
     }
     expect(await tdb.db.select().from(operationsLog)).toHaveLength(1);
   });
+
+  it("operations_log write fails after Distribution's own pause already changed: the error propagates, and the gap is logged by action and actor, not address", async () => {
+    const distribution = stubDistributionWithPause();
+    const failingDb = {
+      insert: () => ({
+        values: () => ({
+          returning: () => Promise.reject(new Error("db unreachable")),
+        }),
+      }),
+    } as unknown as SetDistributionPausedDeps["db"];
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(setDistributionPaused(deps({ distribution, db: failingDb }), true, "Jamie Admin")).rejects.toThrow("db unreachable");
+      expect(distribution.setPaused).toHaveBeenCalledWith(true);
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      const logged = String(errorSpy.mock.calls[0]![0]);
+      expect(logged).toContain("distribution-paused");
+      expect(logged).toContain("Jamie Admin");
+    } finally {
+      errorSpy.mockRestore();
+    }
+    // Nothing to assert against tdb here -- failingDb never touched the real table -- but the
+    // real db still has no row either, confirming the write genuinely never landed.
+    expect(await tdb.db.select().from(operationsLog)).toHaveLength(0);
+  });
 });
