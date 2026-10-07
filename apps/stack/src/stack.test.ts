@@ -664,8 +664,9 @@ describe("apps/stack", () => {
         "nod.digest",
         "nod.send",
         "distribution.send",
+        "distribution.bounces",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 

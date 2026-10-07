@@ -101,4 +101,68 @@ describe("distribution env", () => {
       distributionEnvSchema.safeParse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_CONCURRENCY: "4", SMTP_MAX_CONNECTIONS: "3" }).success,
     ).toBe(false);
   });
+
+  describe("BOUNCE_SOURCE", () => {
+    const withRedirect = { ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true" };
+
+    it("defaults to fake", () => {
+      expect(distributionEnvSchema.parse(withRedirect).BOUNCE_SOURCE).toBe("fake");
+    });
+
+    it("accepts fake with none of the GRAPH_*/BOUNCE_MAILBOX variables set", () => {
+      expect(distributionEnvSchema.safeParse({ ...withRedirect, BOUNCE_SOURCE: "fake" }).success).toBe(true);
+    });
+
+    it("rejects an unknown BOUNCE_SOURCE value", () => {
+      expect(distributionEnvSchema.safeParse({ ...withRedirect, BOUNCE_SOURCE: "exchange" }).success).toBe(false);
+    });
+
+    it("fails startup for graph with no credentials at all", () => {
+      expect(distributionEnvSchema.safeParse({ ...withRedirect, BOUNCE_SOURCE: "graph" }).success).toBe(false);
+    });
+
+    it("fails startup for graph missing just one of the four required variables", () => {
+      const graphBase = {
+        ...withRedirect,
+        BOUNCE_SOURCE: "graph",
+        GRAPH_TENANT_ID: "tenant-1",
+        GRAPH_CLIENT_ID: "client-1",
+        GRAPH_CLIENT_SECRET: "secret-1",
+        BOUNCE_MAILBOX: "bounces@example.test",
+      };
+      const { BOUNCE_MAILBOX: _omit, ...missingMailbox } = graphBase;
+      expect(distributionEnvSchema.safeParse(missingMailbox).success).toBe(false);
+    });
+
+    it("accepts graph with all four variables set", () => {
+      const parsed = distributionEnvSchema.parse({
+        ...withRedirect,
+        BOUNCE_SOURCE: "graph",
+        GRAPH_TENANT_ID: "tenant-1",
+        GRAPH_CLIENT_ID: "client-1",
+        GRAPH_CLIENT_SECRET: "secret-1",
+        BOUNCE_MAILBOX: "bounces@example.test",
+      });
+      expect(parsed).toMatchObject({
+        BOUNCE_SOURCE: "graph",
+        GRAPH_TENANT_ID: "tenant-1",
+        GRAPH_CLIENT_ID: "client-1",
+        GRAPH_CLIENT_SECRET: "secret-1",
+        BOUNCE_MAILBOX: "bounces@example.test",
+      });
+    });
+
+    it("rejects a malformed BOUNCE_MAILBOX", () => {
+      expect(
+        distributionEnvSchema.safeParse({
+          ...withRedirect,
+          BOUNCE_SOURCE: "graph",
+          GRAPH_TENANT_ID: "tenant-1",
+          GRAPH_CLIENT_ID: "client-1",
+          GRAPH_CLIENT_SECRET: "secret-1",
+          BOUNCE_MAILBOX: "not-an-address",
+        }).success,
+      ).toBe(false);
+    });
+  });
 });

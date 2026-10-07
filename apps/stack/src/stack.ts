@@ -452,6 +452,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         { name: "nod.digest", run: worker(nod, "digest") },
         { name: "nod.send", run: worker(nod, "send") },
         { name: "distribution.send", run: worker(distribution, "send") },
+        // Self-gated to once every 15 minutes (distribution/src/bounces/run.ts) — a no-op on
+        // every other tick.
+        { name: "distribution.bounces", run: worker(distribution, "bounces") },
       ] satisfies TickStep[]),
     ),
   );

@@ -85,6 +85,15 @@ export const distributionEnvSchema = z
     // long sending takes to resume once the server is back.
     SEND_OUTAGE_COOLDOWN_MAX_MS: z.coerce.number().int().positive().default(300_000),
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
+    // 4e: which bounce source start.ts wires up (bounces/source.ts's fakeBounceSource, or
+    // bounces/graph.ts's graphBounceSource) — "fake" on test sites/dev, "graph" once Q23 is
+    // answered (docs/parity/open-questions.md). The superRefine below refuses to boot in
+    // "graph" mode without every one of the four GRAPH_*/BOUNCE_MAILBOX variables below.
+    BOUNCE_SOURCE: z.enum(["fake", "graph"]).default("fake"),
+    GRAPH_TENANT_ID: z.string().min(1).optional(),
+    GRAPH_CLIENT_ID: z.string().min(1).optional(),
+    GRAPH_CLIENT_SECRET: z.string().min(1).optional(),
+    BOUNCE_MAILBOX: z.string().email().optional(),
   })
   .superRefine((e, ctx) => {
     // Non-prod mail redirect safety rule: refuse to boot unless either a redirect list is
@@ -101,6 +110,14 @@ export const distributionEnvSchema = z
         message: `MAIL_CONCURRENCY (${e.MAIL_CONCURRENCY}) must not exceed SMTP_MAX_CONNECTIONS (${e.SMTP_MAX_CONNECTIONS})`,
         path: ["MAIL_CONCURRENCY"],
       });
+    }
+    // Global Constraints "Bounce source": refuse to boot in Graph mode without everything the
+    // Graph reader needs — a half-configured Graph source would otherwise only fail once the
+    // bounce run actually tries to fetch a token, far from this env check.
+    if (e.BOUNCE_SOURCE === "graph") {
+      for (const key of ["GRAPH_TENANT_ID", "GRAPH_CLIENT_ID", "GRAPH_CLIENT_SECRET", "BOUNCE_MAILBOX"] as const) {
+        if (!e[key]) ctx.addIssue({ code: "custom", message: `${key} is required when BOUNCE_SOURCE=graph`, path: [key] });
+      }
     }
   })
   // Resolves MESSAGE_ID_DOMAIN once at startup, rather than re-deriving it from MAIL_FROM on

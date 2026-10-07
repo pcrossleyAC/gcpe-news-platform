@@ -13,6 +13,7 @@ const internalDomains = ["gov.bc.ca"];
 describe("Distribution HTTP API", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
+  let graphModeApp: ReturnType<typeof createApp>;
   let sender: string;
   let otherAppSender: string;
   let reader: string;
@@ -36,6 +37,7 @@ describe("Distribution HTTP API", () => {
     reader = await sign("nod-client", []);
     operator = await sign("nod", ["Distribution.Operate"]);
     app = createApp({ db: tdb.db, auth: { issuer, audience, keys }, internalDomains });
+    graphModeApp = createApp({ db: tdb.db, auth: { issuer, audience, keys }, internalDomains, bounceSource: "graph" });
   });
   afterAll(async () => {
     await tdb.drop();
@@ -268,6 +270,45 @@ describe("Distribution HTTP API", () => {
 
       const settingsAfterResume = await request(app).get("/api/settings").set("authorization", `Bearer ${operator}`);
       expect(settingsAfterResume.body).toEqual({ paused: false });
+    });
+  });
+
+  describe("POST /api/bounces/inbox, GET /api/bounces/source", () => {
+    it("401s without a token, 403s without Distribution.Operate", async () => {
+      expect((await request(app).post("/api/bounces/inbox").send({ raw: "x" })).status).toBe(401);
+      expect((await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${reader}`).send({ raw: "x" })).status).toBe(403);
+      expect((await request(app).get("/api/bounces/source")).status).toBe(401);
+      expect((await request(app).get("/api/bounces/source").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    });
+
+    it("GET /api/bounces/source reports fake for this app", async () => {
+      const res = await request(app).get("/api/bounces/source").set("authorization", `Bearer ${operator}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ source: "fake" });
+    });
+
+    it("201s a valid upload and stores the raw message in bounce_inbox", async () => {
+      const res = await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${operator}`).send({ raw: "Subject: Undeliverable: x\r\n\r\nbody" });
+      expect(res.status).toBe(201);
+      expect(typeof res.body.id).toBe("string");
+
+      const { rows } = await tdb.pool.query("SELECT raw, processed_at FROM bounce_inbox WHERE id = $1", [res.body.id]);
+      expect(rows).toEqual([{ raw: "Subject: Undeliverable: x\r\n\r\nbody", processed_at: null }]);
+    });
+
+    it("400s a missing raw field and a raw over 1 MB", async () => {
+      expect((await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${operator}`).send({})).status).toBe(400);
+      const over = "x".repeat(1024 * 1024 + 1);
+      expect((await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${operator}`).send({ raw: over })).status).toBe(400);
+    });
+
+    it("404s the upload route (even with Distribution.Operate) when this app reports BOUNCE_SOURCE=graph, but still reports its source", async () => {
+      const upload = await request(graphModeApp).post("/api/bounces/inbox").set("authorization", `Bearer ${operator}`).send({ raw: "x" });
+      expect(upload.status).toBe(404);
+
+      const source = await request(graphModeApp).get("/api/bounces/source").set("authorization", `Bearer ${operator}`);
+      expect(source.status).toBe(200);
+      expect(source.body).toEqual({ source: "graph" });
     });
   });
 });

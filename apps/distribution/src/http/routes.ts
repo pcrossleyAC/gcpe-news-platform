@@ -2,12 +2,21 @@ import { Router, type NextFunction, type Request, type Response } from "express"
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { requireRole } from "@gcpe/auth";
+import { bounceInbox } from "../db/schema";
 import * as messagesService from "../messages";
 import * as settingsService from "../settings";
 
 const uuidSchema = z.string().uuid();
 type Handler<P> = (req: Request<P>, res: Response) => Promise<void>;
 const safe = <P>(h: Handler<P>) => (req: Request<P>, res: Response, next: NextFunction) => h(req, res).catch(next);
+
+// 4e: the fake bounce inbox's own body limit (Global Constraints "Bounce source") — enforced
+// here rather than by shrinking the app-wide express.json limit (app.ts's 10mb covers every
+// other route too), since a raw .eml is text and this is the one route that should cap it.
+const BOUNCE_INBOX_MAX_BYTES = 1024 * 1024;
+const bounceInboxUploadSchema = z.object({
+  raw: z.string().refine((s) => Buffer.byteLength(s, "utf8") <= BOUNCE_INBOX_MAX_BYTES, { message: `raw exceeds ${BOUNCE_INBOX_MAX_BYTES} bytes` }),
+});
 
 /**
  * Maps the validation layer's ZodError to a response. Returns false for anything else so the
@@ -25,7 +34,7 @@ function appIdFrom(req: Request): string {
   return typeof azp === "string" && azp ? azp : req.auth!.subject;
 }
 
-export function apiRoutes(db: Db, internalDomains: string[]): Router {
+export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake" | "graph"): Router {
   const r = Router();
   const run = <P>(h: Handler<P>): ReturnType<typeof safe<P>> =>
     safe<P>(async (req, res) => {
@@ -83,6 +92,32 @@ export function apiRoutes(db: Db, internalDomains: string[]): Router {
     requireRole("Distribution.Operate"),
     run(async (_req, res) => {
       res.json(await settingsService.setPaused(db, false));
+    }),
+  );
+
+  // 4e: the fake bounce inbox's own upload route (Global Constraints "Roles": gated the same
+  // as the settings routes above — NoD's own Distribution.Operate-scoped token is the only
+  // caller this is meant for, never staff directly). Only meaningful in fake mode; in graph
+  // mode there's no fake inbox to upload into, so this 404s rather than silently accepting and
+  // discarding a post.
+  r.post(
+    "/bounces/inbox",
+    requireRole("Distribution.Operate"),
+    run(async (req, res) => {
+      if (bounceSource !== "fake") return void res.status(404).json({ error: "not found" });
+      const parsed = bounceInboxUploadSchema.parse(req.body);
+      const [inserted] = await db.insert(bounceInbox).values({ raw: parsed.raw }).returning({ id: bounceInbox.id });
+      res.status(201).json({ id: inserted!.id });
+    }),
+  );
+
+  // Lets NoD's own admin route (Global Constraints "Roles") decide whether to offer its
+  // fake-inbox proxy upload at all, without NoD having to know Distribution's env directly.
+  r.get(
+    "/bounces/source",
+    requireRole("Distribution.Operate"),
+    run(async (_req, res) => {
+      res.json({ source: bounceSource });
     }),
   );
 

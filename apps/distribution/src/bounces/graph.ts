@@ -1,0 +1,121 @@
+import { createClientCredentialsProvider } from "@gcpe/auth";
+import type { BounceSource } from "./source";
+
+const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
+const PROCESSED_FOLDER_NAME = "Processed";
+
+/**
+ * Thrown by every Graph call below. Carries only the operation's own label and the HTTP
+ * status -- never the response body (which could carry diagnostic text echoing a recipient
+ * address) and never the bearer token (Global Constraints "Bounce source": "never include the
+ * token or response bodies in thrown messages or logs").
+ */
+export class GraphBounceSourceError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "GraphBounceSourceError";
+  }
+}
+
+export interface GraphBounceSourceOptions {
+  tenantId: string;
+  clientId: string;
+  clientSecret: string;
+  /** The mailbox Graph reads/writes against (`BOUNCE_MAILBOX`) -- an address, but Distribution's
+   * own configured one, not a subscriber's; still never logged (see GraphBounceSourceError). */
+  mailbox: string;
+  fetchImpl?: typeof fetch;
+}
+
+/**
+ * BOUNCE_SOURCE=graph: reads a shared mailbox's Inbox over Microsoft Graph using the same
+ * client-credentials provider every other OAuth2-client-credentials caller in this repo uses
+ * (packages/auth/client-credentials.ts), with the Graph-specific scope and token URL. Built
+ * and unit-tested only against recorded responses (Q23) -- never run live until that's
+ * answered.
+ *
+ * `fetchNew` lists unread messages (selecting only `id`, so nothing of their content is ever
+ * pulled over the wire until this source decides to download it) and downloads each one's raw
+ * MIME. `markProcessed` marks each read and moves it into a `Processed` folder (created once,
+ * lazily, and cached here for the lifetime of this source) -- legacy deleted processed
+ * messages; moving instead is strictly safer (nothing is ever lost) and is what the brief asks
+ * for.
+ */
+export function graphBounceSource(opts: GraphBounceSourceOptions): BounceSource {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const getToken = createClientCredentialsProvider({
+    tokenUrl: `https://login.microsoftonline.com/${opts.tenantId}/oauth2/v2.0/token`,
+    clientId: opts.clientId,
+    clientSecret: opts.clientSecret,
+    scope: "https://graph.microsoft.com/.default",
+    fetchImpl,
+  });
+
+  const mailboxPath = `/users/${encodeURIComponent(opts.mailbox)}`;
+  // Resolved once per source instance and kept -- a 15-minute-cadence run has no reason to
+  // re-look this up every time once it's known.
+  let processedFolderId: string | undefined;
+
+  async function call(op: string, path: string, init?: RequestInit): Promise<Response> {
+    const token = await getToken();
+    const res = await fetchImpl(`${GRAPH_BASE}${path}`, {
+      ...init,
+      headers: { authorization: `Bearer ${token}`, ...(init?.headers ?? {}) },
+    });
+    if (!res.ok) throw new GraphBounceSourceError(`Graph ${op} failed: HTTP ${res.status}`);
+    return res;
+  }
+
+  async function ensureProcessedFolderId(): Promise<string> {
+    if (processedFolderId) return processedFolderId;
+    const filter = encodeURIComponent(`displayName eq '${PROCESSED_FOLDER_NAME}'`);
+    const found = await call("list Processed folder", `${mailboxPath}/mailFolders?$filter=${filter}`);
+    const { value } = (await found.json()) as { value: { id: string }[] };
+    if (value[0]) {
+      processedFolderId = value[0].id;
+      return processedFolderId;
+    }
+    const created = await call("create Processed folder", `${mailboxPath}/mailFolders`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ displayName: PROCESSED_FOLDER_NAME }),
+    });
+    const createdJson = (await created.json()) as { id: string };
+    processedFolderId = createdJson.id;
+    return processedFolderId;
+  }
+
+  return {
+    async fetchNew(limit) {
+      const filter = encodeURIComponent("isRead eq false");
+      const listed = await call(
+        "list unread messages",
+        `${mailboxPath}/mailFolders/inbox/messages?$filter=${filter}&$top=${limit}&$select=id`,
+      );
+      const { value } = (await listed.json()) as { value: { id: string }[] };
+
+      const fetched: { id: string; raw: string }[] = [];
+      for (const { id } of value) {
+        const mime = await call("download message", `${mailboxPath}/messages/${id}/$value`);
+        fetched.push({ id, raw: await mime.text() });
+      }
+      return fetched;
+    },
+    async markProcessed(ids) {
+      if (ids.length === 0) return;
+      const folderId = await ensureProcessedFolderId();
+      for (const id of ids) {
+        await call("mark message read", `${mailboxPath}/messages/${id}`, {
+          method: "PATCH",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ isRead: true }),
+        });
+        await call("move message to Processed", `${mailboxPath}/messages/${id}/move`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ destinationId: folderId }),
+        });
+      }
+    },
+  };
+}

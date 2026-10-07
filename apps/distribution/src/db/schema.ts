@@ -88,10 +88,30 @@ export const distributionSettings = pgTable(
     id: integer("id").primaryKey().default(1),
     paused: boolean("paused").notNull().default(false),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+    // 4e: the 15-minute bounce run's own gate (bounces/run.ts's runBouncesIfDue) — null means
+    // never checked. Set, inside the same short transaction that reads it, by the run that
+    // claims the gate; read by database `now()` only, never a JS clock.
+    bouncesCheckedAt: timestamp("bounces_checked_at", { withTimezone: true }),
   },
   (t) => [check("distribution_settings_singleton", sql`${t.id} = 1`)],
 );
 export type DistributionSettingsRow = typeof distributionSettings.$inferSelect;
+
+// 4e: the fake bounce source's own mailbox (bounces/source.ts's fakeBounceSource) — rows
+// posted through the Distribution.Operate-gated /api/bounces/inbox route (fake mode only), read
+// FIFO where `processed_at IS NULL`, and marked processed once fetched (bounces/run.ts marks
+// every fetched row processed, never re-reading one). Never used when BOUNCE_SOURCE=graph.
+export const bounceInbox = pgTable(
+  "bounce_inbox",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    raw: text("raw").notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull().defaultNow(),
+    processedAt: timestamp("processed_at", { withTimezone: true }),
+  },
+  (t) => [index("bounce_inbox_unprocessed_idx").on(t.receivedAt).where(sql`${t.processedAt} IS NULL`)],
+);
+export type BounceInboxRow = typeof bounceInbox.$inferSelect;
 
 export type BounceKind = "bounce" | "ignored";
 export type BounceMethod = "rfc3464" | "heuristic";
