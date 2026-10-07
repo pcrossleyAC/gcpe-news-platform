@@ -232,8 +232,11 @@ export const nodSettings = pgTable(
     bounceSummaryCheckedAt: timestamp("bounce_summary_checked_at", { withTimezone: true }),
     // A lease, not a held transaction, protects the window between claiming the day's run and
     // stamping it done -- the same shape as media_sync_lease above, just without a resumable
-    // cursor (bounce-summary.ts's own work has nothing to resume: a lease that expires before
-    // finishing is simply claimed afresh, never "taken over" mid-flight).
+    // cursor (bounce-summary.ts's own work has nothing to resume). Once `bounce_summary_lease_
+    // until` has passed, another caller takes it over even if the original run is still
+    // mid-flight (just slow, not crashed) -- there's no cursor to hand off, so the new runner
+    // simply starts over from the subscriber list as it stands then, and the stale runner's own
+    // eventual `finish` is a no-op against the lease it no longer holds.
     bounceSummaryLease: uuid("bounce_summary_lease"),
     bounceSummaryLeaseUntil: timestamp("bounce_summary_lease_until", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

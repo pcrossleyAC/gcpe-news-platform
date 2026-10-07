@@ -111,7 +111,7 @@ function localDateLabel(d: Date, timeZone: string): string {
 type ClaimResult =
   | { kind: "busy" }
   | { kind: "not-due" }
-  | { kind: "claimed"; lease: string; dbNow: Date; cutoff: Date; windowStart: Date };
+  | { kind: "claimed"; lease: string; dbNow: Date; cutoff: Date; windowStart: Date; firstEver: boolean };
 
 /**
  * Claims the right to run today's summary, in one short transaction holding `nod_settings`
@@ -160,7 +160,7 @@ async function claim(db: Db, timeZone: string, now?: TestClock): Promise<ClaimRe
       .update(nodSettings)
       .set({ bounceSummaryLease: lease, bounceSummaryLeaseUntil: new Date(dbNow.getTime() + LEASE_MS), updatedAt: sql`now()` })
       .where(eq(nodSettings.id, 1));
-    return { kind: "claimed", lease, dbNow, cutoff, windowStart };
+    return { kind: "claimed", lease, dbNow, cutoff, windowStart, firstEver: lastAt === null };
   });
 }
 
@@ -219,7 +219,7 @@ export async function runBounceSummaryIfDue(
 
   const claimed = await claim(db, timeZone, now);
   if (claimed.kind !== "claimed") return { sent: false, lines: 0 };
-  const { lease, dbNow, cutoff, windowStart } = claimed;
+  const { lease, dbNow, cutoff, windowStart, firstEver } = claimed;
 
   try {
     const rows = await fetchSummaryRows(db, windowStart, dbNow);
@@ -232,7 +232,11 @@ export async function runBounceSummaryIfDue(
 
     const stats = await distribution.bounceStats(windowStart.toISOString(), dbNow.toISOString());
     if (lines.length === 0 && stats.unmatched === 0) {
-      await finish(db, lease, { checkedAt: cutoff });
+      // Before this call's very first-ever send, `bounce_summary_at` is still unset, so a
+      // no-op run still stamps it to this call's own `windowStart` -- closing the gap that
+      // would otherwise leave the next (eventually non-empty) run's window starting from 24h
+      // before *its* `dbNow` instead of from here, silently dropping whatever fell in between.
+      await finish(db, lease, { checkedAt: cutoff, ...(firstEver ? { at: windowStart } : {}) });
       return { sent: false, lines: 0 };
     }
 
@@ -258,7 +262,15 @@ export async function runBounceSummaryIfDue(
     await finish(db, lease, { checkedAt: cutoff, at: dbNow });
     return { sent: true, lines: lines.length };
   } catch (e) {
-    await finish(db, lease, null);
+    // `finish` itself failing (a transient DB error while just clearing the lease) must never
+    // replace the original failure -- that's the one the next due check actually needs to see
+    // retried. Logged separately, with only a safe label (never `finish`'s own error message,
+    // which could carry whatever its query bound).
+    try {
+      await finish(db, lease, null);
+    } catch (finishError) {
+      console.error("[nod] bounce summary finish failed", safeErrorLabel(finishError));
+    }
     throw e;
   }
 }

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
-import type { TestDatabase } from "@gcpe/db-kit";
+import type { Db, TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
 import { BOUNCE_SUMMARY_HOUR, runBounceSummaryIfDue, startBounceSummaryLoop } from "./bounce-summary";
 import { BOUNCE_ACTOR } from "./bounces";
@@ -128,7 +128,8 @@ describe("runBounceSummaryIfDue", () => {
     expect(first.send).not.toHaveBeenCalled();
     const [afterNoOp] = await tdb.db.select().from(nodSettings);
     expect(afterNoOp!.bounceSummaryCheckedAt).toEqual(DAY1_0800);
-    expect(afterNoOp!.bounceSummaryAt).toBeNull();
+    // First run ever, even as a no-op, stamps bounce_summary_at to its own window start.
+    expect(afterNoOp!.bounceSummaryAt).toEqual(new Date(DAY1_0805.getTime() - DAY_MS));
 
     const sub = await insertSubscriber(tdb.db, "midday@example.test");
     await insertHardBounceDelivery(tdb.db, sub, { at: DAY1_1400, status: "5.1.1" });
@@ -147,7 +148,7 @@ describe("runBounceSummaryIfDue", () => {
     expect(req.text).toContain("midday@example.test");
   });
 
-  it("nothing to report: no email, sets checked_at only, bounce_summary_at stays unset", async () => {
+  it("nothing to report on the very first run ever: sets checked_at, and also stamps bounce_summary_at to that run's own window start (closing the pre-first-send gap)", async () => {
     const distribution = stubDistribution();
     const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
     expect(result).toEqual({ sent: false, lines: 0 });
@@ -155,7 +156,28 @@ describe("runBounceSummaryIfDue", () => {
 
     const [row] = await tdb.db.select().from(nodSettings);
     expect(row!.bounceSummaryCheckedAt).toEqual(DAY1_0800);
-    expect(row!.bounceSummaryAt).toBeNull();
+    expect(row!.bounceSummaryAt).toEqual(new Date(DAY1_0800.getTime() - DAY_MS));
+  });
+
+  it("nothing to report on a later no-op run: checked_at moves, but a bounce_summary_at already set stays exactly where it was", async () => {
+    const sub = await insertSubscriber(tdb.db, "already-summarized@example.test");
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
+    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
+    const first = stubDistribution();
+    await runBounceSummaryIfDue(tdb.db, first, TZ, "ops@example.com", () => DAY1_0800);
+    const [afterFirst] = await tdb.db.select().from(nodSettings);
+    const stampedAt = afterFirst!.bounceSummaryAt;
+    expect(stampedAt).not.toBeNull();
+
+    const second = stubDistribution();
+    const result = await runBounceSummaryIfDue(tdb.db, second, TZ, "ops@example.com", () => DAY2_0800);
+    expect(result).toEqual({ sent: false, lines: 0 });
+    expect(second.send).not.toHaveBeenCalled();
+
+    const [row] = await tdb.db.select().from(nodSettings);
+    expect(row!.bounceSummaryCheckedAt).toEqual(DAY2_0800);
+    expect(row!.bounceSummaryAt).toEqual(stampedAt); // unchanged -- only the first-ever run stamps it on a no-op
   });
 
   it("ruling: an ignored-only window sends no email; an unmatched-bounce-only window still does", async () => {
@@ -166,7 +188,9 @@ describe("runBounceSummaryIfDue", () => {
     expect(ignoredOnly.send).not.toHaveBeenCalled();
     const [afterIgnored] = await tdb.db.select().from(nodSettings);
     expect(afterIgnored!.bounceSummaryCheckedAt).toEqual(DAY1_0800);
-    expect(afterIgnored!.bounceSummaryAt).toBeNull();
+    // This is still the very first run ever, so even though it's a no-op it stamps
+    // bounce_summary_at to its own window start.
+    expect(afterIgnored!.bounceSummaryAt).toEqual(new Date(DAY1_0800.getTime() - DAY_MS));
 
     const unmatchedOnly = stubDistribution();
     unmatchedOnly.bounceStats.mockResolvedValue({ unmatched: 2, ignored: 1 });
@@ -323,6 +347,43 @@ describe("runBounceSummaryIfDue", () => {
     expect(key1).toBe(key2);
   });
 
+  it("finish() itself throwing inside the catch does not mask the original error, and logs the finish failure safely", async () => {
+    const sub = await insertSubscriber(tdb.db, "finish-throws@example.test");
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
+    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
+
+    const distribution = stubDistribution();
+    distribution.send.mockRejectedValueOnce(new Error("original send failure"));
+
+    // The only top-level db.update in this whole flow is finish()'s own -- claim()'s update
+    // runs inside its own transaction-scoped tx, a different object -- so this proxy's first
+    // call is unambiguously finish()'s.
+    let updateCalls = 0;
+    const flakyDb = new Proxy(tdb.db, {
+      get(target, prop, receiver) {
+        if (prop === "update") {
+          return (...args: unknown[]) => {
+            updateCalls++;
+            if (updateCalls === 1) throw new Error("finish DB failure for finish-throws@example.test");
+            return (target.update as (...a: unknown[]) => unknown)(...args);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as Db;
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(runBounceSummaryIfDue(flakyDb, distribution, TZ, "ops@example.com", () => DAY1_0800)).rejects.toThrow("original send failure");
+      expect(errorSpy).toHaveBeenCalled();
+      const logged = errorSpy.mock.calls.flat().map(String).join(" ");
+      expect(logged).not.toContain("finish-throws@example.test");
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("a stale runner's finish after a takeover does not re-stamp", async () => {
     const sub = await insertSubscriber(tdb.db, "stale@example.test");
     const at = new Date(DAY1_0800.getTime() - HOUR_MS);
@@ -367,6 +428,14 @@ describe("runBounceSummaryIfDue", () => {
     expect(afterA!.bounceSummaryCheckedAt).toEqual(stampAfterB.checkedAt);
     expect(afterA!.bounceSummaryAt).toEqual(stampAfterB.at);
     expect(afterA!.bounceSummaryLease).toBeNull();
+
+    // A still sends its own copy (its own distribution client, never told it lost the race) --
+    // under the same date's idempotency key as B's, so Distribution's own dedupe (not this
+    // takeover) is what keeps the subscriber from getting two summary emails.
+    expect(distributionA.send).toHaveBeenCalledTimes(1);
+    const keyA = (distributionA.send.mock.calls[0]![0] as MessageRequest).idempotencyKey;
+    const keyB = (distributionB.send.mock.calls[0]![0] as MessageRequest).idempotencyKey;
+    expect(keyA).toBe(keyB);
   });
 
   it("never logs an address on a normal send", async () => {
@@ -426,7 +495,7 @@ describe("startBounceSummaryLoop", () => {
     expect(distribution.send).toHaveBeenCalledTimes(1);
   });
 
-  it("M7: never logs an address, even when the failure's own Error message carries one", async () => {
+  it("never logs an address, even when the failure's own Error message carries one", async () => {
     const sub = await insertSubscriber(tdb.db, "leaky@example.test");
     const at = new Date(DAY1_0800.getTime() - HOUR_MS);
     await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });

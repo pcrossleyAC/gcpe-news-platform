@@ -254,11 +254,12 @@ describe("onDeliveryBounced", () => {
 
     const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "journo-already-flagged@example.test", batchId, hard: true }), OPTS));
 
-    expect(result).toEqual({ matched: true, action: "flagged" });
+    expect(result).toEqual({ matched: true, action: "recorded" });
     const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, sub.id));
     expect(after!.needsAttention).toBe("email-gone"); // not overwritten to "bouncing"
     expect(after!.attentionAt!.getTime()).toBe(flaggedAt.getTime()); // not touched
-    expect(await historyActions(tdb.db, sub.id)).toEqual([]); // no bounce-flagged row
+    // Staff still see the bounce happened, even though it flagged nothing new.
+    expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-recorded"]);
   });
 
   // A media member who keeps being sent to (and keeps bouncing) re-trips the threshold on
@@ -435,6 +436,22 @@ describe("onDeliveryBounced", () => {
     expect(result).toEqual({ matched: true, action: "recorded" });
     expect((await deliveryFor(tdb.db, sub.id, "item-fallback-newer")).hardBouncedAt).not.toBeNull();
     expect((await deliveryFor(tdb.db, sub.id, "item-fallback-older")).hardBouncedAt).toBeNull();
+  });
+
+  // A verification/manage-link email creates no deliveries row at all, but its own
+  // (Distribution-real, just NoD-untracked) batchId can land near a genuine release send for
+  // the same subscriber. The candidate the recency fallback would otherwise pick already
+  // belongs to a *different*, confirmed batch of its own -- attributing this event to it would
+  // misattribute the bounce, so nothing is recorded instead.
+  it("does not fall back to a delivery that already belongs to a different, confirmed batch", async () => {
+    const sub = await insertSubscriber(tdb.db, "fallback-foreign-batch@example.test");
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-real-send", attemptedAt: daysAgo(1), distributionBatchId: randomUUID() });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "fallback-foreign-batch@example.test", batchId: randomUUID(), hard: true }), OPTS));
+
+    expect(result).toEqual({ matched: false, action: "none" });
+    expect((await deliveryFor(tdb.db, sub.id, "item-real-send")).hardBouncedAt).toBeNull();
+    expect(await historyActions(tdb.db, sub.id)).toEqual([]);
   });
 
   it("no subscriber for the address: unmatched", async () => {

@@ -81,6 +81,14 @@ async function findDeliveryMatch(tx: Tx, subscriberId: string, batchId: string):
     .orderBy(desc(deliveries.attemptedAt))
     .limit(1);
   if (!fallback) return null;
+  // Ruling (final review): only ever fall back to a delivery that was never itself stamped
+  // with a batch id of its own. One that already carries one (send-jobs.ts's own successful
+  // handoff) is definitely a different, already-identified send -- attributing this event's
+  // bounce to it (e.g. a bounce on a verification/manage-link email, which gets no deliveries
+  // row at all, landing near a genuine release send for the same subscriber) would misattribute
+  // it. A row with no distribution_batch_id of its own is the pre-existing stamp-defect this
+  // fallback exists to recover from, and the only candidate left standing.
+  if (fallback.distributionBatchId !== null) return null;
   if (fallback.jobId === null) {
     const where = and(eq(deliveries.subscriberId, subscriberId), eq(deliveries.itemKey, fallback.itemKey), eq(deliveries.mode, fallback.mode));
     return { rows: [fallback], where };
@@ -117,9 +125,13 @@ function groupedBouncedEmailsSql(subscriberId: string): SQL {
  * simply aren't that many, or because older ones fall outside the window) never trips it.
  */
 async function thresholdTripped(tx: Tx, subscriberId: string): Promise<boolean> {
+  // The tiebreaker (the same grouping expression {@link groupedBouncedEmailsSql} groups by)
+  // makes which emails land inside the LIMIT deterministic when two or more share the exact
+  // same max(attempted_at) -- without it, Postgres is free to return ties in any order, which
+  // could change the threshold's answer run to run for the same data.
   const { rows } = await tx.execute<{ bounced: boolean }>(sql`
     ${groupedBouncedEmailsSql(subscriberId)}
-    ORDER BY max(attempted_at) DESC
+    ORDER BY max(attempted_at) DESC, COALESCE(distribution_batch_id::text, job_id::text, item_key || mode) DESC
     LIMIT ${HARD_BOUNCE_THRESHOLD}
   `);
   return rows.length === HARD_BOUNCE_THRESHOLD && rows.every((r) => r.bounced === true);
@@ -194,8 +206,20 @@ export async function onDeliveryBounced(tx: Tx, event: EventEnvelope, opts: Boun
       .set({ needsAttention: "bouncing", attentionAt: sql`now()` })
       .where(and(eq(subscribers.id, subscriber.id), isNull(subscribers.needsAttention)))
       .returning({ id: subscribers.id });
-    if (flagged.length > 0) await writeHistory(tx, subscriber.id, BOUNCE_ACTOR, "bounce-flagged");
-    return { matched: true, action: "flagged" };
+    if (flagged.length > 0) {
+      await writeHistory(tx, subscriber.id, BOUNCE_ACTOR, "bounce-flagged");
+      return { matched: true, action: "flagged" };
+    }
+    if (subscriber.needsAttention === "bouncing") {
+      // Already flagged "bouncing" by an earlier trip of this same threshold -- nothing new
+      // happened, so nothing new is written (no second bounce-flagged row, no attention_at
+      // reset).
+      return { matched: true, action: "flagged" };
+    }
+    // Flagged for something else entirely (e.g. a Media Hub sync collision) -- that reason is
+    // never overwritten, but staff should still see that this bounce happened.
+    await writeHistory(tx, subscriber.id, BOUNCE_ACTOR, "bounce-recorded", data.status);
+    return { matched: true, action: "recorded" };
   }
 
   if (subscriber.status === "active") {
