@@ -40,7 +40,7 @@ describe("FilesScreen", () => {
     );
     render(withAuth(<FilesScreen />));
     await screen.findByRole("heading", { name: "Files", level: 1 });
-    expect(document.title).toBe("Files — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Files — GCPE News Staff"));
   });
 
   it("a new upload that collides (409) offers to replace, and replacing resends with replace=true", async () => {

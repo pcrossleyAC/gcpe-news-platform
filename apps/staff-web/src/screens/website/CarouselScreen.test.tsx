@@ -89,7 +89,7 @@ describe("CarouselScreen", () => {
     await screen.findByRole("heading", { name: "Carousel", level: 1 });
     await screen.findByText("There is no next carousel.");
     // I5: document.title matches the h1.
-    expect(document.title).toBe("Carousel — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Carousel — GCPE News Staff"));
 
     const user = userEvent.setup();
     await user.type(screen.getByLabelText("Date"), "2027-01-01");

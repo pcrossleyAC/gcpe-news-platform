@@ -3,6 +3,8 @@ import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal } from "@bcgov/d
 import type { ReleaseFileView, ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
 import { RELOAD_MESSAGE } from "../useReleaseSection";
+import { useSaveQueue, withVersion } from "../saveQueue";
+import { SaveStatus } from "../SaveStatus";
 
 export interface FilesSectionProps {
   view: ReleaseView;
@@ -14,17 +16,21 @@ type Kind = "translation" | "asset";
 
 interface GroupState {
   busy: boolean;
+  /** Queued behind another save on the page (saveQueue.tsx); `busy` is also true. */
+  waiting: boolean;
   conflict: boolean;
   problems: string[] | null;
   error: string | null;
 }
-const INITIAL: GroupState = { busy: false, conflict: false, problems: null, error: null };
+const INITIAL: GroupState = { busy: false, waiting: false, conflict: false, problems: null, error: null };
 
 /** Uploaded translation PDFs and media asset files (task-4-brief.md) — both go through the
  * same raw-body endpoint (`POST .../files?kind=...&version=...&name=...`), which is why this
- * is one component with two groups rather than two separate ones. */
+ * is one component with two groups rather than two separate ones. Both go through the page's
+ * save queue like every other section save, with the version read when the request is sent. */
 export function FilesSection({ view, setView, readOnly }: FilesSectionProps): React.JSX.Element {
   const [state, setState] = useState<Record<Kind, GroupState>>({ translation: INITIAL, asset: INITIAL });
+  const queue = useSaveQueue();
   // Fix round 1, finding 2: a file pending remove confirmation (same AlertDialog pattern as
   // document/translation removal — this used to fire with no confirmation at all).
   const [removeTarget, setRemoveTarget] = useState<{ kind: Kind; file: ReleaseFileView } | null>(null);
@@ -32,12 +38,15 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
   const setGroup = (kind: Kind, patch: Partial<GroupState>) => setState((s) => ({ ...s, [kind]: { ...s[kind], ...patch } }));
 
   const upload = async (kind: Kind, file: File) => {
-    setGroup(kind, { ...INITIAL, busy: true });
+    setGroup(kind, { ...INITIAL, busy: true, waiting: true });
     try {
-      const next = await apiFetch<ReleaseView>(
-        `/nrms/api/releases/${view.id}/files?kind=${kind}&version=${view.version}&name=${encodeURIComponent(file.name)}`,
-        { method: "POST", raw: file },
-      );
+      const next = await queue.run((version) => {
+        setGroup(kind, { waiting: false });
+        return apiFetch<ReleaseView>(
+          `/nrms/api/releases/${view.id}/files?kind=${kind}&version=${version ?? view.version}&name=${encodeURIComponent(file.name)}`,
+          { method: "POST", raw: file },
+        );
+      });
       setView(next);
       setGroup(kind, INITIAL);
     } catch (caught) {
@@ -50,9 +59,12 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
   const confirmRemove = async () => {
     if (!removeTarget) return;
     const { kind, file } = removeTarget;
-    setGroup(kind, { ...INITIAL, busy: true });
+    setGroup(kind, { ...INITIAL, busy: true, waiting: true });
     try {
-      const next = await apiFetch<ReleaseView>(`/nrms/api/releases/${view.id}/files/${file.id}/remove`, { method: "POST", body: { version: view.version } });
+      const next = await queue.run((version) => {
+        setGroup(kind, { waiting: false });
+        return apiFetch<ReleaseView>(`/nrms/api/releases/${view.id}/files/${file.id}/remove`, { method: "POST", body: withVersion({ version: view.version }, version) });
+      });
       setView(next);
       setGroup(kind, INITIAL);
       setRemoveTarget(null);
@@ -125,6 +137,7 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
             <input type="file" accept={accept} onChange={onPick(kind)} disabled={s.busy} />
           </label>
         )}
+        {!readOnly && <SaveStatus saving={s.busy} waiting={s.waiting} />}
       </div>
     );
   };

@@ -340,6 +340,13 @@ body {
   margin: 0;
 }
 
+/* Release editor: "Waiting to save…" / "Saving…" beside a section's Save button. */
+.gcpe-release-editor__save-status {
+  display: inline-block;
+  margin-inline-start: 0.5rem;
+  font-style: italic;
+}
+
 /* Release editor: the sticky unsaved-changes save bar. */
 
 .gcpe-release-editor--save-bar-open {

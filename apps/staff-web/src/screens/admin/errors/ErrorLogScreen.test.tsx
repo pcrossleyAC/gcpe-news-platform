@@ -42,7 +42,7 @@ describe("ErrorLogScreen", () => {
     );
     render(withAuth(<ErrorLogScreen />));
     await screen.findByRole("heading", { name: "Error log", level: 1 });
-    expect(document.title).toBe("Error log — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Error log — GCPE News Staff"));
   });
 
   it("renders entries newest first, with a Refresh button that re-fetches", async () => {

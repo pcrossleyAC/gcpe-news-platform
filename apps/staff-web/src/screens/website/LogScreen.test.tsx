@@ -27,7 +27,7 @@ describe("LogScreen", () => {
     );
     render(<LogScreen />);
     await screen.findByRole("heading", { name: "Website log", level: 1 });
-    expect(document.title).toBe("Website log — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Website log — GCPE News Staff"));
   });
 
   it("loads the unfiltered log, then refetches with the chosen area", async () => {

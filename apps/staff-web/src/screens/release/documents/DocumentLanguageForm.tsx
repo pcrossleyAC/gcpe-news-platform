@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Button, Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { LANGUAGE_NAME, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
+import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import { useSession } from "../../../session/SessionContext";
 import { BodyEditor } from "../../../editor/BodyEditor";
@@ -166,6 +167,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
             Save {languageLabel} content
           </Button>
         )}
+        {!readOnly && <SaveStatus saving={section.saving} waiting={section.waiting} />}
       </Form>
     </div>
   );

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import axe from "axe-core";
@@ -9,6 +9,7 @@ import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { SignIn } from "../SignIn";
 import { ReleaseEditorPage, SETTLING_REFRESH_MS, settlingDelay } from "./ReleaseEditorPage";
+import { RELOAD_MESSAGE } from "./useReleaseSection";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -110,52 +111,158 @@ describe("ReleaseEditorPage", () => {
     expect(serious).toEqual([]);
   });
 
-  // Fix round 1 (3f Task 3), minor 4: two different sections saving back-to-back — the second
-  // save must use the version the *first* save's response carried, not the page's stale
-  // initial version, since `setView` replaces the whole page's view after every save.
-  it("two different sections saving back-to-back: the second save sends the version the first one returned", async () => {
-    const calls: { url: string; method?: string; body?: unknown }[] = [];
+  // Section saves are queued: each one waits for the save before it and then sends the version
+  // that save returned, so saving a second section (or the same one again) while a save is
+  // still in flight never 409s against our own earlier save.
+  describe("queued section saves", () => {
+    interface HeldWrite {
+      url: string;
+      method?: string;
+      body: { version?: number; sectors?: string[] };
+      respond(res: Response): void;
+    }
+
     const initial = releaseView({ version: 1, type: "release", ministries: ["health"], leadMinistryKey: "health", sectors: [] });
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (url: string, init?: RequestInit) => {
-        const body = init?.body ? JSON.parse(init.body as string) : undefined;
-        calls.push({ url, method: init?.method, body });
-        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
-        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
-        if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
-        if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
-        if (url === "/nrms/api/categories") {
-          return jsonResponse(200, { ministries: [{ key: "health", name: "Health", abbreviation: "HLTH" }], sectors: [{ key: "sector1", name: "Sector One" }], themes: [], tags: [] });
-        }
-        if (init?.method === "PUT" && url.endsWith("/categories")) return jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] }));
-        if (init?.method === "PUT" && url.endsWith("/settings")) return jsonResponse(200, releaseView({ ...initial, version: 3 }));
-        if (/\/nrms\/api\/releases\/[^/]+$/.test(url) && init?.method === "GET") return jsonResponse(200, initial);
-        throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
-      }),
-    );
-    const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: [`/releases/${initial.id}`] });
-    render(
-      <SessionProvider>
-        <RouterProvider router={router} />
-      </SessionProvider>,
-    );
-    const user = userEvent.setup();
 
-    await screen.findByRole("heading", { name: "Categories" });
-    await user.click(screen.getByLabelText("Sector One"));
-    // Checking that box also dirties the sticky save bar, which gets its own "Save categories"
-    // button — scope to the Categories section itself for its inline one.
-    await user.click(within(screen.getByRole("region", { name: "Categories" })).getByRole("button", { name: "Save categories" }));
-    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url.endsWith("/categories"))).toBe(true));
+    /** Renders the editor with every PUT/POST held until the test calls `respond` on it. */
+    function renderWithHeldWrites() {
+      const writes: HeldWrite[] = [];
+      vi.stubGlobal(
+        "fetch",
+        vi.fn(async (url: string, init?: RequestInit) => {
+          if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+          if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+          if (url.endsWith("/asset-status")) return jsonResponse(200, { kind: "none" });
+          if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+          if (url === "/nrms/api/categories") {
+            return jsonResponse(200, { ministries: [{ key: "health", name: "Health", abbreviation: "HLTH" }], sectors: [{ key: "sector1", name: "Sector One" }], themes: [], tags: [] });
+          }
+          if (init?.method === "PUT" || init?.method === "POST") {
+            const body = init.body ? JSON.parse(init.body as string) : {};
+            return new Promise<Response>((resolve) => writes.push({ url, method: init.method, body, respond: resolve }));
+          }
+          if (/\/nrms\/api\/releases\/[^/]+$/.test(url)) return jsonResponse(200, initial);
+          throw new Error(`unexpected fetch: ${init?.method ?? "GET"} ${url}`);
+        }),
+      );
+      const router = createMemoryRouter([{ path: "/releases/:id", element: <ReleaseEditorPage /> }], { initialEntries: [`/releases/${initial.id}`] });
+      render(
+        <SessionProvider>
+          <RouterProvider router={router} />
+        </SessionProvider>,
+      );
+      return { writes, user: userEvent.setup() };
+    }
 
-    await user.click(screen.getByRole("button", { name: "Save settings" }));
-    await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url.endsWith("/settings"))).toBe(true));
+    /** Ticks Sector One (dirtying Categories) and saves Categories from its own inline button;
+     * resolves once that PUT is in flight. */
+    async function startCategoriesSave(writes: HeldWrite[], user: ReturnType<typeof userEvent.setup>) {
+      // The checkbox list comes from its own GET /categories, which can land after the section's
+      // heading has already rendered.
+      await user.click(await screen.findByLabelText("Sector One"));
+      // Checking that box also dirties the sticky save bar, which gets its own "Save categories"
+      // button — scope to the Categories section itself for its inline one.
+      await screen.findByRole("region", { name: "Unsaved changes" });
+      await user.click(within(screen.getByRole("region", { name: "Categories" })).getByRole("button", { name: "Save categories" }));
+      await waitFor(() => expect(writes).toHaveLength(1));
+    }
 
-    const categoriesPut = calls.find((c) => c.method === "PUT" && c.url.endsWith("/categories"));
-    const settingsPut = calls.find((c) => c.method === "PUT" && c.url.endsWith("/settings"));
-    expect((categoriesPut?.body as { version: number }).version).toBe(1);
-    expect((settingsPut?.body as { version: number }).version).toBe(2); // the version /categories returned, not the stale 1
+    const categoriesRegion = () => screen.getByRole("region", { name: "Categories" });
+    const settingsRegion = () => screen.getByRole("region", { name: "Publish settings" });
+
+    it("a second section saved while the first is in flight waits, then sends the version the first returned", async () => {
+      const { writes, user } = renderWithHeldWrites();
+      await startCategoriesSave(writes, user);
+      expect(within(categoriesRegion()).getByText("Saving…")).toBeInTheDocument();
+
+      await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
+      expect(await within(settingsRegion()).findByText("Waiting to save…")).toBeInTheDocument();
+      expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).toBeDisabled();
+      expect(writes).toHaveLength(1); // held: Settings has not gone out yet
+
+      writes[0]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] })));
+      await waitFor(() => expect(writes).toHaveLength(2));
+      expect(writes[0]!.url).toMatch(/\/categories$/);
+      expect(writes[0]!.body.version).toBe(1);
+      expect(writes[1]!.url).toMatch(/\/settings$/);
+      expect(writes[1]!.body.version).toBe(2); // the version /categories returned, not the stale 1
+      expect(await within(settingsRegion()).findByText("Saving…")).toBeInTheDocument();
+
+      writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 3, sectors: ["sector1"] })));
+      await waitFor(() => expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).toBeEnabled());
+      expect(within(settingsRegion()).queryByText(/Saving…|Waiting to save…/)).not.toBeInTheDocument();
+      expect(within(categoriesRegion()).queryByText(/Saving…|Waiting to save…/)).not.toBeInTheDocument();
+      expect(within(settingsRegion()).queryByRole("alert")).not.toBeInTheDocument();
+      expect(within(categoriesRegion()).queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Sector One")).toBeChecked(); // the user's edit survived
+      expect(writes).toHaveLength(2);
+    });
+
+    it("the same section saved twice in quick succession runs both saves, in order", async () => {
+      const { writes, user } = renderWithHeldWrites();
+      await startCategoriesSave(writes, user);
+
+      // The sticky bar's button is a second way to reach the same section's save.
+      const bar = screen.getByRole("region", { name: "Unsaved changes" });
+      await user.click(within(bar).getByRole("button", { name: "Save categories" }));
+      expect(writes).toHaveLength(1); // the second save waits for the first
+
+      writes[0]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] })));
+      await waitFor(() => expect(writes).toHaveLength(2));
+      expect(within(categoriesRegion()).getByText("Saving…")).toBeInTheDocument(); // still busy with the second
+      writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 3, sectors: ["sector1"] })));
+
+      await waitFor(() => expect(within(categoriesRegion()).queryByText("Saving…")).not.toBeInTheDocument());
+      expect(writes.map((w) => [w.url.replace(/^.*\//, ""), w.body.version])).toEqual([
+        ["categories", 1],
+        ["categories", 2],
+      ]);
+      expect(writes[1]!.body.sectors).toEqual(["sector1"]);
+      expect(within(categoriesRegion()).queryByRole("alert")).not.toBeInTheDocument();
+    });
+
+    it("a genuine conflict (someone else moved the version) still shows the reload message", async () => {
+      const { writes, user } = renderWithHeldWrites();
+      await startCategoriesSave(writes, user);
+      await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
+      writes[0]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] })));
+      await waitFor(() => expect(writes).toHaveLength(2));
+      expect(writes[1]!.body.version).toBe(2);
+
+      // The server is already past version 2 — someone else saved in between.
+      writes[1]!.respond(jsonResponse(409, { error: "version conflict", code: "version_conflict" }));
+      expect(await within(settingsRegion()).findByRole("alert")).toHaveTextContent(RELOAD_MESSAGE);
+      expect(within(categoriesRegion()).queryByRole("alert")).not.toBeInTheDocument();
+      expect(within(settingsRegion()).queryByText(/Saving…|Waiting to save…/)).not.toBeInTheDocument();
+    });
+
+    it("a failed save shows its own error and the queue carries on with the last good version", async () => {
+      const { writes, user } = renderWithHeldWrites();
+      await startCategoriesSave(writes, user);
+      await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
+      expect(await within(settingsRegion()).findByText("Waiting to save…")).toBeInTheDocument();
+
+      writes[0]!.respond(jsonResponse(500, { error: "Something went wrong saving categories." }));
+      await waitFor(() => expect(writes).toHaveLength(2));
+      expect(writes[1]!.url).toMatch(/\/settings$/);
+      expect(writes[1]!.body.version).toBe(1); // the failed save moved nothing
+      writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2 })));
+
+      expect(await within(categoriesRegion()).findByRole("alert")).toHaveTextContent("Something went wrong saving categories.");
+      await waitFor(() => expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).toBeEnabled());
+      expect(within(settingsRegion()).queryByRole("alert")).not.toBeInTheDocument();
+      expect(screen.getByLabelText("Sector One")).toBeChecked(); // the failed section keeps its edit
+    });
+
+    it("has no serious/critical axe violations while a save is waiting", async () => {
+      const { writes, user } = renderWithHeldWrites();
+      await startCategoriesSave(writes, user);
+      await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
+      await within(settingsRegion()).findByText("Waiting to save…");
+      const results = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+      const serious = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
+      expect(serious).toEqual([]);
+    });
   });
 
   // Fix round 1, finding 2: the unsaved-changes dialog is the same Modal/AlertDialog
@@ -277,7 +384,8 @@ describe("ReleaseEditorPage", () => {
           if (url.match(/\/nrms\/api\/releases\/[^/]+$/)) {
             const status = statuses[Math.min(gets, statuses.length - 1)]!;
             gets += 1;
-            return jsonResponse(200, releaseView({ ...base, status }));
+            // A distinct reference per response, so the test can see each refresh land on the page.
+            return jsonResponse(200, releaseView({ ...base, status, reference: `NEWS-0000${gets}` }));
           }
           return jsonResponse(200, []);
         }),
@@ -292,13 +400,17 @@ describe("ReleaseEditorPage", () => {
       expect(screen.getByText(/updates on its own/)).toBeInTheDocument();
       expect(gets).toBe(1);
 
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
-      await waitFor(() => expect(gets).toBe(2));
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      // Each refresh schedules the next one only once its response has re-rendered the page, so
+      // wait for that before moving the clock on — otherwise the next poll lands past the advance.
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS));
+      expect(await screen.findAllByText("NEWS-00002")).not.toHaveLength(0);
+      expect(gets).toBe(2);
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS));
       expect(await screen.findByText("Published")).toBeInTheDocument();
+      expect(screen.getAllByText("NEWS-00003")).not.toHaveLength(0);
       expect(screen.queryByText(/updates on its own/)).not.toBeInTheDocument();
 
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS * 3);
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS * 3));
       expect(gets).toBe(3);
     } finally {
       vi.useRealTimers();
@@ -335,12 +447,15 @@ describe("ReleaseEditorPage", () => {
       await screen.findByText("Republishing...");
       expect(gets).toBe(1);
 
+      // act(): a hidden tick only bumps state, and the page schedules its next check in the
+      // effect that follows — act flushes that render before the clock moves on again, so the
+      // next check is pending before the second advance (outside act it sometimes landed after).
       visibilitySpy.mockReturnValue("hidden");
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS));
       expect(gets).toBe(1); // hidden — skipped the fetch
 
       visibilitySpy.mockReturnValue("visible");
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS));
       await waitFor(() => expect(gets).toBe(2)); // visible again — picked back up
     } finally {
       visibilitySpy.mockRestore();

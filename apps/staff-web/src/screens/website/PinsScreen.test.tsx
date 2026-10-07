@@ -49,7 +49,7 @@ describe("PinsScreen", () => {
     render(withAuth(<PinsScreen />));
     await screen.findByRole("heading", { name: "Emergency pins", level: 1 });
     // I5: document.title matches the h1.
-    expect(document.title).toBe("Emergency pins — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Emergency pins — GCPE News Staff"));
     const toggle = await screen.findByRole("switch", { name: "Primary is not pinned" });
 
     const user = userEvent.setup();
