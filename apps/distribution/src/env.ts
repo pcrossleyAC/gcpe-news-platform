@@ -76,6 +76,10 @@ export const distributionEnvSchema = z
     // worker through send_rate_windows. Minimum 1 — no "unlimited" value, so a typo can't
     // remove the cap.
     MAIL_RATE_PER_MINUTE: z.coerce.number().int().min(1).default(60),
+    // The number of sendMail calls sender.ts keeps in flight at once within a single run.
+    // Bounded by SMTP_MAX_CONNECTIONS below (the transport can't actually serve more
+    // concurrent sends than it has pooled connections for) and by 16 as a sanity ceiling.
+    MAIL_CONCURRENCY: z.coerce.number().int().min(1).max(16).default(1),
     SEND_INTERVAL_MS: z.coerce.number().int().default(2000),
     // P2-R27: longest pause after an SMTP outage deferral (sender.ts startSender) — bounds how
     // long sending takes to resume once the server is back.
@@ -88,6 +92,15 @@ export const distributionEnvSchema = z
     // both are set, the redirect wins at send time (sender.ts only consults MAIL_REDIRECT_TO).
     if (e.MAIL_REDIRECT_TO.length === 0 && !e.MAIL_ALLOW_REAL_RECIPIENTS) {
       ctx.addIssue({ code: "custom", message: "set MAIL_REDIRECT_TO or MAIL_ALLOW_REAL_RECIPIENTS=true" });
+    }
+    // The transport can't actually run more sends in parallel than it has pooled connections
+    // for — refuse to boot rather than silently serialise behind MAIL_CONCURRENCY's intent.
+    if (e.MAIL_CONCURRENCY > e.SMTP_MAX_CONNECTIONS) {
+      ctx.addIssue({
+        code: "custom",
+        message: `MAIL_CONCURRENCY (${e.MAIL_CONCURRENCY}) must not exceed SMTP_MAX_CONNECTIONS (${e.SMTP_MAX_CONNECTIONS})`,
+        path: ["MAIL_CONCURRENCY"],
+      });
     }
   })
   // Resolves MESSAGE_ID_DOMAIN once at startup, rather than re-deriving it from MAIL_FROM on

@@ -82,4 +82,23 @@ describe("distribution env", () => {
   it("rejects MAIL_RATE_PER_MINUTE=0 — no \"unlimited\" value, so a typo can't remove the cap", () => {
     expect(distributionEnvSchema.safeParse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_RATE_PER_MINUTE: "0" }).success).toBe(false);
   });
+  it("defaults MAIL_CONCURRENCY to 1", () => {
+    expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true" }).MAIL_CONCURRENCY).toBe(1);
+  });
+  it("accepts a MAIL_CONCURRENCY override at or below SMTP_MAX_CONNECTIONS", () => {
+    expect(
+      distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_CONCURRENCY: "3", SMTP_MAX_CONNECTIONS: "3" }).MAIL_CONCURRENCY,
+    ).toBe(3);
+  });
+  it("rejects MAIL_CONCURRENCY below 1", () => {
+    expect(distributionEnvSchema.safeParse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_CONCURRENCY: "0" }).success).toBe(false);
+  });
+  it("rejects MAIL_CONCURRENCY above 16", () => {
+    expect(distributionEnvSchema.safeParse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_CONCURRENCY: "17" }).success).toBe(false);
+  });
+  it("fails startup when MAIL_CONCURRENCY exceeds SMTP_MAX_CONNECTIONS", () => {
+    expect(
+      distributionEnvSchema.safeParse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_CONCURRENCY: "4", SMTP_MAX_CONNECTIONS: "3" }).success,
+    ).toBe(false);
+  });
 });

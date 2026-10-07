@@ -31,6 +31,11 @@ export interface SendOptions {
    * succeeds. Defaults to {@link DEFAULT_RATE_PER_MINUTE} when omitted; start.ts always supplies
    * env.ts's own `MAIL_RATE_PER_MINUTE` (minimum 1). */
   ratePerMinute?: number;
+  /** How many of this run's claimed rows have their handler (re-assert lock, send, classify,
+   * update) in flight at once, taken in the existing claim order. Defaults to
+   * {@link DEFAULT_CONCURRENCY} (1 — sequential, today's behaviour) when omitted; start.ts
+   * always supplies env.ts's own MAIL_CONCURRENCY. */
+  concurrency?: number;
   batchSize?: number;
   /** Worst-case time a single message's *send* can take: the sum of the transport's
    * connection, greeting and socket timeouts. Together with `verifyTimeoutMs` (a
@@ -71,6 +76,9 @@ const DEFAULT_BATCH_SIZE = 50;
 // Only reached when a caller omits ratePerMinute (mainly tests exercising something else);
 // start.ts always supplies env.ts's own resolved MAIL_RATE_PER_MINUTE in production.
 const DEFAULT_RATE_PER_MINUTE = 60;
+// Only reached when a caller omits concurrency (mainly tests exercising something else);
+// start.ts always supplies env.ts's own resolved MAIL_CONCURRENCY in production.
+const DEFAULT_CONCURRENCY = 1;
 // How long window rows are kept before the opportunistic cleanup removes them — generous
 // enough that nothing but very old rows is ever touched.
 const RATE_WINDOW_RETENTION_MS = 24 * 3_600_000;
@@ -417,17 +425,22 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
   const result = { sent: 0, retried: 0, failed: 0, rateLimited };
   let outageBackoffMs: number | undefined;
   let loggedConfigError = false;
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]!;
 
-    // Give up on any rows not yet reached rather than risk still being mid-send when this
-    // call's own lock expires — lockMarginMs matches the worst-case time a message can take
-    // (its send, then a verify).
-    if (opts.stopRequested?.() || sinceClaim() >= lockMs - lockMarginMs) {
-      await releaseUnreachedRows(opts.db, rows.slice(i).map((r) => r.id), lockToken);
-      break;
-    }
+  // Bounded pool: at most `concurrency` of these in flight at once, taken in the claim order
+  // below via the shared `nextIndex` cursor. `stop` is set by any handler that hits a
+  // sender-level error or an unhealthy-transport outage (or loses its lock mid-run), or by the
+  // pre-claim check in `worker` below (stopRequested, or the lock-margin threshold) — once set,
+  // no further row is claimed; rows already in flight finish and update their own row normally.
+  // Both `stop` and `nextIndex` are plain variables, not locks: JS is single-threaded and
+  // neither is read-then-written across an `await`, so concurrent handlers can't race each
+  // other on them. Release of whatever `nextIndex` never reached happens exactly once, after
+  // every handler has settled (see the `Promise.all` below) — centralising it there, rather
+  // than in each handler, is what keeps two handlers hitting a stop condition at the same time
+  // from double-releasing the same rows.
+  let stop = false;
+  let nextIndex = 0;
 
+  async function handleRow(row: ClaimedRow): Promise<void> {
     // Derived from the row's own id, so it's the same value on every attempt — the write
     // below records it, but a retry after a lost reply recomputes (not regenerates) it.
     const messageId = messageIdFor(row.id, opts.messageIdDomain ?? DEFAULT_MESSAGE_ID_DOMAIN);
@@ -444,8 +457,8 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
        WHERE id = ${row.id} AND ${heldBy(messages.lockedUntil, lockToken)} AND status = 'pending'
       RETURNING id`);
     if (stillOwned.rows.length === 0) {
-      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
-      break;
+      stop = true;
+      return;
     }
 
     // The lock this call's claim set is this row's ownership token: a terminal write only
@@ -497,7 +510,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
         .set({ status: "sent", sentAt: sqlNow(opts.now), lockedUntil: null, lastError: null, originalRecipient })
         .where(where);
       if (res.rowCount) result.sent++;
-      continue;
+      return;
     }
 
     const lastError = truncateError(error);
@@ -514,7 +527,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
         result.failed++;
         console.error(`[distribution] message ${row.id} failed after ${attempts} attempts (pending ${Math.round(age / 3_600_000)}h, over the age backstop): ${error}`);
       }
-      continue;
+      return;
     }
 
     // R24: a sender-level error (MAIL FROM, AUTH*) is a server/config problem unconditionally
@@ -537,8 +550,8 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
           console.error(`[distribution] SMTP server unavailable/misconfigured: ${error}`);
         }
       }
-      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
-      break;
+      stop = true;
+      return;
     }
 
     // I2/R1(a): a connection-level error (`CONN`, `EHLO`/`HELO`/`LHLO`, `STARTTLS`) is
@@ -567,8 +580,8 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
             console.error(`[distribution] SMTP server unavailable/misconfigured: ${error}`);
           }
         }
-        await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
-        break;
+        stop = true;
+        return;
       }
       // P2-R27 item 3: a flapping server — the connection dropped before anything of this
       // message was sent, yet the server verifies healthy. Not the message's fault, so no
@@ -584,7 +597,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
           result.retried++;
           console.error(`[distribution] message ${row.id} deferred: connection dropped before sending, server verifies healthy: ${error}`);
         }
-        continue;
+        return;
       }
       // Falls through to the normal transient-error handling below (attempts+1, standard
       // backoff, fails after MAX_ATTEMPTS), logging distinctly so this is recognisable as the
@@ -609,6 +622,37 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       if (res.rowCount) result.retried++;
     }
   }
+
+  // One worker per pool slot, each taking the next unclaimed row (by `nextIndex`) in turn.
+  // Claiming a row (reading then incrementing `nextIndex`) happens synchronously, with no
+  // `await` in between, so two workers can never claim the same row. The pre-claim check below
+  // — stopRequested, or the lock-margin threshold — runs immediately before each row starts,
+  // same as it did in the old sequential loop, just now per worker instead of once overall.
+  async function worker(): Promise<void> {
+    while (true) {
+      if (stop) return;
+      // Give up on any row not yet reached rather than risk still being mid-send when this
+      // call's own lock expires — lockMarginMs matches the worst-case time a message can take
+      // (its send, then a verify).
+      if (opts.stopRequested?.() || sinceClaim() >= lockMs - lockMarginMs) {
+        stop = true;
+        return;
+      }
+      if (nextIndex >= rows.length) return;
+      const row = rows[nextIndex++]!;
+      await handleRow(row);
+    }
+  }
+
+  const concurrency = Math.min(opts.concurrency ?? DEFAULT_CONCURRENCY, rows.length);
+  await Promise.all(Array.from({ length: concurrency }, () => worker()));
+
+  // Whatever `nextIndex` never reached — because of a stop condition, stopRequested, the
+  // lock-margin threshold, or simply running out of rows — is released once here rather than
+  // per-handler, so multiple handlers hitting a stop condition at the same time can't
+  // double-release the same rows (see the comment above `stop`/`nextIndex`).
+  await releaseUnreachedRows(opts.db, rows.slice(nextIndex).map((r) => r.id), lockToken);
+
   return { result, outageBackoffMs };
 }
 

@@ -1388,4 +1388,127 @@ describe("sendDue", () => {
       await sink.close();
     }
   });
+
+  describe("concurrency", () => {
+    it("runs up to `concurrency` sends in parallel: 8 messages at a 200ms-per-send sink finish well under the 1,600ms a sequential run would take", async () => {
+      const sink = await startSmtpSink({ delayMs: 200 });
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, recipients: Array.from({ length: 8 }, (_, i) => ({ email: `par${i}@example.com`, substitutions: {} })) },
+          internalDomains,
+        );
+
+        const started = Date.now();
+        const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], concurrency: 4 });
+        const elapsed = Date.now() - started;
+
+        expect(result).toEqual({ sent: 8, retried: 0, failed: 0, rateLimited: false });
+        expect(sink.messages).toHaveLength(8);
+        // Robust, not tight: sequential would need ~1,600ms (8 * 200ms); concurrency 4 should
+        // finish in ~2 batches of 200ms plus overhead, nowhere near that.
+        expect(elapsed).toBeLessThan(1100);
+
+        const recipients = sink.messages.map((m) => (m.to && "value" in m.to ? m.to.value[0]!.address : undefined));
+        expect(new Set(recipients).size).toBe(8); // every message sent exactly once
+      } finally {
+        await transport.close();
+        await sink.close();
+      }
+    }, 10000);
+
+    // Review Focus item 2: a sender-level error mid-run with concurrency > 1 — in-flight sends
+    // finish, unreached rows are released, nothing is double-sent or left locked.
+    it("an outage mid-run with concurrency releases the rest: in-flight sends finish, unreached rows stay pending and unlocked, nothing is sent", async () => {
+      const sink = await startSmtpSink({ requireAuth: true });
+      // No `auth` configured on the client: the server's 530 fires at MAIL FROM on every
+      // connection — a sender-level config error (R24), not ambiguous, no verify() involved.
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, recipients: Array.from({ length: 6 }, (_, i) => ({ email: `auth${i}@example.com`, substitutions: {} })) },
+          internalDomains,
+        );
+
+        const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], concurrency: 3 });
+
+        expect(result.sent).toBe(0);
+        expect(result.failed).toBe(0);
+        // Exactly the rows the 3 concurrent handlers had in flight when the first one hit the
+        // sender-level error and set the shared stop flag.
+        expect(result.retried).toBe(3);
+        expect(sink.messages).toHaveLength(0); // nothing ever got past MAIL FROM
+
+        const rows = await tdb.db.select().from(messages);
+        expect(rows).toHaveLength(6);
+        expect(rows.every((r) => r.status === "pending")).toBe(true);
+        expect(rows.every((r) => r.lockedUntil === null)).toBe(true); // unreached rows released, attempted ones deferred — both unlocked
+        expect(rows.filter((r) => r.deferrals === 1)).toHaveLength(3); // attempted, deferred
+        expect(rows.filter((r) => r.deferrals === 0)).toHaveLength(3); // never reached, released untouched
+      } finally {
+        errorSpy.mockRestore();
+        await transport.close();
+        await sink.close();
+      }
+    }, 15000);
+
+    it("a permanent RCPT rejection on one row doesn't stop the others, even with concurrency > 1", async () => {
+      const { SMTPServer } = await import("smtp-server");
+      const { simpleParser } = await import("mailparser");
+      const delivered: string[] = [];
+      const server = new SMTPServer({
+        disabledCommands: ["STARTTLS", "AUTH"],
+        onRcptTo(address, _session, cb) {
+          if (address.address === "bad@example.com") {
+            const err = new Error("mailbox unavailable") as Error & { responseCode: number };
+            err.responseCode = 550;
+            cb(err);
+            return;
+          }
+          cb();
+        },
+        onData(stream, _session, cb) {
+          simpleParser(stream).then((m) => {
+            delivered.push((m.to && "value" in m.to ? m.to.value[0]!.address : "") ?? "");
+            cb();
+          }, cb);
+        },
+      });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      const port = (server.server.address() as { port: number }).port;
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port, secure: false, ignoreTLS: true });
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          {
+            ...sampleMessageRequest,
+            recipients: [
+              { email: "bad@example.com", substitutions: {} },
+              { email: "good1@example.com", substitutions: {} },
+              { email: "good2@example.com", substitutions: {} },
+              { email: "good3@example.com", substitutions: {} },
+            ],
+          },
+          internalDomains,
+        );
+
+        const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], concurrency: 3 });
+        expect(result).toEqual({ sent: 3, retried: 0, failed: 1, rateLimited: false });
+        expect(delivered.sort()).toEqual(["good1@example.com", "good2@example.com", "good3@example.com"]);
+
+        const rows = await tdb.db.select().from(messages);
+        const bad = rows.find((r) => r.email === "bad@example.com")!;
+        expect(bad.status).toBe("failed");
+      } finally {
+        await transport.close();
+        await new Promise<void>((r) => server.close(() => r()));
+      }
+    }, 10000);
+  });
 });

@@ -58,6 +58,7 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
     replyTo: parsed.MAIL_REPLY_TO,
     redirectTo: parsed.MAIL_REDIRECT_TO,
     ratePerMinute: parsed.MAIL_RATE_PER_MINUTE,
+    concurrency: parsed.MAIL_CONCURRENCY,
     perMessageMs: parsed.SMTP_CONNECTION_TIMEOUT_MS + parsed.SMTP_GREETING_TIMEOUT_MS + parsed.SMTP_SOCKET_TIMEOUT_MS,
     verifyTimeoutMs: parsed.SMTP_VERIFY_TIMEOUT_MS,
     maxMessageAgeMs: parsed.MAIL_MAX_AGE_MS,
