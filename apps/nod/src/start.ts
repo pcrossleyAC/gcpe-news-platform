@@ -6,11 +6,14 @@ import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } f
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
+import { createItemSending } from "./as-it-happens";
 import { runBounceSummaryIfDue, startBounceSummaryLoop } from "./bounce-summary";
 import { runDigestIfDue, startDigestLoop } from "./digest";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
+import { runEmergencyFeedIfDue, type EmergencyFeedDeps } from "./emergency/ingest";
 import { needsReferenceData } from "./lists";
+import { startLoop } from "./loop";
 import { mediaHubClient, type MediaHubClient } from "./media-hub/client";
 import { runMediaSyncIfDue, startMediaSyncLoop } from "./media-hub/sync";
 import type { RecipientLinkOptions } from "./recipient-links";
@@ -66,6 +69,10 @@ export const nodEnvSchema = z.object({
   // mailbox. The operator sets `NOD_REPLY_TO`; envFor strips the "NOD_" prefix the same way
   // as OPS_EMAIL above.
   REPLY_TO: z.string().email().optional(),
+  // The EMCR emergency alerts feed (RSS or Atom), read every 5 minutes (emergency/ingest.ts).
+  // Unset: no alerts are read. The stack points test sites at its fake feed. The operator sets
+  // `NOD_EMERGENCY_FEED_URL`; envFor strips the "NOD_" prefix.
+  EMERGENCY_FEED_URL: z.string().url().optional(),
   // The page emailed verify/manage links open. Default: the public site's test page.
   SUBSCRIBE_PAGE_URL: z.string().url().optional(),
   // Base URL of the public Subscribe API, carrying the one-click unsubscribe path
@@ -165,6 +172,9 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
 
   const sendJobsOptions = { db, distribution, links: recipientLinks, render, perChunkMs: parsed.DISTRIBUTION_TIMEOUT_MS, replyTo: { news: parsed.REPLY_TO } };
 
+  const emergencyFeed: EmergencyFeedDeps = { db, url: parsed.EMERGENCY_FEED_URL ?? null, items: createItemSending({ render }) };
+  if (!emergencyFeed.url) console.warn("[nod] EMERGENCY_FEED_URL is not set: no emergency alerts are read");
+
   // Only built when a Media Hub is actually configured -- search and add-from-hub answer 503
   // otherwise (routes.ts), and there is then no token provider to fail at startup.
   const mediaHub: MediaHubClient | null = parsed.MEDIA_HUB_URL
@@ -218,6 +228,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   let stopDigestLoop: (() => Promise<void>) | undefined;
   let stopMediaSyncLoop: (() => Promise<void>) | undefined;
   let stopBounceSummaryLoop: (() => Promise<void>) | undefined;
+  let stopEmergencyFeedLoop: (() => Promise<void>) | undefined;
 
   return {
     app,
@@ -236,6 +247,8 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // actually reaches BOUNCE_SUMMARY_HOUR for a day not already summarised (or, with no
       // staff-set address and no BOUNCE_SUMMARY_EMAIL fallback configured, always a no-op).
       bounceSummary: () => runBounceSummaryIfDue(db, distribution, tenant.timeZone, bounceSummaryFallback),
+      // The 5-minute emergency feed check -- a no-op when EMERGENCY_FEED_URL is unset.
+      emergencyFeed: () => runEmergencyFeedIfDue(emergencyFeed),
       // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
       // data has ever reached this NoD so it knows whether to ask Core to republish.
       needsReferenceData: () => needsReferenceData(db),
@@ -247,6 +260,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       stopDigestLoop = startDigestLoop({ db, timeZone: tenant.timeZone, render });
       if (mediaHub) stopMediaSyncLoop = startMediaSyncLoop({ db, client: mediaHub, timeZone: tenant.timeZone });
       stopBounceSummaryLoop = startBounceSummaryLoop({ db, distribution, timeZone: tenant.timeZone, to: bounceSummaryFallback });
+      stopEmergencyFeedLoop = startLoop("emergency feed", () => runEmergencyFeedIfDue(emergencyFeed));
     },
     closeBeforeServer: [],
     closers: [
@@ -254,6 +268,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       { name: "digest loop", close: async () => { await stopDigestLoop?.(); } },
       { name: "media sync loop", close: async () => { await stopMediaSyncLoop?.(); } },
       { name: "bounce summary loop", close: async () => { await stopBounceSummaryLoop?.(); } },
+      { name: "emergency feed loop", close: async () => { await stopEmergencyFeedLoop?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],
   };

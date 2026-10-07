@@ -273,6 +273,14 @@ export const nodSettings = pgTable(
     // (Operations). Empty until the business supplies its list; applies to bounces processed
     // after it is saved.
     bounceSoftCodesCounted: text("bounce_soft_codes_counted").array().notNull().default(sql`'{}'::text[]`),
+    // The emergency feed's 5-minute gate: when a check last claimed it (emergency/ingest.ts).
+    emergencyFeedCheckedAt: timestamp("emergency_feed_checked_at", { withTimezone: true }),
+    // The feed URL whose alerts were recorded without sending on its first successful read. A
+    // different configured URL is read that way once, so pointing NoD at a live feed never
+    // emails every alert already in it.
+    emergencyFeedSeededUrl: text("emergency_feed_seeded_url"),
+    // The last check's outcome (EmergencyFeedResult), shown on Operations.
+    emergencyFeedResult: jsonb("emergency_feed_result"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],

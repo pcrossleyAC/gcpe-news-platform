@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   APP_PREFIXES,
   envFor,
+  FAKE_EMERGENCY_FEED_ENV,
+  FAKE_EMERGENCY_FEED_PATH,
   FAKE_FLICKR,
   FAKE_FLICKR_ENV,
   FAKE_MEDIA_HUB_ENV,
@@ -13,6 +15,7 @@ import {
   routeSecret,
   sessionSecretFrom,
   stackEnvSchema,
+  usesFakeEmergencyFeed,
   usesFakeFlickr,
   usesFakeMediaHub,
 } from "./env";
@@ -64,7 +67,7 @@ describe("envFor", () => {
     const env = { NODE_ENV: "test", NOD_PORT: "3004" };
     // No NOD_MEDIA_HUB_URL and NODE_ENV isn't "production" -> NoD's view also gets the fake
     // Media Hub's URL (usesFakeMediaHub), same as every other envFor(..., "NOD") call here.
-    expect(envFor(env, "NOD")).toEqual({ NODE_ENV: "test", PORT: "3004", ...FAKE_MEDIA_HUB_ENV });
+    expect(envFor(env, "NOD")).toEqual({ NODE_ENV: "test", PORT: "3004", ...FAKE_MEDIA_HUB_ENV, ...FAKE_EMERGENCY_FEED_ENV });
   });
 
   it("ignores undefined values", () => {
@@ -498,5 +501,25 @@ describe("Media Hub in the stack", () => {
     expect(envFor(prod, "NOD").MEDIA_HUB_URL).toBeUndefined();
     expect(usesFakeMediaHub({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
     expect(envFor({ ...prod, LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" }, "NOD")).toMatchObject(FAKE_MEDIA_HUB_ENV);
+  });
+});
+
+describe("fake emergency feed", () => {
+  it("no NOD_EMERGENCY_FEED_URL on a test deployment: NoD reads the stack's fake", () => {
+    expect(usesFakeEmergencyFeed({})).toBe(true);
+    expect(envFor({}, "NOD")).toMatchObject(FAKE_EMERGENCY_FEED_ENV);
+    expect(resolveSelfUrls(envFor({}, "NOD")).EMERGENCY_FEED_URL).toBe(`http://stack.internal${FAKE_EMERGENCY_FEED_PATH}/feed.xml`);
+  });
+  it("a configured URL wins and nothing of the fake is set", () => {
+    const env = { NOD_EMERGENCY_FEED_URL: "https://emergency.example.test/feed/" };
+    expect(usesFakeEmergencyFeed(env)).toBe(false);
+    expect(envFor(env, "NOD").EMERGENCY_FEED_URL).toBe("https://emergency.example.test/feed/");
+  });
+  it("production with no URL reads nothing; it is never pointed at the fake", () => {
+    expect(usesFakeEmergencyFeed({ NODE_ENV: "production" })).toBe(false);
+    expect(envFor({ NODE_ENV: "production" }, "NOD").EMERGENCY_FEED_URL).toBeUndefined();
+  });
+  it("an explicitly allowed test deployment in production mode still gets the fake", () => {
+    expect(usesFakeEmergencyFeed({ NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
   });
 });

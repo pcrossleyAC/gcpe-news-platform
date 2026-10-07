@@ -8,6 +8,7 @@ import rateLimit from "express-rate-limit";
 import type { ZodTypeAny } from "zod";
 import { authFromEnv, requireBearer, requireRole } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { createFakeEmergencyFeed } from "@gcpe/emergency-feed-fake";
 import { createFakeFlickr } from "@gcpe/flickr-fake";
 import { createFakeMediaHub } from "@gcpe/media-hub-fake";
 import type { Closer } from "@gcpe/http-kit";
@@ -28,12 +29,14 @@ import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture, type ErrorEntry } from "./errors";
 import {
   envFor,
+  FAKE_EMERGENCY_FEED_PATH,
   FAKE_FLICKR,
   FAKE_FLICKR_PATH,
   FAKE_MEDIA_HUB_PATH,
   resolveSelfUrls,
   type AppPrefix,
   stackEnvSchema,
+  usesFakeEmergencyFeed,
   usesFakeFlickr,
   usesFakeMediaHub,
 } from "./env";
@@ -414,6 +417,16 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     app.use(FAKE_MEDIA_HUB_PATH, fakeMediaHub.router);
   }
 
+  // No NOD_EMERGENCY_FEED_URL on a test deployment → a fake alerts feed NoD's env view already
+  // points at. The feed itself is public, as the real one is; adding or resetting alerts
+  // (/__fake) is Core.Admin-only, as with the other fakes.
+  if (usesFakeEmergencyFeed(env)) {
+    console.warn(`[stack] EMERGENCY FEED: using the FAKE feed at ${FAKE_EMERGENCY_FEED_PATH} — set NOD_EMERGENCY_FEED_URL for the real one`);
+    const fakeFeed = createFakeEmergencyFeed({ statePath: join(dataDir, "fake-emergency-feed-state.json") });
+    app.use(`${FAKE_EMERGENCY_FEED_PATH}/__fake`, requireBearer(errorsAuth.bearer), requireRole("Core.Admin"));
+    app.use(FAKE_EMERGENCY_FEED_PATH, fakeFeed.router);
+  }
+
   // Fix round 1, P2-R30 M7: one combined login-attempt budget (10/min/IP) across every
   // app's local-admin login route, mounted on those exact paths *before* the apps themselves
   // are mounted below — each app's own localLoginRouter still has its own independent
@@ -450,6 +463,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         // Self-gated to once a day at 08:00 BC time (bounce-summary.ts) -- a no-op on every
         // other tick, and whenever no NOD_BOUNCE_SUMMARY_EMAIL is configured.
         { name: "nod.bounce-summary", run: worker(nod, "bounceSummary") },
+        // Self-gated to every 5 minutes (emergency/ingest.ts). Before nod.send, so an alert
+        // recorded this tick goes out in the same tick.
+        { name: "nod.emergency-feed", run: worker(nod, "emergencyFeed") },
         // The daily digest, immediately before the sender: a digest job this step just
         // created is picked up by the very same tick's own nod.send, not left for the next one.
         { name: "nod.digest", run: worker(nod, "digest") },
