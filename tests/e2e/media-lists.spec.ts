@@ -167,7 +167,7 @@ test.describe("items 6-8: media lists end to end", () => {
     const adminCookie = await loginForCookie(ADMIN_USERNAME, ADMIN_PASSWORD);
     await createMirroredMediaList(adminCookie, LIST_KEY, "E2E Media Desk");
 
-    const search = await apiCall<{ contacts: MediaHubContact[] }>(adminCookie, "/nod/api/media-hub/contacts?q=");
+    const search = await apiCall<{ contacts: MediaHubContact[] }>(adminCookie, "/nod/api/media-hub/contacts/search", { method: "POST", body: { q: "" } });
     const contact = search.contacts[0];
     if (!contact) throw new Error("fake Media Hub returned no contacts to search");
     const workplaceEmail = contact.emails.find((e) => e.kind === "workplace");

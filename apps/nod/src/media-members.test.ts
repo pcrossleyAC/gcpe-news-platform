@@ -198,7 +198,7 @@ describe("media list members", () => {
     await addMediaMember(tdb.db, "budget", { email: "a@example.test", source: "manual-media" }, ACTOR);
     await addMediaMember(tdb.db, "budget", { email: "b@example.test", source: "manual-media" }, ACTOR);
     const rows = await listMediaLists(tdb.db);
-    expect(rows).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 2 }]);
+    expect(rows).toEqual([{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, members: 2, needsAttention: 0 }]);
   });
   it("a remove that waited out a change of address locks the new address before changing anything", async () => {
     const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "old@example.test", source: "manual-media" }, ACTOR);

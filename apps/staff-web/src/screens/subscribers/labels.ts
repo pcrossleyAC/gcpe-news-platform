@@ -43,6 +43,7 @@ export const HISTORY_LABELS: Record<string, string> = {
   "bounce-recorded": "An email bounced",
   "bounce-disabled": "Disabled after repeated bounces",
   "bounce-flagged": "Flagged: repeated bounces",
+  "bounce-resolved": "Bouncing flag cleared by staff (bounce count restarts)",
   "staff-added": "Added by staff",
   "staff-preferences-updated": "Preferences changed by staff",
   "staff-email-changed": "Email address changed by staff",

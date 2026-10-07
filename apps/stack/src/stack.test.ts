@@ -960,7 +960,11 @@ describe("apps/stack", () => {
 
   describe("fake Media Hub (no NOD_MEDIA_HUB_URL configured)", () => {
     it("NoD's own default points at the in-stack fake: the search proxy round-trips through it end to end", async () => {
-      const res = await fetch(`${instance.stackUrl}/nod/api/media-hub/contacts?page=1`, { headers: { authorization: `Bearer ${instance.adminToken}` } });
+      const res = await fetch(`${instance.stackUrl}/nod/api/media-hub/contacts/search`, {
+        method: "POST",
+        headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/json" },
+        body: JSON.stringify({ page: 1 }),
+      });
       expect(res.status).toBe(200);
       const body = (await res.json()) as { contacts: unknown[]; page: number; pageSize: number; total: number };
       expect(body).toMatchObject({ page: 1, pageSize: 25 });

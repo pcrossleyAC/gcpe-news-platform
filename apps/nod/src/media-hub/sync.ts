@@ -22,7 +22,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { dailyCutoff } from "../digest";
 import { MEDIA_CATEGORY } from "../lists";
-import { lockAddress } from "../locks";
+import { lockAddress, withLockedSubscriber } from "../locks";
 import { removeMediaMember, hasMediaMemberships } from "../media-members";
 import { writeHistory } from "../subscribe/history";
 import { emailAddressSchema, normaliseEmail } from "../subscribe/info";
@@ -458,7 +458,8 @@ export type ResolveOutcome = "resolved" | "not-found" | "ref-not-found" | "media
 
 /**
  * `POST /api/media-members/:subscriberId/resolve`: staff clearing a `needs_attention` flag by
- * hand. With no `emailRef`, just clears the flag. With one, re-fetches the contact (`get`, so
+ * hand. With no `emailRef`, clears the flag under the address lock; clearing `bouncing` also
+ * restarts the bounce window. With one, re-fetches the contact (`get`, so
  * staff always acts on current Media Hub data, never a stale cached ref list), re-points
  * `media_hub_email_ref` at it, and applies the same update-or-flag rule the sync uses (never
  * merges or silently drops another subscriber's address -- review focus #3): a ref that still
@@ -484,13 +485,22 @@ export async function resolveMediaMember(
   if (!current) return "not-found";
 
   if (emailRef === undefined) {
-    await db.transaction(async (tx) => {
-      const [s] = await tx.select().from(subscribers).where(eq(subscribers.id, subscriberId)).for("update");
-      if (!s) return;
-      await tx.update(subscribers).set({ needsAttention: null, attentionAt: null }).where(eq(subscribers.id, s.id));
-      await writeHistory(tx, s.id, actor, "media-hub-resolved", s.mediaHubEmailRef ?? "");
+    // Clearing a flag is a write to the subscriber row, so it takes the address lock like every
+    // other writer (locks.ts). Clearing "bouncing" means staff judge the mailbox fixed: the
+    // bounce threshold restarts from now, as a staff reactivation does (C84), so the bounces
+    // that caused the flag don't re-flag the member on the very next one.
+    return withLockedSubscriber(db, subscriberId, null, async (tx, s): Promise<ResolveOutcome> => {
+      if (!s) return "not-found";
+      if (s.needsAttention === null) return "resolved";
+      const bouncing = s.needsAttention === "bouncing";
+      await tx
+        .update(subscribers)
+        .set({ needsAttention: null, attentionAt: null, ...(bouncing ? { bounceWindowFrom: sql`now()` } : {}) })
+        .where(eq(subscribers.id, s.id));
+      if (bouncing) await writeHistory(tx, s.id, actor, "bounce-resolved");
+      else await writeHistory(tx, s.id, actor, "media-hub-resolved", s.mediaHubEmailRef ?? "");
+      return "resolved";
     });
-    return "resolved";
   }
 
   if (!mediaHub) return "media-hub-unavailable";

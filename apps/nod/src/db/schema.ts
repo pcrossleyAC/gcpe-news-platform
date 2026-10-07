@@ -64,7 +64,12 @@ export const subscriptions = pgTable(
     // '*' = all news, else an index key such as 'ministries:health' (always stored lowercased).
     listKey: text("list_key").notNull(),
   },
-  (t) => [primaryKey({ columns: [t.subscriberId, t.listKey] })],
+  (t) => [
+    primaryKey({ columns: [t.subscriberId, t.listKey] }),
+    // Per-list member reads (media-members.ts) and per-list counts (staff-lists.ts): the
+    // primary key leads with subscriber_id, so it can't serve a lookup by list.
+    index("subscriptions_list_key_idx").on(t.listKey),
+  ],
 );
 export type SubscriptionRow = typeof subscriptions.$inferSelect;
 
@@ -344,5 +349,10 @@ export const subscriberHistory = pgTable(
     action: text("action").notNull(),
     detail: text("detail").notNull().default(""),
   },
-  (t) => [index("subscriber_history_subscriber_at_idx").on(t.subscriberId, t.at)],
+  (t) => [
+    index("subscriber_history_subscriber_at_idx").on(t.subscriberId, t.at),
+    // The per-media-list opt-out view (media-members.ts listMediaOptOuts): equality on action
+    // and detail (the list key), newest first.
+    index("subscriber_history_action_detail_at_idx").on(t.action, t.detail, t.at),
+  ],
 );

@@ -1,0 +1,2 @@
+CREATE INDEX "subscriber_history_action_detail_at_idx" ON "subscriber_history" USING btree ("action","detail","at");--> statement-breakpoint
+CREATE INDEX "subscriptions_list_key_idx" ON "subscriptions" USING btree ("list_key");

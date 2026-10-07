@@ -41,7 +41,10 @@ export interface MediaMember {
   email: string;
   source: string;
   mediaHubContactId: number | null;
+  /** The chosen Media Hub email's ref; what the resolve screen preselects against. */
+  mediaHubEmailRef: string | null;
   needsAttention: string | null;
+  attentionAt: Date | null;
 }
 
 export interface MediaListSummary {
@@ -50,6 +53,8 @@ export interface MediaListSummary {
   name: string;
   active: boolean;
   members: number;
+  /** Members with a needs-attention flag (C59): what the index screen surfaces first. */
+  needsAttention: number;
 }
 
 async function mediaListRow(tx: DbOrTx, key: string): Promise<{ listKey: string } | null> {
@@ -200,7 +205,8 @@ export async function removeMediaMember(db: Db, listKey: string, subscriberId: s
   });
 }
 
-/** Every member of `listKey`, for the staff member-management screen. */
+/** Every member of `listKey`, for the staff member-management screen. Not paged: media lists
+ * hold hundreds of members, and legacy showed them all on one page. */
 export async function listMediaMembers(db: DbOrTx, listKey: string): Promise<MediaMember[]> {
   const key = mediaListKey(listKey);
   if (!(await mediaListRow(db, key))) throw new MediaListNotFoundError(listKey);
@@ -210,7 +216,9 @@ export async function listMediaMembers(db: DbOrTx, listKey: string): Promise<Med
       email: subscribers.email,
       source: subscribers.source,
       mediaHubContactId: subscribers.mediaHubContactId,
+      mediaHubEmailRef: subscribers.mediaHubEmailRef,
       needsAttention: subscribers.needsAttention,
+      attentionAt: subscribers.attentionAt,
     })
     .from(subscriptions)
     .innerJoin(subscribers, eq(subscribers.id, subscriptions.subscriberId))
@@ -218,7 +226,7 @@ export async function listMediaMembers(db: DbOrTx, listKey: string): Promise<Med
     .orderBy(asc(subscribers.email));
 }
 
-/** Every media list, with a live member count, for the staff media-lists screen. */
+/** Every media list, with live member and needs-attention counts, for the staff media-lists screen. */
 export async function listMediaLists(db: DbOrTx): Promise<MediaListSummary[]> {
   return db
     .select({
@@ -227,10 +235,46 @@ export async function listMediaLists(db: DbOrTx): Promise<MediaListSummary[]> {
       name: lists.name,
       active: lists.active,
       members: sql<number>`count(${subscriptions.subscriberId})::int`,
+      needsAttention: sql<number>`count(${subscribers.id}) FILTER (WHERE ${subscribers.needsAttention} IS NOT NULL)::int`,
     })
     .from(lists)
     .leftJoin(subscriptions, eq(subscriptions.listKey, lists.listKey))
+    .leftJoin(subscribers, eq(subscribers.id, subscriptions.subscriberId))
     .where(eq(lists.category, MEDIA_CATEGORY))
     .groupBy(lists.listKey, lists.key, lists.name, lists.active, lists.sortOrder)
     .orderBy(asc(lists.sortOrder), asc(lists.name));
+}
+
+/** How many opt-outs the per-list view returns; the newest are what staff act on. */
+export const OPT_OUT_LIMIT = 200;
+
+export interface MediaOptOut {
+  subscriberId: string;
+  /** The subscriber's current address (it may have moved since they opted out). */
+  email: string;
+  at: Date;
+  /** Whether they're on this list again now (re-added by staff with confirmation). */
+  member: boolean;
+}
+
+/**
+ * Who left `listKey` by unsubscribing (history `media-list-opted-out`, whose detail is the full
+ * list key), newest first, at most {@link OPT_OUT_LIMIT}. Staff removals are not opt-outs and
+ * never appear here (C82). Served by subscriber_history_action_detail_at_idx.
+ */
+export async function listMediaOptOuts(db: DbOrTx, listKey: string): Promise<{ items: MediaOptOut[]; truncated: boolean }> {
+  const key = mediaListKey(listKey);
+  if (!(await mediaListRow(db, key))) throw new MediaListNotFoundError(listKey);
+  const { rows } = await db.execute<{ subscriber_id: string; email: string; at: string | Date; member: boolean }>(sql`
+    SELECT h.subscriber_id, s.email, h.at,
+           EXISTS (SELECT 1 FROM subscriptions x WHERE x.subscriber_id = h.subscriber_id AND x.list_key = ${key}) AS member
+      FROM subscriber_history h
+      JOIN subscribers s ON s.id = h.subscriber_id
+     WHERE h.action = 'media-list-opted-out' AND h.detail = ${key}
+     ORDER BY h.at DESC
+     LIMIT ${OPT_OUT_LIMIT + 1}`);
+  return {
+    items: rows.slice(0, OPT_OUT_LIMIT).map((r) => ({ subscriberId: r.subscriber_id, email: r.email, at: new Date(r.at), member: r.member })),
+    truncated: rows.length > OPT_OUT_LIMIT,
+  };
 }
