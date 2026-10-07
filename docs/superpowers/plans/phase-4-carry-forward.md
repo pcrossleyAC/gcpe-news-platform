@@ -5,14 +5,6 @@ Items the 4a task and final reviews deferred to later sub-plans. Each later plan
 ## 4h (reports)
 - Reports read `subscribed`/`resubscribed` (new vs returning) and count `unsubscribed` + `staff-deleted` as unsubscribes; old `confirmed` rows count as `subscribed`.
 
-## Fix-before-deploy (parked from 4g reviews)
-- **Public manage-page save drops a held-but-disabled list.** `apps/nod/src/subscribe/journeys.ts`'s
-  `update()` → `toPrefs` → `activeListKeys` is enabled-filtered → `replacePublicSubscriptions`
-  silently drops a list that's been switched off but is still held by the subscriber — unlike
-  the staff save, which already keeps a held-but-disabled list (`allowedPublicKeys`). Give
-  `update()` the same keep-held merge, plus a test ("a list that's disabled but still held
-  survives the public save"). Flagged in Task 2's review; not shipped before this fix lands.
-
 ## 4i (emergency feed, retention purge, importer)
 - Purge on/off switch and next-run preview on Operations (deferred from 4g, Ruling R2).
 - Purge expired `origin='send'` `subscriber_links` rows (each send mints one per recipient, holding the address).

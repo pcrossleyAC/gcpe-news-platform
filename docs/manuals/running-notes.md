@@ -196,3 +196,12 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   message. Bounce processing picks it up within 15 minutes.
 - **Developer** — A route that binds an address or a search term uses `privateErrorsWith`
   (`apps/nod/src/http/private-errors.ts`), and search terms go in POST bodies, never URLs.
+- **Editor** — Adding someone to a media list they left by unsubscribing always asks first, even
+  if they've since signed up again for public news. Confirm only if they've asked to receive
+  media releases again.
+- **Editor** — A retired media list can't be put on a release. If a release already had it when
+  it was retired, Publish settings shows it ticked and greyed out, marked "(retired)"; it stays
+  on the release, but nothing is sent to it.
+- **Operations** — When Operations says "Using the server default: …", the bounce summary field
+  is empty on purpose. Type an address only to override the default; saving the field empty
+  keeps using the default.
