@@ -66,7 +66,7 @@ describe("createEventReceiver", () => {
         },
         onApplied: async (event) => {
           onAppliedCalls.push(event.id);
-          if (onAppliedShouldThrow) throw new Error("onApplied boom");
+          if (onAppliedShouldThrow) throw new Error("onApplied boom for someone@example.test");
         },
       }),
     );
@@ -148,7 +148,7 @@ describe("createEventReceiver", () => {
     }
   });
 
-  it("onApplied throwing still returns 200 applied and does not block the duplicate check", async () => {
+  it("onApplied throwing still returns 200 applied, does not block the duplicate check, and logs no address", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       onAppliedShouldThrow = true;
@@ -157,6 +157,9 @@ describe("createEventReceiver", () => {
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ outcome: "applied" });
       expect(onAppliedCalls).toEqual([e.id]);
+      expect(errSpy).toHaveBeenCalledWith("[events] onApplied failed", e.type, e.id, "Error");
+      const logged = errSpy.mock.calls.flat().map(String).join(" ");
+      expect(logged).not.toContain("someone@example.test");
       // The event is already committed as applied, so a retry is a duplicate — onApplied
       // does not rerun just because it failed last time.
       onAppliedShouldThrow = false;

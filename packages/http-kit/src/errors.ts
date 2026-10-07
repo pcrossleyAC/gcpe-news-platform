@@ -41,8 +41,11 @@ export function safeErrorLabel(e: unknown): string {
  * everything else is a generic 500.
  */
 export function jsonErrorHandler(opts: { logPrefix: string }): ErrorRequestHandler {
-  return (err, _req, res, next) => {
-    console.error(`${opts.logPrefix} request failed`, err);
+  return (err, req, res, next) => {
+    // Never `err` itself (or its message/stack): an arbitrary thrown error's message can embed
+    // whatever a failing query bound -- an address, a token -- same risk safeErrorLabel exists
+    // to close everywhere else. The method and path are enough to triage without it.
+    console.error(`${opts.logPrefix} request failed`, req.method, req.path, safeErrorLabel(err));
     if (res.headersSent) return next(err);
     const status = clientErrorStatus(err);
     if (status !== undefined) {
