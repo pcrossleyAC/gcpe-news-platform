@@ -1,15 +1,18 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { and, eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { createNodTestDb, waitForLockWaiter } from "../../test/helpers";
+import type { DeliveryBounced } from "@gcpe/events";
+import { createNodTestDb, envelope, waitForLockWaiter } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
-import { subscriberHistory, subscribers } from "../db/schema";
+import { onDeliveryBounced } from "../bounces";
+import { deliveries, subscriberHistory, subscribers } from "../db/schema";
 import { lockAddress } from "../locks";
 import type { MediaHubClient } from "../media-hub/client";
 import type { MediaHubContact } from "../media-hub/contract";
-import { addMediaMember, optOutMediaMemberships } from "../media-members";
+import { addMediaMember, optOutMediaMemberships, removeMediaMember } from "../media-members";
 
 const contact: MediaHubContact = {
   id: 42,
@@ -122,6 +125,29 @@ describe("staff media-list routes", () => {
     expect((await as(viewer).get("/api/media-lists/nope/opted-out")).status).toBe(404);
   });
 
+  it("someone who opted out twice shows once, with their latest opt-out", async () => {
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "twice@example.test", source: "manual-media" }, "t");
+    await optOutMediaMemberships(tdb.db, subscriberId, "subscriber");
+    await addMediaMember(tdb.db, "budget", { email: "twice@example.test", source: "manual-media", confirmOptOut: true }, "t");
+    await optOutMediaMemberships(tdb.db, subscriberId, "subscriber");
+    const [latest] = await tdb.db
+      .select({ at: sql<string>`max(${subscriberHistory.at})` })
+      .from(subscriberHistory)
+      .where(and(eq(subscriberHistory.subscriberId, subscriberId), eq(subscriberHistory.action, "media-list-opted-out")));
+    const out = await as(viewer).get("/api/media-lists/budget/opted-out");
+    const mine = out.body.items.filter((i: { subscriberId: string }) => i.subscriberId === subscriberId);
+    expect(mine).toHaveLength(1);
+    expect(mine[0]).toMatchObject({ member: false });
+    expect(new Date(mine[0].at).getTime()).toBe(new Date(latest!.at).getTime());
+  });
+
+  it("a staff removal is not an opt-out and never shows in the opted-out view", async () => {
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "removed@example.test", source: "manual-media" }, "t");
+    expect(await removeMediaMember(tdb.db, "budget", subscriberId, "Erin Editor")).toBe(true);
+    const out = await as(viewer).get("/api/media-lists/budget/opted-out");
+    expect(out.body.items.map((i: { subscriberId: string }) => i.subscriberId)).not.toContain(subscriberId);
+  });
+
   it("clearing bouncing restarts the count and records bounce-resolved", async () => {
     const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "bouncy@example.test", source: "manual-media" }, "t");
     await tdb.db.update(subscribers).set({ needsAttention: "bouncing", attentionAt: sql`now()` }).where(eq(subscribers.id, subscriberId));
@@ -132,6 +158,42 @@ describe("staff media-list routes", () => {
     expect(row!.bounceWindowFrom).not.toBeNull();
     const resolved = await tdb.db.select().from(subscriberHistory).where(and(eq(subscriberHistory.subscriberId, subscriberId), eq(subscriberHistory.action, "bounce-resolved")));
     expect(resolved.map((h) => h.actor)).toEqual(["Erin Editor"]);
+  });
+
+  /** A Media Hub member flagged "bouncing" after ten hard-bounced emails an hour ago. */
+  async function bouncingHubMember(email: string, contactId: number): Promise<string> {
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email, source: "media-hub", mediaHubContactId: contactId, mediaHubEmailRef: "work" }, "t");
+    for (let i = 0; i < 10; i++) {
+      await tdb.db.insert(deliveries).values({ subscriberId, itemKey: `old-${contactId}-${i}`, mode: "media", attemptedAt: new Date(Date.now() - 3_600_000), distributionBatchId: randomUUID(), hardBouncedAt: new Date(), bounceStatus: "5.1.1" });
+    }
+    await tdb.db.update(subscribers).set({ needsAttention: "bouncing", attentionAt: sql`now()` }).where(eq(subscribers.id, subscriberId));
+    return subscriberId;
+  }
+
+  /** One new media email to `email`, hard-bounced. */
+  async function bounceOnce(subscriberId: string, email: string) {
+    const batchId = randomUUID();
+    await tdb.db.insert(deliveries).values({ subscriberId, itemKey: `new-${batchId}`, mode: "media", attemptedAt: new Date(Date.now() + 1000), distributionBatchId: batchId });
+    const data: DeliveryBounced = { appId: "nod", batchId, messageId: randomUUID(), email, hard: true, status: "5.1.1", at: new Date().toISOString() };
+    return tdb.db.transaction((tx) => onDeliveryBounced(tx, envelope("distribution", "delivery.bounced", data), { appId: "nod" }));
+  }
+
+  it("resolving a bouncing member to a new Media Hub address restarts the count: one more bounce doesn't re-flag them", async () => {
+    const subscriberId = await bouncingHubMember("hub-old@example.test", 70);
+    mediaHub.get.mockResolvedValue({ ...contact, id: 70, emails: [{ ref: "home", address: "hub-new@example.test", kind: "personal", organization: null, preferred: true }] });
+    expect((await as(editor).post(`/api/media-members/${subscriberId}/resolve`, { emailRef: "home" })).status).toBe(200);
+    expect((await bounceOnce(subscriberId, "hub-new@example.test")).action).toBe("recorded");
+    const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(row).toMatchObject({ email: "hub-new@example.test", status: "active", needsAttention: null });
+  });
+
+  it("resolving a bouncing member to the same address under another ref also restarts the count", async () => {
+    const subscriberId = await bouncingHubMember("hub-same@example.test", 71);
+    mediaHub.get.mockResolvedValue({ ...contact, id: 71, emails: [{ ref: "home", address: "hub-same@example.test", kind: "personal", organization: null, preferred: true }] });
+    expect((await as(editor).post(`/api/media-members/${subscriberId}/resolve`, { emailRef: "home" })).status).toBe(200);
+    expect((await bounceOnce(subscriberId, "hub-same@example.test")).action).toBe("recorded");
+    const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(row).toMatchObject({ mediaHubEmailRef: "home", status: "active", needsAttention: null });
   });
 
   it("resolve without a ref waits for the address lock", async () => {

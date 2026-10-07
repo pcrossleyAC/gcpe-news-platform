@@ -458,8 +458,8 @@ export type ResolveOutcome = "resolved" | "not-found" | "ref-not-found" | "media
 
 /**
  * `POST /api/media-members/:subscriberId/resolve`: staff clearing a `needs_attention` flag by
- * hand. With no `emailRef`, clears the flag under the address lock; clearing `bouncing` also
- * restarts the bounce window. With one, re-fetches the contact (`get`, so
+ * hand. With no `emailRef`, clears the flag under the address lock. Either way, clearing
+ * `bouncing` also restarts the bounce window. With one, re-fetches the contact (`get`, so
  * staff always acts on current Media Hub data, never a stale cached ref list), re-points
  * `media_hub_email_ref` at it, and applies the same update-or-flag rule the sync uses (never
  * merges or silently drops another subscriber's address -- review focus #3): a ref that still
@@ -521,8 +521,12 @@ export async function resolveMediaMember(
     if (!s) return "not-found";
     if (normaliseEmail(s.email) !== oldAddress) return "conflict";
 
+    // As on the no-ref path: a cleared "bouncing" flag restarts the bounce window, so the bounces
+    // that raised it (to the old address, on the email-change branch) stop counting.
+    const restartBounces = s.needsAttention === "bouncing" ? { bounceWindowFrom: sql`now()` } : {};
+
     if (newAddress === oldAddress) {
-      await tx.update(subscribers).set({ mediaHubEmailRef: emailRef, needsAttention: null, attentionAt: null }).where(eq(subscribers.id, s.id));
+      await tx.update(subscribers).set({ mediaHubEmailRef: emailRef, needsAttention: null, attentionAt: null, ...restartBounces }).where(eq(subscribers.id, s.id));
       await writeHistory(tx, s.id, actor, "media-hub-resolved", emailRef);
       return "resolved";
     }
@@ -536,7 +540,7 @@ export async function resolveMediaMember(
 
     await tx
       .update(subscribers)
-      .set({ email: newAddress, mediaHubEmailRef: emailRef, unsubscribeVersion: sql`${subscribers.unsubscribeVersion} + 1`, needsAttention: null, attentionAt: null })
+      .set({ email: newAddress, mediaHubEmailRef: emailRef, unsubscribeVersion: sql`${subscribers.unsubscribeVersion} + 1`, needsAttention: null, attentionAt: null, ...restartBounces })
       .where(eq(subscribers.id, s.id));
     await expireSessionLinks(tx, s.id, null);
     await writeHistory(tx, s.id, actor, "media-hub-email-changed", emailRef);

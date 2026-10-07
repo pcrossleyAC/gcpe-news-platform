@@ -259,19 +259,22 @@ export interface MediaOptOut {
 
 /**
  * Who left `listKey` by unsubscribing (history `media-list-opted-out`, whose detail is the full
- * list key), newest first, at most {@link OPT_OUT_LIMIT}. Staff removals are not opt-outs and
- * never appear here (C82). Served by subscriber_history_action_detail_at_idx.
+ * list key), newest first, at most {@link OPT_OUT_LIMIT}. One row per subscriber, for their latest
+ * opt-out: someone re-added and opted out again is still one person to act on. Staff removals
+ * are not opt-outs and never appear here (C82). Served by subscriber_history_action_detail_at_idx.
  */
 export async function listMediaOptOuts(db: DbOrTx, listKey: string): Promise<{ items: MediaOptOut[]; truncated: boolean }> {
   const key = mediaListKey(listKey);
   if (!(await mediaListRow(db, key))) throw new MediaListNotFoundError(listKey);
   const { rows } = await db.execute<{ subscriber_id: string; email: string; at: string | Date; member: boolean }>(sql`
-    SELECT h.subscriber_id, s.email, h.at,
-           EXISTS (SELECT 1 FROM subscriptions x WHERE x.subscriber_id = h.subscriber_id AND x.list_key = ${key}) AS member
-      FROM subscriber_history h
-      JOIN subscribers s ON s.id = h.subscriber_id
-     WHERE h.action = 'media-list-opted-out' AND h.detail = ${key}
-     ORDER BY h.at DESC
+    SELECT latest.subscriber_id, s.email, latest.at,
+           EXISTS (SELECT 1 FROM subscriptions x WHERE x.subscriber_id = latest.subscriber_id AND x.list_key = ${key}) AS member
+      FROM (SELECT DISTINCT ON (h.subscriber_id, h.detail) h.subscriber_id, h.at
+              FROM subscriber_history h
+             WHERE h.action = 'media-list-opted-out' AND h.detail = ${key}
+             ORDER BY h.subscriber_id, h.detail, h.at DESC) latest
+      JOIN subscribers s ON s.id = latest.subscriber_id
+     ORDER BY latest.at DESC
      LIMIT ${OPT_OUT_LIMIT + 1}`);
   return {
     items: rows.slice(0, OPT_OUT_LIMIT).map((r) => ({ subscriberId: r.subscriber_id, email: r.email, at: new Date(r.at), member: r.member })),
