@@ -16,19 +16,28 @@ function localDateParts(d: Date, timeZone: string): { y: number; m: number; day:
 }
 
 /**
- * `hour`:00 local on the local date of `dbNow`, or the day before if that is still ahead. Uses
- * the same wall-clock->instant conversion as the rest of the platform (Node's tzdata, asserted
- * at startup via `assertTimeZoneRules`), never Postgres's (global constraints: clocks).
+ * `hour`:00 local on the local date of `dbNow` -- always *today's*, even if that instant is
+ * still ahead of `dbNow` (unlike {@link dailyCutoff}). Uses the same wall-clock->instant
+ * conversion as the rest of the platform (Node's tzdata, asserted at startup via
+ * `assertTimeZoneRules`), never Postgres's (global constraints: clocks).
  *
  * `wallClockToInstant`'s contract (packages/config/src/timezone.ts): it takes a `Date` whose
- * *UTC* fields hold the wall-clock fields meant for `timeZone`. `Date.UTC(y, m - 1, day +
- * dayOffset, hour, 0, 0)` builds exactly that, so no adaptation is needed here.
+ * *UTC* fields hold the wall-clock fields meant for `timeZone`. `Date.UTC(y, m - 1, day, hour,
+ * 0, 0)` builds exactly that, so no adaptation is needed here.
+ */
+export function todaysCutoff(dbNow: Date, timeZone: string, hour: number): Date {
+  const { y, m, day } = localDateParts(dbNow, timeZone);
+  return wallClockToInstant(new Date(Date.UTC(y, m - 1, day, hour, 0, 0)), timeZone);
+}
+
+/**
+ * `hour`:00 local on the local date of `dbNow`, or the day before if that is still ahead.
  */
 export function dailyCutoff(dbNow: Date, timeZone: string, hour: number): Date {
+  const today = todaysCutoff(dbNow, timeZone, hour);
+  if (today.getTime() <= dbNow.getTime()) return today;
   const { y, m, day } = localDateParts(dbNow, timeZone);
-  const at = (dayOffset: number) => wallClockToInstant(new Date(Date.UTC(y, m - 1, day + dayOffset, hour, 0, 0)), timeZone);
-  const today = at(0);
-  return today.getTime() <= dbNow.getTime() ? today : at(-1);
+  return wallClockToInstant(new Date(Date.UTC(y, m - 1, day - 1, hour, 0, 0)), timeZone);
 }
 
 /** The 17:00 daily digest cutoff -- a thin wrapper over {@link dailyCutoff} so its own tests

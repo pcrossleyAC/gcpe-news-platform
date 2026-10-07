@@ -127,6 +127,13 @@
       "when": 1791352035835,
       "tag": "0017_bounce_summary_at",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1791353586763,
+      "tag": "0018_bounce_summary_lease",
+      "breakpoints": true
     }
   ]
 }

@@ -19,11 +19,10 @@ const bounceInboxUploadSchema = z.object({
   raw: z.string().refine((s) => Buffer.byteLength(s, "utf8") <= BOUNCE_INBOX_MAX_BYTES, { message: `raw exceeds ${BOUNCE_INBOX_MAX_BYTES} bytes` }),
 });
 
-// 4e: NoD's daily bounce summary's own query (bounce-summary.ts) -- `since` is validated as a
-// parseable instant before it ever reaches the database.
-const bounceStatsQuerySchema = z.object({
-  since: z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "since must be a valid date" }),
-});
+// NoD's daily bounce summary's own query (bounce-summary.ts) -- both bounds are validated as
+// parseable instants before they ever reach the database.
+const isoInstant = z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "must be a valid date" });
+const bounceStatsQuerySchema = z.object({ since: isoInstant, until: isoInstant });
 
 /**
  * Maps the validation layer's ZodError to a response. Returns false for anything else so the
@@ -135,22 +134,23 @@ export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake
     }),
   );
 
-  // 4e: feeds NoD's daily bounce summary (bounce-summary.ts) the two counts it can't get from
-  // its own database -- bounces that never matched a message NoD sent, and messages that
-  // weren't bounces at all (Global Constraints "Summary email": "counts of unmatched and
-  // ignored messages"). `processed_at` (not `received_at`) is what bounds the window, the same
-  // instant run.ts stamps every row with when it fetched and classified it.
+  // Feeds NoD's daily bounce summary (bounce-summary.ts) the two counts it can't get from its
+  // own database -- bounces that never matched a message NoD sent, and messages that weren't
+  // bounces at all (Global Constraints "Summary email": "counts of unmatched and ignored
+  // messages"). `processed_at` (not `received_at`) is what bounds the window, the same instant
+  // run.ts stamps every row with when it fetched and classified it. `until` (NoD passes its own
+  // `dbNow`) closes the window so two successive summaries can never double-count the same row.
   r.get(
     "/bounces/stats",
     requireRole("Distribution.Operate"),
     run(async (req, res) => {
-      const { since } = bounceStatsQuerySchema.parse(req.query);
+      const { since, until } = bounceStatsQuerySchema.parse(req.query);
       const { rows } = await db.execute<{ unmatched: number; ignored: number }>(sql`
         SELECT
           count(*) FILTER (WHERE kind = 'bounce' AND matched = false)::int AS unmatched,
           count(*) FILTER (WHERE kind = 'ignored')::int AS ignored
         FROM ${bounces}
-        WHERE processed_at > ${new Date(since)}
+        WHERE processed_at > ${new Date(since)} AND processed_at <= ${new Date(until)}
       `);
       res.json({ unmatched: rows[0]?.unmatched ?? 0, ignored: rows[0]?.ignored ?? 0 });
     }),

@@ -339,39 +339,49 @@ describe("Distribution HTTP API", () => {
 
   describe("GET /api/bounces/stats", () => {
     const sourceId = (n: number) => `stats-src-${n}`;
+    const q = (since: string, until: string) => `/api/bounces/stats?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
 
     it("401s without a token, 403s without Distribution.Operate", async () => {
-      const since = new Date().toISOString();
-      expect((await request(app).get(`/api/bounces/stats?since=${since}`)).status).toBe(401);
-      expect((await request(app).get(`/api/bounces/stats?since=${since}`).set("authorization", `Bearer ${reader}`)).status).toBe(403);
+      const since = new Date(Date.now() - 60_000).toISOString();
+      const until = new Date().toISOString();
+      expect((await request(app).get(q(since, until))).status).toBe(401);
+      expect((await request(app).get(q(since, until)).set("authorization", `Bearer ${reader}`)).status).toBe(403);
     });
 
-    it("400s a missing or invalid since", async () => {
+    it("400s a missing or invalid since/until", async () => {
+      const until = new Date().toISOString();
       expect((await request(app).get("/api/bounces/stats").set("authorization", `Bearer ${operator}`)).status).toBe(400);
-      expect((await request(app).get("/api/bounces/stats?since=not-a-date").set("authorization", `Bearer ${operator}`)).status).toBe(400);
+      expect((await request(app).get(`/api/bounces/stats?since=not-a-date&until=${until}`).set("authorization", `Bearer ${operator}`)).status).toBe(400);
+      expect((await request(app).get(`/api/bounces/stats?since=${until}`).set("authorization", `Bearer ${operator}`)).status).toBe(400); // until missing
+      expect((await request(app).get(`/api/bounces/stats?since=${until}&until=not-a-date`).set("authorization", `Bearer ${operator}`)).status).toBe(400);
     });
 
-    it("counts unmatched bounces and ignored messages processed since the given instant, excluding matched bounces and anything processed before it", async () => {
+    it("counts unmatched bounces and ignored messages processed in (since, until], excluding matched bounces and anything outside it", async () => {
       const since = new Date();
+      const until = new Date(since.getTime() + 10_000);
       await tdb.db.insert(bounces).values([
         // Before the window -- excluded no matter its kind/matched state.
         { sourceId: sourceId(1), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() - 60_000) },
-        // After the window: an unmatched hard bounce (counts), a matched one (doesn't), and
+        // Inside the window: an unmatched hard bounce (counts), a matched one (doesn't), and
         // two ignored (non-bounce) messages (count as ignored, not unmatched).
         { sourceId: sourceId(2), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() + 1_000) },
         { sourceId: sourceId(3), raw: "x", kind: "bounce", matched: true, processedAt: new Date(since.getTime() + 2_000) },
         { sourceId: sourceId(4), raw: "x", kind: "ignored", matched: false, processedAt: new Date(since.getTime() + 3_000) },
         { sourceId: sourceId(5), raw: "x", kind: "ignored", matched: false, processedAt: new Date(since.getTime() + 4_000) },
+        // After the window -- excluded, same as a row before it (prevents double-counting
+        // across two successive summaries whose windows abut).
+        { sourceId: sourceId(6), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() + 20_000) },
       ]);
 
-      const res = await request(app).get(`/api/bounces/stats?since=${since.toISOString()}`).set("authorization", `Bearer ${operator}`);
+      const res = await request(app).get(q(since.toISOString(), until.toISOString())).set("authorization", `Bearer ${operator}`);
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ unmatched: 1, ignored: 2 });
     });
 
-    it("zero counts when nothing was processed since the given instant", async () => {
-      const farFuture = new Date(Date.now() + 365 * 24 * 3_600_000).toISOString();
-      const res = await request(app).get(`/api/bounces/stats?since=${farFuture}`).set("authorization", `Bearer ${operator}`);
+    it("zero counts when nothing was processed in the given window", async () => {
+      const since = new Date(Date.now() + 364 * 24 * 3_600_000).toISOString();
+      const until = new Date(Date.now() + 365 * 24 * 3_600_000).toISOString();
+      const res = await request(app).get(q(since, until)).set("authorization", `Bearer ${operator}`);
       expect(res.status).toBe(200);
       expect(res.body).toEqual({ unmatched: 0, ignored: 0 });
     });

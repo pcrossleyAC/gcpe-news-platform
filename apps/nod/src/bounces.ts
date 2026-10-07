@@ -1,5 +1,5 @@
-import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
-import { sqlInterval, type Tx } from "@gcpe/db-kit";
+import { and, desc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
+import { sqlInterval, type DbOrTx, type Tx } from "@gcpe/db-kit";
 import type { DeliveryBounced, EventEnvelope, EventHandler } from "@gcpe/events";
 import { deliveries, subscribers, type DeliveryRow } from "./db/schema";
 import { lockAddress } from "./locks";
@@ -9,10 +9,10 @@ import { normaliseEmail } from "./subscribe/info";
 
 /** The threshold rule (spec §7, legacy `DistributionProvider.cs:465-506`): once a subscriber's
  * 10 most recent attempted deliveries within this many days are all hard-bounced, they're acted
- * on (disabled, or flagged if they're a media-list member). Exported: the daily bounce summary
- * (bounce-summary.ts) reports the same "n/15d" count for a subscriber who hasn't yet tripped
- * this. */
-export const HARD_BOUNCE_THRESHOLD = 10;
+ * on (disabled, or flagged if they're a media-list member). */
+const HARD_BOUNCE_THRESHOLD = 10;
+/** Exported: the daily bounce summary (bounce-summary.ts) reports the same "n/15d" count for
+ * a subscriber who hasn't yet tripped the threshold. */
 export const THRESHOLD_WINDOW_DAYS = 15;
 const THRESHOLD_WINDOW_MS = THRESHOLD_WINDOW_DAYS * 24 * 3_600_000;
 
@@ -92,43 +92,47 @@ async function findDeliveryMatch(tx: Tx, subscriberId: string, batchId: string):
 }
 
 /**
- * Whether this subscriber's {@link HARD_BOUNCE_THRESHOLD} most recent *emails* -- deliveries
- * grouped by whatever identifies one send (`distribution_batch_id`, falling back to `job_id`,
- * falling back to the row itself for a delivery with neither), attempted within
- * {@link THRESHOLD_WINDOW_DAYS} days -- are all hard-bounced. A digest's several item rows
- * count as the one email they actually were; fewer than the threshold qualifying (whether
- * because there simply aren't that many, or because older ones fall outside the window) never
- * trips it.
+ * The grouping that turns delivery rows into *emails* -- by whatever identifies one send
+ * (`distribution_batch_id`, falling back to `job_id`, falling back to the row itself for a
+ * delivery with neither) attempted within {@link THRESHOLD_WINDOW_DAYS} days -- with one
+ * `bounced` flag per email (true iff any row in that email was hard-bounced). Shared by
+ * {@link thresholdTripped} and {@link countBouncedEmails} so the two can never grade a
+ * subscriber's emails differently; callers append their own `ORDER BY`/`LIMIT` as needed.
  */
-async function thresholdTripped(tx: Tx, subscriberId: string): Promise<boolean> {
-  const { rows } = await tx.execute<{ bounced: boolean }>(sql`
+function groupedBouncedEmailsSql(subscriberId: string): SQL {
+  return sql`
     SELECT bool_or(hard_bounced_at IS NOT NULL) AS bounced
       FROM deliveries
      WHERE subscriber_id = ${subscriberId}
        AND attempted_at IS NOT NULL
        AND attempted_at >= now() - ${sqlInterval(THRESHOLD_WINDOW_MS)}
      GROUP BY COALESCE(distribution_batch_id::text, job_id::text, item_key || mode)
-     ORDER BY max(attempted_at) DESC
-     LIMIT ${HARD_BOUNCE_THRESHOLD}
+  `;
+}
+
+/**
+ * Whether this subscriber's {@link HARD_BOUNCE_THRESHOLD} most recent *emails* (see
+ * {@link groupedBouncedEmailsSql}) are all hard-bounced. A digest's several item rows count as
+ * the one email they actually were; fewer than the threshold qualifying (whether because there
+ * simply aren't that many, or because older ones fall outside the window) never trips it.
+ */
+async function thresholdTripped(tx: Tx, subscriberId: string): Promise<boolean> {
+  const { rows } = await tx.execute<{ bounced: boolean }>(sql`
+    ${groupedBouncedEmailsSql(subscriberId)}
+    ORDER BY max(attempted_at) DESC
+    LIMIT ${HARD_BOUNCE_THRESHOLD}
   `);
   return rows.length === HARD_BOUNCE_THRESHOLD && rows.every((r) => r.bounced === true);
 }
 
 /**
- * How many of this subscriber's *emails* -- grouped exactly as {@link thresholdTripped} groups
- * them -- are hard-bounced within the same {@link THRESHOLD_WINDOW_DAYS}-day window, with no
- * `LIMIT 10`: the daily bounce summary's own "recorded (n/15d)" count (bounce-summary.ts),
- * which needs the real count, not just whether it's already tripped the threshold.
+ * How many of this subscriber's emails (see {@link groupedBouncedEmailsSql}, the same grouping
+ * {@link thresholdTripped} uses) are hard-bounced within the window, with no `LIMIT 10`: the
+ * daily bounce summary's own "recorded (n/15d)" count (bounce-summary.ts), which needs the
+ * real count, not just whether it's already tripped the threshold.
  */
-export async function countBouncedEmails(tx: Tx, subscriberId: string): Promise<number> {
-  const { rows } = await tx.execute<{ bounced: boolean }>(sql`
-    SELECT bool_or(hard_bounced_at IS NOT NULL) AS bounced
-      FROM deliveries
-     WHERE subscriber_id = ${subscriberId}
-       AND attempted_at IS NOT NULL
-       AND attempted_at >= now() - ${sqlInterval(THRESHOLD_WINDOW_MS)}
-     GROUP BY COALESCE(distribution_batch_id::text, job_id::text, item_key || mode)
-  `);
+export async function countBouncedEmails(db: DbOrTx, subscriberId: string): Promise<number> {
+  const { rows } = await db.execute<{ bounced: boolean }>(groupedBouncedEmailsSql(subscriberId));
   return rows.filter((r) => r.bounced === true).length;
 }
 

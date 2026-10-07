@@ -1499,13 +1499,15 @@ describe("distributionClient", () => {
       await expect(client.uploadBounce("x")).rejects.toMatchObject({ retryable: true, status: 201 });
     });
 
-    it("bounceStats GETs /api/bounces/stats with since as a query param and returns the parsed counts", async () => {
+    it("bounceStats GETs /api/bounces/stats with since and until as query params and returns the parsed counts", async () => {
       respondStatus = 200;
       respondBody = { unmatched: 3, ignored: 5 };
       const client = distributionClient({ baseUrl, getToken: async () => "the-token" });
-      expect(await client.bounceStats("2026-10-05T08:00:00.000Z")).toEqual({ unmatched: 3, ignored: 5 });
+      expect(await client.bounceStats("2026-10-05T08:00:00.000Z", "2026-10-06T08:00:00.000Z")).toEqual({ unmatched: 3, ignored: 5 });
       expect(lastMethod).toBe("GET");
-      expect(lastPath).toBe(`/api/bounces/stats?since=${encodeURIComponent("2026-10-05T08:00:00.000Z")}`);
+      expect(lastPath).toBe(
+        `/api/bounces/stats?since=${encodeURIComponent("2026-10-05T08:00:00.000Z")}&until=${encodeURIComponent("2026-10-06T08:00:00.000Z")}`,
+      );
       expect(lastAuthHeader).toBe("Bearer the-token");
     });
 
@@ -1513,7 +1515,7 @@ describe("distributionClient", () => {
       respondStatus = 200;
       respondBody = { unmatched: 1 };
       const client = distributionClient({ baseUrl, getToken: async () => "t" });
-      await expect(client.bounceStats("2026-10-05T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 200 });
+      await expect(client.bounceStats("2026-10-05T08:00:00.000Z", "2026-10-06T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 200 });
     });
 
     it("maps a 503 from either bounce route to a retryable DistributionError", async () => {
@@ -1521,7 +1523,7 @@ describe("distributionClient", () => {
       respondBody = "service unavailable";
       const client = distributionClient({ baseUrl, getToken: async () => "t" });
       await expect(client.uploadBounce("x")).rejects.toMatchObject({ retryable: true, status: 503 });
-      await expect(client.bounceStats("2026-10-05T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 503 });
+      await expect(client.bounceStats("2026-10-05T08:00:00.000Z", "2026-10-06T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 503 });
     });
   });
 });

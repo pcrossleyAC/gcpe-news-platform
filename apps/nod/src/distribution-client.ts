@@ -80,8 +80,10 @@ export interface DistributionClient {
   uploadBounce(raw: string): Promise<{ id: string }>;
   /** The daily bounce summary's own counts Distribution alone can answer — bounces that never
    * matched a message NoD sent, and messages that weren't bounces at all (`GET
-   * /api/bounces/stats?since=`, gated on `Distribution.Operate`). `since` is an ISO instant. */
-  bounceStats(since: string): Promise<{ unmatched: number; ignored: number }>;
+   * /api/bounces/stats?since=&until=`, gated on `Distribution.Operate`). Both are ISO
+   * instants; `until` is this call's own `dbNow`, closing the window so two successive
+   * summaries can never double-count the same row. */
+  bounceStats(since: string, until: string): Promise<{ unmatched: number; ignored: number }>;
 }
 
 // P2-R18: Distribution's 2xx body is network input like any other — `res.json()` succeeding
@@ -209,8 +211,8 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
     async uploadBounce(raw: string): Promise<{ id: string }> {
       return callDistribution(opts, doFetch, timeoutMs, "/api/bounces/inbox", { method: "POST", body: { raw } }, uploadBounceResponseSchema, "Distribution response missing id");
     },
-    async bounceStats(since: string): Promise<{ unmatched: number; ignored: number }> {
-      const path = `/api/bounces/stats?since=${encodeURIComponent(since)}`;
+    async bounceStats(since: string, until: string): Promise<{ unmatched: number; ignored: number }> {
+      const path = `/api/bounces/stats?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
       return callDistribution(opts, doFetch, timeoutMs, path, { method: "GET" }, bounceStatsResponseSchema, "Distribution response missing unmatched/ignored");
     },
   };

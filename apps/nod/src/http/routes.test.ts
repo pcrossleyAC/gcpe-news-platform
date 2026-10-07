@@ -958,6 +958,20 @@ describe("POST /api/bounces/inbox", () => {
     expect(res.status).toBe(502);
   });
 
+  it("maps Distribution's 400 (raw too large or malformed) to NoD's own 400, without duplicating the size check here", async () => {
+    distribution.uploadBounce.mockRejectedValueOnce(new DistributionError("Distribution responded HTTP 400: raw exceeds 1048576 bytes", false, 400));
+    const res = await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${admin}`).send({ raw: "x" });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "invalid bounce message (too large or malformed)" });
+  });
+
+  it("maps Distribution's 413 to the same NoD 400", async () => {
+    distribution.uploadBounce.mockRejectedValueOnce(new DistributionError("Distribution responded HTTP 413", false, 413));
+    const res = await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${admin}`).send({ raw: "x" });
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({ error: "invalid bounce message (too large or malformed)" });
+  });
+
   it("accepts a raw message close to 1 MB (larger than the shared /api body limit)", async () => {
     const big = "x".repeat(900_000);
     distribution.uploadBounce.mockResolvedValueOnce({ id: "bounce-inbox-big" });

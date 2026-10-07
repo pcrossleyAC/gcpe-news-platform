@@ -57,9 +57,9 @@ export const nodEnvSchema = z.object({
   // The operator sets `NOD_OPS_EMAIL`; by the time this schema sees it, apps/stack/src/env.ts's
   // envFor has already stripped the "NOD_" prefix (same as DATABASE_URL, PORT, etc. above).
   OPS_EMAIL: z.string().email().optional(),
-  // Phase 4e: staff inbox for the daily bounce summary (bounce-summary.ts) -- unset means no
-  // summary is ever sent. The operator sets `NOD_BOUNCE_SUMMARY_EMAIL`; envFor strips the
-  // "NOD_" prefix the same way as OPS_EMAIL above.
+  // Staff inbox for the daily bounce summary (bounce-summary.ts) -- unset means no summary is
+  // ever sent. The operator sets `NOD_BOUNCE_SUMMARY_EMAIL`; envFor strips the "NOD_" prefix
+  // the same way as OPS_EMAIL above.
   BOUNCE_SUMMARY_EMAIL: z.string().email().optional(),
   // Every email NoD sends carries this as its Reply-To (distribution-client.ts's send,
   // applied whenever a request doesn't set its own) — unset on boxs.ca: a reply to redirected
@@ -209,7 +209,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
         : null,
   });
 
-  // Task 5 (4e): unset means no summary is ever sent (runBounceSummaryIfDue's own early-out).
+  // Unset means no summary is ever sent (runBounceSummaryIfDue's own early-out).
   const bounceSummaryEmail = parsed.BOUNCE_SUMMARY_EMAIL ?? null;
 
   // Set by startLoops(); the closers below reference these lazily so they're safe to call even

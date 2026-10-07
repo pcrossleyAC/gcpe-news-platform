@@ -328,6 +328,11 @@ export function bouncesInboxRoutes(distribution: Pick<DistributionClient, "uploa
         if (e instanceof DistributionError && e.status === 404) {
           return void res.status(404).json({ error: "not available: the bounce source isn't the fake inbox" });
         }
+        // Distribution's own 1 MB check (400) or its body-parser limit (413) -- never
+        // duplicated here; both just mean the raw message itself was the problem.
+        if (e instanceof DistributionError && (e.status === 400 || e.status === 413)) {
+          return void res.status(400).json({ error: "invalid bounce message (too large or malformed)" });
+        }
         if (!handleError(e, res)) throw e;
       }
     });

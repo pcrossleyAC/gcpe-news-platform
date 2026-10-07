@@ -5,13 +5,29 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
 import { BOUNCE_SUMMARY_HOUR, runBounceSummaryIfDue, startBounceSummaryLoop } from "./bounce-summary";
 import { BOUNCE_ACTOR } from "./bounces";
-import { dailyCutoff } from "./digest";
 import type { DistributionClient, MessageRequest } from "./distribution-client";
+import { todaysCutoff } from "./digest";
 import { deliveries, nodSettings, subscriberHistory, subscribers, subscriptions } from "./db/schema";
 
 const TZ = "America/Vancouver";
-const DAY_MS = 24 * 3_600_000;
 const HOUR_MS = 3_600_000;
+const DAY_MS = 24 * HOUR_MS;
+
+// All anchored to *today's* real 08:00 BC-time cutoff (never a hardcoded calendar date):
+// bounces.ts's own countBouncedEmails/thresholdTripped compare against Postgres's real
+// `now()` (no test-clock hook there), so a fixture dated too far from the real wall clock
+// would silently fall outside their 15-day window. Only the module under test here
+// (bounce-summary.ts's own `claim`) takes the injected `now` below -- everything else these
+// tests touch still runs against the real clock, so every instant must stay plausible against
+// it. Relative order is all that matters, same reasoning as digest.test.ts's own `cutoff`.
+const DAY1_0800 = todaysCutoff(new Date(), TZ, BOUNCE_SUMMARY_HOUR); // today's 08:00 BC time
+const DAY1_0300 = new Date(DAY1_0800.getTime() - 5 * HOUR_MS); // before that day's 08:00
+const DAY1_0805 = new Date(DAY1_0800.getTime() + 5 * 60_000); // just past it
+const DAY1_1400 = new Date(DAY1_0800.getTime() + 6 * HOUR_MS);
+const DAY1_1405 = new Date(DAY1_1400.getTime() + 5 * 60_000);
+const DAYMINUS2_0800 = new Date(DAY1_0800.getTime() - 2 * DAY_MS); // two days earlier's 08:00
+const DAY2_0800 = new Date(DAY1_0800.getTime() + DAY_MS); // the next day's 08:00
+const DAY2_0805 = new Date(DAY2_0800.getTime() + 5 * 60_000);
 
 function stubDistribution(): DistributionClient & { send: ReturnType<typeof vi.fn>; bounceStats: ReturnType<typeof vi.fn> } {
   return {
@@ -52,7 +68,6 @@ describe("BOUNCE_SUMMARY_HOUR", () => {
 
 describe("runBounceSummaryIfDue", () => {
   let tdb: TestDatabase;
-  let cutoff: Date;
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
@@ -62,101 +77,118 @@ describe("runBounceSummaryIfDue", () => {
   });
   beforeEach(async () => {
     await tdb.pool.query("TRUNCATE TABLE subscriber_history, deliveries, subscriptions, subscribers CASCADE");
-    await tdb.db.update(nodSettings).set({ bounceSummaryAt: null }).where(eq(nodSettings.id, 1));
-    // Same reasoning as digest.test.ts: only relative order to `cutoff` matters here, never
-    // its exact value, so the real clock is fine.
-    cutoff = dailyCutoff(new Date(), TZ, BOUNCE_SUMMARY_HOUR);
+    await tdb.db
+      .update(nodSettings)
+      .set({ bounceSummaryAt: null, bounceSummaryCheckedAt: null, bounceSummaryLease: null, bounceSummaryLeaseUntil: null })
+      .where(eq(nodSettings.id, 1));
   });
 
-  async function setLastSummaryAt(d: Date | null): Promise<void> {
-    await tdb.db.update(nodSettings).set({ bounceSummaryAt: d }).where(eq(nodSettings.id, 1));
+  async function setCheckedAt(d: Date | null): Promise<void> {
+    await tdb.db.update(nodSettings).set({ bounceSummaryCheckedAt: d }).where(eq(nodSettings.id, 1));
   }
 
   it("no recipient configured: never sends, never touches the database", async () => {
     const distribution = stubDistribution();
-    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, null);
+    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, null, () => DAY1_0800);
     expect(result).toEqual({ sent: false, lines: 0 });
     expect(distribution.send).not.toHaveBeenCalled();
     expect(distribution.bounceStats).not.toHaveBeenCalled();
   });
 
-  it("not before 08:00 BC time: already summarised at this cutoff, so a later check this same day does nothing more", async () => {
-    await setLastSummaryAt(cutoff);
-    const sub = await insertSubscriber(tdb.db, "late@example.test");
-    await insertHardBounceDelivery(tdb.db, sub, { at: new Date(), status: "5.1.1" });
-    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", new Date());
+  it("before 08:00 BC time: an older checked_at stamp still doesn't send", async () => {
+    await setCheckedAt(DAYMINUS2_0800);
+    const sub = await insertSubscriber(tdb.db, "early-older@example.test");
+    await insertHardBounceDelivery(tdb.db, sub, { at: DAY1_0300, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", DAY1_0300);
 
     const distribution = stubDistribution();
-    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
+    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0300);
     expect(result).toEqual({ sent: false, lines: 0 });
     expect(distribution.send).not.toHaveBeenCalled();
+    expect(distribution.bounceStats).not.toHaveBeenCalled();
   });
 
-  it("once per day: a second due check right after a successful send does nothing more", async () => {
-    await setLastSummaryAt(new Date(cutoff.getTime() - DAY_MS));
-    const sub = await insertSubscriber(tdb.db, "oncea@example.test");
-    const at = new Date(cutoff.getTime() - HOUR_MS);
-    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
-    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
+  it("before 08:00 BC time: a null checked_at (first run ever) still doesn't send", async () => {
+    // checked_at stays null (beforeEach default).
+    const sub = await insertSubscriber(tdb.db, "early-null@example.test");
+    await insertHardBounceDelivery(tdb.db, sub, { at: DAY1_0300, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", DAY1_0300);
 
     const distribution = stubDistribution();
-    const first = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
-    expect(first).toEqual({ sent: true, lines: 1 });
-    expect(distribution.send).toHaveBeenCalledTimes(1);
-
-    const second = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
-    expect(second).toEqual({ sent: false, lines: 0 });
-    expect(distribution.send).toHaveBeenCalledTimes(1);
+    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0300);
+    expect(result).toEqual({ sent: false, lines: 0 });
+    expect(distribution.send).not.toHaveBeenCalled();
+    expect(distribution.bounceStats).not.toHaveBeenCalled();
   });
 
-  it("nothing to report: no email, and bounce_summary_at is left where it was so the window carries forward", async () => {
-    const priorAt = new Date(cutoff.getTime() - DAY_MS);
-    await setLastSummaryAt(priorAt);
+  it("a no-op 08:00 run doesn't fire again that same day once a bounce lands, but the next day's run includes it", async () => {
+    const first = stubDistribution();
+    const result1 = await runBounceSummaryIfDue(tdb.db, first, TZ, "ops@example.com", () => DAY1_0805);
+    expect(result1).toEqual({ sent: false, lines: 0 });
+    expect(first.send).not.toHaveBeenCalled();
+    const [afterNoOp] = await tdb.db.select().from(nodSettings);
+    expect(afterNoOp!.bounceSummaryCheckedAt).toEqual(DAY1_0800);
+    expect(afterNoOp!.bounceSummaryAt).toBeNull();
+
+    const sub = await insertSubscriber(tdb.db, "midday@example.test");
+    await insertHardBounceDelivery(tdb.db, sub, { at: DAY1_1400, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", DAY1_1400);
+
+    const second = stubDistribution();
+    const result2 = await runBounceSummaryIfDue(tdb.db, second, TZ, "ops@example.com", () => DAY1_1405);
+    expect(result2).toEqual({ sent: false, lines: 0 });
+    expect(second.send).not.toHaveBeenCalled();
+
+    const third = stubDistribution();
+    const result3 = await runBounceSummaryIfDue(tdb.db, third, TZ, "ops@example.com", () => DAY2_0805);
+    expect(result3).toEqual({ sent: true, lines: 1 });
+    expect(third.send).toHaveBeenCalledTimes(1);
+    const req = third.send.mock.calls[0]![0] as MessageRequest;
+    expect(req.text).toContain("midday@example.test");
+  });
+
+  it("nothing to report: no email, sets checked_at only, bounce_summary_at stays unset", async () => {
     const distribution = stubDistribution();
-    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
+    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
     expect(result).toEqual({ sent: false, lines: 0 });
     expect(distribution.send).not.toHaveBeenCalled();
 
     const [row] = await tdb.db.select().from(nodSettings);
-    expect(row!.bounceSummaryAt).toEqual(priorAt);
-  });
-
-  it("nothing to report, ever (bounce_summary_at still null): no email, and it stays null", async () => {
-    const distribution = stubDistribution();
-    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
-    expect(result).toEqual({ sent: false, lines: 0 });
-    expect(distribution.send).not.toHaveBeenCalled();
-
-    const [row] = await tdb.db.select().from(nodSettings);
+    expect(row!.bounceSummaryCheckedAt).toEqual(DAY1_0800);
     expect(row!.bounceSummaryAt).toBeNull();
   });
 
-  it("unmatched/ignored counts alone (no NoD-side bounces) are still enough to send", async () => {
-    await setLastSummaryAt(new Date(cutoff.getTime() - DAY_MS));
-    const distribution = stubDistribution();
-    distribution.bounceStats.mockResolvedValue({ unmatched: 2, ignored: 1 });
+  it("ruling: an ignored-only window sends no email; an unmatched-bounce-only window still does", async () => {
+    const ignoredOnly = stubDistribution();
+    ignoredOnly.bounceStats.mockResolvedValue({ unmatched: 0, ignored: 3 });
+    const resultIgnored = await runBounceSummaryIfDue(tdb.db, ignoredOnly, TZ, "ops@example.com", () => DAY1_0800);
+    expect(resultIgnored).toEqual({ sent: false, lines: 0 });
+    expect(ignoredOnly.send).not.toHaveBeenCalled();
+    const [afterIgnored] = await tdb.db.select().from(nodSettings);
+    expect(afterIgnored!.bounceSummaryCheckedAt).toEqual(DAY1_0800);
+    expect(afterIgnored!.bounceSummaryAt).toBeNull();
 
-    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
-    expect(result).toEqual({ sent: true, lines: 0 });
-    expect(distribution.send).toHaveBeenCalledTimes(1);
-    const req = distribution.send.mock.calls[0]![0] as MessageRequest;
+    const unmatchedOnly = stubDistribution();
+    unmatchedOnly.bounceStats.mockResolvedValue({ unmatched: 2, ignored: 1 });
+    const resultUnmatched = await runBounceSummaryIfDue(tdb.db, unmatchedOnly, TZ, "ops@example.com", () => DAY2_0800);
+    expect(resultUnmatched).toEqual({ sent: true, lines: 0 });
+    expect(unmatchedOnly.send).toHaveBeenCalledTimes(1);
+    const req = unmatchedOnly.send.mock.calls[0]![0] as MessageRequest;
     expect(req.text).toContain("Unmatched: 2; ignored: 1.");
   });
 
-  it("default window with no prior summary: 24h before now, not before", async () => {
-    // bounceSummaryAt stays null (beforeEach default) -- first run ever.
+  it("default window with no prior summary: 24h before dbNow, not before", async () => {
     const sub = await insertSubscriber(tdb.db, "window@example.test");
-    const inWindow = new Date(Date.now() - 23 * HOUR_MS);
-    const tooOld = new Date(Date.now() - 25 * HOUR_MS);
+    const inWindow = new Date(DAY1_0800.getTime() - 23 * HOUR_MS);
+    const tooOld = new Date(DAY1_0800.getTime() - 25 * HOUR_MS);
     await insertHardBounceDelivery(tdb.db, sub, { at: inWindow, status: "5.1.1" });
     await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", inWindow);
-    // A second subscriber whose only bounce is outside the 24h window -- must not appear.
     const old = await insertSubscriber(tdb.db, "toolold@example.test");
     await insertHardBounceDelivery(tdb.db, old, { at: tooOld, status: "5.1.1" });
     await insertHistory(tdb.db, old, "bounce-recorded", "5.1.1", tooOld);
 
     const distribution = stubDistribution();
-    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
+    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
     expect(result).toEqual({ sent: true, lines: 1 });
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
     expect(req.text).toContain("window@example.test");
@@ -164,8 +196,7 @@ describe("runBounceSummaryIfDue", () => {
   });
 
   it("body lines: recorded, disabled and flagged, media members bold, with the unmatched/ignored counts and the subject format", async () => {
-    await setLastSummaryAt(new Date(cutoff.getTime() - DAY_MS));
-    const at = new Date(cutoff.getTime() - HOUR_MS);
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
 
     const recorded = await insertSubscriber(tdb.db, "recorded@example.test");
     await insertHardBounceDelivery(tdb.db, recorded, { at, status: "5.1.1" });
@@ -183,13 +214,13 @@ describe("runBounceSummaryIfDue", () => {
     const distribution = stubDistribution();
     distribution.bounceStats.mockResolvedValue({ unmatched: 4, ignored: 2 });
 
-    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
+    const result = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
     expect(result).toEqual({ sent: true, lines: 3 });
-    expect(distribution.bounceStats).toHaveBeenCalledWith(new Date(cutoff.getTime() - DAY_MS).toISOString());
+    expect(distribution.bounceStats).toHaveBeenCalledWith(new Date(DAY1_0800.getTime() - 24 * HOUR_MS).toISOString(), DAY1_0800.toISOString());
 
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
     expect(req.priority).toBe("system");
-    const dateLabel = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(cutoff);
+    const dateLabel = new Intl.DateTimeFormat("en-CA", { timeZone: TZ, year: "numeric", month: "2-digit", day: "2-digit" }).format(DAY1_0800);
     expect(req.subject).toBe(`News On Demand - Bounce Manager - ${dateLabel}`);
     expect(req.idempotencyKey).toBe(`nod-bounce-summary-${dateLabel}`);
 
@@ -198,51 +229,149 @@ describe("runBounceSummaryIfDue", () => {
     expect(req.text).toContain("flagged@example.test - hard (5.1.1): flagged — media list member");
     expect(req.text).toContain("Unmatched: 4; ignored: 2.");
 
-    // Media members are bolded in the html part, not the text part -- the recorded/disabled
-    // lines (not media members here) are never wrapped.
     expect(req.html).toContain("<b>flagged@example.test - hard (5.1.1): flagged — media list member</b>");
     expect(req.html).not.toContain("<b>recorded@example.test");
     expect(req.html).not.toContain("<b>disabled@example.test");
   });
 
-  it("HTML-escapes addresses", async () => {
-    await setLastSummaryAt(new Date(cutoff.getTime() - DAY_MS));
-    const at = new Date(cutoff.getTime() - HOUR_MS);
-    // A display form the DB may legitimately hold is irrelevant here -- what matters is that a
-    // value containing HTML-special characters is never written into the body unescaped. Reuse
-    // a normal-looking address and instead assert the status code (attacker-influenced upstream)
-    // is escaped, since subscribers.email itself is schema-validated elsewhere.
-    const sub = await insertSubscriber(tdb.db, "escape@example.test");
-    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1 <bad>" });
-    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1 <bad>", at);
+  it("HTML-escapes an address that itself contains markup", async () => {
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
+    // Inserted directly (bypassing the normal subscribe flow's own email validation) to prove
+    // the summary's own rendering never trusts stored data -- a defence-in-depth check, not a
+    // claim that this shape can arrive through the public API today.
+    const sub = await insertSubscriber(tdb.db, "a&b<script>@example.test");
+    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
 
     const distribution = stubDistribution();
-    await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
+    await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
-    expect(req.html).not.toContain("<bad>");
-    expect(req.html).toContain("&lt;bad&gt;");
+    expect(req.html).not.toContain("a&b<script>@example.test");
+    expect(req.html).toContain("a&amp;b&lt;script&gt;@example.test");
+    // The text part carries no markup at all, so it's never escaped.
+    expect(req.text).toContain("a&b<script>@example.test");
   });
 
   it("concurrent runs send exactly one summary", async () => {
-    await setLastSummaryAt(new Date(cutoff.getTime() - DAY_MS));
     const sub = await insertSubscriber(tdb.db, "concurrent@example.test");
-    const at = new Date(cutoff.getTime() - HOUR_MS);
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
     await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
     await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
 
     const distribution = stubDistribution();
     const [a, b] = await Promise.all([
-      runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com"),
-      runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com"),
+      runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800),
+      runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800),
     ]);
     expect([a.sent, b.sent].filter(Boolean)).toHaveLength(1);
     expect(distribution.send).toHaveBeenCalledTimes(1);
   });
 
-  it("never logs an address", async () => {
-    await setLastSummaryAt(new Date(cutoff.getTime() - DAY_MS));
+  it("an active lease: a concurrent call skips without calling bounceStats", async () => {
+    const sub = await insertSubscriber(tdb.db, "lease-active@example.test");
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
+    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const distributionA = stubDistribution();
+    distributionA.bounceStats.mockImplementation(async () => {
+      await gate;
+      return { unmatched: 0, ignored: 0 };
+    });
+
+    const callA = runBounceSummaryIfDue(tdb.db, distributionA, TZ, "a@example.com", () => DAY1_0800);
+    await vi.waitFor(async () => {
+      const [row] = await tdb.db.select().from(nodSettings);
+      expect(row!.bounceSummaryLease).not.toBeNull();
+    });
+
+    const distributionB = stubDistribution();
+    const resultB = await runBounceSummaryIfDue(tdb.db, distributionB, TZ, "b@example.com", () => DAY1_0800);
+    expect(resultB).toEqual({ sent: false, lines: 0 });
+    expect(distributionB.bounceStats).not.toHaveBeenCalled();
+    expect(distributionB.send).not.toHaveBeenCalled();
+
+    release();
+    await callA;
+  });
+
+  it("a failed send is retried on the next due check, sending exactly once under the date's own idempotency key", async () => {
+    const sub = await insertSubscriber(tdb.db, "retry@example.test");
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
+    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
+
+    const distribution = stubDistribution();
+    distribution.send.mockRejectedValueOnce(new Error("Distribution unreachable"));
+
+    await expect(runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800)).rejects.toThrow();
+    const [afterFailure] = await tdb.db.select().from(nodSettings);
+    expect(afterFailure!.bounceSummaryLease).toBeNull();
+    expect(afterFailure!.bounceSummaryCheckedAt).toBeNull();
+    expect(afterFailure!.bounceSummaryAt).toBeNull();
+
+    distribution.send.mockResolvedValueOnce({ batchId: "ok" });
+    const result2 = await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
+    expect(result2).toEqual({ sent: true, lines: 1 });
+    expect(distribution.send).toHaveBeenCalledTimes(2);
+    const key1 = (distribution.send.mock.calls[0]![0] as MessageRequest).idempotencyKey;
+    const key2 = (distribution.send.mock.calls[1]![0] as MessageRequest).idempotencyKey;
+    expect(key1).toBe(key2);
+  });
+
+  it("a stale runner's finish after a takeover does not re-stamp", async () => {
+    const sub = await insertSubscriber(tdb.db, "stale@example.test");
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
+    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
+
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const distributionA = stubDistribution();
+    distributionA.bounceStats.mockImplementation(async () => {
+      await gate;
+      return { unmatched: 0, ignored: 0 };
+    });
+
+    const callA = runBounceSummaryIfDue(tdb.db, distributionA, TZ, "a@example.com", () => DAY1_0800);
+    await vi.waitFor(async () => {
+      const [row] = await tdb.db.select().from(nodSettings);
+      expect(row!.bounceSummaryLease).not.toBeNull();
+    });
+
+    // A's lease now looks abandoned (crashed, or simply took far longer than its 5-minute
+    // window) -- force it into the past *relative to the injected `now` both runners use*
+    // (real `now()` is irrelevant here: B's own claim compares against DAY1_0800, not the
+    // wall clock) so B's own claim sees it as free.
+    await tdb.pool.query("UPDATE nod_settings SET bounce_summary_lease_until = $1 WHERE id = 1", [new Date(DAY1_0800.getTime() - 1_000).toISOString()]);
+
+    const distributionB = stubDistribution();
+    const resultB = await runBounceSummaryIfDue(tdb.db, distributionB, TZ, "b@example.com", () => DAY1_0800);
+    expect(resultB).toEqual({ sent: true, lines: 1 });
+    const [afterB] = await tdb.db.select().from(nodSettings);
+    const stampAfterB = { checkedAt: afterB!.bounceSummaryCheckedAt, at: afterB!.bounceSummaryAt, lease: afterB!.bounceSummaryLease };
+    expect(stampAfterB.lease).toBeNull();
+
+    // Only now does A resume -- its own finish uses a lease the row no longer holds, so it
+    // must not touch what B already wrote.
+    release();
+    await callA;
+
+    const [afterA] = await tdb.db.select().from(nodSettings);
+    expect(afterA!.bounceSummaryCheckedAt).toEqual(stampAfterB.checkedAt);
+    expect(afterA!.bounceSummaryAt).toEqual(stampAfterB.at);
+    expect(afterA!.bounceSummaryLease).toBeNull();
+  });
+
+  it("never logs an address on a normal send", async () => {
     const sub = await insertSubscriber(tdb.db, "secret-address@example.test");
-    const at = new Date(cutoff.getTime() - HOUR_MS);
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
     await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
     await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
 
@@ -250,7 +379,7 @@ describe("runBounceSummaryIfDue", () => {
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
       const distribution = stubDistribution();
-      await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com");
+      await runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com", () => DAY1_0800);
       for (const call of [...logSpy.mock.calls, ...errorSpy.mock.calls]) {
         expect(call.join(" ")).not.toContain("secret-address@example.test");
       }
@@ -258,22 +387,6 @@ describe("runBounceSummaryIfDue", () => {
       logSpy.mockRestore();
       errorSpy.mockRestore();
     }
-  });
-
-  it("a send failure leaves bounce_summary_at where it was, so the next tick retries the whole window", async () => {
-    const priorAt = new Date(cutoff.getTime() - DAY_MS);
-    await setLastSummaryAt(priorAt);
-    const sub = await insertSubscriber(tdb.db, "retry@example.test");
-    const at = new Date(cutoff.getTime() - HOUR_MS);
-    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
-    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
-
-    const distribution = stubDistribution();
-    distribution.send.mockRejectedValue(new Error("Distribution unreachable"));
-
-    await expect(runBounceSummaryIfDue(tdb.db, distribution, TZ, "ops@example.com")).rejects.toThrow();
-    const [row] = await tdb.db.select().from(nodSettings);
-    expect(row!.bounceSummaryAt).toEqual(priorAt);
   });
 });
 
@@ -288,25 +401,53 @@ describe("startBounceSummaryLoop", () => {
   });
   beforeEach(async () => {
     await tdb.pool.query("TRUNCATE TABLE subscriber_history, deliveries, subscriptions, subscribers CASCADE");
-    await tdb.db.update(nodSettings).set({ bounceSummaryAt: null }).where(eq(nodSettings.id, 1));
+    await tdb.db
+      .update(nodSettings)
+      .set({ bounceSummaryAt: null, bounceSummaryCheckedAt: null, bounceSummaryLease: null, bounceSummaryLeaseUntil: null })
+      .where(eq(nodSettings.id, 1));
   });
 
   it("runs the worker on each tick until due, and stop() clears the interval", async () => {
-    const dueCutoff = dailyCutoff(new Date(), TZ, BOUNCE_SUMMARY_HOUR);
-    await tdb.db.update(nodSettings).set({ bounceSummaryAt: new Date(dueCutoff.getTime() - DAY_MS) }).where(eq(nodSettings.id, 1));
     const sub = await insertSubscriber(tdb.db, "loop@example.test");
-    const at = new Date(dueCutoff.getTime() - HOUR_MS);
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
     await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
     await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
 
     const distribution = stubDistribution();
-    const stop = startBounceSummaryLoop({ db: tdb.db, distribution, timeZone: TZ, to: "ops@example.com", intervalMs: 20 });
+    const stop = startBounceSummaryLoop({ db: tdb.db, distribution, timeZone: TZ, to: "ops@example.com", intervalMs: 20, now: () => DAY1_0800 });
     await vi.waitFor(() => {
       expect(distribution.send).toHaveBeenCalledTimes(1);
     });
     await stop();
 
     await new Promise((r) => setTimeout(r, 60));
+    // checked_at is now stamped for this fixed "now", so later ticks (same fixed instant) find
+    // nothing further due.
     expect(distribution.send).toHaveBeenCalledTimes(1);
+  });
+
+  it("M7: never logs an address, even when the failure's own Error message carries one", async () => {
+    const sub = await insertSubscriber(tdb.db, "leaky@example.test");
+    const at = new Date(DAY1_0800.getTime() - HOUR_MS);
+    await insertHardBounceDelivery(tdb.db, sub, { at, status: "5.1.1" });
+    await insertHistory(tdb.db, sub, "bounce-recorded", "5.1.1", at);
+
+    const distribution = stubDistribution();
+    distribution.send.mockRejectedValue(new Error("failed to deliver to leaky@example.test: connection reset"));
+
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const stop = startBounceSummaryLoop({ db: tdb.db, distribution, timeZone: TZ, to: "ops@example.com", intervalMs: 20, now: () => DAY1_0800 });
+      await vi.waitFor(() => {
+        expect(errorSpy).toHaveBeenCalled();
+      });
+      await stop();
+      expect(errorSpy.mock.calls.length).toBeGreaterThan(0);
+      for (const call of errorSpy.mock.calls) {
+        expect(call.join(" ")).not.toContain("leaky@example.test");
+      }
+    } finally {
+      errorSpy.mockRestore();
+    }
   });
 });

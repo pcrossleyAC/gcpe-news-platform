@@ -218,12 +218,24 @@ export const nodSettings = pgTable(
     mediaSyncLeaseUntil: timestamp("media_sync_lease_until", { withTimezone: true }),
     mediaSyncRunStart: timestamp("media_sync_run_start", { withTimezone: true }),
     mediaSyncCursor: text("media_sync_cursor"),
-    // When the daily bounce summary (bounce-summary.ts) last actually sent -- drives "is it
-    // due" the same way last_digest_cutoff drives the digest, and doubles as the start of the
+    // When the daily bounce summary (bounce-summary.ts) last actually sent -- the start of the
     // next summary's own window (the brief: "from the last bounce_summary_at (or 24h) to
     // now"). Left unset on a run with nothing to report, so that run's whole window is folded
-    // into the next one instead of ever being silently dropped.
+    // into the next one instead of ever being silently dropped. Separate from
+    // bounce_summary_checked_at below: this is the window boundary, that is the due gate.
     bounceSummaryAt: timestamp("bounce_summary_at", { withTimezone: true }),
+    // The last 08:00-BC-time cutoff this was checked for, whether or not it sent anything --
+    // what makes "is it due" correct for a day with nothing to report: a no-op run still
+    // stamps this alone, so it isn't re-checked every minute for the rest of that same day,
+    // and a day it never even checked (null) is still due the moment it's past that day's
+    // cutoff.
+    bounceSummaryCheckedAt: timestamp("bounce_summary_checked_at", { withTimezone: true }),
+    // A lease, not a held transaction, protects the window between claiming the day's run and
+    // stamping it done -- the same shape as media_sync_lease above, just without a resumable
+    // cursor (bounce-summary.ts's own work has nothing to resume: a lease that expires before
+    // finishing is simply claimed afresh, never "taken over" mid-flight).
+    bounceSummaryLease: uuid("bounce_summary_lease"),
+    bounceSummaryLeaseUntil: timestamp("bounce_summary_lease_until", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],
