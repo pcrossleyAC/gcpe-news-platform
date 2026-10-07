@@ -56,12 +56,16 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
  * (`messageIdDomain`) that simply didn't resolve to a row (purged, or a race). A Message-ID on a
  * foreign domain (legacy's, or another system's, during a parallel run) never named a message
  * we sent, so it's left unmatched rather than pinned onto an unrelated recent send to the same
- * recipient.
+ * recipient. A Message-ID that's *present but unparseable* (no '@' at all, or nothing on one
+ * side of it) is treated the same way as foreign, not the same as no Message-ID at all: it
+ * names something, just not in the "local@domain" shape ours always has, so there's no basis
+ * for treating it as "go ahead and check the recipient instead".
  */
 async function findMatch(tx: Tx, parsed: ParsedBounce & { kind: "bounce" }, messageIdDomain: string): Promise<MatchRow | null> {
   const matchColumns = { id: messages.id, batchId: messages.batchId, appId: batches.appId, email: messages.email, bounceHard: messages.bounceHard };
 
-  const parts = parsed.originalMessageId ? splitMessageId(parsed.originalMessageId) : null;
+  const hasMessageId = parsed.originalMessageId !== null;
+  const parts = hasMessageId ? splitMessageId(parsed.originalMessageId!) : null;
 
   if (parts && UUID_RE.test(parts.local)) {
     const [row] = await tx
@@ -75,7 +79,7 @@ async function findMatch(tx: Tx, parsed: ParsedBounce & { kind: "bounce" }, mess
     }
   }
 
-  if (parts && parts.domain.toLowerCase() !== messageIdDomain.toLowerCase()) return null;
+  if (hasMessageId && (!parts || parts.domain.toLowerCase() !== messageIdDomain.toLowerCase())) return null;
 
   // Fallback (Global Constraints "Matching" §2): no Message-ID, or it's one of ours that
   // matched nothing — the most recent `sent` message to this recipient, case-insensitively,

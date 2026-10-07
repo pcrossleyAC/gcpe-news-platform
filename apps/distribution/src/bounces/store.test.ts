@@ -245,6 +245,22 @@ describe("recordBounce", () => {
     expect(result.matched?.messageId).toBe(seeded.messageId);
   });
 
+  // A present-but-unparseable Message-ID (no '@' at all, or nothing on one side of it) is
+  // different from no Message-ID at all: it names *something*, just not in the "local@domain"
+  // shape ours always has -- so it's treated the same as a foreign domain (unmatched), never as
+  // "no id to check, go ahead and fall back".
+  it("a Message-ID with no '@' at all is left unmatched, even with a recent sent message to the recipient", async () => {
+    await seedMessage(tdb.db, { email: "alex@example.test", sentAt: daysAgo(1) });
+
+    const result = await tdb.db.transaction((tx) =>
+      recordBounce(tx, "src-no-at", "raw", { ...HARD_BOUNCE, originalMessageId: "<not-an-address-at-all>" }, NO_SUBSCRIBERS, DOMAIN),
+    );
+
+    expect(result.matched).toBeNull();
+    const [row] = await tdb.db.select().from(bounces).where(sql`source_id = 'src-no-at'`);
+    expect(row?.matched).toBe(false);
+  });
+
   describe("recipient fallback query plan", () => {
     it("uses the lower(email)/sent_at index instead of a sequential scan, on a seeded table", async () => {
       const [batch] = await tdb.db.insert(batches).values({ appId: "nod", subject: "s", html: "<p>h</p>" }).returning({ id: batches.id });
