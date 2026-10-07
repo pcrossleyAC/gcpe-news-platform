@@ -42,6 +42,7 @@ Status key: **Open** (no answer yet) · **Answered**.
 | Q35 | Can Media Hub's contact search accept the term in a POST body? | NoD's own routes keep search terms out of URLs, but the Media Hub contract (spec §5.3) is `GET /api/service/contacts?q=`, so the term lands in Media Hub's access logs. | Keep the GET until the Media Hub repo implements the contract; propose `POST /api/service/contacts/search` there. | 2026-10-07 |
 | Q36 | When a list is switched off, should its existing subscribers stop receiving it? | Legacy deleted lists; we keep subscriptions so nothing is lost silently. | No. Switching off only stops new subscriptions. | 2026-10-07 |
 | Q37 | Who may export subscriber email addresses (4h reports)? | Exports leave the system. | NoD Editors and Admins export address-bearing CSVs; NoD Viewers see reports on screen and export count-only CSVs. | 2026-10-07 |
+| Q38 | After an email change merges a dead record's history onto a subscriber, should a staff re-add to a media list still ask for opt-out confirmation when the merged record was later re-added and removed by staff? | Narrow case: the merged `media-list-added`/`media-list-removed` rows can be newer than the subscriber's own opt-out, so the prompt is skipped. | Ignore history rows that predate the `record-merged` row when deciding whether to ask; low priority. | 2026-10-07 |
 
 ## Answered
 
