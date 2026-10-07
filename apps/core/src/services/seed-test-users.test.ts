@@ -15,11 +15,13 @@ describe("seedTestUsers", () => {
     await tdb.drop();
   });
 
-  it("creates the three test users with their roles", async () => {
+  it("creates the five test users with their roles", async () => {
     expect(await seedTestUsers(tdb.db, pw(1))).toEqual(TEST_USERS.map((u) => ({ email: u.email, action: "created" })));
     expect((await findUserByEmail(tdb.db, "editor@example.test"))?.roles).toEqual(["NRMS.Editor"]);
     expect((await findUserByEmail(tdb.db, "site-editor@example.test"))?.roles).toEqual(["NRMS.SiteEditor"]);
     expect((await findUserByEmail(tdb.db, "viewer@example.test"))?.roles).toEqual(["NRMS.Viewer"]);
+    expect((await findUserByEmail(tdb.db, "nod-viewer@example.test"))?.roles).toEqual(["NoD.Viewer"]);
+    expect((await findUserByEmail(tdb.db, "nod-editor@example.test"))?.roles).toEqual(["NoD.Editor"]);
   });
 
   it("re-running resets passwords and roles and reactivates", async () => {

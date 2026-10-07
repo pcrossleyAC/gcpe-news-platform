@@ -55,6 +55,8 @@ export const ROLE_LOGINS = {
   editor: () => loginForCookie("editor@example.test", TEST_USER_PASSWORDS["editor@example.test"]!),
   siteEditor: () => loginForCookie("site-editor@example.test", TEST_USER_PASSWORDS["site-editor@example.test"]!),
   viewer: () => loginForCookie("viewer@example.test", TEST_USER_PASSWORDS["viewer@example.test"]!),
+  nodViewer: () => loginForCookie("nod-viewer@example.test", TEST_USER_PASSWORDS["nod-viewer@example.test"]!),
+  nodEditor: () => loginForCookie("nod-editor@example.test", TEST_USER_PASSWORDS["nod-editor@example.test"]!),
 } as const;
 export type Role = keyof typeof ROLE_LOGINS;
 

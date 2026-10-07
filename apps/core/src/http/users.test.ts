@@ -74,4 +74,12 @@ describe("Core users API", () => {
     expect(drop.body).toEqual({ error: "you can't remove your own admin access" });
     expect((await as(adminCookie).put(`/api/users/${adminId}/roles`, { roles: ["Core.Admin", "NRMS.Editor"] })).status).toBe(200);
   });
+
+  it("grants the NoD.Viewer and NoD.Editor roles", async () => {
+    const created = await as(adminCookie).post("/api/users", { email: "nod.staff@example.test", displayName: "NoD Staff", roles: ["NoD.Viewer"], password: "nod staff pass 12" });
+    expect(created.status).toBe(201);
+    expect(created.body.roles).toEqual(["NoD.Viewer"]);
+    const reroled = await as(adminCookie).put(`/api/users/${created.body.id}/roles`, { roles: ["NoD.Editor"] });
+    expect(reroled.body.roles).toEqual(["NoD.Editor"]);
+  });
 });

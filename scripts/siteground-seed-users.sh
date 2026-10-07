@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Creates (or resets) the three Phase 3 test users on a deployed stack, through Core's users
+# Creates (or resets) the five test users on a deployed stack, through Core's users
 # API, signed in as the break-glass admin. Prompts (hidden) for every password; nothing secret
 # is printed, kept, or ever passed as a command-line argument to another process (argv is
 # visible to other local users via `ps`/`/proc/<pid>/cmdline` for as long as that process
@@ -55,4 +55,6 @@ seed() {
 seed editor@example.test "Test Editor" NRMS.Editor
 seed site-editor@example.test "Test Site Editor" NRMS.SiteEditor
 seed viewer@example.test "Test Viewer" NRMS.Viewer
+seed nod-viewer@example.test "Test NoD Viewer" NoD.Viewer
+seed nod-editor@example.test "Test NoD Editor" NoD.Editor
 curl_api -o /dev/null -X POST "$BASE/core/auth/logout"

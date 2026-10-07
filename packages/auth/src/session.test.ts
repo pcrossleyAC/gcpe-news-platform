@@ -54,7 +54,7 @@ describe("session tokens", () => {
   });
 
   it("lists every staff role", () => {
-    expect(STAFF_ROLES).toEqual(["Core.Admin", "NRMS.Editor", "NRMS.SiteEditor", "NRMS.Viewer", "NoD.Admin", "Distribution.Send"]);
+    expect(STAFF_ROLES).toEqual(["Core.Admin", "NRMS.Editor", "NRMS.SiteEditor", "NRMS.Viewer", "NoD.Viewer", "NoD.Editor", "NoD.Admin", "Distribution.Send"]);
   });
 
   it("defines a service-only Core.AdminDirectory role, not a staff role", () => {

@@ -1,5 +1,7 @@
-/** Every role a staff user can hold (spec addendum §2). No ministry scope — legacy has none. */
-export const STAFF_ROLES = ["Core.Admin", "NRMS.Editor", "NRMS.SiteEditor", "NRMS.Viewer", "NoD.Admin", "Distribution.Send"] as const;
+/** Every role a staff user can hold (spec addendum §2; NoD.Viewer/NoD.Editor from the NoD
+ * parity spec §8 — Viewer reads the Subscribers section, Editor also changes subscribers and
+ * media lists, Admin adds Operations and categories). No ministry scope — legacy has none. */
+export const STAFF_ROLES = ["Core.Admin", "NRMS.Editor", "NRMS.SiteEditor", "NRMS.Viewer", "NoD.Viewer", "NoD.Editor", "NoD.Admin", "Distribution.Send"] as const;
 export type StaffRole = (typeof STAFF_ROLES)[number];
 
 /**
