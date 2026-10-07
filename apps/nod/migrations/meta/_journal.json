@@ -120,6 +120,13 @@
       "when": 1791350848790,
       "tag": "0016_deliveries_subscriber_attempted_at_idx",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1791352035835,
+      "tag": "0017_bounce_summary_at",
+      "breakpoints": true
     }
   ]
 }

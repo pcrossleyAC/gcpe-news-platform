@@ -1470,4 +1470,58 @@ describe("distributionClient", () => {
       errorSpy.mockRestore();
     });
   });
+
+  // uploadBounce/bounceStats hit Distribution's own bounce routes -- same token/error handling
+  // as everything else (callDistribution), just a different path/method/body/response shape.
+  describe("uploadBounce / bounceStats", () => {
+    it("uploadBounce POSTs /api/bounces/inbox with the raw message and returns the id", async () => {
+      respondStatus = 201;
+      respondBody = { id: "bounce-inbox-1" };
+      const client = distributionClient({ baseUrl, getToken: async () => "the-token" });
+      expect(await client.uploadBounce("Subject: Undeliverable: x\r\n\r\nbody")).toEqual({ id: "bounce-inbox-1" });
+      expect(lastMethod).toBe("POST");
+      expect(lastPath).toBe("/api/bounces/inbox");
+      expect(lastAuthHeader).toBe("Bearer the-token");
+      expect(lastRequestBody).toEqual({ raw: "Subject: Undeliverable: x\r\n\r\nbody" });
+    });
+
+    it("uploadBounce maps a 404 (not the fake inbox) to a non-retryable DistributionError", async () => {
+      respondStatus = 404;
+      respondBody = { error: "not found" };
+      const client = distributionClient({ baseUrl, getToken: async () => "t" });
+      await expect(client.uploadBounce("x")).rejects.toMatchObject({ retryable: false, status: 404 });
+    });
+
+    it("uploadBounce maps a 2xx body missing id to a retryable DistributionError", async () => {
+      respondStatus = 201;
+      respondBody = {};
+      const client = distributionClient({ baseUrl, getToken: async () => "t" });
+      await expect(client.uploadBounce("x")).rejects.toMatchObject({ retryable: true, status: 201 });
+    });
+
+    it("bounceStats GETs /api/bounces/stats with since as a query param and returns the parsed counts", async () => {
+      respondStatus = 200;
+      respondBody = { unmatched: 3, ignored: 5 };
+      const client = distributionClient({ baseUrl, getToken: async () => "the-token" });
+      expect(await client.bounceStats("2026-10-05T08:00:00.000Z")).toEqual({ unmatched: 3, ignored: 5 });
+      expect(lastMethod).toBe("GET");
+      expect(lastPath).toBe(`/api/bounces/stats?since=${encodeURIComponent("2026-10-05T08:00:00.000Z")}`);
+      expect(lastAuthHeader).toBe("Bearer the-token");
+    });
+
+    it("bounceStats maps a 2xx body missing unmatched/ignored to a retryable DistributionError", async () => {
+      respondStatus = 200;
+      respondBody = { unmatched: 1 };
+      const client = distributionClient({ baseUrl, getToken: async () => "t" });
+      await expect(client.bounceStats("2026-10-05T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 200 });
+    });
+
+    it("maps a 503 from either bounce route to a retryable DistributionError", async () => {
+      respondStatus = 503;
+      respondBody = "service unavailable";
+      const client = distributionClient({ baseUrl, getToken: async () => "t" });
+      await expect(client.uploadBounce("x")).rejects.toMatchObject({ retryable: true, status: 503 });
+      await expect(client.bounceStats("2026-10-05T08:00:00.000Z")).rejects.toMatchObject({ retryable: true, status: 503 });
+    });
+  });
 });

@@ -218,6 +218,12 @@ export const nodSettings = pgTable(
     mediaSyncLeaseUntil: timestamp("media_sync_lease_until", { withTimezone: true }),
     mediaSyncRunStart: timestamp("media_sync_run_start", { withTimezone: true }),
     mediaSyncCursor: text("media_sync_cursor"),
+    // When the daily bounce summary (bounce-summary.ts) last actually sent -- drives "is it
+    // due" the same way last_digest_cutoff drives the digest, and doubles as the start of the
+    // next summary's own window (the brief: "from the last bounce_summary_at (or 24h) to
+    // now"). Left unset on a run with nothing to report, so that run's whole window is folded
+    // into the next one instead of ever being silently dropped.
+    bounceSummaryAt: timestamp("bounce_summary_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],

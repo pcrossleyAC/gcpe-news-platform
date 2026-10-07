@@ -6,6 +6,7 @@ import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } f
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import type { Closer } from "@gcpe/http-kit";
 import { createApp } from "./app";
+import { runBounceSummaryIfDue, startBounceSummaryLoop } from "./bounce-summary";
 import { runDigestIfDue, startDigestLoop } from "./digest";
 import { distributionClient } from "./distribution-client";
 import { distributionTokenProvider } from "./distribution-token";
@@ -56,6 +57,10 @@ export const nodEnvSchema = z.object({
   // The operator sets `NOD_OPS_EMAIL`; by the time this schema sees it, apps/stack/src/env.ts's
   // envFor has already stripped the "NOD_" prefix (same as DATABASE_URL, PORT, etc. above).
   OPS_EMAIL: z.string().email().optional(),
+  // Phase 4e: staff inbox for the daily bounce summary (bounce-summary.ts) -- unset means no
+  // summary is ever sent. The operator sets `NOD_BOUNCE_SUMMARY_EMAIL`; envFor strips the
+  // "NOD_" prefix the same way as OPS_EMAIL above.
+  BOUNCE_SUMMARY_EMAIL: z.string().email().optional(),
   // Every email NoD sends carries this as its Reply-To (distribution-client.ts's send,
   // applied whenever a request doesn't set its own) — unset on boxs.ca: a reply to redirected
   // test mail must never reach a real government mailbox. The operator sets `NOD_REPLY_TO`;
@@ -204,11 +209,15 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
         : null,
   });
 
+  // Task 5 (4e): unset means no summary is ever sent (runBounceSummaryIfDue's own early-out).
+  const bounceSummaryEmail = parsed.BOUNCE_SUMMARY_EMAIL ?? null;
+
   // Set by startLoops(); the closers below reference these lazily so they're safe to call even
   // if startLoops() was never invoked.
   let stopJobSender: (() => Promise<void>) | undefined;
   let stopDigestLoop: (() => Promise<void>) | undefined;
   let stopMediaSyncLoop: (() => Promise<void>) | undefined;
+  let stopBounceSummaryLoop: (() => Promise<void>) | undefined;
 
   return {
     app,
@@ -223,6 +232,10 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // all means nothing to sync -- a no-op, same as the search/add-from-hub routes
       // answering 503.
       mediaSync: () => (mediaHub ? runMediaSyncIfDue(db, mediaHub, tenant.timeZone) : Promise.resolve({ ran: false })),
+      // The daily bounce summary -- a no-op call every tick until the tenant's wall clock
+      // actually reaches BOUNCE_SUMMARY_HOUR for a day not already summarised (or, with no
+      // BOUNCE_SUMMARY_EMAIL configured, always a no-op).
+      bounceSummary: () => runBounceSummaryIfDue(db, distribution, tenant.timeZone, bounceSummaryEmail),
       // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
       // data has ever reached this NoD so it knows whether to ask Core to republish.
       needsReferenceData: () => needsReferenceData(db),
@@ -233,12 +246,14 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // workers.digest hook above only ever fires once, when a caller asks for it.
       stopDigestLoop = startDigestLoop({ db, timeZone: tenant.timeZone, render });
       if (mediaHub) stopMediaSyncLoop = startMediaSyncLoop({ db, client: mediaHub, timeZone: tenant.timeZone });
+      stopBounceSummaryLoop = startBounceSummaryLoop({ db, distribution, timeZone: tenant.timeZone, to: bounceSummaryEmail });
     },
     closeBeforeServer: [],
     closers: [
       { name: "job sender", close: async () => { await stopJobSender?.(); } },
       { name: "digest loop", close: async () => { await stopDigestLoop?.(); } },
       { name: "media sync loop", close: async () => { await stopMediaSyncLoop?.(); } },
+      { name: "bounce summary loop", close: async () => { await stopBounceSummaryLoop?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],
   };

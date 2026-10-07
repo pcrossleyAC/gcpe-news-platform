@@ -4,7 +4,7 @@ import { and, eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { DeliveryBounced } from "@gcpe/events";
 import { createItemSending } from "./as-it-happens";
-import { onDeliveryBounced } from "./bounces";
+import { countBouncedEmails, onDeliveryBounced } from "./bounces";
 import { deliveries, items, sendJobs, subscriberHistory, subscribers, subscriptions } from "./db/schema";
 import { createNodTestDb, envelope } from "../test/helpers";
 
@@ -446,5 +446,38 @@ describe("onDeliveryBounced", () => {
     await insertSubscriber(tdb.db, "no-delivery@example.test");
     const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "no-delivery@example.test", batchId: randomUUID(), hard: true }), OPTS));
     expect(result).toEqual({ matched: false, action: "none" });
+  });
+});
+
+describe("countBouncedEmails", () => {
+  let tdb: TestDatabase;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+  });
+  afterAll(async () => tdb.drop());
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE TABLE subscriber_history, deliveries, job_recipients, send_jobs, subscriptions, subscribers, items CASCADE");
+  });
+
+  it("counts emails (not delivery rows), only the hard-bounced ones, within the 15-day window", async () => {
+    const sub = await insertSubscriber(tdb.db, "count@example.test");
+    // A 3-item digest email, hard-bounced -- one email, not three.
+    await insertEmail(tdb.db, { subscriberId: sub.id, itemKeyPrefix: "digest", n: 3, attemptedAt: daysAgo(1), distributionBatchId: randomUUID(), hardBounced: true });
+    // A single as-it-happens email, also hard-bounced.
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "aih-1", attemptedAt: daysAgo(2), hardBouncedAt: daysAgo(2), bounceStatus: "5.1.1" });
+    // A soft bounce: recorded, but never counted.
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "aih-2", attemptedAt: daysAgo(3), bounceStatus: "4.4.7" });
+    // Outside the 15-day window entirely.
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "aih-old", attemptedAt: daysAgo(20), hardBouncedAt: daysAgo(20), bounceStatus: "5.1.1" });
+
+    const count = await tdb.db.transaction((tx) => countBouncedEmails(tx, sub.id));
+    expect(count).toBe(2);
+  });
+
+  it("zero for a subscriber with no deliveries at all", async () => {
+    const sub = await insertSubscriber(tdb.db, "nobody-bounced@example.test");
+    const count = await tdb.db.transaction((tx) => countBouncedEmails(tx, sub.id));
+    expect(count).toBe(0);
   });
 });

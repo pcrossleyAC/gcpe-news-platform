@@ -890,3 +890,79 @@ describe("GET /api/distribution/settings, POST /api/distribution/pause|resume", 
     expect(await tdb.db.select().from(operationsLog)).toHaveLength(before.length);
   });
 });
+
+describe("POST /api/bounces/inbox", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  let distribution: DistributionClient & { uploadBounce: ReturnType<typeof vi.fn> };
+  let admin: string;
+  let reader: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    const pair = await generateKeyPair("RS256");
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: "k", alg: "RS256" }] });
+    const sign = (roles: string[]) =>
+      new SignJWT({ roles })
+        .setProtectedHeader({ alg: "RS256", kid: "k" })
+        .setIssuer(issuer)
+        .setAudience(audience)
+        .setSubject("svc")
+        .setExpirationTime("5m")
+        .sign(pair.privateKey);
+    admin = await sign(["NoD.Admin"]);
+    reader = await sign([]);
+    distribution = { uploadBounce: vi.fn().mockResolvedValue({ id: "bounce-inbox-1" }) } as unknown as DistributionClient & { uploadBounce: ReturnType<typeof vi.fn> };
+    app = createApp({
+      db: tdb.db,
+      auth: { issuer, audience, keys },
+      eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
+      distribution,
+    });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("401s without a token, 403s without NoD.Admin", async () => {
+    expect((await request(app).post("/api/bounces/inbox").send({ raw: "x" })).status).toBe(401);
+    expect((await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${reader}`).send({ raw: "x" })).status).toBe(403);
+  });
+
+  it("proxies the raw message to Distribution's upload and returns its id", async () => {
+    const res = await request(app)
+      .post("/api/bounces/inbox")
+      .set("authorization", `Bearer ${admin}`)
+      .send({ raw: "Subject: Undeliverable: x\r\n\r\nbody" });
+    expect(res.status).toBe(201);
+    expect(res.body).toEqual({ id: "bounce-inbox-1" });
+    expect(distribution.uploadBounce).toHaveBeenCalledWith("Subject: Undeliverable: x\r\n\r\nbody");
+  });
+
+  it("400s a missing raw field", async () => {
+    const res = await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${admin}`).send({});
+    expect(res.status).toBe(400);
+  });
+
+  it("maps Distribution's 404 (not the fake inbox) to NoD's own 404", async () => {
+    distribution.uploadBounce.mockRejectedValueOnce(new DistributionError("Distribution responded HTTP 404", false, 404));
+    const res = await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${admin}`).send({ raw: "x" });
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: "not available: the bounce source isn't the fake inbox" });
+  });
+
+  it("maps any other Distribution error to 502", async () => {
+    distribution.uploadBounce.mockRejectedValueOnce(new DistributionError("Distribution unreachable", true, 503));
+    const res = await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${admin}`).send({ raw: "x" });
+    expect(res.status).toBe(502);
+  });
+
+  it("accepts a raw message close to 1 MB (larger than the shared /api body limit)", async () => {
+    const big = "x".repeat(900_000);
+    distribution.uploadBounce.mockResolvedValueOnce({ id: "bounce-inbox-big" });
+    const res = await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${admin}`).send({ raw: big });
+    expect(res.status).toBe(201);
+    expect(distribution.uploadBounce).toHaveBeenCalledWith(big);
+  });
+});

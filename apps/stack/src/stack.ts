@@ -447,6 +447,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         // this tick should already be current by the time the digest (and anything else this
         // tick does) looks at that subscriber.
         { name: "nod.media-sync", run: worker(nod, "mediaSync") },
+        // Self-gated to once a day at 08:00 BC time (bounce-summary.ts) -- a no-op on every
+        // other tick, and whenever no NOD_BOUNCE_SUMMARY_EMAIL is configured.
+        { name: "nod.bounce-summary", run: worker(nod, "bounceSummary") },
         // The daily digest, immediately before the sender: a digest job this step just
         // created is picked up by the very same tick's own nod.send, not left for the next one.
         { name: "nod.digest", run: worker(nod, "digest") },

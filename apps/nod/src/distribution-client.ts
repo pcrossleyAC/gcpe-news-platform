@@ -72,6 +72,16 @@ export interface DistributionClient {
    * setDistributionPaused (settings.ts) uses that to skip its operations_log row and ops
    * email on a repeat call. */
   setPaused(paused: boolean): Promise<{ paused: boolean; changed: boolean }>;
+  /** Proxies one raw bounce report into Distribution's fake inbox (`POST /api/bounces/inbox`,
+   * gated there on `Distribution.Operate` — the same role this client's own token carries).
+   * Distribution 404s this when it isn't running in fake mode; that 404 is non-retryable (see
+   * callDistribution's 4xx handling) and NoD's own route (http/routes.ts) maps it to its own
+   * 404 for the caller, rather than the generic 502 every other DistributionError gets. */
+  uploadBounce(raw: string): Promise<{ id: string }>;
+  /** The daily bounce summary's own counts Distribution alone can answer — bounces that never
+   * matched a message NoD sent, and messages that weren't bounces at all (`GET
+   * /api/bounces/stats?since=`, gated on `Distribution.Operate`). `since` is an ISO instant. */
+  bounceStats(since: string): Promise<{ unmatched: number; ignored: number }>;
 }
 
 // P2-R18: Distribution's 2xx body is network input like any other — `res.json()` succeeding
@@ -82,6 +92,8 @@ export interface DistributionClient {
 const batchResponseSchema = z.object({ batchId: z.string().min(1) });
 const settingsResponseSchema = z.object({ paused: z.boolean() });
 const pauseResponseSchema = z.object({ paused: z.boolean(), changed: z.boolean() });
+const uploadBounceResponseSchema = z.object({ id: z.string().min(1) });
+const bounceStatsResponseSchema = z.object({ unmatched: z.number().int().nonnegative(), ignored: z.number().int().nonnegative() });
 
 /** Races `getToken()` against a timer so a hung token endpoint can't hang `send` forever —
  * mirrors the request's own `AbortSignal.timeout` below, just via Promise.race since
@@ -193,6 +205,13 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
     async setPaused(paused: boolean): Promise<{ paused: boolean; changed: boolean }> {
       const path = paused ? "/api/settings/pause" : "/api/settings/resume";
       return callDistribution(opts, doFetch, timeoutMs, path, { method: "POST" }, pauseResponseSchema, "Distribution response missing paused/changed");
+    },
+    async uploadBounce(raw: string): Promise<{ id: string }> {
+      return callDistribution(opts, doFetch, timeoutMs, "/api/bounces/inbox", { method: "POST", body: { raw } }, uploadBounceResponseSchema, "Distribution response missing id");
+    },
+    async bounceStats(since: string): Promise<{ unmatched: number; ignored: number }> {
+      const path = `/api/bounces/stats?since=${encodeURIComponent(since)}`;
+      return callDistribution(opts, doFetch, timeoutMs, path, { method: "GET" }, bounceStatsResponseSchema, "Distribution response missing unmatched/ignored");
     },
   };
 }

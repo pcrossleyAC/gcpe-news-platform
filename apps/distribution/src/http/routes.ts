@@ -1,8 +1,9 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
+import { sql } from "drizzle-orm";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { requireRole } from "@gcpe/auth";
-import { bounceInbox } from "../db/schema";
+import { bounceInbox, bounces } from "../db/schema";
 import * as messagesService from "../messages";
 import * as settingsService from "../settings";
 
@@ -16,6 +17,12 @@ const safe = <P>(h: Handler<P>) => (req: Request<P>, res: Response, next: NextFu
 const BOUNCE_INBOX_MAX_BYTES = 1024 * 1024;
 const bounceInboxUploadSchema = z.object({
   raw: z.string().refine((s) => Buffer.byteLength(s, "utf8") <= BOUNCE_INBOX_MAX_BYTES, { message: `raw exceeds ${BOUNCE_INBOX_MAX_BYTES} bytes` }),
+});
+
+// 4e: NoD's daily bounce summary's own query (bounce-summary.ts) -- `since` is validated as a
+// parseable instant before it ever reaches the database.
+const bounceStatsQuerySchema = z.object({
+  since: z.string().refine((s) => !Number.isNaN(Date.parse(s)), { message: "since must be a valid date" }),
 });
 
 /**
@@ -125,6 +132,27 @@ export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake
     requireRole("Distribution.Operate"),
     run(async (_req, res) => {
       res.json({ source: bounceSource });
+    }),
+  );
+
+  // 4e: feeds NoD's daily bounce summary (bounce-summary.ts) the two counts it can't get from
+  // its own database -- bounces that never matched a message NoD sent, and messages that
+  // weren't bounces at all (Global Constraints "Summary email": "counts of unmatched and
+  // ignored messages"). `processed_at` (not `received_at`) is what bounds the window, the same
+  // instant run.ts stamps every row with when it fetched and classified it.
+  r.get(
+    "/bounces/stats",
+    requireRole("Distribution.Operate"),
+    run(async (req, res) => {
+      const { since } = bounceStatsQuerySchema.parse(req.query);
+      const { rows } = await db.execute<{ unmatched: number; ignored: number }>(sql`
+        SELECT
+          count(*) FILTER (WHERE kind = 'bounce' AND matched = false)::int AS unmatched,
+          count(*) FILTER (WHERE kind = 'ignored')::int AS ignored
+        FROM ${bounces}
+        WHERE processed_at > ${new Date(since)}
+      `);
+      res.json({ unmatched: rows[0]?.unmatched ?? 0, ignored: rows[0]?.ignored ?? 0 });
     }),
   );
 

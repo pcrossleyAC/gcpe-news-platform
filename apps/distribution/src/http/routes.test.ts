@@ -4,6 +4,7 @@ import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { mintLocalToken } from "@gcpe/auth";
 import { createDistributionTestDb, sampleMessageRequest } from "../../test/helpers";
+import { bounces } from "../db/schema";
 import { createApp } from "../app";
 
 const issuer = "https://login.microsoftonline.com/t/v2.0";
@@ -333,6 +334,46 @@ describe("Distribution HTTP API", () => {
       const source = await request(graphModeApp).get("/api/bounces/source").set("authorization", `Bearer ${operator}`);
       expect(source.status).toBe(200);
       expect(source.body).toEqual({ source: "graph" });
+    });
+  });
+
+  describe("GET /api/bounces/stats", () => {
+    const sourceId = (n: number) => `stats-src-${n}`;
+
+    it("401s without a token, 403s without Distribution.Operate", async () => {
+      const since = new Date().toISOString();
+      expect((await request(app).get(`/api/bounces/stats?since=${since}`)).status).toBe(401);
+      expect((await request(app).get(`/api/bounces/stats?since=${since}`).set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    });
+
+    it("400s a missing or invalid since", async () => {
+      expect((await request(app).get("/api/bounces/stats").set("authorization", `Bearer ${operator}`)).status).toBe(400);
+      expect((await request(app).get("/api/bounces/stats?since=not-a-date").set("authorization", `Bearer ${operator}`)).status).toBe(400);
+    });
+
+    it("counts unmatched bounces and ignored messages processed since the given instant, excluding matched bounces and anything processed before it", async () => {
+      const since = new Date();
+      await tdb.db.insert(bounces).values([
+        // Before the window -- excluded no matter its kind/matched state.
+        { sourceId: sourceId(1), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() - 60_000) },
+        // After the window: an unmatched hard bounce (counts), a matched one (doesn't), and
+        // two ignored (non-bounce) messages (count as ignored, not unmatched).
+        { sourceId: sourceId(2), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() + 1_000) },
+        { sourceId: sourceId(3), raw: "x", kind: "bounce", matched: true, processedAt: new Date(since.getTime() + 2_000) },
+        { sourceId: sourceId(4), raw: "x", kind: "ignored", matched: false, processedAt: new Date(since.getTime() + 3_000) },
+        { sourceId: sourceId(5), raw: "x", kind: "ignored", matched: false, processedAt: new Date(since.getTime() + 4_000) },
+      ]);
+
+      const res = await request(app).get(`/api/bounces/stats?since=${since.toISOString()}`).set("authorization", `Bearer ${operator}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ unmatched: 1, ignored: 2 });
+    });
+
+    it("zero counts when nothing was processed since the given instant", async () => {
+      const farFuture = new Date(Date.now() + 365 * 24 * 3_600_000).toISOString();
+      const res = await request(app).get(`/api/bounces/stats?since=${farFuture}`).set("authorization", `Bearer ${operator}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ unmatched: 0, ignored: 0 });
     });
   });
 });

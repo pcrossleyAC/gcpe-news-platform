@@ -302,3 +302,45 @@ export function apiRoutes(
 
   return r;
 }
+
+const bouncesInboxUploadSchema = z.object({ raw: z.string() });
+
+/**
+ * `POST /api/bounces/inbox` (`NoD.Admin`): proxies one raw bounce report to Distribution's own
+ * fake-inbox upload (Global Constraints "Roles"), for staff manually uploading a test-site
+ * bounce `.eml` through NoD rather than hitting Distribution directly. Distribution's own 1 MB
+ * limit (Global Constraints "Bounce source") is enforced there, not re-validated here; a raw
+ * message near that size is well over the shared `/api` mount's 100kb `express.json` limit
+ * (app.ts), which is why this is mounted as its own route with a larger body limit instead of
+ * living in {@link apiRoutes} alongside everything else NoD.Admin can do.
+ *
+ * Distribution 404s this when it isn't running in fake mode (nothing to upload into); that's
+ * the one DistributionError this maps to its own 404 instead of the generic 502 every other
+ * Distribution failure gets (handleError, above).
+ */
+export function bouncesInboxRoutes(distribution: Pick<DistributionClient, "uploadBounce">): Router {
+  const r = Router();
+  const run = <P>(h: Handler<P>): ReturnType<typeof safe<P>> =>
+    safe<P>(async (req, res) => {
+      try {
+        await h(req, res);
+      } catch (e) {
+        if (e instanceof DistributionError && e.status === 404) {
+          return void res.status(404).json({ error: "not available: the bounce source isn't the fake inbox" });
+        }
+        if (!handleError(e, res)) throw e;
+      }
+    });
+
+  r.post(
+    "/",
+    requireRole("NoD.Admin"),
+    run(async (req, res) => {
+      const { raw } = bouncesInboxUploadSchema.parse(req.body);
+      const result = await distribution.uploadBounce(raw);
+      res.status(201).json(result);
+    }),
+  );
+
+  return r;
+}

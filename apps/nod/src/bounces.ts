@@ -9,9 +9,11 @@ import { normaliseEmail } from "./subscribe/info";
 
 /** The threshold rule (spec §7, legacy `DistributionProvider.cs:465-506`): once a subscriber's
  * 10 most recent attempted deliveries within this many days are all hard-bounced, they're acted
- * on (disabled, or flagged if they're a media-list member). */
-const HARD_BOUNCE_THRESHOLD = 10;
-const THRESHOLD_WINDOW_DAYS = 15;
+ * on (disabled, or flagged if they're a media-list member). Exported: the daily bounce summary
+ * (bounce-summary.ts) reports the same "n/15d" count for a subscriber who hasn't yet tripped
+ * this. */
+export const HARD_BOUNCE_THRESHOLD = 10;
+export const THRESHOLD_WINDOW_DAYS = 15;
 const THRESHOLD_WINDOW_MS = THRESHOLD_WINDOW_DAYS * 24 * 3_600_000;
 
 /** Matching fallback (Global Constraints "NoD threshold"), mirroring Distribution's own
@@ -21,7 +23,9 @@ const THRESHOLD_WINDOW_MS = THRESHOLD_WINDOW_DAYS * 24 * 3_600_000;
 const FALLBACK_MATCH_WINDOW_DAYS = 4;
 const FALLBACK_MATCH_WINDOW_MS = FALLBACK_MATCH_WINDOW_DAYS * 24 * 3_600_000;
 
-const BOUNCE_ACTOR = "distribution-bounce";
+/** Exported so the daily bounce summary (bounce-summary.ts) can find the same history rows
+ * this module writes, by the same actor, without duplicating the literal string. */
+export const BOUNCE_ACTOR = "distribution-bounce";
 
 export interface BounceOptions {
   /** NoD's own appId, exactly as Distribution would record it for a message NoD sent (see
@@ -108,6 +112,24 @@ async function thresholdTripped(tx: Tx, subscriberId: string): Promise<boolean> 
      LIMIT ${HARD_BOUNCE_THRESHOLD}
   `);
   return rows.length === HARD_BOUNCE_THRESHOLD && rows.every((r) => r.bounced === true);
+}
+
+/**
+ * How many of this subscriber's *emails* -- grouped exactly as {@link thresholdTripped} groups
+ * them -- are hard-bounced within the same {@link THRESHOLD_WINDOW_DAYS}-day window, with no
+ * `LIMIT 10`: the daily bounce summary's own "recorded (n/15d)" count (bounce-summary.ts),
+ * which needs the real count, not just whether it's already tripped the threshold.
+ */
+export async function countBouncedEmails(tx: Tx, subscriberId: string): Promise<number> {
+  const { rows } = await tx.execute<{ bounced: boolean }>(sql`
+    SELECT bool_or(hard_bounced_at IS NOT NULL) AS bounced
+      FROM deliveries
+     WHERE subscriber_id = ${subscriberId}
+       AND attempted_at IS NOT NULL
+       AND attempted_at >= now() - ${sqlInterval(THRESHOLD_WINDOW_MS)}
+     GROUP BY COALESCE(distribution_batch_id::text, job_id::text, item_key || mode)
+  `);
+  return rows.filter((r) => r.bounced === true).length;
 }
 
 /**
