@@ -73,4 +73,17 @@ describe("HistoryScreen", () => {
     renderAt();
     expect(await screen.findByText("Subscriber not found.")).toBeInTheDocument();
   });
+
+  it("a load failure other than 404 shows an error instead of staying on Loading", async () => {
+    stub(["NoD.Viewer"], () => [500, { error: "internal error" }]);
+    renderAt();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this subscriber's history.");
+    expect(screen.queryByText("Loading…")).toBeNull();
+  });
+
+  it("shows a truncation notice when the server reports the list was cut off", async () => {
+    stub(["NoD.Viewer"], () => [200, { items: [{ at: "2026-10-01T17:00:00.000Z", actor: "subscriber", action: "subscribed", detail: "" }], truncated: true }]);
+    renderAt();
+    expect(await screen.findByText("Showing the most recent 500 entries.")).toBeInTheDocument();
+  });
 });

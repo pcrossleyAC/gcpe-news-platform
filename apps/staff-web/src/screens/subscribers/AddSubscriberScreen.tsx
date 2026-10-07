@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { Button, Form, TextField } from "@bcgov/design-system-react-components";
+import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
@@ -37,6 +37,7 @@ export function AddSubscriberScreen(): React.JSX.Element {
   const navigate = useNavigate();
 
   const [options, setOptions] = useState<ListOptions | null>(null);
+  const [optionsError, setOptionsError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
   const [allNews, setAllNews] = useState(false);
@@ -51,9 +52,14 @@ export function AddSubscriberScreen(): React.JSX.Element {
   // this is the defense-in-depth check for a direct deep link (same pattern as UsersScreen).
   useEffect(() => {
     if (!canEdit) return;
-    apiFetch<ListOptions>("/nod/api/subscriber-list-options").then(setOptions, () => {
+    apiFetch<ListOptions>("/nod/api/subscriber-list-options").then(
+      (o) => {
+        setOptions(o);
+        setOptionsError(null);
+      },
       // The form still renders with no lists offered; "All news" alone still works.
-    });
+      () => setOptionsError("Couldn't load the list of lists. “All news” still works."),
+    );
   }, [canEdit]);
 
   if (!canEdit) {
@@ -109,6 +115,7 @@ export function AddSubscriberScreen(): React.JSX.Element {
     <div className="gcpe-subscribers__add">
       <h1>Add a subscriber</h1>
       <Form onSubmit={onSubmit} aria-label="Add a subscriber">
+        {optionsError && <InlineAlert variant="danger" role="alert" description={optionsError} />}
         {messages.map((m) => (
           <p role="alert" key={m}>
             {m}

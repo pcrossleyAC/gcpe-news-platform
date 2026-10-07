@@ -85,11 +85,13 @@ describe("staff subscriber reads", () => {
       { subscriberId: s.id, actor: "subscriber", action: "subscribed", at: new Date("2026-10-01T00:00:00Z") },
       { subscriberId: s.id, actor: "Jamie", action: "staff-deactivated", at: new Date("2026-10-02T00:00:00Z") },
     ]);
-    expect((await listHistory(tdb.db, s.id))!.map((h) => h.action)).toEqual(["staff-deactivated", "subscribed"]);
+    const h = await listHistory(tdb.db, s.id);
+    expect(h!.items.map((e) => e.action)).toEqual(["staff-deactivated", "subscribed"]);
+    expect(h!.truncated).toBe(false);
     expect(await listHistory(tdb.db, "00000000-0000-0000-0000-000000000000")).toBeNull();
   });
 
-  it("history is truncated to HISTORY_LIMIT, keeping the newest rows", async () => {
+  it("history is truncated to HISTORY_LIMIT, keeping the newest rows, and says so", async () => {
     const s = await add("many-history@example.test");
     const base = Date.parse("2026-10-01T00:00:00Z");
     await tdb.db.insert(subscriberHistory).values(
@@ -101,11 +103,12 @@ describe("staff subscriber reads", () => {
       })),
     );
     const h = await listHistory(tdb.db, s.id);
-    expect(h).toHaveLength(HISTORY_LIMIT);
+    expect(h!.items).toHaveLength(HISTORY_LIMIT);
+    expect(h!.truncated).toBe(true);
     // Newest is index HISTORY_LIMIT (HISTORY_LIMIT + 1 rows, 0-indexed); the oldest row
     // (index 0) is the one that falls off the limit.
-    expect(h![0]!.at.getTime()).toBe(base + HISTORY_LIMIT * 1000);
-    expect(h![h!.length - 1]!.at.getTime()).toBe(base + 1000);
+    expect(h!.items[0]!.at.getTime()).toBe(base + HISTORY_LIMIT * 1000);
+    expect(h!.items[h!.items.length - 1]!.at.getTime()).toBe(base + 1000);
   });
 
   it("detail counts bounced emails within the window, excluding any attempted before bounce_window_from", async () => {

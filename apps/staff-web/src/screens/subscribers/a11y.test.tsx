@@ -1,4 +1,5 @@
-/** axe checks for the Subscribers section (task-5-brief.md's "axe clean on every screen"). */
+/** axe checks for the Subscribers section: every screen stays free of serious/critical
+ * WCAG 2a/2aa violations, including with a confirm dialog open. */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";

@@ -151,13 +151,16 @@ function StatusSection({ detail, onChanged }: { detail: SubscriberDetail; onChan
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [deactivateOpen, setDeactivateOpen] = useState(false);
+  const [activated, setActivated] = useState(false);
 
   const postStatus = async (status: "active" | "disabled") => {
     setBusy(true);
     setError(null);
+    setActivated(false);
     try {
       await apiFetch(`/nod/api/subscribers/${detail.id}/status`, { method: "POST", body: { status } });
       setDeactivateOpen(false);
+      if (status === "active") setActivated(true);
       onChanged();
     } catch (caught) {
       if (caught instanceof ApiError && caught.status === 409) {
@@ -174,6 +177,7 @@ function StatusSection({ detail, onChanged }: { detail: SubscriberDetail; onChan
   return (
     <div className="gcpe-subscriber__status-actions">
       {error && <InlineAlert variant="danger" role="alert" description={error} />}
+      {activated && <p role="status">Activated. Their bounce count starts again.</p>}
       {detail.status === "disabled" && (
         // Reversible and harmless (unlike Deactivate/Delete), so this posts at once with no
         // confirm dialog.
@@ -239,12 +243,24 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
       setConfirmEmail("");
       onChanged();
     } catch (caught) {
-      const body = caught instanceof ApiError && caught.status === 409 && caught.body && typeof caught.body === "object" ? (caught.body as { error?: unknown; id?: unknown }) : undefined;
+      const body =
+        caught instanceof ApiError && caught.status === 409 && caught.body && typeof caught.body === "object"
+          ? (caught.body as { error?: unknown; id?: unknown; status?: unknown })
+          : undefined;
       if (body?.error === "email-taken") {
         setMessages(["Another subscriber record already has that address."]);
         setTakenId(typeof body.id === "string" ? body.id : null);
       } else if (body?.error === "media-hub-managed") {
         setMessages(["This address comes from Media Hub."]);
+      } else if (body?.error === "status") {
+        // SubscriberStateError, from a race (e.g. another staff member just deleted this row,
+        // or it's pending) — the UI already hides this form for pending/deleted, so this is a
+        // fallback, not the normal path. No address in either copy, same as every message here.
+        setMessages([
+          body.status === "deleted"
+            ? "This subscriber has unsubscribed or been deleted, so their address can't be changed."
+            : "This subscriber hasn't confirmed their email yet, so their address can't be changed.",
+        ]);
       } else {
         setMessages(messagesOf(caught));
       }
@@ -262,8 +278,28 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
         </p>
       ))}
       {takenId && <Link to={`/subscribers/${takenId}`}>Open that record</Link>}
-      <TextField label="New email" type="email" value={email} onChange={setEmail} isDisabled={busy} maxLength={MAX_EMAIL_LENGTH} />
-      <TextField label="Confirm new email" type="email" value={confirmEmail} onChange={setConfirmEmail} isDisabled={busy} maxLength={MAX_EMAIL_LENGTH} />
+      <TextField
+        label="New email"
+        type="email"
+        value={email}
+        onChange={(v) => {
+          setEmail(v);
+          setTakenId(null);
+        }}
+        isDisabled={busy}
+        maxLength={MAX_EMAIL_LENGTH}
+      />
+      <TextField
+        label="Confirm new email"
+        type="email"
+        value={confirmEmail}
+        onChange={(v) => {
+          setConfirmEmail(v);
+          setTakenId(null);
+        }}
+        isDisabled={busy}
+        maxLength={MAX_EMAIL_LENGTH}
+      />
       <Button type="submit" isDisabled={busy}>
         Change email
       </Button>
@@ -336,6 +372,7 @@ export function SubscriberScreen(): React.JSX.Element {
 
   const [detail, setDetail] = useState<SubscriberDetail | null>(null);
   const [notFound, setNotFound] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [options, setOptions] = useState<ListOptions | null>(null);
 
   const reload = useCallback(() => {
@@ -343,9 +380,14 @@ export function SubscriberScreen(): React.JSX.Element {
       (d) => {
         setDetail(d);
         setNotFound(false);
+        setLoadError(null);
       },
       (caught) => {
-        if (caught instanceof ApiError && caught.status === 404) setNotFound(true);
+        if (caught instanceof ApiError && caught.status === 404) {
+          setNotFound(true);
+          return;
+        }
+        setLoadError("Couldn't load this subscriber.");
       },
     );
   }, [id]);
@@ -366,6 +408,15 @@ export function SubscriberScreen(): React.JSX.Element {
     );
   }
 
+  if (loadError && !detail) {
+    return (
+      <div className="gcpe-subscriber">
+        <h1>Subscriber</h1>
+        <InlineAlert variant="danger" role="alert" description={loadError} />
+      </div>
+    );
+  }
+
   if (!detail) {
     return (
       <div className="gcpe-subscriber">
@@ -380,6 +431,7 @@ export function SubscriberScreen(): React.JSX.Element {
   return (
     <div className="gcpe-subscriber">
       <h1>Subscriber</h1>
+      {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       <p>{detail.email}</p>
 
       <dl>
@@ -422,7 +474,10 @@ export function SubscriberScreen(): React.JSX.Element {
       {canEdit && detail.status !== "deleted" && (
         <>
           <StatusSection detail={detail} onChanged={reload} />
-          <ChangeEmailSection detail={detail} onChanged={reload} />
+          {/* Changing a pending subscriber's address would leave a row that can never be
+           * confirmed (the only way in is the verify link sent to the original address) — the
+           * server refuses it (SubscriberStateError), and this hides the dead end up front. */}
+          {detail.status !== "pending" && <ChangeEmailSection detail={detail} onChanged={reload} />}
           <DeleteSection detail={detail} onDeleted={reload} />
         </>
       )}

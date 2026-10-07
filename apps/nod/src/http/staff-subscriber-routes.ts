@@ -130,9 +130,9 @@ export function staffSubscriberRoutes(db: Db): Router {
   }));
 
   r.get("/subscribers/:id/history", read, withId(async (id, _req, res) => {
-    const items = await listHistory(db, id);
-    if (!items) return notFound(res);
-    res.json({ items });
+    const page = await listHistory(db, id);
+    if (!page) return notFound(res);
+    res.json(page);
   }));
 
   r.put("/subscribers/:id/preferences", write, withId(async (id, req, res) => {

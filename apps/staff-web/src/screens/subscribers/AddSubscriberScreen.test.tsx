@@ -12,7 +12,7 @@ const OPTIONS = { categories: [{ key: "ministries", name: "Ministries", lists: [
 type Call = { url: string; method: string; body: unknown };
 type AddReply = { status: number; body: unknown };
 
-function stub(roles: string[], onAdd?: (body: unknown) => AddReply) {
+function stub(roles: string[], onAdd?: (body: unknown) => AddReply, opts: { listOptionsFails?: boolean } = {}) {
   const calls: Call[] = [];
   vi.stubGlobal(
     "fetch",
@@ -21,7 +21,7 @@ function stub(roles: string[], onAdd?: (body: unknown) => AddReply) {
       calls.push({ url, method: init?.method ?? "GET", body });
       if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
       if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-      if (url === "/nod/api/subscriber-list-options") return jsonResponse(200, OPTIONS);
+      if (url === "/nod/api/subscriber-list-options") return opts.listOptionsFails ? jsonResponse(500, { error: "internal error" }) : jsonResponse(200, OPTIONS);
       if (url === "/nod/api/subscribers" && init?.method === "POST") {
         const reply = onAdd?.(body) ?? { status: 201, body: { id: "33333333-3333-3333-3333-333333333333" } };
         return jsonResponse(reply.status, reply.body);
@@ -113,5 +113,14 @@ describe("AddSubscriberScreen", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Add a subscriber" })).toBeInTheDocument();
     expect(await screen.findByText("You don’t have permission to add subscribers.")).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Email/)).toBeNull();
+  });
+
+  it("shows an alert when the list options fail to load, and the form still works", async () => {
+    stub(["NoD.Editor"], undefined, { listOptionsFails: true });
+    renderAt();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load the list of lists.");
+    // The form itself still renders and "All news" alone still works with no lists offered.
+    expect(await screen.findByLabelText(/^Email/)).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "All news" })).toBeInTheDocument();
   });
 });

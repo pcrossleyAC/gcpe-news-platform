@@ -63,7 +63,7 @@ function stub(roles: string[], getDetail: () => SubscriberDetail, responses: Rec
       if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Jamie Staff", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
       if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
       if (url === "/nod/api/subscriber-list-options") return jsonResponse(200, OPTIONS);
-      if (method === "GET" && url === `/nod/api/subscribers/${ID}`) return jsonResponse(200, getDetail());
+      if (method === "GET" && url === `/nod/api/subscribers/${ID}` && !responses[`GET ${url}`]) return jsonResponse(200, getDetail());
       const handler = responses[`${method} ${url}`];
       if (handler) {
         const [status, respBody] = handler(body);
@@ -159,6 +159,7 @@ describe("SubscriberScreen", () => {
     await user.click(await screen.findByRole("button", { name: "Activate" }));
     await waitFor(() => expect(calls.find((c) => c.method === "POST" && c.url.endsWith("/status"))?.body).toEqual({ status: "active" }));
     expect(await screen.findByText("Active")).toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("Activated. Their bounce count starts again.");
   });
 
   it("Deactivate asks first", async () => {
@@ -222,6 +223,11 @@ describe("SubscriberScreen", () => {
     await user.click(screen.getByRole("button", { name: "Change email" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("Another subscriber record already has that address.");
     expect(await screen.findByRole("link", { name: "Open that record" })).toHaveAttribute("href", `/subscribers/${OTHER_ID}`);
+
+    // Editing the address again means they're trying something else — the stale link to the
+    // other record shouldn't linger once it no longer matches what's in the fields.
+    await user.type(screen.getByLabelText("New email"), "z");
+    expect(screen.queryByRole("link", { name: "Open that record" })).toBeNull();
   });
 
   it("a Media Hub member's email can't be changed here", async () => {
@@ -230,5 +236,34 @@ describe("SubscriberScreen", () => {
     await screen.findByText("pat@example.test");
     expect(screen.queryByRole("button", { name: "Change email" })).toBeNull();
     expect(screen.getByText("This address comes from Media Hub.")).toBeInTheDocument();
+  });
+
+  it("change email is hidden for a pending subscriber", async () => {
+    stub(["NoD.Editor"], () => detail({ status: "pending", disabledReason: null }));
+    renderAt();
+    await screen.findByText("pat@example.test");
+    expect(screen.queryByRole("button", { name: "Change email" })).toBeNull();
+    expect(screen.queryByText("This address comes from Media Hub.")).toBeNull();
+  });
+
+  it("a 409 status error during change email shows clear copy with no address in it", async () => {
+    stub(["NoD.Editor"], () => detail({ status: "active", disabledReason: null }), {
+      [`POST /nod/api/subscribers/${ID}/email`]: () => [409, { error: "status", status: "pending" }],
+    });
+    renderAt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("New email"), "new@example.test");
+    await user.type(screen.getByLabelText("Confirm new email"), "new@example.test");
+    await user.click(screen.getByRole("button", { name: "Change email" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("This subscriber hasn't confirmed their email yet, so their address can't be changed.");
+    expect(alert.textContent).not.toMatch(/@/);
+  });
+
+  it("a load failure other than 404 shows an error instead of staying on Loading", async () => {
+    stub(["NoD.Viewer"], () => detail(), { [`GET /nod/api/subscribers/${ID}`]: () => [500, { error: "internal error" }] });
+    renderAt();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load this subscriber.");
+    expect(screen.queryByText("Loading…")).toBeNull();
   });
 });

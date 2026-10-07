@@ -9,7 +9,7 @@ import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { Pagination } from "../releases/Pagination";
 import { canEditSubscribers } from "./access";
 import { STATUS_FILTER_OPTIONS, STATUS_LABELS, timingLabel } from "./labels";
-import type { BulkAction, BulkResult, StatusFilter, SubscriberPage } from "./types";
+import type { BulkAction, BulkResult, BulkSkipReason, StatusFilter, SubscriberPage } from "./types";
 
 const BULK_COPY: Record<BulkAction, { verb: string; title: (n: number) => string; body: string; variant: "warning" | "destructive" }> = {
   activate: {
@@ -34,7 +34,7 @@ const BULK_COPY: Record<BulkAction, { verb: string; title: (n: number) => string
 
 /** apps/nod/src/staff-subscribers/actions.ts's BulkSkipReason, "error" included — an
  * unexpected failure on that one row, worth retrying. */
-const SKIP_TEXT: Record<string, string> = {
+const SKIP_TEXT: Record<BulkSkipReason, string> = {
   unchanged: "already in that state",
   status: "not allowed from their status",
   "not-found": "no longer exist",

@@ -37,6 +37,7 @@ export interface SubscriberDetail extends SubscriberSummary {
   bounceWindowDays: number;
 }
 export interface HistoryEntry { at: Date; actor: string; action: string; detail: string }
+export interface HistoryPage { items: HistoryEntry[]; truncated: boolean }
 export interface ListOptions { categories: { key: string; name: string; lists: { listKey: string; name: string }[] }[] }
 
 /** Escapes LIKE's metacharacters so a staff search for `pat_smith` or `100%` matches those
@@ -111,10 +112,12 @@ export async function getSubscriberDetail(db: DbOrTx, id: string): Promise<Subsc
   };
 }
 
-export async function listHistory(db: DbOrTx, id: string): Promise<HistoryEntry[] | null> {
+/** Fetches one row past the limit so truncation can be reported without a separate count
+ * query; the extra row is dropped before returning. */
+export async function listHistory(db: DbOrTx, id: string): Promise<HistoryPage | null> {
   const [s] = await db.select({ id: subscribers.id }).from(subscribers).where(eq(subscribers.id, id));
   if (!s) return null;
-  return db
+  const rows = await db
     .select({ at: subscriberHistory.at, actor: subscriberHistory.actor, action: subscriberHistory.action, detail: subscriberHistory.detail })
     .from(subscriberHistory)
     .where(eq(subscriberHistory.subscriberId, id))
@@ -122,7 +125,9 @@ export async function listHistory(db: DbOrTx, id: string): Promise<HistoryEntry[
     // it isn't chronological, just deterministic, since `subscriber_history` has no sequence
     // column and two rows written in the same transaction can share an identical `at`.
     .orderBy(desc(subscriberHistory.at), desc(subscriberHistory.id))
-    .limit(HISTORY_LIMIT);
+    .limit(HISTORY_LIMIT + 1);
+  const truncated = rows.length > HISTORY_LIMIT;
+  return { items: truncated ? rows.slice(0, HISTORY_LIMIT) : rows, truncated };
 }
 
 /** What the staff preferences form offers: active lists in enabled public categories (the

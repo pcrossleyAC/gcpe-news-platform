@@ -57,7 +57,7 @@ describe("staff subscriber routes — reads", () => {
 
   it("detail and history: 404 for a non-uuid or unknown id", async () => {
     expect((await get(`/api/subscribers/${patId}`, viewer)).body).toMatchObject({ id: patId, listKeys: [], mediaLists: [] });
-    expect((await get(`/api/subscribers/${patId}/history`, viewer)).body).toEqual({ items: [] });
+    expect((await get(`/api/subscribers/${patId}/history`, viewer)).body).toEqual({ items: [], truncated: false });
     expect((await get("/api/subscribers/not-a-uuid", viewer)).status).toBe(404);
     expect((await get("/api/subscribers/00000000-0000-0000-0000-000000000000/history", viewer)).status).toBe(404);
   });
