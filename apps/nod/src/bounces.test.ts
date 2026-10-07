@@ -97,7 +97,7 @@ async function deliveriesFor(db: TestDatabase["db"], subscriberId: string, itemK
 }
 
 async function historyActions(db: TestDatabase["db"], subscriberId: string) {
-  const rows = await db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, subscriberId));
+  const rows = await db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, subscriberId)).orderBy(subscriberHistory.at);
   return rows.map((r) => r.action);
 }
 
@@ -266,8 +266,10 @@ describe("onDeliveryBounced", () => {
 
   // A media member who keeps being sent to (and keeps bouncing) re-trips the threshold on
   // every later hard bounce -- once already flagged "bouncing", that must write no second
-  // history row and must not reset attention_at.
-  it("a media member who re-trips the threshold after already being flagged gets no second bounce-flagged row", async () => {
+  // bounce-flagged row and must not reset attention_at, but legacy listed every bounce of a
+  // flagged media member, so each later one is still recorded -- it shows as a hard line in
+  // the daily summary, in bold.
+  it("a media member who re-trips the threshold after already being flagged gets no second bounce-flagged row, but is still recorded", async () => {
     const sub = await insertSubscriber(tdb.db, "journo-rebounce@example.test");
     await tdb.db.insert(subscriptions).values({ subscriberId: sub.id, listKey: "media-distribution-lists:budget" });
     for (let i = 1; i <= 9; i++) {
@@ -286,11 +288,11 @@ describe("onDeliveryBounced", () => {
     await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "journo-rebounce-11", attemptedAt: new Date(), distributionBatchId: secondBatchId });
     const secondResult = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "journo-rebounce@example.test", batchId: secondBatchId, hard: true }), OPTS));
 
-    expect(secondResult).toEqual({ matched: true, action: "flagged" });
+    expect(secondResult).toEqual({ matched: true, action: "recorded" });
     const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, sub.id));
     expect(after!.needsAttention).toBe("bouncing");
     expect(after!.attentionAt!.getTime()).toBe(firstAttentionAt.getTime()); // not reset
-    expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-flagged"]); // still just one
+    expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-flagged", "bounce-recorded"]); // one of each, in order
   });
 
   it("the same hard-bounce event processed twice writes only one history row", async () => {

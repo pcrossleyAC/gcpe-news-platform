@@ -182,14 +182,11 @@ export async function onDeliveryBounced(tx: Tx, event: EventEnvelope, opts: Boun
       await writeHistory(tx, subscriber.id, BOUNCE_ACTOR, "bounce-flagged");
       return { matched: true, action: "flagged" };
     }
-    if (subscriber.needsAttention === "bouncing") {
-      // Already flagged "bouncing" by an earlier trip of this same threshold -- nothing new
-      // happened, so nothing new is written (no second bounce-flagged row, no attention_at
-      // reset).
-      return { matched: true, action: "flagged" };
-    }
-    // Flagged for something else entirely (e.g. a Media Hub sync collision) -- that reason is
-    // never overwritten, but staff should still see that this bounce happened.
+    // Already flagged -- "bouncing" from an earlier trip of this same threshold, or something
+    // else entirely (e.g. a Media Hub sync collision). Either way the existing flag and its
+    // attention_at are never overwritten and no second bounce-flagged row is written, but
+    // staff still need to see this bounce: legacy listed every bounce of a flagged media
+    // member, every time.
     await writeHistory(tx, subscriber.id, BOUNCE_ACTOR, "bounce-recorded", data.status);
     return { matched: true, action: "recorded" };
   }
