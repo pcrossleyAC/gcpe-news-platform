@@ -73,4 +73,13 @@ describe("distribution env", () => {
   it("accepts a valid MAIL_REPLY_TO", () => {
     expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_REPLY_TO: "reply@example.com" }).MAIL_REPLY_TO).toBe("reply@example.com");
   });
+  it("defaults MAIL_RATE_PER_MINUTE to 60", () => {
+    expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true" }).MAIL_RATE_PER_MINUTE).toBe(60);
+  });
+  it("accepts a MAIL_RATE_PER_MINUTE override", () => {
+    expect(distributionEnvSchema.parse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_RATE_PER_MINUTE: "10" }).MAIL_RATE_PER_MINUTE).toBe(10);
+  });
+  it("rejects MAIL_RATE_PER_MINUTE=0 — no \"unlimited\" value, so a typo can't remove the cap", () => {
+    expect(distributionEnvSchema.safeParse({ ...base, MAIL_ALLOW_REAL_RECIPIENTS: "true", MAIL_RATE_PER_MINUTE: "0" }).success).toBe(false);
+  });
 });

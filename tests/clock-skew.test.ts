@@ -123,9 +123,9 @@ describe.each([
       },
     } as unknown as Transporter;
     const result = await sendDue({ db: distributionDb.db, transport, from: "news@example.com", redirectTo: [], maxMessageAgeMs: SHORT_MAX_AGE_MS });
-    expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
     expectAbout(lockFromDbNow!, lockMs);
-    expect(replica).toEqual({ sent: 0, retried: 0, failed: 0 });
+    expect(replica).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: false });
     expectAbout(await msFromDbNow(distributionDb, "messages", "next_attempt_at", "email = $1", ["skew@example.com"]), 30_000 * 2 ** 1);
   });
 

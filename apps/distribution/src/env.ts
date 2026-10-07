@@ -72,6 +72,10 @@ export const distributionEnvSchema = z
     // Legacy's configured core domains (CommonMethods.cs's ExchangeMailDomains) — recipients
     // here get priority.ts's +2 bump by default.
     INTERNAL_DOMAINS: commaList("gov.bc.ca,leg.bc.ca"),
+    // C58/spec §6: the database-enforced per-minute send cap (sender.ts), shared across every
+    // worker through send_rate_windows. Minimum 1 — no "unlimited" value, so a typo can't
+    // remove the cap.
+    MAIL_RATE_PER_MINUTE: z.coerce.number().int().min(1).default(60),
     SEND_INTERVAL_MS: z.coerce.number().int().default(2000),
     // P2-R27: longest pause after an SMTP outage deferral (sender.ts startSender) — bounds how
     // long sending takes to resume once the server is back.

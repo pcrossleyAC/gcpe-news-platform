@@ -25,6 +25,12 @@ export interface SendOptions {
    * makes (claim, lock, backoff, sent_at, age). Production omits it and the database's clock is
    * used throughout — see {@link sendDue}. */
   now?: TestClock;
+  /** C58/spec §6: the database-enforced per-minute send cap, shared across every worker
+   * through the `send_rate_windows` table — a worker may claim at most `ratePerMinute` minus
+   * what's already been claimed this minute, counted whether or not a claimed row's send
+   * succeeds. Defaults to {@link DEFAULT_RATE_PER_MINUTE} when omitted; start.ts always supplies
+   * env.ts's own `MAIL_RATE_PER_MINUTE` (minimum 1). */
+  ratePerMinute?: number;
   batchSize?: number;
   /** Worst-case time a single message's *send* can take: the sum of the transport's
    * connection, greeting and socket timeouts. Together with `verifyTimeoutMs` (a
@@ -62,6 +68,12 @@ export interface SendOptions {
 }
 
 const DEFAULT_BATCH_SIZE = 50;
+// Only reached when a caller omits ratePerMinute (mainly tests exercising something else);
+// start.ts always supplies env.ts's own resolved MAIL_RATE_PER_MINUTE in production.
+const DEFAULT_RATE_PER_MINUTE = 60;
+// How long window rows are kept before the opportunistic cleanup removes them — generous
+// enough that nothing but very old rows is ever touched.
+const RATE_WINDOW_RETENTION_MS = 24 * 3_600_000;
 // Only reached when a caller omits messageIdDomain (mainly tests exercising something else);
 // start.ts always supplies env.ts's own resolved MESSAGE_ID_DOMAIN in production.
 const DEFAULT_MESSAGE_ID_DOMAIN = "localhost";
@@ -291,7 +303,7 @@ export async function sendDue(opts: SendOptions): Promise<SendResult> {
   return (await runSend(opts)).result;
 }
 
-type SendResult = { sent: number; retried: number; failed: number };
+type SendResult = { sent: number; retried: number; failed: number; rateLimited: boolean };
 
 /** sendDue's body, also reporting (for startSender's outage pacing) the backoff given to a row
  * deferred because the SMTP server/config itself was unavailable, if this run hit one. */
@@ -300,34 +312,72 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
   const perMessageMs = opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS;
   const verifyTimeoutMs = opts.verifyTimeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
   const maxMessageAgeMs = opts.maxMessageAgeMs ?? DEFAULT_MAX_MESSAGE_AGE_MS;
+  const ratePerMinute = opts.ratePerMinute ?? DEFAULT_RATE_PER_MINUTE;
   const { lockMs, lockMarginMs } = resolveLock({ batchSize, perMessageMs, verifyTimeoutMs, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
   const redirect = opts.redirectTo.length > 0;
 
-  // Phase 1: claim (a single statement, no network I/O while holding row locks). The `due` CTE
-  // picks the rows in priority order under FOR UPDATE SKIP LOCKED; the outer UPDATE joins
-  // batches for the template content so the claim and the read happen in one round trip. Postgres
-  // doesn't promise UPDATE...RETURNING preserves the CTE's row order, so priority/next_attempt_at
-  // are returned too and the claimed rows are re-sorted in JS below before they're sent.
+  // Phase 1: claim, inside one explicit transaction — the rate-window row's lock and the
+  // claimed message rows' locks are taken and released together, and nothing here does any
+  // network I/O, so the transaction is always short-lived and commits before any sendMail; the
+  // send loop below runs entirely after this transaction returns.
+  //
+  // C58/spec §6: the window row (today's minute, `date_trunc('minute', now())`) is locked with
+  // `SELECT ... FOR UPDATE` *before* the message claim below takes its own row locks — the same
+  // order every caller uses, so two concurrent sendDue calls simply serialise on the window row
+  // (the second blocks for the few milliseconds the first's transaction takes, then sees its
+  // committed `claimed` count) rather than risk a deadlock from acquiring locks in different
+  // orders. `budget` is how many more rows this minute may still claim; the claim's own LIMIT is
+  // whichever of `batchSize` or `budget` is smaller, and `claimed` is incremented by exactly how
+  // many rows were actually claimed (never a full `batchSize`'s worth if fewer were due) — a
+  // claimed row counts against the minute whether or not its send later succeeds.
   const sinceClaim = stopwatch();
   const now = sqlNow(opts.now);
-  const claimed = await opts.db.execute<ClaimedRow>(sql`
-    WITH due AS (
-      SELECT id FROM messages
-       WHERE status = 'pending'
-         AND next_attempt_at <= ${now}
-         AND (locked_until IS NULL OR locked_until < ${now})
-       ORDER BY priority DESC, next_attempt_at, id
-       LIMIT ${batchSize}
-       FOR UPDATE SKIP LOCKED
-    )
-    UPDATE messages m
-       SET locked_until = ${now} + ${sqlInterval(lockMs)}
-      FROM batches b, due
-     WHERE b.id = m.batch_id AND m.id = due.id
-    RETURNING m.id, m.batch_id, jsonb_array_length(b.attachments) > 0 AS has_attachments, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at,
-              b.subject, b.html, b.text, b.headers, b.reply_to, ${ageMsOf(sql`b.created_at`, now)} AS batch_age_ms, ${lockTokenOf(sql`m.locked_until`)} AS lock_token`);
+  const windowStart = sql`date_trunc('minute', ${now})`;
+  const { rows: claimedRows, rateLimited } = await opts.db.transaction(async (tx) => {
+    // Opportunistic cleanup: one row per minute ever claimed from, keyed by its own primary
+    // key, so deleting everything older than a day is cheap even though it runs on every claim.
+    await tx.execute(sql`DELETE FROM send_rate_windows WHERE window_start < ${now} - ${sqlInterval(RATE_WINDOW_RETENTION_MS)}`);
 
-  const rows = claimed.rows.slice().sort((a, b) => {
+    await tx.execute(sql`INSERT INTO send_rate_windows (window_start) VALUES (${windowStart}) ON CONFLICT DO NOTHING`);
+    const { rows: windowRows } = await tx.execute<{ claimed: number }>(
+      sql`SELECT claimed FROM send_rate_windows WHERE window_start = ${windowStart} FOR UPDATE`,
+    );
+    const claimedThisMinute = windowRows[0]?.claimed ?? 0;
+    const budget = ratePerMinute - claimedThisMinute;
+    // True whenever the rate cap — not batchSize — is what bounds (or would bound) the claim
+    // below, regardless of how many rows were actually due to fill it.
+    const rateLimited = budget < batchSize;
+    if (budget <= 0) return { rows: [] as ClaimedRow[], rateLimited };
+
+    // The `due` CTE picks the rows in priority order under FOR UPDATE SKIP LOCKED; the outer
+    // UPDATE joins batches for the template content so the claim and the read happen in one
+    // round trip. Postgres doesn't promise UPDATE...RETURNING preserves the CTE's row order, so
+    // priority/next_attempt_at are returned too and the claimed rows are re-sorted in JS below
+    // before they're sent.
+    const claimed = await tx.execute<ClaimedRow>(sql`
+      WITH due AS (
+        SELECT id FROM messages
+         WHERE status = 'pending'
+           AND next_attempt_at <= ${now}
+           AND (locked_until IS NULL OR locked_until < ${now})
+         ORDER BY priority DESC, next_attempt_at, id
+         LIMIT ${Math.min(batchSize, budget)}
+         FOR UPDATE SKIP LOCKED
+      )
+      UPDATE messages m
+         SET locked_until = ${now} + ${sqlInterval(lockMs)}
+        FROM batches b, due
+       WHERE b.id = m.batch_id AND m.id = due.id
+      RETURNING m.id, m.batch_id, jsonb_array_length(b.attachments) > 0 AS has_attachments, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at,
+                b.subject, b.html, b.text, b.headers, b.reply_to, ${ageMsOf(sql`b.created_at`, now)} AS batch_age_ms, ${lockTokenOf(sql`m.locked_until`)} AS lock_token`);
+
+    if (claimed.rows.length > 0) {
+      await tx.execute(sql`UPDATE send_rate_windows SET claimed = claimed + ${claimed.rows.length} WHERE window_start = ${windowStart}`);
+    }
+    return { rows: claimed.rows, rateLimited };
+  });
+
+  const rows = claimedRows.slice().sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
     const byDueTime = new Date(a.next_attempt_at).getTime() - new Date(b.next_attempt_at).getTime();
     if (byDueTime !== 0) return byDueTime;
@@ -347,7 +397,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     return loaded;
   };
 
-  const result = { sent: 0, retried: 0, failed: 0 };
+  const result = { sent: 0, retried: 0, failed: 0, rateLimited };
   let outageBackoffMs: number | undefined;
   let loggedConfigError = false;
   for (let i = 0; i < rows.length; i++) {

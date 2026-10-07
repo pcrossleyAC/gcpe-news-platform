@@ -63,3 +63,13 @@ export const messages = pgTable(
   ],
 );
 export type MessageRow = typeof messages.$inferSelect;
+
+// The database-enforced per-minute send cap (sender.ts): one row per minute, holding how many
+// messages have been claimed in that minute across every worker. The claim transaction locks
+// this row (SELECT ... FOR UPDATE) before claiming any message row, so concurrent workers
+// serialise on it rather than on the messages table.
+export const sendRateWindows = pgTable("send_rate_windows", {
+  windowStart: timestamp("window_start", { withTimezone: true }).primaryKey(),
+  claimed: integer("claimed").notNull().default(0),
+});
+export type SendRateWindowRow = typeof sendRateWindows.$inferSelect;
