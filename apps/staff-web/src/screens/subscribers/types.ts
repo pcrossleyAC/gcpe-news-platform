@@ -156,4 +156,5 @@ export interface OperationsStatus {
   distribution: { paused: boolean } | null;
   bounceSource: "fake" | "graph" | null;
   bounceSummary: { address: string | null; from: "setting" | "server" | null };
+  softCodesCounted: string[];
 }

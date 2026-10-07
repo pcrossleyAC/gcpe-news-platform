@@ -13,10 +13,11 @@ const OPS: OperationsStatus = {
   distribution: { paused: false },
   bounceSource: "fake",
   bounceSummary: { address: "server@example.test", from: "server" },
+  softCodesCounted: [],
 };
 
 type Call = { url: string; method: string; body: unknown };
-function stub(roles: string[], ops: OperationsStatus = OPS, opts: { load?: () => Response; upload?: () => Response } = {}) {
+function stub(roles: string[], ops: OperationsStatus = OPS, opts: { load?: () => Response; upload?: () => Response; softCodes?: () => Response } = {}) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
@@ -26,6 +27,7 @@ function stub(roles: string[], ops: OperationsStatus = OPS, opts: { load?: () =>
     if (url === "/nod/api/operations") return opts.load?.() ?? jsonResponse(200, ops);
     if (url.endsWith("/pause")) return jsonResponse(200, { paused: true, changed: true });
     if (url === "/nod/api/operations/bounce-summary-address") return jsonResponse(200, { changed: true, bounceSummary: { address: "staff@example.test", from: "setting" } });
+    if (url === "/nod/api/operations/bounce-soft-codes") return opts.softCodes?.() ?? jsonResponse(200, { changed: true, softCodesCounted: ["4.2.2", "4.4.7"] });
     if (url === "/nod/api/bounces/inbox") return opts.upload?.() ?? jsonResponse(201, { id: "b1" });
     throw new Error(`unhandled: ${method} ${url}`);
   }));
@@ -139,5 +141,25 @@ describe("OperationsScreen", () => {
     renderIt();
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load operations.");
     expect(screen.queryByRole("region", { name: "News On Demand sending" })).toBeNull();
+  });
+
+  it("saves soft codes that count as hard bounces", async () => {
+    const calls = stub(["NoD.Admin"]);
+    renderIt();
+    const user = userEvent.setup();
+    const region = await screen.findByRole("region", { name: "Soft bounces counted as hard" });
+    await user.type(within(region).getByRole("textbox", { name: "Soft codes counted as hard" }), "4.4.7, 4.2.2");
+    await user.click(within(region).getByRole("button", { name: "Save codes" }));
+    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/bounce-soft-codes", method: "PUT", body: { codes: ["4.4.7", "4.2.2"] } }));
+  });
+
+  it("explains a rejected soft code", async () => {
+    stub(["NoD.Admin"], OPS, { softCodes: () => jsonResponse(400, { error: "invalid request" }) });
+    renderIt();
+    const user = userEvent.setup();
+    const region = await screen.findByRole("region", { name: "Soft bounces counted as hard" });
+    await user.type(within(region).getByRole("textbox", { name: "Soft codes counted as hard" }), "5.1.1");
+    await user.click(within(region).getByRole("button", { name: "Save codes" }));
+    expect(await within(region).findByRole("alert")).toHaveTextContent("Enter codes like 4.2.2, separated by commas.");
   });
 });

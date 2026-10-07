@@ -48,6 +48,7 @@ describe("operations routes", () => {
       distribution: { paused: false },
       bounceSource: "fake",
       bounceSummary: { address: "server@example.test", from: "server" },
+      softCodesCounted: [],
     });
   });
 
@@ -58,5 +59,18 @@ describe("operations routes", () => {
     expect(set.body).toEqual({ changed: true, bounceSummary: { address: "Summary@Example.test", from: "setting" } });
     const cleared = await put({ address: "" });
     expect(cleared.body).toEqual({ changed: true, bounceSummary: { address: "server@example.test", from: "server" } });
+  });
+
+  it("sets the soft codes counted as hard; Admin only; rejects anything but 4.x.x", async () => {
+    const put = (token: string, body: object) => request(app).put("/api/operations/bounce-soft-codes").set("authorization", `Bearer ${token}`).send(body);
+    expect((await put(editor, { codes: [] })).status).toBe(403);
+    expect((await put(admin, { codes: ["5.1.1"] })).status).toBe(400);
+    expect((await put(admin, { codes: ["452"] })).status).toBe(400);
+    expect((await put(admin, { codes: "4.2.2" })).status).toBe(400);
+    expect((await put(admin, { codes: Array.from({ length: 51 }, (_, i) => `4.2.${i}`) })).status).toBe(400);
+    const ok = await put(admin, { codes: ["4.4.7", "4.2.2"] });
+    expect(ok.status).toBe(200);
+    expect(ok.body).toEqual({ changed: true, softCodesCounted: ["4.2.2", "4.4.7"] });
+    await put(admin, { codes: [] });
   });
 });

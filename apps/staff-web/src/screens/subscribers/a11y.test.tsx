@@ -77,6 +77,7 @@ const OPS: OperationsStatus = {
   distribution: { paused: false },
   bounceSource: "fake",
   bounceSummary: { address: "server@example.test", from: "server" },
+  softCodesCounted: [],
 };
 const LISTS_VIEW: StaffListsView = {
   allNews: 12,

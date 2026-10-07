@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { and, eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { DeliveryBounced } from "@gcpe/events";
 import { createItemSending } from "./as-it-happens";
 import { countBouncedEmails, onDeliveryBounced } from "./bounces";
-import { deliveries, items, sendJobs, subscriberHistory, subscribers, subscriptions } from "./db/schema";
+import { deliveries, items, nodSettings, sendJobs, subscriberHistory, subscribers, subscriptions } from "./db/schema";
 import { createNodTestDb, envelope } from "../test/helpers";
 
 let jobSeq = 0;
@@ -483,6 +483,47 @@ describe("onDeliveryBounced", () => {
     const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, s.id));
     expect(after!.status).toBe("active");
     expect(await countBouncedEmails(tdb.db, s.id)).toBe(1);
+  });
+
+  describe("soft codes staff count as hard", () => {
+    afterEach(async () => {
+      await tdb.db.update(nodSettings).set({ bounceSoftCodesCounted: [] }).where(eq(nodSettings.id, 1));
+    });
+
+    it("records a counted soft code like a hard bounce, and leaves an uncounted one soft", async () => {
+      await tdb.db.update(nodSettings).set({ bounceSoftCodesCounted: ["4.2.2"] }).where(eq(nodSettings.id, 1));
+      const sub = await insertSubscriber(tdb.db, "counted-soft@example.test");
+      const counted = randomUUID();
+      const uncounted = randomUUID();
+      await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "cs-1", distributionBatchId: counted });
+      await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "cs-2", distributionBatchId: uncounted });
+
+      const a = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: sub.email, batchId: counted, hard: false, status: "4.2.2" }), OPTS));
+      const b = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: sub.email, batchId: uncounted, hard: false, status: "4.4.7" }), OPTS));
+
+      expect(a).toEqual({ matched: true, action: "recorded" });
+      expect(b).toEqual({ matched: true, action: "none" });
+      expect((await deliveryFor(tdb.db, sub.id, "cs-1")).hardBouncedAt).not.toBeNull();
+      expect((await deliveryFor(tdb.db, sub.id, "cs-2")).hardBouncedAt).toBeNull();
+      expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-recorded"]);
+    });
+
+    it("a counted soft code trips the threshold: a media-list member is flagged, not disabled", async () => {
+      await tdb.db.update(nodSettings).set({ bounceSoftCodesCounted: ["4.2.2"] }).where(eq(nodSettings.id, 1));
+      const sub = await insertSubscriber(tdb.db, "counted-media@example.test");
+      await tdb.db.insert(subscriptions).values({ subscriberId: sub.id, listKey: "media-distribution-lists:budget" });
+      for (let i = 1; i <= 9; i++) {
+        await insertEmail(tdb.db, { subscriberId: sub.id, itemKeyPrefix: `cm-${i}`, n: 1, attemptedAt: daysAgo(i), distributionBatchId: randomUUID(), hardBounced: true });
+      }
+      const tenth = randomUUID();
+      await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "cm-10", distributionBatchId: tenth });
+
+      const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: sub.email, batchId: tenth, hard: false, status: "4.2.2" }), OPTS));
+      expect(result).toEqual({ matched: true, action: "flagged" });
+      const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, sub.id));
+      expect(row!.status).toBe("active");
+      expect(row!.needsAttention).toBe("bouncing");
+    });
   });
 });
 

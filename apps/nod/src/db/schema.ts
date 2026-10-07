@@ -269,6 +269,10 @@ export const nodSettings = pgTable(
     // The daily bounce summary's recipient, set by staff on Operations (spec §8). Null = use
     // NOD_BOUNCE_SUMMARY_EMAIL, the server default.
     bounceSummaryEmail: text("bounce_summary_email"),
+    // Soft (4.x.x) status codes staff count toward the 10-in-15-days rule like a hard bounce
+    // (Operations). Empty until the business supplies its list; applies to bounces processed
+    // after it is saved.
+    bounceSoftCodesCounted: text("bounce_soft_codes_counted").array().notNull().default(sql`'{}'::text[]`),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],

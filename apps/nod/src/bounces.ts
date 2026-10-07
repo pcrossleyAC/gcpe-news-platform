@@ -4,6 +4,7 @@ import type { DeliveryBounced, EventEnvelope, EventHandler } from "@gcpe/events"
 import { deliveries, subscribers, type DeliveryRow } from "./db/schema";
 import { lockAddress } from "./locks";
 import { hasMediaMemberships } from "./media-members";
+import { getSoftCodesCounted } from "./settings";
 import { writeHistory } from "./subscribe/history";
 import { normaliseEmail } from "./subscribe/info";
 
@@ -142,7 +143,10 @@ export async function onDeliveryBounced(tx: Tx, event: EventEnvelope, opts: Boun
   const match = await findDeliveryMatch(tx, subscriber.id, data.batchId);
   if (!match) return { matched: false, action: "none" };
 
-  if (!data.hard) {
+  // Staff may count specific soft codes (Operations) toward the rule; such a bounce is then
+  // handled exactly like a hard one from here on.
+  const countsAsHard = data.hard || (await getSoftCodesCounted(tx)).includes(data.status.trim());
+  if (!countsAsHard) {
     // Soft bounces are recorded and never count toward the threshold (Global Constraints).
     await tx.update(deliveries).set({ bounceStatus: data.status }).where(and(match.where, isNull(deliveries.bounceStatus)));
     return { matched: true, action: "none" };

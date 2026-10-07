@@ -43,6 +43,7 @@ describe("operations", () => {
       distribution: null,
       bounceSource: null,
       bounceSummary: { address: "server@example.test", from: "server" },
+      softCodesCounted: [],
     });
     expect(JSON.stringify(spy.mock.calls)).not.toContain("@");
     spy.mockRestore();

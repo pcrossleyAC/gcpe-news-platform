@@ -7,7 +7,7 @@ import { jobRecipients, nodSettings, operationsLog, sendJobs, subscribers } from
 import type { RecipientLinkOptions } from "./recipient-links";
 import type { RenderOptions } from "./render";
 import { sendDueJobs } from "./send-jobs";
-import { getSettings, setDistributionPaused, setPaused, type SetDistributionPausedDeps, type SetPausedDeps } from "./settings";
+import { getSettings, getSoftCodesCounted, setDistributionPaused, setPaused, setSoftCodesCounted, type SetDistributionPausedDeps, type SetPausedDeps } from "./settings";
 
 const RENDER: RenderOptions = { siteUrl: "https://news.example/site", bannerUrl: null };
 const LINKS: RecipientLinkOptions = {
@@ -151,6 +151,18 @@ describe("settings", () => {
     expect(resumedResult).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
     const sent = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job!.id)))[0]!;
     expect(sent.status).toBe("sent");
+  });
+
+  describe("soft codes counted as hard", () => {
+    it("starts empty, saves de-duplicated and sorted, logs the change, and is a no-op when unchanged", async () => {
+      expect(await getSoftCodesCounted(tdb.db)).toEqual([]);
+      expect(await setSoftCodesCounted(tdb.db, ["4.4.7", " 4.2.2", "4.4.7"], "Avery Admin")).toEqual({ changed: true, codes: ["4.2.2", "4.4.7"] });
+      expect(await getSoftCodesCounted(tdb.db)).toEqual(["4.2.2", "4.4.7"]);
+      expect(await setSoftCodesCounted(tdb.db, ["4.2.2", "4.4.7"], "Avery Admin")).toEqual({ changed: false, codes: ["4.2.2", "4.4.7"] });
+      const logs = await tdb.db.select().from(operationsLog).where(eq(operationsLog.action, "bounce-soft-codes-changed"));
+      expect(logs.map((l) => l.detail)).toEqual(["4.2.2,4.4.7"]);
+      expect(await setSoftCodesCounted(tdb.db, [], "Avery Admin")).toEqual({ changed: true, codes: [] });
+    });
   });
 });
 

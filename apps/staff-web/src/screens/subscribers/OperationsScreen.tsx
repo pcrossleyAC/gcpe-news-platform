@@ -88,6 +88,7 @@ function OperationsPanels(): React.JSX.Element {
             </section>
           )}
           <BounceSummaryForm value={ops.bounceSummary} onDone={done} />
+          <SoftCodesForm value={ops.softCodesCounted} onDone={done} />
           {ops.bounceSource === "fake" && <BounceUpload onDone={done} />}
         </>
       )}
@@ -200,6 +201,44 @@ function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceS
             Use the server default
           </Button>
         )}
+      </Form>
+      {error && <InlineAlert variant="danger" role="alert" description={error} />}
+    </section>
+  );
+}
+
+function SoftCodesForm({ value, onDone }: { value: string[]; onDone(text: string): void }): React.JSX.Element {
+  const saved = value.join(", ");
+  const [codes, setCodes] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => setCodes(saved), [saved]);
+  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const list = codes.split(/[\s,]+/).map((c) => c.trim()).filter(Boolean);
+      await apiFetch("/nod/api/operations/bounce-soft-codes", { method: "PUT", body: { codes: list } });
+      onDone("Soft bounce codes saved.");
+    } catch (err) {
+      setError(err instanceof ApiError && err.status === 400 ? "Enter codes like 4.2.2, separated by commas." : "Couldn’t save. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section aria-labelledby="ops-soft-codes">
+      <h2 id="ops-soft-codes">Soft bounces counted as hard</h2>
+      <p>
+        Soft bounces (codes starting with 4) never count toward disabling a subscriber, except the codes listed here. They then count like a hard
+        bounce, from the next bounce on. Leave empty to count none.
+      </p>
+      <Form onSubmit={(e) => void onSubmit(e)} aria-label="Soft bounce codes">
+        <TextField label="Soft codes counted as hard" name="codes" value={codes} onChange={setCodes} />
+        <Button type="submit" isDisabled={busy}>
+          Save codes
+        </Button>
       </Form>
       {error && <InlineAlert variant="danger" role="alert" description={error} />}
     </section>

@@ -1,0 +1,1 @@
+ALTER TABLE "nod_settings" ADD COLUMN "bounce_soft_codes_counted" text[] DEFAULT '{}'::text[] NOT NULL;

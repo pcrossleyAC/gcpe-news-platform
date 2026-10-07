@@ -176,6 +176,13 @@
       "when": 1791386530014,
       "tag": "0024_report_delivery_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1791388714005,
+      "tag": "0025_bounce_soft_codes",
+      "breakpoints": true
     }
   ]
 }

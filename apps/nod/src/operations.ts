@@ -1,6 +1,6 @@
 import type { Db } from "@gcpe/db-kit";
 import type { DistributionClient } from "./distribution-client";
-import { getSettings, resolveBounceSummaryAddress, type BounceSummaryAddress } from "./settings";
+import { getSettings, getSoftCodesCounted, resolveBounceSummaryAddress, type BounceSummaryAddress } from "./settings";
 import { safeErrorLabel } from "./subscribe/journeys";
 
 /** Everything the staff Operations screen shows (spec §8), in one read. */
@@ -10,6 +10,7 @@ export interface OperationsStatus {
   distribution: { paused: boolean } | null;
   bounceSource: "fake" | "graph" | null;
   bounceSummary: BounceSummaryAddress;
+  softCodesCounted: string[];
 }
 
 export async function getOperations(
@@ -17,7 +18,7 @@ export async function getOperations(
   distribution: Pick<DistributionClient, "getSettings" | "bounceSource">,
   bounceSummaryFallback: string | null,
 ): Promise<OperationsStatus> {
-  const [nod, bounceSummary, dist, bounceSource] = await Promise.all([
+  const [nod, bounceSummary, dist, bounceSource, softCodesCounted] = await Promise.all([
     getSettings(db),
     resolveBounceSummaryAddress(db, bounceSummaryFallback),
     distribution.getSettings().then(
@@ -34,6 +35,7 @@ export async function getOperations(
         return null;
       },
     ),
+    getSoftCodesCounted(db),
   ]);
-  return { nod, distribution: dist, bounceSource, bounceSummary };
+  return { nod, distribution: dist, bounceSource, bounceSummary, softCodesCounted };
 }
