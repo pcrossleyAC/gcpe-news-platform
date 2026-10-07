@@ -8,7 +8,7 @@ import { createNodTestDb } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
 import { deliveries, items, lists, operationsLog, subscriberHistory, subscribers, subscriptions } from "../db/schema";
-import type { DistributionClient } from "../distribution-client";
+import { DistributionError, type DistributionClient } from "../distribution-client";
 import { ClientGoneError } from "../reports/csv";
 import { addDays, MAX_RANGE_DAYS, resolveRange } from "../reports/range";
 import { privateErrors } from "./report-routes";
@@ -194,6 +194,27 @@ describe("report routes", () => {
       expect(page.body).toMatchObject({ from: "2026-09-01", to: "2026-09-30", total: 0, items: [] });
       const csv = await getCsv(app, "/api/reports/digest-runs.csv?from=2026-09-01&to=2026-09-30", viewer);
       expect((csv.body as Buffer).toString("utf8")).toBe("﻿Run (BC time),Ran at (BC time),Items in window,Subscribers,Delivered,Bounced,Not sent\r\n");
+    });
+  });
+
+  describe("distribution", () => {
+    it("a Viewer reads and exports Distribution's counts", async () => {
+      vi.mocked(distribution.dailyReport).mockResolvedValue({ rows: [{ day: 0, appId: "nod", sent: 4, hardBounced: 1, softBounced: 0, failed: 0 }] });
+      const res = await request(app).get("/api/reports/distribution?from=2026-09-01&to=2026-09-02").set("authorization", `Bearer ${viewer}`);
+      expect(res.status).toBe(200);
+      expect(res.body.days).toEqual([{ date: "2026-09-01", app: "News On Demand", sent: 4, delivered: 3, hardBounced: 1, softBounced: 0, failed: 0 }]);
+      const csv = await getCsv(app, "/api/reports/distribution.csv?from=2026-09-01&to=2026-09-02", viewer);
+      expect((csv.body as Buffer).toString("utf8")).toBe("﻿Date,Sent by,Sent,Delivered,Hard bounces,Soft bounces,Failed\r\n2026-09-01,News On Demand,4,3,1,0,0\r\n");
+    });
+
+    it("Distribution down: 502, and the log carries a label, not Distribution's body", async () => {
+      vi.mocked(distribution.dailyReport).mockRejectedValue(new DistributionError("Distribution responded HTTP 500: secret-body", true, 500));
+      const errors = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const res = await request(app).get("/api/reports/distribution").set("authorization", `Bearer ${viewer}`);
+      expect(res.status).toBe(502);
+      expect(res.body).toEqual({ error: "distribution unavailable" });
+      expect(errors.mock.calls.flat().map(String).join("\n")).not.toContain("secret-body");
+      expect((await request(app).get("/api/reports/subscribers-by-list").set("authorization", `Bearer ${viewer}`)).status).toBe(200);
     });
   });
 

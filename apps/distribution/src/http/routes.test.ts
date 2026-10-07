@@ -397,4 +397,32 @@ describe("Distribution HTTP API", () => {
       expect(res.body).toEqual({ unmatched: 0, ignored: 0 });
     });
   });
+
+  describe("POST /api/reports/daily", () => {
+    const post = (token: string | null, body: unknown) => {
+      const r = request(app).post("/api/reports/daily").send(body as object);
+      return token ? r.set("authorization", `Bearer ${token}`) : r;
+    };
+    const bounds = ["2026-09-01T07:00:00.000Z", "2026-09-02T07:00:00.000Z"];
+
+    it("401s without a token, 403s without Distribution.Operate", async () => {
+      expect((await post(null, { bounds })).status).toBe(401);
+      expect((await post(reader, { bounds })).status).toBe(403);
+    });
+
+    it("400s bounds that are missing, too few, too many, not increasing or not dates", async () => {
+      expect((await post(operator, {})).status).toBe(400);
+      expect((await post(operator, { bounds: [bounds[0]] })).status).toBe(400);
+      expect((await post(operator, { bounds: [bounds[1], bounds[0]] })).status).toBe(400);
+      expect((await post(operator, { bounds: [bounds[0], "not-a-date"] })).status).toBe(400);
+      const tooMany = Array.from({ length: 94 }, (_, i) => new Date(Date.UTC(2026, 0, 1 + i, 8)).toISOString());
+      expect((await post(operator, { bounds: tooMany })).status).toBe(400);
+    });
+
+    it("returns the rows for a valid range", async () => {
+      const res = await post(operator, { bounds });
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ rows: expect.any(Array) });
+    });
+  });
 });

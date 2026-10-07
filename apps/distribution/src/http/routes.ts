@@ -5,6 +5,7 @@ import type { Db } from "@gcpe/db-kit";
 import { requireRole } from "@gcpe/auth";
 import { bounceInbox, bounces } from "../db/schema";
 import * as messagesService from "../messages";
+import { dailyReport, dailyReportSchema } from "../reports";
 import * as settingsService from "../settings";
 
 const uuidSchema = z.string().uuid();
@@ -157,6 +158,17 @@ export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake
         WHERE processed_at > ${new Date(since)} AND processed_at <= ${new Date(until)}
       `);
       res.json({ unmatched: rows[0]?.unmatched ?? 0, ignored: rows[0]?.ignored ?? 0 });
+    }),
+  );
+
+  // NoD's staff report (spec §8): sent vs bounced per day and app, between day boundaries NoD
+  // computes from its tenant zone. A read, but POST: up to 93 instants don't belong in a URL.
+  r.post(
+    "/reports/daily",
+    requireRole("Distribution.Operate"),
+    run(async (req, res) => {
+      const { bounds } = dailyReportSchema.parse(req.body);
+      res.json({ rows: await dailyReport(db, bounds.map((b) => new Date(b))) });
     }),
   );
 

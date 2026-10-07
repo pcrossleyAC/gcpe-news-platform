@@ -68,6 +68,11 @@ export const messages = pgTable(
     // (case-insensitively), within a few days -- without this, that lookup falls back to a
     // sequential scan on any table of real size.
     index("messages_sent_email_lower_idx").on(sql`lower(${t.email})`, t.sentAt).where(sql`${t.status} = 'sent'`),
+    // Daily report (reports.ts): sent messages by send time with their batch and bounce kind, so a
+    // month's counts read this index alone instead of the table.
+    index("messages_sent_at_idx").on(t.sentAt, t.batchId, t.bounceHard).where(sql`${t.status} = 'sent'`),
+    // Daily report: failed messages are few; find them without a scan.
+    index("messages_failed_batch_idx").on(t.batchId).where(sql`${t.status} = 'failed'`),
     check("messages_status_check", sql`${t.status} IN ('pending','sent','failed')`),
   ],
 );

@@ -8,6 +8,16 @@ export interface MessageRecipient {
   substitutions: Record<string, string>;
 }
 
+/** One day × sending app of Distribution's daily report (apps/distribution/src/reports.ts). */
+export interface DailyReportRow {
+  day: number;
+  appId: string;
+  sent: number;
+  hardBounced: number;
+  softBounced: number;
+  failed: number;
+}
+
 export interface MessageRequest {
   priority: "system" | "media" | "immediate" | "digest";
   idempotencyKey?: string;
@@ -86,6 +96,10 @@ export interface DistributionClient {
   bounceStats(since: string, until: string): Promise<{ unmatched: number; ignored: number }>;
   /** Distribution's bounce source (GET /api/bounces/source, Distribution.Operate): "fake" only where the test-site upload works. */
   bounceSource(): Promise<{ source: "fake" | "graph" }>;
+  /** Sent, bounced and failed counts per day and app (`POST /api/reports/daily`,
+   * Distribution.Operate) between the given increasing ISO instants (day i is
+   * [bounds[i], bounds[i + 1])). NoD computes the boundaries in its tenant zone. */
+  dailyReport(bounds: string[]): Promise<{ rows: DailyReportRow[] }>;
 }
 
 // P2-R18: Distribution's 2xx body is network input like any other — `res.json()` succeeding
@@ -99,6 +113,10 @@ const pauseResponseSchema = z.object({ paused: z.boolean(), changed: z.boolean()
 const uploadBounceResponseSchema = z.object({ id: z.string().min(1) });
 const bounceStatsResponseSchema = z.object({ unmatched: z.number().int().nonnegative(), ignored: z.number().int().nonnegative() });
 const bounceSourceResponseSchema = z.object({ source: z.enum(["fake", "graph"]) });
+const nonNegative = z.number().int().nonnegative();
+const dailyReportResponseSchema = z.object({
+  rows: z.array(z.object({ day: nonNegative, appId: z.string(), sent: nonNegative, hardBounced: nonNegative, softBounced: nonNegative, failed: nonNegative })),
+});
 
 /** Races `getToken()` against a timer so a hung token endpoint can't hang `send` forever —
  * mirrors the request's own `AbortSignal.timeout` below, just via Promise.race since
@@ -220,6 +238,9 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
     },
     async bounceSource(): Promise<{ source: "fake" | "graph" }> {
       return callDistribution(opts, doFetch, timeoutMs, "/api/bounces/source", { method: "GET" }, bounceSourceResponseSchema, "Distribution response missing source");
+    },
+    async dailyReport(bounds: string[]): Promise<{ rows: DailyReportRow[] }> {
+      return callDistribution(opts, doFetch, timeoutMs, "/api/reports/daily", { method: "POST", body: { bounds } }, dailyReportResponseSchema, "Distribution response missing rows");
     },
   };
 }

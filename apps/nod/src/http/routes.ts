@@ -64,11 +64,13 @@ function handleError(e: unknown, res: Response): boolean {
  * switch) and the resolved `NOD_OPS_EMAIL`/tenant time zone for the ops email both setPaused
  * and setDistributionPaused send. */
 export interface SettingsRouteDeps {
-  distribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "bounceSource">;
+  distribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "bounceSource" | "dailyReport">;
   opsEmail: string | null;
   timeZone: string;
   /** NOD_BOUNCE_SUMMARY_EMAIL, used when staff haven't set an address. */
   bounceSummaryFallback: string | null;
+  /** NoD's own appId as Distribution records it (bounces.ts): the reports label its messages. */
+  nodAppId: string;
 }
 
 export function apiRoutes(
