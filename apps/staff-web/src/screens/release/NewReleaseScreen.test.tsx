@@ -46,7 +46,12 @@ function stubFetch({ roles = ["NRMS.Editor"], onPost }: StubOptions = {}) {
           tags: [],
         });
       }
-      if (url === "/nrms/api/media-lists") return jsonResponse(200, [{ key: "list1", displayName: "List One", sortOrder: 1, isActive: true }]);
+      if (url === "/nrms/api/media-lists") {
+        return jsonResponse(200, [
+          { key: "list1", displayName: "List One", sortOrder: 1, isActive: true },
+          { key: "old-desk", displayName: "Old desk", sortOrder: 2, isActive: false },
+        ]);
+      }
       if (url === "/nrms/api/releases" && init?.method === "POST") {
         return onPost ? onPost(body) : jsonResponse(201, releaseView());
       }
@@ -97,6 +102,14 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     expect(screen.queryByText("Page image")).not.toBeInTheDocument();
     expect(screen.queryByText("Sectors")).not.toBeInTheDocument();
     expect(screen.getByText("Media distribution lists (required)")).toBeInTheDocument();
+  });
+
+  it("offers only active media lists, never a retired one", async () => {
+    stubFetch();
+    renderScreen();
+    await screen.findByText("Legislature");
+    expect(await screen.findByLabelText("List One")).toBeInTheDocument();
+    expect(screen.queryByText(/Old desk/)).not.toBeInTheDocument();
   });
 
   it("Story hides media distribution lists entirely", async () => {

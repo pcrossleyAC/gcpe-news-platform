@@ -129,10 +129,18 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Checked before the retire dialog opens, so a typing mistake never surfaces behind it.
+  // `Number("")` is 0, so an emptied Order field is caught as empty, not saved as 0.
+  const problem = (): string | null => {
+    if (order.trim() === "" || !Number.isInteger(Number(order))) return "Order must be a whole number.";
+    if (!name.trim()) return "Name is required.";
+    return null;
+  };
+
   const save = async () => {
+    const invalid = problem();
+    if (invalid) return setError(invalid);
     const sortOrder = Number(order);
-    if (!Number.isInteger(sortOrder)) return setError("Order must be a whole number.");
-    if (!name.trim()) return setError("Name is required.");
     setBusy(true);
     setError(null);
     try {
@@ -144,6 +152,17 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
     } finally {
       setBusy(false);
     }
+  };
+
+  const onSave = () => {
+    if (!(record.isActive && !active)) return void save();
+    const invalid = problem();
+    setError(invalid);
+    if (!invalid) setConfirmRetire(true);
+  };
+  const closeRetire = () => {
+    setConfirmRetire(false);
+    setError(null);
   };
 
   return (
@@ -164,19 +183,19 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
         </label>
       </td>
       <td>
-        <Button variant="secondary" isDisabled={busy} onPress={() => (record.isActive && !active ? setConfirmRetire(true) : void save())}>
+        <Button variant="secondary" isDisabled={busy} onPress={onSave}>
           {`Save ${record.key}`}
         </Button>
-        {error && <InlineAlert variant="danger" role="alert" description={error} />}
+        {error && !confirmRetire && <InlineAlert variant="danger" role="alert" description={error} />}
         {confirmRetire && (
-          <Modal isOpen onOpenChange={(open) => { if (!open) setConfirmRetire(false); }} isDismissable>
+          <Modal isOpen onOpenChange={(open) => { if (!open) closeRetire(); }} isDismissable>
             <AlertDialog
               role="alertdialog"
               variant="warning"
               title={`Retire ${record.key}?`}
               buttons={
                 <>
-                  <Button onPress={() => setConfirmRetire(false)} isDisabled={busy}>
+                  <Button onPress={closeRetire} isDisabled={busy}>
                     Cancel
                   </Button>
                   <Button onPress={() => void save()} isDisabled={busy}>
@@ -186,6 +205,7 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
               }
             >
               <p>Releases can no longer be sent to it. Its members are kept, and ticking Active again brings it back.</p>
+              {error && <InlineAlert variant="danger" role="alert" description={error} />}
             </AlertDialog>
           </Modal>
         )}

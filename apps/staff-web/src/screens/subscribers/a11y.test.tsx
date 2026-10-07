@@ -15,7 +15,8 @@ import { HistoryScreen } from "./HistoryScreen";
 import { MediaListsScreen } from "./MediaListsScreen";
 import { MediaListScreen } from "./MediaListScreen";
 import { OperationsScreen } from "./OperationsScreen";
-import type { MediaMember, OperationsStatus, SubscriberDetail, SubscriberPage } from "./types";
+import { ListsScreen } from "./ListsScreen";
+import type { MediaMember, OperationsStatus, StaffListsView, SubscriberDetail, SubscriberPage } from "./types";
 
 async function seriousViolations(container: Element, options?: Parameters<typeof axe.run>[1]) {
   const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, ...options });
@@ -77,6 +78,19 @@ const OPS: OperationsStatus = {
   bounceSource: "fake",
   bounceSummary: { address: "server@example.test", from: "server" },
 };
+const LISTS_VIEW: StaffListsView = {
+  allNews: 12,
+  categories: [
+    {
+      key: "ministries", name: "Ministries", enabled: true, namesFrom: "Core", editable: true,
+      lists: [
+        { listKey: "ministries:health", key: "health", name: "Health", active: true, enabled: true, subscribers: 40 },
+        { listKey: "ministries:old", key: "old", name: "Old ministry", active: false, enabled: true, subscribers: 0 },
+      ],
+    },
+    { key: "media-distribution-lists", name: "Media distribution lists", enabled: true, namesFrom: "NRMS", editable: false, lists: [{ listKey: "media-distribution-lists:budget", key: "budget", name: "Budget", active: true, enabled: true, subscribers: 9 }] },
+  ],
+};
 const MEDIA_CONTACT = {
   id: 42, firstName: "Sam", lastName: "Reporter", outlet: "Riverbend Gazette", deletedAt: null,
   emails: [
@@ -102,6 +116,7 @@ function stubCommon(roles: string[]) {
       if (url === "/nod/api/media-lists/budget/opted-out") return jsonResponse(200, MEDIA_OPTED);
       if (url === "/nod/api/media-hub/contacts/42") return jsonResponse(200, MEDIA_CONTACT);
       if (url === "/nod/api/operations") return jsonResponse(200, OPS);
+      if (url === "/nod/api/list-categories") return jsonResponse(200, LISTS_VIEW);
       return jsonResponse(200, {});
     }),
   );
@@ -232,6 +247,13 @@ describe("accessibility — Subscribers", () => {
       </SessionProvider>,
     );
     await screen.findByRole("link", { name: "Back to subscriber" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("Lists and categories (Admin, with controls) has no serious violations", async () => {
+    stubCommon(["NoD.Admin"]);
+    const { container } = render(withAuthAt("/subscribers/lists", "/subscribers/lists", <ListsScreen />));
+    await screen.findByRole("checkbox", { name: "Offer Health" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 

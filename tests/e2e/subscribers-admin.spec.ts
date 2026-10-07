@@ -152,7 +152,9 @@ test.describe("Operations (item 10 by hand, item 14 by role)", () => {
       await page.reload();
       await expect(page.getByRole("textbox", { name: "Bounce summary email" })).toHaveValue(typed);
       await page.getByRole("button", { name: "Use the server default" }).click();
-      await expect(page.getByText("Using the server default.")).toBeVisible();
+      await expect(page.getByText(/^Using the server default: /)).toBeVisible();
+      // The default is shown as text, never put in the field, so a later Save can't store it.
+      await expect(page.getByRole("textbox", { name: "Bounce summary email" })).toHaveValue("");
     } finally {
       await apiCall(admin, "/nod/api/operations/bounce-summary-address", { method: "PUT", body: { address: null } });
     }

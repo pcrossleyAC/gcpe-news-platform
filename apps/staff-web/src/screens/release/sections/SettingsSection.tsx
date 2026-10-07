@@ -55,9 +55,10 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   const [lists, setLists] = useState<MediaListOption[]>([]);
 
   useEffect(() => {
-    // GET /media-lists also returns retired lists; this form only ever offers active ones.
+    // GET /media-lists also returns retired lists: kept here so a release already targeting
+    // one can show it (below), but only active ones are ever offered.
     apiFetch<MediaListOption[]>("/nrms/api/media-lists").then(
-      (all) => setLists(all.filter((l) => l.isActive)),
+      (all) => setLists(all),
       () => {
         // The checkbox list just won't be offered — the rest of the form still works.
       },
@@ -166,12 +167,24 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
               <input type="checkbox" checked={form.toMediaLists} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, toMediaLists: e.target.checked }))} />
               Send to media distribution lists
             </label>
-            {lists.map((l) => (
-              <label key={l.key}>
-                <input type="checkbox" checked={form.mediaListKeys.includes(l.key)} disabled={readOnly} onChange={() => toggleMediaList(l.key)} />
-                {l.displayName}
-              </label>
-            ))}
+            {lists
+              .filter((l) => l.isActive || view.mediaListKeys.includes(l.key))
+              .map((l) =>
+                l.isActive ? (
+                  <label key={l.key}>
+                    <input type="checkbox" checked={form.mediaListKeys.includes(l.key)} disabled={readOnly} onChange={() => toggleMediaList(l.key)} />
+                    {l.displayName}
+                  </label>
+                ) : (
+                  // A retired list the release already targets: shown so editors can see it, and
+                  // kept on save (NRMS keeps it; NoD sends nothing to a retired list), but it
+                  // can't be changed here.
+                  <label key={l.key}>
+                    <input type="checkbox" checked={form.mediaListKeys.includes(l.key)} disabled />
+                    {l.displayName} (retired)
+                  </label>
+                ),
+              )}
           </fieldset>
         )}
 

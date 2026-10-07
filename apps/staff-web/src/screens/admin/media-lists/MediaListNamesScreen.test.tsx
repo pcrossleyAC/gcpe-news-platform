@@ -12,7 +12,7 @@ const ROWS = [
   { key: "002-budget", displayName: "Budget", sortOrder: 2, isActive: true },
 ];
 type Call = { url: string; method: string; body: unknown };
-function stub(roles: string[], onPost?: () => Response) {
+function stub(roles: string[], onPost?: () => Response, onPut?: () => Response) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
@@ -21,7 +21,7 @@ function stub(roles: string[], onPost?: () => Response) {
     if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
     if (url === "/nrms/api/media-lists" && method === "GET") return jsonResponse(200, ROWS);
     if (url === "/nrms/api/media-lists" && method === "POST") return onPost?.() ?? jsonResponse(201, { key: "003-new", displayName: "New", sortOrder: 0, isActive: true });
-    if (url.startsWith("/nrms/api/media-lists/") && method === "PUT") return jsonResponse(200, {});
+    if (url.startsWith("/nrms/api/media-lists/") && method === "PUT") return onPut?.() ?? jsonResponse(200, {});
     throw new Error(`unhandled: ${method} ${url}`);
   }));
   return calls;
@@ -55,7 +55,7 @@ describe("MediaListNamesScreen", () => {
     await waitFor(() => expect(document.title).toBe("Media list names — GCPE News Staff"));
   });
 
-  it("renames a list and adds one; a duplicate key is explained", async () => {
+  it("renames a list and adds one", async () => {
     const calls = stub(["Core.Admin"]);
     renderIt();
     const user = userEvent.setup();
@@ -80,5 +80,35 @@ describe("MediaListNamesScreen", () => {
     expect(calls.some((c) => c.method === "PUT")).toBe(false);
     await user.click(within(dialog).getByRole("button", { name: "Retire list" }));
     await waitFor(() => expect(calls).toContainEqual({ url: "/nrms/api/media-lists/002-budget", method: "PUT", body: { displayName: "Budget", sortOrder: 2, isActive: false } }));
+  });
+  it("a duplicate key is explained", async () => {
+    stub(["Core.Admin"], () => jsonResponse(409, { error: "A media list with key \"002-budget\" already exists." }));
+    renderIt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Key" }), "002-budget");
+    await user.type(screen.getByRole("textbox", { name: "Name" }), "Budget again");
+    await user.click(screen.getByRole("button", { name: "Add media list" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("A media list with that key already exists.");
+  });
+
+  it("an empty Order is refused, never saved as 0", async () => {
+    const calls = stub(["Core.Admin"]);
+    renderIt();
+    const user = userEvent.setup();
+    await user.clear(await screen.findByRole("spinbutton", { name: "Order for 002-budget" }));
+    await user.click(screen.getByRole("button", { name: "Save 002-budget" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Order must be a whole number.");
+    expect(calls.some((c) => c.method === "PUT")).toBe(false);
+  });
+
+  it("a failed retire is shown inside the open dialog, not behind it", async () => {
+    stub(["Core.Admin"], undefined, () => jsonResponse(500, { error: "internal error" }));
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: "002-budget active" }));
+    await user.click(screen.getByRole("button", { name: "Save 002-budget" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Retire list" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn't save. Try again.");
   });
 });

@@ -161,10 +161,13 @@ function PauseControl(props: {
 }
 
 function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceSummary"]; onDone(text: string): void }): React.JSX.Element {
-  const [address, setAddress] = useState(value.address ?? "");
+  // The field holds only an address staff set. The server default is shown as text beside it,
+  // never put in the field: saving the form unchanged must not store the default as a setting.
+  const staffAddress = value.from === "setting" ? (value.address ?? "") : "";
+  const [address, setAddress] = useState(staffAddress);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => setAddress(value.address ?? ""), [value.address]);
+  useEffect(() => setAddress(staffAddress), [staffAddress]);
   const put = async (next: string | null, text: string) => {
     setBusy(true);
     setError(null);
@@ -185,7 +188,7 @@ function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceS
     <section aria-labelledby="ops-bounce-summary">
       <h2 id="ops-bounce-summary">Bounce summary</h2>
       <p>A daily email at 8:00 listing bounced subscribers, sent only when there were bounces.</p>
-      {value.from === "server" && <p>Using the server default.</p>}
+      {value.from === "server" && <p>{value.address ? `Using the server default: ${value.address}` : "Using the server default."}</p>}
       {value.from === null && <p>No address is set, so no summary is sent.</p>}
       <Form onSubmit={onSubmit} aria-label="Bounce summary address">
         <TextField label="Bounce summary email" name="address" value={address} onChange={setAddress} />
@@ -225,7 +228,13 @@ function BounceUpload({ onDone }: { onDone(text: string): void }): React.JSX.Ele
       setRaw("");
       onDone("Uploaded. Bounce processing picks it up within 15 minutes.");
     } catch (e) {
-      setError(e instanceof ApiError && e.status === 404 ? "This site doesn’t use the test mailbox." : "Couldn’t upload. Try again.");
+      setError(
+        e instanceof ApiError && e.status === 404
+          ? "This site doesn’t use the test mailbox."
+          : e instanceof ApiError && e.status === 400
+            ? `Not uploaded: ${e.message}`
+            : "Couldn’t upload. Try again.",
+      );
     } finally {
       setBusy(false);
     }

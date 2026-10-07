@@ -47,6 +47,38 @@ describe("SettingsSection", () => {
     expect(screen.getByLabelText("Send to News On Demand subscribers")).toBeChecked();
   });
 
+  it("never offers a retired media list the release doesn't already target", async () => {
+    stubFetch({
+      mediaLists: [
+        { key: "list1", displayName: "List One", sortOrder: 1, isActive: true },
+        { key: "old-desk", displayName: "Old desk", sortOrder: 2, isActive: false },
+      ],
+    });
+    renderSettings(releaseView({ type: "release", mediaListKeys: [] }));
+    expect(await screen.findByLabelText("List One")).toBeInTheDocument();
+    expect(screen.queryByText(/Old desk/)).not.toBeInTheDocument();
+  });
+
+  it("shows a retired list the release already targets as a disabled, ticked \"(retired)\" box, and keeps it on save", async () => {
+    const calls = stubFetch({
+      mediaLists: [
+        { key: "list1", displayName: "List One", sortOrder: 1, isActive: true },
+        { key: "old-desk", displayName: "Old desk", sortOrder: 2, isActive: false },
+      ],
+      onPut: () => jsonResponse(200, releaseView({ version: 2 })),
+    });
+    const v = releaseView({ type: "release", version: 1, mediaListKeys: ["old-desk"], publishOptions: { toWeb: true, toSubscribers: false, toMediaLists: true } });
+    renderSettings(v);
+    const retired = await screen.findByLabelText("Old desk (retired)");
+    expect(retired).toBeChecked();
+    expect(retired).toBeDisabled();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("List One"));
+    await user.click(screen.getByRole("button", { name: "Save settings" }));
+    await waitFor(() => expect(calls.find((c) => c.url === `/nrms/api/releases/${v.id}/settings`)?.body).toMatchObject({ mediaListKeys: ["old-desk", "list1"] }));
+  });
+
   it("disables the subscribers checkbox and explains why, for a type that doesn't allow it", () => {
     stubFetch();
     renderSettings(releaseView({ type: "advisory", publishOptions: { toWeb: false, toSubscribers: false, toMediaLists: false } }));

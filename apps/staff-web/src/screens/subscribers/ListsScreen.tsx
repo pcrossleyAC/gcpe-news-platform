@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { Button, InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
@@ -6,12 +6,23 @@ import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { moveBy } from "../../shared/reorder";
 import { canAdminSubscribers } from "./access";
-import type { StaffCategory, StaffListsView } from "./types";
+import type { StaffCategory, StaffList, StaffListsView } from "./types";
 
 function saveErrorText(e: unknown): string {
   if (e instanceof ApiError && e.status === 409 && e.message === "order-out-of-date") return "The lists changed while you were looking. They've been reloaded; try again.";
   if (e instanceof ApiError && e.status === 409 && e.message === "managed-in-nrms") return "Media lists are managed in NRMS.";
   return "Couldn't save. Try again.";
+}
+
+/** Whether the public and the staff preferences form are offered `l` (active, switched on, and
+ * in a category that's switched on), and if not, the reason staff can't see from the checkbox
+ * alone. Media lists are never offered publicly; NRMS manages them. */
+function offeredText(c: StaffCategory, l: StaffList): string {
+  if (!c.editable) return "Managed in NRMS";
+  if (!l.enabled) return "No";
+  if (!l.active) return "No (retired)";
+  if (!c.enabled) return "No (category not offered)";
+  return "Yes";
 }
 
 /** `/hub/subscribers/lists` (legacy ManageLists/ManageListCategories): every category and list
@@ -27,13 +38,21 @@ export function ListsScreen(): React.JSX.Element {
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // Only the latest load may land: every save reloads, and an earlier, slower reload landing
+  // after a later one would put back the lists as they were.
+  const latest = useRef(0);
   const reload = useCallback(() => {
+    const seq = ++latest.current;
     apiFetch<StaffListsView>("/nod/api/list-categories").then(
       (v) => {
+        if (seq !== latest.current) return;
         setView(v);
         setLoadError(null);
       },
-      () => setLoadError("Couldn't load lists."),
+      () => {
+        if (seq !== latest.current) return;
+        setLoadError("Couldn't load lists.");
+      },
     );
   }, []);
   useEffect(() => reload(), [reload]);
@@ -125,20 +144,20 @@ export function ListsScreen(): React.JSX.Element {
                     </td>
                     <td>{l.subscribers}</td>
                     <td>
-                      {canAdmin && c.editable ? (
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={l.enabled}
-                            disabled={busy}
-                            onChange={() => void save(`/nod/api/lists/${encodeURIComponent(l.listKey)}`, { enabled: !l.enabled }, `${l.name} ${l.enabled ? "is no longer offered" : "is offered again"}.`)}
-                          />{" "}
-                          {`Offer ${l.name}`}
-                        </label>
-                      ) : l.enabled ? (
-                        "Yes"
-                      ) : (
-                        "No"
+                      {offeredText(c, l)}
+                      {canAdmin && c.editable && (
+                        <>
+                          {" "}
+                          <label>
+                            <input
+                              type="checkbox"
+                              checked={l.enabled}
+                              disabled={busy}
+                              onChange={() => void save(`/nod/api/lists/${encodeURIComponent(l.listKey)}`, { enabled: !l.enabled }, `${l.name} ${l.enabled ? "is no longer offered" : "is offered again"}.`)}
+                            />{" "}
+                            {`Offer ${l.name}`}
+                          </label>
+                        </>
                       )}
                     </td>
                     {canAdmin && c.editable && (

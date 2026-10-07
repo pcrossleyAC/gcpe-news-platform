@@ -28,6 +28,7 @@ interface StubOptions {
   onAdd?: (body: Record<string, unknown>) => Response;
   onSearch?: (body: Record<string, unknown>) => Response | Promise<Response>;
   members?: () => Response;
+  onRemove?: () => Response;
 }
 function stub(roles: string[], opts: StubOptions = {}) {
   const calls: Call[] = [];
@@ -43,7 +44,7 @@ function stub(roles: string[], opts: StubOptions = {}) {
     if (url === "/nod/api/media-lists/budget/opted-out") return jsonResponse(200, OPTED);
     if (url === "/nod/api/media-hub/contacts/search") return opts.onSearch?.(body) ?? jsonResponse(200, { contacts: [CONTACT], page: 1, pageSize: 25, total: 1 });
     if (url === "/nod/api/media-hub/contacts/42") return jsonResponse(200, CONTACT);
-    if (url.startsWith("/nod/api/media-lists/budget/members/") && method === "DELETE") return new Response(null, { status: 204 });
+    if (url.startsWith("/nod/api/media-lists/budget/members/") && method === "DELETE") return opts.onRemove?.() ?? new Response(null, { status: 204 });
     if (url.endsWith("/resolve")) return jsonResponse(200, { ok: true });
     throw new Error(`unhandled: ${method} ${url}`);
   }));
@@ -151,6 +152,27 @@ describe("MediaListScreen", () => {
     await user.click(await screen.findByRole("button", { name: "Remove lee@example.test" }));
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Confirm remove" }));
     await waitFor(() => expect(calls).toContainEqual({ url: `/nod/api/media-lists/budget/members/${ID2}`, method: "DELETE", body: undefined }));
+  });
+
+  it("a failed remove is shown inside the open dialog, not behind it", async () => {
+    stub(["NoD.Editor"], { onRemove: () => jsonResponse(500, { error: "internal error" }) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Remove lee@example.test" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Confirm remove" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn't remove. Try again.");
+  });
+
+  it("a failed \"Add anyway\" is shown inside the open dialog, not behind it", async () => {
+    stub(["NoD.Editor"], { onAdd: (body) => (body.confirmOptOut ? jsonResponse(500, { error: "internal error" }) : jsonResponse(409, { error: "opted-out", at: "2026-09-01T17:00:00.000Z" })) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByRole("textbox", { name: "Email address" }), "gone@example.test");
+    await user.click(screen.getByRole("button", { name: "Add to list" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Add anyway" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("internal error");
   });
 
   it("resolve: bouncing clears with an empty body and says the count restarts; a Media Hub flag offers the contact's emails", async () => {

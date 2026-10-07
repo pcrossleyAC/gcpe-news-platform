@@ -99,6 +99,15 @@ export function MediaListScreen(): React.JSX.Element {
     }
   };
 
+  const closeOptOutPrompt = () => {
+    setOptOutPrompt(null);
+    setActionError(null);
+  };
+  const closeRemoving = () => {
+    setRemoving(null);
+    setActionError(null);
+  };
+
   return (
     <div className="gcpe-subscribers__media-list">
       <h1>Media list</h1>
@@ -113,7 +122,8 @@ export function MediaListScreen(): React.JSX.Element {
       )}
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       {message && <p role="status">{message}</p>}
-      {actionError && <InlineAlert variant="danger" role="alert" description={actionError} />}
+      {/* While a confirm dialog is open, its own failure is shown inside it: the modal hides the page. */}
+      {actionError && !optOutPrompt && !removing && <InlineAlert variant="danger" role="alert" description={actionError} />}
 
       {!members && !loadError && <p>Loading…</p>}
       {members && members.length === 0 && <p>No members yet.</p>}
@@ -142,7 +152,15 @@ export function MediaListScreen(): React.JSX.Element {
                         {`Resolve ${m.email}`}
                       </Button>
                     )}
-                    <Button variant="secondary" danger isDisabled={busy} onPress={() => setRemoving(m)}>
+                    <Button
+                      variant="secondary"
+                      danger
+                      isDisabled={busy}
+                      onPress={() => {
+                        setActionError(null);
+                        setRemoving(m);
+                      }}
+                    >
                       {`Remove ${m.email}`}
                     </Button>
                   </td>
@@ -198,14 +216,14 @@ export function MediaListScreen(): React.JSX.Element {
       </section>
 
       {optOutPrompt && (
-        <Modal isOpen onOpenChange={(open) => { if (!open) setOptOutPrompt(null); }} isDismissable>
+        <Modal isOpen onOpenChange={(open) => { if (!open) closeOptOutPrompt(); }} isDismissable>
           <AlertDialog
             role="alertdialog"
             variant="warning"
             title="This person unsubscribed"
             buttons={
               <>
-                <Button onPress={() => setOptOutPrompt(null)} isDisabled={busy}>
+                <Button onPress={closeOptOutPrompt} isDisabled={busy}>
                   Cancel
                 </Button>
                 <Button onPress={() => void add({ ...optOutPrompt.body, confirmOptOut: true })} isDisabled={busy}>
@@ -215,19 +233,20 @@ export function MediaListScreen(): React.JSX.Element {
             }
           >
             <p>{`They unsubscribed ${optOutPrompt.at ? formatWhen(optOutPrompt.at, new Date(), timeZone) : "earlier"}. Add them only if they've asked to receive media releases again.`}</p>
+            {actionError && <InlineAlert variant="danger" role="alert" description={actionError} />}
           </AlertDialog>
         </Modal>
       )}
 
       {removing && (
-        <Modal isOpen onOpenChange={(open) => { if (!open) setRemoving(null); }} isDismissable>
+        <Modal isOpen onOpenChange={(open) => { if (!open) closeRemoving(); }} isDismissable>
           <AlertDialog
             role="alertdialog"
             variant="destructive"
             title={`Remove ${removing.email} from this list?`}
             buttons={
               <>
-                <Button onPress={() => setRemoving(null)} isDisabled={busy}>
+                <Button onPress={closeRemoving} isDisabled={busy}>
                   Cancel
                 </Button>
                 <Button danger onPress={() => void remove(removing)} isDisabled={busy}>
@@ -237,6 +256,7 @@ export function MediaListScreen(): React.JSX.Element {
             }
           >
             <p>If this is their last list and they were added only for media lists, they stop receiving email altogether.</p>
+            {actionError && <InlineAlert variant="danger" role="alert" description={actionError} />}
           </AlertDialog>
         </Modal>
       )}

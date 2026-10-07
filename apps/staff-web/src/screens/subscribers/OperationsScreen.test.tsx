@@ -16,17 +16,17 @@ const OPS: OperationsStatus = {
 };
 
 type Call = { url: string; method: string; body: unknown };
-function stub(roles: string[], ops: OperationsStatus = OPS) {
+function stub(roles: string[], ops: OperationsStatus = OPS, opts: { load?: () => Response; upload?: () => Response } = {}) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
     calls.push({ url, method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
     if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
     if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-    if (url === "/nod/api/operations") return jsonResponse(200, ops);
+    if (url === "/nod/api/operations") return opts.load?.() ?? jsonResponse(200, ops);
     if (url.endsWith("/pause")) return jsonResponse(200, { paused: true, changed: true });
     if (url === "/nod/api/operations/bounce-summary-address") return jsonResponse(200, { changed: true, bounceSummary: { address: "staff@example.test", from: "setting" } });
-    if (url === "/nod/api/bounces/inbox") return jsonResponse(201, { id: "b1" });
+    if (url === "/nod/api/bounces/inbox") return opts.upload?.() ?? jsonResponse(201, { id: "b1" });
     throw new Error(`unhandled: ${method} ${url}`);
   }));
   return calls;
@@ -88,9 +88,8 @@ describe("OperationsScreen", () => {
     const calls = stub(["NoD.Admin"]);
     renderIt();
     const user = userEvent.setup();
-    expect(await screen.findByText("Using the server default.")).toBeInTheDocument();
+    expect(await screen.findByText("Using the server default: server@example.test")).toBeInTheDocument();
     const field = screen.getByRole("textbox", { name: "Bounce summary email" });
-    await user.clear(field);
     await user.type(field, "staff@example.test");
     await user.click(screen.getByRole("button", { name: "Save address" }));
     await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/bounce-summary-address", method: "PUT", body: { address: "staff@example.test" } }));
@@ -105,5 +104,40 @@ describe("OperationsScreen", () => {
     await user.type(within(upload).getByRole("textbox", { name: "Or paste the message" }), "Subject: Undeliverable");
     await user.click(within(upload).getByRole("button", { name: "Upload bounce" }));
     await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/bounces/inbox", method: "POST", body: { raw: "Subject: Undeliverable" } }));
+  });
+  it("on the server default the field starts empty, and saving it empty never stores the default", async () => {
+    const calls = stub(["NoD.Admin"]);
+    renderIt();
+    const user = userEvent.setup();
+    expect(await screen.findByText("Using the server default: server@example.test")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Bounce summary email" })).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "Save address" }));
+    await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/bounce-summary-address", method: "PUT", body: { address: null } }));
+    expect(calls.some((c) => c.method === "PUT" && (c.body as { address: unknown }).address === "server@example.test")).toBe(false);
+  });
+
+  it("a staff-set address fills the field", async () => {
+    stub(["NoD.Admin"], { ...OPS, bounceSummary: { address: "staff@example.test", from: "setting" } });
+    renderIt();
+    expect(await screen.findByRole("textbox", { name: "Bounce summary email" })).toHaveValue("staff@example.test");
+    expect(screen.queryByText(/Using the server default/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Use the server default" })).toBeInTheDocument();
+  });
+
+  it("a refused upload shows the server's reason", async () => {
+    stub(["NoD.Admin"], OPS, { upload: () => jsonResponse(400, { error: "invalid bounce message (too large or malformed)" }) });
+    renderIt();
+    const user = userEvent.setup();
+    const upload = await screen.findByRole("region", { name: "Test bounce upload" });
+    await user.type(within(upload).getByRole("textbox", { name: "Or paste the message" }), "not a bounce");
+    await user.click(within(upload).getByRole("button", { name: "Upload bounce" }));
+    expect(await within(upload).findByRole("alert")).toHaveTextContent("invalid bounce message (too large or malformed)");
+  });
+
+  it("a failed load says so", async () => {
+    stub(["NoD.Admin"], OPS, { load: () => jsonResponse(500, { error: "internal error" }) });
+    renderIt();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load operations.");
+    expect(screen.queryByRole("region", { name: "News On Demand sending" })).toBeNull();
   });
 });
