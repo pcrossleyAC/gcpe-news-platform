@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
@@ -113,5 +114,51 @@ describe("staff subscriber routes — reads", () => {
     expect((await get(`/api/subscribers/${patId}`, countOnly)).status).toBe(403);
     expect((await get(`/api/subscribers/${patId}/history`, countOnly)).status).toBe(403);
     expect((await get("/api/subscriber-list-options", countOnly)).status).toBe(403);
+  });
+});
+
+describe("staff subscriber routes — writes", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  let viewer: string, editor: string, admin: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    const { auth, token } = await staffAuth();
+    [viewer, editor, admin] = await Promise.all([token(["NoD.Viewer"]), token(["NoD.Editor"]), token(["NoD.Admin"])]);
+    app = createApp({ db: tdb.db, auth, eventSecrets: { nrms: "nrms-secret", core: "core-secret" }, render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null } });
+    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name) VALUES ('ministries:health','ministries','health','Health')`);
+  });
+  afterAll(async () => tdb.drop());
+
+  const send = (method: "post" | "put" | "delete", path: string, tok: string, body?: unknown) =>
+    request(app)[method](path).set("authorization", `Bearer ${tok}`).send(body as object);
+
+  it("Viewer can't write; Editor and Admin can add", async () => {
+    expect((await send("post", "/api/subscribers", viewer, { email: "v@example.test", lists: "all" })).status).toBe(403);
+    expect((await send("post", "/api/subscribers", editor, { email: "e@example.test", lists: ["ministries:health"], digest: true })).status).toBe(201);
+    expect((await send("post", "/api/subscribers", admin, { email: "a@example.test", lists: "all" })).status).toBe(201);
+  });
+
+  it("adding an existing address answers 409 with that subscriber's id; neither timing is 400", async () => {
+    const first = await send("post", "/api/subscribers", editor, { email: "dupe@example.test", lists: "all" });
+    const dup = await send("post", "/api/subscribers", editor, { email: "DUPE@example.test", lists: "all" });
+    expect(dup.status).toBe(409);
+    expect(dup.body).toEqual({ error: "subscriber exists", id: first.body.id });
+    expect((await send("post", "/api/subscribers", editor, { email: "none@example.test", lists: "all", asItHappens: false })).status).toBe(400);
+  });
+
+  it("preferences, status, email, delete and bulk round trip with their error shapes", async () => {
+    const { body: { id } } = await send("post", "/api/subscribers", editor, { email: "rt@example.test", lists: "all" });
+    expect((await send("put", `/api/subscribers/${id}/preferences`, editor, { asItHappens: false, digest: false, allNews: true, listKeys: [] })).body).toEqual({ error: "Choose As It Happens, Daily Digest, or both." });
+    expect((await send("put", `/api/subscribers/${id}/preferences`, editor, { asItHappens: true, digest: false, allNews: false, listKeys: ["ministries:health"] })).body).toEqual({ ok: true });
+    expect((await send("post", `/api/subscribers/${id}/status`, editor, { status: "disabled" })).body).toEqual({ changed: true });
+    expect((await send("post", `/api/subscribers/${id}/email`, editor, { email: "dupe@example.test" })).body).toMatchObject({ error: "email-taken" });
+    expect((await send("post", `/api/subscribers/${id}/email`, editor, { email: "rt2@example.test" })).body).toEqual({ changed: true });
+    expect((await send("delete", `/api/subscribers/${id}`, editor)).body).toEqual({ changed: true });
+    expect((await send("post", `/api/subscribers/${id}/status`, editor, { status: "active" })).body).toEqual({ error: "status", status: "deleted" });
+    expect((await send("post", "/api/subscribers/bulk", editor, { action: "delete", ids: [id] })).body).toEqual({ changed: 0, skipped: [{ id, reason: "unchanged" }] });
+    expect((await send("post", "/api/subscribers/bulk", editor, { action: "delete", ids: Array.from({ length: 201 }, () => randomUUID()) })).status).toBe(400);
+    expect((await send("post", "/api/subscribers/not-a-uuid/status", editor, { status: "active" })).status).toBe(404);
   });
 });

@@ -8,18 +8,17 @@ import { MediaHubError, type MediaHubClient } from "../media-hub/client";
 import { getMediaSyncStatus, resolveMediaMember, runMediaSync } from "../media-hub/sync";
 import { addMediaMember, listMediaLists, listMediaMembers, MediaListNotFoundError, OptedOutError, removeMediaMember } from "../media-members";
 import { getSettings, setDistributionPaused, setPaused } from "../settings";
-import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
+import { countSubscribers } from "../subscribers";
 import { emailAddressSchema } from "../subscribe/info";
 import { safeErrorLabel } from "../subscribe/journeys";
-import { staffSubscriberRoutes } from "./staff-subscriber-routes";
+import { listKeySchema, staffSubscriberRoutes } from "./staff-subscriber-routes";
 
-/** '*' = all news, or '<kind>:<key>' with kind in ministries|sectors|themes|tags (matches indexKeysFor's output shape). */
-export const listKeySchema = z
-  .string()
-  .regex(/^(ministries|sectors|themes|tags):.+$/i, "must be '<kind>:<key>' with kind in ministries|sectors|themes|tags");
+/** The add-subscriber schemas live with the add route (staff-subscriber-routes.ts); re-exported
+ * for callers that import them from here. */
+export { addSubscriberSchema, listKeySchema } from "./staff-subscriber-routes";
 
 /** The count route's own schema -- unlike {@link listKeySchema} (addSubscriberSchema's own
- * use, left unchanged), this also accepts a `media-distribution-lists:<key>` key, since NRMS's
+ * use), this also accepts a `media-distribution-lists:<key>` key, since NRMS's
  * media contact count (`WorkflowDeps.countMediaContacts`) calls this same route. */
 export const countListKeySchema = z.union([listKeySchema, z.string().regex(/^media-distribution-lists:.+$/i, "must be '<kind>:<key>'")]);
 
@@ -29,11 +28,6 @@ export const countListKeySchema = z.union([listKeySchema, z.string().regex(/^med
  * require `.email()`). The schema itself now lives in subscribe/info.ts so media-hub/sync.ts
  * can share it too without an import cycle through this file. */
 export { emailAddressSchema };
-
-export const addSubscriberSchema = z.object({
-  email: emailAddressSchema,
-  lists: z.union([z.literal("all"), z.array(listKeySchema)]),
-});
 
 export const addMediaMemberSchema = z.union([
   z.object({ email: emailAddressSchema, confirmOptOut: z.boolean().optional() }),
@@ -59,7 +53,6 @@ const safe = <P>(h: Handler<P>) => (req: Request<P>, res: Response, next: NextFu
  */
 function handleError(e: unknown, res: Response): boolean {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
-  if (e instanceof SubscriberExistsError) return void res.status(409).json({ error: "subscriber exists" }), true;
   if (e instanceof MediaListNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   if (e instanceof OptedOutError) return void res.status(409).json({ error: "opted-out", at: e.at.toISOString() }), true;
   // A MediaHubError's message/kind is safe to log (never carries a response body or address --
@@ -102,16 +95,6 @@ export function apiRoutes(
         if (!handleError(e, res)) throw e;
       }
     });
-
-  r.post(
-    "/subscribers",
-    requireRole("NoD.Admin"),
-    run(async (req, res) => {
-      const parsed = addSubscriberSchema.parse(req.body);
-      const { id } = await addSubscriber(db, parsed);
-      res.status(201).json({ id });
-    }),
-  );
 
   r.get(
     "/subscribers/count",

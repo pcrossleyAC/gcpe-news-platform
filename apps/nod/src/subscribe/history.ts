@@ -23,6 +23,12 @@ export const HISTORY_ACTIONS = [
   "bounce-recorded",
   "bounce-disabled",
   "bounce-flagged",
+  "staff-added",
+  "staff-preferences-updated",
+  "staff-email-changed",
+  "staff-activated",
+  "staff-deactivated",
+  "staff-deleted",
 ] as const;
 export type HistoryAction = (typeof HISTORY_ACTIONS)[number];
 
