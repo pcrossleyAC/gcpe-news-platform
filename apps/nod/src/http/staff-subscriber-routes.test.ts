@@ -2,11 +2,12 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import express from "express";
 import request from "supertest";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
+import { subscribers } from "../db/schema";
 import { privateErrors } from "./staff-subscriber-routes";
 
 describe("staff subscriber routes — reads", () => {
@@ -160,5 +161,17 @@ describe("staff subscriber routes — writes", () => {
     expect((await send("post", "/api/subscribers/bulk", editor, { action: "delete", ids: [id] })).body).toEqual({ changed: 0, skipped: [{ id, reason: "unchanged" }] });
     expect((await send("post", "/api/subscribers/bulk", editor, { action: "delete", ids: Array.from({ length: 201 }, () => randomUUID()) })).status).toBe(400);
     expect((await send("post", "/api/subscribers/not-a-uuid/status", editor, { status: "active" })).status).toBe(404);
+  });
+
+  it("add and change email cap an address at 150 characters, the same as the public journey", async () => {
+    const address = (length: number) => `${"a".repeat(60)}@${"b".repeat(length - 66)}.test`;
+    expect(address(151)).toHaveLength(151);
+    expect((await send("post", "/api/subscribers", editor, { email: address(151), lists: "all" })).status).toBe(400);
+    const added = await send("post", "/api/subscribers", editor, { email: ` ${address(150).toUpperCase()} `, lists: "all" });
+    expect(added.status).toBe(201);
+    const [row] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, added.body.id));
+    expect(row!.email).toBe(address(150));
+    const { body: { id } } = await send("post", "/api/subscribers", editor, { email: "cap@example.test", lists: "all" });
+    expect((await send("post", `/api/subscribers/${id}/email`, editor, { email: address(151).replace("a@", "c@") })).status).toBe(400);
   });
 });

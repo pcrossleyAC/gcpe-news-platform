@@ -12,10 +12,15 @@ import { activeListKeys, MEDIA_CATEGORY } from "../lists";
  * actually store or send to it. */
 export const emailAddressSchema = z.string().email();
 
+/** An address someone is subscribing with, or staff are adding or moving a subscriber to:
+ * trimmed, lowercased, and capped at legacy's 150 characters. One schema for the public
+ * journey and for staff, so both accept exactly the same addresses. */
+export const subscriberEmailSchema = z.string().trim().max(150).email().toLowerCase();
+
 /** Legacy SubscriberInfo (docs/contracts/news-api-v1.swagger.json). Unknown fields ignored;
  * `isAdminRegistration` and `notifyIfNewCategories` are accepted but never acted on (C57, C60). */
 export const subscriberInfoSchema = z.object({
-  emailAddress: z.string().trim().max(150).email(),
+  emailAddress: subscriberEmailSchema,
   subscribedCategories: z.record(z.array(z.string().max(200)).max(500)).default({}),
   isAllNews: z.boolean().default(false),
   isAsItHappens: z.boolean().default(false),

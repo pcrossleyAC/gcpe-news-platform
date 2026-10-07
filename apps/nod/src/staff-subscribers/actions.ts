@@ -11,6 +11,7 @@ import { lockAddress } from "../locks";
 import { hasMediaMemberships } from "../media-members";
 import { replacePublicSubscriptions } from "../subscribers";
 import { writeHistory } from "../subscribe/history";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import { normaliseEmail } from "../subscribe/info";
 import { expireSessionLinks } from "../subscribe/links";
 
@@ -25,8 +26,11 @@ export class SubscriberStateError extends Error {
 export class EmailTakenError extends Error {
   constructor(public readonly id: string) { super("email-taken"); }
 }
-/** A Media Hub-sourced member's address follows Media Hub (the nightly sync would undo a staff
- * edit); it's changed in Media Hub, or re-pointed through the media list's resolve action. */
+/** The address of a subscriber Media Hub tracks follows Media Hub: the nightly sync finds the
+ * row by its contact id and rewrites the address, which would undo a staff edit. That covers a
+ * Media Hub-sourced member and also a self- or admin-sourced subscriber who was later linked to
+ * a Media Hub contact. It's changed in Media Hub, or re-pointed through the media list's
+ * resolve action. */
 export class MediaHubManagedError extends Error {
   constructor() { super("media-hub-managed"); }
 }
@@ -38,7 +42,10 @@ export const BULK_ACTIONS = ["activate", "deactivate", "delete"] as const;
 export type BulkAction = (typeof BULK_ACTIONS)[number];
 /** Comfortably above one page of search results (read.ts's PAGE_SIZE). */
 export const BULK_MAX = 200;
-export interface BulkResult { changed: number; skipped: { id: string; reason: "not-found" | "unchanged" | "status" }[] }
+/** Why a bulk row didn't change: no such subscriber, already in the target state, a status the
+ * action can't apply to, or an unexpected failure on that row alone (worth retrying). */
+export type BulkSkipReason = "not-found" | "unchanged" | "status" | "error";
+export interface BulkResult { changed: number; skipped: { id: string; reason: BulkSkipReason }[] }
 
 const isMediaKey = (k: string) => k.startsWith(`${MEDIA_CATEGORY}:`);
 
@@ -148,8 +155,10 @@ export async function deleteSubscriber(db: Db, id: string, actor: string): Promi
 export async function changeEmail(db: Db, id: string, rawEmail: string, actor: string): Promise<{ changed: boolean }> {
   const email = normaliseEmail(rawEmail);
   return withLockedSubscriber(db, id, email, async (tx, s) => {
-    if (s.status === "deleted") throw new SubscriberStateError(s.status);
-    if (s.source === "media-hub") throw new MediaHubManagedError();
+    // A pending subscriber's only way in is the verify link sent to their address; moving the
+    // address would leave a row that can never be confirmed.
+    if (s.status === "deleted" || s.status === "pending") throw new SubscriberStateError(s.status);
+    if (s.source === "media-hub" || s.mediaHubContactId !== null) throw new MediaHubManagedError();
     if (normaliseEmail(s.email) === email) return { changed: false };
     const [taken] = await tx.select({ id: subscribers.id }).from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`);
     if (taken) throw new EmailTakenError(taken.id);
@@ -162,7 +171,8 @@ export async function changeEmail(db: Db, id: string, rawEmail: string, actor: s
 
 /** One transaction per subscriber, not one for the batch: a single transaction would hold up
  * to BULK_MAX address locks until the end and block every journey touching any of them, and
- * one row's refusal would roll back all the rest. Each outcome is reported instead. */
+ * one row's refusal would roll back all the rest. Each outcome is reported instead — an
+ * unexpected failure too, so the rows already changed are still counted. */
 export async function bulkAction(db: Db, ids: string[], action: BulkAction, actor: string): Promise<BulkResult> {
   const result: BulkResult = { changed: 0, skipped: [] };
   for (const id of [...new Set(ids)]) {
@@ -173,7 +183,11 @@ export async function bulkAction(db: Db, ids: string[], action: BulkAction, acto
     } catch (e) {
       if (e instanceof SubscriberNotFoundError) result.skipped.push({ id, reason: "not-found" });
       else if (e instanceof SubscriberStateError) result.skipped.push({ id, reason: "status" });
-      else throw e;
+      else {
+        // By label only: a query error's message carries its bound parameters.
+        console.error("[nod] staff bulk action failed for one subscriber", safeErrorLabel(e));
+        result.skipped.push({ id, reason: "error" });
+      }
     }
   }
   return result;

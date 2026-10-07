@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { DeliveryBounced } from "@gcpe/events";
@@ -69,6 +69,19 @@ describe("staff subscriber actions", () => {
   it("refuses to edit a deleted or pending subscriber", async () => {
     const s = await add("gone@example.test", { status: "deleted" });
     await expect(updatePreferences(tdb.db, s.id, { asItHappens: true, digest: false, allNews: true, listKeys: [] }, ACTOR)).rejects.toThrow(SubscriberStateError);
+    const p = await add("waiting@example.test", { status: "pending" });
+    await expect(updatePreferences(tdb.db, p.id, { asItHappens: true, digest: false, allNews: true, listKeys: [] }, ACTOR)).rejects.toThrow(SubscriberStateError);
+    await expect(changeEmail(tdb.db, p.id, "elsewhere@example.test", ACTOR)).rejects.toThrow(SubscriberStateError);
+  });
+
+  it("change email refuses a pending subscriber and leaves the row and its links alone", async () => {
+    const p = await add("pending@example.test", { status: "pending" });
+    const link = await createLink(tdb.db, { purpose: "verify", email: "pending@example.test", subscriberId: p.id, pending: null });
+    const err = await changeEmail(tdb.db, p.id, "moved@example.test", ACTOR).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(SubscriberStateError);
+    expect((err as SubscriberStateError).status).toBe("pending");
+    expect((await tdb.db.select().from(subscribers).where(eq(subscribers.id, p.id)))[0]).toMatchObject({ email: "pending@example.test", unsubscribeVersion: p.unsubscribeVersion });
+    expect((await findLink(tdb.db, link.token))!.expired).toBe(false);
   });
 
   it("status: deactivate and activate write history; a no-op is unchanged; a deleted subscriber can't be activated", async () => {
@@ -135,6 +148,15 @@ describe("staff subscriber actions", () => {
     await expect(changeEmail(tdb.db, hub.id, "other@example.test", ACTOR)).rejects.toThrow(MediaHubManagedError);
   });
 
+  it("change email refuses a self-sourced subscriber the Media Hub sync also tracks by contact id", async () => {
+    const self = await add("linked@example.test", { source: "self" });
+    await addMediaMember(tdb.db, "budget", { email: "linked@example.test", source: "media-hub", mediaHubContactId: 42 }, ACTOR);
+    const [linked] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, self.id));
+    expect(linked).toMatchObject({ source: "self", mediaHubContactId: 42 });
+    await expect(changeEmail(tdb.db, self.id, "elsewhere@example.test", ACTOR)).rejects.toThrow(MediaHubManagedError);
+    expect((await tdb.db.select().from(subscribers).where(eq(subscribers.id, self.id)))[0]!.email).toBe("linked@example.test");
+  });
+
   it("bulk over mixed statuses handles each row on its own and reports what it skipped", async () => {
     const active = await add("b1@example.test");
     const disabled = await add("b2@example.test", { status: "disabled" });
@@ -147,6 +169,26 @@ describe("staff subscriber actions", () => {
       { id: deleted.id, reason: "status" },
       { id: missing, reason: "not-found" },
     ]);
+  });
+
+  it("bulk records an unexpected failure on one row as an error, logs no address, and carries on", async () => {
+    const before = await add("bulk-a@example.test");
+    const broken = await add("bulk-boom@example.test");
+    const after = await add("bulk-c@example.test");
+    await tdb.db.execute(sql`CREATE FUNCTION refuse_boom() RETURNS trigger LANGUAGE plpgsql AS $$
+      BEGIN IF OLD.email = 'bulk-boom@example.test' THEN RAISE EXCEPTION 'refused by test trigger'; END IF; RETURN NEW; END $$`);
+    await tdb.db.execute(sql`CREATE TRIGGER refuse_boom BEFORE UPDATE ON subscribers FOR EACH ROW EXECUTE FUNCTION refuse_boom()`);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const r = await bulkAction(tdb.db, [before.id, broken.id, after.id], "deactivate", ACTOR);
+      expect(r).toEqual({ changed: 2, skipped: [{ id: broken.id, reason: "error" }] });
+      expect(logged).toHaveBeenCalled();
+      expect(JSON.stringify(logged.mock.calls)).not.toContain("@");
+    } finally {
+      logged.mockRestore();
+      await tdb.db.execute(sql`DROP TRIGGER refuse_boom ON subscribers; DROP FUNCTION refuse_boom()`);
+    }
+    expect((await tdb.db.select().from(subscribers).where(eq(subscribers.id, after.id)))[0]!.status).toBe("disabled");
   });
 
   it("addSubscriber lowercases, takes timing, and writes staff-added history", async () => {

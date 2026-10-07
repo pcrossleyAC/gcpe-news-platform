@@ -5,7 +5,7 @@ import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole } from "@gcpe/auth";
 import { subscribers } from "../db/schema";
 import { addSubscriber, SubscriberExistsError } from "../subscribers";
-import { emailAddressSchema, normaliseEmail } from "../subscribe/info";
+import { normaliseEmail, subscriberEmailSchema } from "../subscribe/info";
 import { safeErrorLabel } from "../subscribe/journeys";
 import {
   BULK_ACTIONS, BULK_MAX, bulkAction, changeEmail, deleteSubscriber, EmailTakenError, MediaHubManagedError, setStatus,
@@ -26,7 +26,7 @@ export const listKeySchema = z
  * what it always did: as-it-happens only. */
 export const addSubscriberSchema = z
   .object({
-    email: emailAddressSchema,
+    email: subscriberEmailSchema,
     lists: z.union([z.literal("all"), z.array(listKeySchema)]),
     asItHappens: z.boolean().optional(),
     digest: z.boolean().optional(),
@@ -35,7 +35,7 @@ export const addSubscriberSchema = z
 
 const prefsBody = z.object({ asItHappens: z.boolean(), digest: z.boolean(), allNews: z.boolean(), listKeys: z.array(z.string().max(200)).max(500) });
 const statusBody = z.object({ status: z.enum(["active", "disabled"]) });
-const emailBody = z.object({ email: z.string().trim().max(254).email() });
+const emailBody = z.object({ email: subscriberEmailSchema });
 const bulkBody = z.object({ action: z.enum(BULK_ACTIONS), ids: z.array(z.string().uuid()).min(1).max(BULK_MAX) });
 
 const idParam = z.string().uuid();
