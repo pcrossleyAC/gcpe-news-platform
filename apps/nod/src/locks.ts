@@ -16,7 +16,10 @@ export async function lockAddress(tx: DbOrTx, email: string): Promise<void> {
 /** The row's address changed between the unlocked read and the lock being granted, on every
  * attempt. Carries no address: it can reach an error handler that logs the whole error. */
 export class AddressMovedError extends Error {
-  constructor() { super("subscriber address changed while waiting for its lock"); }
+  constructor() {
+    super("subscriber address changed while waiting for its lock");
+    this.name = "AddressMovedError"; // safeErrorLabel logs the name, so this case is identifiable
+  }
 }
 const LOCK_ATTEMPTS = 3;
 

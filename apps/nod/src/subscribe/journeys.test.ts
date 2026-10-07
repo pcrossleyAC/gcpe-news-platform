@@ -713,4 +713,31 @@ describe("subscriber journeys", () => {
     const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, s!.id));
     expect(history.map((h) => h.action)).not.toContain("preferences-updated");
   });
+
+  it("a public preferences update whose manage link is expired by a move while it waits answers invalid", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await requestManageLink(deps, "pat@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    const manage = tokenFrom();
+    const move = heldTransaction(
+      tdb.db,
+      async (tx) => {
+        await lockAddress(tx, "pat@example.test");
+        await tx.select().from(subscribers).where(eq(subscribers.id, s!.id)).for("update");
+      },
+      async (tx) => {
+        await linksModule.expireSessionLinks(tx, s!.id, null);
+      },
+    );
+    await move.ready;
+    const updated = update(deps, manage, info({ subscribedCategories: { ministries: ["agri"] }, isDailyDigest: true }));
+    await waitForLockWaiter(tdb.db);
+    move.release();
+    await move.done;
+    expect(await updated).toBe("invalid");
+    const [after] = await tdb.db.select().from(subscribers);
+    expect(after).toMatchObject({ status: "active", digest: false });
+  });
 });

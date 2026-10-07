@@ -279,9 +279,11 @@ export async function update(deps: JourneyDeps, token: string, info: SubscriberI
   const link = await findLink(deps.db, token);
   if (!link || link.expired || !(await isSession(deps.db, link))) return "invalid";
   // Under the address lock, like every other writer of this subscriber's subscriptions: staff
-  // may have deleted or disabled them (or a move may have ended this session) while it waited.
+  // may have deleted or disabled them, or a move may have expired this link, while it waited --
+  // so the link is read again under the lock rather than trusted from before it.
   const outcome = await withLockedSubscriber(deps.db, link.subscriberId!, null, async (tx, s) => { // isSession(true) implies non-null
-    if (!s || s.status !== "active" || !(await isSession(tx, link))) return null;
+    const current = await findLink(tx, token);
+    if (!s || s.status !== "active" || !current || current.expired || !(await isSession(tx, current))) return null;
     const { email, prefs } = await toPrefs(tx, info);
     await tx.update(subscribers).set({ asItHappens: prefs.asItHappens, digest: prefs.digest }).where(eq(subscribers.id, s.id));
     await replacePublicSubscriptions(tx, s.id, prefs.listKeys);
