@@ -1,11 +1,21 @@
-import { sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import { and, eq, sql } from "drizzle-orm";
+import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { lists, subscribers, subscriptions } from "./db/schema";
 import { MEDIA_CATEGORY } from "./lists";
 import { matchesItem } from "./matching";
 
 /** Thrown by {@link addSubscriber} on a case-insensitive email clash (subscribers_email_lower_idx). */
 export class SubscriberExistsError extends Error {}
+
+/** Replaces a subscriber's non-media subscriptions with `listKeys`. Media memberships
+ * (`media-distribution-lists:*`) are never in `listKeys` -- neither the public manage page nor
+ * the staff preferences form offers them -- and must survive untouched. */
+export async function replacePublicSubscriptions(tx: DbOrTx, subscriberId: string, listKeys: string[]): Promise<void> {
+  await tx
+    .delete(subscriptions)
+    .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`));
+  if (listKeys.length) await tx.insert(subscriptions).values(listKeys.map((listKey) => ({ subscriberId, listKey })));
+}
 
 export interface AddSubscriberInput {
   email: string;

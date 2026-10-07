@@ -106,6 +106,8 @@ async function findDeliveryMatch(tx: Tx, subscriberId: string, batchId: string):
  * `bounced` flag per email (true iff any row in that email was hard-bounced). Shared by
  * {@link thresholdTripped} and {@link countBouncedEmails} so the two can never grade a
  * subscriber's emails differently; callers append their own `ORDER BY`/`LIMIT` as needed.
+ * Only emails attempted after the subscriber's `bounce_window_from` count -- a reactivation
+ * restarts the count.
  */
 function groupedBouncedEmailsSql(subscriberId: string): SQL {
   return sql`
@@ -114,6 +116,7 @@ function groupedBouncedEmailsSql(subscriberId: string): SQL {
      WHERE subscriber_id = ${subscriberId}
        AND attempted_at IS NOT NULL
        AND attempted_at >= now() - ${sqlInterval(THRESHOLD_WINDOW_MS)}
+       AND attempted_at > COALESCE((SELECT bounce_window_from FROM subscribers WHERE id = ${subscriberId}), '-infinity'::timestamptz)
      GROUP BY COALESCE(distribution_batch_id::text, job_id::text, item_key || mode)
   `;
 }

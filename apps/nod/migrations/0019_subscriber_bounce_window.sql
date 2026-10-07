@@ -1,0 +1,1 @@
+ALTER TABLE "subscribers" ADD COLUMN "bounce_window_from" timestamp with time zone;

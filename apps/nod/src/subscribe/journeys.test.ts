@@ -226,7 +226,7 @@ describe("subscriber journeys", () => {
     const [a, b] = await Promise.all([confirm(deps, token), confirm(deps, token)]);
     for (const r of [a, b]) expect(r).toMatchObject({ emailAddress: "pat@example.test", isAsItHappens: true });
     expect(await tdb.db.select().from(subscribers)).toHaveLength(1);
-    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.action, "confirmed"));
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.action, "subscribed"));
     expect(history).toHaveLength(1);
   });
 
@@ -239,7 +239,7 @@ describe("subscriber journeys", () => {
     expect(a).not.toBeNull();
     expect(b).not.toBeNull();
     expect(await tdb.db.select().from(subscribers)).toHaveLength(1);
-    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.action, "confirmed"));
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.action, "subscribed"));
     expect(history).toHaveLength(1);
   });
 
@@ -417,5 +417,68 @@ describe("subscriber journeys", () => {
     const view = await infoFor(tdb.db, s!.id);
     expect(view.subscribedCategories).not.toHaveProperty("media-distribution-lists");
     expect(view.subscribedCategories).toEqual({ ministries: ["health"] });
+  });
+
+  it("a first confirmation writes 'subscribed'; confirming again from disabled or deleted writes 'resubscribed'", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await tdb.db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.id, s!.id));
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const actions = (await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, s!.id))).map((h) => h.action).sort();
+    expect(actions).toEqual(["resubscribed", "subscribed"]);
+  });
+
+  it("re-confirming from disabled restarts the bounce count", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    await tdb.db.update(subscribers).set({ status: "disabled" });
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    expect(s!.status).toBe("active");
+    expect(s!.bounceWindowFrom).not.toBeNull();
+  });
+
+  it("a move over a dead row keeps that row's history on the mover, with a record-merged line", async () => {
+    for (const email of ["a@example.test", "b@example.test"]) { await subscribe(deps, info({ emailAddress: email })); await confirm(deps, tokenFrom()); }
+    const [bRow] = await tdb.db.select().from(subscribers).where(eq(subscribers.email, "b@example.test"));
+    await unsubscribe(deps, unsubscribeToken(SECRET, bRow!.id, 1));
+    await requestManageLink(deps, "a@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(3));
+    await update(deps, tokenFrom(), info({ emailAddress: "b@example.test" }));
+    await confirm(deps, tokenFrom());
+    const [mover] = await tdb.db.select().from(subscribers);
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, mover!.id));
+    expect(history.map((h) => h.action)).toEqual(expect.arrayContaining(["unsubscribed", "record-merged", "email-changed"]));
+    expect(history.find((h) => h.action === "record-merged")!.detail).toBe("deleted");
+  });
+
+  it("after a completed move, the subscriber's other links stop working; the change-email link stays a session", async () => {
+    await subscribe(deps, info({ emailAddress: "old@example.test" }));
+    const verifyToken = tokenFrom();
+    await confirm(deps, verifyToken);
+    await requestManageLink(deps, "old@example.test");
+    await vi.waitFor(() => expect(sent).toHaveLength(2));
+    const manageToken = tokenFrom();
+    await update(deps, manageToken, info({ emailAddress: "new@example.test" }));
+    const changeToken = tokenFrom();
+    await confirm(deps, changeToken);
+    expect(await checkToken(deps, manageToken)).toBe(false);
+    expect(await checkToken(deps, verifyToken)).toBe(false);
+    expect(await update(deps, manageToken, info({ emailAddress: "new@example.test" }))).toBe("invalid");
+    expect(await checkToken(deps, changeToken)).toBe(true);
+  });
+
+  it("a superseded verify link is dead everywhere: confirm null, checkToken false", async () => {
+    await subscribe(deps, info());
+    const first = tokenFrom();
+    await subscribe(deps, info());
+    const second = tokenFrom();
+    await confirm(deps, first);
+    expect(await confirm(deps, second)).toBeNull();
+    expect(await checkToken(deps, second)).toBe(false);
+    expect(await checkToken(deps, first)).toBe(true);
   });
 });

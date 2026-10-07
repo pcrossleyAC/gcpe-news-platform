@@ -2,14 +2,14 @@ import { and, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import type { DistributionClient } from "../distribution-client";
-import { subscribers, subscriptions, type SubscriberPrefs } from "../db/schema";
-import { MEDIA_CATEGORY } from "../lists";
+import { subscriberHistory, subscribers, type SubscriberPrefs } from "../db/schema";
 import { lockAddress } from "../locks";
 import { optOutMediaMemberships } from "../media-members";
 import type { RenderOptions } from "../render";
+import { replacePublicSubscriptions } from "../subscribers";
 import { writeHistory } from "./history";
 import { infoFor, normaliseEmail, toPrefs, type SubscriberInfo } from "./info";
-import { claimLink, createLink, findLink, linksSentLastHour, MAX_EMAILS_PER_HOUR, type LinkRow } from "./links";
+import { claimLink, createLink, expireSessionLinks, findLink, linksSentLastHour, MAX_EMAILS_PER_HOUR, type LinkRow } from "./links";
 import { linkUrl, sendSystemEmail, type SystemEmailKind } from "./emails";
 import { parseUnsubscribeToken } from "./tokens";
 
@@ -101,17 +101,6 @@ async function issue(deps: JourneyDeps, kind: SystemEmailKind, input: { email: s
   return true;
 }
 
-/** Replaces a subscriber's non-media subscriptions with `listKeys` (always the public ones `toPrefs`
- * produced). Media memberships are never in `listKeys` (the public manage page doesn't know the
- * category) and must survive untouched (global constraints, "the public manage page never shows
- * or changes media memberships"). */
-async function replaceSubscriptions(tx: DbOrTx, subscriberId: string, listKeys: string[]) {
-  await tx
-    .delete(subscriptions)
-    .where(and(eq(subscriptions.subscriberId, subscriberId), sql`${subscriptions.listKey} NOT LIKE ${`${MEDIA_CATEGORY}:%`}`));
-  if (listKeys.length) await tx.insert(subscriptions).values(listKeys.map((listKey) => ({ subscriberId, listKey })));
-}
-
 /** Claims `link` for use AND invalidates every other not-yet-used verify link for the same
  * address, as one statement. Doing both in one statement — rather than claiming this link,
  * then separately updating "the others" — matters for concurrency: two confirms for the same
@@ -163,6 +152,9 @@ async function applyVerify(deps: JourneyDeps, link: LinkRow): Promise<Subscriber
     if (!(await claimVerifyLink(tx, link))) return "unclaimed";
 
     const existing = await bySubscriberEmail(tx, link.email);
+    // A first confirmation, or a pending row's, is a new subscription; a disabled or deleted
+    // row coming back is a resubscription -- reports count the two separately.
+    const historyAction = !existing || existing.status === "pending" ? "subscribed" : "resubscribed";
     const fields = {
       status: "active" as const,
       verifiedAt: sql`now()`,
@@ -170,6 +162,8 @@ async function applyVerify(deps: JourneyDeps, link: LinkRow): Promise<Subscriber
       digest: pending.digest,
       endedAt: null,
       source: "self" as const,
+      // Their own confirmation proves the mailbox works again: restart the bounce count.
+      ...(existing?.status === "disabled" ? { bounceWindowFrom: sql`now()` } : {}),
     };
     let subscriberId: string;
     if (existing) {
@@ -197,9 +191,9 @@ async function applyVerify(deps: JourneyDeps, link: LinkRow): Promise<Subscriber
         subscriberId = raced.id;
       }
     }
-    await replaceSubscriptions(tx, subscriberId, pending.listKeys);
+    await replacePublicSubscriptions(tx, subscriberId, pending.listKeys);
     await tx.execute(sql`UPDATE subscriber_links SET subscriber_id = ${subscriberId}, pending = NULL WHERE id = ${link.id}`);
-    await writeHistory(tx, subscriberId, SELF, "confirmed", pending.listKeys.join(", "));
+    await writeHistory(tx, subscriberId, SELF, historyAction, pending.listKeys.join(", "));
     return { subscriberId };
   });
   if (outcome === "unclaimed") return manageViewByEmail(deps.db, link.email);
@@ -221,9 +215,12 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
     const taken = await bySubscriberEmail(tx, link.email);
     if (taken && taken.id !== subscriberId) {
       if (taken.status === "pending" || taken.status === "deleted") {
-        // Dead weight, not a live subscriber to protect: clear it out (links/history cascade)
-        // and move in.
+        // A dead row, not a live subscriber to protect -- but its history is the record of what
+        // happened at this address (an unsubscribe is consent evidence), so it moves onto the
+        // mover before the row goes, rather than cascading away with it.
+        await tx.update(subscriberHistory).set({ subscriberId }).where(eq(subscriberHistory.subscriberId, taken.id));
         await tx.delete(subscribers).where(eq(subscribers.id, taken.id));
+        await writeHistory(tx, subscriberId, SELF, "record-merged", taken.status);
       } else {
         // active, or disabled (bounce- or staff-disabled) — a row worth protecting either way:
         // a disabled subscriber is kept, not purged, and can reactivate themselves by
@@ -237,6 +234,8 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
       .update(subscribers)
       .set({ email: link.email, unsubscribeVersion: sql`${subscribers.unsubscribeVersion} + 1` })
       .where(and(eq(subscribers.id, subscriberId), eq(subscribers.status, "active")));
+    // Links mailed to the old address must stop working the moment it stops being theirs.
+    await expireSessionLinks(tx, subscriberId, link.id);
     await writeHistory(tx, subscriberId, SELF, "email-changed");
     return "moved";
   });
@@ -284,7 +283,7 @@ export async function update(deps: JourneyDeps, token: string, info: SubscriberI
   const { email, prefs } = await toPrefs(deps.db, info);
   await deps.db.transaction(async (tx) => {
     await tx.update(subscribers).set({ asItHappens: prefs.asItHappens, digest: prefs.digest }).where(eq(subscribers.id, s.id));
-    await replaceSubscriptions(tx, s.id, prefs.listKeys);
+    await replacePublicSubscriptions(tx, s.id, prefs.listKeys);
     await writeHistory(tx, s.id, SELF, "preferences-updated", prefs.listKeys.join(", "));
   });
   if (email !== normaliseEmail(s.email)) {
@@ -313,6 +312,9 @@ export async function checkToken(deps: JourneyDeps, token: string): Promise<bool
   // confirmed yet. change-email: only once it has become a session (C1) — before that, the
   // move hasn't happened, so there's nothing valid to report.
   if (link.purpose === "change-email") return isSession(deps.db, link);
+  // A verify link claimed by a sibling confirmation (used, but never bound to a subscriber) is
+  // dead: Confirm already answers null for it, so this must not call it valid.
+  if (link.purpose === "verify" && link.usedAt !== null && link.subscriberId === null) return false;
   return true;
 }
 

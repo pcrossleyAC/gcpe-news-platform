@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
+import { subscribers } from "../db/schema";
 import { addSubscriber } from "../subscribers";
-import { claimLink, createLink, findLink, linksSentLastHour, markLinkUsed } from "./links";
+import { claimLink, createLink, expireSessionLinks, findLink, linksSentLastHour, markLinkUsed } from "./links";
 import { requestManageLink, type JourneyDeps } from "./journeys";
 import { hashToken } from "./tokens";
 
@@ -72,5 +73,14 @@ describe("links", () => {
     await requestManageLink(deps, "send-cap@example.test");
     await vi.waitFor(() => expect(sent).toHaveLength(1));
     expect(sent[0]).toMatchObject({ to: "send-cap@example.test", subject: "BC Gov News On Demand Subscription Management" });
+  });
+
+  it("expireSessionLinks ends every other live link of the subscriber and keeps the one named", async () => {
+    const [s] = await tdb.db.insert(subscribers).values({ email: "x@example.test", status: "active" }).returning();
+    const keep = await createLink(tdb.db, { purpose: "change-email", email: "y@example.test", subscriberId: s!.id, pending: null });
+    const other = await createLink(tdb.db, { purpose: "manage", email: "x@example.test", subscriberId: s!.id, pending: null, origin: "send" });
+    expect(await expireSessionLinks(tdb.db, s!.id, keep.id)).toBe(1);
+    expect((await findLink(tdb.db, other.token))!.expired).toBe(true);
+    expect((await findLink(tdb.db, keep.token))!.expired).toBe(false);
   });
 });

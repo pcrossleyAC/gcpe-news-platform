@@ -49,6 +49,20 @@ export async function claimLink(tx: DbOrTx, id: string): Promise<boolean> {
   return r.rows.length > 0;
 }
 
+/** Ends every other still-live link of this subscriber's -- verify, manage and send-stamped
+ * alike -- by moving its expiry to now, so none of them works as a session any more. Used when
+ * the subscriber's address changes: those links were mailed to an address that is no longer
+ * theirs. `keepId` is the link that made the change (it stays the new address's session), or
+ * null when staff made it. */
+export async function expireSessionLinks(tx: DbOrTx, subscriberId: string, keepId: string | null): Promise<number> {
+  const r = await tx.execute<{ id: string }>(sql`
+    UPDATE ${subscriberLinks} SET expires_at = now()
+     WHERE subscriber_id = ${subscriberId} AND expires_at > now()
+       ${keepId ? sql`AND id <> ${keepId}` : sql``}
+    RETURNING id`);
+  return r.rows.length;
+}
+
 /** Counts links an address has had issued in the last hour, for the 3-per-hour request cap
  * (MAX_EMAILS_PER_HOUR). Only `origin = 'request'` links count — a `manage` link stamped into
  * an outbound email (`origin: 'send'`, recipient-links.ts) doesn't (global constraints: "send
