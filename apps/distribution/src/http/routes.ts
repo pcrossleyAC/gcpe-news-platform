@@ -3,6 +3,7 @@ import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { requireRole } from "@gcpe/auth";
 import * as messagesService from "../messages";
+import * as settingsService from "../settings";
 
 const uuidSchema = z.string().uuid();
 type Handler<P> = (req: Request<P>, res: Response) => Promise<void>;
@@ -56,6 +57,32 @@ export function apiRoutes(db: Db, internalDomains: string[]): Router {
       const status = await messagesService.batchStatus(db, req.params.id, appIdFrom(req));
       if (!status) return void res.status(404).json({ error: "not found" });
       res.json(status);
+    }),
+  );
+
+  // Distribution-wide pause (spec §6/§8): staff control this through NoD's own admin routes,
+  // never directly — NoD's Distribution service token is the only caller these are gated for.
+  r.get(
+    "/settings",
+    requireRole("Distribution.Operate"),
+    run(async (_req, res) => {
+      res.json(await settingsService.getSettings(db));
+    }),
+  );
+
+  r.post(
+    "/settings/pause",
+    requireRole("Distribution.Operate"),
+    run(async (_req, res) => {
+      res.json(await settingsService.setPaused(db, true));
+    }),
+  );
+
+  r.post(
+    "/settings/resume",
+    requireRole("Distribution.Operate"),
+    run(async (_req, res) => {
+      res.json(await settingsService.setPaused(db, false));
     }),
   );
 

@@ -5,7 +5,7 @@ import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNodTestDb, envelope, sendEvent } from "../../test/helpers";
-import type { DistributionClient, MessageRequest } from "../distribution-client";
+import { DistributionError, type DistributionClient, type MessageRequest } from "../distribution-client";
 import { deliveries, nodSettings, operationsLog, sendJobs, subscribers, subscriptions } from "../db/schema";
 import type { MediaHubContact } from "../media-hub/contract";
 import type { MediaHubClient } from "../media-hub/client";
@@ -793,5 +793,100 @@ describe("GET /api/settings, POST /api/settings/pause|resume", () => {
 
     const settingsAfter = await request(app).get("/api/settings").set("authorization", `Bearer ${admin}`);
     expect(settingsAfter.body).toEqual({ paused: false, lastDigestCutoff: null });
+  });
+});
+
+describe("GET /api/distribution/settings, POST /api/distribution/pause|resume", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  let distribution: DistributionClient & { send: ReturnType<typeof vi.fn>; getSettings: ReturnType<typeof vi.fn>; setPaused: ReturnType<typeof vi.fn> };
+  let admin: string;
+  let reader: string;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+    const pair = await generateKeyPair("RS256");
+    const keys = createLocalJWKSet({ keys: [{ ...(await exportJWK(pair.publicKey)), kid: "k", alg: "RS256" }] });
+    const sign = (roles: string[], claims: Record<string, unknown> = {}) =>
+      new SignJWT({ roles, ...claims })
+        .setProtectedHeader({ alg: "RS256", kid: "k" })
+        .setIssuer(issuer)
+        .setAudience(audience)
+        .setSubject("svc")
+        .setExpirationTime("5m")
+        .sign(pair.privateKey);
+    admin = await sign(["NoD.Admin"], { name: "Jamie Admin" });
+    reader = await sign([]);
+    distribution = {
+      send: vi.fn().mockResolvedValue({ batchId: "batch-ops" }),
+      getSettings: vi.fn().mockResolvedValue({ paused: false }),
+      setPaused: vi.fn().mockResolvedValue({ paused: true, changed: true }),
+    } as unknown as DistributionClient & { send: ReturnType<typeof vi.fn>; getSettings: ReturnType<typeof vi.fn>; setPaused: ReturnType<typeof vi.fn> };
+    app = createApp({
+      db: tdb.db,
+      auth: { issuer, audience, keys },
+      eventSecrets: { nrms: "nrms-secret", core: "core-secret" },
+      render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
+      distribution,
+      opsEmail: "ops@example.com",
+      timeZone: "America/Vancouver",
+    });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("401s without a token, 403s without NoD.Admin, for all three routes", async () => {
+    expect((await request(app).get("/api/distribution/settings")).status).toBe(401);
+    expect((await request(app).get("/api/distribution/settings").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    expect((await request(app).post("/api/distribution/pause")).status).toBe(401);
+    expect((await request(app).post("/api/distribution/pause").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    expect((await request(app).post("/api/distribution/resume")).status).toBe(401);
+    expect((await request(app).post("/api/distribution/resume").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+  });
+
+  it("GET /api/distribution/settings proxies Distribution's own settings", async () => {
+    distribution.getSettings.mockResolvedValue({ paused: true });
+    const res = await request(app).get("/api/distribution/settings").set("authorization", `Bearer ${admin}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ paused: true });
+  });
+
+  it("pauses, then resumes, logging the bearer's name claim as actor and emailing ops each time; a repeat pause writes nothing", async () => {
+    distribution.setPaused.mockResolvedValue({ paused: true, changed: true });
+    const pause = await request(app).post("/api/distribution/pause").set("authorization", `Bearer ${admin}`);
+    expect(pause.status).toBe(200);
+    expect(pause.body).toEqual({ paused: true, changed: true });
+    expect(distribution.setPaused).toHaveBeenCalledWith(true);
+
+    const logRows = await tdb.db.select().from(operationsLog);
+    expect(logRows).toHaveLength(1);
+    expect(logRows[0]!).toMatchObject({ actor: "Jamie Admin", action: "distribution-paused" });
+    expect(distribution.send).toHaveBeenCalledTimes(1);
+    expect((distribution.send.mock.calls[0]![0] as MessageRequest).subject).toBe("BC Gov News On Demand distribution paused");
+
+    // Distribution itself reports no change (already paused) -- the route must write nothing.
+    distribution.setPaused.mockResolvedValue({ paused: true, changed: false });
+    const pauseAgain = await request(app).post("/api/distribution/pause").set("authorization", `Bearer ${admin}`);
+    expect(pauseAgain.body).toEqual({ paused: true, changed: false });
+    expect(await tdb.db.select().from(operationsLog)).toHaveLength(1);
+    expect(distribution.send).toHaveBeenCalledTimes(1);
+
+    distribution.setPaused.mockResolvedValue({ paused: false, changed: true });
+    const resume = await request(app).post("/api/distribution/resume").set("authorization", `Bearer ${admin}`);
+    expect(resume.status).toBe(200);
+    expect(resume.body).toEqual({ paused: false, changed: true });
+    expect(distribution.send).toHaveBeenCalledTimes(2);
+    expect((distribution.send.mock.calls[1]![0] as MessageRequest).subject).toBe("BC Gov News On Demand distribution resumed");
+  });
+
+  it("a Distribution error maps to 502, with nothing logged", async () => {
+    const before = await tdb.db.select().from(operationsLog);
+    distribution.setPaused.mockRejectedValue(new DistributionError("Distribution unreachable", true, 503));
+
+    const res = await request(app).post("/api/distribution/pause").set("authorization", `Bearer ${admin}`);
+    expect(res.status).toBe(502);
+
+    expect(await tdb.db.select().from(operationsLog)).toHaveLength(before.length);
   });
 });

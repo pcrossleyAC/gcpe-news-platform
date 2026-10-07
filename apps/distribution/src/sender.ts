@@ -1,7 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { ageMsOf, heldBy, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import type { Transporter } from "nodemailer";
-import { batches, messages, type StoredAttachment } from "./db/schema";
+import { batches, distributionSettings, messages, type StoredAttachment } from "./db/schema";
 import { substitute } from "./substitute";
 
 export interface SendOptions {
@@ -95,6 +95,11 @@ const LOCK_MARGIN_MS = 30_000;
 // defaults (10s + 10s + 30s): the worst-case time nodemailer lets a single message's send take
 // before its own timeouts abort it, used when the caller doesn't say otherwise.
 const DEFAULT_PER_MESSAGE_MS = 10_000 + 10_000 + 30_000;
+// Spec §6/§8: while Distribution is paused, the claim below only picks up messages at or
+// above this priority — matches priority.ts's `system` base (the only kind at or above it,
+// even after the +2 internal-domain bump that every other kind also gets), so verification,
+// manage-link and ops-notice mail still goes out while everything else is held.
+const PAUSED_MIN_PRIORITY = 100;
 const MAX_ATTEMPTS = 5;
 const BASE_BACKOFF_MS = 30_000;
 const MAX_BACKOFF_MS = 3_600_000;
@@ -376,6 +381,13 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     const budget = ratePerMinute - claimedThisMinute;
     if (budget <= 0) return { rows: [] as ClaimedRow[], rateLimited: true };
 
+    // Distribution pause (spec §6/§8): read in the same transaction as the claim below, so a
+    // pause/resume that lands concurrently can't be observed only by part of this claim. Held
+    // messages are never dropped — just left pending for a later, unpaused (or system-priority)
+    // claim.
+    const [settingsRow] = await tx.select({ paused: distributionSettings.paused }).from(distributionSettings).where(eq(distributionSettings.id, 1));
+    const pausedFilter = settingsRow?.paused ? sql`AND priority >= ${PAUSED_MIN_PRIORITY}` : sql``;
+
     // The `due` CTE picks the rows in priority order under FOR UPDATE SKIP LOCKED; the outer
     // UPDATE joins batches for the template content so the claim and the read happen in one
     // round trip. Postgres doesn't promise UPDATE...RETURNING preserves the CTE's row order, so
@@ -387,6 +399,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
          WHERE status = 'pending'
            AND next_attempt_at <= ${now}
            AND (locked_until IS NULL OR locked_until < ${now})
+           ${pausedFilter}
          ORDER BY priority DESC, next_attempt_at, id
          LIMIT ${Math.min(batchSize, budget)}
          FOR UPDATE SKIP LOCKED

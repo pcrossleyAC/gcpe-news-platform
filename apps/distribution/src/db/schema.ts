@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export * from "@gcpe/events/tables";
 
@@ -73,3 +73,17 @@ export const sendRateWindows = pgTable("send_rate_windows", {
   claimed: integer("claimed").notNull().default(0),
 });
 export type SendRateWindowRow = typeof sendRateWindows.$inferSelect;
+
+// The Distribution-wide pause switch (spec §6/§8): a singleton row, staff-controlled through
+// NoD's admin (NoD.Admin), read by sender.ts's claim every run. Mirrors nod_settings' own
+// singleton pattern (apps/nod/src/db/schema.ts).
+export const distributionSettings = pgTable(
+  "distribution_settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    paused: boolean("paused").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("distribution_settings_singleton", sql`${t.id} = 1`)],
+);
+export type DistributionSettingsRow = typeof distributionSettings.$inferSelect;

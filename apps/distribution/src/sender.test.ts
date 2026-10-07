@@ -3,10 +3,11 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { sql } from "drizzle-orm";
 import { dbClock, type TestDatabase } from "@gcpe/db-kit";
 import { createBatch } from "./messages";
-import { messages } from "./db/schema";
+import { messages, sendRateWindows } from "./db/schema";
 import { createDistributionTestDb, sampleMessageRequest } from "../test/helpers";
 import { startSmtpSink } from "../test/smtp-sink";
 import { defaultSendLockMs, sendDue, startSender, truncateError } from "./sender";
+import { setPaused } from "./settings";
 
 const internalDomains = ["gov.bc.ca"];
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -49,6 +50,7 @@ describe("sendDue", () => {
   // pending) before it starts.
   beforeEach(async () => {
     await tdb.db.execute(sql`TRUNCATE TABLE messages, batches, send_rate_windows`);
+    await tdb.db.execute(sql`UPDATE distribution_settings SET paused = false`);
   });
 
   it("sends each recipient their own substituted mail", async () => {
@@ -1686,5 +1688,85 @@ describe("sendDue", () => {
         await new Promise<void>((r) => server.close(() => r()));
       }
     }, 10000);
+  });
+
+  describe("Distribution pause", () => {
+    it("paused: sends a pending system message but not a pending immediate one, which stays pending", async () => {
+      const sink = await startSmtpSink();
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, priority: "system", idempotencyKey: "paused-system", recipients: [{ email: "ops@example.com", substitutions: {} }] },
+          internalDomains,
+        );
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, priority: "immediate", idempotencyKey: "paused-immediate", recipients: [{ email: "subscriber@example.com", substitutions: {} }] },
+          internalDomains,
+        );
+
+        await setPaused(tdb.db, true);
+
+        const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+        expect(result).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
+        expect(sink.messages).toHaveLength(1);
+
+        const rows = await tdb.db.select().from(messages);
+        expect(rows.find((r) => r.email === "ops@example.com")!.status).toBe("sent");
+        const held = rows.find((r) => r.email === "subscriber@example.com")!;
+        expect(held.status).toBe("pending");
+        expect(held.lockedUntil).toBeNull();
+      } finally {
+        await transport.close();
+        await sink.close();
+      }
+    });
+
+    it("resumed: the previously held message now sends", async () => {
+      const sink = await startSmtpSink();
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, priority: "immediate", idempotencyKey: "resumed-immediate", recipients: [{ email: "subscriber@example.com", substitutions: {} }] },
+          internalDomains,
+        );
+
+        await setPaused(tdb.db, true);
+        const whilePaused = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+        expect(whilePaused).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: false });
+
+        await setPaused(tdb.db, false);
+        const afterResume = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+        expect(afterResume).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
+
+        const [row] = await tdb.db.select().from(messages);
+        expect(row!.status).toBe("sent");
+      } finally {
+        await transport.close();
+        await sink.close();
+      }
+    });
+
+    it("paused with nothing system due: claims nothing and leaves the rate window untouched", async () => {
+      const transport = { sendMail: async () => ({}) } as unknown as Transporter;
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, priority: "immediate", idempotencyKey: "paused-no-system", recipients: [{ email: "subscriber@example.com", substitutions: {} }] },
+        internalDomains,
+      );
+      await setPaused(tdb.db, true);
+
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: false });
+
+      const windowRows = await tdb.db.select().from(sendRateWindows);
+      expect(windowRows.every((r) => r.claimed === 0)).toBe(true);
+    });
   });
 });

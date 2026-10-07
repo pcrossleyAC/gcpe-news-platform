@@ -49,7 +49,9 @@ describe("distributionTokenProvider", () => {
     const { payload } = await jwtVerify(token, localKey(LOCAL_SECRET), { algorithms: ["HS256"] });
     expect(payload.sub).toBe("nod");
     expect(payload.azp).toBe("nod");
-    expect(payload.roles).toEqual(["Distribution.Send"]);
+    // NoD's own token also carries Distribution.Operate, so the same service token can both
+    // send mail and control Distribution's pause switch.
+    expect(payload.roles).toEqual(["Distribution.Send", "Distribution.Operate"]);
 
     // Cached: a second call before expiry returns the identical token.
     expect(await getToken()).toBe(token);

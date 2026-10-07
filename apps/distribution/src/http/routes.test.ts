@@ -16,6 +16,7 @@ describe("Distribution HTTP API", () => {
   let sender: string;
   let otherAppSender: string;
   let reader: string;
+  let operator: string;
   let firstBatchId: string;
 
   beforeAll(async () => {
@@ -33,6 +34,7 @@ describe("Distribution HTTP API", () => {
     sender = await sign("nod-client", ["Distribution.Send"]);
     otherAppSender = await sign("other-client", ["Distribution.Send"]);
     reader = await sign("nod-client", []);
+    operator = await sign("nod", ["Distribution.Operate"]);
     app = createApp({ db: tdb.db, auth: { issuer, audience, keys }, internalDomains });
   });
   afterAll(async () => {
@@ -221,5 +223,51 @@ describe("Distribution HTTP API", () => {
 
     const { rows } = await tdb.pool.query("SELECT app_id FROM batches WHERE id = $1", [res.body.batchId]);
     expect(rows).toEqual([{ app_id: "nod" }]);
+  });
+
+  describe("GET /api/settings, POST /api/settings/pause|resume", () => {
+    afterAll(async () => {
+      await tdb.pool.query("UPDATE distribution_settings SET paused = false");
+    });
+
+    it("401s without a token, 403s without Distribution.Operate, for all three routes", async () => {
+      expect((await request(app).get("/api/settings")).status).toBe(401);
+      expect((await request(app).get("/api/settings").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+      expect((await request(app).post("/api/settings/pause")).status).toBe(401);
+      expect((await request(app).post("/api/settings/pause").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+      expect((await request(app).post("/api/settings/resume")).status).toBe(401);
+      expect((await request(app).post("/api/settings/resume").set("authorization", `Bearer ${reader}`)).status).toBe(403);
+      // Distribution.Send (the message-sending role) isn't Distribution.Operate either.
+      expect((await request(app).get("/api/settings").set("authorization", `Bearer ${sender}`)).status).toBe(403);
+    });
+
+    it("GET /api/settings returns the current paused shape", async () => {
+      const res = await request(app).get("/api/settings").set("authorization", `Bearer ${operator}`);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual({ paused: false });
+    });
+
+    it("pauses, then resumes; a repeat pause reports changed: false", async () => {
+      const pause = await request(app).post("/api/settings/pause").set("authorization", `Bearer ${operator}`);
+      expect(pause.status).toBe(200);
+      expect(pause.body).toEqual({ paused: true, changed: true });
+
+      const settingsAfterPause = await request(app).get("/api/settings").set("authorization", `Bearer ${operator}`);
+      expect(settingsAfterPause.body).toEqual({ paused: true });
+
+      const pauseAgain = await request(app).post("/api/settings/pause").set("authorization", `Bearer ${operator}`);
+      expect(pauseAgain.status).toBe(200);
+      expect(pauseAgain.body).toEqual({ paused: true, changed: false });
+
+      const resume = await request(app).post("/api/settings/resume").set("authorization", `Bearer ${operator}`);
+      expect(resume.status).toBe(200);
+      expect(resume.body).toEqual({ paused: false, changed: true });
+
+      const resumeAgain = await request(app).post("/api/settings/resume").set("authorization", `Bearer ${operator}`);
+      expect(resumeAgain.body).toEqual({ paused: false, changed: false });
+
+      const settingsAfterResume = await request(app).get("/api/settings").set("authorization", `Bearer ${operator}`);
+      expect(settingsAfterResume.body).toEqual({ paused: false });
+    });
   });
 });

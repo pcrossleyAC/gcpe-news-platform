@@ -178,6 +178,9 @@ async function setupStack(opts: {
     NOD_PUBLIC_SITE_URL: "self:/site",
     NOD_MEMBERSHIP_API_USERNAME: MEMBERSHIP_API_USERNAME,
     NOD_MEMBERSHIP_API_PASSWORD_HASH: membershipPasswordHash,
+    // The Distribution pause/resume ops email's recipient -- only pause and resume calls ever
+    // trigger it, so setting this doesn't affect any other test against this shared instance.
+    NOD_OPS_EMAIL: "ops@example.gov.bc.ca",
 
     DIST_DATABASE_URL: distribution.url,
     DIST_SMTP_HOST: "127.0.0.1",
@@ -846,6 +849,67 @@ describe("apps/stack", () => {
     expect(mail).toBeDefined();
     const toAddress = mail!.to && "value" in mail!.to ? mail!.to.value[0]?.address : undefined;
     expect(toAddress).toBe("alex.example@gov.bc.ca");
+  });
+
+  // NoD's own admin route reaches Distribution (over the stack's internal self: URL, with
+  // NoD's own service token) and actually pauses it -- not just a 200 from NoD's side. While
+  // paused, a held (non-system) message stays pending through a tick, and the pause's own ops
+  // email (system priority) still goes out despite the pause ("A verification email still
+  // goes out while paused"). Resuming then releases it.
+  it("POST /nod/api/distribution/pause reaches Distribution and pauses it; held mail waits, the ops email doesn't, and resume releases it", async () => {
+    const admin = { authorization: `Bearer ${instance.adminToken}` };
+    const tick = () => fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+
+    const mailsBefore = instance.sink.messages.length;
+
+    const pause = await fetch(`${instance.stackUrl}/nod/api/distribution/pause`, { method: "POST", headers: admin });
+    expect(pause.status).toBe(200);
+    expect(await pause.json()).toEqual({ paused: true, changed: true });
+
+    const { rows: pausedRows } = await instance.dbs.distribution.pool.query<{ paused: boolean }>("SELECT paused FROM distribution_settings WHERE id = 1");
+    expect(pausedRows).toEqual([{ paused: true }]);
+
+    const { rows: opsLogRows } = await instance.dbs.nod.pool.query<{ action: string }>(
+      "SELECT action FROM operations_log WHERE action = 'distribution-paused' ORDER BY at DESC LIMIT 1",
+    );
+    expect(opsLogRows).toEqual([{ action: "distribution-paused" }]);
+
+    // A held (non-system, "immediate") message, inserted directly as a stand-in for a release
+    // going out while paused -- the release pipeline itself is already covered by the Phase 2
+    // exit check above.
+    const { rows: batchRows } = await instance.dbs.distribution.pool.query<{ id: string }>(
+      `INSERT INTO batches (app_id, subject, html, text, headers) VALUES ('stack-test', 'Held release', '<p>hi</p>', 'hi', '{}'::jsonb) RETURNING id`,
+    );
+    await instance.dbs.distribution.pool.query(
+      `INSERT INTO messages (batch_id, email, substitutions, priority) VALUES ($1, 'held-release@example.test', '{}'::jsonb, 30)`,
+      [batchRows[0]!.id],
+    );
+
+    const tickWhilePaused = await tick();
+    expect(tickWhilePaused.status).toBe(200);
+
+    const { rows: heldRows } = await instance.dbs.distribution.pool.query<{ status: string }>(
+      "SELECT status FROM messages WHERE email = 'held-release@example.test'",
+    );
+    expect(heldRows).toEqual([{ status: "pending" }]);
+
+    // The pause's own ops notice is system priority, so it went out on that same tick despite
+    // the pause -- the sink gained exactly one message, addressed to NOD_OPS_EMAIL.
+    await expect.poll(() => instance.sink.messages.length, { timeout: 5000 }).toBeGreaterThan(mailsBefore);
+    const opsMail = instance.sink.messages.find((m) => m.subject === "BC Gov News On Demand distribution paused");
+    expect(opsMail).toBeDefined();
+    const opsToAddress = opsMail!.to && "value" in opsMail!.to ? opsMail!.to.value[0]?.address : undefined;
+    expect(opsToAddress).toBe("ops@example.gov.bc.ca");
+
+    const resume = await fetch(`${instance.stackUrl}/nod/api/distribution/resume`, { method: "POST", headers: admin });
+    expect(resume.status).toBe(200);
+    expect(await resume.json()).toEqual({ paused: false, changed: true });
+
+    await tick();
+    const { rows: releasedRows } = await instance.dbs.distribution.pool.query<{ status: string }>(
+      "SELECT status FROM messages WHERE email = 'held-release@example.test'",
+    );
+    expect(releasedRows).toEqual([{ status: "sent" }]);
   });
 
   describe("fake Media Hub (no NOD_MEDIA_HUB_URL configured)", () => {

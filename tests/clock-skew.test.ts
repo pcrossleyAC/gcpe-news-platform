@@ -144,13 +144,15 @@ describe.each([
     const render: RenderOptions = { siteUrl: "https://news.example/site", bannerUrl: null };
     let lockFromDbNow: number | undefined;
     let replica: unknown;
-    const distribution: DistributionClient = {
+    const distribution = {
       send: async () => {
         lockFromDbNow = await msFromDbNow(nodDb, "send_jobs", "locked_until", "id = $1", [jobId]);
-        replica = await unskewed(() => sendDueJobs({ db: nodDb.db, distribution: { send: async () => ({ batchId: "x" }) }, links, render }));
+        replica = await unskewed(() =>
+          sendDueJobs({ db: nodDb.db, distribution: { send: async () => ({ batchId: "x" }) } as unknown as DistributionClient, links, render }),
+        );
         throw new DistributionError("HTTP 503", true);
       },
-    };
+    } as unknown as DistributionClient;
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const result = await sendDueJobs({ db: nodDb.db, distribution, links, render, maxAgeMs: SHORT_MAX_AGE_MS });
