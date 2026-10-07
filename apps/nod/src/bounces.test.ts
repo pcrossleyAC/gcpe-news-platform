@@ -10,8 +10,7 @@ import { createNodTestDb, envelope } from "../test/helpers";
 
 let jobSeq = 0;
 /** A minimal real send_jobs row -- deliveries.job_id is a real FK, so a test that groups
- * several delivery rows by a shared job (the fallback match's own grouping) needs one to
- * reference. */
+ * several delivery rows under a shared job needs one to reference. */
 async function insertJob(db: TestDatabase["db"]): Promise<string> {
   const [row] = await db.insert(sendJobs).values({ jobKey: `bounces-test-job-${++jobSeq}` }).returning({ id: sendJobs.id });
   return row!.id;
@@ -55,8 +54,9 @@ async function insertDelivery(
   });
 }
 
-/** One "email": `n` digest item rows sharing one batch id (or job id, for the fallback-match
- * tests), the shape send-jobs.ts's sendAllChunks actually produces for a digest send. */
+/** One "email": `n` digest item rows sharing one batch id (or job id, for tests of a
+ * job-grouped-but-unbatched email), the shape send-jobs.ts's sendAllChunks actually produces
+ * for a digest send. */
 async function insertEmail(
   db: TestDatabase["db"],
   opts: { subscriberId: string; itemKeyPrefix: string; n: number; attemptedAt: Date; distributionBatchId?: string | null; jobId?: string | null; hardBounced?: boolean },
@@ -199,21 +199,23 @@ describe("onDeliveryBounced", () => {
     expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-recorded"]);
   });
 
-  it("the fallback marks all rows of the latest job, leaving an older job's rows untouched", async () => {
-    const sub = await insertSubscriber(tdb.db, "fallback-job@example.test");
-    const olderJob = await insertJob(tdb.db);
-    await insertEmail(tdb.db, { subscriberId: sub.id, itemKeyPrefix: "fallback-job-older", n: 2, attemptedAt: daysAgo(3), jobId: olderJob });
-    const newerJob = await insertJob(tdb.db);
-    await insertEmail(tdb.db, { subscriberId: sub.id, itemKeyPrefix: "fallback-job-newer", n: 3, attemptedAt: daysAgo(1), jobId: newerJob });
+  // Controller ruling (supersedes the earlier "fall back to the recency match" design):
+  // Distribution's event always carries a real batchId -- it's already done its own
+  // recipient-within-4-days fallback on its side before ever emitting the event, so there is
+  // nothing left for NoD to guess at. A job-grouped email (digest rows sharing a job_id, no
+  // distribution_batch_id of their own) is exactly the shape the old fallback used to recover
+  // via recency; it's left untouched here too.
+  it("a batch id that matches no delivery row leaves even job-grouped rows untouched", async () => {
+    const sub = await insertSubscriber(tdb.db, "job-grouped@example.test");
+    const job = await insertJob(tdb.db);
+    await insertEmail(tdb.db, { subscriberId: sub.id, itemKeyPrefix: "job-grouped-item", n: 3, attemptedAt: daysAgo(1), jobId: job });
 
-    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "fallback-job@example.test", batchId: randomUUID(), hard: true }), OPTS));
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "job-grouped@example.test", batchId: randomUUID(), hard: true }), OPTS));
 
-    expect(result).toEqual({ matched: true, action: "recorded" });
-    const newerRows = await deliveriesFor(tdb.db, sub.id, "fallback-job-newer");
-    expect(newerRows).toHaveLength(3);
-    expect(newerRows.every((r) => r.hardBouncedAt !== null)).toBe(true);
-    const olderRows = await deliveriesFor(tdb.db, sub.id, "fallback-job-older");
-    expect(olderRows.every((r) => r.hardBouncedAt === null)).toBe(true);
+    expect(result).toEqual({ matched: false, action: "none" });
+    const rows = await deliveriesFor(tdb.db, sub.id, "job-grouped-item");
+    expect(rows.every((r) => r.hardBouncedAt === null)).toBe(true);
+    expect(await historyActions(tdb.db, sub.id)).toEqual([]);
   });
 
   // A media-list member can also be a plain public subscriber -- flagging must leave both
@@ -426,31 +428,32 @@ describe("onDeliveryBounced", () => {
     expect(delivery.hardBouncedAt).toBeNull();
   });
 
-  it("falls back to the subscriber's most recent attempted delivery when no delivery carries the event's batch id", async () => {
-    const sub = await insertSubscriber(tdb.db, "fallback@example.test");
-    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-fallback-older", attemptedAt: daysAgo(2) });
-    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-fallback-newer", attemptedAt: daysAgo(1) });
+  // Controller ruling: NoD's bounce handler has no recipient fallback at all. Distribution's
+  // event always carries a real batchId -- it's already done its own recipient-within-4-days
+  // fallback on its side (bounces/store.ts) before ever emitting the event, so the batchId it
+  // hands over always names the message that actually bounced. If no delivery row of this
+  // subscriber's own carries it (a verification/manage-link email, which gets no deliveries row
+  // at all, or a handoff whose own batch-id stamp never landed), there is nothing here to mark:
+  // no delivery marks, no history, no threshold check.
+  it("a batch id that matches no delivery row records nothing, even with a NULL-batch-id delivery inside 4 days", async () => {
+    const sub = await insertSubscriber(tdb.db, "no-fallback-null-batch@example.test");
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-no-fallback-null", attemptedAt: daysAgo(1) });
 
-    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "fallback@example.test", batchId: randomUUID(), hard: true }), OPTS));
-
-    expect(result).toEqual({ matched: true, action: "recorded" });
-    expect((await deliveryFor(tdb.db, sub.id, "item-fallback-newer")).hardBouncedAt).not.toBeNull();
-    expect((await deliveryFor(tdb.db, sub.id, "item-fallback-older")).hardBouncedAt).toBeNull();
-  });
-
-  // A verification/manage-link email creates no deliveries row at all, but its own
-  // (Distribution-real, just NoD-untracked) batchId can land near a genuine release send for
-  // the same subscriber. The candidate the recency fallback would otherwise pick already
-  // belongs to a *different*, confirmed batch of its own -- attributing this event to it would
-  // misattribute the bounce, so nothing is recorded instead.
-  it("does not fall back to a delivery that already belongs to a different, confirmed batch", async () => {
-    const sub = await insertSubscriber(tdb.db, "fallback-foreign-batch@example.test");
-    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-real-send", attemptedAt: daysAgo(1), distributionBatchId: randomUUID() });
-
-    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "fallback-foreign-batch@example.test", batchId: randomUUID(), hard: true }), OPTS));
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "no-fallback-null-batch@example.test", batchId: randomUUID(), hard: true }), OPTS));
 
     expect(result).toEqual({ matched: false, action: "none" });
-    expect((await deliveryFor(tdb.db, sub.id, "item-real-send")).hardBouncedAt).toBeNull();
+    expect((await deliveryFor(tdb.db, sub.id, "item-no-fallback-null")).hardBouncedAt).toBeNull();
+    expect(await historyActions(tdb.db, sub.id)).toEqual([]);
+  });
+
+  it("a batch id that matches no delivery row records nothing, even with a different real batch id on a delivery inside 4 days", async () => {
+    const sub = await insertSubscriber(tdb.db, "no-fallback-other-batch@example.test");
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-no-fallback-other", attemptedAt: daysAgo(1), distributionBatchId: randomUUID() });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "no-fallback-other-batch@example.test", batchId: randomUUID(), hard: true }), OPTS));
+
+    expect(result).toEqual({ matched: false, action: "none" });
+    expect((await deliveryFor(tdb.db, sub.id, "item-no-fallback-other")).hardBouncedAt).toBeNull();
     expect(await historyActions(tdb.db, sub.id)).toEqual([]);
   });
 
