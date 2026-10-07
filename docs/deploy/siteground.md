@@ -369,6 +369,13 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
   preferences/Delete/Change email/status controls and no bulk actions; the Editor has all of
   those plus Add a subscriber; the Admin sees the same controls as the Editor. Confirm an
   NRMS-only user (the test editor or site editor) never sees the Subscribers link at all.
+- [ ] **Phase 4g items 10 and 14** — Lists & categories, Media lists and Operations on boxs.ca:
+  1. As the admin, open Subscribers → Operations.
+  2. Confirm the Test bounce upload panel shows on boxs.ca (it only does while Distribution
+     reports `source: "fake"`).
+  3. Pause and resume News On Demand sending, and confirm the ops email arrives at the redirect
+     address each time.
+  4. As `nod-editor`, open a media list and add and remove a member from the fake Media Hub.
 
 Staff sign in at `POST /core/auth/login` and receive one `gcpe_session` cookie that every app's API accepts. Its signing key is derived from `STACK_EVENT_SECRET`, so there is nothing new to add in Site Tools. (Setting `SESSION_SECRET` explicitly overrides the derived one; changing either signs everyone out.)
 

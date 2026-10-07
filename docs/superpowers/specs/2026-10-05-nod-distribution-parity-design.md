@@ -57,7 +57,9 @@ Each sub-plan is planned, built, reviewed and deployed to boxs.ca in turn.
 | 4d | Distribution rate cap, concurrency, capacity measurement (§6) | A measured send rate recorded beside Q21/Q22 |
 | 4e | Bounces (§7) | Bounce parsing, matching and threshold tests |
 | 4f | Staff Subscribers section and roles (§8) | Acceptance list, e2e and axe checks |
-| 4g | Emergency RSS ingester, retention purge, legacy NoD importer (§9) | Purge and importer tests |
+| 4g | Staff Lists & categories, Media lists screens, Operations (§8) | Role e2e, axe, list-choice survival tests |
+| 4h | Staff Reports with CSV export (§8) | Report and CSV tests |
+| 4i | Emergency RSS ingester, retention purge, legacy NoD importer (§9) | Purge and importer tests |
 
 ## 3. Data model (NoD)
 

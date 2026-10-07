@@ -174,3 +174,25 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   other links in those emails, such as manage preferences, stop working.
 - **Viewer** — For an all-news subscriber, the subscriber page shows "All news" and also their
   timing (As it happens, Daily digest, or both).
+- **Administrator** — "Lists and categories" (Subscribers) shows each list's active subscribers.
+  NoD Admins can stop offering a list or a whole category (existing subscribers keep it and
+  still get its releases) and set the order the public sees. Names come from Core, and media
+  lists from NRMS.
+- **Administrator** — "Media list names" (Core Admins) adds, renames, orders and retires media
+  lists. Retiring stops releases going to a list but keeps its members. Changes reach News On
+  Demand within a minute.
+- **Editor** — Media lists: add a reporter from Media Hub (choose which of their emails) or type
+  an address for someone not in Media Hub. If they unsubscribed, you'll be asked to confirm, and
+  you'll see when they left; add them only if they've asked to come back.
+- **Editor** — A flagged member shows why. "Bouncing": clear it once the mailbox works, and
+  their bounce count starts again. A Media Hub email problem: pick another of their emails, or
+  clear the flag.
+- **Viewer** — Each media list shows who left it by unsubscribing, and whether they're back on
+  it.
+- **Operations** — Operations (NoD Admins) pauses and resumes News On Demand sending and
+  Distribution. Each asks first and emails the operations inbox. Pausing holds email; nothing is
+  dropped. The bounce summary address is set here; clearing it goes back to the server default.
+- **Operations** — On test sites, Operations has a "Test bounce upload" for a `.eml` bounce
+  message. Bounce processing picks it up within 15 minutes.
+- **Developer** — A route that binds an address or a search term uses `privateErrorsWith`
+  (`apps/nod/src/http/private-errors.ts`), and search terms go in POST bodies, never URLs.
