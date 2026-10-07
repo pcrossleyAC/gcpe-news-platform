@@ -31,8 +31,9 @@ export const subscribers = pgTable(
     // member (4c Task 4's sync writes/reads this; Task 2 only adds the column).
     mediaHubEmailRef: text("media_hub_email_ref"),
     // A short reason a media-list member needs staff attention instead of being silently
-    // deleted (C59) -- e.g. a bounced or collided Media Hub email. Null = fine. Set together
-    // with attentionAt; neither is written by this task.
+    // deleted (C59) -- a collided Media Hub email (media-hub/sync.ts: "email-gone",
+    // "email-invalid", "email-taken"), or a hard-bounced address (bounces.ts: "bouncing").
+    // Null = fine. Set together with attentionAt.
     needsAttention: text("needs_attention"),
     attentionAt: timestamp("attention_at", { withTimezone: true }),
     // Set when the subscriber unsubscribes, is deleted, or moves to a new address; drives the
@@ -108,6 +109,16 @@ export const deliveries = pgTable(
     mode: text("mode").$type<DeliveryMode>().notNull().default("as_it_happens"),
     jobId: uuid("job_id").references(() => sendJobs.id, { onDelete: "set null" }),
     attemptedAt: timestamp("attempted_at", { withTimezone: true }),
+    // Distribution's own batch id for the chunk/part this delivery was actually handed off in
+    // (send-jobs.ts's sendAllChunks, stamped right after distribution.send returns) -- what a
+    // `delivery.bounced` event's own batchId is matched against first (bounces.ts).
+    distributionBatchId: uuid("distribution_batch_id"),
+    // Set once, on this delivery's first hard bounce (bounces.ts); never cleared, and never
+    // moved by a later bounce of either kind for the same delivery.
+    hardBouncedAt: timestamp("hard_bounced_at", { withTimezone: true }),
+    // The bounce's own status code/string (e.g. "5.1.1", or legacy's numeric "550"), from
+    // whichever bounce -- hard or soft -- first set it for this delivery.
+    bounceStatus: text("bounce_status"),
   },
   (t) => [
     primaryKey({ columns: [t.itemKey, t.subscriberId, t.mode] }),
@@ -116,6 +127,9 @@ export const deliveries = pgTable(
     // claim's own read of this job's items, withdrawItem/createItemSend's deletes, and the
     // ON DELETE SET NULL FK check on sendJobs — none of which had an index to use.
     index("deliveries_job_id_idx").on(t.jobId),
+    // bounces.ts's own first match attempt: a delivery.bounced event's batchId against this
+    // subscriber's deliveries.
+    index("deliveries_distribution_batch_id_idx").on(t.distributionBatchId),
   ],
 );
 export type DeliveryRow = typeof deliveries.$inferSelect;

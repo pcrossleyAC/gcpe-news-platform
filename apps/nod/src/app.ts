@@ -5,6 +5,7 @@ import { requireBearer, type BearerOptions } from "@gcpe/auth";
 import { createEventReceiver } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import { createItemSending } from "./as-it-happens";
+import { bounceHandler } from "./bounces";
 import type { DistributionClient } from "./distribution-client";
 import { apiRoutes } from "./http/routes";
 import { membershipRoutes, type MembershipAuth } from "./http/membership";
@@ -42,6 +43,10 @@ export interface AppDeps {
   /** Legacy `Subscribe/SubscriberInformation` (C55) Basic Auth credentials -- null (the
    * default) means the route always answers 503 instead of ever comparing credentials. */
   membership?: MembershipAuth | null;
+  /** NoD's own appId, as Distribution records it for a message NoD sent (bounces.ts) --
+   * defaults to "nod", the subject/azp every local (non-Entra) Distribution token carries
+   * (distribution-token.ts). start.ts always passes the real configured value. */
+  distributionAppId?: string;
 }
 
 const noDistribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused"> = {
@@ -76,11 +81,12 @@ export function createApp(deps: AppDeps): express.Express {
       await createItemSend(tx, r.key, "as_it_happens");
     },
   });
+  const resolveBounceHandler = bounceHandler({ appId: deps.distributionAppId ?? "nod" });
   app.use(
     createEventReceiver({
       db: deps.db,
       secrets: deps.eventSecrets,
-      handlers: (ev) => resolveItemHandler(ev) ?? listsHandler(ev),
+      handlers: (ev) => resolveItemHandler(ev) ?? listsHandler(ev) ?? resolveBounceHandler(ev),
     }),
   );
 

@@ -1,0 +1,253 @@
+import { randomUUID } from "node:crypto";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
+import type { TestDatabase } from "@gcpe/db-kit";
+import type { DeliveryBounced } from "@gcpe/events";
+import { createItemSending } from "./as-it-happens";
+import { onDeliveryBounced } from "./bounces";
+import { deliveries, items, sendJobs, subscriberHistory, subscribers, subscriptions } from "./db/schema";
+import { createNodTestDb, envelope } from "../test/helpers";
+
+const APP_ID = "nod";
+const OPTS = { appId: APP_ID };
+
+const daysAgo = (n: number): Date => new Date(Date.now() - n * 24 * 3_600_000);
+
+async function insertSubscriber(db: TestDatabase["db"], email: string, overrides: Partial<typeof subscribers.$inferInsert> = {}) {
+  const [row] = await db
+    .insert(subscribers)
+    .values({ email, status: "active", verifiedAt: new Date(), asItHappens: true, ...overrides })
+    .returning();
+  return row!;
+}
+
+async function insertDelivery(
+  db: TestDatabase["db"],
+  opts: {
+    subscriberId: string;
+    itemKey: string;
+    mode?: "as_it_happens" | "digest" | "media";
+    attemptedAt?: Date | null;
+    distributionBatchId?: string | null;
+    hardBouncedAt?: Date | null;
+    bounceStatus?: string | null;
+  },
+) {
+  await db.insert(deliveries).values({
+    subscriberId: opts.subscriberId,
+    itemKey: opts.itemKey,
+    mode: opts.mode ?? "as_it_happens",
+    attemptedAt: opts.attemptedAt ?? new Date(),
+    distributionBatchId: opts.distributionBatchId ?? null,
+    hardBouncedAt: opts.hardBouncedAt ?? null,
+    bounceStatus: opts.bounceStatus ?? null,
+  });
+}
+
+function bounceEvent(data: Partial<DeliveryBounced> & { email: string }) {
+  const full: DeliveryBounced = {
+    appId: APP_ID,
+    batchId: randomUUID(),
+    messageId: randomUUID(),
+    hard: true,
+    status: "5.1.1",
+    at: new Date().toISOString(),
+    ...data,
+  };
+  return envelope("distribution", "delivery.bounced", full, `message:${full.messageId}`);
+}
+
+async function deliveryFor(db: TestDatabase["db"], _subscriberId: string, itemKey: string) {
+  return (await db.select().from(deliveries).where(eq(deliveries.itemKey, itemKey)))[0]!;
+}
+
+async function historyActions(db: TestDatabase["db"], subscriberId: string) {
+  const rows = await db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, subscriberId));
+  return rows.map((r) => r.action);
+}
+
+describe("onDeliveryBounced", () => {
+  let tdb: TestDatabase;
+
+  beforeAll(async () => {
+    tdb = await createNodTestDb();
+  });
+  afterAll(async () => tdb.drop());
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE TABLE subscriber_history, deliveries, job_recipients, send_jobs, subscriptions, subscribers, items CASCADE");
+  });
+
+  it("a hard bounce marks the matched delivery and writes one bounce-recorded history row", async () => {
+    const sub = await insertSubscriber(tdb.db, "alex@example.test");
+    const batchId = randomUUID();
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-1", distributionBatchId: batchId });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "alex@example.test", batchId, hard: true, status: "5.1.1" }), OPTS));
+
+    expect(result).toEqual({ matched: true, action: "recorded" });
+    const delivery = await deliveryFor(tdb.db, sub.id, "item-1");
+    expect(delivery.hardBouncedAt).not.toBeNull();
+    expect(delivery.bounceStatus).toBe("5.1.1");
+    expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-recorded"]);
+    const [history] = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, sub.id));
+    expect(history!.detail).toBe("5.1.1");
+  });
+
+  it("the same hard-bounce event processed twice writes only one history row", async () => {
+    const sub = await insertSubscriber(tdb.db, "dup@example.test");
+    const batchId = randomUUID();
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-dup", distributionBatchId: batchId });
+    const event = bounceEvent({ email: "dup@example.test", batchId, hard: true });
+
+    const first = await tdb.db.transaction((tx) => onDeliveryBounced(tx, event, OPTS));
+    const second = await tdb.db.transaction((tx) => onDeliveryBounced(tx, event, OPTS));
+
+    expect(first).toEqual({ matched: true, action: "recorded" });
+    expect(second).toEqual({ matched: true, action: "none" });
+    expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-recorded"]);
+  });
+
+  it("9 hard of the 10 most recent deliveries within 15 days: no action", async () => {
+    const sub = await insertSubscriber(tdb.db, "nine@example.test");
+    for (let i = 1; i <= 8; i++) {
+      await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: `item-${i}`, attemptedAt: daysAgo(i), hardBouncedAt: daysAgo(i), bounceStatus: "5.1.1" });
+    }
+    // The 9th most recent: attempted, never bounced -- stays that way.
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-healthy", attemptedAt: daysAgo(9) });
+    // The 10th most recent: this event hard-bounces it, bringing the hard count to 9 of 10.
+    const batchId = randomUUID();
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-10", attemptedAt: daysAgo(10), distributionBatchId: batchId });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "nine@example.test", batchId, hard: true }), OPTS));
+
+    expect(result).toEqual({ matched: true, action: "recorded" });
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, sub.id));
+    expect(after!.status).toBe("active");
+    expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-recorded"]);
+  });
+
+  it("10 of 10 most recent deliveries within 15 days, all hard: disabled, with history detail 10/15d, and excluded from the next As-It-Happens job", async () => {
+    const sub = await insertSubscriber(tdb.db, "ten@example.test");
+    await tdb.db.insert(subscriptions).values({ subscriberId: sub.id, listKey: "*" });
+    for (let i = 1; i <= 9; i++) {
+      await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: `item-${i}`, attemptedAt: daysAgo(i), hardBouncedAt: daysAgo(i), bounceStatus: "5.1.1" });
+    }
+    const batchId = randomUUID();
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-10", attemptedAt: daysAgo(10), distributionBatchId: batchId });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "ten@example.test", batchId, hard: true }), OPTS));
+
+    expect(result).toEqual({ matched: true, action: "disabled" });
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, sub.id));
+    expect(after!.status).toBe("disabled");
+    expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-disabled"]);
+    const [history] = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, sub.id));
+    expect(history!.detail).toBe("10/15d");
+
+    // Review focus / disabled semantics: the next As-It-Happens job must exclude them.
+    const { createItemSend } = createItemSending({ render: { siteUrl: "https://news.example/site", bannerUrl: null } });
+    await tdb.db.insert(items).values({
+      key: "item-after-disable",
+      kind: "release",
+      listKeys: ["ministries:health"],
+      title: "After disable",
+      url: "https://news.example/site/releases/item-after-disable",
+      publishedAt: new Date(),
+    });
+    const created = await tdb.db.transaction((tx) => createItemSend(tx, "item-after-disable", "as_it_happens"));
+    expect(created).toBe(false); // the only matching subscriber is now disabled -- nobody to send to
+    const [job] = await tdb.db.select().from(sendJobs).where(eq(sendJobs.jobKey, "as_it_happens:item-after-disable"));
+    expect(job).toBeUndefined();
+  });
+
+  it("10 hard bounces but one older than 15 days: no action", async () => {
+    const sub = await insertSubscriber(tdb.db, "stale@example.test");
+    for (let i = 1; i <= 9; i++) {
+      await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: `item-${i}`, attemptedAt: daysAgo(i), hardBouncedAt: daysAgo(i), bounceStatus: "5.1.1" });
+    }
+    // This one is hard-bounced by the event below, but its attempted_at is outside the 15-day
+    // window, so it never counts toward the 10 most recent within it.
+    const batchId = randomUUID();
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-stale", attemptedAt: daysAgo(16), distributionBatchId: batchId });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "stale@example.test", batchId, hard: true }), OPTS));
+
+    expect(result).toEqual({ matched: true, action: "recorded" });
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, sub.id));
+    expect(after!.status).toBe("active");
+  });
+
+  it("a media-list member who trips the threshold is flagged 'bouncing', not disabled, and keeps their lists", async () => {
+    const sub = await insertSubscriber(tdb.db, "journo@example.test");
+    await tdb.db.insert(subscriptions).values({ subscriberId: sub.id, listKey: "media-distribution-lists:budget" });
+    for (let i = 1; i <= 9; i++) {
+      await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: `item-${i}`, mode: "media", attemptedAt: daysAgo(i), hardBouncedAt: daysAgo(i), bounceStatus: "5.1.1" });
+    }
+    const batchId = randomUUID();
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-10", mode: "media", attemptedAt: daysAgo(10), distributionBatchId: batchId });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "journo@example.test", batchId, hard: true }), OPTS));
+
+    expect(result).toEqual({ matched: true, action: "flagged" });
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, sub.id));
+    expect(after).toMatchObject({ status: "active", needsAttention: "bouncing" });
+    expect(after!.attentionAt).not.toBeNull();
+    expect(await historyActions(tdb.db, sub.id)).toEqual(["bounce-flagged"]);
+    const subs = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, sub.id));
+    expect(subs.map((r) => r.listKey)).toContain("media-distribution-lists:budget");
+  });
+
+  it("soft bounces are recorded but never count toward the threshold", async () => {
+    const sub = await insertSubscriber(tdb.db, "soft@example.test");
+    for (let i = 1; i <= 9; i++) {
+      await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: `item-${i}`, attemptedAt: daysAgo(i), hardBouncedAt: daysAgo(i), bounceStatus: "5.1.1" });
+    }
+    const batchId = randomUUID();
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-soft", attemptedAt: daysAgo(10), distributionBatchId: batchId });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "soft@example.test", batchId, hard: false, status: "4.4.7" }), OPTS));
+
+    expect(result).toEqual({ matched: true, action: "none" });
+    const delivery = await deliveryFor(tdb.db, sub.id, "item-soft");
+    expect(delivery.hardBouncedAt).toBeNull();
+    expect(delivery.bounceStatus).toBe("4.4.7");
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, sub.id));
+    expect(after!.status).toBe("active");
+    expect(await historyActions(tdb.db, sub.id)).toEqual([]);
+  });
+
+  it("an event for another app is ignored", async () => {
+    const sub = await insertSubscriber(tdb.db, "other-app@example.test");
+    const batchId = randomUUID();
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-other-app", distributionBatchId: batchId });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "other-app@example.test", appId: "some-other-app", batchId, hard: true }), OPTS));
+
+    expect(result).toEqual({ matched: false, action: "none" });
+    const delivery = await deliveryFor(tdb.db, sub.id, "item-other-app");
+    expect(delivery.hardBouncedAt).toBeNull();
+  });
+
+  it("falls back to the subscriber's most recent attempted delivery when no delivery carries the event's batch id", async () => {
+    const sub = await insertSubscriber(tdb.db, "fallback@example.test");
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-fallback-older", attemptedAt: daysAgo(2) });
+    await insertDelivery(tdb.db, { subscriberId: sub.id, itemKey: "item-fallback-newer", attemptedAt: daysAgo(1) });
+
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "fallback@example.test", batchId: randomUUID(), hard: true }), OPTS));
+
+    expect(result).toEqual({ matched: true, action: "recorded" });
+    expect((await deliveryFor(tdb.db, sub.id, "item-fallback-newer")).hardBouncedAt).not.toBeNull();
+    expect((await deliveryFor(tdb.db, sub.id, "item-fallback-older")).hardBouncedAt).toBeNull();
+  });
+
+  it("no subscriber for the address: unmatched", async () => {
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "nobody@example.test", batchId: randomUUID(), hard: true }), OPTS));
+    expect(result).toEqual({ matched: false, action: "none" });
+  });
+
+  it("no delivery at all for the subscriber: unmatched", async () => {
+    await insertSubscriber(tdb.db, "no-delivery@example.test");
+    const result = await tdb.db.transaction((tx) => onDeliveryBounced(tx, bounceEvent({ email: "no-delivery@example.test", batchId: randomUUID(), hard: true }), OPTS));
+    expect(result).toEqual({ matched: false, action: "none" });
+  });
+});

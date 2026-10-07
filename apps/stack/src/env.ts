@@ -250,8 +250,8 @@ export const INTERNAL_EVENT_ROUTES = [
   },
   { from: "NEWSAPI", source: "news-api", to: "SITE", name: "public-site", url: "self:/site-builder/events", types: ["site.rebuild_requested"] },
   // Phase 4e: Distribution's recorded bounces, back to the app that sent the original
-  // message -- for now always NoD, the only sender wired up (apps/nod/src/app.ts has no
-  // handler for delivery.bounced yet; it only records receipt until that handler exists).
+  // message -- for now always NoD, the only sender wired up (apps/nod/src/bounces.ts records
+  // the bounce and applies the 10-in-15-days rule; apps/nod/src/app.ts wires it in).
   { from: "DIST", source: "distribution", to: "NOD", name: "nod", url: "self:/nod/events", types: ["delivery.bounced"] },
 ] as const satisfies readonly { from: AppPrefix; source: string; to: AppPrefix; name: string; url: string; types: readonly string[] }[];
 

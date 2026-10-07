@@ -915,9 +915,9 @@ describe("apps/stack", () => {
   });
 
   // Phase 4e: a bounce recorded by Distribution reaches NoD as a delivery.bounced event, over
-  // the stack's own DIST -> NOD route, driven only by /stack/tick. NoD has no handler for it
-  // yet, so this only asserts receipt (an inbox_events row) -- same pattern as the Core ->
-  // News API test above for org.upserted.
+  // the stack's own DIST -> NOD route, driven only by /stack/tick, and NoD's own bounces.ts
+  // handler runs for it -- the receiver records "applied" regardless of whether there turns
+  // out to be a subscriber to match (there isn't one here, for this never-subscribed address).
   it("a bounce uploaded to the fake inbox reaches NoD's event receiver as delivery.bounced, driven by /stack/tick", async () => {
     const recipient = "bounce-target@example.test";
     const { rows: batchRows } = await instance.dbs.distribution.pool.query<{ id: string }>(
@@ -954,7 +954,7 @@ describe("apps/stack", () => {
     const inbox = await instance.dbs.nod.pool.query<{ source: string; type: string; outcome: string }>(
       "SELECT source, type, outcome FROM inbox_events WHERE source = 'distribution' AND type = 'delivery.bounced'",
     );
-    expect(inbox.rows).toEqual([{ source: "distribution", type: "delivery.bounced", outcome: "ignored" }]);
+    expect(inbox.rows).toEqual([{ source: "distribution", type: "delivery.bounced", outcome: "applied" }]);
   });
 
   describe("fake Media Hub (no NOD_MEDIA_HUB_URL configured)", () => {

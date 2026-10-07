@@ -87,7 +87,8 @@ function dedupingDistribution(opts: { failKeyOnce?: string } = {}): Distribution
       }
       const existing = accepted.get(key);
       if (existing) return { batchId: existing };
-      const batchId = `batch-${++seq}`;
+      // A real (not just unique) uuid -- it's written to deliveries.distribution_batch_id.
+      const batchId = `00000000-0000-4000-8000-${(++seq).toString(16).padStart(12, "0")}`;
       accepted.set(key, batchId);
       return { batchId };
     },
@@ -148,7 +149,7 @@ describe("sendDueJobs", () => {
     ]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "batch-1" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000006" });
 
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
@@ -161,7 +162,7 @@ describe("sendDueJobs", () => {
 
     const updated = (await tdb.db.select().from(sendJobs))[0]!;
     expect(updated.status).toBe("sent");
-    expect(updated.batchIds).toEqual({ "0": "batch-1" });
+    expect(updated.batchIds).toEqual({ "0": "00000000-0000-4000-8000-000000000006" });
     expect(updated.lockedUntil).toBeNull();
   });
 
@@ -178,7 +179,7 @@ describe("sendDueJobs", () => {
     ]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "batch-x" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-00000000000f" });
     await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
 
     const req = distribution.send.mock.calls[0]![0] as MessageRequest;
@@ -203,7 +204,7 @@ describe("sendDueJobs", () => {
     expect(afterFirst.nextAttemptAt.getTime()).toBeGreaterThan(before);
     expect(afterFirst.lockedUntil).toBeNull();
 
-    distribution.send.mockResolvedValueOnce({ batchId: "batch-2" });
+    distribution.send.mockResolvedValueOnce({ batchId: "00000000-0000-4000-8000-000000000007" });
     // The backoff was computed from the database's now() (µs); a JS Date of it is truncated to
     // the millisecond, so the test clock is set 1ms past it to be on or after the real value.
     const result2 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, now: () => new Date(afterFirst.nextAttemptAt.getTime() + 1) });
@@ -215,7 +216,7 @@ describe("sendDueJobs", () => {
 
     const afterSecond = (await tdb.db.select().from(sendJobs))[0]!;
     expect(afterSecond.status).toBe("sent");
-    expect(afterSecond.batchIds).toEqual({ "0": "batch-2" });
+    expect(afterSecond.batchIds).toEqual({ "0": "00000000-0000-4000-8000-000000000007" });
   });
 
   it("fails immediately on a non-retryable error", async () => {
@@ -281,7 +282,7 @@ describe("sendDueJobs", () => {
     await tdb.db.insert(jobRecipients).values(subs.map((s) => ({ jobId: job.id, subscriberId: s.id })));
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValueOnce({ batchId: "ok-0" }).mockRejectedValueOnce(new DistributionError("HTTP 400: bad subject", false));
+    distribution.send.mockResolvedValueOnce({ batchId: "00000000-0000-4000-8000-000000000010" }).mockRejectedValueOnce(new DistributionError("HTTP 400: bad subject", false));
 
     // chunkSize 1 over 3 recipients → 3 chunks; chunk 0 succeeds, chunk 1 fails permanently,
     // chunk 2 is never attempted.
@@ -290,7 +291,7 @@ describe("sendDueJobs", () => {
 
     const row = (await tdb.db.select().from(sendJobs))[0]!;
     expect(row.status).toBe("failed");
-    expect(row.batchIds).toEqual({ "0": "ok-0" });
+    expect(row.batchIds).toEqual({ "0": "00000000-0000-4000-8000-000000000010" });
   });
 
   it("fails a retryable error once the job is older than maxAgeMs", async () => {
@@ -393,7 +394,7 @@ describe("sendDueJobs", () => {
     const jobsByIndex = [locked, job1, job2];
     await tdb.db.insert(jobRecipients).values(subs.map((s, i) => ({ jobId: jobsByIndex[i]!.id, subscriberId: s.id })));
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "b" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000001" });
 
     const locker = await tdb.pool.connect();
     await locker.query("BEGIN");
@@ -423,7 +424,7 @@ describe("sendDueJobs", () => {
     distribution.send.mockImplementation(async () => {
       // Another worker's claim overwrites locked_until while this call is mid-send.
       await tdb.pool.query("UPDATE send_jobs SET locked_until = now() + interval '1 hour' WHERE id = $1", [job.id]);
-      return { batchId: "stale" };
+      return { batchId: "00000000-0000-4000-8000-000000000013" };
     });
 
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
@@ -445,7 +446,7 @@ describe("sendDueJobs", () => {
     ]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "batch-concurrent" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000009" });
 
     const [r1, r2] = await Promise.all([
       sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, batchSize: 5 }),
@@ -466,7 +467,7 @@ describe("sendDueJobs", () => {
     const distribution = stubDistribution();
     // chunkSize 2 over 5 recipients → chunks :0 (2), :1 (2), :2 (1). First attempt: :0 ok, :1
     // fails retryably, :2 never reached.
-    distribution.send.mockImplementationOnce(async () => ({ batchId: "b0" })).mockImplementationOnce(async () => {
+    distribution.send.mockImplementationOnce(async () => ({ batchId: "00000000-0000-4000-8000-000000000002" })).mockImplementationOnce(async () => {
       throw new DistributionError("HTTP 503", true);
     });
 
@@ -478,11 +479,11 @@ describe("sendDueJobs", () => {
     expect((distribution.send.mock.calls[1]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:1`);
 
     const afterFirst = (await tdb.db.select().from(sendJobs))[0]!;
-    expect(afterFirst.batchIds).toEqual({ "0": "b0" }); // fix 8: chunk 0's id survived the retry-pending state
+    expect(afterFirst.batchIds).toEqual({ "0": "00000000-0000-4000-8000-000000000002" }); // fix 8: chunk 0's id survived the retry-pending state
 
     // Retry: resends ALL three chunks, including :0 which already succeeded.
     distribution.send.mockReset();
-    distribution.send.mockResolvedValueOnce({ batchId: "b0-again" }).mockResolvedValueOnce({ batchId: "b1" }).mockResolvedValueOnce({ batchId: "b2" });
+    distribution.send.mockResolvedValueOnce({ batchId: "00000000-0000-4000-8000-000000000003" }).mockResolvedValueOnce({ batchId: "00000000-0000-4000-8000-000000000004" }).mockResolvedValueOnce({ batchId: "00000000-0000-4000-8000-000000000005" });
     const result2 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, chunkSize: 2, now: () => afterFirst.nextAttemptAt });
     expect(result2).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
@@ -498,9 +499,9 @@ describe("sendDueJobs", () => {
     expect(afterSecond.status).toBe("sent");
     // batch_ids merges the newest response per key over whatever was stored before (here,
     // chunk 0's id legitimately changes because this test's stub isn't dedup-aware — the
-    // *real* Distribution would return the original "b0", which the freezing/dedup test below
-    // covers).
-    expect(afterSecond.batchIds).toEqual({ "0": "b0-again", "1": "b1", "2": "b2" });
+    // *real* Distribution would return the original id again, which the freezing/dedup test
+    // below covers).
+    expect(afterSecond.batchIds).toEqual({ "0": "00000000-0000-4000-8000-000000000003", "1": "00000000-0000-4000-8000-000000000004", "2": "00000000-0000-4000-8000-000000000005" });
   });
 
   // Fix 1 (P2-R16): chunk membership must be frozen on the first attempt. Probes both halves
@@ -616,7 +617,7 @@ describe("sendDueJobs", () => {
     await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "batch-paused" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-00000000000d" });
 
     await tdb.pool.query("UPDATE nod_settings SET paused = true");
     const pausedResult = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
@@ -669,7 +670,7 @@ describe("sendDueJobs", () => {
     ]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "batch-links" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-00000000000b" });
 
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
@@ -689,7 +690,7 @@ describe("sendDueJobs", () => {
     await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "batch-priority" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-00000000000e" });
 
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
@@ -706,7 +707,7 @@ describe("sendDueJobs", () => {
     await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "batch-media" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-00000000000c" });
 
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
@@ -737,7 +738,7 @@ describe("sendDueJobs", () => {
     ]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "batch-digest" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-00000000000a" });
 
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
@@ -811,7 +812,7 @@ describe("sendDueJobs", () => {
     await tdb.db.insert(jobRecipients).values([{ jobId: job.id, subscriberId: sub.id }]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "should-not-be-called" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000012" });
 
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     await withdrawDone;
@@ -907,7 +908,7 @@ describe("sendDueJobs", () => {
     const distribution = stubDistribution();
     // Calls happen only for the two active chunks (0 and 2) — chunk 1 (inactive) never calls
     // distribution.send at all.
-    distribution.send.mockImplementationOnce(async () => ({ batchId: "b0" })).mockImplementationOnce(async () => {
+    distribution.send.mockImplementationOnce(async () => ({ batchId: "00000000-0000-4000-8000-000000000002" })).mockImplementationOnce(async () => {
       throw new DistributionError("HTTP 503", true);
     });
 
@@ -931,7 +932,7 @@ describe("sendDueJobs", () => {
 
     // Retry: chunk 0 is resent (already stamped — must not move) and chunk 2 now succeeds.
     distribution.send.mockReset();
-    distribution.send.mockResolvedValueOnce({ batchId: "b0-again" }).mockResolvedValueOnce({ batchId: "b2" });
+    distribution.send.mockResolvedValueOnce({ batchId: "00000000-0000-4000-8000-000000000003" }).mockResolvedValueOnce({ batchId: "00000000-0000-4000-8000-000000000005" });
     const afterFirst = (await tdb.db.select().from(sendJobs).where(eq(sendJobs.id, job.id)))[0]!;
     const result2 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, chunkSize: 1, now: () => afterFirst.nextAttemptAt });
     expect(result2).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
@@ -939,6 +940,37 @@ describe("sendDueJobs", () => {
     expect((await attemptedAtFor(subs[0]!.id))!.getTime()).toBe(stamp0First!.getTime()); // unchanged by the retry
     expect((await attemptedAtFor(subs[2]!.id))!.getTime()).toBe(stamp2First!.getTime()); // unchanged by the retry — stamped on attempt 1, before the throw
     expect(await attemptedAtFor(subs[1]!.id)).toBeNull(); // still inactive, still never handed off
+  });
+
+  // After a part is handed off and Distribution accepts it, the batchId it returned is
+  // stamped onto that part's deliveries (distribution_batch_id) -- what bounces.ts's own
+  // first match attempt looks for. A part whose send fails gets no batchId at all (there's
+  // nothing to record), even though attempted_at was still stamped for it.
+  it("records distribution_batch_id on a part's deliveries once Distribution accepts it, and not on a part that fails", async () => {
+    const subs = await Promise.all([
+      insertSubscriber(tdb.db, "batchid-active-0@example.com", { id: lowId(0) }),
+      insertSubscriber(tdb.db, "batchid-active-2@example.com", { id: lowId(2) }),
+    ]);
+    const job = await insertJob(tdb.db, "release-batchid");
+    await tdb.db.insert(jobRecipients).values(subs.map((s) => ({ jobId: job.id, subscriberId: s.id })));
+    await tdb.db.insert(deliveries).values(subs.map((s) => ({ itemKey: "release-batchid", subscriberId: s.id, mode: "as_it_happens" as const, jobId: job.id })));
+
+    const distribution = stubDistribution();
+    distribution.send.mockImplementationOnce(async () => ({ batchId: "00000000-0000-4000-8000-000000000008" })).mockImplementationOnce(async () => {
+      throw new DistributionError("HTTP 503", true);
+    });
+
+    const batchIdFor = async (subscriberId: string) => {
+      const [row] = await tdb.db.select({ distributionBatchId: deliveries.distributionBatchId }).from(deliveries).where(and(eq(deliveries.jobId, job.id), eq(deliveries.subscriberId, subscriberId)));
+      return row?.distributionBatchId ?? null;
+    };
+
+    const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, chunkSize: 1 });
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0, cancelled: 0, paused: false });
+    expect(distribution.send).toHaveBeenCalledTimes(2);
+
+    expect(await batchIdFor(subs[0]!.id)).toBe("00000000-0000-4000-8000-000000000008");
+    expect(await batchIdFor(subs[1]!.id)).toBeNull(); // this part's send threw -- nothing to record
   });
 
   // Defence in depth: Media Hub's own contract doesn't require `.email()` on `address`
@@ -961,7 +993,7 @@ describe("sendDueJobs", () => {
     ]);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "batch-1" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000006" });
 
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
@@ -1052,7 +1084,7 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     await tdb.db.insert(jobRecipients).values(subs.map((s) => ({ jobId: job.id, subscriberId: s.id })));
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "b" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000001" });
 
     // Small enough that a single recipient's own request already exceeds it, forcing a split
     // all the way down to one recipient per request (4 recipients -> 4 requests).
@@ -1077,7 +1109,7 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     await tdb.db.insert(jobRecipients).values(subs.map((s) => ({ jobId: job.id, subscriberId: s.id })));
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "b" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000001" });
 
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
@@ -1137,7 +1169,7 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     expect(realSize).toBeGreaterThan(maxChunkBytes);
 
     const distribution = stubDistribution();
-    distribution.send.mockResolvedValue({ batchId: "b" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000001" });
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, maxChunkBytes });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
@@ -1165,8 +1197,8 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     // 0.0, 0.1, 0.2, 0.3. First attempt: 0.0 and 0.1 are accepted, 0.2 fails retryably, 0.3 is
     // never reached.
     distribution.send
-      .mockImplementationOnce(async () => ({ batchId: "b0" }))
-      .mockImplementationOnce(async () => ({ batchId: "b1" }))
+      .mockImplementationOnce(async () => ({ batchId: "00000000-0000-4000-8000-000000000002" }))
+      .mockImplementationOnce(async () => ({ batchId: "00000000-0000-4000-8000-000000000004" }))
       .mockImplementationOnce(async () => {
         throw new DistributionError("HTTP 503", true);
       });
@@ -1180,13 +1212,13 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     expect((distribution.send.mock.calls[2]![0] as MessageRequest).idempotencyKey).toBe(`${job.id}:0.2`);
 
     const afterFirst = (await tdb.db.select().from(sendJobs))[0]!;
-    expect(afterFirst.batchIds).toEqual({ "0.0": "b0", "0.1": "b1" });
+    expect(afterFirst.batchIds).toEqual({ "0.0": "00000000-0000-4000-8000-000000000002", "0.1": "00000000-0000-4000-8000-000000000004" });
 
     // Between attempts: the subscriber whose sole membership is part 0.1 becomes inactive.
     await tdb.db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.id, subs[1]!.id));
 
     distribution.send.mockReset();
-    distribution.send.mockResolvedValue({ batchId: "retry" });
+    distribution.send.mockResolvedValue({ batchId: "00000000-0000-4000-8000-000000000011" });
     const result2 = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER, maxChunkBytes: 50, now: () => afterFirst.nextAttemptAt });
     expect(result2).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
@@ -1201,7 +1233,7 @@ describe("sendDueJobs chunk byte-splitting (M3)", () => {
     // 0.1's batchId from the first attempt survives untouched — it was never re-sent, just
     // skipped, since nothing in it is currently active.
     expect(Object.keys(afterSecond.batchIds).sort()).toEqual(["0.0", "0.1", "0.2", "0.3"]);
-    expect(afterSecond.batchIds["0.1"]).toBe("b1");
+    expect(afterSecond.batchIds["0.1"]).toBe("00000000-0000-4000-8000-000000000004");
   });
 });
 

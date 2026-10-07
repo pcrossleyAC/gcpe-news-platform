@@ -27,6 +27,12 @@ export const nodEnvSchema = z.object({
   DISTRIBUTION_CLIENT_ID: z.string().optional(),
   DISTRIBUTION_CLIENT_SECRET: z.string().optional(),
   DISTRIBUTION_SCOPE: z.string().optional(),
+  // NoD's own appId, exactly as Distribution would record it for a message NoD sent (apps/
+  // distribution/src/http/routes.ts's appIdFrom: the calling token's `azp`, else its subject)
+  // -- what a `delivery.bounced` event's own appId is checked against (bounces.ts). Default:
+  // DISTRIBUTION_CLIENT_ID when Entra client credentials are configured, else "nod", the
+  // subject/azp distribution-token.ts always mints a local token with.
+  DISTRIBUTION_APP_ID: z.string().optional(),
   // Bounds a single chunk request to Distribution; also sizes send-jobs.ts's claim lock
   // (chunks * this + margin), so a hung request can't outlive the lock protecting it.
   DISTRIBUTION_TIMEOUT_MS: z.coerce.number().int().positive().default(30_000),
@@ -186,6 +192,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     distribution,
     opsEmail: parsed.OPS_EMAIL ?? null,
     timeZone: tenant.timeZone,
+    distributionAppId: parsed.DISTRIBUTION_APP_ID ?? parsed.DISTRIBUTION_CLIENT_ID ?? "nod",
     mediaHub,
     membership:
       parsed.MEMBERSHIP_API_USERNAME && parsed.MEMBERSHIP_API_PASSWORD_HASH

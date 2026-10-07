@@ -186,6 +186,25 @@ describe("subscriber journeys", () => {
     expect(after!.endedAt).not.toBeNull();
   });
 
+  // "disabled" defined: a bounce- or staff-disabled subscriber reactivates themselves through
+  // public subscribe -> confirm, same as a deleted or pending one -- the verification email
+  // reaching them proves the mailbox works again (see journeys.ts's applyEmailChange comment).
+  it("a disabled subscriber subscribes again: verify then confirm reactivates them", async () => {
+    await subscribe(deps, info());
+    await confirm(deps, tokenFrom());
+    const [s] = await tdb.db.select().from(subscribers);
+    await tdb.db.update(subscribers).set({ status: "disabled" }).where(eq(subscribers.id, s!.id));
+
+    await subscribe(deps, info()); // disabled, not active -- gets a fresh verify link, not a manage one
+    expect(sent.at(-1)!.subject).toBe("BC Gov News On Demand Email Verification");
+    expect((await tdb.db.select().from(subscribers).where(eq(subscribers.id, s!.id)))[0]!.status).toBe("disabled"); // not yet
+
+    const result = await confirm(deps, tokenFrom());
+    expect(result).toMatchObject({ emailAddress: "pat@example.test", isAsItHappens: true });
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, s!.id));
+    expect(after).toMatchObject({ status: "active" });
+  });
+
   it("caps verification/manage emails at 3 per address per hour without changing the response", async () => {
     for (let i = 0; i < 5; i++) await subscribe(deps, info({ emailAddress: "flood@example.test" }));
     expect(sent.filter((m) => m.to === "flood@example.test")).toHaveLength(3);

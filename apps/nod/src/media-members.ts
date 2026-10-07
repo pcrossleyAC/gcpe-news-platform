@@ -7,6 +7,7 @@ import { and, asc, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { lists, subscribers, subscriptions, type SubscriberSource, type SubscriptionRow } from "./db/schema";
 import { MEDIA_CATEGORY, mediaListKey } from "./lists";
+import { lockAddress } from "./locks";
 import { writeHistory } from "./subscribe/history";
 import { normaliseEmail } from "./subscribe/info";
 
@@ -54,14 +55,6 @@ export interface MediaListSummary {
 async function mediaListRow(tx: DbOrTx, key: string): Promise<{ listKey: string } | null> {
   const [row] = await tx.select({ listKey: lists.listKey }).from(lists).where(and(eq(lists.listKey, key), eq(lists.category, MEDIA_CATEGORY)));
   return row ?? null;
-}
-
-/** Same advisory-lock keyspace as 4a's `journeys.ts` `lockAddress` (always called with a
- * lowercased email) -- serialises this module's reads/writes of a subscriber row against the
- * public journeys' for the same address, so e.g. an add can never read a stale pre-unsubscribe
- * row (fix round 1, I2). */
-async function lockAddress(tx: DbOrTx, email: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${email}))`);
 }
 
 /** True if `subscriberId` has any subscription left, media or public. */

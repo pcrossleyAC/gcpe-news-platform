@@ -3,6 +3,7 @@ import type { Db, DbOrTx } from "@gcpe/db-kit";
 import type { DistributionClient } from "../distribution-client";
 import { subscribers, subscriptions, type SubscriberPrefs } from "../db/schema";
 import { MEDIA_CATEGORY } from "../lists";
+import { lockAddress } from "../locks";
 import { optOutMediaMemberships } from "../media-members";
 import type { RenderOptions } from "../render";
 import { writeHistory } from "./history";
@@ -47,14 +48,6 @@ export function safeErrorLabel(e: unknown): string {
   const code = (e as { cause?: { code?: unknown } })?.cause?.code ?? (e as { code?: unknown })?.code;
   if (typeof code === "string") return code;
   return e instanceof Error ? e.name : "error";
-}
-
-/** Serialises confirms for the same address within this transaction: a verify confirm and a
- * change-email confirm for the same target address each start by taking this lock before
- * claiming/touching any `subscriber_links` row, so the two can never interleave their row locks
- * in opposite orders and deadlock. Released automatically at transaction end. */
-async function lockAddress(tx: DbOrTx, email: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${email}))`);
 }
 
 async function bySubscriberEmail(db: DbOrTx, email: string) {
@@ -236,9 +229,10 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
         // and move in.
         await tx.delete(subscribers).where(eq(subscribers.id, taken.id));
       } else {
-        // active, or disabled (R-I3: disabled will mean bounce-/staff-disabled in 4e/4f, so it's
-        // treated like active now) — a row worth protecting. The mover is unsubscribed instead
-        // of displacing it; the row at the target address is left untouched.
+        // active, or disabled (bounce- or staff-disabled) — a row worth protecting either way:
+        // a disabled subscriber is kept, not purged, and can reactivate themselves by
+        // subscribing again (bounces.ts). The mover is unsubscribed instead of displacing it;
+        // the row at the target address is left untouched.
         await endSubscriber(tx, subscriberId);
         return "moved-unsubscribed";
       }

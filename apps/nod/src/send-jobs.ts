@@ -409,6 +409,13 @@ async function sendAllChunks(
           );
         const { batchId } = await opts.distribution.send(buildMessageRequest(job, validMembers, key, substitutions));
         batchIds[key] = batchId;
+        // What bounces.ts's own first match attempt looks for -- stamped only on the
+        // deliveries actually handed off in *this* part, right after Distribution accepts it
+        // (never on a part that throws below, which has no batchId to record).
+        await opts.db
+          .update(deliveries)
+          .set({ distributionBatchId: batchId })
+          .where(and(eq(deliveries.jobId, job.id), inArray(deliveries.subscriberId, validMembers.map((m) => m.subscriberId))));
       } catch (e) {
         // P2-R16: any error here is treated as retryable (bounded below by maxAgeMs) unless
         // distribution-client.ts itself deliberately classified it otherwise — an *unexpected*

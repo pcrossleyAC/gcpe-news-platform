@@ -347,7 +347,7 @@ describe("runDigestIfDue", () => {
     // Unpublished after the digest was built, before the sender ran.
     await tdb.db.update(items).set({ withdrawnAt: new Date() }).where(eq(items.key, kB));
 
-    const distribution = { send: async () => ({ batchId: "batch-withdraw-partial" }) } as unknown as DistributionClient;
+    const distribution = { send: async () => ({ batchId: "00000000-0000-4000-8000-0000000000ab" }) } as unknown as DistributionClient;
     const result = await sendDueJobs({ db: tdb.db, distribution, links: LINKS, render: RENDER });
     expect(result).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
