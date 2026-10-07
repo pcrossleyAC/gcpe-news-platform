@@ -236,11 +236,15 @@ record the migrations as applied, so the deploy's own migrate skips them:
    use a quiet window instead. Drizzle's migrator applies every migration newer than the
    *latest* row it has recorded, so pre-build and record **every** pending migration, in journal
    order — recording a later one alone would make it skip the earlier ones forever.
-2. Over SSH, from the new release's folder, before restarting the app (example for NoD; for
-   Distribution use `apps/distribution/migrations` and `DIST_DATABASE_URL`):
+2. Over SSH, from the new release's folder (the deployed artifact keeps migrations under
+   `migrations/<app>`, not `apps/<app>/migrations`), before the app next starts. On SiteGround
+   the push *is* the deploy, so stop the Node app in Site Tools before pushing and start it again
+   after step 3; if it starts first, startup fails with "already exists" until the rows are
+   recorded (loud, and fixed by finishing these steps). Example for NoD; for Distribution use
+   `DIR=migrations/distribution`, `DB="$DIST_DATABASE_URL"` and `TAGS="0010_report_indexes"`:
 
    ```sh
-   export DB="$NOD_DATABASE_URL" DIR=apps/nod/migrations TAGS="0023_report_history_index 0024_report_delivery_indexes"
+   export DB="$NOD_DATABASE_URL" DIR=migrations/nod TAGS="0023_report_history_index 0024_report_delivery_indexes"
    # Pre-build each index without blocking writes. psql runs each statement on its own, outside
    # a transaction, which CONCURRENTLY requires.
    for tag in $TAGS; do

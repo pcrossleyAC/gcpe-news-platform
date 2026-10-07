@@ -73,12 +73,13 @@ describe("recent unsubscribes", () => {
         all.push(...b.map((r) => r.email));
         if (all.length === 1) {
           // Both go to the top of the newest-first order: someone new, and alex (still to come)
-          // unsubscribing again.
+          // unsubscribing again. `at` is left to the database's now(), as real writes do: a
+          // JS Date can land at or before the export's DB-clock snapshot and read as old.
           const rows = await tdb.db
             .insert(subscriberHistory)
             .values([
-              { subscriberId: erin!.id, at: new Date(), actor: "subscriber", action: "unsubscribed" },
-              { subscriberId: alex!.id, at: new Date(), actor: "subscriber", action: "unsubscribed" },
+              { subscriberId: erin!.id, actor: "subscriber", action: "unsubscribed" },
+              { subscriberId: alex!.id, actor: "subscriber", action: "unsubscribed" },
             ])
             .returning({ id: subscriberHistory.id });
           landed.push(...rows.map((r) => r.id));
