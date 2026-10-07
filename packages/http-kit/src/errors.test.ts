@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { jsonErrorHandler } from "./errors";
+import { jsonErrorHandler, safeErrorLabel } from "./errors";
 
 function app(throwIt: () => never) {
   const a = express();
@@ -45,5 +45,25 @@ describe("jsonErrorHandler", () => {
     expect(res.body).toEqual({ error: "internal error" });
     expect(res.text).not.toContain("secret");
     expect(log).toHaveBeenCalledWith("[test] request failed", expect.any(Error));
+  });
+});
+
+describe("safeErrorLabel", () => {
+  it("prefers a Postgres-style error code over the message", () => {
+    const e = Object.assign(new Error("duplicate key value violates unique constraint (user@example.test)"), { code: "23505" });
+    expect(safeErrorLabel(e)).toBe("23505");
+  });
+
+  it("falls back to a code nested under cause", () => {
+    const e = Object.assign(new Error("Failed query: ...\nparams: user@example.test"), { cause: { code: "40P01" } });
+    expect(safeErrorLabel(e)).toBe("40P01");
+  });
+
+  it("falls back to the error's name when there's no code anywhere", () => {
+    expect(safeErrorLabel(new TypeError("boom for user@example.test"))).toBe("TypeError");
+  });
+
+  it("falls back to 'error' for a non-Error thrown value", () => {
+    expect(safeErrorLabel("just a string")).toBe("error");
   });
 });

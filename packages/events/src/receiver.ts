@@ -1,6 +1,7 @@
 import express from "express";
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, Tx } from "@gcpe/db-kit";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import { parseEvent } from "./catalogue";
 import { MAX_EVENT_BYTES, type EventEnvelope } from "./envelope";
 import { verifySignature } from "./signing";
@@ -109,7 +110,11 @@ export function createEventReceiver(opts: ReceiverOptions): express.Router {
       }
       res.status(200).json({ outcome });
     } catch (e) {
-      console.error("[events] processing failed", event.type, event.id, e);
+      // A handler can bind arbitrary caller data (e.g. an address, for a lockAddress/
+      // findSubscriberForUpdate-style query) into the query that throws -- never `e` itself,
+      // only a safe label, alongside enough to triage without it: the event's own id, type and
+      // source.
+      console.error("[events] processing failed", event.type, event.id, event.source, safeErrorLabel(e));
       res.status(500).json({ error: "handler failed" });
     }
   });

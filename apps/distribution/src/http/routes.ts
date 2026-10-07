@@ -119,7 +119,11 @@ export function apiRoutes(db: Db, internalDomains: string[], bounceSource: "fake
     run(async (req, res) => {
       if (bounceSource !== "fake") return void res.status(404).json({ error: "not found" });
       const parsed = bounceInboxUploadSchema.parse(req.body);
-      const [inserted] = await db.insert(bounceInbox).values({ raw: parsed.raw }).returning({ id: bounceInbox.id });
+      // Postgres `text` columns reject an embedded NUL outright -- stripped here (mirroring
+      // bounces/store.ts's own stripNul) so an upload that happens to carry one still succeeds,
+      // rather than 500ing on the insert below.
+      const raw = parsed.raw.includes("\u0000") ? parsed.raw.replaceAll("\u0000", "") : parsed.raw;
+      const [inserted] = await db.insert(bounceInbox).values({ raw }).returning({ id: bounceInbox.id });
       res.status(201).json({ id: inserted!.id });
     }),
   );

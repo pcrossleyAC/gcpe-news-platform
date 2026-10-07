@@ -116,6 +116,36 @@ describe("runBouncesIfDue", () => {
     errorSpy.mockRestore();
   });
 
+  it("a forced DB error logs no address and no raw content, only a safe label", async () => {
+    const entries = [{ id: "fail-safe-1", raw: UNDELIVERABLE_RAW }];
+    const source = stubSource(entries);
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // Transaction call 1 is the gate claim; call 2 is this message's own recordBounce --
+    // failed with an Error whose own message carries the address, the way a real DB driver
+    // error (binding the parsed recipient) could.
+    let count = 0;
+    const flakyDb = new Proxy(tdb.db, {
+      get(target, prop, receiver) {
+        if (prop === "transaction") {
+          return (fn: Parameters<Db["transaction"]>[0]) => {
+            count++;
+            if (count === 2) return Promise.reject(new Error("constraint violation for someone@example.test"));
+            return (target.transaction as (f: typeof fn) => unknown)(fn);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as Db;
+
+    await runBouncesIfDue(flakyDb, source);
+
+    expect(errorSpy).toHaveBeenCalled();
+    const logged = errorSpy.mock.calls.flat().map(String).join(" ");
+    expect(logged).not.toContain("someone@example.test");
+    expect(logged).not.toContain(UNDELIVERABLE_RAW);
+    errorSpy.mockRestore();
+  });
+
   it("marks everything fetched as processed, including ignored (non-bounce) messages", async () => {
     const entries = [
       { id: "ignored-1", raw: "Subject: Hello\r\n\r\nNot a bounce at all." },

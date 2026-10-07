@@ -1,6 +1,7 @@
 import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { sqlInterval, type Db } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import { distributionSettings } from "../db/schema";
 import { parseBounce } from "./parse";
 import { recordBounce } from "./store";
@@ -10,6 +11,10 @@ import type { BounceSource } from "./source";
 const GATE_INTERVAL_MS = 15 * 60_000;
 // Spec: a run is bounded to at most this many messages.
 const DEFAULT_LIMIT = 200;
+// Only reached when a caller omits messageIdDomain (mainly tests exercising something else);
+// start.ts always supplies env.ts's own resolved MESSAGE_ID_DOMAIN in production. Mirrors
+// sender.ts's own DEFAULT_MESSAGE_ID_DOMAIN.
+const DEFAULT_MESSAGE_ID_DOMAIN = "localhost";
 
 export interface RunBouncesResult {
   ran: boolean;
@@ -58,12 +63,13 @@ async function claimBounceGate(db: Db): Promise<boolean> {
 export async function runBouncesIfDue(
   db: Db,
   source: BounceSource,
-  opts: { limit?: number; subscribers?: SubscriberConfig[] } = {},
+  opts: { limit?: number; subscribers?: SubscriberConfig[]; messageIdDomain?: string } = {},
 ): Promise<RunBouncesResult> {
   const due = await claimBounceGate(db);
   if (!due) return { ran: false, fetched: 0, bounces: 0, matched: 0, ignored: 0 };
 
   const subscribers = opts.subscribers ?? [];
+  const messageIdDomain = opts.messageIdDomain ?? DEFAULT_MESSAGE_ID_DOMAIN;
   const fetched = await source.fetchNew(opts.limit ?? DEFAULT_LIMIT);
   let bounces = 0;
   let matched = 0;
@@ -74,7 +80,7 @@ export async function runBouncesIfDue(
     processedIds.push(message.id);
     try {
       const parsed = await parseBounce(message.raw);
-      const result = await db.transaction((tx) => recordBounce(tx, message.id, message.raw, parsed, subscribers));
+      const result = await db.transaction((tx) => recordBounce(tx, message.id, message.raw, parsed, subscribers, messageIdDomain));
       // A duplicate (the same sourceId recorded again -- e.g. refetched after a markProcessed
       // failure below left it unprocessed) contributes nothing new, so it's skipped here
       // exactly like `matched` already skips it (duplicate's own `matched` is always null).
@@ -86,9 +92,10 @@ export async function runBouncesIfDue(
     } catch (e) {
       // Per-message errors are counted (this message contributes to `fetched` but not to
       // `bounces`/`ignored`) and never stop the run -- the rest of `fetched` still gets
-      // processed below. The raw content is never logged (Global Constraints "Logs"), only
-      // the error's own message.
-      console.error(`[distribution] bounce ${message.id} failed to process:`, e instanceof Error ? e.message : e);
+      // processed below. Neither the raw content nor the error's own message is ever logged
+      // (Global Constraints "Logs") -- a DB error on this message's own insert could bind the
+      // parsed recipient, so only a safe label is ever logged.
+      console.error(`[distribution] bounce ${message.id} failed to process:`, safeErrorLabel(e));
     }
   }
 
@@ -101,7 +108,7 @@ export async function runBouncesIfDue(
     try {
       await source.markProcessed(processedIds);
     } catch (e) {
-      console.error(`[distribution] markProcessed failed for ${processedIds.length} message(s):`, e instanceof Error ? e.message : e);
+      console.error(`[distribution] markProcessed failed for ${processedIds.length} message(s):`, safeErrorLabel(e));
     }
   }
 
@@ -114,13 +121,20 @@ export async function runBouncesIfDue(
  * call often enough that the gate is never missed by much. Mirrors
  * apps/nod/src/digest.ts's startDigestLoop.
  */
-export function startBounceLoop(opts: { db: Db; source: BounceSource; limit?: number; subscribers?: SubscriberConfig[]; intervalMs?: number }): () => Promise<void> {
+export function startBounceLoop(opts: {
+  db: Db;
+  source: BounceSource;
+  limit?: number;
+  subscribers?: SubscriberConfig[];
+  messageIdDomain?: string;
+  intervalMs?: number;
+}): () => Promise<void> {
   let stopped = false;
   let running: Promise<unknown> | null = null;
   const timer = setInterval(() => {
     if (stopped || running) return;
-    running = runBouncesIfDue(opts.db, opts.source, { limit: opts.limit, subscribers: opts.subscribers })
-      .catch((e) => console.error("[distribution] bounce run failed:", e instanceof Error ? e.message : e))
+    running = runBouncesIfDue(opts.db, opts.source, { limit: opts.limit, subscribers: opts.subscribers, messageIdDomain: opts.messageIdDomain })
+      .catch((e) => console.error("[distribution] bounce run failed:", safeErrorLabel(e)))
       .finally(() => {
         running = null;
       });

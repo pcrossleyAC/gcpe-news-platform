@@ -111,8 +111,11 @@ describe("createEventReceiver", () => {
       const e = makeEvent(1, "org:fail");
       failNext = true;
       expect((await post(app, e)).status).toBe(500);
-      // D10: the failure can be in the inbox bookkeeping as well as the handler itself.
-      expect(errSpy).toHaveBeenCalledWith("[events] processing failed", e.type, e.id, expect.any(Error));
+      // The failure can be in the inbox bookkeeping as well as the handler itself -- the
+      // handler here (a lockAddress/findSubscriberForUpdate-style bind, in a real caller) may
+      // throw an error whose own message carries a bound value, so only a safe label is ever
+      // logged, never the error itself.
+      expect(errSpy).toHaveBeenCalledWith("[events] processing failed", e.type, e.id, e.source, "Error");
       const side = await tdb.pool.query("SELECT 1 FROM side_effects WHERE event_id = $1", [e.id]);
       expect(side.rowCount).toBe(0);
       expect((await post(app, e)).body.outcome).toBe("applied");

@@ -321,6 +321,17 @@ describe("Distribution HTTP API", () => {
       expect(rows).toEqual([{ raw: "Subject: Undeliverable: x\r\n\r\nbody", processed_at: null }]);
     });
 
+    it("201s a NUL-containing upload, storing it with the NUL stripped", async () => {
+      const res = await request(app)
+        .post("/api/bounces/inbox")
+        .set("authorization", `Bearer ${operator}`)
+        .send({ raw: "Subject: Undeliverable: x\r\n\r\nbody\u0000trailing" });
+      expect(res.status).toBe(201);
+
+      const { rows } = await tdb.pool.query("SELECT raw FROM bounce_inbox WHERE id = $1", [res.body.id]);
+      expect(rows[0].raw).toBe("Subject: Undeliverable: x\r\n\r\nbodytrailing");
+    });
+
     it("400s a missing raw field and a raw over 1 MB", async () => {
       expect((await request(app).post("/api/bounces/inbox").set("authorization", `Bearer ${operator}`).send({})).status).toBe(400);
       const over = "x".repeat(1024 * 1024 + 1);

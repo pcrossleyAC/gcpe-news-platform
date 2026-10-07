@@ -1,5 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import type { DistributionClient } from "../distribution-client";
 import { subscribers, subscriptions, type SubscriberPrefs } from "../db/schema";
 import { MEDIA_CATEGORY } from "../lists";
@@ -39,16 +40,11 @@ function isRetryableConflict(e: unknown): boolean {
   return code === "23505" || code === "40P01";
 }
 
-/** A log-safe label for an error from `issue()`'s DB calls. Never `e.message` or `e.cause.message`:
- * drizzle's `DrizzleQueryError` message is `"Failed query: <sql>\nparams: <params>"`, and every
- * query inside `issue()` binds the target email address — logging it would put the address in
- * the logs (the thing C-anti-enumeration/"no addresses in logs" forbids). The Postgres error
- * code (or, failing that, the error's name) is informative without carrying any bound value. */
-export function safeErrorLabel(e: unknown): string {
-  const code = (e as { cause?: { code?: unknown } })?.cause?.code ?? (e as { code?: unknown })?.code;
-  if (typeof code === "string") return code;
-  return e instanceof Error ? e.name : "error";
-}
+/** Re-exported for every existing caller in this app (`issue()`'s DB calls bind the target
+ * email address, so never logging `e.message`/`e.cause.message` matters here as much as
+ * anywhere) — the actual implementation is `@gcpe/http-kit`'s shared `safeErrorLabel`, used the
+ * same way by Distribution and by `packages/events`' receiver. */
+export { safeErrorLabel } from "@gcpe/http-kit";
 
 async function bySubscriberEmail(db: DbOrTx, email: string) {
   const [s] = await db.select().from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`);
