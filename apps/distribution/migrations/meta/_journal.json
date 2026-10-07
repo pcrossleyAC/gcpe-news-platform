@@ -78,6 +78,13 @@
       "when": 1791383134800,
       "tag": "0010_report_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1791388334434,
+      "tag": "0011_bounce_summary_columns",
+      "breakpoints": true
     }
   ]
 }

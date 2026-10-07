@@ -140,7 +140,15 @@ export async function recordBounce(
   // byte in a bound parameter is itself rejected by Postgres, not just by storing it) and the
   // insert further down, so both need the clean value, not just the one that's stored.
   const clean: ParsedBounce =
-    parsed.kind === "bounce" ? { ...parsed, recipient: stripNul(parsed.recipient), status: stripNul(parsed.status) } : parsed;
+    parsed.kind === "bounce"
+      ? {
+          ...parsed,
+          recipient: stripNul(parsed.recipient),
+          status: stripNul(parsed.status),
+          diagnostic: parsed.diagnostic === null ? null : stripNul(parsed.diagnostic),
+          originalSubject: parsed.originalSubject === null ? null : stripNul(parsed.originalSubject),
+        }
+      : parsed;
 
   const matched = clean.kind === "bounce" ? await findMatch(tx, clean, messageIdDomain) : null;
 
@@ -154,6 +162,8 @@ export async function recordBounce(
       status: clean.kind === "bounce" ? clean.status : null,
       hard: clean.kind === "bounce" ? clean.hard : null,
       method: clean.kind === "bounce" ? clean.method : null,
+      diagnostic: clean.kind === "bounce" ? clean.diagnostic : null,
+      originalSubject: clean.kind === "bounce" ? clean.originalSubject : null,
       messageId: matched?.id ?? null,
       matched: matched !== null,
       processedAt: sql`now()`,

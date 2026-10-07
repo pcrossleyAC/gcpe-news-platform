@@ -348,53 +348,31 @@ describe("Distribution HTTP API", () => {
     });
   });
 
-  describe("GET /api/bounces/stats", () => {
-    const sourceId = (n: number) => `stats-src-${n}`;
-    const q = (since: string, until: string) => `/api/bounces/stats?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
+  describe("GET /api/bounces/summary", () => {
+    const q = (since: string, until: string) => `/api/bounces/summary?since=${encodeURIComponent(since)}&until=${encodeURIComponent(until)}`;
+    const since = new Date(Date.now() + 300 * 24 * 3_600_000);
+    const until = new Date(since.getTime() + 60_000);
 
-    it("401s without a token, 403s without Distribution.Operate", async () => {
-      const since = new Date(Date.now() - 60_000).toISOString();
-      const until = new Date().toISOString();
-      expect((await request(app).get(q(since, until))).status).toBe(401);
-      expect((await request(app).get(q(since, until)).set("authorization", `Bearer ${reader}`)).status).toBe(403);
+    it("401s without a token, 403s without Distribution.Operate, 400s bad bounds", async () => {
+      expect((await request(app).get(q(since.toISOString(), until.toISOString()))).status).toBe(401);
+      expect((await request(app).get(q(since.toISOString(), until.toISOString())).set("authorization", `Bearer ${reader}`)).status).toBe(403);
+      expect((await request(app).get("/api/bounces/summary").set("authorization", `Bearer ${operator}`)).status).toBe(400);
+      expect((await request(app).get(q("not-a-date", until.toISOString())).set("authorization", `Bearer ${operator}`)).status).toBe(400);
     });
 
-    it("400s a missing or invalid since/until", async () => {
-      const until = new Date().toISOString();
-      expect((await request(app).get("/api/bounces/stats").set("authorization", `Bearer ${operator}`)).status).toBe(400);
-      expect((await request(app).get(`/api/bounces/stats?since=not-a-date&until=${until}`).set("authorization", `Bearer ${operator}`)).status).toBe(400);
-      expect((await request(app).get(`/api/bounces/stats?since=${until}`).set("authorization", `Bearer ${operator}`)).status).toBe(400); // until missing
-      expect((await request(app).get(`/api/bounces/stats?since=${until}&until=not-a-date`).set("authorization", `Bearer ${operator}`)).status).toBe(400);
-    });
-
-    it("counts unmatched bounces and ignored messages processed in (since, until], excluding matched bounces and anything outside it", async () => {
-      const since = new Date();
-      const until = new Date(since.getTime() + 10_000);
-      await tdb.db.insert(bounces).values([
-        // Before the window -- excluded no matter its kind/matched state.
-        { sourceId: sourceId(1), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() - 60_000) },
-        // Inside the window: an unmatched hard bounce (counts), a matched one (doesn't), and
-        // two ignored (non-bounce) messages (count as ignored, not unmatched).
-        { sourceId: sourceId(2), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() + 1_000) },
-        { sourceId: sourceId(3), raw: "x", kind: "bounce", matched: true, processedAt: new Date(since.getTime() + 2_000) },
-        { sourceId: sourceId(4), raw: "x", kind: "ignored", matched: false, processedAt: new Date(since.getTime() + 3_000) },
-        { sourceId: sourceId(5), raw: "x", kind: "ignored", matched: false, processedAt: new Date(since.getTime() + 4_000) },
-        // After the window -- excluded, same as a row before it (prevents double-counting
-        // across two successive summaries whose windows abut).
-        { sourceId: sourceId(6), raw: "x", kind: "bounce", matched: false, processedAt: new Date(since.getTime() + 20_000) },
-      ]);
-
+    it("returns counts and rows in the body, scoped to the caller's app for soft rows", async () => {
+      await tdb.db.insert(bounces).values({
+        sourceId: "route-summary-1", raw: "x", kind: "bounce", hard: true, status: "5.1.1",
+        recipient: "route-unmatched@example.test", matched: false, processedAt: new Date(since.getTime() + 1_000),
+      });
       const res = await request(app).get(q(since.toISOString(), until.toISOString())).set("authorization", `Bearer ${operator}`);
       expect(res.status).toBe(200);
-      expect(res.body).toEqual({ unmatched: 1, ignored: 2 });
+      expect(res.body).toMatchObject({ processed: 1, bounces: 1, ignored: 0, soft: { count: 0, rows: [] }, unrecorded: { count: 1 } });
+      expect(res.body.unrecorded.rows[0].address).toBe("route-unmatched@example.test");
     });
 
-    it("zero counts when nothing was processed in the given window", async () => {
-      const since = new Date(Date.now() + 364 * 24 * 3_600_000).toISOString();
-      const until = new Date(Date.now() + 365 * 24 * 3_600_000).toISOString();
-      const res = await request(app).get(q(since, until)).set("authorization", `Bearer ${operator}`);
-      expect(res.status).toBe(200);
-      expect(res.body).toEqual({ unmatched: 0, ignored: 0 });
+    it("no longer serves /api/bounces/stats", async () => {
+      expect((await request(app).get(`/api/bounces/stats?since=${since.toISOString()}&until=${until.toISOString()}`).set("authorization", `Bearer ${operator}`)).status).toBe(404);
     });
   });
 

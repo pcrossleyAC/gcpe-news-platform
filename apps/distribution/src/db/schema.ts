@@ -143,7 +143,17 @@ export const bounces = pgTable(
     messageId: uuid("message_id").references(() => messages.id, { onDelete: "set null" }),
     matched: boolean("matched").notNull().default(false),
     processedAt: timestamp("processed_at", { withTimezone: true }),
+    // Shown to staff in NoD's daily bounce summary: what the remote server said, and the
+    // subject of the email that bounced (parse.ts caps both). Null on rows recorded before
+    // these existed.
+    diagnostic: text("diagnostic"),
+    originalSubject: text("original_subject"),
   },
-  (t) => [uniqueIndex("bounces_source_id_idx").on(t.sourceId), check("bounces_kind_check", sql`${t.kind} IN ('bounce','ignored')`)],
+  (t) => [
+    uniqueIndex("bounces_source_id_idx").on(t.sourceId),
+    // The daily summary windows rows by processing time (bounces/summary.ts).
+    index("bounces_processed_at_idx").on(t.processedAt),
+    check("bounces_kind_check", sql`${t.kind} IN ('bounce','ignored')`),
+  ],
 );
 export type BounceRow = typeof bounces.$inferSelect;
