@@ -197,6 +197,20 @@
       "when": 1791410731456,
       "tag": "0027_items_emergency_url_index",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1791411828410,
+      "tag": "0028_retention_purge",
+      "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1791411835145,
+      "tag": "0029_purge_indexes",
+      "breakpoints": true
     }
   ]
 }

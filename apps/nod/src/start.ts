@@ -16,6 +16,7 @@ import { needsReferenceData } from "./lists";
 import { startLoop } from "./loop";
 import { mediaHubClient, type MediaHubClient } from "./media-hub/client";
 import { runMediaSyncIfDue, startMediaSyncLoop } from "./media-hub/sync";
+import { runPurgeIfDue } from "./purge";
 import type { RecipientLinkOptions } from "./recipient-links";
 import type { RenderOptions } from "./render";
 import { sendDueJobs, startJobSender } from "./send-jobs";
@@ -229,6 +230,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   let stopMediaSyncLoop: (() => Promise<void>) | undefined;
   let stopBounceSummaryLoop: (() => Promise<void>) | undefined;
   let stopEmergencyFeedLoop: (() => Promise<void>) | undefined;
+  let stopPurgeLoop: (() => Promise<void>) | undefined;
 
   return {
     app,
@@ -247,6 +249,9 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       // actually reaches BOUNCE_SUMMARY_HOUR for a day not already summarised (or, with no
       // staff-set address and no BOUNCE_SUMMARY_EMAIL fallback configured, always a no-op).
       bounceSummary: () => runBounceSummaryIfDue(db, distribution, tenant.timeZone, bounceSummaryFallback),
+      // The nightly retention purge -- a no-op call every tick until 03:00 BC for a night not
+      // already finished; removes subscribers only while the Operations switch is on.
+      purge: () => runPurgeIfDue(db, tenant.timeZone),
       // The 5-minute emergency feed check -- a no-op when EMERGENCY_FEED_URL is unset.
       emergencyFeed: () => runEmergencyFeedIfDue(emergencyFeed),
       // Phase 4a: lets the stack (stack.ts) check, once at startup, whether Core's reference
@@ -261,6 +266,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       if (mediaHub) stopMediaSyncLoop = startMediaSyncLoop({ db, client: mediaHub, timeZone: tenant.timeZone });
       stopBounceSummaryLoop = startBounceSummaryLoop({ db, distribution, timeZone: tenant.timeZone, to: bounceSummaryFallback });
       stopEmergencyFeedLoop = startLoop("emergency feed", () => runEmergencyFeedIfDue(emergencyFeed));
+      stopPurgeLoop = startLoop("purge", () => runPurgeIfDue(db, tenant.timeZone));
     },
     closeBeforeServer: [],
     closers: [
@@ -269,6 +275,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       { name: "media sync loop", close: async () => { await stopMediaSyncLoop?.(); } },
       { name: "bounce summary loop", close: async () => { await stopBounceSummaryLoop?.(); } },
       { name: "emergency feed loop", close: async () => { await stopEmergencyFeedLoop?.(); } },
+      { name: "purge loop", close: async () => { await stopPurgeLoop?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],
   };

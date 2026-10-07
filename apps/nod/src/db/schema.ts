@@ -225,7 +225,11 @@ export const jobRecipients = pgTable(
     subscriberId: uuid("subscriber_id").notNull().references(() => subscribers.id, { onDelete: "cascade" }),
     chunkIndex: integer("chunk_index"),
   },
-  (t) => [primaryKey({ columns: [t.jobId, t.subscriberId] })],
+  (t) => [
+    primaryKey({ columns: [t.jobId, t.subscriberId] }),
+    // A subscriber's delete cascades here; the primary key leads with job_id and can't serve it.
+    index("job_recipients_subscriber_idx").on(t.subscriberId),
+  ],
 );
 
 export const nodSettings = pgTable(
@@ -288,6 +292,15 @@ export const nodSettings = pgTable(
     emergencyFeedSeededUrl: text("emergency_feed_seeded_url"),
     // The last check's outcome (EmergencyFeedResult), shown on Operations.
     emergencyFeedResult: jsonb("emergency_feed_result"),
+    // The retention purge (purge.ts). Off until the business sets retention windows (Q25).
+    purgeEnabled: boolean("purge_enabled").notNull().default(false),
+    // The 03:00 BC cutoff of the last night whose purge finished: that night is done.
+    purgeDoneCutoff: timestamp("purge_done_cutoff", { withTimezone: true }),
+    // A lease, as for the bounce summary: one night's purge may need several ticks to finish.
+    purgeLease: uuid("purge_lease"),
+    purgeLeaseUntil: timestamp("purge_lease_until", { withTimezone: true }),
+    // That night's running totals (PurgeRunResult), shown on Operations.
+    purgeResult: jsonb("purge_result"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],
@@ -379,6 +392,11 @@ export const subscriberLinks = pgTable(
   },
   (t) => [
     index("subscriber_links_email_created_idx").on(t.email, t.createdAt),
+    // A subscriber's delete cascades here.
+    index("subscriber_links_subscriber_idx").on(t.subscriberId),
+    // The nightly sweep of expired send links, and of unused request links (purge.ts).
+    index("subscriber_links_send_expiry_idx").on(t.expiresAt).where(sql`${t.origin} = 'send'`),
+    index("subscriber_links_request_unused_idx").on(t.createdAt).where(sql`${t.origin} = 'request' AND ${t.usedAt} IS NULL`),
     check("subscriber_links_purpose_check", sql`${t.purpose} IN ('verify','manage','change-email')`),
     check("subscriber_links_origin_check", sql`${t.origin} IN ('request','send')`),
   ],
@@ -403,4 +421,19 @@ export const subscriberHistory = pgTable(
     // Report windows (reports/unsubscribes.ts): equality on action, a range on at, any list key.
     index("subscriber_history_action_at_idx").on(t.action, t.at),
   ],
+);
+
+/**
+ * Media-list opt-outs kept after the retention purge deleted the subscriber: a hash of the
+ * address (opt-outs.ts), never the address. Re-adding that address to that list asks staff
+ * first, exactly as the history-based check does for a subscriber who still exists.
+ */
+export const mediaOptOuts = pgTable(
+  "media_opt_outs",
+  {
+    emailHash: text("email_hash").notNull(),
+    listKey: text("list_key").notNull(),
+    optedOutAt: timestamp("opted_out_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.emailHash, t.listKey] })],
 );

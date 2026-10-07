@@ -662,6 +662,7 @@ describe("apps/stack", () => {
         "news-api.dispatch",
         "nod.media-sync",
         "nod.bounce-summary",
+        "nod.purge",
         "nod.emergency-feed",
         "nod.digest",
         "nod.send",
@@ -669,7 +670,7 @@ describe("apps/stack", () => {
         "distribution.bounces",
         "distribution.dispatch",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 

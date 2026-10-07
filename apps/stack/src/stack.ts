@@ -463,6 +463,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         // Self-gated to once a day at 08:00 BC time (bounce-summary.ts) -- a no-op on every
         // other tick, and whenever no NOD_BOUNCE_SUMMARY_EMAIL is configured.
         { name: "nod.bounce-summary", run: worker(nod, "bounceSummary") },
+        // Self-gated to 03:00 BC nightly (purge.ts): expired send links always, subscribers only
+        // while the Operations switch is on. Bounded per tick; a big night finishes over several.
+        { name: "nod.purge", run: worker(nod, "purge") },
         // Self-gated to every 5 minutes (emergency/ingest.ts). Before nod.send, so an alert
         // recorded this tick goes out in the same tick.
         { name: "nod.emergency-feed", run: worker(nod, "emergencyFeed") },

@@ -1,0 +1,4 @@
+CREATE INDEX "job_recipients_subscriber_idx" ON "job_recipients" USING btree ("subscriber_id");--> statement-breakpoint
+CREATE INDEX "subscriber_links_subscriber_idx" ON "subscriber_links" USING btree ("subscriber_id");--> statement-breakpoint
+CREATE INDEX "subscriber_links_send_expiry_idx" ON "subscriber_links" USING btree ("expires_at") WHERE "subscriber_links"."origin" = 'send';--> statement-breakpoint
+CREATE INDEX "subscriber_links_request_unused_idx" ON "subscriber_links" USING btree ("created_at") WHERE "subscriber_links"."origin" = 'request' AND "subscriber_links"."used_at" IS NULL;
