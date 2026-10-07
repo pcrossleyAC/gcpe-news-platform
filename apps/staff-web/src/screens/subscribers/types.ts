@@ -63,3 +63,97 @@ export interface BulkResult {
   changed: number;
   skipped: { id: string; reason: BulkSkipReason }[];
 }
+
+/** apps/nod/src/staff-lists.ts */
+export interface StaffList {
+  listKey: string;
+  key: string;
+  name: string;
+  active: boolean;
+  enabled: boolean;
+  subscribers: number;
+}
+export interface StaffCategory {
+  key: string;
+  name: string;
+  enabled: boolean;
+  namesFrom: "Core" | "NRMS" | "NoD";
+  editable: boolean;
+  lists: StaffList[];
+}
+export interface StaffListsView {
+  allNews: number;
+  categories: StaffCategory[];
+}
+
+/** apps/nod/src/media-members.ts */
+export interface MediaListSummary {
+  listKey: string;
+  key: string;
+  name: string;
+  active: boolean;
+  members: number;
+  needsAttention: number;
+}
+export interface MediaMember {
+  subscriberId: string;
+  email: string;
+  source: string;
+  mediaHubContactId: number | null;
+  mediaHubEmailRef: string | null;
+  needsAttention: string | null;
+  attentionAt: string | null;
+}
+export interface MediaOptOut {
+  subscriberId: string;
+  email: string;
+  at: string;
+  member: boolean;
+}
+export interface MediaOptOutPage {
+  items: MediaOptOut[];
+  truncated: boolean;
+}
+export type AddMemberBody = { email: string; confirmOptOut?: boolean } | { mediaHubContactId: number; emailRef: string; confirmOptOut?: boolean };
+
+/** apps/nod/src/media-hub/contract.ts */
+export interface MediaHubEmail {
+  ref: string;
+  address: string;
+  kind: "personal" | "workplace";
+  organization: string | null;
+  preferred: boolean;
+}
+export interface MediaHubContact {
+  id: number;
+  firstName: string;
+  lastName: string;
+  outlet: string | null;
+  emails: MediaHubEmail[];
+  deletedAt: string | null;
+}
+export interface MediaHubContactPage {
+  contacts: MediaHubContact[];
+  page: number;
+  pageSize: number;
+  total: number;
+}
+
+/** apps/nod/src/media-hub/sync.ts StoredSyncResult / getMediaSyncStatus */
+export type SyncResultView =
+  | { contacts: number; updated: number; flagged: number; removed: number; errors: number; inProgress?: true }
+  | { error: string; kind?: string };
+export interface SyncStatus {
+  since: string | null;
+  at: string | null;
+  result: SyncResultView | null;
+  running: boolean;
+}
+
+/** apps/nod/src/operations.ts */
+export interface OperationsStatus {
+  nod: { paused: boolean; lastDigestCutoff: string | null };
+  distribution: { paused: boolean } | null;
+  bounceSource: "fake" | "graph" | null;
+  bounceSummary: { address: string | null; from: "setting" | "server" | null };
+}

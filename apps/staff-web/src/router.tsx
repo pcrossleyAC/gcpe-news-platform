@@ -23,6 +23,7 @@ import { SubscribersScreen } from "./screens/subscribers/SubscribersScreen";
 import { AddSubscriberScreen } from "./screens/subscribers/AddSubscriberScreen";
 import { SubscriberScreen } from "./screens/subscribers/SubscriberScreen";
 import { HistoryScreen } from "./screens/subscribers/HistoryScreen";
+import { ListsScreen } from "./screens/subscribers/ListsScreen";
 
 /**
  * Library-mode react-router v7, basename "/hub" (the stack hosts the staff app there — see
@@ -80,6 +81,10 @@ export const routes: RouteObject[] = [
         children: [
           { index: true, element: <SubscribersScreen /> },
           { path: "new", element: <AddSubscriberScreen /> },
+          { path: "lists", element: <ListsScreen /> },
+          { path: "media-lists", element: null },
+          { path: "media-lists/:key", element: null },
+          { path: "operations", element: null },
           { path: ":id", element: <SubscriberScreen /> },
           { path: ":id/history", element: <HistoryScreen /> },
         ],

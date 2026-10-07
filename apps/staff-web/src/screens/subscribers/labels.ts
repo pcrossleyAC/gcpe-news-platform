@@ -1,4 +1,5 @@
-import type { StatusFilter, SubscriberStatus } from "./types";
+import { ApiError } from "../../api/client";
+import type { StatusFilter, SubscriberStatus, SyncResultView } from "./types";
 
 export const STATUS_LABELS: Record<SubscriberStatus, string> = {
   pending: "Pending",
@@ -67,4 +68,37 @@ const SYSTEM_ACTORS: Record<string, string> = {
  * stored by display name and shown as-is. */
 export function actorLabel(actor: string): string {
   return SYSTEM_ACTORS[actor] ?? actor;
+}
+
+const ATTENTION_LABELS: Record<string, string> = {
+  "email-gone": "Media Hub email removed",
+  "email-taken": "Media Hub email belongs to another subscriber",
+  "email-invalid": "Media Hub email isn't valid",
+  bouncing: "Bouncing",
+};
+export function attentionLabel(reason: string): string {
+  return ATTENTION_LABELS[reason] ?? reason;
+}
+
+export function memberSourceLabel(source: string): string {
+  if (source === "media-hub") return "Media Hub";
+  if (source === "manual-media") return "Added by hand";
+  return "Subscriber";
+}
+
+export function describeSync(result: SyncResultView | null): string {
+  if (!result) return "No sync has run yet.";
+  if ("error" in result) return "The last sync stopped with an error. The next run tries again.";
+  const text = `${result.contacts} changed contacts: ${result.updated} updated, ${result.flagged} flagged, ${result.removed} removed, ${result.errors} skipped.`;
+  return result.inProgress ? `In progress. ${text}` : text;
+}
+
+/** What a media-list or Media Hub call's failure means to staff. */
+export function mediaErrorText(e: unknown): string {
+  if (!(e instanceof ApiError)) return "Something went wrong.";
+  if (e.status === 400) return "That isn't a valid email address.";
+  if (e.status === 404) return "That contact or email is no longer in Media Hub.";
+  if (e.status === 502) return "Media Hub isn't responding. Try again, or add the address by hand.";
+  if (e.status === 503) return "Media Hub isn't set up on this site. Add the address by hand instead.";
+  return e.message;
 }

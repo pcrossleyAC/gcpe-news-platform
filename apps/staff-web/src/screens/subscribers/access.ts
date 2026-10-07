@@ -9,3 +9,8 @@ export function canReadSubscribers(s: SessionValue): boolean {
 export function canEditSubscribers(s: SessionValue): boolean {
   return s.has("NoD.Editor") || s.has("NoD.Admin");
 }
+
+/** Spec §8: NoD.Admin alone changes lists and categories and uses Operations. */
+export function canAdminSubscribers(s: SessionValue): boolean {
+  return s.has("NoD.Admin");
+}
