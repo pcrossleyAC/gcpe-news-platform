@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import axe from "axe-core";
@@ -142,12 +142,18 @@ describe("ReleaseEditorPage", () => {
     );
     const user = userEvent.setup();
 
-    await screen.findByRole("heading", { name: "Categories" });
-    await user.click(screen.getByLabelText("Sector One"));
+    // The checkbox list comes from its own GET /categories, which can land after the section's
+    // heading has already rendered.
+    await user.click(await screen.findByLabelText("Sector One"));
     // Checking that box also dirties the sticky save bar, which gets its own "Save categories"
     // button — scope to the Categories section itself for its inline one.
+    await screen.findByRole("region", { name: "Unsaved changes" });
     await user.click(within(screen.getByRole("region", { name: "Categories" })).getByRole("button", { name: "Save categories" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url.endsWith("/categories"))).toBe(true));
+    // "Back-to-back" means after the first save has finished: the bar goes once its response has
+    // replaced the page's view. Clicking Save settings while the /categories PUT is still in
+    // flight would send version 1 — the overlapping-saves 409 UnsavedChangesBar documents.
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Unsaved changes" })).not.toBeInTheDocument());
 
     await user.click(screen.getByRole("button", { name: "Save settings" }));
     await waitFor(() => expect(calls.some((c) => c.method === "PUT" && c.url.endsWith("/settings"))).toBe(true));
@@ -277,7 +283,8 @@ describe("ReleaseEditorPage", () => {
           if (url.match(/\/nrms\/api\/releases\/[^/]+$/)) {
             const status = statuses[Math.min(gets, statuses.length - 1)]!;
             gets += 1;
-            return jsonResponse(200, releaseView({ ...base, status }));
+            // A distinct reference per response, so the test can see each refresh land on the page.
+            return jsonResponse(200, releaseView({ ...base, status, reference: `NEWS-0000${gets}` }));
           }
           return jsonResponse(200, []);
         }),
@@ -292,13 +299,17 @@ describe("ReleaseEditorPage", () => {
       expect(screen.getByText(/updates on its own/)).toBeInTheDocument();
       expect(gets).toBe(1);
 
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
-      await waitFor(() => expect(gets).toBe(2));
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      // Each refresh schedules the next one only once its response has re-rendered the page, so
+      // wait for that before moving the clock on — otherwise the next poll lands past the advance.
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS));
+      expect(await screen.findAllByText("NEWS-00002")).not.toHaveLength(0);
+      expect(gets).toBe(2);
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS));
       expect(await screen.findByText("Published")).toBeInTheDocument();
+      expect(screen.getAllByText("NEWS-00003")).not.toHaveLength(0);
       expect(screen.queryByText(/updates on its own/)).not.toBeInTheDocument();
 
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS * 3);
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS * 3));
       expect(gets).toBe(3);
     } finally {
       vi.useRealTimers();
@@ -335,12 +346,15 @@ describe("ReleaseEditorPage", () => {
       await screen.findByText("Republishing...");
       expect(gets).toBe(1);
 
+      // act(): a hidden tick only bumps state, and the page schedules its next check in the
+      // effect that follows — act flushes that render before the clock moves on again, so the
+      // next check is pending before the second advance (outside act it sometimes landed after).
       visibilitySpy.mockReturnValue("hidden");
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS));
       expect(gets).toBe(1); // hidden — skipped the fetch
 
       visibilitySpy.mockReturnValue("visible");
-      await vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS);
+      await act(() => vi.advanceTimersByTimeAsync(SETTLING_REFRESH_MS));
       await waitFor(() => expect(gets).toBe(2)); // visible again — picked back up
     } finally {
       visibilitySpy.mockRestore();

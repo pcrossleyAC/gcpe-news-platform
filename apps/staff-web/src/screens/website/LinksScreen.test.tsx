@@ -48,7 +48,7 @@ describe("LinksScreen", () => {
     );
     render(withAuth(<LinksScreen />));
     await screen.findByRole("heading", { name: "Resource links", level: 1 });
-    expect(document.title).toBe("Resource links — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Resource links — GCPE News Staff"));
   });
 
   it("Move down then Save sends the whole reordered list in one PUT", async () => {

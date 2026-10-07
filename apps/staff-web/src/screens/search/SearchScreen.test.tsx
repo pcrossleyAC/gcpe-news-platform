@@ -111,7 +111,7 @@ describe("SearchScreen", () => {
     stubFetch();
     renderSearch();
     await screen.findByRole("heading", { level: 1 });
-    expect(document.title).toBe("Search — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Search — GCPE News Staff"));
   });
 
   it("a goto hit navigates straight to the release", async () => {

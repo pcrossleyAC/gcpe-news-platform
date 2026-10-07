@@ -44,7 +44,7 @@ describe("BlueBridgeScreen", () => {
     );
     render(withAuth(<BlueBridgeScreen />));
     await screen.findByRole("heading", { name: "Project Blue Bridge", level: 1 });
-    expect(document.title).toBe("Project Blue Bridge — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Project Blue Bridge — GCPE News Staff"));
   });
 
   it("shows the switch to Core.Admin, with the confirm button disabled until the phrase and checkbox both match", async () => {

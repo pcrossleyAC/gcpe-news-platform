@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { FeaturedScreen } from "./FeaturedScreen";
 import type { FeaturedWhereRow } from "./types";
@@ -20,7 +20,7 @@ describe("FeaturedScreen", () => {
     render(<FeaturedScreen />);
     await screen.findByRole("heading", { name: "What’s featured where", level: 1 });
     // I5: document.title matches the h1.
-    expect(document.title).toBe("What’s featured where — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("What’s featured where — GCPE News Staff"));
     expect(screen.getByRole("cell", { name: "Big news" })).toBeInTheDocument();
     expect(screen.getByRole("cell", { name: "Clinics open" })).toBeInTheDocument();
     expect(screen.queryByRole("button")).toBeNull();

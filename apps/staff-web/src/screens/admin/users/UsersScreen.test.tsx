@@ -50,7 +50,7 @@ describe("UsersScreen", () => {
     });
     render(withAuth(<UsersScreen />));
     await screen.findByRole("heading", { name: "Users", level: 1 });
-    expect(document.title).toBe("Users — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Users — GCPE News Staff"));
   });
 
   it("creates a user with email, display name, roles and an optional password", async () => {

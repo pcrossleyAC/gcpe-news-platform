@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
@@ -69,6 +69,6 @@ describe("WebsiteScreen", () => {
   it("sets the document title on the permission-denied branch", async () => {
     renderWithRole("NoD.Admin");
     await screen.findByRole("heading", { name: "Website", level: 1 });
-    expect(document.title).toBe("Website — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Website — GCPE News Staff"));
   });
 });

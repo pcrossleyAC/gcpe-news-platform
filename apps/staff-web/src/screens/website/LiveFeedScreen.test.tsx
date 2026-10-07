@@ -45,7 +45,7 @@ describe("LiveFeedScreen", () => {
     stub(["NRMS.SiteEditor"], OFF, calls);
     render(withAuth(<LiveFeedScreen />));
     await screen.findByRole("heading", { name: "Live Feed", level: 1 });
-    expect(document.title).toBe("Live Feed — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Live Feed — GCPE News Staff"));
   });
 
   it("refuses to enable with no M3U URL, client-side, without calling the server", async () => {

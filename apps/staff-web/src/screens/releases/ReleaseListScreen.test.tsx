@@ -99,7 +99,7 @@ describe("ReleaseListScreen", () => {
   it("sets the document title", async () => {
     renderScreen("drafts", "/releases/drafts");
     await screen.findByText("A headline");
-    expect(document.title).toBe("Releases — GCPE News Staff");
+    await waitFor(() => expect(document.title).toBe("Releases — GCPE News Staff"));
   });
 
   it("changing the type filter re-queries with that type and resets to page 1", async () => {
