@@ -303,7 +303,7 @@ function PurgeControl({ purge, timeZone, onDone }: { purge: PurgeStatus; timeZon
         <Button variant="secondary" danger={turningOn}>
           {turningOn ? "Turn on the retention purge" : "Turn off the retention purge"}
         </Button>
-        <Modal isDismissable>
+        <Modal isDismissable={!busy}>
           <AlertDialog
             role="alertdialog"
             variant="warning"
@@ -350,8 +350,10 @@ function EmergencyFeedPanel({ feed, timeZone }: { feed: EmergencyFeedStatus; tim
               {`Last checked ${formatWhen(r.at, new Date(), timeZone)}: ${plural(r.inFeed, "alert")} in the feed, ${count(r.created)} new, ${count(r.updated)} updated.` +
                 (r.seeded ? " This was the first read of this feed, so its alerts were recorded without emailing anyone." : "")}
             </p>
+          ) : r.error !== null ? (
+            <InlineAlert variant="warning" description={`The last check (${formatWhen(r.at, new Date(), timeZone)}) failed: ${r.error}. It tries again every 5 minutes.`} />
           ) : (
-            <InlineAlert variant="warning" description={`The last check (${formatWhen(r.at, new Date(), timeZone)}) failed: ${r.error ?? "unknown error"}. It tries again every 5 minutes.`} />
+            <InlineAlert variant="warning" description={`${plural(r.failed, "alert couldn’t be recorded", "alerts couldn’t be recorded")}. It tries again every 5 minutes.`} />
           )}
         </>
       )}

@@ -179,6 +179,7 @@ export interface EmergencyFeedResult {
   created: number;
   updated: number;
   skipped: number;
+  failed: number;
   error: string | null;
 }
 export interface EmergencyFeedStatus {

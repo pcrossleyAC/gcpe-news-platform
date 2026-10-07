@@ -23,7 +23,7 @@ const OPS: OperationsStatus = {
   emergencyFeed: {
     url: "https://emergency.example.test/feed.xml",
     checkedAt: "2026-10-07T18:00:00.000Z",
-    result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, error: null },
+    result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, failed: 0, error: null },
   },
 };
 
@@ -31,7 +31,7 @@ type Call = { url: string; method: string; body: unknown };
 function stub(
   roles: string[],
   ops: OperationsStatus = OPS,
-  opts: { load?: () => Response; upload?: () => Response; softCodes?: () => Response; purge?: () => Response } = {},
+  opts: { load?: () => Response; upload?: () => Response; softCodes?: () => Response; purge?: () => Response | Promise<Response> } = {},
 ) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
@@ -215,6 +215,23 @@ describe("OperationsScreen", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn’t change it. Nothing changed.");
   });
 
+  it("the purge dialog can't be dismissed by clicking outside it while the save is in flight, so a failure still lands inside it", async () => {
+    let settle!: (r: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      settle = resolve;
+    });
+    stub(["NoD.Admin"], OPS, { purge: () => pending });
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Turn on the retention purge" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Turn on purge" }));
+    await user.click(document.body);
+    expect(await screen.findByRole("alertdialog")).toBe(dialog);
+    settle(jsonResponse(500, { error: "internal" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn’t change it. Nothing changed.");
+  });
+
   it("an on purge offers to turn it off, and shows its last night", async () => {
     stub(["NoD.Admin"], {
       ...OPS,
@@ -244,6 +261,14 @@ describe("OperationsScreen", () => {
     renderIt();
     const feed = await screen.findByRole("region", { name: "Emergency alerts feed" });
     expect(await within(feed).findByText(/failed: http-503\. It tries again every 5 minutes\./)).toBeInTheDocument();
+  });
+
+  it("the emergency feed: alerts that couldn't be recorded are a warning of their own, not an unknown-error label", async () => {
+    stub(["NoD.Admin"], { ...OPS, emergencyFeed: { ...OPS.emergencyFeed, result: { ...OPS.emergencyFeed.result!, ok: false, error: null, failed: 2 } } });
+    renderIt();
+    const feed = await screen.findByRole("region", { name: "Emergency alerts feed" });
+    expect(await within(feed).findByText("2 alerts couldn’t be recorded. It tries again every 5 minutes.")).toBeInTheDocument();
+    expect(within(feed).queryByText(/unknown error/)).toBeNull();
   });
 
   it("the emergency feed: none configured says so", async () => {
