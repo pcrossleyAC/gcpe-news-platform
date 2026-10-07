@@ -22,6 +22,34 @@
       "when": 1791099477658,
       "tag": "0002_attachments",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791331138486,
+      "tag": "0003_message_id_reply_to",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791332581897,
+      "tag": "0004_send_rate_windows",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791335922636,
+      "tag": "0005_distribution_settings",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791335929639,
+      "tag": "0006_seed_distribution_settings",
+      "breakpoints": true
     }
   ]
 }

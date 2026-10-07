@@ -3,10 +3,11 @@ import nodemailer, { type Transporter } from "nodemailer";
 import { sql } from "drizzle-orm";
 import { dbClock, type TestDatabase } from "@gcpe/db-kit";
 import { createBatch } from "./messages";
-import { messages } from "./db/schema";
+import { messages, sendRateWindows } from "./db/schema";
 import { createDistributionTestDb, sampleMessageRequest } from "../test/helpers";
 import { startSmtpSink } from "../test/smtp-sink";
 import { defaultSendLockMs, sendDue, startSender, truncateError } from "./sender";
+import { setPaused } from "./settings";
 
 const internalDomains = ["gov.bc.ca"];
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -48,7 +49,8 @@ describe("sendDue", () => {
   // be empty of any other test's leftovers (e.g. a test that deliberately leaves a row
   // pending) before it starts.
   beforeEach(async () => {
-    await tdb.db.execute(sql`TRUNCATE TABLE messages, batches`);
+    await tdb.db.execute(sql`TRUNCATE TABLE messages, batches, send_rate_windows`);
+    await tdb.db.execute(sql`UPDATE distribution_settings SET paused = false`);
   });
 
   it("sends each recipient their own substituted mail", async () => {
@@ -64,7 +66,7 @@ describe("sendDue", () => {
 
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
 
-      expect(result).toEqual({ sent: 2, retried: 0, failed: 0 });
+      expect(result).toEqual({ sent: 2, retried: 0, failed: 0, rateLimited: false });
       expect(sink.messages).toHaveLength(2);
       const byTo = new Map(sink.messages.map((m) => [m.to && "value" in m.to ? m.to.value[0]!.address : undefined, m]));
       const alex = byTo.get("alex.example@gov.bc.ca")!;
@@ -105,7 +107,7 @@ describe("sendDue", () => {
       );
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
 
-      expect(result).toEqual({ sent: 2, retried: 0, failed: 0 });
+      expect(result).toEqual({ sent: 2, retried: 0, failed: 0, rateLimited: false });
       expect(sink.messages).toHaveLength(2);
       for (const m of sink.messages) {
         expect(m.attachments.map((a) => [a.filename, a.contentType])).toEqual([
@@ -168,6 +170,131 @@ describe("sendDue", () => {
     }
   });
 
+  it("sets the Message-ID from the row id and the configured domain, and records it on the row", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", messageIdDomain: "example.test", redirectTo: [] });
+
+      const [row] = await tdb.db.select().from(messages);
+      expect(sink.messages).toHaveLength(1);
+      expect(sink.messages[0]!.messageId).toBe(`<${row!.id}@example.test>`);
+      expect(row!.messageId).toBe(`<${row!.id}@example.test>`);
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("keeps the same Message-ID across a transient failure and the retry that succeeds", async () => {
+    await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "retry@example.com", substitutions: {} }] }, internalDomains);
+    let attempt = 0;
+    const sentMessageIds: (string | undefined)[] = [];
+    const stubTransport = {
+      sendMail: async (mail: { messageId?: string }) => {
+        sentMessageIds.push(mail.messageId);
+        attempt++;
+        if (attempt === 1) {
+          throw Object.assign(new Error("Message failed: 452 too many recipients"), { code: "EMESSAGE", command: "DATA", responseCode: 452 });
+        }
+      },
+    } as unknown as Transporter;
+
+    let simulatedNow = (await dbClock(tdb.db)).getTime();
+    const first = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", messageIdDomain: "example.test", redirectTo: [], now: () => new Date(simulatedNow) });
+    expect(first).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
+
+    const [rowAfterFirst] = await tdb.db.select().from(messages);
+    expect(rowAfterFirst!.status).toBe("pending");
+    simulatedNow = rowAfterFirst!.nextAttemptAt.getTime() + 1000; // just past due for the retry
+
+    const second = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", messageIdDomain: "example.test", redirectTo: [], now: () => new Date(simulatedNow) });
+    expect(second).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
+
+    expect(sentMessageIds).toHaveLength(2);
+    expect(sentMessageIds[0]).toBeTruthy();
+    expect(sentMessageIds[0]).toBe(sentMessageIds[1]);
+
+    const [rowAfterSecond] = await tdb.db.select().from(messages);
+    expect(rowAfterSecond!.status).toBe("sent");
+    expect(rowAfterSecond!.messageId).toBe(sentMessageIds[0]);
+  });
+
+  it("the request's own Reply-To wins over MAIL_REPLY_TO", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, replyTo: "batch-reply@example.com", recipients: [{ email: "x@example.com", substitutions: {} }] },
+        internalDomains,
+      );
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", replyTo: "fallback-reply@example.com", redirectTo: [] });
+
+      expect(sink.messages).toHaveLength(1);
+      const replyTo = sink.messages[0]!.replyTo;
+      expect(replyTo?.value[0]?.address).toBe("batch-reply@example.com");
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("falls back to MAIL_REPLY_TO when the request carries none", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", replyTo: "fallback-reply@example.com", redirectTo: [] });
+
+      expect(sink.messages).toHaveLength(1);
+      const replyTo = sink.messages[0]!.replyTo;
+      expect(replyTo?.value[0]?.address).toBe("fallback-reply@example.com");
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("sets no Reply-To header when neither the request nor MAIL_REPLY_TO is set", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+
+      expect(sink.messages).toHaveLength(1);
+      expect(sink.messages[0]!.replyTo).toBeUndefined();
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("keeps the Message-ID and Reply-To unchanged in redirect mode", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, replyTo: "batch-reply@example.com", recipients: [{ email: "victim@example.com", substitutions: {} }] },
+        internalDomains,
+      );
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", messageIdDomain: "example.test", redirectTo: ["qa@example.com"] });
+
+      const [row] = await tdb.db.select().from(messages);
+      expect(sink.messages).toHaveLength(1);
+      expect(sink.messages[0]!.messageId).toBe(`<${row!.id}@example.test>`);
+      expect(sink.messages[0]!.replyTo?.value[0]?.address).toBe("batch-reply@example.com");
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
   it("sends higher-priority messages first within a single claimed batch", async () => {
     const sink = await startSmtpSink();
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
@@ -184,7 +311,7 @@ describe("sendDue", () => {
       // that one claim is the thing under test (not which batch gets claimed at all).
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
 
-      expect(result).toEqual({ sent: 6, retried: 0, failed: 0 });
+      expect(result).toEqual({ sent: 6, retried: 0, failed: 0, rateLimited: false });
       expect(sink.messages).toHaveLength(6);
       const firstTo = sink.messages[0]!.to && "value" in sink.messages[0]!.to! ? sink.messages[0]!.to!.value[0]!.address : undefined;
       expect(firstTo).toBe("system@example.com");
@@ -205,7 +332,7 @@ describe("sendDue", () => {
 
       const before = new Date();
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("pending");
@@ -218,7 +345,7 @@ describe("sendDue", () => {
 
       // Same clock, immediately after: the backoff window hasn't elapsed, so nothing is due yet.
       const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
-      expect(second).toEqual({ sent: 0, retried: 0, failed: 0 });
+      expect(second).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: false });
     } finally {
       errorSpy.mockRestore();
       await transport.close();
@@ -232,7 +359,7 @@ describe("sendDue", () => {
       await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 1, rateLimited: false });
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("failed");
@@ -265,7 +392,7 @@ describe("sendDue", () => {
       let simulatedNow = (await dbClock(tdb.db)).getTime();
       for (let run = 0; run < 6; run++) {
         const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], now: () => new Date(simulatedNow) });
-        expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+        expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
         const [row] = await tdb.db.select().from(messages);
         // Advance well past this run's deferral backoff so the message is due again.
         simulatedNow = row!.nextAttemptAt.getTime() + 1000;
@@ -295,7 +422,7 @@ describe("sendDue", () => {
       await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("pending");
@@ -329,7 +456,7 @@ describe("sendDue", () => {
       let simulatedNow = (await dbClock(tdb.db)).getTime();
       for (let run = 0; run < 6; run++) {
         const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(simulatedNow) });
-        expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+        expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
         // Advance well past this call's backoff so the message is due again on the next run,
         // simulating repeated outage checks rather than one that never comes due.
         simulatedNow += 3_600_000;
@@ -367,7 +494,7 @@ describe("sendDue", () => {
     } as unknown as Transporter;
     try {
       const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
 
       const rows = await tdb.db.select().from(messages);
       const first = rows.find((r) => r.email === "first@example.com")!;
@@ -472,7 +599,7 @@ describe("sendDue", () => {
 
       // "system" claims before "digest", so the poison message is hit first in this one call.
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 1, retried: 1, failed: 0 });
+      expect(result).toEqual({ sent: 1, retried: 1, failed: 0, rateLimited: false });
       expect(delivered).toEqual(["Healthy batch"]);
 
       const rows = await tdb.db.select().from(messages);
@@ -516,7 +643,7 @@ describe("sendDue", () => {
         redirectTo: [],
         maxMessageAgeMs: 0,
       });
-      expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 1, rateLimited: false });
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("failed");
@@ -541,7 +668,7 @@ describe("sendDue", () => {
       await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
 
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 0, failed: 1 });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 1, rateLimited: false });
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("failed");
@@ -598,7 +725,7 @@ describe("sendDue", () => {
         sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] }),
         new Promise<never>((_, reject) => setTimeout(() => reject(new Error("sendDue waited on the locked row instead of skipping it")), 5000)),
       ]);
-      expect(result).toEqual({ sent: 2, retried: 0, failed: 0 });
+      expect(result).toEqual({ sent: 2, retried: 0, failed: 0, rateLimited: false });
       expect(sentTo.sort()).toEqual(["free1@example.com", "free2@example.com"]);
     } finally {
       await locker.query("ROLLBACK");
@@ -681,7 +808,7 @@ describe("sendDue", () => {
 
       const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], stopRequested: () => sink.messages.length >= 1 });
 
-      expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+      expect(result).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
       expect(sink.messages).toHaveLength(1);
       const rows = await tdb.db.select().from(messages);
       expect(rows.filter((r) => r.status === "pending")).toHaveLength(2);
@@ -840,7 +967,7 @@ describe("sendDue", () => {
     // write, so it's silently not counted; rows 3-6 are skipped by the re-assert before ever
     // reaching sendMail at all.
     expect(calls).toBe(2);
-    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
   });
 
   it("releases rows it never reached so another run can claim them immediately, not after the full lock expires", async () => {
@@ -871,7 +998,7 @@ describe("sendDue", () => {
       // locked long after this test (and this whole file) finishes.
       stopRequested: () => stopNow,
     });
-    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
     expect(sentTo).toHaveLength(1);
 
     // Immediately — no waiting for the first run's lock to expire — a second run with a real
@@ -880,7 +1007,7 @@ describe("sendDue", () => {
     const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
     try {
       const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
-      expect(second).toEqual({ sent: 4, retried: 0, failed: 0 });
+      expect(second).toEqual({ sent: 4, retried: 0, failed: 0, rateLimited: false });
     } finally {
       await transport.close();
       await sink.close();
@@ -893,6 +1020,12 @@ describe("sendDue", () => {
     ).rejects.toThrow(/lockMs.*lockMarginMs/);
   });
 
+  it.each([0, -1, 1.5, NaN])("rejects a concurrency of %s, at sendDue's entry", async (concurrency) => {
+    await expect(
+      sendDue({ db: tdb.db, transport: {} as unknown as Transporter, from: "news@example.com", redirectTo: [], concurrency }),
+    ).rejects.toThrow(/concurrency/);
+  });
+
   it("defaults the stop margin to perMessageMs + verifyTimeoutMs, not a fixed 30s, so a short-but-valid lock for a fast batch still sends", async () => {
     // lockMs (1000ms) is smaller than the fixed 30s margin this loop's check used to use — a
     // fixed 30s default would have tripped it before the very first row, sending nothing. With
@@ -902,7 +1035,7 @@ describe("sendDue", () => {
     const stubTransport = { sendMail: async () => ({}) } as unknown as Transporter;
 
     const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], batchSize: 1, perMessageMs: 200, verifyTimeoutMs: 300, lockMs: 1000 });
-    expect(result).toEqual({ sent: 1, retried: 0, failed: 0 });
+    expect(result).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
   });
 
   // P2-R25 item 1: the stop margin must cover a message's verify() too — otherwise a run could
@@ -947,11 +1080,11 @@ describe("sendDue", () => {
       // past a send-only lock (1s + 30s), well inside one that also budgets the 60s verify.
       const t = (await dbClock(tdb.db)).getTime();
       const second = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], ...timing, now: () => new Date(t + 45_000) });
-      expect(second).toEqual({ sent: 0, retried: 0, failed: 0 });
+      expect(second).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: false });
       expect(sends).toBe(1);
 
       finishVerify();
-      expect(await first).toEqual({ sent: 0, retried: 1, failed: 0 });
+      expect(await first).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
     } finally {
       finishVerify?.();
       errorSpy.mockRestore();
@@ -962,6 +1095,10 @@ describe("sendDue", () => {
     expect(() => startSender({ db: tdb.db, transport: {} as unknown as Transporter, from: "news@example.com", redirectTo: [], lockMs: 1000, lockMarginMs: 2000 })).toThrow(
       /lockMs.*lockMarginMs/,
     );
+  });
+
+  it("rejects a non-positive-integer concurrency, at startSender's entry (synchronously, before the first tick)", () => {
+    expect(() => startSender({ db: tdb.db, transport: {} as unknown as Transporter, from: "news@example.com", redirectTo: [], concurrency: 0 })).toThrow(/concurrency/);
   });
 
   it("retries and logs a configuration error for an EHLO/greeting-stage failure", async () => {
@@ -975,7 +1112,7 @@ describe("sendDue", () => {
       } as unknown as Transporter;
 
       const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
 
       const [row] = await tdb.db.select().from(messages);
       expect(row!.status).toBe("pending");
@@ -1004,7 +1141,7 @@ describe("sendDue", () => {
     } as unknown as Transporter;
     try {
       const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+      expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
       const [row] = await tdb.db.select().from(messages);
       expect(row!.attempts).toBe(0);
       expect(row!.deferrals).toBe(1);
@@ -1031,7 +1168,7 @@ describe("sendDue", () => {
       const deltas: number[] = [];
       for (let run = 0; run < 6; run++) {
         const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], now: () => new Date(simulatedNow) });
-        expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+        expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
         const [row] = await tdb.db.select().from(messages);
         deltas.push(row!.nextAttemptAt.getTime() - simulatedNow);
         simulatedNow = row!.nextAttemptAt.getTime() + 1000;
@@ -1059,7 +1196,7 @@ describe("sendDue", () => {
     } as unknown as Transporter;
     try {
       const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
-      expect(result).toEqual({ sent: 1, retried: 1, failed: 0 });
+      expect(result).toEqual({ sent: 1, retried: 1, failed: 0, rateLimited: false });
       const rows = await tdb.db.select().from(messages);
       const dropped = rows.find((r) => r.email === "dropped@example.com")!;
       expect(dropped.attempts).toBe(0);
@@ -1083,10 +1220,553 @@ describe("sendDue", () => {
     } as unknown as Transporter;
 
     const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [] });
-    expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
 
     const [row] = await tdb.db.select().from(messages);
     expect(row!.status).toBe("pending");
     expect(row!.attempts).toBe(1);
+  });
+
+  it("claims at most ratePerMinute rows per minute, reporting rateLimited", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    const now = () => new Date("2030-01-01T00:00:00.000Z");
+    try {
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, recipients: Array.from({ length: 12 }, (_, i) => ({ email: `cap${i}@example.com`, substitutions: {} })) },
+        internalDomains,
+      );
+
+      const first = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 5, now });
+      expect(first).toEqual({ sent: 5, retried: 0, failed: 0, rateLimited: true });
+      expect(sink.messages).toHaveLength(5);
+
+      // Same minute, a second call: the window's budget is already spent.
+      const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 5, now });
+      expect(second).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: true });
+      expect(sink.messages).toHaveLength(5);
+
+      const rows = await tdb.db.select().from(messages);
+      expect(rows.filter((r) => r.status === "sent")).toHaveLength(5);
+      expect(rows.filter((r) => r.status === "pending")).toHaveLength(7);
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("rateLimited is false when the cap isn't the binding constraint — fewer rows due than the remaining budget", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    const now = () => new Date("2030-01-07T00:00:00.000Z");
+    try {
+      // Cap (10) well under the default batchSize (50), but only 3 rows are due: the cap has
+      // 7 of headroom left over, so it never actually bound this claim.
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, recipients: Array.from({ length: 3 }, (_, i) => ({ email: `idle${i}@example.com`, substitutions: {} })) },
+        internalDomains,
+      );
+
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 10, now });
+      expect(result).toEqual({ sent: 3, retried: 0, failed: 0, rateLimited: false });
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("rateLimited is true when the cap is reached exactly — claimed equals the remaining budget", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    const now = () => new Date("2030-01-08T00:00:00.000Z");
+    try {
+      // Exactly as many rows due as the cap allows: every bit of the budget is used, even
+      // though nothing was left waiting beyond it.
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, recipients: Array.from({ length: 10 }, (_, i) => ({ email: `exact${i}@example.com`, substitutions: {} })) },
+        internalDomains,
+      );
+
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 10, now });
+      expect(result).toEqual({ sent: 10, retried: 0, failed: 0, rateLimited: true });
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("two concurrent workers racing the same minute never claim more than the cap combined", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    const now = () => new Date("2030-01-02T00:00:00.000Z");
+    const windowStart = "2030-01-02T00:00:00.000Z";
+    try {
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, recipients: Array.from({ length: 20 }, (_, i) => ({ email: `race${i}@example.com`, substitutions: {} })) },
+        internalDomains,
+      );
+
+      // Pre-insert the window row for the pinned minute, so both calls below race on an
+      // EXISTING row — the first worker's own `INSERT ... ON CONFLICT DO NOTHING` (which is
+      // what actually serialises two workers racing a *fresh* row: whichever inserts it holds
+      // an exclusive lock on the new row until its own commit) is a no-op for both, and only
+      // the `SELECT ... FOR UPDATE` on the window row (sender.ts) can be what serialises them.
+      await tdb.db.execute(sql`INSERT INTO send_rate_windows (window_start, claimed) VALUES (${windowStart}::timestamptz, 0)`);
+
+      // Hold that row's lock on a separate connection, started before either sendDue call, so
+      // both calls' own `SELECT ... FOR UPDATE` must block on it until this transaction
+      // commits — without that statement in sender.ts, a plain SELECT would never block here
+      // at all, and both calls would run straight through concurrently (each would successfully
+      // claim its own disjoint set of message rows via FOR UPDATE SKIP LOCKED, overspending the
+      // cap, since nothing would make either of them wait to see the other's committed count).
+      const holder = await tdb.pool.connect();
+      await holder.query("BEGIN");
+      await holder.query("SELECT claimed FROM send_rate_windows WHERE window_start = $1 FOR UPDATE", [windowStart]);
+
+      const first = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 7, now });
+      const second = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 7, now });
+
+      // Give both calls time to reach (and, with the fix, block on) their own SELECT ... FOR
+      // UPDATE before releasing the holder's lock.
+      await sleep(200);
+      await holder.query("COMMIT");
+      holder.release();
+
+      const [a, b] = await Promise.all([first, second]);
+
+      expect(a.sent + b.sent).toBe(7);
+      expect(sink.messages).toHaveLength(7);
+      const recipients = sink.messages.map((m) => (m.to && "value" in m.to ? m.to.value[0]!.address : undefined));
+      expect(new Set(recipients).size).toBe(7);
+
+      const rows = await tdb.db.select().from(messages);
+      expect(rows.filter((r) => r.status === "sent")).toHaveLength(7);
+      expect(rows.filter((r) => r.status === "pending")).toHaveLength(13);
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  }, 7000);
+
+  it("a new minute's window gets its own budget", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    const minuteOne = new Date("2030-01-03T00:00:00.000Z");
+    const minuteTwo = new Date(minuteOne.getTime() + 60_000);
+    try {
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, recipients: Array.from({ length: 12 }, (_, i) => ({ email: `minute${i}@example.com`, substitutions: {} })) },
+        internalDomains,
+      );
+
+      const first = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 5, now: () => minuteOne });
+      expect(first).toEqual({ sent: 5, retried: 0, failed: 0, rateLimited: true });
+
+      const second = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], ratePerMinute: 5, now: () => minuteTwo });
+      expect(second).toEqual({ sent: 5, retried: 0, failed: 0, rateLimited: true });
+      expect(sink.messages).toHaveLength(10);
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  it("opportunistically deletes rate-window rows older than a day", async () => {
+    const sink = await startSmtpSink();
+    const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+    try {
+      const twoDaysAgo = new Date(Date.now() - 2 * 24 * 3_600_000).toISOString();
+      await tdb.db.execute(sql`INSERT INTO send_rate_windows (window_start, claimed) VALUES (${twoDaysAgo}::timestamptz, 42)`);
+
+      await createBatch(tdb.db, "app", { ...sampleMessageRequest, recipients: [{ email: "x@example.com", substitutions: {} }] }, internalDomains);
+      await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+
+      const { rows } = await tdb.db.execute<{ window_start: string }>(
+        sql`SELECT window_start FROM send_rate_windows WHERE window_start = ${twoDaysAgo}::timestamptz`,
+      );
+      expect(rows).toHaveLength(0);
+    } finally {
+      await transport.close();
+      await sink.close();
+    }
+  });
+
+  describe("concurrency", () => {
+    it("runs up to `concurrency` sends in parallel, with at most `concurrency` in flight at once: 8 messages at a 200ms-per-send sink finish well under the 1,600ms a sequential run would take", async () => {
+      const { SMTPServer } = await import("smtp-server");
+      const { simpleParser } = await import("mailparser");
+      const delivered: string[] = [];
+      // Tracked around the DATA phase (where the 200ms delay below lives): the highest number
+      // of messages simultaneously mid-transfer is a direct measurement of how many sendMail
+      // calls sender.ts actually had in flight at once, not just an elapsed-time proxy for it.
+      let active = 0;
+      let peak = 0;
+      const server = new SMTPServer({
+        disabledCommands: ["STARTTLS", "AUTH"],
+        onData(stream, _session, cb) {
+          active++;
+          peak = Math.max(peak, active);
+          simpleParser(stream).then(
+            (m) => {
+              setTimeout(() => {
+                active--;
+                delivered.push((m.to && "value" in m.to ? m.to.value[0]!.address : "") ?? "");
+                cb();
+              }, 200);
+            },
+            (err) => {
+              active--;
+              cb(err);
+            },
+          );
+        },
+      });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      const port = (server.server.address() as { port: number }).port;
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port, secure: false, ignoreTLS: true });
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, recipients: Array.from({ length: 8 }, (_, i) => ({ email: `par${i}@example.com`, substitutions: {} })) },
+          internalDomains,
+        );
+
+        const started = Date.now();
+        const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], concurrency: 4 });
+        const elapsed = Date.now() - started;
+
+        expect(result).toEqual({ sent: 8, retried: 0, failed: 0, rateLimited: false });
+        expect(delivered).toHaveLength(8);
+        // Robust, not tight: sequential would need ~1,600ms (8 * 200ms); concurrency 4 should
+        // finish in ~2 batches of 200ms plus overhead, nowhere near that.
+        expect(elapsed).toBeLessThan(1100);
+        // The actual bound this test is about: never more than `concurrency` in flight, and
+        // genuinely overlapping (not accidentally still sequential).
+        expect(peak).toBeLessThanOrEqual(4);
+        expect(peak).toBeGreaterThanOrEqual(2);
+
+        expect(new Set(delivered).size).toBe(8); // every message sent exactly once
+      } finally {
+        await transport.close();
+        await new Promise<void>((r) => server.close(() => r()));
+      }
+    }, 10000);
+
+    // A sender-level error mid-run with concurrency > 1 — in-flight sends
+    // finish (exactly once each), unreached rows are released untouched, and the failing row
+    // itself is deferred, not failed. Only the 2nd connection's MAIL FROM is rejected (not every
+    // connection, as a blanket requireAuth sink would do), and DATA is slow enough that the
+    // sibling handlers are still genuinely mid-send when that happens.
+    it("an outage mid-run with concurrency releases the rest: in-flight sends finish exactly once, the failing row is deferred, unreached rows are released untouched", async () => {
+      const { SMTPServer } = await import("smtp-server");
+      const { simpleParser } = await import("mailparser");
+      let mailFromCount = 0;
+      const delivered: string[] = [];
+      const server = new SMTPServer({
+        disabledCommands: ["STARTTLS", "AUTH"],
+        onMailFrom(_address, _session, cb) {
+          mailFromCount++;
+          if (mailFromCount === 2) {
+            const err = new Error("mailbox unavailable") as Error & { responseCode: number };
+            err.responseCode = 535;
+            cb(err);
+            return;
+          }
+          cb();
+        },
+        onData(stream, _session, cb) {
+          simpleParser(stream).then((m) => {
+            // Slow enough that the other in-flight handlers are still mid-send when the 2nd
+            // connection's MAIL FROM above is rejected.
+            setTimeout(() => {
+              delivered.push((m.to && "value" in m.to ? m.to.value[0]!.address : "") ?? "");
+              cb();
+            }, 100);
+          }, cb);
+        },
+      });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      const port = (server.server.address() as { port: number }).port;
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port, secure: false, ignoreTLS: true });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, recipients: Array.from({ length: 6 }, (_, i) => ({ email: `o${i}@example.com`, substitutions: {} })) },
+          internalDomains,
+        );
+
+        const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], concurrency: 3 });
+
+        expect(result.sent).toBe(2);
+        expect(result.failed).toBe(0);
+        expect(result.retried).toBe(1);
+
+        // The two siblings claimed alongside the failing row were delivered exactly once each —
+        // no duplicate recipients at the sink.
+        expect(delivered).toHaveLength(2);
+        expect(new Set(delivered).size).toBe(2);
+
+        const rows = await tdb.db.select().from(messages);
+        const sent = rows.filter((r) => r.status === "sent");
+        const deferred = rows.filter((r) => r.deferrals === 1);
+        const untouched = rows.filter((r) => r.deferrals === 0 && r.status === "pending");
+        expect(sent).toHaveLength(2);
+        expect(deferred).toHaveLength(1);
+        expect(deferred[0]!.attempts).toBe(0); // deferred, not a spent attempt
+        expect(deferred[0]!.status).toBe("pending");
+        expect(deferred[0]!.lockedUntil).toBeNull();
+        expect(untouched).toHaveLength(3); // never started — released untouched
+        expect(untouched.every((r) => r.status === "pending" && r.lockedUntil === null)).toBe(true);
+      } finally {
+        errorSpy.mockRestore();
+        await transport.close();
+        await new Promise<void>((r) => server.close(() => r()));
+      }
+    }, 10000);
+
+    // Same stop condition, but connection-level (ambiguous, resolved by transport.verify()):
+    // with concurrency > 1, more than one handler can independently hit the connection error
+    // and each calls verify() for itself. Asserts the end state is consistent — no row deferred
+    // or released more than once — however many handlers raced to set the shared stop flag.
+    it("an outage detected via transport.verify() by more than one concurrent handler doesn't defer or release any row twice", async () => {
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, recipients: Array.from({ length: 6 }, (_, i) => ({ email: `v${i}@example.com`, substitutions: {} })) },
+        internalDomains,
+      );
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      let verifyCalls = 0;
+      const stubTransport = {
+        sendMail: async () => {
+          throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED", command: "CONN" });
+        },
+        verify: async () => {
+          verifyCalls++;
+          throw Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+        },
+      } as unknown as Transporter;
+      try {
+        const result = await sendDue({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], concurrency: 3 });
+
+        expect(result.sent).toBe(0);
+        expect(result.failed).toBe(0);
+        expect(result.retried).toBe(3); // exactly the 3 in-flight handlers, each deferred once
+        expect(verifyCalls).toBeGreaterThanOrEqual(2); // more than one handler independently verified
+
+        const rows = await tdb.db.select().from(messages);
+        expect(rows.filter((r) => r.deferrals === 1)).toHaveLength(3);
+        expect(rows.every((r) => r.deferrals <= 1)).toBe(true); // never deferred twice
+        expect(rows.filter((r) => r.deferrals === 0)).toHaveLength(3);
+        expect(rows.every((r) => r.lockedUntil === null)).toBe(true);
+        expect(rows.every((r) => r.status === "pending")).toBe(true);
+      } finally {
+        errorSpy.mockRestore();
+      }
+    }, 10000);
+
+    // A thrown error (not an SMTP classification, a genuine DB failure) out of one handler
+    // must not abandon the run — siblings already in flight still get their own terminal
+    // write, rows never reached are still released, and sendDue still surfaces the error to
+    // its caller once everything has settled.
+    it("a DB error on one row doesn't abandon sibling in-flight sends or skip releasing unreached rows, and sendDue still rejects", async () => {
+      const sink = await startSmtpSink();
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+      let executeCalls = 0;
+      const boom = new Error("simulated DB failure on lock re-assert");
+      // Only the per-row lock re-assert goes through the top-level db.execute (the claim's own
+      // SQL runs inside its own transaction object, a different one); throwing on exactly the
+      // 2nd such call deterministically targets the 2nd row claimed, since claiming (and issuing
+      // that row's re-assert) happens synchronously, in order, before any of the 3 concurrent
+      // handlers' first await resolves.
+      const throwingDb = new Proxy(tdb.db, {
+        get(target, prop, receiver) {
+          if (prop === "execute") {
+            return (...args: Parameters<TestDatabase["db"]["execute"]>) => {
+              executeCalls++;
+              if (executeCalls === 2) return Promise.reject(boom);
+              return Reflect.get(target, prop, receiver).apply(target, args);
+            };
+          }
+          const value = Reflect.get(target, prop, receiver);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      }) as unknown as TestDatabase["db"];
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, recipients: Array.from({ length: 6 }, (_, i) => ({ email: `e${i}@example.com`, substitutions: {} })) },
+          internalDomains,
+        );
+
+        await expect(
+          sendDue({ db: throwingDb, transport, from: "news@example.com", redirectTo: [], concurrency: 3 }),
+        ).rejects.toBe(boom);
+
+        // The siblings claimed alongside the erroring row (2 of the 3 concurrent handlers)
+        // finished their own send normally rather than being abandoned mid-flight.
+        await vi.waitFor(() => expect(sink.messages).toHaveLength(2));
+        await sleep(100); // nothing more arrives after that — no orphaned handler kept going
+        expect(sink.messages).toHaveLength(2);
+
+        const rows = await tdb.db.select().from(messages);
+        expect(rows.filter((r) => r.status === "sent")).toHaveLength(2);
+        // Rows never reached (claimed by neither of the 2 siblings nor the erroring handler)
+        // were still released, exactly as any other stop condition releases them.
+        const untouched = rows.filter((r) => r.status === "pending" && r.lockedUntil === null);
+        expect(untouched.length).toBeGreaterThanOrEqual(3);
+      } finally {
+        await transport.close();
+        await sink.close();
+      }
+    }, 10000);
+
+    it("a permanent RCPT rejection on one row doesn't stop the others, even with concurrency > 1", async () => {
+      const { SMTPServer } = await import("smtp-server");
+      const { simpleParser } = await import("mailparser");
+      const delivered: string[] = [];
+      const server = new SMTPServer({
+        disabledCommands: ["STARTTLS", "AUTH"],
+        onRcptTo(address, _session, cb) {
+          if (address.address === "bad@example.com") {
+            const err = new Error("mailbox unavailable") as Error & { responseCode: number };
+            err.responseCode = 550;
+            cb(err);
+            return;
+          }
+          cb();
+        },
+        onData(stream, _session, cb) {
+          simpleParser(stream).then((m) => {
+            delivered.push((m.to && "value" in m.to ? m.to.value[0]!.address : "") ?? "");
+            cb();
+          }, cb);
+        },
+      });
+      await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+      const port = (server.server.address() as { port: number }).port;
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port, secure: false, ignoreTLS: true });
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          {
+            ...sampleMessageRequest,
+            recipients: [
+              { email: "bad@example.com", substitutions: {} },
+              { email: "good1@example.com", substitutions: {} },
+              { email: "good2@example.com", substitutions: {} },
+              { email: "good3@example.com", substitutions: {} },
+            ],
+          },
+          internalDomains,
+        );
+
+        const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], concurrency: 3 });
+        expect(result).toEqual({ sent: 3, retried: 0, failed: 1, rateLimited: false });
+        expect(delivered.sort()).toEqual(["good1@example.com", "good2@example.com", "good3@example.com"]);
+
+        const rows = await tdb.db.select().from(messages);
+        const bad = rows.find((r) => r.email === "bad@example.com")!;
+        expect(bad.status).toBe("failed");
+      } finally {
+        await transport.close();
+        await new Promise<void>((r) => server.close(() => r()));
+      }
+    }, 10000);
+  });
+
+  describe("Distribution pause", () => {
+    it("paused: sends a pending system message but not a pending immediate one, which stays pending", async () => {
+      const sink = await startSmtpSink();
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, priority: "system", idempotencyKey: "paused-system", recipients: [{ email: "ops@example.com", substitutions: {} }] },
+          internalDomains,
+        );
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, priority: "immediate", idempotencyKey: "paused-immediate", recipients: [{ email: "subscriber@example.com", substitutions: {} }] },
+          internalDomains,
+        );
+
+        await setPaused(tdb.db, true);
+
+        const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+        expect(result).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
+        expect(sink.messages).toHaveLength(1);
+
+        const rows = await tdb.db.select().from(messages);
+        expect(rows.find((r) => r.email === "ops@example.com")!.status).toBe("sent");
+        const held = rows.find((r) => r.email === "subscriber@example.com")!;
+        expect(held.status).toBe("pending");
+        expect(held.lockedUntil).toBeNull();
+      } finally {
+        await transport.close();
+        await sink.close();
+      }
+    });
+
+    it("resumed: the previously held message now sends", async () => {
+      const sink = await startSmtpSink();
+      const transport = nodemailer.createTransport({ host: "127.0.0.1", port: sink.port, secure: false, ignoreTLS: true });
+      try {
+        await createBatch(
+          tdb.db,
+          "app",
+          { ...sampleMessageRequest, priority: "immediate", idempotencyKey: "resumed-immediate", recipients: [{ email: "subscriber@example.com", substitutions: {} }] },
+          internalDomains,
+        );
+
+        await setPaused(tdb.db, true);
+        const whilePaused = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+        expect(whilePaused).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: false });
+
+        await setPaused(tdb.db, false);
+        const afterResume = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+        expect(afterResume).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
+
+        const [row] = await tdb.db.select().from(messages);
+        expect(row!.status).toBe("sent");
+      } finally {
+        await transport.close();
+        await sink.close();
+      }
+    });
+
+    it("paused with nothing system due: claims nothing and leaves the rate window untouched", async () => {
+      const transport = { sendMail: async () => ({}) } as unknown as Transporter;
+      await createBatch(
+        tdb.db,
+        "app",
+        { ...sampleMessageRequest, priority: "immediate", idempotencyKey: "paused-no-system", recipients: [{ email: "subscriber@example.com", substitutions: {} }] },
+        internalDomains,
+      );
+      await setPaused(tdb.db, true);
+
+      const result = await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [] });
+      expect(result).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: false });
+
+      const windowRows = await tdb.db.select().from(sendRateWindows);
+      expect(windowRows.every((r) => r.claimed === 0)).toBe(true);
+    });
   });
 });

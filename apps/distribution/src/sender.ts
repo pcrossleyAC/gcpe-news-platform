@@ -1,13 +1,22 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { ageMsOf, heldBy, lockTokenOf, ownedPending, sqlInterval, sqlNow, sqlNowPlus, stopwatch, type Db, type LockToken, type TestClock } from "@gcpe/db-kit";
 import type { Transporter } from "nodemailer";
-import { batches, messages, type StoredAttachment } from "./db/schema";
+import { batches, distributionSettings, messages, type StoredAttachment } from "./db/schema";
 import { substitute } from "./substitute";
 
 export interface SendOptions {
   db: Db;
   transport: Transporter;
   from: string;
+  /** The domain of every outgoing message's Message-ID (see {@link messageIdFor}) — env.ts's
+   * MESSAGE_ID_DOMAIN, already resolved (an explicit value, or MAIL_FROM's own domain).
+   * Defaults to {@link DEFAULT_MESSAGE_ID_DOMAIN} when omitted; start.ts always supplies env.ts's
+   * resolved value, which fails startup rather than ever falling through to that default. */
+  messageIdDomain?: string;
+  /** Used when a message's own batch carries no Reply-To (messages.ts's replyTo) — env.ts's
+   * MAIL_REPLY_TO. Undefined means no Reply-To header at all. Redirect mode leaves this
+   * unchanged, same as the Message-ID. */
+  replyTo?: string;
   /** Non-empty in every non-prod environment: every message is sent here instead of its real
    * recipient (the non-prod mail redirect safety rule). Empty only when an operator has
    * explicitly opted in to real delivery (enforced at the env layer, not here). */
@@ -16,6 +25,17 @@ export interface SendOptions {
    * makes (claim, lock, backoff, sent_at, age). Production omits it and the database's clock is
    * used throughout — see {@link sendDue}. */
   now?: TestClock;
+  /** C58/spec §6: the database-enforced per-minute send cap, shared across every worker
+   * through the `send_rate_windows` table — a worker may claim at most `ratePerMinute` minus
+   * what's already been claimed this minute, counted whether or not a claimed row's send
+   * succeeds. Defaults to {@link DEFAULT_RATE_PER_MINUTE} when omitted; start.ts always supplies
+   * env.ts's own `MAIL_RATE_PER_MINUTE` (minimum 1). */
+  ratePerMinute?: number;
+  /** How many of this run's claimed rows have their handler (re-assert lock, send, classify,
+   * update) in flight at once, taken in the existing claim order. Defaults to
+   * {@link DEFAULT_CONCURRENCY} (1 — sequential, today's behaviour) when omitted; start.ts
+   * always supplies env.ts's own MAIL_CONCURRENCY. */
+  concurrency?: number;
   batchSize?: number;
   /** Worst-case time a single message's *send* can take: the sum of the transport's
    * connection, greeting and socket timeouts. Together with `verifyTimeoutMs` (a
@@ -53,6 +73,18 @@ export interface SendOptions {
 }
 
 const DEFAULT_BATCH_SIZE = 50;
+// Only reached when a caller omits ratePerMinute (mainly tests exercising something else);
+// start.ts always supplies env.ts's own resolved MAIL_RATE_PER_MINUTE in production.
+const DEFAULT_RATE_PER_MINUTE = 60;
+// Only reached when a caller omits concurrency (mainly tests exercising something else);
+// start.ts always supplies env.ts's own resolved MAIL_CONCURRENCY in production.
+const DEFAULT_CONCURRENCY = 1;
+// How long window rows are kept before the opportunistic cleanup removes them — generous
+// enough that nothing but very old rows is ever touched.
+const RATE_WINDOW_RETENTION_MS = 24 * 3_600_000;
+// Only reached when a caller omits messageIdDomain (mainly tests exercising something else);
+// start.ts always supplies env.ts's own resolved MESSAGE_ID_DOMAIN in production.
+const DEFAULT_MESSAGE_ID_DOMAIN = "localhost";
 // Mirrors packages/events/src/dispatcher.ts's LOCK_MARGIN_MS: extra slack baked into the
 // *size* of the default lock, on top of the worst-case processing time. Distinct from
 // lockMarginMs (the loop's "stop claiming more rows" threshold, below), which is sized off one
@@ -63,6 +95,11 @@ const LOCK_MARGIN_MS = 30_000;
 // defaults (10s + 10s + 30s): the worst-case time nodemailer lets a single message's send take
 // before its own timeouts abort it, used when the caller doesn't say otherwise.
 const DEFAULT_PER_MESSAGE_MS = 10_000 + 10_000 + 30_000;
+// Spec §6/§8: while Distribution is paused, the claim below only picks up messages at or
+// above this priority — matches priority.ts's `system` base (the only kind at or above it,
+// even after the +2 internal-domain bump that every other kind also gets), so verification,
+// manage-link and ops-notice mail still goes out while everything else is held.
+const PAUSED_MIN_PRIORITY = 100;
 const MAX_ATTEMPTS = 5;
 const BASE_BACKOFF_MS = 30_000;
 const MAX_BACKOFF_MS = 3_600_000;
@@ -108,6 +145,19 @@ function resolveLock(opts: { batchSize: number; perMessageMs: number; verifyTime
   return { lockMs, lockMarginMs };
 }
 
+/**
+ * Validated eagerly (sendDue's entry, and startSender's entry before the first tick) rather
+ * than left to surface as a confusing `Array.from({ length: NaN/-1 })` failure deep inside the
+ * pool below — mirrors resolveLock's own eager validation of lockMs/lockMarginMs.
+ */
+function resolveConcurrency(concurrency: number | undefined): number {
+  const resolved = concurrency ?? DEFAULT_CONCURRENCY;
+  if (!Number.isInteger(resolved) || resolved < 1) {
+    throw new Error(`sendDue: concurrency (${resolved}) must be a positive integer`);
+  }
+  return resolved;
+}
+
 function backoffMs(attempts: number): number {
   return Math.min(BASE_BACKOFF_MS * 2 ** attempts, MAX_BACKOFF_MS);
 }
@@ -119,6 +169,16 @@ function backoffMs(attempts: number): number {
  */
 export function truncateError(message: string, maxCodePoints = MAX_ERROR_CODE_POINTS): string {
   return Array.from(message).slice(0, maxCodePoints).join("");
+}
+
+/**
+ * A message's Message-ID, derived from its own row id (stable across every retry of the same
+ * message — no randomness, nothing to lose between attempts) and the configured domain
+ * (env.ts's MESSAGE_ID_DOMAIN). Exported so 4e's bounce matching can derive the same value from
+ * a bounce report's own In-Reply-To/References.
+ */
+export function messageIdFor(rowId: string, domain: string): string {
+  return `<${rowId}@${domain}>`;
 }
 
 /**
@@ -193,6 +253,7 @@ type ClaimedRow = {
   html: string | null;
   text: string | null;
   headers: Record<string, string> | null;
+  reply_to: string | null;
   // R1(b): messages have no creation timestamp of their own; every message in a batch is
   // created at the same instant as its batch, so the batch's age (at claim time, by the
   // database's clock) is the age backstop's clock.
@@ -268,7 +329,7 @@ export async function sendDue(opts: SendOptions): Promise<SendResult> {
   return (await runSend(opts)).result;
 }
 
-type SendResult = { sent: number; retried: number; failed: number };
+type SendResult = { sent: number; retried: number; failed: number; rateLimited: boolean };
 
 /** sendDue's body, also reporting (for startSender's outage pacing) the backoff given to a row
  * deferred because the SMTP server/config itself was unavailable, if this run hit one. */
@@ -277,34 +338,98 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
   const perMessageMs = opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS;
   const verifyTimeoutMs = opts.verifyTimeoutMs ?? DEFAULT_VERIFY_TIMEOUT_MS;
   const maxMessageAgeMs = opts.maxMessageAgeMs ?? DEFAULT_MAX_MESSAGE_AGE_MS;
+  const ratePerMinute = opts.ratePerMinute ?? DEFAULT_RATE_PER_MINUTE;
   const { lockMs, lockMarginMs } = resolveLock({ batchSize, perMessageMs, verifyTimeoutMs, lockMs: opts.lockMs, lockMarginMs: opts.lockMarginMs });
+  const concurrency = resolveConcurrency(opts.concurrency);
   const redirect = opts.redirectTo.length > 0;
 
-  // Phase 1: claim (a single statement, no network I/O while holding row locks). The `due` CTE
-  // picks the rows in priority order under FOR UPDATE SKIP LOCKED; the outer UPDATE joins
-  // batches for the template content so the claim and the read happen in one round trip. Postgres
-  // doesn't promise UPDATE...RETURNING preserves the CTE's row order, so priority/next_attempt_at
-  // are returned too and the claimed rows are re-sorted in JS below before they're sent.
+  // Phase 1: claim, inside one explicit transaction — the rate-window row's lock and the
+  // claimed message rows' locks are taken and released together, and nothing here does any
+  // network I/O, so the transaction is always short-lived and commits before any sendMail; the
+  // send loop below runs entirely after this transaction returns.
+  //
+  // C58/spec §6: the window row (today's minute, `date_trunc('minute', now())`) is locked with
+  // `SELECT ... FOR UPDATE` *before* the message claim below takes its own row locks — the same
+  // order every caller uses, so two concurrent sendDue calls simply serialise on the window row
+  // (the second blocks for the few milliseconds the first's transaction takes, then sees its
+  // committed `claimed` count) rather than risk a deadlock from acquiring locks in different
+  // orders. `budget` is how many more rows this minute may still claim; the claim's own LIMIT is
+  // whichever of `batchSize` or `budget` is smaller, and `claimed` is incremented by exactly how
+  // many rows were actually claimed (never a full `batchSize`'s worth if fewer were due) — a
+  // claimed row counts against the minute whether or not its send later succeeds.
   const sinceClaim = stopwatch();
   const now = sqlNow(opts.now);
-  const claimed = await opts.db.execute<ClaimedRow>(sql`
-    WITH due AS (
-      SELECT id FROM messages
-       WHERE status = 'pending'
-         AND next_attempt_at <= ${now}
-         AND (locked_until IS NULL OR locked_until < ${now})
-       ORDER BY priority DESC, next_attempt_at, id
-       LIMIT ${batchSize}
-       FOR UPDATE SKIP LOCKED
-    )
-    UPDATE messages m
-       SET locked_until = ${now} + ${sqlInterval(lockMs)}
-      FROM batches b, due
-     WHERE b.id = m.batch_id AND m.id = due.id
-    RETURNING m.id, m.batch_id, jsonb_array_length(b.attachments) > 0 AS has_attachments, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at,
-              b.subject, b.html, b.text, b.headers, ${ageMsOf(sql`b.created_at`, now)} AS batch_age_ms, ${lockTokenOf(sql`m.locked_until`)} AS lock_token`);
+  const windowStart = sql`date_trunc('minute', ${now})`;
+  const { rows: claimedRows, rateLimited } = await opts.db.transaction(async (tx) => {
+    // Opportunistic cleanup: one row per minute ever claimed from, keyed by its own primary
+    // key, so deleting everything older than a day is cheap even though it runs on every claim.
+    await tx.execute(sql`DELETE FROM send_rate_windows WHERE window_start < ${now} - ${sqlInterval(RATE_WINDOW_RETENTION_MS)}`);
 
-  const rows = claimed.rows.slice().sort((a, b) => {
+    await tx.execute(sql`INSERT INTO send_rate_windows (window_start) VALUES (${windowStart}) ON CONFLICT DO NOTHING`);
+    const { rows: windowRows } = await tx.execute<{ claimed: number }>(
+      sql`SELECT claimed FROM send_rate_windows WHERE window_start = ${windowStart} FOR UPDATE`,
+    );
+    // Defensive: the INSERT just above, in this same transaction, guarantees this row exists by
+    // the time this SELECT runs, and nothing else in this transaction can have removed it since
+    // — so this should be unreachable. Falling back to a default of 0 instead of throwing would
+    // hand out a full, unbounded budget and then silently fail to record it (the increment
+    // below would match no rows), bypassing the cap rather than merely miscounting it.
+    if (windowRows.length === 0) {
+      throw new Error(`sendDue: send_rate_windows row for ${windowStart} is missing right after its own INSERT`);
+    }
+    const claimedThisMinute = windowRows[0]!.claimed;
+    const budget = ratePerMinute - claimedThisMinute;
+    if (budget <= 0) return { rows: [] as ClaimedRow[], rateLimited: true };
+
+    // Distribution pause (spec §6/§8): read in the same transaction as the claim below, so a
+    // pause/resume that lands concurrently can't be observed only by part of this claim. Held
+    // messages are never dropped — just left pending for a later, unpaused (or system-priority)
+    // claim.
+    const [settingsRow] = await tx.select({ paused: distributionSettings.paused }).from(distributionSettings).where(eq(distributionSettings.id, 1));
+    const pausedFilter = settingsRow?.paused ? sql`AND priority >= ${PAUSED_MIN_PRIORITY}` : sql``;
+
+    // The `due` CTE picks the rows in priority order under FOR UPDATE SKIP LOCKED; the outer
+    // UPDATE joins batches for the template content so the claim and the read happen in one
+    // round trip. Postgres doesn't promise UPDATE...RETURNING preserves the CTE's row order, so
+    // priority/next_attempt_at are returned too and the claimed rows are re-sorted in JS below
+    // before they're sent.
+    const claimed = await tx.execute<ClaimedRow>(sql`
+      WITH due AS (
+        SELECT id FROM messages
+         WHERE status = 'pending'
+           AND next_attempt_at <= ${now}
+           AND (locked_until IS NULL OR locked_until < ${now})
+           ${pausedFilter}
+         ORDER BY priority DESC, next_attempt_at, id
+         LIMIT ${Math.min(batchSize, budget)}
+         FOR UPDATE SKIP LOCKED
+      )
+      UPDATE messages m
+         SET locked_until = ${now} + ${sqlInterval(lockMs)}
+        FROM batches b, due
+       WHERE b.id = m.batch_id AND m.id = due.id
+      RETURNING m.id, m.batch_id, jsonb_array_length(b.attachments) > 0 AS has_attachments, m.email, m.substitutions, m.attempts, m.deferrals, m.priority, m.next_attempt_at,
+                b.subject, b.html, b.text, b.headers, b.reply_to, ${ageMsOf(sql`b.created_at`, now)} AS batch_age_ms, ${lockTokenOf(sql`m.locked_until`)} AS lock_token`);
+
+    // True only when the cap — not batchSize, and not simply running out of due rows — is what
+    // actually bound this claim: the budget was smaller than batchSize *and* every bit of it
+    // was used. A budget that's merely smaller than batchSize but idle (fewer rows were due
+    // than the remaining budget) must report false: "exhausted before batchSize" means
+    // exhausted, not just smaller.
+    const rateLimited = budget < batchSize && claimed.rows.length === budget;
+
+    if (claimed.rows.length > 0) {
+      const inc = await tx.execute(sql`UPDATE send_rate_windows SET claimed = claimed + ${claimed.rows.length} WHERE window_start = ${windowStart}`);
+      // Same defensive reasoning as above: if this row were gone by now, the increment would
+      // silently match nothing and the next claimer would see yesterday's (too-low) count.
+      if (inc.rowCount !== 1) {
+        throw new Error(`sendDue: send_rate_windows row for ${windowStart} vanished mid-claim — the rate cap would otherwise be silently bypassed`);
+      }
+    }
+    return { rows: claimed.rows, rateLimited };
+  });
+
+  const rows = claimedRows.slice().sort((a, b) => {
     if (b.priority !== a.priority) return b.priority - a.priority;
     const byDueTime = new Date(a.next_attempt_at).getTime() - new Date(b.next_attempt_at).getTime();
     if (byDueTime !== 0) return byDueTime;
@@ -324,33 +449,43 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     return loaded;
   };
 
-  const result = { sent: 0, retried: 0, failed: 0 };
+  const result = { sent: 0, retried: 0, failed: 0, rateLimited };
   let outageBackoffMs: number | undefined;
   let loggedConfigError = false;
-  for (let i = 0; i < rows.length; i++) {
-    const row = rows[i]!;
 
-    // Give up on any rows not yet reached rather than risk still being mid-send when this
-    // call's own lock expires — lockMarginMs matches the worst-case time a message can take
-    // (its send, then a verify).
-    if (opts.stopRequested?.() || sinceClaim() >= lockMs - lockMarginMs) {
-      await releaseUnreachedRows(opts.db, rows.slice(i).map((r) => r.id), lockToken);
-      break;
-    }
+  // Bounded pool: at most `concurrency` of these in flight at once, taken in the claim order
+  // below via the shared `nextIndex` cursor. `stop` is set by any handler that hits a
+  // sender-level error or an unhealthy-transport outage (or loses its lock mid-run), or by the
+  // pre-claim check in `worker` below (stopRequested, or the lock-margin threshold) — once set,
+  // no further row is claimed; rows already in flight finish and update their own row normally.
+  // Both `stop` and `nextIndex` are plain variables, not locks: JS is single-threaded and
+  // neither is read-then-written across an `await`, so concurrent handlers can't race each
+  // other on them. Release of whatever `nextIndex` never reached happens exactly once, after
+  // every handler has settled (see the `Promise.allSettled` below) — centralising it there, rather
+  // than in each handler, is what keeps two handlers hitting a stop condition at the same time
+  // from double-releasing the same rows.
+  let stop = false;
+  let nextIndex = 0;
+
+  async function handleRow(row: ClaimedRow): Promise<void> {
+    // Derived from the row's own id, so it's the same value on every attempt — the write
+    // below records it, but a retry after a lost reply recomputes (not regenerates) it.
+    const messageId = messageIdFor(row.id, opts.messageIdDomain ?? DEFAULT_MESSAGE_ID_DOMAIN);
 
     // Re-assert ownership right before using it: a near-no-op UPDATE (rewriting the same
-    // value) that fails to match if another worker's claim already reclaimed this row because
-    // this call's lock had expired. Cheaper than a second SELECT FOR UPDATE, and closes the
-    // window between the batch claim above and this particular row's turn to send. Losing a
-    // row this way means another worker is already active on this batch, so the rest of this
-    // call's claim is abandoned (and released) too rather than racing it row by row.
+    // locked_until, alongside this attempt's Message-ID) that fails to match if another
+    // worker's claim already reclaimed this row because this call's lock had expired. Cheaper
+    // than a second SELECT FOR UPDATE, and closes the window between the batch claim above and
+    // this particular row's turn to send. Losing a row this way means another worker is already
+    // active on this batch, so the rest of this call's claim is abandoned (and released) too
+    // rather than racing it row by row.
     const stillOwned = await opts.db.execute<{ id: string }>(sql`
-      UPDATE messages SET locked_until = locked_until
+      UPDATE messages SET locked_until = locked_until, message_id = ${messageId}
        WHERE id = ${row.id} AND ${heldBy(messages.lockedUntil, lockToken)} AND status = 'pending'
       RETURNING id`);
     if (stillOwned.rows.length === 0) {
-      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
-      break;
+      stop = true;
+      return;
     }
 
     // The lock this call's claim set is this row's ownership token: a terminal write only
@@ -376,6 +511,9 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
 
     const to = redirect ? opts.redirectTo : [row.email];
     const attachments = await attachmentsFor(row);
+    // The request's own Reply-To beats MAIL_REPLY_TO; neither set means no Reply-To header at
+    // all. Unaffected by redirect mode, same as the Message-ID.
+    const replyTo = row.reply_to ?? opts.replyTo ?? undefined;
 
     let error: string | null = null;
     let permanent = false;
@@ -383,7 +521,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     let connectionLevel = false;
     let droppedBeforeSend = false;
     try {
-      await opts.transport.sendMail({ from: opts.from, to, subject: sentSubject, html, text, headers, attachments });
+      await opts.transport.sendMail({ from: opts.from, to, subject: sentSubject, html, text, headers, attachments, messageId, replyTo });
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
       permanent = isPermanentRecipientRejection(e);
@@ -399,7 +537,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
         .set({ status: "sent", sentAt: sqlNow(opts.now), lockedUntil: null, lastError: null, originalRecipient })
         .where(where);
       if (res.rowCount) result.sent++;
-      continue;
+      return;
     }
 
     const lastError = truncateError(error);
@@ -416,7 +554,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
         result.failed++;
         console.error(`[distribution] message ${row.id} failed after ${attempts} attempts (pending ${Math.round(age / 3_600_000)}h, over the age backstop): ${error}`);
       }
-      continue;
+      return;
     }
 
     // R24: a sender-level error (MAIL FROM, AUTH*) is a server/config problem unconditionally
@@ -427,7 +565,10 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
     // back for that specific misconfiguration).
     if (senderLevel) {
       const deferrals = row.deferrals + 1;
-      outageBackoffMs = backoffMs(deferrals);
+      // Concurrent handlers can each independently hit a sender-level/outage deferral in the
+      // same run (see the comment on `stop`/`nextIndex`) — keep the longest backoff any of them
+      // reported, not whichever happened to write last, so startSender's pacing never under-waits.
+      outageBackoffMs = Math.max(outageBackoffMs ?? 0, backoffMs(deferrals));
       const res = await opts.db
         .update(messages)
         .set({ deferrals, nextAttemptAt: sqlNowPlus(backoffMs(deferrals), opts.now), lockedUntil: null, lastError, originalRecipient })
@@ -439,17 +580,18 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
           console.error(`[distribution] SMTP server unavailable/misconfigured: ${error}`);
         }
       }
-      await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
-      break;
+      stop = true;
+      return;
     }
 
     // I2/R1(a): a connection-level error (`CONN`, `EHLO`/`HELO`/`LHLO`, `STARTTLS`) is
     // ambiguous by command alone — nodemailer tags both "the server is genuinely down" AND
     // "this message stalled/reset mid-DATA against an otherwise-healthy server" (a poison
     // message) the same way (`command: "CONN"`). `transport.verify()` discriminates: if the
-    // server itself can't answer a lightweight check, it's an outage — defer every remaining
-    // claimed row without spending an attempt (so an outage can never drain the queue to
-    // failed) and stop this run. If the server verifies healthy, this specific message is to
+    // server itself can't answer a lightweight check, it's an outage — this row is deferred
+    // below without spending an attempt, and the run stops; rows never started are released,
+    // not deferred, once the pool settles (so an outage can never drain the queue to failed).
+    // If the server verifies healthy, this specific message is to
     // blame: treat it exactly like a normal transient error (spends an attempt, standard
     // backoff, eventually fails and is logged) and keep going — unlike an outage, one poison
     // message must never stop the rest of the batch from sending.
@@ -457,7 +599,9 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       const serverHealthy = await isTransportHealthy(opts.transport, verifyTimeoutMs);
       if (!serverHealthy) {
         const deferrals = row.deferrals + 1;
-        outageBackoffMs = backoffMs(deferrals);
+        // Same reasoning as the sender-level branch above: keep the longest backoff reported by
+        // any concurrent handler's deferral, not whichever happened to write last.
+        outageBackoffMs = Math.max(outageBackoffMs ?? 0, backoffMs(deferrals));
         const res = await opts.db
           .update(messages)
           .set({ deferrals, nextAttemptAt: sqlNowPlus(backoffMs(deferrals), opts.now), lockedUntil: null, lastError, originalRecipient })
@@ -469,8 +613,8 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
             console.error(`[distribution] SMTP server unavailable/misconfigured: ${error}`);
           }
         }
-        await releaseUnreachedRows(opts.db, rows.slice(i + 1).map((r) => r.id), lockToken);
-        break;
+        stop = true;
+        return;
       }
       // P2-R27 item 3: a flapping server — the connection dropped before anything of this
       // message was sent, yet the server verifies healthy. Not the message's fault, so no
@@ -486,7 +630,7 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
           result.retried++;
           console.error(`[distribution] message ${row.id} deferred: connection dropped before sending, server verifies healthy: ${error}`);
         }
-        continue;
+        return;
       }
       // Falls through to the normal transient-error handling below (attempts+1, standard
       // backoff, fails after MAX_ATTEMPTS), logging distinctly so this is recognisable as the
@@ -511,6 +655,58 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
       if (res.rowCount) result.retried++;
     }
   }
+
+  // An error thrown out of handleRow (a DB error on the re-assert/terminal UPDATE, a rejected
+  // attachments load, ...) must not abandon this run mid-flight: it's caught here, exactly like
+  // any other stop condition, so the row's siblings already in flight still finish and get their
+  // own terminal write, and the rows never reached still get released below. Only the first
+  // such error is kept (and rethrown once every worker has settled) — later ones are the same
+  // kind of fallout (siblings losing their claim, etc.), not new information.
+  let firstError: unknown;
+
+  // One worker per pool slot, each taking the next unclaimed row (by `nextIndex`) in turn.
+  // Claiming a row (reading then incrementing `nextIndex`) happens synchronously, with no
+  // `await` in between, so two workers can never claim the same row. The pre-claim check below
+  // — stopRequested, or the lock-margin threshold — runs immediately before each row starts,
+  // same as it did in the old sequential loop, just now per worker instead of once overall.
+  async function worker(): Promise<void> {
+    while (true) {
+      if (stop) return;
+      // Give up on any row not yet reached rather than risk still being mid-send when this
+      // call's own lock expires — lockMarginMs matches the worst-case time a message can take
+      // (its send, then a verify).
+      if (opts.stopRequested?.() || sinceClaim() >= lockMs - lockMarginMs) {
+        stop = true;
+        return;
+      }
+      if (nextIndex >= rows.length) return;
+      const row = rows[nextIndex++]!;
+      try {
+        await handleRow(row);
+      } catch (e) {
+        stop = true;
+        if (firstError === undefined) firstError = e;
+        return;
+      }
+    }
+  }
+
+  const workerCount = Math.min(concurrency, rows.length);
+  // allSettled, not all: every worker promise above already catches its own handleRow errors
+  // and returns normally, so none of these should ever reject — but settling instead of racing
+  // on the first rejection is what guarantees every in-flight handler's own terminal write (and
+  // the single release below) happens before this call returns or rethrows, even if some future
+  // change to worker() let an error through unhandled.
+  await Promise.allSettled(Array.from({ length: workerCount }, () => worker()));
+
+  // Whatever `nextIndex` never reached — because of a stop condition, stopRequested, the
+  // lock-margin threshold, or simply running out of rows — is released once here rather than
+  // per-handler, so multiple handlers hitting a stop condition at the same time can't
+  // double-release the same rows (see the comment above `stop`/`nextIndex`).
+  await releaseUnreachedRows(opts.db, rows.slice(nextIndex).map((r) => r.id), lockToken);
+
+  if (firstError !== undefined) throw firstError;
+
   return { result, outageBackoffMs };
 }
 
@@ -527,9 +723,9 @@ async function runSend(opts: SendOptions): Promise<{ result: SendResult; outageB
  * `performance.now`) is a test hook.
  */
 export function startSender(opts: SendOptions & { intervalMs?: number; outageCooldownMaxMs?: number; cooldownClock?: () => number }): () => Promise<void> {
-  // Validated eagerly, at call time: a misconfigured lockMs/lockMarginMs would otherwise only
-  // surface once the first tick fires, inside the interval's own catch — logged and silently
-  // retried forever rather than failing the process fast and loudly at startup.
+  // Validated eagerly, at call time: a misconfigured lockMs/lockMarginMs (or concurrency) would
+  // otherwise only surface once the first tick fires, inside the interval's own catch — logged
+  // and silently retried forever rather than failing the process fast and loudly at startup.
   resolveLock({
     batchSize: opts.batchSize ?? DEFAULT_BATCH_SIZE,
     perMessageMs: opts.perMessageMs ?? DEFAULT_PER_MESSAGE_MS,
@@ -537,6 +733,7 @@ export function startSender(opts: SendOptions & { intervalMs?: number; outageCoo
     lockMs: opts.lockMs,
     lockMarginMs: opts.lockMarginMs,
   });
+  resolveConcurrency(opts.concurrency);
 
   const monotonicNow = opts.cooldownClock ?? (() => performance.now());
   const cooldownMaxMs = opts.outageCooldownMaxMs ?? DEFAULT_OUTAGE_COOLDOWN_MAX_MS;

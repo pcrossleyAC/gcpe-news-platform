@@ -310,7 +310,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     expect(nodSend).toEqual({ sent: 1, retried: 0, failed: 0, cancelled: 0, paused: false });
 
     const distributionSend = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [] });
-    expect(distributionSend).toEqual({ sent: 1, retried: 0, failed: 0 });
+    expect(distributionSend).toEqual({ sent: 1, retried: 0, failed: 0, rateLimited: false });
 
     await vi.waitFor(() => expect(sink!.messages).toHaveLength(1));
     const mail = sink!.messages[0]!;
@@ -338,7 +338,7 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     const nodSendAgain = await sendDueJobs({ db: nodDb.db, distribution: nodToDistribution, links: NOD_LINKS, render: { siteUrl: publicSite!.url, bannerUrl: null } });
     expect(nodSendAgain).toEqual({ sent: 0, retried: 0, failed: 0, cancelled: 0, paused: false });
     const distributionSendAgain = await sendDue({ db: distributionDb.db, transport: smtpTransport!, from: "noreply@example.gov.bc.ca", redirectTo: [] });
-    expect(distributionSendAgain).toEqual({ sent: 0, retried: 0, failed: 0 });
+    expect(distributionSendAgain).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: false });
 
     expect(sink!.messages).toHaveLength(1);
     const inbox = await nodDb.pool.query<{ source: string; type: string; outcome: string }>(

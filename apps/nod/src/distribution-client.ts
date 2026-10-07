@@ -16,6 +16,9 @@ export interface MessageRequest {
   text?: string;
   headers: Record<string, string>;
   recipients: MessageRecipient[];
+  /** Beats DistributionClientOptions.replyTo (NoD's REPLY_TO) when a particular send wants its
+   * own; omitted here, {@link distributionClient}'s `send` fills in the configured one. */
+  replyTo?: string;
 }
 
 /**
@@ -52,10 +55,23 @@ export interface DistributionClientOptions {
    * also used by send-jobs.ts to size its claim lock, since a hung request or token fetch
    * must not outlive the lock it's running under. */
   timeoutMs?: number;
+  /** NoD's own REPLY_TO, applied to every send whose request doesn't already carry its own
+   * `replyTo` — so every caller (As-It-Happens, digest, emergency, media, system emails, ops
+   * emails) gets it without each one having to set it. */
+  replyTo?: string;
 }
 
 export interface DistributionClient {
   send(req: MessageRequest): Promise<{ batchId: string }>;
+  /** The Distribution-wide pause switch's current state (its own `GET /api/settings`),
+   * gated on Distribution.Operate — never called with a staff credential, only with NoD's
+   * own Distribution service token. */
+  getSettings(): Promise<{ paused: boolean }>;
+  /** Pauses or resumes Distribution as a whole (`POST /api/settings/pause|resume`).
+   * `changed` is false when Distribution was already in the requested state — NoD's own
+   * setDistributionPaused (settings.ts) uses that to skip its operations_log row and ops
+   * email on a repeat call. */
+  setPaused(paused: boolean): Promise<{ paused: boolean; changed: boolean }>;
 }
 
 // P2-R18: Distribution's 2xx body is network input like any other — `res.json()` succeeding
@@ -64,6 +80,8 @@ export interface DistributionClient {
 // an unparseable body does: retryable, since send-jobs.ts stores whatever `batchId` comes
 // back as *the* record of this chunk's acceptance, and a bad id poisons that permanently.
 const batchResponseSchema = z.object({ batchId: z.string().min(1) });
+const settingsResponseSchema = z.object({ paused: z.boolean() });
+const pauseResponseSchema = z.object({ paused: z.boolean(), changed: z.boolean() });
 
 /** Races `getToken()` against a timer so a hung token endpoint can't hang `send` forever —
  * mirrors the request's own `AbortSignal.timeout` below, just via Promise.race since
@@ -85,68 +103,96 @@ function getTokenWithTimeout(getToken: () => Promise<string>, timeoutMs: number)
   });
 }
 
+/**
+ * One authenticated JSON round trip to Distribution, shared by every `DistributionClient`
+ * method below (`send`, `getSettings`, `setPaused`) — token fetch, the request itself, and the
+ * 2xx/4xx/5xx -> DistributionError mapping are identical for all three; only the path, method,
+ * body and response shape differ per call. `invalidShapeMessage` lets `send` keep its own
+ * long-standing wording ("Distribution response missing batchId") that send-jobs.ts/its tests
+ * already match on.
+ */
+async function callDistribution<T>(
+  opts: DistributionClientOptions,
+  doFetch: typeof fetch,
+  timeoutMs: number,
+  path: string,
+  init: { method: "GET" | "POST"; body?: unknown },
+  schema: z.ZodType<T>,
+  invalidShapeMessage: string,
+): Promise<T> {
+  let token: string;
+  try {
+    token = await getTokenWithTimeout(opts.getToken, timeoutMs);
+  } catch (e) {
+    // P2-R16: a failure getting a token (the endpoint is down, times out, returns an
+    // error, …) is treated the same as a network error below — retryable, since the
+    // request to Distribution itself was never even attempted.
+    const message = e instanceof Error ? e.message : String(e);
+    throw new DistributionError(`failed to get a Distribution token: ${message}`, true);
+  }
+
+  const url = `${opts.baseUrl.replace(/\/+$/, "")}${path}`;
+  let res: Response;
+  try {
+    res = await doFetch(url, {
+      method: init.method,
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      ...(init.body !== undefined ? { body: JSON.stringify(init.body) } : {}),
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+  } catch (e) {
+    // Network error (connection refused, DNS failure, our own timeout firing, …): we
+    // cannot know whether Distribution ever saw the request, but the idempotency key
+    // means a retry is always safe.
+    const message = e instanceof Error ? e.message : String(e);
+    throw new DistributionError(`request to Distribution failed: ${message}`, true);
+  }
+
+  if (res.ok) {
+    let json: unknown;
+    try {
+      json = await res.json();
+    } catch (e) {
+      // P2-R16: Distribution said success but the body couldn't be read/parsed — we can't
+      // learn the result, but we also can't be sure Distribution didn't accept the call, so
+      // treat this as retryable rather than silently losing it as a failure.
+      const message = e instanceof Error ? e.message : String(e);
+      throw new DistributionError(`Distribution returned HTTP ${res.status} but its body was unreadable: ${message}`, true, res.status);
+    }
+    const parsed = schema.safeParse(json);
+    if (!parsed.success) {
+      // P2-R18: the body parsed as JSON but doesn't have the shape we need — same reasoning
+      // as the unreadable-body case above: can't be sure Distribution didn't accept the call,
+      // so retryable rather than a silent, permanent data-loss failure.
+      throw new DistributionError(invalidShapeMessage, true, res.status);
+    }
+    return parsed.data;
+  }
+
+  const body = await res.text().catch(() => "");
+  let retryable = res.status === 429 || res.status >= 500;
+  if (res.status === 401 || res.status === 403) {
+    retryable = true;
+    console.error("[nod] Distribution rejected our credentials (401/403) — check token config");
+  }
+  throw new DistributionError(`Distribution responded HTTP ${res.status}${body ? `: ${body}` : ""}`, retryable, res.status);
+}
+
 export function distributionClient(opts: DistributionClientOptions): DistributionClient {
   const doFetch = opts.fetchImpl ?? fetch;
   const timeoutMs = opts.timeoutMs ?? DEFAULT_DISTRIBUTION_TIMEOUT_MS;
-  const url = `${opts.baseUrl.replace(/\/+$/, "")}/api/messages`;
 
   return {
     async send(req: MessageRequest): Promise<{ batchId: string }> {
-      let token: string;
-      try {
-        token = await getTokenWithTimeout(opts.getToken, timeoutMs);
-      } catch (e) {
-        // P2-R16: a failure getting a token (the endpoint is down, times out, returns an
-        // error, …) is treated the same as a network error below — retryable, since the
-        // request to Distribution itself was never even attempted.
-        const message = e instanceof Error ? e.message : String(e);
-        throw new DistributionError(`failed to get a Distribution token: ${message}`, true);
-      }
-
-      let res: Response;
-      try {
-        res = await doFetch(url, {
-          method: "POST",
-          headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-          body: JSON.stringify(req),
-          signal: AbortSignal.timeout(timeoutMs),
-        });
-      } catch (e) {
-        // Network error (connection refused, DNS failure, our own timeout firing, …): we
-        // cannot know whether Distribution ever saw the request, but the idempotency key
-        // means a retry is always safe.
-        const message = e instanceof Error ? e.message : String(e);
-        throw new DistributionError(`request to Distribution failed: ${message}`, true);
-      }
-
-      if (res.ok) {
-        let json: unknown;
-        try {
-          json = await res.json();
-        } catch (e) {
-          // P2-R16: Distribution said success but the body couldn't be read/parsed — we can't
-          // learn the batchId, but we also can't be sure Distribution didn't accept the
-          // batch, so treat this as retryable rather than silently losing it as a failure.
-          const message = e instanceof Error ? e.message : String(e);
-          throw new DistributionError(`Distribution returned HTTP ${res.status} but its body was unreadable: ${message}`, true, res.status);
-        }
-        const parsed = batchResponseSchema.safeParse(json);
-        if (!parsed.success) {
-          // P2-R18: the body parsed as JSON but doesn't have a usable batchId — same
-          // reasoning as the unreadable-body case above: can't be sure Distribution didn't
-          // accept the batch, so retryable rather than a silent, permanent data-loss failure.
-          throw new DistributionError("Distribution response missing batchId", true, res.status);
-        }
-        return { batchId: parsed.data.batchId };
-      }
-
-      const body = await res.text().catch(() => "");
-      let retryable = res.status === 429 || res.status >= 500;
-      if (res.status === 401 || res.status === 403) {
-        retryable = true;
-        console.error("[nod] Distribution rejected our credentials (401/403) — check token config");
-      }
-      throw new DistributionError(`Distribution responded HTTP ${res.status}${body ? `: ${body}` : ""}`, retryable, res.status);
+      const requestBody: MessageRequest = { ...req, replyTo: req.replyTo ?? opts.replyTo };
+      return callDistribution(opts, doFetch, timeoutMs, "/api/messages", { method: "POST", body: requestBody }, batchResponseSchema, "Distribution response missing batchId");
+    },
+    async getSettings(): Promise<{ paused: boolean }> {
+      return callDistribution(opts, doFetch, timeoutMs, "/api/settings", { method: "GET" }, settingsResponseSchema, "Distribution response missing paused");
+    },
+    async setPaused(paused: boolean): Promise<{ paused: boolean; changed: boolean }> {
+      const path = paused ? "/api/settings/pause" : "/api/settings/resume";
+      return callDistribution(opts, doFetch, timeoutMs, path, { method: "POST" }, pauseResponseSchema, "Distribution response missing paused/changed");
     },
   };
 }

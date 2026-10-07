@@ -13,3 +13,8 @@ export const CORE_ADMIN_DIRECTORY_ROLE = "Core.AdminDirectory";
 /** Phase 4a: the News API's service role for proxying the public Subscribe API to NoD (legacy
  * "SubscribeApiUser"). Not a staff role. */
 export const NOD_SUBSCRIBE_API_ROLE = "NoD.SubscribeApi";
+
+/** Distribution's own admin surface (its pause/resume settings routes) — a service role
+ * NoD's Distribution client carries, not a staff role (staff control it through NoD's own
+ * `NoD.Admin`-gated routes, never by calling Distribution directly). */
+export const DISTRIBUTION_OPERATE_ROLE = "Distribution.Operate";

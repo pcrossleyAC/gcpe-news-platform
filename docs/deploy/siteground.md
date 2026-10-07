@@ -50,6 +50,17 @@ every message the stack would otherwise send goes there instead, regardless of t
 recipient, until you deliberately clear it. There is no safe way to "try it against real
 recipients a little bit"; it's redirect-everything or send-to-real-recipients, nothing between.
 
+boxs.ca keeps every Distribution send setting at its default: `DIST_MAIL_RATE_PER_MINUTE`
+(60/min), `DIST_MAIL_CONCURRENCY` (1), and both `DIST_MAIL_REPLY_TO` and NoD's own `NOD_REPLY_TO`
+left unset. A test site has no reason to send fast, and never sets a Reply-To — every message it
+sends is already redirected to `DIST_MAIL_REDIRECT_TO`, so a Reply-To pointed at a real
+government mailbox would put real replies to test mail in front of it.
+
+`npm run distribution:capacity` (Distribution's local throughput/cap measurement) is a developer
+tool, **local only**: it refuses to run against any SMTP target other than localhost, only ever
+addresses made-up `@example.test` recipients, and never reads `.env`. It is never run against
+boxs.ca or any other deployed environment.
+
 ### 4. Environment variables
 
 Generate the full set with:
@@ -84,6 +95,17 @@ service calls. NRMS calls NoD (the subscriber count shown at schedule time) and 
 `DISTRIBUTION_CLIENT_SECRET`/`DISTRIBUTION_SCOPE` sets are unset, that token is minted locally
 from the local-admin settings. Turning local admin off without setting both Entra sets leaves
 NRMS with no way to authenticate those calls.
+
+NoD calls Distribution the same way, under its own `NOD_DISTRIBUTION_TOKEN_URL`/
+`NOD_DISTRIBUTION_CLIENT_ID`/`NOD_DISTRIBUTION_CLIENT_SECRET`/`NOD_DISTRIBUTION_SCOPE` (the
+stack's `NOD_` prefix on the same four `DISTRIBUTION_*` names NoD reads). **That Entra app
+registration must be granted both app roles on Distribution — `Distribution.Send` and
+`Distribution.Operate`** — not `Distribution.Send` alone: NoD uses the same token both to forward
+send jobs and to control Distribution's pause switch (`POST /distribution/api/settings/pause` and
+`/resume`), and a registration with only `Distribution.Send` will send mail fine but get a 403
+the moment staff try to pause or resume Distribution from NoD's admin in production. (Locally and
+on boxs.ca, with `LOCAL_ADMIN_ENABLED=true`, the locally minted token already carries both roles
+— see `apps/nod/src/distribution-token.ts` — so this only bites once Entra is configured.)
 
 For a non-interactive/scripted run (CI, or re-generating without re-typing everything), see
 `npm run siteground:env -- --non-interactive` and the `SITEGROUND_*` env vars it reads
@@ -308,7 +330,7 @@ The staff app (apps/staff-web) is served at **`https://boxs.ca/hub/`** — `apps
 - [ ] **Phase 4 item 1** — on `https://boxs.ca/site/subscribe/`, subscribe an address you control (it arrives at the redirect addresses with a `[to: …]` prefix); open the link, change a preference, save; unsubscribe from the manage page. The footer manage link and one-click unsubscribe now work against the new manage page (fixed in 4b — see Phase 4 item 3 below).
 - [ ] **Phase 4 item 3** — publish a release that reaches your test address; confirm the As-It-Happens email arrives exactly once, and that both its footer manage link and its one-click unsubscribe (`List-Unsubscribe`) work.
 - [ ] **Phase 4 item 4** — after a publish, check the following evening that the 17:00 BC-time digest arrives and includes the item. Note: releases published before the 4b deploy have no NoD item, so the first digest after deploy only includes releases published after it.
-- [ ] **Phase 4 item 10** — pause NoD sending; confirm nothing goes out while paused; resume; confirm sends release again.
+- [ ] **Phase 4 item 10** — pause NoD sending; confirm nothing goes out while paused; resume; confirm sends release again. Also pause **Distribution** itself (same NoD admin control); confirm a verification/manage-link email still goes out while Distribution is paused, that a release's As-It-Happens/digest mail is held, and that it sends once Distribution is resumed.
 - [ ] **Phase 4c item 6** — create a media list, add yourself as a member (`POST /nod/api/media-lists/<key>/members`), publish a release with that media list chosen; confirm the full-text media email arrives, with the standard footer and a working one-click unsubscribe.
 - [ ] **Phase 4c item 7** — add a member from the Media Hub search (real or fake), change that contact's chosen email address, run the sync (`POST /nod/api/media-hub/sync`); confirm the member's address updates. Delete the contact and sync again; confirm the member is gone. On a fake-Media-Hub site, change or delete a contact with a Core.Admin bearer: `POST /fake-media-hub/__fake/contacts/:id/email { ref, address }` to change one of its emails, or `POST /fake-media-hub/__fake/contacts/:id/delete` to soft-delete the contact.
 - [ ] **Phase 4c item 8** — with `NOD_MEMBERSHIP_API_USERNAME`/`NOD_MEMBERSHIP_API_PASSWORD_HASH` set, curl the legacy membership endpoint directly:

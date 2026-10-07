@@ -123,9 +123,9 @@ describe.each([
       },
     } as unknown as Transporter;
     const result = await sendDue({ db: distributionDb.db, transport, from: "news@example.com", redirectTo: [], maxMessageAgeMs: SHORT_MAX_AGE_MS });
-    expect(result).toEqual({ sent: 0, retried: 1, failed: 0 });
+    expect(result).toEqual({ sent: 0, retried: 1, failed: 0, rateLimited: false });
     expectAbout(lockFromDbNow!, lockMs);
-    expect(replica).toEqual({ sent: 0, retried: 0, failed: 0 });
+    expect(replica).toEqual({ sent: 0, retried: 0, failed: 0, rateLimited: false });
     expectAbout(await msFromDbNow(distributionDb, "messages", "next_attempt_at", "email = $1", ["skew@example.com"]), 30_000 * 2 ** 1);
   });
 
@@ -144,13 +144,15 @@ describe.each([
     const render: RenderOptions = { siteUrl: "https://news.example/site", bannerUrl: null };
     let lockFromDbNow: number | undefined;
     let replica: unknown;
-    const distribution: DistributionClient = {
+    const distribution = {
       send: async () => {
         lockFromDbNow = await msFromDbNow(nodDb, "send_jobs", "locked_until", "id = $1", [jobId]);
-        replica = await unskewed(() => sendDueJobs({ db: nodDb.db, distribution: { send: async () => ({ batchId: "x" }) }, links, render }));
+        replica = await unskewed(() =>
+          sendDueJobs({ db: nodDb.db, distribution: { send: async () => ({ batchId: "x" }) } as unknown as DistributionClient, links, render }),
+        );
         throw new DistributionError("HTTP 503", true);
       },
-    };
+    } as unknown as DistributionClient;
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
       const result = await sendDueJobs({ db: nodDb.db, distribution, links, render, maxAgeMs: SHORT_MAX_AGE_MS });

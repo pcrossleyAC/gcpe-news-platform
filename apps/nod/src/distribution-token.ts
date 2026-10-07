@@ -72,7 +72,9 @@ export function distributionTokenProvider(opts: DistributionTokenOptions): () =>
         secret: local.secret,
         subject: "nod",
         azp: "nod",
-        roles: ["Distribution.Send"],
+        // Distribution.Operate lets this same token control Distribution's pause switch,
+        // alongside the existing message-sending role.
+        roles: ["Distribution.Send", "Distribution.Operate"],
         ttlSeconds: LOCAL_TOKEN_TTL_SECONDS,
       });
       cached = { token, expiresAt: now + LOCAL_TOKEN_TTL_SECONDS * 1000 };

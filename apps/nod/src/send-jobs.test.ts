@@ -91,7 +91,7 @@ function dedupingDistribution(opts: { failKeyOnce?: string } = {}): Distribution
       accepted.set(key, batchId);
       return { batchId };
     },
-  };
+  } as unknown as DistributionClient & { calls: MessageRequest[] };
 }
 
 /**
@@ -1209,15 +1209,21 @@ describe("distributionClient", () => {
   let server: Server;
   let baseUrl: string;
   let lastAuthHeader: string | undefined;
+  let lastRequestBody: MessageRequest | undefined;
+  let lastMethod: string | undefined;
+  let lastPath: string | undefined;
   let respondStatus: number;
   let respondBody: unknown;
 
   beforeAll(async () => {
     server = createServer((req, res) => {
       lastAuthHeader = req.headers.authorization;
+      lastMethod = req.method;
+      lastPath = req.url;
       let body = "";
       req.on("data", (c) => (body += c));
       req.on("end", () => {
+        lastRequestBody = body ? (JSON.parse(body) as MessageRequest) : undefined;
         res.statusCode = respondStatus;
         res.setHeader("content-type", "application/json");
         res.end(typeof respondBody === "string" ? respondBody : JSON.stringify(respondBody));
@@ -1354,5 +1360,82 @@ describe("distributionClient", () => {
       timeoutMs: 20,
     });
     await expect(client.send(sampleRequest)).rejects.toMatchObject({ retryable: true });
+  });
+
+  it("carries NoD's own REPLY_TO (DistributionClientOptions.replyTo) on a request that doesn't set one", async () => {
+    respondStatus = 202;
+    respondBody = { batchId: "batch-reply-to" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t", replyTo: "nod-reply@example.com" });
+    await client.send(sampleRequest);
+    expect(lastRequestBody?.replyTo).toBe("nod-reply@example.com");
+  });
+
+  it("carries no replyTo when neither the request nor DistributionClientOptions.replyTo is set", async () => {
+    respondStatus = 202;
+    respondBody = { batchId: "batch-no-reply-to" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t" });
+    await client.send(sampleRequest);
+    expect(lastRequestBody?.replyTo).toBeUndefined();
+  });
+
+  it("a request's own replyTo wins over the configured REPLY_TO", async () => {
+    respondStatus = 202;
+    respondBody = { batchId: "batch-own-reply-to" };
+    const client = distributionClient({ baseUrl, getToken: async () => "t", replyTo: "nod-reply@example.com" });
+    await client.send({ ...sampleRequest, replyTo: "own-reply@example.com" });
+    expect(lastRequestBody?.replyTo).toBe("own-reply@example.com");
+  });
+
+  // getSettings/setPaused hit Distribution's own settings routes, not /api/messages — same
+  // token/error handling as send (callDistribution), just a different path/method/body.
+  describe("getSettings / setPaused", () => {
+    it("getSettings GETs /api/settings and returns the parsed shape", async () => {
+      respondStatus = 200;
+      respondBody = { paused: true };
+      const client = distributionClient({ baseUrl, getToken: async () => "the-token" });
+      expect(await client.getSettings()).toEqual({ paused: true });
+      expect(lastMethod).toBe("GET");
+      expect(lastPath).toBe("/api/settings");
+      expect(lastAuthHeader).toBe("Bearer the-token");
+    });
+
+    it("setPaused(true) POSTs /api/settings/pause; setPaused(false) POSTs /api/settings/resume", async () => {
+      respondStatus = 200;
+      respondBody = { paused: true, changed: true };
+      const client = distributionClient({ baseUrl, getToken: async () => "t" });
+      expect(await client.setPaused(true)).toEqual({ paused: true, changed: true });
+      expect(lastMethod).toBe("POST");
+      expect(lastPath).toBe("/api/settings/pause");
+
+      respondBody = { paused: false, changed: false };
+      expect(await client.setPaused(false)).toEqual({ paused: false, changed: false });
+      expect(lastPath).toBe("/api/settings/resume");
+    });
+
+    it("maps a 2xx body missing the expected shape to a retryable DistributionError, for both calls", async () => {
+      respondStatus = 200;
+      respondBody = {};
+      const client = distributionClient({ baseUrl, getToken: async () => "t" });
+      await expect(client.getSettings()).rejects.toMatchObject({ retryable: true, status: 200 });
+      await expect(client.setPaused(true)).rejects.toMatchObject({ retryable: true, status: 200 });
+    });
+
+    it("maps a 503 from Distribution's settings routes to a retryable DistributionError", async () => {
+      respondStatus = 503;
+      respondBody = "service unavailable";
+      const client = distributionClient({ baseUrl, getToken: async () => "t" });
+      await expect(client.getSettings()).rejects.toMatchObject({ retryable: true, status: 503 });
+      await expect(client.setPaused(true)).rejects.toMatchObject({ retryable: true, status: 503 });
+    });
+
+    it("maps a 403 (missing Distribution.Operate) to a retryable DistributionError and logs loudly", async () => {
+      respondStatus = 403;
+      respondBody = { error: "forbidden" };
+      const client = distributionClient({ baseUrl, getToken: async () => "t" });
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      await expect(client.setPaused(true)).rejects.toMatchObject({ retryable: true, status: 403 });
+      expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("Distribution rejected our credentials (401/403)"));
+      errorSpy.mockRestore();
+    });
   });
 });

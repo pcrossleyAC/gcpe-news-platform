@@ -69,6 +69,10 @@ export const messageRequestSchema = z.object({
   subject: z.string().min(1).max(998).refine(noLineBreaks, "must not contain line breaks"),
   html: z.string().min(1),
   text: z.string().optional(),
+  // Ahead of MAIL_REPLY_TO at send time (sender.ts); a caller cannot set the Reply-To header
+  // itself (canonicalHeaderName above only allows List-Unsubscribe* and X-*), so this is the
+  // only way one carries a Reply-To.
+  replyTo: z.string().email().optional(),
   headers: headersSchema,
   recipients: z.array(z.object({ email: z.string().email(), substitutions: z.record(z.string()).default({}) })).min(1).max(20_000),
   // Sent unchanged with every message of the batch (no substitution).
@@ -125,6 +129,7 @@ export async function createBatch(
         subject: req.subject,
         html: req.html,
         text: req.text ?? null,
+        replyTo: req.replyTo ?? null,
         headers: req.headers,
         attachments: req.attachments,
       })

@@ -21,7 +21,8 @@
     "build:siteground": "node scripts/build-siteground.mjs",
     "deploy:siteground": "bash scripts/deploy-siteground.sh",
     "siteground:env": "tsx scripts/siteground-env.ts",
-    "core:seed-from-public-api": "tsx scripts/seed-core-from-public-api.ts"
+    "core:seed-from-public-api": "tsx scripts/seed-core-from-public-api.ts",
+    "distribution:capacity": "tsx scripts/distribution-capacity.ts"
   },
   "devDependencies": {
     "@axe-core/playwright": "4.13.0",

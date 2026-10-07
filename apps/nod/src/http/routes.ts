@@ -3,13 +3,14 @@ import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import type { ItemSending } from "../as-it-happens";
-import type { DistributionClient } from "../distribution-client";
+import { DistributionError, type DistributionClient } from "../distribution-client";
 import { MediaHubError, type MediaHubClient } from "../media-hub/client";
 import { getMediaSyncStatus, resolveMediaMember, runMediaSync } from "../media-hub/sync";
 import { addMediaMember, listMediaLists, listMediaMembers, MediaListNotFoundError, OptedOutError, removeMediaMember } from "../media-members";
-import { getSettings, setPaused } from "../settings";
+import { getSettings, setDistributionPaused, setPaused } from "../settings";
 import { addSubscriber, countSubscribers, SubscriberExistsError } from "../subscribers";
 import { emailAddressSchema } from "../subscribe/info";
+import { safeErrorLabel } from "../subscribe/journeys";
 
 /** '*' = all news, or '<kind>:<key>' with kind in ministries|sectors|themes|tags (matches indexKeysFor's output shape). */
 export const listKeySchema = z
@@ -64,13 +65,19 @@ function handleError(e: unknown, res: Response): boolean {
   // see client.ts) but is never handed to the caller verbatim; the client just sees that Media
   // Hub itself is unavailable right now.
   if (e instanceof MediaHubError) return void (console.error("[nod] Media Hub call failed", e.kind, e.message), res.status(502).json({ error: "media hub unavailable" })), true;
+  // A DistributionClient call (the distribution/* routes below, calling Distribution over
+  // HTTP) failed -- never the raw error (it can carry Distribution's response body) to the
+  // caller, just that Distribution itself is unavailable right now.
+  if (e instanceof DistributionError) return void (console.error("[nod] Distribution call failed", safeErrorLabel(e)), res.status(502).json({ error: "distribution unavailable" })), true;
   return false;
 }
 
-/** Task 7: what the pause/resume routes need beyond `db` -- a Distribution client and the
- * resolved `NOD_OPS_EMAIL`/tenant time zone for setPaused's ops email. */
+/** What the settings and distribution/* routes need beyond `db` -- a Distribution client
+ * (able to send mail, and, for the distribution/* routes, read/set Distribution's pause
+ * switch) and the resolved `NOD_OPS_EMAIL`/tenant time zone for the ops email both setPaused
+ * and setDistributionPaused send. */
 export interface SettingsRouteDeps {
-  distribution: Pick<DistributionClient, "send">;
+  distribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused">;
   opsEmail: string | null;
   timeZone: string;
 }
@@ -260,6 +267,36 @@ export function apiRoutes(
     run(async (req, res) => {
       const { changed } = await setPaused({ db, ...settings }, false, actorOf(req).name);
       res.json({ paused: false, changed });
+    }),
+  );
+
+  // Distribution-wide pause, staff-controlled through NoD's own admin -- these never call
+  // Distribution's settings routes directly from staff-web; NoD's own service token does, on
+  // the caller's behalf, and the actor/audit trail stay on NoD's side (settings.ts's
+  // setDistributionPaused).
+  r.get(
+    "/distribution/settings",
+    requireRole("NoD.Admin"),
+    run(async (_req, res) => {
+      res.json(await settings.distribution.getSettings());
+    }),
+  );
+
+  r.post(
+    "/distribution/pause",
+    requireRole("NoD.Admin"),
+    run(async (req, res) => {
+      const result = await setDistributionPaused({ db, ...settings }, true, actorOf(req).name);
+      res.json(result);
+    }),
+  );
+
+  r.post(
+    "/distribution/resume",
+    requireRole("NoD.Admin"),
+    run(async (req, res) => {
+      const result = await setDistributionPaused({ db, ...settings }, false, actorOf(req).name);
+      res.json(result);
     }),
   );
 

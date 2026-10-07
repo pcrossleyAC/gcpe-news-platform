@@ -26,12 +26,14 @@ export interface AppDeps {
   render: RenderOptions;
   /** Phase 4a: the legacy public Subscribe API, mounted at /api/Subscribe when set. */
   subscribe?: JourneyDeps;
-  /** Task 7: the pause/resume routes' own Distribution client, resolved NOD_OPS_EMAIL and
-   * tenant time zone. `distribution` defaults to `subscribe`'s client when omitted (both are
-   * the same real client in production -- start.ts passes one Distribution client everywhere);
-   * `opsEmail` defaults to null (no ops email sent) and `timeZone` to "UTC" -- both only matter
-   * when an actual pause/resume fires an email, which a null `opsEmail` already rules out. */
-  distribution?: Pick<DistributionClient, "send">;
+  /** The settings and distribution/* routes' own Distribution client, resolved NOD_OPS_EMAIL
+   * and tenant time zone -- `getSettings`/`setPaused` back the distribution/* routes, `send`
+   * the ops email both that and NoD's own pause/resume send. Defaults to a client that
+   * rejects every call (`noDistribution`) when omitted; start.ts always passes the one real
+   * Distribution client here. `opsEmail` defaults to null (no ops email sent) and `timeZone`
+   * to "UTC" -- both only matter when an actual pause/resume fires an email, which a null
+   * `opsEmail` already rules out. */
+  distribution?: Pick<DistributionClient, "send" | "getSettings" | "setPaused">;
   opsEmail?: string | null;
   timeZone?: string;
   /** The Media Hub contacts client, when `MEDIA_HUB_URL` is configured -- null (the default)
@@ -42,8 +44,10 @@ export interface AppDeps {
   membership?: MembershipAuth | null;
 }
 
-const noDistribution: Pick<DistributionClient, "send"> = {
+const noDistribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused"> = {
   send: () => Promise.reject(new Error("createApp: no Distribution client configured for the settings routes")),
+  getSettings: () => Promise.reject(new Error("createApp: no Distribution client configured for the distribution routes")),
+  setPaused: () => Promise.reject(new Error("createApp: no Distribution client configured for the distribution routes")),
 };
 
 export function createApp(deps: AppDeps): express.Express {
@@ -91,7 +95,10 @@ export function createApp(deps: AppDeps): express.Express {
       deps.db,
       { recordEmergencyItem },
       {
-        distribution: deps.distribution ?? deps.subscribe?.distribution ?? noDistribution,
+        // The distribution/* routes need getSettings/setPaused too, which `subscribe`'s own
+        // (send-only) client never carries -- unlike before, this no longer falls back to
+        // it, only to `noDistribution`.
+        distribution: deps.distribution ?? noDistribution,
         opsEmail: deps.opsEmail ?? null,
         timeZone: deps.timeZone ?? "UTC",
       },

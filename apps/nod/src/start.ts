@@ -46,6 +46,11 @@ export const nodEnvSchema = z.object({
   // The operator sets `NOD_OPS_EMAIL`; by the time this schema sees it, apps/stack/src/env.ts's
   // envFor has already stripped the "NOD_" prefix (same as DATABASE_URL, PORT, etc. above).
   OPS_EMAIL: z.string().email().optional(),
+  // Every email NoD sends carries this as its Reply-To (distribution-client.ts's send,
+  // applied whenever a request doesn't set its own) — unset on boxs.ca: a reply to redirected
+  // test mail must never reach a real government mailbox. The operator sets `NOD_REPLY_TO`;
+  // envFor strips the "NOD_" prefix the same way as OPS_EMAIL above.
+  REPLY_TO: z.string().email().optional(),
   // The page emailed verify/manage links open. Default: the public site's test page.
   SUBSCRIBE_PAGE_URL: z.string().url().optional(),
   // Base URL of the public Subscribe API, carrying the one-click unsubscribe path
@@ -126,6 +131,7 @@ export async function startNod(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     baseUrl: parsed.DISTRIBUTION_URL,
     getToken: getDistributionToken,
     timeoutMs: parsed.DISTRIBUTION_TIMEOUT_MS,
+    replyTo: parsed.REPLY_TO,
   });
 
   // Task 5: siteUrl is the public site home ("See more from BC Gov News" in every email's

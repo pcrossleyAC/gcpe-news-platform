@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export * from "@gcpe/events/tables";
 
@@ -23,6 +23,9 @@ export const batches = pgTable(
     text: text("text"),
     headers: jsonb("headers").$type<Record<string, string>>(),
     attachments: jsonb("attachments").$type<StoredAttachment[]>().notNull().default([]),
+    // The request's Reply-To, if any — read back at send time (sender.ts) and used ahead of
+    // MAIL_REPLY_TO.
+    replyTo: text("reply_to"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("batches_app_id_idempotency_key_idx").on(t.appId, t.idempotencyKey)],
@@ -50,6 +53,9 @@ export const messages = pgTable(
     lastError: text("last_error"),
     sentAt: timestamp("sent_at", { withTimezone: true }),
     originalRecipient: text("original_recipient"),
+    // Set when a send is attempted (sender.ts, in the same update that re-asserts the row's
+    // lock) and stable across retries of the same row — 4e matches bounces by it.
+    messageId: text("message_id"),
   },
   (t) => [
     index("messages_due_idx").on(t.priority.desc(), t.nextAttemptAt).where(sql`${t.status} = 'pending'`),
@@ -57,3 +63,27 @@ export const messages = pgTable(
   ],
 );
 export type MessageRow = typeof messages.$inferSelect;
+
+// The database-enforced per-minute send cap (sender.ts): one row per minute, holding how many
+// messages have been claimed in that minute across every worker. The claim transaction locks
+// this row (SELECT ... FOR UPDATE) before claiming any message row, so concurrent workers
+// serialise on it rather than on the messages table.
+export const sendRateWindows = pgTable("send_rate_windows", {
+  windowStart: timestamp("window_start", { withTimezone: true }).primaryKey(),
+  claimed: integer("claimed").notNull().default(0),
+});
+export type SendRateWindowRow = typeof sendRateWindows.$inferSelect;
+
+// The Distribution-wide pause switch (spec §6/§8): a singleton row, staff-controlled through
+// NoD's admin (NoD.Admin), read by sender.ts's claim every run. Mirrors nod_settings' own
+// singleton pattern (apps/nod/src/db/schema.ts).
+export const distributionSettings = pgTable(
+  "distribution_settings",
+  {
+    id: integer("id").primaryKey().default(1),
+    paused: boolean("paused").notNull().default(false),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [check("distribution_settings_singleton", sql`${t.id} = 1`)],
+);
+export type DistributionSettingsRow = typeof distributionSettings.$inferSelect;
