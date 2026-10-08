@@ -296,3 +296,26 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Operations** — The NoD migration `0029_purge_indexes` adds indexes to `job_recipients` and
   `subscriber_links`. On a populated database, pre-build them with the CONCURRENTLY steps in
   docs/deploy/siteground.md.
+- **Editor** — A media-list member can now be flagged "Media Hub email opted out of a media list
+  this member is on": Media Hub moved their chosen email to an address that had unsubscribed from
+  one of their lists, so NoD kept them at their old address instead of moving them. Resolve it
+  from the media list: choose another of their emails, clear the flag to keep the current one, or
+  remove them. Choosing an email that opted out is refused with the same explanation.
+- **Editor** — Changing a subscriber's email to an address that unsubscribed from one of their
+  media lists asks first ("That address unsubscribed"). Change it only if they've asked to receive
+  media releases there again; confirming counts as re-adding them to those lists.
+- **Editor** — Recent unsubscribes includes people who unsubscribed in legacy, at the dates they
+  did so in legacy: after the import, the report's earlier weeks fill in with legacy's
+  unsubscribes, not just NoD's own.
+- **Developer** — Re-running `nod:import`: someone who unsubscribed in legacy since the last import
+  is unsubscribed in NoD too, even if NoD changed their record in the meantime (the report lists
+  them as "unsubscribed in legacy since the last import"); if NoD had already purged them, their
+  address is kept as opted out of every media list, without the address itself. A media list
+  staff removed and re-added in NoD after legacy's own removal stays.
+- **Administrator** — Imported subscribers who had already ended in legacy are kept at least 90
+  days after the import, whatever their legacy end date, so a bad import can still be redone from
+  legacy before the purge removes anything.
+- **Operations** — The NoD migrations `0031_items_link_identity` (a column) and
+  `0032_items_link_identity_index` (an index only, on the small `items` table) speed up the
+  emergency feed's check of which alerts it already has. The first check after the deploy fills
+  the column in for alerts already recorded.

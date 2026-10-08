@@ -48,6 +48,7 @@ Status key: **Open** (no answer yet) · **Answered**.
 | Q41 | Does anyone use legacy's "subscribed to list X between two dates" report (SubscriberListReport)? | It's the one legacy report not carried over. | No; the snapshot by list replaces it. | 2026-10-07 |
 | Q42 | Which soft (4.x.x) bounce codes should count as hard bounces? The business doc (§2d) says Anne would supply the list from Excel. Are they plain codes (e.g. `4.2.2`), or do some need the message text too (e.g. "account disabled" under `4.7.1`)? | Counted codes trip the 10-in-15-days rule (C110). Code-only matching can't tell two messages under one code apart. | None counted; staff can add codes on Operations once the list arrives. | 2026-10-07 |
 | Q46 | Distribution keeps every sent message's address (`messages.email`) with no retention. Should it follow the NoD purge? | A purged subscriber's address can still sit in Distribution's message history. | Out of 4i; decide with Q25. | 2026-10-07 |
+| Q47 | Imported subscribers who had already ended in legacy are kept at least 90 days after the import (their `ended_at` is never earlier than the import), so a bad import can be redone from legacy before the purge deletes them. Is keeping that data up to 90 days longer acceptable? | Without it, the first night the purge is on deletes every legacy record that ended more than 90 days before cutover, with no way back if the import was wrong. | Keep them at least 90 days after the import (C120). | 2026-10-07 |
 
 ## Answered
 

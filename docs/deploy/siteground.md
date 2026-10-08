@@ -240,11 +240,12 @@ holds data, or pre-build the indexes `CONCURRENTLY` with drizzle's exact index n
 record the migrations as applied, so the deploy's own migrate skips them:
 
 1. **Only for pending migrations that are nothing but `CREATE INDEX` statements** (NoD `0023`,
-   `0024`, `0027`, `0029`; Distribution `0010`). `0029_purge_indexes` indexes `job_recipients` and
+   `0024`, `0027`, `0029`, `0032`; Distribution `0010`). `0029_purge_indexes` indexes `job_recipients` and
    `subscriber_links`, which grow by tens of thousands of rows a day, so it belongs here too.
-   `0026_emergency_feed_state` and `0028_retention_purge` (columns and a new table) and
-   `0030_legacy_import` (a new table) are not index-only — they run in the normal deploy, same as
-   any other additive migration. Any other statement would have to be run by hand, so for those
+   `0026_emergency_feed_state` and `0028_retention_purge` (columns and a new table),
+   `0030_legacy_import` (a new table) and `0031_items_link_identity` (a column; the emergency feed
+   check fills it in for existing alerts on its next run) are not index-only — they run in the
+   normal deploy, same as any other additive migration. Any other statement would have to be run by hand, so for those
    use a quiet window instead. Drizzle's migrator applies every migration newer than the
    *latest* row it has recorded, so pre-build and record **every** pending migration, in journal
    order — recording a later one alone would make it skip the earlier ones forever.
@@ -256,7 +257,7 @@ record the migrations as applied, so the deploy's own migrate skips them:
    `DIR=migrations/distribution`, `DB="$DIST_DATABASE_URL"` and `TAGS="0010_report_indexes"`:
 
    ```sh
-   export DB="$NOD_DATABASE_URL" DIR=migrations/nod TAGS="0023_report_history_index 0024_report_delivery_indexes 0027_items_emergency_url_index 0029_purge_indexes"
+   export DB="$NOD_DATABASE_URL" DIR=migrations/nod TAGS="0023_report_history_index 0024_report_delivery_indexes 0027_items_emergency_url_index 0029_purge_indexes 0032_items_link_identity_index"
    # Pre-build each index without blocking writes. psql runs each statement on its own, outside
    # a transaction, which CONCURRENTLY requires.
    for tag in $TAGS; do
@@ -757,16 +758,24 @@ legacy GUIDs — never an address). Exit code: `0` when the report balances (`le
 skipped` for every table), `2` when it doesn't (the import still completed — read the report),
 `1` on any error (a partial report is still written) or when another run holds the lock.
 **Re-running is safe:** a subscriber nobody has touched in NoD since the last import takes
-legacy's newer data; one changed in NoD (by staff, a bounce, the Media Hub sync) or removed by
-the purge is left exactly as NoD has it and reported, not overwritten. The same networking
+legacy's newer data (except a media list staff re-added in NoD after legacy's own removal from
+it, which stays); one changed in NoD (by staff, a bounce, the Media Hub sync) or removed by the
+purge is left as NoD has it and reported, not overwritten. Consent always carries over: a legacy
+unsubscribe made since the last import ends the NoD record even if NoD changed it (reported as
+"unsubscribed in legacy since the last import"), and for a purged record it is kept as an
+every-media-list opt-out without the address. Legacy moving a member onto an address that opted
+out of one of their media lists takes them off those lists (reported per list, by id). An
+article row the database refuses (a value out of range) is skipped and reported by id with the
+error's code; the rest of the run carries on. The same networking
 assumption as `nrms:import` applies — run it from a machine that can reach both the legacy SQL
 Server and the target Postgres, which SiteGround itself likely cannot do (see "Importing legacy
 NRMS data" above).
 
-**Warning: run the final import before turning the purge on.** A legacy subscriber whose end
-date SysLog never recorded gets the import time as `ended_at`, so it waits the full 90 days
-either way — but once the purge has deleted a record, a later import can't bring it back; it
-only reports the mismatch. Run the import (trial, then final) first, confirm the report, and only
+**Warning: run the final import before turning the purge on.** An imported ended subscriber gets
+`ended_at` no earlier than the import itself (legacy's own end date when that is later), so the
+purge's 90 days start at the import at the earliest: a bad import can still be rolled back from
+legacy within that window. But once the purge has deleted a record, a later import can't bring
+it back; it only reports the mismatch. Run the import (trial, then final) first, confirm the report, and only
 then flip the Operations switch.
 
 ## Troubleshooting
