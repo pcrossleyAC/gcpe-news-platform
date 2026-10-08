@@ -132,6 +132,36 @@ describe("Calendar Administrators: active and link (Q55)", () => {
     expect((await link("admin", "calendarNoEmail", "readonly.linked@example.test")).status).toBe(200);
   });
 
+  it("only a Core admin grants a Calendar role to an inactive user who has none, so grant-then-activate can't bring one in", async () => {
+    const grant = (actor: string, target: string) =>
+      request(app).put(`/api/calendar-access/${id[target]}`).set("cookie", cookie[actor]!).set("x-gcpe-request", "1").send({ role: "Calendar.ReadOnly", organizationKeys: ["health"] });
+    await person("dormant", { active: false });
+    await person("dormantNoEmail", { email: null });
+    await person("activeNoRole");
+    const before = await getUser(tdb.db, id.dormant!);
+
+    const refused = await grant("admin", "dormant");
+    expect(refused.status).toBe(403);
+    expect(refused.body).toEqual({ error: "only a Core admin can change a user who has no Calendar role", reason: "no-calendar-role" });
+    expect(await getUser(tdb.db, id.dormant!)).toEqual(before);
+    expect((await put("admin", "dormant", true)).body.reason).toBe("no-calendar-role");
+    expect((await getUser(tdb.db, id.dormant!))!.isActive).toBe(false);
+
+    const refusedNoEmail = await grant("admin", "dormantNoEmail");
+    expect(refusedNoEmail.status).toBe(403);
+    expect(refusedNoEmail.body.reason).toBe("no-calendar-role");
+    expect((await link("admin", "dormantNoEmail", "dormant.linked@example.test")).body.reason).toBe("no-calendar-role");
+    expect((await getUser(tdb.db, id.dormantNoEmail!))!).toMatchObject({ email: null, isActive: false, calendarRole: null, organizationKeys: [] });
+
+    const granted = await grant("admin", "activeNoRole");
+    expect(granted.status).toBe(200);
+    expect(granted.body).toMatchObject({ isActive: true, calendarRole: "Calendar.ReadOnly", organizationKeys: ["health"] });
+
+    const byCoreAdmin = await grant("coreAdmin", "dormant");
+    expect(byCoreAdmin.status).toBe(200);
+    expect(byCoreAdmin.body).toMatchObject({ isActive: false, calendarRole: "Calendar.ReadOnly" });
+  });
+
   it("link follows the same rules as active: other roles and HQ targets are refused", async () => {
     expect((await link("admin", "nrmsNoEmail", "nrms.linked@example.test")).body).toEqual({ error: "only a Core admin can change a user who also has NRMS or NoD roles", reason: "other-roles" });
     expect((await link("admin", "hqNoEmail", "hq.linked@example.test")).body.reason).toBe("hq-target");

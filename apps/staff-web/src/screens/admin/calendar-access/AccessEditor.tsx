@@ -18,6 +18,17 @@ export const LOCKED_MESSAGES: Partial<Record<CalendarGrantRefusal, string>> = {
 };
 
 /**
+ * Why the screen won't open the editor for a user, if it won't: the server's checkCalendarGrant
+ * refusal for a save that keeps the user's role, or the rule that only a Core admin may give
+ * Calendar access to an inactive user who has none (the NRMS importer's shape).
+ */
+export function lockedMessage(refusal: CalendarGrantRefusal | null, actor: Actor, user: Pick<CalendarAccessUser, "isActive" | "calendarRole">): string | null {
+  if (refusal) return LOCKED_MESSAGES[refusal] ?? "You can’t change this user’s access.";
+  if (!actor.roles.includes("Core.Admin") && !user.isActive && user.calendarRole === null) return "Only a Core admin can give Calendar access to an inactive user who has none.";
+  return null;
+}
+
+/**
  * A 400 for unknown or inactive ministries names them in `keys`. Only keys this save submitted
  * are shown, so the message never repeats anything the user didn't type or pick.
  */

@@ -3,7 +3,7 @@ import { Button, InlineAlert, TextField } from "@bcgov/design-system-react-compo
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
-import { AccessEditor, actorFor, LOCKED_MESSAGES, type Actor } from "./AccessEditor";
+import { AccessEditor, actorFor, lockedMessage, type Actor } from "./AccessEditor";
 import { calendarRoleLabel, canManageCalendarAccess, checkCalendarGrant, type CalendarRoleName } from "./calendar-roles";
 
 export interface CalendarAccessUser {
@@ -103,7 +103,7 @@ export function CalendarAccessScreen(): React.JSX.Element {
             addsHqOrganization: false,
             targetHasHqAfter: u.organizationKeys.some((k) => hqKeys.has(k)),
           });
-          const locked = refusal ? (LOCKED_MESSAGES[refusal] ?? "You can’t change this user’s access.") : null;
+          const locked = lockedMessage(refusal, actor, u);
           return (
             <li key={u.id}>
               <h2>{u.displayName}</h2>

@@ -4,11 +4,11 @@ import { createUser, createUserSchema, findUserByEmail, setPassword, setPassword
 import { setCalendarAccess } from "./calendar-access";
 import { getOrganization } from "./organizations";
 
-interface TestUser {
+export interface TestUser {
   email: string;
   displayName: string;
   roles: readonly string[];
-  /** Calendar access, given only when every organization exists (they come from the seed or a test). */
+  /** Calendar access, given only when every organization exists and is active (they come from the seed or a test). */
   calendar?: { role: CalendarRole; organizationKeys: readonly string[] };
 }
 
@@ -27,6 +27,12 @@ export const TEST_USERS: readonly TestUser[] = [
   { email: "cal-readonly@example.test", displayName: "Test Calendar Read Only", roles: [], calendar: { role: "Calendar.ReadOnly", organizationKeys: ["finance"] } },
 ];
 
+/** The seed CLI's prompt for one user's password, naming what the user will hold. */
+export function passwordPrompt(u: TestUser): string {
+  const holds = [...u.roles, ...(u.calendar ? [`${u.calendar.role}: ${u.calendar.organizationKeys.join(", ")}`] : [])];
+  return `Password for ${u.email} (${holds.join(", ") || "no roles"}; input hidden): `;
+}
+
 export interface SeedResult {
   email: string;
   action: "created" | "updated";
@@ -36,7 +42,7 @@ export interface SeedResult {
 
 /** Creates the test users, or resets an existing one's roles and password and reactivates it.
  * A user with a Calendar entry also gets Calendar access, skipped (and reported) if any of its
- * organizations doesn't exist yet — the seed runs before a stack has created any. */
+ * organizations doesn't exist yet (the seed runs before a stack has created any) or is inactive. */
 export async function seedTestUsers(db: Db, passwords: Record<string, string>): Promise<SeedResult[]> {
   for (const u of TEST_USERS) setPasswordSchema.parse({ password: passwords[u.email] ?? "" });
   const out: SeedResult[] = [];
@@ -59,7 +65,10 @@ export async function seedTestUsers(db: Db, passwords: Record<string, string>): 
     }
     if (u.calendar) {
       const missing: string[] = [];
-      for (const k of u.calendar.organizationKeys) if (!(await getOrganization(db, k))) missing.push(k);
+      for (const k of u.calendar.organizationKeys) {
+        const o = await getOrganization(db, k);
+        if (!o || !o.isActive) missing.push(k);
+      }
       if (missing.length) {
         result.calendar = "skipped";
         result.missingOrganizations = missing;

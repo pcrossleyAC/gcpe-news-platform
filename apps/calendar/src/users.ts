@@ -110,9 +110,12 @@ export async function getCalendarUser(db: DbOrTx, id: string): Promise<CalendarU
   };
 }
 
-/** Every write to one user's Calendar data takes this first, then reads what it relies on. */
+/**
+ * Every write to one user's Calendar data takes this first, then reads what it relies on. The id is
+ * lowercased, the form Postgres stores, so two spellings of one id share one lock.
+ */
 async function lockUserData(tx: Tx, id: string): Promise<void> {
-  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`calendar-user:${id}`}))`);
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`calendar-user:${id.toLowerCase()}`}))`);
 }
 
 export async function saveProfile(db: Db, id: string, input: Profile): Promise<Profile> {

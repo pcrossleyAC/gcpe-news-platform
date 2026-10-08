@@ -112,8 +112,10 @@ function calendarAdminGuard(actor: CalendarActor): UserGuard {
   return async (tx, id) => {
     if (actor.roles.includes("Core.Admin")) return;
     const current = (await getUser(tx, id))!;
-    // A user with no roles at all isn't Calendar-only: the NRMS importer creates such users
-    // inactive on purpose, and only a Core admin may bring them in.
+    // Anyone else may not activate, deactivate or link a user with no Calendar role, active or not.
+    // The NRMS importer creates users inactive and role-less on purpose, and only a Core admin may
+    // bring them in; setCalendarAccess refuses anyone else a grant to an inactive user with no
+    // Calendar role, so granting first and then activating or linking can't get around this.
     if (current.calendarRole === null) throw new CalendarOnlyError("no-calendar-role");
     if (current.roles.length > 0) throw new CalendarOnlyError("other-roles");
     const refusal = checkCalendarGrant({
@@ -162,6 +164,9 @@ export async function setCalendarAccess(db: Db, actor: CalendarActor, requestedI
     // From here on, the id is the stored one, never the request's spelling of it.
     const id = row.id;
     const current = (await getUser(tx, id))!;
+    // An inactive user with no Calendar role (the NRMS importer's shape) is a Core admin's to bring
+    // in: a grant here followed by activate or link would otherwise get around calendarAdminGuard.
+    if (!actor.roles.includes("Core.Admin") && !current.isActive && current.calendarRole === null) throw new CalendarOnlyError("no-calendar-role");
 
     const heldIds = (await tx.select({ id: userOrganizations.organizationId }).from(userOrganizations).where(eq(userOrganizations.userId, id))).map((r) => r.id);
     const which = [...(heldIds.length ? [inArray(organizations.id, heldIds)] : []), ...(keys.length ? [inArray(organizations.key, keys)] : [])];

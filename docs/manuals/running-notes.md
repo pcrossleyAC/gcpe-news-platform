@@ -407,11 +407,18 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   each of their ministries, their Calendar role and ministries, and their account. Role, ministries and
   account changes reach the Calendar within a minute.
 - **Administrator** — A Calendar Administrator can deactivate, reactivate or link only people whose only
-  access is the Calendar. Anyone who also uses NRMS or NoD is a Core admin's to change.
+  access is a Calendar role. Anyone with no Calendar role, or who also uses NRMS or NoD, is a Core
+  admin's to change.
+- **Administrator** — A Calendar Administrator can give a Calendar role to an active person who has
+  none, but not to an inactive one: only a Core admin brings in an inactive person with no Calendar
+  role (most are NRMS imports). The Calendar access and user screens say so instead of offering Edit.
 - **Administrator** — Set a comm-contact rank only after the person's ministry is saved; if the Calendar
   says the ministry isn't theirs yet, wait a minute and try again.
 - **Operations** — `scripts/siteground-seed-users.sh` now also seeds five Calendar test users
   (cal-admin, cal-sysadmin, cal-hq-admin, cal-editor, cal-readonly @example.test) and gives them Calendar
-  access; run it after the public-API seed so their organizations exist.
+  access; run it after the public-API seed so their organizations exist. Re-running it resets the
+  cal-* users' Calendar role, ministries and active flag; their contact details and comm-contact
+  ranks are untouched. A Calendar user whose organization is missing or inactive is skipped and
+  reported.
 - **Developer** — The report-rendering spike's code is on `spike/5b-report-rendering`, never merged; its
   findings are in `docs/superpowers/plans/2026-10-08-phase-5b-report-rendering-spike.md`.

@@ -173,4 +173,25 @@ describe("CalendarAccessScreen", () => {
     expect(await screen.findByText("You don’t have permission to view this page.")).toBeInTheDocument();
     expect(calls.map((c) => c.url)).toEqual(["/core/auth/session"]);
   });
+
+  it("only a Core admin is offered a grant to an inactive user with no Calendar role; an active one stays open", async () => {
+    const dormant = { id: "dormant-1", email: "dale.dormant@x.invalid", displayName: "Dale Dormant", isActive: false, calendarRole: null, organizationKeys: [] };
+    stub(["Calendar.Administrator"], [], undefined, { users: [...ACCESS_USERS, dormant] });
+    renderScreen();
+    const user = userEvent.setup();
+    await screen.findByRole("button", { name: "Edit access for Robin Staff" });
+    await user.click(screen.getByLabelText("Show inactive users, including those with no email"));
+    const item = screen.getByRole("heading", { level: 2, name: "Dale Dormant" }).closest("li")!;
+    expect(within(item).getByText("Only a Core admin can give Calendar access to an inactive user who has none.")).toBeInTheDocument();
+    expect(within(item).queryByRole("button")).toBeNull();
+    cleanup();
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+
+    stub(["Core.Admin"], [], undefined, { users: [...ACCESS_USERS, dormant] });
+    renderScreen();
+    await screen.findByRole("button", { name: "Edit access for Robin Staff" });
+    await user.click(screen.getByLabelText("Show inactive users, including those with no email"));
+    expect(screen.getByRole("button", { name: "Edit access for Dale Dormant" })).toBeInTheDocument();
+  });
 });

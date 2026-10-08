@@ -2,8 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { authenticate, findUserByEmail, updateUser } from "./users";
-import { upsertOrganization } from "./organizations";
-import { seedTestUsers, TEST_USERS } from "./seed-test-users";
+import { deactivateOrganization, upsertOrganization } from "./organizations";
+import { setCalendarAccess } from "./calendar-access";
+import { passwordPrompt, seedTestUsers, TEST_USERS } from "./seed-test-users";
 
 const pw = (n: number) => Object.fromEntries(TEST_USERS.map((u) => [u.email, `password number ${n}`]));
 
@@ -58,5 +59,21 @@ describe("seedTestUsers", () => {
   it("users without a Calendar entry report no calendar field", async () => {
     const r = await seedTestUsers(tdb.db, pw(5));
     expect(r.find((x) => x.email === "editor@example.test")).not.toHaveProperty("calendar");
+  });
+
+  it("names each user's roles in the password prompt, Calendar role included", () => {
+    expect(passwordPrompt(TEST_USERS.find((u) => u.email === "editor@example.test")!)).toBe("Password for editor@example.test (NRMS.Editor; input hidden): ");
+    expect(passwordPrompt(TEST_USERS.find((u) => u.email === "cal-admin@example.test")!)).toBe("Password for cal-admin@example.test (Calendar.Administrator: health; input hidden): ");
+    expect(passwordPrompt({ email: "nobody@example.test", displayName: "Test Nobody", roles: [] })).toBe("Password for nobody@example.test (no roles; input hidden): ");
+  });
+
+  it("treats an inactive organization as missing: skips that user's Calendar access and reports it", async () => {
+    const readOnly = (await findUserByEmail(tdb.db, "cal-readonly@example.test"))!;
+    await setCalendarAccess(tdb.db, { id: "setup", roles: ["Core.Admin"] }, readOnly.id, { role: null, organizationKeys: [] }, []);
+    await deactivateOrganization(tdb.db, "finance", []);
+    const r = await seedTestUsers(tdb.db, pw(6));
+    expect(r.find((x) => x.email === "cal-readonly@example.test")).toMatchObject({ calendar: "skipped", missingOrganizations: ["finance"] });
+    expect(r.find((x) => x.email === "cal-admin@example.test")?.calendar).toBe("set");
+    expect((await findUserByEmail(tdb.db, "cal-readonly@example.test"))).toMatchObject({ calendarRole: null, organizationKeys: [] });
   });
 });

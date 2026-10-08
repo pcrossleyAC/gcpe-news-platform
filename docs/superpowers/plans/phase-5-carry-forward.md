@@ -11,7 +11,6 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **Deactivation preview** (spec addendum §8.5, `User.aspx:183-223`): list a user's open activities before deactivating, filtered by `visible()`. Legacy listed every activity with that user as an active comm contact, past ones included; "open" here means not deleted and ending today or later.
 - **A cloned activity's history must record its source id** — for example an `activity_change_fields` row `cloned_from` — so the clone's history can be traced back to the activity it came from.
 - **`needs_review` writers must de-duplicate keys.** A write that adds to the `needs_review` set must not insert the same field key twice; the schema's check constraint (§5.2) only bounds the set to the 23 known keys, it doesn't dedupe.
-- **The self-deactivation check in `PUT /core/api/calendar-access/:id/active` runs outside the lock** (5b-2 review, parked as low risk): it reads the caller's own id before the aggregate lock and row `FOR UPDATE` rather than after, so a self-deactivation racing a concurrent change to the same user is checked against a value that isn't re-confirmed post-lock. Move the check after the lock, or re-check it once the row is held.
 
 ## 5e
 

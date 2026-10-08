@@ -5,7 +5,7 @@ import { ApiError, apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
-import { AccessEditor, actorFor, LOCKED_MESSAGES } from "../../admin/calendar-access/AccessEditor";
+import { AccessEditor, actorFor, lockedMessage } from "../../admin/calendar-access/AccessEditor";
 import type { CalendarAccessUser, OrgOption } from "../../admin/calendar-access/CalendarAccessScreen";
 import { canonicalId, checkCalendarGrant } from "../../admin/calendar-access/calendar-roles";
 import { RANK_OPTIONS, type CalendarUserDetail, type Profile } from "./types";
@@ -135,7 +135,7 @@ export function CalendarUserScreen(): React.JSX.Element {
         targetHasHqAfter: core.organizationKeys.some((k) => hqKeys.has(k)),
       })
     : null;
-  const lockedAccess = refusal ? (LOCKED_MESSAGES[refusal] ?? "You can’t change this user’s access.") : null;
+  const lockedAccess = core ? lockedMessage(refusal, actor, core) : null;
   const done = (msg: string) => {
     setStatus(msg);
     setMessages([]);
@@ -170,6 +170,8 @@ export function CalendarUserScreen(): React.JSX.Element {
   };
 
   const isActive = core?.isActive ?? u.isActive;
+  // The server refuses anyone deactivating themself; the button isn't offered on their own page.
+  const isSelf = canonicalId(u.id) === canonicalId(session.user?.id ?? "");
   const email = core ? core.email : u.email;
   return (
     <div>
@@ -228,7 +230,7 @@ export function CalendarUserScreen(): React.JSX.Element {
 
       <h2>Account</h2>
       {isActive ? (
-        <Button variant="secondary" onPress={() => void setActive(false)}>{`Deactivate ${u.displayName}`}</Button>
+        isSelf ? null : <Button variant="secondary" onPress={() => void setActive(false)}>{`Deactivate ${u.displayName}`}</Button>
       ) : email ? (
         <Button variant="secondary" onPress={() => void setActive(true)}>{`Reactivate ${u.displayName}`}</Button>
       ) : (

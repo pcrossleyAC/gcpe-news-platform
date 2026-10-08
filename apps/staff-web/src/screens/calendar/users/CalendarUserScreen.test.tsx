@@ -17,6 +17,7 @@ const CORE_USERS = [
   { id: "a1", email: "pat@x.invalid", displayName: "Pat", isActive: true, calendarRole: "Calendar.Administrator", organizationKeys: ["health"] },
   { id: "u1", email: "robin.staff@example.test", displayName: "Robin Staff", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health"] },
   { id: "u2", email: null, displayName: "Kim Imported", isActive: false, calendarRole: "Calendar.Editor", organizationKeys: ["health"] },
+  { id: "u3", email: "dale.dormant@example.test", displayName: "Dale Dormant", isActive: false, calendarRole: null, organizationKeys: [] },
 ];
 const ORGS = [{ key: "health", displayName: "Health", abbreviation: "HLTH", isActive: true, isHq: false, isPublic: true }];
 
@@ -169,5 +170,22 @@ describe("CalendarUserScreen", () => {
     stub([]);
     renderAt("u1");
     expect(await screen.findByRole("button", { name: "Edit Calendar access for Robin Staff" })).toBeInTheDocument();
+  });
+
+  it("doesn't offer an Administrator a grant to an inactive user with no Calendar role", async () => {
+    const dormant: CalendarUserDetail = { ...DETAIL, user: { ...DETAIL.user, id: "u3", displayName: "Dale Dormant", email: "dale.dormant@example.test", isActive: false, role: null, ministryKeys: [] }, commContacts: [] };
+    stub([], dormant);
+    renderAt("u3");
+    await screen.findByRole("heading", { level: 1, name: "Dale Dormant" });
+    expect(screen.getByText("Only a Core admin can give Calendar access to an inactive user who has none.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Calendar access for Dale Dormant" })).toBeNull();
+  });
+
+  it("offers no Deactivate on the admin's own page, whatever case the id is in", async () => {
+    const self: CalendarUserDetail = { ...DETAIL, user: { ...DETAIL.user, id: "A1", displayName: "Pat" } };
+    stub([], self);
+    renderAt("A1");
+    await screen.findByRole("heading", { level: 1, name: "Pat" });
+    expect(screen.queryByRole("button", { name: "Deactivate Pat" })).toBeNull();
   });
 });

@@ -886,13 +886,17 @@ every process start.
 
 No migration. Re-run `scripts/siteground-seed-users.sh https://boxs.ca` (interactive, Paul) to add
 the five Calendar test users (cal-admin, cal-sysadmin, cal-hq-admin, cal-editor, cal-readonly).
+Re-running the seed resets the cal-* users' Calendar role, ministries and active flag; their
+contact details and comm-contact ranks are untouched.
 
 **Hand checks:**
 
 - As cal-admin: Hub → Calendar → Users lists "Test Calendar Editor (HLTH)"; open it, save a phone
   number, set rank PAO for Health.
 - Deactivate a fresh Calendar-only user, then reactivate them.
-- Try to deactivate "Test Editor" (an NRMS user): refused with the Core-admin message.
+- Tick "Show users without Calendar access": "Test Editor" (an NRMS user with no Calendar role)
+  appears only then. Open them and try to deactivate: refused with "only a Core admin can change a
+  user who has no Calendar role".
 - As cal-hq-admin: open an HQ user and change their rank (allowed); as cal-admin, deactivating
   cal-hq-admin is refused (HQ user).
 

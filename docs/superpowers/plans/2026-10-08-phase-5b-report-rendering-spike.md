@@ -1,6 +1,6 @@
 # Phase 5b report-rendering spike (spec addendum §10.1)
 
-**Spike branch:** `spike/5b-report-rendering` at `29b60bab451f8034946fd865162a25b312389808` (never merged; local commit, not pushed). **Run on:** 2026-10-08, 08:05–08:20 PDT.
+**Spike branch:** `spike/5b-report-rendering` at `29b60bab451f8034946fd865162a25b312389808` (never merged; pushed to origin at `29b60ba`). **Run on:** 2026-10-08, 08:05–08:20 PDT.
 
 ## Answer
 
@@ -152,7 +152,7 @@ All results are from the local host only. No other host produced outputs.
 - **Memory figures are approximate.** "Node peak MB" is cumulative within one process. The Chromium figure is a sum of RSS across processes, which over-counts shared memory.
 - **pdfmake 0.2.23 is a major version behind** (0.3.11 is current). The `pageBreakBefore` slowdown wasn't measured on 0.3.
 - **SVG images:** the converter warned about SVG support, and pdfmake drops the SVG cover by design here. The cover image path for DOCX and pdfmake was not checked visually.
-- **The spike branch is local only.** It is not pushed, so this report's SHA resolves only in the local repository until someone pushes it.
+- **The spike branch is pushed to origin** at `29b60ba` (`origin/spike/5b-report-rendering`), so this report's SHA resolves from any clone.
 
 ## Reproduce
 
