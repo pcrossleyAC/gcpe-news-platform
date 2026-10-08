@@ -559,4 +559,43 @@ describe("importing legacy subscribers", () => {
     expect(await listsOf(G.subMedia)).toEqual([SAMPLE_TOWN]);
     expect(await historyOf(id(G.subMedia))).toContainEqual(["media-list-opted-out", VICTORIA, "Legacy import"]);
   });
+
+  /** Legacy tables where active@'s deleted duplicate record unsubscribed at BC wall-clock `wall`. */
+  const duplicateUnsubscribed = (wall: string) => {
+    const tables = legacyNodTables();
+    tables.unsubscribed = [{ SubscriberGuid: G.subDuplicate, UnsubscribedAt: new Date(`${wall}Z`) }];
+    return tables;
+  };
+
+  it("an unsubscribe on a duplicate legacy record newer than the imported record's registration ends that record", async () => {
+    const { report } = await run(duplicateUnsubscribed("2025-06-01T10:00:00"));
+    expect(await subscriber(G.subActive)).toMatchObject({ status: "deleted" });
+    expect(await listsOf(G.subActive)).toEqual([]);
+    expect(await unsubscribedHistory(id(G.subActive))).toEqual([["2025-06-01T17:00:00.000Z", "Legacy import"]]);
+    expect(report.toJSON().notes).toContain(`1 record ended by a newer unsubscribe on a duplicate legacy record of its address: ${id(G.subActive)}`);
+    expect(report.toJSON().balanced).toBe(true);
+    await run(duplicateUnsubscribed("2025-06-01T10:00:00"));
+    expect(await unsubscribedHistory(id(G.subActive))).toHaveLength(1);
+  });
+
+  it("an unsubscribe on a duplicate legacy record older than the imported record's registration isn't applied, and is counted", async () => {
+    const { report } = await run(duplicateUnsubscribed("2016-06-01T10:00:00"));
+    expect(await subscriber(G.subActive)).toMatchObject({ status: "active" });
+    expect(await listsOf(G.subActive)).toEqual(["*", "ministries:health"]);
+    expect(await unsubscribedHistory(id(G.subActive))).toEqual([]);
+    expect(report.toJSON().notes).toContain(`1 unsubscribe on a duplicate legacy record not applied (its address's record subscribed since): ${id(G.subActive)}`);
+  });
+
+  it("an unsubscribe on a duplicate legacy record ends an updated record unless NoD has a newer subscribe for it", async () => {
+    await run();
+    const tables = duplicateUnsubscribed("2026-09-01T10:00:00");
+    tables.subscribers = tables.subscribers!.map((s) => (s.SubscriberGuid === G.subActive ? { ...s, DigestDelivery: true } : s));
+    await tdb.db.insert(subscriberHistory).values({ subscriberId: id(G.subActive), actor: "subscriber", action: "resubscribed", at: new Date("2026-09-02T17:00:00Z") });
+    await run(tables);
+    expect(await subscriber(G.subActive)).toMatchObject({ status: "active", digest: true });
+    await tdb.db.delete(subscriberHistory).where(and(eq(subscriberHistory.subscriberId, id(G.subActive)), eq(subscriberHistory.action, "resubscribed")));
+    tables.subscribers = tables.subscribers!.map((s) => (s.SubscriberGuid === G.subActive ? { ...s, ImmediateDelivery: false } : s));
+    await run(tables);
+    expect(await subscriber(G.subActive)).toMatchObject({ status: "deleted" });
+  });
 });

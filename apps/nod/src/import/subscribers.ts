@@ -45,7 +45,10 @@ export interface SubscriberStageContext {
   runAt: Date;
 }
 
-type Written = { kind: "imported" | "updated" | "unchanged"; optedOut: string[] };
+/** What became of an unsubscribe from a duplicate legacy record of the address (see
+ * {@link duplicateUnsubscribe}), when there was one to weigh. */
+type DuplicateUnsubscribe = "ended" | "newer-in-nod";
+type Written = { kind: "imported" | "updated" | "unchanged"; optedOut: string[]; duplicate?: DuplicateUnsubscribe };
 type Outcome = Written | { kind: "skipped"; reason: string };
 const skipped = (reason: string): Outcome => ({ kind: "skipped", reason });
 
@@ -62,6 +65,8 @@ interface Candidate {
   leaves: Leave[];
   /** Its address's latest legacy unsubscribe (SysLog 104) on any legacy record, as an instant. */
   unsubscribedAt: Date | null;
+  /** That unsubscribe was made on another (duplicate) legacy record of the address. */
+  fromDuplicate: boolean;
 }
 
 type CurrentRow = {
@@ -258,6 +263,31 @@ async function endForLegacyUnsubscribe(tx: Tx, mine: Pick<CurrentRow, "id" | "st
 }
 
 /**
+ * The legacy unsubscribe a record written from legacy carries. Its own, or one on a record already
+ * ended, is kept as history. One made on a duplicate legacy record of the address, on a record
+ * that hasn't ended, follows the newer-consent rule ({@link consentedSince}): newer than the
+ * record's registration and its own subscribes, it ends the record as a NoD unsubscribe would
+ * (history alone would read as an opt-out from lists it is still on); otherwise it isn't applied.
+ * `decide` only says which, so a caller without the record's lock can defer first.
+ */
+async function duplicateUnsubscribe(
+  tx: Tx,
+  c: Candidate,
+  rec: { id: string; createdAt: string | Date; status: SubscriberStatus },
+  decide = false,
+): Promise<DuplicateUnsubscribe | null> {
+  const at = c.unsubscribedAt;
+  if (!at) return null;
+  if (!c.fromDuplicate || rec.status === "deleted") {
+    if (!decide) await keepLegacyUnsubscribe(tx, rec.id, at);
+    return null;
+  }
+  if (await consentedSince(tx, rec, at)) return "newer-in-nod";
+  if (!decide) await endForLegacyUnsubscribe(tx, rec, at);
+  return "ended";
+}
+
+/**
  * Media lists NoD's record is on that legacy no longer has, which staff added in NoD after
  * legacy's latest leave from that list -- or, with no leave, since the last import. Dates, not
  * the fingerprint: a remove and re-add in NoD leaves the record looking untouched, and legacy's
@@ -308,9 +338,11 @@ async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHel
   const { m: allowed, optedOut } = await withoutOptedOut(tx, { ...legacy, fingerprint: fingerprintOf(legacy.state) }, mine);
   if (allowed.fingerprint === mine.fingerprint) {
     // NoD holds exactly what legacy does, so no leave can remove anything: history only.
+    const rec = { id: m.id, createdAt: mine.created_at, status: mine.status };
+    if (!locked && (await duplicateUnsubscribe(tx, c, rec, true)) === "ended") return "defer";
     await applyLegacyLeaves(tx, m.id, c.leaves);
-    await keepLegacyUnsubscribe(tx, m.id, c.unsubscribedAt);
-    return { kind: "unchanged", optedOut };
+    const duplicate = (await duplicateUnsubscribe(tx, c, rec)) ?? undefined;
+    return { kind: "unchanged", optedOut, duplicate };
   }
   if (addressHeldElsewhere) {
     if (newerInNod) return skipped(NEWER_IN_NOD);
@@ -322,8 +354,8 @@ async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHel
   if (!locked) return "defer";
   await updateSubscriber(tx, allowed, mine.email);
   await applyLegacyLeaves(tx, m.id, c.leaves);
-  await keepLegacyUnsubscribe(tx, m.id, c.unsubscribedAt);
-  return { kind: "updated", optedOut };
+  const duplicate = (await duplicateUnsubscribe(tx, c, { id: m.id, createdAt: mine.created_at, status: allowed.state.status })) ?? undefined;
+  return { kind: "updated", optedOut, duplicate };
 }
 
 /**
@@ -370,8 +402,8 @@ async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outco
         const { m: allowed, optedOut } = await withoutOptedOut(tx, m, null);
         await insertSubscriber(tx, allowed);
         await applyLegacyLeaves(tx, m.id, c.leaves);
-        await keepLegacyUnsubscribe(tx, m.id, c.unsubscribedAt);
-        outcome = { kind: "imported", optedOut };
+        const duplicate = (await duplicateUnsubscribe(tx, c, { id: m.id, createdAt: allowed.createdAt, status: allowed.state.status })) ?? undefined;
+        outcome = { kind: "imported", optedOut, duplicate };
       } else outcome = await settleExisting(tx, c, mine, holder !== undefined && holder.id !== m.id, false);
       if (outcome === "defer") deferred.push(c);
       else out.set(m.id, outcome);
@@ -447,12 +479,12 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
   }
   const leavesOf = (email: string): Leave[] => [...(latestLeave.get(email) ?? new Map<string, Date>())].map(([listKey, at]) => ({ listKey, at }));
   // An unsubscribe likewise: the newest one on any legacy record of the address.
-  const latestUnsubscribe = new Map<string, Date>();
+  const latestUnsubscribe = new Map<string, { at: Date; guid: string }>();
   for (const [guid, at] of unsubscribedAt) {
     const email = emailOf.get(guid);
     if (!email) continue;
     const prev = latestUnsubscribe.get(email);
-    if (!prev || at > prev) latestUnsubscribe.set(email, at);
+    if (!prev || at > prev.at) latestUnsubscribe.set(email, { at, guid });
   }
 
   const skipWithLists = (guid: string, reason: string) => {
@@ -467,10 +499,17 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
     const guid = guidKey(s.SubscriberGuid);
     const own = (listGuidsOf.get(guid) ?? []).map((lg) => lists.byGuid.get(lg)).filter((x): x is MappedList => x !== undefined);
     const m = mapSubscriber(s, own, endedAt.get(guid) ?? null, ctx);
-    return { m, leaves: leavesOf(m.state.email).filter((l) => !m.state.listKeys.includes(l.listKey)), unsubscribedAt: latestUnsubscribe.get(m.state.email) ?? null };
+    const unsubscribe = latestUnsubscribe.get(m.state.email);
+    return {
+      m,
+      leaves: leavesOf(m.state.email).filter((l) => !m.state.listKeys.includes(l.listKey)),
+      unsubscribedAt: unsubscribe?.at ?? null,
+      fromDuplicate: unsubscribe !== undefined && unsubscribe.guid !== guid,
+    };
   });
 
   const result = new Map<string, ImportedSubscriber>();
+  const duplicateUnsubscribes: Record<DuplicateUnsubscribe, string[]> = { ended: [], "newer-in-nod": [] };
   for (let i = 0; i < candidates.length; i += BATCH) {
     const batch = candidates.slice(i, i + BATCH);
     const outcomes = await writeBatch(db, batch);
@@ -481,6 +520,7 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
         continue;
       }
       report.count("Subscriber", "imported");
+      if (o.duplicate) duplicateUnsubscribes[o.duplicate].push(m.id);
       const own = listGuidsOf.get(m.id) ?? [];
       for (const lg of own) {
         const list = lists.byGuid.get(lg);
@@ -492,6 +532,17 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
       const mediaKeys = new Set(own.map((lg) => lists.byGuid.get(lg)).filter((x): x is MappedList => x?.media === true).map((x) => x.listKey));
       result.set(m.id, { asItHappens: m.state.asItHappens, digest: m.state.digest, mediaKeys });
     }
+  }
+  // Ids only, a sample of them, like the skip groups.
+  const sample = (ids: string[]) => ids.slice(0, 10).join(", ");
+  const { ended: endedByDuplicate, "newer-in-nod": notApplied } = duplicateUnsubscribes;
+  if (endedByDuplicate.length > 0) {
+    const n = endedByDuplicate.length;
+    report.note(`${n} record${n === 1 ? "" : "s"} ended by a newer unsubscribe on a duplicate legacy record of its address: ${sample(endedByDuplicate)}`);
+  }
+  if (notApplied.length > 0) {
+    const n = notApplied.length;
+    report.note(`${n} unsubscribe${n === 1 ? "" : "s"} on a duplicate legacy record not applied (its address's record subscribed since): ${sample(notApplied)}`);
   }
   return result;
 }
