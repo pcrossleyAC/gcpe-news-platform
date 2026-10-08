@@ -1,6 +1,10 @@
 import { sql, type SQL } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { CalendarRole } from "@gcpe/auth";
+import {
+  ACTIVITY_STATUSES, CHANGE_ACTIONS, CHANGE_SOURCES, HQ_SECTIONS, HQ_STATUSES, NEEDS_REVIEW_KEYS,
+  type ActivityStatus, type ChangeAction, type ChangeSource, type HqSection, type HqStatus, type NeedsReviewKey,
+} from "@gcpe/calendar-contract";
 
 // The event receiver and the outbox need these in the Calendar's own database.
 export * from "@gcpe/events/tables";
@@ -12,24 +16,9 @@ const legacyId = () => integer("id").primaryKey().generatedByDefaultAsIdentity()
 const sqlList = (values: readonly string[]): SQL => sql.raw(values.map((v) => `'${v}'`).join(","));
 const maxLength = (table: string, column: AnyPgColumn, n: number) => check(`${table}_${column.name}_length`, sql`char_length(${column}) <= ${sql.raw(String(n))}`);
 
-export const ACTIVITY_STATUSES = ["new", "changed", "reviewed"] as const;
-export type ActivityStatus = (typeof ACTIVITY_STATUSES)[number];
-export const HQ_STATUSES = ["new", "changed"] as const;
-export type HqStatus = (typeof HQ_STATUSES)[number];
-/** Legacy HqSection 1–4 in order (spec addendum §7.6). */
-export const HQ_SECTIONS = ["issues_and_reports", "events_and_speeches", "in_the_news", "not_on_la"] as const;
-export type HqSection = (typeof HQ_SECTIONS)[number];
-/** The 23 needs-review flags (spec addendum §7.3). */
-export const NEEDS_REVIEW_KEYS = [
-  "title", "details", "representative", "city", "start_date", "end_date", "categories", "comm_materials", "active",
-  "significance", "strategy", "scheduling_considerations", "internal_notes", "lead_organization", "initiatives", "tags",
-  "origin", "distribution", "translations_required", "premier_requested", "venue", "event_planner", "digital",
-] as const;
-export type NeedsReviewKey = (typeof NEEDS_REVIEW_KEYS)[number];
-export const CHANGE_ACTIONS = ["created", "updated", "cloned", "reviewed", "deleted", "transferred", "la_status_cleared"] as const;
-export type ChangeAction = (typeof CHANGE_ACTIONS)[number];
-export const CHANGE_SOURCES = ["calendar", "legacy_log"] as const;
-export type ChangeSource = (typeof CHANGE_SOURCES)[number];
+// The activity enums are shared with the staff app, so they live in the contract package.
+export { ACTIVITY_STATUSES, CHANGE_ACTIONS, CHANGE_SOURCES, HQ_SECTIONS, HQ_STATUSES, NEEDS_REVIEW_KEYS };
+export type { ActivityStatus, ChangeAction, ChangeSource, HqSection, HqStatus, NeedsReviewKey };
 /** The list's "Display" choice (spec addendum §8.1; legacy FilterDisplayValue). */
 export const LIST_DISPLAYS = ["all", "my_ministries", "my_activities", "my_watchlist"] as const;
 export type ListDisplay = (typeof LIST_DISPLAYS)[number];

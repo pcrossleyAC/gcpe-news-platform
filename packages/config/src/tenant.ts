@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { z } from "zod";
+import { calendarTenantSchema } from "./calendar";
 import { formatIssues } from "./issues";
 
 function isValidTimeZone(tz: string): boolean {
@@ -37,6 +38,8 @@ export const tenantConfigSchema = z.object({
    * apps/news-api and apps/public-site's main.ts) to fail fast if the runtime's tzdata
    * disagrees with the pinned (at, expectedOffset) pair. */
   timeZoneCheck: timeZoneCheckSchema.optional(),
+  /** Optional: only tenants that run the Corporate Calendar need it; the Calendar refuses to start without it. */
+  calendar: calendarTenantSchema.optional(),
 });
 
 export type TenantConfig = z.infer<typeof tenantConfigSchema>;
