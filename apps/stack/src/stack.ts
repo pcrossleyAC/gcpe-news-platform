@@ -41,6 +41,7 @@ import {
   usesFakeMediaHub,
 } from "./env";
 import { createTickRunner, tickRouter, type TickStep } from "./tick";
+import { spikeRouter } from "./spike-route";
 
 export interface StackHandle {
   app: Express;
@@ -442,6 +443,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
 
   app.use("/stack", healthRouter(new Date(startedAt).toISOString()));
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
+  app.use("/stack", spikeRouter(errorsAuth.bearer, dataDir));
   app.use(
     "/stack",
     tickRouter(
