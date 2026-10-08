@@ -4,6 +4,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { mintSession } from "@gcpe/auth";
 import { createCoreTestDb } from "../../test/helpers";
 import { createApp } from "../app";
+import { users } from "../db/schema";
 import { createUser, createUserSchema } from "../services/users";
 
 const SECRET = "session-secret-for-users-tests-0123456789";
@@ -90,5 +91,12 @@ describe("Core users API", () => {
     expect(created.body.roles).toEqual(["NoD.Viewer"]);
     const reroled = await as(adminCookie).put(`/api/users/${created.body.id}/roles`, { roles: ["NoD.Editor"] });
     expect(reroled.body.roles).toEqual(["NoD.Editor"]);
+  });
+
+  it("409s reactivating a no-email user, instead of a raw database error", async () => {
+    const [noEmail] = await tdb.db.insert(users).values({ email: null, displayName: "No Email Import", isActive: false }).returning();
+    const res = await as(adminCookie).patch(`/api/users/${noEmail!.id}`, { isActive: true });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "a user without an email can't be made active" });
   });
 });

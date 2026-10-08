@@ -3,7 +3,17 @@ import { existsSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
+import { createProjectionHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
 import { z } from "zod";
+
+/** The Core-sourced event types the News API actually has a projection handler for, derived
+ * (not hand-maintained) so a handler added or removed there automatically widens or narrows
+ * this route. Core's `user.upserted` carries staff emails and must never reach the public News
+ * API, and `service.upserted`/`service.deactivated` exist in the catalogue but have no News
+ * API handler either — both are correctly excluded by this derivation, not by a hand-picked list. */
+function newsApiEventTypesFromCore(): string[] {
+  return Object.keys(createProjectionHandlers()).filter((type) => NEWS_API_SOURCE_EVENT_TYPES.core!(type));
+}
 
 // Task 1 (staff-web): the staff app's built output directory. Two on-disk layouts share one
 // default so no SiteGround setting is required: in dev (`tsx apps/stack/src/main.ts`),
@@ -253,7 +263,7 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
  * (Phase 3b task 3: taxonomy.ts).
  */
 export const INTERNAL_EVENT_ROUTES = [
-  { from: "CORE", source: "core", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
+  { from: "CORE", source: "core", to: "NEWSAPI", name: "news-api", url: "self:/events", types: newsApiEventTypesFromCore() },
   {
     from: "CORE", source: "core", to: "NRMS", name: "nrms", url: "self:/nrms/events",
     types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],

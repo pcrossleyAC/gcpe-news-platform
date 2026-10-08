@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import {
+  CannotActivateWithoutEmailError,
   createUser,
   createUserSchema,
   listUsers,
@@ -25,6 +26,7 @@ const run = <P>(h: (req: Request<P>, res: Response) => Promise<void>) => (req: R
     if (e instanceof UserExistsError) return void res.status(409).json({ error: "a user with that email already exists" });
     if (e instanceof UserNotFoundError) return void res.status(404).json({ error: "not found" });
     if (e instanceof SelfLockoutError) return void res.status(409).json({ error: "you can't remove your own admin access" });
+    if (e instanceof CannotActivateWithoutEmailError) return void res.status(409).json({ error: "a user without an email can't be made active" });
     next(e);
   });
 

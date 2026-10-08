@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { subscribersFor, type SubscriberConfig } from "@gcpe/events";
 import {
   APP_PREFIXES,
   envFor,
@@ -255,7 +256,12 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
     const nrms = parse(w.NRMS.EVENT_SUBSCRIBERS);
     const newsApiSubs = parse(w.NEWSAPI.EVENT_SUBSCRIBERS);
     expect(core).toEqual([
-      { name: "news-api", url: "self:/events", secret: expect.any(String), types: ["*"] },
+      {
+        name: "news-api",
+        url: "self:/events",
+        secret: expect.any(String),
+        types: ["org.upserted", "org.deactivated", "sector.upserted", "theme.upserted", "tag.upserted", "sector.deactivated", "theme.deactivated", "tag.deactivated"],
+      },
       {
         name: "nrms",
         url: "self:/nrms/events",
@@ -364,6 +370,30 @@ describe("Core → NRMS taxonomy route", () => {
     expect(toNrms.url).toBe("self:/nrms/events");
     expect(toNrms.types).toEqual(["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"]);
     expect(Object.keys(JSON.parse(wiring.NRMS.EVENT_SECRETS!))).toEqual(["core"]);
+  });
+});
+
+// Core's user.upserted carries staff emails; it must never reach a public-facing app, and 5a
+// has no Calendar subscriber yet to carry it. Every other Core subscriber route already names
+// its types explicitly (checked above) — only the News API route used to say "*".
+describe("Core's subscribers never receive user.upserted", () => {
+  it("subscribersFor(\"user.upserted\", ...) is empty for every one of Core's subscribers", () => {
+    const wiring = internalEventEnv("e".repeat(40));
+    const coreSubs = JSON.parse(wiring.CORE.EVENT_SUBSCRIBERS!) as SubscriberConfig[];
+    expect(coreSubs.length).toBeGreaterThan(0);
+    expect(subscribersFor("user.upserted", coreSubs)).toEqual([]);
+  });
+
+  it("the News API still receives every org/reference event type it actually handles", () => {
+    const wiring = internalEventEnv("e".repeat(40));
+    const coreSubs = JSON.parse(wiring.CORE.EVENT_SUBSCRIBERS!) as SubscriberConfig[];
+    const toNewsApi = coreSubs.find((s) => s.name === "news-api")!;
+    for (const type of ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"]) {
+      expect(subscribersFor(type, [toNewsApi])).toEqual([toNewsApi]);
+    }
+    expect(toNewsApi.types).not.toContain("*");
+    expect(toNewsApi.types).not.toContain("user.upserted");
+    expect(toNewsApi.types).not.toContain("service.upserted");
   });
 });
 

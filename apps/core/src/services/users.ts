@@ -44,10 +44,21 @@ export interface UserView {
 
 export class UserExistsError extends Error {}
 export class UserNotFoundError extends Error {}
+/** Thrown instead of letting users_active_needs_email reach the caller as a raw 23514. */
+export class CannotActivateWithoutEmailError extends Error {}
 
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
-// drizzle wraps driver errors; the pg error (with .code) is on .cause.
-const isUniqueViolation = (e: unknown) => (e as { cause?: { code?: string } }).cause?.code === "23505";
+// drizzle wraps driver errors; the pg error (with .code and .constraint) is on .cause. Named,
+// not just "any 23505", so a future unique constraint (e.g. role_grants_one_calendar_role)
+// doesn't get mistaken for a duplicate email.
+const isDuplicateEmail = (e: unknown) => {
+  const cause = (e as { cause?: { code?: string; constraint?: string } }).cause;
+  return cause?.code === "23505" && cause.constraint === "users_email_lower_idx";
+};
+const isCheckViolation = (e: unknown, constraint: string) => {
+  const cause = (e as { cause?: { code?: string; constraint?: string } }).cause;
+  return cause?.code === "23514" && cause.constraint === constraint;
+};
 
 type UserRow = typeof users.$inferSelect;
 
@@ -74,9 +85,10 @@ async function withAccess(db: DbOrTx, rows: UserRow[]): Promise<UserView[]> {
     displayName: r.displayName,
     isActive: r.isActive,
     signInMethod: r.signInMethod,
-    // Case-insensitive, so the all-caps "NRMS.*" roles don't jump ahead of "NoD.*" (plain .sort()
-    // is case-sensitive and would put every uppercase letter before every lowercase one).
-    roles: (flat.get(r.id) ?? []).sort((a, b) => a.localeCompare(b)),
+    // Case-insensitive and locale-pinned, so the all-caps "NRMS.*" roles don't jump ahead of
+    // "NoD.*" (plain .sort() is case-sensitive) and the order is the same regardless of the
+    // server's configured locale (default localeCompare() isn't).
+    roles: (flat.get(r.id) ?? []).sort((a, b) => a.localeCompare(b, "en")),
     calendarRole: calendar.get(r.id) ?? null,
     organizationKeys: (orgKeys.get(r.id) ?? []).sort(),
   }));
@@ -84,7 +96,7 @@ async function withAccess(db: DbOrTx, rows: UserRow[]): Promise<UserView[]> {
 
 /** The roles a session carries: the flat roles plus the Calendar role, so role checks see both. */
 export function sessionRolesOf(u: Pick<UserView, "roles" | "calendarRole">): string[] {
-  return [...u.roles, ...(u.calendarRole ? [u.calendarRole] : [])].sort();
+  return [...u.roles, ...(u.calendarRole ? [u.calendarRole] : [])].sort((a, b) => a.localeCompare(b, "en"));
 }
 
 export function toUserRecord(u: UserView): UserRecord {
@@ -146,23 +158,29 @@ export async function createUser(db: Db, input: CreateUserInput, subscribers: Su
     });
     return (await getUser(db, id))!;
   } catch (e) {
-    if (isUniqueViolation(e)) throw new UserExistsError(input.email);
+    if (isDuplicateEmail(e)) throw new UserExistsError(input.email);
     throw e;
   }
 }
 
 export async function updateUser(db: Db, id: string, patch: UpdateUserInput, subscribers: SubscriberConfig[]): Promise<UserView> {
   if (!isUuid(id)) throw new UserNotFoundError(id);
-  await db.transaction(async (tx) => {
-    await lockAggregate(tx, userAggregateId(id));
-    const [row] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for("update");
-    if (!row) throw new UserNotFoundError(id);
-    await tx
-      .update(users)
-      .set({ ...patch, updatedAt: new Date() })
-      .where(eq(users.id, id));
-    await emitUserUpserted(tx, id, subscribers);
-  });
+  try {
+    await db.transaction(async (tx) => {
+      await lockAggregate(tx, userAggregateId(id));
+      const [row] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for("update");
+      if (!row) throw new UserNotFoundError(id);
+      await tx
+        .update(users)
+        .set({ ...patch, updatedAt: new Date() })
+        .where(eq(users.id, id));
+      await emitUserUpserted(tx, id, subscribers);
+    });
+  } catch (e) {
+    // A no-email user (legacy Calendar import) can't be reactivated (users_active_needs_email).
+    if (isCheckViolation(e, "users_active_needs_email")) throw new CannotActivateWithoutEmailError(id);
+    throw e;
+  }
   return (await getUser(db, id))!;
 }
 

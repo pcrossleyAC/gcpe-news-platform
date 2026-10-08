@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCoreTestDb } from "../../test/helpers";
+import { users } from "../db/schema";
 import {
   adminEmails,
   authenticate,
+  CannotActivateWithoutEmailError,
   createUser,
   createUserSchema,
   findUserByEmail,
@@ -104,5 +106,11 @@ describe("users service", () => {
 
     const active = await createUser(tdb.db, createUserSchema.parse({ email: "default-active@example.test", displayName: "Default Active" }), []);
     expect(active.isActive).toBe(true);
+  });
+
+  it("refuses to reactivate a no-email user with a clear error, not a raw database error", async () => {
+    const [noEmail] = await tdb.db.insert(users).values({ email: null, displayName: "No Email Import", isActive: false }).returning();
+    await expect(updateUser(tdb.db, noEmail!.id, { isActive: true }, [])).rejects.toBeInstanceOf(CannotActivateWithoutEmailError);
+    expect((await getUser(tdb.db, noEmail!.id))!.isActive).toBe(false);
   });
 });
