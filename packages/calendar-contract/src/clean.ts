@@ -8,7 +8,7 @@ export function replaceSpecialCharacters(text: string): string {
     .replace(/ˆ/g, "^")
     .replace(/‹/g, "<")
     .replace(/›/g, ">")
-    .replace(/[˜ ]/g, " ");
+    .replace(/[\u02DC\u00A0]/g, " ");
 }
 
 /** The title as legacy saved it: trimmed, each line break a space, special characters replaced. */
