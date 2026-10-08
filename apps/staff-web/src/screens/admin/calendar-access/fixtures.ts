@@ -9,4 +9,5 @@ export const SELF: CalendarAccessUser = { id: "self-1", email: "sam.self@x.inval
 export const STAFF: CalendarAccessUser = { id: "staff-1", email: "robin.staff@x.invalid", displayName: "Robin Staff", isActive: true, calendarRole: null, organizationKeys: [] };
 export const SYSADMIN: CalendarAccessUser = { id: "sys-1", email: "lee.sys@x.invalid", displayName: "Lee Sys", isActive: true, calendarRole: "Calendar.SysAdmin", organizationKeys: ["health"] };
 export const IMPORTED: CalendarAccessUser = { id: "old-1", email: null, displayName: "Kim Imported", isActive: false, calendarRole: "Calendar.Editor", organizationKeys: ["retired"] };
-export const ACCESS_USERS: CalendarAccessUser[] = [SELF, STAFF, SYSADMIN, IMPORTED];
+export const HQ_STAFF: CalendarAccessUser = { id: "hq-1", email: "pat.hq@x.invalid", displayName: "Pat Hq", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["gcpe-headquarters"] };
+export const ACCESS_USERS: CalendarAccessUser[] = [SELF, STAFF, SYSADMIN, IMPORTED, HQ_STAFF];

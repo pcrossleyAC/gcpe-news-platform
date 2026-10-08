@@ -58,7 +58,8 @@ export interface CalendarGrantCheck {
   targetHasHqAfter: boolean;
 }
 
-function canonicalId(id: string): string {
+/** Ids compare trimmed and lowercased, as the server does (Postgres returns UUIDs lowercased). */
+export function canonicalId(id: string): string {
   return id.trim().toLowerCase();
 }
 

@@ -6,16 +6,16 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { CalendarAccessScreen } from "./CalendarAccessScreen";
-import { ACCESS_USERS, ORGS, STAFF } from "./fixtures";
+import { ACCESS_USERS, ORGS, SELF, STAFF } from "./fixtures";
 
 type Call = { url: string; init?: RequestInit };
-function stub(roles: string[], calls: Call[], onPut?: (url: string, init: RequestInit) => Response) {
+function stub(roles: string[], calls: Call[], onPut?: (url: string, init: RequestInit) => Response, opts: { users?: typeof ACCESS_USERS; sessionId?: string } = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
-      if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "self-1", name: "Sam Self", email: "sam.self@x.invalid", roles }, expiresAt: new Date().toISOString() });
-      if (url === "/core/api/calendar-access" && (init?.method ?? "GET") === "GET") return jsonResponse(200, ACCESS_USERS);
+      if (url === "/core/auth/session") return jsonResponse(200, { user: { id: opts.sessionId ?? "self-1", name: "Sam Self", email: "sam.self@x.invalid", roles }, expiresAt: new Date().toISOString() });
+      if (url === "/core/api/calendar-access" && (init?.method ?? "GET") === "GET") return jsonResponse(200, opts.users ?? ACCESS_USERS);
       if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
       if (init?.method === "PUT" && onPut) return onPut(url, init);
       throw new Error(`unhandled: ${url} ${init?.method ?? "GET"}`);
@@ -60,7 +60,6 @@ describe("CalendarAccessScreen", () => {
     expect([...select.options].map((o) => o.text)).toEqual(["No Calendar access", "Read Only", "Editor", "Advanced", "Administrator"]);
     // Inactive ministries are offered only to users who already hold them.
     expect(within(form).queryByLabelText(/Retired Ministry/)).toBeNull();
-    expect(within(form).getByLabelText("GCPE Headquarters (GCPEHQ) — HQ")).toBeInTheDocument();
     await user.selectOptions(select, "Calendar.Editor");
     await user.click(within(form).getByLabelText("Health (HLTH)"));
     await user.click(within(form).getByRole("button", { name: "Save Calendar access" }));
@@ -71,15 +70,59 @@ describe("CalendarAccessScreen", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("Saved Calendar access for Robin Staff.");
   });
 
-  it("shows the server's refusal inside the form", async () => {
-    stub(["Calendar.Administrator"], [], () => jsonResponse(403, { error: "only an HQ Administrator, a System Administrator or a Core admin can add an HQ ministry", reason: "hq-organization" }));
+  it("a non-HQ Administrator gets no Edit button on a user with an HQ ministry, and is not offered HQ ministries", async () => {
+    stub(["Calendar.Administrator"], []);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit access for Robin Staff" }));
+    expect(screen.queryByRole("button", { name: "Edit access for Pat Hq" })).toBeNull();
+    expect(screen.getByText("Only an HQ Administrator, a System Administrator or a Core admin can change this user’s access.")).toBeInTheDocument();
+    const form = screen.getByRole("form", { name: "Calendar access for Robin Staff" });
+    expect(within(form).getByLabelText("Health (HLTH)")).toBeInTheDocument();
+    expect(within(form).queryByLabelText(/GCPE Headquarters/)).toBeNull();
+  });
+
+  it("an HQ Administrator can edit a user with an HQ ministry and is offered HQ ministries", async () => {
+    const hqSelf = { ...SELF, organizationKeys: ["gcpe-headquarters"] };
+    stub(["Calendar.Administrator"], [], undefined, { users: ACCESS_USERS.map((u) => (u.id === SELF.id ? hqSelf : u)) });
+    renderScreen();
+    const user = userEvent.setup();
+    expect(await screen.findByRole("button", { name: "Edit access for Pat Hq" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Edit access for Robin Staff" }));
+    expect(within(screen.getByRole("form", { name: "Calendar access for Robin Staff" })).getByLabelText("GCPE Headquarters (GCPEHQ) — HQ")).toBeInTheDocument();
+  });
+
+  it("finds the actor's own row by canonical id: trimmed and in any case", async () => {
+    const hqSelf = { ...SELF, organizationKeys: ["gcpe-headquarters"] };
+    stub(["Calendar.Administrator"], [], undefined, { users: ACCESS_USERS.map((u) => (u.id === SELF.id ? hqSelf : u)), sessionId: " SELF-1 " });
+    renderScreen();
+    expect(await screen.findByRole("button", { name: "Edit access for Pat Hq" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit access for Sam Self" })).toBeNull();
+    expect(screen.getByText("You can’t change your own Calendar access.")).toBeInTheDocument();
+  });
+
+  it("still shows the server's hq-target refusal inside the form when the screen allowed the edit", async () => {
+    const copy = "only an HQ Administrator, a System Administrator or a Core admin can change the Calendar access of someone with an HQ ministry";
+    stub(["Calendar.Administrator"], [], () => jsonResponse(403, { error: copy, reason: "hq-target" }));
     renderScreen();
     const user = userEvent.setup();
     await user.click(await screen.findByRole("button", { name: "Edit access for Robin Staff" }));
     const form = screen.getByRole("form", { name: "Calendar access for Robin Staff" });
-    await user.click(within(form).getByLabelText("GCPE Headquarters (GCPEHQ) — HQ"));
     await user.click(within(form).getByRole("button", { name: "Save Calendar access" }));
-    expect(await within(form).findByRole("alert")).toHaveTextContent("only an HQ Administrator, a System Administrator or a Core admin can add an HQ ministry");
+    expect(await within(form).findByRole("alert")).toHaveTextContent(copy);
+  });
+
+  it("names the ministries the server refused, only from those submitted", async () => {
+    stub(["Calendar.Administrator"], [], () => jsonResponse(400, { error: "unknown or inactive ministry", keys: ["health", "not-submitted"] }));
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit access for Robin Staff" }));
+    const form = screen.getByRole("form", { name: "Calendar access for Robin Staff" });
+    await user.click(within(form).getByLabelText("Health (HLTH)"));
+    await user.click(within(form).getByRole("button", { name: "Save Calendar access" }));
+    const alert = await within(form).findByRole("alert");
+    expect(alert).toHaveTextContent("unknown or inactive ministry: health");
+    expect(alert).not.toHaveTextContent("not-submitted");
   });
 
   it("a System Administrator's row and your own row are read-only for an Administrator", async () => {

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, InlineAlert, TextField } from "@bcgov/design-system-react-components";
-import { apiFetch } from "../../../api/client";
+import { ApiError, apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../messages";
-import { calendarRoleLabel, canManageCalendarAccess, ceilingLevel, grantableCalendarRoles, levelOf, type CalendarRoleName } from "./calendar-roles";
+import { calendarRoleLabel, canManageCalendarAccess, canonicalId, checkCalendarGrant, grantableCalendarRoles, type CalendarGrantRefusal, type CalendarRoleName } from "./calendar-roles";
 
 export interface CalendarAccessUser {
   id: string;
@@ -28,14 +28,51 @@ function orgLabel(o: OrgOption): string {
   return `${o.displayName}${o.abbreviation ? ` (${o.abbreviation})` : ""}${o.isHq ? " — HQ" : ""}${o.isActive ? "" : " — inactive"}`;
 }
 
-function AccessEditor({ user, orgs, onSaved, onCancel }: { user: CalendarAccessUser; orgs: OrgOption[]; onSaved(message: string): void; onCancel(): void }): React.JSX.Element {
+/** Why the screen won't open a user's editor, in the screen's words; the server sends its own on a refused save. */
+const LOCKED_MESSAGES: Partial<Record<CalendarGrantRefusal, string>> = {
+  "own-access": "You can’t change your own Calendar access.",
+  "target-above-ceiling": "Only a System Administrator or a Core admin can change this user’s access.",
+  "hq-target": "Only an HQ Administrator, a System Administrator or a Core admin can change this user’s access.",
+};
+
+/**
+ * A 400 for unknown or inactive ministries names them in `keys`. Only keys this save submitted
+ * are shown, so the message never repeats anything the user didn't type or pick.
+ */
+function saveMessages(caught: unknown, submitted: readonly string[]): string[] {
+  const keys = caught instanceof ApiError && caught.status === 400 ? (caught.body as { keys?: unknown } | undefined)?.keys : undefined;
+  if (!Array.isArray(keys)) return messagesOf(caught);
+  const named = submitted.filter((k) => keys.includes(k));
+  return named.length ? [`${(caught as ApiError).message}: ${named.join(", ")}`] : messagesOf(caught);
+}
+
+/** What checkCalendarGrant needs about the actor, worked out from the session and the actor's own row. */
+interface Actor {
+  id: string;
+  roles: readonly string[];
+  isHq: boolean;
+}
+
+function AccessEditor({ user, orgs, actor, onSaved, onCancel }: { user: CalendarAccessUser; orgs: OrgOption[]; actor: Actor; onSaved(message: string): void; onCancel(): void }): React.JSX.Element {
   const session = useSession();
   const [role, setRole] = useState<CalendarRoleName | "">(user.calendarRole ?? "");
   const [keys, setKeys] = useState<string[]>(user.organizationKeys);
   const [messages, setMessages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  // An HQ ministry is offered only when the server would let this actor add it (C125).
+  const mayAddHq =
+    checkCalendarGrant({
+      actorId: actor.id,
+      actorRoles: actor.roles,
+      actorIsHq: actor.isHq,
+      targetId: user.id,
+      targetRole: user.calendarRole,
+      nextRole: null,
+      addsHqOrganization: true,
+      targetHasHqAfter: true,
+    }) === null;
   // Inactive ministries can't be added, but one the user already holds stays offered so it can be kept.
-  const choices = orgs.filter((o) => o.isActive || user.organizationKeys.includes(o.key));
+  const choices = orgs.filter((o) => (o.isActive || user.organizationKeys.includes(o.key)) && (!o.isHq || mayAddHq || user.organizationKeys.includes(o.key)));
   const toggle = (key: string) => setKeys((k) => (k.includes(key) ? k.filter((x) => x !== key) : [...k, key]));
 
   const save = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -46,7 +83,7 @@ function AccessEditor({ user, orgs, onSaved, onCancel }: { user: CalendarAccessU
       await apiFetch(`/core/api/calendar-access/${user.id}`, { method: "PUT", body: { role: role === "" ? null : role, organizationKeys: keys } });
       onSaved(`Saved Calendar access for ${user.displayName}.`);
     } catch (caught) {
-      setMessages(messagesOf(caught));
+      setMessages(saveMessages(caught, keys));
     } finally {
       setBusy(false);
     }
@@ -140,8 +177,11 @@ export function CalendarAccessScreen(): React.JSX.Element {
   const byKey = new Map(orgs.map((o) => [o.key, o]));
   const needle = filter.trim().toLowerCase();
   const shown = (users ?? []).filter((u) => (showInactive || u.isActive) && (!needle || u.displayName.toLowerCase().includes(needle) || (u.email ?? "").includes(needle)));
-  const ceiling = ceilingLevel(session);
-  const isCoreAdmin = session.has("Core.Admin");
+  const hqKeys = new Set(orgs.filter((o) => o.isHq).map((o) => o.key));
+  const sessionId = session.user ? canonicalId(session.user.id) : "";
+  const ownRow = (users ?? []).find((u) => canonicalId(u.id) === sessionId);
+  // The server reads the actor's HQ membership from their own user record; with no row (break-glass) it is never HQ.
+  const actor: Actor = { id: session.user?.id ?? "", roles: session.roles, isHq: !!ownRow?.organizationKeys.some((k) => hqKeys.has(k)) };
 
   return (
     <div className="gcpe-calendar-access">
@@ -158,12 +198,18 @@ export function CalendarAccessScreen(): React.JSX.Element {
       <ul>
         {shown.map((u) => {
           const ministries = u.organizationKeys.map((k) => byKey.get(k)?.abbreviation ?? k).join(", ") || "none";
-          const locked =
-            !isCoreAdmin && session.user?.id === u.id
-              ? "You can’t change your own Calendar access."
-              : levelOf(u.calendarRole) > ceiling
-                ? "Only a System Administrator or a Core admin can change this user’s access."
-                : null;
+          // The same check the server makes, for a save that keeps the user's role and ministries.
+          const refusal = checkCalendarGrant({
+            actorId: actor.id,
+            actorRoles: actor.roles,
+            actorIsHq: actor.isHq,
+            targetId: u.id,
+            targetRole: u.calendarRole,
+            nextRole: null,
+            addsHqOrganization: false,
+            targetHasHqAfter: u.organizationKeys.some((k) => hqKeys.has(k)),
+          });
+          const locked = refusal ? (LOCKED_MESSAGES[refusal] ?? "You can’t change this user’s access.") : null;
           return (
             <li key={u.id}>
               <h2>{u.displayName}</h2>
@@ -180,6 +226,7 @@ export function CalendarAccessScreen(): React.JSX.Element {
                 <AccessEditor
                   user={u}
                   orgs={orgs}
+                  actor={actor}
                   onSaved={(m) => {
                     setEditing(null);
                     setStatus(m);

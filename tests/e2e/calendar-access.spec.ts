@@ -1,6 +1,6 @@
 // Acceptance item 1, Core half: a Calendar Administrator sets a user's role and ministries on
-// the Calendar access screen, isn't offered System Administrator, and the server refuses it
-// (and an HQ ministry) even when asked directly. Visibility of activities is 5c's half.
+// the Calendar access screen, isn't offered System Administrator or an HQ ministry, and the
+// server refuses both even when asked directly. Visibility of activities is 5c's half.
 import { test, expect } from "@playwright/test";
 import { healthOrg } from "../../apps/core/test/helpers";
 import { ADMIN_PASSWORD, ADMIN_USERNAME } from "./constants";
@@ -35,6 +35,8 @@ test.describe("Calendar access", () => {
     await expect(roleSelect.locator("option")).toHaveText(["No Calendar access", "Read Only", "Editor", "Advanced", "Administrator"]);
     await roleSelect.selectOption("Calendar.Editor");
     await form.getByLabel(/^Health/).check();
+    // A non-HQ Administrator isn't offered an HQ ministry: the server would refuse it.
+    await expect(form.getByLabel(/^GCPE Headquarters/)).toHaveCount(0);
     await expectNoSeriousA11yViolations(page, "Calendar access editor");
     await form.getByRole("button", { name: "Save Calendar access" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Saved Calendar access" })).toHaveText(`Saved Calendar access for Calendar Staff ${stamp}.`);
