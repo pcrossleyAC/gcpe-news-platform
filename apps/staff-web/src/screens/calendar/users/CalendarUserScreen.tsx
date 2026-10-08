@@ -5,8 +5,9 @@ import { ApiError, apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
-import { AccessEditor, actorFor } from "../../admin/calendar-access/AccessEditor";
+import { AccessEditor, actorFor, LOCKED_MESSAGES } from "../../admin/calendar-access/AccessEditor";
 import type { CalendarAccessUser, OrgOption } from "../../admin/calendar-access/CalendarAccessScreen";
+import { canonicalId, checkCalendarGrant } from "../../admin/calendar-access/calendar-roles";
 import { RANK_OPTIONS, type CalendarUserDetail, type Profile } from "./types";
 
 const LAG = "The Calendar picks this up within a minute.";
@@ -51,7 +52,7 @@ function ProfileForm({ userId, profile, onSaved }: { userId: string; profile: Pr
     <form aria-label="Contact details" onSubmit={save}>
       <h2>Contact details</h2>
       <Alerts messages={messages} />
-      {field("phone", "Phone", "12 digits and hyphens, like 250-555-0100")}
+      {field("phone", "Phone", "Up to 20 characters")}
       {field("mobile", "Mobile", "12 digits and hyphens, like 250-555-0100")}
       {field("jobTitle", "Job title")}
       <div>
@@ -117,8 +118,24 @@ export function CalendarUserScreen(): React.JSX.Element {
 
   const u = detail.user;
   // Core's view is the authority for role, ministries and active; the Calendar's copy can lag a tick.
-  const core = coreUsers.find((c) => c.id === u.id);
+  const core = coreUsers.find((c) => canonicalId(c.id) === canonicalId(u.id));
   const byKey = new Map(orgs.map((o) => [o.key, o]));
+  const hqKeys = new Set(orgs.filter((o) => o.isHq).map((o) => o.key));
+  const actor = actorFor(session, coreUsers, orgs);
+  // The same check the server makes, for a save that keeps the target's role and ministries (C125).
+  const refusal = core
+    ? checkCalendarGrant({
+        actorId: actor.id,
+        actorRoles: actor.roles,
+        actorIsHq: actor.isHq,
+        targetId: core.id,
+        targetRole: core.calendarRole,
+        nextRole: null,
+        addsHqOrganization: false,
+        targetHasHqAfter: core.organizationKeys.some((k) => hqKeys.has(k)),
+      })
+    : null;
+  const lockedAccess = refusal ? (LOCKED_MESSAGES[refusal] ?? "You can’t change this user’s access.") : null;
   const done = (msg: string) => {
     setStatus(msg);
     setMessages([]);
@@ -168,11 +185,13 @@ export function CalendarUserScreen(): React.JSX.Element {
       <Alerts messages={messages} />
 
       <h2>Calendar access</h2>
-      {core && editingAccess ? (
+      {lockedAccess ? (
+        <p>{lockedAccess}</p>
+      ) : core && editingAccess ? (
         <AccessEditor
           user={core}
           orgs={orgs}
-          actor={actorFor(session, coreUsers, orgs)}
+          actor={actor}
           onSaved={(m) => {
             setEditingAccess(false);
             done(`${m} ${LAG}`);

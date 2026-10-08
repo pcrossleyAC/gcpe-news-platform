@@ -131,4 +131,43 @@ describe("CalendarUserScreen", () => {
     renderAt("nobody");
     expect(await screen.findByText("This user isn’t in the Calendar.")).toBeInTheDocument();
   });
+
+  it("shows each contact field's own hint, and accepts free-text phone input", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(calls);
+    renderAt("u1");
+    const form = await screen.findByRole("form", { name: "Contact details" });
+    expect(within(form).getByText("Up to 20 characters")).toBeInTheDocument();
+    expect(within(form).getByText("12 digits and hyphens, like 250-555-0100")).toBeInTheDocument();
+    const user = userEvent.setup();
+    const phone = within(form).getByLabelText("Phone");
+    await user.clear(phone);
+    await user.type(phone, "250-387-1234 x22");
+    await user.click(within(form).getByRole("button", { name: "Save contact details" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/calendar/api/users/u1/profile")).toBe(true));
+    expect(JSON.parse(calls.find((c) => c.url.endsWith("/profile"))!.init!.body as string).phone).toBe("250-387-1234 x22");
+  });
+
+  it("matches the Core user by canonical id, even in a different case", async () => {
+    const upperCore = CORE_USERS.map((c) => (c.id === "u1" ? { ...c, id: "U1", isActive: false } : c));
+    stub([], DETAIL, (url) => (url === "/core/api/calendar-access" ? jsonResponse(200, upperCore) : undefined));
+    renderAt("u1");
+    await screen.findByRole("heading", { level: 1, name: "Robin Staff" });
+    expect(await screen.findByRole("button", { name: "Reactivate Robin Staff" })).toBeInTheDocument();
+  });
+
+  it("locks Calendar access editing for the actor's own row", async () => {
+    const self: CalendarUserDetail = { ...DETAIL, user: { ...DETAIL.user, id: "a1", displayName: "Pat" } };
+    stub([], self);
+    renderAt("a1");
+    await screen.findByRole("heading", { level: 1, name: "Pat" });
+    expect(screen.getByText("You can’t change your own Calendar access.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Edit Calendar access for Pat" })).toBeNull();
+  });
+
+  it("offers the editor for a target the actor may change", async () => {
+    stub([]);
+    renderAt("u1");
+    expect(await screen.findByRole("button", { name: "Edit Calendar access for Robin Staff" })).toBeInTheDocument();
+  });
 });
