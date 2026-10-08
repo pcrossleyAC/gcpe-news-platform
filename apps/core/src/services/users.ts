@@ -11,15 +11,20 @@ const password = z.string().min(12, "use at least 12 characters").max(200);
 const roles = z.array(z.enum(STAFF_ROLES)).max(20);
 const displayName = z.string().trim().min(1).max(100);
 
-export const createUserSchema = z.object({
-  email,
-  displayName,
-  roles: roles.default([]),
-  password: password.optional(),
-  /** Phase 3e (NRMS legacy importer): legacy staff import as inactive, with no password or roles. */
-  isActive: z.boolean().default(true),
-});
+export const createUserSchema = z
+  .object({
+    /** Null only for an inactive user: legacy Calendar users with no email (spec addendum §4). */
+    email: email.nullable().default(null),
+    displayName,
+    roles: roles.default([]),
+    password: password.optional(),
+    /** Phase 3e (NRMS legacy importer): legacy staff import as inactive, with no password or roles. */
+    isActive: z.boolean().default(true),
+  })
+  .refine((v) => v.email !== null || !v.isActive, { message: "an active user needs an email", path: ["email"] });
 export type CreateUserInput = z.infer<typeof createUserSchema>;
+export const linkUserSchema = z.object({ email });
+export type LinkUserInput = z.infer<typeof linkUserSchema>;
 export const updateUserSchema = z
   .object({ displayName: displayName.optional(), isActive: z.boolean().optional() })
   .refine((v) => v.displayName !== undefined || v.isActive !== undefined, "nothing to update");
@@ -44,8 +49,14 @@ export interface UserView {
 
 export class UserExistsError extends Error {}
 export class UserNotFoundError extends Error {}
-/** Thrown instead of letting users_active_needs_email reach the caller as a raw 23514. */
-export class CannotActivateWithoutEmailError extends Error {}
+/**
+ * Activating a user with no email: refused before it reaches the database, and also thrown
+ * if the `users_active_needs_email` check (23514) is hit anyway, so it never surfaces as a raw
+ * database error.
+ */
+export class UserNeedsEmailError extends Error {}
+/** Linking an email onto a user that already has one. */
+export class UserAlreadyHasEmailError extends Error {}
 
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
 // drizzle wraps driver errors; the pg error (with .code and .constraint) is on .cause. Named,
@@ -158,7 +169,7 @@ export async function createUser(db: Db, input: CreateUserInput, subscribers: Su
     });
     return (await getUser(db, id))!;
   } catch (e) {
-    if (isDuplicateEmail(e)) throw new UserExistsError(input.email);
+    if (isDuplicateEmail(e)) throw new UserExistsError(input.email ?? "");
     throw e;
   }
 }
@@ -168,8 +179,9 @@ export async function updateUser(db: Db, id: string, patch: UpdateUserInput, sub
   try {
     await db.transaction(async (tx) => {
       await lockAggregate(tx, userAggregateId(id));
-      const [row] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for("update");
+      const [row] = await tx.select({ email: users.email }).from(users).where(eq(users.id, id)).for("update");
       if (!row) throw new UserNotFoundError(id);
+      if (patch.isActive === true && row.email === null) throw new UserNeedsEmailError(id);
       await tx
         .update(users)
         .set({ ...patch, updatedAt: new Date() })
@@ -177,8 +189,31 @@ export async function updateUser(db: Db, id: string, patch: UpdateUserInput, sub
       await emitUserUpserted(tx, id, subscribers);
     });
   } catch (e) {
-    // A no-email user (legacy Calendar import) can't be reactivated (users_active_needs_email).
-    if (isCheckViolation(e, "users_active_needs_email")) throw new CannotActivateWithoutEmailError(id);
+    // A no-email user (legacy Calendar import) can't be reactivated (users_active_needs_email);
+    // the check above catches this first, but the database constraint stays the backstop.
+    if (isCheckViolation(e, "users_active_needs_email")) throw new UserNeedsEmailError(id);
+    throw e;
+  }
+  return (await getUser(db, id))!;
+}
+
+/**
+ * Sets the email of a user who has none, and activates them (spec addendum §4): legacy
+ * Calendar users imported without an email are linked this way, and Entra matching later uses it.
+ */
+export async function linkUser(db: Db, id: string, address: string, subscribers: SubscriberConfig[]): Promise<UserView> {
+  if (!isUuid(id)) throw new UserNotFoundError(id);
+  try {
+    await db.transaction(async (tx) => {
+      await lockAggregate(tx, userAggregateId(id));
+      const [row] = await tx.select({ email: users.email }).from(users).where(eq(users.id, id)).for("update");
+      if (!row) throw new UserNotFoundError(id);
+      if (row.email !== null) throw new UserAlreadyHasEmailError(id);
+      await tx.update(users).set({ email: address, isActive: true, updatedAt: new Date() }).where(eq(users.id, id));
+      await emitUserUpserted(tx, id, subscribers);
+    });
+  } catch (e) {
+    if (isDuplicateEmail(e)) throw new UserExistsError(address);
     throw e;
   }
   return (await getUser(db, id))!;

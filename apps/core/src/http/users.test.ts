@@ -97,6 +97,6 @@ describe("Core users API", () => {
     const [noEmail] = await tdb.db.insert(users).values({ email: null, displayName: "No Email Import", isActive: false }).returning();
     const res = await as(adminCookie).patch(`/api/users/${noEmail!.id}`, { isActive: true });
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: "a user without an email can't be made active" });
+    expect(res.body).toEqual({ error: "set an email before activating this user" });
   });
 });

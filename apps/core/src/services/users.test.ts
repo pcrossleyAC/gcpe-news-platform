@@ -5,7 +5,6 @@ import { users } from "../db/schema";
 import {
   adminEmails,
   authenticate,
-  CannotActivateWithoutEmailError,
   createUser,
   createUserSchema,
   findUserByEmail,
@@ -16,6 +15,7 @@ import {
   setRoles,
   updateUser,
   UserExistsError,
+  UserNeedsEmailError,
   UserNotFoundError,
 } from "./users";
 
@@ -110,7 +110,7 @@ describe("users service", () => {
 
   it("refuses to reactivate a no-email user with a clear error, not a raw database error", async () => {
     const [noEmail] = await tdb.db.insert(users).values({ email: null, displayName: "No Email Import", isActive: false }).returning();
-    await expect(updateUser(tdb.db, noEmail!.id, { isActive: true }, [])).rejects.toBeInstanceOf(CannotActivateWithoutEmailError);
+    await expect(updateUser(tdb.db, noEmail!.id, { isActive: true }, [])).rejects.toBeInstanceOf(UserNeedsEmailError);
     expect((await getUser(tdb.db, noEmail!.id))!.isActive).toBe(false);
   });
 });

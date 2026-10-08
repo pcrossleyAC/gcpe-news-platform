@@ -3,9 +3,10 @@ import { ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import {
-  CannotActivateWithoutEmailError,
   createUser,
   createUserSchema,
+  linkUser,
+  linkUserSchema,
   listUsers,
   setPassword,
   setPasswordSchema,
@@ -13,7 +14,9 @@ import {
   setRolesSchema,
   updateUser,
   updateUserSchema,
+  UserAlreadyHasEmailError,
   UserExistsError,
+  UserNeedsEmailError,
   UserNotFoundError,
 } from "../services/users";
 
@@ -26,7 +29,8 @@ const run = <P>(h: (req: Request<P>, res: Response) => Promise<void>) => (req: R
     if (e instanceof UserExistsError) return void res.status(409).json({ error: "a user with that email already exists" });
     if (e instanceof UserNotFoundError) return void res.status(404).json({ error: "not found" });
     if (e instanceof SelfLockoutError) return void res.status(409).json({ error: "you can't remove your own admin access" });
-    if (e instanceof CannotActivateWithoutEmailError) return void res.status(409).json({ error: "a user without an email can't be made active" });
+    if (e instanceof UserNeedsEmailError) return void res.status(409).json({ error: "set an email before activating this user" });
+    if (e instanceof UserAlreadyHasEmailError) return void res.status(409).json({ error: "this user already has an email" });
     next(e);
   });
 
@@ -58,6 +62,13 @@ export function usersRouter(db: Db, subscribers: SubscriberConfig[]): Router {
     run<IdParams>(async (req, res) => {
       await setPassword(db, req.params.id, setPasswordSchema.parse(req.body).password);
       res.status(204).end();
+    }),
+  );
+  r.post(
+    "/:id/link",
+    run<IdParams>(async (req, res) => {
+      const { email } = linkUserSchema.parse(req.body);
+      res.json(await linkUser(db, req.params.id, email, subscribers));
     }),
   );
   return r;
