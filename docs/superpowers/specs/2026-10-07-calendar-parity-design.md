@@ -108,7 +108,7 @@ Each sub-plan is planned, built, reviewed and deployed to boxs.ca in turn. Each 
   - The admin "link" action on an inactive user sets the email and activates the user. Matching to Entra later uses that email.
 - **Legacy ids:** a new `user_legacy_ids` table (system `calendar`, legacy `SystemUser.Id`, user id). It is unique per legacy id. Several legacy ids may point to one user when legacy emails repeat.
 - **Calendar contact details** (phone, mobile, job title, description) belong to Calendar, not Core, because only the Calendar shows them (§5.4).
-- **Event:** Core emits `user.upserted` on every user, grant or ministry change. The aggregate is the user id. The payload: id, email (nullable), display name, active, `calendarRole` (nullable), `organizationIds`. The Calendar keeps a projection of it.
+- **Event:** Core emits `user.upserted` on every user, grant or ministry change. The aggregate is the user id. The payload: id, email (nullable), display name, active, `calendarRole` (nullable), `organizationKeys` (organization keys, as every other event names organizations; `OrgRecord` carries no id). The Calendar keeps a projection of it.
 - **Per-request checks in the Calendar:**
   - The session cookie gives the user id.
   - The Calendar's projection gives the role and ministries, so a revoked grant takes effect when its event arrives (normally seconds).

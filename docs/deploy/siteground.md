@@ -780,6 +780,26 @@ legacy within that window. But once the purge has deleted a record, a later impo
 it back; it only reports the mismatch. Run the import (trial, then final) first, confirm the report, and only
 then flip the Operations switch.
 
+## Calendar access (Phase 5a)
+
+- **Migration:** Core's `0002_calendar_access` is additive: a column, a nullable email with a check, two
+  tables and a partial index on `role_grants`. It runs in the normal deploy. It succeeds on boxs.ca's
+  data because every existing user has an email and no grant is a Calendar role.
+- **Seed:** re-run `GCPE_TOKEN=… npm run core:seed-from-public-api -- https://boxs.ca`. Its summary has
+  a `hq-organizations: upserted=2` line. The Office of the Premier is marked HQ in the ministries pass;
+  it is not created twice.
+- **Hand checks** (acceptance item 1, Core half):
+  - As the break-glass admin, on Hub → Organizations, GCPE Headquarters, GCPE Media Relations and
+    Office of the Premier are ticked HQ, and there is exactly one Office of the Premier.
+  - Until 5b hides them (Q54), GCPE Headquarters and GCPE Media Relations show on boxs.ca's public
+    ministry list. That is expected on the test site.
+  - On Hub → Users, add a user with a password. On Calendar access, give them Administrator with one
+    ministry.
+  - Sign in as them. They land on Calendar access.
+  - Give another user Editor with a ministry. "System Administrator" is not offered.
+  - Their own row and any System Administrator's row are read-only.
+  - Adding GCPE Headquarters to someone is refused with the HQ message.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

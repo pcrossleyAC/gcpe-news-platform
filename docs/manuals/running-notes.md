@@ -324,3 +324,28 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   `0032_items_link_identity_index` (an index only, on the small `items` table) speed up the
   emergency feed's check of which alerts it already has. The first check after the deploy fills
   the column in for alerts already recorded.
+
+## Phase 5a — Calendar roles, ministries and HQ organizations
+
+- **Administrator** — Calendar access (Hub → Calendar access) gives a person one Calendar role (Read
+  Only, Editor, Advanced, Administrator, System Administrator) and their ministries. A role needs at
+  least one ministry. Saving replaces the person's whole ministry list.
+- **Administrator** — A Calendar Administrator can grant up to Administrator. Only a System
+  Administrator or a Core admin can grant System Administrator, or change a System Administrator's
+  access. Nobody but a Core admin can change their own access: ask another administrator.
+- **Administrator** — Members of an HQ organization see every ministry. GCPE Headquarters, GCPE
+  Media Relations and the Office of the Premier are HQ. Only an HQ Administrator, a System Administrator or a Core admin can add an
+  HQ ministry to someone.
+- **Administrator** — Only a Core admin adds users. A Calendar Administrator gives existing users
+  Calendar access.
+- **Administrator** — Core admins set which organizations are HQ on Hub → Organizations. Turning HQ off
+  for an organization takes the all-ministry view away from every member at once.
+- **Administrator** — A user with no email (imported from the legacy Calendar) is inactive and can't
+  sign in. On Hub → Users, "Link and activate" sets their email and lets them sign in once they
+  have a password.
+- **Administrator** — A ministry that has been deactivated can't be added to anyone, but people who
+  already have it keep it when their access is saved.
+- **Developer** — Core emits `user.upserted` for every user change and on republish. Nothing consumes
+  it until the Calendar app (5b) subscribes. Ministries are named by organization key.
+- **Operations** — After deploying 5a, re-run `scripts/seed-core-from-public-api.ts` on test sites to
+  add the two HQ organizations. Re-running it never clears an HQ flag set by hand.
