@@ -35,18 +35,18 @@ but the artifact has nothing for it to build.
 
 ### 2. Databases
 
-In Site Tools → Databases, create **six PostgreSQL databases and one database user** with
-access to all six (the user can't create its own databases, so this is a one-time manual
+In Site Tools → Databases, create **seven PostgreSQL databases and one database user** with
+access to all seven (the user can't create its own databases, so this is a one-time manual
 step, not something any script here can do). Suggested names (matching
 `scripts/siteground-env.ts`'s defaults): `gcpe_core`, `gcpe_nrms`, `gcpe_news_api`,
-`gcpe_site`, `gcpe_nod`, `gcpe_distribution`. Host is always `localhost` — the public
-PostgreSQL hostname is rejected by `pg_hba.conf`.
+`gcpe_site`, `gcpe_nod`, `gcpe_distribution`, `gcpe_calendar`. Host is always `localhost` — the
+public PostgreSQL hostname is rejected by `pg_hba.conf`.
 
-**The Calendar's database (`gcpe_calendar`) is a seventh, separate step — not part of this
-one-time setup.** The stack mounts the Calendar only when `CALENDAR_DATABASE_URL` is set;
-until then it starts and runs normally without it, and `/calendar` answers `503 {"error":
-"calendar not configured"}`. See "Calendar app (Phase 5b)" below for exactly what to do in Site
-Tools when you're ready to turn it on.
+**The Calendar's database can be added later: the stack runs without it until
+`CALENDAR_DATABASE_URL` is set.** Until then it starts and runs normally without the Calendar,
+and `/calendar` answers `503 {"error": "calendar not configured"}`. See "Calendar app (Phase 5b)"
+and "Corporate Calendar (Phase 5b-1)" below for exactly what to do in Site Tools when you're
+ready to turn it on.
 
 ### 3. Mailbox / SMTP
 
@@ -866,6 +866,28 @@ No code change and no redeploy of the artifact itself is needed for this — `CA
 is the only thing gating it, and it's read fresh from Site Tools' own environment variables on
 every process start.
 
+## Corporate Calendar (Phase 5b-1)
+
+- **One-time (Paul, Site Tools):** create the `gcpe_calendar` PostgreSQL database for the
+  existing database user; add `CALENDAR_DATABASE_URL=postgres://<user>:<password>@localhost:5432/gcpe_calendar`
+  to the Node.js project's environment; restart. No other setting is needed: the stack derives
+  the Calendar's event secrets from `STACK_EVENT_SECRET`.
+- **Migrations:** Core `0003_org_public` (one column), News API `0002_category_public` (one
+  column), Calendar `0000_init` (new database). All additive.
+- **After the first start with the Calendar:** the stack sees an empty `orgs` table and asks
+  Core to republish once; after the next tick `SELECT count(*) FROM orgs` and
+  `SELECT count(*) FROM users` in `gcpe_calendar` are non-zero.
+- **Q54 on boxs.ca:** on Hub → Organizations, untick "listed publicly" for GCPE Headquarters and
+  GCPE Media Relations (they existed before the flag). Then
+  `curl -s https://boxs.ca/api/Ministries | grep -c gcpe-` prints `0`, and the test subscribe
+  page no longer offers them.
+- **Break-glass:** has no Calendar access, by design.
+- **Hand checks (5b exit, lookup half):** as a user with Calendar.Administrator and a ministry:
+  Hub → Calendar → Lookups; HQ tags: add, rename, deactivate a "Sample keyword …"; Categories
+  shows read-only. As a Calendar.SysAdmin: add and deactivate a "Sample category …". Remove the
+  Administrator's role on Hub → Calendar access, wait one tick, click in the Calendar: "You don't
+  have Calendar access".
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
@@ -943,3 +965,4 @@ every process start.
   (`apps/public-site/src/rebuild.ts`) serialises rebuilds with an in-process promise chain, not a
   cross-process lock — correct for SiteGround's one Node.js process, but it would race if the
   public site were ever run as more than one process against the same `OUTPUT_DIR`.
+- **The Calendar is optional until its database exists (`/calendar` 503).**

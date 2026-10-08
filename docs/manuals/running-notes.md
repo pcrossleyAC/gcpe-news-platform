@@ -370,3 +370,24 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   upserted/deactivated events to the Calendar (and only to the Calendar — no other subscriber
   receives `user.*`). The Calendar refuses a bearer token on every route, so staff always reach
   it through their `gcpe_session` cookie.
+
+## Phase 5b-1 — Calendar app, lookups, public organizations
+
+- **Administrator** — Hub → Calendar → Lookups lists every Calendar lookup. Administrators change event
+  planners, HQ initiatives, HQ tags and Digital; the other seven (categories, cities, comm materials,
+  government representatives, NR distributions, NR origins, Premier requested) need a System
+  Administrator and are read-only for everyone else.
+- **Administrator** — Lookup rows are never deleted. Untick Active to stop offering a row; it stays on
+  old activities. Two active rows in one lookup can't share a name.
+- **Administrator** — Calendar access changes reach the Calendar within a minute (one background
+  tick). A person whose role was removed sees "You don't have Calendar access" on their next click,
+  without signing out.
+- **Administrator** — Core admins choose on Hub → Organizations whether an organization is listed
+  publicly. GCPE Headquarters and GCPE Media Relations are not; the Office of the Premier is HQ and public.
+- **Operations** — The break-glass admin and service tokens have no Calendar access: the Calendar knows
+  only users Core has sent it. Sign in as a real user with a Calendar role to use it.
+- **Operations** — The Calendar needs its own database. Until `CALENDAR_DATABASE_URL` is set the stack
+  runs without it, `/calendar` answers 503, and `node stack.js --check` prints
+  `"calendar": {"ok": true, "skipped": …}`. Phase 7's cutover checklist must confirm it is set.
+- **Developer** — The Calendar names ministries, sectors, themes and tags by Core key, not id. Its
+  projections (`orgs`, `terms`, `users`) have no foreign keys pointing at them.
