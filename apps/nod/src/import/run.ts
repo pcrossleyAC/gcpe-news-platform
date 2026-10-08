@@ -1,7 +1,6 @@
 import { writeFile } from "node:fs/promises";
-import pg from "pg";
 import { sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import { withAdvisoryLock, type Db } from "@gcpe/db-kit";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { importArticles, importDigestCutoff } from "./articles";
 import { importLists } from "./lists";
@@ -46,29 +45,6 @@ export class ImportStageError extends Error {
   }
 }
 
-/** A session-level try-lock on a dedicated connection for the whole run, as nrms:import does. */
-async function withImportLock<T>(db: Db, fn: () => Promise<T>): Promise<T> {
-  const client = (db as Db & { $client: pg.Pool | pg.Client }).$client;
-  const conn = client instanceof pg.Pool ? await client.connect() : client;
-  const release = (broken: boolean) => {
-    if ("release" in conn && typeof conn.release === "function") conn.release(broken);
-  };
-  const { rows } = await conn.query<{ locked: boolean }>("SELECT pg_try_advisory_lock($1, $2) AS locked", [...NOD_IMPORT_LOCK]);
-  if (!rows[0]?.locked) {
-    release(false);
-    throw new ImportAlreadyRunningError();
-  }
-  let broken = false;
-  try {
-    return await fn();
-  } finally {
-    await conn.query("SELECT pg_advisory_unlock($1, $2)", [...NOD_IMPORT_LOCK]).catch(() => {
-      broken = true; // closing the connection releases the lock anyway
-    });
-    release(broken);
-  }
-}
-
 export interface RunNodImportOptions {
   timeZone: string;
   sinceDays: number;
@@ -81,7 +57,7 @@ export interface RunNodImportOptions {
 export async function runNodImport(db: Db, nrms: Db, source: LegacySource, opts: RunNodImportOptions): Promise<NodImportReport> {
   const report = new NodImportReport();
   const log = opts.log ?? (() => {});
-  return withImportLock(db, async () => {
+  return withAdvisoryLock(db, NOD_IMPORT_LOCK, () => new ImportAlreadyRunningError(), async () => {
     let stage = "lists";
     try {
       const { rows } = await db.execute<{ now: string }>(sql`SELECT now() AS now`);

@@ -303,7 +303,7 @@ function PurgeControl({ purge, timeZone, onDone }: { purge: PurgeStatus; timeZon
         <Button variant="secondary" danger={turningOn}>
           {turningOn ? "Turn on the retention purge" : "Turn off the retention purge"}
         </Button>
-        <Modal isDismissable={!busy}>
+        <Modal isDismissable={!busy} isKeyboardDismissDisabled={busy}>
           <AlertDialog
             role="alertdialog"
             variant="warning"

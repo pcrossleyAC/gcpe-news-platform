@@ -103,17 +103,37 @@ interface KnownEmergencyRow {
   key: string;
   title: string;
   summary: string;
-  url: string;
+  linkIdentity: string | null;
 }
 
-/** Every emergency item NoD already has, oldest first -- loaded once per check (not once per
- * alert): cheap given how few emergency alerts there ever are, and it lets a later alert in the
- * same feed see one an earlier alert in the *same* run just created. */
-async function loadKnownEmergencyItems(db: DbOrTx): Promise<KnownEmergencyRow[]> {
+const BACKFILL_BATCH = 500;
+
+/** Fills in `link_identity` for emergency items recorded before it was kept. The normalising is
+ * done here in code (the migration only adds the column), a batch at a time; once every row has
+ * one, this is a single indexed lookup that finds nothing. */
+async function fillLinkIdentities(db: DbOrTx): Promise<void> {
+  for (;;) {
+    const rows = await db
+      .select({ key: items.key, url: items.url })
+      .from(items)
+      .where(and(eq(items.kind, "emergency"), isNull(items.linkIdentity)))
+      .limit(BACKFILL_BATCH);
+    for (const r of rows) await db.update(items).set({ linkIdentity: normalizeLinkIdentity(r.url) }).where(eq(items.key, r.key));
+    if (rows.length < BACKFILL_BATCH) return;
+  }
+}
+
+/** The emergency items matching any of this feed's alerts by key or normalised link, oldest
+ * first -- one indexed query per check, bounded by the feed's own size, whatever the number of
+ * alerts NoD has ever recorded. */
+async function loadKnownEmergencyItems(db: DbOrTx, alerts: FeedAlert[]): Promise<KnownEmergencyRow[]> {
+  if (alerts.length === 0) return [];
+  const keys = alerts.map((a) => emergencyItemKey(a.identity));
+  const links = alerts.map((a) => normalizeLinkIdentity(a.link));
   return db
-    .select({ key: items.key, title: items.title, summary: items.summary, url: items.url })
+    .select({ key: items.key, title: items.title, summary: items.summary, linkIdentity: items.linkIdentity })
     .from(items)
-    .where(eq(items.kind, "emergency"))
+    .where(and(eq(items.kind, "emergency"), or(sql`${items.key} = ANY(${sql.param(keys)}::text[])`, sql`${items.linkIdentity} = ANY(${sql.param(links)}::text[])`)))
     .orderBy(items.publishedAt);
 }
 
@@ -123,7 +143,7 @@ async function loadKnownEmergencyItems(db: DbOrTx): Promise<KnownEmergencyRow[]>
 function findKnownEmergencyItem(known: KnownEmergencyRow[], alert: FeedAlert): KnownEmergencyRow | undefined {
   const wantKey = emergencyItemKey(alert.identity);
   const wantLink = normalizeLinkIdentity(alert.link);
-  return known.find((row) => row.key === wantKey || normalizeLinkIdentity(row.url) === wantLink);
+  return known.find((row) => row.key === wantKey || row.linkIdentity === wantLink);
 }
 
 export interface EmergencyFeedDeps {
@@ -153,7 +173,8 @@ export async function runEmergencyFeedIfDue(deps: EmergencyFeedDeps): Promise<{ 
     const parsed = parseEmergencyFeed(await fetchFeed(deps.url, deps.fetch));
     result.inFeed = parsed.alerts.length;
     result.skipped = parsed.skipped;
-    const known = await loadKnownEmergencyItems(deps.db);
+    await fillLinkIdentities(deps.db);
+    const known = await loadKnownEmergencyItems(deps.db, parsed.alerts);
     for (const alert of parsed.alerts) {
       try {
         const row = findKnownEmergencyItem(known, alert);
@@ -172,7 +193,7 @@ export async function runEmergencyFeedIfDue(deps: EmergencyFeedDeps): Promise<{ 
         );
         if (created) {
           result.created += 1;
-          known.push({ key, title: alert.title, summary: alert.text, url: alert.link });
+          known.push({ key, title: alert.title, summary: alert.text, linkIdentity: normalizeLinkIdentity(alert.link) });
         }
       } catch (e) {
         // One alert's own failure (e.g. a value the database itself rejects) never stops the

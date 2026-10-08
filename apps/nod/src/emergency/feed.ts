@@ -36,7 +36,7 @@ const squash = (s: string): string => s.replace(/\s+/g, " ").trim();
  * NUL from a legacy export) makes Postgres reject the whole insert (22021), which otherwise
  * stops the ingester partway through a feed, every 5 minutes, until the feed changes again. */
 const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
-const stripControl = (s: string): string => s.replace(CONTROL_CHARS, "");
+export const stripControl = (s: string): string => s.replace(CONTROL_CHARS, "");
 
 /** Unicode bidi override codepoints (LRE/RLE/PDF/LRO/RLO, 0x202A-0x202E) and isolate codepoints
  * (LRI/RLI/FSI/PDI, 0x2066-0x2069) -- named by codepoint, not written as literal characters,
@@ -141,6 +141,18 @@ function fromAtomEntry(entry: Element): FeedAlert | null {
   });
 }
 
+/** One entry as an alert, or null to skip it: no title or http(s) link, or markup nested deeply
+ * enough to overflow the stack in a recursive walk (htmlToText, or reading its text), which
+ * nothing bounded by MAX_FEED_BYTES prevents. One such alert never costs the rest of the feed. */
+function entryToAlert(e: Element, rss: boolean): FeedAlert | null {
+  try {
+    return rss ? fromRssItem(e) : fromAtomEntry(e);
+  } catch (err) {
+    if (err instanceof RangeError) return null;
+    throw err;
+  }
+}
+
 /**
  * RSS 2.0 or Atom → alerts. Parsed in XML mode, which resolves no DTD or external entity. A
  * body that doesn't end with its root's closing tag is rejected whole: a feed cut off mid-download
@@ -161,15 +173,14 @@ export function parseEmergencyFeed(xml: string): ParsedFeed {
     const alerts: FeedAlert[] = [];
     let skipped = 0;
     for (const e of entries) {
-      const alert = root.name === "rss" ? fromRssItem(e) : fromAtomEntry(e);
+      const alert = entryToAlert(e, root.name === "rss");
       if (alert) alerts.push(alert);
       else skipped += 1;
     }
     return { alerts, skipped };
   } catch (e) {
-    // Pathologically deep markup (nested far enough) overflows the stack in our own recursive
-    // walk below rather than in anything bounded by MAX_FEED_BYTES -- treated the same as any
-    // other unparseable body, not as a crash.
+    // Markup nested deeply enough to overflow the stack outside any one entry is treated the
+    // same as any other unparseable body, not as a crash.
     if (e instanceof FeedFormatError) throw e;
     if (e instanceof RangeError) throw new FeedFormatError();
     throw e;

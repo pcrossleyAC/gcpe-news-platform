@@ -11,7 +11,7 @@ import { FIXTURE_GUIDS as G, legacyNodSource, legacyNodTables, seedNodListsForIm
 import { emergencyItemKey } from "../as-it-happens";
 import { deliveries, items, nodSettings } from "../db/schema";
 import { LEGACY_BATCH_ID } from "./articles";
-import { NOD_IMPORT_LOCK, redactMessage, runNodImport, runNodImportCli } from "./run";
+import { defaultReportPath, NOD_IMPORT_LOCK, redactMessage, runNodImport, runNodImportCli } from "./run";
 
 const OPTS = { timeZone: "America/Vancouver", sinceDays: 30, publicSiteUrl: "https://news.example.test" };
 const RELEASE_KEY = "2026HLTH0001-000001";
@@ -85,6 +85,26 @@ describe("nod:import on the synthetic legacy database", () => {
     expect(s!.cutoff).toEqual(new Date("2026-10-06T00:02:41.847Z"));
   });
 
+  it("articles: control characters are stripped from a title, and one row the database refuses is skipped, not the stage", async () => {
+    const tables = legacyNodTables();
+    const hostile = "C0000000-0000-4000-8000-000000000005";
+    const outOfRange = "C0000000-0000-4000-8000-000000000006";
+    tables.articles = [
+      ...tables.articles!,
+      { ArticleGuid: hostile, ArticleSourceID: "https://emergency.example.test/?p=78", RelativeUri: "https://emergency.example.test/alerts/78", PublishDateTimeUtc: new Date("2026-10-02T18:00:00Z"), IsDeleted: false, Title: "Sample\u0000 alert\u0007 two" },
+      { ArticleGuid: outOfRange, ArticleSourceID: "https://emergency.example.test/?p=79", RelativeUri: "https://emergency.example.test/alerts/79", PublishDateTimeUtc: new Date("+099999-01-01T00:00:00Z"), IsDeleted: false, Title: "Far future" },
+    ];
+    tables.articleLists = [...tables.articleLists!, { ArticleGuid: hostile, ListGuid: G.listAlerts }, { ArticleGuid: outOfRange, ListGuid: G.listAlerts }];
+    tables[`subscriberArticles:${hostile.toLowerCase()}`] = [];
+    const json = (await runNodImport(nod.db, nrms.db, legacyNodSource(tables), OPTS)).toJSON();
+    expect(json.failed).toBeNull();
+    expect(json.balanced).toBe(true);
+    expect(json.tables).toMatchObject({ Article: { legacy: 6, imported: 3, skipped: 3 } });
+    expect(json.skipped).toContainEqual(expect.objectContaining({ table: "Article", reason: expect.stringMatching(/^could not be recorded/), sample: [outOfRange.toLowerCase()] }));
+    const [alert] = await nod.db.select().from(items).where(eq(items.key, emergencyItemKey("https://emergency.example.test/?p=78")));
+    expect(alert).toMatchObject({ title: "Sample alert two", linkIdentity: "https://emergency.example.test/alerts/78" });
+  });
+
   it("a second full run changes nothing", async () => {
     await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS);
     const before = await counts();
@@ -94,11 +114,21 @@ describe("nod:import on the synthetic legacy database", () => {
   });
 
   it("the digest cutoff only moves forward", async () => {
+    const cutoff = async () => (await nod.db.select({ cutoff: nodSettings.lastDigestCutoff }).from(nodSettings).where(eq(nodSettings.id, 1)))[0]!.cutoff;
+    const earlier = new Date("2026-10-01T00:00:00Z");
+    await nod.db.update(nodSettings).set({ lastDigestCutoff: earlier }).where(eq(nodSettings.id, 1));
+    await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS);
+    expect(await cutoff()).toEqual(new Date("2026-10-06T00:02:41.847Z"));
+
     const later = new Date("2026-10-20T00:00:00Z");
     await nod.db.update(nodSettings).set({ lastDigestCutoff: later }).where(eq(nodSettings.id, 1));
-    await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS);
-    const [s] = await nod.db.select({ cutoff: nodSettings.lastDigestCutoff }).from(nodSettings).where(eq(nodSettings.id, 1));
-    expect(s!.cutoff).toEqual(later);
+    const json = (await runNodImport(nod.db, nrms.db, legacyNodSource(), OPTS)).toJSON();
+    expect(await cutoff()).toEqual(later);
+    expect(json.notes).toContain("NoD's daily digest carries on after legacy's last one (2026-10-06T00:02:41.847Z).");
+  });
+
+  it("names the default report by the run's UTC time, to the second", () => {
+    expect(defaultReportPath(new Date("2026-11-20T18:04:05.678Z"))).toBe("nod-import-20261120T180405Z.json");
   });
 
   it("the CLI writes JSON and text reports with no address in either, logs none, and exits 0", async () => {

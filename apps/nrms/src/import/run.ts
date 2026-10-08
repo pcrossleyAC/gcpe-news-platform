@@ -10,8 +10,7 @@
  * write a partial report and exit 1, instead of losing everything a long run had already done.
  */
 import { writeFile } from "node:fs/promises";
-import pg from "pg";
-import type { Db } from "@gcpe/db-kit";
+import { withAdvisoryLock, type Db } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { importLegacyUsers } from "../../../core/src/import/users";
@@ -55,36 +54,6 @@ export class ImportStageError extends Error {
   }
 }
 
-type PgConnection = pg.PoolClient | pg.Client;
-
-/**
- * Holds a session-level `pg_try_advisory_lock` for the duration of `fn`, on a dedicated
- * connection (never a pooled one query-by-query) so the lock can't be silently dropped between
- * statements. Throws {@link ImportAlreadyRunningError} without running `fn` at all when another
- * run already holds it.
- */
-async function withImportLock<T>(db: Db, fn: () => Promise<T>): Promise<T> {
-  const client = (db as Db & { $client: pg.Pool | pg.Client }).$client;
-  const conn: PgConnection = client instanceof pg.Pool ? await client.connect() : client;
-  const release = (broken: boolean) => {
-    if ("release" in conn && typeof conn.release === "function") conn.release(broken);
-  };
-  const { rows } = await conn.query<{ locked: boolean }>("SELECT pg_try_advisory_lock($1, $2) AS locked", [...IMPORT_LOCK]);
-  if (!rows[0]?.locked) {
-    release(false);
-    throw new ImportAlreadyRunningError();
-  }
-  let broken = false;
-  try {
-    return await fn();
-  } finally {
-    await conn.query("SELECT pg_advisory_unlock($1, $2)", [...IMPORT_LOCK]).catch(() => {
-      broken = true; // closing the connection releases the lock anyway
-    });
-    release(broken);
-  }
-}
-
 export interface RunImportOptions {
   /** Forces the website stage even when nothing changed since the last import (import/website.ts). */
   force: boolean;
@@ -106,7 +75,9 @@ export async function runImport(db: Db, coreDb: Db, source: LegacySource, opts: 
   const report = new ImportReport();
   const log = opts.log ?? (() => {});
 
-  return withImportLock(db, async () => {
+  // A session-level try-lock on a dedicated connection for the whole run: a second run is
+  // refused at once rather than queued behind the first.
+  return withAdvisoryLock(db, IMPORT_LOCK, () => new ImportAlreadyRunningError(), async () => {
     let stage = "users";
     try {
       const legacyUserRows = await source.query<LegacyUserRow>(Q_USERS);

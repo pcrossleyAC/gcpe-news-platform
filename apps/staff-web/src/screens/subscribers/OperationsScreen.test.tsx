@@ -232,6 +232,25 @@ describe("OperationsScreen", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn’t change it. Nothing changed.");
   });
 
+  it("Escape doesn't close the purge dialog while the save is in flight", async () => {
+    let settle!: (r: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      settle = resolve;
+    });
+    stub(["NoD.Admin"], OPS, { purge: () => pending });
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Turn on the retention purge" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Turn on purge" }));
+    // The pressed button is disabled while saving, so focus is put back inside the dialog first.
+    dialog.focus();
+    await user.keyboard("{Escape}");
+    expect(await screen.findByRole("alertdialog")).toBe(dialog);
+    settle(jsonResponse(500, { error: "internal" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("Couldn’t change it. Nothing changed.");
+  });
+
   it("an on purge offers to turn it off, and shows its last night", async () => {
     stub(["NoD.Admin"], {
       ...OPS,

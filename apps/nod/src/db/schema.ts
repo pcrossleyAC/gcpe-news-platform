@@ -100,13 +100,20 @@ export const items = pgTable(
     // carries a media key) so As-It-Happens/digest matching is untouched by media recipients.
     mediaText: text("media_text"),
     mediaListKeys: text("media_list_keys").array().notNull().default(sql`'{}'::text[]`),
+    // An emergency alert's link as the feed ingester matches it (emergency/feed.ts
+    // `normalizeLinkIdentity`); null for releases. Rows from before it existed are filled in by
+    // the ingester's next check (emergency/ingest.ts), since the normalising is done in code.
+    linkIdentity: text("link_identity"),
   },
   (t) => [
     index("items_published_at_idx").on(t.publishedAt),
-    // The emergency feed ingester's own known-alert lookup (emergency/ingest.ts) scans this
-    // column filtered to kind = 'emergency' every 5 minutes; partial so it costs nothing on the
-    // much larger set of ordinary release rows.
+    // Emergency items by their raw link. The feed ingester matches on link_identity instead (the
+    // index below); this one stays, as dropping it isn't an additive migration.
     index("items_emergency_url_idx").on(t.url).where(sql`${t.kind} = 'emergency'`),
+    // The emergency feed ingester's known-alert lookup (emergency/ingest.ts): `link_identity =
+    // ANY(...)` for just the alerts in the feed, every 5 minutes, plus finding rows still to be
+    // filled in (`IS NULL`). Partial, so it costs nothing on the much larger set of release rows.
+    index("items_emergency_link_identity_idx").on(t.linkIdentity).where(sql`${t.kind} = 'emergency'`),
     check("items_kind_check", sql`${t.kind} IN ('release','emergency')`),
   ],
 );

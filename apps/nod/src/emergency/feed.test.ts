@@ -96,10 +96,20 @@ describe("parseEmergencyFeed", () => {
     expect(parseEmergencyFeed(xml).alerts[0]!.title).toBe("Safeevil.exehidden");
   });
 
-  it("a 10,000-deep nesting is rejected as a format error, not a crash", () => {
+  it("a 10,000-deep nesting in one alert's HTML skips that alert, not the feed", () => {
     const deep = "<div>".repeat(10_000) + "x" + "</div>".repeat(10_000);
-    const xml = `<rss version="2.0"><channel><item><title>T</title><link>https://emergency.example.test/a</link><description><![CDATA[${deep}]]></description></item></channel></rss>`;
-    expect(() => parseEmergencyFeed(xml)).toThrow(FeedFormatError);
+    const xml = `<rss version="2.0"><channel><item><title>T</title><link>https://emergency.example.test/a</link><description><![CDATA[${deep}]]></description></item><item><title>Fine</title><link>https://emergency.example.test/b</link></item></channel></rss>`;
+    const parsed = parseEmergencyFeed(xml);
+    expect(parsed.alerts.map((a) => a.title)).toEqual(["Fine"]);
+    expect(parsed.skipped).toBe(1);
+  });
+
+  it("a 10,000-deep nesting in one alert's own XML skips that alert too", () => {
+    const deep = "<x>".repeat(10_000) + "y" + "</x>".repeat(10_000);
+    const xml = `<rss version="2.0"><channel><item><title>T</title><link>https://emergency.example.test/a</link><description>${deep}</description></item><item><title>Fine</title><link>https://emergency.example.test/b</link></item></channel></rss>`;
+    const parsed = parseEmergencyFeed(xml);
+    expect(parsed.alerts.map((a) => a.title)).toEqual(["Fine"]);
+    expect(parsed.skipped).toBe(1);
   });
 
   it("never expands a billion-laughs DOCTYPE; the entity reference passes through literally", () => {

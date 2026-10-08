@@ -175,6 +175,25 @@ describe("emergency feed ingester", () => {
     expect(await emergencyJobs()).toBe(0);
   });
 
+  it("keeps each alert's normalised link, and fills it in for an alert recorded before it was kept", async () => {
+    await run(serving(renderFeedXml([alert(1, { link: "HTTP://Emergency.Example.Test/alerts/1/" })])));
+    const [row] = await tdb.db.select().from(items).where(eq(items.key, emergencyItemKey("g-1")));
+    expect(row!.linkIdentity).toBe("https://emergency.example.test/alerts/1");
+
+    await tdb.db.update(items).set({ linkIdentity: null }).where(eq(items.kind, "emergency"));
+    later(5);
+    const r = await run(serving(renderFeedXml([alert(1, { guid: "g-1-renamed" })])));
+    expect(r.result).toMatchObject({ created: 0, updated: 0 });
+    const [filled] = await tdb.db.select().from(items).where(eq(items.key, emergencyItemKey("g-1")));
+    expect(filled!.linkIdentity).toBe("https://emergency.example.test/alerts/1");
+  });
+
+  it("one alert nested too deeply is skipped; the rest of the feed is recorded", async () => {
+    const deep = "<div>".repeat(10_000) + "x" + "</div>".repeat(10_000);
+    const r = await run(serving(renderFeedXml([alert(1, { html: deep }), alert(2)])));
+    expect(r.result).toMatchObject({ ok: true, inFeed: 1, created: 1, skipped: 1, error: null });
+  });
+
   it("two concurrent checks produce exactly one ran:true", async () => {
     const f = serving(renderFeedXml([alert(1)]));
     const [a, b] = await Promise.all([run(f), run(f)]);

@@ -1,9 +1,11 @@
 import { eq, sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { POST_KIND, type ReleaseType } from "@gcpe/nrms-contract";
 import { emergencyItemKey } from "../as-it-happens";
 import { items, nodSettings } from "../db/schema";
+import { normalizeLinkIdentity, stripControl } from "../emergency/feed";
 import { deliveryModes, EMERGENCY_CATEGORY_KEY, guidKey, type ListMapping, type MappedList } from "./map";
 import { qArticleLists, qArticles, qSubscriberArticles, Q_DIGEST_END } from "./queries";
 import type { NodImportReport } from "./report";
@@ -59,14 +61,26 @@ function planItem(a: LegacyArticleRow, listGuids: string[], releases: Map<string
   const mapped = listGuids.map((g) => ctx.lists.byGuid.get(g)).filter((m): m is MappedList => m !== undefined);
   const publicKeys = [...new Set(mapped.filter((m) => !m.media).map((m) => m.listKey))].sort();
   const mediaKeys = [...new Set(mapped.filter((m) => m.media).map((m) => m.listKey))].sort();
-  const title = (a.Title ?? "").replace(/\s+/g, " ").trim();
+  // A raw control character (a NUL, most often) would make Postgres refuse the row.
+  const title = stripControl(a.Title ?? "").replace(/\s+/g, " ").trim();
   if (categories.includes(EMERGENCY_CATEGORY_KEY)) {
-    const url = (a.RelativeUri ?? "").trim();
+    const url = stripControl(a.RelativeUri ?? "").trim();
     if (!/^https?:\/\/\S+$/i.test(url)) return { skip: "emergency alert without a link" };
     return {
       kind: "emergency",
       mediaListKeys: [],
-      row: { key: emergencyItemKey(a.ArticleSourceID), kind: "emergency", postKind: null, listKeys: ["emergency:alerts"], title: title || "Emergency alert", summary: "", url, publishedAt: a.PublishDateTimeUtc, toSubscribers: true },
+      row: {
+        key: emergencyItemKey(a.ArticleSourceID),
+        kind: "emergency",
+        postKind: null,
+        listKeys: ["emergency:alerts"],
+        title: title || "Emergency alert",
+        summary: "",
+        url,
+        linkIdentity: normalizeLinkIdentity(url),
+        publishedAt: a.PublishDateTimeUtc,
+        toSubscribers: true,
+      },
     };
   }
   const release = releases.get(a.ArticleSourceID.trim().toLowerCase());
@@ -129,7 +143,9 @@ async function importRecipients(db: Db, source: LegacySource, articleGuid: strin
 }
 
 /** Legacy articles from the last `sinceDays`, as NoD items, with their recipients as deliveries.
- * NoD's own item for the same key wins; a delivery already recorded is left alone. */
+ * NoD's own item for the same key wins; a delivery already recorded is left alone. An article the
+ * database refuses (a value out of its range, say) is skipped and reported by id and error
+ * label, never by its content; the rest carry on. */
 export async function importArticles(db: Db, nrms: Db, source: LegacySource, ctx: ArticleStageContext): Promise<void> {
   const releases = await nrmsReleaseIndex(nrms);
   const articles = await source.query<LegacyArticleRow & Record<string, unknown>>(qArticles(ctx.sinceDays));
@@ -148,7 +164,12 @@ export async function importArticles(db: Db, nrms: Db, source: LegacySource, ctx
       ctx.report.skip("Article", plan.skip, guid);
       continue;
     }
-    await db.insert(items).values(plan.row).onConflictDoNothing({ target: items.key });
+    try {
+      await db.insert(items).values(plan.row).onConflictDoNothing({ target: items.key });
+    } catch (e) {
+      ctx.report.skip("Article", `could not be recorded (${safeErrorLabel(e)})`, guid);
+      continue;
+    }
     ctx.report.count("Article", "imported");
     await importRecipients(db, source, guid, plan, ctx);
   }

@@ -4,6 +4,7 @@ import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { deliveries, items, sendJobs } from "./db/schema";
 import { matchesItem } from "./matching";
 import { itemCategories, renderAsItHappens, renderEmergency, type RenderItem, type RenderOptions } from "./render";
+import { normalizeLinkIdentity } from "./emergency/feed";
 
 export interface AsItHappensOptions {
   /** Site URL and optional banner for every As-It-Happens/emergency email this sends. */
@@ -144,6 +145,7 @@ export function createItemSending(opts: AsItHappensOptions): ItemSending {
           title: input.title,
           summary: input.summary,
           url: input.url,
+          linkIdentity: normalizeLinkIdentity(input.url),
           publishedAt: input.publishedAt ? new Date(input.publishedAt) : sql`now()`,
           toSubscribers: true,
         })
