@@ -7,6 +7,7 @@ import { deactivateOrganization, getOrganization, listOrganizations, orgInputSch
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
+import { CALENDAR_ACCESS_ROLES, calendarAccessRouter } from "./calendar-access";
 import { usersRouter } from "./users";
 
 function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | null {
@@ -125,6 +126,7 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe(async (_req, res) => void res.json({ emails: await adminEmails(db) })),
   );
 
+  r.use("/calendar-access", requireAnyRole(...CALENDAR_ACCESS_ROLES), calendarAccessRouter(db, subscribers));
   r.use("/users", admin, usersRouter(db, subscribers));
   return r;
 }
