@@ -100,7 +100,6 @@ export function mapMinistry(
     topicLinks: links(related.topics),
     serviceLinks: links(related.services),
     sectorKeys: [...related.sectorKeys].sort(),
-    isPublic: true,
   };
 }
 

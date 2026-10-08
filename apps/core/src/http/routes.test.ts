@@ -20,6 +20,7 @@ describe("Core HTTP API", () => {
   let reader: string;
   let directoryService: string;
   let editorOnly: string;
+  const auth = (t: string) => ({ authorization: `Bearer ${t}` });
 
   beforeAll(async () => {
     tdb = await createCoreTestDb();
@@ -69,7 +70,6 @@ describe("Core HTTP API", () => {
   });
 
   it("PUT /organizations/:key/hq is Core.Admin only, 404s an unknown key and 400s a non-boolean", async () => {
-    const auth = (t: string) => ({ authorization: `Bearer ${t}` });
     await request(app).put("/api/organizations/health").set(auth(admin)).send(healthOrg).expect(200);
     expect((await request(app).put("/api/organizations/health/hq").set(auth(editorOnly)).send({ isHq: true })).status).toBe(403);
     const set = await request(app).put("/api/organizations/health/hq").set(auth(admin)).send({ isHq: true });
@@ -81,13 +81,13 @@ describe("Core HTTP API", () => {
   });
 
   it("PUT /api/organizations/:key/public is Core.Admin only and returns the record", async () => {
-    await request(app).put("/api/organizations/health").set("authorization", `Bearer ${admin}`).send(healthOrg).expect(200);
-    const res = await request(app).put("/api/organizations/health/public").set("authorization", `Bearer ${admin}`).send({ isPublic: false });
+    await request(app).put("/api/organizations/health").set(auth(admin)).send(healthOrg).expect(200);
+    const res = await request(app).put("/api/organizations/health/public").set(auth(admin)).send({ isPublic: false });
     expect(res.status).toBe(200);
     expect(res.body.isPublic).toBe(false);
-    expect((await request(app).put("/api/organizations/health/public").set("authorization", `Bearer ${editorOnly}`).send({ isPublic: true })).status).toBe(403);
-    expect((await request(app).put("/api/organizations/no-such-org/public").set("authorization", `Bearer ${admin}`).send({ isPublic: true })).status).toBe(404);
-    expect((await request(app).put("/api/organizations/health/public").set("authorization", `Bearer ${admin}`).send({ isPublic: "no" })).status).toBe(400);
+    expect((await request(app).put("/api/organizations/health/public").set(auth(editorOnly)).send({ isPublic: true })).status).toBe(403);
+    expect((await request(app).put("/api/organizations/no-such-org/public").set(auth(admin)).send({ isPublic: true })).status).toBe(404);
+    expect((await request(app).put("/api/organizations/health/public").set(auth(admin)).send({ isPublic: "no" })).status).toBe(400);
   });
 
   it("handles terms and rejects unknown kinds", async () => {
