@@ -5,6 +5,7 @@ import type { SubscriberConfig } from "@gcpe/events";
 import { activityRoutes } from "./activity-routes";
 import { configRoutes } from "./config-routes";
 import { lookupRoutes } from "./lookup-routes";
+import { transferRoutes } from "./transfer-routes";
 import { userRoutes } from "./user-routes";
 
 export interface ApiDeps {
@@ -24,5 +25,6 @@ export function apiRoutes(deps: ApiDeps): Router {
   r.use(activityRoutes(deps));
   r.use(lookupRoutes(deps.db));
   r.use(userRoutes(deps.db));
+  r.use(transferRoutes(deps));
   return r;
 }
