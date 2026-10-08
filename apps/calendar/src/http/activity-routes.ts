@@ -1,11 +1,13 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { createActivitySchema, updateActivitySchema, type ActivityView, type WriteResponse } from "@gcpe/calendar-contract";
+import { clearLaStatus, reviewSelected } from "../activities/bulk";
 import { cloneActivity } from "../activities/clone";
 import { createActivity } from "../activities/create";
 import { deleteActivity } from "../activities/delete";
 import { ActivityNotFoundError } from "../activities/errors";
 import { releaseLock, takeLock } from "../activities/locks";
+import { reviewActivity } from "../activities/review";
 import { updateActivity } from "../activities/update";
 import { readActivity, readChanges } from "../activities/view";
 import { sendActivityError } from "./errors";
@@ -15,6 +17,11 @@ const lockSchema = z.object({ tabId: z.string().min(1).max(100), takeOver: z.boo
 const releaseSchema = z.object({ tabId: z.string().min(1).max(100) }).strict();
 const emptySchema = z.object({}).strict();
 const versionSchema = z.object({ version: z.number().int().positive() }).strict();
+const reviewSelectedSchema = z
+  .object({ items: z.array(z.object({ id: z.number().int().positive(), version: z.number().int().positive() }).strict()).min(1).max(500) })
+  .strict()
+  .refine((b) => new Set(b.items.map((i) => i.id)).size === b.items.length, "each activity once");
+const clearLaSchema = z.object({ days: z.number().int().min(0).max(366) }).strict();
 
 type Params = { id: string };
 /** Legacy lets an HQ Editor below Advanced create, or make, a confidential activity for another ministry, then hides it from them. */
@@ -49,6 +56,8 @@ export function activityRoutes(deps: ApiDeps): Router {
     const out = await createActivity(deps, req.calendar!, createActivitySchema.parse(req.body));
     res.status(201).json(await writeResponse(deps, req, out.id, out.warnings));
   }));
+  r.post("/activities/review-selected", run(async (req, res) => void res.json(await reviewSelected(deps, req.calendar!, reviewSelectedSchema.parse(req.body).items))));
+  r.post("/activities/clear-la-status", run(async (req, res) => void res.json(await clearLaStatus(deps, req.calendar!, clearLaSchema.parse(req.body).days))));
   r.get("/activities/:id", run(async (req, res) => void res.json(await readActivity(deps, req.calendar!, idOf(req)))));
   r.put("/activities/:id", run(async (req, res) => {
     const id = idOf(req);
@@ -64,6 +73,11 @@ export function activityRoutes(deps: ApiDeps): Router {
   r.delete("/activities/:id", run(async (req, res) => {
     await deleteActivity(deps, req.calendar!, idOf(req), versionSchema.parse(req.body).version);
     res.status(204).end();
+  }));
+  r.post("/activities/:id/review", run(async (req, res) => {
+    const id = idOf(req);
+    await reviewActivity(deps, req.calendar!, id, versionSchema.parse(req.body).version);
+    res.json(await readActivity(deps, req.calendar!, id));
   }));
   r.put("/activities/:id/lock", run(async (req, res) => {
     const body = lockSchema.parse(req.body);
