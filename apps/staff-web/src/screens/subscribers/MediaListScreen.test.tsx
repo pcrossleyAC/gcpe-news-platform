@@ -206,6 +206,20 @@ describe("MediaListScreen", () => {
     await user.click(await within(dialog).findByRole("radio", { name: /sam@gazette\.example\.test/ }));
     await user.click(within(dialog).getByRole("button", { name: "Use this email" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("That address opted out of a media list this member is on.");
+    expect(within(dialog).getByRole("alert")).toHaveTextContent("remove them and add them again, confirming the opt-out");
+  });
+
+  it("resolve: for an opted-out address, says clearing the flag lasts only until the next sync, and how to resolve it", async () => {
+    const calls = stub(["NoD.Editor"], { members: () => jsonResponse(200, [{ ...MEMBERS[0]!, needsAttention: "opted-out-address" }]) });
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Resolve sam@riverbend.example.test" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("The next Media Hub sync flags them again");
+    expect(dialog).toHaveTextContent("update the contact in Media Hub");
+    await user.click(within(dialog).getByRole("button", { name: "Clear the flag only" }));
+    await waitFor(() => expect(calls).toContainEqual({ url: `/nod/api/media-members/${ID1}/resolve`, method: "POST", body: {} }));
+    expect(await screen.findByRole("status")).toHaveTextContent("Flag cleared until the next Media Hub sync.");
   });
 
   it("a failed load says so instead of loading forever; an unknown list says there's no such list", async () => {

@@ -8,7 +8,7 @@ import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
 import { ListPicker } from "./ListPicker";
-import { STATUS_LABELS, timingLabel } from "./labels";
+import { attentionLabel, STATUS_LABELS, timingLabel } from "./labels";
 import type { ListOptions, SubscriberDetail } from "./types";
 
 /** apps/nod/src/db/schema.ts's subscribers_source_check. */
@@ -508,7 +508,7 @@ export function SubscriberScreen(): React.JSX.Element {
         )}
       </dl>
 
-      {detail.needsAttention && <p>{`Needs attention: ${detail.needsAttention}`}</p>}
+      {detail.needsAttention && <p>{`Needs attention: ${attentionLabel(detail.needsAttention)}`}</p>}
       {detail.bouncedEmails > 0 && <p>{`Bounced emails counted (last ${detail.bounceWindowDays} days): ${detail.bouncedEmails}`}</p>}
 
       <p>

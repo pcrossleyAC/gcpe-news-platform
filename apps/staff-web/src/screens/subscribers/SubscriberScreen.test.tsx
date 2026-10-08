@@ -265,6 +265,12 @@ describe("SubscriberScreen", () => {
     expect(await within(dialog).findByRole("alert")).toHaveTextContent("internal error");
   });
 
+  it("names the needs-attention reason in words", async () => {
+    stub(["NoD.Viewer"], () => detail({ needsAttention: "opted-out-address" }));
+    renderAt();
+    expect(await screen.findByText("Needs attention: Media Hub email opted out of a media list this member is on")).toBeInTheDocument();
+  });
+
   it("a Media Hub member's email can't be changed here", async () => {
     stub(["NoD.Editor"], () => detail({ status: "active", disabledReason: null, source: "media-hub", mediaHubLinked: true }));
     renderAt();

@@ -762,8 +762,10 @@ legacy's newer data (except a media list staff re-added in NoD after legacy's ow
 it, which stays); one changed in NoD (by staff, a bounce, the Media Hub sync) or removed by the
 purge is left as NoD has it and reported, not overwritten. Consent always carries over: a legacy
 unsubscribe made since the last import ends the NoD record even if NoD changed it (reported as
-"unsubscribed in legacy since the last import"), and for a purged record it is kept as an
-every-media-list opt-out without the address. Legacy moving a member onto an address that opted
+"unsubscribed in legacy since the last import"), unless the person subscribed again in NoD after
+it (reported as "unsubscribed in legacy before a newer subscribe in NoD"); for a purged record it
+is kept as an every-media-list opt-out without the address, or ends NoD's newer record of the
+address on the same terms. Legacy moving a member onto an address that opted
 out of one of their media lists takes them off those lists (reported per list, by id). An
 article row the database refuses (a value out of range) is skipped and reported by id with the
 error's code; the rest of the run carries on. The same networking
