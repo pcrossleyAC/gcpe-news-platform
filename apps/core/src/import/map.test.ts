@@ -55,6 +55,7 @@ describe("mapMinistry", () => {
       topicLinks: [],
       serviceLinks: [],
       sectorKeys: [],
+      isPublic: true,
     });
   });
 

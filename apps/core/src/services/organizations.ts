@@ -41,6 +41,7 @@ export function toOrgRecord(row: Row): OrgRecord {
     serviceLinks: row.serviceLinks,
     sectorKeys: row.sectorKeys,
     isHq: row.isHq,
+    isPublic: true,
     updatedAt: row.updatedAt.toISOString(),
   };
 }

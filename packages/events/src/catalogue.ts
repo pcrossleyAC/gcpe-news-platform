@@ -44,6 +44,10 @@ export const orgRecordSchema = z.object({
   // HQ organization (Calendar spec addendum §4, C124). Defaulted so an envelope stored before
   // the flag existed still parses.
   isHq: z.boolean().default(false),
+  // Listed on public surfaces (the News API's ministries, the subscribe page). GCPE Headquarters
+  // and GCPE Media Relations are not (Q54); the Office of the Premier is HQ but public, so this
+  // is its own flag. Defaulted so an envelope stored before the flag existed stays public.
+  isPublic: z.boolean().default(true),
   updatedAt: z.string().datetime({ offset: true }),
 });
 export type OrgRecord = z.infer<typeof orgRecordSchema>;
@@ -213,6 +217,68 @@ export const userRecordSchema = z.object({
 });
 export type UserRecord = z.infer<typeof userRecordSchema>;
 
+/** NRMS's release types and statuses. Mirrors packages/nrms-contract (this package doesn't depend
+ * on it); catalogue-calendar.test.ts keeps them equal. */
+export const releaseTypeSchema = z.enum(["release", "story", "factsheet", "update", "advisory"]);
+export const releaseStatusSchema = z.enum(["draft", "approved", "scheduled", "publishing", "published", "unpublishing", "failed", "deleted"]);
+
+const activityId = z.number().int().positive();
+const keyList = z.array(z.string().min(1));
+
+/** Calendar → NRMS, for an activity that is not confidential (spec addendum §5.4). */
+export const activityRecordSchema = z
+  .object({
+    id: activityId,
+    isConfidential: z.literal(false),
+    isDeleted: z.boolean(),
+    title: z.string(),
+    details: z.string(),
+    // Legacy allows an activity without dates (calendar.Activity.StartDateTime is NULL-able).
+    startAt: offsetDateTime.nullable(),
+    endAt: offsetDateTime.nullable(),
+    nrAt: offsetDateTime.nullable(),
+    isAllDay: z.boolean(),
+    isConfirmed: z.boolean(),
+    contactMinistryKey: z.string().min(1).nullable(),
+    sharedMinistryKeys: keyList,
+    categoryNames: z.array(z.string()),
+    cityName: z.string().nullable(),
+    themeKeys: keyList,
+    tagKeys: keyList,
+    sectorKeys: keyList,
+    translations: z.array(z.string()),
+  })
+  .strict();
+export type ActivityRecord = z.infer<typeof activityRecordSchema>;
+
+/** A confidential activity leaves the Calendar as these three fields and nothing else (spec
+ * addendum §5.4, C127). Strict, so a producer that adds a field fails its own write. */
+export const confidentialActivitySchema = z.object({ id: activityId, isConfidential: z.literal(true), isDeleted: z.boolean() }).strict();
+export type ConfidentialActivity = z.infer<typeof confidentialActivitySchema>;
+
+export const activityEventSchema = z.discriminatedUnion("isConfidential", [activityRecordSchema, confidentialActivitySchema]);
+export type ActivityEvent = z.infer<typeof activityEventSchema>;
+
+export const activityDeletedSchema = z.object({ id: activityId }).strict();
+
+/** NRMS → Calendar at every release status write and every change of its activity link (spec
+ * addendum §11). `previousActivityId` lets the Calendar drop a link that moved. */
+export const releaseStatusChangedSchema = z
+  .object({
+    releaseId: z.string().uuid(),
+    key: z.string().min(1).nullable(),
+    reference: z.string().nullable(),
+    type: releaseTypeSchema,
+    activityId: activityId.nullable(),
+    previousActivityId: activityId.nullable(),
+    status: releaseStatusSchema,
+    publishAt: offsetDateTime.nullable(),
+    releasedAt: offsetDateTime.nullable(),
+    headline: z.string().nullable(),
+  })
+  .strict();
+export type ReleaseStatusChanged = z.infer<typeof releaseStatusChangedSchema>;
+
 export const eventDataSchemas = {
   "org.upserted": orgRecordSchema,
   "org.deactivated": z.object({ key: z.string().min(1) }),
@@ -234,6 +300,10 @@ export const eventDataSchemas = {
   "site.content.changed": siteContentChangedSchema,
   "site.rebuild_requested": siteRebuildRequestedSchema,
   "delivery.bounced": deliveryBouncedSchema,
+  "activity.created": activityEventSchema,
+  "activity.updated": activityEventSchema,
+  "activity.deleted": activityDeletedSchema,
+  "release.status_changed": releaseStatusChangedSchema,
 } as const;
 
 export type EventType = keyof typeof eventDataSchemas;

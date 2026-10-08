@@ -262,6 +262,7 @@ export function toOrgInput(ministry: PublicMinistry, minister: PublicMinister | 
     topicLinks: (ministry.topicLinks ?? []).map(mapLink),
     serviceLinks: (ministry.serviceLinks ?? []).map(mapLink),
     sectorKeys: [],
+    isPublic: true,
   };
 }
 
@@ -296,6 +297,7 @@ function hqOrganization(key: string, displayName: string, abbreviation: string):
     serviceLinks: [],
     sectorKeys: [],
     isHq: true,
+    isPublic: true,
   };
 }
 

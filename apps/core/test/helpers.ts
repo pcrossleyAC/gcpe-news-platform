@@ -25,4 +25,5 @@ export const healthOrg: OrgInput = {
   topicLinks: [{ text: "Get immunized", url: "https://www2.gov.bc.ca/immunize" }],
   serviceLinks: [],
   sectorKeys: ["health"],
+  isPublic: true,
 };

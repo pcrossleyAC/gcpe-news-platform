@@ -33,7 +33,7 @@ const org: OrgRecord = {
   displayAdditionalName: null,
   minister: { name: "Honourable Sam Placeholder", summary: "Honourable Sam Placeholder", detailsHtml: "<p>bio</p>", email: "SP.Minister@gov.bc.ca", photoUrl: null, address: "PO BOX 9050" },
   contact: null, secondContact: null, weekendContactNumber: "", social: { twitterUsername: "", flickrUrl: null, youtubeUrl: null, audioUrl: null },
-  topicLinks: [], serviceLinks: [], sectorKeys: [], isHq: false, updatedAt: "2026-10-02T16:46:05.527-07:00",
+  topicLinks: [], serviceLinks: [], sectorKeys: [], isHq: false, isPublic: true, updatedAt: "2026-10-02T16:46:05.527-07:00",
 };
 
 describe("projections", () => {
