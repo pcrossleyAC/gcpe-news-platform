@@ -924,10 +924,6 @@ cookie from `POST /core/auth/login` and the `X-GCPE-Request: 1` header:
 5. After one tick, NRMS's `inbox_events` has an `ignored` row of type `activity.created` from
    source `calendar`, and the News API's has none.
 
-Not run as part of this phase's docs/verification pass — see the runbook's "Corporate Calendar
-(Phase 5b)" turn-on steps above for the database and environment-variable prerequisites, and the
-whole-branch review for when these hand checks are actually exercised on boxs.ca.
-
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

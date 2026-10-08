@@ -445,3 +445,9 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   Translations list, required fields) are in the tenant file's `calendar` section.
 - **Operations** — The Calendar sends `activity.*` events to NRMS from now on; NRMS ignores them until
   phase 5h. They never go to the public News API.
+- **HQ** — An Awareness activity, or one led by the consultations ministry, keeps the Look Ahead
+  section it has (Not on LA for a new one); choosing another section for it has no effect, as in the
+  old Calendar. Long Term Outlook can still be ticked.
+- **Developer** — A request value the database can't hold (an id past 2,147,483,647, a NUL character,
+  a year before 1900 or after 2199) answers 400, never a 500. A database data error the request
+  checks miss also answers 400 `{"error":"invalid value"}`, and its code is logged.

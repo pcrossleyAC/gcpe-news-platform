@@ -8,16 +8,17 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **Transfer** (spec addendum §7.1, §8.5): the API and the screen, with the users screen 5b-2 built.
 - **Deactivation preview** (spec addendum §8.5, `User.aspx:183-223`): list a user's open activities before deactivating, filtered by `visible()`. Legacy listed every activity with that user as an active comm contact, past ones included; "open" here means not deleted and ending today or later.
 - **Pin the tenant-config start-up refusal with an integration test.** `startCalendar` must refuse to start when the tenant file has no `calendar` section (spec addendum §5.1); only unit coverage exists today.
-- **Pin the News API boundary.** A test asserting no News API projection handler key starts with `"activity."`, and that `FIELD_ONLY_ACTIONS` includes `cloned`/`transferred` once Transfer can carry Look-Ahead-only fields.
-- **Lock-sweep polish.** Move the idle-timeout literal into a named `sqlInterval(LOCK_IDLE_MS)` in `locks.ts`/`store.ts`; have the sweep test assert the swept count directly (`{ deleted: 1 }`); add a barrier to the concurrent-lock race test and a take-over-by-another-user test.
-- **History on an imported dirty title/details.** The first untouched save after import records a raw-to-cleaned change in history (see "Implementation notes" in `docs/parity/changes-from-legacy.md`); pin that with a dedicated assertion in the curly-quote test, and isolate the All-Day status-only row in its own test.
-- **Needs a judgment call before merge:** `sectionToStore` lets an HQ override apply to Awareness and Consultations activities even though spec addendum §7.6 says those two sections are fixed with no override. Confirm against §7.6 and either fix it or document the exception.
+- **`FIELD_ONLY_ACTIONS` gains `transferred`** (`apps/calendar/src/activities/view.ts`) once Transfer can carry Look-Ahead-only fields, so a ministry viewer doesn't see an empty Transfer entry.
+- **Add a barrier to the concurrent-lock race test** (`activity-locks.test.ts`, "two people taking it at once"), so both requests are provably in flight together.
+- **History on an imported dirty title/details:** isolate the All-Day status-only row in its own test. (The raw-to-cleaned title entry is pinned in the curly-quote test.)
+- **Done in 5c-1: Awareness and the consultations ministry take no section override.** Legacy (`Activity.aspx:2470-2481`) fixes their section with no HQ override, as spec addendum §7.6 and C168 say. `sectionToStore` ignores a fieldset user's choice for them and keeps the stored section (Not on LA for a new activity), on create and update alike; Long Term Outlook stays settable.
 
 ## 5d
 
 - **The list reads through `visibleSql(actor)`** (`apps/calendar/src/visibility.ts`), unaliased `activities`; never filter in memory after paging (spec addendum §6).
 - **Review selected** posts `{ items: [{ id, version }] }` (≤ 500) to `POST /calendar/api/activities/review-selected` and shows the `skipped` list; **Clear LA Status** posts `{ days }` to `POST /calendar/api/activities/clear-la-status`.
 - **The freeze banner** reads `GET /calendar/api/config`'s `freeze`.
+- **Review selected and Clear LA Status can answer 207 with `{ failed: true }`:** a later batch rolled back after earlier ones committed. Staff-web must check `body.failed`, not only the status, and tell the user what did and didn't commit.
 
 ## 5e
 
@@ -36,6 +37,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 ## 5h and later
 
 - **The News API must never gain an `activity.*` handler.** Confidential Calendar content must stay inside the Calendar (C127); only the id-only confidential form of `activity.*` and `release.status_changed` cross that boundary (spec addendum §5.4). The Calendar → NRMS `activity.*` route exists since 5c-1 (`apps/stack/src/env.ts`); 5h adds NRMS's handler. A test in `apps/stack/src/env.test.ts` pins that no route carries `activity.*` to the News API.
+- **NRMS's `activity.*` handler must not bring a deleted activity back.** Reviewing a deleted activity, or clearing its LA status, emits `activity.updated` with `isDeleted: true` after the `activity.deleted` already sent. The handler must treat `isDeleted: true` as deleted, never as an upsert of a live activity.
 - **If service tokens with Calendar roles ever exist, Core's `actorIsHq` should apply only to session callers.** `actorIsHq` (`apps/core/src/services/calendar-access.ts`) today only ever sees a session actor; before a service token could carry a Calendar role, re-check that it still reads HQ membership only for a session caller, not for a bearer/service subject.
 - **The NRMS → News API event route is `"*"`** (`apps/stack/src/env.ts`, the `NRMS`→`NEWSAPI` entry). Before NRMS emits `release.status_changed`, make that route list its types explicitly, or at least exclude `release.status_changed`, so the event goes only to the Calendar. The Calendar's `projectionHandler` (`apps/calendar/src/projections.ts`) also accepts only `core` today: it must accept the `nrms` source for `release.status_changed`.
 - **Re-check NRMS "email me a copy" if service tokens ever carry NRMS roles.** `POST /nrms/api/releases/:id/email-copy` (`apps/nrms/src/http/routes.ts`) sends to the bearer's `email` claim. A service token with an NRMS role could then send a release to whatever address its claims name.
