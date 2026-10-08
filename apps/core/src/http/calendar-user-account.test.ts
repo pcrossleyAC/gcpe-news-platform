@@ -6,7 +6,7 @@ import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { createApp } from "../app";
 import { lockAggregate, userAggregateId } from "../services/aggregate";
 import { setCalendarAccess } from "../services/calendar-access";
-import { upsertOrganization } from "../services/organizations";
+import { setOrganizationHq, upsertOrganization } from "../services/organizations";
 import { createUser, createUserSchema, getUser } from "../services/users";
 import { roleGrants } from "../db/schema";
 
@@ -49,6 +49,14 @@ describe("Calendar Administrators: active and link (Q55)", () => {
     await person("imported", { email: null, calendar: "Calendar.Editor" });
     await person("imported2", { email: null, calendar: "Calendar.Editor" });
     await person("imported3", { email: null, calendar: "Calendar.Editor" });
+    await upsertOrganization(tdb.db, { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "FIN", sectorKeys: [] }, []);
+    // The NRMS legacy importer's shape: an email, inactive, no roles of any kind.
+    await person("legacyStaff", { active: false });
+    await person("bare", { email: null });
+    await person("nrmsNoEmail", { email: null, flat: ["NRMS.Viewer"], calendar: "Calendar.Editor" });
+    await person("hqNoEmail", { email: null, calendar: "Calendar.Editor", orgs: ["gcpe-headquarters"] });
+    await person("financeEditor", { calendar: "Calendar.Editor", orgs: ["finance"] });
+    await person("calendarNoEmail", { email: null, calendar: "Calendar.ReadOnly" });
   });
   afterAll(() => tdb.drop());
 
@@ -108,6 +116,41 @@ describe("Calendar Administrators: active and link (Q55)", () => {
     }
     expect((await getUser(tdb.db, id.editor!))!.isActive).toBe(true);
     expect((await getUser(tdb.db, id.imported3!))!).toMatchObject({ email: null, isActive: false });
+  });
+
+  it("a user with no Calendar role is a Core admin's to change, active or not, emailed or not", async () => {
+    const refused = await put("admin", "legacyStaff", true);
+    expect(refused.status).toBe(403);
+    expect(refused.body).toEqual({ error: "only a Core admin can change a user who has no Calendar role", reason: "no-calendar-role" });
+    expect((await put("sysAdmin", "legacyStaff", false)).body.reason).toBe("no-calendar-role");
+    expect((await getUser(tdb.db, id.legacyStaff!))!.isActive).toBe(false);
+    const linked = await link("sysAdmin", "bare", "bare.linked@example.test");
+    expect(linked.status).toBe(403);
+    expect(linked.body.reason).toBe("no-calendar-role");
+    expect((await getUser(tdb.db, id.bare!))!).toMatchObject({ email: null, isActive: false });
+    expect((await put("coreAdmin", "legacyStaff", true)).status).toBe(200);
+    expect((await link("admin", "calendarNoEmail", "readonly.linked@example.test")).status).toBe(200);
+  });
+
+  it("link follows the same rules as active: other roles and HQ targets are refused", async () => {
+    expect((await link("admin", "nrmsNoEmail", "nrms.linked@example.test")).body).toEqual({ error: "only a Core admin can change a user who also has NRMS or NoD roles", reason: "other-roles" });
+    expect((await link("admin", "hqNoEmail", "hq.linked@example.test")).body.reason).toBe("hq-target");
+    expect((await getUser(tdb.db, id.hqNoEmail!))!.email).toBeNull();
+    expect((await link("hqAdmin", "hqNoEmail", "hq.linked@example.test")).status).toBe(200);
+  });
+
+  it("link takes only an email", async () => {
+    const res = await request(app).post(`/api/calendar-access/${id.imported3}/link`).set("cookie", cookie.admin!).set("x-gcpe-request", "1").send({ email: "extra.key@example.test", isActive: false });
+    expect(res.status).toBe(400);
+    expect((await getUser(tdb.db, id.imported3!))!.email).toBeNull();
+  });
+
+  it("a ministry that becomes HQ makes its holders HQ targets", async () => {
+    expect((await put("admin", "financeEditor", false)).status).toBe(200);
+    await setOrganizationHq(tdb.db, "finance", true, []);
+    expect((await put("admin", "financeEditor", true)).body.reason).toBe("hq-target");
+    await setOrganizationHq(tdb.db, "finance", false, []);
+    expect((await put("admin", "financeEditor", true)).status).toBe(200);
   });
 
   it("the Q55 check runs under the user's lock: a role granted while the request waits is seen", async () => {

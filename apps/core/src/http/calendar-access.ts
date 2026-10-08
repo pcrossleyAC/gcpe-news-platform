@@ -3,7 +3,7 @@ import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import {
-  CALENDAR_ONLY_MESSAGE,
+  CALENDAR_ONLY_MESSAGES,
   calendarAccessSchema,
   CalendarGrantRefusedError,
   CalendarOnlyError,
@@ -27,7 +27,7 @@ const run = <P>(h: (req: Request<P>, res: Response) => Promise<void>) => (req: R
     if (e instanceof UserNotFoundError) return void res.status(404).json({ error: "not found" });
     if (e instanceof CalendarGrantRefusedError) return void res.status(403).json({ error: REFUSAL_MESSAGES[e.reason], reason: e.reason });
     if (e instanceof UnknownOrganizationError) return void res.status(400).json({ error: "unknown or inactive ministry", keys: e.keys });
-    if (e instanceof CalendarOnlyError) return void res.status(403).json({ error: CALENDAR_ONLY_MESSAGE, reason: "other-roles" });
+    if (e instanceof CalendarOnlyError) return void res.status(403).json({ error: CALENDAR_ONLY_MESSAGES[e.reason], reason: e.reason });
     if (e instanceof SelfLockoutError) return void res.status(409).json({ error: "you can't deactivate yourself" });
     if (e instanceof UserNeedsEmailError) return void res.status(409).json({ error: "set an email before activating this user" });
     if (e instanceof UserAlreadyHasEmailError) return void res.status(409).json({ error: "this user already has an email" });
@@ -36,6 +36,7 @@ const run = <P>(h: (req: Request<P>, res: Response) => Promise<void>) => (req: R
   });
 
 const activeSchema = z.object({ isActive: z.boolean() }).strict();
+const linkSchema = linkUserSchema.strict();
 
 /**
  * Activating, deactivating and linking change who can sign in (and, once Entra sign-in matches by
@@ -72,7 +73,7 @@ export function calendarAccessRouter(db: Db, subscribers: SubscriberConfig[]): R
     "/:id/link",
     sessionOnly,
     run<IdParams>(async (req, res) => {
-      const { email } = linkUserSchema.parse(req.body);
+      const { email } = linkSchema.parse(req.body);
       res.json(await linkCalendarUser(db, { id: req.auth!.subject, roles: req.auth!.roles }, req.params.id, email, subscribers));
     }),
   );

@@ -33,11 +33,19 @@ export const REFUSAL_MESSAGES: Record<CalendarGrantRefusal, string> = {
   "hq-target": "only an HQ Administrator, a System Administrator or a Core admin can change the Calendar access of someone with an HQ ministry",
 };
 
-export const CALENDAR_ONLY_MESSAGE = "only a Core admin can change a user who also has NRMS or NoD roles";
+export type CalendarOnlyRefusal = "other-roles" | "no-calendar-role";
 
-/** Q55: a Calendar Administrator may change the account of a user whose only access is the Calendar. */
+export const CALENDAR_ONLY_MESSAGES: Record<CalendarOnlyRefusal, string> = {
+  "other-roles": "only a Core admin can change a user who also has NRMS or NoD roles",
+  "no-calendar-role": "only a Core admin can change a user who has no Calendar role",
+};
+
+/** Q55: a Calendar Administrator may change the account only of a user whose only access is a Calendar role. */
 export class CalendarOnlyError extends Error {
   override name = "CalendarOnlyError";
+  constructor(readonly reason: CalendarOnlyRefusal) {
+    super(reason);
+  }
 }
 
 export class CalendarGrantRefusedError extends Error {
@@ -97,14 +105,17 @@ async function targetHoldsHq(tx: Tx, userId: string): Promise<boolean> {
 
 /**
  * Who may deactivate, reactivate or link a user from the Calendar (spec addendum §8.5, Q55): a
- * Core.Admin always; anyone else only on a user with no flat role, and only where they could change
- * that user's Calendar access with the role left as it is (C125, C159, C160).
+ * Core.Admin always; anyone else only on a user with a Calendar role and no other role, and only
+ * where they could change that user's Calendar access with the role left as it is (C125, C159, C160).
  */
 function calendarAdminGuard(actor: CalendarActor): UserGuard {
   return async (tx, id) => {
     if (actor.roles.includes("Core.Admin")) return;
     const current = (await getUser(tx, id))!;
-    if (current.roles.length > 0) throw new CalendarOnlyError();
+    // A user with no roles at all isn't Calendar-only: the NRMS importer creates such users
+    // inactive on purpose, and only a Core admin may bring them in.
+    if (current.calendarRole === null) throw new CalendarOnlyError("no-calendar-role");
+    if (current.roles.length > 0) throw new CalendarOnlyError("other-roles");
     const refusal = checkCalendarGrant({
       actorId: actor.id,
       actorRoles: actor.roles,
