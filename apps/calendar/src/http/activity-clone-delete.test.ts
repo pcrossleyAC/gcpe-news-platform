@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { ActivityFields } from "@gcpe/calendar-contract";
 import { createCalendarTestDb, createTestApp, FIXED_NOW } from "../../test/helpers";
-import { call, historyOf, outboxOf, seedWorld, validInput, type World } from "../../test/world";
+import { call, historyOf, insertRaw, outboxOf, seedWorld, validInput, type World } from "../../test/world";
 import { activities, activityLocks } from "../db/schema";
 
 describe("clone and delete (spec addendum §7.1)", () => {
@@ -68,6 +68,31 @@ describe("clone and delete (spec addendum §7.1)", () => {
     });
 
     it("refuses a body", async () => expect((await call(app, "post", `/api/activities/${(await make()).id}/clone`, w.as.editor.cookie, { title: "x" })).status).toBe(400));
+
+    describe("the carried-over contact ministry, checked exactly as create checks a new one", () => {
+      it("refuses to clone into a ministry that's since been deactivated", async () => {
+        const id = await insertRaw(tdb.db, { contactMinistryKey: "retired" });
+        const res = await call(app, "post", `/api/activities/${id}/clone`, w.as.hqEditor.cookie, {});
+        expect(res.status).toBe(422);
+      });
+
+      it("refuses to clone into a ministry with no orgs row at all", async () => {
+        const id = await insertRaw(tdb.db, { contactMinistryKey: "no-such-ministry" });
+        const res = await call(app, "post", `/api/activities/${id}/clone`, w.as.hqEditor.cookie, {});
+        expect(res.status).toBe(422);
+      });
+
+      it("refuses a shared-with ministry editor cloning another ministry's activity, as create would", async () => {
+        const src = await make({ sharedWithKeys: ["finance"] });
+        const res = await call(app, "post", `/api/activities/${src.id}/clone`, w.as.financeEditor.cookie, {});
+        expect(res.status).toBe(403);
+      });
+
+      it("an HQ Editor still clones an activity whose ministry is fine", async () => {
+        const src = await make();
+        expect((await call(app, "post", `/api/activities/${src.id}/clone`, w.as.hqEditor.cookie, {})).status).toBe(201);
+      });
+    });
   });
 
   describe("delete", () => {

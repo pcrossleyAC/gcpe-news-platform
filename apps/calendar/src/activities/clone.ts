@@ -1,12 +1,12 @@
-import { and, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import type { CalendarActor } from "../actor";
 import { can } from "../capabilities";
-import { keywords } from "../db/schema";
+import { keywords, orgs } from "../db/schema";
 import { assertNotFrozen } from "../freeze";
 import type { ApiDeps } from "../http/routes";
 import { dbNow } from "../time";
 import { visible } from "../visibility";
-import { ActivityDeletedError, ActivityForbiddenError, ActivityNotFoundError } from "./errors";
+import { ActivityDeletedError, ActivityForbiddenError, ActivityNotFoundError, ActivityValidationError } from "./errors";
 import { emitActivity } from "./events";
 import { displayOf, setFields, writeChange } from "./history";
 import { contentOf, factsOf, insertActivity, keywordNamesOf, loadStored, lockActivity, replaceJoins, type LookAheadValues } from "./store";
@@ -26,7 +26,23 @@ export async function cloneActivity(deps: ApiDeps, actor: CalendarActor, sourceI
     const now = await dbNow(tx, deps.now);
     assertNotFrozen(now, actor, deps.rules);
 
+    // A clone is a new assignment to its carried-over contact ministry, checked exactly as create
+    // checks one (resolve.ts's contactMinistryKey block): the ministry must still exist and be
+    // active, and the actor must be allowed to use it. Own-ministry users already had this ministry
+    // checked by can.clone above; this also catches HQ cloning into a ministry that no longer exists
+    // or has since been deactivated.
+    if (s.row.contactMinistryKey !== null) {
+      const [org] = await tx.select().from(orgs).where(eq(orgs.key, s.row.contactMinistryKey));
+      if (!org) throw new ActivityValidationError([{ field: "contactMinistryKey", message: "That ministry doesn't exist" }]);
+      if (!org.isActive) throw new ActivityValidationError([{ field: "contactMinistryKey", message: "That ministry is no longer active" }]);
+      if (org.abbreviation && deps.rules.contactMinistryExcludedAbbreviations.includes(org.abbreviation)) {
+        throw new ActivityValidationError([{ field: "contactMinistryKey", message: "That ministry can't lead an activity" }]);
+      }
+      if (!can.create(actor, s.row.contactMinistryKey)) throw new ActivityForbiddenError("You can only clone into one of your ministries");
+    }
+
     const content = { ...contentOf(s.row), nrAt: null, comments: "" };
+    // hqSection and longTermOutlook carry over unchanged, as every other copied field does.
     const lookAhead: LookAheadValues = { hqComments: "**", hqStatus: null, hqSection: s.row.hqSection, longTermOutlook: s.row.longTermOutlook };
     const kept = deps.rules.cloneKeptKeywordNames.map((k) => k.toLowerCase());
     const keptIds =
