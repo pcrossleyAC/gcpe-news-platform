@@ -113,4 +113,10 @@ describe("users service", () => {
     await expect(updateUser(tdb.db, noEmail!.id, { isActive: true }, [])).rejects.toBeInstanceOf(UserNeedsEmailError);
     expect((await getUser(tdb.db, noEmail!.id))!.isActive).toBe(false);
   });
+
+  it("createUser refuses an active user with no email with UserNeedsEmailError, even without the schema's own check", async () => {
+    const before = (await listUsers(tdb.db)).length;
+    await expect(createUser(tdb.db, { email: null, displayName: "Kim Imported", roles: [], isActive: true }, [])).rejects.toBeInstanceOf(UserNeedsEmailError);
+    expect(await listUsers(tdb.db)).toHaveLength(before);
+  });
 });

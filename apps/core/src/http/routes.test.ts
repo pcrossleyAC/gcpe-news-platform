@@ -129,6 +129,28 @@ describe("Core HTTP API", () => {
     }
   });
 
+  it("logs only a safe label for an unexpected failure, never the query's bound parameters or an email", async () => {
+    const lines: unknown[][] = [];
+    const errSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void lines.push(args));
+    const failed = Object.assign(new Error('Failed query: update "organizations" set "contact" = $1\nparams: {"emailAddress":"robin.staff@example.test"}'), {
+      cause: Object.assign(new Error('value for "contact" robin.staff@example.test'), { code: "22001" }),
+    });
+    const spy = vi.spyOn(organizationsService, "upsertOrganization").mockRejectedValueOnce(failed);
+    try {
+      const res = await request(app).put("/api/organizations/health").set("authorization", `Bearer ${admin}`).send(healthOrg);
+      expect(res.status).toBe(500);
+      expect(lines).toHaveLength(1);
+      const logged = lines[0]!.map((a) => (a instanceof Error ? `${a.message} ${a.stack} ${String(a.cause)}` : typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      expect(logged).toContain("22001");
+      expect(logged).not.toContain("example.test");
+      expect(logged).not.toContain("params");
+      expect(lines[0]!.every((a) => typeof a === "string")).toBe(true);
+    } finally {
+      spy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
   it("rejects admin bodies over MAX_EVENT_BYTES with 413", async () => {
     const big = { ...healthOrg, key: "big", minister: { ...healthOrg.minister, detailsHtml: "x".repeat(MAX_EVENT_BYTES) } };
     const res = await request(app).put("/api/organizations/big").set("authorization", `Bearer ${admin}`).send(big);

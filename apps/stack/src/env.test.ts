@@ -11,6 +11,7 @@ import {
   FAKE_MEDIA_HUB_PATH,
   internalEventEnv,
   INTERNAL_EVENT_ROUTES,
+  newsApiEventTypesFromCore,
   resolveSelfSubscribers,
   resolveSelfUrls,
   routeSecret,
@@ -394,6 +395,12 @@ describe("Core's subscribers never receive user.upserted", () => {
     expect(toNewsApi.types).not.toContain("*");
     expect(toNewsApi.types).not.toContain("user.upserted");
     expect(toNewsApi.types).not.toContain("service.upserted");
+  });
+
+  it("never routes a user.* type to the News API, even if the News API grew a handler for one", () => {
+    const handled = () => Promise.resolve();
+    const handlers = { "org.upserted": handled, "user.upserted": handled, "user.deactivated": handled };
+    expect(newsApiEventTypesFromCore(handlers)).toEqual(["org.upserted"]);
   });
 });
 

@@ -174,6 +174,9 @@ export async function createUser(db: Db, input: CreateUserInput, subscribers: Su
     return (await getUser(db, id))!;
   } catch (e) {
     if (isDuplicateEmail(e)) throw new UserExistsError(input.email ?? "");
+    // createUserSchema refuses an active user with no email, but a caller that skips the schema
+    // (a legacy Calendar importer) hits users_active_needs_email instead: report it the same way.
+    if (isCheckViolation(e, "users_active_needs_email")) throw new UserNeedsEmailError("new user");
     throw e;
   }
 }

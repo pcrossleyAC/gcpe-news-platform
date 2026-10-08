@@ -2,6 +2,7 @@ import express, { type Request, type Response } from "express";
 import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import { EventTooLargeError, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
 import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, setOrganizationHq, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
@@ -22,7 +23,8 @@ function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | nu
 function handleError(res: Response, e: unknown) {
   if (e instanceof ZodError) return void res.status(400).json({ error: e.issues });
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: "record too large to publish" });
-  console.error("[core] request failed", e);
+  // Only the label: a failed query's message carries its bound parameters, which can be an email.
+  console.error("[core] request failed", safeErrorLabel(e));
   if (res.headersSent) return void res.end();
   res.status(500).json({ error: "internal error" });
 }

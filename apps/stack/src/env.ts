@@ -8,11 +8,12 @@ import { z } from "zod";
 
 /** The Core-sourced event types the News API actually has a projection handler for, derived
  * (not hand-maintained) so a handler added or removed there automatically widens or narrows
- * this route. Core's `user.upserted` carries staff emails and must never reach the public News
- * API, and `service.upserted`/`service.deactivated` exist in the catalogue but have no News
- * API handler either — both are correctly excluded by this derivation, not by a hand-picked list. */
-function newsApiEventTypesFromCore(): string[] {
-  return Object.keys(createProjectionHandlers()).filter((type) => NEWS_API_SOURCE_EVENT_TYPES.core!(type));
+ * this route. `service.upserted`/`service.deactivated` exist in the catalogue but have no News
+ * API handler, so the derivation leaves them out. Core's `user.*` events carry staff emails and
+ * must never reach the public News API, so they are excluded explicitly: a News API handler for
+ * one must not be enough to route it there. */
+export function newsApiEventTypesFromCore(handlers: Record<string, unknown> = createProjectionHandlers()): string[] {
+  return Object.keys(handlers).filter((type) => NEWS_API_SOURCE_EVENT_TYPES.core!(type) && !/^user\./.test(type));
 }
 
 // Task 1 (staff-web): the staff app's built output directory. Two on-disk layouts share one
