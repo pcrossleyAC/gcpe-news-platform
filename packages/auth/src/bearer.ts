@@ -92,7 +92,9 @@ export function requireBearer(opts: BearerOptions): RequestHandler {
       req.auth = {
         subject: String(payload.sub),
         roles: Array.isArray(payload.roles) ? payload.roles.map(String) : [],
-        claims: payload as Record<string, unknown>,
+        // `via` marks how the caller authenticated, and only the cookie path above may say
+        // "session": a token's own claims never get to choose.
+        claims: { ...(payload as Record<string, unknown>), via: "bearer" },
       };
       next();
     } catch {

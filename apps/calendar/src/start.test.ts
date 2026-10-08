@@ -25,6 +25,8 @@ describe("startCalendar", () => {
     try {
       expect((await request(handle.app).get("/health/ready")).status).toBe(200);
       expect(handle.port).toBe(3007);
+      // Break-glass sign-in issues a bearer token, which can't use the Calendar: no endpoint for it.
+      expect((await request(handle.app).post("/auth/local/token").send({ username: "admin", password: "x" })).status).toBe(404);
       expect(await handle.workers.needsReferenceData!()).toBe(true);
       expect(await handle.workers.dispatch!()).toEqual({ delivered: 0, retried: 0, dead: 0 });
     } finally {

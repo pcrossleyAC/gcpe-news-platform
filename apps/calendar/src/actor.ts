@@ -44,8 +44,10 @@ export async function loadCalendarActor(db: DbOrTx, subject: string): Promise<Ca
 }
 
 /**
- * Runs after requireBearer on every /api request. Only a staff session can act in the Calendar:
- * a bearer token (break-glass or service) has no Calendar access, whatever its subject or roles.
+ * Runs after requireBearer on every /api request. Only a staff session can act in the Calendar.
+ * requireBearer sets `via: "session"` only on its cookie path and forces `via: "bearer"` on every
+ * token, whatever the token itself claims, so a bearer token (break-glass or service) has no
+ * Calendar access even when its subject is a projected user's id.
  * A session cookie's roles were minted at sign-in and can be an hour old, so they are never used
  * here either: a revoked grant takes effect as soon as its user.upserted arrives (spec addendum §4).
  */

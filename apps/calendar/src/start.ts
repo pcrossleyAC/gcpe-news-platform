@@ -36,7 +36,8 @@ export async function startCalendar(env: NodeJS.ProcessEnv): Promise<AppHandle> 
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
-  const app = createApp({ db, auth: auth.bearer, loginRouter: auth.loginRouter, eventSecrets: parsed.EVENT_SECRETS });
+  // No local login router: the token it issues is a bearer token, which has no Calendar access.
+  const app = createApp({ db, auth: auth.bearer, eventSecrets: parsed.EVENT_SECRETS });
 
   let stopDispatcher: (() => Promise<void>) | undefined;
   return {
