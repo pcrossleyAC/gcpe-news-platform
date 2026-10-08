@@ -24,7 +24,7 @@ export function apiRoutes(deps: ApiDeps): Router {
   r.use(configRoutes(deps));
   r.use(activityRoutes(deps));
   r.use(lookupRoutes(deps.db));
-  r.use(userRoutes(deps.db));
+  r.use(userRoutes(deps));
   r.use(transferRoutes(deps));
   return r;
 }
