@@ -3,7 +3,7 @@ import request from "supertest";
 import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { commContacts } from "../db/schema";
-import { createCalendarTestDb, createTestApp, projectOrg, projectUser, sessionCookie } from "../../test/helpers";
+import { createCalendarTestDb, createTestApp, projectOrg, projectUser, sessionCookie, waitForLockWaiter } from "../../test/helpers";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 
@@ -81,14 +81,3 @@ describe("Calendar user routes", () => {
     expect(res.body).toEqual([{ ministryKey: "health", rank: 3, isActive: true }]);
   });
 });
-
-/** Resolves once some session is blocked on a lock. */
-async function waitForLockWaiter(tdb: TestDatabase, timeoutMs = 5000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const r = await tdb.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
-    if (r.rows[0]!.n > 0) return;
-    if (Date.now() > deadline) throw new Error("no session started waiting for a lock");
-    await new Promise((resolve) => setTimeout(resolve, 10));
-  }
-}

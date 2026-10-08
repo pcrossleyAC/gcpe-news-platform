@@ -3,9 +3,10 @@ import { fileURLToPath } from "node:url";
 import type express from "express";
 import request from "supertest";
 import { mintSession } from "@gcpe/auth";
+import type { CalendarRules } from "@gcpe/calendar-contract";
 import { createTestDatabase, type Db, type TestDatabase } from "@gcpe/db-kit";
 import { signPayload, type OrgRecord, type UserRecord } from "@gcpe/events";
-import { createApp } from "../src/app";
+import { createApp, type AppDeps } from "../src/app";
 
 export const calendarMigrations = fileURLToPath(new URL("../migrations", import.meta.url));
 
@@ -16,8 +17,46 @@ export function createCalendarTestDb(): Promise<TestDatabase> {
 export const EVENT_SECRETS = { core: "core-secret", nrms: "nrms-secret" } as const;
 export const SESSION_SECRET = "calendar-session-secret-0123456789abcdef";
 
-export function createTestApp(db: Db): express.Express {
-  return createApp({ db, auth: { session: { secret: SESSION_SECRET } }, eventSecrets: EVENT_SECRETS });
+/** Fictional names only: never a legacy category name or value. */
+export const TEST_RULES: CalendarRules = {
+  timeZone: "America/Vancouver",
+  freeze: { start: "16:00", end: "17:00" },
+  releaseCategoryIds: [12, 58],
+  awarenessCategoryIds: [2],
+  otherCityId: 311,
+  unconfirmedIssueCommMaterialId: 61,
+  hqPlaceholderCategoryName: "Sample HQ placeholder",
+  confidentialCategoryName: "Sample confidential category",
+  issueExemptCategoryNames: ["Sample approved event", "Sample proposed release", "Sample approved release"],
+  eventsCategoryNames: ["Sample approved event", "Sample proposed release", "Sample approved release", "Sample speech", "Sample HQ placeholder"],
+  consultationsMinistryAbbreviation: "CONSULT",
+  contactMinistryExcludedAbbreviations: ["EXCL"],
+  sharedWithExcludedAbbreviations: ["EXCL"],
+  translationsDefault: ["Sample language A", "Sample language B"],
+  required: { significance: true, scheduling: true, strategy: false },
+  showHqCommentsField: false,
+  showRecordsSection: false,
+  cloneKeptKeywordNames: ["Sample kept keyword"],
+  lookAheadCoverImage: null,
+  reportBanner: { province: "Sample Province", confidentiality: "DRAFT AND CONFIDENTIAL" },
+};
+
+/** 11:00 BC on 2026-11-03: outside the freeze, so a test run at 16:30 BC behaves like any other. */
+export const FIXED_NOW = new Date("2026-11-03T18:00:00Z");
+
+export function createTestApp(db: Db, over: Partial<AppDeps> = {}): express.Express {
+  return createApp({ db, auth: { session: { secret: SESSION_SECRET } }, eventSecrets: EVENT_SECRETS, rules: TEST_RULES, subscribers: [], now: () => FIXED_NOW, ...over });
+}
+
+/** Resolves once some session is blocked on a lock. */
+export async function waitForLockWaiter(tdb: TestDatabase, timeoutMs = 5000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const r = await tdb.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
+    if (r.rows[0]!.n > 0) return;
+    if (Date.now() > deadline) throw new Error("no session started waiting for a lock");
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
 }
 
 let seq = 0;
