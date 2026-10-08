@@ -18,6 +18,12 @@ export const HISTORY_FIELDS = {
 } as const;
 export type HistoryFieldKey = keyof typeof HISTORY_FIELDS;
 
+/**
+ * The Look Ahead fieldset's history keys. Whoever doesn't see the fieldset on an activity doesn't
+ * see these in its history either, nor an entry that recorded only these (spec addendum §6).
+ */
+export const LOOK_AHEAD_HISTORY_FIELDS = ["hq_comments", "hq_status", "hq_section", "long_term_outlook"] as const satisfies readonly HistoryFieldKey[];
+
 export interface ActivityView {
   id: number;
   version: number;
@@ -49,6 +55,9 @@ export interface ActivityChangeView {
 }
 
 export interface WriteResponse {
-  activity: ActivityView;
+  id: number;
+  /** Null when the save went through but the writer can't see the result: an HQ Editor below
+   * Advanced creating a confidential activity for another ministry, as legacy allowed. */
+  activity: ActivityView | null;
   warnings: string[];
 }

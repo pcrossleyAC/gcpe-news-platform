@@ -125,11 +125,15 @@ export async function resolveReferences(tx: Tx, i: ActivityFields, ctx: Ctx): Pr
   }
 
   // HQ Tags by name, case-insensitively, each once. Legacy matched names under SQL Server's
-  // case-insensitive collation, inactive keywords included.
+  // case-insensitive collation, inactive keywords included. Both sides fold with the database's
+  // lower(), so a name and a keyword match exactly when Postgres says they do.
   const byLower = new Map<string, string>();
-  for (const raw of i.keywordNames) {
-    const name = raw.trim();
-    if (name && !byLower.has(name.toLowerCase())) byLower.set(name.toLowerCase(), name);
+  const names = i.keywordNames.map((n) => n.trim()).filter(Boolean);
+  if (names.length) {
+    const folded = await tx.execute<{ name: string; lower: string }>(
+      sql`SELECT n AS name, lower(n) AS lower FROM unnest(ARRAY[${sql.join(names.map((n) => sql`${n}`), sql`, `)}]::text[]) WITH ORDINALITY AS t(n, ord) ORDER BY ord`,
+    );
+    for (const r of folded.rows) if (!byLower.has(r.lower)) byLower.set(r.lower, r.name);
   }
   const keywordIds: number[] = [];
   const keywordsToCreate: string[] = [];

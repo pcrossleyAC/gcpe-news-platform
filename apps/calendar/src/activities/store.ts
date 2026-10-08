@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { sqlNow, type DbOrTx, type TestClock, type Tx } from "@gcpe/db-kit";
+import { sqlNow, type Db, type DbOrTx, type TestClock, type Tx } from "@gcpe/db-kit";
 import { cleanDetails, cleanTitle, type ActivityFields, type CalendarRules, type HqSection, type HqStatus, type LookAheadInput } from "@gcpe/calendar-contract";
 import {
   activities, activityCategories, activityCommMaterials, activityInitiatives, activityKeywords, activityLocks, activityNrOrigins,
@@ -67,6 +67,14 @@ export interface LookAheadValues {
 
 export const uniqNum = (xs: readonly number[]) => [...new Set(xs)].sort((a, b) => a - b);
 export const uniqStr = (xs: readonly string[]) => [...new Set(xs)].sort();
+
+/**
+ * Runs a reader's queries in one REPEATABLE READ, READ ONLY transaction, so the row, its join sets
+ * and its history are one snapshot even while a write commits between them.
+ */
+export function inReadSnapshot<T>(db: Db, read: (tx: Tx) => Promise<T>): Promise<T> {
+  return db.transaction(read, { isolationLevel: "repeatable read", accessMode: "read only" });
+}
 
 /** Every write to one activity takes this first, then reads the row FOR UPDATE and re-checks it. */
 export async function lockActivity(tx: Tx, id: number): Promise<void> {

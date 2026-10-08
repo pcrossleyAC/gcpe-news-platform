@@ -19,5 +19,16 @@ describe("sendActivityError", () => {
     expect(JSON.stringify(log.mock.calls)).not.toContain("Sample secret");
     log.mockRestore();
   });
+  it("reads a bare code as well as a wrapped one", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    expect(sendActivityError(Object.assign(new Error("duplicate key"), { code: "23505" }), res)).toBe(true);
+    expect(res.statusCode).toBe(409);
+    log.mockRestore();
+  });
+  it("a deadlock (40P01) is not a constraint conflict", () => {
+    expect(sendActivityError(Object.assign(new Error("deadlock detected"), { cause: { code: "40P01" } }), fakeRes())).toBe(false);
+    expect(sendActivityError(Object.assign(new Error("deadlock detected"), { code: "40P01" }), fakeRes())).toBe(false);
+  });
   it("leaves anything else to the generic 500 handler", () => expect(sendActivityError(new Error("boom"), fakeRes())).toBe(false));
 });

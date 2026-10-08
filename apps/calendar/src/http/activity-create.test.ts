@@ -184,6 +184,65 @@ describe("creating an activity (spec addendum §7.1)", () => {
     expect((await call(frozen, "post", "/api/activities", w.as.hqEditor.cookie, validInput(w, { contactMinistryKey: "finance", commContactId: w.contact.financeEditor }))).status).toBe(201);
   });
 
+  it("an HQ Editor below Advanced may create a confidential activity they then can't see: 201, the id, no activity, and a warning", async () => {
+    const res = await create("hqEditor", { isConfidential: true, title: "Sample HQ secret", contactMinistryKey: "finance", commContactId: w.contact.financeEditor });
+    expect(res.status).toBe(201);
+    expect(res.body.activity).toBeNull();
+    expect(res.body.warnings).toContain("Saved. You can't view confidential activities for this ministry.");
+    const [row] = await tdb.db.select({ title: activities.title }).from(activities).where(eq(activities.id, res.body.id));
+    expect(row).toEqual({ title: "Sample HQ secret" });
+  });
+
+  it("a visible create's response carries its id too", async () => {
+    const res = await create("editor");
+    expect(res.body.id).toBe(res.body.activity.id);
+  });
+
+  it("an HQ Tag is matched by the database's own lower() on both sides", async () => {
+    // Under the test database's C collation lower() leaves Ä alone; JavaScript's would not, and would miss this keyword.
+    await tdb.db.insert(keywords).values({ name: "Sample Äpfel" });
+    const before = (await tdb.db.select({ id: keywords.id }).from(keywords)).length;
+    const res = await create("editor", { keywordNames: ["SAMPLE ÄPFEL"] });
+    expect(res.status).toBe(201);
+    expect(res.body.activity.fields.keywordNames).toEqual(["Sample Äpfel"]);
+    expect((await tdb.db.select({ id: keywords.id }).from(keywords)).length).toBe(before);
+  });
+
+  describe("history and the Look Ahead fields", () => {
+    const HQ_KEYS = ["hq_comments", "hq_status", "hq_section", "long_term_outlook"];
+    let id: number;
+    beforeAll(async () => {
+      id = (await create("hqEditor", {
+        contactMinistryKey: "health", commContactId: w.contact.editorHealth,
+        lookAhead: { hqComments: "Sample HQ-only summary", hqStatus: "new", hqSection: "events_and_speeches", longTermOutlook: true },
+      })).body.activity.id as number;
+      // An update that changed only Look Ahead fields, and one with nothing recorded at all.
+      const [onlyHq] = await tdb.db.insert(activityChanges).values({ activityId: id, at: new Date("2026-11-03T18:05:00Z"), actorId: w.as.hqEditor.id, actorName: "Sample HQ Editor", action: "updated" }).returning({ id: activityChanges.id });
+      await tdb.db.insert(activityChangeFields).values([
+        { changeId: onlyHq!.id, fieldKey: "hq_comments", oldValue: "Sample HQ-only summary", newValue: "Sample revised summary" },
+        { changeId: onlyHq!.id, fieldKey: "hq_status", oldValue: "New", newValue: null },
+      ]);
+      await tdb.db.insert(activityChanges).values({ activityId: id, at: new Date("2026-11-03T18:10:00Z"), actorId: w.as.hqAdmin.id, actorName: "Sample HQ Admin", action: "reviewed" });
+    });
+    const keysOf = (body: { fields: { key: string }[] }[]) => body.flatMap((c) => c.fields.map((f) => f.key));
+
+    it("a ministry Read Only user and an HQ Read Only user get none of them, and lose an entry that held only them", async () => {
+      for (const who of ["readOnly", "hqReadOnly"] as const) {
+        const res = await call(app, "get", `/api/activities/${id}/changes`, w.as[who].cookie);
+        expect(res.status).toBe(200);
+        expect(keysOf(res.body).filter((k) => HQ_KEYS.includes(k))).toEqual([]);
+        expect(res.body.map((c: { action: string }) => c.action)).toEqual(["reviewed", "created"]);
+        expect(JSON.stringify(res.body)).not.toContain("Sample HQ-only summary");
+      }
+    });
+
+    it("an HQ Editor gets them, and every entry", async () => {
+      const res = await call(app, "get", `/api/activities/${id}/changes`, w.as.hqEditor.cookie);
+      expect(res.body.map((c: { action: string }) => c.action)).toEqual(["reviewed", "updated", "created"]);
+      expect(keysOf(res.body)).toEqual(expect.arrayContaining(HQ_KEYS));
+    });
+  });
+
   describe("reading", () => {
     let secret: number;
     beforeAll(async () => {
