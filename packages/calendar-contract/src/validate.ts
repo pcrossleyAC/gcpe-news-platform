@@ -1,4 +1,4 @@
-import { cleanTitle } from "./clean";
+import { cleanDetails, cleanTitle } from "./clean";
 import type { HqSection } from "./enums";
 import type { ActivityFields } from "./input";
 import type { CalendarRules } from "./rules";
@@ -27,6 +27,11 @@ export const LIMITS = {
   venue: 55, otherCity: 55, leadOrganization: 80, potentialDates: 50, hqComments: 2000,
 } as const;
 export const LIST_LIMITS = { translations: 30, translationLength: 50, keywords: 20, keywordLength: 255 } as const;
+/** The database's own CHECK sizes (apps/calendar/src/db/schema.ts): the ceiling no stored value may ever cross. */
+const CHECK_LIMITS = {
+  title: 500, details: 700, significance: 500, schedule: 500, strategy: 500, comments: 4000,
+  venue: 150, otherCity: 150, leadOrganization: 100, potentialDates: 70, hqComments: 2000,
+} as const;
 
 const blank = (s: string) => s.trim() === "";
 const offStep = (t: string | null) => t !== null && Number(t.slice(3)) % 5 !== 0;
@@ -79,13 +84,18 @@ export function checkActivity(i: ActivityFields, ctx: CheckContext): FieldError[
     add("lookAhead.hqComments", "Enter an Executive Summary: this Not-for-Look-Ahead activity's section is overridden");
   }
 
-  // Lengths apply to new values only: imported titles reach 217 characters (SV 4.5).
+  // Lengths apply to new values only: imported titles reach 217 characters (SV 4.5). But the
+  // stored, cleaned form must never cross the database's own CHECK, unchanged or not: cleanTitle
+  // and cleanDetails can grow a value (an ellipsis triples in length), so a value that fit raw
+  // can still blow the column's CHECK once cleaned, on every save including an untouched one.
   const prev = ctx.previous;
   const limit = (field: keyof typeof LIMITS, value: string, before: string | undefined, name: string = field) => {
+    if (value.length > CHECK_LIMITS[field]) { add(name, `At most ${LIMITS[field]} characters`); return; }
     if (value.length > LIMITS[field] && value !== before) add(name, `At most ${LIMITS[field]} characters`);
   };
   limit("title", cleanTitle(i.title), prev ? cleanTitle(prev.title) : undefined);
-  for (const f of ["details", "significance", "schedule", "strategy", "comments", "venue", "otherCity", "leadOrganization", "potentialDates"] as const) {
+  limit("details", cleanDetails(i.details), prev ? cleanDetails(prev.details) : undefined);
+  for (const f of ["significance", "schedule", "strategy", "comments", "venue", "otherCity", "leadOrganization", "potentialDates"] as const) {
     limit(f, i[f].trim(), prev?.[f].trim());
   }
   if (i.lookAhead) limit("hqComments", i.lookAhead.hqComments.trim(), prev?.lookAhead?.hqComments.trim(), "lookAhead.hqComments");

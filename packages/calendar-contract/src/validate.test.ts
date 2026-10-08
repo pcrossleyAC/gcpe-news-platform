@@ -33,7 +33,8 @@ describe("the editor's rules, on the server too (spec addendum §7.2, C156)", ()
     ["a single day whose start time is after its end time", { startTime: "11:00", endTime: "10:00" }, ["endTime"]],
     ["a single day with equal times", { startTime: "10:00", endTime: "10:00" }, []],
     ["a release date after the end date", { nrDate: "2026-11-11", nrTime: "09:00" }, ["nrDate"]],
-    ["a release date without a time, and a time without a date", { nrDate: "2026-11-10" }, ["nrTime"]],
+    ["a release date without a time", { nrDate: "2026-11-10" }, ["nrTime"]],
+    ["a release time without a date", { nrTime: "09:00" }, ["nrDate"]],
     ["times off the 5-minute steps", { startTime: "09:03", endTime: "10:01" }, ["startTime", "endTime"]],
     ["Potential Dates with TBD", { potentialDates: "late june, tbd" }, ["potentialDates"]],
     ["Potential Dates with a digit", { potentialDates: "June 2027" }, ["potentialDates"]],
@@ -57,6 +58,16 @@ describe("the editor's rules, on the server too (spec addendum §7.2, C156)", ()
     const long = "x".repeat(150);
     expect(fields({ title: long }, { previous: { ...ok, title: long } })).toEqual([]);
     expect(fields({ title: `${long}y` }, { previous: { ...ok, title: long } })).toEqual(["title"]);
+  });
+
+  it("a value whose cleaning expands it is measured on the cleaned form, not the raw one", () => {
+    const details = `${"x".repeat(699)}…`; // 700 raw characters; cleanDetails triples the ellipsis to 702
+    expect(fields({ details })).toEqual(["details"]);
+  });
+
+  it("an unchanged imported title is still refused when its cleaned form would exceed the database's limit", () => {
+    const title = "…".repeat(200); // 200 raw characters; cleanTitle triples every ellipsis to 600
+    expect(fields({ title }, { previous: { ...ok, title } })).toEqual(["title"]);
   });
 
   it("Look Ahead fields from someone without the fieldset are refused", () => {
