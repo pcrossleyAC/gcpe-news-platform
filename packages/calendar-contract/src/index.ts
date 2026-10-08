@@ -6,3 +6,4 @@ export * from "./levels";
 export * from "./look-ahead";
 export * from "./rules";
 export * from "./validate";
+export * from "./view";

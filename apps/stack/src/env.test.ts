@@ -376,7 +376,8 @@ describe("Core → NRMS taxonomy route", () => {
     const toNrms = coreSubs.find((s) => s.name === "nrms")!;
     expect(toNrms.url).toBe("self:/nrms/events");
     expect(toNrms.types).toEqual(["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"]);
-    expect(Object.keys(JSON.parse(wiring.NRMS.EVENT_SECRETS!))).toEqual(["core"]);
+    // The full topology: the Calendar's pair secret is there too (dropped when the Calendar isn't configured).
+    expect(Object.keys(JSON.parse(wiring.NRMS.EVENT_SECRETS!))).toEqual(["core", "calendar"]);
   });
 });
 
@@ -589,6 +590,25 @@ describe("Calendar routing", () => {
   it("still never routes user.* to the News API", () => {
     const newsApi = coreSubscribers({ CALENDAR_DATABASE_URL: "postgres://x/cal" }).find((s) => s.name === "news-api");
     expect(newsApi?.types.some((t) => t.startsWith("user."))).toBe(false);
+  });
+
+  it("routes the Calendar's activity.* to NRMS by explicit type, and never to the News API (C127)", () => {
+    const env = { CALENDAR_DATABASE_URL: "postgres://x/cal", STACK_EVENT_SECRET: SECRET };
+    const calendarSubs = JSON.parse(envFor(env, "CALENDAR").EVENT_SUBSCRIBERS!) as { name: string; types: string[] }[];
+    expect(calendarSubs).toEqual([expect.objectContaining({ name: "nrms", types: ["activity.created", "activity.updated", "activity.deleted"] })]);
+    expect(JSON.parse(envFor(env, "NRMS").EVENT_SECRETS!)).toHaveProperty("calendar");
+    // The News API can't even verify an event signed by the Calendar.
+    expect(JSON.parse(envFor(env, "NEWSAPI").EVENT_SECRETS ?? "{}")).not.toHaveProperty("calendar");
+    // Widened, so a future route the compiler would otherwise rule out is still checked here.
+    const routes: readonly { from: string; to: string; types: readonly string[] }[] = INTERNAL_EVENT_ROUTES;
+    expect(routes.some((r) => r.from === "CALENDAR" && r.to === "NEWSAPI")).toBe(false);
+    for (const route of routes.filter((r) => r.to === "NEWSAPI")) {
+      expect(route.types.some((t) => t.startsWith("activity."))).toBe(false);
+    }
+  });
+
+  it("no Calendar → NRMS route when the Calendar isn't configured", () => {
+    expect(JSON.parse(envFor({ STACK_EVENT_SECRET: SECRET }, "CALENDAR").EVENT_SUBSCRIBERS ?? "[]")).toEqual([]);
   });
 
   it("strips the CALENDAR_ prefix", () => {

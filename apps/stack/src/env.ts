@@ -286,6 +286,12 @@ export const INTERNAL_EVENT_ROUTES = [
     from: "CORE", source: "core", to: "CALENDAR", name: "calendar", url: "self:/calendar/events",
     types: ["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
   },
+  {
+    // The Calendar's activities, for NRMS's activity projection and Forecast (spec addendum §11).
+    // Never to the News API: confidential text stays in the Calendar (C127).
+    from: "CALENDAR", source: "calendar", to: "NRMS", name: "nrms", url: "self:/nrms/events",
+    types: ["activity.created", "activity.updated", "activity.deleted"],
+  },
   { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
   {
     from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events",
