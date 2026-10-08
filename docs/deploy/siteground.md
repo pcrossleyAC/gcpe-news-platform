@@ -44,9 +44,8 @@ public PostgreSQL hostname is rejected by `pg_hba.conf`.
 
 **The Calendar's database can be added later: the stack runs without it until
 `CALENDAR_DATABASE_URL` is set.** Until then it starts and runs normally without the Calendar,
-and `/calendar` answers `503 {"error": "calendar not configured"}`. See "Calendar app (Phase 5b)"
-and "Corporate Calendar (Phase 5b-1)" below for exactly what to do in Site Tools when you're
-ready to turn it on.
+and `/calendar` answers `503 {"error": "calendar not configured"}`. See "Corporate Calendar (Phase 5b)"
+below for exactly what to do in Site Tools when you're ready to turn it on.
 
 ### 3. Mailbox / SMTP
 
@@ -89,7 +88,7 @@ automatically (see "How MIGRATIONS_FOLDER and TENANT_CONFIG resolve" below).
 `npm run siteground:env` leaves `CALENDAR_DATABASE_URL` out of the generated block when you
 answer the Calendar database name prompt blank (the non-interactive `SITEGROUND_DB_NAME_CALENDAR`
 likewise defaults to blank) — that's correct for boxs.ca today, since `gcpe_calendar` doesn't
-exist yet. Re-run it (or add the one line by hand) once "Calendar app (Phase 5b)" below is done.
+exist yet. Re-run it (or add the one line by hand) once "Corporate Calendar (Phase 5b)" below is done.
 
 **Never set any `*_DATABASE_URL` to a `self:/...` value.** Every other `*_URL` var in this
 stack may use the `self:/path` shorthand (resolved at startup to
@@ -827,18 +826,17 @@ then flip the Operations switch.
   - GCPE Headquarters is not offered to them, and a user who holds an HQ ministry has no Edit button
     (the server would refuse both).
 
-## Calendar app (Phase 5b)
+## Corporate Calendar (Phase 5b)
 
 The Calendar is mounted at `/calendar` only when `CALENDAR_DATABASE_URL` is set
-(`apps/stack/src/env.ts`'s `calendarConfigured`). **On boxs.ca today that database does not exist
-yet, so the stack runs with the Calendar switched off** — every other app starts and runs
-normally, `/calendar/*` answers `503 {"error": "calendar not configured"}`, `GET /stack/health`
-has no `calendar` key at all, and `node stack.js --check` reports
+(`apps/stack/src/env.ts`'s `calendarConfigured`). **Until that database exists on boxs.ca, the
+stack runs with the Calendar switched off.** Every other app starts and runs normally,
+`/calendar/*` answers `503 {"error": "calendar not configured"}`, `GET /stack/health` has no
+`calendar` key at all, and `node stack.js --check` reports
 `{"ok": true, "skipped": "CALENDAR_DATABASE_URL is not set"}` for it rather than failing the
-check. This is expected and not a bug — nothing below is needed until you're ready to turn the
-Calendar on.
+check. This is expected and not a bug.
 
-**To turn it on, in Site Tools:**
+**To turn it on (one time, in Site Tools):**
 
 1. **Databases → create one more PostgreSQL database**, named `gcpe_calendar`, granted to the
    same database user the other six databases already use (no new user, no new password).
@@ -851,37 +849,33 @@ Calendar on.
    still have the inputs `npm run siteground:env` was run with, re-running it with the Calendar's
    database name filled in regenerates this line for you alongside everything else — safe to
    paste just that one new line into the existing environment variables instead of replacing
-   them all.
+   them all. No other setting is needed: the stack derives the Calendar's event secrets from
+   `STACK_EVENT_SECRET`.
 3. **Restart the Node app** (Site Tools → Devs → Node.js → your project → Restart). The very
-   next request (or the next scheduled `/stack/tick`) runs the Calendar's own migration
-   (`apps/calendar/migrations`, additive — see "Per-deploy steps" above for how `--check` and a
-   real deploy apply migrations) and starts mounting it.
+   next request (or the next scheduled `/stack/tick`) runs the migrations (see "Per-deploy
+   steps" above for how `--check` and a real deploy apply them) and starts mounting the Calendar.
+   The migrations are Core `0003_org_public` (one column), News API `0002_category_public` (one
+   column) and Calendar `0000_init` (new database), all additive.
 4. **Confirm:** `GET https://boxs.ca/calendar/health/ready` answers `200`, and
-   `GET https://boxs.ca/stack/health`'s `apps.calendar` is `true`. A first `/stack/tick` after
-   that also runs the reference-data backfill for it (same mechanism as NoD's own first-tick
-   backfill above): Core republishes its organizations and users once so the Calendar's own
-   copies aren't empty on an otherwise-already-running deployment.
+   `GET https://boxs.ca/stack/health`'s `apps.calendar` is `true`.
+5. **Reference data:** the stack sees an empty `orgs` table and asks Core to republish once
+   (the same mechanism as NoD's first-tick backfill above), so the Calendar's copies of Core's
+   organizations, sectors, themes, tags and users aren't empty on an already-running deployment.
+   After the next tick, `SELECT count(*) FROM orgs` and `SELECT count(*) FROM users` in
+   `gcpe_calendar` are non-zero.
 
 No code change and no redeploy of the artifact itself is needed for this — `CALENDAR_DATABASE_URL`
 is the only thing gating it, and it's read fresh from Site Tools' own environment variables on
 every process start.
 
-## Corporate Calendar (Phase 5b-1)
+**After the deploy:**
 
-- **One-time (Paul, Site Tools):** create the `gcpe_calendar` PostgreSQL database for the
-  existing database user; add `CALENDAR_DATABASE_URL=postgres://<user>:<password>@localhost:5432/gcpe_calendar`
-  to the Node.js project's environment; restart. No other setting is needed: the stack derives
-  the Calendar's event secrets from `STACK_EVENT_SECRET`.
-- **Migrations:** Core `0003_org_public` (one column), News API `0002_category_public` (one
-  column), Calendar `0000_init` (new database). All additive.
-- **After the first start with the Calendar:** the stack sees an empty `orgs` table and asks
-  Core to republish once; after the next tick `SELECT count(*) FROM orgs` and
-  `SELECT count(*) FROM users` in `gcpe_calendar` are non-zero.
 - **Q54 on boxs.ca:** on Hub → Organizations, untick "listed publicly" for GCPE Headquarters and
   GCPE Media Relations (they existed before the flag). Then
   `curl -s https://boxs.ca/api/Ministries | grep -c gcpe-` prints `0`, and the test subscribe
   page no longer offers them.
-- **Break-glass:** has no Calendar access, by design.
+- **Break-glass:** has no Calendar access, by design. The Calendar has no local-admin route and
+  refuses bearer tokens; staff reach it through the Core session.
 - **Hand checks (5b exit, lookup half):** as a user with Calendar.Administrator and a ministry:
   Hub → Calendar → Lookups; HQ tags: add, rename, deactivate a "Sample keyword …"; Categories
   shows read-only. As a Calendar.SysAdmin: add and deactivate a "Sample category …". Remove the

@@ -364,7 +364,7 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 
 - **Operations** — The Calendar is live at `/calendar` only once its own database exists and
   `CALENDAR_DATABASE_URL` is set; until then the stack runs normally without it and `/calendar`
-  answers 503. See `docs/deploy/siteground.md`'s "Calendar app (Phase 5b)" for the exact Site
+  answers 503. See `docs/deploy/siteground.md`'s "Corporate Calendar (Phase 5b)" for the exact Site
   Tools steps to turn it on later.
 - **Developer** — Core now routes `user.upserted` and the organization/sector/theme/tag
   upserted/deactivated events to the Calendar (and only to the Calendar — no other subscriber
@@ -391,3 +391,9 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   `"calendar": {"ok": true, "skipped": …}`. Phase 7's cutover checklist must confirm it is set.
 - **Developer** — The Calendar names ministries, sectors, themes and tags by Core key, not id. Its
   projections (`orgs`, `terms`, `users`) have no foreign keys pointing at them.
+- **Developer** — The Calendar stores Core keys byte for byte and never case-folds them (spec §5.2).
+  Legacy ministry keys are uppercase GUIDs and Core matches keys exactly, so `HEALTH` and `health`
+  are two organizations, each with its own HQ flag. Only user ids, which are UUIDs, are lowercased.
+- **Operations** — The Calendar has no local-admin sign-in route, so the stack's shared login limiter
+  no longer lists `/calendar/auth/local/token`. Staff reach the Calendar only through the Core
+  session; a bearer token is refused.

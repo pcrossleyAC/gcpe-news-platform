@@ -435,18 +435,14 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     app.use(FAKE_EMERGENCY_FEED_PATH, fakeFeed.router);
   }
 
-  // Fix round 1, P2-R30 M7: one combined login-attempt budget (10/min/IP) across every
-  // app's local-admin login route, mounted on those exact paths *before* the apps themselves
-  // are mounted below — each app's own localLoginRouter still has its own independent
-  // 10/min/IP limiter too (unchanged), so this is an additional, stack-wide ceiling on top,
-  // not a replacement: an attacker spreading guesses across /core, /nrms, /nod and
-  // /distribution to dodge any single app's limiter still hits this one. Task 6: staff sign-in
-  // (/core/auth/login) shares this same stack-wide budget, not a separate one.
+  // One combined login-attempt budget (10/min/IP) across every app's local-admin login route
+  // and staff sign-in (/core/auth/login), mounted on those exact paths *before* the apps
+  // themselves are mounted below. Each app's own localLoginRouter keeps its own 10/min/IP
+  // limiter too, so this is an additional, stack-wide ceiling: an attacker spreading guesses
+  // across the apps to dodge any single app's limiter still hits this one. The Calendar has no
+  // local-admin route (spec §5.1), so it has no path here.
   const combinedLoginLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false });
-  app.use(
-    ["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token", "/core/auth/login", "/calendar/auth/local/token"],
-    combinedLoginLimiter,
-  );
+  app.use(["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token", "/core/auth/login"], combinedLoginLimiter);
 
   app.use("/stack", healthRouter(new Date(startedAt).toISOString(), calendar !== null));
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
@@ -508,21 +504,22 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   app.use(newsApi.app);
   stackApp = app;
 
-  // Fix round 1: public-site's self-heal needs the in-process self: fetch, which only becomes
-  // usable once `stackApp` above is assigned (installInternalFetch's lookup throws "the stack
-  // app is not ready yet" before that) — firing it from inside startPublicSite itself (the
-  // original Task 1 approach) always lost that race, since News API (which self-heal reads
-  // from over a self: URL) starts after Public Site. Fire-and-forget, same logging as the
-  // standalone main.ts does, and must never throw past here.
+  // Public-site's self-heal needs the in-process self: fetch, which only becomes usable once
+  // `stackApp` above is assigned (installInternalFetch's lookup throws "the stack app is not
+  // ready yet" before that). Firing it from inside startPublicSite would always lose that race,
+  // since News API (which self-heal reads from over a self: URL) starts after Public Site.
+  // Fire-and-forget, and must never throw past here. A failure logs only safeErrorLabel: the
+  // error's message can carry file-system paths or a query's bound values.
   void siteBuilder
     .selfHeal()
     .then((r) => r && console.log(`[public-site] self-heal rebuilt ${r.rebuilt} posts`))
-    .catch((e) => console.error(`[public-site] self-heal failed: ${e instanceof Error ? e.message : e}`));
+    .catch((e) => console.error("[public-site] self-heal failed", safeErrorLabel(e)));
 
-  // Phase 4a: NoD's lists (and now the Calendar's organizations/users) come from Core's
-  // events, which only flow on change. A fresh app with no reference data yet (first deploy, or
-  // a fresh database) asks Core to republish everything once; the events reach it on the next
-  // dispatch tick. Fire-and-forget, never throws.
+  // NoD's lists and the Calendar's organizations, terms and users come from Core's events, which
+  // only flow on change. A fresh app with no reference data yet (first deploy, or a fresh
+  // database) would otherwise stay empty until each record next changed in Core, so it asks Core
+  // to republish everything once; the events reach it on the next dispatch tick.
+  // Fire-and-forget, never throws.
   void (async () => {
     try {
       const nodNeeds = (await worker(nod, "needsReferenceData")()) === true;

@@ -117,7 +117,8 @@ async function setupStack(opts: {
   // reference-data backfill) — e.g. an org written straight into Core's DB, bypassing the
   // event system entirely, to prove the backfill (not the live CORE->NOD event route another
   // test already covers) is what delivers it to NoD.
-  beforeStart?: (dbs: StackTestInstanceDbs) => Promise<void>;
+  // Also handed the fresh public-site output dir, so a test can plant a file-system fault in it.
+  beforeStart?: (dbs: StackTestInstanceDbs, outputDir: string) => Promise<void>;
 } = {}): Promise<StackTestInstance> {
   const fetchAdminToken = opts.fetchAdminToken ?? true;
   const withCalendar = opts.calendar ?? true;
@@ -202,7 +203,7 @@ async function setupStack(opts: {
   // not built in this test run) in place, so most instances see the 503 "not built" path.
   if (opts.staffWebDir !== undefined) env.STAFF_WEB_DIR = opts.staffWebDir;
 
-  if (opts.beforeStart) await opts.beforeStart(dbs);
+  if (opts.beforeStart) await opts.beforeStart(dbs, outputDir);
 
   const handle = await startStack(env);
   if (handle.port !== port) throw new Error(`expected startStack to keep the requested port ${port}, got ${handle.port}`);
@@ -1256,6 +1257,31 @@ describe("apps/stack: combined login-attempt rate limit covers /core/auth/login"
   });
 });
 
+// The Calendar has no local-admin route (spec §5.1), so a POST to that path must not spend the
+// stack-wide login budget the real sign-in routes share.
+describe("apps/stack: the combined login limiter leaves /calendar/auth/local/token alone", () => {
+  let instance: StackTestInstance;
+
+  beforeAll(async () => {
+    instance = await setupStack({ fetchAdminToken: false });
+  });
+
+  afterAll(async () => {
+    await instance.close();
+  });
+
+  it("11 POSTs to /calendar/auth/local/token leave Core's local-admin login un-throttled", async () => {
+    const headers = { "content-type": "application/json" };
+    const body = JSON.stringify({ username: "nope", password: "nope" });
+    const statuses: number[] = [];
+    for (let i = 0; i < 11; i++) {
+      statuses.push((await fetch(`${instance.stackUrl}/calendar/auth/local/token`, { method: "POST", headers, body })).status);
+    }
+    statuses.push((await fetch(`${instance.stackUrl}/core/auth/local/token`, { method: "POST", headers, body })).status);
+    expect(statuses).not.toContain(429);
+  });
+});
+
 describe("staff session cookie across the stack", () => {
   let inst: StackTestInstance;
   beforeAll(async () => {
@@ -1340,6 +1366,33 @@ describe("apps/stack: public-site self-heal runs once the stack (not just a stan
 
     const selfHealFailures = errorSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("self-heal failed"));
     expect(selfHealFailures).toEqual([]);
+  });
+});
+
+// A failed self-heal is logged by safeErrorLabel only: the error's message carries file-system
+// paths (or, from a query, bound values), which must stay out of the logs.
+describe("apps/stack: a failed public-site self-heal logs only a safe label", () => {
+  let instance: StackTestInstance;
+  let errorSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeAll(async () => {
+    errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    // A directory where self-heal's first page goes makes its atomic rename fail with EISDIR,
+    // an error whose message names both paths.
+    instance = await setupStack({ fetchAdminToken: false, beforeStart: (_dbs, outputDir) => mkdir(join(outputDir, "subscribe", "index.html"), { recursive: true }).then(() => undefined) });
+  });
+
+  afterAll(async () => {
+    errorSpy.mockRestore();
+    await instance.close();
+  });
+
+  it("logs the error code, never the message", async () => {
+    const failures = () => errorSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("self-heal failed"));
+    await expect.poll(() => failures().length, { timeout: 5000 }).toBe(1);
+    const logged = failures()[0]!.map(String).join(" ");
+    expect(logged).toContain("EISDIR");
+    expect(logged).not.toContain(instance.outputDir);
   });
 });
 

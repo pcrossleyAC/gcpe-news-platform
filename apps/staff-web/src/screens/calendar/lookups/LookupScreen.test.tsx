@@ -113,6 +113,13 @@ describe("Calendar lookup screens", () => {
     expect(JSON.parse(calls.find((c) => c.url.endsWith("/order"))!.init!.body as string)).toEqual({ ids: [2, 1] });
   });
 
+  it("shows a stale reorder's 409 as an alert", async () => {
+    stub([], (url) => (url === "/calendar/api/lookups/keywords/order" ? jsonResponse(409, { error: "the list changed since you loaded it: reload and try again" }) : undefined));
+    renderAt("/calendar/lookups/keywords");
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Move Second keyword up" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("the list changed since you loaded it: reload and try again");
+  });
+
   it("a read-only lookup has no add, edit or move controls and says who can change it", async () => {
     stub([]);
     renderAt("/calendar/lookups/categories");

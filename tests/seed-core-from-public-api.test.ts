@@ -320,6 +320,15 @@ describe("run() — CLI orchestration against a mocked fetch", () => {
     expect(result.summaries.find((s) => s.kind === "hq-organizations")).toMatchObject({ upserted: 0, failed: 2 });
   });
 
+  it("an ordinary ministry's body carries neither flag, needs no lookup, and is written even when lookups fail", async () => {
+    const { fetchImpl, calls } = makeFetchMock({ publicMinistries: [SAMPLE_MINISTRY, SAMPLE_PREMIER], publicMinister: SAMPLE_MINISTER, publicSectors: [], publicThemes: [], publicTags: [], lookupStatus: 503 });
+    const result = await run({ targetBaseUrl: "https://boxs.ca", token: "t", fetchImpl, delayMs: 0, log: () => {} });
+    expect(calls.some((c) => c.method === "GET" && c.url.pathname === "/core/api/organizations/aest")).toBe(false);
+    const body = JSON.parse(calls.find((c) => c.method === "PUT" && c.url.pathname === "/core/api/organizations/aest")!.body!) as Record<string, unknown>;
+    expect("isHq" in body || "isPublic" in body).toBe(false);
+    expect(result.summaries.find((s) => s.kind === "ministries")).toMatchObject({ upserted: 1, failed: 1, failures: [{ key: "office-of-the-premier", status: 503 }] });
+  });
+
   it("sends the bearer header on every write, never puts the token in a URL, and never sends the session CSRF header", async () => {
     const { fetchImpl, calls } = makeFetchMock({
       publicMinistries: [SAMPLE_MINISTRY],

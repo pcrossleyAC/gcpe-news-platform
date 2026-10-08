@@ -235,6 +235,10 @@ export function deriveMinistryAbbreviation(posts: PublicPost[], ministryKey: str
  *  - `sortOrder`: Core-only display ordering, not public -> 0.
  *  - `sectorKeys`: the public Ministry DTO never lists which sectors a ministry belongs to
  *    (that association isn't exposed in either direction) -> [].
+ *
+ * The body carries neither `isHq` nor `isPublic`: a new organization is created public and not
+ * HQ, and an existing one keeps whatever Core.Admin chose (Q54). With no flag to assert, the
+ * seed needs no lookup before writing an ordinary ministry.
  */
 export function toOrgInput(ministry: PublicMinistry, minister: PublicMinister | null, abbreviation: string | null = null): OrgInput {
   const key = ministry.key.toLowerCase();
@@ -262,7 +266,6 @@ export function toOrgInput(ministry: PublicMinistry, minister: PublicMinister | 
     topicLinks: (ministry.topicLinks ?? []).map(mapLink),
     serviceLinks: (ministry.serviceLinks ?? []).map(mapLink),
     sectorKeys: [],
-    isPublic: true,
   };
 }
 

@@ -39,6 +39,13 @@ describe("lookup admin routes", () => {
     expect(editable).toMatchObject({ keywords: true, initiatives: true, "event-planners": true, videographers: true, categories: false, cities: false });
   });
 
+  it("an Administrator reads a locked lookup, marked not editable", async () => {
+    const res = await request(app).get("/api/lookups/categories").set("cookie", as("Calendar.Administrator"));
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ name: "categories", editable: false });
+    expect(Array.isArray(res.body.rows)).toBe(true);
+  });
+
   it("an Administrator changes keywords but not categories; a SysAdmin changes both", async () => {
     const kw = await write("post", "/api/lookups/keywords", "Calendar.Administrator", { name: "Sample keyword" });
     expect(kw.status).toBe(201);

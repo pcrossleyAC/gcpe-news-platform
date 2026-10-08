@@ -5,28 +5,29 @@ import { orgs, terms, TERM_KINDS, users, type TermKind } from "./db/schema";
 
 // Ordering and redelivery are the receiver's job: it applies an event only when its sequence is
 // past the aggregate's last one, so each handler can simply replace the row with what it carries.
+// Core keys are stored byte for byte, never case-folded (spec §5.2): legacy ministry keys are
+// uppercase GUIDs and Core matches keys exactly.
 
-const canonicalKey = (key: string) => key.trim().toLowerCase();
 const isTermKind = (kind: string): kind is TermKind => (TERM_KINDS as readonly string[]).includes(kind);
 
 const onOrg: EventHandler = async (tx, e) => {
   const o = e.data as OrgRecord;
-  const row = { key: canonicalKey(o.key), displayName: o.displayName, abbreviation: o.abbreviation, sortOrder: o.sortOrder, isActive: o.isActive, isHq: o.isHq };
+  const row = { key: o.key, displayName: o.displayName, abbreviation: o.abbreviation, sortOrder: o.sortOrder, isActive: o.isActive, isHq: o.isHq };
   await tx.insert(orgs).values(row).onConflictDoUpdate({ target: orgs.key, set: row });
 };
 const onOrgGone: EventHandler = async (tx, e) => {
-  await tx.update(orgs).set({ isActive: false }).where(eq(orgs.key, canonicalKey((e.data as { key: string }).key)));
+  await tx.update(orgs).set({ isActive: false }).where(eq(orgs.key, (e.data as { key: string }).key));
 };
 const onTerm: EventHandler = async (tx, e) => {
   const t = e.data as TermRecord;
   if (!isTermKind(t.kind)) return; // services have no Calendar use
-  const row = { kind: t.kind, key: canonicalKey(t.key), displayName: t.displayName ?? t.key, sortOrder: t.sortOrder, isActive: t.isActive };
+  const row = { kind: t.kind, key: t.key, displayName: t.displayName ?? t.key, sortOrder: t.sortOrder, isActive: t.isActive };
   await tx.insert(terms).values(row).onConflictDoUpdate({ target: [terms.kind, terms.key], set: row });
 };
 const onTermGone: EventHandler = async (tx, e) => {
   const d = e.data as { kind: string; key: string };
   if (!isTermKind(d.kind)) return;
-  await tx.update(terms).set({ isActive: false }).where(and(eq(terms.kind, d.kind), eq(terms.key, canonicalKey(d.key))));
+  await tx.update(terms).set({ isActive: false }).where(and(eq(terms.kind, d.kind), eq(terms.key, d.key)));
 };
 /** Core's user.upserted (spec addendum §4). The whole record replaces the row: role, ministries and active. */
 const onUser: EventHandler = async (tx, e) => {
@@ -37,7 +38,7 @@ const onUser: EventHandler = async (tx, e) => {
     displayName: u.displayName,
     isActive: u.isActive,
     calendarRole: u.calendarRole,
-    organizationKeys: [...new Set(u.organizationKeys.map(canonicalKey))].sort(),
+    organizationKeys: [...new Set(u.organizationKeys)].sort(),
   };
   await tx.insert(users).values(row).onConflictDoUpdate({ target: users.id, set: row });
 };

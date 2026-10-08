@@ -123,7 +123,7 @@ Each sub-plan is planned, built, reviewed and deployed to boxs.ca in turn. Each 
   - Express, Drizzle and zod, with its own database and migrations;
   - the outbox and dispatcher on the stack tick, and inbox dedupe;
   - the Core session cookie and the `X-GCPE-Request` CSRF header;
-  - the local-admin route behind the stack-wide login limiter;
+  - no local-admin route: the Calendar refuses bearer tokens, so staff reach it only through the Core session;
   - a dead-letter page.
 - **Tick:** it registers a dispatch step, plus the lock-expiry sweep (§7.5).
 - **Attachments:** stored through `packages/storage` under `CALENDAR_STORAGE_DIR`, outside the deploy folder. They are never under a public path. Downloads go through an authorised route (§8.4).
@@ -149,6 +149,8 @@ Each sub-plan is planned, built, reviewed and deployed to boxs.ca in turn. Each 
 - Activities and every lookup keep their legacy integer ids. Sequences start above the imported maximum.
 - Ministries, sectors, themes and tags are named by Core key (as every event names them), held
   in local projections (`orgs`, `terms`).
+- Core keys are stored byte for byte; never case-folded. Legacy ministry keys are uppercase GUIDs,
+  and Core matches keys exactly.
 - People are Core user ids.
 - Every time is stored in UTC and shown in BC time.
 

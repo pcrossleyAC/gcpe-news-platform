@@ -64,7 +64,9 @@ export const stackEnvSchema = z.object({
 });
 export type StackEnv = z.infer<typeof stackEnvSchema>;
 
-/** The seven app prefixes the stack reads `<PREFIX>_<VAR>` env vars under (see task-14-brief.md). */
+/** The seven app prefixes the stack reads `<PREFIX>_<VAR>` env vars under. One process runs
+ * every app, so each app's settings carry its prefix to keep apps that share a variable name
+ * (each has its own DATABASE_URL, say) apart in the one environment. */
 export const APP_PREFIXES = ["CORE", "NRMS", "NEWSAPI", "SITE", "NOD", "DIST", "CALENDAR"] as const;
 export type AppPrefix = (typeof APP_PREFIXES)[number];
 

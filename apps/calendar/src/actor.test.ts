@@ -75,6 +75,16 @@ describe("the Calendar actor, re-derived on every request", () => {
     expect((await me(await sessionCookie(id(5)))).body.isHq).toBe(true);
   });
 
+  it("HQ matches the organization key byte for byte: an uppercase-keyed HQ org's member is HQ, its lowercase twin's is not", async () => {
+    const hqKey = "9E8D7C6B-5A4F-4E3D-8C2B-1A0F9E8D7C6B";
+    await projectOrg(app, hqKey, { isHq: true });
+    await projectOrg(app, hqKey.toLowerCase(), { isHq: false });
+    await projectUser(app, user(8, { organizationKeys: [hqKey] }));
+    await projectUser(app, user(9, { organizationKeys: [hqKey.toLowerCase()] }));
+    expect((await me(await sessionCookie(id(8)))).body).toMatchObject({ ministryKeys: [hqKey], isHq: true });
+    expect((await me(await sessionCookie(id(9)))).body).toMatchObject({ ministryKeys: [hqKey.toLowerCase()], isHq: false });
+  });
+
   it("a bearer token has no Calendar access even when its subject is a projected user's id", async () => {
     await projectUser(app, user(6, { calendarRole: "Calendar.SysAdmin" }));
     const local = "calendar-local-bearer-secret-0123456789ab";

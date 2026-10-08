@@ -30,6 +30,8 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 
 - **The News API must never gain an `activity.*` handler.** Confidential Calendar content must stay inside the Calendar (C127); only the id-only confidential form of `activity.*` and `release.status_changed` cross that boundary (spec addendum §5.4).
 - **If service tokens with Calendar roles ever exist, Core's `actorIsHq` should apply only to session callers.** `actorIsHq` (`apps/core/src/services/calendar-access.ts`) today only ever sees a session actor; before a service token could carry a Calendar role, re-check that it still reads HQ membership only for a session caller, not for a bearer/service subject.
+- **The NRMS → News API event route is `"*"`** (`apps/stack/src/env.ts`, the `NRMS`→`NEWSAPI` entry). Before NRMS emits `release.status_changed`, make that route list its types explicitly, or at least exclude `release.status_changed`, so the event goes only to the Calendar. The Calendar's `projectionHandler` (`apps/calendar/src/projections.ts`) also accepts only `core` today: it must accept the `nrms` source for `release.status_changed`.
+- **Re-check NRMS "email me a copy" if service tokens ever carry NRMS roles.** `POST /nrms/api/releases/:id/email-copy` (`apps/nrms/src/http/routes.ts`) sends to the bearer's `email` claim. A service token with an NRMS role could then send a release to whatever address its claims name.
 
 ## 5i
 
@@ -41,7 +43,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **Null legacy timestamps and status:** map a null legacy `CreatedDateTime`, `LastUpdatedDateTime` and `StatusId` to a value — none of the three is nullable here.
 - **Null `Log.CreatedBy`:** give it a fallback actor name rather than importing a null actor.
 - **`SortOrder`** maps to `rank`.
-- **Empty mobile values:** a legacy mobile number that the lowercase mapping turns into an empty string is allowed, the same as `user_profiles.mobile`'s own CHECK (empty, or 12 characters of digits and hyphens).
+- **Empty mobile values:** a blank legacy mobile number imports as an empty string. `user_profiles.mobile`'s CHECK allows that (empty, or 12 characters of digits and hyphens), so don't map it to null or reject it.
 
 ## Entra sign-in (later phase)
 
@@ -49,4 +51,4 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 
 ## Staff-web follow-up
 
-- **Add the Calendar sub-nav to the WCAG 2.5.8 target-size rule, and add `/hub/calendar` to the e2e axe sweep.** 5b-1's own e2e spec (`tests/e2e/calendar-lookups.spec.ts`) found and fixed the sizing gap on the Calendar's own sub-nav and its Lookups list (`apps/staff-web/src/styles/global.css`'s `.gcpe-calendar nav a` / `.gcpe-calendar ul a` rules), but `tests/e2e/axe-sweep.spec.ts` (the stack-wide sweep) still has no entry for `/hub/calendar` itself (the landing screen) or any Calendar screen beyond what 5b-1's own spec happens to visit.
+- **Add `/hub/calendar` to the e2e axe sweep.** `tests/e2e/axe-sweep.spec.ts` (the stack-wide sweep) has no entry for the Calendar's landing screen or its lookup screens. The Calendar's target-size CSS is already done.
