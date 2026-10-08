@@ -8,6 +8,8 @@ import { FreezeError } from "../freeze";
 
 /** SQLSTATE class 23: integrity constraint violation. */
 const CONSTRAINT_VIOLATION = /^23[0-9A-Z]{3}$/;
+/** SQLSTATE class 22: data exception (an out-of-range number, a NUL character, a bad timestamp). */
+const DATA_EXCEPTION = /^22[0-9A-Z]{3}$/;
 
 /** Maps the activity service's typed errors to a response; false leaves the error to the generic 500. */
 export function sendActivityError(e: unknown, res: Response): boolean {
@@ -24,6 +26,11 @@ export function sendActivityError(e: unknown, res: Response): boolean {
     // Validation makes every constraint unreachable; this catches a race it missed, never a 500.
     console.error("[calendar] activity write hit a constraint", label);
     return void res.status(409).json({ code: "conflict", error: "That change conflicts with another one: reload and try again" }), true;
+  }
+  if (DATA_EXCEPTION.test(label)) {
+    // The request schemas refuse every value the database can't hold; this catches one they missed, never a 500.
+    console.error("[calendar] activity request hit an invalid value", label);
+    return void res.status(400).json({ error: "invalid value" }), true;
   }
   return false;
 }

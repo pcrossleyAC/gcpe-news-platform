@@ -9,7 +9,7 @@ import type { ApiDeps } from "../http/routes";
 import { dbNow, wallClock } from "../time";
 import { visible } from "../visibility";
 import { ActivityDeletedError, ActivityForbiddenError, ActivityLockedError, ActivityNotFoundError } from "./errors";
-import { factsOf, liveLockOf, loadStored, lockActivity, LOCK_IDLE_MS, type LiveLock } from "./store";
+import { factsOf, liveLockOf, loadStored, lockActivity, lockIdleCutoff, type LiveLock } from "./store";
 
 export interface LockView {
   holderName: string;
@@ -77,6 +77,6 @@ export async function clearLocks(tx: Tx, id: number): Promise<void> {
 
 /** The tick's sweep: deletes every lock idle for 15 minutes or more. */
 export async function sweepLocks(db: Db, clock?: TestClock): Promise<{ deleted: number }> {
-  const r = await db.execute(sql`DELETE FROM ${activityLocks} WHERE ${activityLocks.lastActiveAt} <= ${sqlNow(clock)} - ${sql.raw(`interval '${LOCK_IDLE_MS / 60_000} minutes'`)}`);
+  const r = await db.execute(sql`DELETE FROM ${activityLocks} WHERE ${activityLocks.lastActiveAt} <= ${lockIdleCutoff(clock)}`);
   return { deleted: r.rowCount ?? 0 };
 }

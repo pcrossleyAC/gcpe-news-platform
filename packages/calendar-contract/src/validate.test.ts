@@ -21,6 +21,7 @@ describe("the editor's rules, on the server too (spec addendum §7.2, C156)", ()
     ["no category", { categoryId: null }, ["categoryId"]],
     ["no lead ministry", { contactMinistryKey: null }, ["contactMinistryKey"]],
     ["a blank title", { title: "   " }, ["title"]],
+    ["a title that clean-up turns blank (a small tilde becomes a space)", { title: "˜" }, ["title"]],
     ["no comm contact (19 imported activities lack one)", { commContactId: null }, ["commContactId"]],
     ["no dates", { startDate: null, endDate: null }, ["startDate", "endDate"]],
     ["no times, not all day", { startTime: null, endTime: null }, ["startTime", "endTime"]],

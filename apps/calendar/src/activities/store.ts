@@ -1,5 +1,5 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
-import { sqlNow, type Db, type DbOrTx, type TestClock, type Tx } from "@gcpe/db-kit";
+import { sqlInterval, sqlNow, type Db, type DbOrTx, type TestClock, type Tx } from "@gcpe/db-kit";
 import { cleanDetails, cleanTitle, type ActivityFields, type CalendarRules, type HqSection, type HqStatus, type LookAheadInput } from "@gcpe/calendar-contract";
 import {
   activities, activityCategories, activityCommMaterials, activityInitiatives, activityKeywords, activityLocks, activityNrOrigins,
@@ -274,6 +274,10 @@ export async function lookAheadInputOf(db: DbOrTx, f: ActivityFields, categoryId
 
 /** A lock is live while its holder was active in the last 15 minutes (spec addendum §7.5). */
 export const LOCK_IDLE_MS = 15 * 60_000;
+/** A lock whose last activity is at or before this instant has lapsed. */
+export function lockIdleCutoff(clock?: TestClock) {
+  return sql`(${sqlNow(clock)} - ${sqlInterval(LOCK_IDLE_MS)})`;
+}
 
 export interface LiveLock {
   userId: string;
@@ -284,7 +288,7 @@ export interface LiveLock {
 
 export async function liveLockOf(db: DbOrTx, activityId: number, clock?: TestClock, opts: { forUpdate?: boolean } = {}): Promise<LiveLock | null> {
   const q = db
-    .select({ userId: activityLocks.userId, tabId: activityLocks.tabId, acquiredAt: activityLocks.acquiredAt, lastActiveAt: activityLocks.lastActiveAt, live: sql<boolean>`${activityLocks.lastActiveAt} > ${sqlNow(clock)} - interval '15 minutes'` })
+    .select({ userId: activityLocks.userId, tabId: activityLocks.tabId, acquiredAt: activityLocks.acquiredAt, lastActiveAt: activityLocks.lastActiveAt, live: sql<boolean>`${activityLocks.lastActiveAt} > ${lockIdleCutoff(clock)}` })
     .from(activityLocks)
     .where(eq(activityLocks.activityId, activityId));
   const [lock] = opts.forUpdate ? await q.for("update") : await q;

@@ -59,6 +59,14 @@ describe("edit locks (spec addendum §7.5)", () => {
     expect((await lock("admin", "tab-b")).status).toBe(200);
   });
 
+  it("Continue here never takes another user's live lock", async () => {
+    await lock("editor", "tab-a");
+    const res = await lock("admin", "tab-b", true);
+    expect(res.status).toBe(423);
+    expect(res.body).toMatchObject({ code: "locked" });
+    expect((await tdb.db.select().from(activityLocks).where(eq(activityLocks.activityId, id)))[0]).toMatchObject({ userId: w.as.editor.id, tabId: "tab-a" });
+  });
+
   it("lapses after 15 idle minutes; a heartbeat keeps it live", async () => {
     await lock("editor", "tab-a");
     clock = minutes(10);
@@ -70,11 +78,12 @@ describe("edit locks (spec addendum §7.5)", () => {
   });
 
   it("the sweep deletes lapsed locks and leaves live ones", async () => {
+    await tdb.db.delete(activityLocks);
     await lock("editor", "tab-a");
     const other = (await call(app, "post", "/api/activities", w.as.editor.cookie, validInput(w))).body.activity.id as number;
     clock = minutes(10);
     await call(app, "put", `/api/activities/${other}/lock`, w.as.editor.cookie, { tabId: "tab-c" });
-    expect(await sweepLocks(tdb.db, () => minutes(16))).toMatchObject({ deleted: expect.any(Number) });
+    expect(await sweepLocks(tdb.db, () => minutes(16))).toEqual({ deleted: 1 });
     const left = await tdb.db.select().from(activityLocks);
     expect(left.map((l) => l.activityId)).toContain(other);
     expect(left.map((l) => l.activityId)).not.toContain(id);
@@ -101,5 +110,7 @@ describe("edit locks (spec addendum §7.5)", () => {
   it("a malformed body is 400", async () => {
     expect((await call(app, "put", `/api/activities/${id}/lock`, w.as.editor.cookie, { tabId: "" })).status).toBe(400);
     expect((await call(app, "put", `/api/activities/${id}/lock`, w.as.editor.cookie, { tabId: "a", extra: 1 })).status).toBe(400);
+    expect((await lock("editor", "tab\u0000")).status).toBe(400);
+    expect((await release("editor", "tab\u0000")).status).toBe(400);
   });
 });

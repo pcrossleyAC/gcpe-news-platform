@@ -50,17 +50,20 @@ export interface SectionChoice {
 }
 
 /**
- * The section the server stores (spec addendum §7.6). For everyone without the fieldset it is
- * re-inferred on every save, as legacy's hidden fieldset was, except that a stored section the
- * stored fields don't infer is an HQ override, which the page never re-inferred (Activity.aspx:2544-2546).
+ * The section the server stores (spec addendum §7.6). Awareness and the consultations ministry fix
+ * it: no one overrides it, so it stays what is stored, Not on LA for a new activity (Activity.aspx:2470-2481).
+ * Otherwise a Look Ahead fieldset user's choice wins. For everyone else it is re-inferred on every
+ * save, as legacy's hidden fieldset was, except that a stored section the stored fields don't infer
+ * is an HQ override, which the page never re-inferred (Activity.aspx:2544-2546).
  */
 export function sectionToStore(c: SectionChoice, rules: Rules): HqSection {
-  if (c.chosen !== undefined) return c.chosen;
   const stored = c.before?.currentSection ?? null;
+  const now = inferLookAhead(c.after, rules);
+  if (now.kind !== "section") return stored ?? "not_on_la";
+  if (c.chosen !== undefined) return c.chosen;
   if (c.before && stored !== null) {
     const was = inferLookAhead(c.before, rules);
     if (was.kind === "section" && was.section !== stored) return stored;
   }
-  const now = inferLookAhead(c.after, rules);
-  return now.kind === "section" ? now.section : (stored ?? "not_on_la");
+  return now.section;
 }

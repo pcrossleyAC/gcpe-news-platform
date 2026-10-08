@@ -73,12 +73,13 @@ export async function updateActivity(deps: ApiDeps, actor: CalendarActor, id: nu
     const oldContent = contentOf(s.row);
     const oldLookAhead = lookAheadOf(s.row);
     const la = fields.lookAhead;
-    // A fieldset user who leaves the fields out keeps the stored ones; everyone else gets the section re-inferred.
-    const lookAhead: LookAheadValues = fieldset
-      ? la
-        ? { hqComments: la.hqComments.trim(), hqStatus: la.hqStatus, hqSection: la.hqSection, longTermOutlook: la.longTermOutlook }
-        : oldLookAhead
-      : { ...oldLookAhead, hqSection: sectionToStore({ before, after, chosen: undefined }, rules) };
+    // A fieldset user who leaves the fields out keeps the stored ones, their section included; everyone
+    // else gets the section re-inferred. Either way sectionToStore keeps Awareness and consultations fixed.
+    const chosen = fieldset ? (la?.hqSection ?? oldLookAhead.hqSection) : undefined;
+    const hqSection = sectionToStore({ before, after, chosen }, rules);
+    const lookAhead: LookAheadValues = fieldset && la
+      ? { hqComments: la.hqComments.trim(), hqStatus: la.hqStatus, hqSection, longTermOutlook: la.longTermOutlook }
+      : { ...oldLookAhead, hqSection };
     const { flags, statusChanged } = reviewChanges(snapshotOf(oldContent, s.joins), snapshotOf(content, joins));
     // Legacy (Activity.aspx.cs:1246-1252): an HQ Administrator's edit to another ministry's activity leaves
     // "last updated" alone. The version still moves, so it can't be overwritten silently (C129).

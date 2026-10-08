@@ -1,6 +1,6 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
-import { createActivitySchema, updateActivitySchema, type ActivityView, type WriteResponse } from "@gcpe/calendar-contract";
+import { createActivitySchema, safeString, updateActivitySchema, type ActivityView, type WriteResponse } from "@gcpe/calendar-contract";
 import { clearLaStatus, reviewSelected } from "../activities/bulk";
 import { cloneActivity } from "../activities/clone";
 import { createActivity } from "../activities/create";
@@ -13,8 +13,9 @@ import { readActivity, readChanges } from "../activities/view";
 import { sendActivityError } from "./errors";
 import type { ApiDeps } from "./routes";
 
-const lockSchema = z.object({ tabId: z.string().min(1).max(100), takeOver: z.boolean().optional() }).strict();
-const releaseSchema = z.object({ tabId: z.string().min(1).max(100) }).strict();
+const tabId = safeString().min(1).max(100);
+const lockSchema = z.object({ tabId, takeOver: z.boolean().optional() }).strict();
+const releaseSchema = z.object({ tabId }).strict();
 const emptySchema = z.object({}).strict();
 const versionSchema = z.object({ version: z.number().int().positive() }).strict();
 // idOf (below) bounds a URL :id to 9 digits; items[].id gets the same bound here, before any

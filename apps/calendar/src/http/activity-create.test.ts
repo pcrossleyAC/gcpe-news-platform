@@ -4,7 +4,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { outboxEvents } from "@gcpe/events";
 import { createCalendarTestDb, createTestApp, projectUser, sessionCookie } from "../../test/helpers";
 import { call, outboxOf, seedWorld, validInput, type World } from "../../test/world";
-import { activities, activityChangeFields, activityChanges, keywords } from "../db/schema";
+import { activities, activityChangeFields, activityChanges, commContacts, keywords } from "../db/schema";
 
 describe("creating an activity (spec addendum §7.1)", () => {
   let tdb: TestDatabase;
@@ -206,6 +206,43 @@ describe("creating an activity (spec addendum §7.1)", () => {
     expect(res.status).toBe(201);
     expect(res.body.activity.fields.keywordNames).toEqual(["Sample Äpfel"]);
     expect((await tdb.db.select({ id: keywords.id }).from(keywords)).length).toBe(before);
+  });
+
+  it("Awareness and the consultations ministry fix the section: an HQ Editor's choice is ignored, Long Term Outlook is kept (spec addendum §7.6)", async () => {
+    const la = (hqSection: "in_the_news" | "events_and_speeches") => ({ hqComments: "Sample summary", hqStatus: null, hqSection, longTermOutlook: true });
+    const aware = await create("hqEditor", { categoryId: w.cat.awareness, lookAhead: la("in_the_news") });
+    expect(aware.status).toBe(201);
+    expect(aware.body.activity.lookAhead).toMatchObject({ hqSection: "not_on_la", longTermOutlook: true });
+    const [consultContact] = await tdb.db.insert(commContacts).values({ userId: w.as.hqEditor.id, ministryKey: "consult", rank: 4 }).returning({ id: commContacts.id });
+    const consult = await create("hqEditor", { contactMinistryKey: "consult", commContactId: consultContact!.id, lookAhead: la("events_and_speeches") });
+    expect(consult.status).toBe(201);
+    expect(consult.body.activity.lookAhead).toMatchObject({ hqSection: "not_on_la", longTermOutlook: true });
+  });
+
+  describe("a request body never reaches a 500", () => {
+    const INT4_MAX = 2_147_483_647;
+    it("an id past the database's int4 is 400", async () => {
+      for (const over of [{ categoryId: INT4_MAX + 1 }, { cityId: 3_000_000_000 }, { commContactId: 3_000_000_000 }, { commMaterialIds: [3_000_000_000] }, { nrOriginId: 3_000_000_000 }]) {
+        expect((await create("editor", over)).status, JSON.stringify(over)).toBe(400);
+      }
+      expect((await create("editor", { categoryId: INT4_MAX })).body.errors.map((e: { field: string }) => e.field)).toContain("categoryId");
+    });
+    it("a NUL character in a text, a key or a name is 400", async () => {
+      for (const over of [{ title: "Sample\u0000title" }, { keywordNames: ["Sample\u0000tag"] }, { contactMinistryKey: "he\u0000alth" }, { sectorKeys: ["sample-sector\u0000"] }, { translations: ["Sample\u0000language"] }]) {
+        expect((await create("editor", over)).status, JSON.stringify(over)).toBe(400);
+      }
+    });
+    it("a year outside 1900-2199 is 400; both ends of the range save", async () => {
+      for (const d of ["0000-01-01", "0001-01-01", "0099-06-30", "1899-12-31", "2200-01-01", "9999-12-31"]) {
+        expect((await create("editor", { startDate: d, endDate: d })).status, d).toBe(400);
+        expect((await create("editor", { nrDate: d, nrTime: "08:00" })).status, `nrDate ${d}`).toBe(400);
+      }
+      for (const d of ["1900-01-01", "2199-12-31"]) {
+        const res = await create("editor", { startDate: d, endDate: d, nrDate: d, nrTime: "08:00" });
+        expect(res.status, d).toBe(201);
+        expect(res.body.activity.fields).toMatchObject({ startDate: d, endDate: d, nrDate: d });
+      }
+    });
   });
 
   describe("history and the Look Ahead fields", () => {

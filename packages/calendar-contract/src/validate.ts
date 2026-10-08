@@ -43,7 +43,8 @@ export function checkActivity(i: ActivityFields, ctx: CheckContext): FieldError[
   // Required on every save: an imported activity that breaks one is read as it is, and its next save fixes it.
   if (i.categoryId === null) add("categoryId", "Choose a category");
   if (i.contactMinistryKey === null) add("contactMinistryKey", "Choose the lead ministry");
-  if (blank(i.title)) add("title", "Enter a title");
+  // The stored title is the cleaned one, which a lone special character can leave blank.
+  if (blank(cleanTitle(i.title))) add("title", "Enter a title");
   if (i.commContactId === null) add("commContactId", "Choose a comm contact");
   if (i.startDate === null) add("startDate", "Enter a start date");
   if (i.endDate === null) add("endDate", "Enter an end date");

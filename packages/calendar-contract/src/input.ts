@@ -1,18 +1,27 @@
 import { z } from "zod";
 import { HQ_SECTIONS, HQ_STATUSES } from "./enums";
 
-const id = z.number().int().positive();
+/** The database's int4 bound: a larger id would overflow its column instead of failing validation. */
+const id = z.number().int().positive().max(2_147_483_647);
+/** Every string the API takes: Postgres text can't hold a NUL character. */
+export const safeString = () => z.string().regex(/^[^\u0000]*$/, "no NUL characters");
+/** A year outside these is a typo; years like 0001 or 9999 otherwise reach the database as timestamps it refuses. */
+const MIN_YEAR = 1900;
+const MAX_YEAR = 2199;
 const realDate = (s: string) => {
+  const year = Number(s.slice(0, 4));
+  if (year < MIN_YEAR || year > MAX_YEAR) return false;
   const d = new Date(`${s}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(s);
 };
 /** A BC calendar date. */
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD").refine(realDate, "not a real date");
+const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD").refine(realDate, `not a real date between ${MIN_YEAR} and ${MAX_YEAR}`);
 /** A BC wall-clock time, 24-hour. */
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "use HH:MM, 24-hour");
 // These caps only bound the request. The editor's own limits are checkActivity's, on changed values.
-const text = z.string().max(10_000);
-const keys = z.array(z.string().min(1).max(200)).max(200);
+const text = safeString().max(10_000);
+const key = safeString().min(1).max(200);
+const keys = z.array(key).max(200);
 const ids = z.array(id).max(200);
 
 export const lookAheadFieldsSchema = z
@@ -51,7 +60,7 @@ export const activityFieldsSchema = z
     endTime: time.nullable(),
     nrDate: date.nullable(),
     nrTime: time.nullable(),
-    contactMinistryKey: z.string().min(1).max(200).nullable(),
+    contactMinistryKey: key.nullable(),
     commContactId: id.nullable(),
     governmentRepresentativeId: id.nullable(),
     cityId: id.nullable(),
@@ -64,13 +73,13 @@ export const activityFieldsSchema = z
     commMaterialIds: ids,
     initiativeIds: ids,
     /** HQ Tags, by name: a new name creates the keyword (C146). */
-    keywordNames: z.array(z.string().max(1000)).max(200),
+    keywordNames: z.array(safeString().max(1000)).max(200),
     sectorKeys: keys,
     themeKeys: keys,
     /** News Subscribe. */
     tagKeys: keys,
     sharedWithKeys: keys,
-    translations: z.array(z.string().max(1000)).max(200),
+    translations: z.array(safeString().max(1000)).max(200),
     /** Only from users who see the Look Ahead fieldset (spec addendum §6). */
     lookAhead: lookAheadFieldsSchema.optional(),
   })
@@ -78,5 +87,5 @@ export const activityFieldsSchema = z
 export type ActivityFields = z.infer<typeof activityFieldsSchema>;
 
 export const createActivitySchema = activityFieldsSchema;
-export const updateActivitySchema = activityFieldsSchema.extend({ version: z.number().int().positive(), tabId: z.string().min(1).max(100).nullable() }).strict();
+export const updateActivitySchema = activityFieldsSchema.extend({ version: z.number().int().positive(), tabId: safeString().min(1).max(100).nullable() }).strict();
 export type UpdateActivityInput = z.infer<typeof updateActivitySchema>;

@@ -63,4 +63,12 @@ describe("the section the server stores (spec addendum §7.6)", () => {
     const before = stored({ categoryIds: [2], currentSection: "in_the_news" });
     expect(sectionToStore({ before, after: before, chosen: undefined }, rules)).toBe("in_the_news");
   });
+  it("awareness and consultations take no override: a fieldset user's choice is ignored (Activity.aspx:2470-2481)", () => {
+    expect(sectionToStore({ before: null, after: { ...base, categoryIds: [2] }, chosen: "in_the_news" }, rules)).toBe("not_on_la");
+    expect(sectionToStore({ before: null, after: { ...base, contactMinistryAbbreviation: "CONSULT" }, chosen: "events_and_speeches" }, rules)).toBe("not_on_la");
+    const aware = stored({ categoryIds: [2], currentSection: "in_the_news" });
+    expect(sectionToStore({ before: aware, after: aware, chosen: "issues_and_reports" }, rules)).toBe("in_the_news");
+    const consult = stored({ contactMinistryAbbreviation: "CONSULT", currentSection: "events_and_speeches" });
+    expect(sectionToStore({ before: consult, after: consult, chosen: "in_the_news" }, rules)).toBe("events_and_speeches");
+  });
 });

@@ -26,6 +26,18 @@ describe("sendActivityError", () => {
     expect(res.statusCode).toBe(409);
     log.mockRestore();
   });
+  it("turns an invalid value (SQLSTATE class 22) into a 400 and logs only its code", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    for (const code of ["22003", "22021", "22009"]) {
+      const res = fakeRes();
+      expect(sendActivityError(Object.assign(new Error("invalid byte sequence (Sample secret)"), { cause: { code } }), res)).toBe(true);
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({ error: "invalid value" });
+    }
+    expect(JSON.stringify(log.mock.calls)).toContain("22021");
+    expect(JSON.stringify(log.mock.calls)).not.toContain("Sample secret");
+    log.mockRestore();
+  });
   it("a deadlock (40P01) is not a constraint conflict", () => {
     expect(sendActivityError(Object.assign(new Error("deadlock detected"), { cause: { code: "40P01" } }), fakeRes())).toBe(false);
     expect(sendActivityError(Object.assign(new Error("deadlock detected"), { code: "40P01" }), fakeRes())).toBe(false);

@@ -186,6 +186,19 @@ describe("updating an activity (spec addendum §7.1, §7.5)", () => {
       await save("editor", a, { isConfidential: true });
       expect((await row(a.id)).hqSection).toBe("in_the_news");
     });
+    it("Awareness and the consultations ministry keep their stored section whatever an HQ Editor chooses; Long Term Outlook stays settable", async () => {
+      const aware = await insertRaw(tdb.db, { commContactId: w.contact.editorHealth, hqSection: "in_the_news" });
+      await tdb.db.execute(sql`INSERT INTO activity_categories (activity_id, category_id) VALUES (${aware}, ${w.cat.awareness})`);
+      const [consultContact] = await tdb.db.insert(commContacts).values({ userId: w.as.hqEditor.id, ministryKey: "consult", rank: 4 }).returning({ id: commContacts.id });
+      const consult = await insertRaw(tdb.db, { contactMinistryKey: "consult", commContactId: consultContact!.id, hqSection: "events_and_speeches" });
+      await tdb.db.execute(sql`INSERT INTO activity_categories (activity_id, category_id) VALUES (${consult}, ${w.cat.plain})`);
+      for (const [id, kept] of [[aware, "in_the_news"], [consult, "events_and_speeches"]] as const) {
+        const a = (await call(app, "get", `/api/activities/${id}`, w.as.hqEditor.cookie)).body;
+        const res = await save("hqEditor", a, { lookAhead: { ...a.fields.lookAhead, hqSection: "issues_and_reports", longTermOutlook: true } });
+        expect(res.status).toBe(200);
+        expect(await row(id)).toMatchObject({ hqSection: kept, longTermOutlook: true });
+      }
+    });
   });
 
   it("refuses: a deleted activity (409), a shared-with ministry (403), an invisible one (404)", async () => {
@@ -205,6 +218,19 @@ describe("updating an activity (spec addendum §7.1, §7.5)", () => {
     const events = await outboxOf(tdb.db, a.id);
     expect(events.map((e) => e.type)).toEqual(["activity.created", "activity.updated"]);
     expect(events[1]!.data).toEqual({ id: a.id, isConfidential: true, isDeleted: false });
+  });
+
+  it("an id past the database's int4, a NUL character or a year outside 1900-2199 is 400, and writes nothing", async () => {
+    const a = await make();
+    for (const over of [
+      { categoryId: 2_147_483_648 }, { cityId: 3_000_000_000 }, { commContactId: 3_000_000_000 }, { commMaterialIds: [3_000_000_000] }, { nrOriginId: 3_000_000_000 },
+      { title: "Sample\u0000title" }, { keywordNames: ["Sample\u0000tag"] }, { sectorKeys: ["sample-sector\u0000"] },
+      { startDate: "1899-12-31" }, { endDate: "2200-01-01" },
+    ]) {
+      expect((await save("editor", a, over)).status, JSON.stringify(over)).toBe(400);
+    }
+    expect((await save("editor", a, {}, "tab\u0000")).status).toBe(400);
+    expect((await row(a.id)).version).toBe(a.version);
   });
 
   it("history lists each changed field with old and new values", async () => {
@@ -229,6 +255,8 @@ describe("updating an activity (spec addendum §7.1, §7.5)", () => {
     const a = (await call(app, "get", `/api/activities/${id}`, w.as.editor.cookie)).body;
     expect((await save("editor", a)).status).toBe(200);
     expect(await row(id)).toMatchObject({ title: "Sample 'quoted' title", details: 'Sample "summary"...', needsReview: [], status: "reviewed" });
+    const updated = (await historyOf(tdb.db, id)).find((h) => h.action === "updated")!;
+    expect(updated.fields).toMatchObject({ title: ["Sample \u2018quoted\u2019 title", "Sample 'quoted' title"] });
   });
 
   it("Look Ahead fields from a user without the fieldset are refused; a fieldset user who leaves them out keeps the stored ones", async () => {
