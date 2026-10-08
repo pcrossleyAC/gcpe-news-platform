@@ -199,17 +199,22 @@ describe("Calendar access API", () => {
     expect((await put(cookies.coreAdmin, "00000000-0000-4000-8000-000000000000", { role: null, organizationKeys: [] })).status).toBe(404);
     expect((await put(cookies.coreAdmin, "not-a-uuid", { role: null, organizationKeys: [] })).status).toBe(404);
   });
+
   it("compares the actor with the stored id, so an Administrator can't reach their own access by changing the id's case", async () => {
     const before = (await userEvents(ids.adminHq)).length;
     const res = await put(cookies.adminHq, ids.adminHq.toUpperCase(), { role: "Calendar.SysAdmin", organizationKeys: ["gcpe-headquarters"] });
     expect(res.status).toBe(403);
     expect(res.body).toEqual({ error: "you can't change your own Calendar access", reason: "own-access" });
     expect(await userEvents(ids.adminHq)).toHaveLength(before);
-    // The same id in another case still names the same account for everyone else.
+    // The same id in another case still names the same account for everyone else, and its
+    // event lands on the stored id's stream, not a second stream under the request's spelling.
     await resetTarget();
+    const lowerBefore = (await userEvents(targetId)).length;
     const other = await put(cookies.adminHq, targetId.toUpperCase(), { role: "Calendar.Editor", organizationKeys: ["health"] });
     expect(other.status).toBe(200);
     expect(other.body.id).toBe(targetId);
+    expect(await userEvents(targetId)).toHaveLength(lowerBefore + 1);
+    expect(await userEvents(targetId.toUpperCase())).toHaveLength(0);
   });
 
   /** Holds a lock in another transaction until released, the way a concurrent writer would. */
@@ -231,7 +236,12 @@ describe("Calendar access API", () => {
       },
     };
   }
-  /** Starts a request and reports whether it finished while a lock was still held. */
+  /**
+   * Starts a request and reports whether it finished while a lock was still held. The 300 ms
+   * wait only bounds how long we look: a slow machine can make a request that ignores the lock
+   * look like it waited (a missed regression), but a request that honours the lock can never
+   * finish early, so this never fails a correct implementation.
+   */
   async function stillWaiting(req: Promise<request.Response>): Promise<{ waited: boolean; res: () => Promise<request.Response> }> {
     let settled = false;
     const p = req.then((r) => ((settled = true), r));

@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
+import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { mintSession } from "@gcpe/auth";
+import { outboxEvents } from "@gcpe/events";
 import { createCoreTestDb } from "../../test/helpers";
 import { createApp } from "../app";
 import { users } from "../db/schema";
@@ -98,5 +100,32 @@ describe("Core users API", () => {
     const res = await as(adminCookie).patch(`/api/users/${noEmail!.id}`, { isActive: true });
     expect(res.status).toBe(409);
     expect(res.body).toEqual({ error: "set an email before activating this user" });
+  });
+  it("won't let an admin lock themself out through their own id in another case", async () => {
+    const upper = adminId.toUpperCase();
+    expect((await as(adminCookie).patch(`/api/users/${upper}`, { isActive: false })).status).toBe(409);
+    const drop = await as(adminCookie).put(`/api/users/${upper}/roles`, { roles: ["NRMS.Editor"] });
+    expect(drop.status).toBe(409);
+    expect(drop.body).toEqual({ error: "you can't remove your own admin access" });
+    expect((await as(adminCookie).get("/api/users")).body.find((u: { id: string }) => u.id === adminId)).toMatchObject({ isActive: true, roles: expect.arrayContaining(["Core.Admin"]) });
+  });
+
+  it("a write to an id sent in another case lands on the stored id's event stream only", async () => {
+    const count = async (aggregateId: string) => (await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, aggregateId))).length;
+    const staff = await createUser(tdb.db, createUserSchema.parse({ email: "case.staff@example.test", displayName: "Case Staff" }), []);
+    const before = await count(`user:${staff.id}`);
+    const upper = staff.id.toUpperCase();
+    const renamed = await as(adminCookie).patch(`/api/users/${upper}`, { displayName: "Case Staff Renamed" });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.id).toBe(staff.id);
+    expect((await as(adminCookie).put(`/api/users/${upper}/roles`, { roles: ["NRMS.Viewer"] })).status).toBe(200);
+    expect(await count(`user:${staff.id}`)).toBe(before + 2);
+    expect(await count(`user:${upper}`)).toBe(0);
+
+    const [noEmail] = await tdb.db.insert(users).values({ email: null, displayName: "Kim Imported", isActive: false }).returning();
+    const linked = await as(adminCookie).post(`/api/users/${noEmail!.id.toUpperCase()}/link`, { email: "kim.imported@example.test" });
+    expect(linked.status).toBe(200);
+    expect(await count(`user:${noEmail!.id}`)).toBe(1);
+    expect(await count(`user:${noEmail!.id.toUpperCase()}`)).toBe(0);
   });
 });

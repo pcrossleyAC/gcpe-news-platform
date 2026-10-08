@@ -59,6 +59,9 @@ export class UserNeedsEmailError extends Error {}
 export class UserAlreadyHasEmailError extends Error {}
 
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
+/** Postgres stores and returns UUIDs lowercased: locking that form makes two differently-cased
+ * copies of one id share one lock. After the row is read, writers use the stored row id. */
+const lockUser = (tx: Tx, id: string) => lockAggregate(tx, userAggregateId(id.toLowerCase()));
 // drizzle wraps driver errors; the pg error (with .code and .constraint) is on .cause. Named,
 // not just "any 23505", so a future unique constraint (e.g. role_grants_one_calendar_role)
 // doesn't get mistaken for a duplicate email.
@@ -121,7 +124,8 @@ export function toUserRecord(u: UserView): UserRecord {
 export async function emitUserUpserted(tx: Tx, id: string, subscribers: SubscriberConfig[]): Promise<void> {
   const u = await getUser(tx, id);
   if (!u) return;
-  await enqueueEvent(tx, { type: "user.upserted", source: CORE_SOURCE, aggregateId: userAggregateId(id), data: toUserRecord(u) }, subscribers);
+  // The stored id, so the event stream is the same whatever case the caller spelled the id in.
+  await enqueueEvent(tx, { type: "user.upserted", source: CORE_SOURCE, aggregateId: userAggregateId(u.id), data: toUserRecord(u) }, subscribers);
 }
 
 export async function listUsers(db: Db): Promise<UserView[]> {
@@ -178,15 +182,15 @@ export async function updateUser(db: Db, id: string, patch: UpdateUserInput, sub
   if (!isUuid(id)) throw new UserNotFoundError(id);
   try {
     await db.transaction(async (tx) => {
-      await lockAggregate(tx, userAggregateId(id));
-      const [row] = await tx.select({ email: users.email }).from(users).where(eq(users.id, id)).for("update");
+      await lockUser(tx, id);
+      const [row] = await tx.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, id)).for("update");
       if (!row) throw new UserNotFoundError(id);
       if (patch.isActive === true && row.email === null) throw new UserNeedsEmailError(id);
       await tx
         .update(users)
         .set({ ...patch, updatedAt: new Date() })
-        .where(eq(users.id, id));
-      await emitUserUpserted(tx, id, subscribers);
+        .where(eq(users.id, row.id));
+      await emitUserUpserted(tx, row.id, subscribers);
     });
   } catch (e) {
     // A no-email user (legacy Calendar import) can't be reactivated (users_active_needs_email);
@@ -205,12 +209,12 @@ export async function linkUser(db: Db, id: string, address: string, subscribers:
   if (!isUuid(id)) throw new UserNotFoundError(id);
   try {
     await db.transaction(async (tx) => {
-      await lockAggregate(tx, userAggregateId(id));
-      const [row] = await tx.select({ email: users.email }).from(users).where(eq(users.id, id)).for("update");
+      await lockUser(tx, id);
+      const [row] = await tx.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, id)).for("update");
       if (!row) throw new UserNotFoundError(id);
       if (row.email !== null) throw new UserAlreadyHasEmailError(id);
-      await tx.update(users).set({ email: address, isActive: true, updatedAt: new Date() }).where(eq(users.id, id));
-      await emitUserUpserted(tx, id, subscribers);
+      await tx.update(users).set({ email: address, isActive: true, updatedAt: new Date() }).where(eq(users.id, row.id));
+      await emitUserUpserted(tx, row.id, subscribers);
     });
   } catch (e) {
     if (isDuplicateEmail(e)) throw new UserExistsError(address);
@@ -224,14 +228,14 @@ export async function setRoles(db: Db, id: string, next: string[], subscribers: 
   if (next.some(isCalendarRole)) throw new Error("setRoles never sets a Calendar role; use setCalendarAccess");
   if (!isUuid(id)) throw new UserNotFoundError(id);
   await db.transaction(async (tx) => {
-    await lockAggregate(tx, userAggregateId(id));
-    const found = await tx.execute(sql`SELECT id FROM ${users} WHERE id = ${id} FOR UPDATE`);
-    if (found.rows.length === 0) throw new UserNotFoundError(id);
-    await tx.delete(roleGrants).where(and(eq(roleGrants.userId, id), notLike(roleGrants.role, "Calendar.%")));
+    await lockUser(tx, id);
+    const [row] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for("update");
+    if (!row) throw new UserNotFoundError(id);
+    await tx.delete(roleGrants).where(and(eq(roleGrants.userId, row.id), notLike(roleGrants.role, "Calendar.%")));
     const unique = [...new Set(next)];
-    if (unique.length) await tx.insert(roleGrants).values(unique.map((role) => ({ userId: id, role })));
-    await tx.update(users).set({ updatedAt: new Date() }).where(eq(users.id, id));
-    await emitUserUpserted(tx, id, subscribers);
+    if (unique.length) await tx.insert(roleGrants).values(unique.map((role) => ({ userId: row.id, role })));
+    await tx.update(users).set({ updatedAt: new Date() }).where(eq(users.id, row.id));
+    await emitUserUpserted(tx, row.id, subscribers);
   });
   return (await getUser(db, id))!;
 }
