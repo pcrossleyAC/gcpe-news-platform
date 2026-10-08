@@ -4,7 +4,7 @@ import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { EventTooLargeError, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
-import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, setOrganizationHq, upsertOrganization } from "../services/organizations";
+import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
@@ -65,6 +65,16 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe<{ key: string }>(async (req, res) => {
       const { isHq } = hqSchema.parse(req.body);
       const record = await setOrganizationHq(db, req.params.key, isHq, subscribers);
+      record ? res.json(record) : res.status(404).json({ error: "not found" });
+    }),
+  );
+  const publicSchema = z.object({ isPublic: z.boolean() });
+  r.put(
+    "/organizations/:key/public",
+    admin,
+    safe<{ key: string }>(async (req, res) => {
+      const { isPublic } = publicSchema.parse(req.body);
+      const record = await setOrganizationPublic(db, req.params.key, isPublic, subscribers);
       record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );

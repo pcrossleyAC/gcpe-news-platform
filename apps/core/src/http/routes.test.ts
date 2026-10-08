@@ -80,6 +80,16 @@ describe("Core HTTP API", () => {
     expect((await request(app).put("/api/organizations/health/hq").set(auth(admin)).send({ isHq: "yes" })).status).toBe(400);
   });
 
+  it("PUT /api/organizations/:key/public is Core.Admin only and returns the record", async () => {
+    await request(app).put("/api/organizations/health").set("authorization", `Bearer ${admin}`).send(healthOrg).expect(200);
+    const res = await request(app).put("/api/organizations/health/public").set("authorization", `Bearer ${admin}`).send({ isPublic: false });
+    expect(res.status).toBe(200);
+    expect(res.body.isPublic).toBe(false);
+    expect((await request(app).put("/api/organizations/health/public").set("authorization", `Bearer ${editorOnly}`).send({ isPublic: true })).status).toBe(403);
+    expect((await request(app).put("/api/organizations/no-such-org/public").set("authorization", `Bearer ${admin}`).send({ isPublic: true })).status).toBe(404);
+    expect((await request(app).put("/api/organizations/health/public").set("authorization", `Bearer ${admin}`).send({ isPublic: "no" })).status).toBe(400);
+  });
+
   it("handles terms and rejects unknown kinds", async () => {
     const term = { kind: "tag", key: "covid-19", displayName: "COVID-19", sortOrder: 0, isActive: true, social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null } };
     expect((await request(app).put("/api/terms/tag/covid-19").set("authorization", `Bearer ${admin}`).send(term)).status).toBe(200);

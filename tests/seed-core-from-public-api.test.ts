@@ -8,6 +8,8 @@ import {
   deriveMinistryAbbreviation,
   extractAbbreviationFromReleaseKey,
   extractMinisterEmail,
+  flagsOnlyOnCreate,
+  HQ_SEED_ORGANIZATIONS,
   toOrgInput,
   toTermInput,
   type PublicCategory,
@@ -274,6 +276,13 @@ describe("run() — CLI orchestration against a mocked fetch", () => {
     // Any other public ministry's body never carries isHq, so re-seeding never changes a flag set by hand.
     expect("isHq" in bodies.get("/core/api/organizations/aest")!).toBe(false);
     expect(result.summaries.find((s) => s.kind === "hq-organizations")).toMatchObject({ upserted: 2, failed: 0 });
+  });
+
+  it("creates the two GCPE organizations non-public, and leaves both flags alone when they already exist", () => {
+    for (const o of HQ_SEED_ORGANIZATIONS) expect(o).toMatchObject({ isHq: true, isPublic: false });
+    const existing = flagsOnlyOnCreate(HQ_SEED_ORGANIZATIONS[0]!, true);
+    expect("isHq" in existing || "isPublic" in existing).toBe(false);
+    expect(flagsOnlyOnCreate(HQ_SEED_ORGANIZATIONS[0]!, false)).toMatchObject({ isHq: true, isPublic: false });
   });
 
   it("marks the Office of the Premier HQ even when its releases yield no abbreviation", async () => {

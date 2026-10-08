@@ -268,10 +268,12 @@ export function toOrgInput(ministry: PublicMinistry, minister: PublicMinister | 
 
 /**
  * GCPE's two HQ organizations (Calendar spec addendum Q49). The public API lists neither
- * (checked 2026-10-07: 36 ministries, none GCPE), so the seed adds them. The third HQ
- * organization, the Office of the Premier, is a public ministry: the seed marks it rather than
- * adding it (withHqFlag). All three bodies carry isHq only when Core does not hold the organization
- * yet (hqOnlyOnCreate). The Calendar matches all three by abbreviation, as legacy did.
+ * (checked 2026-10-07: 36 ministries, none GCPE), so the seed adds them. Both are created
+ * non-public (Q54): they're internal GCPE organizations, not public-facing ministries. The third
+ * HQ organization, the Office of the Premier, is a public ministry: the seed marks it rather than
+ * adding it (withHqFlag), and it stays public. All three bodies carry their flags only when Core
+ * does not hold the organization yet (flagsOnlyOnCreate). The Calendar matches all three by
+ * abbreviation, as legacy did.
  */
 export const HQ_SEED_ORGANIZATIONS: OrgInput[] = [
   hqOrganization("gcpe-headquarters", "GCPE Headquarters", "GCPEHQ"),
@@ -297,7 +299,7 @@ function hqOrganization(key: string, displayName: string, abbreviation: string):
     serviceLinks: [],
     sectorKeys: [],
     isHq: true,
-    isPublic: true,
+    isPublic: false,
   };
 }
 
@@ -310,12 +312,13 @@ export function withHqFlag(input: OrgInput): OrgInput {
 }
 
 /**
- * The seed asserts HQ only when it creates the organization (C124). When the organization already
- * exists the body omits isHq, so Core keeps whatever Core.Admin last chose, in either direction.
+ * The seed asserts the HQ and public flags only when it creates the organization (C124, Q54).
+ * When the organization already exists the body omits both, so Core keeps whatever Core.Admin
+ * last chose, in either direction.
  */
-export function hqOnlyOnCreate(input: OrgInput, exists: boolean): OrgInput {
-  if (!exists || input.isHq === undefined) return input;
-  const { isHq: _kept, ...body } = input;
+export function flagsOnlyOnCreate(input: OrgInput, exists: boolean): OrgInput {
+  if (!exists) return input;
+  const { isHq: _hq, isPublic: _pub, ...body } = input;
   return body;
 }
 

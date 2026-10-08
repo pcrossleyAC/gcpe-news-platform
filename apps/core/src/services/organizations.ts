@@ -6,11 +6,14 @@ import { organizations } from "../db/schema";
 import { CORE_SOURCE, lockAggregate, orgAggregateId } from "./aggregate";
 
 /**
- * isHq is optional on input: omitted keeps the stored flag (false for a new organization). The BC
- * seed and the legacy importer send it only when they create the organization, so a re-seed or
- * re-import never changes an HQ flag Core.Admin has set, in either direction (C124).
+ * isHq and isPublic are both optional on input: omitted keeps the stored flag (false for isHq,
+ * true for isPublic, on a new organization). The BC seed and the legacy importer send either
+ * flag only when they create the organization, so a re-seed or re-import never changes a flag
+ * Core.Admin has set, in either direction (C124).
  */
-export const orgInputSchema = orgRecordSchema.omit({ updatedAt: true, isHq: true }).extend({ isHq: z.boolean().optional() });
+export const orgInputSchema = orgRecordSchema
+  .omit({ updatedAt: true, isHq: true, isPublic: true })
+  .extend({ isHq: z.boolean().optional(), isPublic: z.boolean().optional() });
 export type OrgInput = z.infer<typeof orgInputSchema>;
 
 /** Legacy abbreviations of the HQ organizations (Q49): GCPE Headquarters, GCPE Media Relations and the Office of the Premier. Legacy matched HQ by Ministry.Abbreviation. */
@@ -18,6 +21,14 @@ export const HQ_ABBREVIATIONS = ["GCPEHQ", "GCPEMEDIA", "PREM"] as const;
 
 export function isHqAbbreviation(abbreviation: string | null | undefined): boolean {
   return abbreviation != null && (HQ_ABBREVIATIONS as readonly string[]).includes(abbreviation.trim().toUpperCase());
+}
+
+/** Legacy abbreviations of the organizations hidden from public lists (Q54). The Office of the
+ * Premier is HQ but public, so this is not HQ_ABBREVIATIONS. */
+export const NON_PUBLIC_ABBREVIATIONS = ["GCPEHQ", "GCPEMEDIA"] as const;
+
+export function isNonPublicAbbreviation(abbreviation: string | null | undefined): boolean {
+  return abbreviation != null && (NON_PUBLIC_ABBREVIATIONS as readonly string[]).includes(abbreviation.trim().toUpperCase());
 }
 
 type Row = typeof organizations.$inferSelect;
@@ -41,7 +52,7 @@ export function toOrgRecord(row: Row): OrgRecord {
     serviceLinks: row.serviceLinks,
     sectorKeys: row.sectorKeys,
     isHq: row.isHq,
-    isPublic: true,
+    isPublic: row.isPublic,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -58,13 +69,19 @@ export async function upsertOrganization(
     legacyId?: string;
     /** The HQ flag to give the organization if this upsert creates it. Ignored when it already exists, whatever the stored flag. */
     isHqOnCreate?: boolean;
+    /** The public flag to give the organization if this upsert creates it. Ignored when it already exists. */
+    isPublicOnCreate?: boolean;
   } = {},
 ): Promise<{ record: OrgRecord; changed: boolean }> {
   const parsed = orgInputSchema.parse(input);
   return db.transaction(async (tx) => {
     await lockAggregate(tx, orgAggregateId(parsed.key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, parsed.key)).for("update");
-    const data = { ...parsed, isHq: parsed.isHq ?? (existing ? existing.isHq : (opts.isHqOnCreate ?? false)) };
+    const data = {
+      ...parsed,
+      isHq: parsed.isHq ?? (existing ? existing.isHq : (opts.isHqOnCreate ?? false)),
+      isPublic: parsed.isPublic ?? (existing ? existing.isPublic : (opts.isPublicOnCreate ?? true)),
+    };
     if (existing) {
       const { updatedAt: _u, ...current } = toOrgRecord(existing);
       if (sameContent(current, data)) {
@@ -99,6 +116,20 @@ export async function setOrganizationHq(db: Db, key: string, isHq: boolean, subs
     if (!existing) return null;
     if (existing.isHq === isHq) return toOrgRecord(existing);
     const [row] = await tx.update(organizations).set({ isHq, updatedAt: new Date() }).where(eq(organizations.key, key)).returning();
+    const record = toOrgRecord(row!);
+    await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: record }, subscribers);
+    return record;
+  });
+}
+
+/** Core.Admin's public switch (Q54). Emits org.upserted only when the flag changes. */
+export async function setOrganizationPublic(db: Db, key: string, isPublic: boolean, subscribers: SubscriberConfig[]): Promise<OrgRecord | null> {
+  return db.transaction(async (tx) => {
+    await lockAggregate(tx, orgAggregateId(key));
+    const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
+    if (!existing) return null;
+    if (existing.isPublic === isPublic) return toOrgRecord(existing);
+    const [row] = await tx.update(organizations).set({ isPublic, updatedAt: new Date() }).where(eq(organizations.key, key)).returning();
     const record = toOrgRecord(row!);
     await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: record }, subscribers);
     return record;

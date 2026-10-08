@@ -22,6 +22,7 @@ export interface OrgOption {
   abbreviation: string | null;
   isActive: boolean;
   isHq: boolean;
+  isPublic: boolean;
 }
 
 function orgLabel(o: OrgOption): string {

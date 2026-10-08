@@ -1,7 +1,7 @@
 import type { Db } from "@gcpe/db-kit";
 import type { SubscriberConfig, TermKind } from "@gcpe/events";
 import type { LegacySource } from "@gcpe/legacy-import";
-import { isHqAbbreviation, upsertOrganization } from "../services/organizations";
+import { isHqAbbreviation, isNonPublicAbbreviation, upsertOrganization } from "../services/organizations";
 import { upsertTerm } from "../services/terms";
 import { mapMinistry, mapTerm, type LegacyLinkRow, type LegacyMinistryRow, type LegacyMinistrySectorRow, type LegacyTermRow } from "./map";
 import { Q_MINISTRIES, Q_MINISTRY_SECTORS, Q_MINISTRY_SERVICES, Q_MINISTRY_TOPICS, Q_SECTORS, Q_SERVICES, Q_TAGS, Q_THEMES } from "./queries";
@@ -42,8 +42,13 @@ export async function importLegacyReference(db: Db, source: LegacySource, subscr
       services: services.get(id) ?? [],
       sectorKeys: (sectors.get(id) ?? []).map((s) => s.SectorKey),
     });
-    // GCPEHQ, GCPEMEDIA and PREM are created HQ (Q49); an existing organization keeps Core.Admin's flag (C124).
-    const { changed } = await upsertOrganization(db, org, subscribers, { legacyId: id, isHqOnCreate: isHqAbbreviation(row.Abbreviation) });
+    // GCPEHQ, GCPEMEDIA and PREM are created HQ (Q49), and GCPEHQ and GCPEMEDIA non-public (Q54);
+    // an existing organization keeps Core.Admin's flags (C124).
+    const { changed } = await upsertOrganization(db, org, subscribers, {
+      legacyId: id,
+      isHqOnCreate: isHqAbbreviation(row.Abbreviation),
+      isPublicOnCreate: !isNonPublicAbbreviation(row.Abbreviation),
+    });
     result.organizations.total++;
     if (changed) result.organizations.changed++;
   }
