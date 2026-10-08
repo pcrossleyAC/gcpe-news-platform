@@ -5,7 +5,8 @@ import { authFromEnv } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
-import type { Closer } from "@gcpe/http-kit";
+import { type Closer, safeErrorLabel } from "@gcpe/http-kit";
+import { sweepLocks } from "./activities/locks";
 import { createApp } from "./app";
 import { needsReferenceData } from "./projections";
 import { rulesFromTenant } from "./rules";
@@ -43,6 +44,7 @@ export async function startCalendar(env: NodeJS.ProcessEnv): Promise<AppHandle> 
   const app = createApp({ db, auth: auth.bearer, eventSecrets: parsed.EVENT_SECRETS, rules, subscribers });
 
   let stopDispatcher: (() => Promise<void>) | undefined;
+  let sweep: NodeJS.Timeout | undefined;
   return {
     app,
     port: parsed.PORT,
@@ -50,13 +52,17 @@ export async function startCalendar(env: NodeJS.ProcessEnv): Promise<AppHandle> 
       // Delivers activity.* to NRMS.
       dispatch: () => dispatchOnce({ db, subscribers }),
       needsReferenceData: () => needsReferenceData(db),
+      lockSweep: () => sweepLocks(db),
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
+      sweep = setInterval(() => void sweepLocks(db).catch((e) => console.error("[calendar] lock sweep failed", safeErrorLabel(e))), 60_000);
+      sweep.unref();
     },
     closeBeforeServer: [],
     closers: [
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
+      { name: "lock sweep", close: async () => clearInterval(sweep) },
       { name: "db pool", close: () => pool.end() },
     ],
   };

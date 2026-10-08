@@ -1,10 +1,15 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
+import { z } from "zod";
 import { createActivitySchema, type WriteResponse } from "@gcpe/calendar-contract";
 import { createActivity } from "../activities/create";
 import { ActivityNotFoundError } from "../activities/errors";
+import { releaseLock, takeLock } from "../activities/locks";
 import { readActivity, readChanges } from "../activities/view";
 import { sendActivityError } from "./errors";
 import type { ApiDeps } from "./routes";
+
+const lockSchema = z.object({ tabId: z.string().min(1).max(100), takeOver: z.boolean().optional() }).strict();
+const releaseSchema = z.object({ tabId: z.string().min(1).max(100) }).strict();
 
 type Params = { id: string };
 /** Legacy lets an HQ Editor below Advanced create a confidential activity for another ministry, then hides it from them. */
@@ -36,5 +41,14 @@ export function activityRoutes(deps: ApiDeps): Router {
   }));
   r.get("/activities/:id", run(async (req, res) => void res.json(await readActivity(deps, req.calendar!, idOf(req)))));
   r.get("/activities/:id/changes", run(async (req, res) => void res.json(await readChanges(deps, req.calendar!, idOf(req)))));
+  r.put("/activities/:id/lock", run(async (req, res) => {
+    const body = lockSchema.parse(req.body);
+    res.json(await takeLock(deps, req.calendar!, idOf(req), body.tabId, body.takeOver ?? false));
+  }));
+  // The editor calls this on save, cancel and tab close (fetch with keepalive, which can send the CSRF header).
+  r.post("/activities/:id/lock/release", run(async (req, res) => {
+    await releaseLock(deps, req.calendar!, idOf(req), releaseSchema.parse(req.body).tabId);
+    res.status(204).end();
+  }));
   return r;
 }

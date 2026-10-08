@@ -29,6 +29,7 @@ describe("startCalendar", () => {
       expect((await request(handle.app).post("/auth/local/token").send({ username: "admin", password: "x" })).status).toBe(404);
       expect(await handle.workers.needsReferenceData!()).toBe(true);
       expect(await handle.workers.dispatch!()).toEqual({ delivered: 0, retried: 0, dead: 0 });
+      expect(await handle.workers.lockSweep!()).toEqual({ deleted: 0 });
     } finally {
       for (const c of [...handle.closeBeforeServer, ...handle.closers]) await c.close();
     }
