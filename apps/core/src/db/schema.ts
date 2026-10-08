@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, unique, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { OrgRecord, TermRecord } from "@gcpe/events";
 
 export * from "@gcpe/events/tables";
@@ -25,6 +25,8 @@ export const organizations = pgTable("organizations", {
   topicLinks: jsonb("topic_links").$type<Link[]>().notNull().default([]),
   serviceLinks: jsonb("service_links").$type<Link[]>().notNull().default([]),
   sectorKeys: text("sector_keys").array().notNull().default(sql`'{}'::text[]`),
+  /** HQ organization (spec addendum §4, C124): its members see every ministry in the Calendar. */
+  isHq: boolean("is_hq").notNull().default(false),
   legacyId: uuid("legacy_id"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -50,7 +52,8 @@ export const users = pgTable(
   "users",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    email: text("email").notNull(),
+    /** Null only for an inactive user: legacy Calendar users with no email (spec addendum §4). */
+    email: text("email"),
     displayName: text("display_name").notNull(),
     isActive: boolean("is_active").notNull().default(true),
     signInMethod: text("sign_in_method").$type<"local" | "entra">().notNull().default("local"),
@@ -62,6 +65,7 @@ export const users = pgTable(
   (t) => [
     uniqueIndex("users_email_lower_idx").on(sql`lower(${t.email})`),
     check("users_sign_in_method_check", sql`${t.signInMethod} IN ('local','entra')`),
+    check("users_active_needs_email", sql`${t.isActive} = false OR ${t.email} IS NOT NULL`),
   ],
 );
 
@@ -74,5 +78,40 @@ export const roleGrants = pgTable(
     role: text("role").notNull(),
     grantedAt: timestamp("granted_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.userId, t.role] })],
+  (t) => [
+    primaryKey({ columns: [t.userId, t.role] }),
+    // A user holds at most one Calendar role (spec addendum §4); granting one replaces the other.
+    uniqueIndex("role_grants_one_calendar_role").on(t.userId).where(sql`${t.role} LIKE 'Calendar.%'`),
+  ],
+);
+
+/** A user's ministries, M(u) in the spec addendum (§4): the Calendar's scope only. NRMS and NoD roles stay flat. */
+export const userOrganizations = pgTable(
+  "user_organizations",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.organizationId] }), index("user_organizations_organization_idx").on(t.organizationId)],
+);
+
+/** Legacy user ids (spec addendum §4): several legacy SystemUser ids may point to one user when legacy emails repeat. Written by the Calendar importer. */
+export const userLegacyIds = pgTable(
+  "user_legacy_ids",
+  {
+    system: text("system").$type<"calendar">().notNull(),
+    legacyId: text("legacy_id").notNull(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+  },
+  (t) => [
+    primaryKey({ columns: [t.system, t.legacyId] }),
+    index("user_legacy_ids_user_idx").on(t.userId),
+    check("user_legacy_ids_system_check", sql`${t.system} IN ('calendar')`),
+  ],
 );

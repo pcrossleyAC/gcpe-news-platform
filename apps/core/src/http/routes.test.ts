@@ -183,7 +183,8 @@ describe("Core HTTP API", () => {
   it("republish returns the number of enqueued events", async () => {
     const res = await request(app).post("/api/admin/republish").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(202);
-    expect(res.body.enqueued).toBe(2);
+    // 1 organization + 1 term + 1 user (the Core.Admin created by the directory-admin-emails test above).
+    expect(res.body.enqueued).toBe(3);
   });
 
   // Task 3: local admin login, end to end on the Core reference app — later apps copy this wiring.

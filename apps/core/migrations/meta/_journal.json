@@ -15,6 +15,13 @@
       "when": 1791088982540,
       "tag": "0001_users",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791431033664,
+      "tag": "0002_calendar_access",
+      "breakpoints": true
     }
   ]
 }

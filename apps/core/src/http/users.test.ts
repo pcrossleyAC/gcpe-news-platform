@@ -18,11 +18,11 @@ describe("Core users API", () => {
   beforeAll(async () => {
     tdb = await createCoreTestDb();
     app = createApp({ db: tdb.db, subscribers: [], auth: { session: { secret: SECRET } }, session: { secret: SECRET, secure: false, local: null } });
-    const admin = await createUser(tdb.db, createUserSchema.parse({ email: "admin@example.test", displayName: "Admin", roles: ["Core.Admin"], password: "admin password 123" }));
+    const admin = await createUser(tdb.db, createUserSchema.parse({ email: "admin@example.test", displayName: "Admin", roles: ["Core.Admin"], password: "admin password 123" }), []);
     adminId = admin.id;
-    adminCookie = `gcpe_session=${(await mintSession(SECRET, { id: admin.id, name: "Admin", email: admin.email, roles: ["Core.Admin"] })).token}`;
-    const viewer = await createUser(tdb.db, createUserSchema.parse({ email: "viewer@example.test", displayName: "V", roles: ["NRMS.Viewer"], password: "viewer password 123" }));
-    viewerCookie = `gcpe_session=${(await mintSession(SECRET, { id: viewer.id, name: "V", email: viewer.email, roles: ["NRMS.Viewer"] })).token}`;
+    adminCookie = `gcpe_session=${(await mintSession(SECRET, { id: admin.id, name: "Admin", email: admin.email ?? "", roles: ["Core.Admin"] })).token}`;
+    const viewer = await createUser(tdb.db, createUserSchema.parse({ email: "viewer@example.test", displayName: "V", roles: ["NRMS.Viewer"], password: "viewer password 123" }), []);
+    viewerCookie = `gcpe_session=${(await mintSession(SECRET, { id: viewer.id, name: "V", email: viewer.email ?? "", roles: ["NRMS.Viewer"] })).token}`;
   });
   afterAll(async () => {
     await tdb.drop();
@@ -43,7 +43,16 @@ describe("Core users API", () => {
   it("creates, lists, renames, deactivates and re-roles a user; the new user can sign in", async () => {
     const created = await as(adminCookie).post("/api/users", { email: "Site.Editor@Example.test", displayName: "Site Editor", roles: ["NRMS.SiteEditor"], password: "site editor pass 1" });
     expect(created.status).toBe(201);
-    expect(created.body).toEqual({ id: expect.any(String), email: "site.editor@example.test", displayName: "Site Editor", isActive: true, signInMethod: "local", roles: ["NRMS.SiteEditor"] });
+    expect(created.body).toEqual({
+      id: expect.any(String),
+      email: "site.editor@example.test",
+      displayName: "Site Editor",
+      isActive: true,
+      signInMethod: "local",
+      roles: ["NRMS.SiteEditor"],
+      calendarRole: null,
+      organizationKeys: [],
+    });
     expect(JSON.stringify(created.body)).not.toContain("scrypt");
     const id = created.body.id as string;
 

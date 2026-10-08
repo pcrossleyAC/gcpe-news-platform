@@ -9,6 +9,10 @@ export function orgAggregateId(key: string): string {
   return `org:${key}`;
 }
 
+export function userAggregateId(id: string): string {
+  return `user:${id}`;
+}
+
 export function termAggregateId(kind: TermKind, key: string): string {
   return `${kind}:${key}`;
 }

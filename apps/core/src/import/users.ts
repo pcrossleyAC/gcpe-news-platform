@@ -66,7 +66,8 @@ export async function importLegacyUsers(db: Db, rows: LegacyUserRow[]): Promise<
       continue;
     }
 
-    const created = await createUser(db, parsed.data);
+    // Imported staff are inactive with no roles, so they grant no Calendar access; Core's republish carries them to subscribers.
+    const created = await createUser(db, parsed.data, []);
     users.set(parsed.data.email, { id: created.id, displayName: created.displayName });
   }
 

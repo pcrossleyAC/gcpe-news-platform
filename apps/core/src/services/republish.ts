@@ -1,13 +1,14 @@
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { enqueueEvent, termEventType, type SubscriberConfig } from "@gcpe/events";
-import { organizations, terms } from "../db/schema";
-import { CORE_SOURCE, lockAggregate, orgAggregateId, termAggregateId } from "./aggregate";
+import { organizations, terms, users } from "../db/schema";
+import { CORE_SOURCE, lockAggregate, orgAggregateId, termAggregateId, userAggregateId } from "./aggregate";
 import { toOrgRecord } from "./organizations";
 import { toTermRecord } from "./terms";
+import { emitUserUpserted } from "./users";
 
 /**
- * Re-emits an upserted event for every organization and term.
+ * Re-emits an upserted event for every organization, term and user.
  *
  * Each aggregate is republished in its own short transaction that takes the same
  * per-aggregate advisory lock as upsert/deactivate and re-reads the row under it. That
@@ -48,6 +49,18 @@ export async function republishAll(db: Db, subscribers: SubscriberConfig[]): Pro
         { type: termEventType(record.kind, "upserted"), source: CORE_SOURCE, aggregateId: termAggregateId(record.kind, record.key), data: record },
         subscribers,
       );
+      return true;
+    });
+    if (done) count++;
+  }
+
+  const userIds = await db.select({ id: users.id }).from(users).orderBy(asc(users.id));
+  for (const { id } of userIds) {
+    const done = await db.transaction(async (tx) => {
+      await lockAggregate(tx, userAggregateId(id));
+      const [row] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for("update");
+      if (!row) return false;
+      await emitUserUpserted(tx, id, subscribers);
       return true;
     });
     if (done) count++;

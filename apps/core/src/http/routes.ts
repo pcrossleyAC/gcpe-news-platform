@@ -115,6 +115,6 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe(async (_req, res) => void res.json({ emails: await adminEmails(db) })),
   );
 
-  r.use("/users", admin, usersRouter(db));
+  r.use("/users", admin, usersRouter(db, subscribers));
   return r;
 }

@@ -396,7 +396,7 @@ export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<s
  * one source's credentials can't rewrite the other's data.
  */
 export const SOURCE_EVENT_TYPES: Record<string, (type: string) => boolean> = {
-  core: (type) => /^(org|sector|theme|tag|service)\./.test(type),
+  core: (type) => /^(org|sector|theme|tag|service|user)\./.test(type),
   nrms: (type) => type.startsWith("release.") || type === "site.content.changed" || type.startsWith("media_list."),
   "news-api": (type) => type === "site.rebuild_requested",
   distribution: (type) => type.startsWith("delivery."),
