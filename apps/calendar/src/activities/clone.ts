@@ -1,13 +1,14 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { CalendarActor } from "../actor";
 import { can } from "../capabilities";
-import { keywords, orgs } from "../db/schema";
+import { commContacts, keywords, orgs, users } from "../db/schema";
 import { assertNotFrozen } from "../freeze";
 import type { ApiDeps } from "../http/routes";
 import { dbNow } from "../time";
 import { visible } from "../visibility";
 import { ActivityDeletedError, ActivityForbiddenError, ActivityNotFoundError, ActivityValidationError } from "./errors";
 import { emitActivity } from "./events";
+import { INACTIVE_CONTACT, INACTIVE_PERSON } from "./resolve";
 import { displayOf, setFields, writeChange } from "./history";
 import { contentOf, factsOf, insertActivity, keywordNamesOf, loadStored, lockActivity, replaceJoins, type LookAheadValues } from "./store";
 
@@ -39,6 +40,18 @@ export async function cloneActivity(deps: ApiDeps, actor: CalendarActor, sourceI
         throw new ActivityValidationError([{ field: "contactMinistryKey", message: "That ministry can't lead an activity" }]);
       }
       if (!can.create(actor, s.row.contactMinistryKey)) throw new ActivityForbiddenError("You can only clone into one of your ministries");
+    }
+    // The carried-over comm contact is a new assignment too, checked as a save checks a newly
+    // chosen one (resolve.ts): the contact and its person must be active. Other inactive lookup
+    // values carry over unchecked, as legacy's clone copied them.
+    if (s.row.commContactId !== null) {
+      const [c] = await tx
+        .select({ isActive: commContacts.isActive, userIsActive: users.isActive })
+        .from(commContacts)
+        .leftJoin(users, eq(users.id, commContacts.userId))
+        .where(eq(commContacts.id, s.row.commContactId));
+      if (c && !c.isActive) throw new ActivityValidationError([{ field: "commContactId", message: INACTIVE_CONTACT }]);
+      if (c && c.userIsActive !== true) throw new ActivityValidationError([{ field: "commContactId", message: INACTIVE_PERSON }]);
     }
 
     const content = { ...contentOf(s.row), nrAt: null, comments: "" };

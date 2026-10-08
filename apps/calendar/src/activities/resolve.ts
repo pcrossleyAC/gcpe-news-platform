@@ -18,6 +18,8 @@ export interface Resolution {
 
 /** A comm contact whose person is inactive in, or missing from, the Calendar's users projection can't be newly given an activity. */
 export const INACTIVE_PERSON = "That person's account is inactive";
+/** An inactive comm contact can't be newly given an activity. */
+export const INACTIVE_CONTACT = "That comm contact is no longer active";
 
 interface Ctx {
   actor: Viewer;
@@ -105,7 +107,7 @@ export async function resolveReferences(tx: Tx, i: ActivityFields, ctx: Ctx): Pr
     const changed = prev?.fields.commContactId !== i.commContactId;
     if (!c) add("commContactId", "That comm contact doesn't exist");
     else if (c.ministryKey !== i.contactMinistryKey) add("commContactId", "Choose a comm contact of the lead ministry");
-    else if (!c.isActive && changed) add("commContactId", "That comm contact is no longer active");
+    else if (!c.isActive && changed) add("commContactId", INACTIVE_CONTACT);
     else if (c.userIsActive !== true && changed) add("commContactId", INACTIVE_PERSON);
   }
 

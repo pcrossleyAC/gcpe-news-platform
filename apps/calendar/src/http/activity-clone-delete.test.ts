@@ -2,9 +2,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { ActivityFields } from "@gcpe/calendar-contract";
-import { createCalendarTestDb, createTestApp, FIXED_NOW } from "../../test/helpers";
+import { createCalendarTestDb, createTestApp, FIXED_NOW, projectUser } from "../../test/helpers";
 import { call, historyOf, insertRaw, outboxOf, seedWorld, validInput, type World } from "../../test/world";
-import { activities, activityLocks } from "../db/schema";
+import { activities, activityLocks, commContacts } from "../db/schema";
 
 describe("clone and delete (spec addendum §7.1)", () => {
   let tdb: TestDatabase;
@@ -40,6 +40,22 @@ describe("clone and delete (spec addendum §7.1)", () => {
       });
       expect(await row(c.id)).toMatchObject({ hqComments: "**", hqStatus: null, createdBy: w.as.editor.id });
       expect((await row(src.id)).version).toBe(2);
+    });
+
+    it.each([
+      ["whose person's account is inactive", "inactive", "That person's account is inactive"],
+      ["whose person is missing from the Calendar's users", "missing", "That person's account is inactive"],
+      ["that is itself inactive", "retired", "That comm contact is no longer active"],
+    ] as const)("refuses to clone onto a comm contact %s, as a new assignment", async (_, kind, message) => {
+      const userId = { inactive: "00000000-0000-4000-8000-000000000641", missing: "00000000-0000-4000-8000-000000000642", retired: "00000000-0000-4000-8000-000000000643" }[kind];
+      if (kind !== "missing") await projectUser(app, { id: userId, email: `${kind}@example.test`, displayName: `Sample ${kind}`, isActive: kind !== "inactive", calendarRole: "Calendar.Editor", organizationKeys: ["health"] });
+      const contact = (await tdb.db.insert(commContacts).values({ userId, ministryKey: "health", rank: 4, isActive: kind !== "retired" }).returning({ id: commContacts.id }))[0]!.id;
+      const src = await insertRaw(tdb.db, { commContactId: contact, contactMinistryKey: "health" });
+      const before = (await tdb.db.select({ id: activities.id }).from(activities)).length;
+      const res = await call(app, "post", `/api/activities/${src}/clone`, w.as.editor.cookie, {});
+      expect(res.status).toBe(422);
+      expect(res.body.errors).toEqual([{ field: "commContactId", message }]);
+      expect((await tdb.db.select({ id: activities.id }).from(activities)).length).toBe(before);
     });
 
     it("names the source in a cloned history entry, and queues activity.created", async () => {

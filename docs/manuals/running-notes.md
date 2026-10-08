@@ -464,7 +464,8 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   or can't lead an activity, or whose person's account is inactive; it says why. The From list
   marks inactive contacts and inactive people "inactive".
 - **Editor** — An activity can't be given a comm contact whose account is inactive ("That person's
-  account is inactive"). An activity that already has that contact keeps it when saved.
+  account is inactive"). An activity that already has that contact keeps it when saved, but can't
+  be cloned until it has an active comm contact: a clone is a new assignment.
 - **Administrator** — Deactivating a user first lists their open activities, with a link to
   Transfer. Deactivating doesn't move them.
 - **System Administrator** — Hub → Calendar → Undelivered events lists events another app didn't
