@@ -20,10 +20,14 @@ export async function getFeatures(db: Db, kind: CategoryKind, key: string): Prom
 }
 
 export async function findCategoryKey(db: Db, kind: CategoryKind, key: string): Promise<string | null> {
+  const conds = [eq(categories.kind, kind), lowerEq(categories.key, key)];
+  // A non-public ministry (Q54) resolves the same as an unknown key: sectors, themes and tags
+  // are always public, so they carry no such filter.
+  if (kind === "ministries") conds.push(eq(categories.isPublic, true));
   const [row] = await db
     .select({ key: categories.key })
     .from(categories)
-    .where(and(eq(categories.kind, kind), lowerEq(categories.key, key)));
+    .where(and(...conds));
   return row?.key ?? null;
 }
 
