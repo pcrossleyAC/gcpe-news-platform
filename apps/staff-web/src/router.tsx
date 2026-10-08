@@ -20,6 +20,8 @@ import { CalendarSection } from "./screens/calendar/CalendarSection";
 import { CalendarHome } from "./screens/calendar/CalendarHome";
 import { LookupsScreen } from "./screens/calendar/lookups/LookupsScreen";
 import { LookupScreen } from "./screens/calendar/lookups/LookupScreen";
+import { CalendarUsersScreen } from "./screens/calendar/users/CalendarUsersScreen";
+import { CalendarUserScreen } from "./screens/calendar/users/CalendarUserScreen";
 import { UsersScreen } from "./screens/admin/users/UsersScreen";
 import { CalendarAccessScreen } from "./screens/admin/calendar-access/CalendarAccessScreen";
 import { OrganizationsScreen } from "./screens/admin/organizations/OrganizationsScreen";
@@ -118,6 +120,8 @@ export const routes: RouteObject[] = [
           { index: true, element: <CalendarHome /> },
           { path: "lookups", element: <LookupsScreen /> },
           { path: "lookups/:name", element: <LookupScreen /> },
+          { path: "users", element: <CalendarUsersScreen /> },
+          { path: "users/:id", element: <CalendarUserScreen /> },
         ],
       },
       { path: "users", element: <UsersScreen /> },

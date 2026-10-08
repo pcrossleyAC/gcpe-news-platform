@@ -32,6 +32,11 @@ export function CalendarSection(): React.JSX.Element {
               <NavLink to="/calendar/lookups">Lookups</NavLink>
             </li>
           )}
+          {me.level >= CALENDAR_ADMIN_LEVEL && (
+            <li>
+              <NavLink to="/calendar/users">Users</NavLink>
+            </li>
+          )}
         </ul>
       </nav>
       <Outlet context={me} />

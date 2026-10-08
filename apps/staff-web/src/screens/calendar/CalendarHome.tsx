@@ -16,6 +16,11 @@ export function CalendarHome(): React.JSX.Element {
           <Link to="/calendar/lookups">Manage the Calendar&rsquo;s lookups</Link>
         </p>
       )}
+      {me.level >= CALENDAR_ADMIN_LEVEL && (
+        <p>
+          <Link to="/calendar/users">Manage Calendar users</Link>
+        </p>
+      )}
     </div>
   );
 }
