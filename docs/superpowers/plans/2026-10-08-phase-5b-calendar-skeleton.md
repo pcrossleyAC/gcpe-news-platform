@@ -740,7 +740,7 @@ describe("non-public ministries (Q54)", () => {
   it("become listed again when Core makes them public, and a replayed old envelope keeps the ministry listed", async () => {
     await tdb.db.transaction((tx) => applyOrg(tx, org("gcpe-headquarters", { isHq: true, isPublic: true })));
     expect(await getMinistry(tdb.db, "gcpe-headquarters", "America/Vancouver")).not.toBeNull();
-    // An envelope stored before isPublic existed parses with the default (Task 1), so it is public.
+    // An envelope stored before isPublic existed parses with the default (Q54), so it is public.
     await tdb.db.transaction((tx) => applyOrg(tx, org("health", { isPublic: true })));
     expect(await getMinistry(tdb.db, "health", "America/Vancouver")).not.toBeNull();
   });
