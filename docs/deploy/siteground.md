@@ -107,6 +107,14 @@ the moment staff try to pause or resume Distribution from NoD's admin in product
 on boxs.ca, with `LOCAL_ADMIN_ENABLED=true`, the locally minted token already carries both roles
 — see `apps/nod/src/distribution-token.ts` — so this only bites once Entra is configured.)
 
+**`NOD_EMERGENCY_FEED_URL` must be the feed's final URL — no redirect.** The ingester fetches it
+with `redirect: "error"` and fails the check closed rather than follow one (so an attacker who
+could redirect that URL elsewhere can't get the ingester to read it instead). EMCR's real feed,
+`https://emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true`, 301s to the `www.`
+host (confirmed with a single `HEAD` request on 2026-10-07) — configure
+`NOD_EMERGENCY_FEED_URL` as `https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true`
+instead, or every check fails with `error: "redirect"`.
+
 For a non-interactive/scripted run (CI, or re-generating without re-typing everything), see
 `npm run siteground:env -- --non-interactive` and the `SITEGROUND_*` env vars it reads
 (`scripts/siteground-env.ts`'s module doc comment has the full list) — intended for tests, not
@@ -232,7 +240,12 @@ holds data, or pre-build the indexes `CONCURRENTLY` with drizzle's exact index n
 record the migrations as applied, so the deploy's own migrate skips them:
 
 1. **Only for pending migrations that are nothing but `CREATE INDEX` statements** (NoD `0023`,
-   `0024`; Distribution `0010`). Any other statement would have to be run by hand, so for those
+   `0024`, `0027`, `0029`, `0032`; Distribution `0010`). `0029_purge_indexes` indexes `job_recipients` and
+   `subscriber_links`, which grow by tens of thousands of rows a day, so it belongs here too.
+   `0026_emergency_feed_state` and `0028_retention_purge` (columns and a new table),
+   `0030_legacy_import` (a new table) and `0031_items_link_identity` (a column; the emergency feed
+   check fills it in for existing alerts on its next run) are not index-only — they run in the
+   normal deploy, same as any other additive migration. Any other statement would have to be run by hand, so for those
    use a quiet window instead. Drizzle's migrator applies every migration newer than the
    *latest* row it has recorded, so pre-build and record **every** pending migration, in journal
    order — recording a later one alone would make it skip the earlier ones forever.
@@ -244,7 +257,7 @@ record the migrations as applied, so the deploy's own migrate skips them:
    `DIR=migrations/distribution`, `DB="$DIST_DATABASE_URL"` and `TAGS="0010_report_indexes"`:
 
    ```sh
-   export DB="$NOD_DATABASE_URL" DIR=migrations/nod TAGS="0023_report_history_index 0024_report_delivery_indexes"
+   export DB="$NOD_DATABASE_URL" DIR=migrations/nod TAGS="0023_report_history_index 0024_report_delivery_indexes 0027_items_emergency_url_index 0029_purge_indexes 0032_items_link_identity_index"
    # Pre-build each index without blocking writes. psql runs each statement on its own, outside
    # a transaction, which CONCURRENTLY requires.
    for tag in $TAGS; do
@@ -666,6 +679,106 @@ correct:
 
 Both cutover commands default to a dry run and only act with `--confirm`, exactly like
 `nrms:import`'s report-first approach — read the dry-run output before confirming either one.
+
+## Emergency alerts feed (Phase 4i)
+
+NoD reads an EMCR emergency alerts feed (RSS or Atom) every 5 minutes from the tick and emails
+new alerts to everyone on the Emergency Info BC list, whatever their own timing preference.
+
+- On test sites the stack serves a fake feed at `/fake-emergency-feed/feed.xml`. Add an alert
+  with:
+  ```sh
+  curl -X POST -H "Authorization: Bearer <admin token>" -H "content-type: application/json" \
+    -d '{"title":"Test alert","html":"<p>Test.</p>"}' https://boxs.ca/fake-emergency-feed/__fake/alerts
+  ```
+  then wait up to 5 minutes (or trigger a tick).
+- Production sets `NOD_EMERGENCY_FEED_URL`. With it unset, no alerts are read, and Operations
+  says so. The production feed redirects the bare domain to `www`, and the fetch refuses
+  redirects on purpose (an operator must point it at the real, final URL, not trust whatever a
+  redirect's target happens to be) — configure the `www` form, not the bare domain.
+- The first successful read of a feed URL (including a changed one) records its current alerts
+  without emailing anyone; only alerts that appear after that are sent. An alert edited at the
+  source updates NoD's copy in place and is never re-sent.
+
+## Retention purge (Phase 4i)
+
+Off by default. The switch is on Operations (NoD.Admin), which also shows what turning it on
+would delete right now. When on, it runs nightly at 03:00 BC from the tick: unconfirmed
+subscribers and unused request links older than 10 days, and subscribers ended more than 90 days
+ago with their deliveries, history, links and subscriptions. Expired links in sent emails
+(`origin = 'send'`) are cleared every night regardless of the switch. The preview and the purge
+itself share one selection function, so they can't drift apart. Bounce-disabled subscribers are
+never purged. Before a subscriber is deleted, any media-list opt-out the live check would still
+enforce is kept as a hash of their address (no address) — see migration `0028_retention_purge`'s
+`media_opt_outs` table — so staff are still asked to confirm before re-adding that address to a
+list, even after the record that opted out is long gone.
+
+Migrations `0028_retention_purge` (a new table plus columns — additive, runs in the normal
+deploy) and `0029_purge_indexes` (pure `CREATE INDEX`, on `job_recipients` and `subscriber_links`
+— see "Migrations on populated `deliveries` or `messages` tables" above) ship the purge; neither
+hand-edits existing data.
+
+## Importing legacy NoD data (Phase 4i)
+
+`npm run nod:import` reads legacy NoD's SQL Server through `@gcpe/legacy-import` and writes
+NoD's own database directly, modelled on `nrms:import` above.
+
+**Env:** `DATABASE_URL` (NoD's Postgres), `NRMS_DATABASE_URL` (NRMS's Postgres, read-only —
+legacy articles resolve to NRMS's own release keys through it), `PUBLIC_SITE_URL` (imported
+release items link here, as NoD's own items do), `LEGACY_SQL_SERVER`, `LEGACY_SQL_DATABASE`
+(default `Gcpe.NewsOnDemand`), `LEGACY_SQL_USER`, `LEGACY_SQL_PASSWORD`, `LEGACY_SQL_TRUST_CERT`
+(`true`/`false`). None of these, nor any address, are printed or written anywhere by the tool
+itself.
+
+**Prerequisites.** Core's reference data must already have reached NoD (via `media_list.*`
+events from NRMS, which itself needs `nrms:import` run first), and media lists republished, so
+the importer's list keys resolve.
+
+**Running it:**
+
+```sh
+DATABASE_URL=... NRMS_DATABASE_URL=... PUBLIC_SITE_URL=... LEGACY_SQL_SERVER=... \
+LEGACY_SQL_USER=... LEGACY_SQL_PASSWORD=... \
+  npm run nod:import -- --report nod-import.json [--since-days 30]
+```
+
+Takes a whole-run advisory lock (the same `pg_try_advisory_lock` pattern as `nrms:import`, in its
+own two-int slot), so two imports can never run against the same database at once; a second one
+started while the first runs exits at once with "another nod:import is already running" and
+touches nothing. Imports in order: lists, subscribers (in batches of 500 candidates; each
+candidate's own address lock, plus a second lock when a legacy media-list leave applies to a
+different address's current record, means a single batch can take up to about 1,000
+`pg_advisory_xact_lock` calls — harmless, but worth knowing if `log_lock_waits` ever looks busy
+during a run), recent sends (`--since-days`, at most 92, default 30), then the digest cutoff.
+
+**Reading the report.** Every run writes `--report <path>` (default
+`nod-import-<UTC timestamp>.json`) plus a matching `.txt`. For every legacy table it lists
+`legacy` (rows seen), `imported` and `skipped` (each skip reason grouped, with up to 10 sample
+legacy GUIDs — never an address). Exit code: `0` when the report balances (`legacy = imported +
+skipped` for every table), `2` when it doesn't (the import still completed — read the report),
+`1` on any error (a partial report is still written) or when another run holds the lock.
+**Re-running is safe:** a subscriber nobody has touched in NoD since the last import takes
+legacy's newer data (except a media list staff re-added in NoD after legacy's own removal from
+it, which stays); one changed in NoD (by staff, a bounce, the Media Hub sync) or removed by the
+purge is left as NoD has it and reported, not overwritten. Consent always carries over: a legacy
+unsubscribe made since the last import ends the NoD record even if NoD changed it (reported as
+"unsubscribed in legacy since the last import"), unless the person subscribed again in NoD after
+it (reported as "unsubscribed in legacy before a newer subscribe in NoD"); for a purged record it
+is kept as an every-media-list opt-out without the address, or ends NoD's newer record of the
+address on the same terms. Legacy moving a member onto an address that opted
+out of one of their media lists takes them off those lists (reported per list, by id). An
+article row the database refuses (a value out of range) is skipped and reported by id with the
+error's code; the rest of the run carries on. The same networking
+assumption as `nrms:import` applies — run it from a machine that can reach both the legacy SQL
+Server and the target Postgres, which SiteGround itself likely cannot do (see "Importing legacy
+NRMS data" above).
+
+**Warning: run the final import before turning the purge on.** An imported ended subscriber gets
+`ended_at` no earlier than the import itself (legacy's own end date when that is later), so the
+purge's 90 days start at the import at the earliest: a bad import can still be rolled back from
+legacy within that window. But once the purge has deleted a record, a later import can't bring
+it back; it only reports the mismatch. Run the import (trial, then final) first, confirm the report, and only
+then flip the Operations switch.
 
 ## Troubleshooting
 

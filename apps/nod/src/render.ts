@@ -93,15 +93,34 @@ function categoryLineText(categories: { name: string; url: string | null }[]): s
   return categories.map((c) => neutralizeText(c.name)).join(", ");
 }
 
-/** One item's block: title (bold blue link), summary paragraph, "▶ READ MORE" link, then the
+const SUMMARY_STYLE = "margin:0 0 8px;font-size:14px;color:#333333;";
+
+/** A release's summary is one paragraph, as it always was. An emergency alert carries its whole
+ * text, so its blank-line paragraphs and line breaks are kept. */
+function summaryHtml(summary: string, paragraphs: boolean): string {
+  if (!paragraphs) return `<p style="${SUMMARY_STYLE}">${neutralizeHtml(summary)}</p>`;
+  // Normalises line endings first, same as normalizeMediaText below -- otherwise "\r\n\r\n"
+  // isn't two adjacent "\n"s and the blank line between paragraphs goes unrecognised.
+  return summary
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .split(/\n{2,}/)
+    .filter((p) => p.trim() !== "")
+    .map((p) => `<p style="${SUMMARY_STYLE}">${neutralizeHtml(p).replace(/\n/g, "<br>")}</p>`)
+    .join("");
+}
+
+/** One item's block: title (bold blue link), summary paragraph(s), "▶ READ MORE" link, then the
  * grey category line — the shared layout behind the real legacy digest sample (both for one
- * item, used by As-It-Happens/emergency, and repeated per item in the digest). */
-function itemBlockHtml(item: RenderItem): string {
+ * item, used by As-It-Happens/emergency, and repeated per item in the digest). `paragraphs`
+ * (emergency only) keeps the summary's blank-line paragraphs and line breaks instead of
+ * collapsing it to one `<p>`. */
+function itemBlockHtml(item: RenderItem, paragraphs = false): string {
   const categoriesLine = categoryLineHtml(item.categories);
   return (
     `<tr><td style="padding:16px 24px;font-family:Arial,Helvetica,sans-serif;">` +
     `<p style="margin:0 0 8px;"><a href="${escapeHtml(item.url)}" style="color:#1a5a96;font-weight:bold;font-size:18px;text-decoration:underline;">${neutralizeHtml(item.title)}</a></p>` +
-    `<p style="margin:0 0 8px;font-size:14px;color:#333333;">${neutralizeHtml(item.summary)}</p>` +
+    summaryHtml(item.summary, paragraphs) +
     `<p style="margin:0 0 8px;"><a href="${escapeHtml(item.url)}" style="color:#1a5a96;font-weight:bold;font-size:12px;text-decoration:underline;text-transform:uppercase;">▶ READ MORE</a></p>` +
     (categoriesLine ? `<p style="margin:0;font-size:12px;color:#666666;">${categoriesLine}</p>` : "") +
     `</td></tr>`
@@ -191,7 +210,7 @@ export function renderAsItHappens(item: RenderItem, opts: RenderOptions): Render
 export function renderEmergency(item: RenderItem, opts: RenderOptions): Rendered {
   return {
     subject: subjectFor("Emergency Info BC", item),
-    html: shellHtml(opts, itemBlockHtml(item), "subscriber"),
+    html: shellHtml(opts, itemBlockHtml(item, true), "subscriber"),
     text: shellText(opts, itemBlockText(item), "subscriber"),
   };
 }
@@ -286,7 +305,7 @@ const DIGEST_SUBJECT = "BCNews - Daily Digest";
 /** Lists every item in the order given (callers pass them in `publishedAt` order — no date
  * heading, same as the real legacy sample). */
 export function renderDigest(items: RenderItem[], opts: RenderOptions): Rendered {
-  const bodyHtml = items.map(itemBlockHtml).join("");
+  const bodyHtml = items.map((item) => itemBlockHtml(item)).join("");
   const bodyText = items.map(itemBlockText).join("\n\n---\n\n");
   return { subject: DIGEST_SUBJECT, html: shellHtml(opts, bodyHtml, "subscriber"), text: shellText(opts, bodyText, "subscriber") };
 }

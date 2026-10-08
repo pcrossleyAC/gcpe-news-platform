@@ -78,6 +78,17 @@ const OPS: OperationsStatus = {
   bounceSource: "fake",
   bounceSummary: { address: "server@example.test", from: "server" },
   softCodesCounted: [],
+  purge: {
+    enabled: false,
+    preview: { pendingSubscribers: 0, endedSubscribers: 3, unusedLinks: 2, expiredSendLinks: 40 },
+    lastRun: null,
+    nextRunAt: "2026-10-08T10:00:00.000Z",
+  },
+  emergencyFeed: {
+    url: "https://emergency.example.test/feed.xml",
+    checkedAt: "2026-10-07T18:00:00.000Z",
+    result: { at: "2026-10-07T18:00:00.000Z", ok: true, seeded: false, inFeed: 2, created: 1, updated: 0, skipped: 0, failed: 0, error: null },
+  },
 };
 const LISTS_VIEW: StaffListsView = {
   allNews: 12,
@@ -100,10 +111,11 @@ const MEDIA_CONTACT = {
   ],
 };
 
-function stubCommon(roles: string[]) {
+function stubCommon(roles: string[], overrides: Record<string, () => Response> = {}) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string) => {
+      if (overrides[url]) return overrides[url]();
       if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
       if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
       if (url === "/nod/api/subscribers/search") return jsonResponse(200, PAGE);
@@ -234,6 +246,28 @@ describe("accessibility — Subscribers", () => {
     expect(await seriousViolations(container, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
   });
 
+  it("SubscriberScreen asking to confirm a change of email onto an opted-out address", async () => {
+    stubCommon(["NoD.Editor"], { [`/nod/api/subscribers/${SUBSCRIBER_ID}/email`]: () => jsonResponse(409, { error: "opted-out", at: "2026-06-01T17:00:00.000Z" }) });
+    render(
+      <SessionProvider>
+        <MemoryRouter initialEntries={[`/subscribers/${SUBSCRIBER_ID}`]}>
+          <RequireAuth>
+            <Routes>
+              <Route path="/subscribers/:id" element={<SubscriberScreen />} />
+            </Routes>
+          </RequireAuth>
+        </MemoryRouter>
+      </SessionProvider>,
+    );
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("New email"), "left@example.test");
+    await user.type(screen.getByLabelText("Confirm new email"), "left@example.test");
+    await user.click(screen.getByRole("button", { name: "Change email" }));
+    await screen.findByRole("alertdialog");
+    // jsdom has no `inert` (see the bulk delete dialog's note above).
+    expect(await seriousViolations(document.body, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
+  });
+
   it("HistoryScreen (populated)", async () => {
     stubCommon(["NoD.Viewer"]);
     const { container } = render(
@@ -293,10 +327,33 @@ describe("accessibility — Subscribers", () => {
     expect(await seriousViolations(document.body, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
   });
 
+  it("A media list, with the resolve dialog refusing an opted-out email, has no serious violations", async () => {
+    stubCommon(["NoD.Editor"], { "/nod/api/media-members/44444444-4444-4444-4444-444444444444/resolve": () => jsonResponse(409, { error: "opted-out-address" }) });
+    render(withAuthAt("/subscribers/media-lists/budget", "/subscribers/media-lists/:key", <MediaListScreen />));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Resolve sam@riverbend.example.test" }));
+    await user.click(await screen.findByRole("radio", { name: /sam@gazette\.example\.test/ }));
+    await user.click(screen.getByRole("button", { name: "Use this email" }));
+    await screen.findByText(/That address opted out of a media list this member is on/);
+    // jsdom has no `inert` (see the bulk delete dialog's note above).
+    expect(await seriousViolations(document.body, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
+  });
+
   it("Operations, with the pause dialog open, has no serious violations", async () => {
     stubCommon(["NoD.Admin"]);
     const { container } = render(withAuthAt("/subscribers/operations", "/subscribers/operations", <OperationsScreen />));
     await userEvent.setup().click(await screen.findByRole("button", { name: "Pause News On Demand sending" }));
+    await screen.findByRole("alertdialog");
+    // jsdom has no `inert` (see the bulk delete dialog's note above).
+    const noInert = { rules: { "aria-hidden-focus": { enabled: false } } };
+    expect(await seriousViolations(document.body, noInert)).toEqual([]);
+    expect(await seriousViolations(container, noInert)).toEqual([]);
+  });
+
+  it("Operations, with the purge dialog open, has no serious violations", async () => {
+    stubCommon(["NoD.Admin"]);
+    const { container } = render(withAuthAt("/subscribers/operations", "/subscribers/operations", <OperationsScreen />));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Turn on the retention purge" }));
     await screen.findByRole("alertdialog");
     // jsdom has no `inert` (see the bulk delete dialog's note above).
     const noInert = { rules: { "aria-hidden-focus": { enabled: false } } };

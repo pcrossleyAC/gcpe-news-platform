@@ -1,9 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+import { eq } from "drizzle-orm";
 import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
+import { operationsLog } from "../db/schema";
 import type { DistributionClient } from "../distribution-client";
 
 describe("operations routes", () => {
@@ -31,6 +33,8 @@ describe("operations routes", () => {
       render: { siteUrl: "https://news.gov.bc.ca", bannerUrl: null },
       distribution,
       bounceSummaryFallback: "server@example.test",
+      timeZone: "America/Vancouver",
+      emergencyFeedUrl: "https://emergency.example.test/feed.xml",
     });
   });
   afterAll(async () => tdb.drop());
@@ -49,6 +53,8 @@ describe("operations routes", () => {
       bounceSource: "fake",
       bounceSummary: { address: "server@example.test", from: "server" },
       softCodesCounted: [],
+      purge: { enabled: false, preview: { pendingSubscribers: 0, endedSubscribers: 0, unusedLinks: 0, expiredSendLinks: 0 }, lastRun: null, nextRunAt: expect.any(String) },
+      emergencyFeed: { url: "https://emergency.example.test/feed.xml", checkedAt: null, result: null },
     });
   });
 
@@ -72,5 +78,17 @@ describe("operations routes", () => {
     expect(ok.status).toBe(200);
     expect(ok.body).toEqual({ changed: true, softCodesCounted: ["4.2.2", "4.4.7"] });
     await put(admin, { codes: [] });
+  });
+
+  it("the purge switch: Admin only, a boolean only, logged with the preview, idempotent", async () => {
+    expect((await request(app).put("/api/operations/purge").set("authorization", `Bearer ${editor}`).send({ enabled: true })).status).toBe(403);
+    expect((await request(app).put("/api/operations/purge").set("authorization", `Bearer ${admin}`).send({ enabled: "yes" })).status).toBe(400);
+    const on = await request(app).put("/api/operations/purge").set("authorization", `Bearer ${admin}`).send({ enabled: true });
+    expect(on.status).toBe(200);
+    expect(on.body).toMatchObject({ changed: true, purge: { enabled: true } });
+    expect((await request(app).put("/api/operations/purge").set("authorization", `Bearer ${admin}`).send({ enabled: true })).body.changed).toBe(false);
+    const log = await tdb.db.select().from(operationsLog).where(eq(operationsLog.action, "purge-enabled"));
+    expect(log).toMatchObject([{ actor: "Avery Admin", detail: expect.stringContaining("would remove now:") }]);
+    await request(app).put("/api/operations/purge").set("authorization", `Bearer ${admin}`).send({ enabled: false });
   });
 });

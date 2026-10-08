@@ -111,6 +111,24 @@ export function usesFakeMediaHub(env: NodeJS.ProcessEnv): boolean {
   return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true";
 }
 
+/** Where the stack mounts its fake emergency feed when NoD has no real one configured. */
+export const FAKE_EMERGENCY_FEED_PATH = "/fake-emergency-feed";
+
+/** What NoD's env view gets in fake mode: the fake's in-process feed URL. */
+export const FAKE_EMERGENCY_FEED_ENV: Readonly<Record<string, string>> = {
+  EMERGENCY_FEED_URL: `self:${FAKE_EMERGENCY_FEED_PATH}/feed.xml`,
+};
+
+/**
+ * True when NoD reads the stack's fake emergency feed: no effective NOD_EMERGENCY_FEED_URL and
+ * not a real production deployment (the same net as usesFakeMediaHub). Production with no URL
+ * reads no feed at all rather than made-up alerts.
+ */
+export function usesFakeEmergencyFeed(env: NodeJS.ProcessEnv): boolean {
+  if (env.NOD_EMERGENCY_FEED_URL) return false;
+  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true";
+}
+
 /** What NRMS's env view gets in fake mode: the fake's credentials and its in-process URLs. */
 export const FAKE_FLICKR_ENV: Readonly<Record<string, string>> = {
   FLICKR_MODE: "fake",
@@ -213,6 +231,7 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   if (prefix === "NRMS" && usesFakeFlickr(env)) Object.assign(view, FAKE_FLICKR_ENV);
   // No Media Hub configured at all → the stack's fake Media Hub (see stack.ts).
   if (prefix === "NOD" && usesFakeMediaHub(env)) Object.assign(view, FAKE_MEDIA_HUB_ENV);
+  if (prefix === "NOD" && usesFakeEmergencyFeed(env)) Object.assign(view, FAKE_EMERGENCY_FEED_ENV);
   if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
     view.OUTPUT_DIR = join(dataDir, view.OUTPUT_DIR);
   }

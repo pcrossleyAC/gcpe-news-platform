@@ -5,9 +5,10 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import type { DeliveryBounced } from "@gcpe/events";
 import { createNodTestDb, envelope } from "../../test/helpers";
 import { onDeliveryBounced } from "../bounces";
-import { deliveries, subscriberHistory, subscribers, subscriptions } from "../db/schema";
+import { deliveries, mediaOptOuts, subscriberHistory, subscribers, subscriptions } from "../db/schema";
 import { lockAddress } from "../locks";
-import { addMediaMember } from "../media-members";
+import { addMediaMember, OptedOutError } from "../media-members";
+import { ALL_MEDIA_LISTS, mediaOptOutAt, optOutHash } from "../opt-outs";
 import { addSubscriber } from "../subscribers";
 import { createLink, findLink } from "../subscribe/links";
 import {
@@ -33,7 +34,7 @@ describe("staff subscriber actions", () => {
   });
   afterAll(async () => tdb.drop());
   beforeEach(async () => {
-    await tdb.db.execute(sql`DELETE FROM subscriber_links; DELETE FROM subscribers;`);
+    await tdb.db.execute(sql`DELETE FROM subscriber_links; DELETE FROM subscribers; DELETE FROM media_opt_outs;`);
   });
 
   it("staff preferences edit keeps media memberships", async () => {
@@ -238,5 +239,28 @@ describe("staff subscriber actions", () => {
     await release();
     expect(await disabling).toEqual({ changed: true });
     expect((await tdb.db.select().from(subscribers).where(eq(subscribers.id, s.id)))[0]).toMatchObject({ email: "after@example.test", status: "disabled" });
+  });
+
+  it("change email onto an address with a kept media opt-out asks first; confirmed, it moves and counts as a re-add", async () => {
+    const budget = "media-distribution-lists:budget";
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "b@example.test", source: "manual-media" }, ACTOR);
+    const optedOutAt = new Date("2026-06-01T17:00:00Z");
+    await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash("a@example.test"), listKey: ALL_MEDIA_LISTS, optedOutAt });
+    const err = await changeEmail(tdb.db, subscriberId, "a@example.test", ACTOR).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(OptedOutError);
+    expect((err as OptedOutError).at).toEqual(optedOutAt);
+    expect((await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId)))[0]).toMatchObject({ email: "b@example.test" });
+
+    expect(await changeEmail(tdb.db, subscriberId, "a@example.test", ACTOR, { confirmOptOut: true })).toEqual({ changed: true });
+    const [s] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(s).toMatchObject({ email: "a@example.test" });
+    expect(await keys(subscriberId)).toEqual([budget]);
+    expect(await mediaOptOutAt(tdb.db, "a@example.test", budget, s!)).toBeNull();
+  });
+
+  it("change email onto an address with a kept opt-out from a list the subscriber isn't on goes ahead", async () => {
+    const { subscriberId } = await addMediaMember(tdb.db, "budget", { email: "c@example.test", source: "manual-media" }, ACTOR);
+    await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash("d@example.test"), listKey: "media-distribution-lists:other", optedOutAt: new Date("2026-06-01T17:00:00Z") });
+    expect(await changeEmail(tdb.db, subscriberId, "d@example.test", ACTOR)).toEqual({ changed: true });
   });
 });

@@ -4,6 +4,7 @@ import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole } from "@gcpe/auth";
 import { subscribers } from "../db/schema";
+import { OptedOutError } from "../media-members";
 import { addSubscriber, SubscriberExistsError } from "../subscribers";
 import { normaliseEmail, subscriberEmailSchema } from "../subscribe/info";
 import {
@@ -35,7 +36,7 @@ export const addSubscriberSchema = z
 
 const prefsBody = z.object({ asItHappens: z.boolean(), digest: z.boolean(), allNews: z.boolean(), listKeys: z.array(z.string().max(200)).max(500) });
 const statusBody = z.object({ status: z.enum(["active", "disabled"]) });
-const emailBody = z.object({ email: subscriberEmailSchema });
+const emailBody = z.object({ email: subscriberEmailSchema, confirmOptOut: z.boolean().optional() });
 const bulkBody = z.object({ action: z.enum(BULK_ACTIONS), ids: z.array(z.string().uuid()).min(1).max(BULK_MAX) });
 
 const idParam = z.string().uuid();
@@ -56,6 +57,7 @@ function mapError(e: unknown, res: Response): boolean {
   if (e instanceof SubscriberStateError) return void res.status(409).json({ error: "status", status: e.status }), true;
   if (e instanceof EmailTakenError) return void res.status(409).json({ error: "email-taken", id: e.id }), true;
   if (e instanceof MediaHubManagedError) return void res.status(409).json({ error: "media-hub-managed" }), true;
+  if (e instanceof OptedOutError) return void res.status(409).json({ error: "opted-out", at: e.at.toISOString() }), true;
   if (e instanceof StaffPreferencesError) return void res.status(400).json({ error: e.message }), true;
   return false;
 }
@@ -132,7 +134,8 @@ export function staffSubscriberRoutes(db: Db): Router {
   }));
 
   r.post("/subscribers/:id/email", write, withId(async (id, req, res) => {
-    res.json(await changeEmail(db, id, emailBody.parse(req.body).email, actorOf(req).name));
+    const body = emailBody.parse(req.body);
+    res.json(await changeEmail(db, id, body.email, actorOf(req).name, { confirmOptOut: body.confirmOptOut }));
   }));
 
   r.delete("/subscribers/:id", write, withId(async (id, req, res) => {

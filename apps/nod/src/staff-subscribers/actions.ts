@@ -8,7 +8,8 @@ import type { Db, Tx } from "@gcpe/db-kit";
 import { subscribers, subscriptions, type SubscriberRow, type SubscriberStatus } from "../db/schema";
 import { activeListKeys, MEDIA_CATEGORY } from "../lists";
 import { withLockedSubscriber as lockedSubscriber } from "../locks";
-import { hasMediaMemberships } from "../media-members";
+import { hasMediaMemberships, OptedOutError } from "../media-members";
+import { mediaKeysOf, optedOutKeys } from "../opt-outs";
 import { replacePublicSubscriptions } from "../subscribers";
 import { writeHistory } from "../subscribe/history";
 import { safeErrorLabel } from "@gcpe/http-kit";
@@ -125,8 +126,13 @@ export async function deleteSubscriber(db: Db, id: string, actor: string): Promi
 /** Staff-initiated: no verification email (spec §8). Refused when any other row has the
  * address (legacy `ChangeUsersSubscriptionEmail` refuses too, and refusing means no row is ever
  * deleted and no history lost). Rotates the unsubscribe token and ends every outstanding link,
- * since those went to the old address. History records the change, never the addresses. */
-export async function changeEmail(db: Db, id: string, rawEmail: string, actor: string): Promise<{ changed: boolean }> {
+ * since those went to the old address. History records the change, never the addresses.
+ *
+ * A move would carry the subscriber's media lists onto the new address, so an address that
+ * opted out of one of them (opt-outs.ts `optedOutKeys`, e.g. an opt-out kept from a purged
+ * record) needs `confirmOptOut`, else throws {@link OptedOutError}. Confirmed, those lists count
+ * as re-added by staff at the new address, as a confirmed media-list add does. */
+export async function changeEmail(db: Db, id: string, rawEmail: string, actor: string, opts: { confirmOptOut?: boolean } = {}): Promise<{ changed: boolean }> {
   const email = normaliseEmail(rawEmail);
   return withLockedSubscriber(db, id, email, async (tx, s) => {
     // A pending subscriber's only way in is the verify link sent to their address; moving the
@@ -136,9 +142,12 @@ export async function changeEmail(db: Db, id: string, rawEmail: string, actor: s
     if (normaliseEmail(s.email) === email) return { changed: false };
     const [taken] = await tx.select({ id: subscribers.id }).from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`);
     if (taken) throw new EmailTakenError(taken.id);
+    const optedOut = await optedOutKeys(tx, email, await mediaKeysOf(tx, id), s);
+    if (optedOut.length > 0 && !opts.confirmOptOut) throw new OptedOutError(new Date(Math.max(...optedOut.map((o) => o.at.getTime()))));
     await tx.update(subscribers).set({ email, unsubscribeVersion: sql`${subscribers.unsubscribeVersion} + 1` }).where(eq(subscribers.id, id));
     await expireSessionLinks(tx, id, null);
     await writeHistory(tx, id, actor, "staff-email-changed");
+    for (const { listKey } of optedOut) await writeHistory(tx, id, actor, "media-list-added", listKey);
     return { changed: true };
   });
 }

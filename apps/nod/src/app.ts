@@ -49,6 +49,8 @@ export interface AppDeps {
    * defaults to "nod", the subject/azp every local (non-Entra) Distribution token carries
    * (distribution-token.ts). start.ts always passes the real configured value. */
   distributionAppId?: string;
+  /** EMERGENCY_FEED_URL, for Operations. */
+  emergencyFeedUrl?: string | null;
 }
 
 const noDistribution: Pick<DistributionClient, "send" | "getSettings" | "setPaused" | "uploadBounce" | "bounceSource" | "dailyReport"> = {
@@ -123,6 +125,7 @@ export function createApp(deps: AppDeps): express.Express {
         timeZone: deps.timeZone ?? "UTC",
         bounceSummaryFallback: deps.bounceSummaryFallback ?? null,
         nodAppId: deps.distributionAppId ?? "nod",
+        emergencyFeedUrl: deps.emergencyFeedUrl ?? null,
       },
       deps.mediaHub ?? null,
     ),

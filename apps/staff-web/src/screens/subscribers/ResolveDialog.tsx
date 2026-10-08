@@ -11,14 +11,22 @@ import type { MediaHubContact, MediaMember } from "./types";
  * Media Hub flag offers the contact's current emails to switch to, or clearing the flag as it
  * stands.
  */
+/** How an "opted-out-address" flag is really resolved: the sync flags it again while Media Hub
+ * still points the member at that address. */
+const OPTED_OUT_FIX =
+  "Choose another email, update the contact in Media Hub, or remove them and add them again, confirming the opt-out.";
+
 function resolveErrorText(e: unknown): string {
   if (e instanceof ApiError && e.status === 409 && e.message === "email-taken") return "That address belongs to another subscriber. Choose another email, or remove this member.";
+  if (e instanceof ApiError && e.status === 409 && e.message === "opted-out-address")
+    return `That address opted out of a media list this member is on. ${OPTED_OUT_FIX}`;
   if (e instanceof ApiError && e.status === 409) return "This member changed while you were looking. Close this, and try again.";
   return mediaErrorText(e);
 }
 
 export function ResolveDialog({ member, onClose, onResolved }: { member: MediaMember; onClose(): void; onResolved(message: string): void }): React.JSX.Element {
   const bouncing = member.needsAttention === "bouncing";
+  const optedOutAddress = member.needsAttention === "opted-out-address";
   const chooseEmail = !bouncing && member.mediaHubContactId !== null;
   const [contact, setContact] = useState<MediaHubContact | null>(null);
   const [ref, setRef] = useState<string | null>(null);
@@ -46,7 +54,15 @@ export function ResolveDialog({ member, onClose, onResolved }: { member: MediaMe
     setError(null);
     try {
       await apiFetch(`/nod/api/media-members/${member.subscriberId}/resolve`, { method: "POST", body: emailRef ? { emailRef } : {} });
-      onResolved(bouncing ? "Resolved. Their bounce count starts again." : emailRef ? "Email updated and flag cleared." : "Flag cleared.");
+      onResolved(
+        bouncing
+          ? "Resolved. Their bounce count starts again."
+          : emailRef
+            ? "Email updated and flag cleared."
+            : optedOutAddress
+              ? "Flag cleared until the next Media Hub sync."
+              : "Flag cleared.",
+      );
     } catch (e) {
       setError(resolveErrorText(e));
     } finally {
@@ -81,6 +97,9 @@ export function ResolveDialog({ member, onClose, onResolved }: { member: MediaMe
             ? "Do this once their mailbox works again. Their bounce count starts again from now."
             : `${member.email}: ${attentionLabel(member.needsAttention ?? "")}.`}
         </p>
+        {optedOutAddress && (
+          <p>{`Clearing the flag keeps their current address. The next Media Hub sync flags them again while Media Hub still has the opted-out address. ${OPTED_OUT_FIX}`}</p>
+        )}
         {chooseEmail && contact && (
           <fieldset>
             <legend>Choose the email to use</legend>

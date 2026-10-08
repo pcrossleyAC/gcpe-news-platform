@@ -6,7 +6,7 @@ import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canAdminSubscribers } from "./access";
-import type { OperationsStatus } from "./types";
+import type { EmergencyFeedStatus, OperationsStatus, PurgeStatus } from "./types";
 
 /** Distribution's own fake-inbox limit (apps/distribution/src/http/routes.ts). */
 const MAX_BOUNCE_BYTES = 1024 * 1024;
@@ -88,7 +88,9 @@ function OperationsPanels(): React.JSX.Element {
             </section>
           )}
           <BounceSummaryForm value={ops.bounceSummary} onDone={done} />
+          <EmergencyFeedPanel feed={ops.emergencyFeed} timeZone={timeZone} />
           <SoftCodesForm value={ops.softCodesCounted} onDone={done} />
+          <PurgeControl purge={ops.purge} timeZone={timeZone} onDone={done} />
           {ops.bounceSource === "fake" && <BounceUpload onDone={done} />}
         </>
       )}
@@ -241,6 +243,120 @@ function SoftCodesForm({ value, onDone }: { value: string[]; onDone(text: string
         </Button>
       </Form>
       {error && <InlineAlert variant="danger" role="alert" description={error} />}
+    </section>
+  );
+}
+
+const count = (n: number): string => n.toLocaleString("en-CA");
+const plural = (n: number, one: string, many = `${one}s`): string => `${count(n)} ${n === 1 ? one : many}`;
+
+/** Built, off by default. Admins see what it would delete before turning it on. */
+function PurgeControl({ purge, timeZone, onDone }: { purge: PurgeStatus; timeZone: string; onDone(text: string): void }): React.JSX.Element {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const p = purge.preview;
+  const turningOn = !purge.enabled;
+  const last = purge.lastRun;
+  const run = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      await apiFetch("/nod/api/operations/purge", { method: "PUT", body: { enabled: turningOn } });
+      setOpen(false);
+      onDone(turningOn ? "Retention purge turned on." : "Retention purge turned off.");
+    } catch {
+      setError("Couldn’t change it. Nothing changed.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <section aria-labelledby="ops-purge">
+      <h2 id="ops-purge">Retention purge</h2>
+      <p>{purge.enabled ? "On" : "Off"}</p>
+      <p>
+        When on, every night at 3:00 it permanently deletes unconfirmed signups and unused links older than 10 days, and subscribers who unsubscribed
+        or were deleted more than 90 days ago, with their history and delivery records. Media-list opt-outs are kept, without the address.
+      </p>
+      <p>If it ran now, it would delete:</p>
+      <ul>
+        <li>{plural(p.pendingSubscribers, "unconfirmed subscriber")}</li>
+        <li>{plural(p.endedSubscribers, "ended subscriber")}</li>
+        <li>{plural(p.unusedLinks, "unused link")}</li>
+      </ul>
+      <p>{`Expired links in sent emails are cleared every night, on or off (${count(p.expiredSendLinks)} waiting).`}</p>
+      <p>{`Next run: ${formatWhen(purge.nextRunAt, new Date(), timeZone)}.`}</p>
+      {last && (
+        <p>
+          {`Last run (${formatWhen(last.cutoff, new Date(), timeZone)}): ${last.finished ? "finished" : "still going"}; deleted ` +
+            `${plural(last.counts.pendingSubscribers + last.counts.endedSubscribers, "subscriber")} and ${plural(last.counts.unusedLinks + last.counts.expiredSendLinks, "link")}.`}
+        </p>
+      )}
+      <DialogTrigger
+        isOpen={open}
+        onOpenChange={(o) => {
+          setError(null);
+          setOpen(o);
+        }}
+      >
+        <Button variant="secondary" danger={turningOn}>
+          {turningOn ? "Turn on the retention purge" : "Turn off the retention purge"}
+        </Button>
+        <Modal isDismissable={!busy} isKeyboardDismissDisabled={busy}>
+          <AlertDialog
+            role="alertdialog"
+            variant="warning"
+            title={turningOn ? "Turn on the retention purge?" : "Turn off the retention purge?"}
+            buttons={
+              <>
+                <Button onPress={() => setOpen(false)} isDisabled={busy}>
+                  Cancel
+                </Button>
+                <Button danger={turningOn} onPress={() => void run()} isDisabled={busy}>
+                  {turningOn ? "Turn on purge" : "Turn off purge"}
+                </Button>
+              </>
+            }
+          >
+            <p>
+              {turningOn
+                ? `At the next 3:00 run it deletes ${plural(p.pendingSubscribers + p.endedSubscribers, "subscriber")} and ${plural(p.unusedLinks, "unused link")} for good, and keeps doing so every night. This can’t be undone.`
+                : "Nothing more is deleted. Expired links in sent emails are still cleared every night."}
+            </p>
+            {error && <InlineAlert variant="danger" role="alert" description={error} />}
+          </AlertDialog>
+        </Modal>
+      </DialogTrigger>
+    </section>
+  );
+}
+
+/** Read-only: the emergency feed's last check. */
+function EmergencyFeedPanel({ feed, timeZone }: { feed: EmergencyFeedStatus; timeZone: string }): React.JSX.Element {
+  const r = feed.result;
+  return (
+    <section aria-labelledby="ops-emergency-feed">
+      <h2 id="ops-emergency-feed">Emergency alerts feed</h2>
+      {feed.url === null ? (
+        <p>No feed is configured (EMERGENCY_FEED_URL), so no emergency alerts are read.</p>
+      ) : (
+        <>
+          <p>{`Read every 5 minutes from ${feed.url}. New alerts go to everyone on the Emergency Info BC list.`}</p>
+          {!r ? (
+            <p>Not checked yet.</p>
+          ) : r.ok ? (
+            <p>
+              {`Last checked ${formatWhen(r.at, new Date(), timeZone)}: ${plural(r.inFeed, "alert")} in the feed, ${count(r.created)} new, ${count(r.updated)} updated.` +
+                (r.seeded ? " This was the first read of this feed, so its alerts were recorded without emailing anyone." : "")}
+            </p>
+          ) : r.error !== null ? (
+            <InlineAlert variant="warning" description={`The last check (${formatWhen(r.at, new Date(), timeZone)}) failed: ${r.error}. It tries again every 5 minutes.`} />
+          ) : (
+            <InlineAlert variant="warning" description={`${plural(r.failed, "alert couldn’t be recorded", "alerts couldn’t be recorded")}. It tries again every 5 minutes.`} />
+          )}
+        </>
+      )}
     </section>
   );
 }

@@ -106,6 +106,23 @@ describe("subjects", () => {
 });
 
 describe("content", () => {
+  it("an emergency email keeps the alert's paragraphs; a release's summary stays one paragraph", () => {
+    const item = { key: "emergency:x", title: "T", summary: "First line\nsecond line\n\nNext paragraph", url: "https://emergency.example.test/a", publishedAt: new Date("2026-10-06T21:15:00Z"), categories: [] };
+    const emergency = renderEmergency(item, { siteUrl: "https://news.example.test", bannerUrl: null });
+    expect(emergency.html).toContain(">First line<br>second line</p>");
+    expect(emergency.html).toContain(">Next paragraph</p>");
+    expect(emergency.text).toContain("First line\nsecond line\n\nNext paragraph");
+    const release = renderAsItHappens(item, { siteUrl: "https://news.example.test", bannerUrl: null });
+    expect(release.html).toContain(">First line\nsecond line\n\nNext paragraph</p>");
+  });
+
+  it("an emergency alert's paragraphs split on '\\r\\n\\r\\n' the same as '\\n\\n'", () => {
+    const item = { key: "emergency:x", title: "T", summary: "First paragraph\r\n\r\nSecond paragraph", url: "https://emergency.example.test/a", publishedAt: new Date("2026-10-06T21:15:00Z"), categories: [] };
+    const emergency = renderEmergency(item, { siteUrl: "https://news.example.test", bannerUrl: null });
+    expect(emergency.html).toContain(">First paragraph</p>");
+    expect(emergency.html).toContain(">Second paragraph</p>");
+  });
+
   it("footers contain '{{manageUrl}}' and '{{unsubscribeUrl}}' exactly once each (As-It-Happens/emergency/digest)", () => {
     for (const rendered of [
       renderAsItHappens(item(), RENDER),

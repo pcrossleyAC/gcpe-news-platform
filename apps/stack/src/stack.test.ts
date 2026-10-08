@@ -662,13 +662,15 @@ describe("apps/stack", () => {
         "news-api.dispatch",
         "nod.media-sync",
         "nod.bounce-summary",
+        "nod.emergency-feed",
         "nod.digest",
         "nod.send",
+        "nod.purge",
         "distribution.send",
         "distribution.bounces",
         "distribution.dispatch",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 
@@ -982,6 +984,28 @@ describe("apps/stack", () => {
       expect((await reset({})).status).toBe(401);
       expect((await reset({ authorization: `Bearer ${editor}` })).status).toBe(403);
       expect((await reset({ authorization: `Bearer ${instance.adminToken}` })).status).toBe(200);
+    });
+  });
+
+  describe("fake emergency feed (no NOD_EMERGENCY_FEED_URL configured)", () => {
+    it("serves its RSS publicly, like the real feed; /__fake needs Core.Admin", async () => {
+      const feed = await fetch(`${instance.stackUrl}/fake-emergency-feed/feed.xml`);
+      expect(feed.status).toBe(200);
+      expect(await feed.text()).toContain("<rss");
+      const editor = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
+      const add = (headers: Record<string, string>) =>
+        fetch(`${instance.stackUrl}/fake-emergency-feed/__fake/alerts`, { method: "POST", headers: { "content-type": "application/json", ...headers }, body: JSON.stringify({ title: "Stack test alert" }) });
+      expect((await add({})).status).toBe(401);
+      expect((await add({ authorization: `Bearer ${editor}` })).status).toBe(403);
+      expect((await add({ authorization: `Bearer ${instance.adminToken}` })).status).toBe(201);
+    });
+
+    it("GET /__fake/alerts needs Core.Admin too, not just the POST switch", async () => {
+      const editor = await mintLocalToken({ secret: LOCAL_AUTH_SECRET, subject: "editor", roles: ["NRMS.Editor"] });
+      const list = (headers: Record<string, string>) => fetch(`${instance.stackUrl}/fake-emergency-feed/__fake/alerts`, { headers });
+      expect((await list({})).status).toBe(401);
+      expect((await list({ authorization: `Bearer ${editor}` })).status).toBe(403);
+      expect((await list({ authorization: `Bearer ${instance.adminToken}` })).status).toBe(200);
     });
   });
 });

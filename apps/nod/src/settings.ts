@@ -18,7 +18,10 @@ export type OperationsAction =
   | "list-disabled"
   | "bounce-summary-address-changed"
   | "bounce-soft-codes-changed"
-  | "report-exported";
+  | "report-exported"
+  | "purge-enabled"
+  | "purge-disabled"
+  | "purge-ran";
 
 export async function getSettings(db: Db): Promise<{ paused: boolean; lastDigestCutoff: string | null }> {
   const [row] = await db.select({ paused: nodSettings.paused, lastDigestCutoff: nodSettings.lastDigestCutoff }).from(nodSettings).where(eq(nodSettings.id, 1));

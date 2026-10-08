@@ -8,7 +8,7 @@ import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
 import { ListPicker } from "./ListPicker";
-import { STATUS_LABELS, timingLabel } from "./labels";
+import { attentionLabel, STATUS_LABELS, timingLabel } from "./labels";
 import type { ListOptions, SubscriberDetail } from "./types";
 
 /** apps/nod/src/db/schema.ts's subscribers_source_check. */
@@ -213,39 +213,52 @@ function StatusSection({ detail, onChanged }: { detail: SubscriberDetail; onChan
   );
 }
 
+/** The new address left a media list this subscriber is on: staff confirm before moving them. */
+interface OptOutPrompt {
+  email: string;
+  at: string;
+}
+
 function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; onChanged(): void }): React.JSX.Element {
+  const timeZone = useTenantTimeZone();
   const [email, setEmail] = useState("");
   const [confirmEmail, setConfirmEmail] = useState("");
   const [messages, setMessages] = useState<string[]>([]);
   const [takenId, setTakenId] = useState<string | null>(null);
+  const [optOutPrompt, setOptOutPrompt] = useState<OptOutPrompt | null>(null);
+  const [promptError, setPromptError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   if (detail.mediaHubLinked) {
     return <p>{MEDIA_HUB_MANAGED}</p>;
   }
 
-  const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setMessages([]);
-    setTakenId(null);
-    const a = email.trim().toLowerCase();
-    const b = confirmEmail.trim().toLowerCase();
-    if (a !== b) {
-      setMessages(["The two email addresses don't match."]);
-      return;
-    }
+  const closeOptOutPrompt = () => {
+    if (busy) return;
+    setOptOutPrompt(null);
+    setPromptError(null);
+  };
+
+  const change = async (address: string, confirmOptOut: boolean) => {
     setBusy(true);
+    setPromptError(null);
     try {
-      await apiFetch(`/nod/api/subscribers/${detail.id}/email`, { method: "POST", body: { email: a } });
+      await apiFetch(`/nod/api/subscribers/${detail.id}/email`, { method: "POST", body: confirmOptOut ? { email: address, confirmOptOut: true } : { email: address } });
       setEmail("");
       setConfirmEmail("");
+      setOptOutPrompt(null);
       onChanged();
     } catch (caught) {
       const body =
         caught instanceof ApiError && caught.status === 409 && caught.body && typeof caught.body === "object"
-          ? (caught.body as { error?: unknown; id?: unknown; status?: unknown })
+          ? (caught.body as { error?: unknown; id?: unknown; status?: unknown; at?: unknown })
           : undefined;
-      if (body?.error === "email-taken") {
+      if (confirmOptOut) {
+        // Shown inside the dialog the staff member is looking at.
+        setPromptError(messagesOf(caught).join(" "));
+      } else if (body?.error === "opted-out") {
+        setOptOutPrompt({ email: address, at: typeof body.at === "string" ? body.at : "" });
+      } else if (body?.error === "email-taken") {
         setMessages(["Another subscriber record already has that address."]);
         setTakenId(typeof body.id === "string" ? body.id : null);
       } else if (body?.error === "media-hub-managed") {
@@ -265,6 +278,19 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
     } finally {
       setBusy(false);
     }
+  };
+
+  const onSubmit = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setMessages([]);
+    setTakenId(null);
+    const a = email.trim().toLowerCase();
+    const b = confirmEmail.trim().toLowerCase();
+    if (a !== b) {
+      setMessages(["The two email addresses don't match."]);
+      return;
+    }
+    void change(a, false);
   };
 
   return (
@@ -302,6 +328,28 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
         Change email
       </Button>
       <p>No confirmation email is sent. Links in emails already sent to the old address stop working, except unsubscribe links.</p>
+      {optOutPrompt && (
+        <Modal isOpen onOpenChange={(open) => { if (!open) closeOptOutPrompt(); }} isDismissable={!busy} isKeyboardDismissDisabled={busy}>
+          <AlertDialog
+            role="alertdialog"
+            variant="warning"
+            title="That address unsubscribed"
+            buttons={
+              <>
+                <Button onPress={closeOptOutPrompt} isDisabled={busy}>
+                  Cancel
+                </Button>
+                <Button onPress={() => void change(optOutPrompt.email, true)} isDisabled={busy}>
+                  Change anyway
+                </Button>
+              </>
+            }
+          >
+            <p>{`The new address opted out of a media list this subscriber is on${optOutPrompt.at ? ` (${formatWhen(optOutPrompt.at, new Date(), timeZone)})` : ""}. Change it only if they've asked to receive media releases there again.`}</p>
+            {promptError && <InlineAlert variant="danger" role="alert" description={promptError} />}
+          </AlertDialog>
+        </Modal>
+      )}
     </Form>
   );
 }
@@ -460,7 +508,7 @@ export function SubscriberScreen(): React.JSX.Element {
         )}
       </dl>
 
-      {detail.needsAttention && <p>{`Needs attention: ${detail.needsAttention}`}</p>}
+      {detail.needsAttention && <p>{`Needs attention: ${attentionLabel(detail.needsAttention)}`}</p>}
       {detail.bouncedEmails > 0 && <p>{`Bounced emails counted (last ${detail.bounceWindowDays} days): ${detail.bouncedEmails}`}</p>}
 
       <p>

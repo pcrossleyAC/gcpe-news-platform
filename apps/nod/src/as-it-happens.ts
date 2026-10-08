@@ -4,6 +4,7 @@ import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { deliveries, items, sendJobs } from "./db/schema";
 import { matchesItem } from "./matching";
 import { itemCategories, renderAsItHappens, renderEmergency, type RenderItem, type RenderOptions } from "./render";
+import { normalizeLinkIdentity } from "./emergency/feed";
 
 export interface AsItHappensOptions {
   /** Site URL and optional banner for every As-It-Happens/emergency email this sends. */
@@ -21,9 +22,19 @@ export interface ItemSending {
   /** Creates (and populates recipients/deliveries for) the send job for `itemKey`, if one
    * doesn't already exist. Returns whether a job was created with at least one recipient. */
   createItemSend(tx: Tx, itemKey: string, kind: SendKind): Promise<boolean>;
-  /** Records a new emergency item (idempotent on `guid`) and, when it's genuinely new, sends it
-   * in the same transaction. */
-  recordEmergencyItem(db: Db, input: { guid: string; title: string; summary: string; url: string; publishedAt?: string }): Promise<{ key: string; created: boolean }>;
+  /** Records a new emergency item (idempotent on `guid`) and, when it's genuinely new and
+   * `send` isn't false, sends it in the same transaction. */
+  recordEmergencyItem(
+    db: Db,
+    input: { guid: string; title: string; summary: string; url: string; publishedAt?: string },
+    opts?: { send?: boolean },
+  ): Promise<{ key: string; created: boolean }>;
+}
+
+/** An emergency alert's `items.key`: deterministic from the feed's identity, so the feed
+ * ingester, the admin route and the legacy importer all land on the same row for one alert. */
+export function emergencyItemKey(identity: string): string {
+  return `emergency:${createHash("sha256").update(identity).digest("hex").slice(0, 32)}`;
 }
 
 /**
@@ -121,11 +132,9 @@ export function createItemSending(opts: AsItHappensOptions): ItemSending {
   async function recordEmergencyItem(
     db: Db,
     input: { guid: string; title: string; summary: string; url: string; publishedAt?: string },
+    opts: { send?: boolean } = {},
   ): Promise<{ key: string; created: boolean }> {
-    // Deterministic from the guid, so a repeat of the same guid always resolves to the same
-    // item key — ON CONFLICT DO NOTHING below is then the whole idempotency story; no separate
-    // guid column is needed.
-    const key = `emergency:${createHash("sha256").update(input.guid).digest("hex").slice(0, 32)}`;
+    const key = emergencyItemKey(input.guid);
     return db.transaction(async (tx) => {
       const insertedRows = await tx
         .insert(items)
@@ -136,13 +145,14 @@ export function createItemSending(opts: AsItHappensOptions): ItemSending {
           title: input.title,
           summary: input.summary,
           url: input.url,
+          linkIdentity: normalizeLinkIdentity(input.url),
           publishedAt: input.publishedAt ? new Date(input.publishedAt) : sql`now()`,
           toSubscribers: true,
         })
         .onConflictDoNothing({ target: items.key })
         .returning({ key: items.key });
       const created = insertedRows.length > 0;
-      if (created) await createItemSend(tx, key, "emergency");
+      if (created && opts.send !== false) await createItemSend(tx, key, "emergency");
       return { key, created };
     });
   }

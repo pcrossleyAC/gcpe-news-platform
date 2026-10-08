@@ -51,6 +51,7 @@ describe("startNod", () => {
 
   it("runs each worker once without throwing on an empty DB", async () => {
     const handle = await startNod(await testEnv());
+    expect(Object.keys(handle.workers)).toEqual(expect.arrayContaining(["send", "digest", "mediaSync", "bounceSummary", "purge", "emergencyFeed"]));
     for (const run of Object.values(handle.workers)) {
       await run();
     }

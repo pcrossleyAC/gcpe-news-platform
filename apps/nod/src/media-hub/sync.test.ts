@@ -7,7 +7,8 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createFakeMediaHub, type FakeMediaHubControls } from "@gcpe/media-hub-fake";
 import { createNodTestDb } from "../../test/helpers";
 import { dailyCutoff } from "../digest";
-import { nodSettings, subscriberHistory, subscribers, subscriptions } from "../db/schema";
+import { mediaOptOuts, nodSettings, subscriberHistory, subscribers, subscriptions } from "../db/schema";
+import { ALL_MEDIA_LISTS, optOutHash } from "../opt-outs";
 import { addMediaMember } from "../media-members";
 import { setPaused, type SetPausedDeps } from "../settings";
 import { createLink, findLink } from "../subscribe/links";
@@ -70,7 +71,7 @@ function liveWorkplaceContact(controls: FakeMediaHubControls): { contact: MediaH
 }
 
 async function resetDb(tdb: TestDatabase): Promise<void> {
-  await tdb.db.execute(sql`DELETE FROM subscriber_history; DELETE FROM subscribers; DELETE FROM lists WHERE category = 'media-distribution-lists';`);
+  await tdb.db.execute(sql`DELETE FROM subscriber_history; DELETE FROM subscribers; DELETE FROM media_opt_outs; DELETE FROM lists WHERE category = 'media-distribution-lists';`);
   await tdb.db.execute(
     sql`INSERT INTO lists (list_key, category, key, name) VALUES ('media-distribution-lists:press', 'media-distribution-lists', 'press', 'Press')`,
   );
@@ -169,6 +170,22 @@ describe("runMediaSync", () => {
 
     const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, subscriberId));
     expect(history.map((h) => h.action)).toContain("media-hub-flagged");
+  });
+
+  it("a chosen email change onto an address with a kept opt-out from a list the member is on flags opted-out-address and changes nothing", async () => {
+    const { client, controls } = await startFake();
+    const { contact, ref, address } = liveWorkplaceContact(controls);
+    const { subscriberId } = await addMediaMember(tdb.db, "press", { email: address, source: "media-hub", mediaHubContactId: contact.id, mediaHubEmailRef: ref }, "staff:jamie");
+    await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash("opted-out@example.test"), listKey: ALL_MEDIA_LISTS, optedOutAt: new Date("2026-06-01T17:00:00Z") });
+    controls.changeEmail(contact.id, ref, "opted-out@example.test");
+
+    const result = expectCounts(expectRan(await runMediaSync(tdb.db, client)).result);
+    expect(result).toMatchObject({ flagged: 1, updated: 0 });
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(after).toMatchObject({ email: address.toLowerCase(), needsAttention: "opted-out-address" });
+    const history = await tdb.db.select().from(subscriberHistory).where(eq(subscriberHistory.subscriberId, subscriberId));
+    expect(history.map((h) => h.action)).toContain("media-hub-flagged");
+    expect(history.map((h) => h.action)).not.toContain("media-hub-email-changed");
   });
 
   it("a chosen email change to an invalid address flags email-invalid and changes nothing", async () => {
@@ -577,6 +594,24 @@ describe("resolveMediaMember", () => {
 
     const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
     expect(after).toMatchObject({ email: firstRef.address.toLowerCase(), mediaHubEmailRef: firstRef.ref });
+  });
+
+  it("a ref whose address has a kept opt-out from a list the member is on returns opted-out-address, flagging rather than moving", async () => {
+    const { client, controls } = await startFake();
+    const live = controls.contacts().find((c) => !c.deletedAt && c.emails.length > 1)!;
+    const firstRef = live.emails[0]!;
+    const secondRef = live.emails[1]!;
+    const { subscriberId } = await addMediaMember(
+      tdb.db,
+      "press",
+      { email: firstRef.address, source: "media-hub", mediaHubContactId: live.id, mediaHubEmailRef: firstRef.ref },
+      "staff:jamie",
+    );
+    await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash(secondRef.address), listKey: ACTOR_LIST_KEY, optedOutAt: new Date("2026-06-01T17:00:00Z") });
+
+    expect(await resolveMediaMember(tdb.db, client, subscriberId, secondRef.ref, "staff:jamie")).toBe("opted-out-address");
+    const [after] = await tdb.db.select().from(subscribers).where(eq(subscribers.id, subscriberId));
+    expect(after).toMatchObject({ email: firstRef.address.toLowerCase(), mediaHubEmailRef: secondRef.ref, needsAttention: "opted-out-address" });
   });
 
   it("a ref whose address is already taken by another subscriber returns email-taken, re-flagging rather than merging", async () => {

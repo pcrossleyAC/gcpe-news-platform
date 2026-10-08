@@ -32,7 +32,8 @@ export const subscribers = pgTable(
     mediaHubEmailRef: text("media_hub_email_ref"),
     // A short reason a media-list member needs staff attention instead of being silently
     // deleted (C59) -- a collided Media Hub email (media-hub/sync.ts: "email-gone",
-    // "email-invalid", "email-taken"), or a hard-bounced address (bounces.ts: "bouncing").
+    // "email-invalid", "email-taken", or "opted-out-address": the new address opted out of a
+    // media list the member is on), or a hard-bounced address (bounces.ts: "bouncing").
     // Null = fine. Set together with attentionAt.
     needsAttention: text("needs_attention"),
     attentionAt: timestamp("attention_at", { withTimezone: true }),
@@ -99,8 +100,22 @@ export const items = pgTable(
     // carries a media key) so As-It-Happens/digest matching is untouched by media recipients.
     mediaText: text("media_text"),
     mediaListKeys: text("media_list_keys").array().notNull().default(sql`'{}'::text[]`),
+    // An emergency alert's link as the feed ingester matches it (emergency/feed.ts
+    // `normalizeLinkIdentity`); null for releases. Rows from before it existed are filled in by
+    // the ingester's next check (emergency/ingest.ts), since the normalising is done in code.
+    linkIdentity: text("link_identity"),
   },
-  (t) => [index("items_published_at_idx").on(t.publishedAt), check("items_kind_check", sql`${t.kind} IN ('release','emergency')`)],
+  (t) => [
+    index("items_published_at_idx").on(t.publishedAt),
+    // Emergency items by their raw link. The feed ingester matches on link_identity instead (the
+    // index below); this one stays, as dropping it isn't an additive migration.
+    index("items_emergency_url_idx").on(t.url).where(sql`${t.kind} = 'emergency'`),
+    // The emergency feed ingester's known-alert lookup (emergency/ingest.ts): `link_identity =
+    // ANY(...)` for just the alerts in the feed, every 5 minutes, plus finding rows still to be
+    // filled in (`IS NULL`). Partial, so it costs nothing on the much larger set of release rows.
+    index("items_emergency_link_identity_idx").on(t.linkIdentity).where(sql`${t.kind} = 'emergency'`),
+    check("items_kind_check", sql`${t.kind} IN ('release','emergency')`),
+  ],
 );
 export type ItemRow = typeof items.$inferSelect;
 
@@ -218,7 +233,11 @@ export const jobRecipients = pgTable(
     subscriberId: uuid("subscriber_id").notNull().references(() => subscribers.id, { onDelete: "cascade" }),
     chunkIndex: integer("chunk_index"),
   },
-  (t) => [primaryKey({ columns: [t.jobId, t.subscriberId] })],
+  (t) => [
+    primaryKey({ columns: [t.jobId, t.subscriberId] }),
+    // A subscriber's delete cascades here; the primary key leads with job_id and can't serve it.
+    index("job_recipients_subscriber_idx").on(t.subscriberId),
+  ],
 );
 
 export const nodSettings = pgTable(
@@ -273,6 +292,23 @@ export const nodSettings = pgTable(
     // (Operations). Empty until the business supplies its list; applies to bounces processed
     // after it is saved.
     bounceSoftCodesCounted: text("bounce_soft_codes_counted").array().notNull().default(sql`'{}'::text[]`),
+    // The emergency feed's 5-minute gate: when a check last claimed it (emergency/ingest.ts).
+    emergencyFeedCheckedAt: timestamp("emergency_feed_checked_at", { withTimezone: true }),
+    // The feed URL whose alerts were recorded without sending on its first successful read. A
+    // different configured URL is read that way once, so pointing NoD at a live feed never
+    // emails every alert already in it.
+    emergencyFeedSeededUrl: text("emergency_feed_seeded_url"),
+    // The last check's outcome (EmergencyFeedResult), shown on Operations.
+    emergencyFeedResult: jsonb("emergency_feed_result"),
+    // The retention purge (purge.ts). Off until the business confirms the retention windows.
+    purgeEnabled: boolean("purge_enabled").notNull().default(false),
+    // The 03:00 BC cutoff of the last night whose purge finished: that night is done.
+    purgeDoneCutoff: timestamp("purge_done_cutoff", { withTimezone: true }),
+    // A lease, as for the bounce summary: one night's purge may need several ticks to finish.
+    purgeLease: uuid("purge_lease"),
+    purgeLeaseUntil: timestamp("purge_lease_until", { withTimezone: true }),
+    // That night's running totals (PurgeRunResult), shown on Operations.
+    purgeResult: jsonb("purge_result"),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [check("nod_settings_singleton", sql`${t.id} = 1`)],
@@ -364,6 +400,11 @@ export const subscriberLinks = pgTable(
   },
   (t) => [
     index("subscriber_links_email_created_idx").on(t.email, t.createdAt),
+    // A subscriber's delete cascades here.
+    index("subscriber_links_subscriber_idx").on(t.subscriberId),
+    // The nightly sweep of expired send links, and of unused request links (purge.ts).
+    index("subscriber_links_send_expiry_idx").on(t.expiresAt).where(sql`${t.origin} = 'send'`),
+    index("subscriber_links_request_unused_idx").on(t.createdAt).where(sql`${t.origin} = 'request' AND (${t.usedAt} IS NULL OR ${t.subscriberId} IS NULL)`),
     check("subscriber_links_purpose_check", sql`${t.purpose} IN ('verify','manage','change-email')`),
     check("subscriber_links_origin_check", sql`${t.origin} IN ('request','send')`),
   ],
@@ -389,3 +430,30 @@ export const subscriberHistory = pgTable(
     index("subscriber_history_action_at_idx").on(t.action, t.at),
   ],
 );
+
+/**
+ * Media-list opt-outs kept after the retention purge deleted the subscriber: a hash of the
+ * address (opt-outs.ts), never the address. Re-adding that address to that list asks staff
+ * first, exactly as the history-based check does for a subscriber who still exists.
+ */
+export const mediaOptOuts = pgTable(
+  "media_opt_outs",
+  {
+    emailHash: text("email_hash").notNull(),
+    listKey: text("list_key").notNull(),
+    optedOutAt: timestamp("opted_out_at", { withTimezone: true }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.emailHash, t.listKey] })],
+);
+
+/**
+ * What the legacy importer last wrote for each subscriber (import/subscribers.ts), as a
+ * fingerprint. A re-run compares it with NoD's current state: equal means untouched since the
+ * import, so legacy's newer data wins; different means someone changed it here, and NoD wins.
+ * No foreign key on purpose: a row outlives a purged subscriber, so a re-run doesn't recreate them.
+ */
+export const legacySubscriberImports = pgTable("legacy_subscriber_imports", {
+  subscriberId: uuid("subscriber_id").primaryKey(),
+  fingerprint: text("fingerprint").notNull(),
+  importedAt: timestamp("imported_at", { withTimezone: true }).notNull().defaultNow(),
+});
