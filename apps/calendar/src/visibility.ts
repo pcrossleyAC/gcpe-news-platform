@@ -15,6 +15,12 @@ export interface VisibilityFacts {
   isDeleted: boolean;
 }
 
+/**
+ * Whether `ministryKey` is one of the viewer's ministries, byte for byte. Visibility, create and
+ * edit rights all read ministry ownership from here.
+ */
+export const isOwnMinistry = (u: Viewer, ministryKey: string): boolean => u.ministryKeys.includes(ministryKey);
+
 // Legacy's list rule (ActivityListProvider.ashx.cs:214-244, ActivityDAO.cs:261-291). Deleted
 // activities are for HQ Administrators to review (ActivityDAO.cs:176-193). Cross-government
 // doesn't widen it. Keys compare byte for byte.
@@ -23,7 +29,7 @@ const seesDeleted = (u: Viewer) => u.isHq && u.level >= LEVEL.administrator;
 
 export function visible(u: Viewer, a: VisibilityFacts): boolean {
   if (u.level < LEVEL.readOnly) return false;
-  const mine = (a.contactMinistryKey !== null && u.ministryKeys.includes(a.contactMinistryKey)) || a.sharedMinistryKeys.some((k) => u.ministryKeys.includes(k));
+  const mine = (a.contactMinistryKey !== null && isOwnMinistry(u, a.contactMinistryKey)) || a.sharedMinistryKeys.some((k) => isOwnMinistry(u, k));
   const inScope = u.isHq || mine;
   const seesConfidential = seesConfidentialEverywhere(u) || mine;
   return inScope && (!a.isConfidential || seesConfidential) && (!a.isDeleted || seesDeleted(u));
@@ -32,7 +38,9 @@ export function visible(u: Viewer, a: VisibilityFacts): boolean {
 /**
  * The same rule as a predicate over the `activities` table, unaliased: every reader filters in SQL,
  * never in memory after paging (spec addendum §6). The viewer's facts are constants, so each
- * branch is decided here and only the activity's facts are left to Postgres.
+ * branch is decided here and only the activity's facts are left to Postgres. It is always true or
+ * false, never NULL, so it can be negated or selected as a column.
+ * Use it only where `activities` appears under its own name, not an alias: it names that table directly.
  */
 export function visibleSql(u: Viewer): SQL {
   if (u.level < LEVEL.readOnly) return sql`false`;
@@ -40,7 +48,7 @@ export function visibleSql(u: Viewer): SQL {
   const mine =
     keys.length === 0
       ? sql`false`
-      : sql`(${inArray(activities.contactMinistryKey, keys)} OR EXISTS (SELECT 1 FROM ${activitySharedWith} WHERE ${activitySharedWith.activityId} = ${activities.id} AND ${inArray(activitySharedWith.ministryKey, keys)}))`;
+      : sql`coalesce(${inArray(activities.contactMinistryKey, keys)} OR EXISTS (SELECT 1 FROM ${activitySharedWith} WHERE ${activitySharedWith.activityId} = ${activities.id} AND ${inArray(activitySharedWith.ministryKey, keys)}), false)`;
   const inScope = u.isHq ? sql`true` : mine;
   const seesConfidential = seesConfidentialEverywhere(u) ? sql`true` : mine;
   const deletedOk = seesDeleted(u) ? sql`true` : sql`false`;

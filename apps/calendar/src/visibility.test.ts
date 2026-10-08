@@ -1,17 +1,18 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { asc } from "drizzle-orm";
+import { asc, not } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCalendarTestDb } from "../test/helpers";
 import { activities, activitySharedWith } from "./db/schema";
-import { visible, visibleSql, type Viewer, type VisibilityFacts } from "./visibility";
+import { isOwnMinistry, visible, visibleSql, type Viewer, type VisibilityFacts } from "./visibility";
 
 // The generated matrix of spec addendum §16: role × HQ × own/shared/other × confidential × deleted.
 // "M-OWN" pins that ministry keys are byte-exact: it is a different ministry from "m-own".
+// ["m-x", "m-own"] and ["m-other", "m-own"] put the matching key second, so every key is compared, not just the first.
 const LEVELS = [0, 1, 2, 3, 4, 5];
-const MINISTRY_SETS: string[][] = [[], ["m-own"], ["M-OWN"]];
+const MINISTRY_SETS: string[][] = [[], ["m-own"], ["M-OWN"], ["m-x", "m-own"]];
 const viewers: Viewer[] = LEVELS.flatMap((level) => [false, true].flatMap((isHq) => MINISTRY_SETS.map((ministryKeys) => ({ level, isHq, ministryKeys }))));
 const CONTACTS = ["m-own", "m-other", null];
-const SHARED: string[][] = [[], ["m-own"], ["m-other"]];
+const SHARED: string[][] = [[], ["m-own"], ["m-other"], ["m-other", "m-own"]];
 const targets: VisibilityFacts[] = CONTACTS.flatMap((contactMinistryKey) =>
   SHARED.flatMap((sharedMinistryKeys) => [false, true].flatMap((isConfidential) => [false, true].map((isDeleted) => ({ contactMinistryKey, sharedMinistryKeys, isConfidential, isDeleted })))),
 );
@@ -34,13 +35,24 @@ describe("visible() and visibleSql() agree", () => {
   afterAll(() => tdb.drop());
 
   it(`on all ${viewers.length} × ${targets.length} combinations`, async () => {
-    expect(viewers).toHaveLength(36);
-    expect(targets).toHaveLength(36);
+    expect(viewers).toHaveLength(48);
+    expect(targets).toHaveLength(48);
     for (const u of viewers) {
       const rows = await tdb.db.select({ id: activities.id }).from(activities).where(visibleSql(u)).orderBy(asc(activities.id));
       const fromSql = rows.map((r) => r.id);
       const fromTs = [...idOf].filter(([, t]) => visible(u, t)).map(([id]) => id).sort((a, b) => a - b);
       expect({ viewer: u, ids: fromSql }).toEqual({ viewer: u, ids: fromTs });
+    }
+  });
+
+  // A predicate that is NULL rather than false drops a row from both WHERE p and WHERE NOT p.
+  it("is a definite boolean, so it can be selected or negated", async () => {
+    for (const u of viewers) {
+      const rows = await tdb.db.select({ id: activities.id, isVisible: visibleSql(u) }).from(activities).orderBy(asc(activities.id));
+      expect({ viewer: u, values: rows.map((r) => r.isVisible) }).toEqual({ viewer: u, values: rows.map((r) => visible(u, idOf.get(r.id)!)) });
+      const hidden = await tdb.db.select({ id: activities.id }).from(activities).where(not(visibleSql(u))).orderBy(asc(activities.id));
+      const hiddenTs = [...idOf].filter(([, t]) => !visible(u, t)).map(([id]) => id).sort((a, b) => a - b);
+      expect({ viewer: u, ids: hidden.map((r) => r.id) }).toEqual({ viewer: u, ids: hiddenTs });
     }
   });
 });
@@ -69,4 +81,8 @@ describe("visible() is legacy's list rule (spec addendum §6)", () => {
     expect(visible(u(4, true), live({ isDeleted: true }))).toBe(true);
   });
   it("ministry keys are byte-exact", () => expect(visible(u(1, false, ["M-OWN"]), live({ contactMinistryKey: "m-own" }))).toBe(false));
+  it("isOwnMinistry compares every key byte for byte", () => {
+    expect(isOwnMinistry(u(1, false, ["m-x", "m-own"]), "m-own")).toBe(true);
+    expect(isOwnMinistry(u(1, false, ["M-OWN"]), "m-own")).toBe(false);
+  });
 });

@@ -1,11 +1,7 @@
 import { LEVEL, type CalendarRules } from "@gcpe/calendar-contract";
-import { visible, type Viewer, type VisibilityFacts } from "./visibility";
+import { isOwnMinistry, visible, type Viewer, type VisibilityFacts } from "./visibility";
 
-/**
- * Whether `ministryKey` is one of the viewer's ministries, byte for byte. Create, the contact
- * ministry check and edit rights all read ownership from here.
- */
-export const isOwnMinistry = (u: Viewer, ministryKey: string): boolean => u.ministryKeys.includes(ministryKey);
+export { isOwnMinistry };
 /** Whether the activity's contact ministry is the viewer's. Shared-with ministries don't count. */
 export const ownsContactMinistry = (u: Viewer, a: VisibilityFacts): boolean => a.contactMinistryKey !== null && isOwnMinistry(u, a.contactMinistryKey);
 /** Legacy's "HQAdmin ministry at Editor and above" privileges, now the HQ flag (C124). */
