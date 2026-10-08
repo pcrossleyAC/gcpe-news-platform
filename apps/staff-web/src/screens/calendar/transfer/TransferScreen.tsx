@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Button, InlineAlert } from "@bcgov/design-system-react-components";
-import { apiFetch } from "../../../api/client";
+import { ApiError, apiFetch } from "../../../api/client";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
 import { plural, type TransferContact, type TransferPreview } from "./types";
@@ -12,6 +12,10 @@ interface TransferResult {
    * ApiError. */
   failed?: true;
 }
+
+/** A 404 means a chosen contact is gone, or no longer one the caller may use, since the page loaded. */
+const errorsOf = (caught: unknown) =>
+  caught instanceof ApiError && caught.status === 404 ? ["That comm contact is no longer available: reload the page."] : messagesOf(caught);
 
 /** `/hub/calendar/transfer` (spec addendum §8.5): move every activity of one comm contact to another. */
 export function TransferScreen(): React.JSX.Element {
@@ -43,10 +47,11 @@ export function TransferScreen(): React.JSX.Element {
   const doPreview = async () => {
     setBusy(true);
     setErrors([]);
+    setStatus(null);
     try {
       setPreview(await apiFetch<TransferPreview>(`/calendar/api/transfer/preview?from=${from}&to=${to}`));
     } catch (caught) {
-      setErrors(messagesOf(caught));
+      setErrors(errorsOf(caught));
     } finally {
       setBusy(false);
     }
@@ -55,6 +60,7 @@ export function TransferScreen(): React.JSX.Element {
     if (!preview) return;
     setBusy(true);
     setErrors([]);
+    setStatus(null);
     try {
       const out = await apiFetch<TransferResult>("/calendar/api/transfer", { method: "POST", body: { from: preview.from.id, to: preview.to.id } });
       if (out.failed) {
@@ -64,7 +70,7 @@ export function TransferScreen(): React.JSX.Element {
       }
       setPreview(null);
     } catch (caught) {
-      setErrors(messagesOf(caught));
+      setErrors(errorsOf(caught));
     } finally {
       setBusy(false);
     }
@@ -92,7 +98,7 @@ export function TransferScreen(): React.JSX.Element {
               <option value="">Choose a comm contact</option>
               {contacts.map((c) => (
                 <option key={c.id} value={String(c.id)}>
-                  {c.isActive ? c.label : `${c.label} — inactive`}
+                  {c.isActive && c.userIsActive ? c.label : `${c.label} — inactive`}
                 </option>
               ))}
             </select>

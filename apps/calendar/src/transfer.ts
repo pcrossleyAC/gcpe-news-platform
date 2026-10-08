@@ -7,6 +7,7 @@ import { BATCH_SIZE } from "./activities/bulk";
 import { ActivityForbiddenError } from "./activities/errors";
 import { emitActivity } from "./activities/events";
 import { commContactLabel, writeChange, type FieldChange } from "./activities/history";
+import { INACTIVE_PERSON } from "./activities/resolve";
 import { factsOf, loadStored, lockActivity } from "./activities/store";
 import { can } from "./capabilities";
 import { activities, commContacts, orgs, users } from "./db/schema";
@@ -22,9 +23,12 @@ export interface TransferContact {
   ministryAbbreviation: string | null;
   ministryName: string;
   isActive: boolean;
+  /** False when the person's account is inactive in the Calendar's users projection; a person missing from it isn't known to be inactive. */
+  userIsActive: boolean;
   /**
-   * Whether it may be the contact transferred to: it is active and its ministry may lead an
-   * activity, as a save checks (activities/resolve.ts). Any listed contact may be transferred from.
+   * Whether it may be the contact transferred to: it and its person are active and its ministry
+   * may lead an activity, as a save checks (activities/resolve.ts). Any listed contact may be
+   * transferred from.
    */
   canReceive: boolean;
   /** "Name (ABBR)", as legacy's dropdowns (Admin/Transfer.aspx.cs:20-27) and the history. */
@@ -41,8 +45,9 @@ export class TransferContactNotFoundError extends Error {
 }
 
 /** Why a contact can't be transferred to, in a save's words (activities/resolve.ts), or null if it can. */
-function receiveRefusal(c: { isActive: boolean; ministryIsActive: boolean | null; abbreviation: string | null }, rules: CalendarRules): string | null {
+function receiveRefusal(c: { isActive: boolean; userIsActive: boolean | null; ministryIsActive: boolean | null; abbreviation: string | null }, rules: CalendarRules): string | null {
   if (!c.isActive) return "Choose an active comm contact to transfer to";
+  if (c.userIsActive === false) return INACTIVE_PERSON;
   if (c.ministryIsActive === null) return "That ministry doesn't exist";
   if (!c.ministryIsActive) return "That ministry is no longer active";
   if (c.abbreviation && rules.contactMinistryExcludedAbbreviations.includes(c.abbreviation)) return "That ministry can't lead an activity";
@@ -52,7 +57,7 @@ function receiveRefusal(c: { isActive: boolean; ministryIsActive: boolean | null
 async function allContacts(db: Db, rules: CalendarRules): Promise<(TransferContact & { refusal: string | null })[]> {
   const rows = await db
     .select({
-      id: commContacts.id, userId: commContacts.userId, ministryKey: commContacts.ministryKey, isActive: commContacts.isActive, displayName: users.displayName,
+      id: commContacts.id, userId: commContacts.userId, ministryKey: commContacts.ministryKey, isActive: commContacts.isActive, displayName: users.displayName, userIsActive: users.isActive,
       abbreviation: orgs.abbreviation, ministryName: orgs.displayName, ministryIsActive: orgs.isActive,
     })
     .from(commContacts)
@@ -63,7 +68,7 @@ async function allContacts(db: Db, rules: CalendarRules): Promise<(TransferConta
     const refusal = receiveRefusal(r, rules);
     return {
       id: r.id, userId: r.userId, displayName: r.displayName ?? "Unknown", ministryKey: r.ministryKey, ministryAbbreviation: r.abbreviation, ministryName: r.ministryName ?? r.ministryKey,
-      isActive: r.isActive, canReceive: refusal === null, label: commContactLabel(r.displayName, r.abbreviation), refusal,
+      isActive: r.isActive, userIsActive: r.userIsActive !== false, canReceive: refusal === null, label: commContactLabel(r.displayName, r.abbreviation), refusal,
     };
   });
 }

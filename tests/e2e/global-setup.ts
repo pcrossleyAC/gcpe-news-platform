@@ -230,6 +230,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // behind the stack's combined 10/min/IP login limiter, and this suite has more distinct staff
   // users than that, so real logins would 429 whenever the specs reach the sign-in form within
   // a minute of the first login. sign-in-roles.spec.ts still drives the real sign-in form.
+  // Minted sessions last one hour (SESSION_TTL_SECONDS), so a suite run past an hour would need re-minting.
   const sessions: Record<string, string> = {};
   for (const email of Object.keys(TEST_USER_PASSWORDS)) {
     const found = await findUserByEmail(core.db, email);

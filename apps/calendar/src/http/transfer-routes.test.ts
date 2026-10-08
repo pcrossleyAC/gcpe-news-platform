@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { createCalendarTestDb, createTestApp, FIXED_NOW } from "../../test/helpers";
+import { createCalendarTestDb, createTestApp, FIXED_NOW, projectUser } from "../../test/helpers";
 import { call, historyOf, insertRaw, outboxOf, seedWorld, validInput, type World } from "../../test/world";
 import { activities, activitySharedWith, commContacts } from "../db/schema";
 
@@ -144,6 +144,23 @@ describe("Transfer (spec addendum §7.1, C150)", () => {
     // They stay usable as From.
     const b = await insertRaw(tdb.db, { commContactId: excluded, contactMinistryKey: "excluded" });
     expect((await transfer("hqAdmin", excluded, target)).body).toEqual({ transferred: 1 });
+    expect((await tdb.db.select().from(activities).where(eq(activities.id, b)))[0]!.commContactId).toBe(target);
+  });
+
+  it("refuses a contact whose person's account is inactive in the Calendar, lists it as unable to receive, and keeps it usable as From", async () => {
+    const DORMANT = "00000000-0000-4000-8000-000000000611";
+    await projectUser(app, { id: DORMANT, email: "dormant@example.test", displayName: "Sample Dormant", isActive: false, calendarRole: "Calendar.Editor", organizationKeys: ["health"] });
+    const dormant = await fresh(DORMANT);
+    const a = await insertRaw(tdb.db, { commContactId: w.contact.editorHealth });
+    expect((await preview("admin", w.contact.editorHealth, dormant)).status).toBe(422);
+    expect((await preview("admin", w.contact.editorHealth, dormant)).body).toEqual({ error: "That person's account is inactive" });
+    expect((await transfer("admin", w.contact.editorHealth, dormant)).body).toEqual({ error: "That person's account is inactive" });
+    expect((await tdb.db.select().from(activities).where(eq(activities.id, a)))[0]!.commContactId).toBe(w.contact.editorHealth);
+    const list = (await call(app, "get", "/api/transfer/comm-contacts", w.as.admin.cookie)).body as { id: number; isActive: boolean; userIsActive: boolean; canReceive: boolean }[];
+    expect(list.find((c) => c.id === dormant)).toMatchObject({ isActive: true, userIsActive: false, canReceive: false });
+    expect(list.find((c) => c.id === target)).toMatchObject({ userIsActive: true, canReceive: true });
+    const b = await insertRaw(tdb.db, { commContactId: dormant });
+    expect((await transfer("admin", dormant, target)).body).toEqual({ transferred: 1 });
     expect((await tdb.db.select().from(activities).where(eq(activities.id, b)))[0]!.commContactId).toBe(target);
   });
 

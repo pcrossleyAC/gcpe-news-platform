@@ -16,19 +16,29 @@ export interface DeadLetter {
   queuedAtBc: string;
 }
 
+export interface DeadLetterList {
+  items: DeadLetter[];
+  /** More dead deliveries exist than `items` holds: only the most recent are listed. */
+  truncated: boolean;
+}
+
+/** How many dead deliveries the page lists, newest first. */
+export const DEAD_LETTER_LIMIT = 200;
+
 /** The Calendar's deliveries the dispatcher gave up on (24 hours of retries). The payload is never shown. */
-export async function listDeadLetters(db: Db, timeZone: string, limit = 200): Promise<DeadLetter[]> {
+export async function listDeadLetters(db: Db, timeZone: string, limit = DEAD_LETTER_LIMIT): Promise<DeadLetterList> {
   const rows = await db
     .select({ eventId: outboxDeliveries.eventId, subscriber: outboxDeliveries.subscriber, attempts: outboxDeliveries.attempts, lastError: outboxDeliveries.lastError, type: outboxEvents.type, aggregateId: outboxEvents.aggregateId, createdAt: outboxEvents.createdAt })
     .from(outboxDeliveries)
     .innerJoin(outboxEvents, eq(outboxEvents.id, outboxDeliveries.eventId))
     .where(eq(outboxDeliveries.status, "dead"))
     .orderBy(desc(outboxEvents.createdAt))
-    .limit(limit);
-  return rows.map((r) => {
+    .limit(limit + 1);
+  const items = rows.slice(0, limit).map((r) => {
     const w = wallClock(r.createdAt, timeZone);
     return { ...r, createdAt: r.createdAt.toISOString(), queuedAtBc: `${w.date} ${w.time}` };
   });
+  return { items, truncated: rows.length > limit };
 }
 
 /**

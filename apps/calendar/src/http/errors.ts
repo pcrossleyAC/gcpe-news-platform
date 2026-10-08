@@ -8,6 +8,8 @@ import { FreezeError } from "../freeze";
 
 /** SQLSTATE class 23: integrity constraint violation. */
 const CONSTRAINT_VIOLATION = /^23[0-9A-Z]{3}$/;
+/** SQLSTATE 40001 (serialization failure) and 40P01 (deadlock detected): the transaction lost a race and can simply be retried. */
+const TRANSIENT = new Set(["40001", "40P01"]);
 /** SQLSTATE class 22: data exception (an out-of-range number, a NUL character, a bad timestamp). */
 const DATA_EXCEPTION = /^22[0-9A-Z]{3}$/;
 
@@ -26,6 +28,10 @@ export function sendActivityError(e: unknown, res: Response): boolean {
     // Validation makes every constraint unreachable; this catches a race it missed, never a 500.
     console.error("[calendar] activity write hit a constraint", label);
     return void res.status(409).json({ code: "conflict", error: "That change conflicts with another one: reload and try again" }), true;
+  }
+  if (TRANSIENT.has(label)) {
+    console.error("[calendar] activity write lost a race", label);
+    return void res.status(409).json({ code: "retry", error: "Someone else was saving at the same time: try again." }), true;
   }
   if (DATA_EXCEPTION.test(label)) {
     // The request schemas refuse every value the database can't hold; this catches one they missed, never a 500.

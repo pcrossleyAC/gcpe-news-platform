@@ -233,9 +233,8 @@ test.describe("item 16: axe across every staff screen", () => {
     await expectNoSeriousA11yViolations(page, "/hub/error-log");
   });
 
-  // Staff-web follow-up (phase-5-carry-forward.md): the Calendar's landing and lookup screens had
-  // no entry here. cal-admin covers the Administrator-visible screens; cal-sysadmin additionally
-  // reaches the dead-letter page (System Administrator only).
+  // The Calendar's staff-web screens. cal-admin covers the Administrator-visible screens;
+  // cal-sysadmin additionally reaches the dead-letter page (System Administrator only).
   test("the Calendar: landing, lookups, users, Transfer, undelivered events", async ({ page, context }) => {
     const adminCookie = await loginForCookie(CAL_ADMIN_EMAIL, TEST_USER_PASSWORDS[CAL_ADMIN_EMAIL]!);
     const [adminName, adminValue] = adminCookie.split("=", 2) as [string, string];

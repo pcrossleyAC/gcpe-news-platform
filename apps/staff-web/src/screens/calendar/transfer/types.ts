@@ -7,8 +7,10 @@ export interface TransferContact {
   ministryAbbreviation: string | null;
   ministryName: string;
   isActive: boolean;
+  /** False when the person's account is inactive in the Calendar. */
+  userIsActive: boolean;
   /** Whether it may be the contact transferred to (apps/calendar/src/transfer.ts's receiveRefusal):
-   * false when it's inactive, its ministry is inactive, or its ministry is excluded. Any listed
+   * false when it or its person is inactive, its ministry is inactive, or its ministry is excluded. Any listed
    * contact may still be transferred from, active or not. */
   canReceive: boolean;
   /** "Name (ABBR)", as legacy's dropdowns (Admin/Transfer.aspx.cs:20-27) and the history. */

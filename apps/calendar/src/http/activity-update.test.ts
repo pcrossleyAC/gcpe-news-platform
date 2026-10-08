@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { ActivityFields } from "@gcpe/calendar-contract";
-import { createCalendarTestDb, createTestApp, FIXED_NOW, waitForLockWaiter } from "../../test/helpers";
+import { createCalendarTestDb, createTestApp, FIXED_NOW, projectUser, waitForLockWaiter } from "../../test/helpers";
 import { call, historyOf, insertRaw, outboxOf, seedWorld, validInput, type World } from "../../test/world";
 import { activities, commContacts, keywords } from "../db/schema";
 
@@ -129,6 +129,25 @@ describe("updating an activity (spec addendum §7.1, §7.5)", () => {
     expect(refused.status).toBe(422);
     expect(refused.body.errors).toContainEqual({ field: "commContactId", message: "That comm contact is no longer active" });
     await tdb.db.update(commContacts).set({ isActive: true }).where(eq(commContacts.id, w.contact.editorHealth));
+  });
+
+  it("a comm contact whose person's account is inactive: kept when unchanged, refused when newly chosen", async () => {
+    const person = (n: number, isActive: boolean) => ({ id: `00000000-0000-4000-8000-00000000062${n}`, email: `person${n}@example.test`, displayName: `Sample Person ${n}`, isActive, calendarRole: "Calendar.Editor" as const, organizationKeys: ["health"] });
+    await projectUser(app, person(1, true));
+    await projectUser(app, person(2, false));
+    const kept = (await tdb.db.insert(commContacts).values({ userId: person(1, true).id, ministryKey: "health", rank: 4 }).returning({ id: commContacts.id }))[0]!.id;
+    const dormant = (await tdb.db.insert(commContacts).values({ userId: person(2, false).id, ministryKey: "health", rank: 4 }).returning({ id: commContacts.id }))[0]!.id;
+    const a = await make({ commContactId: kept });
+    await projectUser(app, person(1, false));
+    const unchanged = await save("editor", a, { details: "Still fine" });
+    expect(unchanged.status).toBe(200);
+    expect((await row(a.id)).commContactId).toBe(kept);
+    const refused = await save("editor", unchanged.body.activity, { commContactId: dormant });
+    expect(refused.status).toBe(422);
+    expect(refused.body.errors).toContainEqual({ field: "commContactId", message: "That person's account is inactive" });
+    const created = await call(app, "post", "/api/activities", w.as.editor.cookie, validInput(w, { commContactId: dormant }));
+    expect(created.status).toBe(422);
+    expect(created.body.errors).toContainEqual({ field: "commContactId", message: "That person's account is inactive" });
   });
 
   it("an HQ Administrator's edit to another ministry's activity leaves 'last updated' alone but moves the version (C129)", async () => {

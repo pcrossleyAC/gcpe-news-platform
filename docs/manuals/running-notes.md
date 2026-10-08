@@ -457,10 +457,19 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Administrator** — Hub → Calendar → Transfer moves every activity of one comm contact (past ones
   too, not deleted ones) to another and makes the second contact's ministry the lead ministry. It
   shows how many will move before you confirm. A ministry Administrator can transfer only within
-  their own ministries; HQ Administrators can transfer across ministries. Transfer works during
-  the 4pm-5pm freeze.
+  their own ministries, and moves only the activities their ministry leads: an activity another
+  ministry leads and shares with theirs stays where it is. HQ Administrators can transfer across
+  ministries. Transfer works during the 4pm-5pm freeze.
+- **Administrator** — Transfer won't move activities to a comm contact whose ministry is inactive
+  or can't lead an activity, or whose person's account is inactive; it says why. The From list
+  marks inactive contacts and inactive people "inactive".
+- **Editor** — An activity can't be given a comm contact whose account is inactive ("That person's
+  account is inactive"). An activity that already has that contact keeps it when saved.
 - **Administrator** — Deactivating a user first lists their open activities, with a link to
   Transfer. Deactivating doesn't move them.
 - **System Administrator** — Hub → Calendar → Undelivered events lists events another app didn't
   accept for 24 hours. Retry sends one again on the next minute's tick; if it comes back, the
   receiving app is still refusing it.
+- **System Administrator** — Undelivered events lists the 200 most recent and says so when there are
+  more. Each Retry button names the receiving app and when the event was queued, for screen
+  readers, and stays disabled until its retry is answered.

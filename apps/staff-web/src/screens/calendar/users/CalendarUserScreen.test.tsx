@@ -169,6 +169,33 @@ describe("CalendarUserScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("only a Core admin can change a user who also has NRMS or NoD roles");
   });
 
+  it.each([
+    [403, "Administrators see a user's open activities"],
+    [404, "not found"],
+  ])("shows the refusal when the open activities fail (%i), and deactivates nobody", async (status, error) => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(calls, DETAIL, (url) => (url.endsWith("/open-activities") ? jsonResponse(status, { error }) : undefined));
+    renderAt("u1");
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(error);
+    expect(screen.queryByRole("region", { name: "Before deactivating Robin Staff" })).toBeNull();
+    expect(calls.some((c) => c.url.endsWith("/active"))).toBe(false);
+    expect(screen.getByRole("button", { name: "Deactivate Robin Staff" })).toBeInTheDocument();
+  });
+
+  it("shows Core's refusal after a preview listing open activities, and the user stays active", async () => {
+    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: "2026-11-10T17:00:00.000Z", endAt: null, startDate: "2026-11-10", endDate: null }], truncated: false };
+    stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, { error: "only a Core admin can change a user who also has NRMS or NoD roles", reason: "other-roles" }) : undefined));
+    renderAt("u1");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
+    await user.click(within(preview).getByRole("button", { name: "Deactivate anyway" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("only a Core admin can change a user who also has NRMS or NoD roles");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: "Deactivate Robin Staff" })).toBeInTheDocument();
+  });
+
   it("an unknown user is not found", async () => {
     stub([]);
     renderAt("nobody");

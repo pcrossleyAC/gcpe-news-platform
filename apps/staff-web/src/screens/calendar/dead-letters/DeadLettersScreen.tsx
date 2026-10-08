@@ -15,24 +15,36 @@ interface DeadLetter {
   queuedAtBc: string;
 }
 
+/** apps/calendar/src/dead-letters.ts's DeadLetterList. */
+interface DeadLetterList {
+  items: DeadLetter[];
+  truncated: boolean;
+}
+
+const keyOf = (d: DeadLetter) => `${d.eventId}:${d.subscriber}`;
+
 const RETRY_NOTE = "Queued for delivery again. If it comes back here after the next minute, the receiving app is still refusing it: check it before retrying.";
 
 /** `/hub/calendar/dead-letters` (spec addendum §5.1): the Calendar's events no app accepted within 24 hours. */
 export function DeadLettersScreen(): React.JSX.Element {
   useDocumentTitle("Undelivered events");
   const [rows, setRows] = useState<DeadLetter[] | null>(null);
+  const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
+  /** The deliveries whose retry is in flight, by `keyOf`. */
+  const [retrying, setRetrying] = useState<ReadonlySet<string>>(new Set());
   const latest = useRef(0);
 
   const reload = useCallback((after?: (rows: DeadLetter[]) => void) => {
     const call = ++latest.current;
-    apiFetch<DeadLetter[]>("/calendar/api/dead-letters").then(
+    apiFetch<DeadLetterList>("/calendar/api/dead-letters").then(
       (r) => {
         if (call !== latest.current) return;
-        setRows(r);
-        after?.(r);
+        setRows(r.items);
+        setTruncated(r.truncated);
+        after?.(r.items);
       },
       () => call === latest.current && setError("Couldn't load undelivered events."),
     );
@@ -40,12 +52,21 @@ export function DeadLettersScreen(): React.JSX.Element {
   useEffect(() => reload(), [reload]);
 
   const retry = async (d: DeadLetter) => {
+    const key = keyOf(d);
     setMessages([]);
+    setStatus(null);
+    setRetrying((s) => new Set(s).add(key));
     try {
       await apiFetch("/calendar/api/dead-letters/retry", { method: "POST", body: { eventId: d.eventId, subscriber: d.subscriber } });
-      reload((r) => setStatus(r.some((x) => x.eventId === d.eventId && x.subscriber === d.subscriber) ? RETRY_NOTE : "Queued for delivery again."));
+      reload((r) => setStatus(r.some((x) => keyOf(x) === key) ? RETRY_NOTE : "Queued for delivery again."));
     } catch (caught) {
       setMessages(messagesOf(caught));
+    } finally {
+      setRetrying((s) => {
+        const next = new Set(s);
+        next.delete(key);
+        return next;
+      });
     }
   };
 
@@ -65,39 +86,42 @@ export function DeadLettersScreen(): React.JSX.Element {
       ) : rows.length === 0 ? (
         <p>Nothing is waiting: every event was delivered.</p>
       ) : (
-        <table>
-          <caption>Undelivered events, newest first</caption>
-          <thead>
-            <tr>
-              <th scope="col">Event</th>
-              <th scope="col">About</th>
-              <th scope="col">To</th>
-              <th scope="col">Attempts</th>
-              <th scope="col">Last error</th>
-              <th scope="col">Queued</th>
-              <th scope="col">
-                <span className="gcpe-visually-hidden">Actions</span>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((d) => (
-              <tr key={`${d.eventId}:${d.subscriber}`}>
-                <td>{d.type}</td>
-                <td>{d.aggregateId}</td>
-                <td>{d.subscriber}</td>
-                <td>{d.attempts}</td>
-                <td>{d.lastError ?? ""}</td>
-                <td>{d.queuedAtBc}</td>
-                <td>
-                  <Button variant="secondary" size="small" onPress={() => void retry(d)} aria-label={`Retry ${d.type} for ${d.aggregateId}`}>
-                    Retry
-                  </Button>
-                </td>
+        <>
+          {truncated && <p>Only the 200 most recent are listed.</p>}
+          <table>
+            <caption>Undelivered events, newest first</caption>
+            <thead>
+              <tr>
+                <th scope="col">Event</th>
+                <th scope="col">About</th>
+                <th scope="col">To</th>
+                <th scope="col">Attempts</th>
+                <th scope="col">Last error</th>
+                <th scope="col">Queued</th>
+                <th scope="col">
+                  <span className="gcpe-visually-hidden">Actions</span>
+                </th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.map((d) => (
+                <tr key={keyOf(d)}>
+                  <td>{d.type}</td>
+                  <td>{d.aggregateId}</td>
+                  <td>{d.subscriber}</td>
+                  <td>{d.attempts}</td>
+                  <td>{d.lastError ?? ""}</td>
+                  <td>{d.queuedAtBc}</td>
+                  <td>
+                    <Button variant="secondary" size="small" onPress={() => void retry(d)} isDisabled={retrying.has(keyOf(d))} aria-label={`Retry ${d.type} for ${d.aggregateId} to ${d.subscriber}, queued ${d.queuedAtBc}`}>
+                      Retry
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </>
       )}
     </div>
   );

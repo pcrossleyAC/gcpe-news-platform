@@ -38,7 +38,7 @@ describe("the Calendar's undelivered events (spec addendum §5.1)", () => {
     await dead("delivered");
     const res = await call(app, "get", "/api/dead-letters", sysCookie);
     expect(res.status).toBe(200);
-    expect(res.body).toEqual([{ eventId: id, subscriber: "nrms", type: "activity.updated", aggregateId: "activity:7", attempts: 9, lastError: "HTTP 503", createdAt: "2026-09-01T00:00:00.000Z", queuedAtBc: "2026-08-31 17:00" }]);
+    expect(res.body).toEqual({ items: [{ eventId: id, subscriber: "nrms", type: "activity.updated", aggregateId: "activity:7", attempts: 9, lastError: "HTTP 503", createdAt: "2026-09-01T00:00:00.000Z", queuedAtBc: "2026-08-31 17:00" }], truncated: false });
     expect(JSON.stringify(res.body)).not.toContain("isConfidential");
   });
 
@@ -60,7 +60,7 @@ describe("the Calendar's undelivered events (spec addendum §5.1)", () => {
     const id = await dead();
     await call(app, "post", "/api/dead-letters/retry", sysCookie, { eventId: id, subscriber: "nrms" });
     await dispatchOnce({ db: tdb.db, subscribers: [NRMS], fetchImpl: async () => new Response(null, { status: 503 }) });
-    const list = (await call(app, "get", "/api/dead-letters", sysCookie)).body as { eventId: string; attempts: number }[];
+    const list = (await call(app, "get", "/api/dead-letters", sysCookie)).body.items as { eventId: string; attempts: number }[];
     expect(list.find((l) => l.eventId === id)).toMatchObject({ attempts: 1 });
   });
 
@@ -68,5 +68,18 @@ describe("the Calendar's undelivered events (spec addendum §5.1)", () => {
     const pending = await dead("pending");
     expect((await call(app, "post", "/api/dead-letters/retry", sysCookie, { eventId: pending, subscriber: "nrms" })).status).toBe(404);
     expect((await call(app, "post", "/api/dead-letters/retry", sysCookie, { eventId: "nope", subscriber: "nrms" })).status).toBe(400);
+  });
+
+  it("lists the 200 most recent and says when there are more", async () => {
+    await tdb.db.delete(outboxDeliveries);
+    const ids: string[] = [];
+    for (let n = 0; n < 200; n++) ids.push(await dead());
+    const full = await call(app, "get", "/api/dead-letters", sysCookie);
+    expect(full.body.items).toHaveLength(200);
+    expect(full.body.truncated).toBe(false);
+    ids.push(await dead());
+    const over = await call(app, "get", "/api/dead-letters", sysCookie);
+    expect(over.body.items).toHaveLength(200);
+    expect(over.body.truncated).toBe(true);
   });
 });

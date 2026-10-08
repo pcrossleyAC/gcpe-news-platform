@@ -2,7 +2,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Tx } from "@gcpe/db-kit";
 import type { ActivityFields, CalendarRules, FieldError } from "@gcpe/calendar-contract";
 import { can, isOwnMinistry } from "../capabilities";
-import { commContacts, keywords, orgs, terms } from "../db/schema";
+import { commContacts, keywords, orgs, terms, users } from "../db/schema";
 import type { Viewer } from "../visibility";
 import type { StoredActivity } from "./store";
 
@@ -15,6 +15,9 @@ export interface Resolution {
   /** Names no keyword has yet; created on save (C146). */
   keywordsToCreate: string[];
 }
+
+/** A comm contact whose person is inactive in the Calendar's users projection can't be newly given an activity. */
+export const INACTIVE_PERSON = "That person's account is inactive";
 
 interface Ctx {
   actor: Viewer;
@@ -94,10 +97,16 @@ export async function resolveReferences(tx: Tx, i: ActivityFields, ctx: Ctx): Pr
   }
 
   if (i.commContactId !== null) {
-    const [c] = await tx.select().from(commContacts).where(eq(commContacts.id, i.commContactId));
+    const [c] = await tx
+      .select({ ministryKey: commContacts.ministryKey, isActive: commContacts.isActive, userIsActive: users.isActive })
+      .from(commContacts)
+      .leftJoin(users, eq(users.id, commContacts.userId))
+      .where(eq(commContacts.id, i.commContactId));
+    const changed = prev?.fields.commContactId !== i.commContactId;
     if (!c) add("commContactId", "That comm contact doesn't exist");
     else if (c.ministryKey !== i.contactMinistryKey) add("commContactId", "Choose a comm contact of the lead ministry");
-    else if (!c.isActive && prev?.fields.commContactId !== i.commContactId) add("commContactId", "That comm contact is no longer active");
+    else if (!c.isActive && changed) add("commContactId", "That comm contact is no longer active");
+    else if (c.userIsActive === false && changed) add("commContactId", INACTIVE_PERSON);
   }
 
   for (const [field, kind] of [["sectorKeys", "sector"], ["themeKeys", "theme"], ["tagKeys", "tag"]] as const) {

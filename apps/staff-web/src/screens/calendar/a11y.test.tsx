@@ -51,7 +51,7 @@ function stub() {
       if (url === "/calendar/api/users/u9") return jsonResponse(200, OTHER_USER_DETAIL);
       if (url === "/calendar/api/transfer/comm-contacts") return jsonResponse(200, [{ id: 1, userId: "u1", displayName: "Robin Staff", ministryKey: "health", ministryAbbreviation: "HLTH", ministryName: "Health", isActive: true, canReceive: true, label: "Robin Staff (HLTH)" }]);
       if (url.endsWith("/open-activities")) return jsonResponse(200, { activities: [], truncated: false });
-      if (url === "/calendar/api/dead-letters") return jsonResponse(200, [{ eventId: "11111111-1111-4111-8111-111111111111", subscriber: "nrms", type: "activity.updated", aggregateId: "activity:7", attempts: 9, lastError: "HTTP 503", createdAt: "2026-09-01T00:00:00.000Z", queuedAtBc: "2026-08-31 17:00" }]);
+      if (url === "/calendar/api/dead-letters") return jsonResponse(200, { items: [{ eventId: "11111111-1111-4111-8111-111111111111", subscriber: "nrms", type: "activity.updated", aggregateId: "activity:7", attempts: 9, lastError: "HTTP 503", createdAt: "2026-09-01T00:00:00.000Z", queuedAtBc: "2026-08-31 17:00" }], truncated: true });
       if (url.startsWith("/calendar/api/users")) return jsonResponse(200, USER_ROWS);
       if (url === "/core/api/calendar-access") return jsonResponse(200, CORE_USERS);
       if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
@@ -147,6 +147,7 @@ describe("accessibility: Calendar section", () => {
     stub();
     const { container } = render(at("/calendar/dead-letters"));
     await screen.findByRole("heading", { level: 1, name: "Undelivered events" });
+    await screen.findByText("Only the 200 most recent are listed.");
     expect(await seriousViolations(container)).toEqual([]);
   });
 
