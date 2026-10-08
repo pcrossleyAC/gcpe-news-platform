@@ -1,0 +1,1 @@
+CREATE INDEX "items_emergency_url_idx" ON "items" USING btree ("url") WHERE "items"."kind" = 'emergency';
