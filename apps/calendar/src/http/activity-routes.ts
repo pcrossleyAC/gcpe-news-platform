@@ -1,7 +1,9 @@
 import { Router, type NextFunction, type Request, type Response } from "express";
 import { z } from "zod";
 import { createActivitySchema, updateActivitySchema, type ActivityView, type WriteResponse } from "@gcpe/calendar-contract";
+import { cloneActivity } from "../activities/clone";
 import { createActivity } from "../activities/create";
+import { deleteActivity } from "../activities/delete";
 import { ActivityNotFoundError } from "../activities/errors";
 import { releaseLock, takeLock } from "../activities/locks";
 import { updateActivity } from "../activities/update";
@@ -11,6 +13,8 @@ import type { ApiDeps } from "./routes";
 
 const lockSchema = z.object({ tabId: z.string().min(1).max(100), takeOver: z.boolean().optional() }).strict();
 const releaseSchema = z.object({ tabId: z.string().min(1).max(100) }).strict();
+const emptySchema = z.object({}).strict();
+const versionSchema = z.object({ version: z.number().int().positive() }).strict();
 
 type Params = { id: string };
 /** Legacy lets an HQ Editor below Advanced create, or make, a confidential activity for another ministry, then hides it from them. */
@@ -52,6 +56,15 @@ export function activityRoutes(deps: ApiDeps): Router {
     res.json(await writeResponse(deps, req, id, out.warnings));
   }));
   r.get("/activities/:id/changes", run(async (req, res) => void res.json(await readChanges(deps, req.calendar!, idOf(req)))));
+  r.post("/activities/:id/clone", run(async (req, res) => {
+    emptySchema.parse(req.body ?? {});
+    const out = await cloneActivity(deps, req.calendar!, idOf(req));
+    res.status(201).json(await writeResponse(deps, req, out.id, []));
+  }));
+  r.delete("/activities/:id", run(async (req, res) => {
+    await deleteActivity(deps, req.calendar!, idOf(req), versionSchema.parse(req.body).version);
+    res.status(204).end();
+  }));
   r.put("/activities/:id/lock", run(async (req, res) => {
     const body = lockSchema.parse(req.body);
     res.json(await takeLock(deps, req.calendar!, idOf(req), body.tabId, body.takeOver ?? false));
