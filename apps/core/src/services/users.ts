@@ -76,6 +76,10 @@ const isCheckViolation = (e: unknown, constraint: string) => {
 
 type UserRow = typeof users.$inferSelect;
 
+/** Runs inside the user's write transaction, after their aggregate lock and FOR UPDATE, so what it
+ * reads can't change before the write commits. Throws to refuse. */
+export type UserGuard = (tx: Tx, id: string) => Promise<void>;
+
 async function withAccess(db: DbOrTx, rows: UserRow[]): Promise<UserView[]> {
   if (rows.length === 0) return [];
   const ids = rows.map((r) => r.id);
@@ -181,13 +185,14 @@ export async function createUser(db: Db, input: CreateUserInput, subscribers: Su
   }
 }
 
-export async function updateUser(db: Db, id: string, patch: UpdateUserInput, subscribers: SubscriberConfig[]): Promise<UserView> {
+export async function updateUser(db: Db, id: string, patch: UpdateUserInput, subscribers: SubscriberConfig[], opts: { guard?: UserGuard } = {}): Promise<UserView> {
   if (!isUuid(id)) throw new UserNotFoundError(id);
   try {
     await db.transaction(async (tx) => {
       await lockUser(tx, id);
       const [row] = await tx.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, id)).for("update");
       if (!row) throw new UserNotFoundError(id);
+      await opts.guard?.(tx, row.id);
       if (patch.isActive === true && row.email === null) throw new UserNeedsEmailError(id);
       await tx
         .update(users)
@@ -208,13 +213,14 @@ export async function updateUser(db: Db, id: string, patch: UpdateUserInput, sub
  * Sets the email of a user who has none, and activates them (spec addendum §4): legacy
  * Calendar users imported without an email are linked this way, and Entra matching later uses it.
  */
-export async function linkUser(db: Db, id: string, address: string, subscribers: SubscriberConfig[]): Promise<UserView> {
+export async function linkUser(db: Db, id: string, address: string, subscribers: SubscriberConfig[], opts: { guard?: UserGuard } = {}): Promise<UserView> {
   if (!isUuid(id)) throw new UserNotFoundError(id);
   try {
     await db.transaction(async (tx) => {
       await lockUser(tx, id);
       const [row] = await tx.select({ id: users.id, email: users.email }).from(users).where(eq(users.id, id)).for("update");
       if (!row) throw new UserNotFoundError(id);
+      await opts.guard?.(tx, row.id);
       if (row.email !== null) throw new UserAlreadyHasEmailError(id);
       await tx.update(users).set({ email: address, isActive: true, updatedAt: new Date() }).where(eq(users.id, row.id));
       await emitUserUpserted(tx, row.id, subscribers);

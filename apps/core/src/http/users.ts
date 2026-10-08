@@ -19,8 +19,7 @@ import {
   UserNeedsEmailError,
   UserNotFoundError,
 } from "../services/users";
-
-class SelfLockoutError extends Error {}
+import { isSelf, SelfLockoutError } from "./self";
 
 type IdParams = { id: string };
 const run = <P>(h: (req: Request<P>, res: Response) => Promise<void>) => (req: Request<P>, res: Response, next: NextFunction) =>
@@ -37,9 +36,6 @@ const run = <P>(h: (req: Request<P>, res: Response) => Promise<void>) => (req: R
 /** Core.Admin user management (spec addendum §2). Mounted behind requireRole("Core.Admin"). */
 export function usersRouter(db: Db, subscribers: SubscriberConfig[]): Router {
   const r = Router();
-  // Compared canonically: the same id in another case (or with stray whitespace) is still the caller.
-  const canonical = (id: string) => id.trim().toLowerCase();
-  const isSelf = (req: Request<IdParams>) => req.auth !== undefined && canonical(req.auth.subject) === canonical(req.params.id);
 
   r.get("/", run(async (_req, res) => void res.json(await listUsers(db))));
   r.post("/", run(async (req, res) => void res.status(201).json(await createUser(db, createUserSchema.parse(req.body), subscribers))));
