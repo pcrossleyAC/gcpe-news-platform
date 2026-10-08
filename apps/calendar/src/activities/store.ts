@@ -197,9 +197,13 @@ export function columnsOf(c: Content) {
   return { ...c, strategy: c.strategy || null, comments: c.comments || null, leadOrganization: c.leadOrganization || null, venue: c.venue || null, otherCity: c.otherCity || null, potentialDates: c.potentialDates || null };
 }
 
+/**
+ * The values the needs-review rules compare. Title and Summary go through the save's clean-up on both
+ * sides, so an imported value the clean-up only rewrites (a curly quote, an ellipsis) isn't a change.
+ */
 export function snapshotOf(c: Content, j: JoinIds): ReviewSnapshot {
   return {
-    title: c.title, details: c.details, governmentRepresentativeId: c.governmentRepresentativeId, cityId: c.cityId, otherCity: c.otherCity,
+    title: cleanTitle(c.title), details: cleanDetails(c.details), governmentRepresentativeId: c.governmentRepresentativeId, cityId: c.cityId, otherCity: c.otherCity,
     startAt: c.startAt?.getTime() ?? null, endAt: c.endAt?.getTime() ?? null, potentialDates: c.potentialDates,
     categoryIds: j.categoryIds, isIssue: c.isIssue, isConfidential: c.isConfidential, commMaterialIds: j.commMaterialIds,
     significance: c.significance, comments: c.comments, schedule: c.schedule, strategy: c.strategy, leadOrganization: c.leadOrganization,
@@ -250,6 +254,12 @@ export async function replaceJoins(tx: Tx, id: number, j: JoinIds): Promise<void
   if (tags.length) await tx.insert(activityTags).values(tags.map((termKey) => ({ activityId: id, termKey })));
   const shared = uniqStr(j.sharedWithKeys);
   if (shared.length) await tx.insert(activitySharedWith).values(shared.map((ministryKey) => ({ activityId: id, ministryKey })));
+}
+
+/** The keywords' stored names, in name order: a reused keyword keeps its own spelling. */
+export async function keywordNamesOf(db: DbOrTx, ids: readonly number[]): Promise<string[]> {
+  if (ids.length === 0) return [];
+  return (await db.select({ name: keywords.name }).from(keywords).where(inArray(keywords.id, [...ids])).orderBy(asc(keywords.name))).map((k) => k.name);
 }
 
 /** The inference's inputs for some fields: category names and the ministry's abbreviation come from the database. */

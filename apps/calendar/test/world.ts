@@ -6,7 +6,7 @@ import type { CalendarRole } from "@gcpe/auth";
 import type { ActivityFields } from "@gcpe/calendar-contract";
 import { outboxEvents } from "@gcpe/events";
 import {
-  categories, cities, commContacts, commMaterials, eventPlanners, governmentRepresentatives, initiatives, keywords,
+  activities, activityChangeFields, activityChanges, categories, cities, commContacts, commMaterials, eventPlanners, governmentRepresentatives, initiatives, keywords,
   nrDistributions, nrOrigins, premierRequested, videographers,
 } from "../src/db/schema";
 import { envelope, projectOrg, projectUser, sendEvent, sessionCookie } from "./helpers";
@@ -114,4 +114,24 @@ export function call(app: express.Express, method: "get" | "post" | "put" | "del
 export async function outboxOf(db: Db, activityId: number) {
   const rows = await db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, `activity:${activityId}`)).orderBy(asc(outboxEvents.sequence));
   return rows.map((r) => r.envelope as { type: string; data: Record<string, unknown> });
+}
+
+/** An activity as the importer will write it: whatever legacy held, rules or not. */
+export async function insertRaw(db: Db, over: Partial<typeof activities.$inferInsert> = {}): Promise<number> {
+  const [row] = await db
+    .insert(activities)
+    .values({
+      title: "Sample imported", details: "Sample details", significance: "Sample significance", schedule: "Sample schedule",
+      contactMinistryKey: "health", startAt: new Date("2026-11-10T17:00:00Z"), endAt: new Date("2026-11-10T18:00:00Z"),
+      isConfirmed: true, status: "reviewed", hqSection: "in_the_news", ...over,
+    })
+    .returning({ id: activities.id });
+  return row!.id;
+}
+
+/** One activity's history entries, oldest first, each with its field rows as `{ key: [old, new] }`. */
+export async function historyOf(db: Db, id: number) {
+  const changes = await db.select().from(activityChanges).where(eq(activityChanges.activityId, id)).orderBy(asc(activityChanges.id));
+  const fields = await db.select().from(activityChangeFields);
+  return changes.map((c) => ({ action: c.action, actorName: c.actorName, fields: Object.fromEntries(fields.filter((f) => f.changeId === c.id).map((f) => [f.fieldKey, [f.oldValue, f.newValue]])) }));
 }

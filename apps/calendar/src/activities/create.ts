@@ -1,8 +1,6 @@
-import { inArray } from "drizzle-orm";
 import { checkActivity, inferLookAhead, LEVEL, sectionToStore, warningsFor, type ActivityFields } from "@gcpe/calendar-contract";
 import type { CalendarActor } from "../actor";
 import { can } from "../capabilities";
-import { keywords } from "../db/schema";
 import { assertNotFrozen } from "../freeze";
 import type { ApiDeps } from "../http/routes";
 import { lockLookup, LOOKUPS } from "../lookups";
@@ -11,7 +9,7 @@ import { ActivityForbiddenError, ActivityValidationError } from "./errors";
 import { emitActivity } from "./events";
 import { displayOf, setFields, writeChange } from "./history";
 import { createKeywords, resolveReferences } from "./resolve";
-import { contentFrom, insertActivity, lookAheadInputOf, replaceJoins, uniqNum, uniqStr, type JoinIds, type LookAheadValues } from "./store";
+import { contentFrom, insertActivity, keywordNamesOf, lookAheadInputOf, replaceJoins, uniqNum, uniqStr, type JoinIds, type LookAheadValues } from "./store";
 
 /** Spec addendum §7.1 Create: status new, no flags, every field saved (C145), history and an event in one transaction. */
 export async function createActivity(deps: ApiDeps, actor: CalendarActor, input: ActivityFields): Promise<{ id: number; warnings: string[] }> {
@@ -63,8 +61,7 @@ export async function createActivity(deps: ApiDeps, actor: CalendarActor, input:
       sharedWithKeys: uniqStr(input.sharedWithKeys),
     };
     await replaceJoins(tx, id, joins);
-    // The keywords as stored: a reused keyword keeps its own spelling.
-    const keywordNames = joins.keywordIds.length ? (await tx.select({ name: keywords.name }).from(keywords).where(inArray(keywords.id, joins.keywordIds))).map((k) => k.name) : [];
+    const keywordNames = await keywordNamesOf(tx, joins.keywordIds);
     const display = await displayOf(tx, content, lookAhead, joins, keywordNames, deps.rules);
     await writeChange(tx, { activityId: id, actor, action: "created", contactMinistryKey: content.contactMinistryKey, at: now, fields: setFields(display) });
     await emitActivity(tx, deps, id, "activity.created");
