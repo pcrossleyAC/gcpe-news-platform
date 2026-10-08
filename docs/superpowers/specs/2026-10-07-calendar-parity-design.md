@@ -147,7 +147,8 @@ Each sub-plan is planned, built, reviewed and deployed to boxs.ca in turn. Each 
 
 **Ids and formats:**
 - Activities and every lookup keep their legacy integer ids. Sequences start above the imported maximum.
-- Ministries, sectors, themes and tags are Core ids, held in local projections (`orgs`, `terms`).
+- Ministries, sectors, themes and tags are named by Core key (as every event names them), held
+  in local projections (`orgs`, `terms`).
 - People are Core user ids.
 - Every time is stored in UTC and shown in BC time.
 
@@ -230,6 +231,8 @@ Each sub-plan is planned, built, reviewed and deployed to boxs.ca in turn. Each 
 | `activity.created` / `activity.updated` | Calendar → NRMS | **For a non-confidential activity:** id, title, details, start, end, NR at, is all day, is confirmed, is deleted, contact ministry key, shared ministry keys, category names, city name, theme, tag and sector keys, translations. **For a confidential one:** only `{ id, isConfidential: true, isDeleted }`, so no confidential text leaves the Calendar (R2). |
 | `activity.deleted` | Calendar → NRMS | id |
 | `release.status_changed` | NRMS → Calendar | release id, key, reference, type, `activityId` (nullable), `previousActivityId` (nullable), status, publish at, released at, English headline |
+
+`org.upserted` (extended) also adds `isPublic` (Q54).
 
 The aggregate for `activity.*` is the activity id, and for `release.status_changed` the release id. Ordering uses the per-aggregate `sequence` (parent §4.1).
 
