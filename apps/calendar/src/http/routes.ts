@@ -4,6 +4,7 @@ import type { CalendarRules } from "@gcpe/calendar-contract";
 import type { SubscriberConfig } from "@gcpe/events";
 import { activityRoutes } from "./activity-routes";
 import { configRoutes } from "./config-routes";
+import { deadLetterRoutes } from "./dead-letter-routes";
 import { lookupRoutes } from "./lookup-routes";
 import { transferRoutes } from "./transfer-routes";
 import { userRoutes } from "./user-routes";
@@ -26,5 +27,6 @@ export function apiRoutes(deps: ApiDeps): Router {
   r.use(lookupRoutes(deps.db));
   r.use(userRoutes(deps));
   r.use(transferRoutes(deps));
+  r.use(deadLetterRoutes(deps));
   return r;
 }
