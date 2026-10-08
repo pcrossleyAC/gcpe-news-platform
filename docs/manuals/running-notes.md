@@ -267,3 +267,32 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   shows "Waiting to save…", then "Saving…" — and nothing you typed is lost. "Someone else changed
   this — reload to see their changes" now only appears when another person really did change the
   release.
+
+## Phase 4i — emergency alerts feed, retention purge, legacy import
+
+- **Operations** — Emergency alerts come from the EMCR feed every 5 minutes and go to everyone on
+  the Emergency Info BC list, whatever their timing. Operations → "Emergency alerts feed" shows the
+  last check. A warning there (for example "http-503" or "not-a-feed") means nothing was read; it
+  retries by itself. Production's feed URL must be the `www` form: the real site redirects the bare
+  domain, and NoD refuses to follow a redirect.
+- **Operations** — The first time NoD reads a feed (or after its address changes), it records the
+  alerts already there without emailing anyone. Only alerts posted after that are sent.
+- **Operations** — An alert edited on the EMCR site updates our copy but is not sent again.
+- **Administrator** — Operations → "Retention purge" is off until the business sets retention rules
+  (Q25). It lists what it would delete if it ran now. Turning it on asks first; from then on it
+  deletes, every night at 3:00, for good. Turning it off stops further deletions. Subscribers
+  disabled by bounces are never deleted by it.
+- **Administrator** — Links in sent emails are cleared 10 days after they expire whether or not the
+  purge is on. They stopped working long before.
+- **Editor** — If you add a journalist to a media list and are asked to confirm because they opted
+  out, that holds even if their old record was purged: the opt-out is kept without the address. The
+  same applies to an address that simply unsubscribed and was later purged, even if it was never on
+  a media list at all — a kept opt-out with no address can't otherwise tell the two apart.
+- **Developer** — `npm run nod:import` (see docs/deploy/siteground.md) loads legacy NoD into NoD.
+  Run `nrms:import` first and let Core's lists reach NoD. Read the report before trusting the data:
+  every skipped row is grouped by reason. Re-running is safe; records changed in NoD since the last
+  import are left alone and listed. A single batch can take up to about 1,000 advisory locks
+  (`docs/deploy/siteground.md`); that's expected, not a sign of a stuck run.
+- **Operations** — The NoD migration `0029_purge_indexes` adds indexes to `job_recipients` and
+  `subscriber_links`. On a populated database, pre-build them with the CONCURRENTLY steps in
+  docs/deploy/siteground.md.
