@@ -19,6 +19,8 @@ const VICTORIA = "media-distribution-lists:000-0-victoria";
 const SAMPLE_TOWN = "media-distribution-lists:sample-town";
 const OPTED_OUT = "opted out of this media list in NoD (staff must confirm a re-add)";
 const ENDED = "unsubscribed in legacy since the last import (NoD's record ended)";
+const HOLDER_ENDED = "unsubscribed in legacy: NoD's record of the address ended";
+const NEWER_IN_NOD = "unsubscribed in legacy before a newer subscribe in NoD (not applied)";
 
 describe("importing legacy subscribers", () => {
   let tdb: TestDatabase;
@@ -464,15 +466,56 @@ describe("importing legacy subscribers", () => {
     expect(kept.map((k) => k.listKey)).toEqual([ALL_MEDIA_LISTS]);
   });
 
-  it("a legacy unsubscribe made since the last import of a record NoD purged is kept on NoD's new record of the address", async () => {
+  it("a legacy unsubscribe newer than NoD's own record of the address ends that record, as a NoD unsubscribe would", async () => {
     await run();
     await importedOn("2026-08-01T00:00:00Z");
     await purge(id(G.subActive));
-    const [nod] = await tdb.db.insert(subscribers).values({ email: "active@example.test", status: "active", source: "self" }).returning({ id: subscribers.id });
-    await run(unsubscribedInLegacy(G.subActive, "2026-09-01T10:00:00"));
+    const [nod] = await tdb.db.insert(subscribers).values({ email: "active@example.test", status: "active", source: "self", createdAt: new Date("2026-08-15T17:00:00Z") }).returning({ id: subscribers.id });
+    await tdb.db.insert(subscriptions).values({ subscriberId: nod!.id, listKey: VICTORIA });
+    const { report } = await run(unsubscribedInLegacy(G.subActive, "2026-09-01T10:00:00"));
+    expect((await tdb.db.select().from(subscribers).where(eq(subscribers.id, nod!.id)))[0]).toMatchObject({ status: "deleted" });
+    expect(await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, nod!.id))).toEqual([]);
     expect(await unsubscribedHistory(nod!.id)).toEqual([["2026-09-01T17:00:00.000Z", "Legacy import"]]);
+    expect(await historyOf(nod!.id)).toContainEqual(["media-list-opted-out", VICTORIA, "Legacy import"]);
+    expect(report.toJSON().skipped).toContainEqual(expect.objectContaining({ table: "Subscriber", reason: HOLDER_ENDED }));
     await run(unsubscribedInLegacy(G.subActive, "2026-09-01T10:00:00"));
     expect(await unsubscribedHistory(nod!.id)).toHaveLength(1);
+  });
+
+  it("a legacy unsubscribe older than NoD's own record of the address leaves that record alone, and says so", async () => {
+    await run();
+    await importedOn("2026-08-01T00:00:00Z");
+    await purge(id(G.subActive));
+    const [nod] = await tdb.db.insert(subscribers).values({ email: "active@example.test", status: "active", source: "self", createdAt: new Date("2026-09-15T17:00:00Z") }).returning({ id: subscribers.id });
+    await tdb.db.insert(subscriptions).values({ subscriberId: nod!.id, listKey: VICTORIA });
+    const { report } = await run(unsubscribedInLegacy(G.subActive, "2026-09-01T10:00:00"));
+    expect((await tdb.db.select().from(subscribers).where(eq(subscribers.id, nod!.id)))[0]).toMatchObject({ status: "active" });
+    expect((await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, nod!.id))).map((r) => r.listKey)).toEqual([VICTORIA]);
+    expect(await unsubscribedHistory(nod!.id)).toEqual([]);
+    expect(report.toJSON().skipped).toContainEqual(expect.objectContaining({ table: "Subscriber", reason: NEWER_IN_NOD }));
+  });
+
+  for (const action of ["subscribed", "resubscribed", "staff-activated"] as const) {
+    it(`a NoD-changed record whose own "${action}" is newer than the legacy unsubscribe stays, with its lists`, async () => {
+      await run();
+      await importedOn("2026-08-01T00:00:00Z");
+      await tdb.db.update(subscribers).set({ digest: true }).where(eq(subscribers.id, id(G.subMedia)));
+      await tdb.db.insert(subscriberHistory).values({ subscriberId: id(G.subMedia), actor: "subscriber", action, at: new Date("2026-09-02T17:00:00Z") });
+      const { report } = await run(unsubscribedInLegacy(G.subMedia, "2026-09-01T10:00:00"));
+      expect(await subscriber(G.subMedia)).toMatchObject({ status: "active" });
+      expect(await listsOf(G.subMedia)).toEqual([VICTORIA, SAMPLE_TOWN]);
+      expect(await unsubscribedHistory(id(G.subMedia))).toEqual([]);
+      expect(report.toJSON().skipped).toContainEqual({ table: "Subscriber", reason: NEWER_IN_NOD, count: 1, sample: [id(G.subMedia)] });
+    });
+  }
+
+  it("a NoD resubscribe at the same moment as the legacy unsubscribe doesn't stop it ending the record", async () => {
+    await run();
+    await importedOn("2026-08-01T00:00:00Z");
+    await tdb.db.update(subscribers).set({ digest: true }).where(eq(subscribers.id, id(G.subMedia)));
+    await tdb.db.insert(subscriberHistory).values({ subscriberId: id(G.subMedia), actor: "subscriber", action: "resubscribed", at: new Date("2026-09-01T17:00:00Z") });
+    await run(unsubscribedInLegacy(G.subMedia, "2026-09-01T10:00:00"));
+    expect(await subscriber(G.subMedia)).toMatchObject({ status: "deleted" });
   });
 
   it("legacy moving a record onto an address with a kept opt-out takes it off those media lists", async () => {

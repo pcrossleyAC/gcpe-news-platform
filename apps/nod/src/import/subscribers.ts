@@ -27,6 +27,8 @@ export const IMPORT_ACTOR = "Legacy import";
 const BATCH = 500;
 const OPTED_OUT = "opted out of this media list in NoD (staff must confirm a re-add)";
 const ENDED = "unsubscribed in legacy since the last import (NoD's record ended)";
+const HOLDER_ENDED = "unsubscribed in legacy: NoD's record of the address ended";
+const NEWER_IN_NOD = "unsubscribed in legacy before a newer subscribe in NoD (not applied)";
 
 export interface ImportedSubscriber {
   asItHappens: boolean;
@@ -72,12 +74,13 @@ type CurrentRow = {
   list_keys: string[] | null;
   fingerprint: string | null;
   imported_at: string | Date | null;
+  created_at: string | Date;
 };
 
 /** NoD's rows for these ids or addresses, with what the importer last wrote for each. */
 async function currentRows(db: DbOrTx, ids: string[], emails: string[]): Promise<CurrentRow[]> {
   const { rows } = await db.execute<CurrentRow>(sql`
-    SELECT s.id, s.email, s.status, s.as_it_happens, s.digest, s.source,
+    SELECT s.id, s.email, s.status, s.as_it_happens, s.digest, s.source, s.created_at,
            (SELECT array_agg(x.list_key ORDER BY x.list_key) FROM subscriptions x WHERE x.subscriber_id = s.id) AS list_keys,
            li.fingerprint, li.imported_at
       FROM subscribers s LEFT JOIN legacy_subscriber_imports li ON li.subscriber_id = s.id
@@ -190,14 +193,45 @@ async function keepLegacyUnsubscribe(tx: Tx, subscriberId: string, unsubscribedA
                         WHERE subscriber_id = ${subscriberId}::uuid AND action = 'unsubscribed' AND at = ${at}::timestamptz)`);
 }
 
-/** Legacy leaves and unsubscribe for an address NoD keeps its own record of (or, with none, as
- * kept opt-out hashes: an unsubscribe is out of every media list). The caller holds the address lock. */
-async function applyToAddress(tx: Tx, email: string, leaves: Leave[], unsubscribedAt: Date | null): Promise<void> {
-  const [holder] = await tx.select({ id: subscribers.id }).from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`).for("update");
-  if (holder) {
-    await applyLegacyLeaves(tx, holder.id, leaves);
+/**
+ * Whether NoD holds consent for this record newer than a legacy unsubscribe at `at`: the record
+ * was created in NoD after it, or its own `subscribed`, `resubscribed` or `staff-activated` came
+ * after it. The newer consent wins; a tie goes to the unsubscribe.
+ */
+async function consentedSince(tx: Tx, s: { id: string; createdAt: string | Date }, at: Date): Promise<boolean> {
+  if (new Date(s.createdAt) > at) return true;
+  const { rows } = await tx.execute<{ n: number }>(sql`
+    SELECT count(*)::int AS n FROM subscriber_history
+     WHERE subscriber_id = ${s.id}::uuid AND action IN ('subscribed', 'resubscribed', 'staff-activated') AND at > ${at.toISOString()}::timestamptz`);
+  return (rows[0]?.n ?? 0) > 0;
+}
+
+/**
+ * Legacy leaves and unsubscribe for an address NoD keeps its own record of (or, with none, as
+ * kept opt-out hashes: an unsubscribe is out of every media list). On a record, the unsubscribe
+ * ends it as a NoD unsubscribe would -- history alone would read as an opt-out from lists it is
+ * still on -- unless NoD holds newer consent for it, when it isn't applied at all. Returns what
+ * was done with the unsubscribe. The caller holds the address lock.
+ */
+async function applyToAddress(tx: Tx, email: string, leaves: Leave[], unsubscribedAt: Date | null): Promise<"ended" | "newer-in-nod" | null> {
+  const [holder] = await tx
+    .select({ id: subscribers.id, status: subscribers.status, createdAt: subscribers.createdAt })
+    .from(subscribers)
+    .where(sql`lower(${subscribers.email}) = ${email}`)
+    .for("update");
+  if (!holder) {
+    await keepOptOutHashes(tx, email, [...leaves, ...(unsubscribedAt ? [{ listKey: ALL_MEDIA_LISTS, at: unsubscribedAt }] : [])]);
+    return null;
+  }
+  await applyLegacyLeaves(tx, holder.id, leaves);
+  if (!unsubscribedAt) return null;
+  if (await consentedSince(tx, holder, unsubscribedAt)) return "newer-in-nod";
+  if (holder.status === "deleted") {
     await keepLegacyUnsubscribe(tx, holder.id, unsubscribedAt);
-  } else await keepOptOutHashes(tx, email, [...leaves, ...(unsubscribedAt ? [{ listKey: ALL_MEDIA_LISTS, at: unsubscribedAt }] : [])]);
+    return null;
+  }
+  await endForLegacyUnsubscribe(tx, holder, unsubscribedAt);
+  return "ended";
 }
 
 /** The candidate's legacy unsubscribe if NoD hasn't had it yet: made at or after the last import of
@@ -213,7 +247,7 @@ function unsubscribedSince(c: Candidate, importedAt: string | Date | null): Date
  * import time moves past it, so the next run doesn't end the record again after NoD brings it
  * back (a confirmed staff re-add, the person subscribing again). The caller holds the locks.
  */
-async function endForLegacyUnsubscribe(tx: Tx, mine: CurrentRow, at: Date): Promise<void> {
+async function endForLegacyUnsubscribe(tx: Tx, mine: Pick<CurrentRow, "id" | "status">, at: Date): Promise<void> {
   await endLockedSubscriber(tx, mine, IMPORT_ACTOR, at);
   await tx.delete(subscriptions).where(eq(subscriptions.subscriberId, mine.id));
   await keepLegacyUnsubscribe(tx, mine.id, at);
@@ -254,10 +288,17 @@ async function nodReAdds(tx: Tx, mine: CurrentRow, m: MappedSubscriber, leaves: 
 async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHeldElsewhere: boolean, locked: boolean): Promise<Outcome | "defer"> {
   const { m } = c;
   if (mine.fingerprint === null) return skipped("a NoD record already has this id");
-  const ending = unsubscribedSince(c, mine.imported_at);
+  const since = unsubscribedSince(c, mine.imported_at);
+  const newerInNod = since !== null && (await consentedSince(tx, { id: mine.id, createdAt: mine.created_at }, since));
+  const ending = newerInNod ? null : since;
+  // With the unsubscribe not applied, a leave legacy had already overtaken at the last import
+  // (the record was still on that list then) only resurfaces because legacy's unsubscribe
+  // dropped every list: it doesn't apply either.
+  const leaves = newerInNod ? c.leaves.filter((l) => mine.imported_at && l.at >= new Date(mine.imported_at)) : c.leaves;
   if (fingerprintOf(stateOf(mine)) !== mine.fingerprint) {
-    if ((c.leaves.length > 0 || ending) && !locked) return "defer";
-    await applyLegacyLeaves(tx, m.id, c.leaves);
+    if ((leaves.length > 0 || ending) && !locked) return "defer";
+    await applyLegacyLeaves(tx, m.id, leaves);
+    if (newerInNod) return skipped(NEWER_IN_NOD);
     if (!ending) return skipped("changed in NoD since the last import (NoD's record kept)");
     await endForLegacyUnsubscribe(tx, mine, ending);
     return skipped(ENDED);
@@ -272,6 +313,7 @@ async function settleExisting(tx: Tx, c: Candidate, mine: CurrentRow, addressHel
     return { kind: "unchanged", optedOut };
   }
   if (addressHeldElsewhere) {
+    if (newerInNod) return skipped(NEWER_IN_NOD);
     if (!ending) return skipped("address already in NoD (NoD's record kept)");
     if (!locked) return "defer";
     await endForLegacyUnsubscribe(tx, mine, ending);
@@ -351,11 +393,14 @@ async function writeBatch(db: Db, batch: Candidate[]): Promise<Map<string, Outco
     const email = c.m.state.email;
     const holderId = (await db.select({ id: subscribers.id }).from(subscribers).where(sql`lower(${subscribers.email}) = ${email}`))[0]?.id;
     // Locks the holder's row and address, plus the legacy address in case it has moved on since.
-    if (holderId) await withLockedSubscriber(db, holderId, email, (tx) => applyToAddress(tx, email, c.leaves, unsubscribedAt));
-    else await db.transaction(async (tx) => {
-      await lockAddress(tx, email);
-      await applyToAddress(tx, email, c.leaves, unsubscribedAt);
-    });
+    const applied = holderId
+      ? await withLockedSubscriber(db, holderId, email, (tx) => applyToAddress(tx, email, c.leaves, unsubscribedAt))
+      : await db.transaction(async (tx) => {
+          await lockAddress(tx, email);
+          return applyToAddress(tx, email, c.leaves, unsubscribedAt);
+        });
+    if (applied === "ended") out.set(c.m.id, skipped(HOLDER_ENDED));
+    else if (applied === "newer-in-nod") out.set(c.m.id, skipped(NEWER_IN_NOD));
   }
   return out;
 }
