@@ -189,6 +189,7 @@ export async function applyOrg(tx: Tx, org: OrgRecord): Promise<void> {
     name: org.displayName,
     sortOrder: org.sortOrder,
     isActive: org.isActive,
+    isPublic: org.isPublic,
     social: org.social,
     ministry: {
       parentKey: org.parentKey,

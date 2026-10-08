@@ -33,7 +33,11 @@ function activeChildKey(key: string, all: CategoryRow[]): string | null {
 }
 
 async function allMinistries(db: Db): Promise<CategoryRow[]> {
-  return db.select().from(categories).where(eq(categories.kind, "ministries")).orderBy(asc(categories.sortOrder), asc(categories.key));
+  return db
+    .select()
+    .from(categories)
+    .where(and(eq(categories.kind, "ministries"), eq(categories.isPublic, true)))
+    .orderBy(asc(categories.sortOrder), asc(categories.key));
 }
 
 export async function listMinistries(db: Db, tz: string) {
@@ -50,7 +54,10 @@ export async function getMinistry(db: Db, key: string, tz: string) {
 }
 
 export async function getMinister(db: Db, key: string, tz: string) {
-  const [row] = await db.select().from(categories).where(and(eq(categories.kind, "ministries"), lowerEq(categories.key, key)));
+  const [row] = await db
+    .select()
+    .from(categories)
+    .where(and(eq(categories.kind, "ministries"), lowerEq(categories.key, key), eq(categories.isPublic, true)));
   return row ? toMinisterDto(row, tz) : null;
 }
 

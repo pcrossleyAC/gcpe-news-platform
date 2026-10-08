@@ -26,7 +26,9 @@ async function deactivate(tx: DbOrTx, category: string, key: string) {
 
 const onOrg: EventHandler = async (tx, e) => {
   const o = e.data as OrgRecord;
-  await upsertList(tx, "ministries", o.key, o.displayName, o.sortOrder, o.isActive);
+  // A non-public organization (Q54) is kept as an inactive list: not offered on the subscribe
+  // page and not subscribable, the same as a deactivated one.
+  await upsertList(tx, "ministries", o.key, o.displayName, o.sortOrder, o.isActive && o.isPublic);
 };
 const onOrgGone: EventHandler = async (tx, e) => deactivate(tx, "ministries", (e.data as { key: string }).key);
 const onTerm: EventHandler = async (tx, e) => {

@@ -13,7 +13,7 @@ const post: PostRow = {
 };
 
 const ministry: CategoryRow = {
-  kind: "ministries", key: "health", name: "Health", sortOrder: 0, isActive: true,
+  kind: "ministries", key: "health", name: "Health", sortOrder: 0, isActive: true, isPublic: true,
   social: { twitterUsername: "", flickrUrl: "https://flickr", youtubeUrl: null, audioUrl: null },
   ministry: {
     parentKey: null, url: "http://gov.bc.ca/health", displayAdditionalName: null,
