@@ -17,8 +17,12 @@ const lockSchema = z.object({ tabId: z.string().min(1).max(100), takeOver: z.boo
 const releaseSchema = z.object({ tabId: z.string().min(1).max(100) }).strict();
 const emptySchema = z.object({}).strict();
 const versionSchema = z.object({ version: z.number().int().positive() }).strict();
+// idOf (below) bounds a URL :id to 9 digits; items[].id gets the same bound here, before any
+// batch runs — an id a batch's write can't fit in the activities table's int4 id column throws
+// mid-transaction instead of failing fast.
+const MAX_ACTIVITY_ID = 999_999_999;
 const reviewSelectedSchema = z
-  .object({ items: z.array(z.object({ id: z.number().int().positive(), version: z.number().int().positive() }).strict()).min(1).max(500) })
+  .object({ items: z.array(z.object({ id: z.number().int().positive().max(MAX_ACTIVITY_ID), version: z.number().int().positive() }).strict()).min(1).max(500) })
   .strict()
   .refine((b) => new Set(b.items.map((i) => i.id)).size === b.items.length, "each activity once");
 const clearLaSchema = z.object({ days: z.number().int().min(0).max(366) }).strict();
@@ -56,8 +60,16 @@ export function activityRoutes(deps: ApiDeps): Router {
     const out = await createActivity(deps, req.calendar!, createActivitySchema.parse(req.body));
     res.status(201).json(await writeResponse(deps, req, out.id, out.warnings));
   }));
-  r.post("/activities/review-selected", run(async (req, res) => void res.json(await reviewSelected(deps, req.calendar!, reviewSelectedSchema.parse(req.body).items))));
-  r.post("/activities/clear-la-status", run(async (req, res) => void res.json(await clearLaStatus(deps, req.calendar!, clearLaSchema.parse(req.body).days))));
+  // failed: true means a later batch rolled back after earlier ones committed (bulk.ts); 207
+  // (Multi-Status) carries what did commit instead of hiding it behind a bare 500.
+  r.post("/activities/review-selected", run(async (req, res) => {
+    const out = await reviewSelected(deps, req.calendar!, reviewSelectedSchema.parse(req.body).items);
+    res.status(out.failed ? 207 : 200).json(out);
+  }));
+  r.post("/activities/clear-la-status", run(async (req, res) => {
+    const out = await clearLaStatus(deps, req.calendar!, clearLaSchema.parse(req.body).days);
+    res.status(out.failed ? 207 : 200).json(out);
+  }));
   r.get("/activities/:id", run(async (req, res) => void res.json(await readActivity(deps, req.calendar!, idOf(req)))));
   r.put("/activities/:id", run(async (req, res) => {
     const id = idOf(req);

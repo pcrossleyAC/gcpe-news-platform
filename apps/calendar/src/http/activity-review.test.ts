@@ -97,6 +97,32 @@ describe("review, review selected and Clear LA Status (spec addendum §7.1)", ()
       expect((await reviewSelected("hqAdmin", Array.from({ length: 501 }, (_, n) => ({ id: n + 1, version: 1 })))).status).toBe(400);
       expect((await reviewSelected("hqAdmin", [{ id: a.id, version: 1 }, { id: a.id, version: 1 }])).status).toBe(400);
     });
+
+    it("rejects an id too large for the activities table before any batch runs", async () => {
+      const a = await changed();
+      const res = await reviewSelected("hqAdmin", [{ id: a.id, version: a.version }, { id: 99_999_999_999, version: 1 }]);
+      expect(res.status).toBe(400);
+      expect((await row(a.id)).status).toBe("changed");
+    });
+
+    it("reports what committed when a later batch fails, instead of a bare 500", async () => {
+      const ids: number[] = [];
+      for (let n = 0; n < 150; n++) ids.push(await insertRaw(tdb.db, { status: "changed", needsReview: ["title"] }));
+      let calls = 0;
+      // Each batch reads the clock once; failing the second call fails the second batch after the first has committed.
+      const flaky = createTestApp(tdb.db, {
+        now: () => {
+          calls++;
+          if (calls > 1) throw new Error("stub failure");
+          return FIXED_NOW;
+        },
+      });
+      const res = await call(flaky, "post", "/api/activities/review-selected", w.as.hqAdmin.cookie, { items: ids.map((id) => ({ id, version: 1 })) });
+      expect(res.status).toBe(207);
+      expect(res.body).toMatchObject({ reviewed: ids.slice(0, 100), failed: true });
+      const rows = await tdb.db.select({ status: activities.status }).from(activities).where(inArray(activities.id, ids));
+      expect(rows.filter((r) => r.status === "reviewed")).toHaveLength(100);
+    });
   });
 
   describe("Clear LA Status", () => {
@@ -123,6 +149,16 @@ describe("review, review selected and Clear LA Status (spec addendum §7.1)", ()
       expect((await clear("hqReadOnly", 3)).status).toBe(403);
       expect((await clear("hqEditor", 367)).status).toBe(400);
       expect((await clear("hqEditor", -1)).status).toBe(400);
+    });
+
+    it("works across batches: 150 rows in one request", async () => {
+      const ids: number[] = [];
+      for (let n = 0; n < 150; n++) ids.push(await insertRaw(tdb.db, { hqStatus: "new", startAt: new Date("2026-10-01T17:00:00Z") }));
+      const res = await clear("hqEditor", 3);
+      expect(res.status).toBe(200);
+      expect(res.body.cleared).toBeGreaterThanOrEqual(150);
+      const rows = await tdb.db.select({ hqStatus: activities.hqStatus }).from(activities).where(inArray(activities.id, ids));
+      expect(rows.every((r) => r.hqStatus === null)).toBe(true);
     });
   });
 });
