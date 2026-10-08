@@ -33,7 +33,7 @@ async function renderShell(roles: string[], tzCheck?: { at: string; offsetMinute
   await waitFor(() => expect(screen.getByText("Signed in as Pat")).toBeInTheDocument());
 }
 
-const allLabels = ["Releases", "Search", "Website", "Subscribers", "Users", "Calendar access", "Organizations", "Media list names", "Error log"];
+const allLabels = ["Releases", "Search", "Website", "Subscribers", "Calendar", "Users", "Calendar access", "Organizations", "Media list names", "Error log"];
 const visibleLabels = () => allLabels.filter((label) => screen.queryByRole("link", { name: label }) !== null);
 
 describe("AppShell nav — roles decide what's shown", () => {
@@ -68,15 +68,20 @@ describe("AppShell nav — roles decide what's shown", () => {
     expect(visibleLabels()).toEqual(["Releases", "Search", "Website", "Subscribers"]);
   });
 
-  it("Calendar Administrators and System Administrators see Calendar access only; other Calendar roles see nothing yet", async () => {
+  it("Calendar Administrators and System Administrators also see Calendar access; other Calendar roles don't", async () => {
     await renderShell(["Calendar.Administrator"]);
-    expect(visibleLabels()).toEqual(["Calendar access"]);
+    expect(visibleLabels()).toEqual(["Calendar", "Calendar access"]);
     cleanup();
     await renderShell(["Calendar.SysAdmin"]);
-    expect(visibleLabels()).toEqual(["Calendar access"]);
+    expect(visibleLabels()).toEqual(["Calendar", "Calendar access"]);
     cleanup();
     await renderShell(["Calendar.Advanced"]);
-    expect(visibleLabels()).toEqual([]);
+    expect(visibleLabels()).toEqual(["Calendar"]);
+  });
+
+  it("shows Calendar to any Calendar role, and only to them", async () => {
+    await renderShell(["Calendar.ReadOnly"]);
+    expect(visibleLabels()).toEqual(["Calendar"]);
   });
 });
 
