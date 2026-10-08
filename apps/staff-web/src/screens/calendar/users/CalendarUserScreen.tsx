@@ -8,7 +8,7 @@ import { messagesOf } from "../../admin/messages";
 import { AccessEditor, actorFor, lockedMessage } from "../../admin/calendar-access/AccessEditor";
 import type { CalendarAccessUser, OrgOption } from "../../admin/calendar-access/CalendarAccessScreen";
 import { canonicalId, checkCalendarGrant } from "../../admin/calendar-access/calendar-roles";
-import { RANK_OPTIONS, type CalendarUserDetail, type Profile } from "./types";
+import { RANK_OPTIONS, type CalendarUserDetail, type OpenActivities, type Profile } from "./types";
 
 const LAG = "The Calendar picks this up within a minute.";
 
@@ -79,6 +79,7 @@ export function CalendarUserScreen(): React.JSX.Element {
   const [messages, setMessages] = useState<string[]>([]);
   const [editingAccess, setEditingAccess] = useState(false);
   const [linkEmail, setLinkEmail] = useState("");
+  const [preview, setPreview] = useState<OpenActivities | null>(null);
   const latest = useRef(0);
   useDocumentTitle(detail?.user.displayName ?? (notFound ? "Calendar user" : null));
 
@@ -147,6 +148,13 @@ export function CalendarUserScreen(): React.JSX.Element {
     try {
       await apiFetch(`/calendar/api/users/${u.id}/comm-contacts/${encodeURIComponent(ministryKey)}`, { method: "PUT", body: { rank: value === "" ? null : Number(value) } });
       done("Saved the comm-contact rank.");
+    } catch (caught) {
+      fail(caught);
+    }
+  };
+  const showPreview = async () => {
+    try {
+      setPreview(await apiFetch<OpenActivities>(`/calendar/api/users/${u.id}/open-activities`));
     } catch (caught) {
       fail(caught);
     }
@@ -230,7 +238,44 @@ export function CalendarUserScreen(): React.JSX.Element {
 
       <h2>Account</h2>
       {isActive ? (
-        isSelf ? null : <Button variant="secondary" onPress={() => void setActive(false)}>{`Deactivate ${u.displayName}`}</Button>
+        isSelf ? null : (
+          <>
+            <Button variant="secondary" onPress={() => void showPreview()}>{`Deactivate ${u.displayName}`}</Button>
+            {preview && (
+              <section aria-label={`Before deactivating ${u.displayName}`}>
+                <h3>Open activities</h3>
+                {preview.activities.length === 0 ? (
+                  <p>No open activities.</p>
+                ) : (
+                  <>
+                    <p>{u.displayName} is the comm contact for these activities. Deactivating doesn&rsquo;t move them.</p>
+                    <ul>
+                      {preview.activities.map((a) => (
+                        <li key={a.id}>{`${a.reference} — ${a.title} — ${a.startDate ?? "no date"}`}</li>
+                      ))}
+                    </ul>
+                    {preview.truncated && <p>Only the first 500 are listed.</p>}
+                    <p>
+                      <Link to="/calendar/transfer">Transfer their activities first</Link>
+                    </p>
+                  </>
+                )}
+                <Button
+                  variant="secondary"
+                  onPress={() => {
+                    setPreview(null);
+                    void setActive(false);
+                  }}
+                >
+                  {preview.activities.length === 0 ? "Deactivate" : "Deactivate anyway"}
+                </Button>
+                <Button variant="tertiary" onPress={() => setPreview(null)}>
+                  Cancel
+                </Button>
+              </section>
+            )}
+          </>
+        )
       ) : email ? (
         <Button variant="secondary" onPress={() => void setActive(true)}>{`Reactivate ${u.displayName}`}</Button>
       ) : (

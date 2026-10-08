@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useOutletContext } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
-import { CALENDAR_ADMIN_LEVEL, type CalendarMe } from "./access";
+import { CALENDAR_ADMIN_LEVEL, CALENDAR_SYSADMIN_LEVEL, type CalendarMe } from "./access";
 import { useCalendarMe } from "./useCalendarMe";
 
 /** `/hub/calendar/*`: the Calendar's sub-nav and its screens. Each screen owns its h1 and title,
@@ -40,6 +40,11 @@ export function CalendarSection(): React.JSX.Element {
           {me.level >= CALENDAR_ADMIN_LEVEL && (
             <li>
               <NavLink to="/calendar/transfer">Transfer</NavLink>
+            </li>
+          )}
+          {me.level >= CALENDAR_SYSADMIN_LEVEL && (
+            <li>
+              <NavLink to="/calendar/dead-letters">Undelivered events</NavLink>
             </li>
           )}
         </ul>

@@ -23,6 +23,7 @@ import { LookupScreen } from "./screens/calendar/lookups/LookupScreen";
 import { CalendarUsersScreen } from "./screens/calendar/users/CalendarUsersScreen";
 import { CalendarUserScreen } from "./screens/calendar/users/CalendarUserScreen";
 import { TransferScreen } from "./screens/calendar/transfer/TransferScreen";
+import { DeadLettersScreen } from "./screens/calendar/dead-letters/DeadLettersScreen";
 import { UsersScreen } from "./screens/admin/users/UsersScreen";
 import { CalendarAccessScreen } from "./screens/admin/calendar-access/CalendarAccessScreen";
 import { OrganizationsScreen } from "./screens/admin/organizations/OrganizationsScreen";
@@ -124,6 +125,7 @@ export const routes: RouteObject[] = [
           { path: "users", element: <CalendarUsersScreen /> },
           { path: "users/:id", element: <CalendarUserScreen /> },
           { path: "transfer", element: <TransferScreen /> },
+          { path: "dead-letters", element: <DeadLettersScreen /> },
         ],
       },
       { path: "users", element: <UsersScreen /> },
