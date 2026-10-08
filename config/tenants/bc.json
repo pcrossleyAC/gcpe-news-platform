@@ -6,5 +6,26 @@
   "organizationLabel": { "singular": "Ministry", "plural": "Ministries" },
   "publicSiteBaseUrl": "https://news.gov.bc.ca",
   "branding": { "primaryColor": "#003366", "logoUrl": null },
-  "timeZoneCheck": { "at": "2027-01-15T19:00:00Z", "expectedOffset": "-07:00" }
+  "timeZoneCheck": { "at": "2027-01-15T19:00:00Z", "expectedOffset": "-07:00" },
+  "calendar": {
+    "freeze": { "start": "16:00", "end": "17:00" },
+    "releaseCategoryIds": [12, 58],
+    "awarenessCategoryIds": [2],
+    "otherCityId": 311,
+    "unconfirmedIssueCommMaterialId": 61,
+    "hqPlaceholderCategoryName": "HQ Placeholder",
+    "confidentialCategoryName": "CONFIDENTIAL or EMBARGOED",
+    "issueExemptCategoryNames": ["Approved Event or Activity", "Approved Release", "Proposed Event or Activity", "Proposed Release", "Speech / Remarks"],
+    "eventsCategoryNames": ["Approved Release", "Proposed Release", "Approved Event or Activity", "Proposed Event or Activity", "Speech", "Speech / Remarks", "HQ Placeholder"],
+    "consultationsMinistryAbbreviation": "CITENG",
+    "contactMinistryExcludedAbbreviations": ["UNK", "BCWS"],
+    "sharedWithExcludedAbbreviations": [],
+    "translationsDefault": ["TBD", "None", "Arabic", "Chinese (Simplified)", "Chinese (Traditional)", "Dutch", "Farsi", "Finnish", "French", "Gujarati", "Hebrew", "Hindi", "Indonesian", "Japanese", "Korean", "Portuguese", "Punjabi", "Russian", "Somali", "Spanish", "Swahili", "Tagalog", "Ukrainian", "Urdu", "Vietnamese"],
+    "required": { "significance": true, "scheduling": true, "strategy": false },
+    "showHqCommentsField": false,
+    "showRecordsSection": false,
+    "cloneKeptKeywordNames": ["30-60-90"],
+    "lookAheadCoverImage": null,
+    "reportBanner": { "province": "Province of BC", "confidentiality": "DRAFT AND CONFIDENTIAL" }
+  }
 }
