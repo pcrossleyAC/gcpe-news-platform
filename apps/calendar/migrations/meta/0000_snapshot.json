@@ -1,5 +1,5 @@
 {
-  "id": "a116cfb9-2ac3-4510-b79f-9f4604fea7ab",
+  "id": "70743552-9560-4881-95f3-0d6fde8f6382",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -2421,13 +2421,13 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "user_profiles_phone_check": {
-          "name": "user_profiles_phone_check",
-          "value": "\"user_profiles\".\"phone\" IS NULL OR \"user_profiles\".\"phone\" ~ '^[0-9-]{12}$'"
+        "user_profiles_phone_length": {
+          "name": "user_profiles_phone_length",
+          "value": "char_length(\"user_profiles\".\"phone\") <= 20"
         },
         "user_profiles_mobile_check": {
           "name": "user_profiles_mobile_check",
-          "value": "\"user_profiles\".\"mobile\" IS NULL OR \"user_profiles\".\"mobile\" ~ '^[0-9-]{12}$'"
+          "value": "\"user_profiles\".\"mobile\" IS NULL OR \"user_profiles\".\"mobile\" = '' OR \"user_profiles\".\"mobile\" ~ '^[0-9-]{12}$'"
         },
         "user_profiles_list_display_check": {
           "name": "user_profiles_list_display_check",

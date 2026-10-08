@@ -295,8 +295,8 @@ CREATE TABLE "user_profiles" (
 	"list_display" text,
 	"hidden_columns" text[] DEFAULT '{}'::text[] NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "user_profiles_phone_check" CHECK ("user_profiles"."phone" IS NULL OR "user_profiles"."phone" ~ '^[0-9-]{12}$'),
-	CONSTRAINT "user_profiles_mobile_check" CHECK ("user_profiles"."mobile" IS NULL OR "user_profiles"."mobile" ~ '^[0-9-]{12}$'),
+	CONSTRAINT "user_profiles_phone_length" CHECK (char_length("user_profiles"."phone") <= 20),
+	CONSTRAINT "user_profiles_mobile_check" CHECK ("user_profiles"."mobile" IS NULL OR "user_profiles"."mobile" = '' OR "user_profiles"."mobile" ~ '^[0-9-]{12}$'),
 	CONSTRAINT "user_profiles_list_display_check" CHECK ("user_profiles"."list_display" IS NULL OR "user_profiles"."list_display" IN ('all','my_ministries','my_activities','my_watchlist')),
 	CONSTRAINT "user_profiles_job_title_length" CHECK (char_length("user_profiles"."job_title") <= 100),
 	CONSTRAINT "user_profiles_description_length" CHECK (char_length("user_profiles"."description") <= 2000)

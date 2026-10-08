@@ -201,7 +201,7 @@ Each sub-plan is planned, built, reviewed and deployed to boxs.ca in turn. Each 
 
   Legacy junk header rows such as "LIST BELOW NOW OPTIONAL:" are imported as they are.
 - **`comm_contacts`:** id, user, ministry, rank (1 Comm Director … 6 Other, `Admin/User.aspx.cs:16-25`), sort order, active. There is one per user × ministry, as legacy `CommunicationContact`.
-- **`user_profiles`:** user id; phone, mobile (legacy CHECK: 12 characters of `[0-9-]`), job title, description; the list "Display" choice (legacy `FilterDisplayValue`) and hidden columns (legacy `HiddenColumns`).
+- **`user_profiles`:** user id; phone (free text, legacy `NVARCHAR(20)`; no format check), mobile (legacy CHECK: empty, or 12 characters of `[0-9-]`), job title, description; the list "Display" choice (legacy `FilterDisplayValue`) and hidden columns (legacy `HiddenColumns`).
 - **`saved_filters`:** id, owner, name (≤200), filter (JSON in the §8.1 filter model), sort order, active.
 - **History:**
   - `activity_changes`: id, activity, at, actor (Core user id, nullable for legacy rows without one), actor name at the time, action (`created` | `updated` | `cloned` | `reviewed` | `deleted` | `transferred` | `la_status_cleared`), source (`calendar` | `legacy_log`), the contact ministry at the time;

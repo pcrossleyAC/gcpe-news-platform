@@ -121,9 +121,10 @@ export const userProfiles = pgTable(
     updatedAt: tz("updated_at").notNull().defaultNow(),
   },
   (t) => [
-    // Legacy's CHECK: 12 characters of digits and hyphens.
-    check("user_profiles_phone_check", sql`${t.phone} IS NULL OR ${t.phone} ~ '^[0-9-]{12}$'`),
-    check("user_profiles_mobile_check", sql`${t.mobile} IS NULL OR ${t.mobile} ~ '^[0-9-]{12}$'`),
+    // PhoneNumber was a free NVARCHAR(20) in legacy, with no format check.
+    maxLength("user_profiles", t.phone, 20),
+    // Legacy's CHECK on MobileNumber: empty, or 12 characters of digits and hyphens.
+    check("user_profiles_mobile_check", sql`${t.mobile} IS NULL OR ${t.mobile} = '' OR ${t.mobile} ~ '^[0-9-]{12}$'`),
     check("user_profiles_list_display_check", sql`${t.listDisplay} IS NULL OR ${t.listDisplay} IN (${sqlList(LIST_DISPLAYS)})`),
     maxLength("user_profiles", t.jobTitle, 100),
     maxLength("user_profiles", t.description, 2000),
@@ -239,6 +240,7 @@ export const activityFiles = pgTable(
   "activity_files",
   {
     id: legacyId(),
+    // Deliberately no cascade: deleting the activity would otherwise orphan the storage blob.
     activityId: integer("activity_id").notNull().references(() => activities.id),
     fileName: text("file_name").notNull(),
     contentType: text("content_type").notNull(),
