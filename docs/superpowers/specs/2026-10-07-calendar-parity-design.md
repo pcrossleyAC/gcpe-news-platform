@@ -904,6 +904,7 @@ Exit for Phase 5: the list above green; the parity rows and questions updated; t
 - **§8.3 updates feed:** "since last visit" is not built; legacy never had it (§9.1).
 - **§8.3 iCal:** "per-user tokenized iCal feed" is deferred, and so is NRMS's Forecast iCal (R5, C131, Appendix A).
 - **§8.3 Look Ahead:** "4 sub-sections" → legacy's 7 sections plus the Exec version (§10).
+- **§8.3 Look Ahead inference:** "inferred in the browser" → computed and stored by the server on every save, by legacy's own rules (a confidential activity keeps its section, an HQ override stays through a ministry save, Awareness and the consultations ministry keep theirs), so a direct API call can't bypass it (C168).
 - **§8.4 import:** "imports all `calendar.*` tables" → imports activities on or after the cutoff plus the awareness-date history, keeping legacy ids, with their history; users only when active or referenced (R13, C157). Releases linked to activities that weren't imported lose the link (C158).
 - **§8.4 user matching:** "matched to Entra accounts by email/IDIR" → by email. Users without email are imported inactive (R12).
 - **§11 Phase 7 (cutover):** add a decommissioning requirement. One HQ administrator keeps read-only access to the legacy Corporate Calendar for one year after cutover (R14, §12.4).

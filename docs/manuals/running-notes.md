@@ -422,3 +422,26 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   reported.
 - **Developer** — The report-rendering spike's code is on `spike/5b-report-rendering`, never merged; its
   findings are in `docs/superpowers/plans/2026-10-08-phase-5b-report-rendering-spike.md`.
+
+## Phase 5c-1 — Activity rules and the activity API
+
+- **Editor** — Between 4pm and 5pm BC time nobody outside HQ can create, change, clone or delete
+  activities, or start editing one. A save begun at 3:58 and sent at 4:01 is refused with the same
+  message; try again at 5pm. HQ users at Editor and above aren't affected.
+- **Editor** — If someone else is editing an activity, it shows "<name> is editing this activity (since
+  hh:mm)" and can't be saved until they finish or have been idle for 15 minutes.
+- **Editor** — "Someone else changed this activity — reload to see their changes" means another save,
+  a review or a Clear LA Status happened since you opened it. Reload, then make your change again.
+- **Editor** — Every change is recorded with who made it and the old and new values. A clone's history
+  starts with the activity it was cloned from.
+- **HQ** — Review clears every needs-review flag and marks the activity Reviewed. On a deleted
+  activity it clears only the "deleted" flag. Review selected skips rows changed since the list
+  loaded and says which.
+- **HQ** — Clear LA Status clears the LA status of every activity you can see that starts on or
+  before the chosen number of days from today, past ones included.
+- **Administrator** — Deleting an activity hides it from everyone except HQ Administrators, who
+  review the deletion.
+- **Operations** — The Calendar's settings (freeze window, release categories, Other city, the
+  Translations list, required fields) are in the tenant file's `calendar` section.
+- **Operations** — The Calendar sends `activity.*` events to NRMS from now on; NRMS ignores them until
+  phase 5h. They never go to the public News API.
