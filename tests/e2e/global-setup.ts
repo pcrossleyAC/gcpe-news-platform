@@ -17,8 +17,9 @@ import type { ParsedMail } from "mailparser";
 import { hashPassword } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 
-import { createCoreTestDb } from "../../apps/core/test/helpers";
+import { createCoreTestDb, healthOrg } from "../../apps/core/test/helpers";
 import { seedTestUsers } from "../../apps/core/src/services/seed-test-users";
+import { upsertOrganization } from "../../apps/core/src/services/organizations";
 import { createNrmsTestDb, seedTaxonomy } from "../../apps/nrms/test/helpers";
 import { pageTypes } from "../../apps/nrms/src/db/schema";
 import { LANG_EN } from "@gcpe/nrms-contract";
@@ -80,6 +81,11 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   console.log("[e2e global-setup] seeding NRMS taxonomy and staff test users…");
   await seedTaxonomy(nrms.db);
+  // The Calendar test users name these organizations; Core's republish (the stack's backfill on
+  // an empty Calendar) carries them and the users' grants to the Calendar on the first tick.
+  await upsertOrganization(core.db, healthOrg, []);
+  await upsertOrganization(core.db, { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "FIN", sectorKeys: [] }, []);
+  await upsertOrganization(core.db, { ...healthOrg, key: "gcpe-headquarters", displayName: "GCPE Headquarters", abbreviation: "GCPEHQ", sectorKeys: [], isHq: true, isPublic: false }, []);
   await seedTestUsers(core.db, TEST_USER_PASSWORDS);
 
   // NewReleaseScreen's "Page title" is a <select> populated from GET /page-types — there's no

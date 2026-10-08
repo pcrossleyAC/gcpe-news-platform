@@ -41,4 +41,9 @@ describe("scripts/siteground-seed-users.sh", () => {
     for (const call of writeCalls) expect(call).toMatch(/-w '%\{http_code\}'/);
     expect(updatePath).toMatch(/\[ "\$all_ok" = "1" \] && echo "updated {2}\$email"/);
   });
+  it("seeds the Calendar test users and gives them Calendar access", () => {
+    const script = readFileSync("scripts/siteground-seed-users.sh", "utf8");
+    for (const e of ["cal-admin", "cal-sysadmin", "cal-hq-admin", "cal-editor", "cal-readonly"]) expect(script).toContain(`${e}@example.test`);
+    expect(script).toContain("/core/api/calendar-access/");
+  });
 });

@@ -12,7 +12,8 @@ for (const u of TEST_USERS) passwords[u.email] = await readHidden(`Password for 
 const { db, pool } = createDb(env.DATABASE_URL);
 try {
   await runMigrations(db, fileURLToPath(new URL("../../migrations", import.meta.url)));
-  for (const r of await seedTestUsers(db, passwords)) console.log(`${r.action.padEnd(8)} ${r.email}`);
+  for (const r of await seedTestUsers(db, passwords))
+    console.log(`${r.action.padEnd(8)} ${r.email}${r.calendar ? ` (calendar ${r.calendar}${r.missingOrganizations ? `: missing ${r.missingOrganizations.join(", ")}` : ""})` : ""}`);
 } finally {
   await pool.end();
 }
