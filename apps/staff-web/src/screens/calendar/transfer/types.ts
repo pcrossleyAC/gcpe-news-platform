@@ -7,7 +7,7 @@ export interface TransferContact {
   ministryAbbreviation: string | null;
   ministryName: string;
   isActive: boolean;
-  /** False when the person's account is inactive in the Calendar. */
+  /** False when the person's account is inactive in, or missing from, the Calendar. */
   userIsActive: boolean;
   /** Whether it may be the contact transferred to (apps/calendar/src/transfer.ts's receiveRefusal):
    * false when it or its person is inactive, its ministry is inactive, or its ministry is excluded. Any listed

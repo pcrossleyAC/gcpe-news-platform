@@ -23,7 +23,7 @@ export interface TransferContact {
   ministryAbbreviation: string | null;
   ministryName: string;
   isActive: boolean;
-  /** False when the person's account is inactive in the Calendar's users projection; a person missing from it isn't known to be inactive. */
+  /** True only when the person's account is active in the Calendar's users projection: a person missing from it counts as inactive. */
   userIsActive: boolean;
   /**
    * Whether it may be the contact transferred to: it and its person are active and its ministry
@@ -47,7 +47,7 @@ export class TransferContactNotFoundError extends Error {
 /** Why a contact can't be transferred to, in a save's words (activities/resolve.ts), or null if it can. */
 function receiveRefusal(c: { isActive: boolean; userIsActive: boolean | null; ministryIsActive: boolean | null; abbreviation: string | null }, rules: CalendarRules): string | null {
   if (!c.isActive) return "Choose an active comm contact to transfer to";
-  if (c.userIsActive === false) return INACTIVE_PERSON;
+  if (c.userIsActive !== true) return INACTIVE_PERSON;
   if (c.ministryIsActive === null) return "That ministry doesn't exist";
   if (!c.ministryIsActive) return "That ministry is no longer active";
   if (c.abbreviation && rules.contactMinistryExcludedAbbreviations.includes(c.abbreviation)) return "That ministry can't lead an activity";
@@ -68,7 +68,7 @@ async function allContacts(db: Db, rules: CalendarRules): Promise<(TransferConta
     const refusal = receiveRefusal(r, rules);
     return {
       id: r.id, userId: r.userId, displayName: r.displayName ?? "Unknown", ministryKey: r.ministryKey, ministryAbbreviation: r.abbreviation, ministryName: r.ministryName ?? r.ministryKey,
-      isActive: r.isActive, userIsActive: r.userIsActive !== false, canReceive: refusal === null, label: commContactLabel(r.displayName, r.abbreviation), refusal,
+      isActive: r.isActive, userIsActive: r.userIsActive === true, canReceive: refusal === null, label: commContactLabel(r.displayName, r.abbreviation), refusal,
     };
   });
 }

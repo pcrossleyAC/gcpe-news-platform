@@ -164,6 +164,19 @@ describe("Transfer (spec addendum §7.1, C150)", () => {
     expect((await tdb.db.select().from(activities).where(eq(activities.id, b)))[0]!.commContactId).toBe(target);
   });
 
+  it("refuses a contact whose person is missing from the Calendar's users, and keeps it usable as From", async () => {
+    const missing = (await tdb.db.insert(commContacts).values({ userId: "00000000-0000-4000-8000-000000000998", ministryKey: "health", rank: 6 }).returning({ id: commContacts.id }))[0]!.id;
+    const a = await insertRaw(tdb.db, { commContactId: w.contact.editorHealth });
+    expect((await preview("admin", w.contact.editorHealth, missing)).status).toBe(422);
+    expect((await transfer("admin", w.contact.editorHealth, missing)).body).toEqual({ error: "That person's account is inactive" });
+    expect((await tdb.db.select().from(activities).where(eq(activities.id, a)))[0]!.commContactId).toBe(w.contact.editorHealth);
+    const list = (await call(app, "get", "/api/transfer/comm-contacts", w.as.admin.cookie)).body as { id: number; userIsActive: boolean; canReceive: boolean }[];
+    expect(list.find((c) => c.id === missing)).toMatchObject({ userIsActive: false, canReceive: false });
+    const b = await insertRaw(tdb.db, { commContactId: missing });
+    expect((await transfer("admin", missing, target)).body).toEqual({ transferred: 1 });
+    expect((await tdb.db.select().from(activities).where(eq(activities.id, b)))[0]!.commContactId).toBe(target);
+  });
+
   it("labels a contact whose user is missing as the history does", async () => {
     const ghost = (await tdb.db.insert(commContacts).values({ userId: "00000000-0000-4000-8000-000000000999", ministryKey: "health", rank: 6 }).returning({ id: commContacts.id }))[0]!.id;
     const list = (await call(app, "get", "/api/transfer/comm-contacts", w.as.admin.cookie)).body as { id: number; label: string }[];

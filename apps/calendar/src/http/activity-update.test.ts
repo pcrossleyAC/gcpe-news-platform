@@ -150,6 +150,23 @@ describe("updating an activity (spec addendum §7.1, §7.5)", () => {
     expect(created.body.errors).toContainEqual({ field: "commContactId", message: "That person's account is inactive" });
   });
 
+  it("a comm contact whose person is missing from the Calendar's users: kept when unchanged, refused when newly chosen", async () => {
+    const kept = (await tdb.db.insert(commContacts).values({ userId: "00000000-0000-4000-8000-000000000631", ministryKey: "health", rank: 4 }).returning({ id: commContacts.id }))[0]!.id;
+    const missing = (await tdb.db.insert(commContacts).values({ userId: "00000000-0000-4000-8000-000000000632", ministryKey: "health", rank: 4 }).returning({ id: commContacts.id }))[0]!.id;
+    // An activity that already holds the contact, as an imported one can; it has no category yet.
+    const id = await insertRaw(tdb.db, { commContactId: kept, contactMinistryKey: "health" });
+    const a = (await call(app, "get", `/api/activities/${id}`, w.as.editor.cookie)).body;
+    const unchanged = await save("editor", a, { details: "Still fine", categoryId: w.cat.plain });
+    expect(unchanged.status).toBe(200);
+    expect((await row(id)).commContactId).toBe(kept);
+    const refused = await save("editor", unchanged.body.activity, { commContactId: missing });
+    expect(refused.status).toBe(422);
+    expect(refused.body.errors).toContainEqual({ field: "commContactId", message: "That person's account is inactive" });
+    const created = await call(app, "post", "/api/activities", w.as.editor.cookie, validInput(w, { commContactId: missing }));
+    expect(created.status).toBe(422);
+    expect(created.body.errors).toContainEqual({ field: "commContactId", message: "That person's account is inactive" });
+  });
+
   it("an HQ Administrator's edit to another ministry's activity leaves 'last updated' alone but moves the version (C129)", async () => {
     const a = await make();
     const before = await row(a.id);
