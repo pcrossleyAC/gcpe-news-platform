@@ -11,6 +11,7 @@ import { LookupsScreen } from "./lookups/LookupsScreen";
 import { LookupScreen } from "./lookups/LookupScreen";
 import { CalendarUsersScreen } from "./users/CalendarUsersScreen";
 import { CalendarUserScreen } from "./users/CalendarUserScreen";
+import { TransferScreen } from "./transfer/TransferScreen";
 
 async function seriousViolations(container: Element) {
   const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
@@ -37,6 +38,7 @@ function stub() {
       if (url === "/calendar/api/lookups") return jsonResponse(200, [{ ...LOOKUP, rows: undefined }]);
       if (url === "/calendar/api/lookups/event-planners") return jsonResponse(200, LOOKUP);
       if (url === "/calendar/api/users/u1") return jsonResponse(200, USER_DETAIL);
+      if (url === "/calendar/api/transfer/comm-contacts") return jsonResponse(200, [{ id: 1, userId: "u1", displayName: "Robin Staff", ministryKey: "health", ministryAbbreviation: "HLTH", ministryName: "Health", isActive: true, canReceive: true, label: "Robin Staff (HLTH)" }]);
       if (url.startsWith("/calendar/api/users")) return jsonResponse(200, USER_ROWS);
       if (url === "/core/api/calendar-access") return jsonResponse(200, CORE_USERS);
       if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
@@ -56,6 +58,7 @@ const at = (path: string) => (
             <Route path="lookups/:name" element={<LookupScreen />} />
             <Route path="users" element={<CalendarUsersScreen />} />
             <Route path="users/:id" element={<CalendarUserScreen />} />
+            <Route path="transfer" element={<TransferScreen />} />
           </Route>
         </Routes>
       </RequireAuth>
@@ -116,6 +119,13 @@ describe("accessibility: Calendar section", () => {
     stub();
     const { container } = render(at("/calendar/users/u1"));
     await screen.findByRole("form", { name: "Contact details" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("Transfer", async () => {
+    stub();
+    const { container } = render(at("/calendar/transfer"));
+    await screen.findByRole("heading", { level: 1, name: "Transfer activities" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 });
