@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Core holds who may use the Corporate Calendar: one ministry-scoped Calendar role per user (ReadOnly < Editor < Advanced < Administrator < SysAdmin), the user's ministries, and HQ organizations (GCPEHQ and GCPEMEDIA). A Calendar Administrator grants roles up to Administrator, never SysAdmin, through server-gated Core routes and a staff-web screen. Users without an email exist, but only as inactive users who can't sign in. Every change reaches subscribers as `user.upserted`, and `org.upserted` carries `isHq`.
+**Goal:** Core holds who may use the Corporate Calendar: one ministry-scoped Calendar role per user (ReadOnly < Editor < Advanced < Administrator < SysAdmin), the user's ministries, and HQ organizations (GCPEHQ, GCPEMEDIA and PREM). A Calendar Administrator grants roles up to Administrator, never SysAdmin, through server-gated Core routes and a staff-web screen. Users without an email exist, but only as inactive users who can't sign in. Every change reaches subscribers as `user.upserted`, and `org.upserted` carries `isHq`.
 
 **Architecture:**
 - **Roles (`packages/auth`):**
@@ -31,24 +31,24 @@
 
 **Tech Stack:** Node 24, TypeScript 5.9 strict, Express 5, Drizzle 0.45 / drizzle-kit 0.31, zod 3.25, Vitest 4.1, supertest, React 19 + react-router 7 (library mode), `@bcgov/design-system-react-components`, axe-core, Playwright.
 
-**Spec:** `docs/superpowers/specs/2026-10-07-calendar-parity-design.md` (at `df5062b`):
+**Spec:** `docs/superpowers/specs/2026-10-07-calendar-parity-design.md` (at `a239057`, which adds PREM to Q49):
 - §3, row 5a, and its exit check;
 - §2 "Roles" row;
 - §4 (all of it);
 - §5.4 (`user.upserted`, `org.upserted` with `isHq`);
 - §8.5 (the parts Core's API serves);
 - §14, rows C124 and C125;
-- §15, Q48 and Q49 (both answered at `df5062b`);
+- §15, Q48 and Q49 (both answered; Q49 at `a239057`: GCPEHQ, GCPEMEDIA and PREM);
 - §16 "Event contracts" and acceptance item 1 (the Core half).
 
 The parent spec is `docs/superpowers/specs/2026-10-02-gcpe-news-platform-design.md`, §8.2 Access and §4.3. Executors read the spec alongside this plan.
 
 **Base:**
-- **Branch:** `feat/phase-5a`, cut from `feat/phase-5` at `df5062b`. The controller may build on `feat/phase-5` in `/Users/paul/gcpe-news-platform-p5` instead. Every path below is repo-relative.
-- **Line numbers:** every file:line reference is against `df5062b`. Re-find by symbol if anything moved.
+- **Branch:** `feat/phase-5a`, cut from `feat/phase-5` at `a239057`. The controller may build on `feat/phase-5` in `/Users/paul/gcpe-news-platform-p5` instead. Every path below is repo-relative.
+- **Line numbers:** every file:line reference is against `a239057`. Re-find by symbol if anything moved.
 - **Migrations:** Core's last migration is `0001_users`, so this plan's is `0002`. Re-check `apps/core/migrations/meta/_journal.json` before generating.
 
-**What the code does today** (`df5062b`):
+**What the code does today** (`a239057`):
 - `role_grants(user_id, role)` holds flat roles. `STAFF_ROLES` (`packages/auth/src/roles.ts:4`) is the only role catalogue.
 - `setRoles` deletes **every** grant and re-inserts (`apps/core/src/services/users.ts:121-132`). `UserView.roles` is every grant.
 - `users.email` is `NOT NULL` with a unique index on `lower(email)` (`apps/core/src/db/schema.ts:48-66`).
@@ -83,10 +83,10 @@ Decided for this plan. Task 7 writes the parity rows and questions.
   - Core.Admin's flat-roles save (`PUT /api/users/:id/roles`) deletes only non-Calendar grants. A Calendar role can't be set through it (it is not in `STAFF_ROLES`, so the request gets a 400).
 - **R2. Who may grant what.** `checkCalendarGrant` refuses, in this order:
   1. `not-an-administrator`: the actor is none of Core.Admin, Calendar.SysAdmin or Calendar.Administrator.
-  2. `own-access`: the actor changes their own Calendar access and is not a Core.Admin. This is **proposed** (C159). Without it, a Calendar Administrator can make themself HQ.
+  2. `own-access`: the actor changes their own Calendar access and is not a Core.Admin. Agreed by Paul, 2026-10-07 (C159). Without it, a Calendar Administrator could make themself HQ.
   3. `target-above-ceiling`: the target's current role is above the actor's ceiling. A Calendar Administrator can't touch a SysAdmin, not even to demote them. C125 says "only SysAdmin or Core.Admin grants SysAdmin", and demoting one is the same power.
   4. `above-ceiling`: the requested role is above the ceiling. This is C125.
-  5. `hq-organization`: the request **adds** an HQ organization the target doesn't already have, and the actor is a Calendar Administrator who is not HQ themself. This is **proposed** (C160). HQ grants every ministry, and confidential items at Advanced (spec §6), so a ministry Administrator shouldn't hand it out.
+  5. `hq-organization`: the request **adds** an HQ organization the target doesn't already have, and the actor is a Calendar Administrator who is not HQ themself. Agreed by Paul, 2026-10-07 (C160). HQ grants every ministry, and confidential items at Advanced (spec §6), so a ministry Administrator shouldn't hand it out.
   - The ceiling is SysAdmin for Core.Admin and Calendar.SysAdmin, and Administrator for Calendar.Administrator.
   - The rules are **ministry-blind otherwise**, as legacy: an Administrator manages users of any ministry (`UserList.aspx.cs`).
 - **R3. A Calendar role needs at least one ministry** (legacy `User.aspx.cs:639-642`), or the request gets a 400.
@@ -94,7 +94,7 @@ Decided for this plan. Task 7 writes the parity rows and questions.
   - The request replaces the whole ministry set.
 - **R4. `user.upserted`.**
   - **Payload:** `{ id, email (nullable), displayName, isActive, calendarRole (nullable), organizationKeys }`.
-  - **`organizationKeys`, not the spec's `organizationIds`.** `OrgRecord` carries no id, and every event names organizations by key (`release.*` `ministryKeys`, `activity.*` "contact ministry key"). The Calendar's org projection is keyed the same way. Task 7 updates the spec's two lines. Paul confirms (Questions, item 2).
+  - **`organizationKeys`, not the spec's `organizationIds`.** `OrgRecord` carries no id, and every event names organizations by key (`release.*` `ministryKeys`, `activity.*` "contact ministry key"). The Calendar's org projection is keyed the same way. Agreed by Paul, 2026-10-07. Task 7 updates the spec's §4 line, which still says `organizationIds`.
   - **Aggregate:** `user:<uuid>`, the same `<kind>:<key>` shape as `org:<key>`.
   - **When:** emitted on create, rename, activate or deactivate, a flat-roles save, a Calendar access save, and link. It is emitted even when nothing visible changed (a projection is idempotent).
   - **Not emitted:** on a password change, because the payload has no password.
@@ -104,11 +104,14 @@ Decided for this plan. Task 7 writes the parity rows and questions.
   - `org.upserted` carries `isHq: z.boolean().default(false)`. An envelope without it parses as `false`, the same pattern as `mediaText` on releases.
   - On input `isHq` is **optional**: omitted keeps the stored flag, and is `false` for a new organization. So re-running the BC seed or the legacy importer never clears HQ.
   - Core.Admin flips it with `PUT /api/organizations/:key/hq { isHq }`, which emits `org.upserted` only on a change.
-  - `HQ_ABBREVIATIONS = ["GCPEHQ", "GCPEMEDIA"]` (Q49, answered). Matching is on the trimmed, upper-cased abbreviation, as legacy matched `Ministry.Abbreviation`.
-  - The **legacy importer** sends `isHq: true` for those two abbreviations and omits it for every other ministry. A re-run re-asserts HQ on those two. Clear it in Core only after the final import.
-  - The **BC seed** (`scripts/seed-core-from-public-api.ts`) adds `gcpe-headquarters` (GCPEHQ) and `gcpe-media-relations` (GCPEMEDIA) as active HQ organizations. The public API has neither.
+  - `HQ_ABBREVIATIONS = ["GCPEHQ", "GCPEMEDIA", "PREM"]` (Q49, answered by Paul, 2026-10-07; PREM is the Office of the Premier, as in legacy's `ApplicationOwnerOrganizations` default). Matching is on the trimmed, upper-cased abbreviation, as legacy matched `Ministry.Abbreviation`.
+  - The **legacy importer** sends `isHq: true` for those three abbreviations and omits it for every other ministry. A re-run re-asserts HQ on those three. Clear it in Core only after the final import.
+  - The **BC seed** (`scripts/seed-core-from-public-api.ts`):
+    - adds `gcpe-headquarters` (GCPEHQ) and `gcpe-media-relations` (GCPEMEDIA) as active HQ organizations, because the public API has neither;
+    - **marks the existing public ministry `office-of-the-premier` HQ.** It is not created again: its body is the usual public-API body plus `isHq: true`, because its derived abbreviation is PREM. **Verified** 2026-10-07: its latest public releases have keys like `2026PREM0065-001037`. If no recent release yields an abbreviation, the seed falls back to `KNOWN_ABBREVIATIONS["office-of-the-premier"] = "PREM"`, so the flag never depends on the release sample;
+    - sends `isHq` on no other ministry's body, so re-seeding keeps any flag set by hand, and keeps PREM's.
   - A user is HQ when any of their organizations has `is_hq`. That is computed where it is used: here by `isHqMember` for R2.5, and by the Calendar from its projections in 5b and 5c. It is never stored on the user.
-  - So **GCPEMEDIA members get every HQ privilege** (C124, Q49). This plan's tests pin that for the Core side.
+  - So **GCPEMEDIA and PREM members get every HQ privilege** (C124, Q49). This plan's tests pin that for the Core side: the matrix has an Administrator in each of the three HQ organizations.
 - **R6. Users without email.**
   - `createUserSchema` accepts `email: null` only with `isActive: false`.
   - The database refuses an active user without an email (`users_active_needs_email`), as a backstop.
@@ -117,7 +120,7 @@ Decided for this plan. Task 7 writes the parity rows and questions.
   - **Sign-in** matches by email, so a no-email user can never sign in. An old session cookie for an inactive user is refused on every `/api` call and by `GET /auth/session`, as today.
   - Postgres treats NULLs as distinct in a unique index, so any number of no-email users coexist under the existing `lower(email)` index. Task 2 pins this with a test rather than adding a partial index.
 - **R7. Scope held back for 5b.**
-  - Calendar Administrators editing **active** and **Link** (spec §8.5) arrive with the Calendar users screen, together with the rule on users who also hold NRMS or NoD roles (Questions, item 4).
+  - Calendar Administrators editing **active** and **Link** (spec §8.5) arrive with the Calendar users screen. Q55 is answered (Paul, 2026-10-07): for anyone who also holds an NRMS or NoD role, only a Core admin may deactivate, reactivate or link them.
   - Calendar test users also arrive in 5b: nothing in 5a needs a seeded one, and the e2e creates its own.
   - Task 7 writes these into `docs/superpowers/plans/phase-5-carry-forward.md`.
 - **R8. Inactive ministries.**
@@ -129,6 +132,11 @@ Decided for this plan. Task 7 writes the parity rows and questions.
   - The test pins that Core's rules are ministry-blind apart from the HQ rule, and that only allowed grants emit, with the right payload.
   - The activity-visibility matrix (`inScope`, `seesConfidential`) belongs to 5c.
 - **R10. `user_legacy_ids`** (system `calendar`, legacy `SystemUser.Id` as text, user id) is created in this migration because spec §4 places it in Core. 5i writes it. No service here reads it.
+- **R11. Only a Core admin creates users** (Paul, 2026-10-07; C161). Legacy Calendar admins could add `SystemUser` rows; here a Calendar Administrator gives existing Core users access. This holds until Entra sign-in creates users on first sign-in.
+- **R12. Hiding HQ organizations from public lists (Q54) is built in 5b, not here.**
+  - Paul's answer: hide GCPE Headquarters and GCPE Media Relations from the public News API ministry list and the public site's subscribe page. The Office of the Premier is HQ too but is a public ministry, so **hiding can't key off `isHq`**. It needs its own Core flag (for example `isPublic`, default true) on `org.upserted`.
+  - That changes the org event contract, the News API's ministry projection (`apps/news-api/src/read.ts:35-43`) and NoD's ministry lists (`apps/nod/src/lists.ts`), which feed the subscribe page. 5b already reworks the org contract for the Calendar's projection, so it goes there. Task 7 writes the item into the carry-forward file.
+  - Until then, boxs.ca (test only) lists the two GCPE organizations publicly. Production is unaffected: nothing is cut over before Phase 7.
 
 ## Global Constraints
 
@@ -170,7 +178,7 @@ Decided for this plan. Task 7 writes the parity rows and questions.
 
 ## Review Focus
 
-1. **Re-running the BC seed or the legacy importer after HQ was set or cleared by hand.** The flag survives a seed re-run untouched. The importer re-asserts it only on GCPEHQ and GCPEMEDIA. Pinned in Task 3 ("an upsert that omits isHq keeps the stored flag") and the seed test ("adds GCPEHQ and GCPEMEDIA as active HQ organizations, and re-seeding sends isHq only for those two").
+1. **Re-running the BC seed or the legacy importer after HQ was set or cleared by hand.** The flag survives a seed re-run untouched. The importer and the seed re-assert it only on GCPEHQ, GCPEMEDIA and PREM, and the seed never creates a second Office of the Premier. Pinned in Task 3 ("an upsert that omits isHq keeps the stored flag") and the seed tests ("adds the two GCPE HQ organizations and marks the existing Office of the Premier HQ; no other body carries isHq", "marks the Office of the Premier HQ even when its releases yield no abbreviation").
 2. **A Core.Admin saving a user's NRMS or NoD roles on the Users screen when that user holds a Calendar role and ministries.** The Calendar role and ministries are untouched, and the session still carries the Calendar role. Pinned in Task 2 ("a flat-roles save keeps the Calendar role and ministries").
 3. **A ministry deactivated after users were given it.** Re-saving those users' access with it kept succeeds. Adding it to anyone new is refused with its key named. Pinned in Task 5 ("an inactive ministry can be kept but not added").
 4. **A Calendar Administrator acting on a SysAdmin or on themself, including adding an HQ ministry to themself.** The server refuses with a reason staff can act on, and the screen shows those rows read-only. Pinned in Task 5 ("an Administrator can't touch a SysAdmin…", "only a Core.Admin changes their own access") and Task 6 ("a System Administrator's row and your own row are read-only for an Administrator").
@@ -1162,7 +1170,7 @@ git commit -m "feat(core): Calendar grants and ministries in Core's user store; 
 
 ### Task 3: HQ organizations (`isHq`)
 
-Covers spec §4 "HQ organizations", §5.4 `org.upserted` (extended), C124, Q49 (GCPEHQ and GCPEMEDIA) and R5.
+Covers spec §4 "HQ organizations", §5.4 `org.upserted` (extended), C124, Q49 (GCPEHQ, GCPEMEDIA and PREM) and R5.
 
 **Files:**
 - Modify:
@@ -1181,11 +1189,11 @@ Covers spec §4 "HQ organizations", §5.4 `org.upserted` (extended), C124, Q49 (
 - Produces:
   - `OrgRecord.isHq: boolean`;
   - `type OrgInput = z.infer<typeof orgInputSchema>`, with `isHq?: boolean`;
-  - `HQ_ABBREVIATIONS = ["GCPEHQ","GCPEMEDIA"] as const`;
+  - `HQ_ABBREVIATIONS = ["GCPEHQ","GCPEMEDIA","PREM"] as const`;
   - `isHqAbbreviation(a: string | null | undefined): boolean`;
   - `setOrganizationHq(db: Db, key: string, isHq: boolean, subscribers: SubscriberConfig[]): Promise<OrgRecord | null>`;
   - the route `PUT /api/organizations/:key/hq { isHq: boolean }` (Core.Admin), which returns the `OrgRecord` or a 404;
-  - `HQ_SEED_ORGANIZATIONS: OrgInput[]` (scripts).
+  - `HQ_SEED_ORGANIZATIONS: OrgInput[]`, `KNOWN_ABBREVIATIONS: Readonly<Record<string, string>>` and `withHqFlag(input: OrgInput): OrgInput` (scripts).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1232,11 +1240,13 @@ In `apps/core/src/services/organizations.test.ts`, import `setOrganizationHq`, `
     expect(await setOrganizationHq(tdb.db, "no-such-org", true, subs)).toBeNull();
   });
 
-  it("HQ abbreviations are GCPEHQ and GCPEMEDIA, matched trimmed and in any case (Q49)", () => {
-    expect([...HQ_ABBREVIATIONS]).toEqual(["GCPEHQ", "GCPEMEDIA"]);
+  it("HQ abbreviations are GCPEHQ, GCPEMEDIA and PREM, matched trimmed and in any case (Q49)", () => {
+    expect([...HQ_ABBREVIATIONS]).toEqual(["GCPEHQ", "GCPEMEDIA", "PREM"]);
     expect(isHqAbbreviation(" gcpemedia ")).toBe(true);
     expect(isHqAbbreviation("GCPEHQ")).toBe(true);
-    expect(isHqAbbreviation("PREM")).toBe(false);
+    expect(isHqAbbreviation("prem")).toBe(true);
+    expect(isHqAbbreviation("HLTH")).toBe(false);
+    expect(isHqAbbreviation("PREMX")).toBe(false);
     expect(isHqAbbreviation(null)).toBe(false);
   });
 ```
@@ -1262,10 +1272,11 @@ In `apps/core/src/import/map.test.ts`:
 - add:
 
 ```ts
-  it("marks GCPEHQ and GCPEMEDIA as HQ and leaves every other ministry's flag to Core (Q49)", () => {
+  it("marks GCPEHQ, GCPEMEDIA and PREM as HQ and leaves every other ministry's flag to Core (Q49)", () => {
     const related = { topics: [], services: [], sectorKeys: [] };
     expect(mapMinistry({ ...mediaRelations, Abbreviation: "GCPEHQ" }, related).isHq).toBe(true);
     expect(mapMinistry({ ...mediaRelations, Abbreviation: "GCPEMEDIA" }, related).isHq).toBe(true);
+    expect(mapMinistry({ ...mediaRelations, Key: "office-of-the-premier", Abbreviation: "PREM" }, related).isHq).toBe(true);
     expect("isHq" in mapMinistry({ ...mediaRelations, Abbreviation: "HLTH" }, related)).toBe(false);
   });
 ```
@@ -1275,8 +1286,17 @@ Other `map.test.ts` cases that spread `mediaRelations` and compare whole objects
 In `tests/seed-core-from-public-api.test.ts`, inside `describe("run() …")`:
 
 ```ts
-  it("adds GCPEHQ and GCPEMEDIA as active HQ organizations, and re-seeding sends isHq only for those two", async () => {
-    const { fetchImpl, calls } = makeFetchMock({ publicMinistries: [SAMPLE_MINISTRY], publicMinister: SAMPLE_MINISTER, publicSectors: [], publicThemes: [], publicTags: [] });
+  const SAMPLE_PREMIER: PublicMinistry = { ...SAMPLE_MINISTRY, key: "office-of-the-premier", name: "Office of the Premier", ministryUrl: "https://news.gov.bc.ca/ministries/office-of-the-premier", twitterFeedUsername: null };
+
+  it("adds the two GCPE HQ organizations and marks the existing Office of the Premier HQ; no other body carries isHq", async () => {
+    const { fetchImpl, calls } = makeFetchMock({
+      publicMinistries: [SAMPLE_MINISTRY, SAMPLE_PREMIER],
+      publicMinister: SAMPLE_MINISTER,
+      publicMinistryPosts: { "office-of-the-premier": [{ key: "2026PREM0065-001037", kind: "releases", leadMinistryKey: "office-of-the-premier" }] },
+      publicSectors: [],
+      publicThemes: [],
+      publicTags: [],
+    });
     const result = await run({ targetBaseUrl: "https://boxs.ca", token: "t", fetchImpl, delayMs: 0, log: () => {} });
     expect(result.ok).toBe(true);
     const orgPuts = calls.filter((c) => c.method === "PUT" && c.url.pathname.startsWith("/core/api/organizations/"));
@@ -1285,14 +1305,25 @@ In `tests/seed-core-from-public-api.test.ts`, inside `describe("run() …")`:
       expect(bodies.get(path)).toMatchObject({ abbreviation, isHq: true, isActive: true });
       expect(() => orgInputSchema.parse(bodies.get(path))).not.toThrow();
     }
-    // A public ministry's body never carries isHq, so re-seeding never clears a flag set by hand.
+    // The Office of the Premier is the public ministry itself, marked HQ: one PUT, its own key, its public name.
+    expect(orgPuts.filter((c) => c.url.pathname === "/core/api/organizations/office-of-the-premier")).toHaveLength(1);
+    expect(bodies.get("/core/api/organizations/office-of-the-premier")).toMatchObject({ displayName: "Office of the Premier", abbreviation: "PREM", isHq: true });
+    // Any other public ministry's body never carries isHq, so re-seeding never clears a flag set by hand.
     expect("isHq" in bodies.get("/core/api/organizations/aest")!).toBe(false);
     expect(result.summaries.find((s) => s.kind === "hq-organizations")).toMatchObject({ upserted: 2, failed: 0 });
+  });
+
+  it("marks the Office of the Premier HQ even when its releases yield no abbreviation", async () => {
+    const { fetchImpl, calls } = makeFetchMock({ publicMinistries: [SAMPLE_PREMIER], publicMinister: SAMPLE_MINISTER, publicSectors: [], publicThemes: [], publicTags: [] });
+    const result = await run({ targetBaseUrl: "https://boxs.ca", token: "t", fetchImpl, delayMs: 0, log: () => {} });
+    const body = JSON.parse(calls.find((c) => c.url.pathname === "/core/api/organizations/office-of-the-premier")!.body!);
+    expect(body).toMatchObject({ abbreviation: "PREM", isHq: true });
+    expect(result.summaries.find((s) => s.kind === "ministries")!.noAbbreviation).toEqual([]);
   });
 ```
 
 Run: `npx -y -p node@24 -- node node_modules/vitest/vitest.mjs run packages/events/src/catalogue.test.ts apps/core/src/services/organizations.test.ts apps/core/src/http/routes.test.ts apps/core/src/import/map.test.ts tests/seed-core-from-public-api.test.ts`
-Expected: FAIL. `isHq` is not in the schema, `setOrganizationHq` and `HQ_ABBREVIATIONS` don't exist, the route 404s, and the seed adds no HQ organizations.
+Expected: FAIL. `isHq` is not in the schema, `setOrganizationHq` and `HQ_ABBREVIATIONS` don't exist, the route 404s, and the seed adds no HQ organizations and doesn't mark the Office of the Premier.
 
 - [ ] **Step 2: Implement `isHq` in the catalogue and Core**
 
@@ -1317,8 +1348,8 @@ import { z } from "zod";
 export const orgInputSchema = orgRecordSchema.omit({ updatedAt: true, isHq: true }).extend({ isHq: z.boolean().optional() });
 export type OrgInput = z.infer<typeof orgInputSchema>;
 
-/** Legacy abbreviations of the HQ organizations (Q49): GCPE Headquarters and GCPE Media Relations. Legacy matched HQ by Ministry.Abbreviation. */
-export const HQ_ABBREVIATIONS = ["GCPEHQ", "GCPEMEDIA"] as const;
+/** Legacy abbreviations of the HQ organizations (Q49): GCPE Headquarters, GCPE Media Relations and the Office of the Premier. Legacy matched HQ by Ministry.Abbreviation. */
+export const HQ_ABBREVIATIONS = ["GCPEHQ", "GCPEMEDIA", "PREM"] as const;
 
 export function isHqAbbreviation(abbreviation: string | null | undefined): boolean {
   return abbreviation != null && (HQ_ABBREVIATIONS as readonly string[]).includes(abbreviation.trim().toUpperCase());
@@ -1376,7 +1407,7 @@ export async function setOrganizationHq(db: Db, key: string, isHq: boolean, subs
 
 ```ts
     sectorKeys: [...related.sectorKeys].sort(),
-    // Only the two HQ ministries say anything about HQ; every other ministry leaves Core's flag alone.
+    // Only the HQ ministries say anything about HQ; every other ministry leaves Core's flag alone.
     ...(isHqAbbreviation(row.Abbreviation) ? { isHq: true } : {}),
 ```
 
@@ -1386,9 +1417,10 @@ export async function setOrganizationHq(db: Db, key: string, isHq: boolean, subs
 
 ```ts
 /**
- * GCPE's HQ organizations (Calendar spec addendum Q49). The public API lists neither (checked
- * 2026-10-07: 36 ministries, none GCPE), so the seed adds them. The Calendar matches them by
- * abbreviation, as legacy did.
+ * GCPE's two HQ organizations (Calendar spec addendum Q49). The public API lists neither
+ * (checked 2026-10-07: 36 ministries, none GCPE), so the seed adds them. The third HQ
+ * organization, the Office of the Premier, is a public ministry: the seed marks it rather than
+ * adding it (withHqFlag). The Calendar matches all three by abbreviation, as legacy did.
  */
 export const HQ_SEED_ORGANIZATIONS: OrgInput[] = [
   hqOrganization("gcpe-headquarters", "GCPE Headquarters", "GCPEHQ"),
@@ -1416,10 +1448,27 @@ function hqOrganization(key: string, displayName: string, abbreviation: string):
     isHq: true,
   };
 }
+
+/** Abbreviations the seed knows without a release sample: the Office of the Premier must be marked HQ (Q49) even when its recent releases yield none. */
+export const KNOWN_ABBREVIATIONS: Readonly<Record<string, string>> = { "office-of-the-premier": "PREM" };
+
+/** Marks a public ministry HQ when its abbreviation is an HQ one (the Office of the Premier). Every other body omits isHq, so re-seeding never clears a flag set by hand. */
+export function withHqFlag(input: OrgInput): OrgInput {
+  return isHqAbbreviation(input.abbreviation) ? { ...input, isHq: true } : input;
+}
 ```
 
+Change the file's `import type { OrgInput } from "../../apps/core/src/services/organizations";` to `import { isHqAbbreviation, type OrgInput } from "../../apps/core/src/services/organizations";`.
+
 `scripts/seed-core-from-public-api.ts`:
-- import `HQ_SEED_ORGANIZATIONS`;
+- import `HQ_SEED_ORGANIZATIONS`, `KNOWN_ABBREVIATIONS` and `withHqFlag`;
+- in `seedMinistries`, the two lines that derive the abbreviation and build the input become:
+
+```ts
+    const abbreviation = deriveMinistryAbbreviation(recentReleases, ministry.key) ?? KNOWN_ABBREVIATIONS[ministry.key.toLowerCase()] ?? null;
+    const input = orgInputSchema.parse(withHqFlag(toOrgInput(ministry, minister, abbreviation)));
+```
+
 - add:
 
 ```ts
@@ -1453,7 +1502,7 @@ Expected: PASS. News API and NRMS map org fields explicitly (`apps/news-api/src/
 
 ```bash
 git add packages/events apps/core apps/news-api apps/nod scripts tests/seed-core-from-public-api.test.ts
-git commit -m "feat(core): HQ organizations (is_hq on org.upserted); GCPEHQ and GCPEMEDIA seeded and imported as HQ (C124, Q49)"
+git commit -m "feat(core): HQ organizations (is_hq on org.upserted); GCPEHQ, GCPEMEDIA and PREM marked HQ by the seed and the importer (C124, Q49)"
 ```
 
 ---
@@ -1720,13 +1769,14 @@ const LOCAL = "local-bearer-secret-for-calendar-access-0123";
 const subs: SubscriberConfig[] = [{ name: "calendar", url: "http://x/events", secret: "s", types: ["user.upserted"] }];
 const SETUP = { id: "setup", roles: ["Core.Admin"] };
 
-type ActorName = "coreAdmin" | "sysAdmin" | "adminHq" | "adminMedia" | "adminHealth" | "advanced" | "editor" | "readOnly" | "nrmsEditor";
+type ActorName = "coreAdmin" | "sysAdmin" | "adminHq" | "adminMedia" | "adminPrem" | "adminHealth" | "advanced" | "editor" | "readOnly" | "nrmsEditor";
 const ACTORS: Record<ActorName, { flat: string[]; calendar: CalendarRole | null; orgs: string[] }> = {
   coreAdmin: { flat: ["Core.Admin"], calendar: null, orgs: [] },
   sysAdmin: { flat: [], calendar: "Calendar.SysAdmin", orgs: ["health"] },
   adminHq: { flat: [], calendar: "Calendar.Administrator", orgs: ["gcpe-headquarters"] },
-  // GCPEMEDIA is HQ too (Q49): its Administrators get every HQ privilege GCPEHQ's do (C124).
+  // GCPEMEDIA and PREM are HQ too (Q49): their Administrators get every HQ privilege GCPEHQ's do (C124).
   adminMedia: { flat: [], calendar: "Calendar.Administrator", orgs: ["gcpe-media-relations"] },
+  adminPrem: { flat: [], calendar: "Calendar.Administrator", orgs: ["office-of-the-premier"] },
   adminHealth: { flat: [], calendar: "Calendar.Administrator", orgs: ["health"] },
   advanced: { flat: [], calendar: "Calendar.Advanced", orgs: ["health"] },
   editor: { flat: [], calendar: "Calendar.Editor", orgs: ["health"] },
@@ -1736,7 +1786,7 @@ const ACTORS: Record<ActorName, { flat: string[]; calendar: CalendarRole | null;
 // The target's requested ministries, relative to the ministry-level actors' own ministry (Health).
 const RELATIONS = { own: ["health"], shared: ["finance", "health"], other: ["finance"], hq: ["gcpe-headquarters"] } as const;
 type Relation = keyof typeof RELATIONS;
-const HQ_KEYS = new Set(["gcpe-headquarters", "gcpe-media-relations"]);
+const HQ_KEYS = new Set(["gcpe-headquarters", "gcpe-media-relations", "office-of-the-premier"]);
 
 /** The rules restated from the spec, independently of checkCalendarGrant: C125, plus the HQ-ministry rule. */
 function expectedStatus(actor: ActorName, relation: Relation, role: CalendarRole | null): 200 | 403 {
@@ -1762,6 +1812,7 @@ describe("Calendar access API", () => {
     await upsertOrganization(tdb.db, { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "FIN", sectorKeys: [] }, []);
     await upsertOrganization(tdb.db, { ...healthOrg, key: "gcpe-headquarters", displayName: "GCPE Headquarters", abbreviation: "GCPEHQ", sectorKeys: [], isHq: true }, []);
     await upsertOrganization(tdb.db, { ...healthOrg, key: "gcpe-media-relations", displayName: "GCPE Media Relations", abbreviation: "GCPEMEDIA", sectorKeys: [], isHq: true }, []);
+    await upsertOrganization(tdb.db, { ...healthOrg, key: "office-of-the-premier", displayName: "Office of the Premier", abbreviation: "PREM", sectorKeys: [], isHq: true }, []);
     for (const [name, a] of Object.entries(ACTORS) as [ActorName, (typeof ACTORS)[ActorName]][]) {
       const u = await createUser(tdb.db, createUserSchema.parse({ email: `${name.toLowerCase()}@example.test`, displayName: name, roles: a.flat }), []);
       if (a.calendar) await setCalendarAccess(tdb.db, SETUP, u.id, { role: a.calendar, organizationKeys: a.orgs }, []);
@@ -2075,7 +2126,7 @@ export function calendarAccessRouter(db: Db, subscribers: SubscriberConfig[]): R
 - [ ] **Step 4: Run it**
 
 Run: `npx -y -p node@24 -- node node_modules/vitest/vitest.mjs run apps/core/src/http/calendar-access.test.ts`
-Expected: PASS (9 tests). The matrix runs 216 grants. If it reports mismatches, each line names actor, role and relation. Fix the code, never the oracle, unless the oracle contradicts the spec.
+Expected: PASS (9 tests). The matrix runs 240 grants (10 actors × 4 relations × 6 roles). If it reports mismatches, each line names actor, role and relation. Fix the code, never the oracle, unless the oracle contradicts the spec.
 
 - [ ] **Step 5: Run Core and the type-checks**
 
@@ -2975,22 +3026,23 @@ Expected: all PASS. `sign-in-roles.spec.ts` must stay green: the five test users
 Add a new section at the end, `## Corporate Calendar (Phase 5)`, with the table header used elsewhere. Re-check the highest C number first: C123 at planning; the spec reserves C124–C158. Add:
 
 ```markdown
-| C124 | Two settings: `ApplicationOwnerOrganizations` (a CSV whose members see every ministry and get the HQ report variant) and `HQAdmin` (one ministry, GCPEHQ, whose Editor-and-above members get the freeze exemption, the Look Ahead fieldset, relaxed required fields and review markup). | One `is_hq` flag on Core organizations, set on the Organizations screen (Core admin) and carried on `org.upserted`. A member of any HQ organization gets all of these. GCPEHQ and GCPEMEDIA are HQ (Q49), so GCPE Media Relations members also get what legacy gave only GCPEHQ. | One concept for staff and admins. Paul's decision R1 defines the exemption by HQ membership. | Agreed (Q49) |
+| C124 | Two settings: `ApplicationOwnerOrganizations` (a CSV whose members see every ministry and get the HQ report variant) and `HQAdmin` (one ministry, GCPEHQ, whose Editor-and-above members get the freeze exemption, the Look Ahead fieldset, relaxed required fields and review markup). | One `is_hq` flag on Core organizations, set on the Organizations screen (Core admin) and carried on `org.upserted`. A member of any HQ organization gets all of these. GCPEHQ, GCPEMEDIA and PREM are HQ (Q49), so GCPE Media Relations and Office of the Premier members also get what legacy gave only GCPEHQ. | One concept for staff and admins. Paul's decision R1 defines the exemption by HQ membership. | Agreed (Q49) |
 | C125 | Roles and ministries lived in `calendar.SystemUser`. Any admin page user could set any role, including SysAdmin, and the admin pages had no server gate. | Calendar roles and ministries are Core grants, changed only through Core's Calendar access routes, which check the role on the server. Calendar.Administrator grants up to Administrator and can't change a System Administrator's access; only SysAdmin or Core.Admin grants SysAdmin. A Calendar role needs at least one ministry, as legacy's page required. | One user store; no self-escalation to SysAdmin. | Agreed |
-| C159 | Any admin-page user could change their own role and ministries (`Calendar/Admin/User.aspx.cs`). | Only a Core admin can change their own Calendar access. A Calendar Administrator or System Administrator asks another administrator. | No self-escalation (for example, adding an HQ ministry to yourself), and no admin locks themself out by mistake. | Proposed |
-| C160 | Any admin-page user could give anyone the GCPEHQ ministry, making them HQ. | Adding an HQ organization to a user takes an HQ Administrator, a System Administrator or a Core admin. Removing one doesn't. | HQ sees every ministry, and confidential items at Advanced (spec §6). A ministry Administrator shouldn't hand that out. | Proposed |
+| C159 | Any admin-page user could change their own role and ministries (`Calendar/Admin/User.aspx.cs`). | Only a Core admin can change their own Calendar access. A Calendar Administrator or System Administrator asks another administrator. | No self-escalation (for example, adding an HQ ministry to yourself), and no admin locks themself out by mistake. | Agreed (Paul, 2026-10-07) |
+| C160 | Any admin-page user could give anyone the GCPEHQ ministry, making them HQ. | Adding an HQ organization to a user takes an HQ Administrator, a System Administrator or a Core admin. Removing one doesn't. | HQ sees every ministry, and confidential items at Advanced (spec §6). A ministry Administrator shouldn't hand that out. | Agreed (Paul, 2026-10-07) |
+| C161 | Calendar admin pages could add new `SystemUser` rows. | Only a Core admin creates users. A Calendar Administrator gives existing Core users a Calendar role and ministries. | One user store; Entra sign-in will create users later. | Agreed (Paul, 2026-10-07) |
 ```
 
 - [ ] **Step 4: `docs/parity/open-questions.md`**
 
 Re-check the highest Q number. It was Q47 at planning, and the spec reserves Q48–Q53.
 
-- Under **Answered**, add Q48 and Q49 as the spec words them at `df5062b`, in this file's Answered columns: question, answer, who and when, raised.
-- Under **Open**, add:
+- Under **Answered**, add Q48 and Q49 as the spec words them at `a239057` (Q49: GCPEHQ, GCPEMEDIA and PREM), in this file's Answered columns: question, answer, who and when, raised.
+- Also under **Answered**, add:
 
 ```markdown
-| Q54 | Should HQ organizations (GCPE Headquarters, GCPE Media Relations) be hidden from the public News API and the subscribe page? Our News API lists every ministry Core sends; legacy's public API lists 36 ministries and no GCPE organization (checked 2026-10-07). | Once Core has them (the BC seed adds both; the legacy importer brings every `dbo.Ministry` row), they appear in the public ministry list and as subscribable ministries. | Shown on test sites (boxs.ca only); must be settled before Phase 7. | 2026-10-07 |
-| Q55 | May a Calendar Administrator deactivate, reactivate or link a user who also holds NRMS or NoD roles? Core has one active flag for every app. | Legacy's Calendar deactivation affected only the Calendar. Here it would also end that person's NRMS or NoD access. | No: only a Core admin can, for anyone holding a non-Calendar role. Calendar Administrators can for Calendar-only users (built in 5b). | 2026-10-07 |
+| Q54 | Should HQ organizations (GCPE Headquarters, GCPE Media Relations) be hidden from the public News API and the subscribe page? Our News API lists every ministry Core sends; legacy's public API lists 36 ministries and no GCPE organization (checked 2026-10-07). | Yes: hide GCPE Headquarters and GCPE Media Relations from the public ministry list and the subscribe page. The Office of the Premier is HQ too but stays public, so hiding uses its own Core flag, not `isHq`. Built in 5b (see `docs/superpowers/plans/phase-5-carry-forward.md`); until then boxs.ca shows them. | Paul, 2026-10-07 | 2026-10-07 |
+| Q55 | May a Calendar Administrator deactivate, reactivate or link a user who also holds NRMS or NoD roles? Core has one active flag for every app. | No: only a Core admin can, for anyone holding a non-Calendar role. Calendar Administrators can for Calendar-only users (built in 5b). | Paul, 2026-10-07 | 2026-10-07 |
 ```
 
 - [ ] **Step 5: `docs/manuals/running-notes.md`**
@@ -3004,9 +3056,11 @@ Add `## Phase 5a — Calendar roles, ministries and HQ organizations`:
 - **Administrator** — A Calendar Administrator can grant up to Administrator. Only a System
   Administrator or a Core admin can grant System Administrator, or change a System Administrator's
   access. Nobody but a Core admin can change their own access: ask another administrator.
-- **Administrator** — Members of an HQ organization see every ministry. GCPE Headquarters and GCPE
-  Media Relations are HQ. Only an HQ Administrator, a System Administrator or a Core admin can add an
+- **Administrator** — Members of an HQ organization see every ministry. GCPE Headquarters, GCPE
+  Media Relations and the Office of the Premier are HQ. Only an HQ Administrator, a System Administrator or a Core admin can add an
   HQ ministry to someone.
+- **Administrator** — Only a Core admin adds users. A Calendar Administrator gives existing users
+  Calendar access.
 - **Administrator** — Core admins set which organizations are HQ on Hub → Organizations. Turning HQ off
   for an organization takes the all-ministry view away from every member at once.
 - **Administrator** — A user with no email (imported from the legacy Calendar) is inactive and can't
@@ -3024,9 +3078,10 @@ Add `## Phase 5a — Calendar roles, ministries and HQ organizations`:
 
 Add a section `## Calendar access (Phase 5a)`:
 - **Migration:** Core's `0002_calendar_access` is additive: a column, a nullable email with a check, two tables and a partial index on `role_grants`. It runs in the normal deploy. It succeeds on boxs.ca's data because every existing user has an email and no grant is a Calendar role.
-- **Seed:** re-run `GCPE_TOKEN=… npm run core:seed-from-public-api -- https://boxs.ca`. Its summary has a `hq-organizations: upserted=2` line.
+- **Seed:** re-run `GCPE_TOKEN=… npm run core:seed-from-public-api -- https://boxs.ca`. Its summary has a `hq-organizations: upserted=2` line. The Office of the Premier is marked HQ in the ministries pass; it is not created twice.
 - **Hand checks** (acceptance item 1, Core half):
-  - As the break-glass admin, on Hub → Organizations, GCPE Headquarters and GCPE Media Relations are ticked HQ.
+  - As the break-glass admin, on Hub → Organizations, GCPE Headquarters, GCPE Media Relations and Office of the Premier are ticked HQ, and there is exactly one Office of the Premier.
+  - Until 5b hides them (Q54), GCPE Headquarters and GCPE Media Relations show on boxs.ca's public ministry list. That is expected on the test site.
   - On Hub → Users, add a user with a password. On Calendar access, give them Administrator with one ministry.
   - Sign in as them. They land on Calendar access.
   - Give another user Editor with a ministry. "System Administrator" is not offered.
@@ -3035,7 +3090,7 @@ Add a section `## Calendar access (Phase 5a)`:
 
 - [ ] **Step 7: The spec's two lines, and the carry-forward file**
 
-In `docs/superpowers/specs/2026-10-07-calendar-parity-design.md`, §4 "Event": replace "`organizationIds`" with "`organizationKeys` (organization keys, as every other event names organizations; `OrgRecord` carries no id)". In §5.4 the `user.upserted` row still points to §4, so nothing changes there. Commit this with a message that says it changes the approved spec. Paul confirms (Questions, item 2).
+In `docs/superpowers/specs/2026-10-07-calendar-parity-design.md`, §4 "Event": replace "`organizationIds`" with "`organizationKeys` (organization keys, as every other event names organizations; `OrgRecord` carries no id)". In §5.4 the `user.upserted` row still points to §4, so nothing changes there. Commit this with a message that says it changes the approved spec. Paul agreed to `organizationKeys` on 2026-10-07.
 
 Create `docs/superpowers/plans/phase-5-carry-forward.md`:
 
@@ -3051,6 +3106,11 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **Calendar users screen (§8.5).** Role and ministries go through `PUT /core/api/calendar-access/:id` (built in 5a). Active and Link for Calendar Administrators need new Core routes, under Q55's rule: Calendar-only users only, unless the caller is Core.Admin.
 - **Calendar test users.** Add Calendar test users to `TEST_USERS`, `scripts/siteground-seed-users.sh` and `tests/e2e/constants.ts`, with ministries. `seedTestUsers` will need the organizations to exist first.
 - **Break-glass.** The break-glass admin has no users row, so it has no Calendar access in the Calendar app. That is by design; say so in the runbook.
+- **Hide the GCPE organizations from public lists (Q54, answered by Paul 2026-10-07).** Hide GCPE Headquarters and GCPE Media Relations from the News API's ministry list and the public site's subscribe page. The Office of the Premier is HQ but stays public, so this can't key off `isHq`. Add a Core organization flag (for example `isPublic`, default true) carried on `org.upserted`. The News API's ministry projection (`apps/news-api/src/read.ts`, `projections.ts`) and NoD's ministry lists (`apps/nod/src/lists.ts`, which feed the subscribe page) then treat a non-public organization as unlisted. The BC seed and the legacy importer set it false for GCPEHQ and GCPEMEDIA, and leave it alone otherwise. It lands here because 5b reworks the org contract for the Calendar's projection anyway. It must be in place before Phase 7.
+
+## 5g
+
+- **Look Ahead: don't build "Consultations and Dialogues".** That section hasn't been used in years (Paul, 2026-10-07). 5g does **not** build it. Record it in `docs/parity/changes-from-legacy.md` as dropped: "dropped: unused for years, Paul 2026-10-07". Update the spec's "all 7 sections" (R6, §10.2) and the cover legend to match. Check whether the §7 category rule "contact ministry is the consultations ministry → Consultations and Dialogues" still matters without the section.
 ```
 
 - [ ] **Step 8: Final verification**
@@ -3061,24 +3121,23 @@ Run, all under Node 24:
 - `npx -y -p node@24 -- npm run test:e2e`.
 
 Then check the diff for addresses:
-- `git diff df5062b | grep -oE "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+" | sort -u`. Every result must be at `example.test`, `example.com` or `x.invalid`, or an address already present at `df5062b`.
-- `git diff df5062b -- apps packages scripts | grep -nE "Task [0-9]|\bR[0-9]+\b|fix round"` must print nothing: no plan labels in code, and the spec's own R-decisions are cited by section.
+- `git diff a239057 | grep -oE "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+" | sort -u`. Every result must be at `example.test`, `example.com` or `x.invalid`, or an address already present at `a239057`.
+- `git diff a239057 -- apps packages scripts | grep -nE "Task [0-9]|\bR[0-9]+\b|fix round"` must print nothing: no plan labels in code, and the spec's own R-decisions are cited by section.
 
 - [ ] **Step 9: Commit**
 
 ```bash
 git add tests/e2e/calendar-access.spec.ts docs
-git commit -m "test(e2e),docs: Calendar access end to end; parity C124 C125 C159 C160, Q48 Q49 answered, Q54 Q55; runbook and running notes"
+git commit -m "test(e2e),docs: Calendar access end to end; parity C124 C125 C159-C161, Q48 Q49 Q54 Q55 answered; runbook and running notes"
 ```
 
 ---
 
 ## Risks and things to watch
 
-- **Decision-relevant: HQ organizations become public ministries (Q54).** Seeding GCPE Headquarters and GCPE Media Relations puts them in boxs.ca's News API ministry list, and on its subscribe page. **Verified:** `listMinistries` doesn't filter (`apps/news-api/src/read.ts:35-43`), and the live legacy API lists none of them. The legacy Core importer already imports every `dbo.Ministry` row, so production has the same exposure in Phase 7 whatever 5a does.
-- **The PREM question.** Legacy's README default for `ApplicationOwnerOrganizations` is `"GCPEHQ,GCPEMEDIA,PREM"` (`README.md:452`). Paul's Q49 answer names only GCPEHQ and GCPEMEDIA. If production's config included PREM, Office of the Premier staff lose the all-ministry view at cutover. **Not checked:** production's actual setting.
-- **`organizationKeys` departs from the spec's `organizationIds`** (R4). If Paul prefers ids, `OrgRecord` must gain `id` and every consumer's org projection must store it. That is a larger change than the rename.
-- **The matrix test's oracle restates the rules.** It is independent of `checkCalendarGrant`'s code, not of the spec. If the spec's rule is wrong, both agree. The two proposed rules (C159, C160) are the ones to confirm.
+- **The GCPE organizations are public on boxs.ca until 5b (Q54).** Seeding GCPE Headquarters and GCPE Media Relations puts them in boxs.ca's News API ministry list, and on its subscribe page. **Verified:** `listMinistries` doesn't filter (`apps/news-api/src/read.ts:35-43`), and the live legacy API lists none of them. Paul decided to hide them; 5b builds it (R12). The legacy Core importer already imports every `dbo.Ministry` row, so the fix must land before Phase 7.
+- **PREM is HQ (decided, Paul 2026-10-07; Q49).** This matches legacy's documented default `ApplicationOwnerOrganizations = "GCPEHQ,GCPEMEDIA,PREM"` (`README.md:452`). Office of the Premier members get every HQ privilege, including Editor+ freeze exemption and the Look Ahead fieldset that legacy gave only GCPEHQ. **Assumed:** the seed finds the Office of the Premier under the public key `office-of-the-premier`. The key fallback is pinned to that key, and the derived abbreviation was checked on 2026-10-07.
+- **The matrix test's oracle restates the rules.** It is independent of `checkCalendarGrant`'s code, not of the spec. If the spec's rule is wrong, both agree. C159 and C160 were agreed by Paul on 2026-10-07.
 - **Startup republish now includes users.** `apps/core/src/start.ts:72` republishes on start. At about 470 imported users that is about 470 small transactions. **Inferred** to be quick, not measured.
 - **The deactivation cascade isn't built.** A Calendar.Administrator who loses the role keeps any open browser tab until their next `/api` call, which re-derives roles. That is the same as every other role today.
 
@@ -3088,8 +3147,8 @@ git commit -m "test(e2e),docs: Calendar access end to end; parity C124 C125 C159
   - Calendar roles and levels: Task 1 (levels 1–5, "level ≥ n").
   - One role per user: Task 2's partial index and `setCalendarAccess`.
   - `user_organizations`: Task 2. M(u) on the user view and the event: Tasks 2 and 5.
-  - The HQ flag: Task 2 (column) and Task 3 (event, route, seed, importer; GCPEHQ and GCPEMEDIA per Q49).
-  - Who grants what: Tasks 1 and 5 (C125, plus the C159 and C160 proposals).
+  - The HQ flag: Task 2 (column) and Task 3 (event, route, seed, importer; GCPEHQ, GCPEMEDIA and PREM per Q49, PREM marked, not created).
+  - Who grants what: Tasks 1 and 5 (C125, plus C159 and C160, agreed by Paul).
   - Grants through Core's API: Task 5.
   - Users without email: Task 2 (nullable column, check, NULL-distinct uniqueness) and Task 4 (create inactive, activation refused, link, no sign-in).
   - `user_legacy_ids`: Task 2 (schema only; 5i writes it).
@@ -3097,7 +3156,7 @@ git commit -m "test(e2e),docs: Calendar access end to end; parity C124 C125 C159
   - `user.upserted`: Task 2 (contract, emission, republish).
   - Core admin screens: Task 6.
   - **Exit check:** the matrix in Task 5; "can't grant SysAdmin" in Tasks 1, 5 and 7; "inactive no-email user can't sign in" in Task 4.
-  - Parity rows C124 and C125, Q48 and Q49, and running notes: Task 7.
+  - Parity rows C124, C125, C159, C160 and C161; Q48, Q49, Q54 and Q55 answered; running notes; the Q54 build and the dropped Consultations and Dialogues section in the carry-forward: Task 7.
   - §8.5's Calendar-admin Active and Link are deferred to 5b (R7), and recorded in the carry-forward.
 - **Placeholders:** none. Two steps describe mechanical edits without repeating every line:
   - Task 2 Step 8 appends `, []` to existing test calls in six named files;
@@ -3111,11 +3170,12 @@ git commit -m "test(e2e),docs: Calendar access end to end; parity C124 C125 C159
   - `usersRouter(db, subscribers)` is used by `routes.ts`, and `setCalendarAccess(db, actor, id, input, subscribers)` by the router and the tests.
 - **Review Focus:** each item names its pinning test, and each test is present in its task's code.
 
-## Questions for Paul (product decisions only)
+## Decisions recorded (Paul, 2026-10-07)
 
-1. **Self-edit and HQ-ministry rules (C159, C160, proposed).** Only a Core admin changes their own Calendar access. Only an HQ Administrator, a System Administrator or a Core admin can add an HQ ministry to someone. Keep both?
-2. **`organizationKeys` instead of `organizationIds` on `user.upserted`.** Every other event names organizations by key, and `OrgRecord` has no id. Task 7 edits spec §4 to match. OK?
-3. **HQ organizations on public lists (Q54).** Hide GCPE Headquarters and GCPE Media Relations from the public ministry list and the subscribe page? Legacy's public API doesn't show them.
-4. **Calendar Administrators and users with other roles (Q55, for 5b).** May a Calendar Administrator deactivate or link someone who also holds NRMS or NoD roles? Proposed: no, only a Core admin.
-5. **PREM.** Legacy's documented default made the Office of the Premier an application owner too. Your Q49 answer leaves it out. Confirm production didn't rely on it.
-6. **Who creates users.** Legacy Calendar admins could add users. In 5a only a Core admin creates users, and Calendar Administrators grant access to existing ones. OK until Entra sign-in creates users on first sign-in?
+1. **PREM is HQ** with GCPEHQ and GCPEMEDIA (Q49). The seed and the importer mark the existing Office of the Premier; they never create one (R5).
+2. **C159 and C160 agreed.** Only a Core admin changes their own Calendar access. Only an HQ Administrator, a System Administrator or a Core admin adds an HQ ministry to someone.
+3. **`organizationKeys`** on `user.upserted` (R4). Task 7 updates spec §4.
+4. **Q54:** hide GCPE Headquarters and GCPE Media Relations from public lists. It is built in 5b with its own flag, because the Office of the Premier is HQ but public (R12).
+5. **Q55:** only a Core admin deactivates, reactivates or links a user who also holds NRMS or NoD roles (5b).
+6. **Only a Core admin creates users** in 5a (R11, C161).
+7. **For 5g:** the Look Ahead's "Consultations and Dialogues" section is dropped, because it has been unused for years. This is recorded in the carry-forward file.
