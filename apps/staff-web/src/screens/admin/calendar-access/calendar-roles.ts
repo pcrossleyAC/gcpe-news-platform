@@ -44,3 +44,38 @@ export function grantableCalendarRoles(s: HasRole): (typeof CALENDAR_ROLE_INFO)[
 export function calendarRoleLabel(role: CalendarRoleName): string {
   return CALENDAR_ROLE_INFO.find((r) => r.role === role)!.label;
 }
+
+export type CalendarGrantRefusal = "not-an-administrator" | "own-access" | "target-above-ceiling" | "above-ceiling" | "hq-organization" | "hq-target";
+
+export interface CalendarGrantCheck {
+  actorId: string;
+  actorRoles: readonly string[];
+  actorIsHq: boolean;
+  targetId: string;
+  targetRole: CalendarRoleName | null;
+  nextRole: CalendarRoleName | null;
+  addsHqOrganization: boolean;
+  targetHasHqAfter: boolean;
+}
+
+function canonicalId(id: string): string {
+  return id.trim().toLowerCase();
+}
+
+/**
+ * Mirrors the server's checkCalendarGrant exactly (packages/auth/src/calendar-roles.ts):
+ * browser code can't import @gcpe/auth, so the screen that offers or hides an action duplicates
+ * this pure logic rather than calling the server before every render. The server still decides
+ * every grant on submit; calendar-roles.test.ts runs both over a generated matrix to keep this
+ * copy equal to the server's.
+ */
+export function checkCalendarGrant(c: CalendarGrantCheck): CalendarGrantRefusal | null {
+  const max = ceilingLevel({ has: (r) => c.actorRoles.includes(r) });
+  if (max === 0) return "not-an-administrator";
+  if (!c.actorRoles.includes("Core.Admin") && canonicalId(c.actorId) === canonicalId(c.targetId)) return "own-access";
+  if (c.targetRole && levelOf(c.targetRole) > max) return "target-above-ceiling";
+  if (c.nextRole && levelOf(c.nextRole) > max) return "above-ceiling";
+  if (c.addsHqOrganization && max < 5 && !c.actorIsHq) return "hq-organization";
+  if (c.targetHasHqAfter && max < 5 && !c.actorIsHq) return "hq-target";
+  return null;
+}
