@@ -17,6 +17,8 @@ import { FilesScreen } from "./screens/website/FilesScreen";
 import { FeaturedScreen } from "./screens/website/FeaturedScreen";
 import { LogScreen } from "./screens/website/LogScreen";
 import { UsersScreen } from "./screens/admin/users/UsersScreen";
+import { CalendarAccessScreen } from "./screens/admin/calendar-access/CalendarAccessScreen";
+import { OrganizationsScreen } from "./screens/admin/organizations/OrganizationsScreen";
 import { MediaListNamesScreen } from "./screens/admin/media-lists/MediaListNamesScreen";
 import { ErrorLogScreen } from "./screens/admin/errors/ErrorLogScreen";
 import { SubscribersSection } from "./screens/subscribers/SubscribersSection";
@@ -106,6 +108,8 @@ export const routes: RouteObject[] = [
         ],
       },
       { path: "users", element: <UsersScreen /> },
+      { path: "calendar-access", element: <CalendarAccessScreen /> },
+      { path: "organizations", element: <OrganizationsScreen /> },
       { path: "media-list-names", element: <MediaListNamesScreen /> },
       { path: "error-log", element: <ErrorLogScreen /> },
       { path: "*", element: null },

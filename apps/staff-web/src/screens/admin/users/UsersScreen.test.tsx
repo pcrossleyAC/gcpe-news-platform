@@ -159,4 +159,23 @@ describe("UsersScreen", () => {
     expect(await screen.findByText("a user with that email already exists")).toBeInTheDocument();
     expect(passwordField.value).toBe("");
   });
+
+  it("shows a user with no email as such, and links them to an email", async () => {
+    const IMPORTED: UserView = { id: "old-1", email: null, displayName: "Kim Imported", isActive: false, signInMethod: "local", roles: [] };
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, IMPORTED]);
+      if (url === "/core/api/users/old-1/link" && init?.method === "POST") return jsonResponse(200, { ...IMPORTED, email: "kim.imported@x.invalid", isActive: true });
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    expect(await screen.findByRole("heading", { name: "Kim Imported (no email) (inactive)" })).toBeInTheDocument();
+    expect(screen.queryByRole("switch", { name: /Kim Imported/ })).toBeNull();
+    const form = screen.getByRole("form", { name: "Link Kim Imported to an email" });
+    await user.type(within(form).getByLabelText(/^Email for Kim Imported/), "kim.imported@x.invalid");
+    await user.click(within(form).getByRole("button", { name: "Link and activate" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/old-1/link")).toBe(true));
+    expect(JSON.parse(calls.find((c) => c.url === "/core/api/users/old-1/link")!.init!.body as string)).toEqual({ email: "kim.imported@x.invalid" });
+  });
 });
