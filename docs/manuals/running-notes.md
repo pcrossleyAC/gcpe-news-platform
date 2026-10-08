@@ -348,4 +348,14 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Developer** — Core emits `user.upserted` for every user change and on republish. Nothing consumes
   it until the Calendar app (5b) subscribes. Ministries are named by organization key.
 - **Operations** — After deploying 5a, re-run `scripts/seed-core-from-public-api.ts` on test sites to
-  add the two HQ organizations. Re-running it never clears an HQ flag set by hand.
+  add the two HQ organizations. The seed and the legacy importer make GCPE Headquarters, GCPE Media
+  Relations and the Office of the Premier HQ only when they create them. They never change the HQ
+  flag of an organization that already exists, in either direction, so a re-seed or re-import never
+  undoes a Core admin's choice. Where the Office of the Premier already existed (as on boxs.ca), tick
+  it HQ on Hub → Organizations by hand once.
+- **Administrator** — On Calendar access, a Calendar Administrator who is not in an HQ organization
+  isn't offered HQ ministries, and has no Edit button on someone who holds an HQ ministry: only an HQ
+  Administrator, a System Administrator or a Core admin can change those. The server checks again on
+  every save and shows its refusal in the form.
+- **Administrator** — If a save names a ministry that doesn't exist or has been deactivated, the error
+  lists which of the ministries you chose it refused.

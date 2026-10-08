@@ -786,11 +786,26 @@ then flip the Operations switch.
   tables and a partial index on `role_grants`. It runs in the normal deploy. It succeeds on boxs.ca's
   data because every existing user has an email and no grant is a Calendar role.
 - **Seed:** re-run `GCPE_TOKEN=… npm run core:seed-from-public-api -- https://boxs.ca`. Its summary has
-  a `hq-organizations: upserted=2` line. The Office of the Premier is marked HQ in the ministries pass;
+  a `hq-organizations: upserted=2` line. The Office of the Premier is updated in the ministries pass;
   it is not created twice.
+- **HQ is set only when an organization is created (C124).** The seed and the legacy importer make
+  GCPE Headquarters, GCPE Media Relations and the Office of the Premier HQ only when they create them.
+  On an organization that already exists they never change the HQ flag, either way: after that only a
+  Core admin changes it, on Hub → Organizations (or `PUT /core/api/organizations/:key/hq`). So
+  re-seeding or re-importing never undoes an admin's choice. On boxs.ca the Office of the Premier
+  already exists from earlier seeds, so the seed leaves it as it is: tick it HQ on Hub → Organizations
+  once, by hand. The two GCPE organizations are new there, so the seed creates them HQ.
+- **Rollback caveat.** Once anyone holds a Calendar role, rolling the code back to before Phase 5a is
+  unsafe: the old `setRoles` deletes every grant a user has, so the next flat-role save on Hub → Users
+  would silently delete that user's Calendar role too. Reversing the `0002_calendar_access` migration
+  is possible only while every user still has an email (the old `users.email` was not nullable). If
+  you must roll back, first check `SELECT count(*) FROM users WHERE email IS NULL` is 0, and record
+  every Calendar grant so it can be re-entered.
 - **Hand checks** (acceptance item 1, Core half):
-  - As the break-glass admin, on Hub → Organizations, GCPE Headquarters, GCPE Media Relations and
-    Office of the Premier are ticked HQ, and there is exactly one Office of the Premier.
+  - As the break-glass admin, on Hub → Organizations, GCPE Headquarters and GCPE Media Relations are
+    ticked HQ, and there is exactly one Office of the Premier. Tick it HQ (see above), then re-run the
+    seed: all three stay ticked.
+  - Untick the Office of the Premier, re-run the seed, and check it stays unticked. Tick it again.
   - Until 5b hides them (Q54), GCPE Headquarters and GCPE Media Relations show on boxs.ca's public
     ministry list. That is expected on the test site.
   - On Hub → Users, add a user with a password. On Calendar access, give them Administrator with one
@@ -798,7 +813,8 @@ then flip the Operations switch.
   - Sign in as them. They land on Calendar access.
   - Give another user Editor with a ministry. "System Administrator" is not offered.
   - Their own row and any System Administrator's row are read-only.
-  - Adding GCPE Headquarters to someone is refused with the HQ message.
+  - GCPE Headquarters is not offered to them, and a user who holds an HQ ministry has no Edit button
+    (the server would refuse both).
 
 ## Troubleshooting
 
