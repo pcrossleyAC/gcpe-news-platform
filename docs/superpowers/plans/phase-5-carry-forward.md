@@ -2,20 +2,16 @@
 
 Items one sub-plan leaves for a later one. Delete an item when the plan that takes it is written.
 
-## 5b-2
-
-- **Calendar users screen (§8.5).** Role and ministries go through `PUT /core/api/calendar-access/:id` (built in 5a). Active and Link for Calendar Administrators need new Core routes, under Q55's rule: Calendar-only users only, unless the caller is Core.Admin.
-- **Calendar test users.** Add Calendar test users to `TEST_USERS`, `scripts/siteground-seed-users.sh` and `tests/e2e/constants.ts`, with ministries. `seedTestUsers` will need the organizations to exist first.
-
 ## 5c
 
 - **Dead-letter page.** The Calendar's outbox has a dispatcher but no screen for dead deliveries; build it when the Calendar first emits `activity.*` (spec addendum §5.1).
 - **Lock-expiry sweep** on the stack tick (spec addendum §5.1, §7.5), with the `activity_locks` table that 5b-1 created.
 - **Tenant `calendar` config section** (spec addendum §5.1): freeze window and zone, release category ids 12 and 58, City "Other…" 311, comm material 61, category names, consultations ministry, contact-ministry exclusions, `SharedWithExcludes`, Translations default list, required-field switches, `ShowHqCommentsField`, `ShowRecordsSection`, cover image, banner text.
-- **Transfer** (spec addendum §7.1, §8.5): the API and the screen, with the users screen 5b-2 builds.
+- **Transfer** (spec addendum §7.1, §8.5): the API and the screen, with the users screen 5b-2 built.
 - **Deactivation preview** (spec addendum §8.5, `User.aspx:183-223`): list a user's open activities before deactivating, filtered by `visible()`. Legacy listed every activity with that user as an active comm contact, past ones included; "open" here means not deleted and ending today or later.
 - **A cloned activity's history must record its source id** — for example an `activity_change_fields` row `cloned_from` — so the clone's history can be traced back to the activity it came from.
 - **`needs_review` writers must de-duplicate keys.** A write that adds to the `needs_review` set must not insert the same field key twice; the schema's check constraint (§5.2) only bounds the set to the 23 known keys, it doesn't dedupe.
+- **The self-deactivation check in `PUT /core/api/calendar-access/:id/active` runs outside the lock** (5b-2 review, parked as low risk): it reads the caller's own id before the aggregate lock and row `FOR UPDATE` rather than after, so a self-deactivation racing a concurrent change to the same user is checked against a value that isn't re-confirmed post-lock. Move the check after the lock, or re-check it once the row is held.
 
 ## 5e
 
@@ -23,6 +19,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 
 ## 5g
 
+- **Report rendering:** build on the spike's recommendation (`docs/superpowers/plans/2026-10-08-phase-5b-report-rendering-spike.md`); its "Risks and what wasn't checked" list is 5g's to close. Wait for Q57's answer before planning 5g: the spike's boxs.ca SSH and runtime legs couldn't run (the gcpe-siteground SSH key isn't authorised), so whether Chromium runs on SiteGround's Node hosting is still unverified; re-run those two legs once the key is authorised, before committing 5g's rendering seam to Chromium as the default.
 - **Look Ahead: don't build "Consultations and Dialogues".** That section hasn't been used in years (Paul, 2026-10-07). 5g does **not** build it. Record it in `docs/parity/changes-from-legacy.md` as dropped: "dropped: unused for years, Paul 2026-10-07". Update the spec's "all 7 sections" (R6, §10.2) and the cover legend to match. Check whether the §7 category rule "contact ministry is the consultations ministry → Consultations and Dialogues" still matters without the section.
 - **Legacy report fixes** (from `docs/parity/legacy-report-layouts.md`'s discrepancies): drop the doubled "updated updated" wording in the Executive Look Ahead's "Last updated" line; drop the raw, unparsed `**CONFIDENTIAL**` markdown marker from a row's title. "Consultations and Dialogues" is dropped entirely, per the item above.
 

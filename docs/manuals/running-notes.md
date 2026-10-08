@@ -397,3 +397,21 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Operations** — The Calendar has no local-admin sign-in route, so the stack's shared login limiter
   no longer lists `/calendar/auth/local/token`. Staff reach the Calendar only through the Core
   session; a bearer token is refused.
+
+## Phase 5b-2 — Calendar users, test users, report spike
+
+- **Administrator** — Hub → Calendar → Users lists each user once per ministry, as "Name (Abbreviation) (rank)".
+  Switches add inactive users (including those imported without an email) and users without Calendar access.
+- **Administrator** — On a user's page: contact details (phone is free text up to 20 characters; mobile
+  is either empty or legacy's 12-digit-and-hyphen format, like 250-555-0100), the comm-contact rank for
+  each of their ministries, their Calendar role and ministries, and their account. Role, ministries and
+  account changes reach the Calendar within a minute.
+- **Administrator** — A Calendar Administrator can deactivate, reactivate or link only people whose only
+  access is the Calendar. Anyone who also uses NRMS or NoD is a Core admin's to change.
+- **Administrator** — Set a comm-contact rank only after the person's ministry is saved; if the Calendar
+  says the ministry isn't theirs yet, wait a minute and try again.
+- **Operations** — `scripts/siteground-seed-users.sh` now also seeds five Calendar test users
+  (cal-admin, cal-sysadmin, cal-hq-admin, cal-editor, cal-readonly @example.test) and gives them Calendar
+  access; run it after the public-API seed so their organizations exist.
+- **Developer** — The report-rendering spike's code is on `spike/5b-report-rendering`, never merged; its
+  findings are in `docs/superpowers/plans/2026-10-08-phase-5b-report-rendering-spike.md`.

@@ -882,6 +882,20 @@ every process start.
   Administrator's role on Hub → Calendar access, wait one tick, click in the Calendar: "You don't
   have Calendar access".
 
+### Calendar users (Phase 5b-2)
+
+No migration. Re-run `scripts/siteground-seed-users.sh https://boxs.ca` (interactive, Paul) to add
+the five Calendar test users (cal-admin, cal-sysadmin, cal-hq-admin, cal-editor, cal-readonly).
+
+**Hand checks:**
+
+- As cal-admin: Hub → Calendar → Users lists "Test Calendar Editor (HLTH)"; open it, save a phone
+  number, set rank PAO for Health.
+- Deactivate a fresh Calendar-only user, then reactivate them.
+- Try to deactivate "Test Editor" (an NRMS user): refused with the Core-admin message.
+- As cal-hq-admin: open an HQ user and change their rank (allowed); as cal-admin, deactivating
+  cal-hq-admin is refused (HQ user).
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
