@@ -924,6 +924,17 @@ cookie from `POST /core/auth/login` and the `X-GCPE-Request: 1` header:
 5. After one tick, NRMS's `inbox_events` has an `ignored` row of type `activity.created` from
    source `calendar`, and the News API's has none.
 
+### Transfer and undelivered events (Phase 5c-2)
+
+**No migration.**
+
+**Hand checks:**
+
+1. As cal-admin: Hub → Calendar → Transfer. Pick two Health comm contacts and Preview. The count
+   matches the activities created in 5c-1's hand checks. Transfer.
+2. On a user's page, Deactivate shows "No open activities." or the list.
+3. As cal-sysadmin: Hub → Calendar → Undelivered events shows "Nothing is waiting".
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

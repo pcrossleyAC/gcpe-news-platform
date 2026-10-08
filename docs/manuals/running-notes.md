@@ -451,3 +451,16 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Developer** — A request value the database can't hold (an id past 2,147,483,647, a NUL character,
   a year before 1900 or after 2199) answers 400, never a 500. A database data error the request
   checks miss also answers 400 `{"error":"invalid value"}`, and its code is logged.
+
+## Phase 5c-2 — Transfer, the deactivation preview, undelivered events
+
+- **Administrator** — Hub → Calendar → Transfer moves every activity of one comm contact (past ones
+  too, not deleted ones) to another and makes the second contact's ministry the lead ministry. It
+  shows how many will move before you confirm. A ministry Administrator can transfer only within
+  their own ministries; HQ Administrators can transfer across ministries. Transfer works during
+  the 4pm-5pm freeze.
+- **Administrator** — Deactivating a user first lists their open activities, with a link to
+  Transfer. Deactivating doesn't move them.
+- **System Administrator** — Hub → Calendar → Undelivered events lists events another app didn't
+  accept for 24 hours. Retry sends one again on the next minute's tick; if it comes back, the
+  receiving app is still refusing it.

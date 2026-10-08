@@ -2,18 +2,14 @@
 
 Items one sub-plan leaves for a later one. Delete an item when the plan that takes it is written.
 
-## 5c-2
+## 5d
 
-- **Dead-letter page.** The Calendar's outbox has a dispatcher but no screen for dead deliveries; build it when the Calendar first emits `activity.*` (spec addendum §5.1).
-- **Transfer** (spec addendum §7.1, §8.5): the API and the screen, with the users screen 5b-2 built.
-- **Deactivation preview** (spec addendum §8.5, `User.aspx:183-223`): list a user's open activities before deactivating, filtered by `visible()`. Legacy listed every activity with that user as an active comm contact, past ones included; "open" here means not deleted and ending today or later.
 - **Pin the tenant-config start-up refusal with an integration test.** `startCalendar` must refuse to start when the tenant file has no `calendar` section (spec addendum §5.1); only unit coverage exists today.
-- **`FIELD_ONLY_ACTIONS` gains `transferred`** (`apps/calendar/src/activities/view.ts`) once Transfer can carry Look-Ahead-only fields, so a ministry viewer doesn't see an empty Transfer entry.
 - **Add a barrier to the concurrent-lock race test** (`activity-locks.test.ts`, "two people taking it at once"), so both requests are provably in flight together.
 - **History on an imported dirty title/details:** isolate the All-Day status-only row in its own test. (The raw-to-cleaned title entry is pinned in the curly-quote test.)
 - **Done in 5c-1: Awareness and the consultations ministry take no section override.** Legacy (`Activity.aspx:2470-2481`) fixes their section with no HQ override, as spec addendum §7.6 and C168 say. `sectionToStore` ignores a fieldset user's choice for them and keeps the stored section (Not on LA for a new activity), on create and update alike; Long Term Outlook stays settable.
-
-## 5d
+- **The lookups reorder route doesn't bound each id to int4.** `orderSchema` (`apps/calendar/src/http/lookup-routes.ts`) caps the array at 5000 entries but never bounds an individual id the way the activity and transfer routes do (their own `MAX_ACTIVITY_ID`/`MAX_CONTACT_ID` `.max()`); an id past `2,147,483,647` reaches the query as a data exception instead of a clean 400.
+- **The class-22 (and class-23) log lines carry no method or path.** `sendActivityError`'s two `console.error` calls (`apps/calendar/src/http/errors.ts:27,32`) log only `safeErrorLabel(e)`; add the request's method and path so a logged data-exception or constraint hit can be traced back to the call that caused it.
 
 - **The list reads through `visibleSql(actor)`** (`apps/calendar/src/visibility.ts`), unaliased `activities`; never filter in memory after paging (spec addendum §6).
 - **Review selected** posts `{ items: [{ id, version }] }` (≤ 500) to `POST /calendar/api/activities/review-selected` and shows the `skipped` list; **Clear LA Status** posts `{ days }` to `POST /calendar/api/activities/clear-la-status`.
@@ -54,11 +50,8 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **`SortOrder`** maps to `rank`.
 - **Empty mobile values:** a blank legacy mobile number imports as an empty string. `user_profiles.mobile`'s CHECK allows that (empty, or 12 characters of digits and hyphens), so don't map it to null or reject it.
 - **The legacy log importer must map Look Ahead changes onto exactly the `LOOK_AHEAD_HISTORY_FIELDS` keys** (`hq_comments`, `hq_status`, `hq_section`, `long_term_outlook`) — a deny-list filter, not an allow-everything-else one, so an importer bug can't smuggle an HQ-only field into a ministry viewer's history under an unexpected key.
+- **Check legacy end dates and NR years against 1900–2199 too.** The activity API refuses a year outside 1900–2199 on create and update (spec addendum §12.1's int4/NUL/year checks); the importer should reject and report a legacy row whose end date or NR year falls outside that same range, rather than importing a value the Calendar's own API would never accept.
 
 ## Entra sign-in (later phase)
 
 - **Entra/OIDC matching must never match on a null email.** When Entra/OIDC sign-in is built, matching an incoming identity to a Core user by email must treat `email IS NULL` as "no match", never as a wildcard — a user imported without an email (spec addendum §4, "Users without email") must stay unmatched until an admin links a real address.
-
-## Staff-web follow-up
-
-- **Add `/hub/calendar` to the e2e axe sweep.** `tests/e2e/axe-sweep.spec.ts` (the stack-wide sweep) has no entry for the Calendar's landing screen or its lookup screens. The Calendar's target-size CSS is already done.
