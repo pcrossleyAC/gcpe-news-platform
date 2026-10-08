@@ -55,6 +55,7 @@ describe("mapMinistry", () => {
       topicLinks: [],
       serviceLinks: [],
       sectorKeys: [],
+      isHq: true,
     });
   });
 
@@ -82,6 +83,14 @@ describe("mapMinistry", () => {
       { topics: [], services: [], sectorKeys: [] },
     );
     expect(org.contact).toBeNull();
+  });
+
+  it("marks GCPEHQ, GCPEMEDIA and PREM as HQ and leaves every other ministry's flag to Core (Q49)", () => {
+    const related = { topics: [], services: [], sectorKeys: [] };
+    expect(mapMinistry({ ...mediaRelations, Abbreviation: "GCPEHQ" }, related).isHq).toBe(true);
+    expect(mapMinistry({ ...mediaRelations, Abbreviation: "GCPEMEDIA" }, related).isHq).toBe(true);
+    expect(mapMinistry({ ...mediaRelations, Key: "office-of-the-premier", Abbreviation: "PREM" }, related).isHq).toBe(true);
+    expect("isHq" in mapMinistry({ ...mediaRelations, Abbreviation: "HLTH" }, related)).toBe(false);
   });
 });
 

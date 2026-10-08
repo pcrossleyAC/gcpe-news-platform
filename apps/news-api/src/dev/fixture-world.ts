@@ -58,7 +58,7 @@ export function buildFixtureEvents(fx: Record<string, LiveFixture>): FixtureEven
       },
       contact: m.contactUser, secondContact: m.secondContactUser, weekendContactNumber: m.weekendContactNumber, social: social(m),
       topicLinks: m.topicLinks.map((l: Json) => ({ text: l.key, url: l.uri })), serviceLinks: m.serviceLinks.map((l: Json) => ({ text: l.key, url: l.uri })),
-      sectorKeys: [], updatedAt: m.timestamp,
+      sectorKeys: [], isHq: false, updatedAt: m.timestamp,
     };
     events.push({ source: "core", type: "org.upserted", aggregateId: `org:${m.key}`, data: org });
     if (m.topPostKey || m.featurePostKey) {

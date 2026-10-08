@@ -18,6 +18,7 @@ const org: OrgRecord = {
   topicLinks: [{ text: "Get immunized", url: "https://www2.gov.bc.ca/x" }],
   serviceLinks: [],
   sectorKeys: ["health"],
+  isHq: false,
   updatedAt: "2026-10-02T16:46:05.527-07:00",
 };
 
@@ -56,6 +57,13 @@ describe("parseEvent", () => {
   it("maps term kinds to event types", () => {
     expect(termEventType("sector", "upserted")).toBe("sector.upserted");
     expect(termEventType("service", "deactivated")).toBe("service.deactivated");
+  });
+
+  it("org.upserted carries isHq; an older envelope without it parses as not HQ", () => {
+    expect(parseEvent(envelope("org.upserted", { ...org, isHq: true })).data).toMatchObject({ isHq: true });
+    const { isHq: _h, ...older } = org;
+    expect(parseEvent(envelope("org.upserted", older)).data).toMatchObject({ isHq: false });
+    expect(() => parseEvent(envelope("org.upserted", { ...org, isHq: "yes" }))).toThrow();
   });
 });
 

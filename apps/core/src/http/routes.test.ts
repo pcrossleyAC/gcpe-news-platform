@@ -68,6 +68,18 @@ describe("Core HTTP API", () => {
     expect((await request(app).put("/api/organizations/health").set("authorization", `Bearer ${admin}`).send({ key: "health" })).status).toBe(400);
   });
 
+  it("PUT /organizations/:key/hq is Core.Admin only, 404s an unknown key and 400s a non-boolean", async () => {
+    const auth = (t: string) => ({ authorization: `Bearer ${t}` });
+    await request(app).put("/api/organizations/health").set(auth(admin)).send(healthOrg).expect(200);
+    expect((await request(app).put("/api/organizations/health/hq").set(auth(editorOnly)).send({ isHq: true })).status).toBe(403);
+    const set = await request(app).put("/api/organizations/health/hq").set(auth(admin)).send({ isHq: true });
+    expect(set.status).toBe(200);
+    expect(set.body.isHq).toBe(true);
+    expect((await request(app).get("/api/organizations/health").set(auth(reader))).body.isHq).toBe(true);
+    expect((await request(app).put("/api/organizations/nope/hq").set(auth(admin)).send({ isHq: true })).status).toBe(404);
+    expect((await request(app).put("/api/organizations/health/hq").set(auth(admin)).send({ isHq: "yes" })).status).toBe(400);
+  });
+
   it("handles terms and rejects unknown kinds", async () => {
     const term = { kind: "tag", key: "covid-19", displayName: "COVID-19", sortOrder: 0, isActive: true, social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null } };
     expect((await request(app).put("/api/terms/tag/covid-19").set("authorization", `Bearer ${admin}`).send(term)).status).toBe(200);

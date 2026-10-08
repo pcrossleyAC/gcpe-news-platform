@@ -1,9 +1,9 @@
 import express, { type Request, type Response } from "express";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
 import { EventTooLargeError, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
-import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, upsertOrganization } from "../services/organizations";
+import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, setOrganizationHq, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
@@ -53,6 +53,16 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
       const input = orgInputSchema.parse(req.body);
       if (input.key !== req.params.key) return void res.status(400).json({ error: "body key must match path" });
       res.json((await upsertOrganization(db, input, subscribers)).record);
+    }),
+  );
+  const hqSchema = z.object({ isHq: z.boolean() });
+  r.put(
+    "/organizations/:key/hq",
+    admin,
+    safe<{ key: string }>(async (req, res) => {
+      const { isHq } = hqSchema.parse(req.body);
+      const record = await setOrganizationHq(db, req.params.key, isHq, subscribers);
+      record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );
   r.post(

@@ -240,7 +240,43 @@ function makeFetchMock(routes: {
   return { fetchImpl: fetchImpl as unknown as typeof fetch, calls };
 }
 
+const SAMPLE_PREMIER: PublicMinistry = { ...SAMPLE_MINISTRY, key: "office-of-the-premier", name: "Office of the Premier", ministryUrl: "https://news.gov.bc.ca/ministries/office-of-the-premier", twitterFeedUsername: null };
+
 describe("run() — CLI orchestration against a mocked fetch", () => {
+  it("adds the two GCPE HQ organizations and marks the existing Office of the Premier HQ; no other body carries isHq", async () => {
+    const { fetchImpl, calls } = makeFetchMock({
+      publicMinistries: [SAMPLE_MINISTRY, SAMPLE_PREMIER],
+      publicMinister: SAMPLE_MINISTER,
+      publicMinistryPosts: { "office-of-the-premier": [{ key: "2026PREM0065-001037", kind: "releases", leadMinistryKey: "office-of-the-premier" }] },
+      publicSectors: [],
+      publicThemes: [],
+      publicTags: [],
+    });
+    const result = await run({ targetBaseUrl: "https://boxs.ca", token: "t", fetchImpl, delayMs: 0, log: () => {} });
+    expect(result.ok).toBe(true);
+    const orgPuts = calls.filter((c) => c.method === "PUT" && c.url.pathname.startsWith("/core/api/organizations/"));
+    const bodies = new Map(orgPuts.map((c) => [c.url.pathname, JSON.parse(c.body!) as Record<string, unknown>]));
+    for (const [path, abbreviation] of [["/core/api/organizations/gcpe-headquarters", "GCPEHQ"], ["/core/api/organizations/gcpe-media-relations", "GCPEMEDIA"]] as const) {
+      expect(bodies.get(path)).toMatchObject({ abbreviation, isHq: true, isActive: true });
+      expect(() => orgInputSchema.parse(bodies.get(path))).not.toThrow();
+    }
+    // The Office of the Premier is the public ministry itself, marked HQ: one PUT, its own key, its public name.
+    expect(orgPuts.filter((c) => c.url.pathname === "/core/api/organizations/office-of-the-premier")).toHaveLength(1);
+    expect(bodies.get("/core/api/organizations/office-of-the-premier")).toMatchObject({ displayName: "Office of the Premier", abbreviation: "PREM", isHq: true });
+    // Any other public ministry's body never carries isHq, so re-seeding never clears a flag set by hand.
+    expect("isHq" in bodies.get("/core/api/organizations/aest")!).toBe(false);
+    expect(result.summaries.find((s) => s.kind === "hq-organizations")).toMatchObject({ upserted: 2, failed: 0 });
+  });
+
+  it("marks the Office of the Premier HQ even when its releases yield no abbreviation", async () => {
+    const { fetchImpl, calls } = makeFetchMock({ publicMinistries: [SAMPLE_PREMIER], publicMinister: SAMPLE_MINISTER, publicSectors: [], publicThemes: [], publicTags: [] });
+    const result = await run({ targetBaseUrl: "https://boxs.ca", token: "t", fetchImpl, delayMs: 0, log: () => {} });
+    const body = JSON.parse(calls.find((c) => c.url.pathname === "/core/api/organizations/office-of-the-premier")!.body!);
+    expect(body).toMatchObject({ abbreviation: "PREM", isHq: true });
+    expect(result.summaries.find((s) => s.kind === "ministries")!.noAbbreviation).toEqual([]);
+  });
+
+
   it("sends the bearer header on every write, never puts the token in a URL, and never sends the session CSRF header", async () => {
     const { fetchImpl, calls } = makeFetchMock({
       publicMinistries: [SAMPLE_MINISTRY],

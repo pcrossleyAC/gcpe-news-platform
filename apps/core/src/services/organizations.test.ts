@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { outboxEvents, type SubscriberConfig } from "@gcpe/events";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
-import { deactivateOrganization, getOrganization, listOrganizations, upsertOrganization } from "./organizations";
+import { HQ_ABBREVIATIONS, deactivateOrganization, getOrganization, isHqAbbreviation, listOrganizations, setOrganizationHq, upsertOrganization } from "./organizations";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://x/events", secret: "s", types: ["*"] }];
 
@@ -99,5 +99,44 @@ describe("organizations service", () => {
     expect(events).toHaveLength(1);
     const { rows } = await tdb.pool.query("SELECT legacy_id FROM organizations WHERE key = 'health'");
     expect(rows[0].legacy_id).toBe(legacyId);
+  });
+
+  it("an organization is not HQ until set; org.upserted carries the flag", async () => {
+    const { record } = await upsertOrganization(tdb.db, healthOrg, subs);
+    expect(record.isHq).toBe(false);
+    const hq = await upsertOrganization(tdb.db, { ...healthOrg, key: "gcpe-headquarters", abbreviation: "GCPEHQ", isHq: true }, subs);
+    expect(hq.record.isHq).toBe(true);
+    const [event] = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:gcpe-headquarters"));
+    expect((event!.envelope as { data: { isHq: boolean } }).data.isHq).toBe(true);
+  });
+
+  it("an upsert that omits isHq keeps the stored flag and emits nothing new", async () => {
+    await upsertOrganization(tdb.db, { ...healthOrg, isHq: true }, subs);
+    const again = await upsertOrganization(tdb.db, healthOrg, subs);
+    expect(again.changed).toBe(false);
+    expect(again.record.isHq).toBe(true);
+    const renamed = await upsertOrganization(tdb.db, { ...healthOrg, displayName: "Health and Wellness" }, subs);
+    expect(renamed.record.isHq).toBe(true);
+    expect(await tdb.db.select().from(outboxEvents)).toHaveLength(2);
+  });
+
+  it("setOrganizationHq flips the flag and emits once; the same value emits nothing; an unknown key is null", async () => {
+    await upsertOrganization(tdb.db, healthOrg, subs);
+    expect((await setOrganizationHq(tdb.db, "health", true, subs))!.isHq).toBe(true);
+    expect((await setOrganizationHq(tdb.db, "health", true, subs))!.isHq).toBe(true);
+    expect((await setOrganizationHq(tdb.db, "health", false, subs))!.isHq).toBe(false);
+    const types = (await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:health"))).map((e) => e.type);
+    expect(types).toEqual(["org.upserted", "org.upserted", "org.upserted"]);
+    expect(await setOrganizationHq(tdb.db, "no-such-org", true, subs)).toBeNull();
+  });
+
+  it("HQ abbreviations are GCPEHQ, GCPEMEDIA and PREM, matched trimmed and in any case (Q49)", () => {
+    expect([...HQ_ABBREVIATIONS]).toEqual(["GCPEHQ", "GCPEMEDIA", "PREM"]);
+    expect(isHqAbbreviation(" gcpemedia ")).toBe(true);
+    expect(isHqAbbreviation("GCPEHQ")).toBe(true);
+    expect(isHqAbbreviation("prem")).toBe(true);
+    expect(isHqAbbreviation("HLTH")).toBe(false);
+    expect(isHqAbbreviation("PREMX")).toBe(false);
+    expect(isHqAbbreviation(null)).toBe(false);
   });
 });

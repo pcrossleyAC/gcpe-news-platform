@@ -27,9 +27,12 @@ import {
   fetchSectors,
   fetchTags,
   fetchThemes,
+  HQ_SEED_ORGANIZATIONS,
+  KNOWN_ABBREVIATIONS,
   sleep,
   toOrgInput,
   toTermInput,
+  withHqFlag,
   type PublicCategory,
 } from "./lib/public-taxonomy";
 
@@ -101,11 +104,26 @@ async function seedMinistries(
     const minister = await fetchMinister(publicApiBase, ministry.key, fetchImpl);
     await sleep(delayMs);
     const recentReleases = await fetchLatestMinistryPosts(publicApiBase, ministry.key, abbreviationSampleSize, fetchImpl);
-    const abbreviation = deriveMinistryAbbreviation(recentReleases, ministry.key);
-    const input = orgInputSchema.parse(toOrgInput(ministry, minister, abbreviation));
+    const abbreviation = deriveMinistryAbbreviation(recentReleases, ministry.key) ?? KNOWN_ABBREVIATIONS[ministry.key.toLowerCase()] ?? null;
+    const input = orgInputSchema.parse(withHqFlag(toOrgInput(ministry, minister, abbreviation)));
     if (abbreviation === null) summary.noAbbreviation.push(input.key);
     await sleep(delayMs);
     const res = await putJson(targetBaseUrl, `/core/api/organizations/${encodeURIComponent(input.key)}`, token, input, fetchImpl);
+    if (res.ok) summary.upserted++;
+    else {
+      summary.failed++;
+      summary.failures.push({ key: input.key, status: res.status });
+    }
+  }
+  return summary;
+}
+
+async function seedHqOrganizations(opts: Required<Pick<RunOptions, "targetBaseUrl" | "token" | "delayMs" | "fetchImpl">>): Promise<KindSummary> {
+  const summary: KindSummary = { kind: "hq-organizations", upserted: 0, failed: 0, failures: [], noAbbreviation: [] };
+  for (const org of HQ_SEED_ORGANIZATIONS) {
+    const input = orgInputSchema.parse(org);
+    await sleep(opts.delayMs);
+    const res = await putJson(opts.targetBaseUrl, `/core/api/organizations/${encodeURIComponent(input.key)}`, opts.token, input, opts.fetchImpl);
     if (res.ok) summary.upserted++;
     else {
       summary.failed++;
@@ -150,6 +168,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
 
   const summaries: KindSummary[] = [];
   summaries.push(await seedMinistries({ ...common, abbreviationSampleSize }));
+  summaries.push(await seedHqOrganizations(common));
   summaries.push(await seedTermKind("sector", fetchSectors, common));
   summaries.push(await seedTermKind("theme", fetchThemes, common));
   summaries.push(await seedTermKind("tag", fetchTags, common));

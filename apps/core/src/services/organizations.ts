@@ -1,11 +1,23 @@
 import { asc, eq } from "drizzle-orm";
+import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { enqueueEvent, orgRecordSchema, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
 import { organizations } from "../db/schema";
 import { CORE_SOURCE, lockAggregate, orgAggregateId } from "./aggregate";
 
-export const orgInputSchema = orgRecordSchema.omit({ updatedAt: true });
-export type OrgInput = Omit<OrgRecord, "updatedAt">;
+/**
+ * isHq is optional on input: omitted keeps the stored flag (false for a new organization), so
+ * re-running the BC seed or the legacy importer never clears an HQ flag set by Core.Admin.
+ */
+export const orgInputSchema = orgRecordSchema.omit({ updatedAt: true, isHq: true }).extend({ isHq: z.boolean().optional() });
+export type OrgInput = z.infer<typeof orgInputSchema>;
+
+/** Legacy abbreviations of the HQ organizations (Q49): GCPE Headquarters, GCPE Media Relations and the Office of the Premier. Legacy matched HQ by Ministry.Abbreviation. */
+export const HQ_ABBREVIATIONS = ["GCPEHQ", "GCPEMEDIA", "PREM"] as const;
+
+export function isHqAbbreviation(abbreviation: string | null | undefined): boolean {
+  return abbreviation != null && (HQ_ABBREVIATIONS as readonly string[]).includes(abbreviation.trim().toUpperCase());
+}
 
 type Row = typeof organizations.$inferSelect;
 
@@ -27,6 +39,7 @@ export function toOrgRecord(row: Row): OrgRecord {
     topicLinks: row.topicLinks,
     serviceLinks: row.serviceLinks,
     sectorKeys: row.sectorKeys,
+    isHq: row.isHq,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -41,10 +54,11 @@ export async function upsertOrganization(
   subscribers: SubscriberConfig[],
   opts: { legacyId?: string } = {},
 ): Promise<{ record: OrgRecord; changed: boolean }> {
-  const data = orgInputSchema.parse(input);
+  const parsed = orgInputSchema.parse(input);
   return db.transaction(async (tx) => {
-    await lockAggregate(tx, orgAggregateId(data.key));
-    const [existing] = await tx.select().from(organizations).where(eq(organizations.key, data.key)).for("update");
+    await lockAggregate(tx, orgAggregateId(parsed.key));
+    const [existing] = await tx.select().from(organizations).where(eq(organizations.key, parsed.key)).for("update");
+    const data = { ...parsed, isHq: parsed.isHq ?? existing?.isHq ?? false };
     if (existing) {
       const { updatedAt: _u, ...current } = toOrgRecord(existing);
       if (sameContent(current, data)) {
@@ -68,6 +82,20 @@ export async function upsertOrganization(
     const record = toOrgRecord(row!);
     await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(record.key), data: record }, subscribers);
     return { record, changed: true };
+  });
+}
+
+/** Core.Admin's HQ switch. Emits org.upserted only when the flag changes. */
+export async function setOrganizationHq(db: Db, key: string, isHq: boolean, subscribers: SubscriberConfig[]): Promise<OrgRecord | null> {
+  return db.transaction(async (tx) => {
+    await lockAggregate(tx, orgAggregateId(key));
+    const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
+    if (!existing) return null;
+    if (existing.isHq === isHq) return toOrgRecord(existing);
+    const [row] = await tx.update(organizations).set({ isHq, updatedAt: new Date() }).where(eq(organizations.key, key)).returning();
+    const record = toOrgRecord(row!);
+    await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: record }, subscribers);
+    return record;
   });
 }
 

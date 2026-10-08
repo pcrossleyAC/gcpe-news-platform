@@ -41,6 +41,9 @@ export const orgRecordSchema = z.object({
   topicLinks: z.array(linkSchema),
   serviceLinks: z.array(linkSchema),
   sectorKeys: z.array(z.string()),
+  // HQ organization (Calendar spec addendum §4, C124). Defaulted so an envelope stored before
+  // the flag existed still parses.
+  isHq: z.boolean().default(false),
   updatedAt: z.string().datetime({ offset: true }),
 });
 export type OrgRecord = z.infer<typeof orgRecordSchema>;
