@@ -37,7 +37,11 @@ test.describe("Calendar users", () => {
     await expect(page.getByRole("status").filter({ hasText: "Saved the comm-contact rank." })).toHaveText("Saved the comm-contact rank.");
     await expectNoSeriousA11yViolations(page, "Calendar user");
 
+    // Deactivate first lists the user's open activities (none here); its own button confirms.
     await page.getByRole("button", { name: `Deactivate Calendar User ${stamp}` }).click();
+    const preview = page.getByRole("region", { name: `Before deactivating Calendar User ${stamp}` });
+    await expect(preview.getByText("No open activities.")).toBeVisible();
+    await preview.getByRole("button", { name: "Deactivate", exact: true }).click();
     await expect(page.getByRole("status").filter({ hasText: "is deactivated." })).toContainText(`Calendar User ${stamp} is deactivated.`);
 
     // Q55: a user who also holds an NRMS role is a Core admin's to change, not a Calendar

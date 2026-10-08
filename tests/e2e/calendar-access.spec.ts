@@ -3,7 +3,7 @@
 // server refuses both even when asked directly. Visibility of activities is 5c's half.
 import { test, expect } from "@playwright/test";
 import { healthOrg } from "../../apps/core/test/helpers";
-import { ADMIN_PASSWORD, ADMIN_USERNAME } from "./constants";
+import { ADMIN_PASSWORD, ADMIN_USERNAME, CAL_ADMIN_EMAIL, TEST_USER_PASSWORDS } from "./constants";
 import { apiCall, baseUrl, expectNoSeriousA11yViolations, loginForCookie } from "./playwright-support";
 
 test.describe("Calendar access", () => {
@@ -15,12 +15,11 @@ test.describe("Calendar access", () => {
       method: "PUT",
       body: { ...healthOrg, key: "gcpe-headquarters", displayName: "GCPE Headquarters", abbreviation: "GCPEHQ", sectorKeys: [], isHq: true },
     });
-    const calAdminEmail = `cal-admin-${stamp}@example.test`;
-    const calAdmin = await apiCall<{ id: string }>(admin, "/core/api/users", { method: "POST", body: { email: calAdminEmail, displayName: `Calendar Admin ${stamp}`, password: "e2e-cal-admin-password-1" } });
     const staff = await apiCall<{ id: string }>(admin, "/core/api/users", { method: "POST", body: { email: `cal-staff-${stamp}@example.test`, displayName: `Calendar Staff ${stamp}` } });
-    await apiCall(admin, `/core/api/calendar-access/${calAdmin.id}`, { method: "PUT", body: { role: "Calendar.Administrator", organizationKeys: ["health"] } });
 
-    const cookie = await loginForCookie(calAdminEmail, "e2e-cal-admin-password-1");
+    // The seeded Calendar Administrator (Health), not one of this test's own: every distinct
+    // user costs a real login against the stack's 10/min limiter (see loginForCookie).
+    const cookie = await loginForCookie(CAL_ADMIN_EMAIL, TEST_USER_PASSWORDS[CAL_ADMIN_EMAIL]!);
     const [name, value] = cookie.split("=", 2) as [string, string];
     await context.addCookies([{ name, value, domain: new URL(baseUrl()).hostname, path: "/", httpOnly: true, secure: false, sameSite: "Lax" }]);
 
