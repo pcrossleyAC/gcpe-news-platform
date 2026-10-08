@@ -64,9 +64,15 @@ export const stackEnvSchema = z.object({
 });
 export type StackEnv = z.infer<typeof stackEnvSchema>;
 
-/** The six app prefixes the stack reads `<PREFIX>_<VAR>` env vars under (see task-14-brief.md). */
-export const APP_PREFIXES = ["CORE", "NRMS", "NEWSAPI", "SITE", "NOD", "DIST"] as const;
+/** The seven app prefixes the stack reads `<PREFIX>_<VAR>` env vars under (see task-14-brief.md). */
+export const APP_PREFIXES = ["CORE", "NRMS", "NEWSAPI", "SITE", "NOD", "DIST", "CALENDAR"] as const;
 export type AppPrefix = (typeof APP_PREFIXES)[number];
+
+/** The Calendar runs only where its database exists: a SiteGround site needs it created by hand
+ * in Site Tools, so a deploy before then must still start every other app. */
+export function calendarConfigured(env: NodeJS.ProcessEnv): boolean {
+  return !!env.CALENDAR_DATABASE_URL;
+}
 
 /**
  * Task 9: per-app defaults for vars that are always the same inside one stack and so need no
@@ -217,7 +223,7 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
     if (value !== undefined && isSharedKey(key)) view[key] = value;
   }
   // Derived internal wiring first, so explicit <PREFIX>_EVENT_* vars (applied below) override it.
-  if (env.STACK_EVENT_SECRET) Object.assign(view, internalEventEnv(env.STACK_EVENT_SECRET)[prefix]);
+  if (env.STACK_EVENT_SECRET) Object.assign(view, internalEventEnv(env.STACK_EVENT_SECRET, eventRoutesFor(env))[prefix]);
   if (!view.SESSION_SECRET && env.STACK_EVENT_SECRET) view.SESSION_SECRET = sessionSecretFrom(env.STACK_EVENT_SECRET);
   // Phase 4a: NoD's LINK_SECRET (HMAC key for unsubscribe tokens) needs no SiteGround setting
   // of its own — derived from the same stack secret as the session/event secrets above. An
@@ -273,6 +279,11 @@ export const INTERNAL_EVENT_ROUTES = [
     from: "CORE", source: "core", to: "NOD", name: "nod", url: "self:/nod/events",
     types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
   },
+  {
+    // The Calendar's projections (spec addendum §4, §5.2). user.* goes here and nowhere public.
+    from: "CORE", source: "core", to: "CALENDAR", name: "calendar", url: "self:/calendar/events",
+    types: ["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+  },
   { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
   {
     from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events",
@@ -285,9 +296,17 @@ export const INTERNAL_EVENT_ROUTES = [
   { from: "DIST", source: "distribution", to: "NOD", name: "nod", url: "self:/nod/events", types: ["delivery.bounced"] },
 ] as const satisfies readonly { from: AppPrefix; source: string; to: AppPrefix; name: string; url: string; types: readonly string[] }[];
 
+export type EventRoute = (typeof INTERNAL_EVENT_ROUTES)[number];
+
+/** The routes this deployment wires: every route, less the Calendar's when it isn't configured. */
+export function eventRoutesFor(env: NodeJS.ProcessEnv): readonly EventRoute[] {
+  if (calendarConfigured(env)) return INTERNAL_EVENT_ROUTES;
+  return INTERNAL_EVENT_ROUTES.filter((r) => (r.from as AppPrefix) !== "CALENDAR" && (r.to as AppPrefix) !== "CALENDAR");
+}
+
 /** Per-route signing secret: HMAC-SHA256(STACK_EVENT_SECRET, "gcpe-event:<source>-><receiver>"),
  * so every sender/receiver pair gets its own key and none of them is the stack secret itself. */
-export function routeSecret(stackSecret: string, route: (typeof INTERNAL_EVENT_ROUTES)[number]): string {
+export function routeSecret(stackSecret: string, route: EventRoute): string {
   return createHmac("sha256", stackSecret).update(`gcpe-event:${route.source}->${route.name}`).digest("hex");
 }
 
@@ -298,11 +317,11 @@ export function sessionSecretFrom(stackSecret: string): string {
 }
 
 /** EVENT_SUBSCRIBERS (senders) and EVENT_SECRETS (receivers) for every app, derived from one secret. */
-export function internalEventEnv(stackSecret: string): Record<AppPrefix, Record<string, string>> {
+export function internalEventEnv(stackSecret: string, routes: readonly EventRoute[] = INTERNAL_EVENT_ROUTES): Record<AppPrefix, Record<string, string>> {
   const out = Object.fromEntries(APP_PREFIXES.map((p) => [p, {}])) as Record<AppPrefix, Record<string, string>>;
   const subscribers: Partial<Record<AppPrefix, { name: string; url: string; secret: string; types: string[] }[]>> = {};
   const secrets: Partial<Record<AppPrefix, Record<string, string>>> = {};
-  for (const route of INTERNAL_EVENT_ROUTES) {
+  for (const route of routes) {
     const secret = routeSecret(stackSecret, route);
     (subscribers[route.from] ??= []).push({ name: route.name, url: route.url, secret, types: [...route.types] });
     (secrets[route.to] ??= {})[route.source] = secret;

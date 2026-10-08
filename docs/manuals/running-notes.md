@@ -359,3 +359,14 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   every save and shows its refusal in the form.
 - **Administrator** — If a save names a ministry that doesn't exist or has been deactivated, the error
   lists which of the ministries you chose it refused.
+
+## Phase 5b — Calendar mounted in the stack
+
+- **Operations** — The Calendar is live at `/calendar` only once its own database exists and
+  `CALENDAR_DATABASE_URL` is set; until then the stack runs normally without it and `/calendar`
+  answers 503. See `docs/deploy/siteground.md`'s "Calendar app (Phase 5b)" for the exact Site
+  Tools steps to turn it on later.
+- **Developer** — Core now routes `user.upserted` and the organization/sector/theme/tag
+  upserted/deactivated events to the Calendar (and only to the Calendar — no other subscriber
+  receives `user.*`). The Calendar refuses a bearer token on every route, so staff always reach
+  it through their `gcpe_session` cookie.

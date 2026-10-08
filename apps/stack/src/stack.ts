@@ -11,8 +11,9 @@ import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createFakeEmergencyFeed } from "@gcpe/emergency-feed-fake";
 import { createFakeFlickr } from "@gcpe/flickr-fake";
 import { createFakeMediaHub } from "@gcpe/media-hub-fake";
-import type { Closer } from "@gcpe/http-kit";
+import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 
+import { calendarEnvSchema, startCalendar, type AppHandle as CalendarHandle } from "../../calendar/src/start";
 import { coreEnvSchema, startCore, type AppHandle as CoreHandle } from "../../core/src/start";
 import { distributionEnvSchema } from "../../distribution/src/env";
 import { startDistribution, type AppHandle as DistributionHandle } from "../../distribution/src/start";
@@ -28,6 +29,7 @@ import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture, type ErrorEntry } from "./errors";
 import {
+  calendarConfigured,
   envFor,
   FAKE_EMERGENCY_FEED_PATH,
   FAKE_FLICKR,
@@ -162,7 +164,7 @@ const HEALTH_CACHE_TTL_MS = 5_000;
  * up the whole time. Deliberately outside the cache above (constant for the process's whole
  * life, so there's nothing to cache) and never itself a reason for a non-200/503.
  */
-function healthRouter(startedAt: string): Router {
+function healthRouter(startedAt: string, withCalendar: boolean): Router {
   const checks: { name: string; path: string }[] = [
     { name: "core", path: "/core/health/ready" },
     { name: "nrms", path: "/nrms/health/ready" },
@@ -171,6 +173,7 @@ function healthRouter(startedAt: string): Router {
     { name: "site-builder", path: "/site-builder/health/ready" },
     { name: "news-api", path: "/health/ready" },
   ];
+  if (withCalendar) checks.push({ name: "calendar", path: "/calendar/health/ready" });
   let cached: { expiresAt: number; status: number; body: { status: string; apps: Record<string, boolean> } } | undefined;
   const r = Router();
   r.get("/health", async (_req, res) => {
@@ -251,6 +254,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const siteEnv = resolvedEnvFor(env, "SITE", dataDir);
   const nodEnv = resolvedEnvFor(env, "NOD", dataDir);
   const distEnv = resolvedEnvFor(env, "DIST", dataDir);
+  const calendarEnv = resolvedEnvFor(env, "CALENDAR", dataDir);
   // Phase 3c: published records carry absolute file URLs; unless NRMS_PUBLIC_FILES_BASE says
   // otherwise, files are served (below, at /files) from the public site's own origin.
   if (nrmsEnv.PUBLIC_FILES_BASE === undefined) nrmsEnv.PUBLIC_FILES_BASE = publicFilesBase(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl);
@@ -266,6 +270,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const core: CoreHandle = await startNamed("Core", "CORE", () => startCore(coreEnv));
   const nrms: NrmsHandle = await startNamed("NRMS", "NRMS", () => startNrms(nrmsEnv));
   const nod: NodHandle = await startNamed("NoD", "NOD", () => startNod(nodEnv));
+  // The Calendar runs only once its own database has been created (SiteGround: by hand in Site
+  // Tools) — every other app still starts normally when it hasn't been yet.
+  const calendar: CalendarHandle | null = calendarConfigured(env) ? await startNamed("Calendar", "CALENDAR", () => startCalendar(calendarEnv)) : null;
+  if (!calendar) console.warn("[stack] CALENDAR_DATABASE_URL is not set: the Calendar is not mounted (/calendar answers 503)");
   const distribution: DistributionHandle = await startNamed("Distribution", "DIST", () => startDistribution(distEnv));
   const siteBuilder: PublicSiteHandle = await startNamed("Public Site", "SITE", () => startPublicSite(siteEnv));
   const newsApi: NewsApiHandle = await startNamed("News API", "NEWSAPI", () => startNewsApi(newsApiEnv, { hub: stackEnv.UPDATES_HUB_ENABLED }));
@@ -436,11 +444,11 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // (/core/auth/login) shares this same stack-wide budget, not a separate one.
   const combinedLoginLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false });
   app.use(
-    ["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token", "/core/auth/login"],
+    ["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token", "/core/auth/login", "/calendar/auth/local/token"],
     combinedLoginLimiter,
   );
 
-  app.use("/stack", healthRouter(new Date(startedAt).toISOString()));
+  app.use("/stack", healthRouter(new Date(startedAt).toISOString(), calendar !== null));
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
   app.use(
     "/stack",
@@ -455,6 +463,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         { name: "nrms.publish", run: worker(nrms, "publish") },
         { name: "nrms.dispatch", run: worker(nrms, "dispatch") },
         { name: "core.dispatch", run: worker(core, "dispatch") },
+        ...(calendar ? [{ name: "calendar.dispatch", run: worker(calendar, "dispatch") }] : []),
         { name: "news-api.dispatch", run: worker(newsApi, "dispatch") },
         // The nightly Media Hub sync before the digest: an email address or flag it fixes up
         // this tick should already be current by the time the digest (and anything else this
@@ -490,6 +499,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   app.use("/core", core.app);
   app.use("/nrms", nrms.app);
   app.use("/nod", nod.app);
+  app.use(
+    "/calendar",
+    calendar ? calendar.app : (_req: express.Request, res: express.Response) => void res.status(503).json({ error: "calendar not configured" }),
+  );
   app.use("/distribution", distribution.app);
   app.use("/site-builder", siteBuilder.app);
   app.use(newsApi.app);
@@ -506,17 +519,20 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     .then((r) => r && console.log(`[public-site] self-heal rebuilt ${r.rebuilt} posts`))
     .catch((e) => console.error(`[public-site] self-heal failed: ${e instanceof Error ? e.message : e}`));
 
-  // Phase 4a: NoD's lists come from Core's events, which only flow on change. A NoD with no
-  // ministry lists yet (first deploy, or a fresh database) asks Core to republish everything
-  // once; the events reach NoD on the next dispatch tick. Fire-and-forget, never throws.
+  // Phase 4a: NoD's lists (and now the Calendar's organizations/users) come from Core's
+  // events, which only flow on change. A fresh app with no reference data yet (first deploy, or
+  // a fresh database) asks Core to republish everything once; the events reach it on the next
+  // dispatch tick. Fire-and-forget, never throws.
   void (async () => {
     try {
-      if (await worker(nod, "needsReferenceData")()) {
+      const nodNeeds = (await worker(nod, "needsReferenceData")()) === true;
+      const calendarNeeds = calendar ? (await worker(calendar, "needsReferenceData")()) === true : false;
+      if (nodNeeds || calendarNeeds) {
         const n = await worker(core, "republish")();
-        console.log(`[stack] NoD had no lists; Core republished ${String(n)} reference records`);
+        console.log(`[stack] ${[nodNeeds && "NoD", calendarNeeds && "the Calendar"].filter(Boolean).join(" and ")} had no reference data; Core republished ${String(n)} records`);
       }
     } catch (e) {
-      console.error("[stack] reference-data backfill failed", e instanceof Error ? e.message : e);
+      console.error("[stack] reference-data backfill failed", safeErrorLabel(e));
     }
   })();
 
@@ -529,15 +545,16 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
       core.startLoops();
       nrms.startLoops();
       nod.startLoops();
+      calendar?.startLoops();
       distribution.startLoops();
       siteBuilder.startLoops();
       newsApi.startLoops();
     },
-    // Mount order: core, nrms, nod, distribution, siteBuilder, newsApi.
-    closeBeforeServer: [...core.closeBeforeServer, ...nrms.closeBeforeServer, ...nod.closeBeforeServer, ...distribution.closeBeforeServer, ...siteBuilder.closeBeforeServer, ...newsApi.closeBeforeServer],
+    // Mount order: core, nrms, nod, calendar, distribution, siteBuilder, newsApi.
+    closeBeforeServer: [...core.closeBeforeServer, ...nrms.closeBeforeServer, ...nod.closeBeforeServer, ...(calendar?.closeBeforeServer ?? []), ...distribution.closeBeforeServer, ...siteBuilder.closeBeforeServer, ...newsApi.closeBeforeServer],
     // Reverse mount order, then the error capture last so it's still installed while every
     // other closer's own console.error calls (e.g. a failed shutdown step) run.
-    closers: [...newsApi.closers, ...siteBuilder.closers, ...distribution.closers, ...nod.closers, ...nrms.closers, ...core.closers, { name: "error capture", close: () => errorCapture.close() }, { name: "internal fetch", close: () => uninstallInternalFetch() }],
+    closers: [...newsApi.closers, ...siteBuilder.closers, ...distribution.closers, ...(calendar?.closers ?? []), ...nod.closers, ...nrms.closers, ...core.closers, { name: "error capture", close: () => errorCapture.close() }, { name: "internal fetch", close: () => uninstallInternalFetch() }],
   };
 }
 
@@ -546,6 +563,10 @@ export interface StackCheckAppResult {
   /** The app's resolved MIGRATIONS_FOLDER, when its env parsed successfully. */
   migrationsFolder?: string;
   error?: string;
+  /** Set instead of ever being checked, when the app simply isn't configured for this
+   * deployment (CALENDAR_DATABASE_URL unset) — `ok` stays true, since an unconfigured optional
+   * app is not a failure. */
+  skipped?: string;
 }
 
 export interface StackCheckResult {
@@ -592,9 +613,11 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
     { label: "public-site", prefix: "SITE", schema: publicSiteEnvSchema(tenant) },
     { label: "nod", prefix: "NOD", schema: nodEnvSchema },
     { label: "distribution", prefix: "DIST", schema: distributionEnvSchema },
+    ...(calendarConfigured(env) ? [{ label: "calendar", prefix: "CALENDAR" as const, schema: calendarEnvSchema }] : []),
   ];
 
   const apps: Record<string, StackCheckAppResult> = {};
+  if (!calendarConfigured(env)) apps.calendar = { ok: true, skipped: "CALENDAR_DATABASE_URL is not set" };
   let ok = true;
   for (const c of checks) {
     const view = resolvedEnvFor(env, c.prefix, dataDir);

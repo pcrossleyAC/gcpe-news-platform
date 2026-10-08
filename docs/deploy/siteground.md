@@ -42,6 +42,12 @@ step, not something any script here can do). Suggested names (matching
 `gcpe_site`, `gcpe_nod`, `gcpe_distribution`. Host is always `localhost` — the public
 PostgreSQL hostname is rejected by `pg_hba.conf`.
 
+**The Calendar's database (`gcpe_calendar`) is a seventh, separate step — not part of this
+one-time setup.** The stack mounts the Calendar only when `CALENDAR_DATABASE_URL` is set;
+until then it starts and runs normally without it, and `/calendar` answers `503 {"error":
+"calendar not configured"}`. See "Calendar app (Phase 5b)" below for exactly what to do in Site
+Tools when you're ready to turn it on.
+
 ### 3. Mailbox / SMTP
 
 Create a SiteGround mailbox (or point at an external relay) for outbound mail. For the first
@@ -79,6 +85,11 @@ Environment Variables.
 **Do not set `PORT`** — SiteGround injects it. **Do not set `TENANT_CONFIG`** — the artifact
 carries its own `config/tenants/bc.json` next to `stack.js` and `stack.js` finds it
 automatically (see "How MIGRATIONS_FOLDER and TENANT_CONFIG resolve" below).
+
+`npm run siteground:env` leaves `CALENDAR_DATABASE_URL` out of the generated block when you
+answer the Calendar database name prompt blank (the non-interactive `SITEGROUND_DB_NAME_CALENDAR`
+likewise defaults to blank) — that's correct for boxs.ca today, since `gcpe_calendar` doesn't
+exist yet. Re-run it (or add the one line by hand) once "Calendar app (Phase 5b)" below is done.
 
 **Never set any `*_DATABASE_URL` to a `self:/...` value.** Every other `*_URL` var in this
 stack may use the `self:/path` shorthand (resolved at startup to
@@ -815,6 +826,45 @@ then flip the Operations switch.
   - Their own row and any System Administrator's row are read-only.
   - GCPE Headquarters is not offered to them, and a user who holds an HQ ministry has no Edit button
     (the server would refuse both).
+
+## Calendar app (Phase 5b)
+
+The Calendar is mounted at `/calendar` only when `CALENDAR_DATABASE_URL` is set
+(`apps/stack/src/env.ts`'s `calendarConfigured`). **On boxs.ca today that database does not exist
+yet, so the stack runs with the Calendar switched off** — every other app starts and runs
+normally, `/calendar/*` answers `503 {"error": "calendar not configured"}`, `GET /stack/health`
+has no `calendar` key at all, and `node stack.js --check` reports
+`{"ok": true, "skipped": "CALENDAR_DATABASE_URL is not set"}` for it rather than failing the
+check. This is expected and not a bug — nothing below is needed until you're ready to turn the
+Calendar on.
+
+**To turn it on, in Site Tools:**
+
+1. **Databases → create one more PostgreSQL database**, named `gcpe_calendar`, granted to the
+   same database user the other six databases already use (no new user, no new password).
+2. **Devs → Node.js → your project → Environment Variables → add one line:**
+   ```
+   CALENDAR_DATABASE_URL=postgres://<the same db user>:<the same db password>@localhost:5432/gcpe_calendar
+   ```
+   (The same `postgres://user:pass@localhost:5432/<name>` shape as the other six — never a
+   `self:/...` value; see "Never set any `*_DATABASE_URL` to a `self:/...` value" above.) If you
+   still have the inputs `npm run siteground:env` was run with, re-running it with the Calendar's
+   database name filled in regenerates this line for you alongside everything else — safe to
+   paste just that one new line into the existing environment variables instead of replacing
+   them all.
+3. **Restart the Node app** (Site Tools → Devs → Node.js → your project → Restart). The very
+   next request (or the next scheduled `/stack/tick`) runs the Calendar's own migration
+   (`apps/calendar/migrations`, additive — see "Per-deploy steps" above for how `--check` and a
+   real deploy apply migrations) and starts mounting it.
+4. **Confirm:** `GET https://boxs.ca/calendar/health/ready` answers `200`, and
+   `GET https://boxs.ca/stack/health`'s `apps.calendar` is `true`. A first `/stack/tick` after
+   that also runs the reference-data backfill for it (same mechanism as NoD's own first-tick
+   backfill above): Core republishes its organizations and users once so the Calendar's own
+   copies aren't empty on an otherwise-already-running deployment.
+
+No code change and no redeploy of the artifact itself is needed for this — `CALENDAR_DATABASE_URL`
+is the only thing gating it, and it's read fresh from Site Tools' own environment variables on
+every process start.
 
 ## Troubleshooting
 

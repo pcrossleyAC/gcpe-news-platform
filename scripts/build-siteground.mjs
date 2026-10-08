@@ -32,7 +32,7 @@ const EXTERNAL = ["pg-native", "bufferutil", "utf-8-validate"];
 
 // Every app whose migrations/ folder (and env-prefix) the stack mounts, in the same order
 // apps/stack/src/main.ts's ARTIFACT_MIGRATIONS_DIRS lists them.
-const APPS = ["core", "nrms", "news-api", "public-site", "nod", "distribution"];
+const APPS = ["core", "nrms", "news-api", "public-site", "nod", "distribution", "calendar"];
 
 /**
  * Recursively scans every file under `dir` for any of `forbidden`'s (non-empty) `value`s,
@@ -256,6 +256,10 @@ async function runBuild() {
         DIST_SMTP_HOST: "127.0.0.1",
         DIST_MAIL_FROM: "noreply@news.example.invalid",
         DIST_MAIL_REDIRECT_TO: "ops@news.example.invalid",
+        // Exercises the Calendar's own --check branch too — a real deploy may well have no
+        // CALENDAR_DATABASE_URL yet (the database is created by hand in Site Tools), which
+        // checkStack treats as a deliberate skip, not a failure (apps/stack/src/stack.ts).
+        CALENDAR_DATABASE_URL: "postgres://user:pass@127.0.0.1:1/calendar",
       },
     });
   } catch (e) {

@@ -26,6 +26,7 @@ import { createNewsTestDb } from "../../apps/news-api/test/helpers";
 import { createPublicSiteTestDb } from "../../apps/public-site/test/helpers";
 import { createNodTestDb } from "../../apps/nod/test/helpers";
 import { createDistributionTestDb } from "../../apps/distribution/test/helpers";
+import { createCalendarTestDb } from "../../apps/calendar/test/helpers";
 import { startSmtpSink } from "../../apps/distribution/test/smtp-sink";
 import { startStack } from "../../apps/stack/src/stack";
 import { runBuild } from "../../scripts/build-staff-web.mjs";
@@ -66,15 +67,16 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const staffWebDir = join(repoRoot, "apps/staff-web/dist");
 
   console.log("[e2e global-setup] creating test databases…");
-  const [core, nrms, newsApi, publicSite, nod, distribution] = await Promise.all([
+  const [core, nrms, newsApi, publicSite, nod, distribution, calendar] = await Promise.all([
     createCoreTestDb(),
     createNrmsTestDb(),
     createNewsTestDb(),
     createPublicSiteTestDb(),
     createNodTestDb(),
     createDistributionTestDb(),
+    createCalendarTestDb(),
   ]);
-  const dbs: Record<string, TestDatabase> = { core, nrms, newsApi, publicSite, nod, distribution };
+  const dbs: Record<string, TestDatabase> = { core, nrms, newsApi, publicSite, nod, distribution, calendar };
 
   console.log("[e2e global-setup] seeding NRMS taxonomy and staff test users…");
   await seedTaxonomy(nrms.db);
@@ -159,6 +161,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     LOCAL_AUTH_SECRET,
     STACK_EVENT_SECRET,
     STAFF_WEB_DIR: staffWebDir,
+    CALENDAR_DATABASE_URL: calendar.url,
 
     CORE_DATABASE_URL: core.url,
     NRMS_DATABASE_URL: nrms.url,
@@ -211,6 +214,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // `distDb()`/`nodDb()` open their own connections to these same test databases to do both.
   process.env.E2E_NOD_DATABASE_URL = nod.url;
   process.env.E2E_DIST_DATABASE_URL = distribution.url;
+  process.env.E2E_CALENDAR_DATABASE_URL = calendar.url;
   console.log(`[e2e global-setup] stack ready at ${baseUrl}`);
 
   return async function globalTeardown(): Promise<void> {

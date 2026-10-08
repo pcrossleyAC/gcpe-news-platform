@@ -168,4 +168,11 @@ describe("checkStack", () => {
     const result = await checkStack(env);
     expect(result.ok).toBe(true);
   });
+
+  it("checks the Calendar when CALENDAR_DATABASE_URL is set, and reports it skipped when not", async () => {
+    const withCal = await checkStack({ ...baseEnv(), CALENDAR_DATABASE_URL: DB("calendar") });
+    expect(withCal.apps.calendar).toMatchObject({ ok: true });
+    const without = await checkStack(baseEnv());
+    expect(without.apps.calendar).toEqual({ ok: true, skipped: "CALENDAR_DATABASE_URL is not set" });
+  });
 });

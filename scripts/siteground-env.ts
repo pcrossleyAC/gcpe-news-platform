@@ -32,7 +32,7 @@ export interface SiteGroundEnvInput {
   adminPasswordHash: string;
   dbUser: string;
   dbPassword: string;
-  dbNames: { core: string; nrms: string; newsApi: string; site: string; nod: string; distribution: string };
+  dbNames: { core: string; nrms: string; newsApi: string; site: string; nod: string; distribution: string; calendar: string };
   smtp: { host: string; port: number; secure: boolean; user?: string; pass?: string };
   mailFrom: string;
   mailRedirectTo: string[];
@@ -119,6 +119,8 @@ export function buildEnvLines(input: SiteGroundEnvInput, secrets: GeneratedSecre
     `DIST_MAIL_FROM=${input.mailFrom}`,
     `DIST_MAIL_REDIRECT_TO=${input.mailRedirectTo.join(",")}`,
     ...(input.internalDomains?.length ? [`DIST_INTERNAL_DOMAINS=${input.internalDomains.join(",")}`] : []),
+    // The Calendar's database is created by hand in Site Tools; until it exists the stack runs without it.
+    ...(input.dbNames.calendar ? ["", `CALENDAR_DATABASE_URL=${dbUrl(input.dbUser, input.dbPassword, input.dbNames.calendar)}`] : []),
   ];
   return lines;
 }
@@ -178,6 +180,10 @@ export async function collectNonInteractiveInput(env: NodeJS.ProcessEnv): Promis
       site: env.SITEGROUND_DB_NAME_SITE ?? `${dbPrefix}_site`,
       nod: env.SITEGROUND_DB_NAME_NOD ?? `${dbPrefix}_nod`,
       distribution: env.SITEGROUND_DB_NAME_DIST ?? `${dbPrefix}_distribution`,
+      // Blank, not defaulted: the Calendar's database doesn't exist yet on a deployment that
+      // hasn't had it created by hand in Site Tools, and an unset CALENDAR_DATABASE_URL is
+      // exactly what tells the stack to start without it (see apps/stack/src/env.ts).
+      calendar: env.SITEGROUND_DB_NAME_CALENDAR ?? "",
     },
     smtp: {
       host: env.SITEGROUND_SMTP_HOST!,
@@ -284,8 +290,8 @@ async function collectInteractiveInput(): Promise<SiteGroundEnvInput> {
     const dbUser = await p.plain("Postgres user (Site Tools-created, shared by all six DBs)");
     const dbPassword = await p.hidden("Postgres password");
     // SiteGround generates database names (e.g. "dbkjyoirx2cq7n") and only lets you set a label, so
-    // each app's database name is asked for individually. The prefix only supplies the defaults.
-    const dbPrefix = await p.plain("Database name prefix (defaults for the six names below)", "gcpe");
+    // each app's database name is asked for individually. The prefix only supplies the defaults below.
+    const dbPrefix = await p.plain("Database name prefix (defaults for the database names below)", "gcpe");
     const dbNames = {
       core: await p.plain("Database name for Core", `${dbPrefix}_core`),
       nrms: await p.plain("Database name for NRMS", `${dbPrefix}_nrms`),
@@ -293,6 +299,7 @@ async function collectInteractiveInput(): Promise<SiteGroundEnvInput> {
       site: await p.plain("Database name for Public Site", `${dbPrefix}_site`),
       nod: await p.plain("Database name for NoD", `${dbPrefix}_nod`),
       distribution: await p.plain("Database name for Distribution", `${dbPrefix}_distribution`),
+      calendar: await p.plain("Database name for the Calendar (blank until it exists in Site Tools)", ""),
     };
     const smtpHost = await p.plain("SMTP host (SiteGround mailbox or relay)");
     const smtpPort = Number(await p.plain("SMTP port", "587"));

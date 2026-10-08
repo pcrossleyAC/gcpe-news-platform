@@ -32,6 +32,7 @@ const ARTIFACT_MIGRATIONS_DIRS: Record<string, string> = {
   SITE_MIGRATIONS_FOLDER: "public-site",
   NOD_MIGRATIONS_FOLDER: "nod",
   DIST_MIGRATIONS_FOLDER: "distribution",
+  CALENDAR_MIGRATIONS_FOLDER: "calendar",
 };
 
 function applyArtifactDefaults(env: NodeJS.ProcessEnv): void {

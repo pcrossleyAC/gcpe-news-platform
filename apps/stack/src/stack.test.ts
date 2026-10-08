@@ -19,6 +19,7 @@ import { createNewsTestDb } from "../../news-api/test/helpers";
 import { createPublicSiteTestDb } from "../../public-site/test/helpers";
 import { createNodTestDb } from "../../nod/test/helpers";
 import { createDistributionTestDb } from "../../distribution/test/helpers";
+import { createCalendarTestDb } from "../../calendar/test/helpers";
 import { startSmtpSink } from "../../distribution/test/smtp-sink";
 
 import { flickrClient, FlickrError } from "../../nrms/src/media/flickr-client";
@@ -80,6 +81,7 @@ interface StackTestInstanceDbs {
   publicSite: TestDatabase;
   nod: TestDatabase;
   distribution: TestDatabase;
+  calendar?: TestDatabase;
 }
 
 interface StackTestInstance {
@@ -106,6 +108,10 @@ interface StackTestInstance {
 async function setupStack(opts: {
   fetchAdminToken?: boolean;
   staffWebDir?: string;
+  // Every test instance mounts the Calendar by default (its own fresh test database), so the
+  // shared stack exercises /calendar like any other app; the "without CALENDAR_DATABASE_URL"
+  // describe block below is the one place that turns it off.
+  calendar?: boolean;
   // Task 2 fix round 1: lets a test put one of the six fresh test databases into a specific
   // state *before* startStack(env) runs its own startup work (including the fire-and-forget
   // reference-data backfill) — e.g. an org written straight into Core's DB, bypassing the
@@ -114,6 +120,7 @@ async function setupStack(opts: {
   beforeStart?: (dbs: StackTestInstanceDbs) => Promise<void>;
 } = {}): Promise<StackTestInstance> {
   const fetchAdminToken = opts.fetchAdminToken ?? true;
+  const withCalendar = opts.calendar ?? true;
 
   const dbResults = await Promise.allSettled([
     createCoreTestDb(),
@@ -122,6 +129,7 @@ async function setupStack(opts: {
     createPublicSiteTestDb(),
     createNodTestDb(),
     createDistributionTestDb(),
+    ...(withCalendar ? [createCalendarTestDb()] : []),
   ]);
   const created: TestDatabase[] = [];
   for (const r of dbResults) if (r.status === "fulfilled") created.push(r.value);
@@ -130,8 +138,8 @@ async function setupStack(opts: {
     await Promise.allSettled(created.map((d) => d.drop()));
     throw rejected.reason;
   }
-  const [core, nrms, newsApi, publicSite, nod, distribution] = created as [TestDatabase, TestDatabase, TestDatabase, TestDatabase, TestDatabase, TestDatabase];
-  const dbs: StackTestInstanceDbs = { core, nrms, newsApi, publicSite, nod, distribution };
+  const [core, nrms, newsApi, publicSite, nod, distribution, calendar] = created as [TestDatabase, TestDatabase, TestDatabase, TestDatabase, TestDatabase, TestDatabase, TestDatabase?];
+  const dbs: StackTestInstanceDbs = { core, nrms, newsApi, publicSite, nod, distribution, ...(calendar ? { calendar } : {}) };
 
   const outputDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-"));
   // Task 1: DATA_DIR must point at a temp folder, never the real home directory — resolveDataDir
@@ -189,6 +197,7 @@ async function setupStack(opts: {
     DIST_MAIL_FROM: "noreply@example.gov.bc.ca",
     DIST_MAIL_ALLOW_REAL_RECIPIENTS: "true",
   };
+  if (calendar) env.CALENDAR_DATABASE_URL = calendar.url;
   // Task 1 (staff-web): unset leaves the real default (apps/staff-web/dist, almost certainly
   // not built in this test run) in place, so most instances see the 503 "not built" path.
   if (opts.staffWebDir !== undefined) env.STAFF_WEB_DIR = opts.staffWebDir;
@@ -265,7 +274,7 @@ describe("apps/stack", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { status: string; apps: Record<string, boolean> };
     expect(body.status).toBe("ok");
-    expect(body.apps).toEqual({ core: true, nrms: true, nod: true, distribution: true, "site-builder": true, "news-api": true });
+    expect(body.apps).toEqual({ core: true, nrms: true, nod: true, distribution: true, "site-builder": true, "news-api": true, calendar: true });
   });
 
   // 2026-10-04 SiteGround debugging: the walkthrough's restarts were indistinguishable from a
@@ -659,6 +668,7 @@ describe("apps/stack", () => {
         "nrms.publish",
         "nrms.dispatch",
         "core.dispatch",
+        "calendar.dispatch",
         "news-api.dispatch",
         "nod.media-sync",
         "nod.bounce-summary",
@@ -670,7 +680,7 @@ describe("apps/stack", () => {
         "distribution.bounces",
         "distribution.dispatch",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 
@@ -793,6 +803,25 @@ describe("apps/stack", () => {
       [healthOrg.key],
     );
     expect(rows.rows).toEqual([{ list_key: `ministries:${healthOrg.key}`, name: healthOrg.displayName }]);
+  });
+
+  it("a ministry saved in Core shows up in the Calendar's organizations after a tick", async () => {
+    const putRes = await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
+      body: JSON.stringify(healthOrg),
+    });
+    expect(putRes.status).toBe(200);
+    expect((await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } })).status).toBe(200);
+    const rows = await instance.dbs.calendar!.pool.query<{ key: string }>("SELECT key FROM orgs WHERE key = $1", [healthOrg.key]);
+    expect(rows.rows).toEqual([{ key: healthOrg.key }]);
+  });
+
+  it("the Calendar answers under /calendar, and /stack/health lists it", async () => {
+    expect((await fetch(`${instance.stackUrl}/calendar/health/ready`)).status).toBe(200);
+    expect((await fetch(`${instance.stackUrl}/calendar/api/me`)).status).toBe(401);
+    const health = (await (await fetch(`${instance.stackUrl}/stack/health`)).json()) as { apps: Record<string, boolean> };
+    expect(health.apps.calendar).toBe(true);
   });
 
   it("Phase 2 exit check: a release created through /nrms/api reaches a static page and an email, driven only by /stack/tick", async () => {
@@ -1010,6 +1039,38 @@ describe("apps/stack", () => {
   });
 });
 
+// A deployment before the Calendar's database has been created by hand in Site Tools
+// (docs/deploy/siteground.md) must still start every other app — /calendar answers 503, and
+// Core queues no outbox delivery for it at all.
+describe("apps/stack: without CALENDAR_DATABASE_URL", () => {
+  let instance: StackTestInstance;
+  beforeAll(async () => {
+    instance = await setupStack({ calendar: false });
+  });
+  afterAll(async () => {
+    await instance.close();
+  });
+
+  it("without CALENDAR_DATABASE_URL the stack starts and /calendar answers 503", async () => {
+    const res = await fetch(`${instance.stackUrl}/calendar/api/me`);
+    expect(res.status).toBe(503);
+    expect(await res.json()).toEqual({ error: "calendar not configured" });
+    const health = await fetch(`${instance.stackUrl}/stack/health`);
+    expect(health.status).toBe(200);
+    expect(((await health.json()) as { apps: Record<string, boolean> }).apps).not.toHaveProperty("calendar");
+  });
+
+  it("Core queues nothing for the Calendar", async () => {
+    await fetch(`${instance.stackUrl}/core/api/organizations/${healthOrg.key}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", authorization: `Bearer ${instance.adminToken}` },
+      body: JSON.stringify(healthOrg),
+    });
+    const r = await instance.dbs.core.pool.query("SELECT 1 FROM outbox_deliveries WHERE subscriber = 'calendar'");
+    expect(r.rowCount).toBe(0);
+  });
+});
+
 // Task 2 (Phase 4a) fix round 1: the shared instance above only proves the live CORE->NOD
 // event route (it PUTs a ministry *after* startup, through Core's own API, which enqueues and
 // delivers the event the ordinary way). These two tests exercise the backfill itself — the
@@ -1052,6 +1113,10 @@ describe("apps/stack: reference-data backfill (Task 2 fix round 1)", () => {
     const logSpy = vi.spyOn(console, "log");
     const stack = await setupStack({
       fetchAdminToken: false,
+      // Calendar off: a fresh Calendar database always needs reference data, which would
+      // otherwise make the backfill run anyway (for the Calendar's own sake) and defeat this
+      // test's whole point — proving NoD's own already-has-data case skips it entirely.
+      calendar: false,
       beforeStart: async (dbs) => {
         // NoD already has a ministry list (from some other source — doesn't matter which),
         // so needsReferenceData() is false and the backfill must skip republish entirely.
