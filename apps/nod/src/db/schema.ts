@@ -32,7 +32,8 @@ export const subscribers = pgTable(
     mediaHubEmailRef: text("media_hub_email_ref"),
     // A short reason a media-list member needs staff attention instead of being silently
     // deleted (C59) -- a collided Media Hub email (media-hub/sync.ts: "email-gone",
-    // "email-invalid", "email-taken"), or a hard-bounced address (bounces.ts: "bouncing").
+    // "email-invalid", "email-taken", or "opted-out-address": the new address opted out of a
+    // media list the member is on), or a hard-bounced address (bounces.ts: "bouncing").
     // Null = fine. Set together with attentionAt.
     needsAttention: text("needs_attention"),
     attentionAt: timestamp("attention_at", { withTimezone: true }),

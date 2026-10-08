@@ -13,6 +13,8 @@ import type { MediaHubContact, MediaMember } from "./types";
  */
 function resolveErrorText(e: unknown): string {
   if (e instanceof ApiError && e.status === 409 && e.message === "email-taken") return "That address belongs to another subscriber. Choose another email, or remove this member.";
+  if (e instanceof ApiError && e.status === 409 && e.message === "opted-out-address")
+    return "That address opted out of a media list this member is on. Choose another email, or clear the flag to keep the current one.";
   if (e instanceof ApiError && e.status === 409) return "This member changed while you were looking. Close this, and try again.";
   return mediaErrorText(e);
 }

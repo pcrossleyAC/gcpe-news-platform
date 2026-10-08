@@ -3,7 +3,7 @@ import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../test/helpers";
 import { mediaOptOuts, subscriberHistory, subscribers } from "./db/schema";
-import { ALL_MEDIA_LISTS, keepMediaOptOuts, optOutHash, suppressedOptOutAt } from "./opt-outs";
+import { ALL_MEDIA_LISTS, keepMediaOptOuts, mediaOptOutAt, optOutHash, suppressedOptOutAt } from "./opt-outs";
 
 describe("kept media opt-outs", () => {
   let tdb: TestDatabase;
@@ -74,5 +74,20 @@ describe("kept media opt-outs", () => {
     const [s] = await tdb.db.insert(subscribers).values({ email: "unconfirmed@example.test", status: "pending" }).returning();
     await tdb.db.insert(subscriberHistory).values({ subscriberId: s!.id, actor: "self", action: "unsubscribed", at: at("04-01") });
     expect(await keepMediaOptOuts(tdb.db, s!)).toBe(0);
+  });
+
+  it("a media add made at an address the record has since left doesn't outweigh a kept opt-out at its new one", async () => {
+    const key = "media-distribution-lists:budget";
+    await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash("taken-over@example.test"), listKey: ALL_MEDIA_LISTS, optedOutAt: at("02-01") });
+    const [s] = await tdb.db.insert(subscribers).values({ email: "taken-over@example.test", status: "active" }).returning();
+    await tdb.db.insert(subscriberHistory).values([
+      { subscriberId: s!.id, actor: "staff", action: "media-list-added", detail: key, at: at("03-01") },
+      { subscriberId: s!.id, actor: "staff", action: "staff-email-changed", at: at("04-01") },
+    ]);
+    expect(await mediaOptOutAt(tdb.db, "taken-over@example.test", key, s!)).toEqual(at("02-01"));
+    // Not there yet: no add of its own counts at an address it is only moving to.
+    expect(await mediaOptOutAt(tdb.db, "taken-over@example.test", key, { ...s!, email: "before@example.test" })).toEqual(at("02-01"));
+    await tdb.db.insert(subscriberHistory).values({ subscriberId: s!.id, actor: "staff", action: "media-list-added", detail: key, at: at("05-01") });
+    expect(await mediaOptOutAt(tdb.db, "taken-over@example.test", key, s!)).toBeNull();
   });
 });

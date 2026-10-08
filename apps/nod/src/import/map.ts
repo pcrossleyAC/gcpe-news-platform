@@ -150,8 +150,9 @@ export function mapSubscriber(s: LegacySubscriberRow, memberships: MappedList[],
     id: guidKey(s.SubscriberGuid),
     state,
     createdAt: wallClockToInstant(s.RegisteredDateTime, ctx.timeZone),
-    // No SysLog date: the import time, so the purge waits a full 90 days after cutover.
-    endedAt: status === "deleted" ? (endedAt ?? ctx.runAt) : null,
+    // Never before the import: the purge's 90 days start no earlier than the run that brought
+    // the record in, so a bad import can be rolled back from legacy within that window.
+    endedAt: status === "deleted" ? (endedAt && endedAt > ctx.runAt ? endedAt : ctx.runAt) : null,
     fingerprint: fingerprintOf(state),
   };
 }

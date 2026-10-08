@@ -52,6 +52,7 @@ export const HISTORY_LABELS: Record<string, string> = {
   "staff-deactivated": "Deactivated by staff",
   "staff-deleted": "Deleted by staff",
   "legacy-imported": "Imported from legacy News On Demand",
+  "legacy-email-changed": "Email address updated from legacy News On Demand",
 };
 
 export function historyLabel(action: string): string {
@@ -75,6 +76,7 @@ const ATTENTION_LABELS: Record<string, string> = {
   "email-gone": "Media Hub email removed",
   "email-taken": "Media Hub email belongs to another subscriber",
   "email-invalid": "Media Hub email isn't valid",
+  "opted-out-address": "Media Hub email opted out of a media list this member is on",
   bouncing: "Bouncing",
 };
 export function attentionLabel(reason: string): string {

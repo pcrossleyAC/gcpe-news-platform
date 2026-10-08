@@ -92,10 +92,11 @@ describe("subscribers", () => {
     expect(mapSubscriber(row({ IsSelfSubscription: true }), media, null, { timeZone: TZ, runAt: RUN_AT }).state.source).toBe("self");
   });
 
-  it("a deleted subscriber keeps no lists; ended_at is legacy's date, else the import time", () => {
+  it("a deleted subscriber keeps no lists; ended_at is legacy's date, but never before the import", () => {
     const lists = [{ listKey: "ministries:health", media: false }];
-    const ended = new Date("2026-05-01T17:00:00Z");
-    expect(mapSubscriber(row({ IsDeleted: true }), lists, ended, { timeZone: TZ, runAt: RUN_AT })).toMatchObject({ state: { status: "deleted", listKeys: [] }, endedAt: ended });
+    const after = new Date("2026-11-21T17:00:00Z");
+    expect(mapSubscriber(row({ IsDeleted: true }), lists, after, { timeZone: TZ, runAt: RUN_AT })).toMatchObject({ state: { status: "deleted", listKeys: [] }, endedAt: after });
+    expect(mapSubscriber(row({ IsDeleted: true }), lists, new Date("2026-05-01T17:00:00Z"), { timeZone: TZ, runAt: RUN_AT }).endedAt).toEqual(RUN_AT);
     expect(mapSubscriber(row({ IsDeleted: true }), lists, null, { timeZone: TZ, runAt: RUN_AT }).endedAt).toEqual(RUN_AT);
   });
 

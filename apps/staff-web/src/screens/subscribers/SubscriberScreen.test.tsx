@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../test/jsonResponse";
@@ -230,6 +230,39 @@ describe("SubscriberScreen", () => {
     // other record shouldn't linger once it no longer matches what's in the fields.
     await user.type(screen.getByLabelText("New email"), "z");
     expect(screen.queryByRole("link", { name: "Open that record" })).toBeNull();
+  });
+
+  it("Change email onto an address that opted out of a media list asks first, and sends confirmOptOut only on confirm", async () => {
+    const calls = stub(["NoD.Editor"], () => detail({ status: "active", disabledReason: null }), {
+      [`POST /nod/api/subscribers/${ID}/email`]: (body) =>
+        (body as { confirmOptOut?: boolean }).confirmOptOut ? [200, { changed: true }] : [409, { error: "opted-out", at: "2026-06-01T17:00:00.000Z" }],
+    });
+    renderAt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("New email"), "left@example.test");
+    await user.type(screen.getByLabelText("Confirm new email"), "left@example.test");
+    await user.click(screen.getByRole("button", { name: "Change email" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(dialog).toHaveTextContent("opted out of a media list this subscriber is on");
+    expect(calls.filter((c) => c.method === "POST" && c.url.endsWith("/email")).map((c) => c.body)).toEqual([{ email: "left@example.test" }]);
+    await user.click(within(dialog).getByRole("button", { name: "Change anyway" }));
+    await waitFor(() => expect(calls).toContainEqual(expect.objectContaining({ method: "POST", body: { email: "left@example.test", confirmOptOut: true } })));
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+  });
+
+  it("a confirmed change of email that fails says so inside the dialog", async () => {
+    stub(["NoD.Editor"], () => detail({ status: "active", disabledReason: null }), {
+      [`POST /nod/api/subscribers/${ID}/email`]: (body) =>
+        (body as { confirmOptOut?: boolean }).confirmOptOut ? [500, { error: "internal error" }] : [409, { error: "opted-out", at: "2026-06-01T17:00:00.000Z" }],
+    });
+    renderAt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText("New email"), "left@example.test");
+    await user.type(screen.getByLabelText("Confirm new email"), "left@example.test");
+    await user.click(screen.getByRole("button", { name: "Change email" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(within(dialog).getByRole("button", { name: "Change anyway" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("internal error");
   });
 
   it("a Media Hub member's email can't be changed here", async () => {

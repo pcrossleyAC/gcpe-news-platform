@@ -31,9 +31,11 @@ export const HISTORY_ACTIONS = [
   "staff-deactivated",
   "staff-deleted",
   "legacy-imported",
+  "legacy-email-changed",
 ] as const;
 export type HistoryAction = (typeof HISTORY_ACTIONS)[number];
 
-export async function writeHistory(tx: DbOrTx, subscriberId: string, actor: string, action: HistoryAction, detail = ""): Promise<void> {
-  await tx.insert(subscriberHistory).values({ subscriberId, actor, action, detail });
+/** `at` defaults to now; the importer passes legacy's own date for what legacy recorded. */
+export async function writeHistory(tx: DbOrTx, subscriberId: string, actor: string, action: HistoryAction, detail = "", at?: Date): Promise<void> {
+  await tx.insert(subscriberHistory).values({ subscriberId, actor, action, detail, ...(at ? { at } : {}) });
 }

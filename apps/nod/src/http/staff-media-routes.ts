@@ -134,6 +134,7 @@ export function staffMediaRoutes(db: Db, mediaHub: MediaHubClient | null): Route
     if (outcome === "media-hub-unavailable") return noHub(res);
     if (outcome === "invalid-email") return void res.status(400).json({ error: "invalid email" });
     if (outcome === "email-taken") return void res.status(409).json({ error: "email-taken" });
+    if (outcome === "opted-out-address") return void res.status(409).json({ error: "opted-out-address" });
     if (outcome === "conflict") return void res.status(409).json({ error: "changed, retry" });
     res.status(200).json({ ok: true });
   }));

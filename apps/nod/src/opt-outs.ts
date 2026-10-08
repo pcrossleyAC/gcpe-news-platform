@@ -114,28 +114,74 @@ export async function suppressedOptOutAt(tx: DbOrTx, email: string, listKey: str
   return row?.at ? new Date(row.at) : null;
 }
 
+/** Every history action that moves a record onto a new address. */
+const ADDRESS_CHANGES = ["email-changed", "staff-email-changed", "media-hub-email-changed", "legacy-email-changed"];
+
+/** When this record took the address it holds now: its latest move, or null if it never moved. */
+async function addressTakenAt(tx: DbOrTx, subscriberId: string): Promise<Date | null> {
+  const r = await tx.execute<{ at: string | Date | null }>(sql`
+    SELECT max(at) AS at FROM subscriber_history
+     WHERE subscriber_id = ${subscriberId} AND action IN (${sql.join(ADDRESS_CHANGES.map((a) => sql`${a}`), sql`, `)})`);
+  const at = r.rows[0]?.at;
+  return at ? new Date(at) : null;
+}
+
 /**
- * Whether adding this address to media list `key` needs staff to confirm, and since when: the
- * opt-out on the subscriber's own record ({@link optedOutOf}), or one kept from a purged record
- * of the same address. A kept opt-out stops counting once staff have added this record to that
- * list (or, for an every-list one, to any media list) since -- the same rule as a live one.
+ * Whether putting this address on media list `key` needs staff to confirm, and since when: the
+ * opt-out on the subscriber's own record ({@link optedOutOf}), or one kept for the address from
+ * a purged record of it. A kept opt-out stops counting once staff have added this record to that
+ * list (or, for an every-list one, to any media list) since -- but only an add made while the
+ * record held this address: one made at an address it has since left says nothing about this
+ * one. So a record that doesn't hold `email` yet (one about to move onto it) has no add that
+ * counts.
  */
 export async function mediaOptOutAt(
   tx: DbOrTx,
   email: string,
   key: string,
-  existing: Pick<SubscriberRow, "id" | "status"> | null,
+  existing: Pick<SubscriberRow, "id" | "status" | "email"> | null,
 ): Promise<Date | null> {
   const live = existing ? await optedOutOf(tx, existing.id, key, existing.status === "deleted") : null;
-  const hash = optOutHash(email);
   const rows = await tx
     .select({ listKey: mediaOptOuts.listKey, at: mediaOptOuts.optedOutAt })
     .from(mediaOptOuts)
-    .where(and(eq(mediaOptOuts.emailHash, hash), inArray(mediaOptOuts.listKey, [key, ALL_MEDIA_LISTS])));
+    .where(and(eq(mediaOptOuts.emailHash, optOutHash(email)), inArray(mediaOptOuts.listKey, [key, ALL_MEDIA_LISTS])));
+  if (rows.length === 0) return live;
+  const holdsIt = existing !== null && normaliseEmail(existing.email) === normaliseEmail(email);
+  const takenAt = holdsIt ? await addressTakenAt(tx, existing.id) : null;
   let kept: Date | null = null;
   for (const row of rows) {
-    const since = existing ? await latestHistoryAt(tx, existing.id, "media-list-added", row.listKey === ALL_MEDIA_LISTS ? undefined : key) : null;
+    const added = holdsIt ? await latestHistoryAt(tx, existing.id, "media-list-added", row.listKey === ALL_MEDIA_LISTS ? undefined : key) : null;
+    const since = added !== null && (takenAt === null || added >= takenAt) ? added : null;
     if (newerOrTie(row.at, since)) kept = latest(kept, row.at);
   }
   return latest(live, kept);
+}
+
+/**
+ * The media lists among `keys` that `email` may not be put on -- or a record carried onto, when
+ * it moves to `email` -- without staff confirming, each with the opt-out's date
+ * ({@link mediaOptOutAt}). The one rule every way onto a media list, or onto a new address
+ * while on one, goes through.
+ */
+export async function optedOutKeys(
+  tx: DbOrTx,
+  email: string,
+  keys: string[],
+  existing: Pick<SubscriberRow, "id" | "status" | "email"> | null,
+): Promise<{ listKey: string; at: Date }[]> {
+  const out: { listKey: string; at: Date }[] = [];
+  for (const listKey of keys) {
+    if (!listKey.startsWith(`${MEDIA_CATEGORY}:`)) continue;
+    const at = await mediaOptOutAt(tx, email, listKey, existing);
+    if (at) out.push({ listKey, at });
+  }
+  return out;
+}
+
+/** The media list keys this subscriber is on now. */
+export async function mediaKeysOf(tx: DbOrTx, subscriberId: string): Promise<string[]> {
+  const rows = await tx.execute<{ list_key: string }>(sql`
+    SELECT list_key FROM subscriptions WHERE subscriber_id = ${subscriberId} AND list_key LIKE ${`${MEDIA_CATEGORY}:%`} ORDER BY list_key`);
+  return rows.rows.map((r) => r.list_key);
 }

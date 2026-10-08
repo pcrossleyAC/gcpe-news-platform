@@ -251,13 +251,14 @@ async function applyEmailChange(deps: JourneyDeps, link: LinkRow): Promise<Subsc
 
 /** Ends a subscriber (4a) and, in the same transaction, opts them out of every media list
  * (global constraints, "Unsubscribe means everything") -- shared by one-click, token-link and
- * every email kind, since they all route through here. `s` must have been read FOR UPDATE
- * under its address lock (`withLockedSubscriber`). Already ended is a no-op. */
-async function endLockedSubscriber(tx: DbOrTx, s: SubscriberRow) {
+ * every email kind, since they all route through here, and by the importer for an unsubscribe
+ * legacy recorded (`unsubscribedAt`, its own date). `s` must have been read FOR UPDATE under its
+ * address lock (`withLockedSubscriber`). Already ended is a no-op. */
+export async function endLockedSubscriber(tx: DbOrTx, s: Pick<SubscriberRow, "id" | "status">, actor = SELF, unsubscribedAt?: Date) {
   if (s.status === "deleted") return;
   await tx.update(subscribers).set({ status: "deleted", endedAt: sql`now()` }).where(eq(subscribers.id, s.id));
-  await writeHistory(tx, s.id, SELF, "unsubscribed");
-  await optOutMediaMemberships(tx, s.id, SELF);
+  await writeHistory(tx, s.id, actor, "unsubscribed", "", unsubscribedAt);
+  await optOutMediaMemberships(tx, s.id, actor);
 }
 
 /** Whether `link` currently authorises a manage session — `update`, `unsubscribe` and (for a

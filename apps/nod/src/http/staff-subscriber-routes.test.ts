@@ -7,7 +7,8 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { staffAuth } from "../../test/staff-auth";
 import { createApp } from "../app";
-import { subscribers } from "../db/schema";
+import { mediaOptOuts, subscribers, subscriptions } from "../db/schema";
+import { ALL_MEDIA_LISTS, optOutHash } from "../opt-outs";
 import { privateErrors } from "./staff-subscriber-routes";
 
 describe("staff subscriber routes — reads", () => {
@@ -184,5 +185,16 @@ describe("staff subscriber routes — writes", () => {
     expect(row!.email).toBe(address(150));
     const { body: { id } } = await send("post", "/api/subscribers", editor, { email: "cap@example.test", lists: "all" });
     expect((await send("post", `/api/subscribers/${id}/email`, editor, { email: address(151).replace("a@", "c@") })).status).toBe(400);
+  });
+
+  it("change email onto an opted-out address answers 409 opted-out with its date until confirmOptOut is sent", async () => {
+    await tdb.db.execute(sql`INSERT INTO lists (list_key, category, key, name) VALUES ('media-distribution-lists:budget','media-distribution-lists','budget','Budget') ON CONFLICT DO NOTHING`);
+    const { body: { id } } = await send("post", "/api/subscribers", editor, { email: "moving@example.test", lists: "all" });
+    await tdb.db.insert(subscriptions).values({ subscriberId: id, listKey: "media-distribution-lists:budget" });
+    await tdb.db.insert(mediaOptOuts).values({ emailHash: optOutHash("left-before@example.test"), listKey: ALL_MEDIA_LISTS, optedOutAt: new Date("2026-06-01T17:00:00Z") });
+    const refused = await send("post", `/api/subscribers/${id}/email`, editor, { email: "left-before@example.test" });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toEqual({ error: "opted-out", at: "2026-06-01T17:00:00.000Z" });
+    expect((await send("post", `/api/subscribers/${id}/email`, editor, { email: "left-before@example.test", confirmOptOut: true })).body).toEqual({ changed: true });
   });
 });

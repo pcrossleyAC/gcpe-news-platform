@@ -29,6 +29,7 @@ interface StubOptions {
   onSearch?: (body: Record<string, unknown>) => Response | Promise<Response>;
   members?: () => Response;
   onRemove?: () => Response;
+  onResolve?: () => Response;
 }
 function stub(roles: string[], opts: StubOptions = {}) {
   const calls: Call[] = [];
@@ -45,7 +46,7 @@ function stub(roles: string[], opts: StubOptions = {}) {
     if (url === "/nod/api/media-hub/contacts/search") return opts.onSearch?.(body) ?? jsonResponse(200, { contacts: [CONTACT], page: 1, pageSize: 25, total: 1 });
     if (url === "/nod/api/media-hub/contacts/42") return jsonResponse(200, CONTACT);
     if (url.startsWith("/nod/api/media-lists/budget/members/") && method === "DELETE") return opts.onRemove?.() ?? new Response(null, { status: 204 });
-    if (url.endsWith("/resolve")) return jsonResponse(200, { ok: true });
+    if (url.endsWith("/resolve")) return opts.onResolve?.() ?? jsonResponse(200, { ok: true });
     throw new Error(`unhandled: ${method} ${url}`);
   }));
   return calls;
@@ -189,6 +190,22 @@ describe("MediaListScreen", () => {
     await user.click(within(dialog).getByRole("button", { name: "Use this email" }));
     await waitFor(() => expect(calls).toContainEqual({ url: `/nod/api/media-members/${ID1}/resolve`, method: "POST", body: { emailRef: "workplace:1" } }));
     expect(await screen.findByRole("status")).toHaveTextContent("Email updated and flag cleared.");
+  });
+
+  it("resolve: an email that opted out of a media list the member is on is refused inside the dialog", async () => {
+    stub(["NoD.Editor"], {
+      members: () => jsonResponse(200, [{ ...MEMBERS[0]!, needsAttention: "opted-out-address" }]),
+      onResolve: () => jsonResponse(409, { error: "opted-out-address" }),
+    });
+    renderIt();
+    const user = userEvent.setup();
+    const members = await screen.findByRole("table", { name: "Members" });
+    expect(within(members).getByRole("row", { name: /Media Hub email opted out of a media list this member is on/ })).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Resolve sam@riverbend.example.test" }));
+    const dialog = await screen.findByRole("alertdialog");
+    await user.click(await within(dialog).findByRole("radio", { name: /sam@gazette\.example\.test/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Use this email" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent("That address opted out of a media list this member is on.");
   });
 
   it("a failed load says so instead of loading forever; an unknown list says there's no such list", async () => {

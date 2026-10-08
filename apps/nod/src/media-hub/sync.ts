@@ -24,6 +24,7 @@ import { dailyCutoff } from "../digest";
 import { MEDIA_CATEGORY } from "../lists";
 import { lockAddress, withLockedSubscriber } from "../locks";
 import { removeMediaMember, hasMediaMemberships } from "../media-members";
+import { mediaKeysOf, optedOutKeys } from "../opt-outs";
 import { writeHistory } from "../subscribe/history";
 import { emailAddressSchema, normaliseEmail } from "../subscribe/info";
 import { expireSessionLinks } from "../subscribe/links";
@@ -69,13 +70,15 @@ function isInProgress(value: unknown): value is SyncResult & { inProgress: true 
 
 const SYNC_ACTOR = "media-hub-sync";
 
-type EmailOutcome = "updated" | "email-taken" | "email-gone" | "email-invalid" | "unchanged" | "cleared";
+type EmailOutcome = "updated" | "email-taken" | "email-gone" | "email-invalid" | "opted-out-address" | "unchanged" | "cleared";
 
 /**
  * Reconciles one subscriber's chosen Media Hub email against `contact`'s current emails (the
  * brief's "Feed" rules): the chosen ref's address moved (update, if free and a valid email,
  * else flag `email-taken`/`email-invalid`), the chosen ref vanished (flag `email-gone`, keep the
- * member -- C59), or nothing changed (clearing a stale flag if the ref came back valid).
+ * member -- C59), or nothing changed (clearing a stale flag if the ref came back valid). A new
+ * address that opted out of a media list the member is on (opt-outs.ts `optedOutKeys`) is never
+ * moved onto: the member is flagged `opted-out-address` for staff to decide.
  *
  * Media Hub's own contract doesn't require `.email()` on `address` (media-hub/contract.ts), so
  * a changed address is validated here, with the same schema the routes use, before it's ever
@@ -133,6 +136,13 @@ async function applyChosenEmailSafely(db: Db, snapshot: SubscriberRow, contact: 
       return "email-taken";
     }
 
+    if ((await optedOutKeys(tx, newAddress!, await mediaKeysOf(tx, s.id), s)).length > 0) {
+      if (s.needsAttention === "opted-out-address") return "unchanged";
+      await tx.update(subscribers).set({ needsAttention: "opted-out-address", attentionAt: sql`now()` }).where(eq(subscribers.id, s.id));
+      await writeHistory(tx, s.id, actor, "media-hub-flagged", chosenRef ?? "");
+      return "opted-out-address";
+    }
+
     await tx
       .update(subscribers)
       .set({ email: newAddress!, unsubscribeVersion: sql`${subscribers.unsubscribeVersion} + 1`, needsAttention: null, attentionAt: null })
@@ -181,7 +191,7 @@ async function applyContact(db: Db, contact: MediaHubContact, result: SyncResult
         console.error("[nod] media sync: subscriber changed under us, skipped", contact.id);
       } else if (outcome === "updated") {
         result.updated += 1;
-      } else if (outcome === "email-taken" || outcome === "email-gone" || outcome === "email-invalid") {
+      } else if (outcome === "email-taken" || outcome === "email-gone" || outcome === "email-invalid" || outcome === "opted-out-address") {
         result.flagged += 1;
       }
     } catch (e) {
@@ -454,7 +464,7 @@ export async function getMediaSyncStatus(db: DbOrTx): Promise<{ since: string | 
   };
 }
 
-export type ResolveOutcome = "resolved" | "not-found" | "ref-not-found" | "media-hub-unavailable" | "email-taken" | "invalid-email" | "conflict";
+export type ResolveOutcome = "resolved" | "not-found" | "ref-not-found" | "media-hub-unavailable" | "email-taken" | "opted-out-address" | "invalid-email" | "conflict";
 
 /**
  * `POST /api/media-members/:subscriberId/resolve`: staff clearing a `needs_attention` flag by
@@ -463,7 +473,8 @@ export type ResolveOutcome = "resolved" | "not-found" | "ref-not-found" | "media
  * staff always acts on current Media Hub data, never a stale cached ref list), re-points
  * `media_hub_email_ref` at it, and applies the same update-or-flag rule the sync uses (never
  * merges or silently drops another subscriber's address -- review focus #3): a ref that still
- * collides re-flags `email-taken` (the route 409s, it doesn't pretend to resolve). The address
+ * collides re-flags `email-taken` (the route 409s, it doesn't pretend to resolve), and one whose
+ * address opted out of a media list the member is on flags `opted-out-address` the same way. The address
  * used to decide lock order and the new one are both read before the `mediaHub.get` network
  * call (which must not happen while holding a lock); the locked re-read is checked against
  * that snapshot, and a mismatch (something else changed this subscriber meanwhile) returns
@@ -536,6 +547,12 @@ export async function resolveMediaMember(
       await tx.update(subscribers).set({ mediaHubEmailRef: emailRef, needsAttention: "email-taken", attentionAt: sql`now()` }).where(eq(subscribers.id, s.id));
       await writeHistory(tx, s.id, actor, "media-hub-flagged", emailRef);
       return "email-taken";
+    }
+
+    if ((await optedOutKeys(tx, newAddress, await mediaKeysOf(tx, s.id), s)).length > 0) {
+      await tx.update(subscribers).set({ mediaHubEmailRef: emailRef, needsAttention: "opted-out-address", attentionAt: sql`now()` }).where(eq(subscribers.id, s.id));
+      await writeHistory(tx, s.id, actor, "media-hub-flagged", emailRef);
+      return "opted-out-address";
     }
 
     await tx
