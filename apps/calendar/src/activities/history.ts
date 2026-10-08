@@ -27,6 +27,11 @@ async function one(db: DbOrTx, table: string, id: number | null): Promise<string
 }
 
 /** What "View changes" shows for each field (spec addendum §8.3): names, not ids; BC times. */
+/** "Name (ABBR)", as legacy's dropdowns; the history and Transfer both label a comm contact this way. */
+export function commContactLabel(displayName: string | null, ministryAbbreviation: string | null): string {
+  return `${displayName ?? "Unknown"}${ministryAbbreviation ? ` (${ministryAbbreviation})` : ""}`;
+}
+
 export async function displayOf(db: DbOrTx, c: Content, la: LookAheadValues, j: JoinIds, keywordNames: string[], rules: CalendarRules): Promise<Display> {
   const when = (d: Date | null, dateOnly: boolean) => {
     if (!d) return null;
@@ -46,7 +51,7 @@ export async function displayOf(db: DbOrTx, c: Content, la: LookAheadValues, j: 
   let commContact: string | null = null;
   if (c.commContactId !== null) {
     const [cc] = await db.select({ name: users.displayName, abbr: orgs.abbreviation }).from(commContacts).leftJoin(users, eq(users.id, commContacts.userId)).leftJoin(orgs, eq(orgs.key, commContacts.ministryKey)).where(eq(commContacts.id, c.commContactId));
-    commContact = cc ? `${cc.name ?? "Unknown"}${cc.abbr ? ` (${cc.abbr})` : ""}` : String(c.commContactId);
+    commContact = cc ? commContactLabel(cc.name, cc.abbr) : String(c.commContactId);
   }
   return {
     category: list(await names(db, "categories", j.categoryIds)),

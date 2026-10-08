@@ -41,7 +41,7 @@ export async function reviewSelected(deps: ApiDeps, actor: CalendarActor, items:
   const sorted = [...items].sort((a, b) => a.id - b.id);
   const order = new Map(items.map((it, n) => [it.id, n]));
   const byOriginalOrder = (xs: typeof skipped) => xs.sort((a, b) => order.get(a.id)! - order.get(b.id)!);
-  for (const batch of batchesOf(sorted)) {
+  for (const [n, batch] of batchesOf(sorted).entries()) {
     // Held in a local scope: a batch that throws rolls its whole transaction back, so nothing
     // it collected here is real until the transaction promise resolves.
     const batchReviewed: number[] = [];
@@ -61,6 +61,8 @@ export async function reviewSelected(deps: ApiDeps, actor: CalendarActor, items:
         }
       });
     } catch (e) {
+      // Nothing has committed yet: the request failed as a whole, and the usual error mapping applies.
+      if (n === 0) throw e;
       console.error("[calendar] review-selected: a batch failed after earlier ones committed", safeErrorLabel(e));
       return { reviewed, skipped: byOriginalOrder(skipped), failed: true };
     }
@@ -90,7 +92,7 @@ export async function clearLaStatus(deps: ApiDeps, actor: CalendarActor, days: n
     .where(and(visibleSql(actor), isNotNull(activities.hqStatus), lte(activities.startAt, cutoff)))
     .orderBy(asc(activities.id));
   let cleared = 0;
-  for (const batch of batchesOf(candidates.map((c) => c.id))) {
+  for (const [n, batch] of batchesOf(candidates.map((c) => c.id)).entries()) {
     let batchCleared = 0;
     try {
       await deps.db.transaction(async (tx) => {
@@ -109,6 +111,7 @@ export async function clearLaStatus(deps: ApiDeps, actor: CalendarActor, days: n
         }
       });
     } catch (e) {
+      if (n === 0) throw e;
       console.error("[calendar] clear-la-status: a batch failed after earlier ones committed", safeErrorLabel(e));
       return { cleared, failed: true };
     }

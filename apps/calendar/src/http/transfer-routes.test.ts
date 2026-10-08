@@ -1,9 +1,9 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCalendarTestDb, createTestApp, FIXED_NOW } from "../../test/helpers";
 import { call, historyOf, insertRaw, outboxOf, seedWorld, validInput, type World } from "../../test/world";
-import { activities, commContacts } from "../db/schema";
+import { activities, activitySharedWith, commContacts } from "../db/schema";
 
 describe("Transfer (spec addendum §7.1, C150)", () => {
   let tdb: TestDatabase;
@@ -14,7 +14,18 @@ describe("Transfer (spec addendum §7.1, C150)", () => {
   const preview = (who: keyof World["as"], from: number, to: number) => call(app, "get", `/api/transfer/preview?from=${from}&to=${to}`, w.as[who].cookie);
   const transfer = (who: keyof World["as"], from: number, to: number) => call(app, "post", "/api/transfer", w.as[who].cookie, { from, to });
   // A new Health comm contact for a user who has none there yet (one per user and ministry).
-  const fresh = async (userId: string) => (await tdb.db.insert(commContacts).values({ userId, ministryKey: "health", rank: 6 }).returning({ id: commContacts.id }))[0]!.id;
+  const fresh = async (userId: string, ministryKey = "health") => (await tdb.db.insert(commContacts).values({ userId, ministryKey, rank: 6 }).returning({ id: commContacts.id }))[0]!.id;
+  /** Every `transferred` history insert fails with a check violation while `during` runs. */
+  async function failingHistory<T>(during: () => Promise<T>): Promise<T> {
+    await tdb.db.execute(sql`CREATE FUNCTION fail_transferred() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'stub failure' USING ERRCODE = '23514'; END $$`);
+    await tdb.db.execute(sql`CREATE TRIGGER fail_transferred BEFORE INSERT ON activity_changes FOR EACH ROW WHEN (NEW.action = 'transferred') EXECUTE FUNCTION fail_transferred()`);
+    try {
+      return await during();
+    } finally {
+      await tdb.db.execute(sql`DROP TRIGGER fail_transferred ON activity_changes`);
+      await tdb.db.execute(sql`DROP FUNCTION fail_transferred()`);
+    }
+  }
 
   beforeAll(async () => {
     tdb = await createCalendarTestDb();
@@ -86,6 +97,9 @@ describe("Transfer (spec addendum §7.1, C150)", () => {
     expect((await transfer("admin", target, target)).body).toEqual({ error: "Choose two different comm contacts" });
     expect((await call(app, "post", "/api/transfer", w.as.admin.cookie, { from: 1, to: 2, extra: true })).status).toBe(400);
     expect((await call(app, "get", "/api/transfer/preview?from=abc&to=1", w.as.admin.cookie)).status).toBe(400);
+    for (const q of ["from=1e3&to=1", "from=0x10&to=1", "from=%201&to=2", "from=&to=1", "from=1&from=2&to=1", "from=0&to=1"]) {
+      expect((await call(app, "get", `/api/transfer/preview?${q}`, w.as.admin.cookie)).status, q).toBe(400);
+    }
   });
 
   it("refuses an id too large for the comm contacts table with a 400", async () => {
@@ -111,6 +125,57 @@ describe("Transfer (spec addendum §7.1, C150)", () => {
     expect(res.body).toEqual({ transferred: 100, failed: true });
     const rows = await tdb.db.select({ commContactId: activities.commContactId }).from(activities).where(inArray(activities.id, ids));
     expect(rows.filter((r) => r.commContactId === target)).toHaveLength(100);
+  });
+
+  it("refuses a contact whose ministry can't lead an activity, as a save would, and leaves it out of the To list", async () => {
+    const excluded = await fresh(w.as.hqEditor.id, "excluded");
+    const retired = await fresh(w.as.hqEditor.id, "retired");
+    const a = await insertRaw(tdb.db, { commContactId: w.contact.editorHealth });
+    expect((await transfer("hqAdmin", w.contact.editorHealth, excluded)).body).toEqual({ error: "That ministry can't lead an activity" });
+    expect((await preview("hqAdmin", w.contact.editorHealth, excluded)).status).toBe(422);
+    expect((await transfer("hqAdmin", w.contact.editorHealth, retired)).body).toEqual({ error: "That ministry is no longer active" });
+    expect((await preview("hqAdmin", w.contact.editorHealth, retired)).status).toBe(422);
+    expect((await tdb.db.select().from(activities).where(eq(activities.id, a)))[0]).toMatchObject({ commContactId: w.contact.editorHealth, contactMinistryKey: "health" });
+    const list = (await call(app, "get", "/api/transfer/comm-contacts", w.as.hqAdmin.cookie)).body as { id: number; canReceive: boolean }[];
+    expect(list.find((c) => c.id === excluded)).toMatchObject({ canReceive: false });
+    expect(list.find((c) => c.id === retired)).toMatchObject({ canReceive: false });
+    expect(list.find((c) => c.id === w.contact.retiredHealth)).toMatchObject({ canReceive: false });
+    expect(list.find((c) => c.id === target)).toMatchObject({ canReceive: true });
+    // They stay usable as From.
+    const b = await insertRaw(tdb.db, { commContactId: excluded, contactMinistryKey: "excluded" });
+    expect((await transfer("hqAdmin", excluded, target)).body).toEqual({ transferred: 1 });
+    expect((await tdb.db.select().from(activities).where(eq(activities.id, b)))[0]!.commContactId).toBe(target);
+  });
+
+  it("labels a contact whose user is missing as the history does", async () => {
+    const ghost = (await tdb.db.insert(commContacts).values({ userId: "00000000-0000-4000-8000-000000000999", ministryKey: "health", rank: 6 }).returning({ id: commContacts.id }))[0]!.id;
+    const list = (await call(app, "get", "/api/transfer/comm-contacts", w.as.admin.cookie)).body as { id: number; label: string }[];
+    expect(list.find((c) => c.id === ghost)!.label).toBe("Unknown (HLTH)");
+    const a = await insertRaw(tdb.db, { commContactId: ghost });
+    await transfer("admin", ghost, target);
+    expect((await historyOf(tdb.db, a)).at(-1)!.fields).toMatchObject({ comm_contact: ["Unknown (HLTH)", "Sample Admin (HLTH)"] });
+  });
+
+  it("a ministry Administrator doesn't move another ministry's activity shared with theirs", async () => {
+    const count = async (who: keyof World["as"]) => (await preview(who, w.contact.editorHealth, target)).body.count as number;
+    const [mine, hq] = [await count("admin"), await count("hqAdmin")];
+    const a = await insertRaw(tdb.db, { commContactId: w.contact.editorHealth, contactMinistryKey: "finance" });
+    await tdb.db.insert(activitySharedWith).values({ activityId: a, ministryKey: "health" });
+    expect(await count("admin")).toBe(mine);
+    expect(await count("hqAdmin")).toBe(hq + 1);
+    await transfer("admin", w.contact.editorHealth, target);
+    expect((await tdb.db.select().from(activities).where(eq(activities.id, a)))[0]).toMatchObject({ commContactId: w.contact.editorHealth, contactMinistryKey: "finance" });
+    await transfer("admin", target, w.contact.editorHealth);
+    await tdb.db.update(activities).set({ deletedAt: FIXED_NOW }).where(eq(activities.id, a));
+  });
+
+  it("a failure in the first batch, before anything committed, is mapped as any other error", async () => {
+    const from = await fresh(w.as.hqAdvanced.id);
+    const a = await insertRaw(tdb.db, { commContactId: from });
+    const res = await failingHistory(() => transfer("admin", from, target));
+    expect(res.status).toBe(409);
+    expect(res.body).toMatchObject({ code: "conflict" });
+    expect((await tdb.db.select().from(activities).where(eq(activities.id, a)))[0]!.commContactId).toBe(from);
   });
 
   it("isn't frozen (spec addendum §7.4)", async () => {
@@ -140,8 +205,39 @@ describe("Transfer (spec addendum §7.1, C150)", () => {
     const from = await fresh(w.as.hqReadOnly.id);
     const ids: number[] = [];
     for (let n = 0; n < 150; n++) ids.push(await insertRaw(tdb.db, { commContactId: from }));
-    const [x, y] = await Promise.all([transfer("admin", from, target), transfer("hqAdmin", from, target)]);
+    // Hold the first activity's lock until both runs have read their candidates and are waiting on it.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    const blocker = tdb.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`calendar-activity:${ids[0]}`}))`);
+      locked();
+      await held;
+    });
+    await isLocked;
+    const runs = Promise.all([transfer("admin", from, target), transfer("hqAdmin", from, target)]);
+    await waitForLockWaiters(2);
+    release();
+    await blocker;
+    const [x, y] = await runs;
+    expect([x.status, y.status]).toEqual([200, 200]);
     expect(x.body.transferred + y.body.transferred).toBe(150);
-    for (const id of ids.slice(0, 3)) expect((await historyOf(tdb.db, id)).filter((h) => h.action === "transferred")).toHaveLength(1);
+    const rows = await tdb.db.select({ commContactId: activities.commContactId, version: activities.version }).from(activities).where(inArray(activities.id, ids));
+    expect(rows.every((r) => r.commContactId === target && r.version === 2)).toBe(true);
+    const counts = await tdb.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM activity_changes WHERE action = 'transferred' AND activity_id = ANY($1) GROUP BY activity_id", [ids]);
+    expect(counts.rows).toHaveLength(150);
+    expect(counts.rows.every((r) => r.n === 1)).toBe(true);
   });
+
+  /** Resolves once `n` sessions are blocked on a lock. */
+  async function waitForLockWaiters(n: number, timeoutMs = 5000): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    for (;;) {
+      const r = await tdb.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
+      if (r.rows[0]!.n >= n) return;
+      if (Date.now() > deadline) throw new Error(`fewer than ${n} sessions waiting for a lock`);
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+  }
 });

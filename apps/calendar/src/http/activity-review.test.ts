@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { ActivityFields } from "@gcpe/calendar-contract";
 import { createCalendarTestDb, createTestApp, FIXED_NOW } from "../../test/helpers";
@@ -17,6 +17,18 @@ describe("review, review selected and Clear LA Status (spec addendum §7.1)", ()
     const res = await call(app, "put", `/api/activities/${a.id}`, w.as.editor.cookie, { ...a.fields, title: "Changed", venue: "Sample hall", version: a.version, tabId: null });
     return res.body.activity as { id: number; version: number };
   };
+
+  /** Every history insert of `action` fails with a check violation while `during` runs. */
+  async function failingHistory<T>(action: string, during: () => Promise<T>): Promise<T> {
+    await tdb.db.execute(sql`CREATE FUNCTION fail_history() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'stub failure' USING ERRCODE = '23514'; END $$`);
+    await tdb.db.execute(sql.raw(`CREATE TRIGGER fail_history BEFORE INSERT ON activity_changes FOR EACH ROW WHEN (NEW.action = '${action}') EXECUTE FUNCTION fail_history()`));
+    try {
+      return await during();
+    } finally {
+      await tdb.db.execute(sql`DROP TRIGGER fail_history ON activity_changes`);
+      await tdb.db.execute(sql`DROP FUNCTION fail_history()`);
+    }
+  }
 
   beforeAll(async () => {
     tdb = await createCalendarTestDb();
@@ -123,6 +135,14 @@ describe("review, review selected and Clear LA Status (spec addendum §7.1)", ()
       const rows = await tdb.db.select({ status: activities.status }).from(activities).where(inArray(activities.id, ids));
       expect(rows.filter((r) => r.status === "reviewed")).toHaveLength(100);
     });
+
+    it("a failure in the first batch, before anything committed, is mapped as any other error", async () => {
+      const a = await changed();
+      const res = await failingHistory("reviewed", () => reviewSelected("hqAdmin", [{ id: a.id, version: a.version }]));
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ code: "conflict" });
+      expect((await row(a.id)).status).toBe("changed");
+    });
   });
 
   describe("Clear LA Status", () => {
@@ -159,6 +179,14 @@ describe("review, review selected and Clear LA Status (spec addendum §7.1)", ()
       expect(res.body.cleared).toBeGreaterThanOrEqual(150);
       const rows = await tdb.db.select({ hqStatus: activities.hqStatus }).from(activities).where(inArray(activities.id, ids));
       expect(rows.every((r) => r.hqStatus === null)).toBe(true);
+    });
+
+    it("a failure in the first batch, before anything committed, is mapped as any other error", async () => {
+      const a = await insertRaw(tdb.db, { hqStatus: "new", startAt: new Date("2026-10-01T17:00:00Z") });
+      const res = await failingHistory("la_status_cleared", () => clear("hqEditor", 3));
+      expect(res.status).toBe(409);
+      expect(res.body).toMatchObject({ code: "conflict" });
+      expect((await row(a)).hqStatus).toBe("new");
     });
   });
 });
