@@ -120,6 +120,14 @@ describe("organizations service", () => {
     expect(await tdb.db.select().from(outboxEvents)).toHaveLength(2);
   });
 
+  it("isHqOnCreate sets the flag only when the upsert creates the organization; an explicit isHq still wins (C124)", async () => {
+    expect((await upsertOrganization(tdb.db, healthOrg, subs, { isHqOnCreate: true })).record.isHq).toBe(true);
+    await setOrganizationHq(tdb.db, "health", false, subs);
+    const again = await upsertOrganization(tdb.db, healthOrg, subs, { isHqOnCreate: true });
+    expect(again).toMatchObject({ changed: false, record: { isHq: false } });
+    expect((await upsertOrganization(tdb.db, { ...healthOrg, isHq: true }, subs, { isHqOnCreate: false })).record.isHq).toBe(true);
+  });
+
   it("setOrganizationHq flips the flag and emits once; the same value emits nothing; an unknown key is null", async () => {
     await upsertOrganization(tdb.db, healthOrg, subs);
     expect((await setOrganizationHq(tdb.db, "health", true, subs))!.isHq).toBe(true);

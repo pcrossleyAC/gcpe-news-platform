@@ -1,5 +1,5 @@
 import type { TermKind } from "@gcpe/events";
-import { isHqAbbreviation, type OrgInput } from "../services/organizations";
+import type { OrgInput } from "../services/organizations";
 import type { TermInput } from "../services/terms";
 
 export interface LegacyMinistryRow extends Record<string, unknown> {
@@ -100,8 +100,6 @@ export function mapMinistry(
     topicLinks: links(related.topics),
     serviceLinks: links(related.services),
     sectorKeys: [...related.sectorKeys].sort(),
-    // Only the HQ ministries say anything about HQ; every other ministry leaves Core's flag alone.
-    ...(isHqAbbreviation(row.Abbreviation) ? { isHq: true } : {}),
   };
 }
 

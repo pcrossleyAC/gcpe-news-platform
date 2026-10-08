@@ -6,8 +6,9 @@ import { organizations } from "../db/schema";
 import { CORE_SOURCE, lockAggregate, orgAggregateId } from "./aggregate";
 
 /**
- * isHq is optional on input: omitted keeps the stored flag (false for a new organization), so
- * re-running the BC seed or the legacy importer never clears an HQ flag set by Core.Admin.
+ * isHq is optional on input: omitted keeps the stored flag (false for a new organization). The BC
+ * seed and the legacy importer send it only when they create the organization, so a re-seed or
+ * re-import never changes an HQ flag Core.Admin has set, in either direction (C124).
  */
 export const orgInputSchema = orgRecordSchema.omit({ updatedAt: true, isHq: true }).extend({ isHq: z.boolean().optional() });
 export type OrgInput = z.infer<typeof orgInputSchema>;
@@ -52,13 +53,17 @@ export async function upsertOrganization(
   db: Db,
   input: OrgInput,
   subscribers: SubscriberConfig[],
-  opts: { legacyId?: string } = {},
+  opts: {
+    legacyId?: string;
+    /** The HQ flag to give the organization if this upsert creates it. Ignored when it already exists, whatever the stored flag. */
+    isHqOnCreate?: boolean;
+  } = {},
 ): Promise<{ record: OrgRecord; changed: boolean }> {
   const parsed = orgInputSchema.parse(input);
   return db.transaction(async (tx) => {
     await lockAggregate(tx, orgAggregateId(parsed.key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, parsed.key)).for("update");
-    const data = { ...parsed, isHq: parsed.isHq ?? existing?.isHq ?? false };
+    const data = { ...parsed, isHq: parsed.isHq ?? (existing ? existing.isHq : (opts.isHqOnCreate ?? false)) };
     if (existing) {
       const { updatedAt: _u, ...current } = toOrgRecord(existing);
       if (sameContent(current, data)) {
