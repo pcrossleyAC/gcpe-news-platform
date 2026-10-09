@@ -56,11 +56,26 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
     expect(EXPORT_HEADERS.map((_, i) => cells.get(`${String.fromCharCode(65 + i)}2`))).toEqual([...EXPORT_HEADERS]);
     // HQ Advanced sees every confidential item. Order: start date, end date, start time; the list's sort is ignored.
     expect([3, 4, 5, 6].map((r) => cells.get(`A${r}`))).toEqual([morning, secret, early, later].map(String));
+    // The ID column holds numbers, so Excel sorts and filters it as numbers; a number cell can't hold a formula.
+    const { files } = readXlsx(res.body as Buffer);
+    expect(files.get("xl/worksheets/sheet1.xml")).toContain(`<c r="A3" s="1"><v>${morning}</v></c>`);
+    expect(files.get("xl/worksheets/sheet1.xml")).not.toContain("<f>");
     expect(cells.get("E6")).toBe("'=HYPERLINK(\"http://example.test\")");
     expect(cells.get("F5")).toBe("Sample <b>details</b>");
     expect(cells.get("G5")).toBe("Sample significance\n\nStrategy: Sample strategy");
     expect(cells.get("F3")).toBe("Not for Look Ahead Sample details");
     expect(cells.get("A7")).toBe(CONFIDENTIALITY_NOTICE);
+  });
+
+  it("an id search's heading names the activity, not the filter's dates, which the search ignored", async () => {
+    const found = await act("2046-05-10T17:00:00Z", "2046-05-10T18:00:00Z", { title: "Sample found by id" });
+    const res = await exportAs("editor", { filter: { from: "2046-04-01", to: "2046-04-30", quickSearch: `HLTH-${found}` } });
+    expect(res.status).toBe(200);
+    const { cells } = readXlsx(res.body as Buffer);
+    expect(cells.get("F1")).toBe(`Activity ID Selected: ${found}`);
+    expect(cells.get("A3")).toBe(String(found));
+    const words = readXlsx((await exportAs("editor", { filter: { from: "2046-04-01", to: "2046-04-30", quickSearch: "Sample" } })).body as Buffer);
+    expect(words.cells.get("F1")).toBe("Date Range Selected: Apr 01, 2046 to Apr 30, 2046");
   });
 
   it("an HQ Editor's export leaves out what the list leaves out", async () => {
@@ -84,8 +99,11 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
       if (who === "editor") expect(sheet).not.toContain("Sample finance secret");
       else expect(sheet).toContain("Sample finance secret");
     }
+    // Searching for the Executive Summary they can't see finds nothing: column A holds only the banner, the header and the footer.
     const searched = readXlsx((await exportAs("editor", { filter: { from: "2047-02-01", to: "2047-02-28", quickSearch: marker } })).body as Buffer);
-    expect([...searched.cells.keys()].filter((ref) => /^A\d+$/.test(ref)).length).toBe(3);
+    expect([...searched.cells.entries()].filter(([ref]) => /^A\d+$/.test(ref)).map(([, v]) => v)).toEqual([
+      "Sample Province. Corporate Calendar DRAFT & CONFIDENTIAL", "ID", CONFIDENTIALITY_NOTICE,
+    ]);
   });
 
   it("never answers bad input with a 500 or echoes it in a 400", async () => {
@@ -122,6 +140,32 @@ describe("the calendar range and the Excel export (spec addendum §8.1, C151)", 
     const corporateRange = request(app).get(`/api/list/calendar?q=${q({ corporate: { days: 8, statuses: ["new"] } })}&start=2049-02-01&end=2049-02-02`);
     expect((await corporateRange.set("cookie", w.as.hqEditor.cookie)).status).toBe(403);
     expect((await request(app).get("/api/list/export.xlsx?q=nope").set("cookie", w.as.editor.cookie)).status).toBe(400);
+  });
+
+  it("runs at most two exports at once; a third is told to retry with 503 and Retry-After", async () => {
+    const lockWaiters = async () =>
+      (await tdb.db.execute<{ n: number }>(sql`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`)).rows[0]!.n;
+    const until = async (cond: () => Promise<boolean>) => {
+      for (let i = 0; i < 200 && !(await cond()); i++) await new Promise((r) => setTimeout(r, 10));
+    };
+    const query = { filter: { from: "2046-03-01", to: "2046-03-31" } };
+    let held!: Promise<request.Response>[];
+    let third!: { status: number; retryAfter: unknown } | "blocked";
+    // Holding the activities table makes the first two exports wait inside the database, still running.
+    await tdb.db.transaction(async (tx) => {
+      await tx.execute(sql`LOCK TABLE activities IN ACCESS EXCLUSIVE MODE`);
+      held = [exportAs("hqAdvanced", query).then((r) => r), exportAs("editor", query).then((r) => r)];
+      await until(async () => (await lockWaiters()) >= 2);
+      expect(await lockWaiters()).toBe(2);
+      let res: request.Response | undefined;
+      const sent = exportAs("hqEditor", query).then((r) => (res = r));
+      await until(async () => res !== undefined || (await lockWaiters()) > 2);
+      third = res ? { status: res.status, retryAfter: res.headers["retry-after"] } : "blocked";
+      void sent;
+    });
+    expect(third).toEqual({ status: 503, retryAfter: "5" });
+    expect((await Promise.all(held)).map((r) => r.status)).toEqual([200, 200]);
+    expect((await exportAs("hqEditor", query)).status).toBe(200);
   });
 
   it("the calendar range: the query's activities overlapping at most 42 days, 1,000 at most", async () => {

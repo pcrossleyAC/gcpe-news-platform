@@ -211,7 +211,7 @@ describe("migrating a batch when the owner resolver misbehaves", () => {
     ];
     const report = await migrateLegacySavedFilters(tdb.db, rows, resolver);
     expect(report.migrated).toBe(1);
-    expect(report.skippedInvalid).toEqual([{ id: 801 }]);
+    expect(report.skippedInvalid).toEqual([{ id: 801, reason: "Error" }]);
     expect(await tdb.db.select({ id: savedFilters.id }).from(savedFilters).where(inArray(savedFilters.id, [801, 802]))).toEqual([{ id: 802 }]);
   });
 
@@ -228,6 +228,37 @@ describe("migrating a batch when the owner resolver misbehaves", () => {
     expect(report.migrated).toBe(1);
     expect(report.skippedNoOwner).toEqual([{ id: 811, legacyOwner: 9302 }]);
     expect(await tdb.db.select({ id: savedFilters.id }).from(savedFilters).where(inArray(savedFilters.id, [811, 812]))).toEqual([{ id: 812 }]);
+  });
+
+  it("skips the whole row, not just its contact, when the contact resolver throws", async () => {
+    const resolver: LegacyFilterResolver = {
+      ministryKeyOf: () => null,
+      userIdOf: (legacyId) => {
+        if (legacyId === 9303) throw new TypeError("contact resolver exploded");
+        return legacyId === LEGACY_OWNER_A ? OWNER_A : null;
+      },
+    };
+    const rows = [
+      { id: 831, createdBy: LEGACY_OWNER_A, name: "Sample contact throws", sortOrder: 1, isActive: true, queryString: "contact=9303|status=2" },
+      { id: 832, createdBy: LEGACY_OWNER_A, name: "Sample clean three", sortOrder: 2, isActive: true, queryString: "status=1" },
+    ];
+    const report = await migrateLegacySavedFilters(tdb.db, rows, resolver);
+    expect(report.migrated).toBe(1);
+    expect(report.skippedInvalid).toEqual([{ id: 831, reason: "TypeError" }]);
+    expect(report.dropped).toEqual([]);
+    expect(await tdb.db.select({ id: savedFilters.id }).from(savedFilters).where(inArray(savedFilters.id, [831, 832]))).toEqual([{ id: 832 }]);
+  });
+
+  it("strips NUL characters from a legacy query's name, as from its quick search, and migrates it", async () => {
+    const rows = [
+      { id: 841, createdBy: LEGACY_OWNER_A, name: "Sample\u0000 NUL\u0000 name", sortOrder: 1, isActive: true, queryString: "status=2" },
+      { id: 842, createdBy: LEGACY_OWNER_A, name: "\u0000 \u0000", sortOrder: 2, isActive: true, queryString: "status=1" },
+    ];
+    const report = await migrateLegacySavedFilters(tdb.db, rows, LEGACY_RESOLVER);
+    expect(report.migrated).toBe(2);
+    expect(report.skippedInvalid).toBeUndefined();
+    const out = await tdb.db.select({ id: savedFilters.id, name: savedFilters.name }).from(savedFilters).where(inArray(savedFilters.id, [841, 842])).orderBy(asc(savedFilters.id));
+    expect(out).toEqual([{ id: 841, name: "Sample NUL name" }, { id: 842, name: "My Query" }]);
   });
 
   it("drops a contact id the resolver resolved to a number, and still migrates the row", async () => {

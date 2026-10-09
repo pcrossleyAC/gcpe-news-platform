@@ -26,6 +26,12 @@ describe("friendlyDateRange (ActivityListProvider.ashx.cs:769-840)", () => {
     expect(friendlyDateRange(timed("2026-11-10T15:00:00Z", "2026-11-11T01:00:00Z", { isConfirmed: false }), o)).toBe("Tue Nov 10 Time TBD");
     expect(friendlyDateRange(timed("2026-11-10T16:00:00Z", "2026-11-10T17:00:00Z", { isConfirmed: false, potentialDates: "Late November" }), o)).toBe("Late November TBC");
   });
+  it("today: always the weekday, even where the weekday is off, as legacy's FriendlyDate for today", () => {
+    const noWeekday = { ...o, weekday: false };
+    expect(friendlyDateRange(timed("2026-11-03T16:00:00Z", "2026-11-03T17:00:00Z"), noWeekday)).toBe("Tue Nov 3 9:00-10:00 AM");
+    expect(friendlyDateRange({ ...timed("2026-11-03T07:00:00Z", "2026-11-04T06:45:00Z"), isAllDay: true }, noWeekday)).toBe("Tue Nov 3");
+    expect(friendlyDateRange(timed("2026-11-10T16:00:00Z", "2026-11-10T17:00:00Z"), noWeekday)).toBe("Nov 10 9:00-10:00 AM");
+  });
   it("no dates: the Potential Dates, or a dash", () => {
     expect(friendlyDateRange({ startAt: null, endAt: null, isAllDay: false, isConfirmed: false, potentialDates: "Spring" }, o)).toBe("Spring");
     expect(friendlyDateRange({ startAt: null, endAt: null, isAllDay: false, isConfirmed: false }, o)).toBe("—");

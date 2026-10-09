@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { and, asc, inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { listQuerySchema, type ListQueryInput } from "@gcpe/calendar-contract";
 import { createCalendarTestDb, createTestApp, FIXED_NOW, projectUser, TEST_RULES } from "../../test/helpers";
@@ -8,7 +9,9 @@ import { ActivityForbiddenError } from "../activities/errors";
 import { activities, activityCategories, activityInitiatives, activityKeywords, activitySharedWith, cities, favourites } from "../db/schema";
 import type { ApiDeps } from "../http/routes";
 import { instantOf } from "../time";
-import { containsPattern, idSearchOf, listPageIds } from "./query";
+import { can } from "../capabilities";
+import { visible, visibleSql, type VisibilityFacts } from "../visibility";
+import { containsPattern, executiveSummaryShown, idSearchOf, listPageIds } from "./query";
 
 const bc = (date: string, time = "09:00") => instantOf(date, time, TEST_RULES.timeZone);
 /** Each test works in a year of its own, so no test sees another's activities. */
@@ -308,5 +311,45 @@ describe("the list query (spec addendum §8.1)", () => {
     expect(await ids("hqAdmin", { filter: y }, 60)).toEqual({ ids: made.slice(60), total: 65 });
     expect(await ids("hqAdmin", { filter: y }, 90)).toEqual({ ids: [], total: 65 });
     expect(await ids("hqAdmin", { filter: year(2043) })).toEqual({ ids: [], total: 0 });
+  });
+});
+
+describe("the Executive Summary search predicate agrees with can.seeLookAheadFieldset (C172)", () => {
+  let tdb: TestDatabase;
+  let w: World;
+  beforeAll(async () => {
+    tdb = await createCalendarTestDb();
+    w = await seedWorld(createTestApp(tdb.db), tdb.db);
+  });
+  afterAll(() => tdb.drop());
+
+  it("for every role, both tenant settings, and every kind of row", async () => {
+    const rows: (VisibilityFacts & { id: number })[] = [];
+    for (const contactMinistryKey of ["health", "finance", null])
+      for (const sharedMinistryKeys of [[], ["health"], ["finance"]])
+        for (const isConfidential of [false, true])
+          for (const isDeleted of [false, true]) {
+            const id = await insertRaw(tdb.db, { contactMinistryKey, isConfidential, deletedAt: isDeleted ? FIXED_NOW : null });
+            for (const m of sharedMinistryKeys) await tdb.db.insert(activitySharedWith).values({ activityId: id, ministryKey: m });
+            rows.push({ id, contactMinistryKey, sharedMinistryKeys, isConfidential, isDeleted });
+          }
+    const all = rows.map((r) => r.id);
+    let compared = 0;
+    for (const who of Object.keys(w.as) as Who[]) {
+      const actor = (await loadCalendarActor(tdb.db, w.as[who].id))!;
+      for (const showHqCommentsField of [true, false]) {
+        const rules = { ...TEST_RULES, showHqCommentsField };
+        const shown = executiveSummaryShown({ actor, rules, today: "2026-11-03", consultationsKeys: [] });
+        const got = await tdb.db
+          .select({ id: activities.id })
+          .from(activities)
+          .where(and(visibleSql(actor), inArray(activities.id, all), shown ?? sql`false`))
+          .orderBy(asc(activities.id));
+        const expected = rows.filter((r) => visible(actor, r) && can.seeLookAheadFieldset(actor, rules, r)).map((r) => r.id);
+        expect(got.map((r) => r.id), `${who}, showHqCommentsField ${showHqCommentsField}`).toEqual(expected);
+        compared++;
+      }
+    }
+    expect(compared).toBe(Object.keys(w.as).length * 2);
   });
 });

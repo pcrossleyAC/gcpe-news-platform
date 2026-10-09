@@ -35,6 +35,26 @@ describe("the .xlsx writer", () => {
     expect(files.get("xl/worksheets/sheet1.xml")).toContain('<mergeCell ref="A1:B1"/>');
   });
 
+  it("writes a carriage return as &#13;, so an XML reader doesn't turn it into a line feed", () => {
+    const { files, cells } = readXlsx(xlsxOf({ name: "S", widths: [10], rows: [{ cells: [cell("a\r\nb\rc")] }] }));
+    const sheet = files.get("xl/worksheets/sheet1.xml")!;
+    expect(sheet).toContain(">a&#13;\nb&#13;c<");
+    expect(sheet).not.toContain("\r");
+    expect(cells.get("A1")).toBe("a\r\nb\rc");
+  });
+
+  it("writes a number cell as a plain value: no type to override, no formula, and it reads back", () => {
+    const { files, cells } = readXlsx(xlsxOf({ name: "S", widths: [10, 10], rows: [{ cells: [{ number: 12345, style: "cell" }, cell("=1")] }] }));
+    const sheet = files.get("xl/worksheets/sheet1.xml")!;
+    expect(sheet).toContain('<c r="A1" s="1"><v>12345</v></c>');
+    expect(sheet).not.toContain("<f>");
+    expect(cells.get("A1")).toBe("12345");
+    expect(cells.get("B1")).toBe("'=1");
+    const odd = readXlsx(xlsxOf({ name: "S", widths: [10], rows: [{ cells: [{ number: Number.NaN, style: "cell" }] }] }));
+    expect(odd.cells.get("A1")).toBe("NaN");
+    expect(odd.files.get("xl/worksheets/sheet1.xml")).toContain('<c r="A1" s="1" t="inlineStr">');
+  });
+
   it("escapes all five XML specials, in cell text and in the sheet's name", () => {
     const { files, cells } = readXlsx(xlsxOf({ name: "O'Brien <&>", widths: [10], rows: [{ cells: [cell("it's <x> & \"y\"")] }] }));
     expect(cells.get("A1")).toBe("it's <x> & \"y\"");
@@ -61,7 +81,8 @@ describe("the well-formedness check the tests read every part through", () => {
   it("refuses what a strict XML parser refuses", () => {
     const head = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n';
     expect(() => checkWellFormed("ok", `${head}<a x="1"><b/>t &amp; u</a>`)).not.toThrow();
-    for (const bad of ["<a><b></a></b>", "<a>&nbsp;</a>", "<a>x & y</a>", "<a>\u0001</a>", "<a/><b/>", "<a x=1/>", "<a>", "text<a/>", "<a>\uD800</a>"]) {
+    expect(() => checkWellFormed("ok", `${head}<a>t&#13;u&#x0D;</a>`)).not.toThrow();
+    for (const bad of ["<a><b></a></b>", "<a>&nbsp;</a>", "<a>&#;</a>", "<a>&#x;</a>", "<a>x & y</a>", "<a>\u0001</a>", "<a/><b/>", "<a x=1/>", "<a>", "text<a/>", "<a>\uD800</a>"]) {
       expect(() => checkWellFormed("bad", head + bad), bad).toThrow();
     }
   });

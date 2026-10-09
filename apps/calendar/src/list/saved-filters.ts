@@ -46,7 +46,7 @@ export function createSavedFilter(db: Db, ownerId: string, input: { name: string
   });
 }
 
-export async function renameSavedFilter(db: Db, ownerId: string, id: number, name: string): Promise<SavedFilterView> {
+export async function renameSavedFilter(db: DbOrTx, ownerId: string, id: number, name: string): Promise<SavedFilterView> {
   return db.transaction(async (tx) => {
     await lockUserData(tx, ownerId);
     const [row] = await tx.update(savedFilters).set({ name }).where(and(eq(savedFilters.id, id), mine(ownerId))).returning();
@@ -56,7 +56,7 @@ export async function renameSavedFilter(db: Db, ownerId: string, id: number, nam
 }
 
 /** Legacy kept a deleted query, inactive (ActivityFilter.asmx.cs:82-90). */
-export async function deleteSavedFilter(db: Db, ownerId: string, id: number): Promise<void> {
+export async function deleteSavedFilter(db: DbOrTx, ownerId: string, id: number): Promise<void> {
   await db.transaction(async (tx) => {
     await lockUserData(tx, ownerId);
     const rows = await tx.update(savedFilters).set({ isActive: false }).where(and(eq(savedFilters.id, id), mine(ownerId))).returning({ id: savedFilters.id });

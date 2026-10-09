@@ -5,7 +5,7 @@ import { inReadSnapshot } from "../activities/store";
 import { activities } from "../db/schema";
 import type { ApiDeps } from "../http/routes";
 import { dbNow } from "../time";
-import { listWhere, scopeOf, type ListScope } from "./query";
+import { idSearchOf, listWhere, scopeOf, type ListScope } from "./query";
 import { rowsOf } from "./rows";
 import { xlsxOf, type Run, type Sheet, type SheetCell } from "./xlsx";
 
@@ -14,6 +14,18 @@ export class ExportTooLargeError extends Error {
   override name = "ExportTooLargeError";
   constructor() {
     super("More than 10,000 activities match: narrow the filter and export again");
+  }
+}
+
+/** Each export builds its whole workbook in memory, so this process runs at most this many at once. */
+export const EXPORT_CONCURRENCY = 2;
+/** Seconds a refused export is told to wait before trying again. */
+export const EXPORT_RETRY_AFTER_SECONDS = 5;
+/** HTTP 503 with Retry-After. */
+export class ExportBusyError extends Error {
+  override name = "ExportBusyError";
+  constructor() {
+    super("Other exports are running: try again in a few seconds");
   }
 }
 
@@ -34,7 +46,10 @@ const bold = (text: string): SheetCell => ({ runs: [{ text }], style: "boldCell"
 /** Legacy's "MMM dd, yyyy" (ActivityHandler.ashx.cs:528-541). */
 const headingDate = (d: string) => `${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(8, 10)}, ${d.slice(0, 4)}`;
 
+/** Legacy's date range; an id search ignores the dates (listWhere), so it names the activity instead. */
 function dateRangeHeading(q: ListQuery, today: string): string {
+  const id = q.corporate ? null : idSearchOf(q.filter.quickSearch);
+  if (id !== null) return `Activity ID Selected: ${id}`;
   const from = q.corporate ? today : (q.filter.from ?? today);
   const to = q.corporate ? null : q.filter.thisDayOnly ? from : q.filter.to;
   return `Date Range Selected: ${headingDate(from)}${to ? ` to ${headingDate(to)}` : " date-forward"}`;
@@ -54,7 +69,7 @@ function rowCells(r: ListRow, scope: ListScope): SheetCell[] {
   const summary: Run[] = r.isConfidential ? [{ text: "Not for Look Ahead ", color: DARK_RED }, { text: r.details }] : [{ text: r.details }];
   const significance: Run[] = r.strategy ? [{ text: r.significance }, { text: "\n\nStrategy: ", italic: true }, { text: r.strategy }] : [{ text: r.significance }];
   return [
-    plain(String(r.id)),
+    { number: r.id, style: "cell" },
     bold(r.ministryAbbreviation ?? ""),
     bold([...(r.isIssue ? ["Issue"] : []), ...r.categories].join(", ")),
     plain(friendlyDateRange(r, { timeZone: scope.rules.timeZone, today: scope.today, weekday: true })),

@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import {
   bcDateSchema, DEFAULT_HIDDEN_COLUMNS, listFilterSchema, safeString, type ActivityStatus, type HideableColumn, type ListDisplay, type ListFilter,
 } from "@gcpe/calendar-contract";
@@ -113,6 +114,7 @@ export function convertLegacyQuery(queryString: string, resolve: LegacyFilterRes
         break;
       }
       case "contact": {
+        // A resolver that throws here skips the whole row (migrateLegacySavedFilters catches it), not just this parameter.
         const n = intOf(value);
         const rawUser = n === null ? null : resolve.userIdOf(n);
         const canon = canonicalUserId(rawUser);
@@ -189,7 +191,7 @@ export interface SavedFilterMigrationReport {
   /** An owner whose migrated queries put them over the per-owner cap (saved-filters.ts); never fails the run. */
   overCap?: { ownerId: string; count: number }[];
   /** A row a resolver or the final filter check still couldn't make sense of; reported, never thrown. */
-  skippedInvalid?: { id: number }[];
+  skippedInvalid?: { id: number; reason: string }[];
 }
 
 /** Ids in the filter that no Calendar lookup holds are dropped too, so a saved query never names a missing row. */
@@ -235,7 +237,7 @@ export async function migrateLegacySavedFilters(db: Db, rows: LegacySavedFilterR
       const qs = row.queryString ?? "";
       const { filter, dropped } = convertLegacyQuery(qs, resolve);
       if (filter === null) {
-        (report.skippedInvalid ??= []).push({ id: row.id });
+        (report.skippedInvalid ??= []).push({ id: row.id, reason: "the converted filter failed its final check" });
         continue;
       }
       for (const l of LOOKUP_FIELDS) {
@@ -252,13 +254,13 @@ export async function migrateLegacySavedFilters(db: Db, rows: LegacySavedFilterR
       }
       if (qs.startsWith(STALE_PREFIX)) report.strippedPrefix++;
       report.dropped.push(...dropped.map((d) => ({ id: row.id, ...d })));
-      const values = { ownerId, name: (row.name ?? "").trim().slice(0, 200) || "My Query", filter, sortOrder: row.sortOrder ?? 0, isActive: true };
+      const values = { ownerId, name: (row.name ?? "").replace(/\u0000/g, "").trim().slice(0, 200) || "My Query", filter, sortOrder: row.sortOrder ?? 0, isActive: true };
       await db.insert(savedFilters).values({ id: row.id, ...values }).onConflictDoUpdate({ target: savedFilters.id, set: values });
       report.migrated++;
       touchedOwners.add(ownerId);
-    } catch {
+    } catch (e) {
       // Whatever broke, this one row doesn't take the rest of the batch down with it.
-      (report.skippedInvalid ??= []).push({ id: row.id });
+      (report.skippedInvalid ??= []).push({ id: row.id, reason: safeErrorLabel(e) });
     }
   }
   if (touchedOwners.size) {

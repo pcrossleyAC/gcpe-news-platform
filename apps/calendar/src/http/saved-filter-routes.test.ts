@@ -60,6 +60,19 @@ describe("saved filters, \"My Queries\" (spec addendum §8.1, C141)", () => {
     expect((await me.order([y.id, x.id])).status).toBe(200);
   });
 
+  it("a deleted (inactive) query is 404 to rename or delete again, and 409 in a reorder", async () => {
+    const me = user("financeEditor");
+    const kept = (await me.create({ name: "Sample kept", filter: {} })).body;
+    const gone = (await me.create({ name: "Sample gone", filter: {} })).body;
+    expect((await me.remove(gone.id)).status).toBe(204);
+    expect((await me.rename(gone.id, "Sample back")).status).toBe(404);
+    expect((await me.remove(gone.id)).status).toBe(404);
+    expect((await me.order([kept.id, gone.id])).status).toBe(409);
+    expect((await me.order([kept.id])).status).toBe(200);
+    const [row] = await tdb.db.select().from(savedFilters).where(eq(savedFilters.id, gone.id));
+    expect(row).toMatchObject({ name: "Sample gone", isActive: false });
+  });
+
   it("refuses a blank or over-long name, a bad filter, an unknown key, and bad ids", async () => {
     const me = user("financeEditor");
     for (const body of [{ name: "  ", filter: {} }, { name: "x".repeat(201), filter: {} }, { name: "Sample", filter: { categoryId: -1 } }, { name: "Sample", filter: {}, extra: 1 }, { name: "Sample" }]) {

@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { CalendarRules } from "@gcpe/calendar-contract";
-import type { Db, Tx } from "@gcpe/db-kit";
+import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import type { CalendarActor } from "./actor";
 import { BATCH_SIZE } from "./activities/bulk";
@@ -54,27 +54,25 @@ function receiveRefusal(c: { isActive: boolean; userIsActive: boolean | null; mi
   return null;
 }
 
-/** The target as it stands inside a batch's transaction: deactivated mid-run, it receives no more. */
-async function targetRefusal(tx: Tx, toId: number, rules: CalendarRules): Promise<string | null> {
-  const [c] = await tx
-    .select({ isActive: commContacts.isActive, userIsActive: users.isActive, ministryIsActive: orgs.isActive, abbreviation: orgs.abbreviation })
-    .from(commContacts)
-    .leftJoin(users, eq(users.id, commContacts.userId))
-    .leftJoin(orgs, eq(orgs.key, commContacts.ministryKey))
-    .where(eq(commContacts.id, toId));
-  return c ? receiveRefusal(c, rules) : "Choose an active comm contact to transfer to";
-}
-
-async function allContacts(db: Db, rules: CalendarRules): Promise<(TransferContact & { refusal: string | null })[]> {
-  const rows = await db
+/** Each comm contact with its person and ministry: what a transfer lists, and what it checks a target against. */
+const contactRows = (db: DbOrTx) =>
+  db
     .select({
       id: commContacts.id, userId: commContacts.userId, ministryKey: commContacts.ministryKey, isActive: commContacts.isActive, displayName: users.displayName, userIsActive: users.isActive,
       abbreviation: orgs.abbreviation, ministryName: orgs.displayName, ministryIsActive: orgs.isActive,
     })
     .from(commContacts)
     .leftJoin(users, eq(users.id, commContacts.userId))
-    .leftJoin(orgs, eq(orgs.key, commContacts.ministryKey))
-    .orderBy(asc(orgs.abbreviation), asc(users.displayName), asc(commContacts.id));
+    .leftJoin(orgs, eq(orgs.key, commContacts.ministryKey));
+
+/** The target as it stands inside a batch's transaction: deactivated mid-run, it receives no more. */
+async function targetRefusal(tx: Tx, toId: number, rules: CalendarRules): Promise<string | null> {
+  const [c] = await contactRows(tx).where(eq(commContacts.id, toId));
+  return c ? receiveRefusal(c, rules) : "Choose an active comm contact to transfer to";
+}
+
+async function allContacts(db: Db, rules: CalendarRules): Promise<(TransferContact & { refusal: string | null })[]> {
+  const rows = await contactRows(db).orderBy(asc(orgs.abbreviation), asc(users.displayName), asc(commContacts.id));
   return rows.map((r) => {
     const refusal = receiveRefusal(r, rules);
     return {

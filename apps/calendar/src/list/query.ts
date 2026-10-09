@@ -1,7 +1,7 @@
 import { and, eq, inArray, notInArray, sql, type SQL, type SQLWrapper } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
 import {
-  ACTIVITY_STATUSES, LIST_PAGE_SIZE, type CalendarRules, type CorporateQuery, type HqStatus, type ListDisplay, type ListFilter, type ListQuery, type ListSort,
+  ACTIVITY_STATUSES, LEVEL, LIST_PAGE_SIZE, type CalendarRules, type CorporateQuery, type HqStatus, type ListDisplay, type ListFilter, type ListQuery, type ListSort,
 } from "@gcpe/calendar-contract";
 import type { CalendarActor } from "../actor";
 import { ActivityForbiddenError } from "../activities/errors";
@@ -51,7 +51,10 @@ export const containsPattern = (term: string) => `%${term.replace(/[\\%_]/g, (c)
 const contains = (value: SQLWrapper, pattern: string) => sql`coalesce(${value}, '') ILIKE ${pattern}`;
 const later = (a: string, b: string) => (a > b ? a : b);
 
-/** The eleven fields legacy searched (ActivityDAO.cs:101-117). */
+/**
+ * Legacy's eleven fields (ActivityDAO.cs:101-117), plus Other City, which legacy didn't search (C178). The
+ * Executive Summary is one of the eleven, matched only where the actor sees it (C172).
+ */
 function textSearch(scope: ListScope, term: string): SQL {
   const p = containsPattern(term);
   const fields: SQL[] = [
@@ -74,17 +77,17 @@ function textSearch(scope: ListScope, term: string): SQL {
 
 /**
  * The rows whose Executive Summary the actor sees, so a search hit never reveals it (C172): a Look
- * Ahead field, shown on the rows where `can.seeLookAheadFieldset(actor, rules, activity)` holds.
- * Null when there are none.
+ * Ahead field, shown where `can.seeLookAheadFieldset(actor, rules, activity)` holds, which the
+ * caller's `visibleSql` already narrows to visible rows. Null when there are none.
  */
-function executiveSummaryShown(scope: ListScope): SQL | null {
+export function executiveSummaryShown(scope: ListScope): SQL | null {
   const { actor, rules } = scope;
-  if (can.seeLookAheadFieldset(actor, { showHqCommentsField: false })) return sql`true`;
-  if (!can.seeLookAheadFieldset(actor, rules)) return null;
-  // ShowHqCommentsField shows it where they may edit: not deleted, and their own contact ministry (can.edit).
-  const keys = [...actor.ministryKeys];
-  if (!keys.length) return null;
-  return sql`(${activities.deletedAt} IS NULL AND ${inArray(activities.contactMinistryKey, keys)})`;
+  // An HQ Editor or above sees the fieldset on every row.
+  if (actor.isHq && actor.level >= LEVEL.editor) return sql`true`;
+  // Anyone else only where the tenant's ShowHqCommentsField is on and they may edit the row. That is
+  // can.edit: Editor or above, not deleted, and their own contact ministry (shared-with doesn't count).
+  if (!rules.showHqCommentsField || actor.level < LEVEL.editor || actor.ministryKeys.length === 0) return null;
+  return sql`(${activities.deletedAt} IS NULL AND ${inArray(activities.contactMinistryKey, [...actor.ministryKeys])})`;
 }
 
 /** A deleted activity waiting for HQ to review its deletion. Only HQ Administrators can see one at all. */

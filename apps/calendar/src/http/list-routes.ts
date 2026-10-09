@@ -2,7 +2,7 @@ import { Router, type Request } from "express";
 import { z } from "zod";
 import { LIST_QUERY_MAX_CHARS, bcDateSchema, checkCalendarRange, listPreferencesSchema, listQuerySchema } from "@gcpe/calendar-contract";
 import { calendarRange } from "../list/calendar-range";
-import { exportWorkbook } from "../list/export";
+import { EXPORT_CONCURRENCY, ExportBusyError, exportWorkbook } from "../list/export";
 import { listOptions } from "../list/options";
 import { listPage } from "../list/page";
 import { readPreferences, writePreferences } from "../list/preferences";
@@ -48,8 +48,17 @@ export function listRoutes(deps: ApiDeps): Router {
     const p = rangeParams.parse(req.query);
     res.json(await calendarRange(deps, req.calendar!, p.q, p.start, p.end));
   }));
+  let exporting = 0;
   r.get("/list/export.xlsx", runList(async (req, res) => {
-    const body = await exportWorkbook(deps, req.calendar!, exportParams.parse(req.query).q);
+    const q = exportParams.parse(req.query).q;
+    if (exporting >= EXPORT_CONCURRENCY) throw new ExportBusyError();
+    exporting++;
+    let body: Buffer;
+    try {
+      body = await exportWorkbook(deps, req.calendar!, q);
+    } finally {
+      exporting--;
+    }
     res.set({
       "Content-Type": XLSX_CONTENT_TYPE,
       "Content-Disposition": 'attachment; filename="BCGovernmentActivities.xlsx"',

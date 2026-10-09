@@ -25,17 +25,21 @@ export function unzip(buf: Buffer): Map<string, string> {
   return out;
 }
 
-/** Each cell's text by reference ("A1"), runs joined, XML entities and Excel's "_xHHHH_" escapes undone. */
+/**
+ * Each cell's text by reference ("A1"): a string cell's runs joined, or a number cell's value, with XML
+ * entities, character references and Excel's "_xHHHH_" escapes undone.
+ */
 export function cellsOf(sheetXml: string): Map<string, string> {
   const out = new Map<string, string>();
   for (const m of sheetXml.matchAll(/<c r="([A-Z]+\d+)"[^>]*>(.*?)<\/c>/gs)) {
-    const text = [...m[2]!.matchAll(/<t[^>]*>(.*?)<\/t>/gs)].map((t) => t[1]!).join("");
-    out.set(m[1]!, text.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&").replace(/_x([0-9A-Fa-f]{4})_/g, (_, h: string) => String.fromCharCode(parseInt(h, 16))));
+    const value = /^<v>(.*)<\/v>$/s.exec(m[2]!);
+    const text = value ? value[1]! : [...m[2]!.matchAll(/<t[^>]*>(.*?)<\/t>/gs)].map((t) => t[1]!).join("");
+    out.set(m[1]!, text.replace(/&#(\d+);/g, (_, d: string) => String.fromCharCode(Number(d))).replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&").replace(/_x([0-9A-Fa-f]{4})_/g, (_, h: string) => String.fromCharCode(parseInt(h, 16))));
   }
   return out;
 }
 
-const ENTITY_FREE = (s: string) => !s.replace(/&(?:lt|gt|amp|quot|apos);/g, "").includes("&");
+const ENTITY_FREE = (s: string) => !s.replace(/&(?:lt|gt|amp|quot|apos|#\d+|#x[0-9A-Fa-f]+);/g, "").includes("&");
 
 /**
  * Throws unless the part is well-formed XML 1.0 as a strict parser reads it: an optional declaration,

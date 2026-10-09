@@ -45,16 +45,16 @@ export function sendActivityError(e: unknown, res: Response, req?: RouteOf): boo
   const label = safeErrorLabel(e);
   if (CONSTRAINT_VIOLATION.test(label)) {
     // Validation makes every constraint unreachable; this catches a race it missed, never a 500.
-    console.error("[calendar] activity write hit a constraint", label, routeOf(req));
+    console.error("[calendar] a request hit a constraint", label, routeOf(req));
     return void res.status(409).json({ code: "conflict", error: "That change conflicts with another one: reload and try again" }), true;
   }
   if (TRANSIENT.has(label)) {
-    console.error("[calendar] activity write lost a race", label, routeOf(req));
+    console.error("[calendar] a request lost a race with another transaction", label, routeOf(req));
     return void res.status(409).json({ code: "retry", error: "Someone else was saving at the same time: try again." }), true;
   }
   if (DATA_EXCEPTION.test(label)) {
     // The request schemas refuse every value the database can't hold; this catches one they missed, never a 500.
-    console.error("[calendar] activity request hit an invalid value", label, routeOf(req));
+    console.error("[calendar] a request hit an invalid value", label, routeOf(req));
     return void res.status(400).json({ error: "invalid value" }), true;
   }
   return false;

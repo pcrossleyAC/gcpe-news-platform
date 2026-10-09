@@ -1,5 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
-import { ExportTooLargeError } from "../list/export";
+import { EXPORT_RETRY_AFTER_SECONDS, ExportBusyError, ExportTooLargeError } from "../list/export";
 import { SavedFilterLimitError, SavedFilterNotFoundError, SavedFilterOrderError } from "../list/saved-filters";
 import { sendActivityError } from "./errors";
 
@@ -9,6 +9,7 @@ export function sendListError(e: unknown, res: Response, req: Request): boolean 
   if (e instanceof SavedFilterOrderError) return void res.status(409).json({ code: "stale", error: e.message }), true;
   if (e instanceof SavedFilterLimitError) return void res.status(422).json({ error: e.message }), true;
   if (e instanceof ExportTooLargeError) return void res.status(422).json({ error: e.message }), true;
+  if (e instanceof ExportBusyError) return void res.status(503).set("Retry-After", String(EXPORT_RETRY_AFTER_SECONDS)).json({ error: e.message }), true;
   return sendActivityError(e, res, req);
 }
 

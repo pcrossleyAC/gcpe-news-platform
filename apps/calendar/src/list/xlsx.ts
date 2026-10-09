@@ -10,12 +10,13 @@ export interface Run {
   color?: string;
 }
 export type CellStyle = "cell" | "boldCell" | "header" | "banner" | "heading" | "notice";
-export interface SheetCell {
-  runs: Run[];
+interface CellBase {
   style: CellStyle;
   /** Columns this cell covers, merged; 1 when absent. */
   span?: number;
 }
+/** Text, as inline string runs; or a number, written as a plain value. Neither can be a formula. */
+export type SheetCell = (CellBase & { runs: Run[] }) | (CellBase & { number: number });
 export interface SheetRow {
   cells: SheetCell[];
   /** Points; Excel doesn't grow a merged cell's row to fit. */
@@ -41,8 +42,11 @@ export const inert = (text: string) => (FORMULA_START.test(text) ? `'${text}` : 
 const xmlSafe = (s: string) =>
   s.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g, "").replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "");
 const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
-/** Excel reads "_xHHHH_" in a string as an escaped character; a literal one keeps its underscore as "_x005F_". */
-const cellText = (s: string) => escape(s.replace(/_(?=x[0-9A-Fa-f]{4}_)/g, "_x005F_"));
+/**
+ * Excel reads "_xHHHH_" in a string as an escaped character; a literal one keeps its underscore as "_x005F_".
+ * A carriage return goes as "&#13;": an XML reader turns a literal one into a line feed.
+ */
+const cellText = (s: string) => escape(s.replace(/_(?=x[0-9A-Fa-f]{4}_)/g, "_x005F_")).replace(/\r/g, "&#13;");
 /** The most characters an Excel cell holds; a longer one makes Excel repair the file. */
 const CELL_MAX_CHARS = 32_767;
 const colName = (i: number) => {
@@ -84,7 +88,10 @@ function sheetXml(sheet: Sheet): string {
           const span = c.span ?? 1;
           if (span > 1) merges.push(`${ref}:${colName(col + span - 1)}${r + 1}`);
           col += span;
-          return `<c r="${ref}" s="${STYLE_INDEX[c.style]}" t="inlineStr">${runsXml(c.runs)}</c>`;
+          if ("number" in c && Number.isFinite(c.number)) return `<c r="${ref}" s="${STYLE_INDEX[c.style]}"><v>${c.number}</v></c>`;
+          // NaN or Infinity isn't a value Excel reads: it goes as text, so the file still opens.
+          const runs = "number" in c ? [{ text: String(c.number) }] : c.runs;
+          return `<c r="${ref}" s="${STYLE_INDEX[c.style]}" t="inlineStr">${runsXml(runs)}</c>`;
         })
         .join("");
       const height = row.height ? ` ht="${row.height}" customHeight="1"` : "";
