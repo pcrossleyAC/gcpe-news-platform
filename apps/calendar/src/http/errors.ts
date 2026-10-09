@@ -1,5 +1,5 @@
 import type { Response } from "express";
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import {
   ActivityDeletedError, ActivityForbiddenError, ActivityLockedError, ActivityNotFoundError, ActivityValidationError, VersionConflictError,
@@ -17,9 +17,24 @@ const DATA_EXCEPTION = /^22[0-9A-Z]{3}$/;
 export type RouteOf = { method: string; baseUrl: string; path: string };
 const routeOf = (req?: RouteOf) => (req ? `${req.method} ${req.baseUrl}${req.path}` : "");
 
+/**
+ * Zod's own message for these two codes embeds the attacker-chosen text verbatim (the unrecognized
+ * key's name, or the enum value received): a static message per code instead, never the schema's.
+ */
+const STATIC_ZOD_MESSAGE: Partial<Record<z.ZodIssueCode, string>> = {
+  unrecognized_keys: "Unrecognized key(s) in object",
+  invalid_enum_value: "Invalid enum value",
+};
+
+/** Every field a Zod issue can carry (`received`, `keys`, `options`, …) but these three: nothing
+ * attacker-chosen reaches the response through a side channel even where the message is safe. */
+function zodIssues(e: ZodError): { path: (string | number)[]; code: string; message: string }[] {
+  return e.issues.map((i) => ({ path: i.path, code: i.code, message: STATIC_ZOD_MESSAGE[i.code] ?? i.message }));
+}
+
 /** Maps the activity service's typed errors to a response; false leaves the error to the generic 500. */
 export function sendActivityError(e: unknown, res: Response, req?: RouteOf): boolean {
-  if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
+  if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: zodIssues(e) }), true;
   if (e instanceof ActivityNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   if (e instanceof ActivityForbiddenError) return void res.status(403).json({ error: e.message }), true;
   if (e instanceof FreezeError) return void res.status(423).json({ code: "freeze", error: e.message }), true;

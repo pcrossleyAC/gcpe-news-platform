@@ -7,6 +7,9 @@ import { call, insertRaw, seedWorld, validInput, type World } from "../../test/w
 import { createApp } from "../app";
 import { activityCategories, favourites, userProfiles } from "../db/schema";
 
+/** No email address anywhere, whatever the shape: only display names leave the Calendar. */
+const hasNoEmail = (body: unknown) => expect(JSON.stringify(body)).not.toMatch(/@example\.test/);
+
 const listUrl = (q: object | string, offset?: string) =>
   `/api/list?q=${encodeURIComponent(typeof q === "string" ? q : JSON.stringify(q))}${offset === undefined ? "" : `&offset=${offset}`}`;
 
@@ -108,5 +111,40 @@ describe("GET /api/list and /api/list/options (spec addendum §8.1)", () => {
     expect(hq.commContacts.map((c: { userId: string }) => c.userId)).toEqual(expect.arrayContaining([w.as.financeEditor.id]));
     // The inactive comm contact's person isn't offered.
     expect(hq.commContacts.map((c: { userId: string }) => c.userId)).not.toContain(w.as.advanced.id);
+  });
+
+  it("hides LA status from a viewer without the Look Ahead fieldset, in both tenant settings", async () => {
+    const id = await insertRaw(tdb.db, {
+      startAt: new Date("2045-04-04T17:00:00Z"), endAt: new Date("2045-04-04T18:00:00Z"), hqStatus: "new", contactMinistryKey: "health",
+    });
+    const q = listUrl({ filter: { from: "2045-04-01", to: "2045-04-30" } });
+    // Default tenant settings (TEST_RULES.showHqCommentsField: false): the fieldset is HQ Editor and above only.
+    const editorRow = (await call(app, "get", q, w.as.editor.cookie)).body.rows.find((r: { id: number }) => r.id === id);
+    const readOnlyRow = (await call(app, "get", q, w.as.readOnly.cookie)).body.rows.find((r: { id: number }) => r.id === id);
+    const hqEditorRow = (await call(app, "get", q, w.as.hqEditor.cookie)).body.rows.find((r: { id: number }) => r.id === id);
+    expect(editorRow.hqStatus).toBeNull();
+    expect(readOnlyRow.hqStatus).toBeNull();
+    expect(hqEditorRow.hqStatus).toBe("new");
+
+    // With ShowHqCommentsField on, the fieldset also opens to whoever could edit the activity: an
+    // editor of its own ministry sees it, but a read-only user of the same ministry still can't edit.
+    const onApp = createTestApp(tdb.db, { rules: { ...TEST_RULES, showHqCommentsField: true } });
+    const editorOn = (await call(onApp, "get", q, w.as.editor.cookie)).body.rows.find((r: { id: number }) => r.id === id);
+    const readOnlyOn = (await call(onApp, "get", q, w.as.readOnly.cookie)).body.rows.find((r: { id: number }) => r.id === id);
+    expect(editorOn.hqStatus).toBe("new");
+    expect(readOnlyOn.hqStatus).toBeNull();
+  });
+
+  it("carries no email address, in the rows or the options", async () => {
+    const id = await insertRaw(tdb.db, { startAt: new Date("2045-05-05T17:00:00Z"), endAt: new Date("2045-05-05T18:00:00Z"), contactMinistryKey: "finance" });
+    await tdb.db.insert(favourites).values({ userId: w.as.financeEditor.id, activityId: id });
+    const list = await call(app, "get", listUrl({ filter: { from: "2045-05-01", to: "2045-05-31" } }), w.as.hqAdmin.cookie);
+    expect(list.status).toBe(200);
+    hasNoEmail(list.body);
+    for (const who of ["editor", "hqAdmin", "financeEditor"] as const) {
+      const options = await call(app, "get", "/api/list/options", w.as[who].cookie);
+      expect(options.status).toBe(200);
+      hasNoEmail(options.body);
+    }
   });
 });

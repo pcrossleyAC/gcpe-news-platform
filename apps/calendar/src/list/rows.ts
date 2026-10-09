@@ -7,7 +7,7 @@ import {
   activities, activityCategories, activityCommMaterials, activityKeywords, activityNrOrigins, activitySharedWith, categories, cities, commContacts, commMaterials,
   eventPlanners, favourites, governmentRepresentatives, keywords, nrDistributions, nrOrigins, orgs, premierRequested, releaseLinks, userProfiles, users,
 } from "../db/schema";
-import { visibleSql } from "../visibility";
+import { visibleSql, type VisibilityFacts } from "../visibility";
 import type { ListScope } from "./query";
 
 const contactUser = alias(users, "contact_user");
@@ -62,7 +62,8 @@ async function chunk(tx: DbOrTx, scope: ListScope, ids: number[]): Promise<ListR
   const kws = await grouped(tx.select({ id: activityKeywords.activityId, v: keywords.name }).from(activityKeywords).innerJoin(keywords, eq(keywords.id, activityKeywords.keywordId)).where(inArray(activityKeywords.activityId, ids)).orderBy(asc(keywords.name)));
   const origins = await grouped(tx.select({ id: activityNrOrigins.activityId, v: nrOrigins.name }).from(activityNrOrigins).innerJoin(nrOrigins, eq(nrOrigins.id, activityNrOrigins.nrOriginId)).where(inArray(activityNrOrigins.activityId, ids)).orderBy(asc(nrOrigins.name)));
   const watchers = await grouped(tx.select({ id: favourites.activityId, v: users.displayName }).from(favourites).innerJoin(users, eq(users.id, favourites.userId)).where(inArray(favourites.activityId, ids)).orderBy(asc(users.displayName)));
-  const shared = new Set((await tx.selectDistinct({ id: activitySharedWith.activityId }).from(activitySharedWith).where(inArray(activitySharedWith.activityId, ids))).map((r) => r.id));
+  const sharedKeys = await grouped(tx.select({ id: activitySharedWith.activityId, v: activitySharedWith.ministryKey }).from(activitySharedWith).where(inArray(activitySharedWith.activityId, ids)));
+  const shared = new Set(sharedKeys.keys());
   const released = new Set((await tx.selectDistinct({ id: releaseLinks.activityId }).from(releaseLinks).where(inArray(releaseLinks.activityId, ids))).map((r) => r.id));
   const mine = new Set((await tx.select({ id: favourites.activityId }).from(favourites).where(and(inArray(favourites.activityId, ids), eq(favourites.userId, actor.userId)))).map((r) => r.id));
   const markup = can.seeListMarkup(actor);
@@ -71,9 +72,15 @@ async function chunk(tx: DbOrTx, scope: ListScope, ids: number[]): Promise<ListR
     const r = byId.get(id);
     if (!r) return [];
     const a = r.a;
+    // The same per-row facts view.ts's factsOf builds: LA status is a Look Ahead field, shown only
+    // where that fieldset is (spec §6); ShowHqCommentsField makes the answer depend on edit rights.
+    const facts: VisibilityFacts = {
+      contactMinistryKey: a.contactMinistryKey, sharedMinistryKeys: sharedKeys.get(id) ?? [], isConfidential: a.isConfidential, isDeleted: a.deletedAt !== null,
+    };
+    const seesLookAhead = can.seeLookAheadFieldset(actor, rules, facts);
     return [{
       id: a.id, version: a.version, ministryKey: a.contactMinistryKey, ministryAbbreviation: r.ministryAbbreviation,
-      status: a.status, hqStatus: a.hqStatus, isDeleted: a.deletedAt !== null,
+      status: a.status, hqStatus: seesLookAhead ? a.hqStatus : null, isDeleted: a.deletedAt !== null,
       isWatched: mine.has(id), watcherNames: watchers.get(id) ?? [], isShared: shared.has(id), hasRelease: released.has(id),
       createdAt: a.createdAt.toISOString(), lastUpdatedAt: a.lastUpdatedAt.toISOString(), lastUpdatedByName: r.updaterName,
       keywords: kws.get(id) ?? [], startAt: iso(a.startAt), endAt: iso(a.endAt), isAllDay: a.isAllDay, isConfirmed: a.isConfirmed, potentialDates: a.potentialDates ?? "",
