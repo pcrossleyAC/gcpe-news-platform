@@ -1,6 +1,6 @@
 import { and, asc, eq, isNull } from "drizzle-orm";
 import type { CalendarRules } from "@gcpe/calendar-contract";
-import type { Db } from "@gcpe/db-kit";
+import type { Db, Tx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import type { CalendarActor } from "./actor";
 import { BATCH_SIZE } from "./activities/bulk";
@@ -52,6 +52,17 @@ function receiveRefusal(c: { isActive: boolean; userIsActive: boolean | null; mi
   if (!c.ministryIsActive) return "That ministry is no longer active";
   if (c.abbreviation && rules.contactMinistryExcludedAbbreviations.includes(c.abbreviation)) return "That ministry can't lead an activity";
   return null;
+}
+
+/** The target as it stands inside a batch's transaction: deactivated mid-run, it receives no more. */
+async function targetRefusal(tx: Tx, toId: number, rules: CalendarRules): Promise<string | null> {
+  const [c] = await tx
+    .select({ isActive: commContacts.isActive, userIsActive: users.isActive, ministryIsActive: orgs.isActive, abbreviation: orgs.abbreviation })
+    .from(commContacts)
+    .leftJoin(users, eq(users.id, commContacts.userId))
+    .leftJoin(orgs, eq(orgs.key, commContacts.ministryKey))
+    .where(eq(commContacts.id, toId));
+  return c ? receiveRefusal(c, rules) : "Choose an active comm contact to transfer to";
 }
 
 async function allContacts(db: Db, rules: CalendarRules): Promise<(TransferContact & { refusal: string | null })[]> {
@@ -121,7 +132,8 @@ export interface TransferResult {
  * Moves every non-deleted activity of A that the caller can see to B, and sets its lead ministry
  * to B's, by id (legacy parsed the abbreviation out of the dropdown's text). No needs-review flag,
  * status or "last updated" changes, as legacy (C150); each activity's version moves, so an open
- * editor reloads. Not frozen (spec addendum §7.4).
+ * editor reloads. Not frozen (spec addendum §7.4). The target is re-checked at the start of each
+ * batch; one that can no longer receive ends the run there.
  */
 export async function runTransfer(deps: ApiDeps, actor: CalendarActor, fromId: number, toId: number): Promise<TransferResult> {
   const { from, to } = await pair(deps, actor, fromId, toId);
@@ -134,6 +146,8 @@ export async function runTransfer(deps: ApiDeps, actor: CalendarActor, fromId: n
     try {
       await deps.db.transaction(async (tx) => {
         const now = await dbNow(tx, deps.now);
+        const refusal = await targetRefusal(tx, to.id, deps.rules);
+        if (refusal) throw new TransferError(refusal);
         for (const id of ids.slice(i, i + BATCH_SIZE)) {
           await lockActivity(tx, id);
           const s = await loadStored(tx, id, { forUpdate: true });

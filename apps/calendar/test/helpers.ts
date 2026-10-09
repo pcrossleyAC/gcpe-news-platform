@@ -48,15 +48,20 @@ export function createTestApp(db: Db, over: Partial<AppDeps> = {}): express.Expr
   return createApp({ db, auth: { session: { secret: SESSION_SECRET } }, eventSecrets: EVENT_SECRETS, rules: TEST_RULES, subscribers: [], now: () => FIXED_NOW, ...over });
 }
 
-/** Resolves once some session is blocked on a lock. */
-export async function waitForLockWaiter(tdb: TestDatabase, timeoutMs = 5000): Promise<void> {
+/** Resolves once at least `count` sessions are blocked on a lock. */
+export async function waitForLockWaiters(tdb: TestDatabase, count: number, timeoutMs = 5000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const r = await tdb.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
-    if (r.rows[0]!.n > 0) return;
-    if (Date.now() > deadline) throw new Error("no session started waiting for a lock");
+    if (r.rows[0]!.n >= count) return;
+    if (Date.now() > deadline) throw new Error(`fewer than ${count} sessions started waiting for a lock`);
     await new Promise((resolve) => setTimeout(resolve, 10));
   }
+}
+
+/** Resolves once some session is blocked on a lock. */
+export function waitForLockWaiter(tdb: TestDatabase, timeoutMs = 5000): Promise<void> {
+  return waitForLockWaiters(tdb, 1, timeoutMs);
 }
 
 let seq = 0;

@@ -55,4 +55,18 @@ describe("sendActivityError", () => {
     log.mockRestore();
   });
   it("leaves anything else to the generic 500 handler", () => expect(sendActivityError(new Error("boom"), fakeRes())).toBe(false));
+
+  it("names the method and route path in its log lines, never the query string", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const req = { method: "GET", baseUrl: "/api", path: "/list", originalUrl: "/api/list?q=%7B%22quickSearch%22%3A%22Sample%20secret%22%7D" };
+    for (const code of ["23505", "22021", "40001"]) sendActivityError(Object.assign(new Error("x"), { cause: { code } }), fakeRes(), req);
+    const lines = log.mock.calls.map((c) => c.join(" "));
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line).toContain("GET /api/list");
+      expect(line).not.toContain("q=");
+      expect(line).not.toContain("secret");
+    }
+    log.mockRestore();
+  });
 });

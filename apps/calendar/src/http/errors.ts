@@ -13,8 +13,12 @@ const TRANSIENT = new Set(["40001", "40P01"]);
 /** SQLSTATE class 22: data exception (an out-of-range number, a NUL character, a bad timestamp). */
 const DATA_EXCEPTION = /^22[0-9A-Z]{3}$/;
 
+/** The parts of a request a log line may name: never the query string, which can hold search text. */
+export type RouteOf = { method: string; baseUrl: string; path: string };
+const routeOf = (req?: RouteOf) => (req ? `${req.method} ${req.baseUrl}${req.path}` : "");
+
 /** Maps the activity service's typed errors to a response; false leaves the error to the generic 500. */
-export function sendActivityError(e: unknown, res: Response): boolean {
+export function sendActivityError(e: unknown, res: Response, req?: RouteOf): boolean {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues }), true;
   if (e instanceof ActivityNotFoundError) return void res.status(404).json({ error: "not found" }), true;
   if (e instanceof ActivityForbiddenError) return void res.status(403).json({ error: e.message }), true;
@@ -26,16 +30,16 @@ export function sendActivityError(e: unknown, res: Response): boolean {
   const label = safeErrorLabel(e);
   if (CONSTRAINT_VIOLATION.test(label)) {
     // Validation makes every constraint unreachable; this catches a race it missed, never a 500.
-    console.error("[calendar] activity write hit a constraint", label);
+    console.error("[calendar] activity write hit a constraint", label, routeOf(req));
     return void res.status(409).json({ code: "conflict", error: "That change conflicts with another one: reload and try again" }), true;
   }
   if (TRANSIENT.has(label)) {
-    console.error("[calendar] activity write lost a race", label);
+    console.error("[calendar] activity write lost a race", label, routeOf(req));
     return void res.status(409).json({ code: "retry", error: "Someone else was saving at the same time: try again." }), true;
   }
   if (DATA_EXCEPTION.test(label)) {
     // The request schemas refuse every value the database can't hold; this catches one they missed, never a 500.
-    console.error("[calendar] activity request hit an invalid value", label);
+    console.error("[calendar] activity request hit an invalid value", label, routeOf(req));
     return void res.status(400).json({ error: "invalid value" }), true;
   }
   return false;

@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq, inArray, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { createCalendarTestDb, createTestApp, FIXED_NOW, projectUser } from "../../test/helpers";
+import { createCalendarTestDb, createTestApp, FIXED_NOW, projectUser, waitForLockWaiters } from "../../test/helpers";
 import { call, historyOf, insertRaw, outboxOf, seedWorld, validInput, type World } from "../../test/world";
 import { activities, activitySharedWith, commContacts } from "../db/schema";
 
@@ -231,6 +231,31 @@ describe("Transfer (spec addendum §7.1, C150)", () => {
     expect((await transfer("admin", from, target)).body).toEqual({ transferred: 2 });
   });
 
+  it("a target that can't receive by the next batch stops the run there, and says what moved", async () => {
+    // A different ministry than the earlier fresh(hqAdvanced) above: that pair is already taken.
+    const from = await fresh(w.as.hqAdvanced.id, "finance");
+    const to = await fresh(w.as.hqAdmin.id);
+    for (let n = 0; n < 150; n++) await insertRaw(tdb.db, { commContactId: from });
+    // Retires the target as soon as it holds 100 activities: inside the first batch's transaction.
+    await tdb.db.execute(sql`CREATE FUNCTION retire_target() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN
+      IF (SELECT count(*) FROM activities WHERE comm_contact_id = NEW.comm_contact_id) >= 100 THEN
+        UPDATE comm_contacts SET is_active = false WHERE id = NEW.comm_contact_id;
+      END IF;
+      RETURN NEW;
+    END $$`);
+    await tdb.db.execute(sql`CREATE TRIGGER retire_target AFTER UPDATE OF comm_contact_id ON activities FOR EACH ROW EXECUTE FUNCTION retire_target()`);
+    try {
+      const res = await transfer("hqAdmin", from, to);
+      expect(res.status).toBe(207);
+      expect(res.body).toEqual({ transferred: 100, failed: true });
+    } finally {
+      await tdb.db.execute(sql`DROP TRIGGER retire_target ON activities`);
+      await tdb.db.execute(sql`DROP FUNCTION retire_target()`);
+    }
+    const moved = await tdb.db.select({ id: activities.id }).from(activities).where(eq(activities.commContactId, to));
+    expect(moved).toHaveLength(100);
+  });
+
   it("two transfers at once move each activity once; 150 activities cross batches", async () => {
     const from = await fresh(w.as.hqReadOnly.id);
     const ids: number[] = [];
@@ -247,7 +272,7 @@ describe("Transfer (spec addendum §7.1, C150)", () => {
     });
     await isLocked;
     const runs = Promise.all([transfer("admin", from, target), transfer("hqAdmin", from, target)]);
-    await waitForLockWaiters(2);
+    await waitForLockWaiters(tdb, 2);
     release();
     await blocker;
     const [x, y] = await runs;
@@ -259,15 +284,4 @@ describe("Transfer (spec addendum §7.1, C150)", () => {
     expect(counts.rows).toHaveLength(150);
     expect(counts.rows.every((r) => r.n === 1)).toBe(true);
   });
-
-  /** Resolves once `n` sessions are blocked on a lock. */
-  async function waitForLockWaiters(n: number, timeoutMs = 5000): Promise<void> {
-    const deadline = Date.now() + timeoutMs;
-    for (;;) {
-      const r = await tdb.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'");
-      if (r.rows[0]!.n >= n) return;
-      if (Date.now() > deadline) throw new Error(`fewer than ${n} sessions waiting for a lock`);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-    }
-  }
 });

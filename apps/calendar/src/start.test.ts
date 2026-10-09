@@ -1,3 +1,7 @@
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
@@ -33,5 +37,24 @@ describe("startCalendar", () => {
     } finally {
       for (const c of [...handle.closeBeforeServer, ...handle.closers]) await c.close();
     }
+  });
+
+  it("refuses to start when the tenant file has no calendar section (spec addendum §5.1)", async () => {
+    const bc = JSON.parse(await readFile(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url)), "utf8")) as Record<string, unknown>;
+    delete bc.calendar;
+    const dir = await mkdtemp(join(tmpdir(), "calendar-tenant-"));
+    const file = join(dir, "no-calendar.json");
+    await writeFile(file, JSON.stringify(bc));
+    await expect(
+      startCalendar({
+        DATABASE_URL: tdb.url,
+        NODE_ENV: "test",
+        LOCAL_ADMIN_ENABLED: "true",
+        LOCAL_ADMIN_PASSWORD_HASH: await hashPassword("fixture-password-for-start-tests"),
+        LOCAL_AUTH_SECRET: "x".repeat(32),
+        SESSION_SECRET,
+        TENANT_CONFIG: file,
+      }),
+    ).rejects.toThrow(/has no "calendar" section/);
   });
 });

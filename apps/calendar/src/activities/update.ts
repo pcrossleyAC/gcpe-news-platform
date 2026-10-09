@@ -101,10 +101,13 @@ export async function updateActivity(deps: ApiDeps, actor: CalendarActor, id: nu
     await replaceJoins(tx, id, joins);
 
     // A save that changes nothing still moves the version and emits, but leaves no history entry.
+    // Start and End render date-only once All Day is on; toggling it alone can flip that rendering
+    // with neither instant actually moving, which isn't a Start or End change to show.
+    const sameInstant = (x: Date | null, y: Date | null) => (x?.getTime() ?? null) === (y?.getTime() ?? null);
     const diff = diffDisplay(
       await displayOf(tx, oldContent, oldLookAhead, s.joins, s.keywordNames, rules),
       await displayOf(tx, content, lookAhead, joins, await keywordNamesOf(tx, joins.keywordIds), rules),
-    );
+    ).filter((f) => !((f.key === "start" && sameInstant(oldContent.startAt, content.startAt)) || (f.key === "end" && sameInstant(oldContent.endAt, content.endAt))));
     if (diff.length) await writeChange(tx, { activityId: id, actor, action: "updated", contactMinistryKey: content.contactMinistryKey, at: now, fields: diff });
     await releaseOwnLocks(tx, actor.userId, id);
     await emitActivity(tx, deps, id, "activity.updated");

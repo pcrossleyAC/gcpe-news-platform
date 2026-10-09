@@ -18,7 +18,7 @@ const run = (h: (req: Request, res: Response) => Promise<void>) => (req: Request
   h(req, res).catch((e: unknown) => {
     if (e instanceof TransferError) return void res.status(422).json({ error: e.message });
     if (e instanceof TransferContactNotFoundError) return void res.status(404).json({ error: "not found" });
-    if (!sendActivityError(e, res)) next(e);
+    if (!sendActivityError(e, res, req)) next(e);
   });
 
 /** Transfer (spec addendum §8.5): Administrator and above, on the server (C140). */
