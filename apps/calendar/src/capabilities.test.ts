@@ -67,4 +67,15 @@ describe("the capability table (spec addendum §6)", () => {
     expect(ownsContactMinistry(u(2), shared)).toBe(false);
     expect(ownsContactMinistry(u(2), { ...own, contactMinistryKey: null })).toBe(false);
   });
+  it("the list's HQ tools: corporate queries and the Look Ahead filter at HQ Advanced, markup at HQ Administrator", () => {
+    const v = (level: number, isHq: boolean) => ({ level, isHq, ministryKeys: ["m-own"] });
+    for (const f of [can.corporateQueries, can.lookAheadFilter]) {
+      expect(f(v(3, true))).toBe(true);
+      expect(f(v(2, true))).toBe(false);
+      expect(f(v(5, false))).toBe(false);
+    }
+    expect(can.seeListMarkup(v(4, true))).toBe(true);
+    expect(can.seeListMarkup(v(3, true))).toBe(false);
+    expect(can.seeListMarkup(v(5, false))).toBe(false);
+  });
 });
