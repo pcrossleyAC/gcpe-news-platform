@@ -2281,7 +2281,7 @@ git commit -m "feat(staff-web): month and week views of the list's filter"
 
 ### Task 5: End to end: every role's visibility, the list's journeys and axe; parity, notes, runbook, carry-forward and deploy
 
-Covers: spec §3 row 5d (axe on every state; a visibility e2e for each role), §16 acceptance items 1, 2 (the list, quick search by id and the Excel export halves), 12 (Review selected and Clear LA Status refused below their threshold, already pinned on the server in 5c-1; the UI half here) and 18; §14 (C127, C139, C141, C151, C154 and new rows C172–C176). Decision D30.
+Covers: spec §3 row 5d (axe on every state; a visibility e2e for each role), §16 acceptance items 1, 2 (the list, quick search by id and the Excel export halves), 12 (Review selected and Clear LA Status refused below their threshold, already pinned on the server in 5c-1; the UI half here) and 18; §14 (C127, C139, C141, C151, C154 and new rows C172, C173, C175 and C176). Decision D30.
 
 **Files:**
 - Modify: `apps/core/src/services/seed-test-users.ts`, `apps/core/src/services/seed-test-users.test.ts`, `tests/e2e/constants.ts`, `scripts/siteground-seed-users.sh`.
@@ -2584,12 +2584,12 @@ Expected: PASS, all specs. If a role's titles differ, the server's `visibleSql` 
 - C127's Status: "Agreed (rule built in 5c-1; the list, its id search and the Excel export in 5d; other readers in 5e–5i)".
 - C139's Status: add "; list buttons in 5d".
 - Add C141, C151 and C154 from spec §14 with Status "Agreed (built in 5d)".
+- Leave C174, C177 and C178 as they are: 5d-1 added them.
 - Add:
 
 ```markdown
 | C172 | Quick search matched the Executive Summary (`HqComments`) for everyone (`ActivityDAO.cs:101-117`). | It matches the Executive Summary only for users who see the Look Ahead fieldset. | The field is HQ-only on screen and in history; a search hit would reveal it. | Proposed |
 | C173 | The list's details: display and hidden columns saved on every list load; the Comm Contact filter matched active contacts only; My Activities also required the user's own ministries; the id search took the number after the last "-"; the Govt Rep column prefixed "Premier," and Premier showed "Premier Reqstd". | Display and columns save when changed; the Comm Contact filter matches the person, inactive contacts included; My Activities is "my comm contact", any ministry; "ABBR-123" searches any id, a bare number only above 10,000; the Premier prefix and wording follow the lookup's own values. The Awareness and consultations hides apply until a filter names them, except on My Watchlist. | Finding a departed contact's work; the spec's "as comm contact"; legacy's prefixes depended on lookup values outside the code. | Proposed |
-| C174 | The Excel export had no size limit (an HTML table served as `.xls`). | At most 10,000 rows; beyond that the user is asked to narrow the filter. Cells that begin like a formula start with an apostrophe. | A real `.xlsx` is built in memory; formula injection (C151). | Proposed |
 | C175 | Saved queries kept display, This day only and the Look Ahead setting, but running one never applied them (`Default.aspx:426-488`). | Imported queries drop those three, and any value that no longer maps, and the import report lists each drop. | They never took effect; keeping them would change what an old query shows. | Proposed |
 | C176 | The watchlist star was set on the activity page only. | It also toggles from the list's Activity Id cell. | The activity page arrives in 5e; the list needs My Watchlist to be usable now. | Proposed |
 ```
@@ -2665,7 +2665,7 @@ Then:
 
 ```bash
 git add apps/core scripts tests docs
-git commit -m "test(e2e),docs: the list's visibility for every role, its journeys and axe; three seeded Calendar users; parity C127 C139 C141 C151 C154 C172-C176"
+git commit -m "test(e2e),docs: the list's visibility for every role, its journeys and axe; three seeded Calendar users; parity C127 C139 C141 C151 C154 C172 C173 C175 C176"
 ```
 
 - [ ] **Step 10: Deploy and hand checks**
@@ -2695,7 +2695,7 @@ git commit -m "test(e2e),docs: the list's visibility for every role, its journey
   - **§7.4:** the standing freeze notice (Task 1).
   - **§6:** each tool shown by the server's own flags (Task 3); visibility for every role end to end (Task 5).
   - **§3 row 5d exit:** axe on every state (each task's `a11y.test.tsx` additions, plus Task 5's e2e checks and the sweep); a visibility e2e per role (Task 5). The saved-filter fixture and the 500 ms measurement are 5d-1's.
-  - **§14:** C127, C139, C141, C151, C154 and C172–C176 (Task 5).
+  - **§14:** C127, C139, C141, C151, C154, C172, C173, C175 and C176 (Task 5).
   - **Carry-forward:** the three staff-web items (Tasks 1, 3).
 - **Placeholders:** none. Steps that edit an existing file name the exact lines to add or replace: Task 1 Step 7 (router and the section's axe test), Tasks 2–4's screen wiring, Task 5 Steps 1, 4, 6 and 7.
 - **Type consistency:**

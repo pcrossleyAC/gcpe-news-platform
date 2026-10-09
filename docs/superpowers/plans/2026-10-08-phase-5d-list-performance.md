@@ -31,8 +31,9 @@ CALENDAR_PERF=1 npx -y -p node@24 -- node node_modules/vitest/vitest.mjs run app
 ## Results
 
 8 shapes, 10 runs each, p95 and max of those 10 runs, against the actual row total `listPage`
-returned for that shape. All under the 500 ms budget (spec addendum §3 row 5d) with no index
-changes needed (D12 stands: this plan adds none).
+returned for that shape. With 10 runs the nearest-rank p95 is the slowest of the 10, so p95
+always equals max here. All under the 500 ms budget (spec addendum §3 row 5d) with no index
+changes needed (D18 stands: this plan adds none).
 
 ```
    17 ms p95    17 ms max    119 rows  a ministry editor's default list, first page
