@@ -1,7 +1,8 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
+import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import {
-  bcDateSchema, DEFAULT_HIDDEN_COLUMNS, listFilterSchema, type ActivityStatus, type HideableColumn, type ListDisplay, type ListFilter,
+  bcDateSchema, DEFAULT_HIDDEN_COLUMNS, listFilterSchema, safeString, type ActivityStatus, type HideableColumn, type ListDisplay, type ListFilter,
 } from "@gcpe/calendar-contract";
 import { categories, governmentRepresentatives, initiatives, keywords, nrDistributions, premierRequested, savedFilters } from "../db/schema";
 import { SAVED_FILTER_LIMIT } from "./saved-filters";
@@ -26,7 +27,8 @@ export interface DroppedParam {
   reason: string;
 }
 export interface ConvertedFilter {
-  filter: ListFilter;
+  /** Null only if a resolver output slipped past the checks above; the caller reports the row and skips it. */
+  filter: ListFilter | null;
   dropped: DroppedParam[];
 }
 
@@ -36,6 +38,10 @@ const NOT_APPLIED = "legacy never applied it to a saved query";
 /** Legacy StatusId: 1 Changed, 2 Reviewed, 7 New (spec addendum §5.2). */
 const LEGACY_STATUS: Record<string, ActivityStatus> = { "1": "changed", "2": "reviewed", "7": "new" };
 const INT4_MAX = 2_147_483_647;
+/** The same rules `listFilterSchema` holds its own fields to, applied before a resolver's output is trusted. */
+const ministryKeySchema = safeString().min(1).max(200);
+const uuidSchema = z.string().uuid();
+const canonicalUserId = (s: string) => s.trim().toLowerCase();
 
 const intOf = (s: string): number | null => {
   if (!/^-?\d{1,10}$/.test(s)) return null;
@@ -77,9 +83,13 @@ export function convertLegacyQuery(queryString: string, resolve: LegacyFilterRes
   };
   for (const part of parts) {
     const at = part.indexOf("=");
-    const key = at < 0 ? part : part.slice(0, at);
+    if (at < 0) {
+      drop(part, "", "not a key=value pair");
+      continue;
+    }
+    const key = part.slice(0, at);
     // Everything after the first "=": legacy's split("=")[1] cut a value at a second one.
-    const value = stale ? decoded(at < 0 ? "" : part.slice(at + 1)) : at < 0 ? "" : part.slice(at + 1);
+    const value = stale ? decoded(part.slice(at + 1)) : part.slice(at + 1);
     if (value === "" || value === "*") continue;
     switch (key) {
       case "status": {
@@ -96,15 +106,17 @@ export function convertLegacyQuery(queryString: string, resolve: LegacyFilterRes
       }
       case "ministry": {
         const k = resolve.ministryKeyOf(value);
-        if (k !== null) f.ministryKey = k;
-        else drop(key, value, "no Core ministry for this id");
+        const parsed = k === null ? null : ministryKeySchema.safeParse(k);
+        if (parsed?.success) f.ministryKey = parsed.data;
+        else drop(key, value, k === null ? "no Core ministry for this id" : "not a valid Core ministry key");
         break;
       }
       case "contact": {
         const n = intOf(value);
-        const u = n === null ? null : resolve.userIdOf(n);
-        if (u !== null) f.commContactUserId = u;
-        else drop(key, value, "no Core user for this legacy user");
+        const rawUser = n === null ? null : resolve.userIdOf(n);
+        const canon = rawUser === null ? null : canonicalUserId(rawUser);
+        if (canon !== null && uuidSchema.safeParse(canon).success) f.commContactUserId = canon;
+        else drop(key, value, rawUser === null ? "no Core user for this legacy user" : "not a valid Core user id");
         break;
       }
       case "representative":
@@ -160,7 +172,10 @@ export function convertLegacyQuery(queryString: string, resolve: LegacyFilterRes
     drop("dateto", f.to, "before the From date");
     delete f.to;
   }
-  return { filter: listFilterSchema.parse(f), dropped };
+  // Every field above is already validated against the same rules listFilterSchema holds it to, so this
+  // should always succeed; safeParse is the backstop in case a future field is added to one without the other.
+  const parsed = listFilterSchema.safeParse(f);
+  return parsed.success ? { filter: parsed.data, dropped } : { filter: null, dropped };
 }
 
 export interface SavedFilterMigrationReport {
@@ -172,6 +187,8 @@ export interface SavedFilterMigrationReport {
   dropped: ({ id: number } & DroppedParam)[];
   /** An owner whose migrated queries put them over the per-owner cap (saved-filters.ts); never fails the run. */
   overCap?: { ownerId: string; count: number }[];
+  /** A row a resolver or the final filter check still couldn't make sense of; reported, never thrown. */
+  skippedInvalid?: { id: number }[];
 }
 
 /** Ids in the filter that no Calendar lookup holds are dropped too, so a saved query never names a missing row. */
@@ -205,31 +222,41 @@ export async function migrateLegacySavedFilters(db: Db, rows: LegacySavedFilterR
       report.skippedInactive++;
       continue;
     }
-    const ownerId = row.createdBy === null ? null : resolve.userIdOf(row.createdBy);
-    if (!ownerId) {
+    const rawOwner = row.createdBy === null ? null : resolve.userIdOf(row.createdBy);
+    const ownerId = rawOwner === null ? null : canonicalUserId(rawOwner);
+    if (!ownerId || !uuidSchema.safeParse(ownerId).success) {
       report.skippedNoOwner.push({ id: row.id, legacyOwner: row.createdBy });
       continue;
     }
-    const qs = row.queryString ?? "";
-    if (qs.startsWith(STALE_PREFIX)) report.strippedPrefix++;
-    const { filter, dropped } = convertLegacyQuery(qs, resolve);
-    for (const l of LOOKUP_FIELDS) {
-      const v = filter[l.field];
-      if (v !== null && !known[l.field].has(v)) {
-        dropped.push({ key: l.key, value: String(v), reason: `no such ${l.what} in the Calendar` });
-        filter[l.field] = null;
+    try {
+      const qs = row.queryString ?? "";
+      const { filter, dropped } = convertLegacyQuery(qs, resolve);
+      if (filter === null) {
+        (report.skippedInvalid ??= []).push({ id: row.id });
+        continue;
       }
+      for (const l of LOOKUP_FIELDS) {
+        const v = filter[l.field];
+        if (v !== null && !known[l.field].has(v)) {
+          dropped.push({ key: l.key, value: String(v), reason: `no such ${l.what} in the Calendar` });
+          filter[l.field] = null;
+        }
+      }
+      const missing = filter.keywordIds.filter((k) => !knownKeywords.has(k));
+      if (missing.length) {
+        dropped.push({ key: "keywords", value: missing.join("~"), reason: "no such HQ Tag in the Calendar" });
+        filter.keywordIds = filter.keywordIds.filter((k) => knownKeywords.has(k));
+      }
+      if (qs.startsWith(STALE_PREFIX)) report.strippedPrefix++;
+      report.dropped.push(...dropped.map((d) => ({ id: row.id, ...d })));
+      const values = { ownerId, name: (row.name ?? "").trim().slice(0, 200) || "My Query", filter, sortOrder: row.sortOrder ?? 0, isActive: true };
+      await db.insert(savedFilters).values({ id: row.id, ...values }).onConflictDoUpdate({ target: savedFilters.id, set: values });
+      report.migrated++;
+      touchedOwners.add(ownerId);
+    } catch {
+      // Whatever broke, this one row doesn't take the rest of the batch down with it.
+      (report.skippedInvalid ??= []).push({ id: row.id });
     }
-    const missing = filter.keywordIds.filter((k) => !knownKeywords.has(k));
-    if (missing.length) {
-      dropped.push({ key: "keywords", value: missing.join("~"), reason: "no such HQ Tag in the Calendar" });
-      filter.keywordIds = filter.keywordIds.filter((k) => knownKeywords.has(k));
-    }
-    report.dropped.push(...dropped.map((d) => ({ id: row.id, ...d })));
-    const values = { ownerId, name: (row.name ?? "").trim().slice(0, 200) || "My Query", filter, sortOrder: row.sortOrder ?? 0, isActive: true };
-    await db.insert(savedFilters).values({ id: row.id, ...values }).onConflictDoUpdate({ target: savedFilters.id, set: values });
-    report.migrated++;
-    touchedOwners.add(ownerId);
   }
   if (touchedOwners.size) {
     const counts = await db
