@@ -7,6 +7,7 @@ import { configRoutes } from "./config-routes";
 import { deadLetterRoutes } from "./dead-letter-routes";
 import { listRoutes } from "./list-routes";
 import { lookupRoutes } from "./lookup-routes";
+import { savedFilterRoutes } from "./saved-filter-routes";
 import { transferRoutes } from "./transfer-routes";
 import { userRoutes } from "./user-routes";
 
@@ -25,6 +26,7 @@ export function apiRoutes(deps: ApiDeps): Router {
   r.get("/me", (req, res) => void res.json(req.calendar));
   r.use(configRoutes(deps));
   r.use(listRoutes(deps));
+  r.use(savedFilterRoutes(deps));
   r.use(activityRoutes(deps));
   r.use(lookupRoutes(deps.db));
   r.use(userRoutes(deps));
