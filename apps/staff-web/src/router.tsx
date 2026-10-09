@@ -17,7 +17,7 @@ import { FilesScreen } from "./screens/website/FilesScreen";
 import { FeaturedScreen } from "./screens/website/FeaturedScreen";
 import { LogScreen } from "./screens/website/LogScreen";
 import { CalendarSection } from "./screens/calendar/CalendarSection";
-import { CalendarHome } from "./screens/calendar/CalendarHome";
+import { ActivityListScreen } from "./screens/calendar/list/ActivityListScreen";
 import { LookupsScreen } from "./screens/calendar/lookups/LookupsScreen";
 import { LookupScreen } from "./screens/calendar/lookups/LookupScreen";
 import { CalendarUsersScreen } from "./screens/calendar/users/CalendarUsersScreen";
@@ -119,7 +119,7 @@ export const routes: RouteObject[] = [
         path: "calendar",
         element: <CalendarSection />,
         children: [
-          { index: true, element: <CalendarHome /> },
+          { index: true, element: <ActivityListScreen /> },
           { path: "lookups", element: <LookupsScreen /> },
           { path: "lookups/:name", element: <LookupScreen /> },
           { path: "users", element: <CalendarUsersScreen /> },
