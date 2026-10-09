@@ -41,7 +41,8 @@ const INT4_MAX = 2_147_483_647;
 /** The same rules `listFilterSchema` holds its own fields to, applied before a resolver's output is trusted. */
 const ministryKeySchema = safeString().min(1).max(200);
 const uuidSchema = z.string().uuid();
-const canonicalUserId = (s: string) => s.trim().toLowerCase();
+/** A resolver is foreign code; it may not actually honor its declared string|null return type. */
+const canonicalUserId = (s: unknown): string | null => (typeof s === "string" ? s.trim().toLowerCase() : null);
 
 const intOf = (s: string): number | null => {
   if (!/^-?\d{1,10}$/.test(s)) return null;
@@ -114,7 +115,7 @@ export function convertLegacyQuery(queryString: string, resolve: LegacyFilterRes
       case "contact": {
         const n = intOf(value);
         const rawUser = n === null ? null : resolve.userIdOf(n);
-        const canon = rawUser === null ? null : canonicalUserId(rawUser);
+        const canon = canonicalUserId(rawUser);
         if (canon !== null && uuidSchema.safeParse(canon).success) f.commContactUserId = canon;
         else drop(key, value, rawUser === null ? "no Core user for this legacy user" : "not a valid Core user id");
         break;
@@ -222,13 +223,15 @@ export async function migrateLegacySavedFilters(db: Db, rows: LegacySavedFilterR
       report.skippedInactive++;
       continue;
     }
-    const rawOwner = row.createdBy === null ? null : resolve.userIdOf(row.createdBy);
-    const ownerId = rawOwner === null ? null : canonicalUserId(rawOwner);
-    if (!ownerId || !uuidSchema.safeParse(ownerId).success) {
-      report.skippedNoOwner.push({ id: row.id, legacyOwner: row.createdBy });
-      continue;
-    }
     try {
+      // A resolver is foreign code; it can throw or ignore its declared return type, so this whole
+      // row's handling — owner included — sits inside the one try below.
+      const rawOwner = row.createdBy === null ? null : resolve.userIdOf(row.createdBy);
+      const ownerId = canonicalUserId(rawOwner);
+      if (!ownerId || !uuidSchema.safeParse(ownerId).success) {
+        report.skippedNoOwner.push({ id: row.id, legacyOwner: row.createdBy });
+        continue;
+      }
       const qs = row.queryString ?? "";
       const { filter, dropped } = convertLegacyQuery(qs, resolve);
       if (filter === null) {

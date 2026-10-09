@@ -188,3 +188,58 @@ describe("migrating a batch when the resolver returns something invalid", () => 
     expect(rowsOut.map((r) => r.id).sort((a, b) => a - b)).toEqual([701, 702, 703, 705]);
   });
 });
+
+describe("migrating a batch when the owner resolver misbehaves", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createCalendarTestDb();
+    await seedWorld(createTestApp(tdb.db), tdb.db);
+  });
+  afterAll(() => tdb.drop());
+
+  it("survives an owner resolver that throws, and still migrates the rest of the batch", async () => {
+    const resolver: LegacyFilterResolver = {
+      ministryKeyOf: () => null,
+      userIdOf: (legacyId) => {
+        if (legacyId === 9301) throw new Error("owner resolver exploded");
+        return legacyId === LEGACY_OWNER_A ? OWNER_A : null;
+      },
+    };
+    const rows = [
+      { id: 801, createdBy: 9301, name: "Sample owner throws", sortOrder: 1, isActive: true, queryString: "status=2" },
+      { id: 802, createdBy: LEGACY_OWNER_A, name: "Sample clean", sortOrder: 2, isActive: true, queryString: "status=1" },
+    ];
+    const report = await migrateLegacySavedFilters(tdb.db, rows, resolver);
+    expect(report.migrated).toBe(1);
+    expect(report.skippedInvalid).toEqual([{ id: 801 }]);
+    expect(await tdb.db.select({ id: savedFilters.id }).from(savedFilters).where(inArray(savedFilters.id, [801, 802]))).toEqual([{ id: 802 }]);
+  });
+
+  it("survives an owner resolver that returns a number, and still migrates the rest of the batch", async () => {
+    const resolver: LegacyFilterResolver = {
+      ministryKeyOf: () => null,
+      userIdOf: (legacyId) => (legacyId === 9302 ? (42 as unknown as string) : legacyId === LEGACY_OWNER_A ? OWNER_A : null),
+    };
+    const rows = [
+      { id: 811, createdBy: 9302, name: "Sample owner is a number", sortOrder: 1, isActive: true, queryString: "status=2" },
+      { id: 812, createdBy: LEGACY_OWNER_A, name: "Sample clean two", sortOrder: 2, isActive: true, queryString: "status=1" },
+    ];
+    const report = await migrateLegacySavedFilters(tdb.db, rows, resolver);
+    expect(report.migrated).toBe(1);
+    expect(report.skippedNoOwner).toEqual([{ id: 811, legacyOwner: 9302 }]);
+    expect(await tdb.db.select({ id: savedFilters.id }).from(savedFilters).where(inArray(savedFilters.id, [811, 812]))).toEqual([{ id: 812 }]);
+  });
+
+  it("drops a contact id the resolver resolved to a number, and still migrates the row", async () => {
+    const resolver: LegacyFilterResolver = {
+      ministryKeyOf: () => null,
+      userIdOf: (legacyId) => (legacyId === LEGACY_OWNER_A ? OWNER_A : (42 as unknown as string)),
+    };
+    const rows = [
+      { id: 821, createdBy: LEGACY_OWNER_A, name: "Sample contact is a number", sortOrder: 1, isActive: true, queryString: "contact=9999|status=2" },
+    ];
+    const report = await migrateLegacySavedFilters(tdb.db, rows, resolver);
+    expect(report.migrated).toBe(1);
+    expect(report.dropped).toEqual([{ id: 821, key: "contact", value: "9999", reason: "not a valid Core user id" }]);
+  });
+});
