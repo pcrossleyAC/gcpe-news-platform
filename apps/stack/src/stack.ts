@@ -26,6 +26,7 @@ import { startPublicSite, type AppHandle as PublicSiteHandle } from "../../publi
 
 import { noStoreByDefault, noStoreOnRedirect } from "./cache-control";
 import { ensureWritableDir, resolveDataDir } from "./data-dir";
+import { checkCalendarDbTimeZone, pgOffsetOf, type DbTimeZoneStatus } from "./db-time-zone";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture, type ErrorEntry } from "./errors";
 import {
@@ -301,6 +302,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     filePath: join(dataDir, "logs", "errors.jsonl"),
     startedAt: new Date(startedAt).toISOString(),
   });
+
+  // Once, after the error capture so a stale database lands in errors.jsonl. The Calendar has
+  // just migrated its database, so it answers; this never throws and never stops the stack.
+  if (calendar) await checkCalendarDbTimeZone(tenant, pgOffsetOf(calendarEnv.DATABASE_URL!));
 
   const app = express();
   app.disable("x-powered-by");
@@ -585,6 +590,8 @@ export interface StackCheckResult {
   tenantId?: string;
   timeZone?: string;
   apps: Record<string, StackCheckAppResult>;
+  /** A warning only, never part of `ok`: the Calendar database's tzdata (db-time-zone.ts). Absent when the Calendar isn't configured. */
+  calendarDbTimeZone?: DbTimeZoneStatus;
 }
 
 /**
@@ -593,8 +600,10 @@ export interface StackCheckResult {
  * six apps' own env schema, its auth config (`authFromEnv` — ruling P2-R34: a truncated
  * `LOCAL_ADMIN_PASSWORD_HASH`, a too-short `LOCAL_AUTH_SECRET`, a half-set Entra pair, or the
  * production-guard refusal would otherwise only surface at a real `startStack`, not here),
- * and its resolved MIGRATIONS_FOLDER actually existing on disk — all WITHOUT opening a single
- * database connection (no `createDb`/`runMigrations` call, unlike `startStack`). This is the
+ * and its resolved MIGRATIONS_FOLDER actually existing on disk — all WITHOUT a database pool,
+ * migration or write (no `createDb`/`runMigrations` call, unlike `startStack`). The one
+ * connection it opens is the Calendar's read-only time-zone probe (`calendarDbTimeZone`), when
+ * the Calendar is configured: a warning field that never changes `ok`. This is the
  * SiteGround deploy's build-time and post-deploy smoke test: a misconfigured `<PREFIX>_*` var,
  * or a MIGRATIONS_FOLDER that doesn't resolve relative to the bundled `stack.js` the way
  * main.ts expects, fails fast and names which app and which prefix — instead of surfacing
@@ -680,5 +689,8 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
     };
   }
 
-  return { ok, tenantId: tenant.tenantId, timeZone: tenant.timeZone, apps };
+  // The one connection --check opens: a single read-only probe of the Calendar's database,
+  // bounded by queryOnce's timeout, that can't fail the check.
+  const calendarDbTimeZone = calendarConfigured(env) ? await checkCalendarDbTimeZone(tenant, pgOffsetOf(resolvedEnvFor(env, "CALENDAR", dataDir).DATABASE_URL!)) : undefined;
+  return { ok, tenantId: tenant.tenantId, timeZone: tenant.timeZone, apps, ...(calendarDbTimeZone ? { calendarDbTimeZone } : {}) };
 }

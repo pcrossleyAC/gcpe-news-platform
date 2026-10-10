@@ -1,10 +1,11 @@
 // Tests for checkStack(), the logic behind `node stack.js --check` (Task 15): validates every
 // app's own env schema, its auth config (P2-R34), each app's resolved MIGRATIONS_FOLDER
 // actually existing on disk, and the tenant config (incl. the P2-R17 time-zone self-check) —
-// all WITHOUT opening a database connection. This is deliberately a separate, DB-free test
-// file from stack.test.ts: every case here must run instantly with no Postgres fixture.
+// all WITHOUT opening an app's database (the one exception, the Calendar's read-only time-zone
+// probe, is a warning field and is tested at the end). This is deliberately a separate, DB-free
+// test file from stack.test.ts: every case here must run instantly with no Postgres fixture.
 import { fileURLToPath } from "node:url";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { checkStack } from "./stack";
 
 const TICK_TOKEN = "t".repeat(32);
@@ -174,6 +175,21 @@ describe("checkStack", () => {
     expect(withCal.apps.calendar).toMatchObject({ ok: true });
     const without = await checkStack(baseEnv());
     expect(without.apps.calendar).toEqual({ ok: true, skipped: "CALENDAR_DATABASE_URL is not set" });
+  });
+
+  it("reports the Calendar database's time-zone check as a warning field that never fails the check", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      // Port 1 refuses at once: the probe reports unreachable, and the check still passes.
+      const withCal = await checkStack({ ...baseEnv(), CALENDAR_DATABASE_URL: DB("calendar") });
+      expect(withCal.ok).toBe(true);
+      expect(withCal.calendarDbTimeZone).toBe("unreachable");
+      expect(errors.mock.calls.map((c) => c.map(String).join(" ")).join("\n")).not.toContain("pass@");
+      const without = await checkStack(baseEnv());
+      expect(without.calendarDbTimeZone).toBeUndefined();
+    } finally {
+      errors.mockRestore();
+    }
   });
 
   it("fails the Calendar when CALENDAR_STORAGE_DIR is inside NRMS's public files", async () => {

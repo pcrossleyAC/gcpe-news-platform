@@ -248,8 +248,18 @@ blocks or fails startup (the News API may not be reachable yet); a failure is on
    node ~/path/to/your/project/stack.js --check
    ```
    A non-zero exit, or `"ok": false` in the JSON it prints, names exactly which app and which
-   `<PREFIX>_*` prefix is misconfigured.
-5. Run the smoke test below.
+   `<PREFIX>_*` prefix is misconfigured. With the Calendar configured, it also prints
+   `"calendarDbTimeZone"`: `"ok"`, or `"stale"` when the Calendar database's Postgres predates
+   tzdata 2026b (BC's permanent UTC−7), or `"unreachable"`. It is a warning and never fails the
+   check.
+5. **Hand check, after the first request has started the stack:** look in
+   `<DATA_DIR>/logs/errors.jsonl` (or `/hub/error-log`) for "the Calendar database's time-zone
+   data predates BC's permanent UTC−7". The stack checks this once at startup. If the line is
+   there, the Calendar's list, export and reports put an activity between midnight and 1 a.m.
+   (from 2026-11-01) on the previous day: ask the host for a PostgreSQL with tzdata 2026b or
+   later (open question Q64). "the Calendar database's time-zone check failed" means the check
+   couldn't ask; the label after it says why.
+6. Run the smoke test below.
 
 ### Migrations on populated `deliveries` or `messages` tables
 

@@ -232,7 +232,8 @@ async function runBuild() {
         ...process.env,
         // Just enough for every one of the six apps' own env schema AND auth config (P2-R34:
         // --check now also runs authFromEnv per app) to parse — url-shaped DATABASE_URLs that
-        // are never dialled (--check never calls createDb), one tick token, a syntactically
+        // are never dialled (--check never calls createDb; only the Calendar's time-zone probe
+        // tries its URL, finds port 1 refused and reports "unreachable" as a warning), one tick token, a syntactically
         // valid (but not secret-for-anything-real) local-admin password hash, and the handful
         // of required non-DB vars (see apps/stack/src/stack.test.ts's env for the full real
         // wiring; this is the minimal structural subset).

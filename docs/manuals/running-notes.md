@@ -555,3 +555,7 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Calendar editors** — When an activity is made confidential, moved to another ministry or deleted, its updates leave the feed for anyone who can no longer see it.
 - **HQ Editor and above** — Changes to an activity's Look Ahead fields show as "changed activity" only to people who see the Look Ahead fieldset.
 - **HQ Administrator** — Deleted activities' updates, the deletion included, show marked "(deleted)". The link opens the activity read-only, with Review.
+
+## Phase 5g — Calendar reports
+
+- **Operations** — The Calendar puts each activity on its day with the database's own time-zone data. At startup the stack checks it; if the database's data predates BC's permanent UTC−7 (tzdata 2026b), the error log shows "the Calendar database's time-zone data predates BC's permanent UTC−7", and activities between midnight and 1 a.m. (from 2026-11-01) are listed, exported and reported on the previous day until the database is upgraded. `node stack.js --check` shows the same as `"calendarDbTimeZone"`.
