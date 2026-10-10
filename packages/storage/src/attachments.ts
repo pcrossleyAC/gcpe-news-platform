@@ -37,18 +37,34 @@ export const BLOCKED_EXTENSIONS: ReadonlySet<string> = new Set([
 export type AttachmentProblem = "empty" | "blocked" | "unsupported" | "mismatch";
 export type AttachmentCheck = { ok: true; extension: AttachmentExtension; contentType: string } | { ok: false; problem: AttachmentProblem };
 
-/** The text after the last dot, lower-cased; null when there is none. */
+/** The text after the last dot, lower-cased; null when there is none, or when nothing precedes the dot (".pdf" has no base). */
 export function extensionOf(fileName: string): string | null {
   const dot = fileName.lastIndexOf(".");
-  return dot < 0 || dot === fileName.length - 1 ? null : fileName.slice(dot + 1).toLowerCase();
+  return dot <= 0 || dot === fileName.length - 1 ? null : fileName.slice(dot + 1).toLowerCase();
 }
 
 const startsWith = (b: Buffer, sig: string | readonly number[]) => {
   const s = typeof sig === "string" ? Buffer.from(sig, "latin1") : Buffer.from(sig);
   return b.length >= s.length && b.subarray(0, s.length).equals(s);
 };
+
+const PDF_SIG = Buffer.from("%PDF-", "latin1");
+const PDF_SEARCH_WINDOW = 1024;
+const UTF8_BOM = [0xef, 0xbb, 0xbf];
+const isAsciiWhitespace = (byte: number | undefined) => byte === 0x09 || byte === 0x0a || byte === 0x0b || byte === 0x0c || byte === 0x0d || byte === 0x20;
+/** A PDF reader tolerates a UTF-8 BOM and/or ASCII whitespace before the signature, nothing else, and only within the first 1024 bytes. */
+const isPdf = (b: Buffer) => {
+  const sigAt = b.indexOf(PDF_SIG);
+  if (sigAt < 0 || sigAt >= PDF_SEARCH_WINDOW) return false;
+  const afterBom = startsWith(b, UTF8_BOM) ? UTF8_BOM.length : 0;
+  for (let i = afterBom; i < sigAt; i++) if (!isAsciiWhitespace(b[i])) return false;
+  return true;
+};
+
+const UTF16_LE_BOM = [0xff, 0xfe];
+const UTF16_BE_BOM = [0xfe, 0xff];
 const MATCHES: Record<Family, (b: Buffer) => boolean> = {
-  pdf: (b) => startsWith(b, "%PDF-"),
+  pdf: isPdf,
   png: (b) => startsWith(b, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   jpeg: (b) => startsWith(b, [0xff, 0xd8, 0xff]),
   gif: (b) => startsWith(b, "GIF87a") || startsWith(b, "GIF89a"),
@@ -57,7 +73,8 @@ const MATCHES: Record<Family, (b: Buffer) => boolean> = {
   // Word, Excel and PowerPoint before 2007, and Outlook messages: an OLE compound file.
   ole: (b) => startsWith(b, [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1]),
   rtf: (b) => startsWith(b, "{\\rtf"),
-  text: (b) => !b.includes(0),
+  // A UTF-16 BOM (Excel's "Unicode Text" export) skips the NUL check; anything else must have none.
+  text: (b) => startsWith(b, UTF16_LE_BOM) || startsWith(b, UTF16_BE_BOM) || !b.includes(0),
 };
 
 /** Refuses an empty file, legacy's blocked extensions, any type outside the list, and bytes that aren't what the name says. */
