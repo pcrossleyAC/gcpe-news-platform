@@ -74,4 +74,16 @@ describe("accessibility: the activity list in every state", () => {
     await screen.findByText(/before a later batch failed/);
     expect(await seriousViolations(container)).toEqual([]);
   });
+
+  it("the month view and the week view", async () => {
+    const item = { id: 20001, title: "Sample listed", startAt: "2026-11-10T17:00:00.000Z", endAt: "2026-11-10T18:00:00.000Z", isAllDay: false, isConfirmed: true, isConfidential: false, ministryAbbreviation: "HLTH" };
+    stubFetch([], { calendar: { items: [item], truncated: true } });
+    const month = renderList("/calendar?view=month&on=2026-11-15");
+    await screen.findByText("HLTH-20001 10:00 AM Sample listed");
+    expect(await seriousViolations(month.container)).toEqual([]);
+    cleanup();
+    const week = renderList("/calendar?view=week&on=2026-11-11");
+    await screen.findByText("HLTH-20001 10:00 AM Sample listed");
+    expect(await seriousViolations(week.container)).toEqual([]);
+  });
 });

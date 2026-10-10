@@ -8,10 +8,12 @@ import { ActivityTable } from "./ActivityTable";
 import { listApi } from "./api";
 import { minId, type TableTools } from "./cells";
 import { ColumnChooser } from "./ColumnChooser";
+import { CalendarGrid, ViewSwitch } from "./CalendarGrid";
+import { todayIn } from "./dates";
 import { FilterPanel } from "./FilterPanel";
 import { ClearLaStatus, CorporateQueries, ExportButton, LookAheadFilterChoice, ReviewSelected } from "./HqTools";
 import { MyQueries } from "./MyQueries";
-import type { CalendarConfigView } from "./types";
+import type { CalendarConfigView, ListView } from "./types";
 import { WatchStar } from "./WatchStar";
 
 /** The list query, from `?q=`. Anything that no longer parses gives way to the defaults. */
@@ -90,6 +92,16 @@ export function ActivityListScreen(): React.JSX.Element {
   useEffect(() => setSelected(new Map()), [queryKey, reloadToken]);
   const reload = () => setReloadToken((n) => n + 1);
 
+  const viewParam = params.get("view");
+  const view: ListView = viewParam === "month" || viewParam === "week" ? viewParam : "list";
+  const setParam = (name: string, value: string | null) =>
+    setParams((p) => {
+      const n = new URLSearchParams(p);
+      if (value === null) n.delete(name);
+      else n.set(name, value);
+      return n;
+    });
+
   if (loadError) {
     return (
       <div>
@@ -140,19 +152,23 @@ export function ActivityListScreen(): React.JSX.Element {
       {config.list.lookAheadFilter && <LookAheadFilterChoice value={query.lookAhead} onChange={(lookAhead) => setQuery({ ...query, lookAhead })} />}
       <ColumnChooser hidden={prefs.hiddenColumns} onChange={(hiddenColumns) => void savePrefs({ ...prefs, hiddenColumns })} />
       {prefsError && <p role="alert">{prefsError}</p>}
-      <ActivityTable
-        query={query}
-        hidden={prefs.hiddenColumns}
-        timeZone={config.timeZone}
-        reloadToken={reloadToken}
-        onSort={(sort, dir) => setQuery({ ...query, sort, dir })}
-        tools={tools}
-      />
+      {view === "list" ? (
+        <ActivityTable query={query} hidden={prefs.hiddenColumns} timeZone={config.timeZone} reloadToken={reloadToken} onSort={(sort, dir) => setQuery({ ...query, sort, dir })} tools={tools} />
+      ) : (
+        <CalendarGrid
+          query={query}
+          view={view}
+          anchor={/^\d{4}-\d{2}-\d{2}$/.test(params.get("on") ?? "") ? params.get("on")! : todayIn(config.timeZone)}
+          timeZone={config.timeZone}
+          onAnchor={(d) => setParam("on", d)}
+        />
+      )}
       <section aria-label="List actions" className="gcpe-actions">
         {config.list.reviewSelected && <ReviewSelected selected={selected} onDone={reload} />}
         {config.list.clearLaStatus && <ClearLaStatus onDone={reload} />}
         <ExportButton query={query} />
       </section>
+      <ViewSwitch view={view} onChange={(v) => setParam("view", v === "list" ? null : v)} />
     </div>
   );
 }
