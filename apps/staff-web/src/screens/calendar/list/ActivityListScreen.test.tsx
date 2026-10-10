@@ -286,4 +286,26 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     await screen.findByText("Sample listed");
     expect(screen.getAllByText("(changed, needs review)")).toHaveLength(1);
   });
+
+  it("titles open the activity, carrying this list's address back; New activity shows for creators", async () => {
+    stubFetch([]);
+    const path = `/calendar?q=${encodeURIComponent(JSON.stringify({ filter: { quickSearch: "Sample" } }))}`;
+    renderList(path);
+    expect(await screen.findByRole("link", { name: "Sample listed" })).toHaveAttribute("href", `/calendar/activities/20001?return=${encodeURIComponent(path)}`);
+    expect(screen.getByRole("link", { name: "New activity" })).toHaveAttribute("href", `/calendar/activities/new?return=${encodeURIComponent(path)}`);
+  });
+
+  it("no New activity for a user who can't create", async () => {
+    stubFetch([], { config: { ...CONFIG, editor: { ...CONFIG.editor, create: false } } });
+    renderList();
+    await screen.findByRole("link", { name: "Sample listed" });
+    expect(screen.queryByRole("link", { name: "New activity" })).toBeNull();
+  });
+
+  it("no New activity while the change freeze applies to you (spec addendum §7.4)", async () => {
+    stubFetch([], { config: { ...CONFIG, freeze: { ...CONFIG.freeze, active: true, appliesToYou: true } } });
+    renderList();
+    await screen.findByRole("link", { name: "Sample listed" });
+    expect(screen.queryByRole("link", { name: "New activity" })).toBeNull();
+  });
 });

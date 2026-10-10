@@ -29,6 +29,7 @@ export const TEST_RULES: CalendarRules = {
   confidentialCategoryName: "Sample confidential category",
   issueExemptCategoryNames: ["Sample approved event", "Sample proposed release", "Sample approved release"],
   eventsCategoryNames: ["Sample approved event", "Sample proposed release", "Sample approved release", "Sample speech", "Sample HQ placeholder"],
+  releaseHiddenCategoryNames: ["Sample awareness day"],
   consultationsMinistryAbbreviation: "CONSULT",
   contactMinistryExcludedAbbreviations: ["EXCL"],
   sharedWithExcludedAbbreviations: ["EXCL"],

@@ -6,6 +6,7 @@ import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } f
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { type Closer, safeErrorLabel } from "@gcpe/http-kit";
+import { localStore } from "@gcpe/storage";
 import { sweepLocks } from "./activities/locks";
 import { createApp } from "./app";
 import { needsReferenceData } from "./projections";
@@ -18,6 +19,9 @@ export const calendarEnvSchema = z.object({
   EVENT_SECRETS: eventSecretsSchema,
   MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
   TENANT_CONFIG: z.string().default(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))),
+  // Attachments (spec addendum §5.1): outside the deploy folder and never under a public path. In the
+  // stack this is CALENDAR_STORAGE_DIR, defaulting to <DATA_DIR>/calendar-files.
+  STORAGE_DIR: z.string().min(1).default(fileURLToPath(new URL("../../../data/calendar-files", import.meta.url))),
 });
 
 export interface AppHandle {
@@ -27,6 +31,7 @@ export interface AppHandle {
   startLoops(): void;
   closeBeforeServer: Closer[];
   closers: Closer[];
+  storageDir: string;
 }
 
 /** Parses env, checks the tenant's tzdata, runs migrations, and builds the app and its dispatcher. */
@@ -40,14 +45,16 @@ export async function startCalendar(env: NodeJS.ProcessEnv): Promise<AppHandle> 
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
+  const store = localStore(parsed.STORAGE_DIR);
   // No local login router: the token it issues is a bearer token, which has no Calendar access.
-  const app = createApp({ db, auth: auth.bearer, eventSecrets: parsed.EVENT_SECRETS, rules, subscribers });
+  const app = createApp({ db, auth: auth.bearer, eventSecrets: parsed.EVENT_SECRETS, rules, subscribers, store });
 
   let stopDispatcher: (() => Promise<void>) | undefined;
   let sweep: NodeJS.Timeout | undefined;
   return {
     app,
     port: parsed.PORT,
+    storageDir: parsed.STORAGE_DIR,
     workers: {
       // Delivers activity.* to NRMS.
       dispatch: () => dispatchOnce({ db, subscribers }),

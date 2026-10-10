@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router";
+import { Link, useLocation, useSearchParams } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { DEFAULT_LIST_QUERY, listQuerySchema, type ListDisplay, type ListOptions, type ListPreferences, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { activityPath } from "../activity/paths";
 import { useCalendarContext } from "../CalendarSection";
 import { ActivityTable } from "./ActivityTable";
 import { listApi } from "./api";
@@ -45,6 +46,8 @@ function FreezeNotice({ freeze }: { freeze: CalendarConfigView["freeze"] }) {
 /** `/hub/calendar` (spec addendum §8.1): the activity list. */
 export function ActivityListScreen(): React.JSX.Element {
   useDocumentTitle("Corporate Calendar");
+  const here = useLocation();
+  const notice = (here.state as { calendarNotice?: string } | null)?.calendarNotice ?? null;
   const me = useCalendarContext();
   const [params, setParams] = useSearchParams();
   const [config, setConfig] = useState<CalendarConfigView | null>(null);
@@ -134,7 +137,7 @@ export function ActivityListScreen(): React.JSX.Element {
     );
   }
   const tools: TableTools = {
-    renderStar: (r, update) => <WatchStar row={r} myName={me.displayName} update={update} />,
+    renderStar: (r, update) => <WatchStar id={r.id} label={minId(r)} watch={{ isWatched: r.isWatched, watcherNames: r.watcherNames }} myName={me.displayName} onChange={update} />,
     ...(config.list.reviewSelected
       ? {
           selected,
@@ -151,6 +154,11 @@ export function ActivityListScreen(): React.JSX.Element {
   return (
     <div className="gcpe-calendar-list">
       <h1>Corporate Calendar</h1>
+      {notice && (
+        <p role="status" className="gcpe-notice">
+          {notice}
+        </p>
+      )}
       <FreezeNotice freeze={config.freeze} />
       <FilterPanel
         query={query}
@@ -179,6 +187,11 @@ export function ActivityListScreen(): React.JSX.Element {
         />
       )}
       <section aria-label="List actions" className="gcpe-actions">
+        {config.editor.create && !config.freeze.appliesToYou && (
+          <Link className="gcpe-button-link" to={activityPath("new", `${here.pathname}${here.search}`)}>
+            New activity
+          </Link>
+        )}
         {config.list.reviewSelected && <ReviewSelected selected={selected} onDone={reload} />}
         {config.list.clearLaStatus && <ClearLaStatus onDone={reload} />}
         <ExportButton query={query} />

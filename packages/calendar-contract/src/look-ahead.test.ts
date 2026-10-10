@@ -36,6 +36,9 @@ describe("Look Ahead inference, in legacy's order (Activity.aspx:2466-2521)", ()
     expect(infer({ endDate: "2026-11-12" })).toEqual({ kind: "section", section: "not_on_la" });
     expect(infer({ isConfirmed: true, categoryNames: ["Sample speech"] })).toEqual({ kind: "section", section: "events_and_speeches" });
   });
+  it("a start date the browser takes but the calendar can't (a five-digit year) is never 'within 2 days', and doesn't throw", () => {
+    expect(infer({ startDate: "275760-09-13", endDate: "275760-09-13" })).toEqual({ kind: "section", section: "not_on_la" });
+  });
   it("otherwise Not on LA; with no dates, never 'within 2 days'", () => {
     expect(infer({})).toEqual({ kind: "section", section: "not_on_la" });
     expect(infer({ startDate: null, endDate: null })).toEqual({ kind: "section", section: "not_on_la" });

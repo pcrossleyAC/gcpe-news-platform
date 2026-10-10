@@ -3,8 +3,8 @@ import { Button, InlineAlert } from "@bcgov/design-system-react-components";
 import type { CalendarItem, CalendarRangeView, ListQuery } from "@gcpe/calendar-contract";
 import { listApi } from "./api";
 import { loadFailure } from "./ActivityTable";
-import { minId } from "./cells";
-import { addDaysTo, bcDateOf, monthRange, shiftMonth, todayIn, weekRange } from "./dates";
+import { minId, TitleLink } from "./cells";
+import { addDaysTo, bcDateOf, monthRange, shiftMonth, timeText, todayIn, weekRange } from "./dates";
 import type { ListView } from "./types";
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -24,14 +24,6 @@ export function ViewSwitch({ view, onChange }: { view: ListView; onChange: (v: L
       ))}
     </div>
   );
-}
-
-/** "9:00 AM" with a plain space: Intl's own output puts a narrow no-break space before AM/PM. */
-function timeText(iso: string, timeZone: string): string {
-  const p = Object.fromEntries(
-    new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(new Date(iso)).map((x) => [x.type, x.value]),
-  );
-  return `${p.hour}:${p.minute} ${p.dayPeriod}`;
 }
 
 /** A month or week of the current query's activities; a multi-day activity shows on each of its days. */
@@ -112,7 +104,9 @@ export function CalendarGrid({ query, view, anchor, timeZone, onAnchor }: { quer
                     </span>
                     <ul>
                       {(byDay.get(d) ?? []).map((i) => (
-                        <li key={i.id}>{itemText(i, d)}</li>
+                        <li key={i.id}>
+                          <TitleLink id={i.id}>{itemText(i, d)}</TitleLink>
+                        </li>
                       ))}
                     </ul>
                   </td>

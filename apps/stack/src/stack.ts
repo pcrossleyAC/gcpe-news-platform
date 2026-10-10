@@ -29,6 +29,7 @@ import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture, type ErrorEntry } from "./errors";
 import {
+  assertPrivateDir,
   calendarConfigured,
   envFor,
   FAKE_EMERGENCY_FEED_PATH,
@@ -108,11 +109,16 @@ async function determineActualPort(requested: number): Promise<number> {
  * EVENT_SUBSCRIBERS needs this exactly as much as NRMS's does (Core publishes org.upserted
  * the same way NRMS publishes release.published).
  *
- * `dataDir` (Task 1) is threaded through to `envFor` so NRMS's STORAGE_DIR and a relative
+ * `dataDir` is threaded through to `envFor` so NRMS's STORAGE_DIR and a relative
  * SITE_OUTPUT_DIR both anchor under the one persistent folder that survives a redeploy.
  */
 function resolvedEnvFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir: string): NodeJS.ProcessEnv {
   return resolveSelfUrls(envFor(env, prefix, dataDir));
+}
+
+/** Every folder the stack serves to anyone, named by the setting that moves it. */
+function publicDirs(nrmsStorage: string | undefined, siteOutput: string | undefined, staffWeb: string | undefined): Record<string, string | undefined> {
+  return { "NRMS_STORAGE_DIR (served at /files)": nrmsStorage, "SITE_OUTPUT_DIR (served at /site)": siteOutput, "STAFF_WEB_DIR (served at /hub)": staffWeb };
 }
 
 /**
@@ -237,7 +243,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const tenant = loadTenantConfig(stackEnv.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
 
-  // Task 1: the one folder that survives a SiteGround redeploy (site output, uploaded files)
+  // The one folder that survives a SiteGround redeploy (site output, uploaded files)
   // — resolved and checked writable before any app starts, so a misconfigured/unwritable
   // DATA_DIR fails fast instead of surfacing later as a silent write failure or a 404 for
   // every /site page after the next deploy.
@@ -255,6 +261,12 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const nodEnv = resolvedEnvFor(env, "NOD", dataDir);
   const distEnv = resolvedEnvFor(env, "DIST", dataDir);
   const calendarEnv = resolvedEnvFor(env, "CALENDAR", dataDir);
+  if (calendarConfigured(env)) {
+    assertPrivateDir("CALENDAR_STORAGE_DIR", calendarEnv.STORAGE_DIR!, publicDirs(nrmsEnv.STORAGE_DIR, siteEnv.OUTPUT_DIR, stackEnv.STAFF_WEB_DIR));
+    // Unlike the default (under DATA_DIR, already covered by the ensureWritableDir call above),
+    // an explicit override is never otherwise written to before someone's first upload.
+    await ensureWritableDir(calendarEnv.STORAGE_DIR!);
+  }
   // Phase 3c: published records carry absolute file URLs; unless NRMS_PUBLIC_FILES_BASE says
   // otherwise, files are served (below, at /files) from the public site's own origin.
   if (nrmsEnv.PUBLIC_FILES_BASE === undefined) nrmsEnv.PUBLIC_FILES_BASE = publicFilesBase(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl);
@@ -338,7 +350,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     }),
   );
 
-  // Task 1 (staff-web): the staff app, hosted at /hub — mounted here (before the no-store
+  // The staff app, hosted at /hub — mounted here (before the no-store
   // default) so /hub/assets' own long-lived Cache-Control isn't overridden by it, same
   // reasoning as /site and /files above. /hub/assets' filenames are content-hashed by the
   // build (esbuild's [hash]), so a year-long immutable cache is safe: a changed file is a
@@ -576,7 +588,7 @@ export interface StackCheckResult {
 }
 
 /**
- * Task 15's `node stack.js --check`: validates the stack's configuration — the stack-level
+ * `node stack.js --check`: validates the stack's configuration — the stack-level
  * env (TICK_TOKEN, tenant config + its P2-R17 time-zone self-check), then every one of the
  * six apps' own env schema, its auth config (`authFromEnv` — ruling P2-R34: a truncated
  * `LOCAL_ADMIN_PASSWORD_HASH`, a too-short `LOCAL_AUTH_SECRET`, a half-set Entra pair, or the
@@ -599,11 +611,24 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   // positive integer for the resolved URL's *shape* to come out right. Never dialled.
   const actualPort = stackEnv.PORT || 1;
 
-  // Task 1: the same DATA_DIR resolution a real startStack() uses, so --check validates each
-  // app's SITE_OUTPUT_DIR/NRMS_STORAGE_DIR exactly as they'd actually resolve — but, like the
-  // rest of this function, without any filesystem side effect (no ensureWritableDir call;
-  // that's exercised by a real startStack()).
+  // The same DATA_DIR resolution a real startStack() uses, so --check validates each app's
+  // SITE_OUTPUT_DIR/NRMS_STORAGE_DIR exactly as they'd actually resolve — but, like the rest
+  // of this function, without any filesystem side effect (no ensureWritableDir call; that's
+  // exercised by a real startStack()).
   const dataDir = resolveDataDir(env);
+
+  let calendarStorageError: string | null = null;
+  if (calendarConfigured(env)) {
+    try {
+      assertPrivateDir(
+        "CALENDAR_STORAGE_DIR",
+        resolvedEnvFor(env, "CALENDAR", dataDir).STORAGE_DIR!,
+        publicDirs(resolvedEnvFor(env, "NRMS", dataDir).STORAGE_DIR, resolvedEnvFor(env, "SITE", dataDir).OUTPUT_DIR, stackEnv.STAFF_WEB_DIR),
+      );
+    } catch (e) {
+      calendarStorageError = e instanceof Error ? e.message : String(e);
+    }
+  }
 
   const checks: { label: string; prefix: AppPrefix; schema: ZodTypeAny }[] = [
     { label: "core", prefix: "CORE", schema: coreEnvSchema },
@@ -637,6 +662,7 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
     }
+    if (c.label === "calendar" && calendarStorageError) errors.push(calendarStorageError);
 
     if (errors.length > 0) {
       ok = false;

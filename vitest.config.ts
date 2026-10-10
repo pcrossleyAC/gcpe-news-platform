@@ -1,10 +1,9 @@
 import { defineConfig } from "vitest/config";
 
-// Task 1 (staff-web): two projects share one `vitest run` invocation — the existing Node suite
-// (every app/package, untouched) and a new jsdom project for apps/staff-web's React component
-// tests. Kept apart by file extension, not a path exclude list: every staff-web test file is
-// named *.test.tsx (even the ones with no JSX), so the Node project's existing *.test.ts glob
-// already leaves them alone with no change to it at all.
+// Two projects share one `vitest run` invocation: the Node suite (every app and package) and a
+// jsdom project for apps/staff-web's React component tests. Kept apart by file extension, not a
+// path exclude list: every staff-web test file is named *.test.tsx (even the ones with no JSX),
+// so the Node project's *.test.ts glob leaves them alone.
 export default defineConfig({
   test: {
     testTimeout: 20_000,

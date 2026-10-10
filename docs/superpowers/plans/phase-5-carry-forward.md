@@ -2,15 +2,9 @@
 
 Items one sub-plan leaves for a later one. Delete an item when the plan that takes it is written.
 
-## 5e
+## 5f
 
-- **`CALENDAR_STORAGE_DIR`** for attachments, outside the deploy folder (spec addendum §5.1, §8.4).
-- **The editor round-trips `ActivityView.fields`** (`@gcpe/calendar-contract`) and runs `checkActivity` and `inferLookAhead` itself; it sends `lookAhead` only when `GET /calendar/api/config`'s `lookAheadFieldset` is true.
-- **Lock release on tab close uses `fetch(…, { keepalive: true })` with the `X-GCPE-Request` header**, not `navigator.sendBeacon`, which can't send the header `requireBearer` demands (C169) — the keepalive release must send this CSRF header or the server refuses it.
-- **"View changes"** reads `GET /calendar/api/activities/:id/changes`.
-- **Attachments are content writes:** call `assertNotFrozen` and check `can.edit` (spec addendum §7.4, §8.4).
-- **Titles link to the activity page** from the list's Title cell and the calendar view's items (`apps/staff-web/src/screens/calendar/list/cells.tsx`, `CalendarGrid.tsx`); return to the list's own URL (`?q=`) after save (C149).
-- **The activity page's watchlist star** uses `PUT`/`DELETE /calendar/api/activities/:id/watch` and shows the watchers' names, as the list's `WatchStar` does.
+- **The feed's `MIN-Id` links open the activity page** at `/hub/calendar/activities/:id`, with `?return=` set to the feed's own address (`activityPath` in `apps/staff-web/src/screens/calendar/activity/paths.ts`), so Save comes back to the feed (C149).
 
 ## 5g
 
@@ -19,6 +13,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **The Look Ahead's dates use a reference day, not today.** Legacy's `FriendlyDateTime` (`ActivityListProvider.ashx.cs:784-823`) takes a `referenceDay` only from the Look Ahead: a timed activity on that day shows no date text, only its time. The list's `friendlyDateRange` (`packages/calendar-contract`) has one `today` parameter and always prints the date; 5g's Look Ahead needs the reference day and the suppression.
 - **Legacy report fixes** (from `docs/parity/legacy-report-layouts.md`'s discrepancies): drop the doubled "updated updated" wording in the Executive Look Ahead's "Last updated" line; drop the raw, unparsed `**CONFIDENTIAL**` markdown marker from a row's title. "Consultations and Dialogues" is dropped entirely, per the item above.
 - **Report buttons in the list's toolbar** (`ActivityListScreen`'s List actions) take the list's current `ListQuery` as `q`, as the Excel export does; dates use `friendlyDateRange` from `@gcpe/calendar-contract`, which the export already uses.
+- **Report rows link to the activity page** at `/hub/calendar/activities/:id` (no `return`: the editor falls back to the list).
 
 ## 5h and later
 
@@ -46,6 +41,14 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **Check legacy end dates and NR years against 1900–2199 too.** The activity API refuses a year outside 1900–2199 on create and update (spec addendum §12.1's int4/NUL/year checks); the importer should reject and report a legacy row whose end date or NR year falls outside that same range, rather than importing a value the Calendar's own API would never accept.
 - **Saved queries:** call `migrateLegacySavedFilters` (`apps/calendar/src/list/legacy-filters.ts`) with resolvers backed by Core's organizations and `user_legacy_ids`, and put its report in the import report.
 - **List preferences:** for each imported user, write `user_profiles.list_display` with `legacyDisplay(FilterDisplayValue)` and `hidden_columns` with `legacyHiddenColumns(HiddenColumns)`, both together: a null `list_display` means no choice yet.
+- **Attachments:** write each legacy file through the Calendar's `ObjectStore` under `activities/<id>/<16 hex>-<safeFileName>` (`randomFileKey`), with the name through `attachmentName` (`apps/calendar/src/activities/files.ts`). Check legacy's MD5 against the bytes first. Store the content type from `ATTACHMENT_TYPES` when `checkAttachment` accepts the file; otherwise keep legacy's type, which `downloadContentType` serves as `application/octet-stream`. An import may exceed 50 files on an activity; the cap applies only to new uploads.
+- **Count imported activities with two or more categories.** The editor infers the Look Ahead section from its single category choice (`categoryId`), but while that choice is unchanged the server infers from every category the activity holds (`apps/calendar/src/activities/update.ts`, `categoryIds`). An HQ save of such an activity can send a section inferred from a different input than the server's, which is then stored as an override. Report how many there are, so the import or the editor can settle it.
+- **Count imported values the shared check refuses on every save** (`checkActivity`, `packages/calendar-contract/src/validate.ts`, which runs on each save whether or not the field changed): Potential Dates containing a digit, TBC or TBD; start, end or NR years outside 1900–2199; and start, end or NR times off the 5-minute grid. Each forces a fix on the activity's next save. Fixing an off-grid start or end time moves `startAt`/`endAt`, which sets the `start_date`/`end_date` needs-review flags (`apps/calendar/src/activities/review-rules.ts`); a Potential Dates fix sets `start_date` too. Put the counts in the import report.
+- **No sweeper for orphaned attachment bytes.** When a Calendar attachment is replaced or removed and the matching object-store delete then fails after the database change has committed, the bytes are left behind; today that failure is only logged, by activity id and file id (`deleteQuietly`, `apps/calendar/src/activities/files.ts` — never a name or storage key). Nothing yet walks the store to find and remove bytes with no surviving row.
+
+## Platform hardening (no phase yet)
+
+- **`apps/nrms`'s site-files and page-images upload routes still take the file name in `?name=`**, so the name lands in every proxy's access logs, the same leak the Calendar's upload route carried until it moved to the `X-GCPE-File-Name` header (5e-1). Move NRMS's two routes to a header the same way.
 
 ## Entra sign-in (later phase)
 

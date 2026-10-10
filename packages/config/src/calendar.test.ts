@@ -20,6 +20,9 @@ describe("the tenant calendar section", () => {
     expect(c.showHqCommentsField).toBe(false);
     expect(c.showRecordsSection).toBe(false);
     expect(c.cloneKeptKeywordNames).toEqual(["30-60-90"]);
+    // Scripts/activityhelper.ts:170-196: the categories that hide the Release fieldset.
+    expect(c.releaseHiddenCategoryNames).toHaveLength(8);
+    expect(c.releaseHiddenCategoryNames).toContain("Awareness Day / Week / Month");
     expect(c.lookAheadCoverImage).toBeNull();
   });
 

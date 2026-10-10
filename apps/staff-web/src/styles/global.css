@@ -494,3 +494,165 @@ body {
 .gcpe-view-button[aria-pressed="true"] {
   font-weight: 700;
 }
+
+/* The activity editor (spec addendum §8.2). Every control is at least 24px (WCAG 2.5.8). */
+.gcpe-activity .gcpe-activity-form {
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+.gcpe-activity .gcpe-fieldset {
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: 0.75rem;
+}
+.gcpe-activity .gcpe-fieldset > legend {
+  font-weight: 700;
+  padding: 0 0.25rem;
+}
+.gcpe-activity .gcpe-field,
+.gcpe-activity .gcpe-check,
+.gcpe-activity .gcpe-datetime {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.gcpe-activity .gcpe-check {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.gcpe-activity input[type="checkbox"] {
+  width: 24px;
+  height: 24px;
+  margin: 0 0.4rem 0 0;
+}
+.gcpe-activity select,
+.gcpe-activity input[type="date"],
+.gcpe-activity input[type="text"],
+.gcpe-activity textarea {
+  min-height: 32px;
+  font: inherit;
+}
+.gcpe-activity .gcpe-checklist {
+  border: 1px solid #d8d8d8;
+  padding: 0.5rem;
+  max-height: 14rem;
+  overflow-y: auto;
+}
+/* Read-only, it lists only the chosen options (fields.tsx CheckList): no scroll box, which the keyboard couldn't reach. */
+.gcpe-activity .gcpe-checklist--read {
+  max-height: none;
+  overflow-y: visible;
+}
+.gcpe-activity .gcpe-checklist ul,
+.gcpe-activity .gcpe-tags {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.gcpe-activity .gcpe-checklist li {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+}
+.gcpe-activity .gcpe-tags li {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0 0.5rem 0.25rem 0;
+  border: 1px solid #5a5a5a;
+  border-radius: 3px;
+  padding: 0 0.25rem;
+}
+.gcpe-small-button,
+.gcpe-button-link {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0.2rem 0.5rem;
+  font: inherit;
+  cursor: pointer;
+}
+.gcpe-button-link {
+  display: inline-flex;
+  align-items: center;
+  border: 2px solid #013366;
+  border-radius: 4px;
+  color: #013366;
+  text-decoration: none;
+}
+.gcpe-review-mark {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #6b4a00;
+}
+.gcpe-activity .gcpe-needs-review {
+  background: #fef0d8;
+}
+.gcpe-override {
+  background: #fcefc0;
+  border-left: 4px solid #b8860b;
+  padding-left: 0.5rem;
+}
+.gcpe-field-error {
+  color: #ce3e39;
+  font-weight: 700;
+}
+.gcpe-error-summary {
+  border: 3px solid #ce3e39;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+}
+.gcpe-warnings {
+  color: #6b4a00;
+  grid-column: 1 / -1;
+}
+.gcpe-notice {
+  border-left: 4px solid #2e8540;
+  padding-left: 0.5rem;
+}
+.gcpe-activity-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 1rem;
+}
+.gcpe-release-links {
+  grid-column: 1 / -1;
+}
+/* An h2 in the page's outline, sized as the h3 it was, under the fieldset's legend. */
+.gcpe-release-links h2 {
+  font-size: 1.17em;
+}
+.gcpe-release-links ul {
+  list-style: none;
+  padding: 0;
+}
+.gcpe-release-swatch {
+  display: inline-block;
+  width: 0.75rem;
+  height: 0.75rem;
+  margin-right: 0.4rem;
+  border-radius: 2px;
+}
+.gcpe-release-swatch--release { background: var(--gcpe-type-release); }
+.gcpe-release-swatch--story { background: var(--gcpe-type-story); }
+.gcpe-release-swatch--update { background: var(--gcpe-type-update); }
+.gcpe-release-swatch--advisory { background: var(--gcpe-type-advisory); }
+.gcpe-release-swatch--factsheet { background: var(--gcpe-type-factsheet); }
+.gcpe-changes {
+  list-style: none;
+  padding: 0;
+}
+.gcpe-changes > li {
+  border-top: 1px solid #d8d8d8;
+  padding: 0.5rem 0;
+}
+.gcpe-changes h2 {
+  font-size: 1rem;
+}

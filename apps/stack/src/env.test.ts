@@ -3,6 +3,7 @@ import { subscribersFor, type EventEnvelope, type SubscriberConfig } from "@gcpe
 import { createSourceRestrictedHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
 import {
   APP_PREFIXES,
+  assertPrivateDir,
   envFor,
   FAKE_EMERGENCY_FEED_ENV,
   FAKE_EMERGENCY_FEED_PATH,
@@ -126,6 +127,16 @@ describe("envFor", () => {
     const env = { SITE_ENVIRONMENT: "test", SITE_DATABASE_URL: "postgres://x/site" };
     expect(envFor(env, "SITE")).toMatchObject({ SITE_ENVIRONMENT: "test", DATABASE_URL: "postgres://x/site" });
     expect(envFor(env, "CORE").SITE_ENVIRONMENT).toBe("test");
+  });
+});
+
+describe("assertPrivateDir", () => {
+  const pub = { "NRMS_STORAGE_DIR (served at /files)": "/data/storage", "SITE_OUTPUT_DIR (served at /site)": "/data/site-output", "STAFF_WEB_DIR (served at /hub)": "/app/staff-web", unset: undefined };
+  it("accepts a folder beside the public ones", () => {
+    expect(() => assertPrivateDir("CALENDAR_STORAGE_DIR", "/data/calendar-files", pub)).not.toThrow();
+  });
+  it.each(["/data/storage", "/data/storage/calendar", "/data/site-output/x", "/app/staff-web/assets", "/data", "/data/storage/../storage/x"])("refuses %s", (dir) => {
+    expect(() => assertPrivateDir("CALENDAR_STORAGE_DIR", dir, pub)).toThrow(/must not be inside, equal to or contain/);
   });
 });
 
@@ -367,6 +378,15 @@ describe("persistent data dir in env views", () => {
     expect(envFor({}, "NRMS", "/data").STORAGE_DIR).toBe("/data/storage");
     expect(envFor({ NRMS_STORAGE_DIR: "/x" }, "NRMS", "/data").STORAGE_DIR).toBe("/x");
     expect(envFor({}, "CORE", "/data").STORAGE_DIR).toBeUndefined();
+  });
+
+  it("defaults the Calendar's STORAGE_DIR under the data dir, beside NRMS's public files", () => {
+    expect(envFor({}, "CALENDAR", "/data").STORAGE_DIR).toBe("/data/calendar-files");
+    expect(envFor({ CALENDAR_STORAGE_DIR: "/private/calendar" }, "CALENDAR", "/data").STORAGE_DIR).toBe("/private/calendar");
+  });
+
+  it("resolves a relative CALENDAR_STORAGE_DIR override under the data dir, same as SITE_OUTPUT_DIR", () => {
+    expect(envFor({ CALENDAR_STORAGE_DIR: "./private-calendar" }, "CALENDAR", "/data").STORAGE_DIR).toBe("/data/private-calendar");
   });
 });
 

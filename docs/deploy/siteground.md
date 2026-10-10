@@ -200,10 +200,18 @@ Today this folder holds:
   automatically; an absolute `SITE_OUTPUT_DIR` is left as-is.
 - `storage/` — NRMS's `STORAGE_DIR` default (uploaded release files/media assets), same rule:
   overridable with an explicit `NRMS_STORAGE_DIR`.
+- `calendar-files/` — the Calendar's attachments (`CALENDAR_STORAGE_DIR`, overridable, and — same
+  rule as `SITE_OUTPUT_DIR` — a relative override resolves under `DATA_DIR`, not the working
+  directory). Never served directly: the Calendar's own route checks who may see each file. The
+  stack refuses to start if this folder is inside, equal to or holds `storage/`, `site-output/` or
+  the staff-web build.
 
 The stack checks `DATA_DIR` is writable (creating it if needed) **before** starting any app and
 refuses to start at all if it isn't — a misconfigured or unwritable `DATA_DIR` fails loudly at
-startup instead of surfacing later as a silent write failure.
+startup instead of surfacing later as a silent write failure. An explicit `CALENDAR_STORAGE_DIR`
+gets the same writability check (the default, under `DATA_DIR`, is already covered by the check
+above); an unwritable folder is refused at startup instead of surfacing as a 500 on someone's
+first upload.
 
 As a second line of defence against exactly the failure Task 1 fixes — a redeploy (or a
 `DATA_DIR` pointed somewhere new) that leaves `site-output/` empty — the public site self-heals
@@ -956,6 +964,38 @@ been run there yet, including the list timing in check 1.
 4. **Waiting for `gcpe_calendar`.** As cal-hq-admin: tick two rows, Review selected; Corporate
    Queries → Show all → Search.
 5. **Waiting for `gcpe_calendar`.** Month and Week views show activities on their days.
+
+### Activity files (Phase 5e-1)
+
+**No migration.**
+
+Nothing to configure on boxs.ca: `CALENDAR_STORAGE_DIR` defaults to `calendar-files/` under
+`DATA_DIR` (see "Persistent data" above). Include `~/gcpe-data/calendar-files` in backups, beside
+the Calendar database. Set `CALENDAR_STORAGE_DIR` explicitly only to move it elsewhere.
+
+**Hand check, Paul: the nginx request body limit.** An upload is a raw request body (no
+multipart), up to 25 MiB (`ATTACHMENT_MAX_BYTES`) plus header overhead. As with NRMS's media
+uploads (see "Troubleshooting" below), SiteGround's nginx sits in front of the app with its own
+upload size limit, which this stack doesn't control and which refuses an oversized request before
+it ever reaches `/calendar/api/activities/*/files`. Plain nginx's default is 1 MB; SiteGround's
+actual limit on boxs.ca (our test environment — not production) is unverified. Confirm it (Site
+Tools → Devs, or ask SiteGround support) and raise it to comfortably clear 25 MiB for that path
+before testing Calendar attachment uploads there; an HTML `413` instead of the Calendar's own
+JSON error means it hasn't been raised.
+
+### Activity page (Phase 5e-2)
+
+**No migration.** Nothing to configure.
+
+**Hand checks on boxs.ca after deploy** (spec §16's starred items):
+
+1. Open one activity as two users in two browsers: the second sees "<name> is editing".
+2. Between 16:00 and 17:00 BC time, a ministry editor's activity page opens read-only with the
+   freeze message; an HQ Editor's doesn't.
+3. "View changes" shows the edit just made.
+4. An attachment's link opens for a user in its own ministry and is "not found" for another
+   ministry's user. BC's tenant hides Records (`showRecordsSection` is off, as legacy), so the page
+   shows no link: open `/calendar/api/activities/:id/files/:fileId` directly as each user.
 
 ## Troubleshooting
 

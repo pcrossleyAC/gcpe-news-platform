@@ -7,7 +7,9 @@ staff-facing behaviour that isn't obvious from the screen. The manual pass later
 file, `docs/parity/changes-from-legacy.md` and the hand-check list in `docs/deploy/siteground.md`.
 
 Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **Viewer**,
-**Administrator**, **Operations**, **Developer**.
+**Administrator**, **Operations**, **Developer**. Calendar notes are tagged with the Calendar
+audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (any HQ role),
+**HQ Editor and above**, **HQ Advanced and above**, **HQ Administrator**, **System Administrator**.
 
 ## Phase 3 — NRMS (releases, media, website, staff app)
 
@@ -502,3 +504,34 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **HQ Advanced and above** — Corporate Queries and the Look Ahead filter.
 - **HQ Advanced and above** — Searching the Executive Summary only finds it for users who can see
   that field.
+
+## Phase 5e-1 — Activity files
+
+- **Editor** — A file attached to an activity can be a PDF, a PNG, JPEG or GIF image, a Word, Excel or PowerPoint file, an Outlook message, RTF, text or CSV, up to 25 MB, and up to 50 files an activity. A file with the same name, in any case, replaces the old one.
+- **Editor** — Adding or removing a file is blocked during the 4pm-5pm freeze (unless you're HQ) and while someone else is editing the activity, as saving is.
+- **All Calendar users** — A file opens only for people who can see its activity. Anyone else, including someone holding an old link, gets "not found".
+- **Operations** — Calendar files live in `<DATA_DIR>/calendar-files` (`CALENDAR_STORAGE_DIR`). Back that folder up with the Calendar database. The stack refuses to start if it is put inside a folder it serves publicly.
+
+## Phase 5e-2 — Activity editor
+
+- **All Calendar users** — If your session runs out while an activity has unsaved changes, sign in again and open the same activity: the page says "Your unsaved changes were restored." If someone else saved it meanwhile, Save says so and Reload, once you confirm, replaces your changes with their version. Signing out yourself discards kept changes.
+- **All Calendar users** — Click an activity's title in the list or the calendar to open it. Save, Cancel, Review and Delete bring you back to the list as you left it, filter and all.
+- **All Calendar users** — "View changes" lists every change to the activity, newest first: who, when, and each field before and after. Changes from the old Calendar are marked "from legacy log".
+- **All Calendar users** — The star on the activity page adds it to My Watchlist; hover or focus it to see who else watches it.
+- **All Calendar users** — An activity you can't see, or that doesn't exist, says "Activity not found".
+- **All Calendar users** — When the activity opens read-only, each checklist (Shared With, Comm Materials, Sectors and the rest) lists only what is ticked, or "None".
+- **Calendar editors** — "New activity" on the list opens a blank activity at 8:00 AM to 6:00 PM. Saving opens it, ready for files.
+- **Calendar editors** — The form checks itself before saving: a box at the top lists what to fix, each linked to its field. A start or end date in the past is a warning, not a stop.
+- **Calendar editors** — Potential Dates is shown again, under Schedule. Use a general timeline, like "late June": no numbers, TBC or TBD.
+- **Calendar editors** — When someone else is editing, the page says who and since when, and stays read-only. It opens for you, without a reload, once they save, cancel or leave it for 15 minutes.
+- **Calendar editors** — Open in two of your own tabs? "Continue here" moves your editing to this tab.
+- **Calendar editors** — Leave the page alone for 15 minutes and your edit lock lapses. Your changes stay on the page, and Save still works if nobody else changed the activity; if they did, you're told to reload.
+- **Calendar editors** — When Save or Review says someone else changed the activity, Reload asks before it replaces your unsaved changes with theirs. If the reload fails, your changes stay and the page still warns before you leave.
+- **Calendar editors** — If someone deletes the activity while you're editing it, Save says so and your changes stay on the page, read-only. Nothing else is offered, except Review for an HQ Administrator.
+- **Calendar editors** — Between 4pm and 5pm the page opens read-only, with the freeze message, unless you're HQ.
+- **Calendar editors** — Records shows when the tenant turns on the Records section (off for BC, as in legacy, see Q51). Files are added several at a time, and each is checked and saved straight away.
+- **HQ Editor and above** — The Look Ahead fieldset follows the activity: the section is worked out from the category, Issue, confirmation and comm materials. Choose another to override it (marked "Override"); "Use the inferred section" undoes that.
+- **HQ Editor and above** — Fields changed since the last review say "Changed: needs review".
+- **HQ Advanced and above** — Review marks the activity reviewed and brings you back. Review and Clone wait until you've saved or cancelled your own changes.
+- **HQ Administrator** — A deleted activity opens read-only, with Review as its only action.
+- **All Calendar users** — "BC Gov News" on an activity lists its releases. If you also have an NRMS role, each one links to the release.

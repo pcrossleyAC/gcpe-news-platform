@@ -35,6 +35,11 @@ const CHECK_LIMITS = {
 
 const blank = (s: string) => s.trim() === "";
 const offStep = (t: string | null) => t !== null && Number(t.slice(3)) % 5 !== 0;
+/** The years the database takes (input.ts's bcDateSchema): a date input lets through 0026 or 20255 as typed. */
+const yearInRange = (d: string) => {
+  const m = /^(\d{4})-\d{2}-\d{2}$/.exec(d);
+  return m !== null && Number(m[1]) >= 1900 && Number(m[1]) <= 2199;
+};
 
 export function checkActivity(i: ActivityFields, ctx: CheckContext): FieldError[] {
   const errors: FieldError[] = [];
@@ -48,6 +53,13 @@ export function checkActivity(i: ActivityFields, ctx: CheckContext): FieldError[
   if (i.commContactId === null) add("commContactId", "Choose a comm contact");
   if (i.startDate === null) add("startDate", "Enter a start date");
   if (i.endDate === null) add("endDate", "Enter an end date");
+  const badYear = (field: "startDate" | "endDate" | "nrDate") => {
+    const d = i[field];
+    if (d === null || yearInRange(d)) return false;
+    add(field, "Enter a year between 1900 and 2199");
+    return true;
+  };
+  const datesOk = ![badYear("startDate"), badYear("endDate"), badYear("nrDate")].some(Boolean);
   if (!i.isAllDay && i.startTime === null) add("startTime", "Enter a start time, or tick All Day");
   if (!i.isAllDay && i.endTime === null) add("endTime", "Enter an end time, or tick All Day");
   if (!ctx.relaxRequired) {
@@ -64,13 +76,13 @@ export function checkActivity(i: ActivityFields, ctx: CheckContext): FieldError[
     if (i.commMaterialIds.length === 0) add("commMaterialIds", "Choose the comm materials: this category is a release");
   }
 
-  if (i.startDate && i.endDate) {
+  if (datesOk && i.startDate && i.endDate) {
     if (i.endDate < i.startDate) add("endDate", "The end date can't be before the start date");
     else if (i.endDate === i.startDate && !i.isAllDay && i.startTime && i.endTime && i.startTime > i.endTime) add("endTime", "The start time can't be after the end time");
   }
   if (i.nrDate !== null && i.nrTime === null) add("nrTime", "Enter the release time");
   if (i.nrDate === null && i.nrTime !== null) add("nrDate", "Enter the release date");
-  if (i.nrDate && i.endDate && i.nrDate > i.endDate) add("nrDate", "The release date can't be after the end date");
+  if (datesOk && i.nrDate && i.endDate && i.nrDate > i.endDate) add("nrDate", "The release date can't be after the end date");
   if (!i.isAllDay && offStep(i.startTime)) add("startTime", "Use 5-minute steps");
   if (!i.isAllDay && offStep(i.endTime)) add("endTime", "Use 5-minute steps");
   if (offStep(i.nrTime)) add("nrTime", "Use 5-minute steps");

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { apiFetch, onUnauthorized } from "../api/client";
+import { clearAllActivityDrafts } from "../screens/calendar/activity/draft";
 import { clearAllDrafts } from "../screens/release/documents/unsavedDocumentStorage";
 
 export interface SessionUser {
@@ -47,16 +48,37 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     }
   }, []);
 
+  /** A check-in once signed in. Only a 401 signs the user out, through apiFetch's own broadcast
+   * (the onUnauthorized listener below), so a page with unsaved changes keeps them first. A network
+   * failure or a 5xx changes nothing: the next check-in tries again. */
+  const checkIn = useCallback(() => {
+    apiFetch<LoginResponse>("/core/auth/session").then(
+      ({ user }) => setState((s) => ({ ...s, user, loading: false })),
+      () => undefined,
+    );
+  }, []);
+
   useEffect(() => {
     void loadSession();
   }, [loadSession]);
 
+  // Coming back to the tab (a laptop waking, say) checks in at once rather than at the next
+  // interval, so an expired session is found before the user types into a page that can no
+  // longer save.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") checkIn();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [checkIn]);
+
   useEffect(() => {
     const id = setInterval(() => {
-      if (document.visibilityState === "visible") void loadSession();
+      if (document.visibilityState === "visible") checkIn();
     }, RENEW_INTERVAL_MS);
     return () => clearInterval(id);
-  }, [loadSession]);
+  }, [checkIn]);
 
   // Any apiFetch 401, anywhere in the app, signs the user out here. Where they were — and
   // getting back there after they sign in again — is RequireAuth's job alone, via the
@@ -74,12 +96,13 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
       await apiFetch("/core/auth/logout", { method: "POST" });
     } finally {
       setState((s) => ({ ...s, user: null }));
-      // Fix round 1 (3f Task 4), finding 1: an *explicit* sign-out wipes every unsaved document
-      // draft (documents/unsavedDocumentStorage.ts) — unlike a 401 (handled by the
-      // onUnauthorized listener below, which deliberately leaves drafts alone so the same user
-      // signing back in gets theirs back), there's no guarantee the next sign-in on this shared
-      // tab/machine is the same person.
+      // An *explicit* sign-out wipes every unsaved document draft
+      // (documents/unsavedDocumentStorage.ts) — unlike a 401 (handled by the onUnauthorized
+      // listener below, which deliberately leaves drafts alone so the same user signing back in
+      // gets theirs back), there's no guarantee the next sign-in on this shared tab/machine is
+      // the same person.
       clearAllDrafts();
+      clearAllActivityDrafts();
     }
   }, []);
 

@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { sqlInterval, sqlNow, type Db, type DbOrTx, type TestClock, type Tx } from "@gcpe/db-kit";
-import { cleanDetails, cleanTitle, type ActivityFields, type CalendarRules, type HqSection, type HqStatus, type LookAheadInput } from "@gcpe/calendar-contract";
+import { cleanDetails, cleanTitle, LOCK_IDLE_MS, type ActivityFields, type CalendarRules, type HqSection, type HqStatus, type LookAheadInput } from "@gcpe/calendar-contract";
 import {
   activities, activityCategories, activityCommMaterials, activityInitiatives, activityKeywords, activityLocks, activityNrOrigins,
   activitySectors, activitySharedWith, activityTags, activityThemes, categories, keywords, orgs, users,
@@ -272,8 +272,6 @@ export async function lookAheadInputOf(db: DbOrTx, f: ActivityFields, categoryId
   };
 }
 
-/** A lock is live while its holder was active in the last 15 minutes (spec addendum §7.5). */
-export const LOCK_IDLE_MS = 15 * 60_000;
 /** A lock whose last activity is at or before this instant has lapsed. */
 export function lockIdleCutoff(clock?: TestClock) {
   return sql`(${sqlNow(clock)} - ${sqlInterval(LOCK_IDLE_MS)})`;

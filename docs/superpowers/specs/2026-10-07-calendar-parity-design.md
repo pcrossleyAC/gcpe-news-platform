@@ -497,7 +497,7 @@ One page with legacy's fieldsets, in legacy's order:
   - "BC Gov News", the linked releases (§11).
   - The fieldset is hidden for the categories legacy hides it for (`activityhelper.ts:170-196`).
 - **Event:** Premier Requested, Representative, At BC Legislature, City, Other City (when City is "Other…"), Venue, Event Planner, Digital.
-- **Records:** attachments (§8.4). Shown when `ShowRecordsSection` is on or the activity already has files, as legacy (`Activity.aspx.cs:261-262,880-886`; Q51).
+- **Records:** attachments (§8.4). Shown only when `ShowRecordsSection` is on, whatever files the activity has, as legacy (`Activity.aspx.cs:261-262` hides the section whenever the switch is off; Q51). With the switch on, the section stays after its last file is removed.
 
 **Behaviour:**
 - **Actions:** Save, Review, Delete, Clone, Watchlist, Cancel, and View changes.

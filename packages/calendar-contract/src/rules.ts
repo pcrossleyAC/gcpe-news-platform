@@ -17,6 +17,8 @@ export interface CalendarRules {
   issueExemptCategoryNames: readonly string[];
   /** Categories that go to Events & Speeches rather than In the News (Activity.aspx:2509-2517). */
   eventsCategoryNames: readonly string[];
+  /** Categories whose activities hide the editor's Release fieldset (Scripts/activityhelper.ts:170-196). */
+  releaseHiddenCategoryNames: readonly string[];
   consultationsMinistryAbbreviation: string;
   contactMinistryExcludedAbbreviations: readonly string[];
   sharedWithExcludedAbbreviations: readonly string[];

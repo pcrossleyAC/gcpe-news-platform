@@ -1,12 +1,13 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, sql } from "drizzle-orm";
 import type { Tx } from "@gcpe/db-kit";
 import {
   HISTORY_FIELDS, inferLookAhead, LOOK_AHEAD_HISTORY_FIELDS, type ActivityChangeView, type ActivityView, type ChangeAction, type HistoryFieldKey,
 } from "@gcpe/calendar-contract";
 import type { CalendarActor } from "../actor";
 import { can } from "../capabilities";
-import { activityChangeFields, activityChanges, users } from "../db/schema";
+import { activityChangeFields, activityChanges, favourites, orgs, releaseLinks, users } from "../db/schema";
 import type { ApiDeps } from "../http/routes";
+import { filesOf } from "./files";
 import { ActivityNotFoundError } from "./errors";
 import { factsOf, fieldsOf, inReadSnapshot, liveLockOf, loadStored, lookAheadInputOf, type StoredActivity } from "./store";
 
@@ -30,8 +31,21 @@ async function viewOf(tx: Tx, deps: ApiDeps, actor: CalendarActor, s: StoredActi
   const [updater] = s.row.lastUpdatedBy ? await tx.select({ name: users.displayName }).from(users).where(eq(users.id, s.row.lastUpdatedBy)) : [];
   const lookAhead = fields.lookAhead!;
   if (!fieldset) delete fields.lookAhead;
+  const [org] = s.row.contactMinistryKey ? await tx.select({ abbreviation: orgs.abbreviation }).from(orgs).where(eq(orgs.key, s.row.contactMinistryKey)) : [];
+  const watchers = await tx
+    .select({ userId: favourites.userId, name: users.displayName })
+    .from(favourites)
+    .innerJoin(users, eq(users.id, favourites.userId))
+    .where(eq(favourites.activityId, s.row.id))
+    .orderBy(asc(users.displayName));
+  const releases = await tx
+    .select()
+    .from(releaseLinks)
+    .where(and(eq(releaseLinks.activityId, s.row.id), ne(releaseLinks.status, "deleted")))
+    .orderBy(sql`${releaseLinks.publishAt} ASC NULLS LAST`, asc(releaseLinks.releaseId));
   return {
     id: s.row.id,
+    ministryAbbreviation: org?.abbreviation ?? null,
     version: s.row.version,
     status: s.row.status,
     isDeleted: facts.isDeleted,
@@ -46,6 +60,12 @@ async function viewOf(tx: Tx, deps: ApiDeps, actor: CalendarActor, s: StoredActi
     lastUpdatedByName: updater?.name ?? null,
     lock: lock ? { holderName: lock.holderName, since: lock.acquiredAt.toISOString(), mine: lock.userId === actor.userId, tabId: lock.userId === actor.userId ? lock.tabId : null } : null,
     can: { edit: can.edit(actor, facts), clone: can.clone(actor, facts), delete: can.delete(actor, facts), review: can.review(actor, facts) },
+    watch: { isWatched: watchers.some((x) => x.userId === actor.userId), watcherNames: watchers.map((x) => x.name) },
+    files: await filesOf(tx, s.row.id),
+    releases: releases.map((r) => ({
+      releaseId: r.releaseId, type: r.type, status: r.status, reference: r.reference,
+      publishAt: r.publishAt?.toISOString() ?? null, releasedAt: r.releasedAt?.toISOString() ?? null,
+    })),
   };
 }
 

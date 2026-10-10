@@ -98,6 +98,7 @@ export async function displayOf(db: DbOrTx, c: Content, la: LookAheadValues, j: 
     videographer: await one(db, "videographers", c.videographerId),
     status: null,
     cloned_from: null,
+    files: null,
   };
 }
 

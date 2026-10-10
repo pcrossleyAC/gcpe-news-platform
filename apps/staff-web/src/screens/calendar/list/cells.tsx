@@ -1,4 +1,6 @@
+import { Link, useLocation } from "react-router";
 import { friendlyDateRange, friendlySpan, type ListColumn, type ListRow, type NeedsReviewKey } from "@gcpe/calendar-contract";
+import { activityPath } from "../activity/paths";
 
 /** Which needs-review flags mark which column (ActivityListProvider.ashx.cs's ApplyMarkup calls). */
 const FLAGS: Partial<Record<ListColumn, NeedsReviewKey[]>> = {
@@ -9,6 +11,12 @@ const FLAGS: Partial<Record<ListColumn, NeedsReviewKey[]>> = {
 export const needsReviewOf = (c: ListColumn, r: ListRow) => (FLAGS[c] ?? []).some((k) => r.needsReview.includes(k));
 /** The list's "MIN-Id". */
 export const minId = (r: Pick<ListRow, "id" | "ministryAbbreviation">) => `${r.ministryAbbreviation ?? "—"}-${r.id}`;
+
+/** The activity's title opens it, coming back to this list as it stands (C149). */
+export function TitleLink({ id, children }: { id: number; children: React.ReactNode }): React.JSX.Element {
+  const here = useLocation();
+  return <Link to={activityPath(id, `${here.pathname}${here.search}`)}>{children}</Link>;
+}
 
 const STATUS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
 const shortDate = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
@@ -63,7 +71,9 @@ export function CellContent({ column, row: r, today, timeZone, tools, update }: 
     case "title":
       return (
         <div title={r.significance || undefined}>
-          <strong className="gcpe-activity-title">{r.title}</strong>
+          <strong className="gcpe-activity-title">
+            <TitleLink id={r.id}>{r.title}</TitleLink>
+          </strong>
           {r.details && <div>{r.details}</div>}
         </div>
       );
