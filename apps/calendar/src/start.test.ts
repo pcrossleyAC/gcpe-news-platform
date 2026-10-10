@@ -7,7 +7,7 @@ import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { hashPassword } from "@gcpe/auth";
 import { createCalendarTestDb, SESSION_SECRET } from "../test/helpers";
-import { startCalendar } from "./start";
+import { calendarEnvSchema, startCalendar } from "./start";
 
 describe("startCalendar", () => {
   let tdb: TestDatabase;
@@ -17,6 +17,7 @@ describe("startCalendar", () => {
   afterAll(() => tdb.drop());
 
   it("starts, serves health with Core and NRMS absent, and exposes dispatch and needsReferenceData", async () => {
+    const storageDir = await mkdtemp(join(tmpdir(), "calendar-files-"));
     const handle = await startCalendar({
       DATABASE_URL: tdb.url,
       NODE_ENV: "test",
@@ -25,10 +26,12 @@ describe("startCalendar", () => {
       LOCAL_ADMIN_PASSWORD_HASH: await hashPassword("fixture-password-for-start-tests"),
       LOCAL_AUTH_SECRET: "x".repeat(32),
       SESSION_SECRET,
+      STORAGE_DIR: storageDir,
     });
     try {
       expect((await request(handle.app).get("/health/ready")).status).toBe(200);
       expect(handle.port).toBe(3007);
+      expect(handle.storageDir).toBe(storageDir);
       // Break-glass sign-in issues a bearer token, which can't use the Calendar: no endpoint for it.
       expect((await request(handle.app).post("/auth/local/token").send({ username: "admin", password: "x" })).status).toBe(404);
       expect(await handle.workers.needsReferenceData!()).toBe(true);
@@ -56,5 +59,10 @@ describe("startCalendar", () => {
         TENANT_CONFIG: file,
       }),
     ).rejects.toThrow(/has no "calendar" section/);
+  });
+
+  it("keeps attachments under data/calendar-files by default, never inside the app (spec addendum §5.1)", () => {
+    const parsed = calendarEnvSchema.parse({ DATABASE_URL: "postgres://user:pass@127.0.0.1:1/calendar" });
+    expect(parsed.STORAGE_DIR).toBe(fileURLToPath(new URL("../../../data/calendar-files", import.meta.url)));
   });
 });

@@ -2,6 +2,7 @@ import { Router } from "express";
 import type { Db, TestClock } from "@gcpe/db-kit";
 import type { CalendarRules } from "@gcpe/calendar-contract";
 import type { SubscriberConfig } from "@gcpe/events";
+import type { ObjectStore } from "@gcpe/storage";
 import { activityRoutes } from "./activity-routes";
 import { configRoutes } from "./config-routes";
 import { deadLetterRoutes } from "./dead-letter-routes";
@@ -17,6 +18,8 @@ export interface ApiDeps {
   subscribers: SubscriberConfig[];
   /** A test hook standing in for the database's now() (packages/db-kit/src/claim.ts). */
   now?: TestClock;
+  /** Where attachments live (CALENDAR_STORAGE_DIR); null or unset answers the file routes 503. */
+  store?: ObjectStore | null;
 }
 
 /** The Calendar's /api, mounted behind requireBearer and requireCalendarActor. */

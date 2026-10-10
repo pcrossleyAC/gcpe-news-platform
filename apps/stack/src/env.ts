@@ -1,6 +1,6 @@
 import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
-import { isAbsolute, join } from "node:path";
+import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { createProjectionHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
@@ -234,6 +234,7 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // This app's built-in defaults, before its own prefixed vars so an explicit one still wins.
   if (STACK_APP_DEFAULTS[prefix]) Object.assign(view, STACK_APP_DEFAULTS[prefix]);
   if (dataDir && prefix === "NRMS") view.STORAGE_DIR = join(dataDir, "storage");
+  if (dataDir && prefix === "CALENDAR") view.STORAGE_DIR = join(dataDir, "calendar-files");
   // Flickr (Phase 3c) is NRMS's alone: an unprefixed FLICKR_* reaches NRMS only, and an
   // explicit NRMS_FLICKR_* (applied below) still wins over it.
   if (prefix === "NRMS") {
@@ -424,4 +425,19 @@ export function resolveSelfUrls(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     }
   }
   return view;
+}
+
+/**
+ * The Calendar's attachments are served only through its authorised route (spec addendum §5.1,
+ * §8.4), so their folder must not be, sit inside, or hold any folder the stack serves to anyone.
+ */
+export function assertPrivateDir(name: string, dir: string, publicDirs: Record<string, string | undefined>): void {
+  const target = resolve(dir);
+  for (const [label, p] of Object.entries(publicDirs)) {
+    if (!p) continue;
+    const pub = resolve(p);
+    if (target === pub || target.startsWith(pub + sep) || pub.startsWith(target + sep)) {
+      throw new Error(`${name} (${target}) must not be inside, equal to or contain ${label} (${pub})`);
+    }
+  }
 }

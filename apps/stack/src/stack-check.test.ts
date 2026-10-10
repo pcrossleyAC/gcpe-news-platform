@@ -175,4 +175,11 @@ describe("checkStack", () => {
     const without = await checkStack(baseEnv());
     expect(without.apps.calendar).toEqual({ ok: true, skipped: "CALENDAR_DATABASE_URL is not set" });
   });
+
+  it("fails the Calendar when CALENDAR_STORAGE_DIR is inside NRMS's public files", async () => {
+    const result = await checkStack({ ...baseEnv(), CALENDAR_DATABASE_URL: DB("calendar"), DATA_DIR: "/tmp/gcpe-check-data", CALENDAR_STORAGE_DIR: "/tmp/gcpe-check-data/storage/calendar" });
+    expect(result.ok).toBe(false);
+    expect(result.apps.calendar?.ok).toBe(false);
+    expect(result.apps.calendar?.error).toContain("must not be inside, equal to or contain");
+  });
 });

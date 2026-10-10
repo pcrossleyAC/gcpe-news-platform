@@ -5,6 +5,7 @@ import { requireBearer, type BearerOptions } from "@gcpe/auth";
 import type { CalendarRules } from "@gcpe/calendar-contract";
 import { createEventReceiver, type SubscriberConfig } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
+import type { ObjectStore } from "@gcpe/storage";
 import { requireCalendarActor } from "./actor";
 import { apiRoutes } from "./http/routes";
 import { projectionHandler } from "./projections";
@@ -16,6 +17,7 @@ export interface AppDeps {
   rules: CalendarRules;
   subscribers?: SubscriberConfig[];
   now?: TestClock;
+  store?: ObjectStore | null;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -27,13 +29,8 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: projectionHandler }));
   // Authenticate and resolve the Calendar actor before parsing, so a caller without Calendar
   // access can't make us buffer a body.
-  app.use(
-    "/api",
-    requireBearer(deps.auth),
-    requireCalendarActor(deps.db),
-    express.json({ limit: "100kb" }),
-    apiRoutes({ db: deps.db, rules: deps.rules, subscribers: deps.subscribers ?? [], now: deps.now }),
-  );
+  const api = { db: deps.db, rules: deps.rules, subscribers: deps.subscribers ?? [], now: deps.now, store: deps.store ?? null };
+  app.use("/api", requireBearer(deps.auth), requireCalendarActor(deps.db), express.json({ limit: "100kb" }), apiRoutes(api));
   app.use(jsonErrorHandler({ logPrefix: "[calendar]" }));
   return app;
 }
