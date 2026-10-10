@@ -7,7 +7,7 @@ import { ActivityNotFoundError } from "./activities/errors";
 import { inReadSnapshot } from "./activities/store";
 import { activities, activityChangeFields, activityChanges, orgs } from "./db/schema";
 import type { ApiDeps } from "./http/routes";
-import { executiveSummaryShown, scopeOf, type ListScope } from "./list/query";
+import { containsPattern, executiveSummaryShown, ID_SEARCH_FLOOR, idSearchOf, scopeOf, type ListScope } from "./list/query";
 import { addDays, bcMidnight } from "./time";
 import { visibleSql } from "./visibility";
 
@@ -26,6 +26,24 @@ function lookAheadRule(scope: ListScope): SQL {
   return shown === null ? sql`NOT ${onlyLookAheadFields}` : sql`(NOT ${onlyLookAheadFields} OR ${shown})`;
 }
 
+/**
+ * Legacy matched the entry's stored text, which named the actor and the title (Activity.aspx.cs:1594-1625):
+ * here the actor's name and the activity's current title and summary, literally, ignoring case.
+ */
+function keywordWhere(term: string): SQL {
+  const p = containsPattern(term);
+  return sql`(${activities.title} ILIKE ${p} OR ${activities.details} ILIKE ${p} OR ${activityChanges.actorName} ILIKE ${p})`;
+}
+
+/**
+ * The activity a keyword names: a number above 10,000, bare or after "ABBR-"
+ * (CorporateCalendarUpdateWebService.asmx.cs:191-199). "COVID-19" and "2026" stay words.
+ */
+export function feedActivityIdOf(keyword: string): number | null {
+  const id = idSearchOf(keyword);
+  return id !== null && id > ID_SEARCH_FLOOR ? id : null;
+}
+
 /** Whole BC days of the entry's time, both ends included (GetCorpCalendarUpdatesBetweenDates). */
 function viewWhere(scope: ListScope, q: FeedQuery, activityId: number | null): SQL[] {
   const day = (d: string) => bcMidnight(d, scope.rules.timeZone);
@@ -41,6 +59,7 @@ function viewWhere(scope: ListScope, q: FeedQuery, activityId: number | null): S
       if (q.from) out.push(gte(activityChanges.at, day(q.from)));
       if (q.to) out.push(lt(activityChanges.at, day(addDays(q.to, 1))));
       if (q.type) out.push(eq(activityChanges.action, q.type));
+      if (q.keyword) out.push(keywordWhere(q.keyword));
       return out;
     }
   }
@@ -53,7 +72,7 @@ function viewWhere(scope: ListScope, q: FeedQuery, activityId: number | null): S
 export function readFeed(deps: ApiDeps, actor: CalendarActor, q: FeedQuery): Promise<FeedPage> {
   return inReadSnapshot(deps.db, async (tx) => {
     const scope = await scopeOf(tx, deps, actor);
-    const activityId = q.mode === "activity" ? q.activity : null;
+    const activityId = q.mode === "activity" ? q.activity : q.mode === "range" && q.keyword ? feedActivityIdOf(q.keyword) : null;
     if (activityId !== null) {
       // One activity's updates are a read of that activity: not visible is not found (spec addendum §6).
       const [seen] = await tx.select({ id: activities.id }).from(activities).where(and(eq(activities.id, activityId), visibleSql(actor)));
