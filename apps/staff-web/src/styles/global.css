@@ -911,6 +911,29 @@ body {
 .gcpe-changes h2 {
   font-size: 1rem;
 }
+.gcpe-updates-views ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+}
+.gcpe-updates-views a {
+  display: inline-block;
+  min-height: 24px;
+  padding: 0.25rem 0;
+}
+.gcpe-updates-views a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--typography-color-primary, #2d2d2d);
+  text-decoration: none;
+}
+.gcpe-updates > li {
+  overflow-wrap: anywhere;
+}
+.gcpe-updates time {
+  font-weight: 600;
+}
 
 /* Release editor: a document's heading, with its Move up / Move down / Remove buttons on the
  * same row. */

@@ -29,6 +29,9 @@ export function CalendarSection(): React.JSX.Element {
               Calendar
             </NavLink>
           </li>
+          <li>
+            <NavLink to="/calendar/updates">Updates</NavLink>
+          </li>
           {me.level >= CALENDAR_ADMIN_LEVEL && (
             <li>
               <NavLink to="/calendar/lookups">Lookups</NavLink>
