@@ -487,6 +487,9 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   that category or ministry in the filter. They show on My Watchlist.
 - **All Calendar users** — Columns: choose which show; your choice and your display are kept.
   The link in the address bar keeps your filter: bookmark it or send it to a colleague.
+- **All Calendar users** — A link from an HQ colleague opens without their Corporate Query or Look
+  Ahead filter if you can't use those. A filter choice whose lookup was since removed shows as
+  "(no longer available)"; pick another or clear it.
 - **All Calendar users** — My Queries: save the current filter, run it, rename it, move it and
   delete it. Only you see your queries. Saving works during the 4pm-5pm freeze.
 - **All Calendar users** — The star watches an activity; its tooltip lists who else watches it.
