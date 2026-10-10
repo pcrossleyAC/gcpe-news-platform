@@ -25,6 +25,9 @@ export const TEST_USERS: readonly TestUser[] = [
   { email: "cal-hq-admin@example.test", displayName: "Test Calendar HQ Administrator", roles: [], calendar: { role: "Calendar.Administrator", organizationKeys: ["gcpe-headquarters"] } },
   { email: "cal-editor@example.test", displayName: "Test Calendar Editor", roles: [], calendar: { role: "Calendar.Editor", organizationKeys: ["health"] } },
   { email: "cal-readonly@example.test", displayName: "Test Calendar Read Only", roles: [], calendar: { role: "Calendar.ReadOnly", organizationKeys: ["finance"] } },
+  { email: "cal-advanced@example.test", displayName: "Test Calendar Advanced", roles: [], calendar: { role: "Calendar.Advanced", organizationKeys: ["health"] } },
+  { email: "cal-hq-editor@example.test", displayName: "Test Calendar HQ Editor", roles: [], calendar: { role: "Calendar.Editor", organizationKeys: ["gcpe-headquarters"] } },
+  { email: "cal-hq-advanced@example.test", displayName: "Test Calendar HQ Advanced", roles: [], calendar: { role: "Calendar.Advanced", organizationKeys: ["gcpe-headquarters"] } },
 ];
 
 /** The seed CLI's prompt for one user's password, naming what the user will hold. */

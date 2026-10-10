@@ -35,6 +35,9 @@ export const TEST_USER_PASSWORDS: Record<string, string> = {
   "cal-hq-admin@example.test": "e2e-cal-hq-admin-password-1",
   "cal-editor@example.test": "e2e-cal-editor-password-1",
   "cal-readonly@example.test": "e2e-cal-readonly-password-1",
+  "cal-advanced@example.test": "e2e-cal-advanced-password-1",
+  "cal-hq-editor@example.test": "e2e-cal-hq-editor-password-1",
+  "cal-hq-advanced@example.test": "e2e-cal-hq-advanced-password-1",
 };
 
 export const EDITOR_EMAIL = "editor@example.test";
@@ -48,6 +51,9 @@ export const CAL_SYSADMIN_EMAIL = "cal-sysadmin@example.test";
 export const CAL_HQ_ADMIN_EMAIL = "cal-hq-admin@example.test";
 export const CAL_EDITOR_EMAIL = "cal-editor@example.test";
 export const CAL_READONLY_EMAIL = "cal-readonly@example.test";
+export const CAL_ADVANCED_EMAIL = "cal-advanced@example.test";
+export const CAL_HQ_EDITOR_EMAIL = "cal-hq-editor@example.test";
+export const CAL_HQ_ADVANCED_EMAIL = "cal-hq-advanced@example.test";
 
 export const SESSION_COOKIE = "gcpe_session";
 

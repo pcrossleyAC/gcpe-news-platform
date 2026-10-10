@@ -474,3 +474,28 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **System Administrator** — Undelivered events lists the 200 most recent and says so when there are
   more. Each Retry button names the receiving app and when the event was queued, for screen
   readers, and stays disabled until its retry is answered.
+
+## Phase 5d — The activity list
+
+- **All Calendar users** — Hub → Calendar opens the activity list: today onward by default, 30 at a
+  time (more load as you scroll, or with "Show more"). Filter by dates, words, HQ Tags, Issue, Date
+  Confirmed, Status, Category, Lead Ministry, Comm Contact, Representative, Initiative, Premier
+  Requested and Distribution; choose Show All, My Ministries, My Activities or My Watchlist.
+- **All Calendar users** — Type an activity number such as HLTH-12345 in "Search for" to go
+  straight to it. A bare number up to 10,000 is searched as a word.
+- **All Calendar users** — Awareness dates and the consultations ministry are hidden until you pick
+  that category or ministry in the filter. They show on My Watchlist.
+- **All Calendar users** — Columns: choose which show; your choice and your display are kept.
+  The link in the address bar keeps your filter: bookmark it or send it to a colleague.
+- **All Calendar users** — My Queries: save the current filter, run it, rename it, move it and
+  delete it. Only you see your queries. Saving works during the 4pm-5pm freeze.
+- **All Calendar users** — The star watches an activity; its tooltip lists who else watches it.
+- **All Calendar users** — Excel export downloads what the list shows (up to 10,000 activities),
+  with the old header, columns and confidentiality footer.
+- **All Calendar users** — Month and Week show the same filter as a calendar.
+- **HQ Administrator** — Tick rows and Review selected. Rows someone changed since your list loaded
+  are skipped and named. If the screen says only some were reviewed, select the rest and run it again.
+- **HQ Editor and above** — Clear LA Status for the next N days (8 by default).
+- **HQ Advanced and above** — Corporate Queries and the Look Ahead filter.
+- **HQ Advanced and above** — Searching the Executive Summary only finds it for users who can see
+  that field.
