@@ -13,6 +13,7 @@ import { homedir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { buildReportWorker } from "./build-report-worker.mjs";
 import { runBuild as runStaffWebBuild } from "./build-staff-web.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -132,6 +133,11 @@ async function runBuild() {
   console.log(`[build-siteground] stack.js: ${(bundleBytes / 1024 / 1024).toFixed(2)} MiB`);
   writeFileSync(metafilePath, JSON.stringify(result.metafile));
   console.log(`[build-siteground] esbuild metafile written to ${metafilePath} (NOT inside dist/siteground)`);
+
+  // The Calendar's reports render in a worker thread, which needs a file of its own beside stack.js,
+  // and BC Sans beside that (apps/calendar/src/reports/render/assets.ts).
+  console.log("[build-siteground] bundling the report worker and copying BC Sans …");
+  await buildReportWorker(outDir);
 
   console.log("[build-siteground] copying migrations …");
   for (const app of APPS) {
