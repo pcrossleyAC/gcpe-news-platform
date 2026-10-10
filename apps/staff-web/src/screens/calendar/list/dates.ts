@@ -19,6 +19,21 @@ export function addDaysTo(date: string, n: number): string {
 /** 0 is Sunday. */
 export const weekdayOf = (date: string) => new Date(`${date}T00:00:00Z`).getUTCDay();
 
+/** A real calendar date, not just three number-shaped groups: the shape regex alone lets
+ * through `2026-13-99` (an invalid month/day, `Date` silently gives `Invalid Date`) and
+ * `2026-02-30` (a valid-looking but non-existent day, `Date` silently rolls it over to March 2).
+ * Round-tripping through `Date` and comparing catches both; the year bound keeps a wildly
+ * out-of-range but otherwise well-formed value (`9999-99-99` fails this too, `0001-01-01` would
+ * pass the round trip but not the bound) from reaching calendar arithmetic that assumes a
+ * plausible year. */
+export function isValidBcDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const year = Number(value.slice(0, 4));
+  if (year < 1900 || year > 2199) return false;
+  const d = new Date(`${value}T00:00:00Z`);
+  return !isNaN(d.getTime()) && d.toISOString().slice(0, 10) === value;
+}
+
 const lastOfMonth = (first: string) => addDaysTo(shiftMonth(first, 1), -1);
 
 /** The first of the month `delta` months from `anchor`'s. */

@@ -10,6 +10,7 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 const DAYS = [["Sun", "Sunday"], ["Mon", "Monday"], ["Tue", "Tuesday"], ["Wed", "Wednesday"], ["Thu", "Thursday"], ["Fri", "Friday"], ["Sat", "Saturday"]] as const;
 const VIEW_LABELS: Record<ListView, string> = { list: "List", month: "Month", week: "Week" };
 const shortMonth = (d: string) => MONTHS[Number(d.slice(5, 7)) - 1]!.slice(0, 3);
+const fullDate = (d: string) => `${MONTHS[Number(d.slice(5, 7)) - 1]} ${Number(d.slice(8))}`;
 
 /** List, Month or Week (replacing legacy's FullCalendar toggle, Default.aspx:191-262). */
 export function ViewSwitch({ view, onChange }: { view: ListView; onChange: (v: ListView) => void }): React.JSX.Element {
@@ -92,16 +93,19 @@ export function CalendarGrid({ query, view, anchor, timeZone, onAnchor }: { quer
         <tbody>
           {weeks.map((week) => (
             <tr key={week[0]}>
-              {week.map((d) => (
-                <td key={d} data-date={d} className={view === "month" && d.slice(0, 7) !== anchor.slice(0, 7) ? "gcpe-other-month" : undefined}>
-                  <span className="gcpe-day">{view === "month" ? Number(d.slice(8)) : `${shortMonth(d)} ${Number(d.slice(8))}`}</span>
-                  <ul>
-                    {(byDay.get(d) ?? []).map((i) => (
-                      <li key={i.id}>{itemText(i, d)}</li>
-                    ))}
-                  </ul>
-                </td>
-              ))}
+              {week.map((d) => {
+                const otherMonth = view === "month" && d.slice(0, 7) !== anchor.slice(0, 7);
+                return (
+                  <td key={d} data-date={d} className={otherMonth ? "gcpe-other-month" : undefined} aria-label={otherMonth ? fullDate(d) : undefined}>
+                    <span className="gcpe-day">{view === "month" ? Number(d.slice(8)) : `${shortMonth(d)} ${Number(d.slice(8))}`}</span>
+                    <ul>
+                      {(byDay.get(d) ?? []).map((i) => (
+                        <li key={i.id}>{itemText(i, d)}</li>
+                      ))}
+                    </ul>
+                  </td>
+                );
+              })}
             </tr>
           ))}
         </tbody>

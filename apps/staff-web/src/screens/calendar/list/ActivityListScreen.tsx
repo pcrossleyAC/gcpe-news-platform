@@ -9,7 +9,7 @@ import { listApi } from "./api";
 import { minId, type TableTools } from "./cells";
 import { ColumnChooser } from "./ColumnChooser";
 import { CalendarGrid, ViewSwitch } from "./CalendarGrid";
-import { todayIn } from "./dates";
+import { isValidBcDate, todayIn } from "./dates";
 import { FilterPanel } from "./FilterPanel";
 import { ClearLaStatus, CorporateQueries, ExportButton, LookAheadFilterChoice, ReviewSelected } from "./HqTools";
 import { MyQueries } from "./MyQueries";
@@ -158,7 +158,7 @@ export function ActivityListScreen(): React.JSX.Element {
         <CalendarGrid
           query={query}
           view={view}
-          anchor={/^\d{4}-\d{2}-\d{2}$/.test(params.get("on") ?? "") ? params.get("on")! : todayIn(config.timeZone)}
+          anchor={isValidBcDate(params.get("on") ?? "") ? params.get("on")! : todayIn(config.timeZone)}
           timeZone={config.timeZone}
           onAnchor={(d) => setParam("on", d)}
         />

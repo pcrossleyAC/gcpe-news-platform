@@ -1,8 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { monthRange, shiftMonth, weekRange } from "./dates";
-import { renderList, stubFetch, type Call } from "./fixtures";
+import { monthRange, shiftMonth, todayIn, weekRange } from "./dates";
+import { CONFIG, renderList, stubFetch, type Call } from "./fixtures";
+
+const todayHeading = () => {
+  const today = todayIn(CONFIG.timeZone);
+  return new Intl.DateTimeFormat("en-US", { timeZone: "UTC", month: "long", year: "numeric" }).format(new Date(`${today}T00:00:00Z`));
+};
 
 const ITEM = { id: 20001, title: "Sample listed", startAt: "2026-11-10T17:00:00.000Z", endAt: "2026-11-12T18:00:00.000Z", isAllDay: false, isConfirmed: true, isConfidential: false, ministryAbbreviation: "HLTH" };
 const rangeOf = (url: string) => {
@@ -58,5 +63,24 @@ describe("the month and week views (spec addendum §8.1)", () => {
     expect(screen.getByRole("button", { name: "Month" })).toHaveAttribute("aria-pressed", "true");
     await user.click(screen.getByRole("button", { name: "List" }));
     expect(await screen.findByText("Sample listed")).toBeInTheDocument();
+  });
+
+  it("a malformed, out-of-range or non-existent `on` falls back to today's month, not a crash", async () => {
+    const heading = todayHeading();
+    for (const on of ["9999-99-99", "0000-00-00", "2026-13-99", "2026-02-30"]) {
+      stubFetch([], { calendar: { items: [], truncated: false } });
+      renderList(`/calendar?view=month&on=${on}`);
+      expect(await screen.findByRole("heading", { level: 2, name: heading })).toBeInTheDocument();
+      cleanup();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("labels an other-month cell with its full date", async () => {
+    stubFetch([], { calendar: { items: [], truncated: false } });
+    renderList("/calendar?view=month&on=2026-11-15");
+    await screen.findByRole("heading", { level: 2, name: "November 2026" });
+    expect(document.querySelector('td[data-date="2026-12-01"]')).toHaveAttribute("aria-label", "December 1");
+    expect(document.querySelector('td[data-date="2026-11-10"]')).not.toHaveAttribute("aria-label");
   });
 });

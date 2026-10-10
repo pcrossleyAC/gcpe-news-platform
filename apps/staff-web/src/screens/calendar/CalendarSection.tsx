@@ -2,6 +2,7 @@ import { NavLink, Outlet, useOutletContext } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { CALENDAR_ADMIN_LEVEL, CALENDAR_SYSADMIN_LEVEL, type CalendarMe } from "./access";
+import { CalendarErrorBoundary } from "./ErrorBoundary";
 import { useCalendarMe } from "./useCalendarMe";
 
 /** `/hub/calendar/*`: the Calendar's sub-nav and its screens. Each screen owns its h1 and title,
@@ -49,7 +50,9 @@ export function CalendarSection(): React.JSX.Element {
           )}
         </ul>
       </nav>
-      <Outlet context={me} />
+      <CalendarErrorBoundary>
+        <Outlet context={me} />
+      </CalendarErrorBoundary>
     </div>
   );
 }
