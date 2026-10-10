@@ -33,18 +33,31 @@ export function fileIdOf(req: Request<Params>): number {
   return Number(req.params.fileId);
 }
 
-// RFC 5987's attr-char excludes a few characters encodeURIComponent leaves unescaped (the
-// percent sign's own delimiters don't apply, but a bare quote or apostrophe would read as the
-// ext-value's own charset/language delimiter): percent-encode those too.
+// Printable ASCII only. Quotes and backslashes would need escaping inside filename='s quoted
+// string, and a literal percent sign would print as if it were already part of filename*'s
+// percent-encoding (RFC 6266 Appendix D); every control character and anything outside ASCII is
+// dropped along with them, so the result is always safe to quote verbatim.
+const asciiOnly = (s: string) => s.replace(/[^\x20-\x7e]/g, "").replace(/["\\%]/g, "");
+
+// RFC 5987's attr-char leaves out "'", "(", ")" and "*", even though encodeURIComponent does not
+// escape them. "'" specifically would collide with the ext-value's own charset'language'value
+// delimiters; "(", ")" and "*" aren't delimiters, they simply aren't attr-char. Percent-encode
+// all four so the value can only be read as the grammar intends.
 const NOT_ATTR_CHAR = /['()*]/g;
 const pctEncode = (ch: string) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`;
 
-// RFC 6266's filename* carries the full name, percent-encoded as UTF-8; the quoted filename=
-// fallback is built by hand (never left to content-disposition's own heuristics, which only add
-// filename* for some non-Latin-1 names) so it is always plain ASCII, with no quote, backslash,
-// CR, LF or other control character that could break or extend the header.
+/**
+ * RFC 6266's filename* carries the full name, percent-encoded as UTF-8; the quoted filename=
+ * fallback is built by hand (never left to content-disposition's own heuristics, which only add
+ * filename* for some non-Latin-1 names) so it is always plain ASCII. When sanitising a name
+ * leaves nothing of its own — empty, whitespace only, or just the extension (an all-CJK or
+ * all-emoji name keeps only ".pdf") — "file" stands in for the name, extension kept.
+ */
 function attachmentDisposition(fileName: string): string {
-  const fallback = fileName.replace(/[^\x20-\x7e]/g, "").replace(/["\\]/g, "") || "file";
+  const dot = fileName.lastIndexOf(".");
+  const ext = dot > 0 && fileName.length - dot <= 11 ? asciiOnly(fileName.slice(dot)) : "";
+  const base = asciiOnly(fileName).trim();
+  const fallback = base === "" || base === ext ? `file${ext}` : base;
   const extValue = encodeURIComponent(fileName).replace(NOT_ATTR_CHAR, pctEncode);
   return `attachment; filename="${fallback}"; filename*=UTF-8''${extValue}`;
 }

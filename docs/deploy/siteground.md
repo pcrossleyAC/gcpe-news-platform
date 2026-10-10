@@ -968,14 +968,15 @@ Nothing to configure on boxs.ca: `CALENDAR_STORAGE_DIR` defaults to `calendar-fi
 `DATA_DIR` (see "Persistent data" above). Include `~/gcpe-data/calendar-files` in backups, beside
 the Calendar database. Set `CALENDAR_STORAGE_DIR` explicitly only to move it elsewhere.
 
-**Hand check, Paul: the nginx request body limit.** An upload can be up to 25 MiB
-(`ATTACHMENT_MAX_BYTES`) plus multipart/header overhead. As with NRMS's media uploads (see
-"Troubleshooting" below), SiteGround's nginx sits in front of the app with its own upload size
-limit — commonly 1 MB by default — which this stack doesn't control and which refuses an
-oversized request before it ever reaches `/calendar/api/activities/*/files`. Confirm (Site Tools
-→ Devs, or ask SiteGround support) that nginx's limit is raised to comfortably clear 25 MiB for
-that path before relying on Calendar attachments in production; an HTML `413` instead of the
-Calendar's own JSON error means it hasn't been.
+**Hand check, Paul: the nginx request body limit.** An upload is a raw request body (no
+multipart), up to 25 MiB (`ATTACHMENT_MAX_BYTES`) plus header overhead. As with NRMS's media
+uploads (see "Troubleshooting" below), SiteGround's nginx sits in front of the app with its own
+upload size limit, which this stack doesn't control and which refuses an oversized request before
+it ever reaches `/calendar/api/activities/*/files`. Plain nginx's default is 1 MB; SiteGround's
+actual limit on boxs.ca (our test environment — not production) is unverified. Confirm it (Site
+Tools → Devs, or ask SiteGround support) and raise it to comfortably clear 25 MiB for that path
+before testing Calendar attachment uploads there; an HTML `413` instead of the Calendar's own
+JSON error means it hasn't been raised.
 
 ## Troubleshooting
 

@@ -41,6 +41,16 @@ describe("attachment downloads: visibility decides, not the file id (spec addend
       });
   const createAs = async (who: Who, over = {}) => (await call(app, "post", "/api/activities", w.as[who].cookie, validInput(w, over))).body.id as number;
   const fileOn = async (id: number, name = "Sample report.pdf") => (await upload("hqAdmin", id, name)).find((f) => f.fileName === name)!.id;
+  let rawRowSeq = 0;
+  /** A row inserted directly, bypassing attachmentName, so the header sees a raw, unsanitised name. */
+  const rawRow = async (id: number, fileName: string) => {
+    const key = `activities/${id}/00000000000000${(++rawRowSeq).toString(16).padStart(2, "0")}-x.bin`;
+    await store.put(key, PDF, "application/pdf");
+    const [row] = await tdb.db.insert(activityFiles).values({ activityId: id, fileName, contentType: "application/pdf", length: PDF.length, sha256: "0".repeat(64), storageKey: key }).returning();
+    return row!.id as number;
+  };
+  const fallbackOf = (cd: string) => /filename="([^"]*)"/.exec(cd)![1]!;
+  const extValueOf = (cd: string) => /filename\*=UTF-8''([^;]*)/.exec(cd)![1]!;
 
   beforeAll(async () => {
     dir = await mkdtemp(join(tmpdir(), "calendar-files-"));
@@ -81,6 +91,43 @@ describe("attachment downloads: visibility decides, not the file id (spec addend
     expect(cd).toContain("filename*=UTF-8''R%C3%A9sum%C3%A9%20%22final%22.pdf");
     expect(cd).not.toMatch(/[\r\n]/);
     expect((res.body as Buffer).equals(PDF)).toBe(true);
+  });
+
+  it("percent-encodes '()* in filename*, sanitises the ASCII fallback, and falls back to \"file\" when nothing is left", async () => {
+    const id = await createAs("editor");
+
+    // '()* are left unescaped by encodeURIComponent but aren't RFC 5987 attr-char.
+    const quirky = await fileOn(id, "it's (draft) *v2*.pdf");
+    const cdQuirky = (await download("editor", id, quirky)).headers["content-disposition"] as string;
+    expect(extValueOf(cdQuirky)).toBe("it%27s%20%28draft%29%20%2Av2%2A.pdf");
+    expect(fallbackOf(cdQuirky)).toBe("it's (draft) *v2*.pdf");
+
+    // A raw row (as an import could write) with a quote, a backslash and a literal percent sign:
+    // the fallback must contain none of them, and no %.
+    const hostile = await rawRow(id, 'a"b\\c%41.pdf');
+    const cdHostile = (await download("editor", id, hostile)).headers["content-disposition"] as string;
+    const fallbackHostile = fallbackOf(cdHostile);
+    expect(fallbackHostile).not.toMatch(/["\\%]/);
+    expect(fallbackHostile.length).toBeGreaterThan(0);
+
+    // An all-CJK name with a real extension: sanitising leaves only ".pdf", which reads as no
+    // name at all, so "file" stands in rather than a fallback that's just an extension.
+    const cjkWithExt = await fileOn(id, "日本語の資料.pdf");
+    const cdCjkExt = (await download("editor", id, cjkWithExt)).headers["content-disposition"] as string;
+    expect(fallbackOf(cdCjkExt)).toBe("file.pdf");
+
+    // An all-CJK name with no extension at all: sanitising leaves nothing, not even whitespace.
+    const cjkNoExt = await rawRow(id, "日本語");
+    const cdCjkNoExt = (await download("editor", id, cjkNoExt)).headers["content-disposition"] as string;
+    expect(fallbackOf(cdCjkNoExt)).toBe("file");
+
+    // A name that sanitises to whitespace only (space is printable ASCII, so it survives the
+    // first pass) must not leave a blank quoted string either.
+    const blankish = await rawRow(id, "日 本");
+    const cdBlankish = (await download("editor", id, blankish)).headers["content-disposition"] as string;
+    expect(fallbackOf(cdBlankish)).toBe("file");
+
+    for (const cd of [cdQuirky, cdHostile, cdCjkExt, cdCjkNoExt, cdBlankish]) expect(cd).not.toMatch(/[\r\n]/);
   });
 
   it("an imported file of a type outside the list downloads as a plain file, never as a page", async () => {

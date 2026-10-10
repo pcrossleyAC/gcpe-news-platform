@@ -45,11 +45,11 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **Saved queries:** call `migrateLegacySavedFilters` (`apps/calendar/src/list/legacy-filters.ts`) with resolvers backed by Core's organizations and `user_legacy_ids`, and put its report in the import report.
 - **List preferences:** for each imported user, write `user_profiles.list_display` with `legacyDisplay(FilterDisplayValue)` and `hidden_columns` with `legacyHiddenColumns(HiddenColumns)`, both together: a null `list_display` means no choice yet.
 - **Attachments:** write each legacy file through the Calendar's `ObjectStore` under `activities/<id>/<16 hex>-<safeFileName>` (`randomFileKey`), with the name through `attachmentName` (`apps/calendar/src/activities/files.ts`). Check legacy's MD5 against the bytes first. Store the content type from `ATTACHMENT_TYPES` when `checkAttachment` accepts the file; otherwise keep legacy's type, which `downloadContentType` serves as `application/octet-stream`. An import may exceed 50 files on an activity; the cap applies only to new uploads.
+- **No sweeper for orphaned attachment bytes.** When a Calendar attachment is replaced or removed and the matching object-store delete then fails after the database change has committed, the bytes are left behind; today that failure is only logged, by activity id and file id (`deleteQuietly`, `apps/calendar/src/activities/files.ts` — never a name or storage key). Nothing yet walks the store to find and remove bytes with no surviving row.
 
 ## Platform hardening (no phase yet)
 
 - **`apps/nrms`'s site-files and page-images upload routes still take the file name in `?name=`**, so the name lands in every proxy's access logs, the same leak the Calendar's upload route carried until it moved to the `X-GCPE-File-Name` header (5e-1). Move NRMS's two routes to a header the same way.
-- **No sweeper for orphaned attachment bytes.** When a Calendar attachment is replaced or removed and the matching object-store delete then fails after the database change has committed, the bytes are left behind; today that failure is only logged, by activity id and file id (`deleteQuietly`, `apps/calendar/src/activities/files.ts` — never a name or storage key). Nothing yet walks the store to find and remove bytes with no surviving row.
 
 ## Entra sign-in (later phase)
 

@@ -1182,9 +1182,10 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
   let store: ObjectStore;
   const upload = (who: Who, id: number, name: string, bytes: Buffer = PDF, on: express.Express = app) =>
     request(on)
-      .post(`/api/activities/${id}/files?name=${encodeURIComponent(name)}`)
+      .post(`/api/activities/${id}/files`)
       .set("cookie", w.as[who].cookie)
       .set("x-gcpe-request", "1")
+      .set("x-gcpe-file-name", encodeURIComponent(name))
       .set("content-type", "application/octet-stream")
       .send(bytes);
   const remove = (who: Who, id: number, fileId: number | string) => call(app, "delete", `/api/activities/${id}/files/${fileId}`, w.as[who].cookie);
@@ -1600,7 +1601,7 @@ describe("attachment downloads: visibility decides, not the file id (spec addend
   let dir: string;
   let store: ObjectStore;
   const upload = async (who: Who, id: number, name: string) =>
-    (await request(app).post(`/api/activities/${id}/files?name=${encodeURIComponent(name)}`).set("cookie", w.as[who].cookie).set("x-gcpe-request", "1").set("content-type", "application/pdf").send(PDF)).body as { id: number; fileName: string }[];
+    (await request(app).post(`/api/activities/${id}/files`).set("cookie", w.as[who].cookie).set("x-gcpe-request", "1").set("x-gcpe-file-name", encodeURIComponent(name)).set("content-type", "application/pdf").send(PDF)).body as { id: number; fileName: string }[];
   const download = (who: Who, id: number | string, fileId: number | string) =>
     request(app)
       .get(`/api/activities/${id}/files/${fileId}`)
