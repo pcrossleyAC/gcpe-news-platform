@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { editorRulesOf } from "@gcpe/calendar-contract";
+import { editorOptions } from "../activities/editor-options";
 import { can } from "../capabilities";
 import { freezeStateAt } from "../freeze";
 import { dbNow } from "../time";
@@ -37,6 +38,14 @@ export function configRoutes(deps: ApiDeps): Router {
           clearLaStatus: can.clearLaStatus(actor),
         },
       });
+    } catch (e) {
+      next(e);
+    }
+  });
+  // Any Calendar role: a read-only viewer still needs the names of the values an activity holds.
+  r.get("/editor-options", async (_req, res, next) => {
+    try {
+      res.json(await editorOptions(deps.db));
     } catch (e) {
       next(e);
     }
