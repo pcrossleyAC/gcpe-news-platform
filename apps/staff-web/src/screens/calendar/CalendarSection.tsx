@@ -22,7 +22,7 @@ export function CalendarSection(): React.JSX.Element {
   if (!me) return <p>Loading…</p>;
   return (
     <div className="gcpe-calendar">
-      <nav aria-label="Calendar sections">
+      <nav aria-label="Calendar sections" className="gcpe-section-tabs">
         <ul>
           <li>
             <NavLink to="/calendar" end>

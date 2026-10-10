@@ -56,7 +56,14 @@ export function AppShell(): React.JSX.Element {
   return (
     <AnnouncerProvider>
       <div className="gcpe-shell">
-        <Header title="GCPE News — Staff" />
+        <Header title="GCPE News — Staff">
+          <div className="gcpe-shell__user">
+            {session.user && <span>Signed in as {session.user.name}</span>}
+            <Button size="small" variant="secondary" onPress={onSignOut}>
+              Sign out
+            </Button>
+          </div>
+        </Header>
         <nav className="gcpe-shell__nav" aria-label="Sections">
           <ul>
             {NAV_ITEMS.filter((item) => item.show(session)).map((item) => (
@@ -68,8 +75,6 @@ export function AppShell(): React.JSX.Element {
         </nav>
         <main className="gcpe-shell__main" ref={mainRef}>
           {/* Each routed screen owns its own single h1 (constraints.md); the shell itself has none. */}
-          {session.user && <p>Signed in as {session.user.name}</p>}
-          <Button onPress={onSignOut}>Sign out</Button>
           {/* Fix round 1, finding 3: persistent — not closeable — since it stays true for the
            * whole session; the only real fix is updating the browser. */}
           {tzMismatch && (
