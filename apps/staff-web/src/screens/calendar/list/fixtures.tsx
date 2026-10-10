@@ -14,7 +14,7 @@ export const HQ_ADMIN_ME = { userId: "u9", displayName: "Sample HQ Admin", role:
 export const CONFIG: CalendarConfigView = {
   timeZone: "America/Vancouver",
   freeze: { start: "16:00", end: "17:00", timeZone: "America/Vancouver", active: false, appliesToYou: false, message: "You cannot make content changes between 4pm-5pm. Contact the Corp Cal Manager to have emerging or urgent updates made for you during this time." },
-  list: { markup: false, corporateQueries: false, lookAheadFilter: false, reviewSelected: false, clearLaStatus: false },
+  list: { markup: false, corporateQueries: false, lookAheadFilter: false, reviewSelected: false, clearLaStatus: false, execLookAhead: false },
   lookAheadFieldset: false,
   showRecordsSection: false,
   rules: {
@@ -37,7 +37,7 @@ export const CONFIG: CalendarConfigView = {
 };
 export const HQ_ADMIN_CONFIG: CalendarConfigView = {
   ...CONFIG,
-  list: { markup: true, corporateQueries: true, lookAheadFilter: true, reviewSelected: true, clearLaStatus: true },
+  list: { markup: true, corporateQueries: true, lookAheadFilter: true, reviewSelected: true, clearLaStatus: true, execLookAhead: true },
   lookAheadFieldset: true,
   editor: { create: true, relaxRequired: true, useHqPlaceholder: true },
 };
