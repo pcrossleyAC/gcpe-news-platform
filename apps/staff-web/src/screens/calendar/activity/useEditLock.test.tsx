@@ -1,0 +1,121 @@
+import { act, cleanup, renderHook } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { ActivityView } from "@gcpe/calendar-contract";
+import { jsonResponse } from "../../../../test/jsonResponse";
+import { HEARTBEAT_MS, IDLE_MS, POLL_MS, useEditLock } from "./useEditLock";
+
+type Call = { url: string; init?: RequestInit };
+const LOCK = "/calendar/api/activities/7/lock";
+const RELEASE = "/calendar/api/activities/7/lock/release";
+const lockCalls = (calls: Call[]) => calls.filter((c) => c.url === LOCK);
+const ok = () => jsonResponse(200, { holderName: "Robin Staff", since: "2026-11-03T18:00:00.000Z", mine: true, tabId: "x" });
+const lockedBy = (name: string) => jsonResponse(423, { code: "locked", error: `${name} is editing this activity (since 11:00)`, holder: { displayName: name, since: "2026-11-03T18:00:00.000Z" } });
+function stub(calls: Call[], answer: (url: string, init?: RequestInit) => Response) {
+  vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+    calls.push({ url, init });
+    return answer(url, init);
+  }));
+}
+const mount = (o: Partial<Parameters<typeof useEditLock>[0]> = {}) =>
+  renderHook(() => useEditLock({ activityId: 7, initial: null, enabled: true, reload: async () => null, ...o }));
+
+describe("useEditLock (spec addendum §7.5)", () => {
+  beforeEach(() => vi.useFakeTimers({ now: new Date("2026-11-03T18:00:00Z") }));
+  afterEach(() => {
+    cleanup();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+  });
+
+  it("takes the lock on the first change, then sends a heartbeat at most once a minute", async () => {
+    const calls: Call[] = [];
+    stub(calls, ok);
+    const { result } = mount();
+    expect(result.current.state).toEqual({ kind: "none" });
+    await act(async () => void expect(await result.current.touch()).toBe(true));
+    expect(result.current.state).toEqual({ kind: "mine" });
+    await act(async () => void (await result.current.touch()));
+    expect(lockCalls(calls)).toHaveLength(1);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      await result.current.touch();
+    });
+    expect(lockCalls(calls)).toHaveLength(2);
+    expect(JSON.parse(String(lockCalls(calls)[0]!.init!.body))).toEqual({ tabId: result.current.tabId });
+  });
+
+  it("someone else's lock: refuses, names them, and opens without a reload once it has gone", async () => {
+    const calls: Call[] = [];
+    stub(calls, () => lockedBy("Sample Admin"));
+    let lock: ActivityView["lock"] = { holderName: "Sample Admin", since: "2026-11-03T17:55:00.000Z", mine: false, tabId: null };
+    const reload = vi.fn(async () => ({ lock }) as ActivityView);
+    const { result } = mount({ initial: lock, reload });
+    expect(result.current.state).toEqual({ kind: "other", holderName: "Sample Admin", since: "2026-11-03T17:55:00.000Z" });
+    await act(async () => void expect(await result.current.touch()).toBe(false));
+    expect(lockCalls(calls)).toHaveLength(0);
+    lock = null;
+    await act(async () => void (await vi.advanceTimersByTimeAsync(POLL_MS)));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toEqual({ kind: "none" });
+  });
+
+  it("someone taking it first: the 423 names them", async () => {
+    stub([], () => lockedBy("Sample Admin"));
+    const { result } = mount();
+    await act(async () => void expect(await result.current.touch()).toBe(false));
+    expect(result.current.state).toMatchObject({ kind: "other", holderName: "Sample Admin" });
+  });
+
+  it("lapses after 15 minutes without input; the next change takes it again", async () => {
+    const calls: Call[] = [];
+    stub(calls, ok);
+    const { result } = mount();
+    await act(async () => void (await result.current.touch()));
+    await act(async () => void (await vi.advanceTimersByTimeAsync(IDLE_MS)));
+    expect(result.current.state).toEqual({ kind: "lapsed" });
+    await act(async () => void expect(await result.current.touch()).toBe(true));
+    expect(result.current.state).toEqual({ kind: "mine" });
+    expect(lockCalls(calls)).toHaveLength(2);
+  });
+
+  it("the same user's other tab: Continue here moves the lock with takeOver", async () => {
+    const calls: Call[] = [];
+    stub(calls, ok);
+    const { result } = mount({ initial: { holderName: "Robin Staff", since: "2026-11-03T17:55:00.000Z", mine: true, tabId: "another-tab" } });
+    expect(result.current.state).toEqual({ kind: "elsewhere" });
+    await act(async () => void (await result.current.continueHere()));
+    expect(JSON.parse(String(lockCalls(calls)[0]!.init!.body))).toEqual({ tabId: result.current.tabId, takeOver: true });
+    expect(result.current.state).toEqual({ kind: "mine" });
+  });
+
+  it("releases with keepalive and the CSRF header when the tab goes, and on leaving the page (C169)", async () => {
+    const calls: Call[] = [];
+    stub(calls, (url) => (url === RELEASE ? new Response(null, { status: 204 }) : ok()));
+    const { result, unmount } = mount();
+    await act(async () => void (await result.current.touch()));
+    act(() => void window.dispatchEvent(new Event("pagehide")));
+    const release = calls.find((c) => c.url === RELEASE)!;
+    expect(release.init).toMatchObject({ method: "POST", keepalive: true });
+    expect(new Headers(release.init!.headers).get("X-GCPE-Request")).toBe("1");
+    expect(JSON.parse(String(release.init!.body))).toEqual({ tabId: result.current.tabId });
+    await act(async () => void (await result.current.touch()));
+    unmount();
+    expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(2);
+  });
+
+  it("a new activity has no lock to take", async () => {
+    const calls: Call[] = [];
+    stub(calls, ok);
+    const { result } = mount({ activityId: null });
+    await act(async () => void expect(await result.current.touch()).toBe(true));
+    expect(calls).toEqual([]);
+  });
+
+  it("the freeze is a message to show, not someone's lock", async () => {
+    stub([], () => jsonResponse(423, { code: "freeze", error: "You cannot make content changes between 4pm-5pm." }));
+    const { result } = mount();
+    await act(async () => void expect(await result.current.touch()).toBe(false));
+    expect(result.current.state).toEqual({ kind: "none" });
+    expect(result.current.problem).toBe("You cannot make content changes between 4pm-5pm.");
+  });
+});

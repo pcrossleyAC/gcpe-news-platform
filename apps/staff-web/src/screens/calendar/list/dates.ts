@@ -54,3 +54,11 @@ export function weekRange(anchor: string): { start: string; end: string } {
   const start = addDaysTo(anchor, -weekdayOf(anchor));
   return { start, end: addDaysTo(start, 6) };
 }
+
+/** "9:00 AM" in the tenant's zone, with a plain space: formatToParts keeps ICU's narrow no-break space out. */
+export function timeText(iso: string, timeZone: string): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat("en-US", { timeZone, hour: "numeric", minute: "2-digit", hour12: true }).formatToParts(new Date(iso)).map((x) => [x.type, x.value]),
+  );
+  return `${p.hour}:${p.minute} ${p.dayPeriod}`;
+}
