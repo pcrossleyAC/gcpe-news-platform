@@ -155,16 +155,16 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           </button>
         )}
 
-        <label>
+        <label className="gcpe-check">
           <input type="checkbox" checked={form.toSubscribers} disabled={readOnly || !rules.nodAllowed} onChange={(e) => setForm((f) => ({ ...f, toSubscribers: e.target.checked }))} />
           Send to News On Demand subscribers
         </label>
         {!rules.nodAllowed && <p>Not available for this release type.</p>}
 
         {rules.mediaListsAllowed && (
-          <fieldset>
+          <fieldset className="gcpe-options">
             <legend>Media distribution lists</legend>
-            <label>
+            <label className="gcpe-options__wide">
               <input type="checkbox" checked={form.toMediaLists} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, toMediaLists: e.target.checked }))} />
               Send to media distribution lists
             </label>

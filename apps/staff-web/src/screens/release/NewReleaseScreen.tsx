@@ -214,49 +214,49 @@ export function NewReleaseScreen(): React.JSX.Element {
         <InlineAlert variant="danger" role="alert" description={problems.general.join(" ")} />
       )}
 
-      <Form onSubmit={onSubmit} validationBehavior="aria">
-        <label>
-          Type
-          <select value={type} onChange={(e) => onTypeChange(e.target.value as CreatableType)}>
-            {CREATABLE_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {TYPE_LABEL[t]}
-              </option>
-            ))}
-          </select>
-        </label>
+      <Form onSubmit={onSubmit} validationBehavior="aria" className="gcpe-stack">
+        <div className="gcpe-field-row">
+          <label className="gcpe-field">
+            Type
+            <select value={type} onChange={(e) => onTypeChange(e.target.value as CreatableType)}>
+              {CREATABLE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+          </label>
 
+          <label className="gcpe-field">
+            Page title
+            <select value={pageTitle} onChange={(e) => onPageTitleChange(e.target.value)}>
+              <option value="">(choose one)</option>
+              {pageTitleOptions.map((pt) => (
+                <option key={pt.pageTitle} value={pt.pageTitle}>
+                  {pt.pageTitle}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="gcpe-field">
+            Layout
+            <select value={layout} onChange={(e) => setLayout(e.target.value as Layout)}>
+              {LAYOUTS.map((l) => (
+                <option key={l} value={l}>
+                  {l === "formal" ? "Formal" : "Informal"}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         {pageTypesError && <InlineAlert variant="danger" role="alert" description={pageTypesError} />}
         {!pageTypesError && pageTypesLoaded && pageTypes.length === 0 && (
           <InlineAlert variant="warning" role="alert" description="No page types are set up — run the importer or add them." />
         )}
-
-        <label>
-          Page title
-          <select value={pageTitle} onChange={(e) => onPageTitleChange(e.target.value)}>
-            <option value="">(choose one)</option>
-            {pageTitleOptions.map((pt) => (
-              <option key={pt.pageTitle} value={pt.pageTitle}>
-                {pt.pageTitle}
-              </option>
-            ))}
-          </select>
-        </label>
         {fieldProblem("pageTitle") && <p role="alert">{fieldProblem("pageTitle")}</p>}
 
-        <label>
-          Layout
-          <select value={layout} onChange={(e) => setLayout(e.target.value as Layout)}>
-            {LAYOUTS.map((l) => (
-              <option key={l} value={l}>
-                {l === "formal" ? "Formal" : "Informal"}
-              </option>
-            ))}
-          </select>
-        </label>
-
         {rules.pageImageAllowed && (
-          <fieldset>
+          <fieldset className="gcpe-options">
             <legend>Page image</legend>
             <label>
               <input type="radio" name="pageImage" checked={pageImageId === null} onChange={() => setPageImageId(null)} />
@@ -275,7 +275,7 @@ export function NewReleaseScreen(): React.JSX.Element {
 
         <TextField label="Headline" value={headline} onChange={setHeadline} isRequired errorMessage={fieldProblem("headline")} isInvalid={!!fieldProblem("headline")} />
 
-        <fieldset>
+        <fieldset className="gcpe-options">
           <legend>Ministries</legend>
           {categories.ministries.map((m) => (
             <label key={m.key}>
@@ -287,7 +287,7 @@ export function NewReleaseScreen(): React.JSX.Element {
         {fieldProblem("ministries") && <p role="alert">{fieldProblem("ministries")}</p>}
 
         {ministries.length > 1 && (
-          <label>
+          <label className="gcpe-field">
             Lead ministry
             <select value={leadMinistryKey ?? ""} onChange={(e) => setLeadMinistryKey(e.target.value || null)}>
               <option value="">(none)</option>
@@ -302,7 +302,7 @@ export function NewReleaseScreen(): React.JSX.Element {
 
         {rules.categoriesBeyondMinistries && (
           <>
-            <fieldset>
+            <fieldset className="gcpe-options">
               <legend>Sectors</legend>
               {categories.sectors.map((s) => (
                 <label key={s.key}>
@@ -311,7 +311,7 @@ export function NewReleaseScreen(): React.JSX.Element {
                 </label>
               ))}
             </fieldset>
-            <fieldset>
+            <fieldset className="gcpe-options">
               <legend>Themes</legend>
               {categories.themes.map((t) => (
                 <label key={t.key}>
@@ -320,7 +320,7 @@ export function NewReleaseScreen(): React.JSX.Element {
                 </label>
               ))}
             </fieldset>
-            <fieldset>
+            <fieldset className="gcpe-options">
               <legend>Tags</legend>
               {categories.tags.map((t) => (
                 <label key={t.key}>
@@ -333,7 +333,7 @@ export function NewReleaseScreen(): React.JSX.Element {
         )}
 
         {rules.mediaListsAllowed && (
-          <fieldset>
+          <fieldset className="gcpe-options">
             <legend>
               Media distribution lists{rules.mediaListRequired ? " (required)" : ""}
             </legend>

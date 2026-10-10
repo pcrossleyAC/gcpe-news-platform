@@ -35,7 +35,7 @@ describe("accessibility (constraints.md: no serious/critical axe violations) —
     );
     const { container } = render(
       <SessionProvider>
-        <SideBar view={VIEW} />
+        <SideBar view={VIEW} timeZone="America/Vancouver" />
       </SessionProvider>,
     );
     await screen.findByRole("heading", { name: "History" });
@@ -50,7 +50,7 @@ describe("accessibility (constraints.md: no serious/critical axe violations) —
         return jsonResponse(200, [{ id: 1, publishedAt: "Today 3:00 PM", actorName: "Pat" }]);
       }),
     );
-    const { container } = render(<HistorySection view={VIEW} />);
+    const { container } = render(<HistorySection view={VIEW} timeZone="America/Vancouver" />);
     const user = userEvent.setup();
     await user.click(await screen.findByRole("checkbox", { name: "Show all" }));
     await screen.findByText(/Edited the headline/);

@@ -23,7 +23,7 @@ describe("SideBar", () => {
     );
     render(
       <SessionProvider>
-        <SideBar view={releaseView()} />
+        <SideBar view={releaseView()} timeZone="America/Vancouver" />
       </SessionProvider>,
     );
     expect(screen.getByText("Key")).toBeInTheDocument();

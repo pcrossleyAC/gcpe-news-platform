@@ -10,6 +10,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import { DocumentsSection } from "./DocumentsSection";
+import { visibleText } from "../../../../test/visibleText";
 
 function doc(id: string, sortIndex: number, headline: string): DocumentView {
   return { id, sortIndex, layout: "formal", languages: [{ languageId: LANG_EN, pageTitle: "Page", headline, subheadline: null, organizations: null, byline: null, bodyHtml: "<p>x</p>", pageImageId: null, contacts: [] }] };
@@ -77,6 +78,14 @@ describe("DocumentsSection", () => {
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]!.url).toBe(`/nrms/api/releases/${TWO_DOCS.id}/documents/order`);
     expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({ version: 1, documentIds: ["doc-2", "doc-1"] });
+  });
+
+  it("shows short button text — Move up, Move down, Remove — while the names still say which document", async () => {
+    stubFetch();
+    renderSection(TWO_DOCS);
+    expect(visibleText(await screen.findByRole("button", { name: "Move document 2 up" }))).toBe("Move up");
+    expect(visibleText(screen.getByRole("button", { name: "Move document 1 down" }))).toBe("Move down");
+    expect(visibleText(screen.getByRole("button", { name: "Remove document 1" }))).toBe("Remove");
   });
 
   it("Move document 1 up is disabled for the first document", async () => {
