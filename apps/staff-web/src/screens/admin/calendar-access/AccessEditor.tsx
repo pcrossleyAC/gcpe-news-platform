@@ -91,22 +91,24 @@ export function AccessEditor({ user, orgs, actor, onSaved, onCancel }: { user: C
 
   const selectId = `calendar-role-${user.id}`;
   return (
-    <form onSubmit={save} aria-label={`Calendar access for ${user.displayName}`}>
+    <form onSubmit={save} aria-label={`Calendar access for ${user.displayName}`} className="gcpe-stack">
       {messages.map((m) => (
         <p role="alert" key={m}>
           {m}
         </p>
       ))}
-      <label htmlFor={selectId}>Calendar role</label>
-      <select id={selectId} value={role} onChange={(e) => setRole(e.target.value as CalendarRoleName | "")} disabled={busy}>
-        <option value="">No Calendar access</option>
-        {grantableCalendarRoles(session).map((r) => (
-          <option key={r.role} value={r.role}>
-            {r.label}
-          </option>
-        ))}
-      </select>
-      <fieldset>
+      <div className="gcpe-field">
+        <label htmlFor={selectId}>Calendar role</label>
+        <select id={selectId} value={role} onChange={(e) => setRole(e.target.value as CalendarRoleName | "")} disabled={busy}>
+          <option value="">No Calendar access</option>
+          {grantableCalendarRoles(session).map((r) => (
+            <option key={r.role} value={r.role}>
+              {r.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <fieldset className="gcpe-options">
         <legend>Ministries</legend>
         {choices.map((o) => {
           const id = `org-${user.id}-${o.key}`;
@@ -118,12 +120,14 @@ export function AccessEditor({ user, orgs, actor, onSaved, onCancel }: { user: C
           );
         })}
       </fieldset>
-      <Button type="submit" isDisabled={busy}>
-        Save Calendar access
-      </Button>
-      <Button variant="secondary" onPress={onCancel} isDisabled={busy}>
-        Cancel
-      </Button>
+      <div className="gcpe-button-row">
+        <Button type="submit" isDisabled={busy}>
+          Save Calendar access
+        </Button>
+        <Button variant="secondary" onPress={onCancel} isDisabled={busy}>
+          Cancel
+        </Button>
+      </div>
     </form>
   );
 }

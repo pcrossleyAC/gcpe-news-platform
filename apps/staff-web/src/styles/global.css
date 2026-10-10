@@ -24,13 +24,20 @@ body {
   font-family: var(--typography-font-families-bc-sans);
 }
 
+/* The BC header runs across the top; the section menu and the screen sit side by side under it. */
 .gcpe-shell {
-  display: flex;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
   min-height: 100vh;
 }
 
+.gcpe-shell > .bcds-header {
+  grid-column: 1 / -1;
+}
+
 .gcpe-shell__nav {
-  flex: 0 0 220px;
+  grid-column: 1;
   border-right: 1px solid #ccc;
   padding: 1rem;
 }
@@ -50,9 +57,6 @@ body {
  * a minimum height and padding here. jsdom has no layout engine, so component-level axe tests
  * can't catch a sizing violation; the Playwright axe sweep (tests/e2e/axe-sweep.spec.ts) does. */
 .gcpe-shell__nav a,
-.gcpe-website nav a,
-.gcpe-subscribers nav a,
-.gcpe-calendar nav a,
 .gcpe-calendar ul a,
 .gcpe-document-tabs [role="tab"],
 .gcpe-sidebar__view-links a {
@@ -62,9 +66,6 @@ body {
   box-sizing: border-box;
 }
 
-.gcpe-website nav ul,
-.gcpe-subscribers nav ul,
-.gcpe-calendar nav ul,
 .gcpe-sidebar__view-links ul {
   list-style: none;
   padding: 0;
@@ -84,6 +85,251 @@ body {
   padding: 1rem 1.5rem;
 }
 
+/* The header spans the page so the logo lines up with the section menu, and who is signed in
+ * sits at its right-hand end. */
+.gcpe-shell > .bcds-header > .bcds-header--container {
+  max-width: none;
+  flex-wrap: wrap;
+}
+
+.gcpe-shell__user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+}
+
+/* Native form controls: the body font and a comfortable height, matching the design system's
+ * text fields. Design-system inputs carry their own bcds-* class and are left alone. Selects
+ * drop the platform look (Safari otherwise draws them with tiny text at a fixed height) and get
+ * their own chevron. */
+.gcpe-shell__main select,
+.gcpe-shell__main textarea,
+.gcpe-shell__main input:is([type="text"], [type="number"], [type="search"], [type="date"], [type="time"], [type="email"], [type="password"], [type="url"], [type="tel"], :not([type])):not([class*="bcds-"]) {
+  font: var(--typography-regular-body);
+  color: var(--typography-color-primary, #2d2d2d);
+  background-color: var(--surface-color-forms-default, #fff);
+  border: 1px solid var(--surface-color-border-medium, #898785);
+  border-radius: var(--layout-border-radius-medium, 4px);
+  padding: 0.3125rem 0.75rem;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+.gcpe-shell__main select:not([multiple]),
+.gcpe-shell__main input:is([type="text"], [type="number"], [type="search"], [type="date"], [type="time"], [type="email"], [type="password"], [type="url"], [type="tel"], :not([type])):not([class*="bcds-"]) {
+  min-height: 40px;
+}
+
+.gcpe-shell__main select:not([multiple]) {
+  appearance: none;
+  -webkit-appearance: none;
+  padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' fill='none' stroke='%232d2d2d' stroke-width='2'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.75rem center;
+}
+
+.gcpe-shell__main select:disabled,
+.gcpe-shell__main input:disabled:not([class*="bcds-"]) {
+  background-color: var(--surface-color-forms-disabled, #edebe9);
+  color: var(--typography-color-disabled, #6d6d6d);
+}
+
+.gcpe-shell__main select:focus-visible,
+.gcpe-shell__main textarea:focus-visible,
+.gcpe-shell__main input:not([class*="bcds-"]):focus-visible {
+  outline: 3px solid var(--surface-color-border-active, #2e5dd7);
+  outline-offset: 1px;
+}
+
+/* A label above its control. */
+.gcpe-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+/* Fields side by side, bottoms aligned, wrapping when narrow (a search form, an add row). */
+.gcpe-field-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.75rem 1rem;
+  margin: 0.75rem 0;
+}
+
+.gcpe-field-row > .bcds-react-aria-TextField,
+.gcpe-field-row > .gcpe-field {
+  flex: 0 1 18rem;
+  min-width: 12rem;
+}
+
+/* The design system stretches its text fields to the row's height; in a row they sit at the
+ * bottom with everything else. */
+.gcpe-field-row > .bcds-react-aria-TextField {
+  align-self: flex-end;
+}
+
+/* In a row beside design-system fields, native labels match their label size. */
+.gcpe-field-row label.gcpe-field,
+.gcpe-field-row .gcpe-field > label {
+  font: var(--typography-regular-small-body);
+  color: var(--typography-color-primary, #2d2d2d);
+}
+.gcpe-field-row .gcpe-field > label {
+  padding: var(--layout-padding-xsmall, 0.25rem) 0;
+}
+
+/* A plain form's fields, one under another. */
+.gcpe-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.gcpe-stack > .bcds-react-aria-TextField,
+.gcpe-stack > .gcpe-field,
+.gcpe-stack > fieldset:not(.gcpe-options) {
+  align-self: stretch;
+  max-width: 36rem;
+}
+
+/* An option group in a stacked form uses the full width. */
+.gcpe-stack > .gcpe-options,
+.gcpe-stack > .gcpe-field-row {
+  align-self: stretch;
+}
+
+/* A checkbox or radio with its text: the box aligned with the first line, never run together. */
+.gcpe-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  line-height: 1.5;
+}
+
+/* A group of checkboxes or radios: one option per cell in responsive columns. */
+.gcpe-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 0.4rem 1.5rem;
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  min-width: 0;
+}
+
+.gcpe-options > legend {
+  font-weight: 700;
+  padding: 0 0.25rem;
+}
+
+.gcpe-options > :is(p, .gcpe-options__wide) {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+.gcpe-options > label,
+.gcpe-options > div {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  line-height: 1.5;
+}
+
+.gcpe-options input:is([type="checkbox"], [type="radio"]),
+.gcpe-check > input:is([type="checkbox"], [type="radio"]) {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+  margin: 0.125rem 0 0;
+}
+
+/* Long options with descriptions: one per line. */
+.gcpe-options--stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* A section's own screens, as a row of tabs above the page heading. Links, not ARIA tabs;
+ * NavLink marks the current one with aria-current="page". */
+.gcpe-section-tabs ul {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 0.25rem;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  border-bottom: 1px solid #d8d8d8;
+}
+
+.gcpe-section-tabs a {
+  display: inline-block;
+  min-height: 24px;
+  box-sizing: border-box;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: -1px;
+  border-bottom: 3px solid transparent;
+  color: var(--typography-color-link, #255a90);
+  text-decoration: none;
+}
+
+.gcpe-section-tabs a:hover {
+  text-decoration: underline;
+}
+
+.gcpe-section-tabs a[aria-current="page"] {
+  font-weight: 700;
+  color: var(--typography-color-primary, #2d2d2d);
+  border-bottom-color: var(--surface-color-primary-default, #013366);
+}
+
+/* A plain data table. */
+.gcpe-table {
+  border-collapse: collapse;
+  margin: 0.75rem 0 1rem;
+  min-width: min(100%, 40rem);
+}
+
+.gcpe-table th,
+.gcpe-table td {
+  text-align: left;
+  vertical-align: middle;
+  padding: 0.4rem 0.75rem 0.4rem 0;
+  border-bottom: 1px solid #d8d8d8;
+}
+
+.gcpe-table thead th {
+  border-bottom-width: 2px;
+}
+
+.gcpe-shell__main caption {
+  text-align: left;
+  font-weight: 700;
+  padding: 0.5rem 0;
+}
+
+/* Links laid out in columns, no bullets. */
+.gcpe-link-grid {
+  list-style: none;
+  padding: 0;
+  margin: 1rem 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.25rem 1.5rem;
+}
+
+/* Buttons whose text must not break inside them. */
+.gcpe-nowrap,
+.gcpe-calendar-toolbar .bcds-react-aria-Button,
+.gcpe-calendar-toolbar .gcpe-button-link,
+.gcpe-calendar-toolbar .gcpe-view-button {
+  white-space: nowrap;
+}
+
 .gcpe-sign-in {
   max-width: 24rem;
   margin: 3rem auto;
@@ -97,15 +343,7 @@ body {
   margin-top: 1rem;
 }
 
-/* Task 2 (staff-web): release lists and search. */
-
-.gcpe-tabs ul {
-  list-style: none;
-  display: flex;
-  gap: 1rem;
-  padding: 0;
-  margin: 0 0 1rem;
-}
+/* Release lists and search. */
 
 .gcpe-release-list__toolbar,
 .gcpe-search__filters {
@@ -555,10 +793,27 @@ body {
   margin: 0;
   padding: 0;
 }
+/* Options in responsive columns, one per cell; a long list takes the fieldset's full width so
+ * it has room for more than one column. */
+.gcpe-activity .gcpe-checklist:not(.gcpe-checklist--read) ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(16rem, 1fr));
+  gap: 0.25rem 1.25rem;
+}
+.gcpe-activity .gcpe-checklist:has(li:nth-child(7)) {
+  grid-column: 1 / -1;
+  max-height: 24rem;
+}
 .gcpe-activity .gcpe-checklist li {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  gap: 0.4rem;
   min-height: 28px;
+  line-height: 1.5;
+}
+.gcpe-activity .gcpe-checklist li > input[type="checkbox"] {
+  flex: none;
+  margin: 0;
 }
 .gcpe-activity .gcpe-tags li {
   display: inline-flex;
@@ -655,4 +910,162 @@ body {
 }
 .gcpe-changes h2 {
   font-size: 1rem;
+}
+
+/* Release editor: a document's heading, with its Move up / Move down / Remove buttons on the
+ * same row. */
+.gcpe-documents__item-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.gcpe-documents__item-header h3 {
+  margin: 0.5rem auto 0.5rem 0;
+}
+
+/* Users: each user is a compact block. */
+.gcpe-users__list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  max-width: 60rem;
+}
+.gcpe-users__row {
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+  padding: 0.75rem 1rem;
+}
+.gcpe-users__who {
+  font-size: 1.125rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.gcpe-users__sign-in {
+  margin: 0.25rem 0 0;
+}
+.gcpe-users__row .gcpe-options {
+  margin-top: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Shows its text with the first letter capitalised (HiddenPrefixLabel). */
+.gcpe-first-cap {
+  display: inline-block;
+}
+.gcpe-first-cap::first-letter {
+  text-transform: uppercase;
+}
+
+/* Buttons side by side. */
+.gcpe-button-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Calendar access: the editor opens in a row under the user it edits. */
+.gcpe-calendar-access__table {
+  width: 100%;
+}
+.gcpe-calendar-access__table tbody th {
+  font-weight: 700;
+}
+.gcpe-calendar-access__editor-row > td {
+  padding: 0.75rem 0 1rem;
+  background: #f8f8f8;
+}
+.gcpe-calendar-access__editor-row form {
+  padding: 0 1rem;
+}
+
+/* Media list names: a narrow Order field. */
+.gcpe-admin__media-lists input[type="number"] {
+  width: 6rem;
+}
+
+/* A disclosure ("Filters") the user can close to see more of the results. */
+.gcpe-disclosure {
+  margin: 0 0 1rem;
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+}
+.gcpe-disclosure > summary {
+  cursor: pointer;
+  font-weight: 700;
+  padding: 0.5rem 0.75rem;
+  min-height: 24px;
+}
+.gcpe-disclosure[open] > summary {
+  border-bottom: 1px solid #d8d8d8;
+}
+.gcpe-disclosure > :not(summary) {
+  padding: 0.75rem;
+}
+
+/* The Calendar's filter: fields start at the top of their row, and Search/Reset close it. */
+.gcpe-calendar-list .gcpe-calendar-filter {
+  align-items: start;
+  margin-bottom: 0;
+}
+.gcpe-calendar-filter__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+  margin: 0;
+  padding: 0.5rem 0.75rem 0.75rem;
+  min-width: 0;
+}
+.gcpe-calendar-filter__group > legend {
+  padding: 0 0.25rem;
+}
+.gcpe-calendar-filter__error,
+.gcpe-calendar-list .gcpe-calendar-filter__actions {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+.gcpe-calendar-list .gcpe-calendar-filter__group .gcpe-check > input {
+  margin: 0;
+}
+
+/* The toolbar above the Calendar's results: one row that wraps between controls, never inside
+ * a button. */
+.gcpe-calendar-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+  margin: 1rem 0 0.75rem;
+}
+.gcpe-calendar-toolbar .gcpe-actions {
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+.gcpe-calendar-toolbar .gcpe-actions > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.gcpe-calendar-toolbar .gcpe-actions > div > p {
+  margin: 0;
+}
+.gcpe-calendar-toolbar #la-days {
+  width: 5.5rem;
+}
+.gcpe-calendar-toolbar .gcpe-button-link {
+  min-height: 40px;
+  padding: 0 1rem;
+}
+.gcpe-calendar-toolbar .gcpe-view-button {
+  min-height: 40px;
+  padding: 0 0.75rem;
 }

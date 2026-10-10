@@ -78,7 +78,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
   ];
 
   const categoryList = (kind: CategoryKind, legend: string, terms: Term[]) => (
-    <fieldset>
+    <fieldset className="gcpe-options">
       <legend>{legend}</legend>
       {terms.map((t) => (
         <label key={t.key}>
@@ -118,11 +118,11 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
       )}
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
-      <Form onSubmit={onSubmit}>
+      <Form onSubmit={onSubmit} className="gcpe-stack">
         {categoryList("ministries", "Ministries", categories.ministries)}
 
         {form.ministries.length > 1 && (
-          <label>
+          <label className="gcpe-field">
             Lead ministry
             <select value={form.leadMinistryKey ?? ""} disabled={readOnly} onChange={(e) => setForm((f) => ({ ...f, leadMinistryKey: e.target.value || null }))}>
               <option value="">(none)</option>

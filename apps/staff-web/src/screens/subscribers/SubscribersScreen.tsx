@@ -156,16 +156,18 @@ export function SubscribersScreen(): React.JSX.Element {
   return (
     <div className="gcpe-subscribers__search">
       <h1>Subscribers</h1>
-      <Form onSubmit={onSearch} aria-label="Search subscribers">
+      <Form onSubmit={onSearch} aria-label="Search subscribers" className="gcpe-field-row">
         <TextField label="Email contains" name="q" value={qInput} onChange={setQInput} />
-        <label htmlFor="subscribers-status">Status</label>
-        <select id="subscribers-status" value={statusInput} onChange={(e) => setStatusInput(e.target.value as StatusFilter)}>
-          {STATUS_FILTER_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              {o.label}
-            </option>
-          ))}
-        </select>
+        <div className="gcpe-field">
+          <label htmlFor="subscribers-status">Status</label>
+          <select id="subscribers-status" value={statusInput} onChange={(e) => setStatusInput(e.target.value as StatusFilter)}>
+            {STATUS_FILTER_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </div>
         <Button type="submit">Search</Button>
       </Form>
 

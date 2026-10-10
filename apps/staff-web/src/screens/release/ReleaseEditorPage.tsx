@@ -192,7 +192,7 @@ export function ReleaseEditorPage(): React.JSX.Element {
           <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />
           <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
           <FilesSection view={view} setView={setView} readOnly={!canEdit} />
-          <SideBar view={view} />
+          <SideBar view={view} timeZone={timeZone} />
         </div>
         <UnsavedChangesBar sections={guard.dirtySections} />
       </guard.Provider>

@@ -38,6 +38,20 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     expect(screen.getByText(/^Tue Nov 10( 2026)? 10:00-11:00 AM$/)).toBeInTheDocument();
   });
 
+  it("puts the filter in an open Filters disclosure, and the list actions and view switch above the results", async () => {
+    stubFetch([]);
+    renderList();
+    await screen.findByText("Sample listed");
+    const form = screen.getByRole("form", { name: "Filter activities" });
+    const details = form.closest("details")!;
+    expect(details).toHaveAttribute("open");
+    expect(details.querySelector("summary")).toHaveTextContent("Filters");
+    const actions = screen.getByRole("region", { name: "List actions" });
+    const table = screen.getAllByRole("table")[0]!;
+    expect(actions.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole("group", { name: "View" }).compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it("an unreadable q falls back to the defaults", async () => {
     const calls: Call[] = [];
     stubFetch(calls);

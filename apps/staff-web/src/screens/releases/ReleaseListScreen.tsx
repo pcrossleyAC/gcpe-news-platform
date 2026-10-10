@@ -87,9 +87,7 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
 
   return (
     <div className="gcpe-release-list">
-      <h1>Releases</h1>
-
-      <nav aria-label="Release folders" className="gcpe-tabs">
+      <nav aria-label="Release folders" className="gcpe-section-tabs">
         <ul>
           {FOLDERS.map((f) => (
             <li key={f}>
@@ -98,6 +96,8 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
           ))}
         </ul>
       </nav>
+
+      <h1>Releases</h1>
 
       <div className="gcpe-release-list__toolbar">
         <label htmlFor="release-type-filter">Type</label>

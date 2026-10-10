@@ -19,7 +19,7 @@ export function SubscribersSection(): React.JSX.Element {
   }
   return (
     <div className="gcpe-subscribers">
-      <nav aria-label="Subscribers sections">
+      <nav aria-label="Subscribers sections" className="gcpe-section-tabs">
         <ul>
           <li>
             <NavLink to="/subscribers" end>

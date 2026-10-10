@@ -49,7 +49,7 @@ describe("accessibility — Users, Media list names and error log", () => {
       }),
     );
     const { container } = render(withAuth(<UsersScreen />));
-    await screen.findByText("pat@x.invalid");
+    await screen.findByRole("heading", { name: "pat@x.invalid" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 
@@ -64,7 +64,7 @@ describe("accessibility — Users, Media list names and error log", () => {
       }),
     );
     const { container } = render(withAuth(<MediaListNamesScreen />));
-    await screen.findByText("regional");
+    await screen.findByRole("cell", { name: "regional" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 

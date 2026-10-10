@@ -40,7 +40,8 @@ test.describe("Calendar access", () => {
     await form.getByRole("button", { name: "Save Calendar access" }).click();
     await expect(page.getByRole("status").filter({ hasText: "Saved Calendar access" })).toHaveText(`Saved Calendar access for Calendar Staff ${stamp}.`);
     // Scoped to this run's row: a retried run leaves an earlier Calendar Staff with the same text.
-    await expect(page.getByRole("listitem").filter({ hasText: `Calendar Staff ${stamp}` })).toContainText("Calendar role: Editor. Ministries: HLTH.");
+    const row = page.getByRole("row").filter({ hasText: `Calendar Staff ${stamp}` });
+    await expect(row.getByRole("cell")).toHaveText([`cal-staff-${stamp}@example.test`, "Editor", "HLTH", "Edit access for Calendar Staff " + stamp]);
 
     // The server refuses what the screen doesn't offer.
     const direct = (body: object) =>

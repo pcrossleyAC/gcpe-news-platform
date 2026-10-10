@@ -28,7 +28,7 @@ export function LookupsScreen(): React.JSX.Element {
       <p>The choices offered on activities. Rows are never deleted; deactivate a row to stop offering it.</p>
       {error && <InlineAlert variant="danger" role="alert" description={error} />}
       {lookups === null && !error && <p>Loading…</p>}
-      <ul>
+      <ul className="gcpe-link-grid">
         {(lookups ?? []).map((l) => (
           <li key={l.name}>
             <Link to={`/calendar/lookups/${l.name}`}>{l.editable ? l.label : `${l.label} (read only)`}</Link>

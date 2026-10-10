@@ -535,3 +535,9 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **HQ Advanced and above** — Review marks the activity reviewed and brings you back. Review and Clone wait until you've saved or cancelled your own changes.
 - **HQ Administrator** — A deleted activity opens read-only, with Review as its only action.
 - **All Calendar users** — "BC Gov News" on an activity lists its releases. If you also have an NRMS role, each one links to the release.
+- **All staff** — Who you're signed in as, and Sign out, are at the right-hand end of the header bar.
+- **All staff** — A section's own screens (Releases' Drafts/Scheduled/Published, Website, Subscribers, Calendar) are a row of tabs above the page heading; the one you're on is bold and underlined.
+- **NRMS editors** — Release history and published copies show times in BC time, like "Today 9:49 AM", not raw timestamps.
+- **All Calendar users** — The list's filter is under "Filters", open when the page loads; close it to see more results. New activity, Review selected, Clear LA Status, Excel export and List/Month/Week sit above the results.
+- **Calendar administrators** — Calendar users is a table: name (opens the user), ministry, comm contact rank, Calendar role and whether active.
+- **Calendar access managers** — Calendar access is a table, one row per person; Edit opens their role and ministries under their row.

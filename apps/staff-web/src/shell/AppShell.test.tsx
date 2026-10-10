@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { SessionProvider } from "../session/SessionContext";
 import { AppShell } from "./AppShell";
@@ -82,6 +82,21 @@ describe("AppShell nav — roles decide what's shown", () => {
   it("shows Calendar to any Calendar role, and only to them", async () => {
     await renderShell(["Calendar.ReadOnly"]);
     expect(visibleLabels()).toEqual(["Calendar"]);
+  });
+});
+
+describe("AppShell header", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    cleanup();
+  });
+
+  it("shows who is signed in, and Sign out, in the header bar rather than the page", async () => {
+    await renderShell(["NRMS.Viewer"]);
+    const banner = screen.getByRole("banner");
+    expect(within(banner).getByText("Signed in as Pat")).toBeInTheDocument();
+    expect(within(banner).getByRole("button", { name: "Sign out" })).toBeInTheDocument();
+    expect(within(screen.getByRole("main")).queryByRole("button", { name: "Sign out" })).toBeNull();
   });
 });
 

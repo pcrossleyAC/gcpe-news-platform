@@ -76,7 +76,7 @@ export function OrganizationsScreen(): React.JSX.Element {
       {status && <p role="status">{status}</p>}
       {orgs === null && !loadError && <p>Loading…</p>}
       {orgs && (
-        <table>
+        <table className="gcpe-table">
           <caption>Organizations, their HQ flag and whether they&rsquo;re public</caption>
           <thead>
             <tr>

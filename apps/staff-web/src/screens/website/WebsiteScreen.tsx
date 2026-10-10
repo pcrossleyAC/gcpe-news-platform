@@ -45,7 +45,7 @@ export function WebsiteScreen(): React.JSX.Element {
 
   return (
     <div className="gcpe-website">
-      <nav aria-label="Website sections">
+      <nav aria-label="Website sections" className="gcpe-section-tabs">
         <ul>
           {SECTIONS.filter((s) => canManage || !s.manageOnly).map((s) => (
             <li key={s.to}>
