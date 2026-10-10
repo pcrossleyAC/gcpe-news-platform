@@ -1,9 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
+import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
+import { mintLocalToken } from "@gcpe/auth";
 import type { FeedPage } from "@gcpe/calendar-contract";
 import { activities, activitySharedWith } from "../db/schema";
-import { createCalendarTestDb, createTestApp, TEST_RULES } from "../../test/helpers";
+import { createApp } from "../app";
+import { createCalendarTestDb, createTestApp, EVENT_SECRETS, SESSION_SECRET, TEST_RULES } from "../../test/helpers";
 import { addEntry, bcAt, FEED_IDS, feedKeyOf, seedFeed } from "../../test/feed-world";
 import { call, insertRaw, seedWorld, type Who, type World } from "../../test/world";
 
@@ -114,6 +117,13 @@ describe("the updates feed (spec addendum §9.1)", () => {
     expect((deleted.body as FeedPage).items.every((i) => i.isDeleted)).toBe(true);
     const everything = JSON.stringify((await feed("hqAdmin", "mode=range")).body);
     for (const never of ["@", "Sample executive summary", "Feed G old", "Kim Finance (FIN)"]) expect(everything).not.toContain(never);
+  });
+
+  it("gives a bearer token nothing, even one for a projected user", async () => {
+    const local = "calendar-local-bearer-secret-0123456789ab";
+    const withLocal = createApp({ db: tdb.db, auth: { session: { secret: SESSION_SECRET }, local: { secret: local } }, eventSecrets: EVENT_SECRETS, rules: TEST_RULES });
+    const token = await mintLocalToken({ secret: local, subject: w.as.hqAdmin.id, roles: ["Calendar.SysAdmin"] });
+    expect((await request(withLocal).get("/api/updates?mode=range").set("authorization", `Bearer ${token}`)).status).toBe(403);
   });
 });
 
