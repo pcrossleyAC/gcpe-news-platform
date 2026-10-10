@@ -3,13 +3,11 @@ import type { DbOrTx } from "@gcpe/db-kit";
 import type { HqSection, ListQuery, ListRow } from "@gcpe/calendar-contract";
 import type { CalendarActor } from "../actor";
 import { inReadSnapshot } from "../activities/store";
-import { can } from "../capabilities";
-import { activities, activityCategories, activityInitiatives, activitySharedWith, initiatives } from "../db/schema";
+import { activities, activityCategories, activityInitiatives, initiatives } from "../db/schema";
 import type { ApiDeps } from "../http/routes";
 import { legacyReportOrder, listWhere, scopeOf, type ListScope } from "../list/query";
-import { rowsOf } from "../list/rows";
+import { grouped, rowsWithFactsOf } from "../list/rows";
 import { dbNow } from "../time";
-import type { VisibilityFacts } from "../visibility";
 
 /** The most activities one report reads; more is refused with 422 before anything is built. */
 export const REPORT_ACTIVITY_LIMIT = 5000;
@@ -42,27 +40,12 @@ export interface ReportData {
   now: Date;
 }
 
-async function grouped<V>(q: Promise<{ id: number; v: V }[]>): Promise<Map<number, V[]>> {
-  const out = new Map<number, V[]>();
-  for (const r of await q) out.set(r.id, [...(out.get(r.id) ?? []), r.v]);
-  return out;
-}
-
 /** The list's rows for these ids, with the reports' extra facts. Still filtered by visibleSql (rowsOf). */
 export async function reportRowsOf(tx: DbOrTx, scope: ListScope, ids: readonly number[]): Promise<ReportRow[]> {
-  const base = await rowsOf(tx, scope, ids);
+  const base = await rowsWithFactsOf(tx, scope, ids);
   if (base.length === 0) return [];
-  const got = base.map((r) => r.id);
-  const extra = new Map(
-    (
-      await tx
-        .select({ id: activities.id, hqSection: activities.hqSection, longTermOutlook: activities.longTermOutlook, hqComments: activities.hqComments, nrAt: activities.nrAt })
-        .from(activities)
-        .where(inArray(activities.id, got))
-    ).map((r) => [r.id, r]),
-  );
+  const got = base.map((r) => r.row.id);
   const categoryIds = await grouped(tx.select({ id: activityCategories.activityId, v: activityCategories.categoryId }).from(activityCategories).where(inArray(activityCategories.activityId, got)));
-  const shared = await grouped(tx.select({ id: activitySharedWith.activityId, v: activitySharedWith.ministryKey }).from(activitySharedWith).where(inArray(activitySharedWith.activityId, got)));
   const shortNames = await grouped(
     tx
       .select({ id: activityInitiatives.activityId, v: initiatives.shortName })
@@ -71,19 +54,15 @@ export async function reportRowsOf(tx: DbOrTx, scope: ListScope, ids: readonly n
       .where(inArray(activityInitiatives.activityId, got))
       .orderBy(asc(initiatives.name)),
   );
-  return base.map((r) => {
-    const x = extra.get(r.id)!;
-    const facts: VisibilityFacts = { contactMinistryKey: r.ministryKey, sharedMinistryKeys: shared.get(r.id) ?? [], isConfidential: r.isConfidential, isDeleted: r.isDeleted };
-    return {
-      ...r,
-      categoryIds: categoryIds.get(r.id) ?? [],
-      hqSection: x.hqSection,
-      longTermOutlook: x.longTermOutlook,
-      executiveSummary: can.seeLookAheadFieldset(scope.actor, scope.rules, facts) ? x.hqComments : null,
-      initiatives: (shortNames.get(r.id) ?? []).filter((n): n is string => !!n),
-      nrAt: x.nrAt?.toISOString() ?? null,
-    };
-  });
+  return base.map(({ row, activity: a, seesLookAhead }) => ({
+    ...row,
+    categoryIds: categoryIds.get(row.id) ?? [],
+    hqSection: a.hqSection,
+    longTermOutlook: a.longTermOutlook,
+    executiveSummary: seesLookAhead ? a.hqComments : null,
+    initiatives: (shortNames.get(row.id) ?? []).filter((n): n is string => !!n),
+    nrAt: a.nrAt?.toISOString() ?? null,
+  }));
 }
 
 /**

@@ -13,7 +13,7 @@ import { createCalendarTestDb, createTestApp, FIXED_NOW, TEST_RULES } from "../.
 import { insertRaw, seedWorld, type Who, type World } from "../../test/world";
 import { REPORT_ACTIVITY_LIMIT, ReportTooLargeError, reportData } from "./data";
 
-type Key = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H";
+type Key = "A" | "B" | "C" | "D" | "E" | "F" | "G" | "H" | "I";
 const MARCH = { from: "2046-03-01", to: "2046-03-31" };
 
 describe("what a report reads (spec addendum §6, §10)", () => {
@@ -37,6 +37,9 @@ describe("what a report reads (spec addendum §6, §10)", () => {
     };
     await make("H", "2046-03-12T16:00:00Z", { contactMinistryKey: "consult" });
     await make("G", "2046-03-11T16:00:00Z");
+    // Health's own and confidential, shared with finance: the mirror of E.
+    await make("I", "2046-03-10T20:30:00Z", { isConfidential: true });
+    await tdb.db.insert(activitySharedWith).values({ activityId: ids.I, ministryKey: "finance" });
     await make("F", "2046-03-10T21:00:00Z", { deletedAt: new Date("2046-03-01T00:00:00Z"), needsReview: ["active"] });
     await make("E", "2046-03-10T20:00:00Z", { contactMinistryKey: "finance", isConfidential: true });
     await tdb.db.insert(activitySharedWith).values({ activityId: ids.E, ministryKey: "health" });
@@ -49,14 +52,15 @@ describe("what a report reads (spec addendum §6, §10)", () => {
   afterAll(() => tdb.drop());
 
   const ROLES: [Who, Key[]][] = [
-    ["readOnly", ["A", "B", "E", "G"]],
-    ["editor", ["A", "B", "E", "G"]],
-    ["financeEditor", ["C", "D", "E"]],
-    ["admin", ["A", "B", "E", "G"]],
+    ["readOnly", ["A", "B", "E", "I", "G"]],
+    ["editor", ["A", "B", "E", "I", "G"]],
+    ["financeEditor", ["C", "D", "E", "I"]],
+    ["advanced", ["A", "B", "E", "I", "G"]],
+    ["admin", ["A", "B", "E", "I", "G"]],
     ["hqReadOnly", ["A", "C", "G", "H"]],
     ["hqEditor", ["A", "C", "G", "H"]],
-    ["hqAdvanced", ["A", "B", "C", "D", "E", "G", "H"]],
-    ["hqAdmin", ["A", "B", "C", "D", "E", "G", "H"]],
+    ["hqAdvanced", ["A", "B", "C", "D", "E", "I", "G", "H"]],
+    ["hqAdmin", ["A", "B", "C", "D", "E", "I", "G", "H"]],
   ];
   for (const [who, keys] of ROLES) {
     it(`${who}: exactly the activities the list's visibility rule allows, never a deleted one, Awareness dates and the consultations ministry included`, async () => {
@@ -66,7 +70,7 @@ describe("what a report reads (spec addendum §6, §10)", () => {
 
   it("orders by start date, end date and start time whatever the list's sort", async () => {
     const d = await read("hqAdmin", { filter: MARCH, sort: "title", dir: "desc" });
-    expect(d.rows.map((r) => keyOf(r.id))).toEqual(["A", "B", "C", "D", "E", "G", "H"]);
+    expect(d.rows.map((r) => keyOf(r.id))).toEqual(["A", "B", "C", "D", "E", "I", "G", "H"]);
     expect(d.now).toEqual(FIXED_NOW);
   });
 
@@ -75,13 +79,18 @@ describe("what a report reads (spec addendum §6, §10)", () => {
     for (const who of ["hqEditor", "hqAdmin"] as const) {
       expect(await summaryOf(who, "A")).toMatchObject({ executiveSummary: "Sample summary A", hqStatus: "new" });
     }
-    for (const who of ["editor", "admin", "hqReadOnly"] as const) {
+    for (const who of ["editor", "advanced", "admin", "hqReadOnly"] as const) {
       expect(await summaryOf(who, "A")).toMatchObject({ executiveSummary: null, hqStatus: null });
     }
     // ShowHqCommentsField on: an Editor sees it on their own ministry's activity, not on one only shared with them.
     const shown = { ...TEST_RULES, showHqCommentsField: true };
     expect((await summaryOf("editor", "A", shown)).executiveSummary).toBe("Sample summary A");
     expect((await summaryOf("editor", "E", shown)).executiveSummary).toBeNull();
+    // Shared and confidential, both ways: the owning ministry's Editor sees it, the one it's shared with doesn't.
+    expect((await summaryOf("editor", "I", shown)).executiveSummary).toBe("Sample summary I");
+    expect((await summaryOf("financeEditor", "I", shown)).executiveSummary).toBeNull();
+    expect((await summaryOf("financeEditor", "D", shown)).executiveSummary).toBe("Sample summary D");
+    expect(await summaryOf("advanced", "A", shown)).toMatchObject({ executiveSummary: "Sample summary A", hqStatus: "new" });
   });
 
   it("carries the section, Long Term Outlook, NR time, category ids and initiative short names", async () => {
