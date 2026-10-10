@@ -1,6 +1,8 @@
 import type { NextFunction, Request, Response } from "express";
 import { EXPORT_RETRY_AFTER_SECONDS, ExportBusyError, ExportTooLargeError } from "../list/export";
 import { SavedFilterLimitError, SavedFilterNotFoundError, SavedFilterOrderError } from "../list/saved-filters";
+import { ReportTooLargeError } from "../reports/data";
+import { REPORT_RETRY_AFTER_SECONDS, ReportBusyError, ReportJobNotFoundError, ReportJobNotReadyError, ReportsUnavailableError } from "../reports/jobs";
 import { sendActivityError } from "./errors";
 
 /** The list routes' errors; anything else falls through to the activity error mapping. */
@@ -10,6 +12,11 @@ export function sendListError(e: unknown, res: Response, req: Request): boolean 
   if (e instanceof SavedFilterLimitError) return void res.status(422).json({ error: e.message }), true;
   if (e instanceof ExportTooLargeError) return void res.status(422).json({ error: e.message }), true;
   if (e instanceof ExportBusyError) return void res.status(503).set("Retry-After", String(EXPORT_RETRY_AFTER_SECONDS)).json({ error: e.message }), true;
+  if (e instanceof ReportTooLargeError) return void res.status(422).json({ error: e.message }), true;
+  if (e instanceof ReportBusyError) return void res.status(503).set("Retry-After", String(REPORT_RETRY_AFTER_SECONDS)).json({ error: e.message }), true;
+  if (e instanceof ReportsUnavailableError) return void res.status(503).json({ error: e.message }), true;
+  if (e instanceof ReportJobNotFoundError) return void res.status(404).json({ error: "not found" }), true;
+  if (e instanceof ReportJobNotReadyError) return void res.status(409).json({ error: e.message }), true;
   return sendActivityError(e, res, req);
 }
 

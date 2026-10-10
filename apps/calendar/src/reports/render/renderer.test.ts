@@ -119,11 +119,14 @@ describe("what the worker is given, and what leaves it", () => {
     expect(logs.every((l) => l.mock.calls.length === 0)).toBe(true);
   });
 
-  it("the main thread never loads pdfmake: only the renderer and its asset paths", () => {
+  it("the main thread never loads pdfmake: not through the renderer, the report jobs or the report routes", () => {
     const run = spawnSync(process.execPath, ["--import", "tsx", fixture("main-thread-modules.mjs")], { encoding: "utf8", timeout: 60_000 });
     const out = JSON.parse(run.stdout) as { pdfBytes: number; loaded: string[] };
     expect(out.pdfBytes).toBeGreaterThan(1000);
-    const ours = out.loaded.filter((u) => u.startsWith("file:")).map((u) => u.replace(/^.*\/apps\/calendar\//, ""));
-    expect(ours.sort()).toEqual(["src/reports/render/assets.ts", "src/reports/render/renderer.ts"]);
+    const files = out.loaded.filter((u) => u.startsWith("file:"));
+    const ours = files.map((u) => u.replace(/^.*\/apps\/calendar\//, ""));
+    expect(ours).toEqual(expect.arrayContaining(["src/reports/render/assets.ts", "src/reports/render/renderer.ts", "src/reports/jobs.ts", "src/http/report-routes.ts"]));
+    expect(ours.filter((f) => f.startsWith("src/reports/render/")).sort()).toEqual(["src/reports/render/assets.ts", "src/reports/render/renderer.ts"]);
+    expect(files.filter((u) => /pdfmake|pdfkit|fontkit/.test(u))).toEqual([]);
   });
 });
