@@ -235,7 +235,7 @@ describe("useEditLock (spec addendum §7.5)", () => {
     expect(result.current.state).toEqual({ kind: "lapsed" });
   });
 
-  it("a backgrounded tab within the window sends a heartbeat on visibilitychange instead of waiting", async () => {
+  it("a backgrounded tab within the window just re-arms on visibilitychange: no heartbeat, no PUT", async () => {
     const calls: Call[] = [];
     stub(calls, ok);
     const { result } = mount();
@@ -246,7 +246,110 @@ describe("useEditLock (spec addendum §7.5)", () => {
       document.dispatchEvent(new Event("visibilitychange"));
       await vi.advanceTimersByTimeAsync(0);
     });
-    expect(lockCalls(calls)).toHaveLength(2);
+    expect(lockCalls(calls)).toHaveLength(1);
     expect(result.current.state).toEqual({ kind: "mine" });
+  });
+
+  it("returning to the tab is not input (C128): no heartbeat, and it still lapses 15 minutes after the one real beat", async () => {
+    const calls: Call[] = [];
+    stub(calls, ok);
+    const { result } = mount();
+    await act(async () => void (await result.current.touch())); // the only beat, at t=0
+    for (let i = 0; i < 5; i++) {
+      await act(async () => {
+        Object.defineProperty(document, "visibilityState", { value: "hidden", configurable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+        Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+        document.dispatchEvent(new Event("visibilitychange"));
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    }
+    expect(lockCalls(calls)).toHaveLength(1);
+    expect(result.current.state).toEqual({ kind: "lapsed" });
+  });
+
+  it("a hung heartbeat is given up on and treated as a network failure; later heartbeats still work", async () => {
+    const calls: Call[] = [];
+    let beats = 0;
+    stub(calls, (url, init) => {
+      if (url !== LOCK) return new Response(null, { status: 204 });
+      beats += 1;
+      if (beats === 1) return ok();
+      if (beats === 2) {
+        return new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(new DOMException("The operation was aborted.", "AbortError")));
+        });
+      }
+      return ok();
+    });
+    const { result } = mount();
+    await act(async () => void (await result.current.touch())); // beat 1 at t=0
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS); // due for beat 2 (the hung one)
+      await result.current.touch();
+    });
+    expect(result.current.problem).toBeNull();
+    await act(async () => void (await vi.advanceTimersByTimeAsync(20_000))); // gives up on it
+    expect(result.current.problem).toBe("Couldn't reach the server to start editing. Try again.");
+    expect(result.current.state).toEqual({ kind: "mine" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS); // due for beat 3 (a good one)
+      await result.current.touch();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.problem).toBeNull();
+    expect(beats).toBe(3);
+  });
+
+  it("pagehide releases at once even with a heartbeat in flight, and releases again once it settles (idempotent)", async () => {
+    const calls: Call[] = [];
+    let beats = 0;
+    let settleBeat!: (r: Response) => void;
+    stub(calls, (url) => {
+      if (url === RELEASE) return new Response(null, { status: 204 });
+      beats += 1;
+      if (beats === 1) return ok();
+      return new Promise<Response>((r) => { settleBeat = r; });
+    });
+    const { result } = mount();
+    await act(async () => void (await result.current.touch())); // beat 1
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS); // beat 2 starts, never settles yet
+      await result.current.touch();
+    });
+    act(() => void window.dispatchEvent(new Event("pagehide")));
+    expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(1); // sent at once, heartbeat still pending
+    await act(async () => {
+      settleBeat(ok());
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(2); // sent again once the heartbeat settled
+  });
+
+  it("a poll returning null (the activity is gone) stops polling and shows it", async () => {
+    stub([], ok);
+    const reload = vi.fn(async () => null);
+    const { result } = mount({ initial: { holderName: "Sample Admin", since: "2026-11-03T17:55:00.000Z", mine: false, tabId: null }, reload });
+    expect(result.current.state).toMatchObject({ kind: "other" });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(POLL_MS)));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(result.current.state).toEqual({ kind: "gone" });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(POLL_MS * 4)));
+    expect(reload).toHaveBeenCalledTimes(1); // the interval was cleared once gone
+  });
+
+  it("a 404 on a heartbeat (not just on take) moves the state to gone", async () => {
+    let n = 0;
+    stub([], () => (n++ === 0 ? ok() : jsonResponse(404, { error: "Not found" })));
+    const { result } = mount();
+    await act(async () => void (await result.current.touch()));
+    expect(result.current.state).toEqual({ kind: "mine" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      await result.current.touch();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.state).toEqual({ kind: "gone" });
   });
 });
