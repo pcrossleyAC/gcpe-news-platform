@@ -545,7 +545,7 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 ## Phase 5f — Updates feed
 
 - **All Calendar users** — Calendar → Updates lists recent changes to the activities you can see. It opens on today's updates. "Latest 5 updates" shows the five newest.
-- **All Calendar users** — "Filter by date range" finds updates between two dates. From starts at yesterday, and both dates are included; leave either blank to leave that end open. Narrow it further by Update type (Changed, Added, Deleted, Reviewed, Cloned) and by words in the activity's title or summary, or the name of who made the change.
+- **All Calendar users** — Use From and To, then Search, to find updates between two dates. From starts at yesterday, and both dates are included; leave either blank to leave that end open. Narrow it further by Update type (Changed, Added, Deleted, Reviewed, Cloned) and by words in the activity's title or summary, or the name of who made the change.
 - **All Calendar users** — Type an activity's number above 10,000 (such as HLTH-20001) in "Search for" to see just that activity's updates. Shorter numbers and words like "COVID-19" are searched as text.
 - **All Calendar users** — Each line links to its activity. Save or Cancel there brings you back to the same updates.
 - **All Calendar users** — Hover over an activity's title in the feed to see its summary. The title and dates shown are the activity's current ones.
