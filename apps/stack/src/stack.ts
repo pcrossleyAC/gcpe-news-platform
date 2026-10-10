@@ -460,6 +460,8 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         { name: "nrms.dispatch", run: worker(nrms, "dispatch") },
         { name: "core.dispatch", run: worker(core, "dispatch") },
         ...(calendar ? [{ name: "calendar.dispatch", run: worker(calendar, "dispatch") }] : []),
+        // Deletes edit locks idle for 15 minutes (spec addendum §7.5); a no-op most ticks.
+        ...(calendar ? [{ name: "calendar.lock-sweep", run: worker(calendar, "lockSweep") }] : []),
         { name: "news-api.dispatch", run: worker(newsApi, "dispatch") },
         // The nightly Media Hub sync before the digest: an email address or flag it fixes up
         // this tick should already be current by the time the digest (and anything else this

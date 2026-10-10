@@ -1,8 +1,11 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, asc, eq, gte, isNull, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import type { CalendarRole } from "@gcpe/auth";
-import { commContacts, userProfiles, users } from "./db/schema";
+import type { ApiDeps } from "./http/routes";
+import { activities, commContacts, orgs, userProfiles, users } from "./db/schema";
+import { bcMidnight, dbNow, wallClock } from "./time";
+import { visibleSql, type Viewer } from "./visibility";
 
 export class CalendarUserNotFoundError extends Error {
   override name = "CalendarUserNotFoundError";
@@ -149,4 +152,45 @@ export async function setCommContactRank(db: Db, id: string, ministryKey: string
     }
     return (await getCalendarUser(tx, u.id)).commContacts;
   });
+}
+
+export interface OpenActivity {
+  id: number;
+  /** Legacy's MIN-Id. */
+  reference: string;
+  title: string;
+  startAt: string | null;
+  endAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+
+/**
+ * What legacy's user page listed before deactivating (User.aspx:183-223): activities whose comm
+ * contact is one of the user's active comm contacts, here only those still open (not deleted,
+ * ending today or later, or undated) and visible to the Administrator. No count of the rest: it
+ * would reveal confidential activities.
+ */
+export async function openActivitiesOf(deps: ApiDeps, actor: Viewer, userId: string, opts: { limit?: number } = {}): Promise<{ activities: OpenActivity[]; truncated: boolean }> {
+  const u = await projectedUser(deps.db, userId);
+  const limit = opts.limit ?? 500;
+  const now = await dbNow(deps.db, deps.now);
+  const today = bcMidnight(wallClock(now, deps.rules.timeZone).date, deps.rules.timeZone);
+  const ends = sql`coalesce(${activities.endAt}, ${activities.startAt})`;
+  const rows = await deps.db
+    .select({ id: activities.id, title: activities.title, startAt: activities.startAt, endAt: activities.endAt, abbreviation: orgs.abbreviation })
+    .from(activities)
+    .innerJoin(commContacts, eq(commContacts.id, activities.commContactId))
+    .leftJoin(orgs, eq(orgs.key, activities.contactMinistryKey))
+    .where(and(eq(commContacts.userId, u.id), eq(commContacts.isActive, true), isNull(activities.deletedAt), or(sql`${ends} IS NULL`, gte(ends, today)), visibleSql(actor)))
+    .orderBy(sql`${activities.startAt} ASC NULLS LAST`, asc(activities.id))
+    .limit(limit + 1);
+  const local = (d: Date | null) => (d ? wallClock(d, deps.rules.timeZone).date : null);
+  return {
+    truncated: rows.length > limit,
+    activities: rows.slice(0, limit).map((r) => ({
+      id: r.id, reference: `${r.abbreviation ?? "?"}-${r.id}`, title: r.title,
+      startAt: r.startAt?.toISOString() ?? null, endAt: r.endAt?.toISOString() ?? null, startDate: local(r.startAt), endDate: local(r.endAt),
+    })),
+  };
 }

@@ -5,7 +5,7 @@ import { LOCAL_AUDIENCE, LOCAL_ISSUER, mintLocalToken } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { UserRecord } from "@gcpe/events";
 import { createApp } from "./app";
-import { createCalendarTestDb, createTestApp, EVENT_SECRETS, projectOrg, projectUser, SESSION_SECRET, sessionCookie } from "../test/helpers";
+import { createCalendarTestDb, createTestApp, EVENT_SECRETS, projectOrg, projectUser, SESSION_SECRET, sessionCookie, TEST_RULES } from "../test/helpers";
 
 /** A gcpe-local JWT with whatever claims the holder of the local secret chooses. */
 const signHs256 = (secret: string, claims: Record<string, unknown>) => {
@@ -88,7 +88,7 @@ describe("the Calendar actor, re-derived on every request", () => {
   it("a bearer token has no Calendar access even when its subject is a projected user's id", async () => {
     await projectUser(app, user(6, { calendarRole: "Calendar.SysAdmin" }));
     const local = "calendar-local-bearer-secret-0123456789ab";
-    const withLocal = createApp({ db: tdb.db, auth: { session: { secret: SESSION_SECRET }, local: { secret: local } }, eventSecrets: EVENT_SECRETS });
+    const withLocal = createApp({ db: tdb.db, auth: { session: { secret: SESSION_SECRET }, local: { secret: local } }, eventSecrets: EVENT_SECRETS, rules: TEST_RULES });
     const token = await mintLocalToken({ secret: local, subject: id(6), roles: ["Calendar.SysAdmin"] });
     expect((await request(withLocal).get("/api/me").set("authorization", `Bearer ${token}`)).status).toBe(403);
     expect((await request(withLocal).get("/api/me").set("cookie", await sessionCookie(id(6)))).status).toBe(200);
@@ -97,7 +97,7 @@ describe("the Calendar actor, re-derived on every request", () => {
   it("a bearer token that claims to be a session still has no Calendar access", async () => {
     await projectUser(app, user(7, { calendarRole: "Calendar.SysAdmin" }));
     const local = "calendar-local-bearer-secret-0123456789ab";
-    const withLocal = createApp({ db: tdb.db, auth: { session: { secret: SESSION_SECRET }, local: { secret: local } }, eventSecrets: EVENT_SECRETS });
+    const withLocal = createApp({ db: tdb.db, auth: { session: { secret: SESSION_SECRET }, local: { secret: local } }, eventSecrets: EVENT_SECRETS, rules: TEST_RULES });
     const now = Math.floor(Date.now() / 1000);
     const forged = signHs256(local, { iss: LOCAL_ISSUER, aud: LOCAL_AUDIENCE, sub: id(7), iat: now, exp: now + 300, via: "session", roles: ["Calendar.SysAdmin"] });
     const res = await request(withLocal).get("/api/me").set("authorization", `Bearer ${forged}`);

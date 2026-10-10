@@ -8,18 +8,19 @@
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Express } from "express";
 import type { ParsedMail } from "mailparser";
-import { hashPassword } from "@gcpe/auth";
+import { hashPassword, mintSession, SESSION_COOKIE } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 
 import { createCoreTestDb, healthOrg } from "../../apps/core/test/helpers";
 import { seedTestUsers } from "../../apps/core/src/services/seed-test-users";
 import { upsertOrganization } from "../../apps/core/src/services/organizations";
+import { findUserByEmail, sessionUserFor } from "../../apps/core/src/services/users";
 import { createNrmsTestDb, seedTaxonomy } from "../../apps/nrms/test/helpers";
 import { pageTypes } from "../../apps/nrms/src/db/schema";
 import { LANG_EN } from "@gcpe/nrms-contract";
@@ -30,6 +31,7 @@ import { createDistributionTestDb } from "../../apps/distribution/test/helpers";
 import { createCalendarTestDb } from "../../apps/calendar/test/helpers";
 import { startSmtpSink } from "../../apps/distribution/test/smtp-sink";
 import { startStack } from "../../apps/stack/src/stack";
+import { sessionSecretFrom } from "../../apps/stack/src/env";
 import { runBuild } from "../../scripts/build-staff-web.mjs";
 import { TEST_USER_PASSWORDS, TICK_TOKEN, ADMIN_PASSWORD, MEMBERSHIP_API_USERNAME, MEMBERSHIP_API_PASSWORD, LOCAL_AUTH_SECRET, BOUNCE_SUMMARY_EMAIL, NEWS_REPLY_TO } from "./constants";
 
@@ -101,6 +103,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
 
   const outputDir = await mkdtemp(join(tmpdir(), "gcpe-e2e-site-"));
   const dataDir = await mkdtemp(join(tmpdir(), "gcpe-e2e-data-"));
+  const sessionDir = await mkdtemp(join(tmpdir(), "gcpe-e2e-sessions-"));
   const sink = await startSmtpSink();
 
   // The SMTP sink's `messages` array only lives in *this* (the main CLI) process's memory —
@@ -221,6 +224,22 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   process.env.E2E_NOD_DATABASE_URL = nod.url;
   process.env.E2E_DIST_DATABASE_URL = distribution.url;
   process.env.E2E_CALENDAR_DATABASE_URL = calendar.url;
+  // The seeded staff users' sessions, one per user, for playwright-support.ts's `loginForCookie`
+  // (which adds any other user's on first login). Minted the way Core's POST /auth/login issues
+  // them (same signing key, same identity and roles) rather than by logging in: that route sits
+  // behind the stack's combined 10/min/IP login limiter, and this suite has more distinct staff
+  // users than that, so real logins would 429 whenever the specs reach the sign-in form within
+  // a minute of the first login. sign-in-roles.spec.ts still drives the real sign-in form.
+  // Minted sessions last one hour (SESSION_TTL_SECONDS), so a suite run past an hour would need re-minting.
+  const sessions: Record<string, string> = {};
+  for (const email of Object.keys(TEST_USER_PASSWORDS)) {
+    const found = await findUserByEmail(core.db, email);
+    const user = found && (await sessionUserFor(core.db, found.id));
+    if (!user) throw new Error(`seeded test user ${email} is missing or inactive`);
+    sessions[email] = `${SESSION_COOKIE}=${(await mintSession(sessionSecretFrom(STACK_EVENT_SECRET), user)).token}`;
+  }
+  process.env.E2E_SESSION_CACHE = join(sessionDir, "sessions.json");
+  await writeFile(process.env.E2E_SESSION_CACHE, JSON.stringify(sessions));
   console.log(`[e2e global-setup] stack ready at ${baseUrl}`);
 
   return async function globalTeardown(): Promise<void> {
@@ -247,6 +266,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     for (const db of Object.values(dbs)) await step(() => db.drop());
     await step(() => rm(outputDir, { recursive: true, force: true }));
     await step(() => rm(dataDir, { recursive: true, force: true }));
+    await step(() => rm(sessionDir, { recursive: true, force: true }));
     if (errors.length > 0) {
       console.error("[e2e global-teardown] errors while shutting down:", errors);
     }

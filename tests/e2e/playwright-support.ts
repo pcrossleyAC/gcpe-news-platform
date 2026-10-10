@@ -2,6 +2,7 @@
 // here instead of re-deriving the same login/seed/tick/axe plumbing.
 import { expect, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { readFileSync, writeFileSync } from "node:fs";
 import { createDb, type Db } from "@gcpe/db-kit";
 export { headlineOf } from "../../apps/staff-web/src/screens/release/viewHelpers";
 import { ADMIN_PASSWORD, ADMIN_USERNAME, SESSION_COOKIE, TEST_USER_PASSWORDS, TICK_TOKEN } from "./constants";
@@ -23,19 +24,40 @@ export interface SessionCookie {
   cookie: string;
 }
 
-const cookieCache = new Map<string, string>();
+/** Session cookies by username, in the file global-setup.ts names on `E2E_SESSION_CACHE`:
+ * every seeded staff user's, minted there, plus any other user's this run has logged in. A
+ * file, not this module's memory: Playwright replaces the worker process after any failed test,
+ * and a fresh worker would otherwise log every user in again. */
+function readSessionCache(): Record<string, string> {
+  const file = process.env.E2E_SESSION_CACHE;
+  if (!file) return {};
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as Record<string, string>;
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return {};
+    throw e;
+  }
+}
+
+function writeSessionCache(username: string, cookie: string): void {
+  const file = process.env.E2E_SESSION_CACHE;
+  if (!file) return;
+  writeFileSync(file, JSON.stringify({ ...readSessionCache(), [username]: cookie }));
+}
 
 /** `POST /core/auth/login` directly (no browser) — faster than driving the sign-in form for
  * every spec that doesn't specifically need to exercise the form itself (acceptance item 1
  * covers that once, in sign-in.spec.ts). Returns the raw session cookie value.
  *
- * Cached per username for the whole run: `/core/auth/login` sits behind a combined, stack-wide
- * 10/min/IP rate limit (apps/stack/src/stack.ts's `combinedLoginLimiter`, covering every app's
- * login route) — this suite's many specs sharing one worker/one IP would otherwise blow through
- * that budget in seconds. The session cookie is valid for an hour (SESSION_TTL_SECONDS), far
- * longer than this whole suite runs, so one real login per user is always enough. */
+ * Cached per username for the whole run, across worker restarts (see readSessionCache), and
+ * the seeded test users (constants.ts) never log in here at all: `/core/auth/login` sits behind
+ * a combined, stack-wide 10/min/IP rate limit (apps/stack/src/stack.ts's `combinedLoginLimiter`,
+ * covering every app's login route) that this suite's specs, sharing one IP, would otherwise
+ * exhaust. The session cookie is valid for an hour (SESSION_TTL_SECONDS), far longer than this
+ * whole suite runs. Each other distinct user still costs a real login, so prefer a seeded user
+ * over a per-test one unless the test changes that user's own grants. */
 export async function loginForCookie(username: string, password: string): Promise<string> {
-  const cached = cookieCache.get(username);
+  const cached = readSessionCache()[username];
   if (cached) return cached;
   const res = await fetch(`${baseUrl()}/core/auth/login`, {
     method: "POST",
@@ -46,7 +68,7 @@ export async function loginForCookie(username: string, password: string): Promis
   const setCookie = res.headers.getSetCookie().find((c) => c.startsWith(`${SESSION_COOKIE}=`));
   if (!setCookie) throw new Error(`no ${SESSION_COOKIE} cookie in login response`);
   const cookie = setCookie.split(";")[0]!;
-  cookieCache.set(username, cookie);
+  writeSessionCache(username, cookie);
   return cookie;
 }
 

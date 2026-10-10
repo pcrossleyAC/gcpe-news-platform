@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@gcpe/auth": "0.0.0",
+    "@gcpe/calendar-contract": "0.0.0",
     "@gcpe/config": "0.0.0",
     "@gcpe/db-kit": "0.0.0",
     "@gcpe/events": "0.0.0",

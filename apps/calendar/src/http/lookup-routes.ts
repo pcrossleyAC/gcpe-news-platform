@@ -54,7 +54,9 @@ function idOf(req: Request<Params>): number {
   return Number(req.params.id);
 }
 
-const orderSchema = z.object({ ids: z.array(z.number().int().positive()).max(5000).refine((ids) => new Set(ids).size === ids.length, "duplicate id") }).strict();
+// Lookup ids live in int4 columns: an id the database can't hold is a 400 here rather than a query error.
+const MAX_INT4 = 2_147_483_647;
+const orderSchema = z.object({ ids: z.array(z.number().int().positive().max(MAX_INT4)).max(5000).refine((ids) => new Set(ids).size === ids.length, "duplicate id") }).strict();
 
 /** The generic lookup admin (spec addendum §5.3). Administrators see every lookup; legacy's locked ones need SysAdmin to change. */
 export function lookupRoutes(db: Db): Router {

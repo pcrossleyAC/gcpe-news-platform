@@ -116,7 +116,7 @@ export async function listLookupRows(db: DbOrTx, def: LookupDef): Promise<Lookup
 
 /** The lookup's aggregate lock: every write to one lookup takes it first, so a name check and the
  * write that relies on it can't interleave with another admin's. */
-async function lockLookup(tx: Tx, def: LookupDef): Promise<void> {
+export async function lockLookup(tx: Tx, def: LookupDef): Promise<void> {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`calendar-lookup:${def.name}`}))`);
 }
 

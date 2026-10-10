@@ -900,6 +900,41 @@ contact details and comm-contact ranks are untouched.
 - As cal-hq-admin: open an HQ user and change their rank (allowed); as cal-admin, deactivating
   cal-hq-admin is refused (HQ user).
 
+### Activity API (Phase 5c-1)
+
+**No migration.** The Calendar refuses to start if the tenant file has no `calendar` section.
+`config/tenants/bc.json` carries it, and the artifact ships it.
+
+**New tick step:** `calendar.lock-sweep`.
+
+**New route:** Calendar → NRMS for `activity.*`. NRMS records these events as `ignored` until 5h.
+
+**Hand checks on boxs.ca**, through the API. The screens are 5d and 5e. Use `curl` with a session
+cookie from `POST /core/auth/login` and the `X-GCPE-Request: 1` header:
+
+1. As cal-editor, `POST /calendar/api/activities` needs lookups to exist. As cal-sysadmin, first
+   add a "Sample category" and a "Sample City" on Hub → Calendar → Lookups. Set cal-editor's
+   comm-contact rank for Health on the users screen; that creates the comm contact. The create
+   answers 201.
+2. Between 16:00 and 17:00 BC, the same create answers 423 with "You cannot make content changes
+   between 4pm-5pm." As cal-hq-admin it answers 201.
+3. `PUT /calendar/api/activities/<id>/lock` as cal-editor, then as cal-admin: the second answers
+   423 "… is editing this activity".
+4. `GET /calendar/api/activities/<id>/changes` lists the `created` entry.
+5. After one tick, NRMS's `inbox_events` has an `ignored` row of type `activity.created` from
+   source `calendar`, and the News API's has none.
+
+### Transfer and undelivered events (Phase 5c-2)
+
+**No migration.**
+
+**Hand checks:**
+
+1. As cal-admin: Hub → Calendar → Transfer. Pick two Health comm contacts and Preview. The count
+   matches the activities created in 5c-1's hand checks. Transfer.
+2. On a user's page, Deactivate shows "No open activities." or the list.
+3. As cal-sysadmin: Hub → Calendar → Undelivered events shows "Nothing is waiting".
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

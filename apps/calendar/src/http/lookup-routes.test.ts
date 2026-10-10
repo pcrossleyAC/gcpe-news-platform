@@ -71,6 +71,13 @@ describe("lookup admin routes", () => {
     expect(stale.status).toBe(409);
   });
 
+  it("refuses a reorder id too large for the lookup tables with a 400", async () => {
+    const rows = (await request(app).get("/api/lookups/keywords").set("cookie", as("Calendar.Administrator"))).body.rows as { id: number }[];
+    const res = await write("put", "/api/lookups/keywords/order", "Calendar.Administrator", { ids: [...rows.map((r) => r.id), 3_000_000_000] });
+    expect(res.status).toBe(400);
+    expect((await write("put", "/api/lookups/keywords/order", "Calendar.Administrator", { ids: [2_147_483_648] })).status).toBe(400);
+  });
+
   it("answers 404 for an unknown lookup or row, 400 for a bad body, 409 for a duplicate active name", async () => {
     expect((await request(app).get("/api/lookups/priorities").set("cookie", as("Calendar.SysAdmin"))).status).toBe(404);
     expect((await write("put", "/api/lookups/keywords/999999", "Calendar.SysAdmin", { name: "x" })).status).toBe(404);

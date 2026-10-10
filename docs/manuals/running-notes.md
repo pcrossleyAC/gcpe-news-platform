@@ -422,3 +422,55 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   reported.
 - **Developer** — The report-rendering spike's code is on `spike/5b-report-rendering`, never merged; its
   findings are in `docs/superpowers/plans/2026-10-08-phase-5b-report-rendering-spike.md`.
+
+## Phase 5c-1 — Activity rules and the activity API
+
+- **Editor** — Between 4pm and 5pm BC time nobody outside HQ can create, change, clone or delete
+  activities, or start editing one. A save begun at 3:58 and sent at 4:01 is refused with the same
+  message; try again at 5pm. HQ users at Editor and above aren't affected.
+- **Editor** — If someone else is editing an activity, it shows "<name> is editing this activity (since
+  hh:mm)" and can't be saved until they finish or have been idle for 15 minutes.
+- **Editor** — "Someone else changed this activity — reload to see their changes" means another save,
+  a review or a Clear LA Status happened since you opened it. Reload, then make your change again.
+- **Editor** — Every change is recorded with who made it and the old and new values. A clone's history
+  starts with the activity it was cloned from.
+- **HQ** — Review clears every needs-review flag and marks the activity Reviewed. On a deleted
+  activity it clears only the "deleted" flag. Review selected skips rows changed since the list
+  loaded and says which.
+- **HQ** — Clear LA Status clears the LA status of every activity you can see that starts on or
+  before the chosen number of days from today, past ones included.
+- **Administrator** — Deleting an activity hides it from everyone except HQ Administrators, who
+  review the deletion.
+- **Operations** — The Calendar's settings (freeze window, release categories, Other city, the
+  Translations list, required fields) are in the tenant file's `calendar` section.
+- **Operations** — The Calendar sends `activity.*` events to NRMS from now on; NRMS ignores them until
+  phase 5h. They never go to the public News API.
+- **HQ** — An Awareness activity, or one led by the consultations ministry, keeps the Look Ahead
+  section it has (Not on LA for a new one); choosing another section for it has no effect, as in the
+  old Calendar. Long Term Outlook can still be ticked.
+- **Developer** — A request value the database can't hold (an id past 2,147,483,647, a NUL character,
+  a year before 1900 or after 2199) answers 400, never a 500. A database data error the request
+  checks miss also answers 400 `{"error":"invalid value"}`, and its code is logged.
+
+## Phase 5c-2 — Transfer, the deactivation preview, undelivered events
+
+- **Administrator** — Hub → Calendar → Transfer moves every activity of one comm contact (past ones
+  too, not deleted ones) to another and makes the second contact's ministry the lead ministry. It
+  shows how many will move before you confirm. A ministry Administrator can transfer only within
+  their own ministries, and moves only the activities their ministry leads: an activity another
+  ministry leads and shares with theirs stays where it is. HQ Administrators can transfer across
+  ministries. Transfer works during the 4pm-5pm freeze.
+- **Administrator** — Transfer won't move activities to a comm contact whose ministry is inactive
+  or can't lead an activity, or whose person's account is inactive; it says why. The From list
+  marks inactive contacts and inactive people "inactive".
+- **Editor** — An activity can't be given a comm contact whose account is inactive ("That person's
+  account is inactive"). An activity that already has that contact keeps it when saved, but can't
+  be cloned until it has an active comm contact: a clone is a new assignment.
+- **Administrator** — Deactivating a user first lists their open activities, with a link to
+  Transfer. Deactivating doesn't move them.
+- **System Administrator** — Hub → Calendar → Undelivered events lists events another app didn't
+  accept for 24 hours. Retry sends one again on the next minute's tick; if it comes back, the
+  receiving app is still refusing it.
+- **System Administrator** — Undelivered events lists the 200 most recent and says so when there are
+  more. Each Retry button names the receiving app and when the event was queued, for screen
+  readers, and stays disabled until its retry is answered.

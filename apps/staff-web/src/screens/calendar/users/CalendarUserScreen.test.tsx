@@ -6,13 +6,14 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { CalendarUserScreen } from "./CalendarUserScreen";
-import type { CalendarUserDetail } from "./types";
+import type { CalendarUserDetail, OpenActivities } from "./types";
 
 const DETAIL: CalendarUserDetail = {
   user: { id: "u1", displayName: "Robin Staff", email: "robin.staff@example.test", isActive: true, role: "Calendar.Editor", ministryKeys: ["health"] },
   profile: { phone: "250-555-0100", mobile: null, jobTitle: null, description: null },
   commContacts: [{ ministryKey: "health", rank: 4, isActive: true }],
 };
+let openActivities: OpenActivities = { activities: [], truncated: false };
 const CORE_USERS = [
   { id: "a1", email: "pat@x.invalid", displayName: "Pat", isActive: true, calendarRole: "Calendar.Administrator", organizationKeys: ["health"] },
   { id: "u1", email: "robin.staff@example.test", displayName: "Robin Staff", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health"] },
@@ -36,6 +37,7 @@ function stub(calls: { url: string; init?: RequestInit }[], detail = DETAIL, ove
       if (url.includes("/comm-contacts/")) return jsonResponse(200, [{ ministryKey: "health", rank: JSON.parse(init!.body as string).rank, isActive: true }]);
       if (url.endsWith("/active")) return jsonResponse(200, { ...CORE_USERS[1], isActive: JSON.parse(init!.body as string).isActive });
       if (url.endsWith("/link")) return jsonResponse(200, { ...CORE_USERS[2], email: "kim.imported@example.test", isActive: true });
+      if (url.endsWith("/open-activities")) return jsonResponse(200, openActivities);
       if (url.startsWith("/calendar/api/users/")) return jsonResponse(404, { error: "not found" });
       throw new Error(`unhandled: ${url}`);
     }),
@@ -60,6 +62,7 @@ describe("CalendarUserScreen", () => {
     cleanup();
     vi.unstubAllGlobals();
     sessionStorage.clear();
+    openActivities = { activities: [], truncated: false };
   });
 
   it("shows the user and saves contact details", async () => {
@@ -99,13 +102,48 @@ describe("CalendarUserScreen", () => {
   });
 
   it("deactivates through Core's Calendar route", async () => {
+    openActivities = { activities: [], truncated: false };
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(calls);
     renderAt("u1");
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
+    await user.click(within(preview).getByRole("button", { name: "Deactivate" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/calendar-access/u1/active")).toBe(true));
     expect(JSON.parse(calls.find((c) => c.url.endsWith("/active"))!.init!.body as string)).toEqual({ isActive: false });
     expect(await screen.findByRole("status")).toHaveTextContent("Robin Staff is deactivated. The Calendar picks this up within a minute.");
+  });
+
+  it("lists the user's open activities before deactivating, with a way to Transfer them", async () => {
+    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: "2026-11-10T17:00:00.000Z", endAt: null, startDate: "2026-11-10", endDate: null }], truncated: false };
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(calls);
+    renderAt("u1");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
+    expect(within(preview).getByText("HLTH-41 — Sample launch — 2026-11-10")).toBeInTheDocument();
+    expect(within(preview).getByRole("link", { name: "Transfer their activities first" })).toHaveAttribute("href", "/calendar/transfer");
+    expect(calls.some((c) => c.url.endsWith("/active"))).toBe(false);
+    await user.click(within(preview).getByRole("button", { name: "Deactivate anyway" }));
+    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/active"))).toBe(true));
+  });
+
+  it("deactivates a user with no open activities after saying so; Cancel deactivates nobody", async () => {
+    openActivities = { activities: [], truncated: false };
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(calls);
+    renderAt("u1");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
+    expect(within(preview).getByText("No open activities.")).toBeInTheDocument();
+    await user.click(within(preview).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("region", { name: "Before deactivating Robin Staff" })).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Deactivate Robin Staff" }));
+    await user.click(within(await screen.findByRole("region", { name: "Before deactivating Robin Staff" })).getByRole("button", { name: "Deactivate" }));
+    await waitFor(() => expect(calls.filter((c) => c.url.endsWith("/active"))).toHaveLength(1));
   });
 
   it("offers Link for an inactive user with no email", async () => {
@@ -121,10 +159,41 @@ describe("CalendarUserScreen", () => {
   });
 
   it("shows Core's refusal for a user with other roles", async () => {
+    openActivities = { activities: [], truncated: false };
     stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, { error: "only a Core admin can change a user who also has NRMS or NoD roles", reason: "other-roles" }) : undefined));
     renderAt("u1");
-    await userEvent.setup().click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
+    await user.click(within(preview).getByRole("button", { name: "Deactivate" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("only a Core admin can change a user who also has NRMS or NoD roles");
+  });
+
+  it.each([
+    [403, "Administrators see a user's open activities"],
+    [404, "not found"],
+  ])("shows the refusal when the open activities fail (%i), and deactivates nobody", async (status, error) => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stub(calls, DETAIL, (url) => (url.endsWith("/open-activities") ? jsonResponse(status, { error }) : undefined));
+    renderAt("u1");
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(error);
+    expect(screen.queryByRole("region", { name: "Before deactivating Robin Staff" })).toBeNull();
+    expect(calls.some((c) => c.url.endsWith("/active"))).toBe(false);
+    expect(screen.getByRole("button", { name: "Deactivate Robin Staff" })).toBeInTheDocument();
+  });
+
+  it("shows Core's refusal after a preview listing open activities, and the user stays active", async () => {
+    openActivities = { activities: [{ id: 41, reference: "HLTH-41", title: "Sample launch", startAt: "2026-11-10T17:00:00.000Z", endAt: null, startDate: "2026-11-10", endDate: null }], truncated: false };
+    stub([], DETAIL, (url) => (url.endsWith("/active") ? jsonResponse(403, { error: "only a Core admin can change a user who also has NRMS or NoD roles", reason: "other-roles" }) : undefined));
+    renderAt("u1");
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Deactivate Robin Staff" }));
+    const preview = await screen.findByRole("region", { name: "Before deactivating Robin Staff" });
+    await user.click(within(preview).getByRole("button", { name: "Deactivate anyway" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("only a Core admin can change a user who also has NRMS or NoD roles");
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("button", { name: "Deactivate Robin Staff" })).toBeInTheDocument();
   });
 
   it("an unknown user is not found", async () => {

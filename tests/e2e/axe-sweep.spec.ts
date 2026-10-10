@@ -9,7 +9,7 @@
 // pinned emergency pin, a file and a next-carousel slide once, up front, so every scan below
 // hits populated content instead of an empty state.
 import { test, expect, type Page } from "@playwright/test";
-import { EDITOR_EMAIL, SITE_EDITOR_EMAIL, TEST_USER_PASSWORDS } from "./constants";
+import { CAL_ADMIN_EMAIL, CAL_SYSADMIN_EMAIL, EDITOR_EMAIL, SITE_EDITOR_EMAIL, TEST_USER_PASSWORDS } from "./constants";
 import {
   apiCall, baseUrl, createApprovedAndPublished, createPublishableRelease, expectNoSeriousA11yViolations, loginForCookie, ONE_PX_PNG, settleModalTransition, signInAs,
   uniqueHeadline, uploadSiteFile,
@@ -231,5 +231,23 @@ test.describe("item 16: axe across every staff screen", () => {
     await expectNoSeriousA11yViolations(page, "/hub/users");
     await gotoAndWaitForH1(page, "/hub/error-log");
     await expectNoSeriousA11yViolations(page, "/hub/error-log");
+  });
+
+  // The Calendar's staff-web screens. cal-admin covers the Administrator-visible screens;
+  // cal-sysadmin additionally reaches the dead-letter page (System Administrator only).
+  test("the Calendar: landing, lookups, users, Transfer, undelivered events", async ({ page, context }) => {
+    const adminCookie = await loginForCookie(CAL_ADMIN_EMAIL, TEST_USER_PASSWORDS[CAL_ADMIN_EMAIL]!);
+    const [adminName, adminValue] = adminCookie.split("=", 2) as [string, string];
+    await context.addCookies([{ name: adminName, value: adminValue, domain: new URL(baseUrl()).hostname, path: "/", httpOnly: true, secure: false, sameSite: "Lax" }]);
+    for (const path of ["/hub/calendar", "/hub/calendar/lookups", "/hub/calendar/users", "/hub/calendar/transfer"]) {
+      await gotoAndWaitForH1(page, path);
+      await expectNoSeriousA11yViolations(page, path);
+    }
+
+    const sysadminCookie = await loginForCookie(CAL_SYSADMIN_EMAIL, TEST_USER_PASSWORDS[CAL_SYSADMIN_EMAIL]!);
+    const [sysName, sysValue] = sysadminCookie.split("=", 2) as [string, string];
+    await context.addCookies([{ name: sysName, value: sysValue, domain: new URL(baseUrl()).hostname, path: "/", httpOnly: true, secure: false, sameSite: "Lax" }]);
+    await gotoAndWaitForH1(page, "/hub/calendar/dead-letters");
+    await expectNoSeriousA11yViolations(page, "/hub/calendar/dead-letters");
   });
 });

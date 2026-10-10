@@ -3,7 +3,7 @@
 // the screen doesn't offer; a revoked grant is refused on the next request.
 import { test, expect } from "@playwright/test";
 import { healthOrg } from "../../apps/core/test/helpers";
-import { ADMIN_PASSWORD, ADMIN_USERNAME } from "./constants";
+import { ADMIN_PASSWORD, ADMIN_USERNAME, CAL_SYSADMIN_EMAIL, TEST_USER_PASSWORDS } from "./constants";
 import { apiCall, baseUrl, expectNoSeriousA11yViolations, loginForCookie, tick } from "./playwright-support";
 
 test.describe("Calendar lookups", () => {
@@ -17,8 +17,9 @@ test.describe("Calendar lookups", () => {
       await apiCall(admin, `/core/api/calendar-access/${u.id}`, { method: "PUT", body: { role, organizationKeys: ["health"] } });
       return { id: u.id, email, password: `e2e-cal-${who}-password-1` };
     };
+    // This test's own Administrator, since it revokes their grant at the end; the seeded System
+    // Administrator otherwise (every distinct user costs a login — see loginForCookie).
     const calAdmin = await mk("admin", "Calendar.Administrator");
-    const sysAdmin = await mk("sysadmin", "Calendar.SysAdmin");
     await tick(); // Core's user.upserted and org.upserted reach the Calendar's projections
 
     const cookie = await loginForCookie(calAdmin.email, calAdmin.password);
@@ -51,7 +52,7 @@ test.describe("Calendar lookups", () => {
     });
     expect(refused.status).toBe(403);
 
-    const sysCookie = await loginForCookie(sysAdmin.email, sysAdmin.password);
+    const sysCookie = await loginForCookie(CAL_SYSADMIN_EMAIL, TEST_USER_PASSWORDS[CAL_SYSADMIN_EMAIL]!);
     const created = await fetch(`${baseUrl()}/calendar/api/lookups/categories`, {
       method: "POST",
       headers: { cookie: sysCookie, "content-type": "application/json", "x-gcpe-request": "1" },

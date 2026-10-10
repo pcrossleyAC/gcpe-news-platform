@@ -22,6 +22,21 @@ export interface CalendarUserDetail {
   commContacts: { ministryKey: string; rank: number | null; isActive: boolean }[];
 }
 
+/** apps/calendar/src/users.ts's OpenActivity. */
+export interface OpenActivity {
+  id: number;
+  reference: string;
+  title: string;
+  startAt: string | null;
+  endAt: string | null;
+  startDate: string | null;
+  endDate: string | null;
+}
+export interface OpenActivities {
+  activities: OpenActivity[];
+  truncated: boolean;
+}
+
 /** Legacy's CommContactTypeSortOrder (Admin/User.aspx.cs:16-25). */
 export const RANK_OPTIONS = [
   { value: "", label: "Not a comm contact" },

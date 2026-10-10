@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router";
+import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
@@ -11,6 +12,8 @@ import { LookupsScreen } from "./lookups/LookupsScreen";
 import { LookupScreen } from "./lookups/LookupScreen";
 import { CalendarUsersScreen } from "./users/CalendarUsersScreen";
 import { CalendarUserScreen } from "./users/CalendarUserScreen";
+import { TransferScreen } from "./transfer/TransferScreen";
+import { DeadLettersScreen } from "./dead-letters/DeadLettersScreen";
 
 async function seriousViolations(container: Element) {
   const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
@@ -25,7 +28,15 @@ const USER_DETAIL = {
   profile: { phone: "250-555-0100", mobile: null, jobTitle: null, description: null },
   commContacts: [{ ministryKey: "health", rank: 4, isActive: true }],
 };
-const CORE_USERS = [{ id: "u1", email: "robin.staff@example.test", displayName: "Robin Staff", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health"] }];
+const OTHER_USER_DETAIL = {
+  user: { id: "u9", displayName: "Jamie Visitor", email: "jamie.visitor@example.test", isActive: true, role: "Calendar.Editor", ministryKeys: ["health"] },
+  profile: { phone: null, mobile: null, jobTitle: null, description: null },
+  commContacts: [],
+};
+const CORE_USERS = [
+  { id: "u1", email: "robin.staff@example.test", displayName: "Robin Staff", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health"] },
+  { id: "u9", email: "jamie.visitor@example.test", displayName: "Jamie Visitor", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health"] },
+];
 const ORGS = [{ key: "health", displayName: "Health", abbreviation: "HLTH", isActive: true, isHq: false, isPublic: true }];
 
 function stub() {
@@ -37,6 +48,10 @@ function stub() {
       if (url === "/calendar/api/lookups") return jsonResponse(200, [{ ...LOOKUP, rows: undefined }]);
       if (url === "/calendar/api/lookups/event-planners") return jsonResponse(200, LOOKUP);
       if (url === "/calendar/api/users/u1") return jsonResponse(200, USER_DETAIL);
+      if (url === "/calendar/api/users/u9") return jsonResponse(200, OTHER_USER_DETAIL);
+      if (url === "/calendar/api/transfer/comm-contacts") return jsonResponse(200, [{ id: 1, userId: "u1", displayName: "Robin Staff", ministryKey: "health", ministryAbbreviation: "HLTH", ministryName: "Health", isActive: true, canReceive: true, label: "Robin Staff (HLTH)" }]);
+      if (url.endsWith("/open-activities")) return jsonResponse(200, { activities: [], truncated: false });
+      if (url === "/calendar/api/dead-letters") return jsonResponse(200, { items: [{ eventId: "11111111-1111-4111-8111-111111111111", subscriber: "nrms", type: "activity.updated", aggregateId: "activity:7", attempts: 9, lastError: "HTTP 503", createdAt: "2026-09-01T00:00:00.000Z", queuedAtBc: "2026-08-31 17:00" }], truncated: true });
       if (url.startsWith("/calendar/api/users")) return jsonResponse(200, USER_ROWS);
       if (url === "/core/api/calendar-access") return jsonResponse(200, CORE_USERS);
       if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
@@ -56,6 +71,8 @@ const at = (path: string) => (
             <Route path="lookups/:name" element={<LookupScreen />} />
             <Route path="users" element={<CalendarUsersScreen />} />
             <Route path="users/:id" element={<CalendarUserScreen />} />
+            <Route path="transfer" element={<TransferScreen />} />
+            <Route path="dead-letters" element={<DeadLettersScreen />} />
           </Route>
         </Routes>
       </RequireAuth>
@@ -116,6 +133,29 @@ describe("accessibility: Calendar section", () => {
     stub();
     const { container } = render(at("/calendar/users/u1"));
     await screen.findByRole("form", { name: "Contact details" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("Transfer", async () => {
+    stub();
+    const { container } = render(at("/calendar/transfer"));
+    await screen.findByRole("heading", { level: 1, name: "Transfer activities" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("Undelivered events", async () => {
+    stub();
+    const { container } = render(at("/calendar/dead-letters"));
+    await screen.findByRole("heading", { level: 1, name: "Undelivered events" });
+    await screen.findByText("Only the 200 most recent are listed.");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("the deactivation preview", async () => {
+    stub();
+    const { container } = render(at("/calendar/users/u9"));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Deactivate Jamie Visitor" }));
+    await screen.findByRole("region", { name: "Before deactivating Jamie Visitor" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 });
