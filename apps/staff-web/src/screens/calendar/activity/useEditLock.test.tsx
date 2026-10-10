@@ -144,6 +144,32 @@ describe("useEditLock (spec addendum §7.5)", () => {
     expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(2);
   });
 
+  it("a take that lands after the tab's release, the page still there (back/forward cache), doesn't count as held; the next change takes it again", async () => {
+    const calls: Call[] = [];
+    let land!: (r: Response) => void;
+    let first = true;
+    stub(calls, (url) => {
+      if (url !== LOCK) return new Response(null, { status: 204 });
+      if (!first) return ok();
+      first = false;
+      return new Promise<Response>((r) => { land = r; });
+    });
+    const { result } = mount();
+    let p!: Promise<boolean>;
+    act(() => { p = result.current.touch(); });
+    act(() => void window.dispatchEvent(new Event("pagehide")));
+    await act(async () => {
+      land(ok());
+      await p;
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(2);
+    expect(result.current.state).toEqual({ kind: "none" });
+    await act(async () => void expect(await result.current.touch()).toBe(true));
+    expect(lockCalls(calls)).toHaveLength(2);
+    expect(result.current.state).toEqual({ kind: "mine" });
+  });
+
   it("someone who can't edit starts with no lock state, whoever holds it", () => {
     stub([], ok);
     const { result } = mount({ enabled: false, initial: { holderName: "Sample Admin", since: "2026-11-03T17:55:00.000Z", mine: false, tabId: null } });

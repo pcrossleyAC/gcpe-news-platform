@@ -77,6 +77,9 @@ export function useEditLock(o: {
   /** A take in flight, Continue here's included: changes made while it is pending share it, so
    * typing sends one PUT, not one per keystroke; and a release waits for it as for a heartbeat. */
   const pendingTake = useRef<Promise<boolean> | null>(null);
+  /** Counts this tab's releases: a take that lands after one began before it, and its lock is
+   * being released again as it lands, so it mustn't count as held. */
+  const releases = useRef(0);
   const reload = useRef(o.reload);
   reload.current = o.reload;
   const id = o.activityId;
@@ -124,10 +127,15 @@ export function useEditLock(o: {
 
   const take = useCallback(async (takeOver: boolean): Promise<boolean> => {
     const sentAt = Date.now();
+    const releasesBefore = releases.current;
     try {
       await activityApi.lock(id!, tabId, takeOver);
       // Released by the unmount, which waits for this take.
       if (disposed.current) return false;
+      // The tab went (pagehide) while this was in flight, and the page is still here (the
+      // back/forward cache, say): the release that follows this take clears it on the server, so
+      // stay at "none" and let the next change take it again. The change itself stands.
+      if (releases.current !== releasesBefore) return true;
       adoptOwn.current = false;
       lastBeat.current = sentAt;
       setProblem(null);
@@ -238,6 +246,7 @@ export function useEditLock(o: {
       // settles, in case its PUT reaches the server after this one and takes the lock
       // (locks.ts:48-51). The server releases only this tab's lock, so an early one is harmless.
       const fire = () => void activityApi.release(id!, tabId).catch(() => undefined);
+      releases.current += 1;
       fire();
       if (pendingBeat.current) void pendingBeat.current.catch(() => undefined).then(fire);
       if (taking) void taking.then(fire);
