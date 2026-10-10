@@ -3,7 +3,7 @@ import { Button, InlineAlert } from "@bcgov/design-system-react-components";
 import type { CalendarItem, CalendarRangeView, ListQuery } from "@gcpe/calendar-contract";
 import { listApi } from "./api";
 import { loadFailure } from "./ActivityTable";
-import { minId } from "./cells";
+import { minId, TitleLink } from "./cells";
 import { addDaysTo, bcDateOf, monthRange, shiftMonth, timeText, todayIn, weekRange } from "./dates";
 import type { ListView } from "./types";
 
@@ -104,7 +104,9 @@ export function CalendarGrid({ query, view, anchor, timeZone, onAnchor }: { quer
                     </span>
                     <ul>
                       {(byDay.get(d) ?? []).map((i) => (
-                        <li key={i.id}>{itemText(i, d)}</li>
+                        <li key={i.id}>
+                          <TitleLink id={i.id}>{itemText(i, d)}</TitleLink>
+                        </li>
                       ))}
                     </ul>
                   </td>
