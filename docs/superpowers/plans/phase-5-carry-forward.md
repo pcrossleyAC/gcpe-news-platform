@@ -8,6 +8,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 
 ## 5g
 
+- Reports are PDF only (Q48, Paul 2026-10-10): no Word, so no turbodocx or patcher. Build on pdfmake in a background job (Q57's spike: the 60-day Look Ahead with per-day page breaks takes about 28 s on boxs.ca); measure SiteGround's request timeout first, and offer the PDF as a download once built.
 - **Report rendering:** build on the spike's recommendation (`docs/superpowers/plans/2026-10-08-phase-5b-report-rendering-spike.md`); its "Risks and what wasn't checked" list is 5g's to close. Wait for Q57's answer before planning 5g: the spike's boxs.ca SSH and runtime legs couldn't run (the gcpe-siteground SSH key isn't authorised), so whether Chromium runs on SiteGround's Node hosting is still unverified; re-run those two legs once the key is authorised, before committing 5g's rendering seam to Chromium as the default.
 - **Look Ahead: don't build "Consultations and Dialogues".** That section hasn't been used in years (Paul, 2026-10-07). 5g does **not** build it. Record it in `docs/parity/changes-from-legacy.md` as dropped: "dropped: unused for years, Paul 2026-10-07". Update the spec's "all 7 sections" (R6, §10.2) and the cover legend to match. Check whether the §7 category rule "contact ministry is the consultations ministry → Consultations and Dialogues" still matters without the section.
 - **The Look Ahead's dates use a reference day, not today.** Legacy's `FriendlyDateTime` (`ActivityListProvider.ashx.cs:784-823`) takes a `referenceDay` only from the Look Ahead: a timed activity on that day shows no date text, only its time. The list's `friendlyDateRange` (`packages/calendar-contract`) has one `today` parameter and always prints the date; 5g's Look Ahead needs the reference day and the suppression.
@@ -25,6 +26,8 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 
 ## 5i
 
+- Survey 08 (2026-10-10, aggregates in `docs/parity/legacy-survey/results/Hub/08-CalendarParity_Queries-aggregates.xlsx`): legacy category 16 is stored as `Speech /  Remarks` (two spaces) while `bc.json` and `inferLookAhead` use `Speech / Remarks` and compare names exactly, so imported activities in it (5,758 links all-time) would infer the wrong Look Ahead section. Normalise whitespace in the comparison or the import, or match by id.
+- Survey 08: `UNK` in `contactMinistryExcludedAbbreviations` matches no legacy ministry; legacy `HqStatusId` uses the Status table's 7 (New) and 1 (Changed) only, so map 7 → `new` and 1 → `changed`; 43 active activities have a blank Significance (required for BC), so a non-HQ save of one is refused until it's filled in; query 8.20 (linked releases) is missing from the export and needs re-running; Excel turned 129 of 336 keyword names into dates, so re-export keywords as text.
 - **Sequences:** re-base every legacy-id identity (`activities`, every lookup, `comm_contacts`, `saved_filters`, `activity_files`) above the imported maximum (spec addendum §12.1).
 - **Lookup names:** legacy allows a NULL `Name`; the Calendar's `name` is NOT NULL, so map NULL to `""`.
 - **Keys, not ids:** legacy ministry GUIDs map to Core organization keys (`contact_ministry_key`, `ministry_key`, `activity_shared_with.ministry_key`), and sectors, themes and tags to term keys.

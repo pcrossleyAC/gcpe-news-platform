@@ -31,7 +31,7 @@ Bring the Corporate Calendar to full parity with the legacy Calendar module, on 
   - the list, the editor, attachments, the lookup and user admin screens, and Transfer (§8).
 - **Feeds and reports:**
   - the updates feed (§9);
-  - the Look Ahead, Exec Look Ahead, 30/60/90 and Planning reports, each as PDF and Word, plus the Excel export (§10).
+  - the Look Ahead, Exec Look Ahead, 30/60/90 and Planning reports as PDF, plus the Excel export (§10). No Word version (Q48, Paul 2026-10-10).
 - **NRMS link:** `activity.*` and `release.status_changed`, release status on the activity, and the Forecast tab. This closes C15 except its iCal feed (§11).
 - **Migration:** the legacy Calendar importer for a scoped set of activities (R13), and the side-by-side report parity check (§12).
 
@@ -59,7 +59,7 @@ Bring the Corporate Calendar to full parity with the legacy Calendar module, on 
 | R3 | Edit locks stay visible, with a 15-minute idle timeout. Optimistic concurrency through a version column applies to everyone. | A lock was the latest `calendar.Log` "Edit" row. It had no expiry, anyone's cancel deleted it, and the idle timer closed the tab. An HQ Administrator's edit to another ministry's activity left `LastUpdatedDateTime` alone, so it could be overwritten silently. | C128, C129 |
 | R4 | Needs-review flags work exactly as legacy: the same 23 fields and triggers, cleared by HQ. | None. The keyword-count bug is fixed separately (C130). | — |
 | R5 (revised) | **iCal is not built initially.** Legacy usage is unknown; it can be added later. The approved design (a tokenized per-user URL with reset, title, city and link only, confidential items left out) is kept in Appendix A. This also defers NRMS's Forecast iCal. | Legacy offered "Connect to Outlook" (Windows auth, no token, confidential items included) and a Forecast iCal. | C131 |
-| R6 | Every report is available as PDF and as Word, built from HTML templates: Look Ahead (all 7 sections), Exec Look Ahead (HQ Administrator and above), 30/60/90, and Planning (Legal landscape). Layouts and filters match legacy. Every report uses the current list filter. | RDLC through ReportViewer. The UI offered PDF only; Word worked only by editing the URL (`&format=Word`). | C132 |
+| R6 | Every report is available as PDF (no Word: Q48, Paul 2026-10-10), built from report templates: Look Ahead (all 7 sections), Exec Look Ahead (HQ Administrator and above), 30/60/90, and Planning (Legal landscape). Layouts and filters match legacy. Every report uses the current list filter. | RDLC through ReportViewer. The UI offered PDF only; Word worked only by editing the URL (`&format=Word`). | C132 |
 | R7 | Field history gets a "View changes" screen. | `calendar.Log` was written for 7 fields and never displayed. The link was commented out (`Activity.aspx.cs:689-691`). | C133 |
 | R8 | Import `calendar.Log` as field history. Do not import `NewsFeed`, a derived notification log full of personal information. | Not applicable (migration). | C134, C135 |
 | R9 | Import and keep Potential Dates and Records. Show Potential Dates in the UI. Drop `Priority` and `ActivityServices`. | Potential Dates was always hidden (`Activity.aspx:1201,2332`). | C136, C137 |
@@ -83,7 +83,7 @@ Each sub-plan is planned, built, reviewed and deployed to boxs.ca in turn. Each 
 | 5d | **List screen:** filters, display modes, quick search, saved filters, watchlist, column preferences, calendar view, corporate queries, the Look Ahead admin filter, review-selected, Excel export (§8.1) | Axe on every state. A visibility e2e for each role. A legacy saved-filter fixture migrates with a report. The list query takes under 500 ms on a 50,000-activity fixture, several years' growth over the imported set (assumed target, measured in 5d). |
 | 5e | **Editor screen:** fieldsets, Look Ahead inference and override, HQ-only fields, release badges, lock and conflict UX, "View changes", attachments (§8.2–§8.4) | An editor e2e for each role. Attachment authorisation tests: another ministry's confidential file gives 404. A lock-expiry e2e. |
 | 5f | **Updates feed:** latest 5, today, date range with type and keyword, per activity (§9) | Feed visibility tests for each role, including confidential and deleted items. Each mode returns the expected items from a fixture. |
-| 5g | **Reports:** Look Ahead, Exec Look Ahead, 30/60/90 and Planning as HTML templates rendered to PDF and Word (§10) | Golden HTML per section from fixtures. Text extracted from both PDF and Word matches the golden activity order. Every report built on boxs.ca. |
+| 5g | **Reports:** Look Ahead, Exec Look Ahead, 30/60/90 and Planning rendered to PDF (§10; no Word, Q48) | Golden HTML per section from fixtures. Text extracted from both PDF and Word matches the golden activity order. Every report built on boxs.ca. |
 | 5h | **NRMS link and Forecast:** `release.status_changed`, Calendar's release projection, NRMS's activity projection, the activity lookup and pre-fill in the release editor, the Forecast tab (§11) | Parent §10.2 e2e: Calendar activity → Forecast → draft → approve → schedule → publish → release status shown on the activity. |
 | 5i | **Importer and parity check** (§12) | On the fixture: exactly the in-scope activities are imported with their legacy ids (post-cutoff ones, deleted included, plus every non-deleted awareness date); out-of-scope activities, their history and their favourites are not; only referenced or active users are imported; the report balances and a re-run changes nothing. On a legacy snapshot (Q50), every report matches legacy's for a date range after the cutoff (§12.3). |
 
@@ -473,7 +473,7 @@ The Calendar section is part of `apps/staff-web` under `/hub/calendar`. It has t
 - **Calendar view:** a month and week view of the current filter, replacing legacy's FullCalendar toggle (`Default.aspx:191-262`).
 - **Corporate queries** (HQ, L ≥ Advanced): status, LA status, deleted, and the next N days (`Default.aspx:628-660`, `ActivityDAO.cs:306-368`).
 - **Look Ahead admin filter:** show all, Look Ahead only, or Not for Look Ahead only, applied inside `visible()` (C127).
-- **Toolbar:** Review selected; Clear LA Status; Excel Export; Look Ahead, Exec Look Ahead, 30/60/90 and Planning, each as PDF or Word.
+- **Toolbar:** Review selected; Clear LA Status; Excel Export; Look Ahead, Exec Look Ahead, 30/60/90 and Planning, each as PDF.
 - **Excel export** (`ActivityHandler.ashx.cs:392-527`):
   - an `.xlsx` workbook with legacy's header lines ("Province of BC. Corporate Calendar DRAFT & CONFIDENTIAL", the date range, "Printed:");
   - the same 16 columns;
@@ -557,7 +557,7 @@ One page with legacy's fieldsets, in legacy's order:
 
 Every report:
 - **Input:** takes the list's current filter and sort, applies `visible()`, and orders by start date, then end date, then start time (`ActivityHandler.ashx.cs:36-53`).
-- **Output:** renders one HTML template per report, and converts it to PDF or Word on request: `GET /calendar/api/reports/:report?format=pdf|docx&<filter>`.
+- **Output:** renders each report to PDF on request: `GET /calendar/api/reports/:report?<filter>`. No Word version (Q48, Paul 2026-10-10: the Calendar team doesn't use Word today). The rendering backend follows the spike (§10.1, Q57): pdfmake on SiteGround, built in the background.
 - **Links:** links each `MIN-Id` to the activity in the staff app.
 - **Times:** shows them in BC time.
 - **Per request:** builds the report from per-request state. Legacy's static `isDetailedLookAheadReport` let concurrent requests race (`ActivityHandler.ashx.cs:20,112`).
@@ -750,7 +750,7 @@ They hold no real names or addresses.
 ### 12.3 Report parity check
 
 `npm run calendar:report-parity -- --from <date> --to <date> --filter <json> --legacy-dir <folder>`. The range must start on or after the import cutoff, so both sides hold the same activities. The awareness history adds only Awareness Dates rows, which legacy also shows. The check:
-- builds every report as PDF and Word from the imported data;
+- builds every report as PDF from the imported data;
 - extracts the text of each, and of legacy's PDFs for the same range and filter;
 - compares, per section, the sequence of `MIN-Id`s, the date headings, each row's flag and RLS code, and the row text with whitespace normalised;
 - writes a diff report.
@@ -811,7 +811,7 @@ The importer's report counts them on its first run.
 | C129 | Concurrency used `LastUpdatedDateTime`, which HQ Administrators' edits to other ministries skipped, so a ministry user could overwrite them silently. | A `version` on every write, for everyone (HTTP 409 when stale). The displayed "last updated by" still follows legacy's HQ rule. | R3. | Agreed |
 | C130 | The keyword (HQ Tags) needs-review check compared counts only (`Activity.aspx.cs:1178`). | Compares the sets. | Legacy data bug (Paul, 2026-10-07). | Agreed |
 | C131 | "Connect to Outlook" gave a Windows-auth iCal feed of the user's activities (confidential included), and NRMS had a Forecast iCal. | Not built initially; legacy usage unknown; can be added later. The design is kept in Appendix A. | R5 (revised, Paul, 2026-10-07). | Agreed |
-| C132 | Reports as RDLC through ReportViewer. The UI offered PDF; Word only by editing the URL. | Each report offered as PDF and Word, from HTML templates. Layouts and filters as legacy. | R6. | Agreed (Q48) |
+| C132 | Reports as RDLC through ReportViewer. The UI offered PDF; Word only by editing the URL. | Each report offered as PDF. Layouts and filters as legacy. Legacy's URL-only Word export is not kept. | R6; Q48 (Paul, 2026-10-10: Word isn't used by the Calendar team). | Agreed (Q48) |
 | C133 | `calendar.Log` recorded 7 fields and was never shown. | Every field change is recorded with actor and old and new values, shown on "View changes". | R7; parent §8.3. | Agreed |
 | C134 | — | `calendar.Log` "Update" rows of imported activities are imported as history. "Edit" rows (116,031) and `PriorityId` rows (2,095) are not. | R8, R13. | Agreed |
 | C135 | The updates feed read `NewsFeed`, pre-rendered HTML with the actor's name and `mailto` email. | The feed is built from structured history: no stored HTML, no email. `NewsFeed` is not imported, so the feed starts at cutover. Older changes stay on each activity's "View changes". | R8: a derived log full of personal information. | Agreed |
@@ -843,12 +843,12 @@ The importer's report counts them on its first run.
 
 | # | Question | Why it matters | Working assumption until answered | Raised |
 |---|---|---|---|---|
-| Q48 | How faithful must the **Word** reports be: "similar layout" or "pixel match"? | Legacy offered no Word export in its UI, so there is no Word layout to match. | **Answered (2026-10-07):** similar layout is fine — same sections, order, columns, colours, headers and footers, and the same text; page breaks may fall differently. | 2026-10-07 |
+| Q48 | How faithful must the **Word** reports be: "similar layout" or "pixel match"? | Legacy offered no Word export in its UI, so there is no Word layout to match. | **Answered (2026-10-07):** similar layout is fine — same sections, order, columns, colours, headers and footers, and the same text; page breaks may fall differently. **Superseded (Paul, 2026-10-10):** no Word version at all; the Calendar team doesn't use Word today. Reports are PDF only. | 2026-10-07 |
 | Q49 | Which organisations are **HQ** (app owners) in production? | C124 merges `ApplicationOwnerOrganizations` and `HQAdmin` into one `is_hq` flag, so every HQ organisation gets the cross-ministry view, the freeze exemption (Editor+), the Look Ahead fieldset and the HQ-only privileges. | **Answered (2026-10-07):** GCPEHQ, GCPEMEDIA and PREM (the Office of the Premier, as in legacy's `ApplicationOwnerOrganizations` default). All three get `is_hq`; GCPEMEDIA and PREM members therefore also get the HQ privileges legacy gave only GCPEHQ (C124). | 2026-10-07 |
-| Q50 | Who can produce legacy **report PDFs** (Look Ahead, Exec, 30/60/90, Planning), and a database snapshot taken at the same moment, for the 5i parity check? Which ranges? | The side-by-side check needs the same data on both sides. | Two ranges: the next 14 days and the next 60 days, with no filter and with one ministry, from a snapshot taken right after the PDFs. | 2026-10-07 |
+| Q50 | Who can produce legacy **report PDFs** (Look Ahead, Exec, 30/60/90, Planning), and a database snapshot taken at the same moment, for the 5i parity check? Which ranges? | The side-by-side check needs the same data on both sides. | Two ranges: the next 14 days and the next 60 days, with no filter and with one ministry, from a snapshot taken right after the PDFs. Survey 08 (2026-10-10): the snapshot covers 2026-10-08 to 2027-01-08 (534 activities, 25 deleted), enough for the 14- and 60-day ranges; the parity check needs a test cutoff on or before 2026-10-08. Whether legacy PDFs were made at the same moment isn't in the data, and query 8.20 (linked releases) is missing from the export. | 2026-10-07 |
 | Q51 | What are production's values for `ShowRecordsSection`, `ShowHqCommentsField` and `SharedWithExcludes`, and for the Significance, Scheduling and Strategy required switches? | They decide whether staff see Records and the Look Ahead fieldset, and which fields are required. Only the template's values are in source. | The template's values: Records and the Look Ahead fieldset off for non-HQ; Significance and Scheduling required; Strategy optional; no shared-with exclusions. | 2026-10-07 |
-| Q52 | Is "Awareness Day / Week / Month" (id 2) the only category that marks awareness dates? Should deleted awareness activities be left out? | R13 imports every awareness date regardless of age; the category list decides how many come across. "Conference / AGM / Forum" (3,490 links, SV 4.10) is the only other all-day-style category, and it isn't treated as an awareness date. | Only "Awareness Day / Week / Month", non-deleted. To confirm with Carolynn. | 2026-10-07 |
-| Q53 | What is the import cutoff date, and does an activity that started before it but ends on or after it count as post-cutoff? | Fixes the imported set (R13) and the earliest date the parity check can use. | The swearing-in date after the 2026 election, passed as `--cutoff`. Activities ending on or after it are imported. | 2026-10-07 |
+| Q52 | Is "Awareness Day / Week / Month" (id 2) the only category that marks awareness dates? Should deleted awareness activities be left out? | R13 imports every awareness date regardless of age; the category list decides how many come across. "Conference / AGM / Forum" (3,490 links, SV 4.10) is the only other all-day-style category, and it isn't treated as an awareness date. | Only "Awareness Day / Week / Month", non-deleted. To confirm with Carolynn. Survey 08 (2026-10-10): id 2 is "Awareness Day / Week / Month" (6,142 live and 680 deleted links), and legacy's report selects by that name only, so `[2]` reproduces legacy. Other date-observance categories, should the business want them: IGRS National Day (52) and Half-Masting (51). | 2026-10-07 |
+| Q53 | What is the import cutoff date, and does an activity that started before it but ends on or after it count as post-cutoff? | Fixes the imported set (R13) and the earliest date the parity check can use. | The swearing-in date after the 2026 election, passed as `--cutoff`. Activities ending on or after it are imported. Survey 08 (2026-10-10): activities ending on or after a cutoff of 2026-10-01: 950; 2026-11-01: 784; 2026-12-01: 657; 2027-01-01: 595. With a 2026-11-01 cutoff the import is about 6,700 activities, not 7,800. | 2026-10-07 |
 
 ## 16. Testing and acceptance
 
@@ -869,7 +869,7 @@ The importer's report counts them on its first run.
   - review-selected skipping changed rows;
   - importer upsert and re-run.
 - **Event contracts:** `user.upserted`, `org.upserted` with `isHq`, `activity.*` (including the id-only confidential form), and `release.status_changed`, validated by the producer and by consumer tests.
-- **Reports:** golden HTML per section from fixtures; the text extracted from PDF and Word matches the golden order.
+- **Reports:** golden HTML per section from fixtures; the text extracted from the PDF matches the golden order.
 - **Staff app:** component tests, axe on every Calendar screen, and Playwright against the full local stack.
 
 **Acceptance list.** Phase 5 exits when all of these pass automatically. Items marked * are also checked by hand on boxs.ca.
@@ -883,7 +883,7 @@ The importer's report counts them on its first run.
 7. Every editor rule refuses bad input through the API as well as the form.
 8. *"View changes" shows each field change with actor and old and new values, including imported legacy entries.
 9. *The updates feed's modes return the expected items, with no email in any item.
-10. *Each report downloads as PDF and as Word, from the current filter. Exec Look Ahead is offered only to HQ Administrators. The Look Ahead has all 7 sections, the legend colours and the page-break rule.
+10. *Each report downloads as PDF, from the current filter. Exec Look Ahead is offered only to HQ Administrators. The Look Ahead has all 7 sections, the legend colours and the page-break rule.
 11. Attachments: upload, same-name replace, blocked extension refused, download refused (404) to a user who can't see the activity.
 12. Review selected, Clear LA Status, Transfer, the lookup admin and saved-filter rename are each refused on the server to a role below their threshold.
 13. *An NRMS release linked to an activity shows its status on the activity within one dispatch. Publishing it updates the status. Users without NRMS roles see no release link. A release linked to an activity that wasn't imported shows "Legacy activity <id>, not migrated".
