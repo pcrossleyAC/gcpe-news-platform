@@ -2,10 +2,6 @@
 
 Items one sub-plan leaves for a later one. Delete an item when the plan that takes it is written.
 
-## 5f
-
-- **The feed's `MIN-Id` links open the activity page** at `/hub/calendar/activities/:id`, with `?return=` set to the feed's own address (`activityPath` in `apps/staff-web/src/screens/calendar/activity/paths.ts`), so Save comes back to the feed (C149).
-
 ## 5g
 
 - Reports are PDF only (Q48, Paul 2026-10-10): no Word, so no turbodocx or patcher. Build on pdfmake in a background job (Q57's spike: the 60-day Look Ahead with per-day page breaks takes about 28 s on boxs.ca); measure SiteGround's request timeout first, and offer the PDF as a download once built.

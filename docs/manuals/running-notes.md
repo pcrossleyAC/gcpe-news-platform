@@ -541,3 +541,17 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **All Calendar users** — The list's filter is under "Filters", open when the page loads; close it to see more results. New activity, Review selected, Clear LA Status, Excel export and List/Month/Week sit above the results.
 - **Calendar administrators** — Calendar users is a table: name (opens the user), ministry, comm contact rank, Calendar role and whether active.
 - **Calendar access managers** — Calendar access is a table, one row per person; Edit opens their role and ministries under their row.
+
+## Phase 5f — Updates feed
+
+- **All Calendar users** — Calendar → Updates lists recent changes to the activities you can see. It opens on today's updates. "Latest 5 updates" shows the five newest.
+- **All Calendar users** — "Filter by date range" finds updates between two dates. From starts at yesterday, and both dates are included; leave either blank to leave that end open. Narrow it further by Update type (Changed, Added, Deleted, Reviewed, Cloned) and by words in the activity's title or summary, or the name of who made the change.
+- **All Calendar users** — Type an activity's number above 10,000 (such as HLTH-20001) in "Search for" to see just that activity's updates. Shorter numbers and words like "COVID-19" are searched as text.
+- **All Calendar users** — Each line links to its activity. Save or Cancel there brings you back to the same updates.
+- **All Calendar users** — Hover over an activity's title in the feed to see its summary. The title and dates shown are the activity's current ones.
+- **All Calendar users** — At most 1,000 updates show at once. The page says when there were more: narrow the dates or the search.
+- **All Calendar users** — The feed starts empty at cutover. Older changes are on each activity's "View changes", marked "from legacy log".
+- **All Calendar users** — Transfers and Clear LA Status don't appear in the feed, as in the old Calendar. See the activity's "View changes".
+- **Calendar editors** — When an activity is made confidential, moved to another ministry or deleted, its updates leave the feed for anyone who can no longer see it.
+- **HQ Editor and above** — Changes to an activity's Look Ahead fields show as "changed activity" only to people who see the Look Ahead fieldset.
+- **HQ Administrator** — Deleted activities' updates, the deletion included, show marked "(deleted)". The link opens the activity read-only, with Review.
