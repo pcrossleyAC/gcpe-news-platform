@@ -24,13 +24,20 @@ body {
   font-family: var(--typography-font-families-bc-sans);
 }
 
+/* The BC header runs across the top; the section menu and the screen sit side by side under it. */
 .gcpe-shell {
-  display: flex;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  grid-template-rows: auto 1fr;
   min-height: 100vh;
 }
 
+.gcpe-shell > .bcds-header {
+  grid-column: 1 / -1;
+}
+
 .gcpe-shell__nav {
-  flex: 0 0 220px;
+  grid-column: 1;
   border-right: 1px solid #ccc;
   padding: 1rem;
 }
