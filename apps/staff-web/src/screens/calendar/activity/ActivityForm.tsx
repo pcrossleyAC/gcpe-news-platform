@@ -21,6 +21,8 @@ export interface ActivityFormProps {
   needsReview: readonly NeedsReviewKey[];
   lookAhead: { visible: boolean; inferred: LookAheadInference; overridden: boolean; choose: (s: HqSection) => void; reset: () => void };
   today: string;
+  /** Nothing can be changed: each checklist lists only what is chosen. */
+  readOnly: boolean;
   /** "BC Gov News", at the end of the Release fieldset. */
   release: ReactNode;
   /** Records, after Event. */
@@ -57,7 +59,7 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
         <CheckField id={id("isIssue")} label="Issue" checked={f.isIssue} onChange={(v) => change({ isIssue: v })} review={rev("isIssue")} />
         <TextField id={id("significance")} label="Significance" multiline required={rules.required.significance && !relax} value={f.significance} onChange={(v) => change({ significance: v })} error={err("significance")} review={rev("significance")} />
         <TextField id={id("leadOrganization")} label="Lead Organization" value={f.leadOrganization} onChange={(v) => change({ leadOrganization: v })} error={err("leadOrganization")} review={rev("leadOrganization")} />
-        <CheckList id={id("initiativeIds")} label="HQ Initiatives & Leads" values={f.initiativeIds.map(String)} onChange={(v) => change({ initiativeIds: v.map(Number) })} options={lookupChoices(o.initiatives, s?.initiativeIds ?? [])} error={err("initiativeIds")} review={rev("initiativeIds")} />
+        <CheckList readOnly={p.readOnly} id={id("initiativeIds")} label="HQ Initiatives & Leads" values={f.initiativeIds.map(String)} onChange={(v) => change({ initiativeIds: v.map(Number) })} options={lookupChoices(o.initiatives, s?.initiativeIds ?? [])} error={err("initiativeIds")} review={rev("initiativeIds")} />
         <TagField id={id("keywordNames")} label="HQ Tags" values={f.keywordNames} onChange={(v) => change({ keywordNames: v })} suggestions={o.keywords.filter((k) => k.isActive).map((k) => k.name)} error={err("keywordNames")} review={rev("keywordNames")} />
       </fieldset>
 
@@ -66,7 +68,7 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
         <SelectField id={id("commContactId")} label="Comm Contact" required value={str(f.commContactId)} onChange={(v) => change({ commContactId: num(v) })} options={commContactChoices(o, f.contactMinistryKey, s?.commContactId ?? null)} empty={f.contactMinistryKey ? "Choose a comm contact" : "Choose the lead ministry first"} error={err("commContactId")} />
         <CheckField id={id("isMilestone")} label="Key activity" checked={f.isMilestone} onChange={(v) => change({ isMilestone: v })} />
         <TextField id={id("strategy")} label="Strategy" multiline required={rules.required.strategy} value={f.strategy} onChange={(v) => change({ strategy: v })} error={err("strategy")} review={rev("strategy")} />
-        <CheckList id={id("commMaterialIds")} label="Comm Materials" required={isRelease} values={f.commMaterialIds.map(String)} onChange={(v) => change({ commMaterialIds: v.map(Number) })} options={lookupChoices(o.commMaterials, s?.commMaterialIds ?? [])} error={err("commMaterialIds")} review={rev("commMaterialIds")} />
+        <CheckList readOnly={p.readOnly} id={id("commMaterialIds")} label="Comm Materials" required={isRelease} values={f.commMaterialIds.map(String)} onChange={(v) => change({ commMaterialIds: v.map(Number) })} options={lookupChoices(o.commMaterials, s?.commMaterialIds ?? [])} error={err("commMaterialIds")} review={rev("commMaterialIds")} />
         <TextField id={id("comments")} label="Internal notes" multiline value={f.comments} onChange={(v) => change({ comments: v })} error={err("comments")} review={rev("comments")} />
       </fieldset>
 
@@ -74,7 +76,7 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
         <legend>Ministry</legend>
         <SelectField id={id("contactMinistryKey")} label="Lead Ministry" required value={f.contactMinistryKey ?? ""} onChange={(v) => change((x) => withMinistry(x, v || null, o))} options={leadMinistryChoices(o, rules, p.me, s?.contactMinistryKey ?? null)} empty="Choose the lead ministry" error={err("contactMinistryKey")} />
         <CheckField id={id("isCrossGovernment")} label="Cross-Government" checked={f.isCrossGovernment} onChange={(v) => change({ isCrossGovernment: v })} />
-        <CheckList id={id("sharedWithKeys")} label="Shared With" values={f.sharedWithKeys} onChange={(v) => change({ sharedWithKeys: v })} options={sharedWithChoices(o, rules, s?.sharedWithKeys ?? [])} error={err("sharedWithKeys")} />
+        <CheckList readOnly={p.readOnly} id={id("sharedWithKeys")} label="Shared With" values={f.sharedWithKeys} onChange={(v) => change({ sharedWithKeys: v })} options={sharedWithChoices(o, rules, s?.sharedWithKeys ?? [])} error={err("sharedWithKeys")} />
       </fieldset>
 
       {p.lookAhead.visible && la && (
@@ -121,10 +123,10 @@ export function ActivityForm(p: ActivityFormProps): React.JSX.Element {
           <DateTimeField idDate={id("nrDate")} idTime={id("nrTime")} label="Release" date={f.nrDate} time={f.nrTime} onDate={(v) => change({ nrDate: v })} onTime={(v) => change({ nrTime: v })} showTime timeEmpty="No release time" dateError={err("nrDate")} timeError={err("nrTime")} />
           <SelectField id={id("nrOriginId")} label="Origin" required={isRelease} value={str(f.nrOriginId)} onChange={(v) => change({ nrOriginId: num(v) })} options={lookupChoices(o.origins, one("nrOriginId"))} empty="None" error={err("nrOriginId")} review={rev("nrOriginId")} />
           <SelectField id={id("nrDistributionId")} label="Distribution" required={isRelease} value={str(f.nrDistributionId)} onChange={(v) => change({ nrDistributionId: num(v) })} options={lookupChoices(o.distributions, one("nrDistributionId"))} empty="None" error={err("nrDistributionId")} review={rev("nrDistributionId")} />
-          <CheckList id={id("translations")} label="Translations Required" values={f.translations} onChange={(v) => change({ translations: v })} options={translationChoices(rules.translationsDefault, s?.translations ?? f.translations)} error={err("translations")} review={rev("translations")} />
-          <CheckList id={id("sectorKeys")} label="Sectors" values={f.sectorKeys} onChange={(v) => change({ sectorKeys: v })} options={termChoices(o.sectors, s?.sectorKeys ?? [])} error={err("sectorKeys")} />
-          <CheckList id={id("themeKeys")} label="Themes" values={f.themeKeys} onChange={(v) => change({ themeKeys: v })} options={termChoices(o.themes, s?.themeKeys ?? [])} error={err("themeKeys")} />
-          <CheckList id={id("tagKeys")} label="News Subscribe" values={f.tagKeys} onChange={(v) => change({ tagKeys: v })} options={termChoices(o.tags, s?.tagKeys ?? [])} error={err("tagKeys")} />
+          <CheckList readOnly={p.readOnly} id={id("translations")} label="Translations Required" values={f.translations} onChange={(v) => change({ translations: v })} options={translationChoices(rules.translationsDefault, s?.translations ?? f.translations)} error={err("translations")} review={rev("translations")} />
+          <CheckList readOnly={p.readOnly} id={id("sectorKeys")} label="Sectors" values={f.sectorKeys} onChange={(v) => change({ sectorKeys: v })} options={termChoices(o.sectors, s?.sectorKeys ?? [])} error={err("sectorKeys")} />
+          <CheckList readOnly={p.readOnly} id={id("themeKeys")} label="Themes" values={f.themeKeys} onChange={(v) => change({ themeKeys: v })} options={termChoices(o.themes, s?.themeKeys ?? [])} error={err("themeKeys")} />
+          <CheckList readOnly={p.readOnly} id={id("tagKeys")} label="News Subscribe" values={f.tagKeys} onChange={(v) => change({ tagKeys: v })} options={termChoices(o.tags, s?.tagKeys ?? [])} error={err("tagKeys")} />
           {p.release}
         </fieldset>
       )}

@@ -96,8 +96,53 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue("Sample hall");
     current = view({ version: 5, fields: { ...FIELDS, title: "Sample theirs" } });
     await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Unsaved changes" });
+    expect(dialog).toHaveTextContent("Reload and lose your changes?");
+    await userEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue("Sample hall");
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Sample activity");
+    await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Unsaved changes" })).getByRole("button", { name: "Reload" }));
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Sample theirs"));
     expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue("");
+    expect(screen.queryByText("Someone else changed this activity — reload to see their changes")).toBeNull();
+  });
+
+  it("a Reload that fails keeps the changes, still guarded, and says so", async () => {
+    let down = false;
+    stubActivity([], {
+      view: () => (down ? jsonResponse(503, { error: "Service unavailable" }) : view()),
+      other: (url, init) =>
+        url === ACTIVITY && init?.method === "PUT" ? jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity — reload to see their changes" }) : undefined,
+    });
+    renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Someone else changed this activity — reload to see their changes");
+    down = true;
+    await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Unsaved changes" })).getByRole("button", { name: "Reload" }));
+    expect(await screen.findByText("Couldn't reload. Your changes are still here.")).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue("Sample hall");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(await screen.findByRole("alertdialog", { name: "Unsaved changes" })).toHaveTextContent("Leave anyway and discard them?");
+  });
+
+  it("an unchanged form reloads without asking", async () => {
+    let current = view();
+    stubActivity([], {
+      view: () => current,
+      other: (url, init) =>
+        url === ACTIVITY && init?.method === "PUT" ? jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity — reload to see their changes" }) : undefined,
+    });
+    renderActivity("/calendar/activities/20001");
+    await title();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Someone else changed this activity — reload to see their changes");
+    current = view({ version: 5, fields: { ...FIELDS, title: "Sample theirs" } });
+    await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Sample theirs"));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 
   it("a 423 on save keeps the changes and names who holds the lock", async () => {
@@ -143,8 +188,16 @@ describe("the activity editor (spec addendum §8.2)", () => {
     }
   });
 
-  it("a save to an activity that is no longer there stops editing and keeps the changes on screen", async () => {
-    stubActivity([], { other: (url, init) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(404, { error: "not found" }) : undefined) });
+  it("a save to an activity that is no longer there stops editing, keeps the changes on screen, and offers nothing", async () => {
+    let gone = false;
+    stubActivity([], {
+      view: () => (gone ? jsonResponse(404, { error: "not found" }) : view()),
+      other: (url, init) => {
+        if (url !== ACTIVITY || init?.method !== "PUT") return undefined;
+        gone = true;
+        return jsonResponse(404, { error: "not found" });
+      },
+    });
     renderActivity("/calendar/activities/20001");
     const venue = await screen.findByRole("textbox", { name: "Venue" });
     await userEvent.type(venue, "Sample hall");
@@ -153,6 +206,7 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(venue).toHaveValue("Sample hall");
     expect(venue).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Activity actions" })).toBeNull());
   });
 
   it("a network failure keeps the changes and says so", async () => {
@@ -182,6 +236,22 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(await screen.findByText(why, { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Title" })).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("read-only, a checklist lists only what is chosen, or None; editable, every option is a checkbox", async () => {
+    stubActivity([], { me: { ...ME, role: "Calendar.ReadOnly", level: 1 }, view: view({ can: NOT_EDITABLE, fields: { ...FIELDS, sectorKeys: ["sample-sector"] } }) });
+    renderActivity("/calendar/activities/20001");
+    const shared = await screen.findByRole("group", { name: "Shared With" });
+    expect(within(shared).queryByRole("checkbox")).toBeNull();
+    expect(within(shared).getByText("None")).toBeInTheDocument();
+    const sectors = screen.getByRole("group", { name: "Sectors" });
+    expect(within(sectors).getAllByRole("listitem").map((li) => li.textContent)).toEqual(["Sample sector"]);
+    cleanup();
+    vi.unstubAllGlobals();
+    stubActivity([]);
+    renderActivity("/calendar/activities/20001");
+    await title();
+    expect(within(screen.getByRole("group", { name: "Shared With" })).getAllByRole("checkbox").length).toBeGreaterThan(0);
   });
 
   it("a first change that can't take the lock is undone, and the page says who holds it", async () => {
@@ -422,6 +492,60 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
   });
 
+  it("after a save answered 'deleted', the page follows the stored activity: only Review, with its current version (spec addendum §6)", async () => {
+    const calls: Call[] = [];
+    let deleted = false;
+    stubActivity(calls, {
+      me: HQ_ADMIN_ME,
+      config: HQ_ADMIN_CONFIG,
+      view: () => (deleted ? view({ version: 6, isDeleted: true, can: { edit: false, clone: false, delete: false, review: true } }) : view({ can: { edit: true, clone: true, delete: true, review: true } })),
+      other: (url, init) => {
+        if (url === ACTIVITY && init?.method === "PUT") {
+          deleted = true;
+          return jsonResponse(409, { code: "deleted", error: "This activity is deleted" });
+        }
+        return url === `${ACTIVITY}/review` && init?.method === "POST" ? jsonResponse(200, view({ version: 7, isDeleted: true })) : undefined;
+      },
+    });
+    renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+    const venue = await screen.findByRole("textbox", { name: "Venue" });
+    await userEvent.type(venue, "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("This activity is deleted");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Clone" })).toBeNull());
+    expect(venue).toHaveValue("x");
+    for (const name of ["Clone", "Delete", "Watch HLTH-20001"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.queryByRole("link", { name: "View changes" })).toBeNull();
+    await userEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(await screen.findByText("Reviewed HLTH-20001.")).toBeInTheDocument();
+    expect(JSON.parse(String(calls.find((c) => c.url === `${ACTIVITY}/review`)!.init!.body))).toEqual({ version: 6 });
+  });
+
+  it("after a save answered 'deleted' to someone who can't see deleted activities, nothing is offered", async () => {
+    let deleted = false;
+    stubActivity([], {
+      view: () => (deleted ? jsonResponse(404, { error: "not found" }) : view()),
+      other: (url, init) => {
+        if (url !== ACTIVITY || init?.method !== "PUT") return undefined;
+        deleted = true;
+        return jsonResponse(409, { code: "deleted", error: "This activity is deleted" });
+      },
+    });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("This activity is deleted");
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Activity actions" })).toBeNull());
+    expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue("x");
+  });
+
+  it("someone who can't edit is told who is editing, not that it will open for them", async () => {
+    stubActivity([], { me: { ...ME, role: "Calendar.ReadOnly", level: 1 }, view: view({ can: NOT_EDITABLE, lock: { holderName: "Sample Admin", since: "2026-11-03T18:00:00.000Z", mine: false, tabId: null } }) });
+    renderActivity("/calendar/activities/20001");
+    expect(await screen.findByText("You can view this activity but not change it.")).toBeInTheDocument();
+    expect(screen.queryByText(/opens for editing/)).toBeNull();
+  });
+
   it("a stored time off the 5-minute steps is shown, and still has to be changed to save (spec addendum §7.2)", async () => {
     stubActivity([], { view: view({ fields: { ...FIELDS, startTime: "09:07" } }) });
     renderActivity("/calendar/activities/20001");
@@ -468,8 +592,43 @@ describe("the activity editor (spec addendum §8.2)", () => {
       await screen.findByText("Someone else changed this activity — reload to see their changes");
       expect(JSON.parse(String(calls.find(isPut)!.init!.body))).toMatchObject({ version: 3, venue: "Sample hall" });
       await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+      await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Unsaved changes" })).getByRole("button", { name: "Reload" }));
       await waitFor(() => expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue(""));
       expect(drafts()).toHaveLength(0);
+    });
+
+    it("a Reload that fails keeps the kept changes too", async () => {
+      await loseTheSession();
+      let down = false;
+      stubActivity([], {
+        view: () => (down ? jsonResponse(503, { error: "Service unavailable" }) : view({ version: 5 })),
+        other: (url, init) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity — reload to see their changes" }) : undefined),
+      });
+      renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+      await screen.findByText("Your unsaved changes were restored.");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      await screen.findByText("Someone else changed this activity — reload to see their changes");
+      down = true;
+      await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+      await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Unsaved changes" })).getByRole("button", { name: "Reload" }));
+      await screen.findByText("Couldn't reload. Your changes are still here.");
+      expect(drafts()).toHaveLength(1);
+    });
+
+    it("restored changes whose lock this user still holds from before take it over with the first change, not as another tab's", async () => {
+      await loseTheSession();
+      const calls: Call[] = [];
+      stubActivity(calls, { view: view({ lock: { holderName: "Robin Staff", since: "2026-11-03T18:00:00.000Z", mine: true, tabId: "the-tab-before-sign-in" } }) });
+      renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+      await screen.findByText("Your unsaved changes were restored.");
+      expect(screen.queryByText("You're editing this activity in another tab.")).toBeNull();
+      const venue = screen.getByRole("textbox", { name: "Venue" });
+      expect(venue).toBeEnabled();
+      await userEvent.type(venue, "!");
+      await waitFor(() => expect(calls.some((c) => c.url.endsWith("/lock") && c.init?.method === "PUT")).toBe(true));
+      const take = calls.find((c) => c.url.endsWith("/lock") && c.init?.method === "PUT")!;
+      expect(JSON.parse(String(take.init!.body))).toMatchObject({ takeOver: true });
+      expect(venue).toHaveValue("Sample hall!");
     });
 
     it("a save clears the kept changes", async () => {

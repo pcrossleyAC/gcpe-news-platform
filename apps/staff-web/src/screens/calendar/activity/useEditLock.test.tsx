@@ -124,6 +124,45 @@ describe("useEditLock (spec addendum §7.5)", () => {
     expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(2);
   });
 
+  it.each([
+    ["a first change's take", false],
+    ["Continue here", true],
+  ])("%s still in flight when the tab goes is released at once, and again once it lands", async (_case, elsewhere) => {
+    const calls: Call[] = [];
+    let land!: (r: Response) => void;
+    stub(calls, (url) => (url === LOCK ? new Promise<Response>((r) => { land = r; }) : new Response(null, { status: 204 })));
+    const { result } = mount(elsewhere ? { initial: { holderName: "Robin Staff", since: "2026-11-03T17:55:00.000Z", mine: true, tabId: "another-tab" } } : {});
+    let p!: Promise<unknown>;
+    act(() => { p = elsewhere ? result.current.continueHere() : result.current.touch(); });
+    act(() => void window.dispatchEvent(new Event("pagehide")));
+    expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(1);
+    await act(async () => {
+      land(ok());
+      await p;
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(2);
+  });
+
+  it("someone who can't edit starts with no lock state, whoever holds it", () => {
+    stub([], ok);
+    const { result } = mount({ enabled: false, initial: { holderName: "Sample Admin", since: "2026-11-03T17:55:00.000Z", mine: false, tabId: null } });
+    expect(result.current.state).toEqual({ kind: "none" });
+  });
+
+  it("a page resuming this user's own earlier lock starts with none, and the first change takes it over", async () => {
+    const calls: Call[] = [];
+    stub(calls, ok);
+    const { result } = mount({ resumed: true, initial: { holderName: "Robin Staff", since: "2026-11-03T17:55:00.000Z", mine: true, tabId: "before-sign-in" } });
+    expect(result.current.state).toEqual({ kind: "none" });
+    await act(async () => void expect(await result.current.touch()).toBe(true));
+    expect(JSON.parse(String(lockCalls(calls)[0]!.init!.body))).toEqual({ tabId: result.current.tabId, takeOver: true });
+    expect(result.current.state).toEqual({ kind: "mine" });
+    await act(async () => void (await vi.advanceTimersByTimeAsync(IDLE_MS)));
+    await act(async () => void (await result.current.touch()));
+    expect(JSON.parse(String(lockCalls(calls)[1]!.init!.body))).not.toHaveProperty("takeOver");
+  });
+
   it("a new activity has no lock to take", async () => {
     const calls: Call[] = [];
     stub(calls, ok);
@@ -190,7 +229,7 @@ describe("useEditLock (spec addendum §7.5)", () => {
     expect(result.current.state).toEqual({ kind: "elsewhere" });
   });
 
-  it("unmounting while the first take() is in flight releases immediately, with no state update and no timer left behind", async () => {
+  it("unmounting while the first take() is in flight releases at once and again once it lands, with no state update and no timer left behind", async () => {
     const calls: Call[] = [];
     let resolveLock!: (r: Response) => void;
     stub(calls, (url) => (url === LOCK ? new Promise<Response>((r) => { resolveLock = r; }) : new Response(null, { status: 204 })));
@@ -198,9 +237,13 @@ describe("useEditLock (spec addendum §7.5)", () => {
     let p!: Promise<boolean>;
     act(() => { p = result.current.touch(); });
     unmount();
-    resolveLock(ok());
-    await act(async () => void (await p));
     expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(1);
+    resolveLock(ok());
+    await act(async () => {
+      await p;
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(2);
     expect(vi.getTimerCount()).toBe(0);
   });
 

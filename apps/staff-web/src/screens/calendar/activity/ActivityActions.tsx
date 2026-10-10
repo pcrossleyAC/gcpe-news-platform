@@ -8,6 +8,9 @@ import { activityApi } from "./api";
 import { minIdOf } from "./form";
 import { activityPath, changesPath } from "./paths";
 
+/** What a Reload came to: the stored activity shown, the user kept their changes, or the fetch failed. */
+export type ReloadResult = "reloaded" | "kept" | "failed";
+
 /** The server's own reason: a 422 names its fields (a clone's ministry or contact gone inactive), a 404 means the activity has gone. */
 function refusal(e: unknown): string | null {
   if (!(e instanceof ApiError)) return "Couldn't reach the server. Try again.";
@@ -31,8 +34,8 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
   frozen: boolean;
   /** False when a delete would be refused anyway: someone else's lock, or the activity gone. */
   deletable: boolean;
-  /** Fetches the stored activity again, as Save's Reload does, after a version conflict. */
-  reload: () => Promise<void>;
+  /** Fetches the stored activity again, as Save's Reload does, after a version conflict; with unsaved changes, asks first. */
+  reload: () => Promise<ReloadResult>;
   returnTo: string;
   leave: (to: string, notice: string, replace?: boolean) => void;
   onWatch: (w: WatchState) => void;
@@ -75,7 +78,7 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
           Review
         </Button>
       )}
-      {view.can.clone && !frozen && (
+      {view.can.clone && !frozen && !view.isDeleted && (
         <Button
           variant="secondary"
           isDisabled={busy || dirty}
@@ -91,7 +94,7 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
           Clone
         </Button>
       )}
-      {view.can.delete && !frozen && deletable && (
+      {view.can.delete && !frozen && deletable && !view.isDeleted && (
         <Button variant="secondary" danger isDisabled={busy} onPress={() => setConfirmDelete(true)}>
           Delete
         </Button>
@@ -107,8 +110,9 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
               <Button
                 variant="secondary"
                 onPress={() =>
-                  void reload().then(() => {
-                    setError(null);
+                  void reload().then((r) => {
+                    if (r === "reloaded") setError(null);
+                    else if (r === "failed") setError({ text: "Couldn't reload. Your changes are still here.", conflict: true });
                   })
                 }
               >

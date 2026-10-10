@@ -10,7 +10,7 @@ import { listApi } from "../list/api";
 import { todayIn } from "../list/dates";
 import type { CalendarConfigView } from "../list/types";
 import { useSession } from "../../../session/SessionContext";
-import { ActivityActions } from "./ActivityActions";
+import { ActivityActions, type ReloadResult } from "./ActivityActions";
 import { ActivityForm, type Change } from "./ActivityForm";
 import { activityApi } from "./api";
 import { clearActivityDraft, loadActivityDraft, saveActivityDraft } from "./draft";
@@ -25,6 +25,7 @@ const ID = /^\d{1,9}$/;
 /** The roles NRMS lets read a release (AppShell, apps/nrms/src/http/routes.ts): only they get BC Gov News's links. */
 const NRMS_READ_ROLES = ["NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor"];
 const STATUS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
+const COULDNT_RELOAD = "Couldn't reload. Your changes are still here.";
 interface Loaded {
   config: CalendarConfigView;
   options: EditorOptions;
@@ -181,16 +182,18 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   const fieldset = isNew ? config.lookAheadFieldset : view!.lookAhead !== null;
   const canEdit = isNew ? config.editor.create : view!.can.edit;
 
-  const reload = useCallback(async (): Promise<ActivityView | null> => {
+  /** Fetches the stored activity again. `discard` takes its values over any unsaved changes. */
+  const reload = useCallback(async (discard = false): Promise<ActivityView | null> => {
     if (!initial) return null;
     try {
       const v = await activityApi.get(initial.id);
+      const keep = dirtyRef.current && !discard;
       // Unsaved changes keep the version and values they were based on, so their save meets a
       // newer change as a 409 instead of overwriting it; only the lock and what the user may do
       // follow the server.
       // Files don't change the version, so the server's list is taken either way.
-      setView((prev) => (dirtyRef.current && prev ? { ...prev, lock: v.lock, can: v.can, isDeleted: v.isDeleted, files: v.files } : v));
-      if (!dirtyRef.current) {
+      setView((prev) => (keep && prev ? { ...prev, lock: v.lock, can: v.can, isDeleted: v.isDeleted, files: v.files } : v));
+      if (!keep) {
         setFields(v.fields);
         original.current = v.fields;
       }
@@ -199,7 +202,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
       return null;
     }
   }, [initial]);
-  const lock = useEditLock({ activityId: initial?.id ?? null, initial: initial?.lock ?? null, enabled: canEdit && !initial?.isDeleted, reload });
+  const lock = useEditLock({ activityId: initial?.id ?? null, initial: initial?.lock ?? null, enabled: canEdit && !initial?.isDeleted, resumed: restored !== null, reload });
   const frozen = config.freeze.appliesToYou;
   const lockedOut = lock.state.kind === "other" || lock.state.kind === "elsewhere" || lock.state.kind === "gone";
   const readOnly = !canEdit || frozen || lockedOut || !!view?.isDeleted || deletedMeanwhile;
@@ -258,10 +261,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
     if (e instanceof ApiError && e.status === 422) return showErrors((e.body as { errors?: FieldError[] } | undefined)?.errors ?? [{ field: "", message: e.message }]);
     if (e instanceof ApiError && e.status === 400 && e.issues?.length) return showErrors(issueErrors(e));
     if (e instanceof ApiError && e.status === 409 && e.code === "version_conflict") return setFailure({ text: e.message, conflict: true });
-    if (e instanceof ApiError && e.status === 409 && e.code === "deleted") {
-      setDeletedMeanwhile(true);
-      return setFailure({ text: e.message, conflict: false });
-    }
+    if (e instanceof ApiError && e.status === 409 && e.code === "deleted") return deletedUnderneath(e.message);
     // The freeze, or who holds the lock: the lock's banner says it, once.
     if (e instanceof ApiError && e.status === 423) return lock.refused(e);
     // Gone (deleted, or no longer visible): the lock's banner says so and the form goes read-only, the changes still on screen.
@@ -270,12 +270,40 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   };
   /** A file write's refusal: "deleted" as Save's, and the rest by the lock's banner. */
   const fileRefused = (e: unknown) => {
-    if (e instanceof ApiError && e.status === 409 && e.code === "deleted") {
-      setDeletedMeanwhile(true);
-      return setFailure({ text: e.message, conflict: false });
-    }
+    if (e instanceof ApiError && e.status === 409 && e.code === "deleted") return deletedUnderneath(e.message);
     lock.refused(e);
   };
+  /** Deleted under the page: nothing more can be saved, the changes stay on screen, and what is
+   * offered follows the stored activity (a deleted one offers HQ Administrators Review, §6). */
+  const deletedUnderneath = (text: string) => {
+    setDeletedMeanwhile(true);
+    setFailure({ text, conflict: false });
+    setView((prev) => (prev ? { ...prev, isDeleted: true } : prev));
+    void followStored();
+  };
+  /** Takes the stored activity's version, state and permissions, but not its values. Only once
+   * nothing more can be saved here: the version unsaved changes were based on is no longer needed. */
+  const followStored = async () => {
+    try {
+      const v = await activityApi.get(initial!.id);
+      setStillVisible(true);
+      setView((prev) => (prev ? { ...prev, version: v.version, isDeleted: v.isDeleted, can: v.can, lock: v.lock, files: v.files, status: v.status } : prev));
+    } catch (e) {
+      // Not visible any more: the lock's banner says it has gone, and nothing is offered.
+      if (e instanceof ApiError && e.status === 404) lock.refused(e);
+    }
+  };
+  /** The stored activity could still be fetched after the page found it gone or deleted. */
+  const [stillVisible, setStillVisible] = useState(false);
+  const gone = lock.state.kind === "gone";
+  const followedGone = useRef(false);
+  useEffect(() => {
+    if (!gone || deletedMeanwhile || followedGone.current) return;
+    followedGone.current = true;
+    void followStored();
+    // Once per page: followStored is a fresh closure each render, but reads nothing that changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gone, deletedMeanwhile]);
   const extra = (warnings: string[]) => (warnings.length ? ` ${warnings.join(" ")}` : "");
 
   const save = async () => {
@@ -313,13 +341,30 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
     }
   };
 
-  const discardAndReload = async () => {
+  /** The unsaved changes go only once the stored activity is here to replace them. */
+  const discardAndReload = async (): Promise<ReloadResult> => {
+    const v = await reload(true);
+    if (!v) return "failed";
     forgetDraft();
     setDirty(false);
     setFailure(null);
     setErrors([]);
-    const v = await reload();
-    if (v) setOverridden(v.lookAhead ? initialOverride(v.lookAhead.hqSection, v.lookAhead.inferred) : false);
+    setOverridden(v.lookAhead ? initialOverride(v.lookAhead.hqSection, v.lookAhead.inferred) : false);
+    return "reloaded";
+  };
+  /** Reload after a version conflict: with unsaved changes, asks first. */
+  const [askReload, setAskReload] = useState<((discard: boolean) => void) | null>(null);
+  const requestReload = async (): Promise<ReloadResult> => {
+    if (dirtyRef.current) {
+      const discard = await new Promise<boolean>((answer) => setAskReload(() => answer));
+      setAskReload(null);
+      if (!discard) return "kept";
+    }
+    return discardAndReload();
+  };
+  const reloadFromSave = async () => {
+    const r = await requestReload();
+    if (r === "failed") setFailure({ text: COULDNT_RELOAD, conflict: true });
   };
 
   const stamp =
@@ -354,7 +399,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
           description={failure.text}
           buttons={
             failure.conflict ? (
-              <Button variant="secondary" onPress={() => void discardAndReload()}>
+              <Button variant="secondary" onPress={() => void reloadFromSave()}>
                 Reload
               </Button>
             ) : undefined
@@ -382,6 +427,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
             needsReview={view?.needsReview ?? []}
             lookAhead={lookAhead}
             today={todayIn(config.timeZone)}
+            readOnly={readOnly}
             release={<ReleasesList releases={view?.releases ?? []} timeZone={config.timeZone} canOpen={NRMS_READ_ROLES.some((r) => session.has(r))} />}
             records={
               isNew ? (
@@ -418,15 +464,17 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
           </Button>
         </div>
       </form>
-      {view && (
+      {/* Gone, and not even a deleted activity to review: there is nothing left to act on. */}
+      {view && !(gone && !stillVisible) && (
         <ActivityActions
           view={view}
           myName={me.displayName}
-          dirty={dirty}
+          // Deleted underneath, the changes can never be saved, so they don't hold back Review.
+          dirty={dirty && !deletedMeanwhile}
           frozen={frozen}
           // Delete can't succeed under someone else's lock, or once the activity has gone.
           deletable={lock.state.kind !== "other" && lock.state.kind !== "gone" && !deletedMeanwhile}
-          reload={discardAndReload}
+          reload={requestReload}
           returnTo={returnTo}
           // An action that leaves (Delete discards unsaved changes) leaves no kept draft behind.
           leave={(to, calendarNotice, replace) => {
@@ -458,6 +506,24 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
           }
         >
           <p>You have unsaved changes to this activity. Leave anyway and discard them?</p>
+        </AlertDialog>
+      </Modal>
+      <Modal isOpen={askReload !== null} onOpenChange={(open) => { if (!open) askReload?.(false); }} isDismissable>
+        <AlertDialog
+          role="alertdialog"
+          aria-label="Unsaved changes"
+          variant="warning"
+          title="Unsaved changes"
+          buttons={
+            <>
+              <Button onPress={() => askReload?.(false)}>Keep editing</Button>
+              <Button danger onPress={() => askReload?.(true)}>
+                Reload
+              </Button>
+            </>
+          }
+        >
+          <p>Reload and lose your changes? The activity as it is now replaces them.</p>
         </AlertDialog>
       </Modal>
     </div>

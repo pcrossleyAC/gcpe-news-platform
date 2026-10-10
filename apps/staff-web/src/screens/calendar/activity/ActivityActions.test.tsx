@@ -189,6 +189,37 @@ describe("the activity's actions (spec addendum §8.2)", () => {
     expect(JSON.parse(String(reviews.at(-1)!.init!.body))).toEqual({ version: 4 });
   });
 
+  it("Review's Reload asks before discarding changes made since, and keeps them if the reload fails", async () => {
+    let down = false;
+    stubActivity([], {
+      me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG,
+      view: () => (down ? jsonResponse(503, { error: "Service unavailable" }) : view({ version: 4, can: { edit: true, clone: true, delete: true, review: true } })),
+      other: (url, init) =>
+        url === `${ACTIVITY}/review` && init?.method === "POST" ? jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity — reload to see their changes" }) : undefined,
+    });
+    renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+    await userEvent.click(await screen.findByRole("button", { name: "Review" }));
+    const actions = screen.getByRole("region", { name: "Activity actions" });
+    await within(actions).findByRole("alert");
+    const venue = screen.getByRole("textbox", { name: "Venue" });
+    await userEvent.type(venue, "Sample hall");
+    await userEvent.click(within(actions).getByRole("button", { name: "Reload" }));
+    const dialog = await screen.findByRole("alertdialog", { name: "Unsaved changes" });
+    await userEvent.click(within(dialog).getByRole("button", { name: "Keep editing" }));
+    expect(venue).toHaveValue("Sample hall");
+    expect(within(actions).getByRole("alert")).toHaveTextContent("Someone else changed this activity");
+    down = true;
+    await userEvent.click(within(actions).getByRole("button", { name: "Reload" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Unsaved changes" })).getByRole("button", { name: "Reload" }));
+    expect(await within(actions).findByText("Couldn't reload. Your changes are still here.")).toBeInTheDocument();
+    expect(venue).toHaveValue("Sample hall");
+    down = false;
+    await userEvent.click(within(actions).getByRole("button", { name: "Reload" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Unsaved changes" })).getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(venue).toHaveValue(""));
+    expect(within(actions).queryByRole("alert")).toBeNull();
+  });
+
   it("no Delete while someone else holds the lock", async () => {
     stubActivity([], { view: view({ can: { edit: true, clone: true, delete: true, review: false }, lock: { holderName: "Sample Admin", since: "2026-11-03T18:00:00.000Z", mine: false, tabId: null } }) });
     renderActivity("/calendar/activities/20001");
@@ -232,6 +263,8 @@ describe("the activity's actions (spec addendum §8.2)", () => {
     stubActivity([], { view: view({ releases }) });
     renderActivity("/calendar/activities/20001");
     const news = await screen.findByRole("region", { name: "BC Gov News" });
+    // The page's outline: the h1, then this, with no level skipped.
+    expect(within(news).getByRole("heading", { level: 2, name: "BC Gov News" })).toBeInTheDocument();
     expect(news).toHaveTextContent("Release NEWS-00001: Scheduled, Nov 10, 2031 10:00 AM");
     expect(within(news).queryByRole("link")).toBeNull();
     cleanup();

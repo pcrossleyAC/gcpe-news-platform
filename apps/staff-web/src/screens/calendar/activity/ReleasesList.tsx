@@ -11,7 +11,7 @@ const STATUS: Record<string, string> = {
 export function ReleasesList({ releases, timeZone, canOpen }: { releases: readonly ReleaseLinkView[]; timeZone: string; canOpen: boolean }): React.JSX.Element {
   return (
     <section aria-labelledby="bc-gov-news" className="gcpe-release-links">
-      <h3 id="bc-gov-news">BC Gov News</h3>
+      <h2 id="bc-gov-news">BC Gov News</h2>
       {releases.length === 0 ? (
         <p>No releases are linked to this activity.</p>
       ) : (

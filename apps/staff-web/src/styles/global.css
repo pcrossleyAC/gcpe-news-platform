@@ -544,8 +544,8 @@ body {
   max-height: 14rem;
   overflow-y: auto;
 }
-/* Read-only, its checkboxes can't take focus, so a scrolling box couldn't be scrolled from the keyboard: show it whole. */
-.gcpe-activity .gcpe-checklist:disabled {
+/* Read-only, it lists only the chosen options (fields.tsx CheckList): no scroll box, which the keyboard couldn't reach. */
+.gcpe-activity .gcpe-checklist--read {
   max-height: none;
   overflow-y: visible;
 }
@@ -624,6 +624,10 @@ body {
 }
 .gcpe-release-links {
   grid-column: 1 / -1;
+}
+/* An h2 in the page's outline, sized as the h3 it was, under the fieldset's legend. */
+.gcpe-release-links h2 {
+  font-size: 1.17em;
 }
 .gcpe-release-links ul {
   list-style: none;

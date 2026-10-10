@@ -95,16 +95,32 @@ export function CheckField(p: Common & { checked: boolean; onChange: (v: boolean
   );
 }
 
-/** A set of checkboxes in its own fieldset: the multi-value fields (comm materials, shared-with, terms, translations). */
-export function CheckList(p: Common & { values: readonly string[]; onChange: (v: string[]) => void; options: Choice[] }): React.JSX.Element {
+/**
+ * A set of checkboxes in its own fieldset: the multi-value fields (comm materials, shared-with,
+ * terms, translations). Read-only, it lists just the chosen options: disabled checkboxes can't take
+ * focus, so a long list in a scroll box couldn't be scrolled from the keyboard, and shown whole it
+ * would be hundreds of unticked boxes.
+ */
+export function CheckList(p: Common & { values: readonly string[]; onChange: (v: string[]) => void; options: Choice[]; readOnly?: boolean }): React.JSX.Element {
   const toggle = (v: string, on: boolean) => p.onChange(on ? [...p.values, v] : p.values.filter((x) => x !== v));
+  const chosen = p.readOnly ? p.options.filter((o) => p.values.includes(o.value)) : [];
   return (
-    <fieldset id={p.id} className={wrap(p, "gcpe-checklist")} aria-describedby={describedBy(p.id, p)}>
+    <fieldset id={p.id} className={wrap(p, p.readOnly ? "gcpe-checklist gcpe-checklist--read" : "gcpe-checklist")} aria-describedby={describedBy(p.id, p)}>
       <legend>
         {p.label}
         {p.required && <span aria-hidden="true"> *</span>}
       </legend>
-      {p.options.length === 0 ? (
+      {p.readOnly ? (
+        chosen.length === 0 ? (
+          <p>None</p>
+        ) : (
+          <ul>
+            {chosen.map((o) => (
+              <li key={o.value}>{o.label}</li>
+            ))}
+          </ul>
+        )
+      ) : p.options.length === 0 ? (
         <p className="gcpe-hint">None to choose from.</p>
       ) : (
         <ul>

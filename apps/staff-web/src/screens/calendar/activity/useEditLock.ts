@@ -44,9 +44,19 @@ export interface EditLock {
 }
 
 /** The editor's side of the edit lock (spec addendum §7.5; C128, C169). */
-export function useEditLock(o: { activityId: number | null; initial: ActivityView["lock"]; enabled: boolean; reload: () => Promise<ActivityView | null> }): EditLock {
+export function useEditLock(o: {
+  activityId: number | null;
+  initial: ActivityView["lock"];
+  /** False for someone who can't edit: no lock to show or take, whoever holds it. */
+  enabled: boolean;
+  /** The page is picking up this user's own earlier changes (kept through a sign-in): a lock of
+   * theirs is from before, not another tab's, and the first change takes it over. */
+  resumed?: boolean;
+  reload: () => Promise<ActivityView | null>;
+}): EditLock {
   const tabId = useMemo(() => crypto.randomUUID(), []);
-  const [state, setLockState] = useState<LockState>(() => lockStateOf(o.initial));
+  const adoptOwn = useRef(!!o.resumed && !!o.initial?.mine);
+  const [state, setLockState] = useState<LockState>(() => (o.enabled && !adoptOwn.current ? lockStateOf(o.initial) : { kind: "none" }));
   const [problem, setProblem] = useState<string | null>(null);
   const current = useRef(state);
   const set = useCallback((s: LockState) => {
@@ -61,10 +71,11 @@ export function useEditLock(o: { activityId: number | null; initial: ActivityVie
    * so a late PUT can never re-take the lock after the release has gone out. */
   const pendingBeat = useRef<Promise<void> | null>(null);
   /** True between the real unmount and (under StrictMode) the remount that follows: a `take()`
-   * that resolves while disposed releases straight away instead of touching state or arming a
-   * timer that would outlive the component. */
+   * that resolves while disposed touches no state and arms no timer that would outlive the
+   * component; the unmount's release waits for it and goes out again once it lands. */
   const disposed = useRef(false);
-  /** A take in flight: changes made while it is pending share it, so typing sends one PUT, not one per keystroke. */
+  /** A take in flight, Continue here's included: changes made while it is pending share it, so
+   * typing sends one PUT, not one per keystroke; and a release waits for it as for a heartbeat. */
   const pendingTake = useRef<Promise<boolean> | null>(null);
   const reload = useRef(o.reload);
   reload.current = o.reload;
@@ -115,10 +126,9 @@ export function useEditLock(o: { activityId: number | null; initial: ActivityVie
     const sentAt = Date.now();
     try {
       await activityApi.lock(id!, tabId, takeOver);
-      if (disposed.current) {
-        void activityApi.release(id!, tabId).catch(() => undefined);
-        return false;
-      }
+      // Released by the unmount, which waits for this take.
+      if (disposed.current) return false;
+      adoptOwn.current = false;
       lastBeat.current = sentAt;
       setProblem(null);
       set({ kind: "mine" });
@@ -159,27 +169,30 @@ export function useEditLock(o: { activityId: number | null; initial: ActivityVie
     });
   }, [id, tabId, armIdle, refused]);
 
+  /** Takes the lock, unless a take is already in flight, which the caller then shares. */
+  const takeOnce = useCallback((takeOver: boolean): Promise<boolean> => {
+    if (!pendingTake.current) {
+      const p = take(takeOver);
+      pendingTake.current = p;
+      void p.finally(() => {
+        if (pendingTake.current === p) pendingTake.current = null;
+      });
+    }
+    return pendingTake.current;
+  }, [take]);
+
   const touch = useCallback(async (): Promise<boolean> => {
     if (!active) return true;
     const s = current.current;
     if (s.kind === "other" || s.kind === "elsewhere" || s.kind === "gone") return false;
-    if (s.kind !== "mine") {
-      if (!pendingTake.current) {
-        const p = take(false);
-        pendingTake.current = p;
-        void p.finally(() => {
-          if (pendingTake.current === p) pendingTake.current = null;
-        });
-      }
-      return pendingTake.current;
-    }
+    if (s.kind !== "mine") return takeOnce(adoptOwn.current);
     if (Date.now() - lastBeat.current >= HEARTBEAT_MS) sendHeartbeat();
     return true;
-  }, [active, id, take, sendHeartbeat]);
+  }, [active, takeOnce, sendHeartbeat]);
 
   const continueHere = useCallback(async () => {
-    if (active) await take(true);
-  }, [active, take]);
+    if (active) await takeOnce(true);
+  }, [active, takeOnce]);
 
   // While someone else, or this user's other tab, holds it: look again every 30 seconds, so
   // editing opens without a reload once the lock has gone (spec addendum §7.5). A null reload
@@ -218,13 +231,16 @@ export function useEditLock(o: { activityId: number | null; initial: ActivityVie
     if (!active) return;
     const release = () => {
       const k = current.current.kind;
-      if (k !== "mine" && k !== "lapsed") return;
+      const taking = pendingTake.current;
+      if (k !== "mine" && k !== "lapsed" && !taking) return;
       // Always fires at once — the page may be gone before any microtask after this handler
-      // runs. A heartbeat still in flight gets a second, idempotent release once it settles, in
-      // case its PUT reaches the server after this one and re-takes the lock (locks.ts:48-51).
+      // runs. A heartbeat or a take still in flight gets a second, idempotent release once it
+      // settles, in case its PUT reaches the server after this one and takes the lock
+      // (locks.ts:48-51). The server releases only this tab's lock, so an early one is harmless.
       const fire = () => void activityApi.release(id!, tabId).catch(() => undefined);
       fire();
       if (pendingBeat.current) void pendingBeat.current.catch(() => undefined).then(fire);
+      if (taking) void taking.then(fire);
       set({ kind: "none" });
     };
     window.addEventListener("pagehide", release);
