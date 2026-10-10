@@ -1,12 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen } from "@testing-library/react";
+import { cleanup, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME } from "../list/fixtures";
+import { jsonResponse } from "../../../../test/jsonResponse";
+import { CONFIG, HQ_ADMIN_CONFIG, HQ_ADMIN_ME, ME } from "../list/fixtures";
 import { FIELDS, renderActivity, stubActivity, view } from "./fixtures";
 
-async function seriousViolations(container: Element) {
-  const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+async function seriousViolations(container: Element, options: axe.RunOptions = {}) {
+  const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, ...options });
   return results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
 }
 
@@ -52,5 +53,52 @@ describe("accessibility: the activity editor in every state", () => {
     const { container } = renderActivity("/calendar/activities/new");
     await screen.findByRole("heading", { level: 1, name: "New activity" });
     expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  const NOT_EDITABLE = { edit: false, clone: false, delete: false, review: false };
+  it.each([
+    ["read-only for a Read Only user", { me: { ...ME, role: "Calendar.ReadOnly", level: 1 }, view: view({ can: NOT_EDITABLE }) }, "You can view this activity but not change it."],
+    ["the freeze", { config: { ...CONFIG, freeze: { ...CONFIG.freeze, active: true, appliesToYou: true } } }, "You cannot make content changes between 4pm-5pm."],
+    ["a deleted activity", { view: view({ isDeleted: true, can: NOT_EDITABLE }) }, "This activity is deleted."],
+  ])("%s", async (_state, stub, text) => {
+    stubActivity([], stub);
+    const { container } = renderActivity("/calendar/activities/20001");
+    await screen.findByText(text, { exact: false });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("gone, after a save", async () => {
+    stubActivity([], { other: (url, init) => (url.endsWith("/20001") && init?.method === "PUT" ? jsonResponse(404, { error: "not found" }) : undefined) });
+    const { container } = renderActivity("/calendar/activities/20001");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("This activity is no longer available.");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("not found", async () => {
+    stubActivity([], { view: () => jsonResponse(404, { error: "not found" }) });
+    const { container } = renderActivity("/calendar/activities/20001");
+    await screen.findByRole("heading", { level: 1, name: "Activity not found" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("a load failure", async () => {
+    stubActivity([], { view: () => jsonResponse(500, { error: "boom" }) });
+    const { container } = renderActivity("/calendar/activities/20001");
+    await screen.findByText("Couldn't load this activity.");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("the unsaved-changes dialog", async () => {
+    stubActivity([]);
+    renderActivity("/calendar/activities/20001");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    within(await screen.findByRole("alertdialog", { name: "Unsaved changes" })).getByRole("button", { name: "Stay" });
+    // React Aria makes the page behind the dialog inert in real browsers; jsdom has no `inert`,
+    // so axe sees aria-hidden alone over focusable fields. That one rule is off here, as in the
+    // Subscribers dialogs' axe tests; the e2e axe sweep checks a real browser.
+    expect(await seriousViolations(document.body, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
   });
 });

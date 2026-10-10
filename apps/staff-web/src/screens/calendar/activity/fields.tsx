@@ -174,11 +174,20 @@ export function TagField(p: Common & { values: readonly string[]; onChange: (v: 
   );
 }
 
+const timeLabel = (hhmm: string) => {
+  const h = Number(hhmm.slice(0, 2));
+  return `${h % 12 === 0 ? 12 : h % 12}:${hhmm.slice(3)} ${h < 12 ? "AM" : "PM"}`;
+};
 const TIMES: Choice[] = Array.from({ length: 288 }, (_, i) => {
-  const h = Math.floor(i / 12);
-  const m = String((i % 12) * 5).padStart(2, "0");
-  return { value: `${String(h).padStart(2, "0")}:${m}`, label: `${h % 12 === 0 ? 12 : h % 12}:${m} ${h < 12 ? "AM" : "PM"}` };
+  const value = `${String(Math.floor(i / 12)).padStart(2, "0")}:${String((i % 12) * 5).padStart(2, "0")}`;
+  return { value, label: timeLabel(value) };
 });
+/** The 5-minute steps, plus a stored time between them (an imported 9:07), so the select shows it rather than going blank. */
+function timeChoices(current: string | null): Choice[] {
+  if (current === null || TIMES.some((t) => t.value === current)) return TIMES;
+  const extra = { value: current, label: `${timeLabel(current)} (not a 5-minute step)` };
+  return [...TIMES.filter((t) => t.value < current), extra, ...TIMES.filter((t) => t.value > current)];
+}
 
 /** A date, and a time in 5-minute steps (spec addendum §7.2), unless the activity is all day. */
 export function DateTimeField(p: {
@@ -201,11 +210,11 @@ export function DateTimeField(p: {
     <div className="gcpe-datetime">
       <div className={wrap(p)}>
         <Label id={p.idDate} label={`${p.label} date`} required={p.required} />
-        <input type="date" id={p.idDate} value={p.date ?? ""} onChange={(e) => p.onDate(e.target.value || null)} aria-invalid={invalid({ error: p.dateError })} aria-describedby={describedBy(p.idDate, dateNotes)} aria-required={p.required || undefined} />
+        <input type="date" id={p.idDate} min="1900-01-01" max="2199-12-31" value={p.date ?? ""} onChange={(e) => p.onDate(e.target.value || null)} aria-invalid={invalid({ error: p.dateError })} aria-describedby={describedBy(p.idDate, dateNotes)} aria-required={p.required || undefined} />
         <Notes id={p.idDate} p={dateNotes} />
       </div>
       {p.showTime && (
-        <SelectField id={p.idTime} label={`${p.label} time`} value={p.time ?? ""} onChange={(v) => p.onTime(v || null)} options={TIMES} empty={p.timeEmpty ?? "Choose a time"} required={p.required} error={p.timeError} />
+        <SelectField id={p.idTime} label={`${p.label} time`} value={p.time ?? ""} onChange={(v) => p.onTime(v || null)} options={timeChoices(p.time)} empty={p.timeEmpty ?? "Choose a time"} required={p.required} error={p.timeError} review={p.review} />
       )}
     </div>
   );

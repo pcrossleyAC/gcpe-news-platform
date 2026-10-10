@@ -2,7 +2,7 @@ import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "r
 import { Link, useBlocker, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
 import { AlertDialog, Button, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { checkActivity, friendlySpan, inferLookAhead, type ActivityFields, type ActivityView, type EditorOptions, type FieldError, type HqSection } from "@gcpe/calendar-contract";
-import { ApiError } from "../../../api/client";
+import { ApiError, onUnauthorized } from "../../../api/client";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import type { CalendarMe } from "../access";
 import { useCalendarContext } from "../CalendarSection";
@@ -11,6 +11,7 @@ import { todayIn } from "../list/dates";
 import type { CalendarConfigView } from "../list/types";
 import { ActivityForm, type Change } from "./ActivityForm";
 import { activityApi } from "./api";
+import { clearActivityDraft, loadActivityDraft, saveActivityDraft } from "./draft";
 import { bodyOf, errorsByField, fieldId, initialOverride, lookAheadInputOf, minIdOf, newActivityFields, withInferredSection } from "./form";
 import { LockBanner } from "./LockBanner";
 import { activityPath, safeCalendarReturn } from "./paths";
@@ -82,13 +83,26 @@ export function ActivityScreen({ idParam }: { idParam: string | null }): React.J
   return <ActivityEditor me={me} {...loaded} returnTo={returnTo} notice={notice} />;
 }
 
+/** A field the form shows gets a link; one it doesn't (the hidden Release fieldset's, say) is named in plain text. */
+const shown = (field: string) => field !== "" && typeof document !== "undefined" && document.getElementById(fieldId(field)) !== null;
+
+/** A 400's schema issues, against the field each names ("lookAhead.hqComments" for the Look Ahead fieldset's). */
+function issueErrors(e: ApiError): FieldError[] {
+  return (e.issues ?? []).map((raw) => {
+    const issue = raw as { path?: (string | number)[]; message?: string };
+    const path = issue.path ?? [];
+    const field = path[0] === "lookAhead" ? path.slice(0, 2).join(".") : String(path[0] ?? "");
+    return { field, message: issue.message ?? e.message };
+  });
+}
+
 const ErrorSummary = forwardRef<HTMLDivElement, { errors: FieldError[] }>(function ErrorSummary({ errors }, ref) {
   return (
     <div ref={ref} tabIndex={-1} role="alert" className="gcpe-error-summary" aria-labelledby="activity-errors-heading">
       <h2 id="activity-errors-heading">Fix these to save</h2>
       <ul>
         {errors.map((e, i) => (
-          <li key={`${e.field}-${i}`}>{e.field ? <a href={`#${fieldId(e.field)}`}>{e.message}</a> : e.message}</li>
+          <li key={`${e.field}-${i}`}>{shown(e.field) ? <a href={`#${fieldId(e.field)}`}>{e.message}</a> : e.message}</li>
         ))}
       </ul>
     </div>
@@ -104,12 +118,19 @@ interface EditorProps extends Loaded {
 function ActivityEditor({ me, config, options, view: initial, returnTo, notice }: EditorProps): React.JSX.Element {
   const navigate = useNavigate();
   const isNew = initial === null;
-  const [view, setView] = useState(initial);
+  const draftId = initial?.id ?? "new";
+  // Changes kept when a 401 sent the user to sign in, restored on the same activity with the
+  // version they were based on. Only where they could still be saved.
+  const [restored] = useState(() => {
+    const editable = isNew ? config.editor.create : initial.can.edit && !initial.isDeleted;
+    return editable ? loadActivityDraft(me.userId, draftId) : null;
+  });
+  const [view, setView] = useState(() => (initial && restored?.version != null ? { ...initial, version: restored.version } : initial));
   const start = useMemo(
     () => initial?.fields ?? withInferredSection(newActivityFields(me, config.lookAheadFieldset), false, options, config.rules, null),
     [initial, me, config, options],
   );
-  const [fields, setFields] = useState<ActivityFields>(start);
+  const [fields, setFields] = useState<ActivityFields>(() => restored?.fields ?? start);
   const original = useRef(start);
   const [overridden, setOverriddenState] = useState(() => (initial?.lookAhead ? initialOverride(initial.lookAhead.hqSection, initial.lookAhead.inferred) : false));
   const overriddenRef = useRef(overridden);
@@ -120,14 +141,29 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   const [errors, setErrors] = useState<FieldError[]>([]);
   const [failure, setFailure] = useState<{ text: string; conflict: boolean } | null>(null);
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirtyState] = useState(false);
-  const dirtyRef = useRef(false);
+  const [dirty, setDirtyState] = useState(restored !== null);
+  const dirtyRef = useRef(restored !== null);
   const setDirty = (v: boolean) => {
     dirtyRef.current = v;
     setDirtyState(v);
   };
   const leaving = useRef(false);
   const summary = useRef<HTMLDivElement>(null);
+  /** A save answered "deleted": nothing more can be saved here, but the changes stay on screen. */
+  const [deletedMeanwhile, setDeletedMeanwhile] = useState(false);
+
+  // A 401 is about to send the user to sign in (RequireAuth unmounts this page first, so the
+  // leave-page guard can't ask): keep the unsaved changes for when they come back.
+  const latest = useRef({ fields, version: view?.version ?? null });
+  latest.current = { fields, version: view?.version ?? null };
+  useEffect(
+    () =>
+      onUnauthorized(() => {
+        if (dirtyRef.current) saveActivityDraft(me.userId, { activityId: draftId, version: latest.current.version, fields: latest.current.fields });
+      }),
+    [me.userId, draftId],
+  );
+  const forgetDraft = () => clearActivityDraft(me.userId, draftId);
 
   const storedSection: HqSection | null = view?.fields.lookAhead?.hqSection ?? null;
   const fieldset = isNew ? config.lookAheadFieldset : view!.lookAhead !== null;
@@ -137,7 +173,10 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
     if (!initial) return null;
     try {
       const v = await activityApi.get(initial.id);
-      setView(v);
+      // Unsaved changes keep the version and values they were based on, so their save meets a
+      // newer change as a 409 instead of overwriting it; only the lock and what the user may do
+      // follow the server.
+      setView((prev) => (dirtyRef.current && prev ? { ...prev, lock: v.lock, can: v.can, isDeleted: v.isDeleted } : v));
       if (!dirtyRef.current) {
         setFields(v.fields);
         original.current = v.fields;
@@ -150,7 +189,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   const lock = useEditLock({ activityId: initial?.id ?? null, initial: initial?.lock ?? null, enabled: canEdit && !initial?.isDeleted, reload });
   const frozen = config.freeze.appliesToYou;
   const lockedOut = lock.state.kind === "other" || lock.state.kind === "elsewhere" || lock.state.kind === "gone";
-  const readOnly = !canEdit || frozen || lockedOut || !!view?.isDeleted;
+  const readOnly = !canEdit || frozen || lockedOut || !!view?.isDeleted || deletedMeanwhile;
   const inferred = inferLookAhead(lookAheadInputOf(fields, options, storedSection), config.rules);
 
   const title = isNew ? "New activity" : `Activity ${minIdOf(view!)}`;
@@ -204,11 +243,14 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   };
   const writeFailed = (e: unknown) => {
     if (e instanceof ApiError && e.status === 422) return showErrors((e.body as { errors?: FieldError[] } | undefined)?.errors ?? [{ field: "", message: e.message }]);
+    if (e instanceof ApiError && e.status === 400 && e.issues?.length) return showErrors(issueErrors(e));
     if (e instanceof ApiError && e.status === 409 && e.code === "version_conflict") return setFailure({ text: e.message, conflict: true });
-    if (e instanceof ApiError && e.status === 423) {
-      lock.refused(e);
+    if (e instanceof ApiError && e.status === 409 && e.code === "deleted") {
+      setDeletedMeanwhile(true);
       return setFailure({ text: e.message, conflict: false });
     }
+    // The freeze, or who holds the lock: the lock's banner says it, once.
+    if (e instanceof ApiError && e.status === 423) return lock.refused(e);
     // Gone (deleted, or no longer visible): the lock's banner says so and the form goes read-only, the changes still on screen.
     if (e instanceof ApiError && e.status === 404) return lock.refused(e);
     setFailure({ text: e instanceof ApiError && e.status < 500 ? e.message : "Couldn't save. Your changes are still here; try again.", conflict: false });
@@ -234,11 +276,14 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
       const body = bodyOf(fields, fieldset);
       if (isNew) {
         const r = await activityApi.create(body);
+        forgetDraft();
         if (r.activity) leave(activityPath(r.id, returnTo), `Created ${minIdOf(r.activity)}.${extra(r.warnings)}`, true);
         else leave(returnTo, r.warnings.join(" "));
       } else {
         const r = await activityApi.update(view!.id, { ...body, version: view!.version, tabId: lock.tabId });
-        leave(returnTo, r.activity ? `Saved ${minIdOf(r.activity)}.${extra(r.warnings)}` : r.warnings.join(" "));
+        forgetDraft();
+        // Replaces the editor's entry: Back doesn't reopen it, and a reload doesn't repeat the notice.
+        leave(returnTo, r.activity ? `Saved ${minIdOf(r.activity)}.${extra(r.warnings)}` : r.warnings.join(" "), true);
       }
     } catch (e) {
       writeFailed(e);
@@ -248,6 +293,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   };
 
   const discardAndReload = async () => {
+    forgetDraft();
     setDirty(false);
     setFailure(null);
     setErrors([]);
@@ -268,6 +314,11 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
       {notice && (
         <p role="status" className="gcpe-notice">
           {notice}
+        </p>
+      )}
+      {restored && (
+        <p role="status" className="gcpe-notice">
+          Your unsaved changes were restored.
         </p>
       )}
       {stamp && <p className="gcpe-hint">{stamp}</p>}
@@ -334,7 +385,13 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
           buttons={
             <>
               <Button onPress={() => blocker.reset?.()}>Stay</Button>
-              <Button danger onPress={() => blocker.proceed?.()}>
+              <Button
+                danger
+                onPress={() => {
+                  forgetDraft();
+                  blocker.proceed?.();
+                }}
+              >
                 Leave
               </Button>
             </>

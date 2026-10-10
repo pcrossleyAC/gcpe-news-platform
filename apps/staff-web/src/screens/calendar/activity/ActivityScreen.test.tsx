@@ -4,13 +4,14 @@ import userEvent from "@testing-library/user-event";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { CONFIG, HQ_ADMIN_CONFIG, HQ_ADMIN_ME, ME } from "../list/fixtures";
 import { FIELDS, renderActivity, stubActivity, view, type Call } from "./fixtures";
-import { IDLE_MS } from "./useEditLock";
+import { IDLE_MS, POLL_MS } from "./useEditLock";
 
 const ACTIVITY = "/calendar/api/activities/20001";
 const isPut = (c: Call) => c.init?.method === "PUT" && c.url === ACTIVITY;
 const putBody = (calls: Call[]) => JSON.parse(String(calls.find(isPut)!.init!.body)) as Record<string, unknown>;
 const savedOk = (url: string, init?: RequestInit) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(200, { id: 20001, activity: view({ version: 4 }), warnings: [] }) : undefined);
 const title = () => screen.findByRole("textbox", { name: "Title" });
+const LOCKED = { code: "locked", error: "Sample Admin is editing this activity (since 11:00)", holder: { displayName: "Sample Admin", since: "2026-11-03T18:00:00.000Z" } };
 const NOT_EDITABLE = { edit: false, clone: false, delete: false, review: false };
 
 describe("the activity editor (spec addendum §8.2)", () => {
@@ -47,6 +48,7 @@ describe("the activity editor (spec addendum §8.2)", () => {
     expect(body).toMatchObject({ ...FIELDS, title: "Sample renamed", version: 3 });
     expect(typeof body.tabId).toBe("string");
     expect(body).not.toHaveProperty("lookAhead");
+    expect(router.state.historyAction).toBe("REPLACE");
     expect(calls.filter((c) => c.url.endsWith("/lock") && c.init?.method === "PUT")).toHaveLength(1);
   });
 
@@ -110,6 +112,7 @@ describe("the activity editor (spec addendum §8.2)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(await screen.findByText("Sample Admin is editing this activity (since 11:00 AM)", { exact: false })).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue("Sample hall");
+    expect(screen.getAllByText(/Sample Admin is editing this activity/)).toHaveLength(1);
   });
 
   it("Save after the lock lapsed takes it again first; when someone else has it, nothing is sent and the changes stay", async () => {
@@ -317,5 +320,186 @@ describe("the activity editor (spec addendum §8.2)", () => {
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Leave" }));
     expect(await screen.findByRole("heading", { level: 1, name: "Sample list" })).toBeInTheDocument();
+  });
+
+  it("a dirty editor let back in by the poll keeps its own version, so Save meets the other user's change as a 409 (spec addendum §7.5)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const calls: Call[] = [];
+      let current = view();
+      stubActivity(calls, {
+        view: () => current,
+        other: (url, init) => {
+          if (url !== ACTIVITY || init?.method !== "PUT") return undefined;
+          if (calls.filter(isPut).length === 1) return jsonResponse(423, LOCKED);
+          const sent = JSON.parse(String(init.body)) as { version: number };
+          return sent.version === current.version
+            ? jsonResponse(200, { id: 20001, activity: view({ version: current.version + 1 }), warnings: [] })
+            : jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity — reload to see their changes" });
+        },
+      });
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      renderActivity("/calendar/activities/20001");
+      await user.type(await screen.findByRole("textbox", { name: "Venue" }), "Mine");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      await screen.findByText("Sample Admin is editing this activity", { exact: false });
+      current = view({ version: 5, fields: { ...FIELDS, title: "Sample theirs" } });
+      await act(async () => void (await vi.advanceTimersByTimeAsync(POLL_MS + 1_000)));
+      await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument());
+      expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue("Mine");
+      await user.click(screen.getByRole("button", { name: "Save" }));
+      expect(await screen.findByText("Someone else changed this activity — reload to see their changes")).toBeInTheDocument();
+      expect(JSON.parse(String(calls.filter(isPut)[1]!.init!.body))).toMatchObject({ version: 3, title: "Sample activity", venue: "Mine" });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("the date inputs stop at the years the server takes", async () => {
+    stubActivity([]);
+    renderActivity("/calendar/activities/20001");
+    const start = await screen.findByLabelText(/^Start date/);
+    expect(start).toHaveAttribute("min", "1900-01-01");
+    expect(start).toHaveAttribute("max", "2199-12-31");
+  });
+
+  it.each(["0026-11-10", "20255-01-01", "2200-01-01"])("a start date of %s is refused before sending", async (d) => {
+    const calls: Call[] = [];
+    stubActivity(calls);
+    renderActivity("/calendar/activities/20001");
+    fireEvent.change(await screen.findByLabelText(/^Start date/), { target: { value: d } });
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const summary = await screen.findByRole("alert");
+    expect(within(summary).getByRole("link", { name: "Enter a year between 1900 and 2199" })).toHaveAttribute("href", "#activity-startDate");
+    expect(calls.some(isPut)).toBe(false);
+  });
+
+  it("a server 400's issues show against their fields", async () => {
+    stubActivity([], {
+      other: (url, init) =>
+        url === ACTIVITY && init?.method === "PUT" ? jsonResponse(400, { error: "invalid request", issues: [{ path: ["startDate"], code: "custom", message: "not a real date between 1900 and 2199" }] }) : undefined,
+    });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const summary = await screen.findByRole("alert");
+    expect(within(summary).getByRole("link", { name: "not a real date between 1900 and 2199" })).toHaveAttribute("href", "#activity-startDate");
+    expect(screen.getByLabelText(/^Start date/)).toHaveAttribute("aria-invalid", "true");
+    await waitFor(() => expect(summary).toHaveFocus());
+  });
+
+  it("an error on a field the form doesn't show is named without a link", async () => {
+    stubActivity([], {
+      view: view({ fields: { ...FIELDS, categoryId: 2 } }),
+      other: (url, init) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(422, { error: "Fix the fields named", errors: [{ field: "nrOriginId", message: "That origin is no longer in use" }] }) : undefined),
+    });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    const summary = await screen.findByRole("alert");
+    expect(within(summary).getByText("That origin is no longer in use")).toBeInTheDocument();
+    expect(within(summary).queryByRole("link")).toBeNull();
+  });
+
+  it("a save refused by the freeze says so once", async () => {
+    stubActivity([], { other: (url, init) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(423, { code: "freeze", error: CONFIG.freeze.message }) : undefined) });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText(CONFIG.freeze.message);
+    expect(screen.getAllByText(CONFIG.freeze.message)).toHaveLength(1);
+  });
+
+  it("a save answered 'deleted' stops editing and keeps the changes on screen", async () => {
+    stubActivity([], { other: (url, init) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(409, { code: "deleted", error: "This activity is deleted" }) : undefined) });
+    renderActivity("/calendar/activities/20001");
+    const venue = await screen.findByRole("textbox", { name: "Venue" });
+    await userEvent.type(venue, "x");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("This activity is deleted")).toBeInTheDocument();
+    expect(venue).toHaveValue("x");
+    expect(venue).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+  });
+
+  it("a stored time off the 5-minute steps is shown, and still has to be changed to save (spec addendum §7.2)", async () => {
+    stubActivity([], { view: view({ fields: { ...FIELDS, startTime: "09:07" } }) });
+    renderActivity("/calendar/activities/20001");
+    const st = (await screen.findByRole("combobox", { name: "Start time" })) as HTMLSelectElement;
+    expect(st).toHaveValue("09:07");
+    expect(st.selectedOptions[0]).toHaveTextContent("9:07 AM (not a 5-minute step)");
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(within(await screen.findByRole("alert")).getByRole("link", { name: "Use 5-minute steps" })).toHaveAttribute("href", "#activity-startTime");
+  });
+
+  it("needs-review markup reaches the time as well as the date", async () => {
+    stubActivity([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, view: view({ needsReview: ["start_date"] }) });
+    renderActivity("/calendar/activities/20001");
+    expect(await screen.findByRole("combobox", { name: "Start time" })).toHaveAccessibleDescription(/Changed: needs review/);
+  });
+
+  describe("signed out mid-edit", () => {
+    const signedOutOnSave = (url: string, init?: RequestInit) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(401, { error: "Sign in again" }) : undefined);
+    const drafts = () => Object.keys(sessionStorage).filter((k) => k.startsWith("gcpe-calendar-draft:"));
+    /** Types a change, then the session expires on Save: the user is sent to sign in. */
+    async function loseTheSession() {
+      stubActivity([], { other: signedOutOnSave });
+      const { router } = renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+      await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"));
+      cleanup();
+      vi.unstubAllGlobals();
+    }
+    afterEach(() => sessionStorage.clear());
+
+    it("keeps the changes, and the same activity opened again brings them back with the version they were based on", async () => {
+      await loseTheSession();
+      expect(drafts()).toHaveLength(1);
+      const calls: Call[] = [];
+      stubActivity(calls, {
+        view: () => view({ version: 5 }),
+        other: (url, init) => (url === ACTIVITY && init?.method === "PUT" ? jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity — reload to see their changes" }) : undefined),
+      });
+      renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+      expect(await screen.findByText("Your unsaved changes were restored.")).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue("Sample hall");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      await screen.findByText("Someone else changed this activity — reload to see their changes");
+      expect(JSON.parse(String(calls.find(isPut)!.init!.body))).toMatchObject({ version: 3, venue: "Sample hall" });
+      await userEvent.click(screen.getByRole("button", { name: "Reload" }));
+      await waitFor(() => expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue(""));
+      expect(drafts()).toHaveLength(0);
+    });
+
+    it("a save clears the kept changes", async () => {
+      await loseTheSession();
+      stubActivity([], { other: savedOk });
+      renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+      await screen.findByText("Your unsaved changes were restored.");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      await screen.findByRole("heading", { level: 1, name: "Sample list" });
+      expect(drafts()).toHaveLength(0);
+    });
+
+    it("leaving without saving clears the kept changes", async () => {
+      await loseTheSession();
+      stubActivity([]);
+      renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+      await screen.findByText("Your unsaved changes were restored.");
+      await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
+      await userEvent.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Leave" }));
+      await screen.findByRole("heading", { level: 1, name: "Sample list" });
+      expect(drafts()).toHaveLength(0);
+    });
+
+    it("another activity doesn't pick up the kept changes", async () => {
+      await loseTheSession();
+      stubActivity([], { view: (id) => view({ id }) });
+      renderActivity("/calendar/activities/20002");
+      await screen.findByRole("heading", { level: 1, name: "Activity HLTH-20002" });
+      expect(screen.queryByText("Your unsaved changes were restored.")).toBeNull();
+      expect(screen.getByRole("textbox", { name: "Venue" })).toHaveValue("");
+    });
   });
 });

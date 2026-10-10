@@ -509,3 +509,7 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 - **Editor** — Adding or removing a file is blocked during the 4pm-5pm freeze (unless you're HQ) and while someone else is editing the activity, as saving is.
 - **All Calendar users** — A file opens only for people who can see its activity. Anyone else, including someone holding an old link, gets "not found".
 - **Operations** — Calendar files live in `<DATA_DIR>/calendar-files` (`CALENDAR_STORAGE_DIR`). Back that folder up with the Calendar database. The stack refuses to start if it is put inside a folder it serves publicly.
+
+## Phase 5e-2 — Activity editor
+
+- **All Calendar users** — If your session runs out while an activity has unsaved changes, sign in again and open the same activity: the page says "Your unsaved changes were restored." If someone else saved it meanwhile, Save says so and Reload shows their version. Signing out yourself discards kept changes.

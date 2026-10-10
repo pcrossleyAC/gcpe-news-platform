@@ -64,6 +64,8 @@ export function useEditLock(o: { activityId: number | null; initial: ActivityVie
    * that resolves while disposed releases straight away instead of touching state or arming a
    * timer that would outlive the component. */
   const disposed = useRef(false);
+  /** A take in flight: changes made while it is pending share it, so typing sends one PUT, not one per keystroke. */
+  const pendingTake = useRef<Promise<boolean> | null>(null);
   const reload = useRef(o.reload);
   reload.current = o.reload;
   const id = o.activityId;
@@ -161,7 +163,16 @@ export function useEditLock(o: { activityId: number | null; initial: ActivityVie
     if (!active) return true;
     const s = current.current;
     if (s.kind === "other" || s.kind === "elsewhere" || s.kind === "gone") return false;
-    if (s.kind !== "mine") return take(false);
+    if (s.kind !== "mine") {
+      if (!pendingTake.current) {
+        const p = take(false);
+        pendingTake.current = p;
+        void p.finally(() => {
+          if (pendingTake.current === p) pendingTake.current = null;
+        });
+      }
+      return pendingTake.current;
+    }
     if (Date.now() - lastBeat.current >= HEARTBEAT_MS) sendHeartbeat();
     return true;
   }, [active, id, take, sendHeartbeat]);

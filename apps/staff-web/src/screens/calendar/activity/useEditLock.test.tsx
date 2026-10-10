@@ -28,6 +28,26 @@ describe("useEditLock (spec addendum §7.5)", () => {
     vi.unstubAllGlobals();
   });
 
+  it("changes made while the lock is being taken share that one request", async () => {
+    const calls: Call[] = [];
+    let answer!: () => void;
+    const answered = new Promise<void>((r) => (answer = r));
+    stub(calls, async () => {
+      await answered;
+      return ok();
+    });
+    const { result } = mount();
+    let results: boolean[] = [];
+    await act(async () => {
+      const pending = [result.current.touch(), result.current.touch(), result.current.touch()];
+      answer();
+      results = await Promise.all(pending);
+    });
+    expect(results).toEqual([true, true, true]);
+    expect(lockCalls(calls)).toHaveLength(1);
+    expect(result.current.state).toEqual({ kind: "mine" });
+  });
+
   it("takes the lock on the first change, then sends a heartbeat at most once a minute", async () => {
     const calls: Call[] = [];
     stub(calls, ok);

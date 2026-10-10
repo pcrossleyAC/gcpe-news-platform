@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { apiFetch, onUnauthorized } from "../api/client";
+import { clearAllActivityDrafts } from "../screens/calendar/activity/draft";
 import { clearAllDrafts } from "../screens/release/documents/unsavedDocumentStorage";
 
 export interface SessionUser {
@@ -51,6 +52,22 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
     void loadSession();
   }, [loadSession]);
 
+  // Coming back to the tab (a laptop waking, say) checks in at once rather than at the next
+  // interval, so an expired session is found before the user types into a page that can no
+  // longer save. A 401 signs them out through apiFetch's own listener (below); any other failure,
+  // a network still waking up, changes nothing.
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      apiFetch<LoginResponse>("/core/auth/session").then(
+        ({ user }) => setState((s) => ({ ...s, user, loading: false })),
+        () => undefined,
+      );
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, []);
+
   useEffect(() => {
     const id = setInterval(() => {
       if (document.visibilityState === "visible") void loadSession();
@@ -80,6 +97,7 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
       // signing back in gets theirs back), there's no guarantee the next sign-in on this shared
       // tab/machine is the same person.
       clearAllDrafts();
+      clearAllActivityDrafts();
     }
   }, []);
 
