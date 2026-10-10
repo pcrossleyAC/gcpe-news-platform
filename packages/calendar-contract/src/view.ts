@@ -14,7 +14,7 @@ export const HISTORY_FIELDS = {
   translations: "Translations Required", sectors: "Sectors", themes: "Themes", tags: "News Subscribe",
   premier_requested: "Premier Requested", representative: "Representative", is_at_legislature: "At BC Legislature", city: "City",
   other_city: "Other City", venue: "Venue", event_planner: "Event Planner", videographer: "Digital", status: "Status",
-  cloned_from: "Cloned from",
+  cloned_from: "Cloned from", files: "Records",
 } as const;
 export type HistoryFieldKey = keyof typeof HISTORY_FIELDS;
 
@@ -24,8 +24,29 @@ export type HistoryFieldKey = keyof typeof HISTORY_FIELDS;
  */
 export const LOOK_AHEAD_HISTORY_FIELDS = ["hq_comments", "hq_status", "hq_section", "long_term_outlook"] as const satisfies readonly HistoryFieldKey[];
 
+/** One attachment (spec addendum §8.4). The storage key and checksum stay on the server. */
+export interface ActivityFileView {
+  id: number;
+  fileName: string;
+  contentType: string;
+  length: number;
+  uploadedAt: string;
+  uploadedByName: string | null;
+}
+
+/** A release linked to the activity, from NRMS's release.status_changed (spec addendum §11). */
+export interface ReleaseLinkView {
+  releaseId: string;
+  type: string;
+  status: string;
+  reference: string | null;
+  publishAt: string | null;
+  releasedAt: string | null;
+}
+
 export interface ActivityView {
   id: number;
+  ministryAbbreviation: string | null;
   version: number;
   status: ActivityStatus;
   isDeleted: boolean;
@@ -43,6 +64,11 @@ export interface ActivityView {
   /** A live edit lock (spec addendum §7.5). */
   lock: { holderName: string; since: string; mine: boolean; tabId: string | null } | null;
   can: { edit: boolean; clone: boolean; delete: boolean; review: boolean };
+  /** The watchlist star (Activity.aspx.cs:1519-1535). */
+  watch: { isWatched: boolean; watcherNames: string[] };
+  files: ActivityFileView[];
+  /** "BC Gov News" (spec addendum §8.2, §11); deleted releases are left out. */
+  releases: ReleaseLinkView[];
 }
 
 export interface ActivityChangeView {
