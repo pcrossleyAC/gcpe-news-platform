@@ -62,3 +62,8 @@ export function timeText(iso: string, timeZone: string): string {
   );
   return `${p.hour}:${p.minute} ${p.dayPeriod}`;
 }
+
+/** "Nov 10, 2031 10:00 AM" in the tenant's zone: when a release goes out, or a change was made. */
+export function dateTimeText(iso: string, timeZone: string): string {
+  return `${new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso))} ${timeText(iso, timeZone)}`;
+}

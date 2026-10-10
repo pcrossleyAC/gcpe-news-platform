@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, within } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME } from "../list/fixtures";
@@ -131,7 +131,71 @@ describe("the activity's actions (spec addendum §8.2)", () => {
     stubActivity([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, view: view({ isDeleted: true, can: { edit: false, clone: false, delete: false, review: true } }) });
     renderActivity("/calendar/activities/20001");
     expect(await screen.findByRole("button", { name: "Review" })).toBeEnabled();
+    for (const name of ["Save", "Clone", "Delete", "Watch HLTH-20001"]) expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(screen.queryByRole("link", { name: "View changes" })).toBeNull();
+  });
+
+  it("during the change freeze: no Clone or Delete; Review, the star and View changes stay (spec addendum §7.4)", async () => {
+    stubActivity([], {
+      me: HQ_ADMIN_ME,
+      config: { ...HQ_ADMIN_CONFIG, freeze: { ...HQ_ADMIN_CONFIG.freeze, active: true, appliesToYou: true } },
+      view: view({ can: { edit: true, clone: true, delete: true, review: true } }),
+    });
+    renderActivity("/calendar/activities/20001");
+    expect(await screen.findByRole("button", { name: "Review" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Watch HLTH-20001" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "View changes" })).toBeInTheDocument();
     for (const name of ["Save", "Clone", "Delete"]) expect(screen.queryByRole("button", { name })).toBeNull();
+  });
+
+  it("a Review refused for a newer version offers Reload, and the next Review sends the new version", async () => {
+    const calls: Call[] = [];
+    let version = 3;
+    let refuse = true;
+    stubActivity(calls, {
+      me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG,
+      view: () => view({ version, can: { edit: true, clone: true, delete: true, review: true } }),
+      other: (url, init) => {
+        if (url !== `${ACTIVITY}/review` || init?.method !== "POST") return undefined;
+        return refuse ? jsonResponse(409, { code: "version_conflict", error: "Someone else changed this activity — reload to see their changes" }) : jsonResponse(200, view({ version: 5 }));
+      },
+    });
+    renderActivity("/calendar/activities/20001?return=%2Fcalendar");
+    await userEvent.click(await screen.findByRole("button", { name: "Review" }));
+    const actions = screen.getByRole("region", { name: "Activity actions" });
+    expect(await within(actions).findByRole("alert")).toHaveTextContent("Someone else changed this activity");
+    version = 4;
+    refuse = false;
+    await userEvent.click(within(actions).getByRole("button", { name: "Reload" }));
+    await waitFor(() => expect(within(actions).queryByRole("alert")).toBeNull());
+    await userEvent.click(screen.getByRole("button", { name: "Review" }));
+    expect(await screen.findByText("Reviewed HLTH-20001.")).toBeInTheDocument();
+    const reviews = calls.filter((c) => c.url === `${ACTIVITY}/review`);
+    expect(JSON.parse(String(reviews.at(-1)!.init!.body))).toEqual({ version: 4 });
+  });
+
+  it("no Delete while someone else holds the lock", async () => {
+    stubActivity([], { view: view({ can: { edit: true, clone: true, delete: true, review: false }, lock: { holderName: "Sample Admin", since: "2026-11-03T18:00:00.000Z", mine: false, tabId: null } }) });
+    renderActivity("/calendar/activities/20001");
+    await screen.findByText("Sample Admin is editing this activity", { exact: false });
+    expect(screen.getByRole("button", { name: "Clone" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
+  });
+
+  it.each([
+    ["gone (404)", jsonResponse(404, { error: "not found" }), "This activity is no longer available."],
+    ["deleted meanwhile (409)", jsonResponse(409, { code: "deleted", error: "This activity is deleted" }), "This activity is deleted"],
+  ])("no Delete once a save finds the activity %s", async (_case, answer, text) => {
+    stubActivity([], {
+      view: view({ can: { edit: true, clone: true, delete: true, review: false } }),
+      other: (url, init) => (url === ACTIVITY && init?.method === "PUT" ? answer : undefined),
+    });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Venue" }), "x");
+    expect(screen.getByRole("button", { name: "Delete" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText(text);
+    expect(screen.queryByRole("button", { name: "Delete" })).toBeNull();
   });
 
   it("the watch star toggles and names who watches (Activity.aspx.cs:1519-1535; C176)", async () => {
@@ -159,5 +223,10 @@ describe("the activity's actions (spec addendum §8.2)", () => {
     stubActivity([], { view: view({ releases }), roles: ["Calendar.Editor", "NRMS.Viewer"] });
     renderActivity("/calendar/activities/20001");
     expect(await within(await screen.findByRole("region", { name: "BC Gov News" })).findByRole("link")).toHaveAttribute("href", "/releases/8a7f3c1e-2b4d-4e6f-9a0b-1c2d3e4f5a01");
+    cleanup();
+    // Only the NRMS read roles: a role merely named NRMS.something isn't one of them.
+    stubActivity([], { view: view({ releases }), roles: ["Calendar.Editor", "NRMS.Sample"] });
+    renderActivity("/calendar/activities/20001");
+    expect(within(await screen.findByRole("region", { name: "BC Gov News" })).queryByRole("link")).toBeNull();
   });
 });

@@ -301,4 +301,11 @@ describe("ActivityListScreen (spec addendum §8.1)", () => {
     await screen.findByRole("link", { name: "Sample listed" });
     expect(screen.queryByRole("link", { name: "New activity" })).toBeNull();
   });
+
+  it("no New activity while the change freeze applies to you (spec addendum §7.4)", async () => {
+    stubFetch([], { config: { ...CONFIG, freeze: { ...CONFIG.freeze, active: true, appliesToYou: true } } });
+    renderList();
+    await screen.findByRole("link", { name: "Sample listed" });
+    expect(screen.queryByRole("link", { name: "New activity" })).toBeNull();
+  });
 });

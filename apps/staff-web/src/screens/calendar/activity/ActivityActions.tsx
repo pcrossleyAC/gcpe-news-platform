@@ -21,18 +21,24 @@ function refusal(e: unknown): string | null {
 /**
  * Review, Clone, Delete, the watch star and View changes (spec addendum §8.2), each offered only as
  * the view's `can` allows. Review and Clone act on the stored activity, so they wait for unsaved
- * changes to be saved or cancelled; Delete asks first and discards them.
+ * changes to be saved or cancelled; Delete asks first and discards them. The change freeze leaves
+ * only Review, the star and View changes (§7.4); a deleted activity offers only Review (§6).
  */
-export function ActivityActions({ view, myName, dirty, returnTo, leave, onWatch }: {
+export function ActivityActions({ view, myName, dirty, frozen, deletable, reload, returnTo, leave, onWatch }: {
   view: ActivityView;
   myName: string;
   dirty: boolean;
+  frozen: boolean;
+  /** False when a delete would be refused anyway: someone else's lock, or the activity gone. */
+  deletable: boolean;
+  /** Fetches the stored activity again, as Save's Reload does, after a version conflict. */
+  reload: () => Promise<void>;
   returnTo: string;
   leave: (to: string, notice: string, replace?: boolean) => void;
   onWatch: (w: WatchState) => void;
 }): React.JSX.Element {
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ text: string; conflict: boolean } | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const ref = minIdOf(view);
   const act = async (fn: () => Promise<void>) => {
@@ -41,15 +47,20 @@ export function ActivityActions({ view, myName, dirty, returnTo, leave, onWatch 
     try {
       await fn();
     } catch (e) {
-      setError(refusal(e));
+      const text = refusal(e);
+      setError(text === null ? null : { text, conflict: e instanceof ApiError && e.status === 409 && e.code === "version_conflict" });
     } finally {
       setBusy(false);
     }
   };
   return (
     <section aria-label="Activity actions" className="gcpe-actions gcpe-activity-actions">
-      <WatchStar id={view.id} label={ref} watch={view.watch} myName={myName} onChange={onWatch} />
-      <Link to={changesPath(view.id, returnTo)}>View changes</Link>
+      {!view.isDeleted && (
+        <>
+          <WatchStar id={view.id} label={ref} watch={view.watch} myName={myName} onChange={onWatch} />
+          <Link to={changesPath(view.id, returnTo)}>View changes</Link>
+        </>
+      )}
       {view.can.review && (
         <Button
           variant="secondary"
@@ -64,7 +75,7 @@ export function ActivityActions({ view, myName, dirty, returnTo, leave, onWatch 
           Review
         </Button>
       )}
-      {view.can.clone && (
+      {view.can.clone && !frozen && (
         <Button
           variant="secondary"
           isDisabled={busy || dirty}
@@ -80,13 +91,33 @@ export function ActivityActions({ view, myName, dirty, returnTo, leave, onWatch 
           Clone
         </Button>
       )}
-      {view.can.delete && (
+      {view.can.delete && !frozen && deletable && (
         <Button variant="secondary" danger isDisabled={busy} onPress={() => setConfirmDelete(true)}>
           Delete
         </Button>
       )}
       {dirty && (view.can.review || view.can.clone) && <p className="gcpe-hint">Save or cancel your changes to review or clone.</p>}
-      {error && <InlineAlert variant="danger" role="alert" description={error} />}
+      {error && (
+        <InlineAlert
+          variant="danger"
+          role="alert"
+          description={error.text}
+          buttons={
+            error.conflict ? (
+              <Button
+                variant="secondary"
+                onPress={() =>
+                  void reload().then(() => {
+                    setError(null);
+                  })
+                }
+              >
+                Reload
+              </Button>
+            ) : undefined
+          }
+        />
+      )}
       <Modal isOpen={confirmDelete} onOpenChange={setConfirmDelete} isDismissable>
         <AlertDialog
           role="alertdialog"

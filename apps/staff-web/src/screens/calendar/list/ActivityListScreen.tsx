@@ -187,7 +187,7 @@ export function ActivityListScreen(): React.JSX.Element {
         />
       )}
       <section aria-label="List actions" className="gcpe-actions">
-        {config.editor.create && (
+        {config.editor.create && !config.freeze.appliesToYou && (
           <Link className="gcpe-button-link" to={activityPath("new", `${here.pathname}${here.search}`)}>
             New activity
           </Link>

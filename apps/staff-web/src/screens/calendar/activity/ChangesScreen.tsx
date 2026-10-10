@@ -5,7 +5,7 @@ import type { ActivityChangeView, ActivityView, ChangeAction } from "@gcpe/calen
 import { ApiError } from "../../../api/client";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { listApi } from "../list/api";
-import { timeText } from "../list/dates";
+import { dateTimeText } from "../list/dates";
 import { activityApi } from "./api";
 import { minIdOf } from "./form";
 import { activityPath, safeCalendarReturn } from "./paths";
@@ -14,7 +14,6 @@ const ACTIONS: Record<ChangeAction, string> = {
   created: "created it", updated: "changed it", cloned: "created it as a clone", reviewed: "reviewed it", deleted: "deleted it",
   transferred: "transferred it", la_status_cleared: "cleared its LA status",
 };
-const when = (iso: string, timeZone: string) => `${new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso))} ${timeText(iso, timeZone)}`;
 
 export function ChangesRoute(): React.JSX.Element {
   const { id } = useParams();
@@ -64,7 +63,7 @@ export function ChangesScreen({ idParam }: { idParam: string }): React.JSX.Eleme
           <ol className="gcpe-changes">
             {data.changes.map((c) => (
               <li key={c.id}>
-                <h2>{`${when(c.at, data.timeZone)}: ${c.actorName} ${ACTIONS[c.action]}`}</h2>
+                <h2>{`${dateTimeText(c.at, data.timeZone)}: ${c.actorName} ${ACTIONS[c.action]}`}</h2>
                 {c.source === "legacy_log" && <p className="gcpe-badge">from legacy log</p>}
                 {c.fields.length > 0 && (
                   <table className="gcpe-calendar-table">
@@ -77,8 +76,9 @@ export function ChangesScreen({ idParam }: { idParam: string }): React.JSX.Eleme
                       </tr>
                     </thead>
                     <tbody>
-                      {c.fields.map((f) => (
-                        <tr key={f.key}>
+                      {c.fields.map((f, i) => (
+                        // A legacy log entry can name the same field twice.
+                        <tr key={`${f.key}-${i}`}>
                           <th scope="row">{f.label}</th>
                           <td>{f.old ?? "—"}</td>
                           <td>{f.new ?? "—"}</td>

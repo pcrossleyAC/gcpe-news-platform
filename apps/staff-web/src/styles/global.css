@@ -611,6 +611,8 @@ body {
   padding-left: 0.5rem;
 }
 .gcpe-activity-actions {
+  display: flex;
+  gap: 0.5rem;
   flex-wrap: wrap;
   align-items: center;
   margin-top: 1rem;

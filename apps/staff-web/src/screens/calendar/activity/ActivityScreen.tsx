@@ -21,6 +21,8 @@ import { activityPath, safeCalendarReturn } from "./paths";
 import { useEditLock } from "./useEditLock";
 
 const ID = /^\d{1,9}$/;
+/** The roles NRMS lets read a release (AppShell, apps/nrms/src/http/routes.ts): only they get BC Gov News's links. */
+const NRMS_READ_ROLES = ["NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor"];
 const STATUS = { new: "New", changed: "Changed", reviewed: "Reviewed" } as const;
 interface Loaded {
   config: CalendarConfigView;
@@ -370,7 +372,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
             needsReview={view?.needsReview ?? []}
             lookAhead={lookAhead}
             today={todayIn(config.timeZone)}
-            release={<ReleasesList releases={view?.releases ?? []} timeZone={config.timeZone} canOpen={session.roles.some((r) => r.startsWith("NRMS."))} />}
+            release={<ReleasesList releases={view?.releases ?? []} timeZone={config.timeZone} canOpen={NRMS_READ_ROLES.some((r) => session.has(r))} />}
             records={null}
           />
         </fieldset>
@@ -390,6 +392,10 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
           view={view}
           myName={me.displayName}
           dirty={dirty}
+          frozen={frozen}
+          // Delete can't succeed under someone else's lock, or once the activity has gone.
+          deletable={lock.state.kind !== "other" && lock.state.kind !== "gone" && !deletedMeanwhile}
+          reload={discardAndReload}
           returnTo={returnTo}
           // An action that leaves (Delete discards unsaved changes) leaves no kept draft behind.
           leave={(to, calendarNotice, replace) => {
