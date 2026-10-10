@@ -1,11 +1,10 @@
-import { asc, sql } from "drizzle-orm";
 import { friendlyDateRange, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
 import type { CalendarActor } from "../actor";
 import { inReadSnapshot } from "../activities/store";
 import { activities } from "../db/schema";
 import type { ApiDeps } from "../http/routes";
 import { dbNow } from "../time";
-import { idSearchOf, listWhere, scopeOf, type ListScope } from "./query";
+import { idSearchOf, legacyReportOrder, listWhere, scopeOf, type ListScope } from "./query";
 import { rowsOf } from "./rows";
 import { xlsxOf, type Run, type Sheet, type SheetCell } from "./xlsx";
 
@@ -112,19 +111,12 @@ export function exportSheet(rows: ListRow[], q: ListQuery, scope: ListScope, now
 export function exportWorkbook(deps: ApiDeps, actor: CalendarActor, q: ListQuery): Promise<Buffer> {
   return inReadSnapshot(deps.db, async (tx) => {
     const scope = await scopeOf(tx, deps, actor);
-    const tz = deps.rules.timeZone;
-    // Legacy orders by start date, end date, then start time (ActivityHandler.ashx.cs:46-48), whatever the list's sort.
     const ids = (
       await tx
         .select({ id: activities.id })
         .from(activities)
         .where(listWhere(scope, q))
-        .orderBy(
-          sql`(${activities.startAt} AT TIME ZONE ${tz})::date ASC NULLS LAST`,
-          sql`(${activities.endAt} AT TIME ZONE ${tz})::date ASC NULLS LAST`,
-          sql`to_char(${activities.startAt} AT TIME ZONE ${tz}, 'HH24:MI') ASC NULLS LAST`,
-          asc(activities.id),
-        )
+        .orderBy(...legacyReportOrder(deps.rules.timeZone))
         .limit(EXPORT_ROW_LIMIT + 1)
     ).map((r) => r.id);
     if (ids.length > EXPORT_ROW_LIMIT) throw new ExportTooLargeError();
