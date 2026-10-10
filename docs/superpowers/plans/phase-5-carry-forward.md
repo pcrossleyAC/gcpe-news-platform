@@ -25,6 +25,8 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 
 ## 5i
 
+- Survey 08 (2026-10-10, aggregates in `docs/parity/legacy-survey/results/Hub/08-CalendarParity_Queries-aggregates.xlsx`): legacy category 16 is stored as `Speech /  Remarks` (two spaces) while `bc.json` and `inferLookAhead` use `Speech / Remarks` and compare names exactly, so imported activities in it (5,758 links all-time) would infer the wrong Look Ahead section. Normalise whitespace in the comparison or the import, or match by id.
+- Survey 08: `UNK` in `contactMinistryExcludedAbbreviations` matches no legacy ministry; legacy `HqStatusId` uses the Status table's 7 (New) and 1 (Changed) only, so map 7 → `new` and 1 → `changed`; 43 active activities have a blank Significance (required for BC), so a non-HQ save of one is refused until it's filled in; query 8.20 (linked releases) is missing from the export and needs re-running; Excel turned 129 of 336 keyword names into dates, so re-export keywords as text.
 - **Sequences:** re-base every legacy-id identity (`activities`, every lookup, `comm_contacts`, `saved_filters`, `activity_files`) above the imported maximum (spec addendum §12.1).
 - **Lookup names:** legacy allows a NULL `Name`; the Calendar's `name` is NOT NULL, so map NULL to `""`.
 - **Keys, not ids:** legacy ministry GUIDs map to Core organization keys (`contact_ministry_key`, `ministry_key`, `activity_shared_with.ministry_key`), and sectors, themes and tags to term keys.
