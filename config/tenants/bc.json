@@ -27,6 +27,33 @@
     "showRecordsSection": false,
     "cloneKeptKeywordNames": ["30-60-90"],
     "lookAheadCoverImage": null,
-    "reportBanner": { "province": "Province of BC", "confidentiality": "DRAFT AND CONFIDENTIAL" }
+    "reportBanner": { "province": "Province of BC", "confidentiality": "DRAFT AND CONFIDENTIAL" },
+    "reports": {
+      "cover": { "organization": "Government Communications and Public Engagement", "lines": ["BC GOVERNMENT", "CORPORATE LOOK AHEAD"] },
+      "planningTitle": "GCPE Corporate Calendar: Schedule of Activities",
+      "leadAbbreviations": { "GCPEHQ": "HQ" },
+      "cityToBeDecidedName": "TBD",
+      "citySuffix": ", BC",
+      "tvRadioCategoryName": "TV / Radio",
+      "issueCategoryText": "Issue",
+      "fyiOnlyCategoryText": "FYI Only",
+      "rlsMaterials": [
+        { "contains": ["News Release"], "code": "NR" },
+        { "contains": ["Information Bulletin"], "code": "IB" },
+        { "contains": ["Opinion Editorial"], "code": "OpEd" },
+        { "contains": ["Report"], "code": "Report", "notInEvents": true },
+        { "contains": ["Statement"], "code": "STMT" },
+        { "contains": ["Traffic Advisory"], "code": "TA" },
+        { "contains": ["News You Can Use"], "code": "NYCU" },
+        { "contains": ["Fact Sheet", "Factsheet"], "code": "Fact Sheet" },
+        { "contains": ["Newsletter"], "code": "e-news", "notInEvents": true, "releaseTime": false }
+      ],
+      "rlsOrigins": [
+        { "contains": ["Ministry"], "code": "BCGov" },
+        { "contains": ["Joint"], "code": "Joint" },
+        { "contains": ["3rd party"], "code": "3rd party" },
+        { "contains": ["Federal"], "code": "Fed" }
+      ]
+    }
   }
 }

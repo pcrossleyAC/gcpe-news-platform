@@ -26,6 +26,21 @@ describe("the tenant calendar section", () => {
     expect(c.lookAheadCoverImage).toBeNull();
   });
 
+  it("BC's report texts and RLS codes are legacy's (ActivityHandler.ashx.cs:1176-1257, C148)", () => {
+    const r = bc().calendar!.reports;
+    expect(r.rlsMaterials.map((m) => m.code)).toEqual(["NR", "IB", "OpEd", "Report", "STMT", "TA", "NYCU", "Fact Sheet", "e-news"]);
+    expect(r.rlsMaterials.find((m) => m.code === "Fact Sheet")!.contains).toEqual(["Fact Sheet", "Factsheet"]);
+    expect(r.rlsMaterials.filter((m) => m.notInEvents).map((m) => m.code)).toEqual(["Report", "e-news"]);
+    expect(r.rlsOrigins.map((o) => o.code)).toEqual(["BCGov", "Joint", "3rd party", "Fed"]);
+    expect(r.leadAbbreviations).toEqual({ GCPEHQ: "HQ" });
+    expect(r.cover.lines).toEqual(["BC GOVERNMENT", "CORPORATE LOOK AHEAD"]);
+  });
+
+  it("refuses a report rule with no text to match", () => {
+    const c = bc().calendar!;
+    expect(calendarTenantSchema.safeParse({ ...c, reports: { ...c.reports, rlsOrigins: [{ contains: [], code: "X" }] } }).success).toBe(false);
+  });
+
   it("is optional: a tenant without it still loads", () => {
     const nb = loadTenantConfig(fileURLToPath(new URL("../../../config/tenants/nb.json", import.meta.url)));
     expect(nb.calendar).toBeUndefined();
