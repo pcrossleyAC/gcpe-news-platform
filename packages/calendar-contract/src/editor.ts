@@ -60,3 +60,11 @@ export interface EditorOptions {
   themes: EditorTerm[];
   tags: EditorTerm[];
 }
+
+/** 25 MB per file (C153), counted as NRMS counts its uploads. */
+export const ATTACHMENT_MAX_BYTES = 25 * 1024 * 1024;
+export const ATTACHMENT_MAX_FILES = 50;
+/** The extensions the server accepts (packages/storage's ATTACHMENT_TYPES; a test keeps the two equal). */
+export const ATTACHMENT_EXTENSIONS = ["pdf", "png", "jpg", "jpeg", "gif", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "msg", "rtf", "txt", "csv"] as const;
+/** The file picker's accept attribute. */
+export const ATTACHMENT_ACCEPT = ATTACHMENT_EXTENSIONS.map((e) => `.${e}`).join(",");
