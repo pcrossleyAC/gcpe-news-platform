@@ -17,6 +17,7 @@
     "confidentialCategoryName": "CONFIDENTIAL or EMBARGOED",
     "issueExemptCategoryNames": ["Approved Event or Activity", "Approved Release", "Proposed Event or Activity", "Proposed Release", "Speech / Remarks"],
     "eventsCategoryNames": ["Approved Release", "Proposed Release", "Approved Event or Activity", "Proposed Event or Activity", "Speech", "Speech / Remarks", "HQ Placeholder"],
+    "releaseHiddenCategoryNames": ["Marketing / Advertising", "Conference / AGM / Forum", "TV / Radio", "Event (3rd Party) - No Release", "Awareness Day / Week / Month", "IGRS use: Half-Masting", "IGRS use: National Day", "IGRS use: Visit"],
     "consultationsMinistryAbbreviation": "CITENG",
     "contactMinistryExcludedAbbreviations": ["UNK", "BCWS"],
     "sharedWithExcludedAbbreviations": [],
