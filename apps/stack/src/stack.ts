@@ -243,7 +243,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const tenant = loadTenantConfig(stackEnv.TENANT_CONFIG);
   assertTimeZoneRules(tenant);
 
-  // Task 1: the one folder that survives a SiteGround redeploy (site output, uploaded files)
+  // The one folder that survives a SiteGround redeploy (site output, uploaded files)
   // — resolved and checked writable before any app starts, so a misconfigured/unwritable
   // DATA_DIR fails fast instead of surfacing later as a silent write failure or a 404 for
   // every /site page after the next deploy.
@@ -345,7 +345,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     }),
   );
 
-  // Task 1 (staff-web): the staff app, hosted at /hub — mounted here (before the no-store
+  // The staff app, hosted at /hub — mounted here (before the no-store
   // default) so /hub/assets' own long-lived Cache-Control isn't overridden by it, same
   // reasoning as /site and /files above. /hub/assets' filenames are content-hashed by the
   // build (esbuild's [hash]), so a year-long immutable cache is safe: a changed file is a
@@ -583,7 +583,7 @@ export interface StackCheckResult {
 }
 
 /**
- * Task 15's `node stack.js --check`: validates the stack's configuration — the stack-level
+ * `node stack.js --check`: validates the stack's configuration — the stack-level
  * env (TICK_TOKEN, tenant config + its P2-R17 time-zone self-check), then every one of the
  * six apps' own env schema, its auth config (`authFromEnv` — ruling P2-R34: a truncated
  * `LOCAL_ADMIN_PASSWORD_HASH`, a too-short `LOCAL_AUTH_SECRET`, a half-set Entra pair, or the
