@@ -3,11 +3,14 @@ import { useSearchParams } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { DEFAULT_LIST_QUERY, listQuerySchema, type ListDisplay, type ListOptions, type ListPreferences, type ListQuery } from "@gcpe/calendar-contract";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { useCalendarContext } from "../CalendarSection";
 import { ActivityTable } from "./ActivityTable";
 import { listApi } from "./api";
 import { ColumnChooser } from "./ColumnChooser";
 import { FilterPanel } from "./FilterPanel";
+import { MyQueries } from "./MyQueries";
 import type { CalendarConfigView } from "./types";
+import { WatchStar } from "./WatchStar";
 
 /** The list query, from `?q=`. Anything that no longer parses gives way to the defaults. */
 export function queryFromParams(params: URLSearchParams): ListQuery | null {
@@ -30,6 +33,7 @@ function FreezeNotice({ freeze }: { freeze: CalendarConfigView["freeze"] }) {
 /** `/hub/calendar` (spec addendum §8.1): the activity list. */
 export function ActivityListScreen(): React.JSX.Element {
   useDocumentTitle("Corporate Calendar");
+  const me = useCalendarContext();
   const [params, setParams] = useSearchParams();
   const [config, setConfig] = useState<CalendarConfigView | null>(null);
   const [options, setOptions] = useState<ListOptions | null>(null);
@@ -107,9 +111,17 @@ export function ActivityListScreen(): React.JSX.Element {
           setQuery(q);
         }}
       />
+      <MyQueries current={query.filter} onRun={(filter) => setQuery({ ...query, corporate: null, filter })} />
       <ColumnChooser hidden={prefs.hiddenColumns} onChange={(hiddenColumns) => void savePrefs({ ...prefs, hiddenColumns })} />
       {prefsError && <p role="alert">{prefsError}</p>}
-      <ActivityTable query={query} hidden={prefs.hiddenColumns} timeZone={config.timeZone} reloadToken={reloadToken} onSort={(sort, dir) => setQuery({ ...query, sort, dir })} />
+      <ActivityTable
+        query={query}
+        hidden={prefs.hiddenColumns}
+        timeZone={config.timeZone}
+        reloadToken={reloadToken}
+        onSort={(sort, dir) => setQuery({ ...query, sort, dir })}
+        tools={{ renderStar: (r, update) => <WatchStar row={r} myName={me.displayName} update={update} /> }}
+      />
     </div>
   );
 }

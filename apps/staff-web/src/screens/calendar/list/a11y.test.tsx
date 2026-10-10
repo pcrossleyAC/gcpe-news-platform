@@ -48,4 +48,15 @@ describe("accessibility: the activity list in every state", () => {
     await screen.findByText("From must be on or before To.");
     expect(await seriousViolations(container)).toEqual([]);
   });
+
+  it("My Queries with one being renamed, and a watched row", async () => {
+    stubFetch([], {
+      saved: [{ id: 7, name: "Sample one", sortOrder: 1, filter: null }],
+      page: () => ({ rows: [row({ isWatched: true, watcherNames: ["Robin Staff"] })], total: 1, offset: 0 }),
+    });
+    const { container } = renderList();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Rename Sample one" }));
+    await screen.findByLabelText("New name");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
 });
