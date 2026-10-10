@@ -68,6 +68,18 @@ describe("Core HTTP API", () => {
     expect((await request(app).put("/api/organizations/health").set("authorization", `Bearer ${admin}`).send({ key: "health" })).status).toBe(400);
   });
 
+  it("PUT /organizations/:key/hq is Core.Admin only, 404s an unknown key and 400s a non-boolean", async () => {
+    const auth = (t: string) => ({ authorization: `Bearer ${t}` });
+    await request(app).put("/api/organizations/health").set(auth(admin)).send(healthOrg).expect(200);
+    expect((await request(app).put("/api/organizations/health/hq").set(auth(editorOnly)).send({ isHq: true })).status).toBe(403);
+    const set = await request(app).put("/api/organizations/health/hq").set(auth(admin)).send({ isHq: true });
+    expect(set.status).toBe(200);
+    expect(set.body.isHq).toBe(true);
+    expect((await request(app).get("/api/organizations/health").set(auth(reader))).body.isHq).toBe(true);
+    expect((await request(app).put("/api/organizations/nope/hq").set(auth(admin)).send({ isHq: true })).status).toBe(404);
+    expect((await request(app).put("/api/organizations/health/hq").set(auth(admin)).send({ isHq: "yes" })).status).toBe(400);
+  });
+
   it("handles terms and rejects unknown kinds", async () => {
     const term = { kind: "tag", key: "covid-19", displayName: "COVID-19", sortOrder: 0, isActive: true, social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null } };
     expect((await request(app).put("/api/terms/tag/covid-19").set("authorization", `Bearer ${admin}`).send(term)).status).toBe(200);
@@ -111,6 +123,28 @@ describe("Core HTTP API", () => {
       expect(res.body).toEqual({ error: "internal error" });
       expect(res.text).not.toContain("secret");
       expect(spy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
+      errSpy.mockRestore();
+    }
+  });
+
+  it("logs only a safe label for an unexpected failure, never the query's bound parameters or an email", async () => {
+    const lines: unknown[][] = [];
+    const errSpy = vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void lines.push(args));
+    const failed = Object.assign(new Error('Failed query: update "organizations" set "contact" = $1\nparams: {"emailAddress":"robin.staff@example.test"}'), {
+      cause: Object.assign(new Error('value for "contact" robin.staff@example.test'), { code: "22001" }),
+    });
+    const spy = vi.spyOn(organizationsService, "upsertOrganization").mockRejectedValueOnce(failed);
+    try {
+      const res = await request(app).put("/api/organizations/health").set("authorization", `Bearer ${admin}`).send(healthOrg);
+      expect(res.status).toBe(500);
+      expect(lines).toHaveLength(1);
+      const logged = lines[0]!.map((a) => (a instanceof Error ? `${a.message} ${a.stack} ${String(a.cause)}` : typeof a === "string" ? a : JSON.stringify(a))).join(" ");
+      expect(logged).toContain("22001");
+      expect(logged).not.toContain("example.test");
+      expect(logged).not.toContain("params");
+      expect(lines[0]!.every((a) => typeof a === "string")).toBe(true);
     } finally {
       spy.mockRestore();
       errSpy.mockRestore();
@@ -183,7 +217,8 @@ describe("Core HTTP API", () => {
   it("republish returns the number of enqueued events", async () => {
     const res = await request(app).post("/api/admin/republish").set("authorization", `Bearer ${admin}`);
     expect(res.status).toBe(202);
-    expect(res.body.enqueued).toBe(2);
+    // 1 organization + 1 term + 1 user (the Core.Admin created by the directory-admin-emails test above).
+    expect(res.body.enqueued).toBe(3);
   });
 
   // Task 3: local admin login, end to end on the Core reference app — later apps copy this wiring.

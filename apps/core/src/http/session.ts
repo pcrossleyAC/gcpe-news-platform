@@ -18,7 +18,7 @@ import {
   type SessionUser,
   type VerifiedSession,
 } from "@gcpe/auth";
-import { authenticate, sessionUserFor } from "../services/users";
+import { authenticate, sessionRolesOf, sessionUserFor } from "../services/users";
 
 /** Session id for the environment break-glass admin (LOCAL_ADMIN_*); it has no users row. */
 export const BREAK_GLASS_ID = "local:admin";
@@ -73,7 +73,7 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
         }
         const user = await authenticate(deps.db, username, password);
         if (!user) return void res.status(401).json({ error: "invalid credentials" });
-        await issue(res, { id: user.id, name: user.displayName, email: user.email, roles: user.roles });
+        await issue(res, { id: user.id, name: user.displayName, email: user.email ?? "", roles: sessionRolesOf(user) });
       } catch (e) {
         next(e);
       }

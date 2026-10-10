@@ -15,7 +15,7 @@
 // only enforces that header on the cookie-session fallback path).
 import { pathToFileURL } from "node:url";
 import type { TermKind } from "@gcpe/events";
-import { orgInputSchema } from "../apps/core/src/services/organizations";
+import { orgInputSchema, type OrgInput } from "../apps/core/src/services/organizations";
 import { termInputSchema } from "../apps/core/src/services/terms";
 import {
   DEFAULT_ABBREVIATION_SAMPLE_SIZE,
@@ -27,9 +27,13 @@ import {
   fetchSectors,
   fetchTags,
   fetchThemes,
+  HQ_SEED_ORGANIZATIONS,
+  hqOnlyOnCreate,
+  KNOWN_ABBREVIATIONS,
   sleep,
   toOrgInput,
   toTermInput,
+  withHqFlag,
   type PublicCategory,
 } from "./lib/public-taxonomy";
 
@@ -86,6 +90,41 @@ async function putJson(baseUrl: string, path: string, token: string, body: unkno
   });
 }
 
+async function getStatus(baseUrl: string, path: string, token: string, fetchImpl: typeof fetch): Promise<number> {
+  const res = await fetchImpl(new URL(path, baseUrl), { method: "GET", headers: authHeaders(token) });
+  return res.status;
+}
+
+type TargetOptions = Required<Pick<RunOptions, "targetBaseUrl" | "token" | "fetchImpl">>;
+
+function recordFailure(summary: KindSummary, key: string, status: number): void {
+  summary.failed++;
+  summary.failures.push({ key, status });
+}
+
+/** PUTs one body and records the outcome in the summary. */
+async function putAndTrack(target: TargetOptions, summary: KindSummary, path: string, key: string, body: unknown): Promise<void> {
+  const res = await putJson(target.targetBaseUrl, path, target.token, body, target.fetchImpl);
+  if (res.ok) summary.upserted++;
+  else recordFailure(summary, key, res.status);
+}
+
+/**
+ * PUTs an organization. A body that asserts HQ is sent with its flag only when Core has no such
+ * organization yet; for an existing one the flag is dropped, so a re-seed never changes isHq
+ * (C124). A lookup that fails with anything but 404 counts as a failure and nothing is written.
+ */
+async function putOrganization(target: TargetOptions, summary: KindSummary, input: OrgInput): Promise<void> {
+  const path = `/core/api/organizations/${encodeURIComponent(input.key)}`;
+  let body = input;
+  if (input.isHq !== undefined) {
+    const status = await getStatus(target.targetBaseUrl, path, target.token, target.fetchImpl);
+    if (status !== 404 && (status < 200 || status >= 300)) return recordFailure(summary, input.key, status);
+    body = hqOnlyOnCreate(input, status !== 404);
+  }
+  await putAndTrack(target, summary, path, input.key, body);
+}
+
 async function postNoBody(baseUrl: string, path: string, token: string, fetchImpl: typeof fetch): Promise<Response> {
   return fetchImpl(new URL(path, baseUrl), { method: "POST", headers: authHeaders(token) });
 }
@@ -101,16 +140,21 @@ async function seedMinistries(
     const minister = await fetchMinister(publicApiBase, ministry.key, fetchImpl);
     await sleep(delayMs);
     const recentReleases = await fetchLatestMinistryPosts(publicApiBase, ministry.key, abbreviationSampleSize, fetchImpl);
-    const abbreviation = deriveMinistryAbbreviation(recentReleases, ministry.key);
-    const input = orgInputSchema.parse(toOrgInput(ministry, minister, abbreviation));
+    const abbreviation = deriveMinistryAbbreviation(recentReleases, ministry.key) ?? KNOWN_ABBREVIATIONS[ministry.key.toLowerCase()] ?? null;
+    const input = orgInputSchema.parse(withHqFlag(toOrgInput(ministry, minister, abbreviation)));
     if (abbreviation === null) summary.noAbbreviation.push(input.key);
     await sleep(delayMs);
-    const res = await putJson(targetBaseUrl, `/core/api/organizations/${encodeURIComponent(input.key)}`, token, input, fetchImpl);
-    if (res.ok) summary.upserted++;
-    else {
-      summary.failed++;
-      summary.failures.push({ key: input.key, status: res.status });
-    }
+    await putOrganization({ targetBaseUrl, token, fetchImpl }, summary, input);
+  }
+  return summary;
+}
+
+async function seedHqOrganizations(opts: Required<Pick<RunOptions, "targetBaseUrl" | "token" | "delayMs" | "fetchImpl">>): Promise<KindSummary> {
+  const summary: KindSummary = { kind: "hq-organizations", upserted: 0, failed: 0, failures: [], noAbbreviation: [] };
+  for (const org of HQ_SEED_ORGANIZATIONS) {
+    const input = orgInputSchema.parse(org);
+    await sleep(opts.delayMs);
+    await putOrganization(opts, summary, input);
   }
   return summary;
 }
@@ -126,12 +170,7 @@ async function seedTermKind(
   for (const category of categories) {
     const input = termInputSchema.parse(toTermInput(kind, category));
     await sleep(delayMs);
-    const res = await putJson(targetBaseUrl, `/core/api/terms/${kind}/${encodeURIComponent(input.key)}`, token, input, fetchImpl);
-    if (res.ok) summary.upserted++;
-    else {
-      summary.failed++;
-      summary.failures.push({ key: input.key, status: res.status });
-    }
+    await putAndTrack({ targetBaseUrl, token, fetchImpl }, summary, `/core/api/terms/${kind}/${encodeURIComponent(input.key)}`, input.key, input);
   }
   return summary;
 }
@@ -150,6 +189,7 @@ export async function run(opts: RunOptions): Promise<RunResult> {
 
   const summaries: KindSummary[] = [];
   summaries.push(await seedMinistries({ ...common, abbreviationSampleSize }));
+  summaries.push(await seedHqOrganizations(common));
   summaries.push(await seedTermKind("sector", fetchSectors, common));
   summaries.push(await seedTermKind("theme", fetchThemes, common));
   summaries.push(await seedTermKind("tag", fetchTags, common));

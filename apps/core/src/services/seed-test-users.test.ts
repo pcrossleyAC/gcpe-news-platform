@@ -26,7 +26,7 @@ describe("seedTestUsers", () => {
 
   it("re-running resets passwords and roles and reactivates", async () => {
     const viewer = (await findUserByEmail(tdb.db, "viewer@example.test"))!;
-    await updateUser(tdb.db, viewer.id, { isActive: false });
+    await updateUser(tdb.db, viewer.id, { isActive: false }, []);
     expect(await seedTestUsers(tdb.db, pw(2))).toEqual(TEST_USERS.map((u) => ({ email: u.email, action: "updated" })));
     expect(await authenticate(tdb.db, "viewer@example.test", "password number 1")).toBeNull();
     expect(await authenticate(tdb.db, "viewer@example.test", "password number 2")).not.toBeNull();

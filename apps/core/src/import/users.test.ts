@@ -17,6 +17,7 @@ describe("importLegacyUsers", () => {
     const existing = await createUser(
       tdb.db,
       createUserSchema.parse({ email: "editor@example.test", displayName: "Existing Editor", roles: ["NRMS.Editor"] }),
+      [],
     );
 
     const { users, skipped } = await importLegacyUsers(tdb.db, [

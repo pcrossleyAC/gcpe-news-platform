@@ -20,3 +20,11 @@ export const NOD_SUBSCRIBE_API_ROLE = "NoD.SubscribeApi";
  * NoD's Distribution client carries, not a staff role (staff control it through NoD's own
  * `NoD.Admin`-gated routes, never by calling Distribution directly). */
 export const DISTRIBUTION_OPERATE_ROLE = "Distribution.Operate";
+
+/**
+ * The Corporate Calendar's ministry-scoped roles, lowest to highest: legacy's SecurityRole 1–5
+ * (Gcpe.Calendar.Library/Security/CustomPrincipal.cs:14). A user holds at most one, so they are
+ * kept apart from the flat STAFF_ROLES and granted only through Core's Calendar access routes.
+ */
+export const CALENDAR_ROLES = ["Calendar.ReadOnly", "Calendar.Editor", "Calendar.Advanced", "Calendar.Administrator", "Calendar.SysAdmin"] as const;
+export type CalendarRole = (typeof CALENDAR_ROLES)[number];

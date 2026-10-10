@@ -60,14 +60,18 @@ export async function importLegacyUsers(db: Db, rows: LegacyUserRow[]): Promise<
       continue;
     }
 
-    const existing = await findUserByEmail(db, parsed.data.email);
+    // emailLower is already the trimmed, lowercased address createUserSchema would produce;
+    // used here (rather than parsed.data.email) because the schema's email is nullable for
+    // the no-email import case, and this row always has one.
+    const existing = await findUserByEmail(db, emailLower);
     if (existing) {
-      users.set(parsed.data.email, { id: existing.id, displayName: existing.displayName });
+      users.set(emailLower, { id: existing.id, displayName: existing.displayName });
       continue;
     }
 
-    const created = await createUser(db, parsed.data);
-    users.set(parsed.data.email, { id: created.id, displayName: created.displayName });
+    // Imported staff are inactive with no roles, so they grant no Calendar access; Core's republish carries them to subscribers.
+    const created = await createUser(db, parsed.data, []);
+    users.set(emailLower, { id: created.id, displayName: created.displayName });
   }
 
   return { users, skipped };

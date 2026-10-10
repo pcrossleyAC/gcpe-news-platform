@@ -41,6 +41,9 @@ export const orgRecordSchema = z.object({
   topicLinks: z.array(linkSchema),
   serviceLinks: z.array(linkSchema),
   sectorKeys: z.array(z.string()),
+  // HQ organization (Calendar spec addendum §4, C124). Defaulted so an envelope stored before
+  // the flag existed still parses.
+  isHq: z.boolean().default(false),
   updatedAt: z.string().datetime({ offset: true }),
 });
 export type OrgRecord = z.infer<typeof orgRecordSchema>;
@@ -195,9 +198,25 @@ export function indexKeysFor(r: Pick<ReleaseRecord, "ministryKeys" | "sectorKeys
   ].map((s) => s.toLowerCase());
 }
 
+/** Calendar roles, lowest to highest. Mirrors packages/auth's CALENDAR_ROLES (this package
+ * doesn't depend on auth); catalogue-user.test.ts keeps them equal. */
+export const calendarRoleSchema = z.enum(["Calendar.ReadOnly", "Calendar.Editor", "Calendar.Advanced", "Calendar.Administrator", "Calendar.SysAdmin"]);
+
+/** Core → Calendar (spec addendum §4, §5.4). Ministries are named by organization key, as every other event names them. */
+export const userRecordSchema = z.object({
+  id: z.string().uuid(),
+  email: z.string().nullable(),
+  displayName: z.string().min(1),
+  isActive: z.boolean(),
+  calendarRole: calendarRoleSchema.nullable(),
+  organizationKeys: z.array(z.string().min(1)),
+});
+export type UserRecord = z.infer<typeof userRecordSchema>;
+
 export const eventDataSchemas = {
   "org.upserted": orgRecordSchema,
   "org.deactivated": z.object({ key: z.string().min(1) }),
+  "user.upserted": userRecordSchema,
   "sector.upserted": termRecordSchema,
   "sector.deactivated": termDeactivated,
   "theme.upserted": termRecordSchema,

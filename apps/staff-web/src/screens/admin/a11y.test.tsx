@@ -1,6 +1,7 @@
 /** axe checks for Users and the error log (task-5-brief.md's "axe clean on every screen"). */
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import axe from "axe-core";
 import { jsonResponse } from "../../../test/jsonResponse";
@@ -9,6 +10,9 @@ import { RequireAuth } from "../../session/RequireAuth";
 import { UsersScreen } from "./users/UsersScreen";
 import { ErrorLogScreen } from "./errors/ErrorLogScreen";
 import { MediaListNamesScreen } from "./media-lists/MediaListNamesScreen";
+import { CalendarAccessScreen } from "./calendar-access/CalendarAccessScreen";
+import { OrganizationsScreen } from "./organizations/OrganizationsScreen";
+import { ACCESS_USERS, ORGS } from "./calendar-access/fixtures";
 import type { UserView } from "./users/UsersScreen";
 
 async function seriousViolations(container: Element) {
@@ -76,6 +80,36 @@ describe("accessibility — Users, Media list names and error log", () => {
     );
     const { container } = render(withAuth(<ErrorLogScreen />));
     await screen.findByText("boom");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("CalendarAccessScreen, with an editor open", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "self-1", name: "Sam Self", email: "sam.self@x.invalid", roles: ["Calendar.Administrator"] }, expiresAt: new Date().toISOString() });
+        if (url === "/core/api/calendar-access") return jsonResponse(200, ACCESS_USERS);
+        if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
+        return jsonResponse(200, {});
+      }),
+    );
+    const { container } = render(withAuth(<CalendarAccessScreen />));
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Edit access for Robin Staff" }));
+    await screen.findByRole("form", { name: "Calendar access for Robin Staff" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("OrganizationsScreen", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
+        return jsonResponse(200, {});
+      }),
+    );
+    const { container } = render(withAuth(<OrganizationsScreen />));
+    await screen.findByLabelText("Health is an HQ organization");
     expect(await seriousViolations(container)).toEqual([]);
   });
 });

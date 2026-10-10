@@ -83,6 +83,11 @@ describe("mapMinistry", () => {
     );
     expect(org.contact).toBeNull();
   });
+
+  it("never carries isHq, even for an HQ ministry: the importer asserts HQ only when it creates the organization (C124)", () => {
+    const related = { topics: [], services: [], sectorKeys: [] };
+    for (const Abbreviation of ["GCPEHQ", "GCPEMEDIA", "PREM", "HLTH"]) expect("isHq" in mapMinistry({ ...mediaRelations, Abbreviation }, related)).toBe(false);
+  });
 });
 
 describe("mapTerm", () => {

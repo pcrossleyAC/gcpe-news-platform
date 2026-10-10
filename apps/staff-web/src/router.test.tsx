@@ -166,6 +166,27 @@ describe("router (basename /hub)", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Add a subscriber" })).toBeInTheDocument();
   });
 
+  it("a Calendar administrator with no NRMS or NoD role lands on Calendar access", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["Calendar.Administrator"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/core/api/calendar-access") return jsonResponse(200, []);
+        if (url === "/core/api/organizations") return jsonResponse(200, []);
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    const router = createMemoryRouter(routes, { basename: "/hub", initialEntries: ["/hub/"] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: "Calendar access" })).toBeInTheDocument();
+    expect(router.state.location.pathname).toBe("/hub/calendar-access");
+  });
+
   it("a Viewer sees no Add a subscriber link", async () => {
     vi.stubGlobal(
       "fetch",

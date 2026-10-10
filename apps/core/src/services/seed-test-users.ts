@@ -15,17 +15,18 @@ export const TEST_USERS = [
 export async function seedTestUsers(db: Db, passwords: Record<string, string>): Promise<{ email: string; action: "created" | "updated" }[]> {
   for (const u of TEST_USERS) setPasswordSchema.parse({ password: passwords[u.email] ?? "" });
   const out: { email: string; action: "created" | "updated" }[] = [];
+  // The seed CLI has no subscriber config. Core's republish carries seeded users to subscribers.
   for (const u of TEST_USERS) {
     const password = passwords[u.email]!;
     const existing = await findUserByEmail(db, u.email);
     if (!existing) {
-      await createUser(db, createUserSchema.parse({ email: u.email, displayName: u.displayName, roles: [...u.roles], password }));
+      await createUser(db, createUserSchema.parse({ email: u.email, displayName: u.displayName, roles: [...u.roles], password }), []);
       out.push({ email: u.email, action: "created" });
       continue;
     }
-    await setRoles(db, existing.id, [...u.roles]);
+    await setRoles(db, existing.id, [...u.roles], []);
     await setPassword(db, existing.id, password);
-    await updateUser(db, existing.id, { isActive: true, displayName: u.displayName });
+    await updateUser(db, existing.id, { isActive: true, displayName: u.displayName }, []);
     out.push({ email: u.email, action: "updated" });
   }
   return out;

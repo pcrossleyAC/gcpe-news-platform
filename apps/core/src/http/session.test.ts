@@ -25,7 +25,7 @@ describe("Core sign-in", () => {
     tdb = await createCoreTestDb();
     const local = { username: "admin", passwordHash: await hashPassword(ADMIN_PW), secret: "local-secret-for-core-tests-0123456789" };
     app = createApp({ db: tdb.db, subscribers: [], auth: { session: { secret: SECRET } }, session: { secret: SECRET, secure: true, local } });
-    editorId = (await createUser(tdb.db, createUserSchema.parse({ email: "editor@example.test", displayName: "Test Editor", roles: ["NRMS.Editor"], password: PW }))).id;
+    editorId = (await createUser(tdb.db, createUserSchema.parse({ email: "editor@example.test", displayName: "Test Editor", roles: ["NRMS.Editor"], password: PW }), [])).id;
   });
   afterAll(async () => {
     await tdb.drop();
@@ -79,16 +79,16 @@ describe("Core sign-in", () => {
 
   it("reissues at once when roles changed, and signs out a deactivated user", async () => {
     const token = sessionToken(await login("editor@example.test", PW))!;
-    await setRoles(tdb.db, editorId, ["NRMS.Viewer"]);
+    await setRoles(tdb.db, editorId, ["NRMS.Viewer"], []);
     const changed = await request(app).get("/auth/session").set("cookie", `gcpe_session=${token}`);
     expect(changed.body.user.roles).toEqual(["NRMS.Viewer"]);
     expect(sessionToken(changed)).toBeDefined();
-    await updateUser(tdb.db, editorId, { isActive: false });
+    await updateUser(tdb.db, editorId, { isActive: false }, []);
     const gone = await request(app).get("/auth/session").set("cookie", `gcpe_session=${token}`);
     expect(gone.status).toBe(401);
     expect(sessionToken(gone)).toBe("");
-    await updateUser(tdb.db, editorId, { isActive: true });
-    await setRoles(tdb.db, editorId, ["NRMS.Editor"]);
+    await updateUser(tdb.db, editorId, { isActive: true }, []);
+    await setRoles(tdb.db, editorId, ["NRMS.Editor"], []);
   });
 
   it("401s with no cookie or a garbage cookie", async () => {

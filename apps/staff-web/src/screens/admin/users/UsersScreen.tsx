@@ -1,29 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
-import { apiFetch, ApiError } from "../../../api/client";
+import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { messagesOf } from "../messages";
 import { STAFF_ROLES } from "./roles";
 
 export interface UserView {
   id: string;
-  email: string;
+  email: string | null;
   displayName: string;
   isActive: boolean;
   signInMethod: "local" | "entra";
   roles: string[];
-}
-
-/** 400 `issues` (zod) are a different shape from the NRMS section's 422 `problems` — this reads
- * either an ApiError's `issues` (mapping each `ZodIssue`'s `message`) or its own plain
- * `message`, so every write on this screen shows something useful regardless of which shape
- * the server sent. */
-function messagesOf(caught: unknown): string[] {
-  if (caught instanceof ApiError) {
-    if (caught.issues?.length) return caught.issues.map((i) => (i as { message?: string }).message ?? "Invalid request.");
-    return [caught.message];
-  }
-  return ["Something went wrong."];
 }
 
 function RoleCheckboxes({ selected, onChange, idPrefix, disabled }: { selected: string[]; onChange(next: string[]): void; idPrefix: string; disabled: boolean }): React.JSX.Element {
@@ -110,10 +99,12 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
     }
   };
 
+  const who = user.email ?? `${user.displayName} (no email)`;
+
   return (
     <li className="gcpe-users__row">
       <h2>
-        {user.email} {!user.isActive && "(inactive)"}
+        {who} {!user.isActive && "(inactive)"}
       </h2>
       <p>Sign-in: {user.signInMethod === "local" ? "Local password" : "Entra"}</p>
 
@@ -122,7 +113,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
           {m}
         </p>
       ))}
-      <TextField label={`${user.email} display name`} value={displayName} onChange={setDisplayName} isDisabled={busy} />
+      <TextField label={`${who} display name`} value={displayName} onChange={setDisplayName} isDisabled={busy} />
       <Button onPress={() => void saveName()} isDisabled={busy}>
         Save name
       </Button>
@@ -132,9 +123,16 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
           {m}
         </p>
       ))}
-      <Switch isSelected={user.isActive} isDisabled={busy} onChange={(v) => void toggleActive(v)}>
-        {user.email} is {user.isActive ? "active" : "inactive"}
-      </Switch>
+      {user.email === null ? (
+        <>
+          <p>Inactive until linked to an email.</p>
+          <LinkForm user={user} onChanged={onChanged} />
+        </>
+      ) : (
+        <Switch isSelected={user.isActive} isDisabled={busy} onChange={(v) => void toggleActive(v)}>
+          {who} is {user.isActive ? "active" : "inactive"}
+        </Switch>
+      )}
 
       {rolesMessages.map((m) => (
         <p role="alert" key={m}>
@@ -147,7 +145,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
       </Button>
 
       {user.signInMethod === "local" && (
-        <form onSubmit={savePassword} aria-label={`Set ${user.email}'s password`}>
+        <form onSubmit={savePassword} aria-label={`Set ${who}'s password`}>
           {passwordMessages.map((m) => (
             <p role="alert" key={m}>
               {m}
@@ -157,7 +155,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
            * identical to a failed save that also clears it. */}
           {passwordSaved && <p role="status">Password updated.</p>}
           <TextField
-            label={`${user.email} new password`}
+            label={`${who} new password`}
             type="password"
             value={password}
             onChange={(v) => {
@@ -173,6 +171,40 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
         </form>
       )}
     </li>
+  );
+}
+
+/** Legacy Calendar users imported with no email (spec addendum §4) can't sign in until linked. */
+function LinkForm({ user, onChanged }: { user: UserView; onChanged(): void }): React.JSX.Element {
+  const [email, setEmail] = useState("");
+  const [messages, setMessages] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const submit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setBusy(true);
+    setMessages([]);
+    try {
+      await apiFetch<UserView>(`/core/api/users/${user.id}/link`, { method: "POST", body: { email } });
+      onChanged();
+    } catch (caught) {
+      setMessages(messagesOf(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <form onSubmit={submit} aria-label={`Link ${user.displayName} to an email`}>
+      {messages.map((m) => (
+        <p role="alert" key={m}>
+          {m}
+        </p>
+      ))}
+      <p>Linking sets this user&rsquo;s email and activates them, so they can sign in.</p>
+      <TextField label={`Email for ${user.displayName}`} type="email" value={email} onChange={setEmail} isRequired isDisabled={busy} />
+      <Button type="submit" isDisabled={busy || email.trim() === ""}>
+        Link and activate
+      </Button>
+    </form>
   );
 }
 

@@ -6,7 +6,7 @@
 // toCategoryDto — the functions here invert that projection to rebuild Core's orgInputSchema /
 // termInputSchema bodies (apps/core/src/services/organizations.ts, .../terms.ts).
 import type { TermKind } from "@gcpe/events";
-import type { OrgInput } from "../../apps/core/src/services/organizations";
+import { isHqAbbreviation, type OrgInput } from "../../apps/core/src/services/organizations";
 import type { TermInput } from "../../apps/core/src/services/terms";
 
 export const DEFAULT_PUBLIC_API_BASE = "https://api.news.gov.bc.ca";
@@ -263,6 +263,58 @@ export function toOrgInput(ministry: PublicMinistry, minister: PublicMinister | 
     serviceLinks: (ministry.serviceLinks ?? []).map(mapLink),
     sectorKeys: [],
   };
+}
+
+/**
+ * GCPE's two HQ organizations (Calendar spec addendum Q49). The public API lists neither
+ * (checked 2026-10-07: 36 ministries, none GCPE), so the seed adds them. The third HQ
+ * organization, the Office of the Premier, is a public ministry: the seed marks it rather than
+ * adding it (withHqFlag). All three bodies carry isHq only when Core does not hold the organization
+ * yet (hqOnlyOnCreate). The Calendar matches all three by abbreviation, as legacy did.
+ */
+export const HQ_SEED_ORGANIZATIONS: OrgInput[] = [
+  hqOrganization("gcpe-headquarters", "GCPE Headquarters", "GCPEHQ"),
+  hqOrganization("gcpe-media-relations", "GCPE Media Relations", "GCPEMEDIA"),
+];
+
+function hqOrganization(key: string, displayName: string, abbreviation: string): OrgInput {
+  return {
+    key,
+    displayName,
+    abbreviation,
+    sortOrder: 0,
+    isActive: true,
+    parentKey: null,
+    url: null,
+    displayAdditionalName: null,
+    minister: { name: null, summary: null, detailsHtml: null, email: null, photoUrl: null, address: null },
+    contact: null,
+    secondContact: null,
+    weekendContactNumber: null,
+    social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null },
+    topicLinks: [],
+    serviceLinks: [],
+    sectorKeys: [],
+    isHq: true,
+  };
+}
+
+/** Abbreviations the seed knows without a release sample: the Office of the Premier must be marked HQ (Q49) even when its recent releases yield none. */
+export const KNOWN_ABBREVIATIONS: Readonly<Record<string, string>> = { "office-of-the-premier": "PREM" };
+
+/** Marks a public ministry HQ when its abbreviation is an HQ one (the Office of the Premier). Every other body omits isHq. */
+export function withHqFlag(input: OrgInput): OrgInput {
+  return isHqAbbreviation(input.abbreviation) ? { ...input, isHq: true } : input;
+}
+
+/**
+ * The seed asserts HQ only when it creates the organization (C124). When the organization already
+ * exists the body omits isHq, so Core keeps whatever Core.Admin last chose, in either direction.
+ */
+export function hqOnlyOnCreate(input: OrgInput, exists: boolean): OrgInput {
+  if (!exists || input.isHq === undefined) return input;
+  const { isHq: _kept, ...body } = input;
+  return body;
 }
 
 /**
