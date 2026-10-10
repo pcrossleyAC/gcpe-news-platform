@@ -7,7 +7,7 @@
 **Architecture:**
 - **Two plans.** 5e is fourteen right-sized tasks, so it is split. **This plan (5e-1) comes first**: server, contract and storage only, seven tasks. `docs/superpowers/plans/2026-10-09-phase-5e2-activity-editor-screen.md` (5e-2) builds the staff-web screens and the end-to-end tests on top of it.
 - **The browser runs the same rules as the server.** `GET /calendar/api/config` gains `rules` (the slice of `CalendarRules` that `checkActivity`, `inferLookAhead` and the Release fieldset read) and `editor` (what this user may do). `GET /calendar/api/editor-options` lists every lookup row with its active flag, so the form can offer active rows plus whatever inactive value an activity already holds, as legacy's dropdowns did.
-- **Attachments are their own writes.** `POST /activities/:id/files?name=…` (raw body), `DELETE /activities/:id/files/:fileId` and `GET /activities/:id/files/:fileId`. A router mounted before the JSON parser checks visibility, edit rights, deletion, the freeze and other users' locks *before* reading a byte; the transaction re-checks them under the activity's lock. Bytes go to the object store first and are deleted again if the transaction fails. Downloads are authorised by `visibleSql` inside `inReadSnapshot`, so another ministry's confidential file is a 404.
+- **Attachments are their own writes.** `POST /activities/:id/files` (raw body, the file name in the `X-GCPE-File-Name` header, percent-encoded — never `?name=`, which would land in proxy logs), `DELETE /activities/:id/files/:fileId` and `GET /activities/:id/files/:fileId`. A router mounted before the JSON parser checks visibility, edit rights, deletion, the freeze and other users' locks *before* reading a byte; the transaction re-checks them under the activity's lock. Bytes go to the object store first and are deleted again if the transaction fails. Downloads are authorised by `visibleSql` inside `inReadSnapshot`, so another ministry's confidential file is a 404.
 - **File types are checked by content.** `packages/storage` gains an attachment allowlist: each extension maps to one served content type and one magic-byte family; legacy's extension blocklist is kept on top. The served type always comes from that table, never from the uploader.
 
 **Tech Stack:** Node 24, Express 5, Drizzle on Postgres, zod, Vitest 4.1 with supertest, `@gcpe/storage`'s `localStore`.
@@ -1150,7 +1150,7 @@ Covers: spec §8.4 Upload and Delete (several files, empty refused, blocklist, c
   - `addFile(deps: ApiDeps, store: ObjectStore, actor: CalendarActor, id: number, original: string, bytes: Buffer): Promise<ActivityFileView[]>`.
   - `removeFile(deps: ApiDeps, store: ObjectStore, actor: CalendarActor, id: number, fileId: number): Promise<ActivityFileView[]>`.
   - `class StoredFileMissingError`.
-  - `fileRoutes(deps: ApiDeps): Router`: `POST /activities/:id/files?name=` (raw body, 201 with the file list), `DELETE /activities/:id/files/:fileId` (200 with the file list). Task 7 adds the `GET`.
+  - `fileRoutes(deps: ApiDeps): Router`: `POST /activities/:id/files` (raw body, the file name in the `X-GCPE-File-Name` header, 201 with the file list), `DELETE /activities/:id/files/:fileId` (200 with the file list). Task 7 adds the `GET`.
 
 - [ ] **Step 1: Write the failing tests**
 

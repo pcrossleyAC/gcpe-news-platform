@@ -3,18 +3,18 @@ import { and, asc, count, eq, sql } from "drizzle-orm";
 import type { DbOrTx, Tx } from "@gcpe/db-kit";
 import { ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, type ActivityFileView } from "@gcpe/calendar-contract";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import { checkAttachment, extensionOf, randomFileKey, type AttachmentProblem, type ObjectStore } from "@gcpe/storage";
+import { checkAttachment, downloadContentType, extensionOf, randomFileKey, InvalidKeyError, type AttachmentProblem, type ObjectStore } from "@gcpe/storage";
 import type { CalendarActor } from "../actor";
 import { can } from "../capabilities";
 import { assertNotFrozen } from "../freeze";
 import type { ApiDeps } from "../http/routes";
 import { dbNow } from "../time";
-import { visible } from "../visibility";
-import { activityFiles, users } from "../db/schema";
+import { visible, visibleSql } from "../visibility";
+import { activities, activityFiles, users } from "../db/schema";
 import { ActivityDeletedError, ActivityForbiddenError, ActivityNotFoundError, ActivityValidationError } from "./errors";
 import { writeChange } from "./history";
 import { assertNotLockedByOther } from "./locks";
-import { factsOf, loadStored, lockActivity, type StoredActivity } from "./store";
+import { factsOf, inReadSnapshot, loadStored, lockActivity, type StoredActivity } from "./store";
 
 /** The activity's files, by name as people read it. Callers check visibility first. */
 export async function filesOf(db: DbOrTx, activityId: number): Promise<ActivityFileView[]> {
@@ -144,4 +144,30 @@ export async function removeFile(deps: ApiDeps, store: ObjectStore, actor: Calen
   });
   await deleteQuietly(store, removedKey, { activityId: id, fileId });
   return filesOf(deps.db, id);
+}
+
+/**
+ * One file's bytes for a download (spec addendum §8.4). The activity is read through visibleSql in
+ * one snapshot with the file row, so a file of an activity the caller can't see is a 404 (C138).
+ */
+export async function readFile(deps: ApiDeps, store: ObjectStore, actor: CalendarActor, id: number, fileId: number): Promise<{ fileName: string; contentType: string; bytes: Buffer }> {
+  const row = await inReadSnapshot(deps.db, async (tx) => {
+    const [a] = await tx.select({ id: activities.id }).from(activities).where(and(eq(activities.id, id), visibleSql(actor)));
+    if (!a) throw new ActivityNotFoundError();
+    const [f] = await tx
+      .select({ fileName: activityFiles.fileName, contentType: activityFiles.contentType, storageKey: activityFiles.storageKey })
+      .from(activityFiles)
+      .where(and(eq(activityFiles.id, fileId), eq(activityFiles.activityId, id)));
+    if (!f) throw new ActivityNotFoundError();
+    return f;
+  });
+  let obj: Awaited<ReturnType<ObjectStore["get"]>>;
+  try {
+    obj = await store.get(row.storageKey);
+  } catch (e) {
+    if (e instanceof InvalidKeyError) throw new StoredFileMissingError();
+    throw e;
+  }
+  if (!obj) throw new StoredFileMissingError();
+  return { fileName: row.fileName, contentType: downloadContentType(row.contentType), bytes: obj.bytes };
 }

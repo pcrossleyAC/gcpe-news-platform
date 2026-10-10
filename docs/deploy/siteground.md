@@ -200,6 +200,9 @@ Today this folder holds:
   automatically; an absolute `SITE_OUTPUT_DIR` is left as-is.
 - `storage/` — NRMS's `STORAGE_DIR` default (uploaded release files/media assets), same rule:
   overridable with an explicit `NRMS_STORAGE_DIR`.
+- `calendar-files/` — the Calendar's attachments (`CALENDAR_STORAGE_DIR`, overridable). Never served
+  directly: the Calendar's own route checks who may see each file. The stack refuses to start if this
+  folder is inside, equal to or holds `storage/`, `site-output/` or the staff-web build.
 
 The stack checks `DATA_DIR` is writable (creating it if needed) **before** starting any app and
 refuses to start at all if it isn't — a misconfigured or unwritable `DATA_DIR` fails loudly at
@@ -956,6 +959,23 @@ been run there yet, including the list timing in check 1.
 4. **Waiting for `gcpe_calendar`.** As cal-hq-admin: tick two rows, Review selected; Corporate
    Queries → Show all → Search.
 5. **Waiting for `gcpe_calendar`.** Month and Week views show activities on their days.
+
+### Activity files (Phase 5e-1)
+
+**No migration.**
+
+Nothing to configure on boxs.ca: `CALENDAR_STORAGE_DIR` defaults to `calendar-files/` under
+`DATA_DIR` (see "Persistent data" above). Include `~/gcpe-data/calendar-files` in backups, beside
+the Calendar database. Set `CALENDAR_STORAGE_DIR` explicitly only to move it elsewhere.
+
+**Hand check, Paul: the nginx request body limit.** An upload can be up to 25 MiB
+(`ATTACHMENT_MAX_BYTES`) plus multipart/header overhead. As with NRMS's media uploads (see
+"Troubleshooting" below), SiteGround's nginx sits in front of the app with its own upload size
+limit — commonly 1 MB by default — which this stack doesn't control and which refuses an
+oversized request before it ever reaches `/calendar/api/activities/*/files`. Confirm (Site Tools
+→ Devs, or ask SiteGround support) that nginx's limit is raised to comfortably clear 25 MiB for
+that path before relying on Calendar attachments in production; an HTML `413` instead of the
+Calendar's own JSON error means it hasn't been.
 
 ## Troubleshooting
 

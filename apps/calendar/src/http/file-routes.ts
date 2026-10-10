@@ -2,7 +2,7 @@ import express, { Router, type NextFunction, type Request, type Response } from 
 import { z, ZodError } from "zod";
 import { ATTACHMENT_MAX_BYTES, safeString } from "@gcpe/calendar-contract";
 import { ActivityNotFoundError } from "../activities/errors";
-import { addFile, precheckFileWrite, removeFile, StoredFileMissingError } from "../activities/files";
+import { addFile, precheckFileWrite, readFile, removeFile, StoredFileMissingError } from "../activities/files";
 import { idOf } from "./activity-routes";
 import { sendActivityError } from "./errors";
 import type { ApiDeps } from "./routes";
@@ -31,6 +31,22 @@ function fileNameOf(req: Request<Params>): string {
 export function fileIdOf(req: Request<Params>): number {
   if (!/^\d{1,9}$/.test(req.params.fileId)) throw new ActivityNotFoundError();
   return Number(req.params.fileId);
+}
+
+// RFC 5987's attr-char excludes a few characters encodeURIComponent leaves unescaped (the
+// percent sign's own delimiters don't apply, but a bare quote or apostrophe would read as the
+// ext-value's own charset/language delimiter): percent-encode those too.
+const NOT_ATTR_CHAR = /['()*]/g;
+const pctEncode = (ch: string) => `%${ch.charCodeAt(0).toString(16).toUpperCase()}`;
+
+// RFC 6266's filename* carries the full name, percent-encoded as UTF-8; the quoted filename=
+// fallback is built by hand (never left to content-disposition's own heuristics, which only add
+// filename* for some non-Latin-1 names) so it is always plain ASCII, with no quote, backslash,
+// CR, LF or other control character that could break or extend the header.
+function attachmentDisposition(fileName: string): string {
+  const fallback = fileName.replace(/[^\x20-\x7e]/g, "").replace(/["\\]/g, "") || "file";
+  const extValue = encodeURIComponent(fileName).replace(NOT_ATTR_CHAR, pctEncode);
+  return `attachment; filename="${fallback}"; filename*=UTF-8''${extValue}`;
 }
 
 function fail(e: unknown, req: Request<Params>, res: Response, next: NextFunction): void {
@@ -82,6 +98,20 @@ export function fileRoutes(deps: ApiDeps): Router {
   );
   r.delete("/activities/:id/files/:fileId", needStore, run(async (req, res) => {
     res.json(await removeFile(deps, deps.store!, req.calendar!, idOf(req), fileIdOf(req)));
+  }));
+  r.get("/activities/:id/files/:fileId", needStore, run(async (req, res) => {
+    const f = await readFile(deps, deps.store!, req.calendar!, idOf(req), fileIdOf(req));
+    // setHeader, not res.set/res.type: Express's Content-Type setter adds a charset by mime
+    // lookup (e.g. "text/plain" becomes "text/plain; charset=utf-8"), and the type here must be
+    // exactly what the list (or downloadContentType's fallback) says, never augmented.
+    res.setHeader("Content-Type", f.contentType);
+    res.setHeader("Content-Disposition", attachmentDisposition(f.fileName));
+    res.set({
+      "X-Content-Type-Options": "nosniff",
+      "Cache-Control": "private, no-store",
+      "Content-Security-Policy": "default-src 'none'; sandbox",
+    });
+    res.send(f.bytes);
   }));
   return r;
 }
