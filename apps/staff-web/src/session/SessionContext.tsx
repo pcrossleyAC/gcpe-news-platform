@@ -96,11 +96,11 @@ export function SessionProvider({ children }: { children: ReactNode }): React.JS
       await apiFetch("/core/auth/logout", { method: "POST" });
     } finally {
       setState((s) => ({ ...s, user: null }));
-      // Fix round 1 (3f Task 4), finding 1: an *explicit* sign-out wipes every unsaved document
-      // draft (documents/unsavedDocumentStorage.ts) — unlike a 401 (handled by the
-      // onUnauthorized listener below, which deliberately leaves drafts alone so the same user
-      // signing back in gets theirs back), there's no guarantee the next sign-in on this shared
-      // tab/machine is the same person.
+      // An *explicit* sign-out wipes every unsaved document draft
+      // (documents/unsavedDocumentStorage.ts) — unlike a 401 (handled by the onUnauthorized
+      // listener below, which deliberately leaves drafts alone so the same user signing back in
+      // gets theirs back), there's no guarantee the next sign-in on this shared tab/machine is
+      // the same person.
       clearAllDrafts();
       clearAllActivityDrafts();
     }

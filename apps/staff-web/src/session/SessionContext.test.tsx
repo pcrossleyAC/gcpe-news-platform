@@ -30,7 +30,7 @@ describe("SessionContext signOut (Fix round 1, finding 1)", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@example.test", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
         if (url === "/core/auth/logout") return new Response(null, { status: 204 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
@@ -52,7 +52,7 @@ describe("SessionContext signOut (Fix round 1, finding 1)", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@x.invalid", roles: ["Calendar.Editor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@example.test", roles: ["Calendar.Editor"] }, expiresAt: new Date().toISOString() });
         if (url === "/core/auth/logout") return new Response(null, { status: 204 });
         throw new Error(`unexpected fetch: ${url}`);
       }),
@@ -71,7 +71,7 @@ describe("SessionContext signOut (Fix round 1, finding 1)", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) => {
-        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@example.test", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
         if (url === "/core/auth/logout") return jsonResponse(500, { error: "boom" });
         throw new Error(`unexpected fetch: ${url}`);
       }),
@@ -100,7 +100,7 @@ describe("SessionContext: checking in when the tab comes back", () => {
     const { user } = useSession();
     return <p>{user ? `Signed in as ${user.name}` : "Signed out"}</p>;
   }
-  const signedIn = () => jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@x.invalid", roles: [] }, expiresAt: new Date().toISOString() });
+  const signedIn = () => jsonResponse(200, { user: { id: "user-a", name: "Pat", email: "pat@example.test", roles: [] }, expiresAt: new Date().toISOString() });
   const showTab = () => {
     Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
     document.dispatchEvent(new Event("visibilitychange"));
