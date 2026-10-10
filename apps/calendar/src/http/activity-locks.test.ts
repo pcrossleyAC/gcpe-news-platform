@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { createCalendarTestDb, createTestApp, FIXED_NOW } from "../../test/helpers";
+import { createCalendarTestDb, createTestApp, FIXED_NOW, waitForLockWaiters } from "../../test/helpers";
 import { call, seedWorld, validInput, type World } from "../../test/world";
 import { activities, activityLocks } from "../db/schema";
 import { sweepLocks } from "../activities/locks";
@@ -103,7 +103,22 @@ describe("edit locks (spec addendum §7.5)", () => {
   });
 
   it("two people taking it at once: exactly one wins", async () => {
-    const [a, b] = await Promise.all([lock("editor", "tab-a"), lock("admin", "tab-b")]);
+    // Hold the activity's lock until both requests are provably waiting on it, then let them race.
+    let release!: () => void;
+    const held = new Promise<void>((r) => (release = r));
+    let locked!: () => void;
+    const isLocked = new Promise<void>((r) => (locked = r));
+    const blocker = tdb.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`calendar-activity:${id}`}))`);
+      locked();
+      await held;
+    });
+    await isLocked;
+    const both = Promise.all([lock("editor", "tab-a"), lock("admin", "tab-b")]);
+    await waitForLockWaiters(tdb, 2);
+    release();
+    await blocker;
+    const [a, b] = await both;
     expect([a.status, b.status].sort()).toEqual([200, 423]);
   });
 

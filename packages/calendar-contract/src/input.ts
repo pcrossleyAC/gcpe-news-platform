@@ -2,7 +2,8 @@ import { z } from "zod";
 import { HQ_SECTIONS, HQ_STATUSES } from "./enums";
 
 /** The database's int4 bound: a larger id would overflow its column instead of failing validation. */
-const id = z.number().int().positive().max(2_147_483_647);
+export const idSchema = z.number().int().positive().max(2_147_483_647);
+const id = idSchema;
 /** Every string the API takes: Postgres text can't hold a NUL character. */
 export const safeString = () => z.string().regex(/^[^\u0000]*$/, "no NUL characters");
 /** A year outside these is a typo; years like 0001 or 9999 otherwise reach the database as timestamps it refuses. */
@@ -14,8 +15,9 @@ const realDate = (s: string) => {
   const d = new Date(`${s}T00:00:00Z`);
   return !Number.isNaN(d.getTime()) && d.toISOString().startsWith(s);
 };
-/** A BC calendar date. */
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD").refine(realDate, `not a real date between ${MIN_YEAR} and ${MAX_YEAR}`);
+/** A BC calendar date, YYYY-MM-DD, between 1900 and 2199. */
+export const bcDateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "use YYYY-MM-DD").refine(realDate, `not a real date between ${MIN_YEAR} and ${MAX_YEAR}`);
+const date = bcDateSchema;
 /** A BC wall-clock time, 24-hour. */
 const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "use HH:MM, 24-hour");
 // These caps only bound the request. The editor's own limits are checkActivity's, on changed values.

@@ -22,6 +22,13 @@ export function configRoutes(deps: ApiDeps): Router {
         showHqCommentsField: rules.showHqCommentsField,
         showRecordsSection: rules.showRecordsSection,
         lookAheadFieldset: can.seeLookAheadFieldset(actor, rules),
+        list: {
+          markup: can.seeListMarkup(actor),
+          corporateQueries: can.corporateQueries(actor),
+          lookAheadFilter: can.lookAheadFilter(actor),
+          reviewSelected: can.reviewSelected(actor),
+          clearLaStatus: can.clearLaStatus(actor),
+        },
       });
     } catch (e) {
       next(e);

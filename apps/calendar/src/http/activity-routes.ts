@@ -34,7 +34,7 @@ const SAVED_UNSEEN = "Saved. You can't view confidential activities for this min
 type Handler = (req: Request<Params>, res: Response) => Promise<void>;
 const run = (h: Handler) => (req: Request<Params>, res: Response, next: NextFunction) =>
   h(req, res).catch((e: unknown) => {
-    if (!sendActivityError(e, res)) next(e);
+    if (!sendActivityError(e, res, req)) next(e);
   });
 
 export function idOf(req: Request<Params>): number {

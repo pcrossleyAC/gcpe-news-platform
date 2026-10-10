@@ -48,12 +48,15 @@ describe("seedTestUsers", () => {
     await upsertOrganization(tdb.db, { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "FIN", sectorKeys: [] }, []);
     await upsertOrganization(tdb.db, { ...healthOrg, key: "gcpe-headquarters", displayName: "GCPE Headquarters", abbreviation: "GCPEHQ", sectorKeys: [], isHq: true }, []);
     const second = await seedTestUsers(tdb.db, pw(4));
-    for (const e of ["cal-admin", "cal-sysadmin", "cal-hq-admin", "cal-editor", "cal-readonly"]) {
+    for (const e of ["cal-admin", "cal-sysadmin", "cal-hq-admin", "cal-editor", "cal-readonly", "cal-advanced", "cal-hq-editor", "cal-hq-advanced"]) {
       expect(second.find((r) => r.email === `${e}@example.test`)?.calendar).toBe("set");
     }
     const admin = await findUserByEmail(tdb.db, "cal-admin@example.test");
     expect(admin).toMatchObject({ calendarRole: "Calendar.Administrator", organizationKeys: ["health"], roles: [] });
     expect((await findUserByEmail(tdb.db, "cal-hq-admin@example.test"))!.organizationKeys).toEqual(["gcpe-headquarters"]);
+    expect(await findUserByEmail(tdb.db, "cal-advanced@example.test")).toMatchObject({ calendarRole: "Calendar.Advanced", organizationKeys: ["health"] });
+    expect(await findUserByEmail(tdb.db, "cal-hq-editor@example.test")).toMatchObject({ calendarRole: "Calendar.Editor", organizationKeys: ["gcpe-headquarters"] });
+    expect(await findUserByEmail(tdb.db, "cal-hq-advanced@example.test")).toMatchObject({ calendarRole: "Calendar.Advanced", organizationKeys: ["gcpe-headquarters"] });
   });
 
   it("users without a Calendar entry report no calendar field", async () => {

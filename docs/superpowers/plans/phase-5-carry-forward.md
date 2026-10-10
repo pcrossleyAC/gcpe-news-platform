@@ -2,19 +2,6 @@
 
 Items one sub-plan leaves for a later one. Delete an item when the plan that takes it is written.
 
-## 5d
-
-- **Pin the tenant-config start-up refusal with an integration test.** `startCalendar` must refuse to start when the tenant file has no `calendar` section (spec addendum §5.1); only unit coverage exists today.
-- **Add a barrier to the concurrent-lock race test** (`activity-locks.test.ts`, "two people taking it at once"), so both requests are provably in flight together.
-- **History on an imported dirty title/details:** isolate the All-Day status-only row in its own test. (The raw-to-cleaned title entry is pinned in the curly-quote test.)
-- **The class-22 (and class-23) log lines carry no method or path.** `sendActivityError`'s two `console.error` calls (`apps/calendar/src/http/errors.ts:27,32`) log only `safeErrorLabel(e)`; add the request's method and path so a logged data-exception or constraint hit can be traced back to the call that caused it.
-- **Accepted race: a target deactivated during a long Transfer run still receives the remaining batches.** `runTransfer` (`apps/calendar/src/transfer.ts`) checks the target contact, its ministry and its person once, before the first batch; each batch re-checks only the activity. A target made inactive mid-run keeps what the later batches move. Re-check the target per batch if this ever matters.
-
-- **The list reads through `visibleSql(actor)`** (`apps/calendar/src/visibility.ts`), unaliased `activities`; never filter in memory after paging (spec addendum §6).
-- **Review selected** posts `{ items: [{ id, version }] }` (≤ 500) to `POST /calendar/api/activities/review-selected` and shows the `skipped` list; **Clear LA Status** posts `{ days }` to `POST /calendar/api/activities/clear-la-status`.
-- **The freeze banner** reads `GET /calendar/api/config`'s `freeze`.
-- **Review selected and Clear LA Status can answer 207 with `{ failed: true }`:** a later batch rolled back after earlier ones committed. Staff-web must check `body.failed`, not only the status, and tell the user what did and didn't commit.
-
 ## 5e
 
 - **`CALENDAR_STORAGE_DIR`** for attachments, outside the deploy folder (spec addendum §5.1, §8.4).
@@ -22,12 +9,16 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **Lock release on tab close uses `fetch(…, { keepalive: true })` with the `X-GCPE-Request` header**, not `navigator.sendBeacon`, which can't send the header `requireBearer` demands (C169) — the keepalive release must send this CSRF header or the server refuses it.
 - **"View changes"** reads `GET /calendar/api/activities/:id/changes`.
 - **Attachments are content writes:** call `assertNotFrozen` and check `can.edit` (spec addendum §7.4, §8.4).
+- **Titles link to the activity page** from the list's Title cell and the calendar view's items (`apps/staff-web/src/screens/calendar/list/cells.tsx`, `CalendarGrid.tsx`); return to the list's own URL (`?q=`) after save (C149).
+- **The activity page's watchlist star** uses `PUT`/`DELETE /calendar/api/activities/:id/watch` and shows the watchers' names, as the list's `WatchStar` does.
 
 ## 5g
 
 - **Report rendering:** build on the spike's recommendation (`docs/superpowers/plans/2026-10-08-phase-5b-report-rendering-spike.md`); its "Risks and what wasn't checked" list is 5g's to close. Wait for Q57's answer before planning 5g: the spike's boxs.ca SSH and runtime legs couldn't run (the gcpe-siteground SSH key isn't authorised), so whether Chromium runs on SiteGround's Node hosting is still unverified; re-run those two legs once the key is authorised, before committing 5g's rendering seam to Chromium as the default.
 - **Look Ahead: don't build "Consultations and Dialogues".** That section hasn't been used in years (Paul, 2026-10-07). 5g does **not** build it. Record it in `docs/parity/changes-from-legacy.md` as dropped: "dropped: unused for years, Paul 2026-10-07". Update the spec's "all 7 sections" (R6, §10.2) and the cover legend to match. Check whether the §7 category rule "contact ministry is the consultations ministry → Consultations and Dialogues" still matters without the section.
+- **The Look Ahead's dates use a reference day, not today.** Legacy's `FriendlyDateTime` (`ActivityListProvider.ashx.cs:784-823`) takes a `referenceDay` only from the Look Ahead: a timed activity on that day shows no date text, only its time. The list's `friendlyDateRange` (`packages/calendar-contract`) has one `today` parameter and always prints the date; 5g's Look Ahead needs the reference day and the suppression.
 - **Legacy report fixes** (from `docs/parity/legacy-report-layouts.md`'s discrepancies): drop the doubled "updated updated" wording in the Executive Look Ahead's "Last updated" line; drop the raw, unparsed `**CONFIDENTIAL**` markdown marker from a row's title. "Consultations and Dialogues" is dropped entirely, per the item above.
+- **Report buttons in the list's toolbar** (`ActivityListScreen`'s List actions) take the list's current `ListQuery` as `q`, as the Excel export does; dates use `friendlyDateRange` from `@gcpe/calendar-contract`, which the export already uses.
 
 ## 5h and later
 
@@ -49,7 +40,12 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **`SortOrder`** maps to `rank`.
 - **Empty mobile values:** a blank legacy mobile number imports as an empty string. `user_profiles.mobile`'s CHECK allows that (empty, or 12 characters of digits and hyphens), so don't map it to null or reject it.
 - **The legacy log importer must map Look Ahead changes onto exactly the `LOOK_AHEAD_HISTORY_FIELDS` keys** (`hq_comments`, `hq_status`, `hq_section`, `long_term_outlook`) — a deny-list filter, not an allow-everything-else one, so an importer bug can't smuggle an HQ-only field into a ministry viewer's history under an unexpected key.
+- **Surface `overCap` in the saved-query migration report.** `migrateLegacySavedFilters` (`apps/calendar/src/list/legacy-filters.ts`) keeps every legacy saved query, even past the 200-per-user cap, and returns the owners over it in `overCap`; the import report must list them.
+- **`ConvertedFilter.filter` can be null** (`convertLegacyQuery`, when the final schema check refuses the converted filter); an importer calling it directly must handle a null filter, as `migrateLegacySavedFilters` does.
+- **`skippedNoOwner` also holds rows whose owner id the resolver couldn't turn into a valid user id**, not only rows with no owner; the report should say so.
 - **Check legacy end dates and NR years against 1900–2199 too.** The activity API refuses a year outside 1900–2199 on create and update (spec addendum §12.1's int4/NUL/year checks); the importer should reject and report a legacy row whose end date or NR year falls outside that same range, rather than importing a value the Calendar's own API would never accept.
+- **Saved queries:** call `migrateLegacySavedFilters` (`apps/calendar/src/list/legacy-filters.ts`) with resolvers backed by Core's organizations and `user_legacy_ids`, and put its report in the import report.
+- **List preferences:** for each imported user, write `user_profiles.list_display` with `legacyDisplay(FilterDisplayValue)` and `hidden_columns` with `legacyHiddenColumns(HiddenColumns)`, both together: a null `list_display` means no choice yet.
 
 ## Entra sign-in (later phase)
 

@@ -59,6 +59,11 @@ function notifyUnauthorized(returnTo: string): void {
   for (const listener of unauthorizedListeners) listener(returnTo);
 }
 
+/** For a call that can't go through {@link apiFetch} (a file download): its 401 is treated the same way. */
+export function reportUnauthorized(): void {
+  notifyUnauthorized(currentReturnPath());
+}
+
 export interface ApiFetchInit extends Omit<RequestInit, "body"> {
   /** Plain data, JSON-stringified here — never a pre-encoded string/FormData/Blob. */
   body?: unknown;

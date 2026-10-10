@@ -935,6 +935,28 @@ cookie from `POST /core/auth/login` and the `X-GCPE-Request: 1` header:
 2. On a user's page, Deactivate shows "No open activities." or the list.
 3. As cal-sysadmin: Hub → Calendar → Undelivered events shows "Nothing is waiting".
 
+### Activity list (Phase 5d)
+
+**No migration.**
+
+**Seeded users:** run `scripts/siteground-seed-users.sh https://boxs.ca` again to add
+`cal-advanced`, `cal-hq-editor` and `cal-hq-advanced`. It prompts for every seeded password.
+
+**Hand checks** (they need the Calendar database, `gcpe_calendar`, on boxs.ca):
+
+**Still to do:** checks 1–5 are all waiting for the `gcpe_calendar` database on boxs.ca. None has
+been run there yet, including the list timing in check 1.
+
+1. **Waiting for `gcpe_calendar`.** As cal-editor: Hub → Calendar shows the list with today onward.
+   Time the first load and a "Show more" with the browser's network panel; record both beside
+   5d-1's measured numbers in `docs/superpowers/plans/2026-10-08-phase-5d-list-performance.md`.
+2. **Waiting for `gcpe_calendar`.** Save a query, reload, run it; rename and delete it.
+3. **Waiting for `gcpe_calendar`.** Excel export: open the downloaded file in real Excel. The header
+   row, 16 columns and red footer show; no repair prompt.
+4. **Waiting for `gcpe_calendar`.** As cal-hq-admin: tick two rows, Review selected; Corporate
+   Queries → Show all → Search.
+5. **Waiting for `gcpe_calendar`.** Month and Week views show activities on their days.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

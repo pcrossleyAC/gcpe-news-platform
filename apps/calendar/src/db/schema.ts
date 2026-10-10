@@ -2,8 +2,8 @@ import { sql, type SQL } from "drizzle-orm";
 import { boolean, check, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { CalendarRole } from "@gcpe/auth";
 import {
-  ACTIVITY_STATUSES, CHANGE_ACTIONS, CHANGE_SOURCES, HQ_SECTIONS, HQ_STATUSES, NEEDS_REVIEW_KEYS,
-  type ActivityStatus, type ChangeAction, type ChangeSource, type HqSection, type HqStatus, type NeedsReviewKey,
+  ACTIVITY_STATUSES, CHANGE_ACTIONS, CHANGE_SOURCES, HQ_SECTIONS, HQ_STATUSES, LIST_DISPLAYS, NEEDS_REVIEW_KEYS,
+  type ActivityStatus, type ChangeAction, type ChangeSource, type HqSection, type HqStatus, type ListDisplay, type NeedsReviewKey,
 } from "@gcpe/calendar-contract";
 
 // The event receiver and the outbox need these in the Calendar's own database.
@@ -17,11 +17,8 @@ const sqlList = (values: readonly string[]): SQL => sql.raw(values.map((v) => `'
 const maxLength = (table: string, column: AnyPgColumn, n: number) => check(`${table}_${column.name}_length`, sql`char_length(${column}) <= ${sql.raw(String(n))}`);
 
 // The activity enums are shared with the staff app, so they live in the contract package.
-export { ACTIVITY_STATUSES, CHANGE_ACTIONS, CHANGE_SOURCES, HQ_SECTIONS, HQ_STATUSES, NEEDS_REVIEW_KEYS };
-export type { ActivityStatus, ChangeAction, ChangeSource, HqSection, HqStatus, NeedsReviewKey };
-/** The list's "Display" choice (spec addendum §8.1; legacy FilterDisplayValue). */
-export const LIST_DISPLAYS = ["all", "my_ministries", "my_activities", "my_watchlist"] as const;
-export type ListDisplay = (typeof LIST_DISPLAYS)[number];
+export { ACTIVITY_STATUSES, CHANGE_ACTIONS, CHANGE_SOURCES, HQ_SECTIONS, HQ_STATUSES, LIST_DISPLAYS, NEEDS_REVIEW_KEYS };
+export type { ActivityStatus, ChangeAction, ChangeSource, HqSection, HqStatus, ListDisplay, NeedsReviewKey };
 export const TERM_KINDS = ["sector", "theme", "tag"] as const;
 export type TermKind = (typeof TERM_KINDS)[number];
 

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Response } from "express";
+import { z, ZodError } from "zod";
 import { sendActivityError } from "./errors";
 
 function fakeRes() {
@@ -55,4 +56,44 @@ describe("sendActivityError", () => {
     log.mockRestore();
   });
   it("leaves anything else to the generic 500 handler", () => expect(sendActivityError(new Error("boom"), fakeRes())).toBe(false));
+
+  it("names the method and route path in its log lines, never the query string", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const req = { method: "GET", baseUrl: "/api", path: "/list", originalUrl: "/api/list?q=%7B%22quickSearch%22%3A%22Sample%20secret%22%7D" };
+    for (const code of ["23505", "22021", "40001"]) sendActivityError(Object.assign(new Error("x"), { cause: { code } }), fakeRes(), req);
+    const lines = log.mock.calls.map((c) => c.join(" "));
+    expect(lines).toHaveLength(3);
+    for (const line of lines) {
+      expect(line).toContain("GET /api/list");
+      expect(line).not.toContain("q=");
+      expect(line).not.toContain("secret");
+    }
+    log.mockRestore();
+  });
+
+  it("turns a bad request into a 400 that never echoes an attacker-chosen key or enum value", () => {
+    const schema = z.object({ sort: z.enum(["a", "b"]) }).strict();
+    const r = schema.safeParse({ sort: "SECRET_MARK", extra: "SECRET_MARK" });
+    const e = r.error as ZodError;
+    const res = fakeRes();
+    expect(sendActivityError(e, res)).toBe(true);
+    expect(res.statusCode).toBe(400);
+    const body = res.body as { error: string; issues: { path: unknown[]; code: string; message: string }[] };
+    expect(body.error).toBe("invalid request");
+    expect(JSON.stringify(body)).not.toContain("SECRET_MARK");
+    for (const issue of body.issues) expect(Object.keys(issue).sort()).toEqual(["code", "message", "path"]);
+    const unrecognized = body.issues.find((i) => i.code === "unrecognized_keys")!;
+    expect(unrecognized.message).toBe("Unrecognized key(s) in object");
+    const badEnum = body.issues.find((i) => i.code === "invalid_enum_value")!;
+    expect(badEnum.message).toBe("Invalid enum value");
+  });
+
+  it("keeps a schema's own message for every other issue code", () => {
+    const schema = z.object({ n: z.number().max(5, "at most 5") }).strict();
+    const e = schema.safeParse({ n: 6 }).error as ZodError;
+    const res = fakeRes();
+    sendActivityError(e, res);
+    const body = res.body as { issues: { code: string; message: string }[] };
+    expect(body.issues).toEqual([{ path: ["n"], code: "too_big", message: "at most 5" }]);
+  });
 });

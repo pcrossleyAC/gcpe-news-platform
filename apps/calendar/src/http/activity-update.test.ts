@@ -295,6 +295,25 @@ describe("updating an activity (spec addendum §7.1, §7.5)", () => {
     expect(updated.fields).toMatchObject({ title: ["Sample \u2018quoted\u2019 title", "Sample 'quoted' title"] });
   });
 
+  it("an imported activity whose only change is All Day: status Changed, no flag, and no Start or End in its history", async () => {
+    // Already 00:00\u201323:45 BC, so ticking All Day moves neither time (contentFrom's all-day bounds).
+    const id = await insertRaw(tdb.db, {
+      title: "Sample \u2018quoted\u2019 title", details: "Sample \u201csummary\u201d\u2026", commContactId: w.contact.editorHealth,
+      startAt: new Date("2026-11-10T07:00:00Z"), endAt: new Date("2026-11-11T06:45:00Z"), isAllDay: false,
+    });
+    await tdb.db.execute(sql`INSERT INTO activity_categories (activity_id, category_id) VALUES (${id}, ${w.cat.plain})`);
+    const a = (await call(app, "get", `/api/activities/${id}`, w.as.editor.cookie)).body;
+    expect((await save("editor", a, { isAllDay: true })).status).toBe(200);
+    expect(await row(id)).toMatchObject({
+      isAllDay: true, needsReview: [], status: "changed",
+      startAt: new Date("2026-11-10T07:00:00Z"), endAt: new Date("2026-11-11T06:45:00Z"),
+    });
+    const updated = (await historyOf(tdb.db, id)).find((h) => h.action === "updated")!;
+    expect(updated.fields).toHaveProperty("is_all_day");
+    expect(updated.fields).not.toHaveProperty("start");
+    expect(updated.fields).not.toHaveProperty("end");
+  });
+
   it("Look Ahead fields from a user without the fieldset are refused; a fieldset user who leaves them out keeps the stored ones", async () => {
     const a = await make();
     const refused = await save("editor", a, { lookAhead: { hqComments: "Sample", hqStatus: "new", hqSection: "not_on_la", longTermOutlook: true } });

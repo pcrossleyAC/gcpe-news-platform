@@ -43,7 +43,10 @@ describe("scripts/siteground-seed-users.sh", () => {
   });
   it("seeds the Calendar test users and gives them Calendar access", () => {
     const script = readFileSync("scripts/siteground-seed-users.sh", "utf8");
-    for (const e of ["cal-admin", "cal-sysadmin", "cal-hq-admin", "cal-editor", "cal-readonly"]) expect(script).toContain(`${e}@example.test`);
+    for (const e of ["cal-admin", "cal-sysadmin", "cal-hq-admin", "cal-editor", "cal-readonly", "cal-advanced", "cal-hq-editor", "cal-hq-advanced"]) expect(script).toContain(`${e}@example.test`);
     expect(script).toContain("/core/api/calendar-access/");
+    expect(script).toMatch(/^calendar_access cal-advanced@example\.test Calendar\.Advanced health$/m);
+    expect(script).toMatch(/^calendar_access cal-hq-editor@example\.test Calendar\.Editor gcpe-headquarters$/m);
+    expect(script).toMatch(/^calendar_access cal-hq-advanced@example\.test Calendar\.Advanced gcpe-headquarters$/m);
   });
 });

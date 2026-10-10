@@ -7,7 +7,8 @@ import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
 import { CalendarSection } from "./CalendarSection";
-import { CalendarHome } from "./CalendarHome";
+import { ActivityListScreen } from "./list/ActivityListScreen";
+import { CONFIG, OPTIONS, PREFS, row } from "./list/fixtures";
 import { LookupsScreen } from "./lookups/LookupsScreen";
 import { LookupScreen } from "./lookups/LookupScreen";
 import { CalendarUsersScreen } from "./users/CalendarUsersScreen";
@@ -55,6 +56,11 @@ function stub() {
       if (url.startsWith("/calendar/api/users")) return jsonResponse(200, USER_ROWS);
       if (url === "/core/api/calendar-access") return jsonResponse(200, CORE_USERS);
       if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
+      if (url === "/calendar/api/config") return jsonResponse(200, CONFIG);
+      if (url === "/calendar/api/list/options") return jsonResponse(200, OPTIONS);
+      if (url === "/calendar/api/list/preferences") return jsonResponse(200, PREFS);
+      if (url.startsWith("/calendar/api/list?")) return jsonResponse(200, { rows: [row()], total: 1, offset: 0 });
+      if (url === "/calendar/api/saved-filters") return jsonResponse(200, []);
       return jsonResponse(200, {});
     }),
   );
@@ -66,7 +72,7 @@ const at = (path: string) => (
       <RequireAuth>
         <Routes>
           <Route path="/calendar" element={<CalendarSection />}>
-            <Route index element={<CalendarHome />} />
+            <Route index element={<ActivityListScreen />} />
             <Route path="lookups" element={<LookupsScreen />} />
             <Route path="lookups/:name" element={<LookupScreen />} />
             <Route path="users" element={<CalendarUsersScreen />} />
@@ -87,10 +93,11 @@ describe("accessibility: Calendar section", () => {
     sessionStorage.clear();
   });
 
-  it("Calendar home", async () => {
+  it("the activity list", async () => {
     stub();
     const { container } = render(at("/calendar"));
     await screen.findByRole("heading", { level: 1, name: "Corporate Calendar" });
+    await screen.findByText("Sample listed");
     expect(await seriousViolations(container)).toEqual([]);
   });
 

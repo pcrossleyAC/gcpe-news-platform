@@ -9,12 +9,13 @@
 // pinned emergency pin, a file and a next-carousel slide once, up front, so every scan below
 // hits populated content instead of an empty state.
 import { test, expect, type Page } from "@playwright/test";
-import { CAL_ADMIN_EMAIL, CAL_SYSADMIN_EMAIL, EDITOR_EMAIL, SITE_EDITOR_EMAIL, TEST_USER_PASSWORDS } from "./constants";
+import { CAL_ADMIN_EMAIL, CAL_HQ_ADMIN_EMAIL, CAL_SYSADMIN_EMAIL, EDITOR_EMAIL, SITE_EDITOR_EMAIL, TEST_USER_PASSWORDS } from "./constants";
 import {
   apiCall, baseUrl, createApprovedAndPublished, createPublishableRelease, expectNoSeriousA11yViolations, loginForCookie, ONE_PX_PNG, settleModalTransition, signInAs,
   uniqueHeadline, uploadSiteFile,
 } from "./playwright-support";
 import type { LinksView, PinView } from "../../apps/staff-web/src/screens/website/types";
+import { FIXTURE_DAY, listFixture, listUrl, MAY, sessionOf, useCookie } from "./calendar-support";
 
 /** Navigates, then waits for the screen's own `h1` before running axe — I6: axe sampling the
  * page mid-navigation (before the real screen, or its data, has rendered) is a false negative
@@ -241,6 +242,8 @@ test.describe("item 16: axe across every staff screen", () => {
     await context.addCookies([{ name: adminName, value: adminValue, domain: new URL(baseUrl()).hostname, path: "/", httpOnly: true, secure: false, sameSite: "Lax" }]);
     for (const path of ["/hub/calendar", "/hub/calendar/lookups", "/hub/calendar/users", "/hub/calendar/transfer"]) {
       await gotoAndWaitForH1(page, path);
+      // The activity list's h1 shows while it loads: scan the filters and the loaded list, not "Loading…".
+      if (path === "/hub/calendar") await expect(page.getByRole("status").filter({ hasText: /^(Showing \d+ of|No activities match)/ })).toBeVisible();
       await expectNoSeriousA11yViolations(page, path);
     }
 
@@ -249,5 +252,28 @@ test.describe("item 16: axe across every staff screen", () => {
     await context.addCookies([{ name: sysName, value: sysValue, domain: new URL(baseUrl()).hostname, path: "/", httpOnly: true, secure: false, sameSite: "Lax" }]);
     await gotoAndWaitForH1(page, "/hub/calendar/dead-letters");
     await expectNoSeriousA11yViolations(page, "/hub/calendar/dead-letters");
+  });
+
+  // The populated list as an HQ Administrator, so every HQ tool is scanned (Review selected's row
+  // checkboxes, Clear LA Status, Corporate Queries, the Look Ahead filter), then its month and
+  // week views of the same activities.
+  test("the Calendar list as an HQ Administrator, and its month and week views", async ({ page, context }) => {
+    const f = await listFixture();
+    await useCookie(context, await sessionOf(CAL_HQ_ADMIN_EMAIL));
+    const query = { filter: { ...MAY, quickSearch: f.tag } };
+    await page.goto(listUrl(query));
+    await expect(page.locator(".gcpe-activity-title")).toHaveCount(6);
+    for (const name of ["Review selected (0)", "Clear LA Status"]) await expect(page.getByRole("button", { name })).toBeVisible();
+    await expect(page.getByRole("checkbox", { name: `Select HLTH-${f.ids.A}` })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Corporate Queries" })).toBeVisible();
+    await expect(page.getByRole("group", { name: "Look Ahead filter" })).toBeVisible();
+    await expectNoSeriousA11yViolations(page, "the Calendar list as an HQ Administrator");
+
+    for (const [view, heading] of [["month", "May 2031"], ["week", "Week of May 11, 2031"]] as const) {
+      await page.goto(listUrl(query, `&view=${view}&on=${FIXTURE_DAY}`));
+      await expect(page.getByRole("heading", { level: 2, name: heading })).toBeVisible();
+      await expect(page.locator(`td[data-date="${FIXTURE_DAY}"] li`)).toHaveCount(6);
+      await expectNoSeriousA11yViolations(page, `the Calendar ${view} view`);
+    }
   });
 });

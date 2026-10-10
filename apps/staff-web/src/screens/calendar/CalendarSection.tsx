@@ -1,13 +1,15 @@
-import { NavLink, Outlet, useOutletContext } from "react-router";
+import { NavLink, Outlet, useLocation, useOutletContext } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { CALENDAR_ADMIN_LEVEL, CALENDAR_SYSADMIN_LEVEL, type CalendarMe } from "./access";
+import { CalendarErrorBoundary } from "./ErrorBoundary";
 import { useCalendarMe } from "./useCalendarMe";
 
 /** `/hub/calendar/*`: the Calendar's sub-nav and its screens. Each screen owns its h1 and title,
  * except the messages below, which own theirs. */
 export function CalendarSection(): React.JSX.Element {
   const { me, denied, error } = useCalendarMe();
+  const location = useLocation();
   useDocumentTitle(denied || error ? "Corporate Calendar" : null);
   if (denied || error) {
     return (
@@ -49,7 +51,9 @@ export function CalendarSection(): React.JSX.Element {
           )}
         </ul>
       </nav>
-      <Outlet context={me} />
+      <CalendarErrorBoundary resetKey={location.pathname + location.search}>
+        <Outlet context={me} />
+      </CalendarErrorBoundary>
     </div>
   );
 }

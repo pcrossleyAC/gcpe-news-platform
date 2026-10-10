@@ -382,3 +382,115 @@ body {
   flex-wrap: wrap;
   gap: 0.5rem;
 }
+
+/* The Calendar's activity list (spec addendum §8.1). Every control is at least 24px (WCAG 2.5.8). */
+.gcpe-calendar-list .gcpe-calendar-filter {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  gap: 0.75rem;
+  align-items: end;
+  margin-bottom: 1rem;
+}
+.gcpe-calendar-list .gcpe-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.gcpe-calendar-list input[type="checkbox"],
+.gcpe-calendar-list input[type="radio"] {
+  width: 24px;
+  height: 24px;
+  margin: 0 0.4rem 0 0;
+  vertical-align: middle;
+}
+.gcpe-calendar-list select,
+.gcpe-calendar-list input[type="date"],
+.gcpe-calendar-list input[type="search"],
+.gcpe-calendar-list input[type="number"],
+.gcpe-calendar-list input[type="text"] {
+  min-height: 32px;
+}
+.gcpe-calendar-list .gcpe-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.gcpe-calendar-table-wrap {
+  overflow-x: auto;
+}
+.gcpe-calendar-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.875rem;
+}
+.gcpe-calendar-table th,
+.gcpe-calendar-table td {
+  border: 1px solid #d8d8d8;
+  padding: 0.35rem;
+  vertical-align: top;
+  text-align: left;
+}
+.gcpe-sort,
+.gcpe-star,
+.gcpe-view-button {
+  min-height: 24px;
+  min-width: 24px;
+  padding: 0.2rem 0.35rem;
+  font: inherit;
+  cursor: pointer;
+}
+.gcpe-sort {
+  background: none;
+  border: none;
+  font-weight: 700;
+  text-decoration: underline;
+  text-align: left;
+}
+.gcpe-activity-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.gcpe-needs-review {
+  background: #fef0d8;
+}
+.gcpe-deleted td {
+  text-decoration: line-through;
+}
+.gcpe-activity-cell .gcpe-badge {
+  display: inline-block;
+  border: 1px solid #5a5a5a;
+  border-radius: 3px;
+  padding: 0 0.25rem;
+  margin-right: 0.25rem;
+  font-size: 0.75rem;
+}
+.gcpe-hint {
+  color: #474543;
+  font-size: 0.8rem;
+}
+.gcpe-not-la {
+  color: #8b0000;
+}
+.gcpe-calendar-grid table {
+  table-layout: fixed;
+  width: 100%;
+  border-collapse: collapse;
+}
+.gcpe-calendar-grid td {
+  border: 1px solid #d8d8d8;
+  vertical-align: top;
+  height: 6rem;
+  padding: 0.25rem;
+}
+.gcpe-calendar-grid .gcpe-other-month {
+  background: #f5f5f5;
+}
+.gcpe-calendar-grid ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  font-size: 0.8rem;
+}
+.gcpe-view-button[aria-pressed="true"] {
+  font-weight: 700;
+}

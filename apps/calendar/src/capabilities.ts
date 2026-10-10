@@ -22,6 +22,12 @@ export const can = {
   reviewSelected: (u: Viewer) => u.isHq && u.level >= LEVEL.administrator,
   /** Default.aspx.cs:44-53 (C139). */
   clearLaStatus: (u: Viewer) => hqEditor(u),
+  /** Default.aspx.cs:28-32: the Corporate Queries panel. Checked on the server (C127). */
+  corporateQueries: (u: Viewer) => u.isHq && u.level >= LEVEL.advanced,
+  /** Default.aspx.cs:28-32: the Admin Settings' Look Ahead filter; legacy honoured its parameter from anyone (C127). */
+  lookAheadFilter: (u: Viewer) => u.isHq && u.level >= LEVEL.advanced,
+  /** ActivityListProvider.ashx.cs:47-50: the list's needs-review markup. */
+  seeListMarkup: (u: Viewer) => u.isHq && u.level >= LEVEL.administrator,
   transfer: (u: Viewer) => u.level >= LEVEL.administrator,
   seeLookAheadFieldset: (u: Viewer, rules: Pick<CalendarRules, "showHqCommentsField">, a?: VisibilityFacts) =>
     hqEditor(u) || (rules.showHqCommentsField && (a ? can.edit(u, a) : u.level >= LEVEL.editor)),
