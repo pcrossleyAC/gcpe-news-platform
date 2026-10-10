@@ -224,7 +224,7 @@ Each says why and what it costs if wrong. Task 11 writes the parity rows and the
   - `@bcgov/bc-sans` 2.1.2 (Apache-2.0 and OFL-1.1). Already in the lockfile.
   - `@types/pdfmake` 0.3.3 (dev).
   - `unpdf` 1.8.1 (dev).
-  - `npm audit` reports the same 7 moderate advisories before and after (drizzle-kit's tree; checked 2026-10-10).
+  - `npm audit` reports the same 6 moderate advisories before and after (drizzle-kit's tree; checked 2026-10-10).
 - **G22. No migration.** Nothing in the Calendar's schema changes.
 
 ## Carry-forward items taken
@@ -2462,7 +2462,7 @@ npx -y -p node@24 -- npm audit
 
 Expected:
 - `apps/calendar/package.json` gains `"@bcgov/bc-sans": "2.1.2"` and `"pdfmake": "0.3.11"` under `dependencies`, and `"@types/pdfmake": "0.3.3"` and `"unpdf": "1.8.1"` under `devDependencies`.
-- `npm audit` lists the same 7 moderate advisories as before (drizzle-kit's tree), and none new.
+- `npm audit` lists the same 6 moderate advisories as before (drizzle-kit's tree), and none new.
 - `node_modules/@napi-rs` is absent: unpdf's canvas peer is optional.
 
 - [ ] **Step 2: Write the failing tests**

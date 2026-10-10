@@ -1036,6 +1036,18 @@ JSON error means it hasn't been raised.
 4. As cal-hq-admin: delete a scratch activity. Its entries show "(deleted)", and the deletion is listed. As cal-editor they are gone.
 5. On boxs.ca new activity ids are small, so typing one in "Search for" searches text. Use `?mode=activity&activity=<id>` instead. Production ids are legacy-sized (above 10,000).
 
+### Reports (Phase 5g)
+
+**No migration.** The artifact now carries `report-worker.cjs` and `fonts/` beside `stack.js`; they deploy with it. Optional settings: `CALENDAR_REPORT_CONCURRENCY` (default 1), `CALENDAR_REPORT_HEAP_MB` (320), `CALENDAR_REPORT_TIMEOUT_SECONDS` (120), `CALENDAR_REPORT_INLINE_WAIT_MS` (5000). If the worker or the fonts are missing, the Calendar still starts, its report buttons say "Reports aren't available on this server right now", and `/stack/errors` shows "[calendar] reports are unavailable…".
+
+**Hand checks on boxs.ca after deploy** (spec §3 row 5g, §16 acceptance 10):
+
+1. As cal-editor: Hub → Calendar, filter a week with activities, click Look Ahead. The PDF downloads: Letter, BC Sans (the viewer's document properties list BCSans fonts), the cover, then "Inside Government". Each CC ID# opens the activity.
+2. Click 30/60/90 (Letter) and Planning (Legal landscape).
+3. As cal-hq-editor the toolbar has no Exec Look Ahead. As cal-hq-admin it does, and its rows end "Last updated …", said once.
+4. As cal-hq-admin, run a Look Ahead with no To date (60 days). Note whether it arrived without a "Preparing…" pause, and how many seconds it took; record both here. While it renders, load `/site/` in another tab: it answers at once.
+5. `/stack/errors` holds no "[calendar] a report failed" line. If it does, its label says which limit was hit: `ERR_WORKER_OUT_OF_MEMORY` (raise `CALENDAR_REPORT_HEAP_MB`) or `ERR_REPORT_TIMEOUT`.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
