@@ -15,8 +15,32 @@ export const CONFIG: CalendarConfigView = {
   timeZone: "America/Vancouver",
   freeze: { start: "16:00", end: "17:00", timeZone: "America/Vancouver", active: false, appliesToYou: false, message: "You cannot make content changes between 4pm-5pm. Contact the Corp Cal Manager to have emerging or urgent updates made for you during this time." },
   list: { markup: false, corporateQueries: false, lookAheadFilter: false, reviewSelected: false, clearLaStatus: false },
+  lookAheadFieldset: false,
+  showRecordsSection: false,
+  rules: {
+    timeZone: "America/Vancouver",
+    releaseCategoryIds: [12, 58],
+    required: { significance: true, scheduling: true, strategy: false },
+    awarenessCategoryIds: [2],
+    consultationsMinistryAbbreviation: "CONSULT",
+    issueExemptCategoryNames: ["Sample approved event"],
+    eventsCategoryNames: ["Sample approved event"],
+    unconfirmedIssueCommMaterialId: 61,
+    hqPlaceholderCategoryName: "Sample HQ placeholder",
+    contactMinistryExcludedAbbreviations: ["EXCL"],
+    sharedWithExcludedAbbreviations: ["EXCL"],
+    releaseHiddenCategoryNames: ["Sample awareness"],
+    otherCityId: 311,
+    translationsDefault: ["Sample language A", "Sample language B"],
+  },
+  editor: { create: true, relaxRequired: false, useHqPlaceholder: false },
 };
-export const HQ_ADMIN_CONFIG: CalendarConfigView = { ...CONFIG, list: { markup: true, corporateQueries: true, lookAheadFilter: true, reviewSelected: true, clearLaStatus: true } };
+export const HQ_ADMIN_CONFIG: CalendarConfigView = {
+  ...CONFIG,
+  list: { markup: true, corporateQueries: true, lookAheadFilter: true, reviewSelected: true, clearLaStatus: true },
+  lookAheadFieldset: true,
+  editor: { create: true, relaxRequired: true, useHqPlaceholder: true },
+};
 export const OPTIONS: ListOptions = {
   categories: [{ id: 32, name: "Sample category" }],
   keywords: [{ id: 1, name: "Sample tag" }, { id: 2, name: "Sample other tag" }],
