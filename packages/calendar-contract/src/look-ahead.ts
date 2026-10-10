@@ -20,10 +20,12 @@ export type LookAheadInference = { kind: "awareness" } | { kind: "consultations"
 
 type Rules = Pick<CalendarRules, "awarenessCategoryIds" | "consultationsMinistryAbbreviation" | "issueExemptCategoryNames" | "eventsCategoryNames" | "unconfirmedIssueCommMaterialId">;
 
-const plusDays = (date: string, n: number) => {
+/** Null for a date JavaScript can't read: the form infers as it is typed, so a five-digit year reaches here before validation refuses it. */
+const plusDays = (date: string, n: number): string | null => {
   const d = new Date(`${date}T00:00:00Z`);
+  if (Number.isNaN(d.getTime())) return null;
   d.setUTCDate(d.getUTCDate() + n);
-  return d.toISOString().slice(0, 10);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
 };
 
 /** Legacy's InferLASection (Activity.aspx:2466-2521), in its order. */
@@ -35,7 +37,8 @@ export function inferLookAhead(i: LookAheadInput, rules: Rules): LookAheadInfere
   const named = (list: readonly string[]) => i.categoryNames.some((n) => list.includes(n));
   if (i.isIssue && !named(rules.issueExemptCategoryNames)) return { kind: "section", section: "issues_and_reports" };
   if (!i.isConfirmed && i.commMaterialIds.includes(rules.unconfirmedIssueCommMaterialId)) return { kind: "section", section: "issues_and_reports" };
-  const endsWithinTwoDays = i.startDate !== null && i.endDate !== null && i.endDate < plusDays(i.startDate, 2);
+  const twoDaysOn = i.startDate === null ? null : plusDays(i.startDate, 2);
+  const endsWithinTwoDays = twoDaysOn !== null && i.endDate !== null && i.endDate < twoDaysOn;
   if (i.isConfirmed || endsWithinTwoDays) return { kind: "section", section: named(rules.eventsCategoryNames) ? "events_and_speeches" : "in_the_news" };
   return { kind: "section", section: "not_on_la" };
 }
