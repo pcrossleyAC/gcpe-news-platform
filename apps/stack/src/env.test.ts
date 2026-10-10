@@ -384,6 +384,10 @@ describe("persistent data dir in env views", () => {
     expect(envFor({}, "CALENDAR", "/data").STORAGE_DIR).toBe("/data/calendar-files");
     expect(envFor({ CALENDAR_STORAGE_DIR: "/private/calendar" }, "CALENDAR", "/data").STORAGE_DIR).toBe("/private/calendar");
   });
+
+  it("resolves a relative CALENDAR_STORAGE_DIR override under the data dir, same as SITE_OUTPUT_DIR", () => {
+    expect(envFor({ CALENDAR_STORAGE_DIR: "./private-calendar" }, "CALENDAR", "/data").STORAGE_DIR).toBe("/data/private-calendar");
+  });
 });
 
 describe("Core → NRMS taxonomy route", () => {

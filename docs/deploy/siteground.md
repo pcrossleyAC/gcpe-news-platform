@@ -200,13 +200,18 @@ Today this folder holds:
   automatically; an absolute `SITE_OUTPUT_DIR` is left as-is.
 - `storage/` — NRMS's `STORAGE_DIR` default (uploaded release files/media assets), same rule:
   overridable with an explicit `NRMS_STORAGE_DIR`.
-- `calendar-files/` — the Calendar's attachments (`CALENDAR_STORAGE_DIR`, overridable). Never served
-  directly: the Calendar's own route checks who may see each file. The stack refuses to start if this
-  folder is inside, equal to or holds `storage/`, `site-output/` or the staff-web build.
+- `calendar-files/` — the Calendar's attachments (`CALENDAR_STORAGE_DIR`, overridable, and — same
+  rule as `SITE_OUTPUT_DIR` — a relative override resolves under `DATA_DIR`, not the working
+  directory). Never served directly: the Calendar's own route checks who may see each file. The
+  stack refuses to start if this folder is inside, equal to or holds `storage/`, `site-output/` or
+  the staff-web build.
 
 The stack checks `DATA_DIR` is writable (creating it if needed) **before** starting any app and
 refuses to start at all if it isn't — a misconfigured or unwritable `DATA_DIR` fails loudly at
-startup instead of surfacing later as a silent write failure.
+startup instead of surfacing later as a silent write failure. An explicit `CALENDAR_STORAGE_DIR`
+gets the same writability check (the default, under `DATA_DIR`, is already covered by the check
+above); an unwritable folder is refused at startup instead of surfacing as a 500 on someone's
+first upload.
 
 As a second line of defence against exactly the failure Task 1 fixes — a redeploy (or a
 `DATA_DIR` pointed somewhere new) that leaves `site-output/` empty — the public site self-heals

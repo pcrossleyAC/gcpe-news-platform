@@ -255,6 +255,12 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
     view.OUTPUT_DIR = join(dataDir, view.OUTPUT_DIR);
   }
+  // Same rule as SITE_OUTPUT_DIR above: a relative CALENDAR_STORAGE_DIR override (the default is
+  // already absolute, joined with dataDir earlier in this function) resolves under DATA_DIR, not
+  // the working directory — so it survives a SiteGround redeploy the same way the default does.
+  if (dataDir && prefix === "CALENDAR" && view.STORAGE_DIR && !isAbsolute(view.STORAGE_DIR)) {
+    view.STORAGE_DIR = join(dataDir, view.STORAGE_DIR);
+  }
   return view;
 }
 

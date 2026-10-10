@@ -54,4 +54,19 @@ describe("GET /api/config", () => {
     expect(await get(HQ)).toEqual({ create: true, relaxRequired: true, useHqPlaceholder: true });
     expect(await get(RO)).toEqual({ create: false, relaxRequired: false, useHqPlaceholder: false });
   });
+
+  it("an Editor whose only ministry has gone inactive is not offered create; a second, active ministry still offers it", async () => {
+    const app = createTestApp(tdb.db);
+    const get = async (id: string) => (await request(app).get("/api/config").set("cookie", await sessionCookie(id))).body.editor.create as boolean;
+    await projectOrg(app, "health", { isActive: false });
+    expect(await get(ED)).toBe(false);
+    await projectOrg(app, "finance");
+    const bothId = "00000000-0000-4000-8000-000000000304";
+    await projectUser(app, { id: bothId, email: "both@example.test", displayName: "Sample Editor Two", isActive: true, calendarRole: "Calendar.Editor", organizationKeys: ["health", "finance"] });
+    expect(await get(bothId)).toBe(true);
+    // HQ's own create offer is untouched by this check: an HQ actor isn't limited to their own
+    // ministries in the first place.
+    expect(await get(HQ)).toBe(true);
+    await projectOrg(app, "health", { isActive: true });
+  });
 });

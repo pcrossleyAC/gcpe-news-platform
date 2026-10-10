@@ -9,6 +9,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **"View changes"** reads `GET /calendar/api/activities/:id/changes`.
 - **Titles link to the activity page** from the list's Title cell and the calendar view's items (`apps/staff-web/src/screens/calendar/list/cells.tsx`, `CalendarGrid.tsx`); return to the list's own URL (`?q=`) after save (C149).
 - **The activity page's watchlist star** uses `PUT`/`DELETE /calendar/api/activities/:id/watch` and shows the watchers' names, as the list's `WatchStar` does.
+- **Uploads send the file name in `X-GCPE-File-Name` (percent-encoded with `encodeURIComponent`), never `?name=`** — the server refuses a query-string name with 400. `apiFetch` already passes `headers` through to `fetch`, so no client change is needed beyond sending the header.
 
 ## 5g
 

@@ -4,7 +4,7 @@
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -1189,6 +1189,43 @@ describe("apps/stack: startup errors name the app and its env prefix (M5)", () =
       // NRMS_DATABASE_URL deliberately omitted.
     };
     await expect(startStack(env)).rejects.toThrow(/^\[stack\] NRMS failed to start \(its variables are NRMS_\*\): /);
+  });
+});
+
+// Final fix wave, minor 3: an explicit CALENDAR_STORAGE_DIR override is never otherwise written
+// to before someone's first upload — unlike the default, which ensureWritableDir(dataDir)
+// already covers. Checked before any app starts, same as the private-dir check beside it, so no
+// real Calendar database is needed for this to fail.
+describe("apps/stack: an unwritable explicit CALENDAR_STORAGE_DIR fails startStack at startup", () => {
+  let lockedDir: string | undefined;
+  let dataDir: string | undefined;
+
+  afterAll(async () => {
+    if (lockedDir) {
+      await chmod(lockedDir, 0o700);
+      await rm(lockedDir, { recursive: true, force: true });
+    }
+    if (dataDir) await rm(dataDir, { recursive: true, force: true });
+  });
+
+  it("fails before any app starts, naming the directory", async () => {
+    dataDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-data-"));
+    lockedDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-calendar-locked-"));
+    await chmod(lockedDir, 0o500); // read+execute only: can't create a file inside it
+    const passwordHash = await hashPassword(ADMIN_PASSWORD);
+    const env: NodeJS.ProcessEnv = {
+      PORT: "0",
+      TICK_TOKEN: "t".repeat(32),
+      STACK_LOOPS: "false",
+      DATA_DIR: dataDir,
+      LOCAL_ADMIN_ENABLED: "true",
+      LOCAL_ADMIN_PASSWORD_HASH: passwordHash,
+      LOCAL_AUTH_SECRET,
+      // Never dialled: the writability check throws well before Calendar's own startNamed call.
+      CALENDAR_DATABASE_URL: "postgres://unused/unused",
+      CALENDAR_STORAGE_DIR: lockedDir,
+    };
+    await expect(startStack(env)).rejects.toThrow(new RegExp(`${lockedDir} is not writable`));
   });
 });
 

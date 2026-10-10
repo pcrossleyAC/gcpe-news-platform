@@ -62,17 +62,27 @@ function attachmentDisposition(fileName: string): string {
   return `attachment; filename="${fallback}"; filename*=UTF-8''${extValue}`;
 }
 
+/** body-parser/raw-body's own convention for its payload-too-large error (`type`, not `code`). */
+const isEntityTooLarge = (e: unknown): boolean => typeof e === "object" && e !== null && (e as { type?: unknown }).type === "entity.too.large";
+
 function fail(e: unknown, req: Request<Params>, res: Response, next: NextFunction): void {
   if (e instanceof StoredFileMissingError) {
     console.error("[calendar] a stored file is missing", `${req.method} ${req.baseUrl}${req.path}`);
     return void res.status(404).json({ error: "not found" });
   }
+  // A chunked body (no declared Content-Length) is refused by `raw`'s own streamed limit, not
+  // `declaredSize`'s pre-check — but the caller gets the same message either way.
+  if (isEntityTooLarge(e)) return void res.status(413).json({ error: "A file can be at most 25 MB." });
   if (!sendActivityError(e, res, req)) next(e);
 }
 /** The final handler of a route. */
 const run = (h: Handler) => (req: Request<Params>, res: Response, next: NextFunction) => void h(req, res).catch((e: unknown) => fail(e, req, res, next));
 /** A check that lets the request on when it passes. */
 const guard = (h: Handler) => (req: Request<Params>, res: Response, next: NextFunction) => void h(req, res).then(() => next(), (e: unknown) => fail(e, req, res, next));
+/** `raw`'s own error (thrown by the streamed body parser, not one of our handlers) reaches here
+ * as a routed Express error, not a rejected promise — the only reason this route needs an
+ * error-handling (4-argument) middleware of its own. */
+const rawError = (e: unknown, req: Request<Params>, res: Response, next: NextFunction): void => fail(e, req, res, next);
 
 /**
  * Attachments (spec addendum §8.4). Mounted after requireCalendarActor and before the JSON parser,
@@ -108,6 +118,7 @@ export function fileRoutes(deps: ApiDeps): Router {
       const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
       res.status(201).json(await addFile(deps, deps.store!, req.calendar!, idOf(req), res.locals.fileName as string, bytes));
     }),
+    rawError,
   );
   r.delete("/activities/:id/files/:fileId", needStore, run(async (req, res) => {
     res.json(await removeFile(deps, deps.store!, req.calendar!, idOf(req), fileIdOf(req)));

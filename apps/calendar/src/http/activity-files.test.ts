@@ -184,6 +184,40 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
     expect(await stored(id)).toEqual([]);
   });
 
+  it("a chunked upload (no declared Content-Length) over 25 MB gets the same message as a declared-size refusal", async () => {
+    const id = await create();
+    const server = app.listen(0);
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const res = await new Promise<{ status: number; body: string }>((resolve, reject) => {
+        const req = http.request(
+          {
+            host: "127.0.0.1", port, method: "POST", path: `/api/activities/${id}/files`,
+            headers: {
+              cookie: w.as.editor.cookie, "x-gcpe-request": "1", "content-type": "application/octet-stream",
+              "x-gcpe-file-name": encodeURIComponent("Sample.pdf"),
+              // No content-length: Node's http module streams this as chunked transfer-encoding,
+              // the one path `declaredSize`'s pre-check can't refuse (it relies on the header).
+            },
+          },
+          (r) => {
+            const chunks: Buffer[] = [];
+            r.on("data", (c: Buffer) => chunks.push(c));
+            r.on("end", () => resolve({ status: r.statusCode!, body: Buffer.concat(chunks).toString("utf8") }));
+          },
+        );
+        req.on("error", reject);
+        req.write(Buffer.concat([PDF, Buffer.alloc(25 * 1024 * 1024)]));
+        req.end();
+      });
+      expect(res.status).toBe(413);
+      expect(JSON.parse(res.body)).toEqual({ error: "A file can be at most 25 MB." });
+    } finally {
+      server.close();
+    }
+    expect(await stored(id)).toEqual([]);
+  });
+
   it("holds at most 50 files; the refused upload leaves no bytes behind, and replacing still works", async () => {
     const id = await create();
     await tdb.db.insert(activityFiles).values(

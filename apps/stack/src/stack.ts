@@ -261,7 +261,12 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const nodEnv = resolvedEnvFor(env, "NOD", dataDir);
   const distEnv = resolvedEnvFor(env, "DIST", dataDir);
   const calendarEnv = resolvedEnvFor(env, "CALENDAR", dataDir);
-  if (calendarConfigured(env)) assertPrivateDir("CALENDAR_STORAGE_DIR", calendarEnv.STORAGE_DIR!, publicDirs(nrmsEnv.STORAGE_DIR, siteEnv.OUTPUT_DIR, stackEnv.STAFF_WEB_DIR));
+  if (calendarConfigured(env)) {
+    assertPrivateDir("CALENDAR_STORAGE_DIR", calendarEnv.STORAGE_DIR!, publicDirs(nrmsEnv.STORAGE_DIR, siteEnv.OUTPUT_DIR, stackEnv.STAFF_WEB_DIR));
+    // Unlike the default (under DATA_DIR, already covered by the ensureWritableDir call above),
+    // an explicit override is never otherwise written to before someone's first upload.
+    await ensureWritableDir(calendarEnv.STORAGE_DIR!);
+  }
   // Phase 3c: published records carry absolute file URLs; unless NRMS_PUBLIC_FILES_BASE says
   // otherwise, files are served (below, at /files) from the public site's own origin.
   if (nrmsEnv.PUBLIC_FILES_BASE === undefined) nrmsEnv.PUBLIC_FILES_BASE = publicFilesBase(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl);

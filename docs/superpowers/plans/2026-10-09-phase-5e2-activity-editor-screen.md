@@ -537,7 +537,10 @@ export const activityApi = {
     apiFetch<{ holderName: string; since: string; mine: true; tabId: string }>(`${a(id)}/lock`, { method: "PUT", body: takeOver ? { tabId, takeOver } : { tabId } }),
   /** keepalive lets the request finish as the page goes, and apiFetch adds the X-GCPE-Request header the server requires (C169), which navigator.sendBeacon can't. */
   release: (id: number, tabId: string) => apiFetch<void>(`${a(id)}/lock/release`, { method: "POST", body: { tabId }, keepalive: true }),
-  addFile: (id: number, file: File) => apiFetch<ActivityFileView[]>(`${a(id)}/files?name=${encodeURIComponent(file.name)}`, { method: "POST", raw: file }),
+  // Never ?name=: a query string lands in every proxy's access logs, including a confidential
+  // activity's file name (the server refuses it with 400 — apps/calendar/src/http/file-routes.ts).
+  // apiFetch already passes `headers` through to `fetch` (RequestInit), so no client change is needed.
+  addFile: (id: number, file: File) => apiFetch<ActivityFileView[]>(`${a(id)}/files`, { method: "POST", raw: file, headers: { "X-GCPE-File-Name": encodeURIComponent(file.name) } }),
   removeFile: (id: number, fileId: number) => apiFetch<ActivityFileView[]>(`${a(id)}/files/${fileId}`, { method: "DELETE" }),
   fileUrl: (id: number, fileId: number) => `${a(id)}/files/${fileId}`,
 };
@@ -3012,8 +3015,9 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
     stubActivity(calls, {
       config: { ...CONFIG, showRecordsSection: true },
       other: (url, init) => {
-        if (!url.startsWith(`${FILES}?name=`) || init?.method !== "POST") return undefined;
-        if (url.includes("Sample.exe")) return jsonResponse(422, { error: "Fix the fields named", errors: [{ field: "files", message: "This type of file can't be attached." }] });
+        if (url !== FILES || init?.method !== "POST") return undefined;
+        const name = decodeURIComponent(new Headers(init.headers).get("X-GCPE-File-Name") ?? "");
+        if (name === "Sample.exe") return jsonResponse(422, { error: "Fix the fields named", errors: [{ field: "files", message: "This type of file can't be attached." }] });
         return jsonResponse(201, [FILE, { ...FILE, id: 6, fileName: "Sample notes.txt", contentType: "text/plain", length: 12 }]);
       },
     });
@@ -3026,10 +3030,11 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
     expect(within(records).getByRole("alert")).toHaveTextContent("Sample.exe: This type of file can't be attached.");
     expect(within(records).getByRole("status")).toHaveTextContent("Added 1 file.");
     const lockAt = calls.findIndex((c) => c.url.endsWith("/lock"));
-    const firstUpload = calls.findIndex((c) => c.url.startsWith(`${FILES}?name=`));
+    const firstUpload = calls.findIndex((c) => c.url === FILES);
     expect(lockAt).toBeGreaterThan(-1);
     expect(lockAt).toBeLessThan(firstUpload);
     expect(calls[firstUpload]!.init!.body).toBeInstanceOf(File);
+    expect(new Headers(calls[firstUpload]!.init!.headers).get("X-GCPE-File-Name")).toBe(encodeURIComponent("Sample notes.txt"));
   });
 
   it("refuses a file over 25 MB without sending it", async () => {
@@ -3040,7 +3045,7 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
     Object.defineProperty(big, "size", { value: 26 * 1024 * 1024 });
     await userEvent.upload(await screen.findByLabelText("Add files"), big);
     expect(await screen.findByText("Sample big.pdf: A file can be at most 25 MB.")).toBeInTheDocument();
-    expect(calls.some((c) => c.url.startsWith(`${FILES}?`))).toBe(false);
+    expect(calls.some((c) => c.url === FILES)).toBe(false);
   });
 
   it("removes a file after asking", async () => {
@@ -3078,7 +3083,7 @@ Append to `apps/staff-web/src/screens/calendar/activity/a11y.test.tsx`:
   it("Records with files and a refused upload", async () => {
     stubActivity([], {
       view: view({ files: [{ id: 5, fileName: "Sample brief.pdf", contentType: "application/pdf", length: 2048, uploadedAt: "2026-11-02T17:00:00.000Z", uploadedByName: "Robin Staff" }] }),
-      other: (url, init) => (url.includes("/files?name=") && init?.method === "POST" ? jsonResponse(422, { error: "Fix the fields named", errors: [{ field: "files", message: "The file is empty." }] }) : undefined),
+      other: (url, init) => (url.endsWith("/files") && init?.method === "POST" ? jsonResponse(422, { error: "Fix the fields named", errors: [{ field: "files", message: "The file is empty." }] }) : undefined),
     });
     const { container } = renderActivity("/calendar/activities/20001");
     await userEvent.upload(await screen.findByLabelText("Add files"), new File([""], "Sample empty.pdf"));
@@ -3577,9 +3582,9 @@ test("attachments: another ministry's confidential file is a 404; the owning min
   const stamp = stampOf();
   const id = await scratch(f, `Files ${stamp}`, { confidential: true });
   const hq = await sessionOf(CAL_HQ_ADMIN_EMAIL);
-  const up = await fetch(`${baseUrl()}/calendar/api/activities/${id}/files?name=${encodeURIComponent("Sample brief.pdf")}`, {
+  const up = await fetch(`${baseUrl()}/calendar/api/activities/${id}/files`, {
     method: "POST",
-    headers: { cookie: hq, "x-gcpe-request": "1", "content-type": "application/octet-stream" },
+    headers: { cookie: hq, "x-gcpe-request": "1", "content-type": "application/octet-stream", "x-gcpe-file-name": encodeURIComponent("Sample brief.pdf") },
     body: new Uint8Array(PDF),
   });
   expect(up.status).toBe(201);

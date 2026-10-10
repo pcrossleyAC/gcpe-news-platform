@@ -153,6 +153,26 @@ describe("attachment downloads: visibility decides, not the file id (spec addend
     expect(res.headers["content-disposition"]).toContain("attachment");
   });
 
+  it("a UTF-16LE .txt (with its byte-order mark) downloads with downloadContentType's own type for txt, no charset added", async () => {
+    const id = await createAs("editor");
+    const utf16 = Buffer.from("﻿Sample text", "utf16le");
+    const uploaded = (
+      await request(app)
+        .post(`/api/activities/${id}/files`)
+        .set("cookie", w.as.hqAdmin.cookie)
+        .set("x-gcpe-request", "1")
+        .set("x-gcpe-file-name", encodeURIComponent("Sample notes.txt"))
+        .set("content-type", "application/octet-stream")
+        .send(utf16)
+    ).body as { id: number; fileName: string }[];
+    const fileId = uploaded.find((f) => f.fileName === "Sample notes.txt")!.id;
+    const res = await download("hqAdmin", id, fileId);
+    expect(res.status).toBe(200);
+    expect(res.headers["content-type"]).toBe("text/plain");
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    expect((res.body as Buffer).equals(utf16)).toBe(true);
+  });
+
   it("a link kept after the activity became confidential, or was deleted, is a 404 for whoever can no longer see it", async () => {
     const id = await createAs("editor");
     const fileId = await fileOn(id);
