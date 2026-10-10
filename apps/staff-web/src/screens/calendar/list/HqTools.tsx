@@ -31,7 +31,8 @@ export function ReviewSelected({ selected, onDone }: { selected: Map<number, { v
       const out = await listApi.reviewSelected(items);
       // A 207: a later batch rolled back after earlier ones committed; only `reviewed` is real.
       if (out.failed) {
-        setError(`Only ${out.reviewed.length} of ${plural(items.length)} were reviewed before a later batch failed. Select the rest and review them again.`);
+        const skipped = out.skipped.length ? `, and ${out.skipped.length} ${out.skipped.length === 1 ? "was" : "were"} skipped` : "";
+        setError(`Only ${out.reviewed.length} of ${plural(items.length)} were reviewed before a later batch failed${skipped}. Select the rest and review them again.`);
       } else {
         const label = (id: number) => selected.get(id)?.label ?? String(id);
         const changed = out.skipped.filter((s) => s.reason === "changed").map((s) => label(s.id));

@@ -1,5 +1,5 @@
 import type { CalendarRangeView, ListFilter, ListOptions, ListPage, ListPreferences, ListQuery, SavedFilterView } from "@gcpe/calendar-contract";
-import { apiFetch } from "../../../api/client";
+import { apiFetch, reportUnauthorized } from "../../../api/client";
 import type { CalendarConfigView, ClearLaStatusResult, ReviewSelectedResult } from "./types";
 
 const q = (query: ListQuery) => encodeURIComponent(JSON.stringify(query));
@@ -27,6 +27,8 @@ export const listApi = {
 export async function downloadExport(query: ListQuery): Promise<void> {
   const res = await fetch(listApi.exportUrl(query), { credentials: "same-origin" });
   if (!res.ok) {
+    // A session that ended sends the user to sign in and back, as apiFetch does.
+    if (res.status === 401) reportUnauthorized();
     let message = "Couldn't export the list.";
     try {
       const body = (await res.json()) as { error?: unknown };

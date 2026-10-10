@@ -1,12 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, InlineAlert } from "@bcgov/design-system-react-components";
 import { LIST_COLUMN_LABELS, LIST_COLUMNS, LIST_PAGE_SIZE, LIST_SORTS, type HideableColumn, type ListColumn, type ListQuery, type ListRow, type ListSort } from "@gcpe/calendar-contract";
+import { ApiError } from "../../../api/client";
+import { messagesOf } from "../../admin/messages";
 import { listApi } from "./api";
 import { CellContent, needsReviewOf, type TableTools } from "./cells";
 import { todayIn } from "./dates";
 
 const isSortable = (c: ListColumn): c is ListSort => (LIST_SORTS as readonly string[]).includes(c);
 const plural = (n: number) => `${n} ${n === 1 ? "activity" : "activities"}`;
+
+/** A 403 carries the server's own reason; anything else gets the general message. */
+export const loadFailure = (caught: unknown, general: string) => (caught instanceof ApiError && caught.status === 403 ? messagesOf(caught).join(" ") : general);
 
 /** The grid (UCFlexiGrid): 30 rows at a time as the end scrolls into view, as legacy's did. */
 export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, tools }: {
@@ -37,9 +42,9 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
         setTotal(p.total);
         setLoading(false);
       },
-      () => {
+      (caught: unknown) => {
         if (call !== latest.current) return;
-        setError("Couldn't load activities.");
+        setError(loadFailure(caught, "Couldn't load activities."));
         setLoading(false);
       },
     );
@@ -56,11 +61,12 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
         if (call !== latest.current) return;
         setRows((r) => [...r, ...p.rows.filter((x) => !r.some((y) => y.id === x.id))]);
         setTotal(p.total);
+        setError(null);
         setLoading(false);
       },
-      () => {
+      (caught: unknown) => {
         if (call !== latest.current) return;
-        setError("Couldn't load more activities.");
+        setError(loadFailure(caught, "Couldn't load more activities."));
         setLoading(false);
       },
     );

@@ -76,11 +76,16 @@ describe("the month and week views (spec addendum §8.1)", () => {
     }
   });
 
-  it("labels an other-month cell with its full date", async () => {
-    stubFetch([], { calendar: { items: [], truncated: false } });
+  it("an other-month cell names its month in hidden text, and its activities stay readable", async () => {
+    stubFetch([], { calendar: { items: [{ ...ITEM, startAt: "2026-12-01T17:00:00.000Z", endAt: null }], truncated: false } });
     renderList("/calendar?view=month&on=2026-11-15");
     await screen.findByRole("heading", { level: 2, name: "November 2026" });
-    expect(document.querySelector('td[data-date="2026-12-01"]')).toHaveAttribute("aria-label", "December 1");
-    expect(document.querySelector('td[data-date="2026-11-10"]')).not.toHaveAttribute("aria-label");
+    const other = document.querySelector('td[data-date="2026-12-01"]') as HTMLElement;
+    expect(other).not.toHaveAttribute("aria-label");
+    expect(other.querySelector(".gcpe-day .gcpe-visually-hidden")).toHaveTextContent(/^December 1$/);
+    expect(await within(other).findByText("HLTH-20001 10:00 AM Sample listed")).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: /^December 1 HLTH-20001 10:00 AM Sample listed$/ })).toBe(other);
+    const own = document.querySelector('td[data-date="2026-11-10"]') as HTMLElement;
+    expect(own.querySelector(".gcpe-day")).toHaveTextContent(/^10$/);
   });
 });

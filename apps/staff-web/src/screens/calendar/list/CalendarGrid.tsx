@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button, InlineAlert } from "@bcgov/design-system-react-components";
 import type { CalendarItem, CalendarRangeView, ListQuery } from "@gcpe/calendar-contract";
 import { listApi } from "./api";
+import { loadFailure } from "./ActivityTable";
 import { minId } from "./cells";
 import { addDaysTo, bcDateOf, monthRange, shiftMonth, todayIn, weekRange } from "./dates";
 import type { ListView } from "./types";
@@ -46,7 +47,7 @@ export function CalendarGrid({ query, view, anchor, timeZone, onAnchor }: { quer
     setError(null);
     listApi.calendar(query, range.start, range.end).then(
       (d) => call === latest.current && setData(d),
-      () => call === latest.current && setError("Couldn't load the calendar."),
+      (caught: unknown) => call === latest.current && setError(loadFailure(caught, "Couldn't load the calendar.")),
     );
   }, [key]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -96,8 +97,19 @@ export function CalendarGrid({ query, view, anchor, timeZone, onAnchor }: { quer
               {week.map((d) => {
                 const otherMonth = view === "month" && d.slice(0, 7) !== anchor.slice(0, 7);
                 return (
-                  <td key={d} data-date={d} className={otherMonth ? "gcpe-other-month" : undefined} aria-label={otherMonth ? fullDate(d) : undefined}>
-                    <span className="gcpe-day">{view === "month" ? Number(d.slice(8)) : `${shortMonth(d)} ${Number(d.slice(8))}`}</span>
+                  <td key={d} data-date={d} className={otherMonth ? "gcpe-other-month" : undefined}>
+                    <span className="gcpe-day">
+                      {otherMonth ? (
+                        <>
+                          <span aria-hidden="true">{Number(d.slice(8))}</span>
+                          <span className="gcpe-visually-hidden">{fullDate(d)}</span>
+                        </>
+                      ) : view === "month" ? (
+                        Number(d.slice(8))
+                      ) : (
+                        `${shortMonth(d)} ${Number(d.slice(8))}`
+                      )}
+                    </span>
                     <ul>
                       {(byDay.get(d) ?? []).map((i) => (
                         <li key={i.id}>{itemText(i, d)}</li>

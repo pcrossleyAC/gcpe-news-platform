@@ -54,11 +54,13 @@ export interface Stub {
   page?: (offset: number, q: Record<string, unknown>) => ListPage | Promise<ListPage>;
   saved?: SavedFilterView[];
   calendar?: CalendarRangeView;
-  /** Answers first; return undefined to fall through to the defaults. */
-  other?: (url: string, init?: RequestInit) => Response | undefined;
+  /** Answers first; return undefined to fall through to the defaults, or a promise to hold the answer. */
+  other?: (url: string, init?: RequestInit) => Response | Promise<Response> | undefined;
 }
 
 export const qOf = (url: string) => JSON.parse(new URL(url, "http://staff.example.test").searchParams.get("q")!) as Record<string, unknown>;
+/** A response that never arrives, for a state that lasts while one is awaited. */
+export const never = () => new Promise<never>(() => {});
 export const listCalls = (calls: Call[]) => calls.filter((c) => c.url.startsWith("/calendar/api/list?"));
 
 export function stubFetch(calls: Call[], s: Stub = {}) {

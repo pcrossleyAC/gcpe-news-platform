@@ -69,8 +69,8 @@ export function MyQueries({ current, onRun }: { current: ListFilter; onRun: (fil
     <section aria-labelledby="my-queries-heading" className="gcpe-my-queries">
       <h2 id="my-queries-heading">My Queries</h2>
       {status && <p role="status">{status}</p>}
-      {errors.map((m) => (
-        <p role="alert" key={m}>
+      {errors.map((m, i) => (
+        <p role="alert" key={`${i}:${m}`}>
           {m}
         </p>
       ))}

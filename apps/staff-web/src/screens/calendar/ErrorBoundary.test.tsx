@@ -2,7 +2,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { CalendarSection } from "./CalendarSection";
 import { CalendarErrorBoundary } from "./ErrorBoundary";
+import { stubFetch } from "./list/fixtures";
 
 function Explodes(): React.JSX.Element {
   throw new Error("boom");
@@ -51,5 +54,24 @@ describe("CalendarErrorBoundary", () => {
     );
     await userEvent.setup().click(await screen.findByRole("button", { name: "Reload" }));
     expect(onReload).toHaveBeenCalledTimes(1);
+  });
+
+  it("clears once the user moves to another Calendar page", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    stubFetch([]);
+    render(
+      <MemoryRouter initialEntries={["/calendar/broken"]}>
+        <Routes>
+          <Route path="/calendar" element={<CalendarSection />}>
+            <Route index element={<p>Sample list</p>} />
+            <Route path="broken" element={<Explodes />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(await screen.findByRole("alert")).toHaveTextContent("This section couldn’t be shown.");
+    await userEvent.setup().click(screen.getByRole("link", { name: "Calendar" }));
+    expect(await screen.findByText("Sample list")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
 });

@@ -14,6 +14,7 @@ describe("My Queries and the watchlist (spec addendum §8.1)", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.restoreAllMocks();
   });
 
   it("saves the current filter, runs a query, renames, moves and deletes, and can't run one it can't read", async () => {
@@ -65,6 +66,36 @@ describe("My Queries and the watchlist (spec addendum §8.1)", () => {
     const region = await screen.findByRole("region", { name: "My Queries" });
     await userEvent.setup().click(await within(region).findByRole("button", { name: "Move Sample ten up" }));
     expect(await within(region).findByRole("alert")).toHaveTextContent("Your queries changed in another tab, so they were reloaded.");
+  });
+
+  it("saving past the limit shows the server's reason", async () => {
+    stubFetch([], {
+      saved: [SAVED[0]!],
+      other: (url, init) => (url === "/calendar/api/saved-filters" && init?.method === "POST" ? jsonResponse(422, { error: "You can keep up to 200 queries: delete one first" }) : undefined),
+    });
+    renderList();
+    const region = await screen.findByRole("region", { name: "My Queries" });
+    const user = userEvent.setup();
+    await user.type(within(region).getByLabelText("Name for this filter"), "Sample new");
+    await user.click(within(region).getByRole("button", { name: "Save query" }));
+    expect(await within(region).findByRole("alert")).toHaveTextContent("You can keep up to 200 queries: delete one first");
+    expect(within(region).queryByRole("status")).toBeNull();
+    expect(within(region).getByLabelText("Name for this filter")).toHaveValue("Sample new");
+  });
+
+  it("shows every message of a refusal, even two the same", async () => {
+    const logged = vi.spyOn(console, "error");
+    stubFetch([], {
+      other: (url, init) =>
+        url === "/calendar/api/saved-filters" && init?.method === "POST" ? jsonResponse(400, { error: "Invalid request", issues: [{ message: "Sample problem" }, { message: "Sample problem" }] }) : undefined,
+    });
+    renderList();
+    const region = await screen.findByRole("region", { name: "My Queries" });
+    const user = userEvent.setup();
+    await user.type(within(region).getByLabelText("Name for this filter"), "Sample new");
+    await user.click(within(region).getByRole("button", { name: "Save query" }));
+    await waitFor(() => expect(within(region).getAllByRole("alert")).toHaveLength(2));
+    expect(logged).not.toHaveBeenCalled();
   });
 
   it("the star is a toggle button that names its watchers, and watching updates it", async () => {

@@ -11,6 +11,8 @@ const fromTri = (s: string) => (s === "" ? null : s === "true");
 const num = (v: number | null) => (v === null ? "" : String(v));
 const fromNum = (s: string) => (s === "" ? null : Number(s));
 const choices = (xs: { id: number; name: string }[]) => xs.map((x) => ({ value: String(x.id), label: x.name }));
+/** A value the query still filters by after its lookup row went away: shown, selected, so it can be cleared. */
+const GONE = "(no longer available)";
 
 function Choice({ id, label, value, onChange, options, any }: { id: string; label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[]; any: string }) {
   return (
@@ -23,6 +25,7 @@ function Choice({ id, label, value, onChange, options, any }: { id: string; labe
             {o.label}
           </option>
         ))}
+        {value !== "" && !options.some((o) => o.value === value) && <option value={value}>{GONE}</option>}
       </select>
     </div>
   );
@@ -75,6 +78,13 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
               {k.name}
             </option>
           ))}
+          {filter.keywordIds
+            .filter((id) => !options.keywords.some((k) => k.id === id))
+            .map((id) => (
+              <option key={id} value={String(id)}>
+                {GONE}
+              </option>
+            ))}
         </select>
       </div>
       <Choice id="list-issue" label="Issue" value={tri(filter.isIssue)} onChange={(v) => set("isIssue", fromTri(v))} options={[{ value: "true", label: "Is an Issue" }, { value: "false", label: "Not an Issue" }]} any="Any" />

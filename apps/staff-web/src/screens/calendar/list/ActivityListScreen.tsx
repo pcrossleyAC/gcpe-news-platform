@@ -28,6 +28,14 @@ export function queryFromParams(params: URLSearchParams): ListQuery | null {
   }
 }
 
+/** A shared link can carry parts of a query this viewer can't use; the server refuses those with 403,
+ * so they're dropped before anything is asked of it, and Search and My Queries never resend them. */
+export function usableQuery(query: ListQuery, list: CalendarConfigView["list"]): ListQuery {
+  const lookAhead = list.lookAheadFilter ? query.lookAhead : "all";
+  const corporate = list.corporateQueries ? query.corporate : null;
+  return lookAhead === query.lookAhead && corporate === query.corporate ? query : { ...query, lookAhead, corporate };
+}
+
 /** Legacy's standing note (UCFlexiGrid.ascx:124), and an alert while the freeze applies to this user (spec addendum §7.4). */
 function FreezeNotice({ freeze }: { freeze: CalendarConfigView["freeze"] }) {
   if (freeze.start === freeze.end) return null;
@@ -61,20 +69,27 @@ export function ActivityListScreen(): React.JSX.Element {
   }, []);
 
   const fromUrl = useMemo(() => queryFromParams(params), [params]);
-  const query = useMemo<ListQuery | null>(() => fromUrl ?? (prefs ? { ...DEFAULT_LIST_QUERY, display: prefs.display } : null), [fromUrl, prefs]);
+  const query = useMemo<ListQuery | null>(() => {
+    const q = fromUrl ?? (prefs ? { ...DEFAULT_LIST_QUERY, display: prefs.display } : null);
+    return q && config ? usableQuery(q, config.list) : q;
+  }, [fromUrl, prefs, config]);
   const setQuery = (next: ListQuery) =>
     setParams((p) => {
       const n = new URLSearchParams(p);
       n.set("q", JSON.stringify(next));
       return n;
     });
+  // Only the latest save's answer is shown: an older one arriving late would undo a newer choice.
+  const latestSave = useRef(0);
   const savePrefs = async (next: ListPreferences) => {
+    const call = ++latestSave.current;
     setPrefs(next);
     setPrefsError(null);
     try {
-      setPrefs(await listApi.savePreferences(next));
+      const saved = await listApi.savePreferences(next);
+      if (call === latestSave.current) setPrefs(saved);
     } catch {
-      setPrefsError("Couldn't save your list settings.");
+      if (call === latestSave.current) setPrefsError("Couldn't save your list settings.");
     }
   };
   // A search's new display is saved once the URL carries the search: saving it first would list
