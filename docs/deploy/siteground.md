@@ -39,8 +39,10 @@ In Site Tools → Databases, create **seven PostgreSQL databases and one databas
 access to all seven (the user can't create its own databases, so this is a one-time manual
 step, not something any script here can do). Suggested names (matching
 `scripts/siteground-env.ts`'s defaults): `gcpe_core`, `gcpe_nrms`, `gcpe_news_api`,
-`gcpe_site`, `gcpe_nod`, `gcpe_distribution`, `gcpe_calendar`. Host is always `localhost` — the
-public PostgreSQL hostname is rejected by `pg_hba.conf`.
+`gcpe_site`, `gcpe_nod`, `gcpe_distribution`, `gcpe_calendar`. Where Site Tools assigns a
+generated name instead of letting you choose one (it did for the Calendar's database on boxs.ca),
+use the name it shows: the stack only ever reads the name from the `*_DATABASE_URL` setting.
+Host is always `localhost` — the public PostgreSQL hostname is rejected by `pg_hba.conf`.
 
 **The Calendar's database can be added later: the stack runs without it until
 `CALENDAR_DATABASE_URL` is set.** Until then it starts and runs normally without the Calendar,
@@ -846,11 +848,12 @@ check. This is expected and not a bug.
 
 **To turn it on (one time, in Site Tools):**
 
-1. **Databases → create one more PostgreSQL database**, named `gcpe_calendar`, granted to the
-   same database user the other six databases already use (no new user, no new password).
+1. **Databases → create one more PostgreSQL database**, granted to the same database user the
+   other six databases already use (no new user, no new password). Call it `gcpe_calendar` if
+   Site Tools lets you name it; if it assigns a generated name, use that name in the next step.
 2. **Devs → Node.js → your project → Environment Variables → add one line:**
    ```
-   CALENDAR_DATABASE_URL=postgres://<the same db user>:<the same db password>@localhost:5432/gcpe_calendar
+   CALENDAR_DATABASE_URL=postgres://<the same db user>:<the same db password>@localhost:5432/<the database's name>
    ```
    (The same `postgres://user:pass@localhost:5432/<name>` shape as the other six — never a
    `self:/...` value; see "Never set any `*_DATABASE_URL` to a `self:/...` value" above.) If you
@@ -871,6 +874,20 @@ check. This is expected and not a bug.
    organizations, sectors, themes, tags and users aren't empty on an already-running deployment.
    After the next tick, `SELECT count(*) FROM orgs` and `SELECT count(*) FROM users` in
    `gcpe_calendar` are non-zero.
+
+6. **HQ organizations.** GCPE Headquarters and GCPE Media Relations come from the Core seed
+   (`core:seed-from-public-api`, "Calendar access (Phase 5a)" above). Where that seed can't run, for
+   want of an admin bearer token, `scripts/siteground-add-hq-orgs.sh https://boxs.ca` creates just
+   those two (HQ, not listed publicly) as the break-glass admin. Run it in a real terminal, since it
+   prompts for the password. Then tick HQ on the Office of the Premier by hand on Hub →
+   Organizations. On boxs.ca the two were created this way on 2026-10-10.
+7. **First access.** Nobody has a Calendar role until one is given, and the break-glass admin never
+   has one (by design), so: as a Core admin, Hub → Calendar access → give yourself System
+   Administrator with GCPE Headquarters. It reaches the Calendar on a following tick (allow a few
+   minutes the first time, while the backfill above is delivered). The Hub's **Calendar** menu link
+   follows the roles in your session, so it appears after you sign out and back in; the Calendar
+   itself works as soon as the role arrives. Then run `scripts/siteground-seed-users.sh` for the
+   `cal-*` test users.
 
 No code change and no redeploy of the artifact itself is needed for this — `CALENDAR_DATABASE_URL`
 is the only thing gating it, and it's read fresh from Site Tools' own environment variables on
