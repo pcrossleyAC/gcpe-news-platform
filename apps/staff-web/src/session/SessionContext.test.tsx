@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jsonResponse } from "../../test/jsonResponse";
 import { saveDraft, loadDraft } from "../screens/release/documents/unsavedDocumentStorage";
@@ -119,6 +119,31 @@ describe("SessionContext: checking in when the tab comes back", () => {
     expired = true;
     showTab();
     expect(await screen.findByText("Signed out")).toBeInTheDocument();
+  });
+
+  it.each([
+    ["a network failure", () => Promise.reject(new TypeError("Failed to fetch"))],
+    ["a 502", () => Promise.resolve(jsonResponse(502, { error: "Bad gateway" }))],
+  ])("%s on the ten-minute check-in keeps the user signed in", async (_what, fail) => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      let failing = false;
+      const fetch = vi.fn(async () => (failing ? fail() : signedIn()));
+      vi.stubGlobal("fetch", fetch);
+      render(
+        <SessionProvider>
+          <Who />
+        </SessionProvider>,
+      );
+      await screen.findByText("Signed in as Pat");
+      failing = true;
+      await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000)));
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect(screen.getByText("Signed in as Pat")).toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("a network failure on that check doesn't sign anyone out", async () => {

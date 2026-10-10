@@ -493,6 +493,36 @@ describe("the activity editor (spec addendum §8.2)", () => {
       expect(drafts()).toHaveLength(0);
     });
 
+    it("a 401 on the session check-in keeps the changes before signing out", async () => {
+      Object.defineProperty(document, "visibilityState", { configurable: true, get: () => "visible" });
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        let expired = false;
+        stubActivity([], { other: (url) => (expired && url === "/core/auth/session" ? jsonResponse(401, { error: "Sign in again" }) : undefined) });
+        const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+        const { router } = renderActivity("/calendar/activities/20001");
+        await user.type(await screen.findByRole("textbox", { name: "Venue" }), "Sample hall");
+        expired = true;
+        await act(async () => void (await vi.advanceTimersByTimeAsync(10 * 60_000)));
+        await waitFor(() => expect(router.state.location.pathname).toBe("/sign-in"));
+        expect(drafts()).toHaveLength(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a restored Look Ahead section override stays an override through the next change", async () => {
+      const la = { hqComments: "", hqStatus: null, hqSection: "in_the_news" as const, longTermOutlook: false };
+      sessionStorage.setItem(`gcpe-calendar-draft:${HQ_ADMIN_ME.userId}:20001`, JSON.stringify({ activityId: 20001, version: 3, fields: { ...FIELDS, lookAhead: { ...la, hqSection: "events_and_speeches" } } }));
+      stubActivity([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, view: view({ fields: { ...FIELDS, lookAhead: la }, lookAhead: { ...la, inferred: { kind: "section", section: "in_the_news" } } }) });
+      renderActivity("/calendar/activities/20001");
+      const section = await screen.findByRole("combobox", { name: "LA Section" });
+      expect(section).toHaveValue("events_and_speeches");
+      expect(screen.getByRole("button", { name: "Use the inferred section" })).toBeInTheDocument();
+      await userEvent.type(screen.getByRole("textbox", { name: "Venue" }), "x");
+      expect(section).toHaveValue("events_and_speeches");
+    });
+
     it("another activity doesn't pick up the kept changes", async () => {
       await loseTheSession();
       stubActivity([], { view: (id) => view({ id }) });

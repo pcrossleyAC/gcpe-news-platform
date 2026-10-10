@@ -132,7 +132,12 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
   );
   const [fields, setFields] = useState<ActivityFields>(() => restored?.fields ?? start);
   const original = useRef(start);
-  const [overridden, setOverriddenState] = useState(() => (initial?.lookAhead ? initialOverride(initial.lookAhead.hqSection, initial.lookAhead.inferred) : false));
+  const [overridden, setOverriddenState] = useState(() => {
+    // Restored changes are judged as the server judges stored ones: a section their own values don't infer is an override.
+    const la = restored?.fields.lookAhead;
+    if (la) return initialOverride(la.hqSection, inferLookAhead(lookAheadInputOf(restored.fields, options, initial?.fields.lookAhead?.hqSection ?? null), config.rules));
+    return initial?.lookAhead ? initialOverride(initial.lookAhead.hqSection, initial.lookAhead.inferred) : false;
+  });
   const overriddenRef = useRef(overridden);
   const setOverridden = (v: boolean) => {
     overriddenRef.current = v;
