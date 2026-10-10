@@ -1,3 +1,4 @@
+import { sameCategoryName } from "./category-name";
 import type { CalendarRules } from "./rules";
 
 /** What the editor reads from the rules in the browser: checkActivity, inferLookAhead, the offered lists and the Release fieldset. */
@@ -14,7 +15,7 @@ export function editorRulesOf(rules: CalendarRules): EditorRules {
 
 /** Legacy hid the Release fieldset, and cleared the release time, for these categories (Scripts/activityhelper.ts:170-196). */
 export function releaseFieldsetHidden(categoryName: string | null, rules: Pick<CalendarRules, "releaseHiddenCategoryNames">): boolean {
-  return categoryName !== null && rules.releaseHiddenCategoryNames.includes(categoryName);
+  return categoryName !== null && rules.releaseHiddenCategoryNames.some((n) => sameCategoryName(n, categoryName));
 }
 
 export interface EditorOption {

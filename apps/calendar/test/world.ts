@@ -28,7 +28,7 @@ const PEOPLE: Record<Who, { n: number; role: CalendarRole; org: string; name: st
 
 export interface World {
   as: Record<Who, { id: string; cookie: string; name: string }>;
-  cat: { proposedRelease: 12; approvedRelease: 58; awareness: 2; event: 30; speech: 31; plain: 32; hqPlaceholder: 33; retired: 34 };
+  cat: { proposedRelease: 12; approvedRelease: 58; awareness: 2; event: 30; speech: 31; plain: 32; hqPlaceholder: 33; retired: 34; hqPlaceholderSpaced: 35 };
   city: { sample: 1; other: 311; retired: 2 };
   commMaterial: { newsRelease: 1; unconfirmedMarker: 61; retired: 3 };
   ids: { origin: 1; distribution: 1; premierYes: 1; premierMaybe: 2; planner: 1; planner2: 2; videographer: 1; videographer2: 2; representative: 1; representative2: 2; initiative: 1; keptKeyword: 1; sampleTag: 2 };
@@ -63,6 +63,8 @@ export async function seedWorld(app: express.Express, db: Db): Promise<World> {
     { id: 12, name: "Sample proposed release" }, { id: 58, name: "Sample approved release" }, { id: 2, name: "Sample awareness day" },
     { id: 30, name: "Sample approved event" }, { id: 31, name: "Sample speech" }, { id: 32, name: "Sample plain category" },
     { id: 33, name: "Sample HQ placeholder", isActive: false }, { id: 34, name: "Sample retired category", isActive: false },
+    // Legacy-style stray whitespace (legacy category 16: "Speech /  Remarks"): the tenant's hqPlaceholderCategoryName is "Sample HQ placeholder".
+    { id: 35, name: " Sample  HQ placeholder ", isActive: false },
   ]);
   await db.insert(cities).values([{ id: 1, name: "Sample City" }, { id: 311, name: "Other..." }, { id: 2, name: "Sample Retired City", isActive: false }]);
   await db.insert(commMaterials).values([{ id: 1, name: "Sample news release" }, { id: 61, name: "Sample unconfirmed marker" }, { id: 3, name: "Sample retired material", isActive: false }]);
@@ -83,7 +85,7 @@ export async function seedWorld(app: express.Express, db: Db): Promise<World> {
     (await db.insert(commContacts).values({ userId: as[who].id, ministryKey, rank: 4, isActive }).returning({ id: commContacts.id }))[0]!.id;
   return {
     as,
-    cat: { proposedRelease: 12, approvedRelease: 58, awareness: 2, event: 30, speech: 31, plain: 32, hqPlaceholder: 33, retired: 34 },
+    cat: { proposedRelease: 12, approvedRelease: 58, awareness: 2, event: 30, speech: 31, plain: 32, hqPlaceholder: 33, retired: 34, hqPlaceholderSpaced: 35 },
     city: { sample: 1, other: 311, retired: 2 },
     commMaterial: { newsRelease: 1, unconfirmedMarker: 61, retired: 3 },
     ids: { origin: 1, distribution: 1, premierYes: 1, premierMaybe: 2, planner: 1, planner2: 2, videographer: 1, videographer2: 2, representative: 1, representative2: 2, initiative: 1, keptKeyword: 1, sampleTag: 2 },

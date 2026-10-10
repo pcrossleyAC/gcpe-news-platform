@@ -1,6 +1,6 @@
 import { and, eq, inArray, sql } from "drizzle-orm";
 import type { Tx } from "@gcpe/db-kit";
-import type { ActivityFields, CalendarRules, FieldError } from "@gcpe/calendar-contract";
+import { sameCategoryName, type ActivityFields, type CalendarRules, type FieldError } from "@gcpe/calendar-contract";
 import { can, isOwnMinistry } from "../capabilities";
 import { commContacts, keywords, orgs, terms, users } from "../db/schema";
 import type { Viewer } from "../visibility";
@@ -70,7 +70,7 @@ export async function resolveReferences(tx: Tx, i: ActivityFields, ctx: Ctx): Pr
     const row = rows.get(i.categoryId);
     categoryNames = [...rows.values()].map((r) => r.name);
     if (!row) add("categoryId", "That category doesn't exist");
-    else if (!unchanged && row.name === ctx.rules.hqPlaceholderCategoryName) {
+    else if (!unchanged && sameCategoryName(row.name, ctx.rules.hqPlaceholderCategoryName)) {
       if (!can.useHqPlaceholder(ctx.actor)) add("categoryId", "Only HQ can use this category");
     } else if (!unchanged && !row.isActive) add("categoryId", "That category is no longer in use");
   }

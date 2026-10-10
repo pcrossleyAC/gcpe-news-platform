@@ -125,6 +125,13 @@ describe("creating an activity (spec addendum §7.1)", () => {
     expect((await create("hqEditor", { categoryId: w.cat.hqPlaceholder })).status).toBe(201);
   });
 
+  it("a stored name of ' Sample  HQ placeholder ' still counts as the HQ Placeholder (legacy category 16: 'Speech /  Remarks')", async () => {
+    const ministry = await create("editor", { categoryId: w.cat.hqPlaceholderSpaced });
+    expect(ministry.status).toBe(422);
+    expect(ministry.body.errors).toContainEqual({ field: "categoryId", message: "Only HQ can use this category" });
+    expect((await create("hqEditor", { categoryId: w.cat.hqPlaceholderSpaced })).status).toBe(201);
+  });
+
   it("the server owns status, flags and versions: a body that sets them is 400", async () => {
     for (const extra of [{ status: "reviewed" }, { needsReview: ["title"] }, { version: 3 }, { createdBy: w.as.editor.id }]) {
       const res = await call(app, "post", "/api/activities", w.as.editor.cookie, { ...validInput(w), ...extra });
