@@ -121,4 +121,15 @@ describe("accessibility: the activity editor in every state", () => {
     await screen.findByRole("heading", { level: 1, name: "Changes to HLTH-20001" });
     expect(await seriousViolations(container)).toEqual([]);
   });
+
+  it("Records with files and a refused upload", async () => {
+    stubActivity([], {
+      view: view({ files: [{ id: 5, fileName: "Sample brief.pdf", contentType: "application/pdf", length: 2048, uploadedAt: "2026-11-02T17:00:00.000Z", uploadedByName: "Robin Staff" }] }),
+      other: (url, init) => (url.endsWith("/files") && init?.method === "POST" ? jsonResponse(422, { error: "Fix the fields named", errors: [{ field: "files", message: "The file is empty." }] }) : undefined),
+    });
+    const { container } = renderActivity("/calendar/activities/20001");
+    await userEvent.upload(await screen.findByLabelText("Add files"), new File([""], "Sample empty.pdf"));
+    await screen.findByText("Sample empty.pdf: The file is empty.");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
 });

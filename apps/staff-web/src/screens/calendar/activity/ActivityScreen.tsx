@@ -16,6 +16,7 @@ import { activityApi } from "./api";
 import { clearActivityDraft, loadActivityDraft, saveActivityDraft } from "./draft";
 import { bodyOf, errorsByField, fieldId, initialOverride, lookAheadInputOf, minIdOf, newActivityFields, withInferredSection } from "./form";
 import { LockBanner } from "./LockBanner";
+import { RecordsSection } from "./RecordsSection";
 import { ReleasesList } from "./ReleasesList";
 import { activityPath, safeCalendarReturn } from "./paths";
 import { useEditLock } from "./useEditLock";
@@ -373,7 +374,28 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
             lookAhead={lookAhead}
             today={todayIn(config.timeZone)}
             release={<ReleasesList releases={view?.releases ?? []} timeZone={config.timeZone} canOpen={NRMS_READ_ROLES.some((r) => session.has(r))} />}
-            records={null}
+            records={
+              isNew ? (
+                config.showRecordsSection ? (
+                  <fieldset className="gcpe-fieldset gcpe-records">
+                    <legend>Records</legend>
+                    <p>Save the activity first to add files.</p>
+                  </fieldset>
+                ) : null
+              ) : // Removing the last file keeps the section, and what it said, on screen.
+              config.showRecordsSection || initial!.files.length > 0 || view!.files.length > 0 ? (
+                <RecordsSection
+                  activityId={view!.id}
+                  files={view!.files}
+                  canChange={!readOnly}
+                  beforeChange={() => lock.touch()}
+                  // Only the list: the version and fields stay those the unsaved changes were based on.
+                  onFiles={(files) => setView((v) => (v ? { ...v, files } : v))}
+                  refused={lock.refused}
+                  timeZone={config.timeZone}
+                />
+              ) : null
+            }
           />
         </fieldset>
         <div className="gcpe-actions">
