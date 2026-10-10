@@ -41,4 +41,9 @@ describe("the editor's rules", () => {
     expect(releaseFieldsetHidden("Sample approved event", RULES)).toBe(false);
     expect(releaseFieldsetHidden(null, RULES)).toBe(false);
   });
+
+  it("a category name with doubled or stray whitespace still matches (legacy category 16: 'Speech /  Remarks')", () => {
+    expect(releaseFieldsetHidden("Sample  no-release category", RULES)).toBe(true);
+    expect(releaseFieldsetHidden(" Sample no-release category ", RULES)).toBe(true);
+  });
 });

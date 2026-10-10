@@ -1,3 +1,4 @@
+import { sameCategoryName } from "./category-name";
 import type { HqSection } from "./enums";
 import type { CalendarRules } from "./rules";
 
@@ -34,7 +35,7 @@ export function inferLookAhead(i: LookAheadInput, rules: Rules): LookAheadInfere
   if (i.contactMinistryAbbreviation === rules.consultationsMinistryAbbreviation) return { kind: "consultations" };
   // Ticking "Not for Look Ahead" never unassigns a section the activity already has (Activity.aspx:2488-2489).
   if (i.isConfidential) return { kind: "section", section: i.currentSection ?? "not_on_la" };
-  const named = (list: readonly string[]) => i.categoryNames.some((n) => list.includes(n));
+  const named = (list: readonly string[]) => i.categoryNames.some((n) => list.some((l) => sameCategoryName(l, n)));
   if (i.isIssue && !named(rules.issueExemptCategoryNames)) return { kind: "section", section: "issues_and_reports" };
   if (!i.isConfirmed && i.commMaterialIds.includes(rules.unconfirmedIssueCommMaterialId)) return { kind: "section", section: "issues_and_reports" };
   const twoDaysOn = i.startDate === null ? null : plusDays(i.startDate, 2);

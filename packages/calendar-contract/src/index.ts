@@ -1,3 +1,4 @@
+export * from "./category-name";
 export * from "./clean";
 export * from "./editor";
 export * from "./enums";

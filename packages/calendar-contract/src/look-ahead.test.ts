@@ -43,6 +43,10 @@ describe("Look Ahead inference, in legacy's order (Activity.aspx:2466-2521)", ()
     expect(infer({})).toEqual({ kind: "section", section: "not_on_la" });
     expect(infer({ startDate: null, endDate: null })).toEqual({ kind: "section", section: "not_on_la" });
   });
+  it("a category name with doubled or stray whitespace still matches the tenant's list (legacy category 16: 'Speech /  Remarks')", () => {
+    expect(infer({ isIssue: true, isConfirmed: true, categoryNames: ["Sample  approved event"] })).toEqual({ kind: "section", section: "events_and_speeches" });
+    expect(infer({ isConfirmed: true, categoryNames: [" Sample speech "] })).toEqual({ kind: "section", section: "events_and_speeches" });
+  });
 });
 
 describe("the section the server stores (spec addendum §7.6)", () => {
