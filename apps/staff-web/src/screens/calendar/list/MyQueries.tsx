@@ -87,13 +87,16 @@ export function MyQueries({ current, onRun }: { current: ListFilter; onRun: (fil
               {editing === f.id ? (
                 <form
                   aria-label={`Rename ${f.name}`}
+                  className="gcpe-field-row"
                   onSubmit={(e) => {
                     e.preventDefault();
                     void rename(f);
                   }}
                 >
-                  <label htmlFor={`query-name-${f.id}`}>New name</label>
-                  <input id={`query-name-${f.id}`} maxLength={200} value={editName} onChange={(e) => setEditName(e.target.value)} />
+                  <div className="gcpe-field">
+                    <label htmlFor={`query-name-${f.id}`}>New name</label>
+                    <input id={`query-name-${f.id}`} maxLength={200} value={editName} onChange={(e) => setEditName(e.target.value)} />
+                  </div>
                   <Button type="submit" isDisabled={!editName.trim()}>
                     Save name
                   </Button>
@@ -134,13 +137,16 @@ export function MyQueries({ current, onRun }: { current: ListFilter; onRun: (fil
       )}
       <form
         aria-label="Save this filter"
+        className="gcpe-field-row"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
         }}
       >
-        <label htmlFor="query-name">Name for this filter</label>
-        <input id="query-name" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+        <div className="gcpe-field">
+          <label htmlFor="query-name">Name for this filter</label>
+          <input id="query-name" maxLength={200} value={name} onChange={(e) => setName(e.target.value)} />
+        </div>
         <Button type="submit" isDisabled={!name.trim()}>
           Save query
         </Button>

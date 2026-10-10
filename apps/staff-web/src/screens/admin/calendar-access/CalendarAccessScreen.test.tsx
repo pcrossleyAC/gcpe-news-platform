@@ -7,6 +7,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { CalendarAccessScreen } from "./CalendarAccessScreen";
 import { ACCESS_USERS, ORGS, SELF, STAFF } from "./fixtures";
+import { visibleText } from "../../../../test/visibleText";
 
 type Call = { url: string; init?: RequestInit };
 function stub(roles: string[], calls: Call[], onPut?: (url: string, init: RequestInit) => Response, opts: { users?: typeof ACCESS_USERS; sessionId?: string } = {}) {
@@ -47,6 +48,16 @@ describe("CalendarAccessScreen", () => {
     renderScreen();
     await screen.findByRole("heading", { level: 1, name: "Calendar access" });
     await waitFor(() => expect(document.title).toBe("Calendar access — GCPE News Staff"));
+  });
+
+  it("lists staff in a table, one row each, with a short Edit button that still names the user", async () => {
+    stub(["Calendar.Administrator"], []);
+    renderScreen();
+    const edit = await screen.findByRole("button", { name: "Edit access for Robin Staff" });
+    expect(visibleText(edit)).toBe("Edit");
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Name", "Email", "Calendar role", "Ministries", "Actions"]);
+    expect(within(edit.closest("tr")!).getByRole("rowheader", { name: "Robin Staff" })).toBeInTheDocument();
   });
 
   it("an Administrator is offered roles up to Administrator, and saves the role with the ministries", async () => {
@@ -181,7 +192,7 @@ describe("CalendarAccessScreen", () => {
     const user = userEvent.setup();
     await screen.findByRole("button", { name: "Edit access for Robin Staff" });
     await user.click(screen.getByLabelText("Show inactive users, including those with no email"));
-    const item = screen.getByRole("heading", { level: 2, name: "Dale Dormant" }).closest("li")!;
+    const item = screen.getByRole("rowheader", { name: "Dale Dormant" }).closest("tr")!;
     expect(within(item).getByText("Only a Core admin can give Calendar access to an inactive user who has none.")).toBeInTheDocument();
     expect(within(item).queryByRole("button")).toBeNull();
     cleanup();

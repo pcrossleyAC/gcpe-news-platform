@@ -86,13 +86,14 @@ export function TransferScreen(): React.JSX.Element {
         <p>Loading…</p>
       ) : (
         <form
+          className="gcpe-stack"
           aria-label="Transfer activities"
           onSubmit={(e) => {
             e.preventDefault();
             void doPreview();
           }}
         >
-          <div>
+          <div className="gcpe-field">
             <label htmlFor="transfer-from">From comm contact</label>
             <select id="transfer-from" value={from} onChange={choose(setFrom)}>
               <option value="">Choose a comm contact</option>
@@ -103,7 +104,7 @@ export function TransferScreen(): React.JSX.Element {
               ))}
             </select>
           </div>
-          <div>
+          <div className="gcpe-field">
             <label htmlFor="transfer-to">To comm contact</label>
             <select id="transfer-to" value={to} onChange={choose(setTo)}>
               <option value="">Choose a comm contact</option>

@@ -85,7 +85,7 @@ function MediaListNamesEditor(): React.JSX.Element {
       {message && <p role="status">{message}</p>}
       {rows === null && !loadError && <p>Loading…</p>}
       {rows && (
-        <table aria-label="Media lists">
+        <table aria-label="Media lists" className="gcpe-table">
           <thead>
             <tr>
               <th scope="col">Key</th>
@@ -109,7 +109,8 @@ function MediaListNamesEditor(): React.JSX.Element {
           </tbody>
         </table>
       )}
-      <Form onSubmit={(e) => void onAdd(e)} aria-label="Add a media list">
+      <h2>Add a media list</h2>
+      <Form onSubmit={(e) => void onAdd(e)} aria-label="Add a media list" className="gcpe-field-row">
         <TextField label="Key" name="key" value={key} onChange={setKey} />
         <TextField label="Name" name="name" value={name} onChange={setName} />
         <Button type="submit" isDisabled={busy}>
@@ -169,7 +170,7 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
     <tr>
       <td>{record.key}</td>
       <td>
-        <TextField label={`Name for ${record.key}`} value={name} onChange={setName} />
+        <TextField aria-label={`Name for ${record.key}`} value={name} onChange={setName} />
       </td>
       <td>
         <label>
@@ -178,13 +179,16 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
         </label>
       </td>
       <td>
-        <label>
-          <input type="checkbox" checked={active} onChange={() => setActive(!active)} /> {`${record.key} active`}
+        <label className="gcpe-check">
+          <input type="checkbox" checked={active} onChange={() => setActive(!active)} />
+          <span className="gcpe-visually-hidden">{`${record.key} active`}</span>
         </label>
       </td>
       <td>
         <Button variant="secondary" isDisabled={busy} onPress={onSave}>
-          {`Save ${record.key}`}
+          <span>
+            Save <span className="gcpe-visually-hidden">{record.key}</span>
+          </span>
         </Button>
         {error && !confirmRetire && <InlineAlert variant="danger" role="alert" description={error} />}
         {confirmRetire && (

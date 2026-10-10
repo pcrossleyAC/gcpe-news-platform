@@ -7,6 +7,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { UsersScreen } from "./UsersScreen";
 import type { UserView } from "./UsersScreen";
+import { visibleText } from "../../../../test/visibleText";
 
 function withAuth(children: React.ReactNode) {
   return (
@@ -39,6 +40,21 @@ describe("UsersScreen", () => {
     cleanup();
     vi.unstubAllGlobals();
     sessionStorage.clear();
+  });
+
+  it("shows each user's fields under short visible labels, keeping the full names for assistive technology", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF]);
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const row = (await screen.findByRole("heading", { name: "self@x.invalid", level: 3 })).closest("li")!;
+    const name = within(row).getByRole("textbox", { name: "self@x.invalid display name" });
+    expect(visibleText(row.querySelector(`label[for="${name.id}"]`)!)).toBe("display name");
+    expect(visibleText(within(row).getByRole("switch", { name: "self@x.invalid is active" }).closest("label")!)).toBe("Active");
+    const admin = within(row).getByLabelText(/^Core\.Admin — Manage staff users/);
+    expect(admin.closest("label")!.querySelector("strong")).toHaveTextContent("Core.Admin");
   });
 
   // I5: document.title matches the h1.
@@ -105,7 +121,7 @@ describe("UsersScreen", () => {
     });
     render(withAuth(<UsersScreen />));
     const user = userEvent.setup();
-    const row = (await screen.findByText("self@x.invalid")).closest("li")!;
+    const row = (await screen.findByRole("heading", { name: "self@x.invalid" })).closest("li")!;
     await user.click(within(row).getByLabelText(/^Core\.Admin —/));
     await user.click(within(row).getByRole("button", { name: "Save roles" }));
 

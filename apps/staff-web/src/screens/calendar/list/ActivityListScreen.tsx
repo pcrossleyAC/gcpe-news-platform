@@ -175,6 +175,19 @@ export function ActivityListScreen(): React.JSX.Element {
       {config.list.lookAheadFilter && <LookAheadFilterChoice value={query.lookAhead} onChange={(lookAhead) => setQuery({ ...query, lookAhead })} />}
       <ColumnChooser hidden={prefs.hiddenColumns} onChange={(hiddenColumns) => void savePrefs({ ...prefs, hiddenColumns })} />
       {prefsError && <p role="alert">{prefsError}</p>}
+      <div className="gcpe-calendar-toolbar">
+        <section aria-label="List actions" className="gcpe-actions">
+          {config.editor.create && !config.freeze.appliesToYou && (
+            <Link className="gcpe-button-link" to={activityPath("new", `${here.pathname}${here.search}`)}>
+              New activity
+            </Link>
+          )}
+          {config.list.reviewSelected && <ReviewSelected selected={selected} onDone={reload} />}
+          {config.list.clearLaStatus && <ClearLaStatus onDone={reload} />}
+          <ExportButton query={query} />
+        </section>
+        <ViewSwitch view={view} onChange={(v) => setParam("view", v === "list" ? null : v)} />
+      </div>
       {view === "list" ? (
         <ActivityTable query={query} hidden={prefs.hiddenColumns} timeZone={config.timeZone} reloadToken={reloadToken} onSort={(sort, dir) => setQuery({ ...query, sort, dir })} tools={tools} />
       ) : (
@@ -186,17 +199,6 @@ export function ActivityListScreen(): React.JSX.Element {
           onAnchor={(d) => setParam("on", d)}
         />
       )}
-      <section aria-label="List actions" className="gcpe-actions">
-        {config.editor.create && !config.freeze.appliesToYou && (
-          <Link className="gcpe-button-link" to={activityPath("new", `${here.pathname}${here.search}`)}>
-            New activity
-          </Link>
-        )}
-        {config.list.reviewSelected && <ReviewSelected selected={selected} onDone={reload} />}
-        {config.list.clearLaStatus && <ClearLaStatus onDone={reload} />}
-        <ExportButton query={query} />
-      </section>
-      <ViewSwitch view={view} onChange={(v) => setParam("view", v === "list" ? null : v)} />
     </div>
   );
 }

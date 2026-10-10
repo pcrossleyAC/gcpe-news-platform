@@ -49,70 +49,77 @@ export function FilterPanel({ query, options, onSearch }: { query: ListQuery; op
     onSearch({ ...query, corporate: null, display, filter: { ...filter, quickSearch: filter.quickSearch.trim(), to: filter.thisDayOnly ? null : filter.to } });
   };
   return (
-    <form aria-label="Filter activities" className="gcpe-calendar-filter" onSubmit={submit}>
-      <fieldset>
-        <legend>Dates</legend>
+    <details className="gcpe-disclosure" open>
+      <summary>Filters</summary>
+      <form aria-label="Filter activities" className="gcpe-calendar-filter" onSubmit={submit}>
+        <fieldset className="gcpe-calendar-filter__group">
+          <legend>Dates</legend>
+          <div className="gcpe-field">
+            <label htmlFor="list-from">From</label>
+            <input id="list-from" type="date" value={filter.from ?? ""} onChange={(e) => set("from", e.target.value || null)} />
+          </div>
+          <div className="gcpe-field">
+            <label htmlFor="list-to">To</label>
+            <input id="list-to" type="date" value={filter.to ?? ""} disabled={filter.thisDayOnly} onChange={(e) => set("to", e.target.value || null)} />
+          </div>
+          <div className="gcpe-check">
+            <input id="list-this-day" type="checkbox" checked={filter.thisDayOnly} onChange={(e) => set("thisDayOnly", e.target.checked)} />
+            <label htmlFor="list-this-day">This day only</label>
+          </div>
+        </fieldset>
         <div className="gcpe-field">
-          <label htmlFor="list-from">From</label>
-          <input id="list-from" type="date" value={filter.from ?? ""} onChange={(e) => set("from", e.target.value || null)} />
+          <label htmlFor="list-search">Search for</label>
+          <input id="list-search" type="search" maxLength={200} value={filter.quickSearch} aria-describedby="list-search-hint" onChange={(e) => set("quickSearch", e.target.value)} />
+          <p id="list-search-hint" className="gcpe-hint">An activity number (such as HLTH-12345), or words in the title, summary, city and other text.</p>
         </div>
         <div className="gcpe-field">
-          <label htmlFor="list-to">To</label>
-          <input id="list-to" type="date" value={filter.to ?? ""} disabled={filter.thisDayOnly} onChange={(e) => set("to", e.target.value || null)} />
-        </div>
-        <div>
-          <input id="list-this-day" type="checkbox" checked={filter.thisDayOnly} onChange={(e) => set("thisDayOnly", e.target.checked)} />
-          <label htmlFor="list-this-day">This day only</label>
-        </div>
-      </fieldset>
-      <div className="gcpe-field">
-        <label htmlFor="list-search">Search for</label>
-        <input id="list-search" type="search" maxLength={200} value={filter.quickSearch} aria-describedby="list-search-hint" onChange={(e) => set("quickSearch", e.target.value)} />
-        <p id="list-search-hint" className="gcpe-hint">An activity number (such as HLTH-12345), or words in the title, summary, city and other text.</p>
-      </div>
-      <div className="gcpe-field">
-        <label htmlFor="list-tags">HQ Tags</label>
-        <select id="list-tags" multiple value={filter.keywordIds.map(String)} onChange={(e) => set("keywordIds", [...e.target.selectedOptions].map((o) => Number(o.value)))}>
-          {options.keywords.map((k) => (
-            <option key={k.id} value={String(k.id)}>
-              {k.name}
-            </option>
-          ))}
-          {filter.keywordIds
-            .filter((id) => !options.keywords.some((k) => k.id === id))
-            .map((id) => (
-              <option key={id} value={String(id)}>
-                {GONE}
+          <label htmlFor="list-tags">HQ Tags</label>
+          <select id="list-tags" multiple value={filter.keywordIds.map(String)} onChange={(e) => set("keywordIds", [...e.target.selectedOptions].map((o) => Number(o.value)))}>
+            {options.keywords.map((k) => (
+              <option key={k.id} value={String(k.id)}>
+                {k.name}
               </option>
             ))}
-        </select>
-      </div>
-      <Choice id="list-issue" label="Issue" value={tri(filter.isIssue)} onChange={(v) => set("isIssue", fromTri(v))} options={[{ value: "true", label: "Is an Issue" }, { value: "false", label: "Not an Issue" }]} any="Any" />
-      <Choice id="list-confirmed" label="Date Confirmed" value={tri(filter.dateConfirmed)} onChange={(v) => set("dateConfirmed", fromTri(v))} options={[{ value: "true", label: "Date is Confirmed" }, { value: "false", label: "Date is not Confirmed" }]} any="Any" />
-      <Choice id="list-status" label="Status" value={filter.status ?? ""} onChange={(v) => set("status", v === "" ? null : (v as ListFilter["status"]))} options={ACTIVITY_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))} any="Any status" />
-      <Choice id="list-category" label="Category" value={num(filter.categoryId)} onChange={(v) => set("categoryId", fromNum(v))} options={choices(options.categories)} any="Any category" />
-      <Choice id="list-ministry" label="Lead Ministry" value={filter.ministryKey ?? ""} onChange={(v) => set("ministryKey", v || null)} options={options.ministries.map((m) => ({ value: m.key, label: m.abbreviation ?? m.name }))} any="Any ministry" />
-      <Choice id="list-contact" label="Comm Contact" value={filter.commContactUserId ?? ""} onChange={(v) => set("commContactUserId", v || null)} options={options.commContacts.map((c) => ({ value: c.userId, label: c.name }))} any="Any comm contact" />
-      <Choice id="list-representative" label="Representative" value={num(filter.representativeId)} onChange={(v) => set("representativeId", fromNum(v))} options={choices(options.representatives)} any="Any representative" />
-      <Choice id="list-initiative" label="Initiative" value={num(filter.initiativeId)} onChange={(v) => set("initiativeId", fromNum(v))} options={choices(options.initiatives)} any="Any initiative" />
-      <Choice id="list-premier" label="Premier Requested" value={num(filter.premierRequestedId)} onChange={(v) => set("premierRequestedId", fromNum(v))} options={choices(options.premierRequested)} any="Any" />
-      <Choice id="list-distribution" label="Distribution" value={num(filter.distributionId)} onChange={(v) => set("distributionId", fromNum(v))} options={choices(options.distributions)} any="Any distribution" />
-      <fieldset>
-        <legend>Display</legend>
-        {LIST_DISPLAYS.map((d) => (
-          <div key={d}>
-            <input type="radio" id={`list-display-${d}`} name="list-display" checked={display === d} onChange={() => setDisplay(d)} />
-            <label htmlFor={`list-display-${d}`}>{DISPLAY_LABELS[d]}</label>
-          </div>
-        ))}
-      </fieldset>
-      {error && <p role="alert">{error}</p>}
-      <div className="gcpe-actions">
-        <Button type="submit">Search</Button>
-        <Button type="button" variant="secondary" onPress={() => setFilter(EMPTY_LIST_FILTER)}>
-          Reset
-        </Button>
-      </div>
-    </form>
+            {filter.keywordIds
+              .filter((id) => !options.keywords.some((k) => k.id === id))
+              .map((id) => (
+                <option key={id} value={String(id)}>
+                  {GONE}
+                </option>
+              ))}
+          </select>
+        </div>
+        <Choice id="list-issue" label="Issue" value={tri(filter.isIssue)} onChange={(v) => set("isIssue", fromTri(v))} options={[{ value: "true", label: "Is an Issue" }, { value: "false", label: "Not an Issue" }]} any="Any" />
+        <Choice id="list-confirmed" label="Date Confirmed" value={tri(filter.dateConfirmed)} onChange={(v) => set("dateConfirmed", fromTri(v))} options={[{ value: "true", label: "Date is Confirmed" }, { value: "false", label: "Date is not Confirmed" }]} any="Any" />
+        <Choice id="list-status" label="Status" value={filter.status ?? ""} onChange={(v) => set("status", v === "" ? null : (v as ListFilter["status"]))} options={ACTIVITY_STATUSES.map((s) => ({ value: s, label: STATUS_LABELS[s] }))} any="Any status" />
+        <Choice id="list-category" label="Category" value={num(filter.categoryId)} onChange={(v) => set("categoryId", fromNum(v))} options={choices(options.categories)} any="Any category" />
+        <Choice id="list-ministry" label="Lead Ministry" value={filter.ministryKey ?? ""} onChange={(v) => set("ministryKey", v || null)} options={options.ministries.map((m) => ({ value: m.key, label: m.abbreviation ?? m.name }))} any="Any ministry" />
+        <Choice id="list-contact" label="Comm Contact" value={filter.commContactUserId ?? ""} onChange={(v) => set("commContactUserId", v || null)} options={options.commContacts.map((c) => ({ value: c.userId, label: c.name }))} any="Any comm contact" />
+        <Choice id="list-representative" label="Representative" value={num(filter.representativeId)} onChange={(v) => set("representativeId", fromNum(v))} options={choices(options.representatives)} any="Any representative" />
+        <Choice id="list-initiative" label="Initiative" value={num(filter.initiativeId)} onChange={(v) => set("initiativeId", fromNum(v))} options={choices(options.initiatives)} any="Any initiative" />
+        <Choice id="list-premier" label="Premier Requested" value={num(filter.premierRequestedId)} onChange={(v) => set("premierRequestedId", fromNum(v))} options={choices(options.premierRequested)} any="Any" />
+        <Choice id="list-distribution" label="Distribution" value={num(filter.distributionId)} onChange={(v) => set("distributionId", fromNum(v))} options={choices(options.distributions)} any="Any distribution" />
+        <fieldset className="gcpe-calendar-filter__group">
+          <legend>Display</legend>
+          {LIST_DISPLAYS.map((d) => (
+            <div key={d} className="gcpe-check">
+              <input type="radio" id={`list-display-${d}`} name="list-display" checked={display === d} onChange={() => setDisplay(d)} />
+              <label htmlFor={`list-display-${d}`}>{DISPLAY_LABELS[d]}</label>
+            </div>
+          ))}
+        </fieldset>
+        {error && (
+          <p role="alert" className="gcpe-calendar-filter__error">
+            {error}
+          </p>
+        )}
+        <div className="gcpe-actions gcpe-calendar-filter__actions">
+          <Button type="submit">Search</Button>
+          <Button type="button" variant="secondary" onPress={() => setFilter(EMPTY_LIST_FILTER)}>
+            Reset
+          </Button>
+        </div>
+      </form>
+    </details>
   );
 }

@@ -1,11 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { CalendarUsersScreen } from "./CalendarUsersScreen";
+import { visibleText } from "../../../../test/visibleText";
 
 const ROWS = [
   { userId: "u1", displayName: "Robin Staff", email: "robin.staff@example.test", isActive: true, role: "Calendar.Editor", ministryKey: "finance", ministryAbbreviation: "FIN", rank: null },
@@ -50,6 +51,16 @@ describe("CalendarUsersScreen", () => {
     await waitFor(() => expect(document.title).toBe("Calendar users — GCPE News Staff"));
     expect(await screen.findByRole("link", { name: "Robin Staff (HLTH) (4)" })).toHaveAttribute("href", "/calendar/users/u1");
     expect(screen.getByRole("link", { name: "Robin Staff (FIN)" })).toBeInTheDocument();
+  });
+
+  it("shows the rows as a table: the name links to the user, then ministry, rank, role and whether active", async () => {
+    stub([]);
+    renderScreen();
+    const link = await screen.findByRole("link", { name: "Robin Staff (HLTH) (4)" });
+    expect(visibleText(link)).toBe("Robin Staff");
+    const row = link.closest("tr")!;
+    expect([...row.cells].slice(1).map((c) => c.textContent)).toEqual(["HLTH", "PAO", "Editor", "Yes"]);
+    expect(within(screen.getByRole("table")).getAllByRole("columnheader").map((h) => h.textContent)).toEqual(["Name", "Ministry", "Comm contact", "Calendar role", "Active"]);
   });
 
   it("asks for inactive users, including those with no email, when the switch is on", async () => {

@@ -3,6 +3,7 @@ import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-rea
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { HiddenPrefixLabel, ShortLabel } from "../../../shared/ShortLabel";
 import { messagesOf } from "../messages";
 import { STAFF_ROLES } from "./roles";
 
@@ -18,12 +19,14 @@ export interface UserView {
 function RoleCheckboxes({ selected, onChange, idPrefix, disabled }: { selected: string[]; onChange(next: string[]): void; idPrefix: string; disabled: boolean }): React.JSX.Element {
   const toggle = (role: string) => onChange(selected.includes(role) ? selected.filter((r) => r !== role) : [...selected, role]);
   return (
-    <fieldset>
+    <fieldset className="gcpe-options gcpe-options--stacked">
       <legend>Roles</legend>
       {STAFF_ROLES.map(({ role, description }) => (
         <label key={role} htmlFor={`${idPrefix}-${role}`}>
           <input id={`${idPrefix}-${role}`} type="checkbox" checked={selected.includes(role)} onChange={() => toggle(role)} disabled={disabled} />
-          {role} — {description}
+          <span>
+            <strong>{role}</strong> — {description}
+          </span>
         </label>
       ))}
     </fieldset>
@@ -103,20 +106,23 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
 
   return (
     <li className="gcpe-users__row">
-      <h2>
+      <h3 className="gcpe-users__who">
         {who} {!user.isActive && "(inactive)"}
-      </h2>
-      <p>Sign-in: {user.signInMethod === "local" ? "Local password" : "Entra"}</p>
+      </h3>
+      <p className="gcpe-users__sign-in">Sign-in: {user.signInMethod === "local" ? "Local password" : "Entra"}</p>
 
       {nameMessages.map((m) => (
         <p role="alert" key={m}>
           {m}
         </p>
       ))}
-      <TextField label={`${who} display name`} value={displayName} onChange={setDisplayName} isDisabled={busy} />
-      <Button onPress={() => void saveName()} isDisabled={busy}>
-        Save name
-      </Button>
+      <div className="gcpe-field-row">
+        {/* TextField types `label` as a string, but renders it as the label's content. */}
+        <TextField label={(<HiddenPrefixLabel prefix={who} text="display name" />) as unknown as string} value={displayName} onChange={setDisplayName} isDisabled={busy} />
+        <Button variant="secondary" onPress={() => void saveName()} isDisabled={busy}>
+          Save name
+        </Button>
+      </div>
 
       {activeMessages.map((m) => (
         <p role="alert" key={m}>
@@ -130,7 +136,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
         </>
       ) : (
         <Switch isSelected={user.isActive} isDisabled={busy} onChange={(v) => void toggleActive(v)}>
-          {who} is {user.isActive ? "active" : "inactive"}
+          <ShortLabel short="Active" full={`${who} is ${user.isActive ? "active" : "inactive"}`} />
         </Switch>
       )}
 
@@ -140,7 +146,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
         </p>
       ))}
       <RoleCheckboxes selected={roles} onChange={setRoles} idPrefix={`roles-${user.id}`} disabled={busy} />
-      <Button onPress={() => void saveRoles()} isDisabled={busy}>
+      <Button variant="secondary" onPress={() => void saveRoles()} isDisabled={busy}>
         Save roles
       </Button>
 
@@ -154,20 +160,22 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
           {/* Minors: without this, the field just going blank again on success looked
            * identical to a failed save that also clears it. */}
           {passwordSaved && <p role="status">Password updated.</p>}
-          <TextField
-            label={`${who} new password`}
-            type="password"
-            value={password}
-            onChange={(v) => {
-              setPassword(v);
-              setPasswordSaved(false);
-            }}
-            isDisabled={busy}
-            autoComplete="new-password"
-          />
-          <Button type="submit" isDisabled={busy || password.length === 0}>
-            Set password
-          </Button>
+          <div className="gcpe-field-row">
+            <TextField
+              label={(<HiddenPrefixLabel prefix={who} text="new password" />) as unknown as string}
+              type="password"
+              value={password}
+              onChange={(v) => {
+                setPassword(v);
+                setPasswordSaved(false);
+              }}
+              isDisabled={busy}
+              autoComplete="new-password"
+            />
+            <Button variant="secondary" type="submit" isDisabled={busy || password.length === 0}>
+              Set password
+            </Button>
+          </div>
         </form>
       )}
     </li>
@@ -278,7 +286,7 @@ export function UsersScreen(): React.JSX.Element {
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
 
       <h2>Add a user</h2>
-      <form onSubmit={onCreate} aria-label="Add a user">
+      <form onSubmit={onCreate} aria-label="Add a user" className="gcpe-stack">
         {createMessages.map((m) => (
           <p role="alert" key={m}>
             {m}
@@ -287,7 +295,7 @@ export function UsersScreen(): React.JSX.Element {
         <TextField label="Email" type="email" value={email} onChange={setEmail} isRequired isDisabled={creating} />
         <TextField label="Display name" value={displayName} onChange={setDisplayName} isRequired isDisabled={creating} />
         <RoleCheckboxes selected={roles} onChange={setRoles} idPrefix="create-roles" disabled={creating} />
-        <label>
+        <label className="gcpe-check">
           <input type="checkbox" checked={setPasswordNow} onChange={(e) => setSetPasswordNow(e.target.checked)} disabled={creating} />
           Set a password now
         </label>
@@ -301,7 +309,7 @@ export function UsersScreen(): React.JSX.Element {
 
       <h2>All users</h2>
       {users === null && !loadError && <p>Loading…</p>}
-      <ul>{users?.map((u) => <UserRow key={u.id} user={u} onChanged={reload} />)}</ul>
+      <ul className="gcpe-users__list">{users?.map((u) => <UserRow key={u.id} user={u} onChanged={reload} />)}</ul>
     </div>
   );
 }

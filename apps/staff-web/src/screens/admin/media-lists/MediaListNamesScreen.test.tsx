@@ -6,6 +6,7 @@ import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { MediaListNamesScreen } from "./MediaListNamesScreen";
+import { visibleText } from "../../../../test/visibleText";
 
 const ROWS = [
   { key: "001-a-daily-news", displayName: "Daily news", sortOrder: 1, isActive: true },
@@ -53,6 +54,16 @@ describe("MediaListNamesScreen", () => {
     expect(await screen.findByText("You don’t have permission to manage media list names.")).toBeInTheDocument();
     expect(calls.some((c) => c.url === "/nrms/api/media-lists")).toBe(false);
     await waitFor(() => expect(document.title).toBe("Media list names — GCPE News Staff"));
+  });
+
+  it("relies on the column headers: per-row labels are for assistive technology only, and Save just says Save", async () => {
+    stub(["Core.Admin"]);
+    renderIt();
+    const row = (await screen.findByRole("textbox", { name: "Name for 002-budget" })).closest("tr")!;
+    // Only the key and the button's "Save" show; the name, order and active labels don't.
+    expect([...row.cells].map((c) => visibleText(c))).toEqual(["002-budget", "", "", "", "Save"]);
+    expect(within(row).getByRole("checkbox", { name: "002-budget active" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Save 002-budget" })).toBeInTheDocument();
   });
 
   it("renames a list and adds one", async () => {
