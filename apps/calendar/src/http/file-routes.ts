@@ -1,5 +1,5 @@
 import express, { Router, type NextFunction, type Request, type Response } from "express";
-import { z } from "zod";
+import { z, ZodError } from "zod";
 import { ATTACHMENT_MAX_BYTES, safeString } from "@gcpe/calendar-contract";
 import { ActivityNotFoundError } from "../activities/errors";
 import { addFile, precheckFileWrite, removeFile, StoredFileMissingError } from "../activities/files";
@@ -9,7 +9,24 @@ import type { ApiDeps } from "./routes";
 
 type Params = { id: string; fileId: string };
 type Handler = (req: Request<Params>, res: Response) => Promise<void>;
-const nameQuery = z.object({ name: safeString().min(1).max(1000) }).strict();
+// Never ?name=: a query string lands in every proxy's access logs, including a confidential
+// activity's file name. The client percent-encodes the name into this header; the server decodes it.
+const FILE_NAME_HEADER = "x-gcpe-file-name";
+const nameSchema = z.object({ name: safeString().min(1).max(1000) }).strict();
+const missingName = () => new ZodError([{ code: "custom", path: ["name"], message: "Name the file." }]);
+
+/** A missing, empty or undecodable header is 400, in the same shape as any other validation error. */
+function fileNameOf(req: Request<Params>): string {
+  const header = req.header(FILE_NAME_HEADER);
+  if (!header) throw missingName();
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(header);
+  } catch {
+    throw missingName();
+  }
+  return nameSchema.parse({ name: decoded }).name;
+}
 
 export function fileIdOf(req: Request<Params>): number {
   if (!/^\d{1,9}$/.test(req.params.fileId)) throw new ActivityNotFoundError();
@@ -38,14 +55,25 @@ export function fileRoutes(deps: ApiDeps): Router {
   const raw = express.raw({ type: () => true, limit: ATTACHMENT_MAX_BYTES });
   const needStore = (_req: Request, res: Response, next: NextFunction) =>
     deps.store ? next() : void res.status(503).json({ error: "File storage isn't configured." });
+  // A declared Content-Length over the limit is refused without reading any of the body. A
+  // chunked body (no Content-Length) still relies on `raw`'s own streamed limit.
+  const declaredSize = (req: Request, res: Response, next: NextFunction) => {
+    const declared = Number(req.header("content-length"));
+    if (Number.isFinite(declared) && declared > ATTACHMENT_MAX_BYTES) {
+      res.set("Connection", "close");
+      return void res.status(413).json({ error: "A file can be at most 25 MB." });
+    }
+    next();
+  };
 
   r.post(
     "/activities/:id/files",
     needStore,
     guard(async (req, res) => {
-      res.locals.fileName = nameQuery.parse(req.query).name;
+      res.locals.fileName = fileNameOf(req);
       await precheckFileWrite(deps, req.calendar!, idOf(req));
     }),
+    declaredSize,
     raw,
     run(async (req, res) => {
       const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);

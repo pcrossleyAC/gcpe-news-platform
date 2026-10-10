@@ -50,8 +50,8 @@ const MAX_NAME = 255;
  */
 export function attachmentName(original: string): string {
   const last = original.split(/[\\/]/).pop() ?? "";
-  // eslint-disable-next-line no-control-regex
-  const cleaned = last.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  // \p{Cc}: C0/C1 controls. \p{Cf}: format characters, including the bidi overrides (U+202A-U+202E).
+  const cleaned = last.replace(/[\p{Cc}\p{Cf}]+/gu, " ").replace(/\s+/g, " ").trim();
   if (cleaned.length <= MAX_NAME) return cleaned;
   const dot = cleaned.lastIndexOf(".");
   const ext = dot > 0 && cleaned.length - dot <= 11 ? cleaned.slice(dot) : "";
@@ -75,11 +75,13 @@ export async function precheckFileWrite(deps: ApiDeps, actor: CalendarActor, id:
   });
 }
 
-async function deleteQuietly(store: ObjectStore, key: string): Promise<void> {
+/** On a failed delete, names only the activity id and the file row id — never the file name or storage key. */
+async function deleteQuietly(store: ObjectStore, key: string, orphan?: { activityId: number; fileId: number }): Promise<void> {
   try {
     await store.delete(key);
   } catch (e) {
-    console.error("[calendar] could not delete a stored file", safeErrorLabel(e));
+    if (orphan) console.error("[calendar] could not delete a stored file", orphan.activityId, orphan.fileId, safeErrorLabel(e));
+    else console.error("[calendar] could not delete a stored file", safeErrorLabel(e));
   }
 }
 
@@ -95,9 +97,9 @@ export async function addFile(deps: ApiDeps, store: ObjectStore, actor: Calendar
   const check = checkAttachment(fileName, bytes);
   if (!check.ok) throw invalid(PROBLEMS[check.problem](extensionOf(fileName)));
   const key = randomFileKey(`activities/${id}`, fileName);
-  await store.put(key, bytes, check.contentType);
-  let replaced: string | null;
+  let replaced: { key: string; fileId: number } | null;
   try {
+    await store.put(key, bytes, check.contentType);
     replaced = await deps.db.transaction(async (tx) => {
       await lockActivity(tx, id);
       const s = await assertCanChangeFiles(tx, deps, actor, await loadStored(tx, id, { forUpdate: true }));
@@ -117,13 +119,13 @@ export async function addFile(deps: ApiDeps, store: ObjectStore, actor: Calendar
         activityId: id, actor, action: "updated", contactMinistryKey: s.row.contactMinistryKey, at: now,
         fields: [{ key: "files", old: old ? old.fileName : null, new: old ? `${fileName} (replaced)` : fileName }],
       });
-      return old ? old.storageKey : null;
+      return old ? { key: old.storageKey, fileId: old.id } : null;
     });
   } catch (e) {
     await deleteQuietly(store, key);
     throw e;
   }
-  if (replaced) await deleteQuietly(store, replaced);
+  if (replaced) await deleteQuietly(store, replaced.key, { activityId: id, fileId: replaced.fileId });
   return filesOf(deps.db, id);
 }
 
@@ -140,6 +142,6 @@ export async function removeFile(deps: ApiDeps, store: ObjectStore, actor: Calen
     });
     return file.storageKey;
   });
-  await deleteQuietly(store, removedKey);
+  await deleteQuietly(store, removedKey, { activityId: id, fileId });
   return filesOf(deps.db, id);
 }

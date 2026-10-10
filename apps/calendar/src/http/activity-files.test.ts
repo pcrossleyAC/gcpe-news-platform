@@ -1,10 +1,13 @@
+import http from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { eq } from "drizzle-orm";
 import type express from "express";
+import { ATTACHMENT_MAX_BYTES } from "@gcpe/calendar-contract";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { localStore, type ObjectStore } from "@gcpe/storage";
 import { activities, activityFiles } from "../db/schema";
@@ -23,9 +26,10 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
   let store: ObjectStore;
   const upload = (who: Who, id: number, name: string, bytes: Buffer = PDF, on: express.Express = app) =>
     request(on)
-      .post(`/api/activities/${id}/files?name=${encodeURIComponent(name)}`)
+      .post(`/api/activities/${id}/files`)
       .set("cookie", w.as[who].cookie)
       .set("x-gcpe-request", "1")
+      .set("x-gcpe-file-name", encodeURIComponent(name))
       .set("content-type", "application/octet-stream")
       .send(bytes);
   const remove = (who: Who, id: number, fileId: number | string) => call(app, "delete", `/api/activities/${id}/files/${fileId}`, w.as[who].cookie);
@@ -39,6 +43,9 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
     tdb = await createCalendarTestDb();
     app = createTestApp(tdb.db, { store });
     w = await seedWorld(app, tdb.db);
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
   afterAll(async () => {
     await tdb.drop();
@@ -95,6 +102,27 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
     for (const k of await stored(id)) expect(k).toMatch(/^activities\/\d+\/[0-9a-f]{16}-[a-z0-9._-]+$/);
   });
 
+  it("strips bidi and other invisible format characters, not just C0 controls, from the display name", async () => {
+    const id = await create();
+    expect(names((await upload("editor", id, "‮gnp.pdf")).body)).toEqual(["gnp.pdf"]);
+  });
+
+  it("refuses a missing, empty or undecodable X-GCPE-File-Name header with 400, following the existing error shape; the name never travels in the query string", async () => {
+    const id = await create();
+    const base = () => request(app).post(`/api/activities/${id}/files`).set("cookie", w.as.editor.cookie).set("x-gcpe-request", "1").set("content-type", "application/octet-stream");
+    const missing = await base().send(PDF);
+    const empty = await base().set("x-gcpe-file-name", "").send(PDF);
+    const undecodable = await base().set("x-gcpe-file-name", "%").send(PDF);
+    for (const res of [missing, empty, undecodable]) {
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: "invalid request", issues: [expect.objectContaining({ path: ["name"] })] });
+    }
+    expect(await stored(id)).toEqual([]);
+    // a name that used to travel as ?name= is rejected: the route no longer reads the query string at all.
+    const viaQuery = await base().set("x-gcpe-file-name", "").query({ name: "Sample.pdf" }).send(PDF);
+    expect(viaQuery.status).toBe(400);
+  });
+
   it("is refused before the body is read: invisible 404 (even over 25 MB), view-only 403, deleted 409, someone else's lock 423, the freeze 423", async () => {
     const secret = await create({ isConfidential: true });
     expect((await upload("financeEditor", secret, "Sample.pdf", Buffer.alloc(26 * 1024 * 1024, 0x25))).status).toBe(404);
@@ -125,6 +153,37 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
     expect(await stored(id)).toEqual([]);
   });
 
+  it("a declared Content-Length over the limit is 413 before any body is read, and closes the connection", async () => {
+    const id = await create();
+    const server = app.listen(0);
+    try {
+      const port = (server.address() as AddressInfo).port;
+      const res = await new Promise<{ status: number; connection: string | undefined }>((resolve, reject) => {
+        const req = http.request(
+          {
+            host: "127.0.0.1", port, method: "POST", path: `/api/activities/${id}/files`,
+            headers: {
+              cookie: w.as.editor.cookie, "x-gcpe-request": "1", "content-type": "application/octet-stream",
+              "x-gcpe-file-name": encodeURIComponent("Sample.pdf"), "content-length": String(ATTACHMENT_MAX_BYTES + 1),
+            },
+          },
+          (r) => {
+            r.resume();
+            r.on("end", () => resolve({ status: r.statusCode!, connection: r.headers.connection }));
+          },
+        );
+        req.on("error", reject);
+        // No body is ever written: the server must answer without waiting for one.
+        req.end();
+      });
+      expect(res.status).toBe(413);
+      expect(res.connection).toBe("close");
+    } finally {
+      server.close();
+    }
+    expect(await stored(id)).toEqual([]);
+  });
+
   it("holds at most 50 files; the refused upload leaves no bytes behind, and replacing still works", async () => {
     const id = await create();
     await tdb.db.insert(activityFiles).values(
@@ -138,6 +197,76 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
     expect(res.body.errors).toEqual([{ field: "files", message: "An activity holds at most 50 files. Remove one first." }]);
     expect(await stored(id)).toEqual([]);
     expect((await upload("editor", id, "SAMPLE-3.pdf")).status).toBe(201);
+  });
+
+  it("two uploads of different names racing at 49 files leave one 201, one 422, 50 rows and one new stored object", async () => {
+    const id = await create();
+    await tdb.db.insert(activityFiles).values(
+      Array.from({ length: 49 }, (_, i) => ({
+        activityId: id, fileName: `sample-${i}.pdf`, contentType: "application/pdf", length: 1, sha256: "0".repeat(64),
+        storageKey: `activities/${id}/${String(i).padStart(16, "0")}-sample-${i}.pdf`,
+      })),
+    );
+    const before = await stored(id);
+    const [a, b] = await Promise.all([upload("editor", id, "Race A.pdf"), upload("admin", id, "Race B.pdf")]);
+    expect([a.status, b.status].sort()).toEqual([201, 422]);
+    expect(await tdb.db.select().from(activityFiles).where(eq(activityFiles.activityId, id))).toHaveLength(50);
+    const after = await stored(id);
+    expect(after).toHaveLength(before.length + 1);
+  });
+
+  it("the bytes are deleted when the database write fails after they were stored", async () => {
+    const id = await create();
+    await tdb.pool.query("CREATE OR REPLACE FUNCTION probe_fail_activity_files() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'simulated failure'; END $$ LANGUAGE plpgsql");
+    await tdb.pool.query("CREATE TRIGGER probe_fail_activity_files BEFORE INSERT ON activity_files FOR EACH ROW EXECUTE FUNCTION probe_fail_activity_files()");
+    try {
+      const res = await upload("editor", id, "Sample.pdf");
+      expect(res.status).toBe(500);
+    } finally {
+      await tdb.pool.query("DROP TRIGGER probe_fail_activity_files ON activity_files");
+    }
+    expect(await stored(id)).toEqual([]);
+    expect(await tdb.db.select().from(activityFiles).where(eq(activityFiles.activityId, id))).toEqual([]);
+  });
+
+  it("a store whose put writes the bytes and then throws leaves nothing behind", async () => {
+    const id = await create();
+    const faulty: ObjectStore = {
+      ...store,
+      async put(key, bytes, contentType) {
+        await store.put(key, bytes, contentType);
+        throw Object.assign(new Error("ENOSPC simulated"), { code: "ENOSPC" });
+      },
+    };
+    const faultyApp = createTestApp(tdb.db, { store: faulty });
+    const res = await upload("editor", id, "Sample.pdf", PDF, faultyApp);
+    expect(res.status).toBe(500);
+    expect(await stored(id)).toEqual([]);
+    expect(await tdb.db.select().from(activityFiles).where(eq(activityFiles.activityId, id))).toEqual([]);
+  });
+
+  it("a failed post-commit delete logs only the activity id and the file row id, never a name or a storage key", async () => {
+    const id = await create();
+    const [before] = (await upload("editor", id, "Sample.pdf")).body;
+    const [beforeRow] = await tdb.db.select().from(activityFiles).where(eq(activityFiles.activityId, id));
+    const oldKey = beforeRow!.storageKey;
+    const faulty: ObjectStore = {
+      ...store,
+      async delete() {
+        throw Object.assign(new Error("EIO simulated"), { code: "EIO" });
+      },
+    };
+    const faultyApp = createTestApp(tdb.db, { store: faulty });
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = await upload("editor", id, "SAMPLE.PDF", PDF, faultyApp);
+    expect(res.status).toBe(201);
+    const lines = errorSpy.mock.calls.map((args) => args.map((a) => String(a)).join(" "));
+    const relevant = lines.filter((l) => l.includes("could not delete a stored file"));
+    expect(relevant).toHaveLength(1);
+    expect(relevant[0]).toContain(String(id));
+    expect(relevant[0]).toContain(String(before.id));
+    expect(relevant[0]).not.toContain("Sample.pdf");
+    expect(relevant[0]).not.toContain(oldKey);
   });
 
   it("removes a file: its row and bytes go and history says so; another activity's file id, or a non-number, is 404", async () => {
