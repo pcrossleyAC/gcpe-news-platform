@@ -71,20 +71,19 @@ describe("the Look Ahead's sections, in legacy's order (spec addendum §10.2)", 
       "# Thursday, November 12, 2026", "# Events, Speeches & Releases", "HLTH-20002",
       "---",
       // A ministry's Issues: not Not for Look Ahead, unconfirmed, five days or more (J's HQ section doesn't count).
+      // For a ministry, no break after Issues, before Outside Government or before Awareness (LookAheadReport.rdlc).
       "# ISSUES AND REPORTS", "HLTH-20006",
-      "---",
       "# Outside Government",
       "# In the News", "HLTH-20005",
       "# In the News", "HLTH-20004", "HLTH-20005",
-      "---",
       "# AWARENESS DATES", "HLTH-20007",
     ]);
   });
 
-  it("an empty day says so; the consultations ministry's and a confidential Not on LA activity appear nowhere", () => {
+  it("an empty day says so; an empty Issues or Awareness isn't drawn; the consultations ministry's and a confidential Not on LA activity appear nowhere", () => {
     const doc = lookAheadDoc(ctx([H, I], { q: q({ filter: { from: "2026-11-10", thisDayOnly: true } }) }), { detailed: false });
     expect(outline(doc).filter((l) => !l.startsWith("[") && l !== "# Contents:")).toEqual([
-      "# Tuesday, Nov. 10, 2026", "---", "# Inside Government", "# No Activities for Tuesday, November 10, 2026", "---", "# ISSUES AND REPORTS", "---", "# Outside Government", "---", "# AWARENESS DATES",
+      "# Tuesday, Nov. 10, 2026", "---", "# Inside Government", "# No Activities for Tuesday, November 10, 2026", "---", "# Outside Government",
     ]);
   });
 
@@ -98,7 +97,8 @@ describe("the Look Ahead's sections, in legacy's order (spec addendum §10.2)", 
       "# Saturday, November 14, 2026", "# Events, Speeches & Releases", "HLTH-20012",
       "# Sunday, November 15, 2026", "# Events, Speeches & Releases", "HLTH-20013", "---",
       // Issues and Reports isn't split by day: every row the list's filter brought (ActivityHandler.ashx.cs:920-923).
-      "# ISSUES AND REPORTS", "HLTH-20010", "---", "# Outside Government", "---", "# AWARENESS DATES",
+      // HQ breaks after Issues when it has rows. Nothing follows Outside Government here, so no break before an empty Awareness.
+      "# ISSUES AND REPORTS", "HLTH-20010", "---", "# Outside Government",
     ]);
     const hqIssues = lookAheadDoc(ctx(ROWS, { isHq: true }), { detailed: false });
     const issues = tables(hqIssues.blocks).find((t) => plain(t.header[0]!.runs) === "Date")!;
@@ -116,9 +116,50 @@ describe("the Look Ahead's sections, in legacy's order (spec addendum §10.2)", 
     const marked = row(20021, { hqSection: "events_and_speeches", longTermOutlook: true, startAt: at("2027-01-21", "09:00"), endAt: at("2027-01-21", "10:00") });
     const tail = (isHq: boolean) => outline(lookAheadDoc(ctx([later, marked], { isHq, q: q({}) }), { detailed: false })).slice(-3);
     expect(tail(false)).toEqual(["# LONG TERM OUTLOOK", "HLTH-20020", "HLTH-20021"]);
-    expect(tail(true)).toEqual(["# AWARENESS DATES", "# LONG TERM OUTLOOK", "HLTH-20021"]);
+    expect(tail(true)).toEqual(["---", "# LONG TERM OUTLOOK", "HLTH-20021"]);
     const legend = lookAheadDoc(ctx([], { q: q({}) }), { detailed: false }).blocks[3];
     expect(legend).toMatchObject({ kind: "legend", items: [{}, {}, {}, {}, { colour: COLOURS.outlook }] });
+  });
+});
+
+describe("the lower sections' page breaks (LookAheadReport.rdlc)", () => {
+  const aware = row(20050, { hqSection: "not_on_la", categoryIds: [2], startAt: at("2026-11-10", "09:00"), endAt: at("2026-11-10", "10:00") });
+  const later = row(20051, { hqSection: "events_and_speeches", longTermOutlook: true, startAt: at("2027-01-20", "09:00"), endAt: at("2027-01-20", "10:00") });
+  const issue = row(20052, { hqSection: "issues_and_reports", startAt: at("2026-11-10", "13:00"), endAt: at("2026-11-10", "14:00") });
+  const end = (rows: ReportRow[], isHq: boolean, n: number, filter: ListQueryInput["filter"] = { from: "2026-11-10", to: "2026-11-12" }) =>
+    outline(lookAheadDoc(ctx(rows, { isHq, q: q({ filter }) }), { detailed: false })).slice(-n);
+  it("Issues: HQ breaks after it only when it has rows; a ministry never does; an empty one isn't drawn", () => {
+    expect(end([issue], true, 4)).toEqual(["# ISSUES AND REPORTS", "HLTH-20052", "---", "# Outside Government"]);
+    expect(end([], true, 3)).toEqual(["# No Activities for Thursday, November 12, 2026", "---", "# Outside Government"]);
+    expect(end([F], false, 3)).toEqual(["# ISSUES AND REPORTS", "HLTH-20006", "# Outside Government"]);
+  });
+  it("Awareness: HQ breaks before it, a ministry doesn't", () => {
+    expect(end([aware], true, 4)).toEqual(["# Outside Government", "---", "# AWARENESS DATES", "HLTH-20050"]);
+    expect(end([aware], false, 3)).toEqual(["# Outside Government", "# AWARENESS DATES", "HLTH-20050"]);
+  });
+  it("with the Outlook: a break between Awareness and the Outlook; an empty Outlook isn't drawn", () => {
+    const noTo = { from: "2026-11-10" };
+    expect(end([aware, later], false, 6, noTo)).toEqual(["# Outside Government", "# AWARENESS DATES", "HLTH-20050", "---", "# LONG TERM OUTLOOK", "HLTH-20051"]);
+    expect(end([aware, later], true, 7, noTo)).toEqual(["# Outside Government", "---", "# AWARENESS DATES", "HLTH-20050", "---", "# LONG TERM OUTLOOK", "HLTH-20051"]);
+    // HQ sees only the rows marked for the Outlook: none here, so no heading and no break after Awareness.
+    expect(end([aware, { ...later, longTermOutlook: false }], true, 4, noTo)).toEqual(["# Outside Government", "---", "# AWARENESS DATES", "HLTH-20050"]);
+  });
+  it("HQ's Saturday: legacy counts the day's rows twice, so 7 rows (2 x 9 > 16) break and 6 (2 x 8) don't (ActivityHandler.ashx.cs:719-721)", () => {
+    const sat = (n: number) => Array.from({ length: n }, (_, i) => row(20060 + i, { hqSection: "events_and_speeches", startAt: at("2026-11-14", "09:00"), endAt: at("2026-11-14", "10:00") }));
+    const afterSaturday = (n: number) => {
+      const lines = outline(lookAheadDoc(ctx(sat(n), { isHq: true, q: q({ filter: { from: "2026-11-14", to: "2026-11-15" } }) }), { detailed: false }));
+      return lines[lines.indexOf("# No Activities for Sunday, November 15, 2026") - 1];
+    };
+    expect(afterSaturday(7)).toBe("---");
+    expect(afterSaturday(6)).toBe("HLTH-20065");
+  });
+});
+
+describe("a ministry's Issues span (ActivityHandler.ashx.cs:923-929)", () => {
+  it("counts BC wall-clock days, as legacy's (End - Start).Days: Mar 5 09:00 to Mar 10 09:00 across spring forward is five", () => {
+    const r = row(20070, { hqSection: "in_the_news", isConfirmed: false, startAt: new Date("2026-03-05T17:00:00Z").toISOString(), endAt: new Date("2026-03-10T16:00:00Z").toISOString() });
+    const doc = lookAheadDoc(ctx([r], { q: q({ filter: { from: "2026-03-05", to: "2026-03-10" } }) }), { detailed: false });
+    expect(outline(doc).slice(-3)).toEqual(["# ISSUES AND REPORTS", "HLTH-20070", "# Outside Government"]);
   });
 });
 
@@ -206,6 +247,7 @@ describe("what a Look Ahead row never prints", () => {
 
 describe("a Look Ahead row with no start date", () => {
   it("builds for every viewer and both reports, with or without an end; it shows its potential dates where it lands", () => {
+    // Legacy had none (0 of 83,607, survey 4.5) and saving requires both dates; an imported one must still not crash.
     // The list's date filter reads an activity with an end but no start (coalesce(start_at, end_at)).
     const undated = (id: number, over: Partial<ReportRow>) => row(id, { startAt: null, endAt: id % 2 ? at("2026-11-11", "10:00") : null, isConfirmed: false, potentialDates: "Sample spring", ...over });
     const rows = [
@@ -243,19 +285,26 @@ describe("the Look Ahead fields at the built document (spec addendum §6)", () =
   });
   afterAll(() => tdb.drop());
 
-  const docOf = async (who: Who, detailed: boolean) => {
+  const docOf = async (who: Who, detailed: boolean, showHqCommentsField = false) => {
+    const rules = { ...TEST_RULES, showHqCommentsField };
     const actor = (await loadCalendarActor(tdb.db, w.as[who].id))!;
-    const deps = { db: tdb.db, rules: TEST_RULES, subscribers: [], now: () => FIXED_NOW };
+    const deps = { db: tdb.db, rules, subscribers: [], now: () => FIXED_NOW };
     const d = await reportData(deps, actor, q({ filter: { from: "2046-03-10", to: "2046-03-12" } }));
     expect(d.rows).toHaveLength(5);
-    return lookAheadDoc({ rules: TEST_RULES, isHq: actor.isHq, now: d.now, today: "2026-11-03", origin: null, consultationsKeys: ["consult"], rows: d.rows, q: d.q }, { detailed });
+    return lookAheadDoc({ rules, isHq: actor.isHq, now: d.now, today: "2026-11-03", origin: null, consultationsKeys: ["consult"], rows: d.rows, q: d.q }, { detailed });
   };
   const flags = (doc: ReturnType<typeof lookAheadDoc>) => tables(doc.blocks).flatMap((t) => t.rows.flatMap((r) => r.flatMap((cell) => cell.runs))).filter((r) => r.color === COLOURS.flag).map((r) => r.text.trim());
 
-  for (const who of ["editor", "admin", "hqReadOnly"] as const) {
+  // Every role that doesn't see the Look Ahead fieldset on these Health activities; with ShowHqCommentsField on,
+  // a Health Editor and above does (spec addendum §6).
+  const HIDDEN: [Who, boolean][] = [
+    ["readOnly", false], ["editor", false], ["advanced", false], ["admin", false], ["hqReadOnly", false],
+    ["readOnly", true], ["hqReadOnly", true],
+  ];
+  for (const [who, show] of HIDDEN) {
     for (const detailed of [false, true]) {
-      it(`${who}, ${detailed ? "Exec Look Ahead" : "Look Ahead"}: no Executive Summary, no NEW or CHANGED, no other list field`, async () => {
-        const doc = await docOf(who, detailed);
+      it(`${who}${show ? " (ShowHqCommentsField on)" : ""}, ${detailed ? "Exec Look Ahead" : "Look Ahead"}: no Executive Summary, no NEW or CHANGED, no other list field`, async () => {
+        const doc = await docOf(who, detailed, show);
         expect(JSON.stringify(doc)).not.toContain("MARK-");
         expect(flags(doc)).toEqual([]);
         expect(cellTexts(doc).filter((t) => /\n(NEW|CHANGED)\b/.test(t))).toEqual([]);
@@ -263,10 +312,14 @@ describe("the Look Ahead fields at the built document (spec addendum §6)", () =
     }
   }
 
-  it("an HQ Administrator, who sees the fieldset: the same check finds the summary and both flags", async () => {
-    const doc = await docOf("hqAdmin", false);
-    expect(JSON.stringify(doc)).toContain("MARK-summary");
-    expect(flags(doc).sort()).toEqual(["CHANGED", "NEW", "NEW", "NEW", "NEW"]);
-    expect(JSON.stringify(doc)).not.toMatch(/MARK-(strategy|schedule|lead|translation)/);
-  });
+  const SEES: [Who, boolean][] = [["hqAdmin", false], ["editor", true], ["advanced", true], ["admin", true]];
+  for (const [who, show] of SEES) {
+    it(`${who}${show ? " (ShowHqCommentsField on)" : ""}, who sees the fieldset: the same checks find the summary and the flags, never the other fields`, async () => {
+      const doc = await docOf(who, false, show);
+      expect(JSON.stringify(doc)).toContain("MARK-summary");
+      // A ministry's Look Ahead places neither issues_and_reports row (the five-day rule), so two fewer flags.
+      expect(flags(doc).sort()).toEqual(who === "hqAdmin" ? ["CHANGED", "NEW", "NEW", "NEW", "NEW"] : ["CHANGED", "NEW", "NEW"]);
+      expect(JSON.stringify(doc)).not.toMatch(/MARK-(strategy|schedule|lead|translation)/);
+    });
+  }
 });

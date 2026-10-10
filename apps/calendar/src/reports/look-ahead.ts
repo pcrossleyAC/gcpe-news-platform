@@ -51,6 +51,16 @@ function isTimeTbd(row: ReportRow, timeZone: string): boolean {
   return s.date === e.date && s.time === "08:00" && e.time === "18:00";
 }
 
+/** Legacy's (End - Start).Days on BC wall-clock times: a daylight-saving change doesn't shorten the span. */
+function wallClockDays(start: Date, end: Date, timeZone: string): number {
+  const ms = (at: Date) => {
+    const w = wallClock(at, timeZone);
+    const [y, m, d] = w.date.split("-").map(Number) as [number, number, number];
+    return Date.UTC(y, m - 1, d) + w.secondsOfDay * 1000;
+  };
+  return Math.trunc((ms(end) - ms(start)) / 86_400_000);
+}
+
 interface LaRow {
   row: ReportRow;
   date: FriendlyDateParts;
@@ -79,7 +89,8 @@ function sectionRows(c: LookAheadContext, range: LookAheadRange, o: { table: Loo
     if (dayEnd && (!start || start >= dayEnd)) continue;
     if (elsewhere(row, c, range.outlookAfter) !== null) continue;
     if (row.isConfidential && row.hqSection === "not_on_la") continue;
-    const spanDays = start && end ? Math.floor((end.getTime() - start.getTime()) / 86_400_000) : 0;
+    const spanDays = start && end ? wallClockDays(start, end, tz) : 0;
+    // Legacy's NotForLookAhead also counted the "CONFIDENTIAL or EMBARGOED" category, inactive since 2015 (Metadata.cs:27-32).
     const forIssues = c.isHq ? row.hqSection === "issues_and_reports" : !row.isConfidential && !row.isConfirmed && spanDays >= 5;
     if (o.day === null) {
       if (!forIssues) continue;
@@ -164,9 +175,12 @@ function listTable(c: LookAheadContext, first: string, rows: LaRow[], dateFill: 
   };
 }
 
-/** Awareness Dates and the Long Term Outlook (ActivityHandler.ashx.cs:808-838): list order, no day split. */
-function laterTable(c: LookAheadContext, range: LookAheadRange, which: "awareness" | "outlook"): Block {
-  const rows = c.rows.filter((r) => elsewhere(r, c, range.outlookAfter) === which && (which === "awareness" || !c.isHq || r.longTermOutlook));
+/** Awareness Dates' or the Long Term Outlook's rows (ActivityHandler.ashx.cs:808-838): list order, no day split; HQ's Outlook only those marked for it. */
+function laterRows(c: LookAheadContext, range: LookAheadRange, which: "awareness" | "outlook"): ReportRow[] {
+  return c.rows.filter((r) => elsewhere(r, c, range.outlookAfter) === which && (which === "awareness" || !c.isHq || r.longTermOutlook));
+}
+
+function laterTable(c: LookAheadContext, rows: ReportRow[], which: "awareness" | "outlook"): Block {
   const outlook = which === "outlook";
   return {
     kind: "table",
@@ -209,7 +223,9 @@ export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean }): Rep
     { kind: "pageBreak" },
     heading("Inside Government", { size: 14, underline: true }),
   ];
-  // ActivityHandler.ashx.cs:707-731: HQ breaks after every day but Saturday, or once more than 16 rows build up; everyone, after the last day.
+  // ActivityHandler.ashx.cs:707-731: HQ breaks after every day but a Saturday; everyone, after the last day. Legacy adds the
+  // day's rows (plus 2 for its headings) and then tests the total plus them again against 16, counting the day twice: a
+  // Saturday breaks from 7 rows, (7 + 2) x 2 > 16, whatever came before it. Kept as legacy had it.
   let sinceBreak = 0;
   for (const day of days) {
     const rows = sectionRows(c, range, { table: "events", day, detailed: o.detailed });
@@ -222,14 +238,28 @@ export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean }): Rep
       blocks.push({ kind: "pageBreak" });
     }
   }
-  blocks.push(heading("ISSUES AND REPORTS", { colour: COLOURS.heading }), listTable(c, "Date", sectionRows(c, range, { table: "issues", day: null, detailed: o.detailed }), COLOURS.issuesDate, true));
-  blocks.push({ kind: "pageBreak" }, heading("Outside Government", { size: 14, underline: true }));
+  // LookAheadReport.rdlc: an empty subreport draws nothing, its heading and its page break included.
+  const issues = sectionRows(c, range, { table: "issues", day: null, detailed: o.detailed });
+  if (issues.length) {
+    blocks.push(heading("ISSUES AND REPORTS", { colour: COLOURS.heading }), listTable(c, "Date", issues, COLOURS.issuesDate, true));
+    // IssuesSubreport's PageBreakAtEnd is IsAppOwner.
+    if (c.isHq) blocks.push({ kind: "pageBreak" });
+  }
+  blocks.push(heading("Outside Government", { size: 14, underline: true }));
   for (const day of days) {
     const rows = sectionRows(c, range, { table: "news", day, detailed: o.detailed });
     if (rows.length) blocks.push(heading("In the News", { colour: COLOURS.heading, spaceBefore: 8 }), listTable(c, shortDay(day), rows, COLOURS.news, false));
   }
-  blocks.push({ kind: "pageBreak" }, heading("AWARENESS DATES", { colour: COLOURS.heading }), laterTable(c, range, "awareness"));
-  if (range.includeOutlook) blocks.push(heading("LONG TERM OUTLOOK", { colour: COLOURS.heading, spaceBefore: 12 }), laterTable(c, range, "outlook"));
+  const awareness = laterRows(c, range, "awareness");
+  const outlook = range.includeOutlook ? laterRows(c, range, "outlook") : [];
+  // RectangleAwarenessPageBreak breaks for HQ only; not when nothing follows it, which would end the PDF on a blank page.
+  if (c.isHq && (awareness.length || outlook.length)) blocks.push({ kind: "pageBreak" });
+  if (awareness.length) blocks.push(heading("AWARENESS DATES", { colour: COLOURS.heading }), laterTable(c, awareness, "awareness"));
+  if (outlook.length) {
+    // The Awareness subreport's PageBreakAtEnd is IncludeLTOutlook.
+    if (awareness.length) blocks.push({ kind: "pageBreak" });
+    blocks.push(heading("LONG TERM OUTLOOK", { colour: COLOURS.heading, spaceBefore: 12 }), laterTable(c, outlook, "outlook"));
+  }
   return {
     page: "letter-portrait",
     title: o.detailed ? "Exec Look Ahead" : "Look Ahead",
