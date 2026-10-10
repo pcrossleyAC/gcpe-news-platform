@@ -80,6 +80,7 @@ export async function runReport(
   const now = o.now ?? Date.now;
   const aborted = () => o.signal?.aborted ?? false;
   let job = await listApi.startReport(report, query);
+  if (aborted()) return;
   const giveUp = now() + REPORT_WAIT_MAX_MS;
   while (job.status === "running") {
     if (aborted()) return;
@@ -93,7 +94,11 @@ export async function runReport(
       if (e instanceof ApiError && e.status === 404) throw new Error("The report was lost while it was being prepared. Run it again.");
       throw e;
     }
+    if (aborted()) return;
   }
   if (job.status === "failed") throw new Error(job.error ?? "The report couldn't be prepared. Try again.");
+  // One last check right before the PDF fetch: a job that was ready on the very first response
+  // never enters the loop above, so this is the only guard between startReport and downloadFile.
+  if (aborted()) return;
   await downloadFile(listApi.reportPdfUrl(job.id), REPORT_FILE_NAMES[report], "Couldn't download the report.");
 }
