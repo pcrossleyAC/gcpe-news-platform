@@ -33,3 +33,34 @@ export async function pdfPages(bytes: Uint8Array): Promise<PdfPage[]> {
   }
   return pages;
 }
+
+const SECTIONS = ["inside government", "outside government", "events, speeches & releases", "issues and reports", "consultations and dialogues", "in the news", "awareness dates", "long term outlook", "30 / 60 / 90 report"];
+const DAY = /^(No Activities for )?((?:Sun|Mon|Tues|Wednes|Thurs|Fri|Satur)day, [A-Z][a-z]+ \d{1,2}, \d{4})$/;
+const MONTH = /^(?:January|February|March|April|May|June|July|August|September|October|November|December) \d{4}$/;
+/** An activity's link: ours (/hub/calendar/activities/123) or legacy's (Activity.aspx?ActivityId=123). */
+const ACTIVITY_LINK = /(?:\/hub\/calendar\/activities\/|[?&]ActivityId=)(\d+)$/;
+
+/**
+ * A report's structure in reading order, for golden tests and the 5i comparison with legacy's
+ * PDFs: "§ SECTION", "# day or month heading", "∅ day with no activities", and "id:123" for each
+ * row's activity link. The cover (the page with "Contents:") is skipped.
+ */
+export function outlineOf(pages: PdfPage[]): string[] {
+  const out: string[] = [];
+  for (const page of pages) {
+    if (page.lines.some((l) => l.text === "Contents:")) continue;
+    const tokens: { y: number; t: string }[] = [];
+    for (const l of page.lines) {
+      const day = DAY.exec(l.text);
+      if (SECTIONS.includes(l.text.toLowerCase())) tokens.push({ y: l.y, t: `§ ${l.text.toUpperCase()}` });
+      else if (day) tokens.push({ y: l.y, t: `${day[1] ? "∅" : "#"} ${day[2]}` });
+      else if (MONTH.test(l.text)) tokens.push({ y: l.y, t: `# ${l.text}` });
+    }
+    for (const link of page.links) {
+      const m = ACTIVITY_LINK.exec(link.url);
+      if (m) tokens.push({ y: link.y, t: `id:${m[1]}` });
+    }
+    out.push(...tokens.sort((a, b) => b.y - a.y).map((x) => x.t));
+  }
+  return out;
+}
