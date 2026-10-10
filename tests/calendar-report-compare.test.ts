@@ -1,5 +1,5 @@
 // The 5i comparison hook, on our own reports only: the past-period legacy PDFs never enter the repo.
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -39,5 +39,20 @@ describe("the report comparison hook for 5i (spec addendum §12.3)", () => {
     expect(insideRepo(resolve(import.meta.dirname, "..", "docs"))).toBe(true);
     expect(insideRepo(dir)).toBe(false);
     await expect(compareReports({ legacy: join(dir, "legacy.pdf"), ours: join(dir, "ours.pdf"), out: resolve(import.meta.dirname, "report-parity") })).rejects.toThrow("--out must be outside the repository");
+  });
+
+  it("refuses a symlink in a temp dir whose real target is inside the repository", async () => {
+    const target = resolve(import.meta.dirname, "..", ".tmp-report-compare-symlink-target");
+    rmSync(target, { recursive: true, force: true });
+    const link = join(dir, "evil-link-to-repo");
+    rmSync(link, { force: true });
+    symlinkSync(target, link, "dir");
+    try {
+      expect(insideRepo(link)).toBe(true);
+      await expect(compareReports({ legacy: join(dir, "legacy.pdf"), ours: join(dir, "ours.pdf"), out: link })).rejects.toThrow("--out must be outside the repository");
+    } finally {
+      rmSync(link, { force: true });
+      rmSync(target, { recursive: true, force: true });
+    }
   });
 });

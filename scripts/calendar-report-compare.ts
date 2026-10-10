@@ -10,12 +10,36 @@
 // The past-period PDFs the team supplies hold real activities: they and the output stay outside
 // this repository. The script refuses an --out inside it, and writes nothing but the two outlines
 // and their differences there. Exit code 1 when the outlines differ.
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { join, relative, resolve } from "node:path";
+import { lstatSync, mkdirSync, readFileSync, readlinkSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { outlineOf, pdfPages } from "../apps/calendar/test/pdf-text";
 
-const REPO = resolve(import.meta.dirname, "..");
+/**
+ * `path` with every symlink in it followed to its target, even past a point that doesn't exist
+ * yet: a component that is itself a symlink resolves to what it points at (a relative target
+ * resolved against the link's own directory), recursively; a component that doesn't exist at all
+ * is kept literally, with whatever is below it, so a not-yet-created `--out` still resolves
+ * through a symlinked parent (fs.realpathSync refuses a path whose target doesn't exist).
+ */
+function weakRealpath(path: string, seen: Set<string> = new Set()): string {
+  const abs = resolve(path);
+  const parent = dirname(abs);
+  if (parent === abs) return abs; // the filesystem root
+  let link: string | null = null;
+  try {
+    const st = lstatSync(abs);
+    if (st.isSymbolicLink()) link = readlinkSync(abs);
+  } catch {
+    return join(weakRealpath(parent, seen), basename(abs));
+  }
+  if (link === null) return join(weakRealpath(parent, seen), basename(abs));
+  if (seen.has(abs)) throw new Error(`a symlink cycle at ${abs}`);
+  seen.add(abs);
+  return weakRealpath(isAbsolute(link) ? link : resolve(dirname(abs), link), seen);
+}
+
+const REPO = weakRealpath(resolve(import.meta.dirname, ".."));
 
 /** The shortest edit from `a` to `b`, as lines: "  same", "- only in a", "+ only in b". */
 export function diffOutlines(a: string[], b: string[]): string[] {
@@ -36,9 +60,9 @@ export function diffOutlines(a: string[], b: string[]): string[] {
   return out;
 }
 
-/** True when `dir` is this repository or inside it. */
+/** True when `dir` is this repository or inside it, every symlink in `dir` followed first. */
 export function insideRepo(dir: string): boolean {
-  const rel = relative(REPO, resolve(dir));
+  const rel = relative(REPO, weakRealpath(dir));
   return rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"));
 }
 
