@@ -22,7 +22,7 @@ function sampleInput(overrides: Partial<SiteGroundEnvInput> = {}): SiteGroundEnv
     adminPasswordHash: "scrypt$16384$8$1$c2FsdA$a2V5",
     dbUser: "gcpe_app",
     dbPassword: "db-pass-with-@-and-&-chars",
-    dbNames: { core: "gcpe_core", nrms: "gcpe_nrms", newsApi: "gcpe_news_api", site: "gcpe_site", nod: "gcpe_nod", distribution: "gcpe_distribution" },
+    dbNames: { core: "gcpe_core", nrms: "gcpe_nrms", newsApi: "gcpe_news_api", site: "gcpe_site", nod: "gcpe_nod", distribution: "gcpe_distribution", calendar: "gcpe_calendar" },
     smtp: { host: "mail.example.invalid", port: 587, secure: false },
     mailFrom: "noreply@example.invalid",
     mailRedirectTo: ["ops@example.invalid"],
@@ -101,6 +101,13 @@ describe("buildEnvLines", () => {
   it("never sets PORT (SiteGround injects it)", () => {
     const map = parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n"));
     expect(map.has("PORT")).toBe(false);
+  });
+
+  it("writes CALENDAR_DATABASE_URL when a Calendar database is named, and leaves it out when blank", () => {
+    const withCalendar = buildEnvLines(sampleInput({ dbNames: { ...sampleInput().dbNames, calendar: "gcpe_calendar" } }), generateSecrets()).join("\n");
+    expect(withCalendar).toMatch(/^CALENDAR_DATABASE_URL=postgres:\/\/.*\/gcpe_calendar$/m);
+    const withoutCalendar = buildEnvLines(sampleInput({ dbNames: { ...sampleInput().dbNames, calendar: "" } }), generateSecrets()).join("\n");
+    expect(withoutCalendar).not.toMatch(/CALENDAR_DATABASE_URL/);
   });
 
   it("omits DIST_SMTP_USER/PASS when no SMTP user was given, includes them when one was", () => {

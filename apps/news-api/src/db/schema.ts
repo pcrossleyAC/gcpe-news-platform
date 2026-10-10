@@ -66,6 +66,9 @@ export const categories = pgTable(
     name: text("name"),
     sortOrder: integer("sort_order").notNull().default(0),
     isActive: boolean("is_active").notNull(),
+    // Q54: a ministry Core marks non-public (GCPE Headquarters, GCPE Media Relations) is stored
+    // but never listed or found. Sectors, themes and tags are always public.
+    isPublic: boolean("is_public").notNull().default(true),
     social: jsonb("social").$type<OrgRecord["social"]>().notNull(),
     ministry: jsonb("ministry").$type<MinistryDetails | null>(),
     timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),

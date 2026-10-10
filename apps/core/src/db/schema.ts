@@ -27,6 +27,8 @@ export const organizations = pgTable("organizations", {
   sectorKeys: text("sector_keys").array().notNull().default(sql`'{}'::text[]`),
   /** HQ organization (spec addendum §4, C124): its members see every ministry in the Calendar. */
   isHq: boolean("is_hq").notNull().default(false),
+  /** Listed on public surfaces (Q54). False for GCPE Headquarters and GCPE Media Relations. */
+  isPublic: boolean("is_public").notNull().default(true),
   legacyId: uuid("legacy_id"),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

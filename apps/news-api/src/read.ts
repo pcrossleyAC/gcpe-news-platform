@@ -20,10 +20,14 @@ export async function getFeatures(db: Db, kind: CategoryKind, key: string): Prom
 }
 
 export async function findCategoryKey(db: Db, kind: CategoryKind, key: string): Promise<string | null> {
+  const conds = [eq(categories.kind, kind), lowerEq(categories.key, key)];
+  // A non-public ministry (Q54) resolves the same as an unknown key: sectors, themes and tags
+  // are always public, so they carry no such filter.
+  if (kind === "ministries") conds.push(eq(categories.isPublic, true));
   const [row] = await db
     .select({ key: categories.key })
     .from(categories)
-    .where(and(eq(categories.kind, kind), lowerEq(categories.key, key)));
+    .where(and(...conds));
   return row?.key ?? null;
 }
 
@@ -33,7 +37,11 @@ function activeChildKey(key: string, all: CategoryRow[]): string | null {
 }
 
 async function allMinistries(db: Db): Promise<CategoryRow[]> {
-  return db.select().from(categories).where(eq(categories.kind, "ministries")).orderBy(asc(categories.sortOrder), asc(categories.key));
+  return db
+    .select()
+    .from(categories)
+    .where(and(eq(categories.kind, "ministries"), eq(categories.isPublic, true)))
+    .orderBy(asc(categories.sortOrder), asc(categories.key));
 }
 
 export async function listMinistries(db: Db, tz: string) {
@@ -50,7 +58,10 @@ export async function getMinistry(db: Db, key: string, tz: string) {
 }
 
 export async function getMinister(db: Db, key: string, tz: string) {
-  const [row] = await db.select().from(categories).where(and(eq(categories.kind, "ministries"), lowerEq(categories.key, key)));
+  const [row] = await db
+    .select()
+    .from(categories)
+    .where(and(eq(categories.kind, "ministries"), lowerEq(categories.key, key), eq(categories.isPublic, true)));
   return row ? toMinisterDto(row, tz) : null;
 }
 

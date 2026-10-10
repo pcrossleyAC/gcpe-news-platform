@@ -1,8 +1,8 @@
-// The BC seed and the legacy importer assert HQ only when they create an organization (C124,
-// Calendar spec addendum Q49). On an existing organization neither touches isHq in either
-// direction, so Core.Admin's choice survives any re-seed or re-import. These tests run the real
-// seed run() over HTTP against a real Core app and database, and the real importer against the
-// same database.
+// The BC seed and the legacy importer assert HQ and public only when they create an organization
+// (C124, Calendar spec addendum Q49; Q54). On an existing organization neither touches isHq or
+// isPublic in either direction, so Core.Admin's choice survives any re-seed or re-import. These
+// tests run the real seed run() over HTTP against a real Core app and database, and the real
+// importer against the same database.
 import type { AddressInfo } from "node:net";
 import type { Server } from "node:http";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -11,7 +11,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createFakeSource } from "@gcpe/legacy-import";
 import { createApp } from "../apps/core/src/app";
 import { importLegacyReference } from "../apps/core/src/import/run";
-import { getOrganization, setOrganizationHq } from "../apps/core/src/services/organizations";
+import { getOrganization, setOrganizationHq, setOrganizationPublic } from "../apps/core/src/services/organizations";
 import { createCoreTestDb } from "../apps/core/test/helpers";
 import type { PublicMinistry, PublicPost } from "../scripts/lib/public-taxonomy";
 import { run } from "../scripts/seed-core-from-public-api";
@@ -78,7 +78,13 @@ async function hqFlags(tdb: TestDatabase): Promise<Record<string, boolean | unde
   return out;
 }
 
-describe("HQ is asserted only when an organization is created", () => {
+async function publicFlags(tdb: TestDatabase): Promise<Record<string, boolean | undefined>> {
+  const out: Record<string, boolean | undefined> = {};
+  for (const key of [...HQ_KEYS, "aest"]) out[key] = (await getOrganization(tdb.db, key))?.isPublic;
+  return out;
+}
+
+describe("HQ and public are asserted only when an organization is created", () => {
   let token: string;
   let auth: Parameters<typeof createApp>[0]["auth"];
   const open: { tdb: TestDatabase; server: Server }[] = [];
@@ -118,6 +124,23 @@ describe("HQ is asserted only when an organization is created", () => {
     const { tdb } = await freshCore();
     await importLegacyReference(tdb.db, legacySource, []);
     expect(await hqFlags(tdb)).toEqual({ "gcpe-headquarters": true, "gcpe-media-relations": true, "office-of-the-premier": true, aest: false });
+  });
+
+  it("on a fresh database the importer creates GCPEHQ and GCPEMEDIA non-public, and PREM and every other ministry public", async () => {
+    const { tdb } = await freshCore();
+    await importLegacyReference(tdb.db, legacySource, []);
+    expect(await publicFlags(tdb)).toEqual({ "gcpe-headquarters": false, "gcpe-media-relations": false, "office-of-the-premier": true, aest: true });
+  });
+
+  it("neither a re-import nor its own default changes a public flag Core.Admin set, in either direction", async () => {
+    const { tdb } = await freshCore();
+    await importLegacyReference(tdb.db, legacySource, []);
+    // Core.Admin makes an ordinary ministry non-public and a normally-non-public HQ organization public.
+    await setOrganizationPublic(tdb.db, "aest", false, []);
+    await setOrganizationPublic(tdb.db, "gcpe-headquarters", true, []);
+    await importLegacyReference(tdb.db, legacySource, []);
+    expect((await getOrganization(tdb.db, "aest"))!.isPublic).toBe(false);
+    expect((await getOrganization(tdb.db, "gcpe-headquarters"))!.isPublic).toBe(true);
   });
 
   it("after Core.Admin un-flags PREM, a re-seed and a re-import both leave it off", async () => {

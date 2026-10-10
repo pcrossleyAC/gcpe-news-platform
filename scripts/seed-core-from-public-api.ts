@@ -27,8 +27,8 @@ import {
   fetchSectors,
   fetchTags,
   fetchThemes,
+  flagsOnlyOnCreate,
   HQ_SEED_ORGANIZATIONS,
-  hqOnlyOnCreate,
   KNOWN_ABBREVIATIONS,
   sleep,
   toOrgInput,
@@ -110,17 +110,18 @@ async function putAndTrack(target: TargetOptions, summary: KindSummary, path: st
 }
 
 /**
- * PUTs an organization. A body that asserts HQ is sent with its flag only when Core has no such
- * organization yet; for an existing one the flag is dropped, so a re-seed never changes isHq
- * (C124). A lookup that fails with anything but 404 counts as a failure and nothing is written.
+ * PUTs an organization. A body that asserts HQ or public is sent with its flags only when Core
+ * has no such organization yet; for an existing one both flags are dropped, so a re-seed never
+ * changes isHq or isPublic (C124, Q54). A lookup that fails with anything but 404 counts as a
+ * failure and nothing is written.
  */
 async function putOrganization(target: TargetOptions, summary: KindSummary, input: OrgInput): Promise<void> {
   const path = `/core/api/organizations/${encodeURIComponent(input.key)}`;
   let body = input;
-  if (input.isHq !== undefined) {
+  if (input.isHq !== undefined || input.isPublic !== undefined) {
     const status = await getStatus(target.targetBaseUrl, path, target.token, target.fetchImpl);
     if (status !== 404 && (status < 200 || status >= 300)) return recordFailure(summary, input.key, status);
-    body = hqOnlyOnCreate(input, status !== 404);
+    body = flagsOnlyOnCreate(input, status !== 404);
   }
   await putAndTrack(target, summary, path, input.key, body);
 }

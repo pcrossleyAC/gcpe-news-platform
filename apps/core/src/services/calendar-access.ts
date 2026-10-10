@@ -5,7 +5,7 @@ import { CALENDAR_ROLES, checkCalendarGrant, type CalendarGrantRefusal } from "@
 import type { SubscriberConfig } from "@gcpe/events";
 import { organizations, roleGrants, userOrganizations, users } from "../db/schema";
 import { lockAggregate, userAggregateId } from "./aggregate";
-import { emitUserUpserted, getUser, listUsers, UserNotFoundError, type UserView } from "./users";
+import { emitUserUpserted, getUser, linkUser, listUsers, updateUser, UserNotFoundError, type UserGuard, type UserView } from "./users";
 
 /**
  * The whole of a user's Calendar access: one role (or none) and the full set of ministries,
@@ -32,6 +32,21 @@ export const REFUSAL_MESSAGES: Record<CalendarGrantRefusal, string> = {
   "hq-organization": "only an HQ Administrator, a System Administrator or a Core admin can add an HQ ministry",
   "hq-target": "only an HQ Administrator, a System Administrator or a Core admin can change the Calendar access of someone with an HQ ministry",
 };
+
+export type CalendarOnlyRefusal = "other-roles" | "no-calendar-role";
+
+export const CALENDAR_ONLY_MESSAGES: Record<CalendarOnlyRefusal, string> = {
+  "other-roles": "only a Core admin can change a user who also has NRMS or NoD roles",
+  "no-calendar-role": "only a Core admin can change a user who has no Calendar role",
+};
+
+/** Q55: a Calendar Administrator may change the account only of a user whose only access is a Calendar role. */
+export class CalendarOnlyError extends Error {
+  override name = "CalendarOnlyError";
+  constructor(readonly reason: CalendarOnlyRefusal) {
+    super(reason);
+  }
+}
 
 export class CalendarGrantRefusedError extends Error {
   constructor(readonly reason: CalendarGrantRefusal) {
@@ -76,6 +91,57 @@ async function actorIsHq(tx: Tx, actorId: string): Promise<boolean> {
   return rows.length > 0;
 }
 
+/**
+ * Whether the user holds an HQ ministry. Their memberships change only under their aggregate lock,
+ * which the caller holds; every held organization is read FOR SHARE, so a concurrent HQ change
+ * of any of them waits for us, or we see what it committed.
+ */
+async function targetHoldsHq(tx: Tx, userId: string): Promise<boolean> {
+  const heldIds = (await tx.select({ id: userOrganizations.organizationId }).from(userOrganizations).where(eq(userOrganizations.userId, userId))).map((r) => r.id);
+  if (heldIds.length === 0) return false;
+  const orgs = await tx.select({ isHq: organizations.isHq }).from(organizations).where(inArray(organizations.id, heldIds)).for("share");
+  return orgs.some((o) => o.isHq);
+}
+
+/**
+ * Who may deactivate, reactivate or link a user from the Calendar (spec addendum §8.5, Q55): a
+ * Core.Admin always; anyone else only on a user with a Calendar role and no other role, and only
+ * where they could change that user's Calendar access with the role left as it is (C125, C159, C160).
+ */
+function calendarAdminGuard(actor: CalendarActor): UserGuard {
+  return async (tx, id) => {
+    if (actor.roles.includes("Core.Admin")) return;
+    const current = (await getUser(tx, id))!;
+    // Anyone else may not activate, deactivate or link a user with no Calendar role, active or not.
+    // The NRMS importer creates users inactive and role-less on purpose, and only a Core admin may
+    // bring them in; setCalendarAccess refuses anyone else a grant to an inactive user with no
+    // Calendar role, so granting first and then activating or linking can't get around this.
+    if (current.calendarRole === null) throw new CalendarOnlyError("no-calendar-role");
+    if (current.roles.length > 0) throw new CalendarOnlyError("other-roles");
+    const refusal = checkCalendarGrant({
+      actorId: actor.id,
+      actorRoles: actor.roles,
+      actorIsHq: await actorIsHq(tx, actor.id),
+      targetId: id,
+      targetRole: current.calendarRole,
+      nextRole: current.calendarRole,
+      addsHqOrganization: false,
+      targetHasHqAfter: await targetHoldsHq(tx, id),
+    });
+    if (refusal) throw new CalendarGrantRefusedError(refusal);
+  };
+}
+
+/** Deactivates or reactivates a user from the Calendar's user screen, under calendarAdminGuard. */
+export async function setCalendarUserActive(db: Db, actor: CalendarActor, id: string, isActive: boolean, subscribers: SubscriberConfig[]): Promise<CalendarAccessView> {
+  return toView(await updateUser(db, id, { isActive }, subscribers, { guard: calendarAdminGuard(actor) }));
+}
+
+/** Sets the email of a user who has none, and activates them, under calendarAdminGuard. */
+export async function linkCalendarUser(db: Db, actor: CalendarActor, id: string, email: string, subscribers: SubscriberConfig[]): Promise<CalendarAccessView> {
+  return toView(await linkUser(db, id, email, subscribers, { guard: calendarAdminGuard(actor) }));
+}
+
 export async function listCalendarAccess(db: Db): Promise<CalendarAccessView[]> {
   return (await listUsers(db)).map(toView);
 }
@@ -98,6 +164,9 @@ export async function setCalendarAccess(db: Db, actor: CalendarActor, requestedI
     // From here on, the id is the stored one, never the request's spelling of it.
     const id = row.id;
     const current = (await getUser(tx, id))!;
+    // An inactive user with no Calendar role (the NRMS importer's shape) is a Core admin's to bring
+    // in: a grant here followed by activate or link would otherwise get around calendarAdminGuard.
+    if (!actor.roles.includes("Core.Admin") && !current.isActive && current.calendarRole === null) throw new CalendarOnlyError("no-calendar-role");
 
     const heldIds = (await tx.select({ id: userOrganizations.organizationId }).from(userOrganizations).where(eq(userOrganizations.userId, id))).map((r) => r.id);
     const which = [...(heldIds.length ? [inArray(organizations.id, heldIds)] : []), ...(keys.length ? [inArray(organizations.key, keys)] : [])];

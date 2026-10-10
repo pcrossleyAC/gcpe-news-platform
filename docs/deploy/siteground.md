@@ -35,12 +35,17 @@ but the artifact has nothing for it to build.
 
 ### 2. Databases
 
-In Site Tools → Databases, create **six PostgreSQL databases and one database user** with
-access to all six (the user can't create its own databases, so this is a one-time manual
+In Site Tools → Databases, create **seven PostgreSQL databases and one database user** with
+access to all seven (the user can't create its own databases, so this is a one-time manual
 step, not something any script here can do). Suggested names (matching
 `scripts/siteground-env.ts`'s defaults): `gcpe_core`, `gcpe_nrms`, `gcpe_news_api`,
-`gcpe_site`, `gcpe_nod`, `gcpe_distribution`. Host is always `localhost` — the public
-PostgreSQL hostname is rejected by `pg_hba.conf`.
+`gcpe_site`, `gcpe_nod`, `gcpe_distribution`, `gcpe_calendar`. Host is always `localhost` — the
+public PostgreSQL hostname is rejected by `pg_hba.conf`.
+
+**The Calendar's database can be added later: the stack runs without it until
+`CALENDAR_DATABASE_URL` is set.** Until then it starts and runs normally without the Calendar,
+and `/calendar` answers `503 {"error": "calendar not configured"}`. See "Corporate Calendar (Phase 5b)"
+below for exactly what to do in Site Tools when you're ready to turn it on.
 
 ### 3. Mailbox / SMTP
 
@@ -79,6 +84,11 @@ Environment Variables.
 **Do not set `PORT`** — SiteGround injects it. **Do not set `TENANT_CONFIG`** — the artifact
 carries its own `config/tenants/bc.json` next to `stack.js` and `stack.js` finds it
 automatically (see "How MIGRATIONS_FOLDER and TENANT_CONFIG resolve" below).
+
+`npm run siteground:env` leaves `CALENDAR_DATABASE_URL` out of the generated block when you
+answer the Calendar database name prompt blank (the non-interactive `SITEGROUND_DB_NAME_CALENDAR`
+likewise defaults to blank) — that's correct for boxs.ca today, since `gcpe_calendar` doesn't
+exist yet. Re-run it (or add the one line by hand) once "Corporate Calendar (Phase 5b)" below is done.
 
 **Never set any `*_DATABASE_URL` to a `self:/...` value.** Every other `*_URL` var in this
 stack may use the `self:/path` shorthand (resolved at startup to
@@ -816,6 +826,80 @@ then flip the Operations switch.
   - GCPE Headquarters is not offered to them, and a user who holds an HQ ministry has no Edit button
     (the server would refuse both).
 
+## Corporate Calendar (Phase 5b)
+
+The Calendar is mounted at `/calendar` only when `CALENDAR_DATABASE_URL` is set
+(`apps/stack/src/env.ts`'s `calendarConfigured`). **Until that database exists on boxs.ca, the
+stack runs with the Calendar switched off.** Every other app starts and runs normally,
+`/calendar/*` answers `503 {"error": "calendar not configured"}`, `GET /stack/health` has no
+`calendar` key at all, and `node stack.js --check` reports
+`{"ok": true, "skipped": "CALENDAR_DATABASE_URL is not set"}` for it rather than failing the
+check. This is expected and not a bug.
+
+**To turn it on (one time, in Site Tools):**
+
+1. **Databases → create one more PostgreSQL database**, named `gcpe_calendar`, granted to the
+   same database user the other six databases already use (no new user, no new password).
+2. **Devs → Node.js → your project → Environment Variables → add one line:**
+   ```
+   CALENDAR_DATABASE_URL=postgres://<the same db user>:<the same db password>@localhost:5432/gcpe_calendar
+   ```
+   (The same `postgres://user:pass@localhost:5432/<name>` shape as the other six — never a
+   `self:/...` value; see "Never set any `*_DATABASE_URL` to a `self:/...` value" above.) If you
+   still have the inputs `npm run siteground:env` was run with, re-running it with the Calendar's
+   database name filled in regenerates this line for you alongside everything else — safe to
+   paste just that one new line into the existing environment variables instead of replacing
+   them all. No other setting is needed: the stack derives the Calendar's event secrets from
+   `STACK_EVENT_SECRET`.
+3. **Restart the Node app** (Site Tools → Devs → Node.js → your project → Restart). The very
+   next request (or the next scheduled `/stack/tick`) runs the migrations (see "Per-deploy
+   steps" above for how `--check` and a real deploy apply them) and starts mounting the Calendar.
+   The migrations are Core `0003_org_public` (one column), News API `0002_category_public` (one
+   column) and Calendar `0000_init` (new database), all additive.
+4. **Confirm:** `GET https://boxs.ca/calendar/health/ready` answers `200`, and
+   `GET https://boxs.ca/stack/health`'s `apps.calendar` is `true`.
+5. **Reference data:** the stack sees an empty `orgs` table and asks Core to republish once
+   (the same mechanism as NoD's first-tick backfill above), so the Calendar's copies of Core's
+   organizations, sectors, themes, tags and users aren't empty on an already-running deployment.
+   After the next tick, `SELECT count(*) FROM orgs` and `SELECT count(*) FROM users` in
+   `gcpe_calendar` are non-zero.
+
+No code change and no redeploy of the artifact itself is needed for this — `CALENDAR_DATABASE_URL`
+is the only thing gating it, and it's read fresh from Site Tools' own environment variables on
+every process start.
+
+**After the deploy:**
+
+- **Q54 on boxs.ca:** on Hub → Organizations, untick "listed publicly" for GCPE Headquarters and
+  GCPE Media Relations (they existed before the flag). Then
+  `curl -s https://boxs.ca/api/Ministries | grep -c gcpe-` prints `0`, and the test subscribe
+  page no longer offers them.
+- **Break-glass:** has no Calendar access, by design. The Calendar has no local-admin route and
+  refuses bearer tokens; staff reach it through the Core session.
+- **Hand checks (5b exit, lookup half):** as a user with Calendar.Administrator and a ministry:
+  Hub → Calendar → Lookups; HQ tags: add, rename, deactivate a "Sample keyword …"; Categories
+  shows read-only. As a Calendar.SysAdmin: add and deactivate a "Sample category …". Remove the
+  Administrator's role on Hub → Calendar access, wait one tick, click in the Calendar: "You don't
+  have Calendar access".
+
+### Calendar users (Phase 5b-2)
+
+No migration. Re-run `scripts/siteground-seed-users.sh https://boxs.ca` (interactive, Paul) to add
+the five Calendar test users (cal-admin, cal-sysadmin, cal-hq-admin, cal-editor, cal-readonly).
+Re-running the seed resets the cal-* users' Calendar role, ministries and active flag; their
+contact details and comm-contact ranks are untouched.
+
+**Hand checks:**
+
+- As cal-admin: Hub → Calendar → Users lists "Test Calendar Editor (HLTH)"; open it, save a phone
+  number, set rank PAO for Health.
+- Deactivate a fresh Calendar-only user, then reactivate them.
+- Tick "Show users without Calendar access": "Test Editor" (an NRMS user with no Calendar role)
+  appears only then. Open them and try to deactivate: refused with "only a Core admin can change a
+  user who has no Calendar role".
+- As cal-hq-admin: open an HQ user and change their rank (allowed); as cal-admin, deactivating
+  cal-hq-admin is refused (HQ user).
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
@@ -893,3 +977,4 @@ then flip the Operations switch.
   (`apps/public-site/src/rebuild.ts`) serialises rebuilds with an in-process promise chain, not a
   cross-process lock — correct for SiteGround's one Node.js process, but it would race if the
   public site were ever run as more than one process against the same `OUTPUT_DIR`.
+- **The Calendar is optional until its database exists (`/calendar` 503).**

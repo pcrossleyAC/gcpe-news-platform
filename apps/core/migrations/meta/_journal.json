@@ -22,6 +22,13 @@
       "when": 1791431033664,
       "tag": "0002_calendar_access",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1791472663466,
+      "tag": "0003_org_public",
+      "breakpoints": true
     }
   ]
 }

@@ -7,6 +7,7 @@ import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
 import { canReadWebsite } from "../screens/website/access";
 import { canReadSubscribers } from "../screens/subscribers/access";
 import { canManageCalendarAccess } from "../screens/admin/calendar-access/calendar-roles";
+import { hasCalendarRole } from "../screens/calendar/access";
 
 interface NavItem {
   to: string;
@@ -23,14 +24,16 @@ const hasAnyReadRole = (s: SessionValue) => s.has("NRMS.Viewer") || s.has("NRMS.
  * itself (and each manage-only sub-screen) still restricts the other six sections to
  * NRMS.SiteEditor/Core.Admin; Users, Media list names and the error log are Core.Admin only.
  * Subscribers is visible to any NoD role (canReadSubscribers) — an NRMS-only user never sees
- * it, and vice versa. Calendar access is visible to Core.Admin, Calendar.Administrator and
- * Calendar.SysAdmin; Organizations to Core.Admin.
+ * it, and vice versa. Calendar is visible to any Calendar role (hasCalendarRole). Calendar
+ * access is visible to Core.Admin, Calendar.Administrator and Calendar.SysAdmin; Organizations
+ * to Core.Admin.
  */
 const NAV_ITEMS: NavItem[] = [
   { to: "/releases", label: "Releases", show: hasAnyReadRole },
   { to: "/search", label: "Search", show: hasAnyReadRole },
   { to: "/website", label: "Website", show: canReadWebsite },
   { to: "/subscribers", label: "Subscribers", show: canReadSubscribers },
+  { to: "/calendar", label: "Calendar", show: hasCalendarRole },
   { to: "/users", label: "Users", show: (s) => s.has("Core.Admin") },
   { to: "/calendar-access", label: "Calendar access", show: canManageCalendarAccess },
   { to: "/organizations", label: "Organizations", show: (s) => s.has("Core.Admin") },

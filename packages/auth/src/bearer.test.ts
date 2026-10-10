@@ -46,6 +46,12 @@ describe("requireBearer / requireRole", () => {
     expect(res.body).toMatchObject({ subject: "user-1", roles: ["Core.Admin"] });
   });
 
+  it("a bearer token can't pass for a session: its claims always say via bearer", async () => {
+    const res = await request(app).get("/read").set("authorization", `Bearer ${await token({ via: "session", roles: ["Core.Admin"] })}`);
+    expect(res.status).toBe(200);
+    expect(res.body.claims.via).toBe("bearer");
+  });
+
   it("403 when the role is missing", async () => {
     const res = await request(app).get("/admin").set("authorization", `Bearer ${await token({ roles: ["Core.Read"] })}`);
     expect(res.status).toBe(403);

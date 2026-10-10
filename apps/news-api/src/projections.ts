@@ -189,6 +189,7 @@ export async function applyOrg(tx: Tx, org: OrgRecord): Promise<void> {
     name: org.displayName,
     sortOrder: org.sortOrder,
     isActive: org.isActive,
+    isPublic: org.isPublic,
     social: org.social,
     ministry: {
       parentKey: org.parentKey,
@@ -400,6 +401,9 @@ export const SOURCE_EVENT_TYPES: Record<string, (type: string) => boolean> = {
   nrms: (type) => type.startsWith("release.") || type === "site.content.changed" || type.startsWith("media_list."),
   "news-api": (type) => type === "site.rebuild_requested",
   distribution: (type) => type.startsWith("delivery."),
+  // The Calendar emits activity.*; the News API has no handler for it (same reasoning as
+  // distribution/delivery.bounced above), but still must own it for the coverage test below.
+  calendar: (type) => type.startsWith("activity."),
 };
 
 /** The receiver's handler lookup: `createProjectionHandlers()`, restricted by event.source. */

@@ -17,8 +17,9 @@ import type { ParsedMail } from "mailparser";
 import { hashPassword } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 
-import { createCoreTestDb } from "../../apps/core/test/helpers";
+import { createCoreTestDb, healthOrg } from "../../apps/core/test/helpers";
 import { seedTestUsers } from "../../apps/core/src/services/seed-test-users";
+import { upsertOrganization } from "../../apps/core/src/services/organizations";
 import { createNrmsTestDb, seedTaxonomy } from "../../apps/nrms/test/helpers";
 import { pageTypes } from "../../apps/nrms/src/db/schema";
 import { LANG_EN } from "@gcpe/nrms-contract";
@@ -26,6 +27,7 @@ import { createNewsTestDb } from "../../apps/news-api/test/helpers";
 import { createPublicSiteTestDb } from "../../apps/public-site/test/helpers";
 import { createNodTestDb } from "../../apps/nod/test/helpers";
 import { createDistributionTestDb } from "../../apps/distribution/test/helpers";
+import { createCalendarTestDb } from "../../apps/calendar/test/helpers";
 import { startSmtpSink } from "../../apps/distribution/test/smtp-sink";
 import { startStack } from "../../apps/stack/src/stack";
 import { runBuild } from "../../scripts/build-staff-web.mjs";
@@ -66,18 +68,24 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const staffWebDir = join(repoRoot, "apps/staff-web/dist");
 
   console.log("[e2e global-setup] creating test databases…");
-  const [core, nrms, newsApi, publicSite, nod, distribution] = await Promise.all([
+  const [core, nrms, newsApi, publicSite, nod, distribution, calendar] = await Promise.all([
     createCoreTestDb(),
     createNrmsTestDb(),
     createNewsTestDb(),
     createPublicSiteTestDb(),
     createNodTestDb(),
     createDistributionTestDb(),
+    createCalendarTestDb(),
   ]);
-  const dbs: Record<string, TestDatabase> = { core, nrms, newsApi, publicSite, nod, distribution };
+  const dbs: Record<string, TestDatabase> = { core, nrms, newsApi, publicSite, nod, distribution, calendar };
 
   console.log("[e2e global-setup] seeding NRMS taxonomy and staff test users…");
   await seedTaxonomy(nrms.db);
+  // The Calendar test users name these organizations; Core's republish (the stack's backfill on
+  // an empty Calendar) carries them and the users' grants to the Calendar on the first tick.
+  await upsertOrganization(core.db, healthOrg, []);
+  await upsertOrganization(core.db, { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "FIN", sectorKeys: [] }, []);
+  await upsertOrganization(core.db, { ...healthOrg, key: "gcpe-headquarters", displayName: "GCPE Headquarters", abbreviation: "GCPEHQ", sectorKeys: [], isHq: true, isPublic: false }, []);
   await seedTestUsers(core.db, TEST_USER_PASSWORDS);
 
   // NewReleaseScreen's "Page title" is a <select> populated from GET /page-types — there's no
@@ -159,6 +167,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     LOCAL_AUTH_SECRET,
     STACK_EVENT_SECRET,
     STAFF_WEB_DIR: staffWebDir,
+    CALENDAR_DATABASE_URL: calendar.url,
 
     CORE_DATABASE_URL: core.url,
     NRMS_DATABASE_URL: nrms.url,
@@ -211,6 +220,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   // `distDb()`/`nodDb()` open their own connections to these same test databases to do both.
   process.env.E2E_NOD_DATABASE_URL = nod.url;
   process.env.E2E_DIST_DATABASE_URL = distribution.url;
+  process.env.E2E_CALENDAR_DATABASE_URL = calendar.url;
   console.log(`[e2e global-setup] stack ready at ${baseUrl}`);
 
   return async function globalTeardown(): Promise<void> {

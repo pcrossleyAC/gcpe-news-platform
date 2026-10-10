@@ -1,8 +1,10 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb, createTestApp, envelope, sendEvent } from "../test/helpers";
+import { mediaOptOuts, subscriptions } from "./db/schema";
 import { activeListKeys, needsReferenceData, publicListItems } from "./lists";
+import { addSubscriber } from "./subscribers";
 
 describe("lists from Core events", () => {
   let tdb: TestDatabase;
@@ -99,5 +101,35 @@ describe("lists from Core events", () => {
     expect((await sendEvent(app, updated)).status).toBe(200);
     const afterReactivate = await tdb.db.execute<{ active: boolean }>(sql`SELECT active FROM lists WHERE list_key = 'media-distribution-lists:transport'`);
     expect(afterReactivate.rows[0]!.active).toBe(true);
+  });
+
+  it("a non-public organization's list is inactive: not offered, not subscribable (Q54)", async () => {
+    const hidden = org("gcpe-headquarters", "GCPE Headquarters");
+    const premier = org("office-of-the-premier", "Office of the Premier");
+    expect((await sendEvent(app, { ...hidden, data: { ...(hidden.data as object), isHq: true, isPublic: false } })).status).toBe(200);
+    expect((await sendEvent(app, { ...premier, data: { ...(premier.data as object), isHq: true, isPublic: true } })).status).toBe(200);
+    const offered = (await publicListItems(tdb.db, "ministries")).map((i) => i.key);
+    expect(offered).toContain("office-of-the-premier");
+    expect(offered).not.toContain("gcpe-headquarters");
+    expect(await activeListKeys(tdb.db, ["ministries:gcpe-headquarters"])).toEqual([]);
+  });
+
+  it("no subscriber's membership or opt-out changes when the org goes non-public, then public again (Q54)", async () => {
+    const sendOrgPublic = (key: string, displayName: string, isPublic: boolean) => {
+      const e = org(key, displayName);
+      return sendEvent(app, { ...e, data: { ...(e.data as object), isPublic } });
+    };
+    expect((await sendOrgPublic("finance", "Finance", true)).status).toBe(200);
+    const { id: subscriberId } = await addSubscriber(tdb.db, { email: "kept@example.test", lists: ["ministries:finance"] });
+    const membershipBefore = await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId));
+    const optOutsBefore = await tdb.db.select().from(mediaOptOuts);
+
+    expect((await sendOrgPublic("finance", "Finance", false)).status).toBe(200);
+    expect(await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId))).toEqual(membershipBefore);
+    expect(await tdb.db.select().from(mediaOptOuts)).toEqual(optOutsBefore);
+
+    expect((await sendOrgPublic("finance", "Finance", true)).status).toBe(200);
+    expect(await tdb.db.select().from(subscriptions).where(eq(subscriptions.subscriberId, subscriberId))).toEqual(membershipBefore);
+    expect(await tdb.db.select().from(mediaOptOuts)).toEqual(optOutsBefore);
   });
 });

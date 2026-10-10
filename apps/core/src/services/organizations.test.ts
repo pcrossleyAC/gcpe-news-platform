@@ -1,9 +1,19 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { outboxEvents, type SubscriberConfig } from "@gcpe/events";
+import { outboxEvents, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
-import { HQ_ABBREVIATIONS, deactivateOrganization, getOrganization, isHqAbbreviation, listOrganizations, setOrganizationHq, upsertOrganization } from "./organizations";
+import {
+  HQ_ABBREVIATIONS,
+  deactivateOrganization,
+  getOrganization,
+  isHqAbbreviation,
+  isNonPublicAbbreviation,
+  listOrganizations,
+  setOrganizationHq,
+  setOrganizationPublic,
+  upsertOrganization,
+} from "./organizations";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://x/events", secret: "s", types: ["*"] }];
 
@@ -146,5 +156,45 @@ describe("organizations service", () => {
     expect(isHqAbbreviation("HLTH")).toBe(false);
     expect(isHqAbbreviation("PREMX")).toBe(false);
     expect(isHqAbbreviation(null)).toBe(false);
+  });
+
+  describe("isPublic (Q54)", () => {
+    it("a new organization is public unless told otherwise; isPublicOnCreate applies only on create", async () => {
+      const created = await upsertOrganization(tdb.db, { ...healthOrg, key: "pub-a" }, []);
+      expect(created.record.isPublic).toBe(true);
+      const gcpe = await upsertOrganization(tdb.db, { ...healthOrg, key: "pub-b", abbreviation: "GCPEHQ" }, [], { isPublicOnCreate: false });
+      expect(gcpe.record.isPublic).toBe(false);
+      // An existing organization keeps its flag whatever isPublicOnCreate says.
+      await setOrganizationPublic(tdb.db, "pub-b", true, []);
+      const again = await upsertOrganization(tdb.db, { ...healthOrg, key: "pub-b", abbreviation: "GCPEHQ", displayName: "Renamed" }, [], { isPublicOnCreate: false });
+      expect(again.record.isPublic).toBe(true);
+    });
+
+    it("an upsert that omits isPublic keeps the stored flag; one that sends it sets it", async () => {
+      await upsertOrganization(tdb.db, { ...healthOrg, key: "pub-c" }, []);
+      await setOrganizationPublic(tdb.db, "pub-c", false, []);
+      expect((await upsertOrganization(tdb.db, { ...healthOrg, key: "pub-c", displayName: "Renamed" }, [])).record.isPublic).toBe(false);
+      expect((await upsertOrganization(tdb.db, { ...healthOrg, key: "pub-c", isPublic: true }, [])).record.isPublic).toBe(true);
+    });
+
+    it("setOrganizationPublic emits org.upserted only on a change, and 404s an unknown key", async () => {
+      await upsertOrganization(tdb.db, { ...healthOrg, key: "pub-d" }, []);
+      const subs: SubscriberConfig[] = [{ name: "x", url: "http://x/events", secret: "s", types: ["org.upserted"] }];
+      const before = (await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:pub-d"))).length;
+      expect((await setOrganizationPublic(tdb.db, "pub-d", true, subs))!.isPublic).toBe(true);
+      expect((await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:pub-d"))).length).toBe(before);
+      expect((await setOrganizationPublic(tdb.db, "pub-d", false, subs))!.isPublic).toBe(false);
+      const after = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:pub-d"));
+      expect(after.length).toBe(before + 1);
+      expect((after.at(-1)!.envelope as { data: OrgRecord }).data.isPublic).toBe(false);
+      expect(await setOrganizationPublic(tdb.db, "no-such-org", false, subs)).toBeNull();
+    });
+
+    it("isNonPublicAbbreviation matches GCPEHQ and GCPEMEDIA, trimmed and case-insensitive, and not PREM", () => {
+      expect(isNonPublicAbbreviation(" gcpehq ")).toBe(true);
+      expect(isNonPublicAbbreviation("GCPEMEDIA")).toBe(true);
+      expect(isNonPublicAbbreviation("PREM")).toBe(false);
+      expect(isNonPublicAbbreviation(null)).toBe(false);
+    });
   });
 });

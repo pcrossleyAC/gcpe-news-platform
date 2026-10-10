@@ -212,3 +212,46 @@ describe("deterministic ordering", () => {
     }
   });
 });
+
+// Q54: a non-public ministry's post index is treated exactly like an unknown key (404) — but
+// the release itself, and the other indexes it belongs to, are unaffected.
+describe("non-public ministry indexes (Q54)", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  const keys = (body: { key: string }[]) => body.map((p) => p.key);
+
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+    app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS });
+    const org = (key: string, isPublic: boolean) => ({
+      key, displayName: key, abbreviation: null, sortOrder: 0, isActive: true, parentKey: null, url: null, displayAdditionalName: null,
+      minister: { name: null, summary: null, detailsHtml: null, email: null, photoUrl: null, address: null }, contact: null, secondContact: null,
+      weekendContactNumber: null, social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null }, topicLinks: [], serviceLinks: [],
+      sectorKeys: [], isHq: true, isPublic, updatedAt: "2026-10-01T00:00:00Z",
+    });
+    await sendEvent(app, envelope("core", "org.upserted", "org:health", org("health", true)));
+    await sendEvent(app, envelope("core", "org.upserted", "org:gcpe-headquarters", org("gcpe-headquarters", false)));
+    await sendEvent(
+      app,
+      envelope("nrms", "release.published", "release:HQ1", rel("HQ1", "2026-10-01T10:00:00-07:00", { ministryKeys: ["health", "gcpe-headquarters"] })),
+    );
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  it("Latest and Keys 404 for a non-public ministry, exactly like an unknown key", async () => {
+    const latest = await request(app).get(`/api/Posts/Latest/ministries/gcpe-headquarters?${V}`);
+    expect(latest.status).toBe(404);
+    expect(latest.body).toMatchObject({ title: "Not Found", status: 404 });
+    const listing = await request(app).get(`/api/Posts/Keys/ministries/gcpe-headquarters?${V}`);
+    expect(listing.status).toBe(404);
+    expect(listing.body).toMatchObject({ title: "Not Found", status: 404 });
+  });
+
+  it("the release stays visible by its own key and through the public ministry it also belongs to", async () => {
+    expect((await request(app).get(`/api/Posts/HQ1?${V}`)).body.key).toBe("HQ1");
+    expect(keys((await request(app).get(`/api/Posts/Latest/ministries/health?${V}`)).body)).toContain("HQ1");
+    expect(keys((await request(app).get(`/api/Posts/Keys/ministries/health?${V}`)).body)).toContain("HQ1");
+  });
+});

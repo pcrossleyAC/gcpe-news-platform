@@ -88,6 +88,11 @@ describe("mapMinistry", () => {
     const related = { topics: [], services: [], sectorKeys: [] };
     for (const Abbreviation of ["GCPEHQ", "GCPEMEDIA", "PREM", "HLTH"]) expect("isHq" in mapMinistry({ ...mediaRelations, Abbreviation }, related)).toBe(false);
   });
+
+  it("never carries isPublic, even for a non-public ministry: the importer asserts public only when it creates the organization (Q54)", () => {
+    const related = { topics: [], services: [], sectorKeys: [] };
+    for (const Abbreviation of ["GCPEHQ", "GCPEMEDIA", "PREM", "HLTH"]) expect("isPublic" in mapMinistry({ ...mediaRelations, Abbreviation }, related)).toBe(false);
+  });
 });
 
 describe("mapTerm", () => {

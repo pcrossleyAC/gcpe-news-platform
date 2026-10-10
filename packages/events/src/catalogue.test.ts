@@ -19,6 +19,7 @@ const org: OrgRecord = {
   serviceLinks: [],
   sectorKeys: ["health"],
   isHq: false,
+  isPublic: true,
   updatedAt: "2026-10-02T16:46:05.527-07:00",
 };
 
@@ -64,6 +65,16 @@ describe("parseEvent", () => {
     const { isHq: _h, ...older } = org;
     expect(parseEvent(envelope("org.upserted", older)).data).toMatchObject({ isHq: false });
     expect(() => parseEvent(envelope("org.upserted", { ...org, isHq: "yes" }))).toThrow();
+  });
+
+  it("an org.upserted without isPublic parses as public, so a replayed old envelope never hides an organization", () => {
+    const { isPublic: _p, ...old } = org;
+    const parsed = parseEvent(envelope("org.upserted", old)).data as OrgRecord;
+    expect(parsed.isPublic).toBe(true);
+  });
+
+  it("an org.upserted carries isPublic false through", () => {
+    expect((parseEvent(envelope("org.upserted", { ...org, isPublic: false })).data as OrgRecord).isPublic).toBe(false);
   });
 });
 

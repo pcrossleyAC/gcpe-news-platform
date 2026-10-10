@@ -7,8 +7,9 @@ import { messagesOf } from "../messages";
 import type { OrgOption } from "../calendar-access/CalendarAccessScreen";
 
 /**
- * `/hub/organizations`: Core.Admin's HQ switch (spec addendum §4, C124). Organizations
- * themselves are edited by the seed and the importer; this screen only sets `isHq`.
+ * `/hub/organizations`: Core.Admin's HQ and public switches (spec addendum §4, C124; Q54).
+ * Organizations themselves are edited by the seed and the importer; this screen only sets
+ * `isHq` and `isPublic`, each through its own dedicated route.
  */
 export function OrganizationsScreen(): React.JSX.Element {
   const session = useSession();
@@ -46,13 +47,13 @@ export function OrganizationsScreen(): React.JSX.Element {
     );
   }
 
-  const setHq = async (o: OrgOption, isHq: boolean) => {
+  const setFlag = async (o: OrgOption, flag: "hq" | "public", value: boolean) => {
     setBusy(true);
     setMessages([]);
     setStatus(null);
     try {
-      await apiFetch(`/core/api/organizations/${encodeURIComponent(o.key)}/hq`, { method: "PUT", body: { isHq } });
-      setStatus(`${o.displayName} is ${isHq ? "now" : "no longer"} an HQ organization.`);
+      await apiFetch(`/core/api/organizations/${encodeURIComponent(o.key)}/${flag}`, { method: "PUT", body: flag === "hq" ? { isHq: value } : { isPublic: value } });
+      setStatus(flag === "hq" ? `${o.displayName} is ${value ? "now" : "no longer"} an HQ organization.` : `${o.displayName} is ${value ? "now" : "no longer"} listed publicly.`);
       reload();
     } catch (caught) {
       setMessages(messagesOf(caught));
@@ -65,6 +66,7 @@ export function OrganizationsScreen(): React.JSX.Element {
     <div className="gcpe-organizations">
       <h1>Organizations</h1>
       <p>Members of an HQ organization see every ministry in the Corporate Calendar and get its HQ-only fields and actions.</p>
+      <p>Organizations that aren&rsquo;t public are left out of the public ministry list and the subscribe page.</p>
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       {messages.map((m) => (
         <p role="alert" key={m}>
@@ -75,13 +77,14 @@ export function OrganizationsScreen(): React.JSX.Element {
       {orgs === null && !loadError && <p>Loading…</p>}
       {orgs && (
         <table>
-          <caption>Organizations and their HQ flag</caption>
+          <caption>Organizations, their HQ flag and whether they&rsquo;re public</caption>
           <thead>
             <tr>
               <th scope="col">Name</th>
               <th scope="col">Abbreviation</th>
               <th scope="col">Active</th>
               <th scope="col">HQ</th>
+              <th scope="col">Public</th>
             </tr>
           </thead>
           <tbody>
@@ -91,7 +94,16 @@ export function OrganizationsScreen(): React.JSX.Element {
                 <td>{o.abbreviation ?? ""}</td>
                 <td>{o.isActive ? "Yes" : "No"}</td>
                 <td>
-                  <input type="checkbox" aria-label={`${o.displayName} is an HQ organization`} checked={o.isHq} disabled={busy} onChange={(e) => void setHq(o, e.target.checked)} />
+                  <input type="checkbox" aria-label={`${o.displayName} is an HQ organization`} checked={o.isHq} disabled={busy} onChange={(e) => void setFlag(o, "hq", e.target.checked)} />
+                </td>
+                <td>
+                  <input
+                    type="checkbox"
+                    aria-label={`${o.displayName} is listed publicly`}
+                    checked={o.isPublic}
+                    disabled={busy}
+                    onChange={(e) => void setFlag(o, "public", e.target.checked)}
+                  />
                 </td>
               </tr>
             ))}

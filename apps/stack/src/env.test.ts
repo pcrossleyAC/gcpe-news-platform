@@ -275,6 +275,12 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
         secret: expect.any(String),
         types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
       },
+      {
+        name: "calendar",
+        url: "self:/calendar/events",
+        secret: expect.any(String),
+        types: ["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+      },
     ]);
     expect(nrms.map((s: { name: string; types: string[] }) => [s.name, s.types])).toEqual([
       ["news-api", ["*"]],
@@ -374,15 +380,18 @@ describe("Core → NRMS taxonomy route", () => {
   });
 });
 
-// Core's user.upserted carries staff emails; it must never reach a public-facing app, and 5a
-// has no Calendar subscriber yet to carry it. Every other Core subscriber route already names
-// its types explicitly (checked above) — only the News API route used to say "*".
+// Core's user.upserted carries staff emails; it must never reach a public-facing app. The
+// Calendar is the one subscriber that needs it (spec addendum §4, §5.2) — every other Core
+// subscriber route already names its types explicitly (checked above) — only the News API
+// route used to say "*".
 describe("Core's subscribers never receive user.upserted", () => {
-  it("subscribersFor(\"user.upserted\", ...) is empty for every one of Core's subscribers", () => {
+  it("subscribersFor(\"user.upserted\", ...) is empty for every one of Core's subscribers except the Calendar", () => {
     const wiring = internalEventEnv("e".repeat(40));
     const coreSubs = JSON.parse(wiring.CORE.EVENT_SUBSCRIBERS!) as SubscriberConfig[];
     expect(coreSubs.length).toBeGreaterThan(0);
-    expect(subscribersFor("user.upserted", coreSubs)).toEqual([]);
+    const nonCalendar = coreSubs.filter((s) => s.name !== "calendar");
+    expect(nonCalendar.length).toBeGreaterThan(0);
+    expect(subscribersFor("user.upserted", nonCalendar)).toEqual([]);
   });
 
   it("the News API still receives every org/reference event type it actually handles", () => {
@@ -558,5 +567,31 @@ describe("fake emergency feed", () => {
   });
   it("an explicitly allowed test deployment in production mode still gets the fake", () => {
     expect(usesFakeEmergencyFeed({ NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
+  });
+});
+
+describe("Calendar routing", () => {
+  const SECRET = "x".repeat(40);
+  const coreSubscribers = (env: NodeJS.ProcessEnv) => JSON.parse(envFor({ ...env, STACK_EVENT_SECRET: SECRET }, "CORE").EVENT_SUBSCRIBERS!) as { name: string; types: string[] }[];
+
+  it("routes Core's user, organization and term events to the Calendar, by explicit type, when the Calendar is configured", () => {
+    const calendar = coreSubscribers({ CALENDAR_DATABASE_URL: "postgres://x/cal" }).find((s) => s.name === "calendar");
+    expect(calendar?.types.sort()).toEqual(
+      ["org.deactivated", "org.upserted", "sector.deactivated", "sector.upserted", "tag.deactivated", "tag.upserted", "theme.deactivated", "theme.upserted", "user.upserted"],
+    );
+    expect(envFor({ CALENDAR_DATABASE_URL: "postgres://x/cal", STACK_EVENT_SECRET: SECRET }, "CALENDAR").EVENT_SECRETS).toBeDefined();
+  });
+
+  it("no Calendar route when the Calendar isn't configured", () => {
+    expect(coreSubscribers({}).some((s) => s.name === "calendar")).toBe(false);
+  });
+
+  it("still never routes user.* to the News API", () => {
+    const newsApi = coreSubscribers({ CALENDAR_DATABASE_URL: "postgres://x/cal" }).find((s) => s.name === "news-api");
+    expect(newsApi?.types.some((t) => t.startsWith("user."))).toBe(false);
+  });
+
+  it("strips the CALENDAR_ prefix", () => {
+    expect(envFor({ CALENDAR_DATABASE_URL: "postgres://x/cal" }, "CALENDAR").DATABASE_URL).toBe("postgres://x/cal");
   });
 });

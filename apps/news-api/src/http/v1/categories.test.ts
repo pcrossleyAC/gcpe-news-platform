@@ -11,7 +11,7 @@ const base: Omit<OrgRecord, "key" | "displayName" | "parentKey" | "isActive" | "
   abbreviation: null, url: null, displayAdditionalName: null,
   minister: { name: "Hon. X", summary: "Hon. X", detailsHtml: "", email: "", photoUrl: null, address: null },
   contact: null, secondContact: null, weekendContactNumber: "", social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null },
-  topicLinks: [], serviceLinks: [], sectorKeys: [], isHq: false, updatedAt: "2026-10-02T16:46:05.527-07:00",
+  topicLinks: [], serviceLinks: [], sectorKeys: [], isHq: false, isPublic: true, updatedAt: "2026-10-02T16:46:05.527-07:00",
 };
 const org = (key: string, sortOrder: number, parentKey: string | null, isActive = true): OrgRecord => ({ ...base, key, displayName: key, sortOrder, parentKey, isActive });
 

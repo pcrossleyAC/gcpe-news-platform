@@ -359,3 +359,66 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
   every save and shows its refusal in the form.
 - **Administrator** — If a save names a ministry that doesn't exist or has been deactivated, the error
   lists which of the ministries you chose it refused.
+
+## Phase 5b — Calendar mounted in the stack
+
+- **Operations** — The Calendar is live at `/calendar` only once its own database exists and
+  `CALENDAR_DATABASE_URL` is set; until then the stack runs normally without it and `/calendar`
+  answers 503. See `docs/deploy/siteground.md`'s "Corporate Calendar (Phase 5b)" for the exact Site
+  Tools steps to turn it on later.
+- **Developer** — Core now routes `user.upserted` and the organization/sector/theme/tag
+  upserted/deactivated events to the Calendar (and only to the Calendar — no other subscriber
+  receives `user.*`). The Calendar refuses a bearer token on every route, so staff always reach
+  it through their `gcpe_session` cookie.
+
+## Phase 5b-1 — Calendar app, lookups, public organizations
+
+- **Administrator** — Hub → Calendar → Lookups lists every Calendar lookup. Administrators change event
+  planners, HQ initiatives, HQ tags and Digital; the other seven (categories, cities, comm materials,
+  government representatives, NR distributions, NR origins, Premier requested) need a System
+  Administrator and are read-only for everyone else.
+- **Administrator** — Lookup rows are never deleted. Untick Active to stop offering a row; it stays on
+  old activities. Two active rows in one lookup can't share a name.
+- **Administrator** — Calendar access changes reach the Calendar within a minute (one background
+  tick). A person whose role was removed sees "You don't have Calendar access" on their next click,
+  without signing out.
+- **Administrator** — Core admins choose on Hub → Organizations whether an organization is listed
+  publicly. GCPE Headquarters and GCPE Media Relations are not; the Office of the Premier is HQ and public.
+- **Operations** — The break-glass admin and service tokens have no Calendar access: the Calendar knows
+  only users Core has sent it. Sign in as a real user with a Calendar role to use it.
+- **Operations** — The Calendar needs its own database. Until `CALENDAR_DATABASE_URL` is set the stack
+  runs without it, `/calendar` answers 503, and `node stack.js --check` prints
+  `"calendar": {"ok": true, "skipped": …}`. Phase 7's cutover checklist must confirm it is set.
+- **Developer** — The Calendar names ministries, sectors, themes and tags by Core key, not id. Its
+  projections (`orgs`, `terms`, `users`) have no foreign keys pointing at them.
+- **Developer** — The Calendar stores Core keys byte for byte and never case-folds them (spec §5.2).
+  Legacy ministry keys are uppercase GUIDs and Core matches keys exactly, so `HEALTH` and `health`
+  are two organizations, each with its own HQ flag. Only user ids, which are UUIDs, are lowercased.
+- **Operations** — The Calendar has no local-admin sign-in route, so the stack's shared login limiter
+  no longer lists `/calendar/auth/local/token`. Staff reach the Calendar only through the Core
+  session; a bearer token is refused.
+
+## Phase 5b-2 — Calendar users, test users, report spike
+
+- **Administrator** — Hub → Calendar → Users lists each user once per ministry, as "Name (Abbreviation) (rank)".
+  Switches add inactive users (including those imported without an email) and users without Calendar access.
+- **Administrator** — On a user's page: contact details (phone is free text up to 20 characters; mobile
+  is either empty or legacy's 12-digit-and-hyphen format, like 250-555-0100), the comm-contact rank for
+  each of their ministries, their Calendar role and ministries, and their account. Role, ministries and
+  account changes reach the Calendar within a minute.
+- **Administrator** — A Calendar Administrator can deactivate, reactivate or link only people whose only
+  access is a Calendar role. Anyone with no Calendar role, or who also uses NRMS or NoD, is a Core
+  admin's to change.
+- **Administrator** — A Calendar Administrator can give a Calendar role to an active person who has
+  none, but not to an inactive one: only a Core admin brings in an inactive person with no Calendar
+  role (most are NRMS imports). The Calendar access and user screens say so instead of offering Edit.
+- **Administrator** — Set a comm-contact rank only after the person's ministry is saved; if the Calendar
+  says the ministry isn't theirs yet, wait a minute and try again.
+- **Operations** — `scripts/siteground-seed-users.sh` now also seeds five Calendar test users
+  (cal-admin, cal-sysadmin, cal-hq-admin, cal-editor, cal-readonly @example.test) and gives them Calendar
+  access; run it after the public-API seed so their organizations exist. Re-running it resets the
+  cal-* users' Calendar role, ministries and active flag; their contact details and comm-contact
+  ranks are untouched. A Calendar user whose organization is missing or inactive is skipped and
+  reported.
+- **Developer** — The report-rendering spike's code is on `spike/5b-report-rendering`, never merged; its
+  findings are in `docs/superpowers/plans/2026-10-08-phase-5b-report-rendering-spike.md`.

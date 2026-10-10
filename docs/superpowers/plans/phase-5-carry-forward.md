@@ -2,20 +2,49 @@
 
 Items one sub-plan leaves for a later one. Delete an item when the plan that takes it is written.
 
-## 5b
+## 5c
 
-- **Calendar subscriber.** Add the Calendar app to Core's `EVENT_SUBSCRIBERS` for `user.upserted`, `org.*`, `sector.*`, `theme.*` and `tag.*` (`apps/stack/src/env.ts`). Then run Core's republish once so the projections fill.
-- **User projection.** `user.upserted` carries `organizationKeys`. HQ is "any organization in the user's keys with `isHq` in the org projection". A user missing from the projection has no Calendar access.
-- **Calendar users screen (§8.5).** Role and ministries go through `PUT /core/api/calendar-access/:id` (built in 5a). Active and Link for Calendar Administrators need new Core routes, under Q55's rule: Calendar-only users only, unless the caller is Core.Admin.
-- **Calendar test users.** Add Calendar test users to `TEST_USERS`, `scripts/siteground-seed-users.sh` and `tests/e2e/constants.ts`, with ministries. `seedTestUsers` will need the organizations to exist first.
-- **Break-glass.** The break-glass admin has no users row, so it has no Calendar access in the Calendar app. That is by design; say so in the runbook.
-- **Hide the GCPE organizations from public lists (Q54, answered by Paul 2026-10-07).** Hide GCPE Headquarters and GCPE Media Relations from the News API's ministry list and the public site's subscribe page. The Office of the Premier is HQ but stays public, so this can't key off `isHq`. Add a Core organization flag (for example `isPublic`, default true) carried on `org.upserted`. The News API's ministry projection (`apps/news-api/src/read.ts`, `projections.ts`) and NoD's ministry lists (`apps/nod/src/lists.ts`, which feed the subscribe page) then treat a non-public organization as unlisted. The BC seed and the legacy importer set it false for GCPEHQ and GCPEMEDIA only when they create the organization, and never change it on an existing one (the same rule as `isHq`, C124). It lands here because 5b reworks the org contract for the Calendar's projection anyway. It must be in place before Phase 7.
-- **The Calendar app must re-check the grant from Core on every request.** A session cookie can last up to an hour (`SESSION_TTL_SECONDS`), so a revoked or changed Calendar grant must not wait that long to take effect: each Calendar request re-derives the caller's role and ministries from Core's projection, the same way Core's own apps re-derive roles per request today.
-- **Q56: a deactivated HQ organisation still counts as HQ for granting.** Any change to whether a deactivated HQ organisation makes its holders HQ must be made in Core's Calendar grant checks (`checkCalendarGrant`'s `actorIsHq`/`targetHasHqAfter` inputs) and the Calendar's HQ(u) together, or the two will disagree about who is HQ.
-- **Organisations screens must never send `isHq` in the general org PUT.** Any future screen that edits organisations (beyond the existing Organizations screen, which already follows this) sets `isHq` only through `PUT /core/api/organizations/:key/hq`, never as a field on the general `PUT /core/api/organizations/:key` body — that route's `isHq` is optional so the seed and the importer can leave an existing flag alone (they set it only on create, C124), not as a general write path for a screen to use.
-- **Entra/OIDC matching must never match on a null email.** When Entra/OIDC sign-in is built, matching an incoming identity to a Core user by email must treat `email IS NULL` as "no match", never as a wildcard — a user imported without an email (spec addendum §4, "Users without email") must stay unmatched until an admin links a real address.
+- **Dead-letter page.** The Calendar's outbox has a dispatcher but no screen for dead deliveries; build it when the Calendar first emits `activity.*` (spec addendum §5.1).
+- **Lock-expiry sweep** on the stack tick (spec addendum §5.1, §7.5), with the `activity_locks` table that 5b-1 created.
+- **Tenant `calendar` config section** (spec addendum §5.1): freeze window and zone, release category ids 12 and 58, City "Other…" 311, comm material 61, category names, consultations ministry, contact-ministry exclusions, `SharedWithExcludes`, Translations default list, required-field switches, `ShowHqCommentsField`, `ShowRecordsSection`, cover image, banner text.
+- **Transfer** (spec addendum §7.1, §8.5): the API and the screen, with the users screen 5b-2 built.
+- **Deactivation preview** (spec addendum §8.5, `User.aspx:183-223`): list a user's open activities before deactivating, filtered by `visible()`. Legacy listed every activity with that user as an active comm contact, past ones included; "open" here means not deleted and ending today or later.
+- **A cloned activity's history must record its source id** — for example an `activity_change_fields` row `cloned_from` — so the clone's history can be traced back to the activity it came from.
+- **`needs_review` writers must de-duplicate keys.** A write that adds to the `needs_review` set must not insert the same field key twice; the schema's check constraint (§5.2) only bounds the set to the 23 known keys, it doesn't dedupe.
+
+## 5e
+
+- **`CALENDAR_STORAGE_DIR`** for attachments, outside the deploy folder (spec addendum §5.1, §8.4).
 
 ## 5g
 
+- **Report rendering:** build on the spike's recommendation (`docs/superpowers/plans/2026-10-08-phase-5b-report-rendering-spike.md`); its "Risks and what wasn't checked" list is 5g's to close. Wait for Q57's answer before planning 5g: the spike's boxs.ca SSH and runtime legs couldn't run (the gcpe-siteground SSH key isn't authorised), so whether Chromium runs on SiteGround's Node hosting is still unverified; re-run those two legs once the key is authorised, before committing 5g's rendering seam to Chromium as the default.
 - **Look Ahead: don't build "Consultations and Dialogues".** That section hasn't been used in years (Paul, 2026-10-07). 5g does **not** build it. Record it in `docs/parity/changes-from-legacy.md` as dropped: "dropped: unused for years, Paul 2026-10-07". Update the spec's "all 7 sections" (R6, §10.2) and the cover legend to match. Check whether the §7 category rule "contact ministry is the consultations ministry → Consultations and Dialogues" still matters without the section.
 - **Legacy report fixes** (from `docs/parity/legacy-report-layouts.md`'s discrepancies): drop the doubled "updated updated" wording in the Executive Look Ahead's "Last updated" line; drop the raw, unparsed `**CONFIDENTIAL**` markdown marker from a row's title. "Consultations and Dialogues" is dropped entirely, per the item above.
+
+## 5h and later
+
+- **The News API must never gain an `activity.*` handler.** Confidential Calendar content must stay inside the Calendar (C127); only the id-only confidential form of `activity.*` and `release.status_changed` cross that boundary (spec addendum §5.4).
+- **If service tokens with Calendar roles ever exist, Core's `actorIsHq` should apply only to session callers.** `actorIsHq` (`apps/core/src/services/calendar-access.ts`) today only ever sees a session actor; before a service token could carry a Calendar role, re-check that it still reads HQ membership only for a session caller, not for a bearer/service subject.
+- **The NRMS → News API event route is `"*"`** (`apps/stack/src/env.ts`, the `NRMS`→`NEWSAPI` entry). Before NRMS emits `release.status_changed`, make that route list its types explicitly, or at least exclude `release.status_changed`, so the event goes only to the Calendar. The Calendar's `projectionHandler` (`apps/calendar/src/projections.ts`) also accepts only `core` today: it must accept the `nrms` source for `release.status_changed`.
+- **Re-check NRMS "email me a copy" if service tokens ever carry NRMS roles.** `POST /nrms/api/releases/:id/email-copy` (`apps/nrms/src/http/routes.ts`) sends to the bearer's `email` claim. A service token with an NRMS role could then send a release to whatever address its claims name.
+
+## 5i
+
+- **Sequences:** re-base every legacy-id identity (`activities`, every lookup, `comm_contacts`, `saved_filters`, `activity_files`) above the imported maximum (spec addendum §12.1).
+- **Lookup names:** legacy allows a NULL `Name`; the Calendar's `name` is NOT NULL, so map NULL to `""`.
+- **Keys, not ids:** legacy ministry GUIDs map to Core organization keys (`contact_ministry_key`, `ministry_key`, `activity_shared_with.ministry_key`), and sectors, themes and tags to term keys.
+- **`comm_contacts` is unique on (user, ministry).** Merge the contacts of duplicate-email legacy users onto one, and remap `activities.comm_contact_id` to the surviving contact.
+- **Legacy join tables:** keep only `IsActive` rows, and de-duplicate them (a legacy join table can hold more than one active row for the same pair).
+- **Null legacy timestamps and status:** map a null legacy `CreatedDateTime`, `LastUpdatedDateTime` and `StatusId` to a value — none of the three is nullable here.
+- **Null `Log.CreatedBy`:** give it a fallback actor name rather than importing a null actor.
+- **`SortOrder`** maps to `rank`.
+- **Empty mobile values:** a blank legacy mobile number imports as an empty string. `user_profiles.mobile`'s CHECK allows that (empty, or 12 characters of digits and hyphens), so don't map it to null or reject it.
+
+## Entra sign-in (later phase)
+
+- **Entra/OIDC matching must never match on a null email.** When Entra/OIDC sign-in is built, matching an incoming identity to a Core user by email must treat `email IS NULL` as "no match", never as a wildcard — a user imported without an email (spec addendum §4, "Users without email") must stay unmatched until an admin links a real address.
+
+## Staff-web follow-up
+
+- **Add `/hub/calendar` to the e2e axe sweep.** `tests/e2e/axe-sweep.spec.ts` (the stack-wide sweep) has no entry for the Calendar's landing screen or its lookup screens. The Calendar's target-size CSS is already done.
