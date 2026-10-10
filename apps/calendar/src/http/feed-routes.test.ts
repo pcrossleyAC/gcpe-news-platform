@@ -6,7 +6,7 @@ import { mintLocalToken } from "@gcpe/auth";
 import type { FeedPage } from "@gcpe/calendar-contract";
 import { activities, activitySharedWith } from "../db/schema";
 import { createApp } from "../app";
-import { createCalendarTestDb, createTestApp, EVENT_SECRETS, SESSION_SECRET, TEST_RULES } from "../../test/helpers";
+import { createCalendarTestDb, createTestApp, EVENT_SECRETS, projectUser, SESSION_SECRET, sessionCookie, TEST_RULES } from "../../test/helpers";
 import { addEntry, bcAt, FEED_IDS, feedKeyOf, seedFeed } from "../../test/feed-world";
 import { call, insertRaw, seedWorld, type Who, type World } from "../../test/world";
 
@@ -24,10 +24,14 @@ const EXPECTED: Record<Who, string[]> = {
   hqReadOnly: HQ_READ, hqEditor: HQ_EDIT, hqAdvanced: HQ_ADVANCED, hqAdmin: HQ_ADMIN,
 };
 
+const EXTRA_ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+
 describe("the updates feed (spec addendum §9.1)", () => {
   let tdb: TestDatabase;
   let w: World;
   let app: ReturnType<typeof createTestApp>;
+  let sysAdminCookie: string;
+  let noRoleCookie: string;
   const feed = (who: Who, query: string, on = app) => call(on, "get", `/api/updates?${query}`, w.as[who].cookie);
   const labels = async (who: Who, query: string, on = app) => {
     const res = await feed(who, query, on);
@@ -40,6 +44,10 @@ describe("the updates feed (spec addendum §9.1)", () => {
     app = createTestApp(tdb.db);
     w = await seedWorld(app, tdb.db);
     await seedFeed(tdb.db);
+    await projectUser(app, { id: EXTRA_ID(410), email: "sysadmin@example.test", displayName: "Sample SysAdmin", isActive: true, calendarRole: "Calendar.SysAdmin", organizationKeys: ["gcpe-hq"] });
+    await projectUser(app, { id: EXTRA_ID(411), email: "norole@example.test", displayName: "Sample No Role", isActive: true, calendarRole: null, organizationKeys: ["health"] });
+    sysAdminCookie = await sessionCookie(EXTRA_ID(410));
+    noRoleCookie = await sessionCookie(EXTRA_ID(411));
   });
   afterAll(() => tdb.drop());
 
@@ -47,6 +55,16 @@ describe("the updates feed (spec addendum §9.1)", () => {
     for (const who of Object.keys(EXPECTED) as Who[]) {
       expect(await labels(who, "mode=range&from=2026-11-01&to=2026-11-03"), who).toEqual(EXPECTED[who]);
     }
+  });
+
+  it("a Calendar SysAdmin is treated as an HQ Administrator, and a user with no Calendar role is refused", async () => {
+    const query = "mode=range&from=2026-11-01&to=2026-11-03";
+    const sysAdmin = await call(app, "get", `/api/updates?${query}`, sysAdminCookie);
+    expect(sysAdmin.status).toBe(200);
+    expect((sysAdmin.body as FeedPage).items.map((i) => `${feedKeyOf(i.activityId)} ${i.action}`)).toEqual(EXPECTED.hqAdmin);
+    const noRole = await call(app, "get", `/api/updates?${query}`, noRoleCookie);
+    expect(noRole.status).toBe(403);
+    expect(noRole.body).toEqual({ error: "no Calendar access" });
   });
 
   it("Latest 5 updates: the five newest the user can see", async () => {

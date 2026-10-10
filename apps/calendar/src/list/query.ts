@@ -25,8 +25,13 @@ export interface ListScope {
   consultationsKeys: string[];
 }
 
+/** Today's BC date (YYYY-MM-DD) by the database's clock. */
+export async function todayOf(db: DbOrTx, deps: ApiDeps): Promise<string> {
+  return wallClock(await dbNow(db, deps.now), deps.rules.timeZone).date;
+}
+
 export async function scopeOf(db: DbOrTx, deps: ApiDeps, actor: CalendarActor): Promise<ListScope> {
-  const today = wallClock(await dbNow(db, deps.now), deps.rules.timeZone).date;
+  const today = await todayOf(db, deps);
   const consult = await db.select({ key: orgs.key }).from(orgs).where(eq(orgs.abbreviation, deps.rules.consultationsMinistryAbbreviation));
   return { actor, rules: deps.rules, today, consultationsKeys: consult.map((o) => o.key) };
 }

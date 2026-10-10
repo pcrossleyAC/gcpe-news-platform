@@ -7,7 +7,7 @@ import { ActivityNotFoundError } from "./activities/errors";
 import { inReadSnapshot } from "./activities/store";
 import { activities, activityChangeFields, activityChanges, orgs } from "./db/schema";
 import type { ApiDeps } from "./http/routes";
-import { containsPattern, executiveSummaryShown, ID_SEARCH_FLOOR, idSearchOf, scopeOf, type ListScope } from "./list/query";
+import { containsPattern, executiveSummaryShown, ID_SEARCH_FLOOR, idSearchOf, todayOf, type ListScope } from "./list/query";
 import { addDays, bcMidnight } from "./time";
 import { visibleSql } from "./visibility";
 
@@ -71,7 +71,8 @@ function viewWhere(scope: ListScope, q: FeedQuery, activityId: number | null): S
  */
 export function readFeed(deps: ApiDeps, actor: CalendarActor, q: FeedQuery): Promise<FeedPage> {
   return inReadSnapshot(deps.db, async (tx) => {
-    const scope = await scopeOf(tx, deps, actor);
+    // The feed never reads consultationsKeys, so it skips scopeOf's consultations lookup.
+    const scope: ListScope = { actor, rules: deps.rules, today: await todayOf(tx, deps), consultationsKeys: [] };
     const activityId = q.mode === "activity" ? q.activity : q.mode === "range" && q.keyword ? feedActivityIdOf(q.keyword) : null;
     if (activityId !== null) {
       // One activity's updates are a read of that activity: not visible is not found (spec addendum §6).
