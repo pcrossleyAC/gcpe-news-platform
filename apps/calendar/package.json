@@ -9,6 +9,7 @@
     "build": "node ../../scripts/build-app.mjs apps/calendar"
   },
   "dependencies": {
+    "@bcgov/bc-sans": "2.1.2",
     "@gcpe/auth": "0.0.0",
     "@gcpe/calendar-contract": "0.0.0",
     "@gcpe/config": "0.0.0",
@@ -18,14 +19,17 @@
     "@gcpe/storage": "0.0.0",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
+    "pdfmake": "0.3.11",
     "pg": "^8.16.3",
     "zod": "^3.25.76"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
+    "@types/pdfmake": "0.3.3",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
     "drizzle-kit": "^0.31.9",
-    "supertest": "^7.1.0"
+    "supertest": "^7.1.0",
+    "unpdf": "1.8.1"
   }
 }
