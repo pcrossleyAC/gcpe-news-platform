@@ -1,21 +1,24 @@
 import { useState } from "react";
-import type { ListRow } from "@gcpe/calendar-contract";
 import { listApi } from "./api";
-import { minId } from "./cells";
 
-/** The watchlist star (Activity.aspx.cs:1519-1535): a toggle, naming who watches. Not frozen. */
-export function WatchStar({ row, myName, update }: { row: ListRow; myName: string; update: (patch: Partial<ListRow>) => void }): React.JSX.Element {
+export interface WatchState {
+  isWatched: boolean;
+  watcherNames: string[];
+}
+
+/** The watchlist star (Activity.aspx.cs:1519-1535; C176): a toggle naming who watches, on the activity page and the list. Not frozen. */
+export function WatchStar({ id, label, watch, myName, onChange }: { id: number; label: string; watch: WatchState; myName: string; onChange: (w: WatchState) => void }): React.JSX.Element {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const tip = row.watcherNames.length ? `Watched by ${row.watcherNames.join(", ")}` : "Nobody watches this yet";
+  const tip = watch.watcherNames.length ? `Watched by ${watch.watcherNames.join(", ")}` : "Nobody watches this yet";
   const toggle = async () => {
-    const on = !row.isWatched;
+    const on = !watch.isWatched;
     setBusy(true);
     setError(null);
     try {
-      await listApi.watch(row.id, on);
-      const others = row.watcherNames.filter((n) => n !== myName);
-      update({ isWatched: on, watcherNames: on ? [...others, myName].sort((a, b) => a.localeCompare(b)) : others });
+      await listApi.watch(id, on);
+      const others = watch.watcherNames.filter((n) => n !== myName);
+      onChange({ isWatched: on, watcherNames: on ? [...others, myName].sort((a, b) => a.localeCompare(b)) : others });
     } catch {
       setError("Couldn't change your watchlist.");
     } finally {
@@ -24,19 +27,10 @@ export function WatchStar({ row, myName, update }: { row: ListRow; myName: strin
   };
   return (
     <span>
-      <button
-        type="button"
-        className="gcpe-star"
-        aria-label={`Watch ${minId(row)}`}
-        aria-pressed={row.isWatched}
-        aria-describedby={`watchers-${row.id}`}
-        title={tip}
-        disabled={busy}
-        onClick={() => void toggle()}
-      >
-        {row.isWatched ? "★" : "☆"}
+      <button type="button" className="gcpe-star" aria-label={`Watch ${label}`} aria-pressed={watch.isWatched} aria-describedby={`watchers-${id}`} title={tip} disabled={busy} onClick={() => void toggle()}>
+        {watch.isWatched ? "★" : "☆"}
       </button>
-      <span id={`watchers-${row.id}`} className="gcpe-visually-hidden">
+      <span id={`watchers-${id}`} className="gcpe-visually-hidden">
         {tip}
       </span>
       {error && <span role="alert">{error}</span>}

@@ -137,7 +137,7 @@ export function ActivityListScreen(): React.JSX.Element {
     );
   }
   const tools: TableTools = {
-    renderStar: (r, update) => <WatchStar row={r} myName={me.displayName} update={update} />,
+    renderStar: (r, update) => <WatchStar id={r.id} label={minId(r)} watch={{ isWatched: r.isWatched, watcherNames: r.watcherNames }} myName={me.displayName} onChange={update} />,
     ...(config.list.reviewSelected
       ? {
           selected,

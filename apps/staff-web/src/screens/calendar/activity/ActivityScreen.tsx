@@ -9,11 +9,14 @@ import { useCalendarContext } from "../CalendarSection";
 import { listApi } from "../list/api";
 import { todayIn } from "../list/dates";
 import type { CalendarConfigView } from "../list/types";
+import { useSession } from "../../../session/SessionContext";
+import { ActivityActions } from "./ActivityActions";
 import { ActivityForm, type Change } from "./ActivityForm";
 import { activityApi } from "./api";
 import { clearActivityDraft, loadActivityDraft, saveActivityDraft } from "./draft";
 import { bodyOf, errorsByField, fieldId, initialOverride, lookAheadInputOf, minIdOf, newActivityFields, withInferredSection } from "./form";
 import { LockBanner } from "./LockBanner";
+import { ReleasesList } from "./ReleasesList";
 import { activityPath, safeCalendarReturn } from "./paths";
 import { useEditLock } from "./useEditLock";
 
@@ -117,6 +120,7 @@ interface EditorProps extends Loaded {
 
 function ActivityEditor({ me, config, options, view: initial, returnTo, notice }: EditorProps): React.JSX.Element {
   const navigate = useNavigate();
+  const session = useSession();
   const isNew = initial === null;
   const draftId = initial?.id ?? "new";
   // Changes kept when a 401 sent the user to sign in, restored on the same activity with the
@@ -366,7 +370,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
             needsReview={view?.needsReview ?? []}
             lookAhead={lookAhead}
             today={todayIn(config.timeZone)}
-            release={null}
+            release={<ReleasesList releases={view?.releases ?? []} timeZone={config.timeZone} canOpen={session.roles.some((r) => r.startsWith("NRMS."))} />}
             records={null}
           />
         </fieldset>
@@ -381,6 +385,20 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
           </Button>
         </div>
       </form>
+      {view && (
+        <ActivityActions
+          view={view}
+          myName={me.displayName}
+          dirty={dirty}
+          returnTo={returnTo}
+          // An action that leaves (Delete discards unsaved changes) leaves no kept draft behind.
+          leave={(to, calendarNotice, replace) => {
+            forgetDraft();
+            leave(to, calendarNotice, replace);
+          }}
+          onWatch={(watch) => setView((v) => (v ? { ...v, watch } : v))}
+        />
+      )}
       <Modal isOpen={blocker.state === "blocked"} onOpenChange={(open) => { if (!open) blocker.reset?.(); }} isDismissable>
         <AlertDialog
           role="alertdialog"

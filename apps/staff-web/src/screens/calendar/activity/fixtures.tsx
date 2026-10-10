@@ -9,6 +9,7 @@ import { CalendarSection } from "../CalendarSection";
 import { CONFIG, ME } from "../list/fixtures";
 import type { CalendarConfigView } from "../list/types";
 import { ActivityRoute } from "./ActivityScreen";
+import { ChangesRoute } from "./ChangesScreen";
 
 export const FIELDS: ActivityFields = {
   categoryId: 32, title: "Sample activity", details: "Sample summary", significance: "Sample significance", strategy: "", schedule: "Sample scheduling",
@@ -120,6 +121,7 @@ export function renderActivity(path: string) {
           { index: true, element: <ListStub /> },
           { path: "activities/new", element: <ActivityRoute /> },
           { path: "activities/:id", element: <ActivityRoute /> },
+          { path: "activities/:id/changes", element: <ChangesRoute /> },
         ],
       },
     ],

@@ -101,4 +101,24 @@ describe("accessibility: the activity editor in every state", () => {
     // Subscribers dialogs' axe tests; the e2e axe sweep checks a real browser.
     expect(await seriousViolations(document.body, { rules: { "aria-hidden-focus": { enabled: false } } })).toEqual([]);
   });
+
+  it("the delete confirmation", async () => {
+    stubActivity([], { view: view({ can: { edit: true, clone: true, delete: true, review: false } }) });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("alertdialog");
+    expect(await seriousViolations(dialog)).toEqual([]);
+  });
+
+  it("View changes", async () => {
+    stubActivity([], {
+      other: (url) =>
+        url === "/calendar/api/activities/20001/changes"
+          ? jsonResponse(200, [{ id: 1, at: "2026-11-03T18:00:00.000Z", actorName: "Robin Staff", action: "updated", source: "legacy_log", fields: [{ key: "title", label: "Title", old: "Sample old", new: "Sample new" }] }])
+          : undefined,
+    });
+    const { container } = renderActivity("/calendar/activities/20001/changes");
+    await screen.findByRole("heading", { level: 1, name: "Changes to HLTH-20001" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
 });
