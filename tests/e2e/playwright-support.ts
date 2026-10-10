@@ -308,6 +308,18 @@ export function distDb(): Db {
   return cachedDistDb;
 }
 
+let cachedCalendarDb: Db | undefined;
+
+/** A direct connection to the Calendar's test database: the lock-expiry spec ages a lock row, as the stack's tick has no clock hook to do it. */
+export function calendarDb(): Db {
+  if (!cachedCalendarDb) {
+    const url = process.env.E2E_CALENDAR_DATABASE_URL;
+    if (!url) throw new Error("E2E_CALENDAR_DATABASE_URL is not set — tests/e2e/global-setup.ts must run first.");
+    cachedCalendarDb = createDb(url, { max: 2 }).db;
+  }
+  return cachedCalendarDb;
+}
+
 export interface SentMessage {
   subject: string | null;
   to: string[];

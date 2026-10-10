@@ -983,6 +983,20 @@ Tools → Devs, or ask SiteGround support) and raise it to comfortably clear 25 
 before testing Calendar attachment uploads there; an HTML `413` instead of the Calendar's own
 JSON error means it hasn't been raised.
 
+### Activity page (Phase 5e-2)
+
+**No migration.** Nothing to configure.
+
+**Hand checks on boxs.ca after deploy** (spec §16's starred items):
+
+1. Open one activity as two users in two browsers: the second sees "<name> is editing".
+2. Between 16:00 and 17:00 BC time, a ministry editor's activity page opens read-only with the
+   freeze message; an HQ Editor's doesn't.
+3. "View changes" shows the edit just made.
+4. An attachment's link opens for a user in its own ministry and is "not found" for another
+   ministry's user. BC's tenant hides Records (`showRecordsSection` is off, as legacy), so the page
+   shows no link: open `/calendar/api/activities/:id/files/:fileId` directly as each user.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

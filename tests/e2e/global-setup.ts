@@ -8,7 +8,7 @@
 import { createServer, type Server } from "node:http";
 import { createServer as createNetServer } from "node:net";
 import type { AddressInfo } from "node:net";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -104,6 +104,19 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   const outputDir = await mkdtemp(join(tmpdir(), "gcpe-e2e-site-"));
   const dataDir = await mkdtemp(join(tmpdir(), "gcpe-e2e-data-"));
   const sessionDir = await mkdtemp(join(tmpdir(), "gcpe-e2e-sessions-"));
+  // The Calendar's tenant file for the suite: BC's, with the 4pm-5pm freeze moved to start 12 hours
+  // after setup, so editor journeys by users the freeze binds run at any hour, and with the Records
+  // section on (BC's is off, as legacy's was), so the attachment journey has a page to drive. The
+  // freeze itself is covered by the Calendar's clock tests and the editor's component tests.
+  const tenantDir = await mkdtemp(join(tmpdir(), "gcpe-e2e-tenant-"));
+  const bcTenant = JSON.parse(await readFile(join(repoRoot, "config/tenants/bc.json"), "utf8")) as { calendar: { freeze: { start: string; end: string }; showRecordsSection: boolean } };
+  const later = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Vancouver", hour: "2-digit", hourCycle: "h23" }).formatToParts(new Date(Date.now() + 12 * 3_600_000));
+  const hour = Number(later.find((p) => p.type === "hour")!.value);
+  const hhmm = (h: number) => `${String(h % 24).padStart(2, "0")}:00`;
+  bcTenant.calendar.freeze = { start: hhmm(hour), end: hhmm(hour + 1) };
+  bcTenant.calendar.showRecordsSection = true;
+  const calendarTenant = join(tenantDir, "bc-e2e.json");
+  await writeFile(calendarTenant, JSON.stringify(bcTenant));
   const sink = await startSmtpSink();
 
   // The SMTP sink's `messages` array only lives in *this* (the main CLI) process's memory —
@@ -171,6 +184,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     STACK_EVENT_SECRET,
     STAFF_WEB_DIR: staffWebDir,
     CALENDAR_DATABASE_URL: calendar.url,
+    CALENDAR_TENANT_CONFIG: calendarTenant,
 
     CORE_DATABASE_URL: core.url,
     NRMS_DATABASE_URL: nrms.url,
@@ -267,6 +281,7 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     await step(() => rm(outputDir, { recursive: true, force: true }));
     await step(() => rm(dataDir, { recursive: true, force: true }));
     await step(() => rm(sessionDir, { recursive: true, force: true }));
+    await step(() => rm(tenantDir, { recursive: true, force: true }));
     if (errors.length > 0) {
       console.error("[e2e global-teardown] errors while shutting down:", errors);
     }

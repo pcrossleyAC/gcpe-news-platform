@@ -513,3 +513,20 @@ Tag each note with the manual(s) it belongs in: **Editor**, **Site editor**, **V
 ## Phase 5e-2 — Activity editor
 
 - **All Calendar users** — If your session runs out while an activity has unsaved changes, sign in again and open the same activity: the page says "Your unsaved changes were restored." If someone else saved it meanwhile, Save says so and Reload shows their version. Signing out yourself discards kept changes.
+- **All Calendar users** — Click an activity's title in the list or the calendar to open it. Save, Cancel, Review and Delete bring you back to the list as you left it, filter and all.
+- **All Calendar users** — "View changes" lists every change to the activity, newest first: who, when, and each field before and after. Changes from the old Calendar are marked "from legacy log".
+- **All Calendar users** — The star on the activity page adds it to My Watchlist; hover or focus it to see who else watches it.
+- **All Calendar users** — An activity you can't see, or that doesn't exist, says "Activity not found".
+- **Calendar editors** — "New activity" on the list opens a blank activity at 8:00 AM to 6:00 PM. Saving opens it, ready for files.
+- **Calendar editors** — The form checks itself before saving: a box at the top lists what to fix, each linked to its field. A start or end date in the past is a warning, not a stop.
+- **Calendar editors** — Potential Dates is shown again, under Schedule. Use a general timeline, like "late June": no numbers, TBC or TBD.
+- **Calendar editors** — When someone else is editing, the page says who and since when, and stays read-only. It opens for you, without a reload, once they save, cancel or leave it for 15 minutes.
+- **Calendar editors** — Open in two of your own tabs? "Continue here" moves your editing to this tab.
+- **Calendar editors** — Leave the page alone for 15 minutes and your edit lock lapses. Your changes stay on the page, and Save still works if nobody else changed the activity; if they did, you're told to reload.
+- **Calendar editors** — Between 4pm and 5pm the page opens read-only, with the freeze message, unless you're HQ.
+- **Calendar editors** — Records shows when the tenant turns on the Records section (off for BC, as in legacy, see Q51). Files are added several at a time, and each is checked and saved straight away.
+- **HQ Editor and above** — The Look Ahead fieldset follows the activity: the section is worked out from the category, Issue, confirmation and comm materials. Choose another to override it (marked "Override"); "Use the inferred section" undoes that.
+- **HQ Editor and above** — Fields changed since the last review say "Changed: needs review".
+- **HQ Advanced and above** — Review marks the activity reviewed and brings you back. Review and Clone wait until you've saved or cancelled your own changes.
+- **HQ Administrator** — A deleted activity opens read-only, with Review as its only action.
+- **NRMS users** — "BC Gov News" on an activity links to each of its releases.

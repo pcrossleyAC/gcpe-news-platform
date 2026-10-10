@@ -2,14 +2,9 @@
 
 Items one sub-plan leaves for a later one. Delete an item when the plan that takes it is written.
 
-## 5e
+## 5f
 
-- **The editor round-trips `ActivityView.fields`** (`@gcpe/calendar-contract`) and runs `checkActivity` and `inferLookAhead` itself; it sends `lookAhead` only when `GET /calendar/api/config`'s `lookAheadFieldset` is true.
-- **Lock release on tab close uses `fetch(…, { keepalive: true })` with the `X-GCPE-Request` header**, not `navigator.sendBeacon`, which can't send the header `requireBearer` demands (C169) — the keepalive release must send this CSRF header or the server refuses it.
-- **"View changes"** reads `GET /calendar/api/activities/:id/changes`.
-- **Titles link to the activity page** from the list's Title cell and the calendar view's items (`apps/staff-web/src/screens/calendar/list/cells.tsx`, `CalendarGrid.tsx`); return to the list's own URL (`?q=`) after save (C149).
-- **The activity page's watchlist star** uses `PUT`/`DELETE /calendar/api/activities/:id/watch` and shows the watchers' names, as the list's `WatchStar` does.
-- **Uploads send the file name in `X-GCPE-File-Name` (percent-encoded with `encodeURIComponent`), never `?name=`** — the server refuses a query-string name with 400. `apiFetch` already passes `headers` through to `fetch`, so no client change is needed beyond sending the header.
+- **The feed's `MIN-Id` links open the activity page** at `/hub/calendar/activities/:id`, with `?return=` set to the feed's own address (`activityPath` in `apps/staff-web/src/screens/calendar/activity/paths.ts`), so Save comes back to the feed (C149).
 
 ## 5g
 
@@ -18,6 +13,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 - **The Look Ahead's dates use a reference day, not today.** Legacy's `FriendlyDateTime` (`ActivityListProvider.ashx.cs:784-823`) takes a `referenceDay` only from the Look Ahead: a timed activity on that day shows no date text, only its time. The list's `friendlyDateRange` (`packages/calendar-contract`) has one `today` parameter and always prints the date; 5g's Look Ahead needs the reference day and the suppression.
 - **Legacy report fixes** (from `docs/parity/legacy-report-layouts.md`'s discrepancies): drop the doubled "updated updated" wording in the Executive Look Ahead's "Last updated" line; drop the raw, unparsed `**CONFIDENTIAL**` markdown marker from a row's title. "Consultations and Dialogues" is dropped entirely, per the item above.
 - **Report buttons in the list's toolbar** (`ActivityListScreen`'s List actions) take the list's current `ListQuery` as `q`, as the Excel export does; dates use `friendlyDateRange` from `@gcpe/calendar-contract`, which the export already uses.
+- **Report rows link to the activity page** at `/hub/calendar/activities/:id` (no `return`: the editor falls back to the list).
 
 ## 5h and later
 

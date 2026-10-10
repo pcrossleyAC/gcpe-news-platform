@@ -276,4 +276,20 @@ test.describe("item 16: axe across every staff screen", () => {
       await expectNoSeriousA11yViolations(page, `the Calendar ${view} view`);
     }
   });
+
+  // The activity editor as an HQ Administrator (every fieldset, the Look Ahead fieldset, every
+  // action), a new activity, and View changes.
+  test("the Calendar activity editor, a new activity, and View changes", async ({ page, context }) => {
+    const f = await listFixture();
+    await useCookie(context, await sessionOf(CAL_HQ_ADMIN_EMAIL));
+    await gotoAndWaitForH1(page, `/hub/calendar/activities/${f.ids.A}`);
+    await expect(page.getByRole("group", { name: "Look Ahead" })).toBeVisible();
+    await expectNoSeriousA11yViolations(page, "the activity editor as an HQ Administrator");
+    await gotoAndWaitForH1(page, "/hub/calendar/activities/new");
+    await expect(page.getByRole("textbox", { name: "Title", exact: true })).toBeVisible();
+    await expectNoSeriousA11yViolations(page, "a new activity");
+    await gotoAndWaitForH1(page, `/hub/calendar/activities/${f.ids.A}/changes`);
+    await expect(page.getByRole("heading", { level: 1, name: `Changes to HLTH-${f.ids.A}` })).toBeVisible();
+    await expectNoSeriousA11yViolations(page, "View changes");
+  });
 });
