@@ -2,6 +2,7 @@ import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ActivityView } from "@gcpe/calendar-contract";
 import { jsonResponse } from "../../../../test/jsonResponse";
+import { onUnauthorized } from "../../../api/client";
 import { HEARTBEAT_MS, IDLE_MS, POLL_MS, useEditLock } from "./useEditLock";
 
 type Call = { url: string; init?: RequestInit };
@@ -10,7 +11,7 @@ const RELEASE = "/calendar/api/activities/7/lock/release";
 const lockCalls = (calls: Call[]) => calls.filter((c) => c.url === LOCK);
 const ok = () => jsonResponse(200, { holderName: "Robin Staff", since: "2026-11-03T18:00:00.000Z", mine: true, tabId: "x" });
 const lockedBy = (name: string) => jsonResponse(423, { code: "locked", error: `${name} is editing this activity (since 11:00)`, holder: { displayName: name, since: "2026-11-03T18:00:00.000Z" } });
-function stub(calls: Call[], answer: (url: string, init?: RequestInit) => Response) {
+function stub(calls: Call[], answer: (url: string, init?: RequestInit) => Response | Promise<Response>) {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     calls.push({ url, init });
     return answer(url, init);
@@ -117,5 +118,135 @@ describe("useEditLock (spec addendum §7.5)", () => {
     await act(async () => void expect(await result.current.touch()).toBe(false));
     expect(result.current.state).toEqual({ kind: "none" });
     expect(result.current.problem).toBe("You cannot make content changes between 4pm-5pm.");
+  });
+
+  it("a 404 means the activity is gone: touch refuses, and stays refused", async () => {
+    stub([], () => jsonResponse(404, { error: "Not found" }));
+    const { result } = mount();
+    await act(async () => void expect(await result.current.touch()).toBe(false));
+    expect(result.current.state).toEqual({ kind: "gone" });
+    await act(async () => void expect(await result.current.touch()).toBe(false));
+  });
+
+  it("a 401 defers to the sign-in redirect; no banner of its own", async () => {
+    stub([], () => jsonResponse(401, { error: "unauthenticated" }));
+    let notified = 0;
+    const off = onUnauthorized(() => { notified += 1; });
+    const { result } = mount();
+    await act(async () => void expect(await result.current.touch()).toBe(false));
+    expect(notified).toBe(1);
+    expect(result.current.state).toEqual({ kind: "none" });
+    expect(result.current.problem).toBeNull();
+    off();
+  });
+
+  it("a real network failure gets the generic message; any other 4xx shows the server's own", async () => {
+    stub([], () => { throw new TypeError("Failed to fetch"); });
+    const { result: net } = mount();
+    await act(async () => void expect(await net.current.touch()).toBe(false));
+    expect(net.current.problem).toBe("Couldn't reach the server to start editing. Try again.");
+
+    stub([], () => jsonResponse(403, { error: "You can't edit this activity" }));
+    const { result: forbidden } = mount();
+    await act(async () => void expect(await forbidden.current.touch()).toBe(false));
+    expect(forbidden.current.problem).toBe("You can't edit this activity");
+  });
+
+  it("locked_elsewhere on a heartbeat (not just on the first take) moves the state to elsewhere", async () => {
+    const calls: Call[] = [];
+    let first = true;
+    stub(calls, () => {
+      if (first) { first = false; return ok(); }
+      return jsonResponse(423, { code: "locked_elsewhere", error: "You're editing this activity in another tab", holder: { displayName: "Robin Staff", since: "x" } });
+    });
+    const { result } = mount();
+    await act(async () => void (await result.current.touch()));
+    expect(result.current.state).toEqual({ kind: "mine" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      await result.current.touch();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.state).toEqual({ kind: "elsewhere" });
+  });
+
+  it("unmounting while the first take() is in flight releases immediately, with no state update and no timer left behind", async () => {
+    const calls: Call[] = [];
+    let resolveLock!: (r: Response) => void;
+    stub(calls, (url) => (url === LOCK ? new Promise<Response>((r) => { resolveLock = r; }) : new Response(null, { status: 204 })));
+    const { result, unmount } = mount();
+    let p!: Promise<boolean>;
+    act(() => { p = result.current.touch(); });
+    unmount();
+    resolveLock(ok());
+    await act(async () => void (await p));
+    expect(calls.filter((c) => c.url === RELEASE)).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("a failed heartbeat shows a problem; the next good heartbeat clears it", async () => {
+    let n = 0;
+    stub([], () => {
+      n += 1;
+      if (n === 2) throw new TypeError("Failed to fetch");
+      return ok();
+    });
+    const { result } = mount();
+    await act(async () => void (await result.current.touch()));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      await result.current.touch();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.problem).toBe("Couldn't reach the server to start editing. Try again.");
+    expect(result.current.state).toEqual({ kind: "mine" });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(HEARTBEAT_MS);
+      await result.current.touch();
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(result.current.problem).toBeNull();
+  });
+
+  it("lapses from the last heartbeat, not from a later touch that owed no heartbeat yet", async () => {
+    const calls: Call[] = [];
+    stub(calls, ok);
+    const { result } = mount();
+    await act(async () => void (await result.current.touch())); // beat at t=0
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(59_000); // no heartbeat due yet (< HEARTBEAT_MS)
+      await result.current.touch();
+    });
+    expect(lockCalls(calls)).toHaveLength(1);
+    await act(async () => void (await vi.advanceTimersByTimeAsync(IDLE_MS - 59_000))); // t = IDLE_MS from the one real beat
+    expect(result.current.state).toEqual({ kind: "lapsed" });
+  });
+
+  it("a backgrounded tab's throttled timer is corrected on visibilitychange: past the window lapses immediately", async () => {
+    stub([], ok);
+    const { result } = mount();
+    await act(async () => void (await result.current.touch())); // beat at t=0
+    vi.setSystemTime(new Date("2026-11-03T18:20:00Z")); // 20 min later; the setTimeout never ran
+    expect(result.current.state).toEqual({ kind: "mine" });
+    act(() => {
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+    });
+    expect(result.current.state).toEqual({ kind: "lapsed" });
+  });
+
+  it("a backgrounded tab within the window sends a heartbeat on visibilitychange instead of waiting", async () => {
+    const calls: Call[] = [];
+    stub(calls, ok);
+    const { result } = mount();
+    await act(async () => void (await result.current.touch())); // beat at t=0
+    vi.setSystemTime(new Date("2026-11-03T18:05:00Z")); // well inside the window
+    await act(async () => {
+      Object.defineProperty(document, "visibilityState", { value: "visible", configurable: true });
+      document.dispatchEvent(new Event("visibilitychange"));
+      await vi.advanceTimersByTimeAsync(0);
+    });
+    expect(lockCalls(calls)).toHaveLength(2);
+    expect(result.current.state).toEqual({ kind: "mine" });
   });
 });

@@ -32,10 +32,13 @@ export function LockBanner({ lock, timeZone }: { lock: EditLock; timeZone: strin
         <InlineAlert
           variant="warning"
           title="Edit lock lapsed"
-          description="Your edit lock lapsed after 15 minutes without input. Your changes are still here, and Save still works if no one else has changed the activity."
+          description="Your edit lock lapsed. Save will work only if no one else has taken it or changed the activity."
         />
       </div>
     );
+  }
+  if (s.kind === "gone") {
+    return <InlineAlert variant="danger" role="alert" description="This activity is no longer available." />;
   }
   return lock.problem ? <InlineAlert variant="danger" role="alert" description={lock.problem} /> : null;
 }
