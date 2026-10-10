@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, screen, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ActivityFileView } from "@gcpe/calendar-contract";
 import { jsonResponse } from "../../../../test/jsonResponse";
@@ -8,6 +8,14 @@ import { renderActivity, stubActivity, view, type Call } from "./fixtures";
 
 const FILE: ActivityFileView = { id: 5, fileName: "Sample brief.pdf", contentType: "application/pdf", length: 2048, uploadedAt: "2026-11-02T17:00:00.000Z", uploadedByName: "Robin Staff" };
 const FILES = "/calendar/api/activities/20001/files";
+const ON = { ...CONFIG, showRecordsSection: true };
+const ACTIVITY = "/calendar/api/activities/20001";
+const sent = (calls: Call[]) => calls.filter((c) => c.url === FILES && c.init?.method === "POST").map((c) => decodeURIComponent(new Headers(c.init!.headers).get("X-GCPE-File-Name")!));
+const sized = (name: string, size: number) => {
+  const f = new File(["%PDF"], name);
+  Object.defineProperty(f, "size", { value: size });
+  return f;
+};
 
 describe("Records (spec addendum §8.2, §8.4)", () => {
   afterEach(() => {
@@ -23,7 +31,7 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
   });
 
   it("shows an activity's files, each downloaded through the authorised route", async () => {
-    stubActivity([], { view: view({ files: [FILE] }) });
+    stubActivity([], { config: ON, view: view({ files: [FILE] }) });
     renderActivity("/calendar/activities/20001");
     const records = await screen.findByRole("group", { name: "Records" });
     expect(within(records).getByRole("link", { name: "Sample brief.pdf" })).toHaveAttribute("href", `${FILES}/5`);
@@ -70,6 +78,7 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
 
   it("removes a file after asking", async () => {
     stubActivity([], {
+      config: ON,
       view: view({ files: [FILE] }),
       other: (url, init) => (url === `${FILES}/5` && init?.method === "DELETE" ? jsonResponse(200, []) : undefined),
     });
@@ -81,7 +90,7 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
   });
 
   it("a read-only viewer can download but not add or remove", async () => {
-    stubActivity([], { view: view({ files: [FILE], can: { edit: false, clone: false, delete: false, review: false } }) });
+    stubActivity([], { config: ON, view: view({ files: [FILE], can: { edit: false, clone: false, delete: false, review: false } }) });
     renderActivity("/calendar/activities/20001");
     const records = await screen.findByRole("group", { name: "Records" });
     expect(within(records).getByRole("link", { name: "Sample brief.pdf" })).toBeInTheDocument();
@@ -150,5 +159,154 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
     const records = await screen.findByRole("group", { name: "Records" });
     expect(within(records).queryByLabelText("Add files")).toBeNull();
     expect(within(records).queryByRole("button", { name: "Remove Sample brief.pdf" })).toBeNull();
+  });
+
+  it("is hidden while the tenant hides it, even when the activity has files, as legacy (Q51)", async () => {
+    stubActivity([], { view: view({ files: [FILE] }) });
+    renderActivity("/calendar/activities/20001");
+    await screen.findByRole("textbox", { name: "Title" });
+    expect(screen.queryByRole("group", { name: "Records" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Sample brief.pdf" })).toBeNull();
+  });
+
+  it("a reload while there are unsaved changes takes the server's files, keeping the changes", async () => {
+    let phase = 0;
+    stubActivity([], {
+      config: ON,
+      view: () => (phase === 0 ? view({ files: [FILE] }) : view({ files: [], lock: null })),
+      other: (url, init) => {
+        if (url !== ACTIVITY || init?.method !== "PUT") return undefined;
+        phase = 1;
+        return jsonResponse(423, { code: "locked", error: "Sample Admin is editing", holder: { displayName: "Sample Admin", since: "2026-11-03T18:00:00.000Z" } });
+      },
+    });
+    vi.useFakeTimers({ toFake: ["setInterval"] });
+    try {
+      renderActivity("/calendar/activities/20001");
+      await userEvent.type(await screen.findByRole("textbox", { name: "Title" }), " x");
+      await userEvent.click(screen.getByRole("button", { name: "Save" }));
+      await screen.findByText("Sample Admin is editing this activity", { exact: false });
+      await act(async () => {
+        vi.advanceTimersByTime(31_000);
+      });
+      await screen.findByLabelText("Add files");
+      expect(screen.queryByRole("link", { name: "Sample brief.pdf" })).toBeNull();
+      expect(screen.getByText("No files yet.")).toBeInTheDocument();
+      expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Sample activity x");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("removing a file someone else already removed takes it off the list, keeping unsaved changes", async () => {
+    stubActivity([], {
+      config: ON,
+      view: view({ files: [FILE] }),
+      other: (url, init) => (url === `${FILES}/5` && init?.method === "DELETE" ? jsonResponse(404, { error: "not found" }) : undefined),
+    });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.type(await screen.findByRole("textbox", { name: "Title" }), " x");
+    await userEvent.click(screen.getByRole("button", { name: "Remove Sample brief.pdf" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Remove Sample brief.pdf?" })).getByRole("button", { name: "Remove" }));
+    expect(await screen.findByText("That file was already removed.")).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "Sample brief.pdf" })).toBeNull();
+    expect(screen.queryByText("This activity is no longer available.")).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Title" })).toHaveValue("Sample activity x");
+  });
+
+  it.each([
+    ["an upload", "POST"],
+    ["a remove", "DELETE"],
+  ])("%s answered \"deleted\" says so once and makes the page read-only, as Save does", async (_what, method) => {
+    stubActivity([], {
+      config: ON,
+      view: view({ files: [FILE] }),
+      other: (url, init) => (url.startsWith(FILES) && init?.method === method ? jsonResponse(409, { code: "deleted", error: "This activity has been deleted." }) : undefined),
+    });
+    renderActivity("/calendar/activities/20001");
+    if (method === "POST") await userEvent.upload(await screen.findByLabelText("Add files"), new File(["%PDF"], "Sample notes.pdf"));
+    else {
+      await userEvent.click(await screen.findByRole("button", { name: "Remove Sample brief.pdf" }));
+      await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Remove Sample brief.pdf?" })).getByRole("button", { name: "Remove" }));
+    }
+    expect(await screen.findByRole("alert")).toHaveTextContent("This activity has been deleted.");
+    expect(screen.getAllByRole("alert")).toHaveLength(1);
+    expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.getByRole("textbox", { name: "Title" })).toBeDisabled();
+    expect(screen.queryByLabelText("Add files")).toBeNull();
+    expect(screen.getByRole("link", { name: "Sample brief.pdf" })).toBeInTheDocument();
+  });
+
+  it("sends a file of exactly 25 MB and refuses one a byte over", async () => {
+    const calls: Call[] = [];
+    stubActivity(calls, { config: ON, other: (url, init) => (url === FILES && init?.method === "POST" ? jsonResponse(201, [FILE]) : undefined) });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.upload(await screen.findByLabelText("Add files"), [sized("Sample exact.pdf", 25 * 1024 * 1024), sized("Sample over.pdf", 25 * 1024 * 1024 + 1)]);
+    expect(await screen.findByText("Sample over.pdf: A file can be at most 25 MB.")).toBeInTheDocument();
+    expect(sent(calls)).toEqual(["Sample exact.pdf"]);
+  });
+
+  it("a batch stopped by the freeze names the files that didn't get in", async () => {
+    const calls: Call[] = [];
+    stubActivity(calls, {
+      config: ON,
+      other: (url, init) => {
+        if (url !== FILES || init?.method !== "POST") return undefined;
+        return sent(calls).length === 1 ? jsonResponse(201, [FILE]) : jsonResponse(423, { code: "freeze", error: "You cannot make content changes between 4pm-5pm." });
+      },
+    });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "Sample a.pdf"), new File(["%PDF"], "Sample b.pdf"), new File(["%PDF"], "Sample c.pdf")]);
+    await screen.findByText("You cannot make content changes between 4pm-5pm.");
+    expect(sent(calls)).toEqual(["Sample a.pdf", "Sample b.pdf"]);
+    const records = screen.getByRole("group", { name: "Records" });
+    expect(within(records).getByRole("alert")).toHaveTextContent("Not added: Sample b.pdf, Sample c.pdf.");
+    expect(within(records).getByRole("status")).toHaveTextContent("Added 1 file.");
+  });
+
+  it("refuses files past the 50-file limit before sending them, letting a same-name replacement through", async () => {
+    const calls: Call[] = [];
+    const full = Array.from({ length: 49 }, (_, i) => ({ ...FILE, id: 100 + i, fileName: `Sample ${i}.pdf` }));
+    stubActivity(calls, {
+      config: ON,
+      view: view({ files: full }),
+      other: (url, init) => (url === FILES && init?.method === "POST" ? jsonResponse(201, [...full, { ...FILE, id: 200, fileName: "Sample new.pdf" }]) : undefined),
+    });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "Sample new.pdf"), new File(["%PDF"], "Sample more.pdf"), new File(["%PDF"], "SAMPLE 3.PDF")]);
+    expect(await screen.findByText("Sample more.pdf: An activity holds at most 50 files. Remove one first.")).toBeInTheDocument();
+    expect(sent(calls)).toEqual(["Sample new.pdf", "SAMPLE 3.PDF"]);
+  });
+
+  it("after the server's own 50-file refusal, sends only same-name replacements", async () => {
+    const calls: Call[] = [];
+    const LIMIT = { error: "Fix the fields named", errors: [{ field: "files", message: "An activity holds at most 50 files. Remove one first." }] };
+    stubActivity(calls, {
+      config: ON,
+      view: view({ files: [FILE] }),
+      other: (url, init) => {
+        if (url !== FILES || init?.method !== "POST") return undefined;
+        return sent(calls).at(-1) === "Sample brief.pdf" ? jsonResponse(201, [FILE]) : jsonResponse(422, LIMIT);
+      },
+    });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.upload(await screen.findByLabelText("Add files"), [new File(["%PDF"], "Sample a.pdf"), new File(["%PDF"], "Sample b.pdf"), new File(["%PDF"], "Sample brief.pdf")]);
+    expect(await screen.findByText("Sample b.pdf: An activity holds at most 50 files. Remove one first.")).toBeInTheDocument();
+    expect(screen.getByText("Sample a.pdf: An activity holds at most 50 files. Remove one first.")).toBeInTheDocument();
+    expect(sent(calls)).toEqual(["Sample a.pdf", "Sample brief.pdf"]);
+  });
+
+  it("after a remove, the keyboard lands on Add files", async () => {
+    const OTHER = { ...FILE, id: 6, fileName: "Sample other.pdf" };
+    stubActivity([], {
+      config: ON,
+      view: view({ files: [FILE, OTHER] }),
+      other: (url, init) => (url === `${FILES}/5` && init?.method === "DELETE" ? jsonResponse(200, [OTHER]) : undefined),
+    });
+    renderActivity("/calendar/activities/20001");
+    await userEvent.click(await screen.findByRole("button", { name: "Remove Sample brief.pdf" }));
+    await userEvent.click(within(await screen.findByRole("alertdialog", { name: "Remove Sample brief.pdf?" })).getByRole("button", { name: "Remove" }));
+    await screen.findByText("Removed Sample brief.pdf.");
+    await waitFor(() => expect(screen.getByLabelText("Add files")).toHaveFocus());
   });
 });

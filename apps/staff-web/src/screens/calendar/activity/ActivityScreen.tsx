@@ -188,7 +188,8 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
       // Unsaved changes keep the version and values they were based on, so their save meets a
       // newer change as a 409 instead of overwriting it; only the lock and what the user may do
       // follow the server.
-      setView((prev) => (dirtyRef.current && prev ? { ...prev, lock: v.lock, can: v.can, isDeleted: v.isDeleted } : v));
+      // Files don't change the version, so the server's list is taken either way.
+      setView((prev) => (dirtyRef.current && prev ? { ...prev, lock: v.lock, can: v.can, isDeleted: v.isDeleted, files: v.files } : v));
       if (!dirtyRef.current) {
         setFields(v.fields);
         original.current = v.fields;
@@ -266,6 +267,14 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
     // Gone (deleted, or no longer visible): the lock's banner says so and the form goes read-only, the changes still on screen.
     if (e instanceof ApiError && e.status === 404) return lock.refused(e);
     setFailure({ text: e instanceof ApiError && e.status < 500 ? e.message : "Couldn't save. Your changes are still here; try again.", conflict: false });
+  };
+  /** A file write's refusal: "deleted" as Save's, and the rest by the lock's banner. */
+  const fileRefused = (e: unknown) => {
+    if (e instanceof ApiError && e.status === 409 && e.code === "deleted") {
+      setDeletedMeanwhile(true);
+      return setFailure({ text: e.message, conflict: false });
+    }
+    lock.refused(e);
   };
   const extra = (warnings: string[]) => (warnings.length ? ` ${warnings.join(" ")}` : "");
 
@@ -382,8 +391,8 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
                     <p>Save the activity first to add files.</p>
                   </fieldset>
                 ) : null
-              ) : // Removing the last file keeps the section, and what it said, on screen.
-              config.showRecordsSection || initial!.files.length > 0 || view!.files.length > 0 ? (
+              ) : // Hidden whenever the tenant hides it, whatever files exist, as legacy (Q51).
+              config.showRecordsSection ? (
                 <RecordsSection
                   activityId={view!.id}
                   files={view!.files}
@@ -391,7 +400,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
                   beforeChange={() => lock.touch()}
                   // Only the list: the version and fields stay those the unsaved changes were based on.
                   onFiles={(files) => setView((v) => (v ? { ...v, files } : v))}
-                  refused={lock.refused}
+                  refused={fileRefused}
                   timeZone={config.timeZone}
                 />
               ) : null

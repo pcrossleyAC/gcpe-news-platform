@@ -124,6 +124,7 @@ describe("accessibility: the activity editor in every state", () => {
 
   it("Records with files and a refused upload", async () => {
     stubActivity([], {
+      config: { ...CONFIG, showRecordsSection: true },
       view: view({ files: [{ id: 5, fileName: "Sample brief.pdf", contentType: "application/pdf", length: 2048, uploadedAt: "2026-11-02T17:00:00.000Z", uploadedByName: "Robin Staff" }] }),
       other: (url, init) => (url.endsWith("/files") && init?.method === "POST" ? jsonResponse(422, { error: "Fix the fields named", errors: [{ field: "files", message: "The file is empty." }] }) : undefined),
     });
