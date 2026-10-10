@@ -20,6 +20,8 @@ export const calendarTenantSchema = z
     confidentialCategoryName: z.string().min(1),
     issueExemptCategoryNames: names,
     eventsCategoryNames: names,
+    /** Categories whose activities hide the editor's Release fieldset (Scripts/activityhelper.ts:170-196). */
+    releaseHiddenCategoryNames: names,
     consultationsMinistryAbbreviation: z.string().min(1),
     contactMinistryExcludedAbbreviations: names,
     sharedWithExcludedAbbreviations: names,

@@ -1,4 +1,5 @@
 export * from "./clean";
+export * from "./editor";
 export * from "./enums";
 export * from "./format";
 export * from "./freeze";
