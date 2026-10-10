@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jsonResponse } from "../../../../test/jsonResponse";
-import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME } from "../list/fixtures";
+import { HQ_ADMIN_CONFIG, HQ_ADMIN_ME, renderList, stubFetch } from "../list/fixtures";
 import { saveActivityDraft } from "./draft";
 import { FIELDS, renderActivity, stubActivity, view, type Call } from "./fixtures";
 
@@ -146,6 +146,21 @@ describe("the activity's actions (spec addendum §8.2)", () => {
     expect(screen.getByRole("button", { name: "Watch HLTH-20001" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "View changes" })).toBeInTheDocument();
     for (const name of ["Save", "Clone", "Delete"]) expect(screen.queryByRole("button", { name })).toBeNull();
+  });
+
+  it("during the change freeze, HQ (whom it doesn't bind) keeps Clone, Delete and New activity (spec addendum §7.4)", async () => {
+    const config = { ...HQ_ADMIN_CONFIG, freeze: { ...HQ_ADMIN_CONFIG.freeze, active: true, appliesToYou: false } };
+    stubActivity([], { me: HQ_ADMIN_ME, config, view: view({ can: { edit: true, clone: true, delete: true, review: true } }) });
+    renderActivity("/calendar/activities/20001");
+    expect(await screen.findByRole("button", { name: "Clone" })).toBeEnabled();
+    for (const name of ["Delete", "Review", "Save"]) expect(screen.getByRole("button", { name })).toBeEnabled();
+    expect(screen.queryByText("Change freeze")).toBeNull();
+    cleanup();
+    vi.unstubAllGlobals();
+
+    stubFetch([], { me: HQ_ADMIN_ME, config });
+    renderList();
+    expect(await screen.findByRole("link", { name: "New activity" })).toBeInTheDocument();
   });
 
   it("a Review refused for a newer version offers Reload, and the next Review sends the new version", async () => {
