@@ -20,6 +20,8 @@ export const COLOURS = {
   zebra: "#d9d9d9",
   heading: "#365f91",
   draft: "#9e3a38",
+  /** The 30/60/90's and Planning's "DRAFT AND CONFIDENTIAL" (the RDLCs' Brown). */
+  brown: "#a52a2a",
   banner: "#595959",
   darkRed: "#8b0000",
   seaGreen: "#2e8b57",

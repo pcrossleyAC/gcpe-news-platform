@@ -2,11 +2,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { listQuerySchema, REPORT_KINDS, type ListQueryInput, type ReportKind } from "@gcpe/calendar-contract";
 import { loadCalendarActor } from "../actor";
-import { createCalendarTestDb, createTestApp, FIXED_NOW, TEST_RULES } from "../../test/helpers";
+import { createCalendarTestDb, createTestApp, FIXED_NOW, projectUser, TEST_RULES } from "../../test/helpers";
 import { insertRaw, seedWorld, type Who, type World } from "../../test/world";
 import { bc, outline, plain, reportRow } from "../../test/report-rows";
 import { buildReport } from "./build";
-import { reportData, type ReportRow } from "./data";
+import { reportData, ReportTooLargeError, type ReportRow } from "./data";
 import type { ReportDoc, TableBlock } from "./model";
 import { planningDoc, planningTags } from "./planning";
 import { COLOURS } from "./text";
@@ -25,6 +25,13 @@ describe("the 30/60/90 report (spec addendum §10.4)", () => {
     expect(thirtySixtyNinetyMonths(q({ filter: { from: "2026-01-15" } }), "2026-11-03")).toEqual(["2026-01-01", "2026-02-01", "2026-03-01", "2026-04-01"]);
     expect(thirtySixtyNinetyMonths(q({ filter: { from: "2026-11-15", to: "2026-12-02" } }), "2026-11-03")).toEqual(["2026-11-01", "2026-12-01"]);
     expect(thirtySixtyNinetyMonths(q({ filter: { from: "2026-11-15", thisDayOnly: true } }), "2026-11-03")).toEqual(["2026-11-01"]);
+  });
+
+  it("refuses more than 366 days from the snapped 1st (13 months), as the Look Ahead; legacy had no cap", () => {
+    expect(thirtySixtyNinetyMonths(q({ filter: { from: "2026-11-15", to: "2027-11-01" } }), "2026-11-03")).toHaveLength(13);
+    expect(() => thirtySixtyNinetyDoc(ctx([], { filter: { from: "2026-11-15", to: "2027-11-01" } }))).not.toThrow();
+    expect(() => thirtySixtyNinetyDoc(ctx([], { filter: { from: "2026-11-15", to: "2027-11-02" } }))).toThrow(new ReportTooLargeError("months in the range"));
+    expect(() => thirtySixtyNinetyDoc(ctx([], { filter: { from: "1900-01-01", to: "2199-12-31" } }))).toThrow(ReportTooLargeError);
   });
 
   it("each activity once, under the month it starts; one that started earlier under the first month; later ones left out", () => {
@@ -67,6 +74,17 @@ describe("the 30/60/90 report (spec addendum §10.4)", () => {
     expect(doc.header).toBeNull();
   });
 
+  it("legacy's measured styling: 18 pt title, navy 16 pt month headings, brown 9 pt footer, 8 pt black created/updated, legacy's widths", () => {
+    const doc = thirtySixtyNinetyDoc(ctx([on(20001, "2026-11-10")]));
+    expect(doc.blocks[0]).toMatchObject({ kind: "heading", size: 18, runs: [{ text: "30 / 60 / 90 REPORT", bold: true }] });
+    expect(doc.blocks[1]).toMatchObject({ kind: "heading", size: 16, runs: [{ text: "November 2026", bold: true, color: "#384c70" }] });
+    expect(doc.footer!.left).toEqual([{ text: "DRAFT AND CONFIDENTIAL", color: "#a52a2a", size: 9 }, { text: " Updated Tuesday, Nov 3, 2026 11:00 AM", size: 9 }]);
+    const table = tables(doc)[0]!;
+    // 57.6 / 338.4 / 122.4 / 57.6 pt: the middle column takes the rest of legacy's 576 pt line.
+    expect(table.widths).toEqual([57.6, "*", 122.4, 57.6]);
+    expect(table.rows[0]![3]!.runs.at(-1)).toEqual({ text: "\n\nupdated 1 month ago", size: 8 });
+  });
+
   it("with no contact, ID/CONT is the CC ID# alone (GenerateMonthly30_60_90)", () => {
     const doc = thirtySixtyNinetyDoc(ctx([on(20001, "2026-11-10", { commContact: null })]));
     expect(plain(tables(doc)[0]!.rows[0]![3]!.runs)).toBe("HLTH-20001");
@@ -74,7 +92,7 @@ describe("the 30/60/90 report (spec addendum §10.4)", () => {
 });
 
 describe("the Planning report (spec addendum §10.5)", () => {
-  it("Legal landscape, its title and Updated stamp, one row per activity in the list's order", () => {
+  it("Legal landscape, its title and Updated stamp, one row per activity in legacy's order", () => {
     const doc = planningDoc(ctx([on(20002, "2026-11-10"), on(20001, "2026-11-11")]));
     expect(doc.page).toBe("legal-landscape");
     expect(plain(doc.header!.left!)).toBe("Sample Corporate Calendar: Schedule of Activities");
@@ -85,7 +103,7 @@ describe("the Planning report (spec addendum §10.5)", () => {
   it("Schedule, Title & Summary, Significance and CC ID#, as legacy builds them", () => {
     const row = (over: Partial<ReportRow>) => (planningDoc(ctx([on(20001, "2026-11-10", over)])).blocks[0] as TableBlock).rows[0]!.map((c) => plain(c.runs));
     expect(row({ schedule: "Sample schedule", premierRequested: "Premier Confirmed", keywords: ["Sample", "HQ sample", "Another"], isConfidential: true, city: "Sampleton, SP" })).toEqual([
-      "Tue Nov 10 9:00-10:00 AM\nSample schedule\nPremier Requested: Confirmed\nTags: HQ sample, Another, Sample",
+      "Tue Nov 10 9:00-10:00 AM\nSample schedule\n\nPremier Requested: Confirmed\nTags: HQ sample, Another, Sample",
       "Sampleton - Sample 20001\nNot for Look Ahead Sample details",
       "Sample significance",
       "HLTH-20001\nupdated 1 month ago",
@@ -93,10 +111,31 @@ describe("the Planning report (spec addendum §10.5)", () => {
     expect(row({ isIssue: true })[2]).toBe("Issue\nSample significance");
     expect(row({ categories: ["Sample issue category"] })[2]).toBe("Issue\nSample significance");
     expect(row({ categories: ["Sample FYI only"] })[2]).toBe("FYI Only\nSample significance");
+    // ActivityHandler.ashx.cs:567: the Premier/Tags block opens with its own <br>, a blank line.
+    expect(row({ keywords: ["Sample"] })[0]).toBe("Tue Nov 10 9:00-10:00 AM\n\nTags: Sample");
+  });
+
+  it("legacy's measured styling: brown 11 pt regular DRAFT AND CONFIDENTIAL, 9 pt footer, #cf7a50 Premier and Tags, 9 pt black created/updated, legacy's widths", () => {
+    const doc = planningDoc(ctx([on(20001, "2026-11-10", { premierRequested: "Premier Confirmed", keywords: ["Sample"] })]));
+    expect(doc.header!.right).toEqual([{ text: "DRAFT AND CONFIDENTIAL", color: "#a52a2a", size: 11 }]);
+    expect(doc.footer!.left).toEqual([{ text: "Updated 11/3/2026 11:00:00 AM", size: 9 }]);
+    const table = tables(doc)[0]!;
+    // 183.6 / 407.2 / 240.4 / 104 pt: the middle column takes the rest of the line.
+    expect(table.widths).toEqual([183.6, "*", 240.4, 104]);
+    const [schedule, , , id] = table.rows[0]!;
+    expect(schedule!.runs.slice(1)).toEqual([
+      { text: "\n\nPremier Requested: ", bold: true, color: "#cf7a50" }, { text: "Confirmed", color: "#cf7a50" },
+      { text: "\nTags: ", bold: true, color: "#cf7a50" }, { text: "Sample", color: "#cf7a50" },
+    ]);
+    expect(id!.runs.at(-1)).toEqual({ text: "\nupdated 1 month ago", size: 9 });
   });
 
   it("HQ tags first, each group sorted", () => {
     expect(planningTags(["b", "HQ z", "a", "HQ a"])).toEqual(["HQ a", "HQ z", "a", "b"]);
+  });
+
+  it("tags in legacy's culture-aware order, not code-unit order: case doesn't put capitals first", () => {
+    expect(planningTags(["beta", "Zed", "HQ Zed", "HQ beta", "Apple"])).toEqual(["HQ beta", "HQ Zed", "Apple", "beta", "Zed"]);
   });
 
   it("no activities: the one table, its header and no rows", () => {
@@ -121,7 +160,7 @@ const noHiddenText = (doc: ReportDoc) => {
   const json = JSON.stringify(doc);
   expect(json).not.toContain("MARK-");
   for (const v of SECTION_VALUES) expect(json).not.toContain(v);
-  expect(cellTexts(doc).filter((t) => /\b(NEW|CHANGED)\b/.test(t) || /long term outlook|\btrue\b|\bfalse\b/i.test(t))).toEqual([]);
+  expect(cellTexts(doc).filter((t) => /\b(new|changed)\b|long term outlook|\btrue\b|\bfalse\b/i.test(t))).toEqual([]);
   expect(tables(doc).flatMap((t) => t.rows.flatMap((r) => r.flatMap((cell) => cell.runs))).filter((r) => r.color === COLOURS.flag)).toEqual([]);
 };
 
@@ -144,40 +183,55 @@ describe("what a 30/60/90 or Planning row never prints", () => {
 describe("a 30/60/90 or Planning row with no start date", () => {
   // Legacy had none (survey 4.5) and saving requires both dates; an imported one must still not crash.
   const undated = (id: number, endAt: string | null) => reportRow({ id, title: `Sample ${id}`, startAt: null, endAt, isConfirmed: false, potentialDates: "Sample spring" });
-  const rows = [on(20001, "2026-11-10"), undated(20002, bc("2026-11-11", "10:00")), on(20003, "2026-12-10"), undated(20004, null)];
+  // In the reader's order: undated rows last (legacyReportOrder, NULLS LAST).
+  const rows = [on(20001, "2026-11-10"), on(20003, "2026-12-10"), undated(20002, bc("2026-11-11", "10:00")), undated(20004, null)];
 
-  it("30/60/90: never ends a month (legacy's null StartDateTime >= the next month is false), so it stays with the month it follows", () => {
+  it("30/60/90: an undated row never ends a month (a null start >= the next month is false), so it joins the month open when the dated rows run out", () => {
     const doc = thirtySixtyNinetyDoc(ctx(rows, { filter: { from: "2026-11-03" } }));
-    expect(outline(doc)).toEqual(["# 30 / 60 / 90 REPORT", "# November 2026", "HLTH-20001", "HLTH-20002", "---", "# December 2026", "HLTH-20003", "HLTH-20004", "---", "# January 2027"]);
-    expect(tables(doc)[0]!.rows[1]!.map((c) => plain(c.runs))[0]).toBe("Sample spring");
+    expect(outline(doc)).toEqual(["# 30 / 60 / 90 REPORT", "# November 2026", "HLTH-20001", "---", "# December 2026", "HLTH-20003", "HLTH-20002", "HLTH-20004", "---", "# January 2027"]);
+    expect(tables(doc)[1]!.rows.map((r) => plain(r[0]!.runs))).toEqual(["Thu Dec 10 9:00-10:00 AM", "Sample spring", "Sample spring"]);
+  });
+
+  it("30/60/90: a dated row after the last month closes every month before the undated rows, so they are dropped with it", () => {
+    // Legacy can't be compared here: its in-memory OrderBy on StartDateTime.Value threw on a null start (ActivityHandler.ashx.cs:47).
+    const later = [on(20001, "2026-11-10"), on(20005, "2027-02-01"), undated(20002, bc("2026-11-11", "10:00"))];
+    expect(outline(thirtySixtyNinetyDoc(ctx(later, { filter: { from: "2026-11-03" } })))).toEqual(["# 30 / 60 / 90 REPORT", "# November 2026", "HLTH-20001", "---", "# December 2026", "---", "# January 2027"]);
   });
 
   it("Planning: its potential dates in the Schedule", () => {
     const doc = planningDoc(ctx(rows));
-    expect(outline(doc)).toEqual(["HLTH-20001", "HLTH-20002", "HLTH-20003", "HLTH-20004"]);
-    expect(tables(doc)[0]!.rows.map((r) => plain(r[0]!.runs))).toEqual(["Tue Nov 10 9:00-10:00 AM", "Sample spring", "Thu Dec 10 9:00-10:00 AM", "Sample spring"]);
+    expect(outline(doc)).toEqual(["HLTH-20001", "HLTH-20003", "HLTH-20002", "HLTH-20004"]);
+    expect(tables(doc)[0]!.rows.map((r) => plain(r[0]!.runs))).toEqual(["Tue Nov 10 9:00-10:00 AM", "Thu Dec 10 9:00-10:00 AM", "Sample spring", "Sample spring"]);
   });
 });
+
+// Calendar.SysAdmin, which the shared world doesn't seed: one in Health, one in HQ. Fictional ids.
+const SYS_ADMINS = { sysAdmin: "00000000-0000-4000-8000-000000000501", hqSysAdmin: "00000000-0000-4000-8000-000000000502" } as const;
+type Role = Who | keyof typeof SYS_ADMINS;
 
 describe("the 30/60/90 and Planning reports at the built document, through the reader (spec addendum §6)", () => {
   let tdb: TestDatabase;
   let w: World;
   beforeAll(async () => {
     tdb = await createCalendarTestDb();
-    w = await seedWorld(createTestApp(tdb.db), tdb.db);
+    const app = createTestApp(tdb.db);
+    w = await seedWorld(app, tdb.db);
+    for (const [who, org] of [["sysAdmin", "health"], ["hqSysAdmin", "gcpe-hq"]] as const) {
+      await projectUser(app, { id: SYS_ADMINS[who], email: `${who}@example.test`, displayName: `Sample ${who}`, isActive: true, calendarRole: "Calendar.SysAdmin", organizationKeys: [org] });
+    }
     // Each report prints one of strategy and schedule and not the other: a SHOWN- marker proves the check can see a field.
     const base = { hqComments: "**MARK-summary** for HQ", hqStatus: "new" as const, leadOrganization: "MARK-lead", translations: ["MARK-translation"], strategy: "SHOWN-strategy", schedule: "SHOWN-schedule" };
     for (const [hqSection, day] of [["events_and_speeches", "2046-03-10"], ["issues_and_reports", "2046-03-10"], ["in_the_news", "2046-03-11"]] as const) {
       await insertRaw(tdb.db, { ...base, title: `Sample ${day}`, hqSection, startAt: new Date(`${day}T17:00:00Z`), endAt: new Date(`${day}T18:00:00Z`) });
     }
-    await insertRaw(tdb.db, { ...base, title: "Sample changed", hqStatus: "changed", hqSection: "events_and_speeches", startAt: new Date("2046-03-12T17:00:00Z"), endAt: new Date("2046-03-12T18:00:00Z") });
+    await insertRaw(tdb.db, { ...base, title: "Sample second event", hqStatus: "changed", hqSection: "events_and_speeches", startAt: new Date("2046-03-12T17:00:00Z"), endAt: new Date("2046-03-12T18:00:00Z") });
     await insertRaw(tdb.db, { ...base, title: "Sample undated", hqSection: "issues_and_reports", startAt: null, endAt: new Date("2046-03-11T18:00:00Z"), isConfirmed: false, potentialDates: "Sample spring" });
   });
   afterAll(() => tdb.drop());
 
-  const dataOf = async (who: Who, showHqCommentsField: boolean) => {
+  const dataOf = async (who: Role, showHqCommentsField: boolean) => {
     const rules = { ...TEST_RULES, showHqCommentsField };
-    const actor = (await loadCalendarActor(tdb.db, w.as[who].id))!;
+    const actor = (await loadCalendarActor(tdb.db, who in SYS_ADMINS ? SYS_ADMINS[who as keyof typeof SYS_ADMINS] : w.as[who as Who].id))!;
     const d = await reportData({ db: tdb.db, rules, subscribers: [], now: () => FIXED_NOW }, actor, q({ filter: { from: "2046-03-10", to: "2046-03-12" } }));
     // A Finance Editor sees none of these Health activities: not visible is never a row.
     expect(d.rows).toHaveLength(who === "financeEditor" ? 0 : 5);
@@ -185,7 +239,7 @@ describe("the 30/60/90 and Planning reports at the built document, through the r
   };
   const SHOWN: Record<"30-60-90" | "planning", [string, string]> = { "30-60-90": ["SHOWN-strategy", "SHOWN-schedule"], planning: ["SHOWN-schedule", "SHOWN-strategy"] };
 
-  const WHO: Who[] = ["readOnly", "editor", "financeEditor", "advanced", "admin", "hqReadOnly", "hqEditor", "hqAdvanced", "hqAdmin"];
+  const WHO: Role[] = ["readOnly", "editor", "financeEditor", "advanced", "admin", "sysAdmin", "hqReadOnly", "hqEditor", "hqAdvanced", "hqAdmin", "hqSysAdmin"];
   for (const who of WHO) {
     for (const show of [false, true]) {
       for (const kind of ["30-60-90", "planning"] as const) {
