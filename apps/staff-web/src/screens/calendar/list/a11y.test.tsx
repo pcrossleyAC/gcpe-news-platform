@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import axe from "axe-core";
-import { CONFIG, renderList, row, stubFetch } from "./fixtures";
+import { jsonResponse } from "../../../../test/jsonResponse";
+import { CONFIG, HQ_ADMIN_CONFIG, HQ_ADMIN_ME, renderList, row, stubFetch } from "./fixtures";
 
 async function seriousViolations(container: Element) {
   const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
@@ -57,6 +58,20 @@ describe("accessibility: the activity list in every state", () => {
     const { container } = renderList();
     await userEvent.setup().click(await screen.findByRole("button", { name: "Rename Sample one" }));
     await screen.findByLabelText("New name");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("an HQ Administrator's tools, after a partial review", async () => {
+    stubFetch([], {
+      me: HQ_ADMIN_ME,
+      config: HQ_ADMIN_CONFIG,
+      other: (url) => (url === "/calendar/api/activities/review-selected" ? jsonResponse(207, { reviewed: [], skipped: [{ id: 20001, reason: "changed" }], failed: true }) : undefined),
+    });
+    const { container } = renderList();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("checkbox", { name: "Select HLTH-20001" }));
+    await user.click(screen.getByRole("button", { name: "Review selected (1)" }));
+    await screen.findByText(/before a later batch failed/);
     expect(await seriousViolations(container)).toEqual([]);
   });
 });

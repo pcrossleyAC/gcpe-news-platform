@@ -1,13 +1,15 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
-import { DEFAULT_LIST_QUERY, listQuerySchema, type ListDisplay, type ListOptions, type ListPreferences, type ListQuery } from "@gcpe/calendar-contract";
+import { DEFAULT_LIST_QUERY, listQuerySchema, type ListDisplay, type ListOptions, type ListPreferences, type ListQuery, type ListRow } from "@gcpe/calendar-contract";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { useCalendarContext } from "../CalendarSection";
 import { ActivityTable } from "./ActivityTable";
 import { listApi } from "./api";
+import { minId, type TableTools } from "./cells";
 import { ColumnChooser } from "./ColumnChooser";
 import { FilterPanel } from "./FilterPanel";
+import { ClearLaStatus, CorporateQueries, ExportButton, LookAheadFilterChoice, ReviewSelected } from "./HqTools";
 import { MyQueries } from "./MyQueries";
 import type { CalendarConfigView } from "./types";
 import { WatchStar } from "./WatchStar";
@@ -83,6 +85,11 @@ export function ActivityListScreen(): React.JSX.Element {
     if (display !== prefs.display) void savePrefs({ ...prefs, display });
   }, [fromUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  const [selected, setSelected] = useState<Map<number, { version: number; label: string }>>(new Map());
+  const queryKey = JSON.stringify(query);
+  useEffect(() => setSelected(new Map()), [queryKey, reloadToken]);
+  const reload = () => setReloadToken((n) => n + 1);
+
   if (loadError) {
     return (
       <div>
@@ -99,6 +106,21 @@ export function ActivityListScreen(): React.JSX.Element {
       </div>
     );
   }
+  const tools: TableTools = {
+    renderStar: (r, update) => <WatchStar row={r} myName={me.displayName} update={update} />,
+    ...(config.list.reviewSelected
+      ? {
+          selected,
+          onSelect: (r: ListRow, on: boolean) =>
+            setSelected((s) => {
+              const n = new Map(s);
+              if (on) n.set(r.id, { version: r.version, label: minId(r) });
+              else n.delete(r.id);
+              return n;
+            }),
+        }
+      : {}),
+  };
   return (
     <div className="gcpe-calendar-list">
       <h1>Corporate Calendar</h1>
@@ -112,6 +134,10 @@ export function ActivityListScreen(): React.JSX.Element {
         }}
       />
       <MyQueries current={query.filter} onRun={(filter) => setQuery({ ...query, corporate: null, filter })} />
+      {config.list.corporateQueries && (
+        <CorporateQueries active={query.corporate} onRun={(corporate) => setQuery({ ...query, corporate })} onClear={() => setQuery({ ...query, corporate: null })} />
+      )}
+      {config.list.lookAheadFilter && <LookAheadFilterChoice value={query.lookAhead} onChange={(lookAhead) => setQuery({ ...query, lookAhead })} />}
       <ColumnChooser hidden={prefs.hiddenColumns} onChange={(hiddenColumns) => void savePrefs({ ...prefs, hiddenColumns })} />
       {prefsError && <p role="alert">{prefsError}</p>}
       <ActivityTable
@@ -120,8 +146,13 @@ export function ActivityListScreen(): React.JSX.Element {
         timeZone={config.timeZone}
         reloadToken={reloadToken}
         onSort={(sort, dir) => setQuery({ ...query, sort, dir })}
-        tools={{ renderStar: (r, update) => <WatchStar row={r} myName={me.displayName} update={update} /> }}
+        tools={tools}
       />
+      <section aria-label="List actions" className="gcpe-actions">
+        {config.list.reviewSelected && <ReviewSelected selected={selected} onDone={reload} />}
+        {config.list.clearLaStatus && <ClearLaStatus onDone={reload} />}
+        <ExportButton query={query} />
+      </section>
     </div>
   );
 }
