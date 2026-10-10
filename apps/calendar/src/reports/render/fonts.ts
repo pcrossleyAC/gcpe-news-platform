@@ -4,8 +4,9 @@ import { inflateSync } from "node:zlib";
 
 /**
  * WOFF 1.0 → the TrueType font inside it, with Node's own zlib. pdfkit can read WOFF itself, but
- * inflates it in JavaScript for every document: about 400 ms locally and 3.4 s on boxs.ca for BC
- * Sans's four faces, against about 10 ms once here (measured 2026-10-10).
+ * inflates it in JavaScript: about 400 ms locally and 3.4 s on boxs.ca for BC Sans's four faces,
+ * against about 10 ms here (measured 2026-10-10). Each report's worker converts the faces again
+ * when it starts, so the 10 ms is paid per report, not once for the life of the server.
  */
 export function woffToSfnt(woff: Buffer): Buffer {
   if (woff.length < 44 || woff.readUInt32BE(0) !== 0x774f4646) throw new Error("not a WOFF font");

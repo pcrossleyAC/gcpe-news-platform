@@ -44,6 +44,8 @@ export function workerRenderer(o: WorkerRendererOptions): PdfRenderer {
         const worker = new Worker(o.workerFile, {
           execArgv: o.execArgv,
           workerData: { fontsDir: o.fontsDir },
+          // Not the stack's environment: the worker needs none of it, and it holds the secrets.
+          env: {},
           resourceLimits: { maxOldGenerationSizeMb: o.heapMb, maxYoungGenerationSizeMb: 32 },
           // Anything the worker prints may quote the report, so it never reaches the stack's log.
           stdout: true,

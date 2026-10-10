@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { inspect } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { pdfPages } from "../../../test/pdf-text";
 import type { ReportDoc } from "../model";
@@ -74,11 +75,27 @@ describe("what the worker is given, and what leaves it", () => {
   const fixture = (name: string) => fileURLToPath(new URL(`../../../test/fixtures/${name}`, import.meta.url));
   const sample: ReportDoc = { ...doc(2), title: "Sample confidential title 7f3a" };
 
-  it("the worker is handed the document and the fonts' folder, nothing else", async () => {
-    const r = workerRenderer({ workerFile: fixture("echo-worker.mjs"), execArgv: [], fontsDir: "/srv/sample/fonts", heapMb: 64, timeoutMs: 10_000 });
-    const got = JSON.parse(new TextDecoder().decode(await r.render(sample))) as unknown;
+  it("the worker is handed the document and the fonts' folder, nothing else: no environment", async () => {
+    process.env.SAMPLE_REPORT_SECRET = "sample-secret-value";
+    try {
+      const r = workerRenderer({ workerFile: fixture("echo-worker.mjs"), execArgv: [], fontsDir: "/srv/sample/fonts", heapMb: 64, timeoutMs: 10_000 });
+      const got = JSON.parse(new TextDecoder().decode(await r.render(sample))) as unknown;
+      await r.close();
+      expect(got).toEqual({ workerData: { fontsDir: "/srv/sample/fonts" }, messages: [sample], env: {} });
+    } finally {
+      delete process.env.SAMPLE_REPORT_SECRET;
+    }
+  });
+
+  it("a render that throws ends as failed, with none of the error's text", async () => {
+    const r = workerRenderer({ ...reportAssets(), heapMb: 256, timeoutMs: 60_000 });
+    // pdfkit quotes a bad width back in its error: "unsupported number: …Sample 9c1d…".
+    const bad = { ...doc(1), blocks: [{ ...doc(1).blocks[0]!, widths: ["Sample 9c1d" as "*", "*", 60] }] } as ReportDoc;
+    const err = await r.render(bad).catch((e: unknown) => e);
     await r.close();
-    expect(got).toEqual({ workerData: { fontsDir: "/srv/sample/fonts" }, messages: [sample] });
+    expect(err).toBeInstanceOf(ReportRenderError);
+    expect((err as ReportRenderError).reason).toBe("failed");
+    expect(inspect(err, { depth: 5 })).not.toContain("9c1d");
   });
 
   it("nothing the worker prints reaches the process's output", async () => {

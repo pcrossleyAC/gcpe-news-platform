@@ -5,5 +5,9 @@ import { renderPdf, useBcSans } from "./pdf";
 // One report per worker: the worker's own heap limit bounds it, and its memory goes when it ends.
 useBcSans((workerData as { fontsDir: string }).fontsDir);
 parentPort!.once("message", (doc: ReportDoc) => {
-  void renderPdf(doc).then((bytes) => parentPort!.postMessage(bytes, [bytes.buffer]));
+  renderPdf(doc).then(
+    (bytes) => parentPort!.postMessage(bytes, [bytes.buffer]),
+    // pdfmake's errors can quote the report, so none of the error leaves: the parent sees an exit.
+    () => process.exit(1),
+  );
 });
