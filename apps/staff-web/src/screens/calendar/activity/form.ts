@@ -1,5 +1,5 @@
 import {
-  inferLookAhead, releaseFieldsetHidden,
+  inferLookAhead, releaseFieldsetHidden, sameCategoryName,
   type ActivityFields, type ActivityView, type EditorCommContact, type EditorMinistry, type EditorOptions, type EditorRules, type EditorTerm,
   type FieldError, type HqSection, type LookAheadInference, type LookAheadInput, type NeedsReviewKey,
 } from "@gcpe/calendar-contract";
@@ -44,7 +44,7 @@ export function lookupChoices(rows: readonly { id: number; name: string; isActiv
 
 /** HQ Placeholder, inactive in legacy, is offered to HQ only (DropDownListManager.cs:297). */
 export function categoryChoices(o: EditorOptions, rules: Pick<EditorRules, "hqPlaceholderCategoryName">, useHqPlaceholder: boolean, current: number | null): Choice[] {
-  const placeholder = (name: string) => name === rules.hqPlaceholderCategoryName;
+  const placeholder = (name: string) => sameCategoryName(name, rules.hqPlaceholderCategoryName);
   return o.categories
     .filter((c) => c.id === current || (placeholder(c.name) ? useHqPlaceholder : c.isActive))
     .map((c) => ({ value: String(c.id), label: c.isActive || placeholder(c.name) ? c.name : named(c.name, false) }));

@@ -46,6 +46,13 @@ describe("the editor's form model", () => {
     expect(categoryChoices(O, RULES, false, 34).map((c) => c.label)).toContain("Sample retired category (no longer in use)");
   });
 
+  it("a stored name of ' Sample  HQ placeholder ' still counts as the HQ Placeholder (legacy category 16: 'Speech /  Remarks')", () => {
+    const spaced = { id: 35, name: " Sample  HQ placeholder ", isActive: false };
+    const options = { ...O, categories: [...O.categories, spaced] };
+    expect(categoryChoices(options, RULES, false, null).map((c) => c.value)).not.toContain("35");
+    expect(categoryChoices(options, RULES, true, null).map((c) => c.value)).toContain("35");
+  });
+
   it("lead ministry: one's own for a ministry user, every active one but the excluded for HQ (Activity.aspx.cs:390-410)", () => {
     expect(leadMinistryChoices(O, RULES, ME, null).map((c) => c.value)).toEqual(["health"]);
     expect(leadMinistryChoices(O, RULES, HQ_ADMIN_ME, null).map((c) => c.value)).toEqual(["health", "finance"]);
