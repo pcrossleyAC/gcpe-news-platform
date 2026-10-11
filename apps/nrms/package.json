@@ -9,6 +9,7 @@
     "import:legacy": "tsx src/import/cli.ts",
     "release-holds": "tsx src/cli/release-holds.ts",
     "replay-to-news-api": "tsx src/cli/replay-to-news-api.ts",
+    "replay-activity-links": "tsx src/cli/replay-activity-links.ts",
     "db:generate": "drizzle-kit generate",
     "build": "node ../../scripts/build-app.mjs apps/nrms"
   },
