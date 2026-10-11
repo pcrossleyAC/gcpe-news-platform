@@ -5,7 +5,24 @@
   "defaultLanguageId": 4105,
   "organizationLabel": { "singular": "Ministry", "plural": "Ministries" },
   "publicSiteBaseUrl": "https://news.gov.bc.ca",
-  "branding": { "primaryColor": "#003366", "logoUrl": null },
+  "features": { "semanticSearch": false, "staffAi": false },
+  "search": { "language": "english" },
+  "site": {
+    "theme": {
+      "colors": {
+        "primary": "#013366", "primaryText": "#FFFFFF", "accent": "#FCBA19", "text": "#2D2D2D",
+        "mutedText": "#474543", "surface": "#F2F2F2", "background": "#FFFFFF", "border": "#D8D8D8"
+      },
+      "font": { "family": "BC Sans", "fallback": "\"Noto Sans\", Verdana, Arial, sans-serif" },
+      "logo": { "path": "assets/bc-logo.svg", "alt": "Government of British Columbia" },
+      "footerLinks": [
+        { "label": "Disclaimer", "url": "https://www2.gov.bc.ca/gov/content/home/disclaimer" },
+        { "label": "Privacy", "url": "https://www2.gov.bc.ca/gov/content/home/privacy" },
+        { "label": "Accessibility", "url": "https://www2.gov.bc.ca/gov/content/home/accessible-government" },
+        { "label": "Copyright", "url": "https://www2.gov.bc.ca/gov/content/home/copyright" }
+      ]
+    }
+  },
   "timeZoneCheck": { "at": "2027-01-15T19:00:00Z", "expectedOffset": "-07:00" },
   "calendar": {
     "freeze": { "start": "16:00", "end": "17:00" },
