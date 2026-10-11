@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch src/main.ts",
+    "import:legacy": "tsx src/import/cli.ts",
     "replay-to-nrms": "tsx src/cli/replay-to-nrms.ts",
     "db:generate": "drizzle-kit generate",
     "build": "node ../../scripts/build-app.mjs apps/calendar"
@@ -17,6 +18,7 @@
     "@gcpe/db-kit": "0.0.0",
     "@gcpe/events": "0.0.0",
     "@gcpe/http-kit": "0.0.0",
+    "@gcpe/legacy-import": "0.0.0",
     "@gcpe/storage": "0.0.0",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",

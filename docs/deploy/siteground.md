@@ -810,6 +810,91 @@ legacy within that window. But once the purge has deleted a record, a later impo
 it back; it only reports the mismatch. Run the import (trial, then final) first, confirm the report, and only
 then flip the Operations switch.
 
+## Importing legacy Calendar data (Phase 5i)
+
+`npm run calendar:import` reads legacy's SQL Server through `@gcpe/legacy-import` and writes the
+Calendar's and Core's databases directly, modelled on `nrms:import` above — the same networking
+caveat applies (see "Importing legacy NRMS data" above).
+
+**What it needs:** the same env as `nrms:import` — `DATABASE_URL` (the Calendar's Postgres),
+`CORE_DATABASE_URL` (Core's Postgres), `LEGACY_SQL_SERVER`, `LEGACY_SQL_DATABASE` (default
+`Gcpe.Hub`), `LEGACY_SQL_USER`, `LEGACY_SQL_PASSWORD`, `LEGACY_SQL_TRUST_CERT` (`true`/`false`) —
+plus `CALENDAR_STORAGE_DIR` (where imported attachments are written) and the optional
+`CORE_EVENT_SUBSCRIBERS` (names and types only, as the replay CLIs use below: `"types":
+["user.upserted"]` for both the `calendar` and `nrms` entries). None of these are printed or
+written anywhere by the tool itself.
+
+**`CALENDAR_STORAGE_DIR` must be the running Calendar's own attachment store**, not a directory on
+whichever machine happens to run the import. On SiteGround that means running the import on the
+server itself (`ssh boxs`), with `CALENDAR_STORAGE_DIR` left at its default or pointed explicitly
+at `~/gcpe-data/calendar-files` (see "Persistent data" above). An import run from an operator's own
+machine writes the attachment bytes to that machine's disk while the Calendar rows point at keys
+the server never receives; downloads then fail, silently, and a re-run won't repair it, because the
+rows already exist and come back "unchanged".
+
+**Prerequisite:** Core's reference import first (ministries, sectors, themes, tags). An unknown
+legacy ministry, sector, theme or tag GUID stops the run before it writes anything, and is listed
+in the report by kind and GUID ("fix Core first").
+
+**Running it:**
+
+```sh
+DATABASE_URL=... CORE_DATABASE_URL=... CALENDAR_STORAGE_DIR=... LEGACY_SQL_SERVER=... LEGACY_SQL_USER=... LEGACY_SQL_PASSWORD=... \
+CORE_EVENT_SUBSCRIBERS='[{"name":"calendar","url":"https://import-cli.example.test/unused","secret":"unused-by-cli-000000000000000000000000","types":["user.upserted"]},{"name":"nrms","url":"https://import-cli.example.test/unused","secret":"unused-by-cli-000000000000000000000000","types":["user.upserted"]}]' \
+  npm run calendar:import -- --cutoff <YYYY-MM-DD> --report calendar-import.json
+```
+
+That is a dry run: it applies any pending Calendar migrations (the same as a confirmed run), then
+writes no Calendar or Core data. Read the report, then run it again with `--confirm`. The cutoff
+has no default (Q53); at a 2026-11-01 cutoff, Survey 08 estimates about 6,700 activities. The CLI
+prints which configured subscriber(s) `user.upserted` would go to before it does anything else.
+
+**What a re-run does.** Activities are upserted by legacy id under a version guard: a new one is
+inserted; one changed in the Calendar since the last import is skipped and listed ("changed in
+the Calendar since the last import"); otherwise it's updated or left unchanged. Every other row —
+lookups, comm contacts, Core users and their access, profiles, saved filters, favourites,
+attachments and history — is copied the first time only and never overwritten, because none of
+them carries a version the import could use to tell a Calendar edit from stale legacy data.
+**Do test imports into an empty Calendar database:** a Calendar activity created between two runs
+can take an id a newer legacy activity needs, and the second run then skips that legacy activity
+instead of importing it. A confirmed run takes a whole-run advisory lock, as `nrms:import` does; a
+second one started while the first runs exits at once with "another calendar:import is already
+running" and touches nothing. **After exit 1, fix the cause and re-run:** nothing already imported
+is duplicated, and no favourite already imported is lost, whatever stage the failure happened in.
+
+**Reading the report.** Every run writes `--report <path>` (default
+`calendar-import-<UTC timestamp>.json`) plus a matching `.txt`. For each of users, comm contacts,
+every lookup, activities, saved filters, favourites, files and log rows, it lists `legacy` (rows
+seen) against `outOfScope`, `planned` (dry run) or `inserted`/`updated`/`unchanged` (confirmed),
+and `skipped` — `legacy` always equals the rest added together, which is the report's own
+`balanced` flag. Unknown legacy keys are listed by kind and GUID; activities changed in the
+Calendar since the last import are listed by id; skipped rows are listed by table, legacy id and
+reason; validation problems are listed by activity id and field name only (imported anyway, fixed
+on the next save). Facts cover users without or with an invalid email, duplicate-email groups, the
+lowest and highest imported activity id, comm contacts of inactive users, non-deleted awareness
+dates, activities with two or more categories, history row counts, and release links in and out
+of scope. The report never holds a person's email, a title or a saved query's typed values.
+Exit code: `0` when the report balances, `2` when it doesn't (the import still completed — read
+the report), `1` on any error (unknown keys, a stage failure, another import already running). A
+partial report is still written once the run has started reading legacy data; it is not written
+when another run already holds the lock, or when the legacy connection or tenant configuration
+fails before that point.
+
+**After a confirmed import, in this order:**
+
+1. If `CORE_EVENT_SUBSCRIBERS` wasn't set, run Core's republish by hand
+   (`POST /core/api/admin/republish`, as in "Smoke test").
+2. `npm run calendar:replay-to-nrms` (dry run), then `-- --confirm`, then a tick.
+3. `npm run nrms:replay-activity-links` (dry run), then `-- --confirm`, then a tick. Its "name an
+   activity NRMS doesn't hold" count is the number of releases linked to activities that weren't
+   imported (C158) — compare it with the report's `releaseLinksOutOfScope` fact.
+
+See "NRMS link and Forecast (Phase 5h)" above for how these two commands take their own
+`EVENT_SUBSCRIBERS`.
+
+**R14 (Phase 7):** legacy stays readable for one HQ administrator for a year after cutover; it's
+the only place to see activities outside the import.
+
 ## Calendar access (Phase 5a)
 
 - **Migration:** Core's `0002_calendar_access` is additive: a column, a nullable email with a check, two
