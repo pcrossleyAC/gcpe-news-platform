@@ -3,8 +3,8 @@ import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCoreTestDb } from "../../test/helpers";
 import { seedCoreForImport } from "../../../calendar/test/legacy-calendar-fixture";
-import { roleGrants, userLegacyIds, users } from "../db/schema";
-import { getUser } from "../services/users";
+import { roleGrants, userLegacyIds, userOrganizations, users } from "../db/schema";
+import { createUser, getUser } from "../services/users";
 import { applyCalendarUsers, planCalendarUsers } from "./calendar-users";
 import type { CalendarUserCandidate } from "./legacy-keys";
 import { loadLegacyKeys } from "./legacy-keys";
@@ -63,9 +63,28 @@ describe("Calendar users into Core (spec addendum §12.1 step 1, R12, C144)", ()
   });
 
   it("activates a role-less inactive placeholder when legacy says active, but never a user with any role", async () => {
-    const r = await run([cand(12, "blake.sample@example.test", { calendarRole: "Calendar.SysAdmin" })]);
+    const existing = await createUser(tdb.db, { email: "morgan.sample@example.test", displayName: "Morgan Legacy", roles: ["NRMS.Editor"], isActive: false }, []);
+    const r = await run([
+      cand(12, "blake.sample@example.test", { calendarRole: "Calendar.SysAdmin" }),
+      cand(38, "morgan.sample@example.test", { calendarRole: null }),
+    ]);
     expect(await getUser(tdb.db, r.userIdOf.get(12)!)).toMatchObject({ isActive: true, calendarRole: "Calendar.SysAdmin" });
     expect(r.activated).toEqual([r.userIdOf.get(12)]);
+    // Already holds a role (NRMS.Editor, not Calendar): the role-less guard must not treat this
+    // as a placeholder, so legacy's "active" is ignored and the plan grants no Calendar access.
+    expect(await getUser(tdb.db, existing.id)).toMatchObject({ isActive: false, roles: ["NRMS.Editor"], calendarRole: null });
+    expect(r.activated).not.toContain(existing.id);
+    expect(r.accessGranted).not.toContain(existing.id);
+  });
+
+  it("grants no new Calendar access to a user who already has an organization, even with no role yet", async () => {
+    const existing = await createUser(tdb.db, { email: "sawyer.sample@example.test", displayName: "Sawyer Core", roles: [], isActive: true }, []);
+    const fin = (await loadLegacyKeys(tdb.db)).org("0F000000-0000-4000-8000-000000000001")!;
+    await tdb.db.insert(userOrganizations).values({ userId: existing.id, organizationId: fin.id });
+    const r = await run([cand(39, "sawyer.sample@example.test", { calendarRole: "Calendar.Editor" })]);
+    expect(await getUser(tdb.db, existing.id)).toMatchObject({ calendarRole: null, organizationKeys: ["finance"] });
+    expect(r.accessKept).toEqual([existing.id]);
+    expect(r.accessGranted).toEqual([]);
   });
 
   it("a re-run matches by legacy id and changes nothing: no row, no grant, no event", async () => {
