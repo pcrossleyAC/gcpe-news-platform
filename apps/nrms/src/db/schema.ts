@@ -14,6 +14,7 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
+import type { CalendarRole } from "@gcpe/auth";
 import type { ReleaseRecord } from "@gcpe/events";
 import type { Layout, ReleaseStatus, ReleaseType } from "@gcpe/nrms-contract";
 
@@ -26,6 +27,8 @@ export const organizations = pgTable("organizations", {
   abbreviation: text("abbreviation"),
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
+  /** Core's HQ flag (spec addendum §4): a member of an HQ organization sees every ministry's activities. */
+  isHq: boolean("is_hq").notNull().default(false),
 });
 
 /** Local copy of Core's sectors, themes and tags (sector.*, theme.*, tag.* events). */
@@ -109,6 +112,8 @@ export const newsReleases = pgTable(
     uniqueIndex("news_releases_reference_idx").on(t.reference).where(sql`${t.reference} IS NOT NULL`),
     index("news_releases_due_idx").on(t.publishAt).where(sql`${t.status} IN ('scheduled','publishing','unpublishing')`),
     index("news_releases_status_idx").on(t.status),
+    // Forecast: every release planned or scheduled from now on (spec addendum §11).
+    index("news_releases_publish_at_idx").on(t.publishAt),
     check("news_releases_type_check", sql`${t.type} IN ('release','story','factsheet','update','advisory')`),
     check("news_releases_status_check", sql`${t.status} IN ('draft','approved','scheduled','publishing','published','unpublishing','failed','deleted')`),
     check("news_releases_committed_has_time", sql`${t.status} NOT IN ('scheduled','publishing','published','unpublishing') OR ${t.publishAt} IS NOT NULL`),
@@ -475,3 +480,57 @@ export const siteLog = pgTable(
     check("site_log_area_check", sql`${t.area} IN ('carousel','pins','live-feed','blue-bridge','links','files','features')`),
   ],
 );
+
+const keyList = (name: string) => text(name).array().notNull().default(sql`'{}'::text[]`);
+
+/**
+ * The Calendar's activities, from its activity.* events (spec addendum §11): what Forecast and the
+ * release editor's lookup read. A confidential activity is its id, the flag and deletion only; the
+ * CHECK keeps every other column empty whatever writes the row (C127). Core keys are kept exactly
+ * as the Calendar sent them, for its visibility rule; NRMS's own keys are their lowercase.
+ */
+export const calendarActivities = pgTable(
+  "calendar_activities",
+  {
+    id: integer("id").primaryKey(),
+    isConfidential: boolean("is_confidential").notNull(),
+    isDeleted: boolean("is_deleted").notNull(),
+    title: text("title"),
+    details: text("details"),
+    startAt: tz("start_at"),
+    endAt: tz("end_at"),
+    nrAt: tz("nr_at"),
+    isAllDay: boolean("is_all_day"),
+    isConfirmed: boolean("is_confirmed"),
+    contactMinistryKey: text("contact_ministry_key"),
+    sharedMinistryKeys: keyList("shared_ministry_keys"),
+    categoryNames: keyList("category_names"),
+    cityName: text("city_name"),
+    themeKeys: keyList("theme_keys"),
+    tagKeys: keyList("tag_keys"),
+    sectorKeys: keyList("sector_keys"),
+    translations: keyList("translations"),
+  },
+  (t) => [
+    check(
+      "calendar_activities_confidential_id_only",
+      sql`NOT ${t.isConfidential} OR (${t.title} IS NULL AND ${t.details} IS NULL AND ${t.startAt} IS NULL AND ${t.endAt} IS NULL AND ${t.nrAt} IS NULL
+        AND ${t.isAllDay} IS NULL AND ${t.isConfirmed} IS NULL AND ${t.contactMinistryKey} IS NULL AND ${t.cityName} IS NULL
+        AND cardinality(${t.sharedMinistryKeys}) = 0 AND cardinality(${t.categoryNames}) = 0 AND cardinality(${t.themeKeys}) = 0
+        AND cardinality(${t.tagKeys}) = 0 AND cardinality(${t.sectorKeys}) = 0 AND cardinality(${t.translations}) = 0)`,
+    ),
+    index("calendar_activities_forecast_idx").on(t.startAt).where(sql`NOT ${t.isConfidential} AND NOT ${t.isDeleted}`),
+  ],
+);
+export type CalendarActivityRow = typeof calendarActivities.$inferSelect;
+
+/**
+ * Core's users, as user.upserted carries them, for the Calendar's visibility rule (spec addendum
+ * §6): role, ministries (Core keys, exactly as sent) and active. Never an email or a name.
+ */
+export const calendarViewers = pgTable("calendar_viewers", {
+  userId: uuid("user_id").primaryKey(),
+  isActive: boolean("is_active").notNull(),
+  calendarRole: text("calendar_role").$type<CalendarRole>(),
+  organizationKeys: text("organization_keys").array().notNull().default(sql`'{}'::text[]`),
+});

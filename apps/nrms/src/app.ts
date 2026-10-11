@@ -11,6 +11,7 @@ import type { EmbedDeps } from "./media/embeds";
 import { mediaRoutes } from "./http/media-routes";
 import { apiRoutes } from "./http/routes";
 import { siteRoutes } from "./http/site-routes";
+import { calendarHandler } from "./calendar/projection";
 import type { WorkflowDeps } from "./releases/workflow";
 import { taxonomyHandler } from "./taxonomy";
 
@@ -49,7 +50,7 @@ export function createApp(deps: {
   // Mounted before any body parser: signatures cover the raw bytes (see
   // packages/events/src/receiver.ts), so an upstream express.json()/raw() that already
   // consumed the body would make every event fail verification.
-  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: taxonomyHandler }));
+  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: (e) => taxonomyHandler(e) ?? calendarHandler(e) }));
 
   if (deps.loginRouter) app.use(deps.loginRouter);
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.

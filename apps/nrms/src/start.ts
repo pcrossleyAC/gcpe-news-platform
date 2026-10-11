@@ -9,6 +9,7 @@ import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
 import { coreClient, distributionClient, nodClient, type CoreClient, type DistributionClient } from "./clients";
 import { createApp } from "./app";
+import { needsCalendarViewers } from "./calendar/projection";
 import { defaultSoundcloudOembed, type EmbedDeps } from "./media/embeds";
 import { flickrClient, type FlickrConfig } from "./media/flickr-client";
 import { flickrPrepareMedia, processFlickrJobs, startFlickrJobs } from "./media/flickr-jobs";
@@ -333,6 +334,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
       site: () => switchCarousels(db, subscribers),
       publish: () => publishDue({ db, subscribers, filesBase, prepareMedia, timeZone: tenant.timeZone }),
       dispatch: () => dispatchOnce({ db, subscribers }),
+      needsCalendarViewers: () => needsCalendarViewers(db),
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
