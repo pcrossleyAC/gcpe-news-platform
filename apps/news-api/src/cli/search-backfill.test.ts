@@ -21,7 +21,7 @@ describe("searchBackfill", () => {
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE posts");
+    await tdb.pool.query("TRUNCATE posts CASCADE");
     for (const key of KEYS) await tdb.db.transaction((tx) => applyRelease(tx, releaseFor(key), { notify: false }));
     // As the rows stand straight after the migration: no search text yet.
     await tdb.pool.query("UPDATE posts SET search_text = NULL");

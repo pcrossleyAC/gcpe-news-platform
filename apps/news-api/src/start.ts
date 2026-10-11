@@ -3,12 +3,14 @@ import express from "express";
 import { authFromEnv, NOD_SUBSCRIBE_API_ROLE, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
+import { createEmbeddingProvider } from "@gcpe/embeddings";
 import type { Closer } from "@gcpe/http-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
+import { hasHnswIndex, hasPgvector, resolveSearchMode } from "./embeddings/pgvector";
 import { newsApiEnvSchema } from "./env";
 import { assertSearchLanguage } from "./search/language";
-import { createSearchService } from "./search/service";
+import { createSearchService, type SearchMode } from "./search/service";
 import { createUpdatesHub } from "./updates/hub";
 import { listenForUpdates } from "./updates/notify";
 
@@ -20,6 +22,9 @@ export interface AppHandle {
   /** Tenant id/time zone (for main.ts's listening log line — unchanged text). */
   tenantId: string;
   timeZone: string;
+  /** "semantic" only when the flag, a provider and pgvector are all present (spec §5.3). Read
+   * once at startup: enabling pgvector later needs a restart. Reported by /stack/health. */
+  searchMode: SearchMode;
   /** One iteration of each background loop, using the same function and options the loop
    * itself uses. The hub's ping timer and the LISTEN connection are not loops of this kind
    * — there is no "run once" for them. */
@@ -66,8 +71,16 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
   assertTimeZoneRules(tenant);
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
+  const provider = createEmbeddingProvider(parsed);
+  let searchMode: SearchMode;
   try {
     await assertSearchLanguage(db, tenant.search.language);
+    const resolved = resolveSearchMode({ flag: tenant.features.semanticSearch, provider, pgvector: await hasPgvector(db) });
+    searchMode = resolved.mode;
+    if (tenant.features.semanticSearch && searchMode === "text") console.warn(`[news-api] semantic search is off: missing ${resolved.missing.join(", ")}`);
+    if (searchMode === "semantic" && !(await hasHnswIndex(db))) {
+      console.warn("[news-api] post_embeddings has no HNSW index: related posts scan every embedding (see the runbook, pgvector and the search mode)");
+    }
   } catch (e) {
     await pool.end();
     throw e;
@@ -151,6 +164,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     port: parsed.PORT,
     tenantId: tenant.tenantId,
     timeZone: tenant.timeZone,
+    searchMode,
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
     },

@@ -29,6 +29,20 @@
       "when": 1791742423173,
       "tag": "0003_post_search",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1791747008745,
+      "tag": "0004_semantic_tables",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1791747016600,
+      "tag": "0005_pgvector_optional",
+      "breakpoints": true
     }
   ]
 }

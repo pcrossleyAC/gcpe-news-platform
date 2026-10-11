@@ -1214,6 +1214,31 @@ It is safe to re-run: it fills only posts with no search text. `-- --all --confi
 2. `curl -si 'https://boxs.ca/api/v2/search?q=highway&page=99'` is a 400 whose body names `page`, with `cache-control: no-store`.
 3. `curl -si 'https://boxs.ca/api/Home'` is still the 400 `ApiVersionUnspecified`: v1 is unchanged.
 
+## Semantic search, related posts and the change feed (Phase 6b)
+
+### pgvector and the search mode
+
+**Migrations:** `0004_semantic_tables` adds `post_embeddings`, `post_related`, `changes`, `change_feed_state` and `posts.embedding_text_hash`. `0005_pgvector_optional` then tries to enable pgvector and index the embeddings. On SiteGround the database user may not create extensions, so that step is skipped with a notice and every migration still succeeds. No setting is needed.
+
+**The search mode** is decided once, when the News API starts. It is `semantic` only when all of these hold:
+- the tenant config has `"features": { "semanticSearch": true }`;
+- `NEWSAPI_EMBEDDINGS_PROVIDER` is set (`azure-openai`, or `stand-in` on a test site);
+- the News API's database has the `vector` extension.
+
+Otherwise it is `text`. `/stack/health` reports it as `"newsApiSearch": "semantic"` or `"text"`. When the flag is on but something is missing, the News API logs one line at startup, for example `[news-api] semantic search is off: missing pgvector`.
+
+On boxs.ca it is always `text`: SiteGround's Postgres user can't enable pgvector.
+
+**Enabling pgvector later** (OpenShift or any Postgres where a DBA can): connect to the News API's database as a role allowed to create extensions, and run:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS post_embeddings_embedding_hnsw_idx
+  ON post_embeddings USING hnsw ((embedding::vector(1536)) vector_cosine_ops);
+```
+
+Then restart the News API. `CONCURRENTLY` keeps the table writable while the index builds; it can't run inside a transaction block. Without the index, semantic search still works, but each related-posts computation scans every embedding, and the News API logs `post_embeddings has no HNSW index` at startup.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

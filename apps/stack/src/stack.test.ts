@@ -274,9 +274,11 @@ describe("apps/stack", () => {
   it("GET /stack/health aggregates every app's own readiness", async () => {
     const res = await fetch(`${instance.stackUrl}/stack/health`);
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string; apps: Record<string, boolean> };
+    const body = (await res.json()) as { status: string; apps: Record<string, boolean>; newsApiSearch: string };
     expect(body.status).toBe("ok");
     expect(body.apps).toEqual({ core: true, nrms: true, nod: true, distribution: true, "site-builder": true, "news-api": true, calendar: true });
+    // The stack's tenant has semanticSearch off, so the News API reports text mode.
+    expect(body.newsApiSearch).toBe("text");
   });
 
   // 2026-10-04 SiteGround debugging: the walkthrough's restarts were indistinguishable from a

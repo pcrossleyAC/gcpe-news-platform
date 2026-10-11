@@ -42,7 +42,7 @@ describe("textSearch and the search service", () => {
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE posts");
+    await tdb.pool.query("TRUNCATE posts CASCADE");
   });
 
   it("ranks by ts_rank_cd, then newest first, then key", async () => {

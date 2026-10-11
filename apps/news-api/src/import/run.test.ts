@@ -153,7 +153,7 @@ describe("importLegacyNews: unpublishes posts missing from legacy's published se
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE posts");
+    await tdb.pool.query("TRUNCATE posts CASCADE");
     // origin: "legacy" — this row is owned by the legacy importer, so it's a candidate for
     // unpublish-missing below (the default origin, "event", is NOT — see the tests further
     // down for that side of the behaviour).

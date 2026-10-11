@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { bigint, bigserial, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { OrgRecord, ReleaseRecord } from "@gcpe/events";
 
 export * from "@gcpe/events/tables";
@@ -52,6 +52,11 @@ export const posts = pgTable(
      * (src/search/language.ts). Another language needs its own migration.
      */
     searchVector: tsvector("search_vector").generatedAlwaysAs(sql`to_tsvector('english'::regconfig, coalesce(search_text, ''))`),
+    /**
+     * SHA-256 (hex) of the embedding source text (src/embeddings/source-text.ts), written with
+     * search_text. The worker compares it with post_embeddings.text_hash. NULL until written.
+     */
+    embeddingTextHash: text("embedding_text_hash"),
   },
   (t) => [
     uniqueIndex("posts_key_lower_idx").on(sql`lower(${t.key})`),
@@ -61,6 +66,60 @@ export const posts = pgTable(
     index("posts_search_vector_idx").using("gin", t.searchVector),
     check("posts_origin_check", sql`${t.origin} IN ('legacy', 'event')`),
   ],
+);
+
+/**
+ * One vector per published post (spec §5.2). `embedding` is a plain real[] so every migration runs
+ * without pgvector; where pgvector exists, migrations/0005 indexes `embedding::vector(1536)`.
+ * Rows exist only for published posts: unpublishing deletes them in the same transaction.
+ */
+export const postEmbeddings = pgTable("post_embeddings", {
+  postKey: text("post_key").primaryKey().references(() => posts.key, { onDelete: "cascade", onUpdate: "cascade" }),
+  provider: text("provider").notNull(),
+  model: text("model").notNull(),
+  dimensions: integer("dimensions").notNull(),
+  textHash: text("text_hash").notNull(),
+  embedding: real("embedding").array().notNull(),
+  embeddedAt: timestamp("embedded_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** The 5 nearest published neighbours, computed when the post is embedded (spec §5.4). */
+export const postRelated = pgTable("post_related", {
+  postKey: text("post_key").primaryKey().references(() => posts.key, { onDelete: "cascade", onUpdate: "cascade" }),
+  relatedKeys: text("related_keys").array().notNull(),
+  computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const CHANGE_KINDS = ["post.upserted", "post.unpublished", "home", "slides", "resource_links", "ministry", "sector", "theme", "tag"] as const;
+export type ChangeKind = (typeof CHANGE_KINDS)[number];
+
+/**
+ * The change feed (spec §5.4): one row per projection write, in the same transaction. `key` is
+ * null for home, slides and resource_links. `at` is clock_timestamp(), taken under the feed's
+ * advisory lock (src/changes.ts), so it follows id order.
+ */
+export const changes = pgTable(
+  "changes",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    kind: text("kind").notNull().$type<ChangeKind>(),
+    key: text("key"),
+    at: timestamp("at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  },
+  (t) => [
+    index("changes_at_idx").on(t.at),
+    check("changes_kind_check", sql`${t.kind} IN ('post.upserted', 'post.unpublished', 'home', 'slides', 'resource_links', 'ministry', 'sector', 'theme', 'tag')`),
+  ],
+);
+
+/** One row: the highest change id ever pruned. A cursor below it has missed changes (410). */
+export const changeFeedState = pgTable(
+  "change_feed_state",
+  {
+    id: integer("id").primaryKey().default(1),
+    prunedThrough: bigint("pruned_through", { mode: "number" }).notNull().default(0),
+  },
+  (t) => [check("change_feed_state_single_row", sql`${t.id} = 1`)],
 );
 
 export type MinistryDetails = Pick<
@@ -129,7 +188,7 @@ export const resourceLinks = pgTable("resource_links", {
 });
 
 /** A post as v1 reads it: the search columns stay in the database (src/posts.ts selects without them). */
-export type PostRow = Omit<typeof posts.$inferSelect, "searchText" | "searchVector">;
+export type PostRow = Omit<typeof posts.$inferSelect, "searchText" | "searchVector" | "embeddingTextHash">;
 export type CategoryRow = typeof categories.$inferSelect;
 export type FeatureRow = typeof categoryFeatures.$inferSelect;
 export type HomeRow = typeof home.$inferSelect;

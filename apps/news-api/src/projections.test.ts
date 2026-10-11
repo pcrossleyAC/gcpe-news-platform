@@ -1,34 +1,14 @@
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import type pg from "pg";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { OrgRecord, ReleaseRecord, TermRecord } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
-import { createNewsTestDb } from "../test/helpers";
+import { createNewsTestDb, waitUntilBlockedOnLock } from "../test/helpers";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { applyOrg, applyRelease, applySiteContent, applyTerm, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
 import { SEARCH_TEXT_MAX_CHARS, searchTextFor } from "./search/search-text";
 import { listenForUpdates, notifyUpdate, type UpdateTarget } from "./updates/notify";
-
-/**
- * Polls pg_stat_activity until some backend in this database is actually blocked waiting on a
- * lock. Used instead of an arbitrary sleep so the race test's interleaving — issue the
- * importer's write while a row lock is held, then release it — is guaranteed to occur, not
- * just likely to occur within some fixed delay. `query` in pg_stat_activity holds a
- * parameterized statement's placeholders, not its bound values, so this deliberately doesn't
- * try to match the query text — on this throwaway, single-use test database, any backend
- * blocked on a lock at this moment is the one the test is waiting for.
- */
-async function waitUntilBlockedOnLock(pool: pg.Pool, timeoutMs = 5_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const { rows } = await pool.query("SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()");
-    if (rows.length > 0) return;
-    if (Date.now() > deadline) throw new Error("timed out waiting for a backend to block on a lock");
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
 
 const org: OrgRecord = {
   key: "health", displayName: "Health", abbreviation: "HLTH", sortOrder: 5, isActive: true, parentKey: null, url: "http://gov.bc.ca/health",
@@ -47,7 +27,7 @@ describe("projections", () => {
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE posts, categories, category_features, home, slides, resource_links");
+    await tdb.pool.query("TRUNCATE posts, categories, category_features, home, slides, resource_links CASCADE");
   });
 
   it("builds lowercased index keys", () => {

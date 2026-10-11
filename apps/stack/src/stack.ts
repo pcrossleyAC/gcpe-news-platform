@@ -170,8 +170,11 @@ const HEALTH_CACHE_TTL_MS = 5_000;
  * happened between them; the same `startedAt` across many minutes proves the process stayed
  * up the whole time. Deliberately outside the cache above (constant for the process's whole
  * life, so there's nothing to cache) and never itself a reason for a non-200/503.
+ *
+ * `newsApiSearch` (spec §5.3) is the News API's startup search mode; like `startedAt`, it is
+ * constant for the process, so it sits outside the cache.
  */
-function healthRouter(startedAt: string, withCalendar: boolean): Router {
+function healthRouter(startedAt: string, withCalendar: boolean, newsApiSearch: "semantic" | "text"): Router {
   const checks: { name: string; path: string }[] = [
     { name: "core", path: "/core/health/ready" },
     { name: "nrms", path: "/nrms/health/ready" },
@@ -185,7 +188,7 @@ function healthRouter(startedAt: string, withCalendar: boolean): Router {
   const r = Router();
   r.get("/health", async (_req, res) => {
     if (cached && cached.expiresAt > Date.now()) {
-      return void res.status(cached.status).json({ ...cached.body, startedAt, pid: process.pid });
+      return void res.status(cached.status).json({ ...cached.body, newsApiSearch, startedAt, pid: process.pid });
     }
     const apps: Record<string, boolean> = {};
     await Promise.all(
@@ -202,7 +205,7 @@ function healthRouter(startedAt: string, withCalendar: boolean): Router {
     const status = ok ? 200 : 503;
     const body = { status: ok ? "ok" : "unavailable", apps };
     cached = { expiresAt: Date.now() + HEALTH_CACHE_TTL_MS, status, body };
-    res.status(status).json({ ...body, startedAt, pid: process.pid });
+    res.status(status).json({ ...body, newsApiSearch, startedAt, pid: process.pid });
   });
   return r;
 }
@@ -463,7 +466,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   const combinedLoginLimiter = rateLimit({ windowMs: 60_000, limit: 10, standardHeaders: "draft-7", legacyHeaders: false });
   app.use(["/core/auth/local/token", "/nrms/auth/local/token", "/nod/auth/local/token", "/distribution/auth/local/token", "/core/auth/login"], combinedLoginLimiter);
 
-  app.use("/stack", healthRouter(new Date(startedAt).toISOString(), calendar !== null));
+  app.use("/stack", healthRouter(new Date(startedAt).toISOString(), calendar !== null, newsApi.searchMode));
   app.use("/stack", errorsRouter(errorsAuth.bearer, errorCapture.entries));
   app.use(
     "/stack",
