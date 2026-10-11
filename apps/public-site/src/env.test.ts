@@ -16,7 +16,19 @@ const tenant: TenantConfig = {
   defaultLanguageId: 4105,
   organizationLabel: { singular: "Ministry", plural: "Ministries" },
   publicSiteBaseUrl: "https://news.gov.bc.ca",
-  branding: { primaryColor: "#003366", logoUrl: null },
+  features: { semanticSearch: false, staffAi: false },
+  search: { language: "english" },
+  site: {
+    theme: {
+      colors: {
+        primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D",
+        mutedText: "#474543", surface: "#F2F2F2", background: "#FFFFFF", border: "#D8D8D8",
+      },
+      font: { family: "BC Sans", fallback: "Verdana, Arial, sans-serif" },
+      logo: { path: "assets/bc-logo.svg", alt: "Government of British Columbia" },
+      footerLinks: [],
+    },
+  },
 };
 
 describe("resolveTenantConfig", () => {

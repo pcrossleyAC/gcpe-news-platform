@@ -271,6 +271,8 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // Phase 3c: published records carry absolute file URLs; unless NRMS_PUBLIC_FILES_BASE says
   // otherwise, files are served (below, at /files) from the public site's own origin.
   if (nrmsEnv.PUBLIC_FILES_BASE === undefined) nrmsEnv.PUBLIC_FILES_BASE = publicFilesBase(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl);
+  // Search results link to the public site this stack serves, not the tenant's production domain.
+  if (newsApiEnv.PUBLIC_SITE_URL === undefined) newsApiEnv.PUBLIC_SITE_URL = siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl;
 
   // Every self:/… URL resolves to INTERNAL_ORIGIN (http://stack.internal), which this
   // routes into the stack's own Express app in memory — no loopback networking, which

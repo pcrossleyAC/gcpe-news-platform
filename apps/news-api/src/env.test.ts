@@ -81,3 +81,24 @@ describe("newsApiEnvSchema path defaults", () => {
     expect(fileURLToPath(url)).toBe("/srv/my checkout/apps/news-api/migrations");
   });
 });
+
+describe("newsApiEnvSchema PUBLIC_SITE_URL", () => {
+  it("is optional and must be a URL when set", () => {
+    expect(parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv).PUBLIC_SITE_URL).toBeUndefined();
+    expect(() => parseEnv(newsApiEnvSchema, { ...BASE, PUBLIC_SITE_URL: "boxs.ca/site" } as unknown as NodeJS.ProcessEnv)).toThrow(/PUBLIC_SITE_URL/);
+  });
+});
+
+describe("newsApiEnvSchema embeddings", () => {
+  it("has no provider by default, and the default timeout", () => {
+    const env = parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv);
+    expect(env.EMBEDDINGS_PROVIDER).toBeUndefined();
+    expect(env.EMBEDDINGS_TIMEOUT_MS).toBe(1000);
+  });
+
+  it("refuses the stand-in under NODE_ENV=production on a real production deployment", () => {
+    expect(() =>
+      parseEnv(newsApiEnvSchema, { ...BASE, EMBEDDINGS_PROVIDER: "stand-in", NODE_ENV: "production" } as unknown as NodeJS.ProcessEnv),
+    ).toThrow(/EMBEDDINGS_PROVIDER: stand-in is refused on a production deployment/);
+  });
+});

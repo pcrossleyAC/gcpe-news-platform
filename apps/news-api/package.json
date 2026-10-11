@@ -9,12 +9,14 @@
     "record:fixtures": "tsx scripts/record-live-fixtures.ts",
     "seed:fixtures": "tsx scripts/seed-from-fixtures.ts",
     "import:legacy": "tsx src/import/cli.ts",
+    "search-backfill": "tsx src/cli/search-backfill.ts",
     "build": "node ../../scripts/build-app.mjs apps/news-api"
   },
   "dependencies": {
     "@gcpe/auth": "0.0.0",
     "@gcpe/config": "0.0.0",
     "@gcpe/db-kit": "0.0.0",
+    "@gcpe/embeddings": "0.0.0",
     "@gcpe/events": "0.0.0",
     "@gcpe/http-kit": "0.0.0",
     "@gcpe/legacy-import": "0.0.0",

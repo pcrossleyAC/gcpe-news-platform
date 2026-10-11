@@ -7,6 +7,8 @@ import type { Closer } from "@gcpe/http-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
 import { newsApiEnvSchema } from "./env";
+import { assertSearchLanguage } from "./search/language";
+import { createSearchService } from "./search/service";
 import { createUpdatesHub } from "./updates/hub";
 import { listenForUpdates } from "./updates/notify";
 
@@ -64,6 +66,12 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
   assertTimeZoneRules(tenant);
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
+  try {
+    await assertSearchLanguage(db, tenant.search.language);
+  } catch (e) {
+    await pool.end();
+    throw e;
+  }
 
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
@@ -98,6 +106,13 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     eventSecrets: parsed.EVENT_SECRETS,
     subscribers,
     hubRouter: hub?.router,
+    search: createSearchService({
+      db,
+      timeZone: tenant.timeZone,
+      language: tenant.search.language,
+      defaultLanguageId: tenant.defaultLanguageId,
+      publicSiteUrl: parsed.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl,
+    }),
     // Not ready while the LISTEN connection is down: this instance would silently miss
     // updates. Omitted entirely when the hub is disabled.
     readinessChecks: hubEnabled ? [() => isListening()] : [],

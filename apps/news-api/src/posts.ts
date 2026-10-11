@@ -1,4 +1,4 @@
-import { and, arrayContains, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { and, arrayContains, desc, eq, getTableColumns, inArray, sql, type SQL } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import type { CategoryKind } from "@gcpe/events";
 import { home, posts, type PostRow } from "./db/schema";
@@ -27,6 +27,9 @@ export const MEDIA_TYPE_PATTERNS: Record<string, RegExp> = {
 
 // Collated explicitly so the tie-break order doesn't depend on the DB's default collation.
 const KEY_DESC = sql`${posts.key} collate "C" desc`;
+
+// Every posts column v1 renders: search_text and search_vector are large and never part of a v1 response.
+const { searchText: _searchText, searchVector: _searchVector, ...postReadColumns } = getTableColumns(posts);
 
 export async function resolveIndex(db: Db, kind: string, key: string): Promise<ResolvedIndex | "unknown-kind" | "not-found"> {
   const k = kind.toLowerCase();
@@ -60,7 +63,7 @@ function conditions(idx: ResolvedIndex, opts: PostQueryOptions, excludeFeatured:
 }
 
 export async function latestPosts(db: Db, idx: ResolvedIndex, opts: PostQueryOptions): Promise<PostRow[]> {
-  let q = db.select().from(posts).where(conditions(idx, opts, true)).orderBy(desc(posts.publishDate), KEY_DESC).$dynamic();
+  let q = db.select(postReadColumns).from(posts).where(conditions(idx, opts, true)).orderBy(desc(posts.publishDate), KEY_DESC).$dynamic();
   if (opts.count !== undefined) q = q.limit(opts.count);
   if (opts.skip) q = q.offset(opts.skip);
   return q;
@@ -79,7 +82,7 @@ export async function postKeys(db: Db, idx: ResolvedIndex, opts: PostQueryOption
 }
 
 export async function getPost(db: Db, key: string): Promise<PostRow | undefined> {
-  const [row] = await db.select().from(posts).where(and(eq(posts.isPublished, true), sql`lower(${posts.key}) = lower(${key})`));
+  const [row] = await db.select(postReadColumns).from(posts).where(and(eq(posts.isPublished, true), sql`lower(${posts.key}) = lower(${key})`));
   return row;
 }
 
@@ -87,7 +90,7 @@ export async function getPostsByKeys(db: Db, keys: string[]): Promise<PostRow[]>
   if (keys.length === 0) return [];
   const lowered = keys.map((k) => k.toLowerCase());
   const rows = await db
-    .select()
+    .select(postReadColumns)
     .from(posts)
     .where(and(eq(posts.isPublished, true), inArray(sql`lower(${posts.key})`, lowered)));
   const byKey = new Map(rows.map((r) => [r.key.toLowerCase(), r]));

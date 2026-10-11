@@ -1,5 +1,9 @@
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { hashPassword } from "@gcpe/auth";
@@ -34,6 +38,15 @@ describe("startNewsApi", () => {
     expect((await request(handle.app).get("/health/live")).status).toBe(200);
     expect((await request(handle.app).get("/health/ready")).status).toBe(200);
     await Promise.all([...handle.closeBeforeServer, ...handle.closers].map((c) => c.close()));
+  });
+
+  it("refuses to start when the tenant's search.language differs from posts.search_vector's", async () => {
+    const bc = JSON.parse(readFileSync(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url)), "utf8"));
+    const file = join(mkdtempSync(join(tmpdir(), "tenant-")), "t.json");
+    writeFileSync(file, JSON.stringify({ ...bc, search: { language: "french" } }));
+    await expect(startNewsApi({ ...(await testEnv()), TENANT_CONFIG: file }, { hub: false })).rejects.toThrow(
+      /search\.language is "french" but posts\.search_vector uses "english"/,
+    );
   });
 
   it("with the hub enabled (the default), closeBeforeServer holds exactly the updates hub closer", async () => {
