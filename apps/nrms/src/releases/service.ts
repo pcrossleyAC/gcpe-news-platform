@@ -18,6 +18,7 @@ import { deleteStoredFiles } from "../media/files";
 import { sanitizeBodyHtml } from "../text/sanitize";
 import { generateSlug } from "../text/slug";
 import { summaryFromBody } from "../text/plain";
+import { assertActivityLinkable } from "../calendar/lookup";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError } from "./errors";
 import { uniqueKey } from "./keys";
 import { emitLinkChange, linkStateOf } from "./link-events";
@@ -165,6 +166,7 @@ export async function createRelease(db: Db, input: CreateReleaseInput, actor: Ac
   return keyRace(
     db.transaction(async (tx) => {
       await assertKnownCategories(tx, input);
+      await assertActivityLinkable(tx, input.activityId, null);
       const lead = leadOf(input.leadMinistryKey, input.ministries);
       const listIds = await mediaListIds(tx, input.mediaListKeys);
       const key = rules.keyEditable ? await uniqueKey(tx, generateSlug(input.headline), null) : null;
@@ -206,6 +208,7 @@ export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Ac
     const before = await linkStateOf(tx, row.id);
     const rules = typeRules(row.type);
     assertTypeAllows(row.type, { mediaListKeys: input.mediaListKeys });
+    await assertActivityLinkable(tx, input.activityId, row.activityId);
     const current = await tx
       .select({ key: mediaLists.key })
       .from(releaseMediaLists)

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { CreateReleaseInput, ListQuery } from "@gcpe/nrms-contract";
-import { createNrmsTestDb, createScheduledRelease, editor, sampleCreate, seedTaxonomy } from "../../test/helpers";
+import { createNrmsTestDb, createScheduledRelease, editor, sampleCreate, seedActivity, seedTaxonomy } from "../../test/helpers";
 import { goTo, listFolder, releaseLog, searchReleases, startOfTomorrow } from "./queries";
 import { createRelease, deleteRelease, saveCategories } from "./service";
 import { approve } from "./workflow";
@@ -16,6 +16,8 @@ describe("release queries", () => {
   beforeAll(async () => {
     tdb = await createNrmsTestDb();
     await seedTaxonomy(tdb.db);
+    // The release links below name these Calendar activities; NRMS refuses an id it doesn't know (C142).
+    for (const id of [4521, 99]) await seedActivity(tdb.db, id);
   });
   afterAll(async () => {
     await tdb.drop();

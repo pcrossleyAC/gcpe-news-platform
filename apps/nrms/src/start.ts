@@ -297,6 +297,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     subscribers,
     liveFeedDefaults,
     siteUrl: tenant.publicSiteBaseUrl,
+    forecastCategoryPrefix: tenant.calendar?.forecastCategoryPrefix ?? null,
     isTestSite: nrmsIsTestSite(env),
     blueBridgeNotify,
   });

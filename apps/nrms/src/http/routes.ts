@@ -6,9 +6,11 @@ import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { EventTooLargeError, type SubscriberConfig } from "@gcpe/events";
 import { utcOffsetMinutes } from "@gcpe/config";
 import {
-  addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, listQuerySchema, metaSchema,
+  addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, listQuerySchema, MAX_ACTIVITY_ID, metaSchema,
   reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
 } from "@gcpe/nrms-contract";
+import { calendarViewerOf } from "../calendar/viewer";
+import { lookupActivity } from "../calendar/lookup";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError, VersionConflictError } from "../releases/errors";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "../website/errors";
 import {
@@ -59,10 +61,12 @@ export interface RouteDeps {
    * `workflow.filesBase` (PUBLIC_FILES_BASE); isTestSite defaults to true (fail safe: an
    * unconfigured caller is treated as a test site, never silently as production). */
   config?: { siteUrl?: string; publicSiteUrl?: string; isTestSite?: boolean };
+  /** The tenant's `calendar.forecastCategoryPrefix` (Forecast and the activity lookup); unset → no activity can be planned against. */
+  forecastCategoryPrefix?: string | null;
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
-export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string; key: string };
+export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string; key: string; activityId: string };
 export type Handler = (req: Request<Params>, res: Response) => Promise<void>;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -125,6 +129,7 @@ export function apiRoutes(deps: RouteDeps): Router {
   param("docId", (v) => UUID.test(v));
   param("lang", (v) => v === "4105" || v === "3084");
   param("pubId", (v) => /^\d{1,15}$/.test(v));
+  param("activityId", (v) => /^\d{1,10}$/.test(v) && Number(v) >= 1 && Number(v) <= MAX_ACTIVITY_ID);
   const opts = () => ({ timeZone: deps.workflow.timeZone, nowMs: Date.now() });
   const subscribers = deps.subscribers ?? [];
   // The workflow sends release.status_changed (the Calendar) to the app's own subscribers.
@@ -146,6 +151,17 @@ export function apiRoutes(deps: RouteDeps): Router {
   );
 
   r.get("/categories", read, run(async (_req, res) => void res.json(await listCategories(db))));
+
+  // The release editor's Calendar activity lookup (spec addendum §11): detail only for an
+  // activity the caller can see in the Calendar.
+  r.get(
+    "/calendar-activities/:activityId",
+    read,
+    run(async (req, res) => {
+      const options = { prefix: deps.forecastCategoryPrefix ?? null, timeZone: deps.workflow.timeZone, nowMs: Date.now() };
+      res.json(await lookupActivity(db, await calendarViewerOf(db, req), Number(req.params.activityId), options));
+    }),
+  );
 
   r.post(
     "/releases",

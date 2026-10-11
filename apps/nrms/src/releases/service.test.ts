@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import { createNrmsTestDb, editor, sampleCreate, seedTaxonomy } from "../../test/helpers";
+import { createNrmsTestDb, editor, sampleCreate, seedActivity, seedTaxonomy } from "../../test/helpers";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, VersionConflictError } from "./errors";
 import {
   addDocument, addTranslation, createRelease, deleteRelease, removeDocument, removeTranslation, reorderDocuments,
@@ -16,6 +16,8 @@ describe("release editing service", () => {
   beforeAll(async () => {
     tdb = await createNrmsTestDb();
     await seedTaxonomy(tdb.db);
+    // The release links below name these Calendar activities; NRMS refuses an id it doesn't know (C142).
+    for (const id of [4521]) await seedActivity(tdb.db, id);
   });
   afterAll(async () => {
     await tdb.drop();
