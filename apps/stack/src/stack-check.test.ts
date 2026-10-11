@@ -198,4 +198,23 @@ describe("checkStack", () => {
     expect(result.apps.calendar?.ok).toBe(false);
     expect(result.apps.calendar?.error).toContain("must not be inside, equal to or contain");
   });
+
+  it("fails the News API when NEWSAPI_EMBEDDINGS_PROVIDER=stand-in on a real production deployment", async () => {
+    const env = baseEnv();
+    env.NODE_ENV = "production";
+    env.NEWSAPI_EMBEDDINGS_PROVIDER = "stand-in";
+    const result = await checkStack(env);
+    expect(result.ok).toBe(false);
+    expect(result.apps["news-api"]?.error).toMatch(/NEWSAPI_\*/);
+    expect(result.apps["news-api"]?.error).toMatch(/EMBEDDINGS_PROVIDER: stand-in is refused/);
+  });
+
+  it("passes NEWSAPI_EMBEDDINGS_PROVIDER=stand-in on a production-mode test deployment (boxs.ca)", async () => {
+    const env = baseEnv();
+    env.NODE_ENV = "production";
+    env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION = "true";
+    env.NEWSAPI_EMBEDDINGS_PROVIDER = "stand-in";
+    const result = await checkStack(env);
+    expect(result.apps["news-api"]?.ok).toBe(true);
+  });
 });

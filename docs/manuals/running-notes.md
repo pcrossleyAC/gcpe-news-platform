@@ -595,3 +595,5 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 ## Phase 6a — Search foundations
 
 - **Operations** — Each tenant config (`config/tenants/*.json`) now has `features` (`semanticSearch`, `staffAi`, both off), `search.language` (`english`, `french` or `simple`) and `site.theme` (colours, font, logo, footer links). A service refuses to start when the theme's text on background, text on surface, or primary text on primary is below 4.5:1 contrast; the error names the pair and the ratio. `branding` is gone: the theme replaces it.
+- **Operations** — The News API reads `EMBEDDINGS_PROVIDER` (`stand-in` or `azure-openai`) and the `AZURE_OPENAI_*` settings (`NEWSAPI_`-prefixed on the stack), but nothing calls a provider until semantic search arrives in 6b. Unset means full-text only. `stand-in` is refused on a real production deployment; `node stack.js --check` says so, naming `NEWSAPI_*`.
+- **Developer** — `@gcpe/embeddings` holds the provider interface, the stand-in (fixed output, so tests can pin vectors), the Azure provider (plain `fetch`, `dimensions: 1536`), the env settings and `htmlToPlainText`. Providers never log.

@@ -1,0 +1,13 @@
+{
+  "name": "@gcpe/embeddings",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@gcpe/http-kit": "0.0.0",
+    "domhandler": "^5.0.3",
+    "htmlparser2": "^10.1.0",
+    "zod": "^3.25.76"
+  }
+}

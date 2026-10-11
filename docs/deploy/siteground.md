@@ -1167,6 +1167,21 @@ JSON error means it hasn't been raised.
 4. Make the activity confidential as cal-editor. As planner, the lookup of its id says "its details aren't shown to you", and the Forecast no longer lists it.
 5. In NRMS's database, `SELECT title FROM calendar_activities WHERE is_confidential` returns only nulls; the News API's `inbox_events` has no `activity.%` or `release.status_changed` row.
 
+## Search and embeddings (Phase 6a)
+
+### Embedding settings
+
+Nothing calls an embedding provider yet: semantic search and its worker arrive in 6b. The settings are parsed now so that `node stack.js --check` catches a bad one before it matters. All are News API settings, so on the stack each carries the `NEWSAPI_` prefix:
+
+| Variable | Meaning |
+|---|---|
+| `NEWSAPI_EMBEDDINGS_PROVIDER` | Unset or blank: full-text search only. `stand-in`: the hashing stand-in, for tests and boxs.ca. `azure-openai`: Azure OpenAI. |
+| `NEWSAPI_AZURE_OPENAI_ENDPOINT`, `NEWSAPI_AZURE_OPENAI_API_KEY`, `NEWSAPI_AZURE_OPENAI_EMBEDDING_DEPLOYMENT` | Required for `azure-openai`. The deployment must be `text-embedding-3-small` in a Canada region (Q70). |
+| `NEWSAPI_AZURE_OPENAI_API_VERSION` | Default `2024-10-21`. |
+| `NEWSAPI_EMBEDDINGS_TIMEOUT_MS` | Per call. Default 1000; clamped to 200–5000. |
+
+`stand-in` is refused on a real production deployment: `NODE_ENV=production` without `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` or `SITE_ENVIRONMENT=test`. That is the same test-site rule as Flickr and the TEST banner. boxs.ca qualifies as a test deployment.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
