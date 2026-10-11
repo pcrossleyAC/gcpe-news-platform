@@ -11,6 +11,7 @@ import { subscribeRoutes, type SubscribeProxyOptions } from "./http/v1/subscribe
 import type { ChangesRouteOptions } from "./http/v2/changes";
 import { v2Routes } from "./http/v2/routes";
 import { createSourceRestrictedHandlers } from "./projections";
+import type { RelatedService } from "./search/related";
 import type { SearchService } from "./search/service";
 
 export type { SubscribeProxyOptions };
@@ -30,6 +31,8 @@ export interface AppDeps {
   searchRateLimit?: { perMinute: number; clientIpHeader?: string };
   /** `GET /api/v2/changes`. Absent (most tests): that path answers v2's 404. */
   changes?: ChangesRouteOptions;
+  /** GET /api/v2/posts/{key}/related. Absent: v2's 404. */
+  related?: RelatedService;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -42,7 +45,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: createSourceRestrictedHandlers({ subscribers: deps.subscribers }) }));
   if (deps.hubRouter) app.use(deps.hubRouter);
 
-  app.use("/api/v2", v2Routes({ search: deps.search, searchRateLimit: deps.searchRateLimit, changes: deps.changes }));
+  app.use("/api/v2", v2Routes({ search: deps.search, searchRateLimit: deps.searchRateLimit, changes: deps.changes, related: deps.related }));
 
   const api = express.Router();
   api.use((_req, res, next) => {

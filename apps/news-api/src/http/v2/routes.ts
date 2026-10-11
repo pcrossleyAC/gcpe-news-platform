@@ -3,6 +3,7 @@ import { rateLimit } from "express-rate-limit";
 import { clientIpKey } from "../client-ip";
 import { changesRoutes, type ChangesRouteOptions } from "./changes";
 import { parseSearchQuery } from "../../search/query";
+import { RELATED_MAX_KEY_CHARS, type RelatedService } from "../../search/related";
 import type { SearchService } from "../../search/service";
 
 /**
@@ -15,6 +16,7 @@ export function v2Routes(deps: {
   /** Per client IP on /search (Q74). Absent: no limit (tests). */
   searchRateLimit?: { perMinute: number; clientIpHeader?: string };
   changes?: ChangesRouteOptions;
+  related?: RelatedService;
 }): express.Router {
   const r = express.Router();
   r.use((_req, res, next) => {
@@ -55,6 +57,24 @@ export function v2Routes(deps: {
     });
   }
   if (deps.changes) r.use(changesRoutes(deps.changes));
+  const { related } = deps;
+  if (related) {
+    r.get("/posts/:key/related", async (req, res) => {
+      const key = req.params.key;
+      // No stored key is this long or holds a NUL, and Postgres refuses NUL in text: answer
+      // without a query.
+      if (key.length > RELATED_MAX_KEY_CHARS || key.includes("\u0000")) return void res.status(404).json({ error: "not found" });
+      const result = await related.related(key);
+      if (!result) return void res.status(404).json({ error: "not found" });
+      res.json(result);
+    });
+  }
   r.use((_req, res) => void res.status(404).json({ error: "not found" }));
+  // A path segment that isn't valid percent-encoding: Express raises a URIError with status 400
+  // before any v2 handler runs. Answered here, without the app's error log, so a scanner can't
+  // fill /stack/errors with it.
+  const decodeErrors: express.ErrorRequestHandler = (err, _req, res, next) =>
+    err instanceof URIError ? void res.status(400).json({ error: "bad request" }) : next(err);
+  r.use(decodeErrors);
   return r;
 }

@@ -14,6 +14,7 @@ import { newsApiEnvSchema } from "./env";
 import { changesBearerFromEnv } from "./http/v2/changes-auth";
 import { every } from "./loop";
 import { assertSearchLanguage } from "./search/language";
+import { createRelatedService } from "./search/related";
 import { createSemanticSearch } from "./search/semantic";
 import { createSearchService, type SearchMode } from "./search/service";
 import { QueryVectorCache } from "./search/vector-cache";
@@ -154,6 +155,13 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     }),
     searchRateLimit: { perMinute: parsed.SEARCH_RATE_LIMIT_PER_MIN, clientIpHeader: parsed.SUBSCRIBE_CLIENT_IP_HEADER },
     changes: { db, timeZone: tenant.timeZone, bearer: changesBearerFromEnv(env) },
+    related: createRelatedService({
+      db,
+      timeZone: tenant.timeZone,
+      defaultLanguageId: tenant.defaultLanguageId,
+      publicSiteUrl: parsed.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl,
+      semantic: searchMode === "semantic",
+    }),
     // Not ready while the LISTEN connection is down: this instance would silently miss
     // updates. Omitted entirely when the hub is disabled.
     readinessChecks: hubEnabled ? [() => isListening()] : [],

@@ -1273,6 +1273,19 @@ In semantic mode, `GET /api/v2/search` embeds the query (each distinct query onc
 
 **Hand check on boxs.ca** (text mode there): after 61 quick `curl -s -o /dev/null -w '%{http_code}\n' 'https://boxs.ca/api/v2/search?q=x'` calls from one machine within a minute, the last is `429`.
 
+### Related posts
+
+`GET /api/v2/posts/<key>/related` lists up to 5 published posts related to a published post, in the same shape as search results, `no-store`.
+
+- In semantic mode it serves the post's 5 nearest posts by meaning, computed when the post was embedded (`"mode": "semantic"`). A post unpublished since is left out at once.
+- Otherwise, and before a post is embedded, it serves the newest published posts with the same lead ministry and at least one shared tag (`"mode": "text"`). A post with neither gets an empty list.
+- An unknown or unpublished key is a `404`.
+
+**Hand checks on boxs.ca:**
+1. `curl -s https://boxs.ca/api/v2/posts/<a published key>/related` answers `"mode":"text"`.
+2. `curl -si https://boxs.ca/api/v2/posts/no-such-key/related` is a `404` with `cache-control: no-store`.
+3. `curl -s https://boxs.ca/stack/health` includes `"newsApiSearch":"text"`.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
