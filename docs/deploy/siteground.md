@@ -1239,6 +1239,17 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS post_embeddings_embedding_hnsw_idx
 
 Then restart the News API. `CONCURRENTLY` keeps the table writable while the index builds; it can't run inside a transaction block. Without the index, semantic search still works, but each related-posts computation scans every embedding, and the News API logs `post_embeddings has no HNSW index` at startup.
 
+### The change feed
+
+`GET /api/v2/changes?after=<id>&limit=<1-500>` lists what changed in the News API, oldest first, for the public site's builder (6c). Every post write, unpublish, ministry, sector, theme and tag change, and every home, slides and resource-links change adds one row, in the same transaction as the change itself.
+
+- **Access:** a bearer token with the `NewsApi.ChangesRead` service role, or an operator's `Core.Admin` token. Staff sign-in cookies don't work here. With no Entra audience (`NEWSAPI_AUTH_AUDIENCE` with `ENTRA_TENANT_ID`) and no local admin, the route answers `503 changes feed not configured`. On boxs.ca local admin is on, so it works with a local token.
+- **Reading it:** start with `after=0`; each response has `next`, the `after` to send next time. A response with `"changes": []` means nothing new.
+- **Retention:** rows older than 90 days are deleted on every `/stack/tick` (the `news-api.changes-prune` step). A cursor older than that gets `410` with `{ "resync": true, "next": <id> }`: rebuild everything, then continue from `next`.
+- **Volume:** a full legacy import writes one row per release it applies (Q78), about 100,000 rows. They are pruned after 90 days like any other.
+
+**Hand check on boxs.ca:** `curl -si https://boxs.ca/api/v2/changes` is a `401` with `cache-control: no-store`.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

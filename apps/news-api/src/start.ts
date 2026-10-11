@@ -7,8 +7,11 @@ import { createEmbeddingProvider } from "@gcpe/embeddings";
 import type { Closer } from "@gcpe/http-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
+import { pruneChanges } from "./changes";
 import { hasHnswIndex, hasPgvector, resolveSearchMode } from "./embeddings/pgvector";
 import { newsApiEnvSchema } from "./env";
+import { changesBearerFromEnv } from "./http/v2/changes-auth";
+import { every } from "./loop";
 import { assertSearchLanguage } from "./search/language";
 import { createSearchService, type SearchMode } from "./search/service";
 import { createUpdatesHub } from "./updates/hub";
@@ -126,6 +129,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
       defaultLanguageId: tenant.defaultLanguageId,
       publicSiteUrl: parsed.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl,
     }),
+    changes: { db, timeZone: tenant.timeZone, bearer: changesBearerFromEnv(env) },
     // Not ready while the LISTEN connection is down: this instance would silently miss
     // updates. Omitted entirely when the hub is disabled.
     readinessChecks: hubEnabled ? [() => isListening()] : [],
@@ -158,6 +162,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
   // Set by startLoops(); the closer below references it lazily so it's safe to call even
   // if startLoops() was never invoked.
   let stopDispatcher: (() => Promise<void>) | undefined;
+  const stopLoops: Array<() => void> = [];
 
   return {
     app,
@@ -167,14 +172,17 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     searchMode,
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
+      changesPrune: () => pruneChanges(db),
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
+      stopLoops.push(every(60_000, "changes prune", () => pruneChanges(db)));
     },
     attach: hub ? (server: Server) => hub.attach(server) : undefined,
     closeBeforeServer: hub ? [{ name: "updates hub", close: () => hub.close() }] : [],
     closers: [
       ...(stopListening ? [{ name: "LISTEN connection", close: stopListening }] : []),
+      { name: "background loops", close: async () => { for (const stop of stopLoops.splice(0)) stop(); } },
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],

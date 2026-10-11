@@ -8,6 +8,7 @@ import { categoryRoutes } from "./http/v1/categories";
 import { postRoutes } from "./http/v1/posts";
 import { siteRoutes } from "./http/v1/site";
 import { subscribeRoutes, type SubscribeProxyOptions } from "./http/v1/subscribe";
+import type { ChangesRouteOptions } from "./http/v2/changes";
 import { v2Routes } from "./http/v2/routes";
 import { createSourceRestrictedHandlers } from "./projections";
 import type { SearchService } from "./search/service";
@@ -25,6 +26,8 @@ export interface AppDeps {
   readinessChecks?: ReadinessCheck[];
   /** `GET /api/v2/search`. Absent (most tests): that path answers v2's 404. */
   search?: SearchService;
+  /** `GET /api/v2/changes`. Absent (most tests): that path answers v2's 404. */
+  changes?: ChangesRouteOptions;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -37,7 +40,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: createSourceRestrictedHandlers({ subscribers: deps.subscribers }) }));
   if (deps.hubRouter) app.use(deps.hubRouter);
 
-  app.use("/api/v2", v2Routes({ search: deps.search }));
+  app.use("/api/v2", v2Routes({ search: deps.search, changes: deps.changes }));
 
   const api = express.Router();
   api.use((_req, res, next) => {

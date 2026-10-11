@@ -334,4 +334,64 @@ describe("projections", () => {
       expect(got).toEqual([["MinistryUpdate", ["Health"]]]);
     });
   });
+
+  describe("change rows (spec §5.4)", () => {
+    beforeEach(async () => {
+      await tdb.pool.query("TRUNCATE changes RESTART IDENTITY");
+    });
+    const changeRows = async () => (await tdb.pool.query<{ kind: string; key: string | null }>("SELECT kind, key FROM changes ORDER BY id")).rows;
+    const term: TermRecord = { kind: "tag", key: "Fires", displayName: "Fires", sortOrder: 0, isActive: true, social: org.social, updatedAt: org.updatedAt };
+
+    it("writes one change row in the same transaction as each projection write, with the stored key", async () => {
+      await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "R-CH" }));
+      await tdb.db.transaction((tx) => unpublishRelease(tx, "r-ch"));
+      await tdb.db.transaction((tx) => applyOrg(tx, org));
+      await tdb.db.transaction((tx) => applyTerm(tx, term));
+      await tdb.db.transaction((tx) => deactivateCategory(tx, "tags", "FIRES"));
+      await tdb.db.transaction(async (tx) => {
+        await applySiteContent(tx, { entity: "home", topPostKey: null, featurePostKey: null, liveWebcastFlashMediaManifestUrl: null, liveWebcastM3uPlaylist: null, granville: null, timestamp: org.updatedAt });
+        await applySiteContent(tx, { entity: "categoryFeatures", kind: "ministries", key: "HEALTH", topPostKey: null, featurePostKey: null });
+        await applySiteContent(tx, { entity: "slides", slides: [] });
+        await applySiteContent(tx, { entity: "resourceLinks", links: [], timestamp: org.updatedAt });
+      });
+      expect(await changeRows()).toEqual([
+        { kind: "post.upserted", key: "R-CH" },
+        { kind: "post.unpublished", key: "R-CH" },
+        { kind: "ministry", key: "health" },
+        { kind: "tag", key: "Fires" },
+        { kind: "tag", key: "Fires" },
+        { kind: "home", key: null },
+        { kind: "ministry", key: "health" },
+        { kind: "slides", key: null },
+        { kind: "resource_links", key: null },
+      ]);
+    });
+
+    it("writes nothing when the transaction rolls back", async () => {
+      await expect(
+        tdb.db.transaction(async (tx) => {
+          await applyRelease(tx, { ...sampleRelease, key: "R-RB" });
+          throw new Error("rollback");
+        }),
+      ).rejects.toThrow("rollback");
+      expect(await changeRows()).toEqual([]);
+    });
+
+    it("writes nothing for a legacy write refused because NRMS owns the key", async () => {
+      await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "R-OWN" }));
+      await tdb.pool.query("TRUNCATE changes");
+      await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "R-OWN" }, { origin: "legacy" }));
+      expect(await changeRows()).toEqual([]);
+    });
+
+    it("records a ministry change for the ministry and its parent", async () => {
+      await tdb.db.transaction((tx) => applyOrg(tx, { ...org, key: "parent-min", parentKey: null }));
+      await tdb.pool.query("TRUNCATE changes");
+      await tdb.db.transaction((tx) => applyOrg(tx, { ...org, key: "child-min", parentKey: "parent-min" }));
+      expect(await changeRows()).toEqual([
+        { kind: "ministry", key: "child-min" },
+        { kind: "ministry", key: "parent-min" },
+      ]);
+    });
+  });
 });

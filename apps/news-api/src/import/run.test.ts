@@ -214,6 +214,13 @@ describe("importLegacyNews: unpublishes posts missing from legacy's published se
     expect(result.unpublished).toBe(0);
     expect(await published()).toEqual(["2026TT0103-001121", "STALE-1"]);
   });
+
+  it("records post.unpublished for each post it unpublishes, in the same transaction", async () => {
+    await tdb.pool.query("TRUNCATE changes RESTART IDENTITY");
+    await importLegacyNews(tdb.db, source);
+    const { rows } = await tdb.pool.query<{ kind: string; key: string }>("SELECT kind, key FROM changes WHERE kind = 'post.unpublished'");
+    expect(rows).toEqual([{ kind: "post.unpublished", key: "STALE-1" }]);
+  });
 });
 
 // Controller ruling P1-R21: the critical case the "flips to event-origin" test above didn't

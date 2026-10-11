@@ -4,7 +4,7 @@ export { createClientCredentialsProvider } from "./client-credentials";
 export { authFromEnv } from "./from-env";
 export { ADMIN_ROLES, LOCAL_AUDIENCE, LOCAL_ISSUER, localLoginRouter, mintLocalToken, type LocalAuthConfig } from "./local";
 export { hashPassword, isValidPasswordHash, verifyPassword } from "./password";
-export { CALENDAR_ROLES, CORE_ADMIN_DIRECTORY_ROLE, DISTRIBUTION_OPERATE_ROLE, NOD_SUBSCRIBE_API_ROLE, STAFF_ROLES, type CalendarRole, type StaffRole } from "./roles";
+export { CALENDAR_ROLES, CORE_ADMIN_DIRECTORY_ROLE, DISTRIBUTION_OPERATE_ROLE, NEWS_API_CHANGES_ROLE, NOD_SUBSCRIBE_API_ROLE, STAFF_ROLES, type CalendarRole, type StaffRole } from "./roles";
 export { serviceTokenProvider, type ServiceTokenOptions } from "./service-token";
 export {
   clearedSessionCookie,

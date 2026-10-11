@@ -13,6 +13,7 @@ import {
   type TermKind,
   type TermRecord,
 } from "@gcpe/events";
+import { CATEGORY_CHANGE_KIND, recordChanges } from "./changes";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { searchTextFor } from "./search/search-text";
 import { parseOffsetDateTime } from "./time";
@@ -155,6 +156,7 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
     await tx.insert(posts).values(values).onConflictDoUpdate({ target: posts.key, set: values });
   }
   if (opts.notify !== false) await notifyUpdate(tx, "PostUpdate", [key]);
+  await recordChanges(tx, [{ kind: "post.upserted", key }]);
   return { skippedEventOwned: false };
 }
 
@@ -164,7 +166,10 @@ export async function unpublishRelease(tx: Tx, key: string): Promise<void> {
     .set({ isPublished: false })
     .where(sql`lower(${posts.key}) = lower(${key})`)
     .returning({ key: posts.key });
-  if (rows.length) await notifyUpdate(tx, "PostUpdate", rows.map((r) => r.key));
+  if (rows.length === 0) return;
+  const keys = rows.map((r) => r.key);
+  await notifyUpdate(tx, "PostUpdate", keys);
+  await recordChanges(tx, keys.map((k) => ({ kind: "post.unpublished" as const, key: k })));
 }
 
 /** `[key, ...parents]` with each parent resolved to its stored casing, deduplicated case-insensitively. */
@@ -210,8 +215,10 @@ export async function applyOrg(tx: Tx, org: OrgRecord): Promise<void> {
   // A parent's childMinistryKey is derived from its children, so both the new parent and —
   // if the child moved — the previous one render differently now (final review M6).
   const parents = [org.parentKey, previous?.ministry?.parentKey ?? null];
-  await notifyUpdate(tx, "MinistryUpdate", await withStoredParentKeys(tx, key, parents));
+  const ministryKeys = await withStoredParentKeys(tx, key, parents);
+  await notifyUpdate(tx, "MinistryUpdate", ministryKeys);
   await notifyUpdate(tx, "MinisterUpdate", [key]);
+  await recordChanges(tx, ministryKeys.map((k) => ({ kind: "ministry" as const, key: k })));
 }
 
 export async function applyTerm(tx: Tx, term: TermRecord): Promise<void> {
@@ -231,6 +238,7 @@ export async function applyTerm(tx: Tx, term: TermRecord): Promise<void> {
   };
   await tx.insert(categories).values(values).onConflictDoUpdate({ target: [categories.kind, categories.key], set: values });
   await notifyUpdate(tx, CATEGORY_TARGET[kind], [key]);
+  await recordChanges(tx, [{ kind: CATEGORY_CHANGE_KIND[kind], key }]);
 }
 
 export async function deactivateCategory(tx: Tx, kind: CategoryKind, key: string): Promise<void> {
@@ -251,6 +259,7 @@ export async function deactivateCategory(tx: Tx, kind: CategoryKind, key: string
     }
   }
   await notifyUpdate(tx, CATEGORY_TARGET[kind], keys);
+  await recordChanges(tx, keys.map((k) => ({ kind: CATEGORY_CHANGE_KIND[kind], key: k })));
 }
 
 export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<void> {
@@ -267,6 +276,7 @@ export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<v
       };
       await tx.insert(home).values(values).onConflictDoUpdate({ target: home.key, set: values });
       await notifyUpdate(tx, "HomeUpdate", ["default"]);
+      await recordChanges(tx, [{ kind: "home", key: null }]);
       return;
     }
     case "categoryFeatures": {
@@ -274,7 +284,9 @@ export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<v
       await tx.insert(categoryFeatures).values(values).onConflictDoUpdate({ target: [categoryFeatures.kind, categoryFeatures.key], set: values });
       // Notify with the category's stored casing (as every other category notification does),
       // falling back to the event's key when the category doesn't exist (yet).
-      await notifyUpdate(tx, CATEGORY_TARGET[c.kind], [await resolveCategoryKey(tx, c.kind, c.key)]);
+      const stored = await resolveCategoryKey(tx, c.kind, c.key);
+      await notifyUpdate(tx, CATEGORY_TARGET[c.kind], [stored]);
+      await recordChanges(tx, [{ kind: CATEGORY_CHANGE_KIND[c.kind], key: stored }]);
       return;
     }
     case "slides": {
@@ -301,6 +313,7 @@ export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<v
         "SlideUpdate",
         c.slides.map((s) => s.id),
       );
+      await recordChanges(tx, [{ kind: "slides", key: null }]);
       return;
     }
     case "resourceLinks": {
@@ -308,6 +321,7 @@ export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<v
       const ts = parseOffsetDateTime(c.timestamp);
       if (c.links.length) await tx.insert(resourceLinks).values(c.links.map((l) => ({ ...l, timestamp: ts })));
       await notifyUpdate(tx, "ResourceLinkUpdate", []);
+      await recordChanges(tx, [{ kind: "resource_links", key: null }]);
       return;
     }
   }

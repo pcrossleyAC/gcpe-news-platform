@@ -1,4 +1,5 @@
 import express from "express";
+import { changesRoutes, type ChangesRouteOptions } from "./changes";
 import { parseSearchQuery } from "../../search/query";
 import type { SearchService } from "../../search/service";
 
@@ -7,7 +8,7 @@ import type { SearchService } from "../../search/service";
  * problem-JSON 404 never apply here. Every response is `no-store`. Errors go to the app's
  * jsonErrorHandler, which logs the method, the path (never the query string) and a safe label.
  */
-export function v2Routes(deps: { search?: SearchService }): express.Router {
+export function v2Routes(deps: { search?: SearchService; changes?: ChangesRouteOptions }): express.Router {
   const r = express.Router();
   r.use((_req, res, next) => {
     res.set("Cache-Control", "no-store");
@@ -34,6 +35,7 @@ export function v2Routes(deps: { search?: SearchService }): express.Router {
       }
     });
   }
+  if (deps.changes) r.use(changesRoutes(deps.changes));
   r.use((_req, res) => void res.status(404).json({ error: "not found" }));
   return r;
 }
