@@ -101,6 +101,11 @@ export function NewReleaseScreen(): React.JSX.Element {
   const [publishAt, setPublishAt] = useState<string | null>(null);
   // From the Forecast's "Start a release": fill in from that activity once it's looked up.
   const [fillOnLookup, setFillOnLookup] = useState(() => searchParams.has("activity"));
+  // Pre-fill never overwrites a field the user has already touched by hand, whether the fill
+  // ran automatically (arriving from the Forecast) or from the "Fill in from activity N"
+  // button — both go through fillIn below, so this one guard covers both.
+  const [touchedFields, setTouchedFields] = useState<ReadonlySet<string>>(() => new Set());
+  const touch = (field: string) => setTouchedFields((prev) => (prev.has(field) ? prev : new Set(prev).add(field)));
   const activityId = activityIdOf(activityText);
   const lookup = useActivityLookup(activityId);
   const prefill = lookup?.state === "found" ? lookup.prefill : null;
@@ -135,13 +140,15 @@ export function NewReleaseScreen(): React.JSX.Element {
   }, []);
 
   const fillIn = (p: ReleasePrefill) => {
-    setMinistries(p.ministries);
-    setLeadMinistryKey(p.leadMinistryKey);
-    setSectors(p.sectors);
-    setThemes(p.themes);
-    setTags(p.tags);
-    setLocation(p.location);
-    setPublishAt(p.publishAt);
+    if (!touchedFields.has("ministries")) {
+      setMinistries(p.ministries);
+      setLeadMinistryKey(p.leadMinistryKey);
+    }
+    if (!touchedFields.has("sectors")) setSectors(p.sectors);
+    if (!touchedFields.has("themes")) setThemes(p.themes);
+    if (!touchedFields.has("tags")) setTags(p.tags);
+    if (!touchedFields.has("location")) setLocation(p.location);
+    if (!touchedFields.has("publishAt")) setPublishAt(p.publishAt);
   };
 
   useEffect(() => {
@@ -186,9 +193,13 @@ export function NewReleaseScreen(): React.JSX.Element {
     }
   };
 
-  const toggle = (list: string[], setList: (v: string[]) => void, key: string) => setList(list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
+  const toggle = (list: string[], setList: (v: string[]) => void, key: string, field?: string) => {
+    if (field) touch(field);
+    setList(list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
+  };
 
   const onMinistryToggle = (key: string) => {
+    touch("ministries");
     const next = ministries.includes(key) ? ministries.filter((k) => k !== key) : [...ministries, key];
     setMinistries(next);
     if (!next.includes(leadMinistryKey ?? "")) setLeadMinistryKey(next.length === 1 ? next[0]! : null);
@@ -333,7 +344,15 @@ export function NewReleaseScreen(): React.JSX.Element {
           </Button>
         )}
 
-        <TextField label="Location" value={location} onChange={setLocation} maxLength={50} />
+        <TextField
+          label="Location"
+          value={location}
+          onChange={(v) => {
+            touch("location");
+            setLocation(v);
+          }}
+          maxLength={50}
+        />
         {publishAt && <p>Planned publish date: {dateTimeText(publishAt, timeZone)}, from the activity. Change it in Publish settings.</p>}
 
         <fieldset className="gcpe-options">
@@ -350,7 +369,13 @@ export function NewReleaseScreen(): React.JSX.Element {
         {ministries.length > 1 && (
           <label className="gcpe-field">
             Lead ministry
-            <select value={leadMinistryKey ?? ""} onChange={(e) => setLeadMinistryKey(e.target.value || null)}>
+            <select
+              value={leadMinistryKey ?? ""}
+              onChange={(e) => {
+                touch("ministries");
+                setLeadMinistryKey(e.target.value || null);
+              }}
+            >
               <option value="">(none)</option>
               {ministries.map((key) => (
                 <option key={key} value={key}>
@@ -367,7 +392,7 @@ export function NewReleaseScreen(): React.JSX.Element {
               <legend>Sectors</legend>
               {categories.sectors.map((s) => (
                 <label key={s.key}>
-                  <input type="checkbox" checked={sectors.includes(s.key)} onChange={() => toggle(sectors, setSectors, s.key)} />
+                  <input type="checkbox" checked={sectors.includes(s.key)} onChange={() => toggle(sectors, setSectors, s.key, "sectors")} />
                   {s.name}
                 </label>
               ))}
@@ -376,7 +401,7 @@ export function NewReleaseScreen(): React.JSX.Element {
               <legend>Themes</legend>
               {categories.themes.map((t) => (
                 <label key={t.key}>
-                  <input type="checkbox" checked={themes.includes(t.key)} onChange={() => toggle(themes, setThemes, t.key)} />
+                  <input type="checkbox" checked={themes.includes(t.key)} onChange={() => toggle(themes, setThemes, t.key, "themes")} />
                   {t.name}
                 </label>
               ))}
@@ -385,7 +410,7 @@ export function NewReleaseScreen(): React.JSX.Element {
               <legend>Tags</legend>
               {categories.tags.map((t) => (
                 <label key={t.key}>
-                  <input type="checkbox" checked={tags.includes(t.key)} onChange={() => toggle(tags, setTags, t.key)} />
+                  <input type="checkbox" checked={tags.includes(t.key)} onChange={() => toggle(tags, setTags, t.key, "tags")} />
                   {t.name}
                 </label>
               ))}

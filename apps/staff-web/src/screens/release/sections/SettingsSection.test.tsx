@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
 import { MemoryRouter } from "react-router";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
@@ -229,15 +230,19 @@ describe("SettingsSection", () => {
         "4102": { id: 4102, state: "found", title: "Sample clinic opening", startAt: "2031-06-11T17:00:00.000Z", endAt: null, ministryName: "Health", location: "Victoria", translations: ["French"], prefill: null, notEligible: "Nothing is filled in: it has ended." },
       },
     });
-    renderSettings(releaseView({ activityId: 4102 }));
+    const { container } = renderSettings(releaseView({ activityId: 4102 }));
     expect(await screen.findByRole("link", { name: "Sample clinic opening" })).toHaveAttribute("href", "/calendar/activities/4102");
     expect(screen.getByText("Translations required: French")).toBeInTheDocument();
+    const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+    expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
   });
 
   it("a saved id the Calendar doesn't hold is a legacy link that wasn't migrated; a newly typed unknown one is named as unknown (C158, C142)", async () => {
     stubFetch();
-    renderSettings(releaseView({ activityId: 777000 }));
+    const { container } = renderSettings(releaseView({ activityId: 777000 }));
     expect(await screen.findByText("Legacy activity 777000, not migrated")).toBeInTheDocument();
+    const legacyResults = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+    expect(legacyResults.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
     const user = userEvent.setup();
     const field = screen.getByRole("textbox", { name: "Calendar activity ID" });
     await user.clear(field);

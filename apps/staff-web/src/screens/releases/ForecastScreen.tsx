@@ -34,9 +34,10 @@ export function ForecastScreen(): React.JSX.Element {
       },
       (e: unknown) => {
         if (!active) return;
-        // A 403 (no NRMS role) or 404 carries the server's own explanation; anything else
-        // (a 500, a network failure) gets the generic message instead.
-        setError(e instanceof ApiError && (e.status === 403 || e.status === 404) ? e.message : "Couldn't load the Forecast.");
+        // A 400 (a page outside the Forecast's 1-1000 bound), 403 (no NRMS role) or 404 carries
+        // the server's own explanation; anything else (a 500, a network failure) gets the
+        // generic message instead.
+        setError(e instanceof ApiError && (e.status === 400 || e.status === 403 || e.status === 404) ? e.message : "Couldn't load the Forecast.");
       },
     );
     return () => {

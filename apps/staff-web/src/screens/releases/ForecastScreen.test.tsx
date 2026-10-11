@@ -108,12 +108,15 @@ describe("ForecastScreen (spec addendum §11; Releases.aspx's Forecast folder)",
     expect(await screen.findByRole("alert")).toHaveTextContent("Couldn't load the Forecast.");
   });
 
-  it("shows a 403 or 404's own server message instead of the generic one", async () => {
+  it("shows a 400, 403 or 404's own server message instead of the generic one", async () => {
     renderForecast({ forecastFailure: { status: 403, body: { error: "forbidden" } } });
     expect(await screen.findByRole("alert")).toHaveTextContent("forbidden");
     cleanup();
     renderForecast({ forecastFailure: { status: 404, body: { error: "not found" } } });
     expect(await screen.findByRole("alert")).toHaveTextContent("not found");
+    cleanup();
+    renderForecast({ forecastFailure: { status: 400, body: { error: "invalid request" } } });
+    expect(await screen.findByRole("alert")).toHaveTextContent("invalid request");
   });
 
   it("the folder tabs lead with Forecast, as legacy's menu did", async () => {

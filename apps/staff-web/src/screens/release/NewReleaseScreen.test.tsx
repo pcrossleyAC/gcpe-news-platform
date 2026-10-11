@@ -272,6 +272,56 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     }));
   });
 
+  it("an edit made before the Forecast lookup resolves is never overwritten by the pre-fill", async () => {
+    let resolveLookup!: (r: Response) => void;
+    const pendingLookup = new Promise<Response>((resolve) => {
+      resolveLookup = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") {
+          return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        }
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+        if (url === "/nrms/api/calendar-activities/4102") return pendingLookup;
+        if (url === "/nrms/api/page-types") return jsonResponse(200, []);
+        if (url === "/nrms/api/page-images") return jsonResponse(200, []);
+        if (url === "/nrms/api/categories") {
+          return jsonResponse(200, {
+            ministries: [
+              { key: "health", name: "Health" },
+              { key: "education", name: "Education" },
+            ],
+            sectors: [],
+            themes: [],
+            tags: [],
+          });
+        }
+        if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    renderScreen("/releases/new?activity=4102");
+    expect(await screen.findByLabelText("Activity ID")).toHaveValue("4102");
+
+    // The lookup is still in flight: edit fields the pre-fill would otherwise touch.
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Headline", { exact: false }), "My own headline");
+    await user.type(screen.getByLabelText("Location"), "My own city");
+    await user.click(screen.getByLabelText("Health"));
+    expect(screen.getByLabelText("Health")).toBeChecked();
+
+    // Now let the lookup resolve: its pre-fill must not silently overwrite what the user typed.
+    resolveLookup(jsonResponse(200, ACTIVITY));
+    await screen.findByRole("link", { name: "Sample clinic opening" });
+
+    expect(screen.getByLabelText("Headline", { exact: false })).toHaveValue("My own headline");
+    expect(screen.getByLabelText("Location")).toHaveValue("My own city");
+    expect(screen.getByLabelText("Health")).toBeChecked();
+    expect(screen.getByLabelText("Education")).not.toBeChecked();
+  });
+
   it("a typed id is looked up, and its fields are filled in only when asked", async () => {
     stubFetch({ lookups: { "4102": ACTIVITY } });
     renderScreen();
