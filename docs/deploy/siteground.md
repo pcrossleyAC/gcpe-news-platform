@@ -1197,6 +1197,22 @@ It is safe to re-run: it fills only posts with no search text. `-- --all --confi
 
 **Search language:** the column's language is fixed by the migration (`english`). The tenant's `search.language` must match, or the News API refuses to start: "Tenant search.language is "…" but posts.search_vector uses "…"". A tenant that needs another language adds its own drizzle-kit migration that redefines `search_vector` with that configuration, and sets `search.language` to match.
 
+### The search route
+
+`GET /api/v2/search?q=&ministry=&sector=&type=&from=&to=&page=` (on boxs.ca: `https://boxs.ca/api/v2/search?q=…`):
+
+- It is full-text only in 6a: every response says `"mode": "text"`.
+- It needs no `api-version`, and answers `Cache-Control: no-store`.
+- `q` is 1–200 characters; `page` is 1–50 (20 results each); `from` and `to` are BC calendar dates (`YYYY-MM-DD`, inclusive); `type` is `releases`, `stories`, `factsheets`, `updates` or `advisories`.
+- A bad parameter is a 400 that names it.
+- Errors are logged to `/stack/errors` as the route and a label, never the search words.
+- Result links use the stack's public site URL (`SITE_PUBLIC_SITE_URL`), or `NEWSAPI_PUBLIC_SITE_URL` when set.
+
+**Hand checks on boxs.ca after the backfill:**
+1. `curl -s 'https://boxs.ca/api/v2/search?q=highway'` lists releases mentioning highways, with `"mode":"text"` and links under `https://boxs.ca/site/releases/`.
+2. `curl -si 'https://boxs.ca/api/v2/search?q=highway&page=99'` is a 400 whose body names `page`, with `cache-control: no-store`.
+3. `curl -si 'https://boxs.ca/api/Home'` is still the 400 `ApiVersionUnspecified`: v1 is unchanged.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

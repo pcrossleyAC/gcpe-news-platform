@@ -263,3 +263,12 @@ Spec: `docs/superpowers/specs/2026-10-05-nod-distribution-parity-design.md`. Leg
 - A clone keeps the inactive lookup values (category, city, comm materials and so on) the source already holds, as legacy's clone did. The lead ministry and the comm contact are re-checked as new assignments: a clone is refused (422) when the contact is inactive or its person's account is inactive or unknown to the Calendar.
 - Review selected and Clear LA Status run in batches and stop at the first batch that fails. The answer is 207 with `failed: true` and what the earlier batches committed.
 - A request value the database can't hold (an id past int4, a NUL character, a year outside 1900–2199) is refused as 400, never a 500.
+
+## Public site and AI (Phase 6)
+
+| # | Legacy | New | Why | Status |
+|---|---|---|---|---|
+| C201 | news.gov.bc.ca had no API search or related-posts endpoint. | v2 search, related posts and a change feed beside v1. v1 is unchanged. | The platform's own site and staff help need them (addendum §5.4); BC's webapp keeps reading v1 unchanged (D1). Search arrives in 6a, related posts and the change feed in 6b. | Agreed |
+| C202 | — | The platform's own static site uses monthly archives, not numbered pages, and has no legacy URL redirects (BC keeps its webapp, D1). | Numbered pages shift with every publish; a month's archive changes only when one of its posts does (addendum §6.1). | Agreed |
+| C203 | — | Staff "Similar published releases", behind a flag that is off until a PIA. | Helps staff find related published releases; draft text goes to the AI service only on an explicit click, and only once a PIA approves it (D4, Q71). | Agreed |
+| C204 | Carousel images travelled inline (C42's budget). | Slide events carry image URLs. | Inline images made slide events big enough to need a budget; URLs keep events small and the site links the image (addendum §6.4). | Agreed |

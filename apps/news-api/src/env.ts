@@ -22,6 +22,8 @@ export const newsApiEnvSchema = z
     UPDATES_MAX_CONNECTIONS: z.coerce.number().int().positive().default(5000),
     UPDATES_MAX_CONNECTIONS_PER_IP: z.coerce.number().int().positive().default(50),
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
+    /** Search results link to `<PUBLIC_SITE_URL>/releases/<key>`. Default: the tenant's publicSiteBaseUrl. */
+    PUBLIC_SITE_URL: z.string().url().optional(),
     ...embeddingsEnvShape,
   })
   .superRefine(refineEmbeddingsEnv);
