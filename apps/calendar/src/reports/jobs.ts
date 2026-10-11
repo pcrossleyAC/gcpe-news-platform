@@ -85,11 +85,16 @@ export class ReportJobs {
     this.sweeper.unref();
   }
 
-  /** Queues a report for `owner`. Refuses (ReportBusyError) past the queue or the owner's own limit. */
-  start(owner: string, report: ReportKind, doc: ReportDoc): ReportJobView {
+  /** Refuses (ReportBusyError) past the queue or the owner's own limit: checked before a report is read or built, and again at its start. */
+  assertCanStart(owner: string): void {
     this.sweep();
     const mine = [...this.jobs.values()].filter((j) => j.owner === owner && j.status === "running").length;
     if (this.queue.length >= REPORT_QUEUE_MAX || mine >= REPORT_PER_USER_MAX) throw new ReportBusyError();
+  }
+
+  /** Queues a report for `owner`. Refuses (ReportBusyError) past the queue or the owner's own limit. */
+  start(owner: string, report: ReportKind, doc: ReportDoc): ReportJobView {
+    this.assertCanStart(owner);
     let finish!: () => void;
     const done = new Promise<void>((resolve) => (finish = resolve));
     const job: Job = { id: randomBytes(16).toString("base64url"), owner, report, status: "running", doc, bytes: null, error: null, finishedAt: null, done, finish };

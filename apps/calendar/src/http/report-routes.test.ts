@@ -7,9 +7,17 @@ import { createCalendarTestDb, createTestApp, EVENT_SECRETS, FIXED_NOW, projectU
 import { call, insertRaw, seedWorld, type Who, type World } from "../../test/world";
 import { createApp } from "../app";
 import { activityCategories } from "../db/schema";
+import { buildReport } from "../reports/build";
 import { REPORT_PER_USER_MAX, REPORT_QUEUE_MAX, REPORT_TTL_MS, ReportJobs } from "../reports/jobs";
 import type { ReportDoc } from "../reports/model";
 import { ReportRenderError, type PdfRenderer } from "../reports/render/renderer";
+
+// The real builder, watched: a refused start must not build anything.
+vi.mock("../reports/build", async (importOriginal) => {
+  const real = await importOriginal<typeof import("../reports/build")>();
+  return { ...real, buildReport: vi.fn(real.buildReport) };
+});
+const builds = () => vi.mocked(buildReport).mock.calls.length;
 
 /** Supertest's body parser, for a binary body. */
 type BodyParser = Parameters<ReturnType<ReturnType<typeof request>["get"]>["parse"]>[0];
@@ -143,8 +151,22 @@ describe("the report routes (spec addendum §10)", () => {
     expect(mine.headers["retry-after"]).toBe("10");
     // The editor's first is rendering, the second waits; four more can wait.
     for (const who of ["readOnly", "readOnly", "admin"] as const) expect((await start(who, "planning")).status).toBe(202);
+    // Refused before anything is read or built.
+    const before = builds();
     expect((await start("advanced", "planning")).status).toBe(503);
+    expect((await start("editor", "look-ahead")).status).toBe(503);
+    expect(builds()).toBe(before);
     fake.release();
+  });
+
+  it("a range past the limit is 422 before anything is read or built", async () => {
+    const before = builds();
+    for (const report of ["look-ahead", "exec-look-ahead", "30-60-90"] as const) {
+      const res = await start("hqAdmin", report, { filter: { from: "2046-01-01", to: "2047-01-02" } });
+      expect([res.status, res.body.error], report).toEqual([422, `Too many ${report === "30-60-90" ? "months" : "days"} in the range: narrow the filter and run the report again`]);
+    }
+    expect(builds()).toBe(before);
+    expect((await start("hqAdmin", "look-ahead", { filter: { from: "2046-01-01", to: "2046-12-31" } })).status).toBe(201);
   });
 
   it("a render that fails says why, and logs only a label and the route", async () => {
@@ -204,6 +226,9 @@ describe("the report routes (spec addendum §10)", () => {
     await projectUser(app, { ...person, calendarRole: "Calendar.Advanced" });
     const file = await request(app).get(`/api/reports/jobs/${id}/pdf`).set("cookie", cookie);
     expect([file.status, file.body]).toEqual([404, { error: "not found" }]);
+    // Polling it says the same.
+    const polled = await request(app).get(`/api/reports/jobs/${id}`).set("cookie", cookie);
+    expect([polled.status, polled.body]).toEqual([404, { error: "not found" }]);
     await projectUser(app, { ...person, calendarRole: null });
     expect((await request(app).get(`/api/reports/jobs/${id}/pdf`).set("cookie", cookie)).status).toBe(403);
   });

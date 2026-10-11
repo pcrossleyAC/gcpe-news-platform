@@ -37,3 +37,36 @@ export function outline(doc: { blocks: import("../src/reports/model").Block[] })
   }
   return out;
 }
+
+/**
+ * `n` fictional report rows starting across `days` days from `from`, the same for the same `seed`:
+ * every Look Ahead section, multi-day and time-TBD rows, Awareness, the consultations ministry,
+ * confidential and issue rows, flags, release codes, and an end with no start. In legacy's order.
+ */
+export function sampleRows(n: number, from: string, days: number, seed = 1): ReportRow[] {
+  let s = seed >>> 0;
+  const rand = () => ((s = (Math.imul(s, 1664525) + 1013904223) >>> 0) / 2 ** 32);
+  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(rand() * xs.length)]!;
+  const day = (offset: number) => new Date(Date.UTC(...(from.split("-").map(Number) as [number, number, number]).map((v, i) => (i === 1 ? v - 1 : i === 2 ? v + offset : v)) as [number, number, number])).toISOString().slice(0, 10);
+  const sections = ["events_and_speeches", "in_the_news", "issues_and_reports", "not_on_la"] as const;
+  const rows = Array.from({ length: n }, (_, i) => {
+    const d = day(Math.floor(rand() * days));
+    const span = rand() < 0.15 ? 1 + Math.floor(rand() * 8) : 0;
+    const tbd = rand() < 0.1;
+    const hh = 7 + Math.floor(rand() * 11);
+    const start = tbd ? bc(d, "08:00") : bc(d, `${String(hh).padStart(2, "0")}:${pick(["00", "15", "30"])}`);
+    const end = tbd ? bc(d, "18:00") : bc(span ? day(Math.round((Date.parse(d) - Date.parse(from)) / 86_400_000) + span) : d, `${String(hh + 1).padStart(2, "0")}:00`);
+    const undated = rand() < 0.01;
+    return reportRow({
+      id: 30000 + i, title: `Sample generated ${i}`, hqSection: pick(sections), startAt: undated ? null : start, endAt: end,
+      isConfirmed: !tbd && rand() < 0.8, isAllDay: !tbd && rand() < 0.05, isIssue: rand() < 0.1, isConfidential: rand() < 0.05,
+      hqStatus: pick([null, null, null, "new", "changed"] as const), longTermOutlook: rand() < 0.3,
+      categoryIds: rand() < 0.05 ? [2] : [32], categories: [pick(["Sample plain category", "Sample broadcast"])],
+      ministryKey: rand() < 0.03 ? "consult" : "health", ministryAbbreviation: "HLTH",
+      commMaterials: rand() < 0.3 ? [pick(["Sample news release", "Sample report", "Sample fact sheet"])] : [], nrOrigins: rand() < 0.2 ? ["Sample origin"] : [],
+      nrAt: rand() < 0.2 ? bc(d, "10:30") : null, executiveSummary: rand() < 0.2 ? `**Sample summary ${i}** for HQ` : null,
+    });
+  });
+  const key = (r: ReportRow) => [r.startAt ?? r.endAt ?? "", r.endAt ?? ""].join(" ");
+  return rows.sort((a, b) => (key(a) < key(b) ? -1 : key(a) > key(b) ? 1 : a.id - b.id));
+}

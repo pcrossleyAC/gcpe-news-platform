@@ -2,10 +2,11 @@ import { Router, type Request } from "express";
 import { REPORT_FILE_NAMES, isReportKind, reportJobIdSchema, reportStartSchema } from "@gcpe/calendar-contract";
 import { ActivityForbiddenError, ActivityNotFoundError } from "../activities/errors";
 import { can } from "../capabilities";
-import { buildReport } from "../reports/build";
+import { buildReport, checkReportRange } from "../reports/build";
 import { reportData, ReportTooLargeError } from "../reports/data";
 import { ReportJobNotFoundError, ReportsUnavailableError } from "../reports/jobs";
 import { rowCountOf } from "../reports/model";
+import { todayOf } from "../list/query";
 import { runList } from "./list-errors";
 import type { ApiDeps } from "./routes";
 
@@ -42,14 +43,21 @@ export function reportRoutes(deps: ApiDeps): Router {
     if (!can.runReport(actor, report)) throw new ActivityForbiddenError("The Exec Look Ahead is for HQ Administrators");
     const { q } = reportStartSchema.parse(req.body ?? {});
     const { jobs, inlineWaitMs } = service();
-    const doc = buildReport(report, await reportData(deps, actor, q), originOf(req));
+    // The cheap refusals first, before anything is read or built: a busy queue or user, then a range too long.
+    jobs.assertCanStart(actor.userId);
+    checkReportRange(report, q, await todayOf(deps.db, deps), deps.rules.timeZone);
+    const doc = buildReport(report, await reportData(deps, actor, q), originOf(req), { maxRows: REPORT_ROW_LIMIT });
     if (rowCountOf(doc) > REPORT_ROW_LIMIT) throw new ReportTooLargeError("rows to print");
     const started = jobs.start(actor.userId, report, doc);
     const view = await jobs.settle(actor.userId, started.id, inlineWaitMs);
     res.status(view.status === "running" ? 202 : 201).json(view);
   }));
   r.get("/reports/jobs/:id", runList(async (req, res) => {
-    res.json(service().jobs.view(req.calendar!.userId, jobIdOf(req)));
+    const actor = req.calendar!;
+    const view = service().jobs.view(actor.userId, jobIdOf(req));
+    // As the download: a role taken away since the report started takes the report with it.
+    if (!can.runReport(actor, view.report)) throw new ReportJobNotFoundError();
+    res.json(view);
   }));
   r.get("/reports/jobs/:id/pdf", runList(async (req, res) => {
     const actor = req.calendar!;

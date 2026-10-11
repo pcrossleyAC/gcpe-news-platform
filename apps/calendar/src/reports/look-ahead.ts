@@ -1,5 +1,5 @@
 import { friendlyDateParts, type FriendlyDateParts, type ListQuery } from "@gcpe/calendar-contract";
-import { addDays, bcMidnight, wallClock } from "../time";
+import { addDays, bcMidnight, wallClock, type WallClock } from "../time";
 import { ReportTooLargeError, type ReportRow } from "./data";
 import { addMonths, longDay, shortDay, titleDay, updatedLong, weekdayOf } from "./dates";
 import type { Block, Cell, ReportDoc, Run } from "./model";
@@ -43,22 +43,42 @@ function elsewhere(row: ReportRow, c: LookAheadContext, outlookAfter: Date | nul
   return null;
 }
 
-/** Legacy's IsTimeTBD: an unconfirmed 8 AM to 6 PM day. */
-function isTimeTbd(row: ReportRow, timeZone: string): boolean {
-  if (!row.startAt || !row.endAt || row.isConfirmed) return false;
-  const s = wallClock(new Date(row.startAt), timeZone);
-  const e = wallClock(new Date(row.endAt), timeZone);
-  return s.date === e.date && s.time === "08:00" && e.time === "18:00";
+/** A row's BC dates and where it goes, worked out once: the day loops do no time-zone work per row per day. */
+interface Placed {
+  row: ReportRow;
+  /** BC dates; null with no start or no end. */
+  startDay: string | null;
+  endDay: string | null;
+  /** Legacy's IsTimeTBD: an unconfirmed 8 AM to 6 PM day. */
+  tbd: boolean;
+  place: ReturnType<typeof elsewhere>;
+  /** In Issues and Reports, and so out of the day tables. */
+  forIssues: boolean;
+  /** Legacy skips a confidential Not on LA row everywhere but Awareness and the Outlook. */
+  skipped: boolean;
 }
 
 /** Legacy's (End - Start).Days on BC wall-clock times: a daylight-saving change doesn't shorten the span. */
-function wallClockDays(start: Date, end: Date, timeZone: string): number {
-  const ms = (at: Date) => {
-    const w = wallClock(at, timeZone);
-    const [y, m, d] = w.date.split("-").map(Number) as [number, number, number];
-    return Date.UTC(y, m - 1, d) + w.secondsOfDay * 1000;
+const wallMs = (w: WallClock) => {
+  const [y, m, d] = w.date.split("-").map(Number) as [number, number, number];
+  return Date.UTC(y, m - 1, d) + w.secondsOfDay * 1000;
+};
+
+function placedOf(row: ReportRow, c: LookAheadContext, range: LookAheadRange): Placed {
+  const tz = c.rules.timeZone;
+  const s = row.startAt ? wallClock(new Date(row.startAt), tz) : null;
+  const e = row.endAt ? wallClock(new Date(row.endAt), tz) : null;
+  const spanDays = s && e ? Math.trunc((wallMs(e) - wallMs(s)) / 86_400_000) : 0;
+  return {
+    row,
+    startDay: s?.date ?? null,
+    endDay: e?.date ?? null,
+    tbd: !!s && !!e && !row.isConfirmed && s.date === e.date && s.time === "08:00" && e.time === "18:00",
+    place: elsewhere(row, c, range.outlookAfter),
+    // Legacy's NotForLookAhead also counted the "CONFIDENTIAL or EMBARGOED" category, inactive since 2015 (Metadata.cs:27-32).
+    forIssues: c.isHq ? row.hqSection === "issues_and_reports" : !row.isConfidential && !row.isConfirmed && spanDays >= 5,
+    skipped: row.isConfidential && row.hqSection === "not_on_la",
   };
-  return Math.trunc((ms(end) - ms(start)) / 86_400_000);
 }
 
 interface LaRow {
@@ -72,40 +92,24 @@ interface LaRow {
 }
 
 /**
- * Legacy's GenerateLookAheadActivities (ActivityHandler.ashx.cs:899-1061): one day's Events or In
- * the News rows, or (no day) Issues and Reports, in legacy's order: time-TBD and multi-day rows
- * first in Events; in In the News, time-TBD rows on top, then one-day rows, multi-day rows last.
+ * Legacy's GenerateLookAheadActivities (ActivityHandler.ashx.cs:899-1061) for rows already chosen,
+ * in list order: one day's Events or In the News rows, or (no day) Issues and Reports, in legacy's
+ * order: time-TBD and multi-day rows first in Events; in In the News, time-TBD rows on top, then
+ * one-day rows, multi-day rows last.
  */
-function sectionRows(c: LookAheadContext, range: LookAheadRange, o: { table: LookAheadTable; day: string | null; detailed: boolean }): LaRow[] {
+function sectionRows(c: LookAheadContext, chosen: readonly Placed[], o: { table: LookAheadTable; day: string | null; detailed: boolean }): LaRow[] {
   const tz = c.rules.timeZone;
-  const dayStart = o.day ? bcMidnight(o.day, tz) : null;
-  const dayEnd = o.day ? bcMidnight(addDays(o.day, 1), tz) : null;
   const inTheNews = o.table !== "events";
   const out: LaRow[] = [];
   let firstBlock = 0;
-  for (const row of c.rows) {
-    const start = row.startAt ? new Date(row.startAt) : null;
-    const end = row.endAt ? new Date(row.endAt) : null;
-    if (dayEnd && (!start || start >= dayEnd)) continue;
-    if (elsewhere(row, c, range.outlookAfter) !== null) continue;
-    if (row.isConfidential && row.hqSection === "not_on_la") continue;
-    const spanDays = start && end ? wallClockDays(start, end, tz) : 0;
-    // Legacy's NotForLookAhead also counted the "CONFIDENTIAL or EMBARGOED" category, inactive since 2015 (Metadata.cs:27-32).
-    const forIssues = c.isHq ? row.hqSection === "issues_and_reports" : !row.isConfidential && !row.isConfirmed && spanDays >= 5;
-    if (o.day === null) {
-      if (!forIssues) continue;
-    } else {
-      if (!end || end < dayStart! || forIssues) continue;
-      if (row.hqSection !== (inTheNews ? "in_the_news" : "events_and_speeches")) continue;
-    }
-    const tbd = isTimeTbd(row, tz);
-    const startDay = start ? wallClock(start, tz).date : null;
+  for (const p of chosen) {
+    const { row } = p;
     let at = out.length;
     if (o.day !== null) {
-      if (tbd) {
+      if (p.tbd) {
         at = inTheNews ? 0 : firstBlock;
         firstBlock++;
-      } else if (inTheNews === (startDay === (end ? wallClock(end, tz).date : null))) {
+      } else if (inTheNews === (p.startDay === p.endDay)) {
         at = firstBlock++;
       }
     }
@@ -113,7 +117,7 @@ function sectionRows(c: LookAheadContext, range: LookAheadRange, o: { table: Loo
     out.splice(at, 0, {
       row,
       date: friendlyDateParts(row, { timeZone: tz, today: c.today, weekday: false, endTime: false, ...(o.day ? { referenceDay: o.day } : {}) }),
-      flag: o.day === null || startDay === o.day,
+      flag: o.day === null || p.startDay === o.day,
       text: detailed ? detailedRuns(row, c) : lookAheadText(row, c.rules, { titleOnly: false }),
       category: categoryText(row, c.rules, c.isHq),
       rls: rlsLines(row, c.rules, { table: o.table, day: o.day }),
@@ -121,6 +125,28 @@ function sectionRows(c: LookAheadContext, range: LookAheadRange, o: { table: Loo
     });
   }
   return out;
+}
+
+/**
+ * Each day's Events and In the News rows, in list order: a row is on every day from its start's to
+ * its end's (it starts before the day ends and ends on or after its midnight), so a day's lookup
+ * costs only that day's rows.
+ */
+function dayTables(placed: readonly Placed[], days: readonly string[]): { events: Placed[][]; news: Placed[][] } {
+  const events = days.map((): Placed[] => []);
+  const news = days.map((): Placed[] => []);
+  const index = new Map(days.map((d, i) => [d, i]));
+  const first = days[0]!;
+  const last = days[days.length - 1]!;
+  for (const p of placed) {
+    if (p.place !== null || p.skipped || p.forIssues || p.startDay === null || p.endDay === null) continue;
+    const table = p.row.hqSection === "events_and_speeches" ? events : p.row.hqSection === "in_the_news" ? news : null;
+    if (!table || p.startDay > last || p.endDay < first) continue;
+    const lo = p.startDay <= first ? 0 : index.get(p.startDay)!;
+    const hi = p.endDay >= last ? days.length - 1 : index.get(p.endDay)!;
+    for (let i = lo; i <= hi; i++) table[i]!.push(p);
+  }
+  return { events, news };
 }
 
 const header = (labels: string[], fill: string): Cell[] => labels.map((text) => ({ runs: [{ text, bold: true, color: COLOURS.white }], fill }));
@@ -176,8 +202,8 @@ function listTable(c: LookAheadContext, first: string, rows: LaRow[], dateFill: 
 }
 
 /** Awareness Dates' or the Long Term Outlook's rows (ActivityHandler.ashx.cs:808-838): list order, no day split; HQ's Outlook only those marked for it. */
-function laterRows(c: LookAheadContext, range: LookAheadRange, which: "awareness" | "outlook"): ReportRow[] {
-  return c.rows.filter((r) => elsewhere(r, c, range.outlookAfter) === which && (which === "awareness" || !c.isHq || r.longTermOutlook));
+function laterRows(c: LookAheadContext, placed: readonly Placed[], which: "awareness" | "outlook"): ReportRow[] {
+  return placed.filter((p) => p.place === which && (which === "awareness" || !c.isHq || p.row.longTermOutlook)).map((p) => p.row);
 }
 
 function laterTable(c: LookAheadContext, rows: ReportRow[], which: "awareness" | "outlook"): Block {
@@ -194,17 +220,31 @@ function laterTable(c: LookAheadContext, rows: ReportRow[], which: "awareness" |
   };
 }
 
-/**
- * The Look Ahead (spec addendum §10.2; Reports/LookAheadReport.rdlc) and, with `detailed`, the Exec
- * Look Ahead (§10.3). Six sections: legacy's "Consultations and Dialogues" is dropped (carry-forward § 5g).
- */
-export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean }): ReportDoc {
-  const range = lookAheadRange(c.q, c.today, c.rules.timeZone, o.detailed);
+/** The range's days, refused (ReportTooLargeError) past LOOK_AHEAD_MAX_DAYS before anything is built. */
+export function lookAheadDays(range: Pick<LookAheadRange, "from" | "to">): string[] {
   const days: string[] = [];
   for (let d = range.from; d <= range.to; d = addDays(d, 1)) {
     if (days.length === LOOK_AHEAD_MAX_DAYS) throw new ReportTooLargeError("days in the range");
     days.push(d);
   }
+  return days;
+}
+
+/**
+ * The Look Ahead (spec addendum §10.2; Reports/LookAheadReport.rdlc) and, with `detailed`, the Exec
+ * Look Ahead (§10.3). Six sections: legacy's "Consultations and Dialogues" is dropped (carry-forward § 5g).
+ */
+export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean; maxRows?: number }): ReportDoc {
+  const range = lookAheadRange(c.q, c.today, c.rules.timeZone, o.detailed);
+  const days = lookAheadDays(range);
+  const placed = c.rows.map((row) => placedOf(row, c, range));
+  const { events, news } = dayTables(placed, days);
+  const issueRows = placed.filter((p) => p.place === null && !p.skipped && p.forIssues);
+  const awareness = laterRows(c, placed, "awareness");
+  const outlook = range.includeOutlook ? laterRows(c, placed, "outlook") : [];
+  // Every table row this document would hold, counted before any is drawn.
+  const rowCount = [...events, ...news].reduce((n, d) => n + d.length, issueRows.length + awareness.length + outlook.length);
+  if (o.maxRows !== undefined && rowCount > o.maxRows) throw new ReportTooLargeError("rows to print");
   const sameYear = range.from.slice(0, 4) === range.to.slice(0, 4);
   // Legacy's own quirk, kept: the start shows its year only when both ends share it (ActivityHandler.ashx.cs:668-673).
   const title = c.q.filter.thisDayOnly ? titleDay(range.from, true) : `${titleDay(range.from, sameYear)} to ${titleDay(range.to, true)}`;
@@ -227,8 +267,8 @@ export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean }): Rep
   // day's rows (plus 2 for its headings) and then tests the total plus them again against 16, counting the day twice: a
   // Saturday breaks from 7 rows, (7 + 2) x 2 > 16, whatever came before it. Kept as legacy had it.
   let sinceBreak = 0;
-  for (const day of days) {
-    const rows = sectionRows(c, range, { table: "events", day, detailed: o.detailed });
+  days.forEach((day, i) => {
+    const rows = sectionRows(c, events[i]!, { table: "events", day, detailed: o.detailed });
     if (rows.length === 0) blocks.push(heading(`No Activities for ${longDay(day)}`, { size: 14, align: "center", colour: COLOURS.heading, spaceBefore: 12 }));
     else blocks.push(heading(longDay(day), { size: 14, align: "center", colour: COLOURS.heading, spaceBefore: 12 }), heading("Events, Speeches & Releases", { colour: COLOURS.heading }), eventsTable(c, day, rows));
     const onPage = rows.length ? rows.length + 2 : 0;
@@ -237,21 +277,19 @@ export function lookAheadDoc(c: LookAheadContext, o: { detailed: boolean }): Rep
       sinceBreak = 0;
       blocks.push({ kind: "pageBreak" });
     }
-  }
+  });
   // LookAheadReport.rdlc: an empty subreport draws nothing, its heading and its page break included.
-  const issues = sectionRows(c, range, { table: "issues", day: null, detailed: o.detailed });
+  const issues = sectionRows(c, issueRows, { table: "issues", day: null, detailed: o.detailed });
   if (issues.length) {
     blocks.push(heading("ISSUES AND REPORTS", { colour: COLOURS.heading }), listTable(c, "Date", issues, COLOURS.issuesDate, true));
     // IssuesSubreport's PageBreakAtEnd is IsAppOwner.
     if (c.isHq) blocks.push({ kind: "pageBreak" });
   }
   blocks.push(heading("Outside Government", { size: 14, underline: true }));
-  for (const day of days) {
-    const rows = sectionRows(c, range, { table: "news", day, detailed: o.detailed });
+  days.forEach((day, i) => {
+    const rows = sectionRows(c, news[i]!, { table: "news", day, detailed: o.detailed });
     if (rows.length) blocks.push(heading("In the News", { colour: COLOURS.heading, spaceBefore: 8 }), listTable(c, shortDay(day), rows, COLOURS.news, false));
-  }
-  const awareness = laterRows(c, range, "awareness");
-  const outlook = range.includeOutlook ? laterRows(c, range, "outlook") : [];
+  });
   // RectangleAwarenessPageBreak breaks for HQ only; not when nothing follows it, which would end the PDF on a blank page.
   if (c.isHq && (awareness.length || outlook.length)) blocks.push({ kind: "pageBreak" });
   if (awareness.length) blocks.push(heading("AWARENESS DATES", { colour: COLOURS.heading }), laterTable(c, awareness, "awareness"));

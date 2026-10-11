@@ -4,10 +4,10 @@ import { listQuerySchema, type ListQueryInput } from "@gcpe/calendar-contract";
 import { loadCalendarActor } from "../actor";
 import { createCalendarTestDb, createTestApp, FIXED_NOW, TEST_RULES } from "../../test/helpers";
 import { insertRaw, seedWorld, type Who, type World } from "../../test/world";
-import { bc, outline, plain, reportRow } from "../../test/report-rows";
+import { bc, outline, plain, reportRow, sampleRows } from "../../test/report-rows";
 import { reportData, ReportTooLargeError, type ReportRow } from "./data";
 import { LOOK_AHEAD_MAX_DAYS, lookAheadDoc, lookAheadRange, type LookAheadContext } from "./look-ahead";
-import type { TableBlock } from "./model";
+import { rowCountOf, type TableBlock } from "./model";
 import { COLOURS } from "./text";
 
 const tz = TEST_RULES.timeZone;
@@ -322,4 +322,39 @@ describe("the Look Ahead fields at the built document (spec addendum §6)", () =
       expect(JSON.stringify(doc)).not.toMatch(/MARK-(strategy|schedule|lead|translation)/);
     });
   }
+});
+
+describe("what building a Look Ahead costs the event loop", () => {
+  const timed = (rows: ReportRow[], filter: ListQueryInput["filter"], runs: number) => {
+    let best = Infinity;
+    for (let i = 0; i < runs; i++) {
+      const t = performance.now();
+      lookAheadDoc(ctx(rows, { isHq: true, q: q({ filter }) }), { detailed: false });
+      best = Math.min(best, performance.now() - t);
+    }
+    return best;
+  };
+
+  it("the live window, 1,106 activities over 60 days, builds in under 150 ms", () => {
+    const rows = sampleRows(1106, "2026-11-10", 60, 11);
+    timed(sampleRows(50, "2026-11-10", 5, 3), { from: "2026-11-10" }, 1);
+    expect(timed(rows, { from: "2026-11-10" }, 3)).toBeLessThan(150);
+  });
+
+  it("the limits, 5,000 activities over 366 days, build in under 1,500 ms", () => {
+    const rows = sampleRows(5000, "2027-01-01", 366, 12);
+    expect(timed(rows, { from: "2027-01-01", to: "2028-01-01" }, 1)).toBeLessThan(1500);
+  });
+
+  it("refuses more rows to print than it may draw before drawing any, at exactly the rows it would draw", () => {
+    // 100 activities In the News on each of 60 days: 6,000 rows.
+    const long = Array.from({ length: 100 }, (_, i) => row(21000 + i, { hqSection: "in_the_news", startAt: at("2026-11-10", "09:00"), endAt: at("2027-01-08", "10:00") }));
+    const t = performance.now();
+    expect(() => lookAheadDoc(ctx(long, { q: q({ filter: { from: "2026-11-10" } }) }), { detailed: false, maxRows: 5000 })).toThrow(new ReportTooLargeError("rows to print"));
+    expect(performance.now() - t).toBeLessThan(100);
+    const some = sampleRows(300, "2026-11-10", 30, 5);
+    const n = rowCountOf(lookAheadDoc(ctx(some, { q: q({ filter: { from: "2026-11-10" } }) }), { detailed: false }));
+    expect(rowCountOf(lookAheadDoc(ctx(some, { q: q({ filter: { from: "2026-11-10" } }) }), { detailed: false, maxRows: n }))).toBe(n);
+    expect(() => lookAheadDoc(ctx(some, { q: q({ filter: { from: "2026-11-10" } }) }), { detailed: false, maxRows: n - 1 })).toThrow(ReportTooLargeError);
+  });
 });
