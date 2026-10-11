@@ -99,6 +99,19 @@ export const postRelated = pgTable("post_related", {
   computedAt: timestamp("computed_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * One row per post whose source text the provider has refused at its current
+ * embedding_text_hash (worker.ts's batch-isolation fallback). The worker's candidate query
+ * skips a post whose hash still matches here, so a poison post can't stall the batch on every
+ * tick; it's picked up again once a rewrite changes its hash. Deleted once the post embeds
+ * successfully, and cascades on post delete.
+ */
+export const postEmbeddingFailures = pgTable("post_embedding_failures", {
+  postKey: text("post_key").primaryKey().references(() => posts.key, { onDelete: "cascade", onUpdate: "cascade" }),
+  textHash: text("text_hash").notNull(),
+  failedAt: timestamp("failed_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const CHANGE_KINDS = ["post.upserted", "post.unpublished", "home", "slides", "resource_links", "ministry", "sector", "theme", "tag"] as const;
 export type ChangeKind = (typeof CHANGE_KINDS)[number];
 
