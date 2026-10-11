@@ -179,6 +179,9 @@ export const activities = pgTable(
     lastUpdatedAt: tz("last_updated_at").notNull().defaultNow(),
     lastUpdatedBy: uuid("last_updated_by"),
     version: integer("version").notNull().default(1),
+    /** The version the last legacy import wrote (spec addendum §12.1, safety 3): a re-run skips a row whose
+     * version has moved past it, because the Calendar changed it since. Null for activities created in the Calendar. */
+    importedVersion: integer("imported_version"),
   },
   (t) => [
     index("activities_start_at_idx").on(t.startAt),
@@ -258,12 +261,15 @@ export const activityChanges = pgTable(
     action: text("action").$type<ChangeAction>().notNull(),
     source: text("source").$type<ChangeSource>().notNull().default("calendar"),
     contactMinistryKey: text("contact_ministry_key"),
+    legacyKey: text("legacy_key"),
   },
   (t) => [
     index("activity_changes_activity_at_idx").on(t.activityId, t.at),
     index("activity_changes_at_idx").on(t.at),
     check("activity_changes_action_check", sql`${t.action} IN (${sqlList(CHANGE_ACTIONS)})`),
     check("activity_changes_source_check", sql`${t.source} IN (${sqlList(CHANGE_SOURCES)})`),
+    // One entry per legacy log group: a re-run of the import adds nothing.
+    uniqueIndex("activity_changes_legacy_key_idx").on(t.legacyKey),
   ],
 );
 
