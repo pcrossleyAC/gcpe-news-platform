@@ -43,6 +43,13 @@
       "when": 1791747016600,
       "tag": "0005_pgvector_optional",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1791748041402,
+      "tag": "0006_post_embeddings_length_check",
+      "breakpoints": true
     }
   ]
 }

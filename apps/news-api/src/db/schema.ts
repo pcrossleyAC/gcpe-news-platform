@@ -73,15 +73,24 @@ export const posts = pgTable(
  * without pgvector; where pgvector exists, migrations/0005 indexes `embedding::vector(1536)`.
  * Rows exist only for published posts: unpublishing deletes them in the same transaction.
  */
-export const postEmbeddings = pgTable("post_embeddings", {
-  postKey: text("post_key").primaryKey().references(() => posts.key, { onDelete: "cascade", onUpdate: "cascade" }),
-  provider: text("provider").notNull(),
-  model: text("model").notNull(),
-  dimensions: integer("dimensions").notNull(),
-  textHash: text("text_hash").notNull(),
-  embedding: real("embedding").array().notNull(),
-  embeddedAt: timestamp("embedded_at", { withTimezone: true }).notNull().defaultNow(),
-});
+export const postEmbeddings = pgTable(
+  "post_embeddings",
+  {
+    postKey: text("post_key").primaryKey().references(() => posts.key, { onDelete: "cascade", onUpdate: "cascade" }),
+    provider: text("provider").notNull(),
+    model: text("model").notNull(),
+    dimensions: integer("dimensions").notNull(),
+    textHash: text("text_hash").notNull(),
+    embedding: real("embedding").array().notNull(),
+    embeddedAt: timestamp("embedded_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // migrations/0005's HNSW index expression casts to vector(1536): a row of any other length
+    // fails that cast at index-build time, which can abort a migration partway through. Rejected
+    // at insert instead, before such a row can ever exist.
+    check("post_embeddings_embedding_length_check", sql`cardinality(${t.embedding}) = 1536`),
+  ],
+);
 
 /** The 5 nearest published neighbours, computed when the post is embedded (spec §5.4). */
 export const postRelated = pgTable("post_related", {
