@@ -148,3 +148,55 @@ export type AssetStatus =
   | { kind: "youtube" }
   | { kind: "live" }
   | { kind: "flickr"; photoId: string; state: "public" | "private" | "missing" | "unavailable"; message: string };
+
+/** Legacy's pre-fill from a Calendar activity (News/ReleaseManagement/New.aspx:625-700), in NRMS's own keys. */
+export interface ReleasePrefill {
+  /** The activity's start, as the planned publish time. */
+  publishAt: string | null;
+  /** The activity's city, without ", BC", at most 50 characters. */
+  location: string;
+  /** The lead ministry, then the shared ones: only ministries NRMS offers. */
+  ministries: string[];
+  leadMinistryKey: string | null;
+  sectors: string[];
+  themes: string[];
+  tags: string[];
+}
+
+/**
+ * `GET /calendar-activities/:id` (spec addendum §11). `unknown`: NRMS's projection has no such
+ * id. `hidden`: confidential, or not one the caller can see in the Calendar; no detail leaves.
+ */
+export type ActivityLookup =
+  | { id: number; state: "unknown" | "deleted" | "hidden" }
+  | {
+      id: number;
+      state: "found";
+      title: string;
+      startAt: string | null;
+      endAt: string | null;
+      ministryName: string | null;
+      location: string;
+      /** "Translations required" (ReleaseModel.cs:530-541). */
+      translations: string[];
+      /** Null when the activity can't be planned against; `notEligible` says why. */
+      prefill: ReleasePrefill | null;
+      notEligible: string | null;
+    };
+
+/** A Calendar activity on the Forecast tab (ReleasesModel.cs:196-223). */
+export interface ForecastActivity {
+  activityId: number;
+  title: string;
+  details: string;
+  ministryName: string | null;
+  categoryNames: string[];
+  location: string;
+}
+
+export type ForecastItem = { kind: "release"; at: string; release: ReleaseListItem } | { kind: "activity"; at: string; activity: ForecastActivity };
+
+export interface ForecastPage extends ReleasePage<ForecastItem> {
+  /** False when the caller has no Calendar access, so only releases are listed. */
+  calendarActivities: boolean;
+}

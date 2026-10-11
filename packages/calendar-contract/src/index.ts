@@ -14,3 +14,4 @@ export * from "./look-ahead";
 export * from "./rules";
 export * from "./validate";
 export * from "./view";
+export * from "./visibility";

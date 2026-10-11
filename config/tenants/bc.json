@@ -28,6 +28,7 @@
     "cloneKeptKeywordNames": ["30-60-90"],
     "lookAheadCoverImage": null,
     "reportBanner": { "province": "Province of BC", "confidentiality": "DRAFT AND CONFIDENTIAL" },
+    "forecastCategoryPrefix": "Approved",
     "reports": {
       "cover": { "organization": "Government Communications and Public Engagement", "lines": ["BC GOVERNMENT", "CORPORATE LOOK AHEAD"] },
       "planningTitle": "GCPE Corporate Calendar: Schedule of Activities",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { categoriesSchema, createReleaseSchema, documentLanguageSchema, listQuerySchema, metaSchema, scheduleSchema, settingsSchema } from "./schemas";
+import { categoriesSchema, createReleaseSchema, documentLanguageSchema, forecastQuerySchema, listQuerySchema, metaSchema, scheduleSchema, settingsSchema } from "./schemas";
 
 describe("schemas", () => {
   it("create: only creatable types, required headline and page title", () => {
@@ -22,6 +22,11 @@ describe("schemas", () => {
     expect(settingsSchema.safeParse({ version: 1, activityId: "12a", toSubscribers: true, toMediaLists: false, mediaListKeys: [] }).success).toBe(false);
     expect(settingsSchema.safeParse({ version: 1, activityId: "0", toSubscribers: true, toMediaLists: false, mediaListKeys: [] }).success).toBe(false);
     expect(settingsSchema.parse({ version: 1, activityId: "4521", toSubscribers: true, toMediaLists: false, mediaListKeys: [] }).activityId).toBe(4521);
+    // The Calendar's activity ids are int4: one past it is a 400, never a database error.
+    expect(settingsSchema.parse({ version: 1, activityId: 2_147_483_647, toSubscribers: true, toMediaLists: false, mediaListKeys: [] }).activityId).toBe(2_147_483_647);
+    for (const activityId of [2_147_483_648, "2147483648", "99999999999999999999"]) {
+      expect(settingsSchema.safeParse({ version: 1, activityId, toSubscribers: true, toMediaLists: false, mediaListKeys: [] }).success).toBe(false);
+    }
     expect(categoriesSchema.parse({ version: 1, leadMinistryKey: "Health", ministries: ["Health", "health"], sectors: [], themes: [], tags: [] })).toMatchObject({ leadMinistryKey: "health", ministries: ["health"] });
   });
   // Fix round 1 follow-up: plannedPublishAtLocal (BC wall-clock, no offset) as an alternative
@@ -76,5 +81,11 @@ describe("schemas", () => {
     // 2028 *is* a leap year — the one case that must be accepted.
     expect(scheduleSchema.safeParse({ version: 3, publishAtLocal: "2028-02-29T10:00" }).success).toBe(true);
     expect(settingsSchema.safeParse({ version: 1, plannedPublishAtLocal: "2026-13-40T25:99", toSubscribers: false, toMediaLists: false, mediaListKeys: [] }).success).toBe(false);
+  });
+
+  it("forecast: a page from 1 to 1000, 1 by default", () => {
+    expect(forecastQuerySchema.parse({})).toEqual({ page: 1 });
+    expect(forecastQuerySchema.parse({ page: "3" })).toEqual({ page: 3 });
+    for (const page of ["0", "1001", "x", "-1"]) expect(forecastQuerySchema.safeParse({ page }).success).toBe(false);
   });
 });
