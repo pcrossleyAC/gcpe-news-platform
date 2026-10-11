@@ -334,6 +334,63 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     expect(screen.getByLabelText("Health")).toBeChecked();
   });
 
+  it("retyping the Activity ID clears the untouched pre-fill, but never a field the user touched", async () => {
+    const OTHER_ACTIVITY = {
+      id: 4103, state: "found", title: "Other activity", startAt: null, endAt: null,
+      ministryName: "Education", location: "Kamloops", translations: [], notEligible: null,
+      prefill: { publishAt: null, location: "Kamloops", ministries: ["education"], leadMinistryKey: "education", sectors: [], themes: [], tags: [] },
+    };
+    stubFetch({ lookups: { "4102": ACTIVITY, "4103": OTHER_ACTIVITY } });
+    renderScreen("/releases/new?activity=4102");
+    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+    expect(screen.getByLabelText("Location")).toHaveValue("Victoria");
+    expect(screen.getByText(/Planned publish date:/)).toBeInTheDocument();
+
+    // The user touches Location by hand before retyping the id.
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("Location"));
+    await user.type(screen.getByLabelText("Location"), "My own place");
+
+    // Retype the Activity ID to a different activity: the untouched pre-fill (ministries,
+    // the planned publish date) clears, but the touched Location survives.
+    await user.clear(screen.getByLabelText("Activity ID"));
+    await user.type(screen.getByLabelText("Activity ID"), "4103");
+    await waitFor(() => expect(screen.getByLabelText("Health")).not.toBeChecked());
+    expect(screen.getByLabelText("Education")).not.toBeChecked();
+    expect(screen.queryByText(/Planned publish date:/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Location")).toHaveValue("My own place");
+  });
+
+  it("clearing the Activity ID clears the untouched pre-fill", async () => {
+    stubFetch({ lookups: { "4102": ACTIVITY } });
+    renderScreen("/releases/new?activity=4102");
+    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("Activity ID"));
+    await waitFor(() => expect(screen.getByLabelText("Health")).not.toBeChecked());
+    expect(screen.getByLabelText("Location")).toHaveValue("");
+    expect(screen.queryByText(/Planned publish date:/)).not.toBeInTheDocument();
+  });
+
+  it("the explicit Fill in button overwrites a field the user already touched", async () => {
+    stubFetch({ lookups: { "4102": ACTIVITY } });
+    renderScreen();
+    await screen.findByText("Legislature");
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("Health")); // touched, before any lookup
+    await user.type(screen.getByLabelText("Activity ID"), "4102");
+    await screen.findByRole("button", { name: "Fill in from activity 4102" });
+    expect(screen.getByLabelText("Health")).toBeChecked();
+
+    await user.click(screen.getByLabelText("Health")); // untouch it by hand: unchecked now
+    expect(screen.getByLabelText("Health")).not.toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "Fill in from activity 4102" }));
+    expect(screen.getByLabelText("Health")).toBeChecked();
+    expect(screen.getByLabelText("Education")).toBeChecked();
+  });
+
   it("an unknown or deleted id says so, offers nothing to fill in, and the server's refusal shows at the field", async () => {
     stubFetch({ lookups: {}, onPost: () => jsonResponse(422, { error: "bad", problems: ["No Calendar activity has ID 9999."] }) });
     renderScreen("/releases/new?activity=9999");

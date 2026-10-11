@@ -101,13 +101,19 @@ export function NewReleaseScreen(): React.JSX.Element {
   const [publishAt, setPublishAt] = useState<string | null>(null);
   // From the Forecast's "Start a release": fill in from that activity once it's looked up.
   const [fillOnLookup, setFillOnLookup] = useState(() => searchParams.has("activity"));
-  // Pre-fill never overwrites a field the user has already touched by hand, whether the fill
-  // ran automatically (arriving from the Forecast) or from the "Fill in from activity N"
-  // button — both go through fillIn below, so this one guard covers both.
+  // An automatic fill (arriving from the Forecast, or a later lookup while fillOnLookup is still
+  // set) never overwrites a field the user has already touched by hand. The explicit "Fill in
+  // from activity N" button is a deliberate request, so it overwrites every field, touched or
+  // not (see fillIn's force option below).
   const [touchedFields, setTouchedFields] = useState<ReadonlySet<string>>(() => new Set());
   const touch = (field: string) => setTouchedFields((prev) => (prev.has(field) ? prev : new Set(prev).add(field)));
+  // The activity id the fields below were last filled in from (or null, before any fill). When
+  // the Activity ID field moves away from this id -- retyped or cleared -- the effect below
+  // clears whatever it set that the user hasn't touched, so a stale pre-fill never survives a
+  // change of activity.
+  const [prefilledFrom, setPrefilledFrom] = useState<number | null>(null);
   const activityId = activityIdOf(activityText);
-  const lookup = useActivityLookup(activityId);
+  const { lookup, error: lookupError } = useActivityLookup(activityId);
   const prefill = lookup?.state === "found" ? lookup.prefill : null;
 
   const [pageTypes, setPageTypes] = useState<PageTypeOption[]>([]);
@@ -139,16 +145,22 @@ export function NewReleaseScreen(): React.JSX.Element {
     apiFetch<MediaListOption[]>("/nrms/api/media-lists").then((all) => setMediaLists(all.filter((l) => l.isActive)), () => {});
   }, []);
 
-  const fillIn = (p: ReleasePrefill) => {
-    if (!touchedFields.has("ministries")) {
+  // The automatic fill (arriving from the Forecast, or a later lookup while fillOnLookup is
+  // still set) keeps the touchedFields guard -- it never overwrites a field the user already
+  // edited. The explicit "Fill in from activity N" button (below) is a deliberate user action,
+  // so it passes force: true and overwrites every field, touched or not.
+  const fillIn = (p: ReleasePrefill, opts: { force?: boolean } = {}) => {
+    const skip = (field: string) => !opts.force && touchedFields.has(field);
+    if (!skip("ministries")) {
       setMinistries(p.ministries);
       setLeadMinistryKey(p.leadMinistryKey);
     }
-    if (!touchedFields.has("sectors")) setSectors(p.sectors);
-    if (!touchedFields.has("themes")) setThemes(p.themes);
-    if (!touchedFields.has("tags")) setTags(p.tags);
-    if (!touchedFields.has("location")) setLocation(p.location);
-    if (!touchedFields.has("publishAt")) setPublishAt(p.publishAt);
+    if (!skip("sectors")) setSectors(p.sectors);
+    if (!skip("themes")) setThemes(p.themes);
+    if (!skip("tags")) setTags(p.tags);
+    if (!skip("location")) setLocation(p.location);
+    if (!skip("publishAt")) setPublishAt(p.publishAt);
+    if (activityId !== null) setPrefilledFrom(activityId);
   };
 
   useEffect(() => {
@@ -156,6 +168,22 @@ export function NewReleaseScreen(): React.JSX.Element {
     setFillOnLookup(false);
     if (prefill) fillIn(prefill);
   }, [fillOnLookup, lookup, prefill]);
+
+  // A change (or clearing) of the Activity ID clears whatever the last fill set that the
+  // user hasn't touched -- never a touched field, and never anything before the first fill.
+  useEffect(() => {
+    if (prefilledFrom === null || activityId === prefilledFrom) return;
+    if (!touchedFields.has("ministries")) {
+      setMinistries([]);
+      setLeadMinistryKey(null);
+    }
+    if (!touchedFields.has("sectors")) setSectors([]);
+    if (!touchedFields.has("themes")) setThemes([]);
+    if (!touchedFields.has("tags")) setTags([]);
+    if (!touchedFields.has("location")) setLocation("");
+    if (!touchedFields.has("publishAt")) setPublishAt(null);
+    setPrefilledFrom(null);
+  }, [activityId, prefilledFrom, touchedFields]);
 
   // Fix round 1, finding 1: this route had no role gate at all — a Viewer or Site Editor
   // (anyone who can merely *read* releases) got a live creation form. Only NRMS.Editor may.
@@ -337,9 +365,9 @@ export function NewReleaseScreen(): React.JSX.Element {
           errorMessage={fieldProblem("activityId")}
           isInvalid={!!fieldProblem("activityId")}
         />
-        <ActivityLookupPanel lookup={lookup} storedId={null} timeZone={timeZone} />
+        <ActivityLookupPanel lookup={lookup} error={lookupError} storedId={null} timeZone={timeZone} />
         {prefill && activityId !== null && (
-          <Button variant="secondary" onPress={() => fillIn(prefill)}>
+          <Button variant="secondary" onPress={() => fillIn(prefill, { force: true })}>
             Fill in from activity {activityId}
           </Button>
         )}

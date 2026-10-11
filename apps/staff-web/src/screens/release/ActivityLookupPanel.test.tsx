@@ -11,10 +11,10 @@ const FOUND: ActivityLookup = {
   prefill: { publishAt: "2031-06-11T17:00:00.000Z", location: "Victoria", ministries: ["health"], leadMinistryKey: "health", sectors: [], themes: [], tags: [] },
 };
 
-function renderPanel(lookup: ActivityLookup | null, storedId: number | null = null) {
+function renderPanel(lookup: ActivityLookup | null, storedId: number | null = null, error = false) {
   return render(
     <MemoryRouter>
-      <ActivityLookupPanel lookup={lookup} storedId={storedId} timeZone="America/Vancouver" />
+      <ActivityLookupPanel lookup={lookup} error={error} storedId={storedId} timeZone="America/Vancouver" />
     </MemoryRouter>,
   );
 }
@@ -63,12 +63,23 @@ describe("ActivityLookupPanel (spec addendum §11)", () => {
       return url.endsWith("/4102") ? new Response(JSON.stringify(FOUND), { status: 200, headers: { "content-type": "application/json" } }) : new Response(JSON.stringify({ error: "not found" }), { status: 404, headers: { "content-type": "application/json" } });
     }));
     const { result, rerender } = renderHook(({ id }) => useActivityLookup(id), { initialProps: { id: 4102 as number | null } });
-    await waitFor(() => expect(result.current).toEqual(FOUND));
+    await waitFor(() => expect(result.current).toEqual({ lookup: FOUND, error: false }));
     rerender({ id: 2_147_483_648 });
-    expect(result.current).toBeNull();
+    expect(result.current).toEqual({ lookup: null, error: false });
     rerender({ id: 12 });
-    await waitFor(() => expect(result.current).toEqual({ id: 12, state: "unknown" }));
+    await waitFor(() => expect(result.current).toEqual({ lookup: { id: 12, state: "unknown" }, error: false }));
     expect(calls).toEqual(["/nrms/api/calendar-activities/4102", "/nrms/api/calendar-activities/12"]);
+  });
+
+  it("a non-404 failure (500) sets error, not a 404-shaped lookup", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "boom" }), { status: 500, headers: { "content-type": "application/json" } })));
+    const { result } = renderHook(({ id }) => useActivityLookup(id), { initialProps: { id: 4102 as number | null } });
+    await waitFor(() => expect(result.current).toEqual({ lookup: null, error: true }));
+  });
+
+  it("the panel shows a short generic alert on error, never the error detail", () => {
+    renderPanel(null, null, true);
+    expect(screen.getByRole("alert")).toHaveTextContent("Couldn’t look up that activity — try again.");
   });
 
   it("has no serious or critical axe violations in any state", async () => {
@@ -78,5 +89,8 @@ describe("ActivityLookupPanel (spec addendum §11)", () => {
       expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
       cleanup();
     }
+    const { container } = renderPanel(null, null, true);
+    const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+    expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
   });
 });
