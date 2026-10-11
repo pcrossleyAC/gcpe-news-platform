@@ -21,7 +21,7 @@ const ORGS: Record<string, { id: string; key: string; displayName: string; abbre
 const TERMS: Record<string, string> = { [`sector:${GUID.sector.toLowerCase()}`]: "sample-sector", [`theme:${GUID.theme.toLowerCase()}`]: "sample-theme", [`tag:${GUID.tag.toLowerCase()}`]: "sample-tag" };
 const keys: LegacyKeys = { org: (g) => ORGS[g.toLowerCase()] ?? null, termKey: (k, g) => TERMS[`${k}:${g.toLowerCase()}`] ?? null } as LegacyKeys;
 const uid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
-/** Legacy users 13 and 14 share an email, so Core gives them one user, as Task 3 does. */
+/** Legacy users 13 and 14 share an email, so Core gives them one user, as the Core user import does. */
 const userOf = (n: number) => uid(n === 14 ? 13 : n);
 const opts = { cutoff: TEST_CUTOFF, awarenessCategoryIds: [2] };
 let tdb: TestDatabase;

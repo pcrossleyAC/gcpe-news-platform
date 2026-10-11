@@ -1,7 +1,6 @@
 import { createHash } from "node:crypto";
 import { and, eq, inArray } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
-import { safeErrorLabel } from "@gcpe/http-kit";
 import { wallClockToInstant } from "@gcpe/legacy-import";
 import { checkAttachment, randomFileKey, type ObjectStore } from "@gcpe/storage";
 import type { LegacyKeys } from "../../../core/src/import/legacy-keys";
@@ -91,7 +90,6 @@ export async function applyFiles(db: Db, store: ObjectStore, scope: Scope, userI
       else { await store.delete(key); report.skip("files", String(f.Id), "another file on the activity has this name"); }
     } catch (e) {
       await store.delete(key).catch(() => false);
-      console.error("[calendar:import] could not record an attachment", f.ActivityId, f.Id, safeErrorLabel(e));
       throw e;
     }
   }
