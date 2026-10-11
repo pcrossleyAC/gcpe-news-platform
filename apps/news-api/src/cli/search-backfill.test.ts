@@ -29,6 +29,17 @@ describe("searchBackfill", () => {
 
   const textOf = async (key: string) => (await tdb.db.select({ t: posts.searchText }).from(posts).where(eq(posts.key, key)))[0]?.t;
 
+  it("returns a failure instead of throwing when counting the rows fails", async () => {
+    const failing = Object.create(tdb.db) as typeof tdb.db;
+    failing.select = (() => {
+      throw Object.assign(new Error('column "search_text" does not exist'), { code: "42703" });
+    }) as typeof tdb.db.select;
+    const r = await searchBackfill(failing, { confirm: true, all: false });
+    expect(r).toMatchObject({ confirmed: true, missingColumn: false, filled: 0 });
+    expect(r.failure).toEqual(expect.any(String));
+    expect(r.failure).not.toContain("search_text");
+  });
+
   it("dry run counts and writes nothing", async () => {
     const r = await searchBackfill(tdb.db, { confirm: false, all: false });
     expect(r).toMatchObject({ confirmed: false, missingColumn: false, total: 5, pending: 5, filled: 0, failure: null });

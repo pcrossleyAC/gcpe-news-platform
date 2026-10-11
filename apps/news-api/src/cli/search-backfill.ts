@@ -42,8 +42,14 @@ export async function searchBackfill(db: Db, opts: SearchBackfillOptions): Promi
   if (columns.length === 0) return { ...base, missingColumn: true };
 
   const scope = opts.all ? sql`true` : sql`${posts.searchText} IS NULL`;
-  const [{ total } = { total: 0 }] = await db.select({ total: sql<number>`count(*)::int` }).from(posts);
-  const [{ pending } = { pending: 0 }] = await db.select({ pending: sql<number>`count(*)::int` }).from(posts).where(scope);
+  let total: number;
+  let pending: number;
+  try {
+    [{ total } = { total: 0 }] = await db.select({ total: sql<number>`count(*)::int` }).from(posts);
+    [{ pending } = { pending: 0 }] = await db.select({ pending: sql<number>`count(*)::int` }).from(posts).where(scope);
+  } catch (e) {
+    return { ...base, missingColumn: false, failure: safeErrorLabel(e) };
+  }
   const counted = { ...base, missingColumn: false, total, pending };
   if (!opts.confirm) return counted;
 
