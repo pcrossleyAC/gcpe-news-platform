@@ -6,8 +6,8 @@ import { calendarActivities, calendarViewers } from "../db/schema";
 // Ordering and redelivery are the receiver's job (packages/events/src/receiver.ts): it applies an
 // event only when its sequence is past the activity's or user's last one, and acknowledges a
 // duplicate without applying it. Each event carries the whole current state, so a handler simply
-// replaces the row. The Calendar has no undelete: an activity it deleted arrives as deleted from
-// then on (activity.deleted, then activity.updated with isDeleted when it is reviewed).
+// replaces the row, except that deletion is never undone here: an activity deleted once stays
+// deleted in NRMS even if a later event says otherwise.
 
 type ActivityRow = typeof calendarActivities.$inferInsert;
 
@@ -31,9 +31,11 @@ function rowOf(a: ActivityEvent): ActivityRow {
   };
 }
 
+/** Deletion only goes one way: a row once deleted stays deleted, whatever a later event says. */
 const onActivity: EventHandler = async (tx, e) => {
   const row = rowOf(e.data as ActivityEvent);
-  await tx.insert(calendarActivities).values(row).onConflictDoUpdate({ target: calendarActivities.id, set: row });
+  const set = { ...row, isDeleted: sql`${calendarActivities.isDeleted} OR excluded.is_deleted` };
+  await tx.insert(calendarActivities).values(row).onConflictDoUpdate({ target: calendarActivities.id, set });
 };
 
 /** Marks it deleted and keeps whatever else the row holds; an activity never seen becomes an id-only deleted row. */

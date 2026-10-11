@@ -222,7 +222,8 @@ export type UserRecord = z.infer<typeof userRecordSchema>;
 export const releaseTypeSchema = z.enum(["release", "story", "factsheet", "update", "advisory"]);
 export const releaseStatusSchema = z.enum(["draft", "approved", "scheduled", "publishing", "published", "unpublishing", "failed", "deleted"]);
 
-const activityId = z.number().int().positive();
+/** The Calendar's activity ids are int4 (as is NRMS's column), so a larger id fails here rather than at a write. */
+const activityId = z.number().int().min(1).max(2_147_483_647);
 const keyList = z.array(z.string().min(1));
 
 /** Calendar → NRMS, for an activity that is not confidential (spec addendum §5.4). */

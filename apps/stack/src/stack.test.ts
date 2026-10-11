@@ -1088,7 +1088,7 @@ describe("apps/stack: without CALENDAR_DATABASE_URL", () => {
 // fire-and-forget block in stack.ts that runs once at startup — by writing straight into a
 // fresh database before startStack() ever runs, bypassing the event system entirely, so the
 // only way the data could reach NoD is through the backfill.
-describe("apps/stack: reference-data backfill (Task 2 fix round 1)", () => {
+describe("apps/stack: reference-data backfill from Core at startup", () => {
   // A second ministry, distinct from the shared instance's `healthOrg`, so a leftover row from
   // another test can never be mistaken for one this test produced.
   const financeOrg = { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "FIN", sectorKeys: ["finance"] };

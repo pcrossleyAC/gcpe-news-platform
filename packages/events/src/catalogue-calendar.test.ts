@@ -58,6 +58,14 @@ describe("activity.created / activity.updated", () => {
     expect(() => parseEvent(envelope("activity.created", { ...activity, id: 0 }))).toThrow();
   });
 
+  it("bounds an activity id to int4 (1 to 2,147,483,647), so an id the database cannot hold fails at parse", () => {
+    const max = 2_147_483_647;
+    expect(parseEvent(envelope("activity.created", { ...activity, id: max })).data).toMatchObject({ id: max });
+    expect(() => parseEvent(envelope("activity.created", { ...activity, id: max + 1 }))).toThrow();
+    expect(() => parseEvent(envelope("activity.updated", { id: max + 1, isConfidential: true, isDeleted: false }))).toThrow();
+    expect(() => parseEvent(envelope("activity.deleted", { id: max + 1 }))).toThrow();
+  });
+
   it("activity.deleted carries only the id", () => {
     expect(parseEvent(envelope("activity.deleted", { id: 4101 })).data).toEqual({ id: 4101 });
     expect(() => parseEvent(envelope("activity.deleted", { id: 4101, title: "x" }))).toThrow();
@@ -85,6 +93,13 @@ describe("release.status_changed", () => {
   it("accepts a draft with no key and a link moved away (previousActivityId set, activityId null)", () => {
     const moved = { ...change, key: null, reference: null, status: "draft", activityId: null, previousActivityId: 4101, publishAt: null };
     expect(parseEvent(envelope("release.status_changed", moved, `release:${change.releaseId}`)).data).toEqual(moved);
+  });
+
+  it("bounds activityId and previousActivityId to int4", () => {
+    const max = 2_147_483_647;
+    expect(parseEvent(envelope("release.status_changed", { ...change, activityId: max, previousActivityId: max }, "release:x")).data).toMatchObject({ activityId: max });
+    expect(() => parseEvent(envelope("release.status_changed", { ...change, activityId: max + 1 }, "release:x"))).toThrow();
+    expect(() => parseEvent(envelope("release.status_changed", { ...change, previousActivityId: max + 1 }, "release:x"))).toThrow();
   });
 
   it("refuses an unknown status or type", () => {

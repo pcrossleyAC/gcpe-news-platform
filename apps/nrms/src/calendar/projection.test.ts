@@ -54,6 +54,18 @@ describe("NRMS's projections of the Calendar's activities and Core's Calendar ac
     expect(await row(4103)).toMatchObject({ isDeleted: true, title: "Reviewed after deletion" });
   });
 
+  it("deletion only goes one way: a newer activity.updated with isDeleted false leaves a deleted row deleted", async () => {
+    await activity("activity.created", activityRecord(4107));
+    await activity("activity.deleted", { id: 4107 });
+    expect(await activity("activity.updated", activityRecord(4107, { isDeleted: false, title: "Brought back" }))).toBe("applied");
+    expect(await row(4107)).toMatchObject({ isDeleted: true, title: "Brought back" });
+  });
+
+  it("an activity id past int4 is refused at the receiver as a bad event, never a handler failure", async () => {
+    const res = await sendEvent(app, envelope("calendar", "activity.created", activityRecord(2_147_483_648), "activity:2147483648"));
+    expect(res.status).toBe(400);
+  });
+
   it("an older event arriving late, a duplicate, and a dead letter replayed after a newer one change nothing", async () => {
     const first = nextSequence();
     const second = nextSequence();
