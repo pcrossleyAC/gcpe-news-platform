@@ -1207,6 +1207,7 @@ It is safe to re-run: it fills only posts with no search text. `-- --all --confi
 - A bad parameter is a 400 that names it.
 - Errors are logged to `/stack/errors` as the route and a label, never the search words.
 - Result links use the stack's public site URL (`SITE_PUBLIC_SITE_URL`), or `NEWSAPI_PUBLIC_SITE_URL` when set.
+- The app itself never logs the query string. But this is not a promise that search terms are never logged anywhere: SiteGround's own proxy (and OpenShift's router, where its access logging is on) records the full request line in its access logs, so `?q=…` and its values land there outside the app's control, the same way `/stack/tick`'s `?token=` form does (above).
 
 **Hand checks on boxs.ca after the backfill:**
 1. `curl -s 'https://boxs.ca/api/v2/search?q=highway'` lists releases mentioning highways, with `"mode":"text"` and links under `https://boxs.ca/site/releases/`.
