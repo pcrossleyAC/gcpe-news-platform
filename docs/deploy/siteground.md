@@ -1182,6 +1182,21 @@ Nothing calls an embedding provider yet: semantic search and its worker arrive i
 
 `stand-in` is refused on a real production deployment: `NODE_ENV=production` without `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` or `SITE_ENVIRONMENT=test`. That is the same test-site rule as Flickr and the TEST banner. boxs.ca qualifies as a test deployment.
 
+### Search columns and the backfill
+
+**Migration:** the News API's `0003_post_search` adds `posts.search_text`, the generated `posts.search_vector` (`to_tsvector('english', …)`) and a GIN index. It runs at startup like the others. Adding a generated column rewrites `posts` once under a lock, so the first start after the deploy takes longer, in proportion to the number of posts. No extension is needed; it runs on SiteGround as is.
+
+**After deploy, once:** posts written before this deploy have no search text, so search can't find them until the backfill runs. Run it from a full checkout, outside the running stack, with the News API's database URL (the value of `NEWSAPI_DATABASE_URL`), as for the other commands:
+
+```sh
+DATABASE_URL=... npm run news-api:search-backfill              # dry run: how many posts it would fill
+DATABASE_URL=... npm run news-api:search-backfill -- --confirm # fill them, 200 per transaction
+```
+
+It is safe to re-run: it fills only posts with no search text. `-- --all --confirm` recomputes every post (for example after a change to what search text contains). Exit code `0` is done; `1` means it stopped (it prints the label) or the column doesn't exist yet, in which case start the News API first. New and updated posts get their search text as they are written, so after one run nothing more is needed.
+
+**Search language:** the column's language is fixed by the migration (`english`). The tenant's `search.language` must match, or the News API refuses to start: "Tenant search.language is "…" but posts.search_vector uses "…"". A tenant that needs another language adds its own drizzle-kit migration that redefines `search_vector` with that configuration, and sets `search.language` to match.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

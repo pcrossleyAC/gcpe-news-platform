@@ -14,6 +14,7 @@ import {
   type TermRecord,
 } from "@gcpe/events";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
+import { searchTextFor } from "./search/search-text";
 import { parseOffsetDateTime } from "./time";
 import { notifyUpdate, type UpdateTarget } from "./updates/notify";
 
@@ -132,6 +133,7 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
     indexKeys: indexKeysFor(r),
     assets: r.assets,
     translations: r.translations,
+    searchText: searchTextFor(r),
     isPublished: true,
     timestamp: parseOffsetDateTime(r.timestamp),
   };

@@ -9,6 +9,7 @@
     "record:fixtures": "tsx scripts/record-live-fixtures.ts",
     "seed:fixtures": "tsx scripts/seed-from-fixtures.ts",
     "import:legacy": "tsx src/import/cli.ts",
+    "search-backfill": "tsx src/cli/search-backfill.ts",
     "build": "node ../../scripts/build-app.mjs apps/news-api"
   },
   "dependencies": {

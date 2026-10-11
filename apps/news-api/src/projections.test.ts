@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import type pg from "pg";
@@ -7,6 +8,7 @@ import { sampleRelease } from "@gcpe/events/testing";
 import { createNewsTestDb } from "../test/helpers";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { applyOrg, applyRelease, applySiteContent, applyTerm, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
+import { SEARCH_TEXT_MAX_CHARS, searchTextFor } from "./search/search-text";
 import { listenForUpdates, notifyUpdate, type UpdateTarget } from "./updates/notify";
 
 /**
@@ -66,6 +68,33 @@ describe("projections", () => {
     await tdb.db.transaction((tx) => unpublishRelease(tx, sampleRelease.key.toLowerCase()));
     const [after] = await tdb.db.select().from(posts).where(eq(posts.key, sampleRelease.key));
     expect(after!.isPublished).toBe(false);
+  });
+
+  it("writes search_text on every release write, from either pipeline, and search_vector follows it", async () => {
+    await tdb.db.transaction((tx) => applyRelease(tx, sampleRelease));
+    const read = async () =>
+      (await tdb.db.select({ searchText: posts.searchText }).from(posts).where(eq(posts.key, sampleRelease.key)))[0]?.searchText;
+    expect(await read()).toBe(searchTextFor(sampleRelease));
+    const hits = await tdb.pool.query("SELECT key FROM posts WHERE search_vector @@ websearch_to_tsquery('english', 'abbotsford')");
+    expect(hits.rows).toEqual([{ key: sampleRelease.key }]);
+
+    const renamed = { ...sampleRelease, location: "Kamloops", documents: [{ ...sampleRelease.documents[0]!, headline: "Ferry schedule change" }] };
+    await tdb.db.transaction((tx) => applyRelease(tx, renamed));
+    expect(await read()).toBe(searchTextFor(renamed));
+    expect((await tdb.pool.query("SELECT key FROM posts WHERE search_vector @@ websearch_to_tsquery('english', 'abbotsford')")).rows).toEqual([]);
+
+    await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "LEGACY-1" }, { notify: false, origin: "legacy" }));
+    const [legacy] = await tdb.db.select({ searchText: posts.searchText }).from(posts).where(eq(posts.key, "LEGACY-1"));
+    expect(legacy?.searchText).toBe(searchTextFor(sampleRelease));
+  });
+
+  it("still applies a release whose body would overflow a tsvector, with search_text capped", async () => {
+    // About 2 MB of distinct words: Postgres refuses the uncapped tsvector ("string is too long for tsvector").
+    const words = Array.from({ length: 60_000 }, (_, i) => createHash("md5").update(String(i)).digest("hex")).join(" ");
+    const big = { ...sampleRelease, key: "BIG-1", documents: [{ ...sampleRelease.documents[0]!, detailsHtml: `<p>${words}</p>` }] };
+    await tdb.db.transaction((tx) => applyRelease(tx, big));
+    const [row] = await tdb.db.select({ n: sql<number>`char_length(${posts.searchText})::int` }).from(posts).where(eq(posts.key, "BIG-1"));
+    expect(row?.n).toBe(SEARCH_TEXT_MAX_CHARS);
   });
 
   it("rejects an origin value outside 'legacy' | 'event' (posts_origin_check)", async () => {
