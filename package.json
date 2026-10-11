@@ -18,6 +18,7 @@
     "nrms:release-holds": "npm --workspace @gcpe/nrms run release-holds --",
     "nrms:replay-to-news-api": "npm --workspace @gcpe/nrms run replay-to-news-api --",
     "nrms:replay-activity-links": "npm --workspace @gcpe/nrms run replay-activity-links --",
+    "calendar:import": "npm --workspace @gcpe/calendar run import:legacy --",
     "calendar:replay-to-nrms": "npm --workspace @gcpe/calendar run replay-to-nrms --",
     "staff-web:build": "node scripts/build-staff-web.mjs",
     "staff-web:dev": "node scripts/build-staff-web.mjs --watch",
