@@ -4,6 +4,7 @@ import { AppShell } from "./shell/AppShell";
 import { HomeRedirect } from "./shell/HomeRedirect";
 import { RequireAuth } from "./session/RequireAuth";
 import { ReleaseListScreen } from "./screens/releases/ReleaseListScreen";
+import { ForecastScreen } from "./screens/releases/ForecastScreen";
 import { SearchScreen } from "./screens/search/SearchScreen";
 import { NewReleaseScreen } from "./screens/release/NewReleaseScreen";
 import { ReleaseEditorPage } from "./screens/release/ReleaseEditorPage";
@@ -75,6 +76,7 @@ export const routes: RouteObject[] = [
         path: "releases",
         children: [
           { index: true, element: <Navigate to="/releases/drafts" replace /> },
+          { path: "forecast", element: <ForecastScreen /> },
           { path: "drafts", element: <ReleaseListScreen folder="drafts" /> },
           { path: "scheduled", element: <ReleaseListScreen folder="scheduled" /> },
           { path: "published", element: <ReleaseListScreen folder="published" /> },

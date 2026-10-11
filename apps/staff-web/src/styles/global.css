@@ -393,6 +393,11 @@ body {
   background: var(--gcpe-type-factsheet);
 }
 
+/* A Calendar activity on the Forecast: legacy's green (Releases.aspx:157, rgb(72, 113, 72)). */
+.gcpe-release-row__bar--activity {
+  background: #487148;
+}
+
 .gcpe-release-row__body {
   flex: 1 1 auto;
 }
