@@ -11,3 +11,5 @@ export {
   refineEmbeddingsEnv,
   type EmbeddingsEnv,
 } from "./settings";
+export { BreakerOpenError, CircuitBreaker, type BreakerState, type CircuitBreakerOptions } from "./breaker";
+export { createGuardedEmbedder, type GuardedEmbedder } from "./guarded";
