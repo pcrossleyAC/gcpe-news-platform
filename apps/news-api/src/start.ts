@@ -14,7 +14,9 @@ import { newsApiEnvSchema } from "./env";
 import { changesBearerFromEnv } from "./http/v2/changes-auth";
 import { every } from "./loop";
 import { assertSearchLanguage } from "./search/language";
+import { createSemanticSearch } from "./search/semantic";
 import { createSearchService, type SearchMode } from "./search/service";
+import { QueryVectorCache } from "./search/vector-cache";
 import { createUpdatesHub } from "./updates/hub";
 import { listenForUpdates } from "./updates/notify";
 
@@ -96,6 +98,19 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
   const workerEmbedder = workerProvider ? createGuardedEmbedder({ provider: workerProvider, breaker: new CircuitBreaker() }) : null;
   const embed = () => (workerEmbedder ? runEmbeddingTick({ db, embedder: workerEmbedder }) : Promise.resolve(null));
 
+  // Search's own guarded provider (EMBEDDINGS_TIMEOUT_MS) and breaker, apart from the worker's.
+  const semantic =
+    searchMode === "semantic" && provider
+      ? createSemanticSearch({
+          db,
+          embedder: createGuardedEmbedder({ provider }),
+          cache: new QueryVectorCache(),
+          language: tenant.search.language,
+          defaultLanguageId: tenant.defaultLanguageId,
+          threshold: parsed.SEARCH_SEMANTIC_THRESHOLD,
+        })
+      : null;
+
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
   const nodEntra = [parsed.NOD_TOKEN_URL, parsed.NOD_CLIENT_ID, parsed.NOD_CLIENT_SECRET, parsed.NOD_SCOPE];
@@ -135,7 +150,9 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
       language: tenant.search.language,
       defaultLanguageId: tenant.defaultLanguageId,
       publicSiteUrl: parsed.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl,
+      semantic,
     }),
+    searchRateLimit: { perMinute: parsed.SEARCH_RATE_LIMIT_PER_MIN, clientIpHeader: parsed.SUBSCRIBE_CLIENT_IP_HEADER },
     changes: { db, timeZone: tenant.timeZone, bearer: changesBearerFromEnv(env) },
     // Not ready while the LISTEN connection is down: this instance would silently miss
     // updates. Omitted entirely when the hub is disabled.

@@ -1260,6 +1260,19 @@ In semantic mode, each `/stack/tick` (the `news-api.embed` step) embeds up to 50
 - **Unpublishing** deletes the post's embedding and related posts in the same transaction, so it disappears from semantic results and related lists at once. That includes a legacy import's unpublish step.
 - **After the first 6b deploy**, the search backfill (`npm run news-api:search-backfill`) also fills each post's embedding text hash. Running it isn't required for embeddings: the worker fills missing hashes itself.
 
+### Semantic search
+
+In semantic mode, `GET /api/v2/search` embeds the query (each distinct query once per 5 minutes; up to 5,000 kept) and lists posts whose meaning is close to it first, nearest first, then the full-text matches not already listed. Responses say `"mode": "semantic"`. If the provider fails or its breaker is open, the same request answers in text mode and says `"mode": "text"`; while the breaker is open nothing is logged per request.
+
+| Variable | Meaning |
+|---|---|
+| `NEWSAPI_SEARCH_SEMANTIC_THRESHOLD` | Cosine distance at or below which a post counts as a semantic match. Default `0.6`; 0–2. Lower is stricter. |
+| `NEWSAPI_SEARCH_RATE_LIMIT_PER_MIN` | Search requests a minute per client IP (Q74). Default `60`. A client over it gets `429 {"error":"too many requests"}`. Uses `NEWSAPI_SUBSCRIBE_CLIENT_IP_HEADER` to find the client's address, as Subscribe does. |
+
+**Cost:** an uncached semantic query compares the query with every published post's vector that the filters allow: 120–170 ms at 20,000 posts on a laptop, growing in proportion (Q79).
+
+**Hand check on boxs.ca** (text mode there): after 61 quick `curl -s -o /dev/null -w '%{http_code}\n' 'https://boxs.ca/api/v2/search?q=x'` calls from one machine within a minute, the last is `429`.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

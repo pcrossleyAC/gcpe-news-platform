@@ -26,6 +26,8 @@ export interface AppDeps {
   readinessChecks?: ReadinessCheck[];
   /** `GET /api/v2/search`. Absent (most tests): that path answers v2's 404. */
   search?: SearchService;
+  /** Per client IP on `/api/v2/search` (Q74). */
+  searchRateLimit?: { perMinute: number; clientIpHeader?: string };
   /** `GET /api/v2/changes`. Absent (most tests): that path answers v2's 404. */
   changes?: ChangesRouteOptions;
 }
@@ -40,7 +42,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: createSourceRestrictedHandlers({ subscribers: deps.subscribers }) }));
   if (deps.hubRouter) app.use(deps.hubRouter);
 
-  app.use("/api/v2", v2Routes({ search: deps.search, changes: deps.changes }));
+  app.use("/api/v2", v2Routes({ search: deps.search, searchRateLimit: deps.searchRateLimit, changes: deps.changes }));
 
   const api = express.Router();
   api.use((_req, res, next) => {

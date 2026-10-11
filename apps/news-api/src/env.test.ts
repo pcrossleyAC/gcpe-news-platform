@@ -65,6 +65,22 @@ describe("newsApiEnvSchema SUBSCRIBE_CLIENT_IP_HEADER", () => {
   });
 });
 
+describe("newsApiEnvSchema search settings", () => {
+  it("defaults the semantic threshold to 0.6 and the search rate limit to 60 a minute", () => {
+    const env = parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv);
+    expect(env.SEARCH_SEMANTIC_THRESHOLD).toBe(0.6);
+    expect(env.SEARCH_RATE_LIMIT_PER_MIN).toBe(60);
+  });
+
+  it.each([
+    ["SEARCH_SEMANTIC_THRESHOLD", "2.5"],
+    ["SEARCH_SEMANTIC_THRESHOLD", "-0.1"],
+    ["SEARCH_RATE_LIMIT_PER_MIN", "0"],
+  ])("refuses %s=%s", (name, value) => {
+    expect(newsApiEnvSchema.safeParse({ ...BASE, [name]: value }).success).toBe(false);
+  });
+});
+
 // Final review D2: path defaults are derived with fileURLToPath, not URL#pathname — the latter
 // leaves percent-encoding in place ("/a%20b/…" for a checkout under "/a b/"), producing a path
 // that doesn't exist.

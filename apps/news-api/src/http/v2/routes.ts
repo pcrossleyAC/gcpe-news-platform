@@ -1,4 +1,6 @@
 import express from "express";
+import { rateLimit } from "express-rate-limit";
+import { clientIpKey } from "../client-ip";
 import { changesRoutes, type ChangesRouteOptions } from "./changes";
 import { parseSearchQuery } from "../../search/query";
 import type { SearchService } from "../../search/service";
@@ -8,7 +10,12 @@ import type { SearchService } from "../../search/service";
  * problem-JSON 404 never apply here. Every response is `no-store`. Errors go to the app's
  * jsonErrorHandler, which logs the method, the path (never the query string) and a safe label.
  */
-export function v2Routes(deps: { search?: SearchService; changes?: ChangesRouteOptions }): express.Router {
+export function v2Routes(deps: {
+  search?: SearchService;
+  /** Per client IP on /search (Q74). Absent: no limit (tests). */
+  searchRateLimit?: { perMinute: number; clientIpHeader?: string };
+  changes?: ChangesRouteOptions;
+}): express.Router {
   const r = express.Router();
   r.use((_req, res, next) => {
     res.set("Cache-Control", "no-store");
@@ -16,7 +23,19 @@ export function v2Routes(deps: { search?: SearchService; changes?: ChangesRouteO
   });
   const { search } = deps;
   if (search) {
-    r.get("/search", async (req, res) => {
+    const limiter = deps.searchRateLimit
+      ? [
+          rateLimit({
+            windowMs: 60_000,
+            limit: deps.searchRateLimit.perMinute,
+            standardHeaders: "draft-8",
+            legacyHeaders: false,
+            keyGenerator: clientIpKey(deps.searchRateLimit.clientIpHeader),
+            handler: (_req, res) => void res.status(429).json({ error: "too many requests" }),
+          }),
+        ]
+      : [];
+    r.get("/search", ...limiter, async (req, res) => {
       const parsed = parseSearchQuery(req.query as Record<string, unknown>, search.timeZone);
       if (!parsed.ok) {
         return void res.status(400).json({ error: { code: "InvalidParameter", parameter: parsed.parameter, message: parsed.message } });

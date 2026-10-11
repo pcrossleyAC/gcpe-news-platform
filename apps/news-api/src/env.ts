@@ -24,6 +24,10 @@ export const newsApiEnvSchema = z
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
     /** Search results link to `<PUBLIC_SITE_URL>/releases/<key>`. Default: the tenant's publicSiteBaseUrl. */
     PUBLIC_SITE_URL: z.string().url().optional(),
+    /** Cosine distance at or below which a post is a semantic match (spec §5.4). */
+    SEARCH_SEMANTIC_THRESHOLD: z.coerce.number().min(0).max(2).default(0.6),
+    /** Requests a minute per client IP on /api/v2/search (Q74), keyed like Subscribe. */
+    SEARCH_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(60),
     ...embeddingsEnvShape,
   })
   .superRefine(refineEmbeddingsEnv);
