@@ -186,6 +186,27 @@ describe("runEmbeddingTick (spec §5.2)", () => {
     expect(await relatedOf("B")).toEqual(["A"]);
   });
 
+  it("two concurrent ticks over the same batch make exactly one provider call (EMBED_TICK_LOCK)", async () => {
+    await seed(release("A", "alpha"), release("B", "beta"));
+    const calls: string[][] = [];
+    const base = standInProvider();
+    const slow: EmbeddingProvider = {
+      ...base,
+      async embed(texts, signal) {
+        calls.push(texts);
+        // Wide enough that the second call's non-blocking lock attempt is guaranteed to land
+        // while the first still holds it — this is what the test is exercising, not a race.
+        await new Promise((r) => setTimeout(r, 100));
+        return base.embed(texts, signal);
+      },
+    };
+    const embedder = createGuardedEmbedder({ provider: slow, log: () => {} });
+    const [r1, r2] = await Promise.all([runEmbeddingTick({ db: tdb.db, embedder }), runEmbeddingTick({ db: tdb.db, embedder })]);
+    expect(calls).toHaveLength(1);
+    expect([r1.skipped, r2.skipped].map((s) => s ?? "ran").sort()).toEqual(["locked", "ran"]);
+    expect(await embedded()).toEqual(["A", "B"]);
+  });
+
   it("deleteSemanticRows takes 70,000 keys in one call", async () => {
     const keys = Array.from({ length: 70_000 }, (_, i) => `K-${i}`);
     await expect(tdb.db.transaction((tx) => deleteSemanticRows(tx, keys))).resolves.toBeUndefined();

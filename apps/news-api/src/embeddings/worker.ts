@@ -1,5 +1,5 @@
 import { eq, inArray, sql } from "drizzle-orm";
-import type { Db } from "@gcpe/db-kit";
+import { withAdvisoryLock, type Db } from "@gcpe/db-kit";
 import { BreakerOpenError, type GuardedEmbedder } from "@gcpe/embeddings";
 import { postEmbeddings, posts } from "../db/schema";
 import { VECTOR_DIMENSIONS } from "./pgvector";
@@ -10,11 +10,32 @@ export const RELATED_LIMIT = 5;
 /** The worker's own provider timeout: spec §4's ceiling, since a batch is up to 50 long texts. */
 export const WORKER_EMBED_TIMEOUT_MS = 5000;
 
+/**
+ * Two-int advisory key (the "gcpe" space db-kit's migration lock uses; see changes.ts's
+ * CHANGES_LOCK, slot 4, in this same database). Slot 5 is this worker's own, so it can't
+ * collide with the change feed's lock, with lockIdentity's (projections.ts) single-bigint
+ * `hashtext(...)` keyspace (a completely separate Postgres lock space from the two-int form),
+ * or with db-kit's migration lock (slot 1).
+ *
+ * Why this can never deadlock against the change-feed or projection locks: `withAdvisoryLock`
+ * takes it with `pg_try_advisory_lock` (never blocking) on its own dedicated connection, not the
+ * one the tick's own transaction runs on, and releases it with `pg_advisory_unlock` in a
+ * `finally`. A lock acquired by a non-blocking try can never be a link in a wait-for cycle: this
+ * session either has it already or gives up immediately, so it never sits blocked holding one
+ * resource while waiting on another. Nothing else in the codebase ever requests this exact key,
+ * so it is also never contended from the other side. The tick's own transaction still takes
+ * ordinary row locks on `posts`/`post_embeddings` (FOR UPDATE/FOR SHARE) exactly as before; that
+ * is unaffected by this guard, which runs on a separate connection throughout.
+ */
+export const EMBED_TICK_LOCK = [0x67637065, 5] as const;
+
+class EmbeddingTickBusyError extends Error {}
+
 export interface EmbeddingTickResult {
   embedded: number;
   rehashed: number;
   related: number;
-  skipped: "breaker-open" | "provider-failed" | null;
+  skipped: "breaker-open" | "provider-failed" | "locked" | null;
 }
 
 type Candidate = {
@@ -32,6 +53,15 @@ type Candidate = {
  * text hash, provider, model or dimensions differ, newest first; one provider call; then each
  * post's related list. Only for semantic mode (the caller decides). Drafts never reach the News
  * API, and unpublished posts are never selected, so post_embeddings holds published posts only.
+ *
+ * Guarded by EMBED_TICK_LOCK (`pg_try_advisory_lock`, never blocking): the News API's own
+ * internal 60 s loop and /stack/tick's `news-api.embed` step both call this, in the same
+ * process, with no other coordination between them, and either could overlap a replica's own
+ * tick too. Without the guard, an overlap sends the same batch to the provider twice (double
+ * cost, no correctness bug — the write transaction's row lock still serialises the writes). An
+ * overlapping call finds the lock held and returns `skipped: "locked"` immediately, before
+ * touching the database for candidates or calling the provider at all; it is not an error and
+ * never logs a line.
  */
 export async function runEmbeddingTick(o: { db: Db; embedder: GuardedEmbedder; batchSize?: number; log?: (line: string) => void }): Promise<EmbeddingTickResult> {
   const { provider, breaker } = o.embedder;
@@ -39,6 +69,20 @@ export async function runEmbeddingTick(o: { db: Db; embedder: GuardedEmbedder; b
   const none = { embedded: 0, rehashed: 0, related: 0 };
   if (breaker.state === "open") return { ...none, skipped: "breaker-open" };
 
+  try {
+    return await withAdvisoryLock(o.db, EMBED_TICK_LOCK, () => new EmbeddingTickBusyError(), () => tick(o, provider, log, none));
+  } catch (e) {
+    if (e instanceof EmbeddingTickBusyError) return { ...none, skipped: "locked" };
+    throw e;
+  }
+}
+
+async function tick(
+  o: { db: Db; embedder: GuardedEmbedder; batchSize?: number },
+  provider: GuardedEmbedder["provider"],
+  log: (line: string) => void,
+  none: { embedded: number; rehashed: number; related: number },
+): Promise<EmbeddingTickResult> {
   const { rows } = await o.db.execute<Candidate>(sql`
     SELECT p.key, p.search_text AS "searchText", p.embedding_text_hash AS "postHash",
            e.text_hash AS "embeddedHash", e.provider, e.model, e.dimensions
