@@ -28,7 +28,7 @@ export interface TextSearchOptions {
   window?: { offset: number; limit: number };
 }
 
-/** Count and page from one snapshot (6a's final review, M5): a publish between them can't skew total. */
+/** Count and page from one snapshot: a publish between them can't skew total. */
 export const READ_SNAPSHOT = { isolationLevel: "repeatable read", accessMode: "read only" } as const;
 
 const KEY_DESC = sql`${posts.key} collate "C" desc`;
