@@ -23,13 +23,25 @@ describe("npm run calendar:replay-to-nrms (spec addendum §11, §12.1)", () => {
   });
   afterAll(() => tdb.drop());
 
-  it("a dry run counts and sends nothing", async () => {
-    expect(await replayToNrms(tdb.db, { confirm: false, rules: TEST_RULES, subscribers })).toEqual({ confirmed: false, count: 3, failures: [] });
+  it("a dry run counts, names the matching subscriber, and sends nothing", async () => {
+    expect(await replayToNrms(tdb.db, { confirm: false, rules: TEST_RULES, subscribers })).toEqual({
+      confirmed: false, count: 3, subscriberNames: ["nrms"], refused: false, failures: [],
+    });
+    expect(await events()).toEqual([]);
+  });
+
+  it("refuses --confirm when no configured subscriber accepts activity.updated, and enqueues nothing", async () => {
+    const noMatch: SubscriberConfig[] = [{ name: "nrms", url: "http://nrms.invalid/events", secret: "s".repeat(40), types: ["activity.deleted"] }];
+    expect(await replayToNrms(tdb.db, { confirm: true, rules: TEST_RULES, subscribers: noMatch })).toEqual({
+      confirmed: true, count: 3, subscriberNames: [], refused: true, failures: [],
+    });
     expect(await events()).toEqual([]);
   });
 
   it("confirmed, sends each activity's current state as activity.updated to NRMS: confidential as its id only, deleted as deleted", async () => {
-    expect(await replayToNrms(tdb.db, { confirm: true, rules: TEST_RULES, subscribers })).toEqual({ confirmed: true, count: 3, failures: [] });
+    expect(await replayToNrms(tdb.db, { confirm: true, rules: TEST_RULES, subscribers })).toEqual({
+      confirmed: true, count: 3, subscriberNames: ["nrms"], refused: false, failures: [],
+    });
     const sent = (await events()).map((e) => ({ type: e.type, aggregateId: e.aggregateId, data: (e.envelope as { data: Record<string, unknown> }).data }));
     expect(sent).toHaveLength(3);
     expect(sent.every((e) => e.type === "activity.updated")).toBe(true);

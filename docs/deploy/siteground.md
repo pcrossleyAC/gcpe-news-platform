@@ -1055,7 +1055,23 @@ JSON error means it hasn't been raised.
 **After deploy:**
 
 1. With the Calendar mounted, the stack's reference-data backfill sees NRMS has no Calendar viewers and asks Core to republish once. Without the Calendar (boxs.ca until `gcpe_calendar` exists), nothing is needed yet. After `gcpe_calendar` exists, if NRMS's Forecast shows "Calendar activities are listed here for people with Calendar access" to an HQ user who has Calendar access, run Core's republish by hand (`POST /core/api/admin/republish`, as in "Smoke test").
-2. Activities created before this deploy reached NRMS as `ignored` events. Fill NRMS's copy once: `npm run calendar:replay-to-nrms` (dry run), then `-- --confirm`, then a tick. Then `npm run nrms:replay-activity-links` (dry run), then `-- --confirm`, then a tick. Both run from a full checkout with the app's `DATABASE_URL` and `EVENT_SUBSCRIBERS`, like `nrms:replay-to-news-api`. Run them in this order after any legacy release import too — `calendar:replay-to-nrms` first, then `nrms:replay-activity-links` — since the bulk importer itself doesn't emit link changes: `nrms:replay-activity-links` is what sends status to the Calendar for the releases the import just linked. Both commands are dry runs unless given `--confirm`.
+2. Activities created before this deploy reached NRMS as `ignored` events. Fill NRMS's copy once: `npm run calendar:replay-to-nrms` (dry run), then `-- --confirm`, then a tick. Then `npm run nrms:replay-activity-links` (dry run), then `-- --confirm`, then a tick. Run them in this order after any legacy release import too — `calendar:replay-to-nrms` first, then `nrms:replay-activity-links` — since the bulk importer itself doesn't emit link changes: `nrms:replay-activity-links` is what sends status to the Calendar for the releases the import just linked. Both commands are dry runs unless given `--confirm`.
+
+   Both run from a full checkout, outside the running stack, with the app's `DATABASE_URL` and their own `EVENT_SUBSCRIBERS` — there is no SiteGround setting to copy this from, so set it explicitly on the command line. `--confirm` refuses to run (prints why, exits non-zero) unless `EVENT_SUBSCRIBERS` names at least one subscriber whose `types` include the event the CLI sends; both a dry run and a confirmed run print which configured subscriber(s) matched. Only each entry's `name` and `types` matter for this check — the stack already running on boxs.ca delivers the enqueued events itself, by matching the `subscriber` name against its own `EVENT_SUBSCRIBERS` (derived from `STACK_EVENT_SECRET`), never by calling the `url`/`secret` given here — so any placeholder value works for those two fields:
+
+   ```sh
+   DATABASE_URL=... \
+   EVENT_SUBSCRIBERS='[{"name":"nrms","url":"https://replay-cli.example.test/unused","secret":"unused-by-cli-000000000000000000000000","types":["activity.updated"]}]' \
+     npm run calendar:replay-to-nrms -- --confirm
+   ```
+
+   ```sh
+   DATABASE_URL=... \
+   EVENT_SUBSCRIBERS='[{"name":"calendar","url":"https://replay-cli.example.test/unused","secret":"unused-by-cli-000000000000000000000000","types":["release.status_changed"]}]' \
+     npm run nrms:replay-activity-links -- --confirm
+   ```
+
+   (`nrms:replay-to-news-api`'s own `EVENT_SUBSCRIBERS` isn't needed for this step — it sends `release.updated`, not `activity.updated`/`release.status_changed` — but is set up the same way, with a subscriber naming `news-api` and `types: ["release.updated"]`.)
 3. **Seeded users:** run `scripts/siteground-seed-users.sh https://boxs.ca` again to add `planner@example.test` ("Test Release Planner", NRMS Editor with Calendar Read Only at GCPE Headquarters).
 
 **Hand checks on boxs.ca** (spec §16 acceptance 13 and 14; they need `gcpe_calendar`):

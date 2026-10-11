@@ -13,13 +13,14 @@ import { z } from "zod";
 import { loadTenantConfig, parseEnv } from "@gcpe/config";
 import type { CalendarRules } from "@gcpe/calendar-contract";
 import { createDb, type Db } from "@gcpe/db-kit";
-import { parseSubscribers, type SubscriberConfig } from "@gcpe/events";
+import { parseSubscribers, subscribersFor, type SubscriberConfig } from "@gcpe/events";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { emitActivity } from "../activities/events";
 import { activities } from "../db/schema";
 import { rulesFromTenant } from "../rules";
 
 const BATCH_SIZE = 200;
+const EVENT_TYPE = "activity.updated";
 
 export interface ReplayToNrmsOptions {
   confirm: boolean;
@@ -30,13 +31,20 @@ export interface ReplayToNrmsOptions {
 export interface ReplayToNrmsResult {
   confirmed: boolean;
   count: number;
+  /** Names (never url/secret) of the configured subscribers that would receive `activity.updated`. */
+  subscriberNames: string[];
+  /** True when `--confirm` was requested but no configured subscriber accepts `activity.updated`:
+   * nothing was enqueued. */
+  refused: boolean;
   /** Activities that failed to replay, with a safe label; the run goes on past each. */
   failures: { id: number; reason: string }[];
 }
 
 export async function replayToNrms(db: Db, opts: ReplayToNrmsOptions): Promise<ReplayToNrmsResult> {
   const ids = (await db.select({ id: activities.id }).from(activities).orderBy(asc(activities.id))).map((r) => r.id);
-  if (!opts.confirm) return { confirmed: false, count: ids.length, failures: [] };
+  const subscriberNames = subscribersFor(EVENT_TYPE, opts.subscribers).map((s) => s.name);
+  if (!opts.confirm) return { confirmed: false, count: ids.length, subscriberNames, refused: false, failures: [] };
+  if (subscriberNames.length === 0) return { confirmed: true, count: ids.length, subscriberNames, refused: true, failures: [] };
   const failures: ReplayToNrmsResult["failures"] = [];
   for (let i = 0; i < ids.length; i += BATCH_SIZE) {
     await db.transaction(async (tx) => {
@@ -52,15 +60,20 @@ export async function replayToNrms(db: Db, opts: ReplayToNrmsOptions): Promise<R
       }
     });
   }
-  return { confirmed: true, count: ids.length, failures };
+  return { confirmed: true, count: ids.length, subscriberNames, refused: false, failures };
 }
 
 export function printResult(r: ReplayToNrmsResult, log: (s: string) => void = console.log): void {
-  if (!r.confirmed) {
-    log(`${r.count} activit${r.count === 1 ? "y" : "ies"} would be sent to NRMS. Dry run: nothing enqueued. Re-run with --confirm to send.`);
+  const names = r.subscriberNames.length > 0 ? r.subscriberNames.join(", ") : "(none)";
+  if (r.refused) {
+    log(`Refusing --confirm: no configured subscriber accepts ${EVENT_TYPE}. Set EVENT_SUBSCRIBERS so at least one subscriber's "types" include "${EVENT_TYPE}". Matching subscriber(s): ${names}.`);
     return;
   }
-  log(`Sent ${r.count - r.failures.length} of ${r.count} activities to NRMS as activity.updated.`);
+  if (!r.confirmed) {
+    log(`${r.count} activit${r.count === 1 ? "y" : "ies"} would be sent to NRMS. Matching subscriber(s): ${names}. Dry run: nothing enqueued. Re-run with --confirm to send.`);
+    return;
+  }
+  log(`Sent ${r.count - r.failures.length} of ${r.count} activities to NRMS as activity.updated. Matching subscriber(s): ${names}.`);
   for (const f of r.failures) log(`  activity ${f.id}: ${f.reason}`);
 }
 
@@ -77,12 +90,15 @@ async function main(): Promise<void> {
   try {
     const result = await replayToNrms(db, { confirm, rules: rulesFromTenant(loadTenantConfig(env.TENANT_CONFIG)), subscribers: parseSubscribers(env.EVENT_SUBSCRIBERS) });
     printResult(result);
-    if (result.failures.length > 0) process.exitCode = 1;
+    if (result.refused || result.failures.length > 0) process.exitCode = 1;
   } finally {
     await pool.end();
   }
 }
 
 if (pathToFileURL(realpathSync(process.argv[1]!)).href === import.meta.url) {
-  await main();
+  main().catch((e) => {
+    console.error(safeErrorLabel(e));
+    process.exitCode = 1;
+  });
 }

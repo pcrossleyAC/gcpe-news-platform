@@ -29,13 +29,25 @@ describe("npm run nrms:replay-activity-links (spec addendum §11 backfill)", () 
   });
   afterAll(() => tdb.drop());
 
-  it("a dry run counts the linked releases, and those whose activity NRMS doesn't hold, and sends nothing", async () => {
-    expect(await replayActivityLinks(tdb.db, { confirm: false, subscribers })).toEqual({ confirmed: false, count: 2, notInProjection: 1, failures: [] });
+  it("a dry run counts the linked releases, and those whose activity NRMS doesn't hold, names the matching subscriber, and sends nothing", async () => {
+    expect(await replayActivityLinks(tdb.db, { confirm: false, subscribers })).toEqual({
+      confirmed: false, count: 2, notInProjection: 1, subscriberNames: ["calendar"], refused: false, failures: [],
+    });
+    expect(await sent()).toEqual([]);
+  });
+
+  it("refuses --confirm when no configured subscriber accepts release.status_changed, and enqueues nothing", async () => {
+    const noMatch: SubscriberConfig[] = [{ name: "calendar", url: "http://calendar.invalid/events", secret: "s".repeat(40), types: ["activity.updated"] }];
+    expect(await replayActivityLinks(tdb.db, { confirm: true, subscribers: noMatch })).toEqual({
+      confirmed: true, count: 2, notInProjection: 1, subscriberNames: [], refused: true, failures: [],
+    });
     expect(await sent()).toEqual([]);
   });
 
   it("confirmed, sends each linked, non-deleted release's current status to the Calendar", async () => {
-    expect(await replayActivityLinks(tdb.db, { confirm: true, subscribers })).toEqual({ confirmed: true, count: 2, notInProjection: 1, failures: [] });
+    expect(await replayActivityLinks(tdb.db, { confirm: true, subscribers })).toEqual({
+      confirmed: true, count: 2, notInProjection: 1, subscriberNames: ["calendar"], refused: false, failures: [],
+    });
     expect((await sent()).map((d) => [d.headline, d.activityId, d.status, d.previousActivityId]).sort()).toEqual([["Legacy link", 777000, "draft", null], ["Linked", 4101, "draft", null]]);
   });
 });
