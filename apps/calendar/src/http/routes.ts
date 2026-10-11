@@ -6,6 +6,7 @@ import type { ObjectStore } from "@gcpe/storage";
 import { activityRoutes } from "./activity-routes";
 import { configRoutes } from "./config-routes";
 import { deadLetterRoutes } from "./dead-letter-routes";
+import { feedRoutes } from "./feed-routes";
 import { listRoutes } from "./list-routes";
 import { lookupRoutes } from "./lookup-routes";
 import { savedFilterRoutes } from "./saved-filter-routes";
@@ -29,6 +30,7 @@ export function apiRoutes(deps: ApiDeps): Router {
   r.get("/me", (req, res) => void res.json(req.calendar));
   r.use(configRoutes(deps));
   r.use(listRoutes(deps));
+  r.use(feedRoutes(deps));
   r.use(savedFilterRoutes(deps));
   r.use(activityRoutes(deps));
   r.use(lookupRoutes(deps.db));

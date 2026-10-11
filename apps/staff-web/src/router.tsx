@@ -20,6 +20,7 @@ import { CalendarSection } from "./screens/calendar/CalendarSection";
 import { ActivityListScreen } from "./screens/calendar/list/ActivityListScreen";
 import { ActivityRoute } from "./screens/calendar/activity/ActivityScreen";
 import { ChangesRoute } from "./screens/calendar/activity/ChangesScreen";
+import { UpdatesScreen } from "./screens/calendar/updates/UpdatesScreen";
 import { LookupsScreen } from "./screens/calendar/lookups/LookupsScreen";
 import { LookupScreen } from "./screens/calendar/lookups/LookupScreen";
 import { CalendarUsersScreen } from "./screens/calendar/users/CalendarUsersScreen";
@@ -125,6 +126,7 @@ export const routes: RouteObject[] = [
           { path: "activities/new", element: <ActivityRoute /> },
           { path: "activities/:id", element: <ActivityRoute /> },
           { path: "activities/:id/changes", element: <ChangesRoute /> },
+          { path: "updates", element: <UpdatesScreen /> },
           { path: "lookups", element: <LookupsScreen /> },
           { path: "lookups/:name", element: <LookupScreen /> },
           { path: "users", element: <CalendarUsersScreen /> },

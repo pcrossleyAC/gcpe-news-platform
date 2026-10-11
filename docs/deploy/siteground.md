@@ -1014,6 +1014,18 @@ JSON error means it hasn't been raised.
    ministry's user. BC's tenant hides Records (`showRecordsSection` is off, as legacy), so the page
    shows no link: open `/calendar/api/activities/:id/files/:fileId` directly as each user.
 
+### Updates feed (Phase 5f)
+
+**No migration.** Nothing to configure.
+
+**Hand checks on boxs.ca after deploy** (spec §16 acceptance 2 and 9):
+
+1. As cal-editor: Hub → Calendar → Updates shows "Today's updates". Change a scratch activity's title and it heads "Latest 5 updates", worded "Test Calendar Editor changed activity HLTH-<id>: …", with no email anywhere.
+2. Click that entry's `HLTH-<id>`, then Cancel: you are back on the same updates.
+3. As cal-hq-editor: a Health activity marked confidential by cal-editor doesn't appear in any view, and `?mode=activity&activity=<its id>` says "Activity not found".
+4. As cal-hq-admin: delete a scratch activity. Its entries show "(deleted)", and the deletion is listed. As cal-editor they are gone.
+5. On boxs.ca new activity ids are small, so typing one in "Search for" searches text. Use `?mode=activity&activity=<id>` instead. Production ids are legacy-sized (above 10,000).
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

@@ -25,8 +25,13 @@ export interface ListScope {
   consultationsKeys: string[];
 }
 
+/** Today's BC date (YYYY-MM-DD) by the database's clock. */
+export async function todayOf(db: DbOrTx, deps: ApiDeps): Promise<string> {
+  return wallClock(await dbNow(db, deps.now), deps.rules.timeZone).date;
+}
+
 export async function scopeOf(db: DbOrTx, deps: ApiDeps, actor: CalendarActor): Promise<ListScope> {
-  const today = wallClock(await dbNow(db, deps.now), deps.rules.timeZone).date;
+  const today = await todayOf(db, deps);
   const consult = await db.select({ key: orgs.key }).from(orgs).where(eq(orgs.abbreviation, deps.rules.consultationsMinistryAbbreviation));
   return { actor, rules: deps.rules, today, consultationsKeys: consult.map((o) => o.key) };
 }
@@ -34,7 +39,7 @@ export async function scopeOf(db: DbOrTx, deps: ApiDeps, actor: CalendarActor): 
 /** Legacy clamps earlier dates (ActivityDAO.cs:172-173). */
 const EARLIEST = "2011-01-01";
 /** Legacy searched by id only above this; a smaller number is a word, such as a year (ActivityDAO.cs:68-76). */
-const ID_SEARCH_FLOOR = 10_000;
+export const ID_SEARCH_FLOOR = 10_000;
 const INT4_MAX = 2_147_483_647;
 
 /** The activity a quick search names: a bare number above 10,000, or the list's "ABBR-123" at any size. */

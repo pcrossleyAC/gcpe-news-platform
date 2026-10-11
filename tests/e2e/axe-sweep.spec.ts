@@ -240,10 +240,11 @@ test.describe("item 16: axe across every staff screen", () => {
     const adminCookie = await loginForCookie(CAL_ADMIN_EMAIL, TEST_USER_PASSWORDS[CAL_ADMIN_EMAIL]!);
     const [adminName, adminValue] = adminCookie.split("=", 2) as [string, string];
     await context.addCookies([{ name: adminName, value: adminValue, domain: new URL(baseUrl()).hostname, path: "/", httpOnly: true, secure: false, sameSite: "Lax" }]);
-    for (const path of ["/hub/calendar", "/hub/calendar/lookups", "/hub/calendar/users", "/hub/calendar/transfer"]) {
+    for (const path of ["/hub/calendar", "/hub/calendar/updates", "/hub/calendar/lookups", "/hub/calendar/users", "/hub/calendar/transfer"]) {
       await gotoAndWaitForH1(page, path);
       // The activity list's h1 shows while it loads: scan the filters and the loaded list, not "Loading…".
       if (path === "/hub/calendar") await expect(page.getByRole("status").filter({ hasText: /^(Showing \d+ of|No activities match)/ })).toBeVisible();
+      if (path === "/hub/calendar/updates") await expect(page.getByRole("status").filter({ hasText: /^Total \d+ items?$/ })).toBeVisible();
       await expectNoSeriousA11yViolations(page, path);
     }
 

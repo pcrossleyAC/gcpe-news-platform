@@ -2,10 +2,6 @@
 
 Items one sub-plan leaves for a later one. Delete an item when the plan that takes it is written.
 
-## 5f
-
-- **The feed's `MIN-Id` links open the activity page** at `/hub/calendar/activities/:id`, with `?return=` set to the feed's own address (`activityPath` in `apps/staff-web/src/screens/calendar/activity/paths.ts`), so Save comes back to the feed (C149).
-
 ## 5g
 
 - Reports are PDF only (Q48, Paul 2026-10-10): no Word, so no turbodocx or patcher. Build on pdfmake in a background job (Q57's spike: the 60-day Look Ahead with per-day page breaks takes about 28 s on boxs.ca); measure SiteGround's request timeout first, and offer the PDF as a download once built.
@@ -52,6 +48,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 ## Platform hardening (no phase yet)
 
 - **`apps/nrms`'s site-files and page-images upload routes still take the file name in `?name=`**, so the name lands in every proxy's access logs, the same leak the Calendar's upload route carried until it moved to the `X-GCPE-File-Name` header (5e-1). Move NRMS's two routes to a header the same way.
+- Updates feed at volume: with 2M history rows, Latest 5 for a ministry with no recent entries, or an open-ended range, takes 2–3.4 s (EXPLAIN ANALYZE, 2026-10-10). The bounded paths are under 60 ms. The feed starts empty at cutover. Once history grows, add a default date floor, or an index (pg_trgm on title/details for keyword search, and a covering index for the latest-N scan).
 
 ## Entra sign-in (later phase)
 
