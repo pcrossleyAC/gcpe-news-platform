@@ -6,6 +6,7 @@ import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import { instantToBcLocal } from "../timezone";
+import { ActivityLookupPanel, useActivityLookup } from "../ActivityLookupPanel";
 import { SchedulePicker, type ScheduleValue } from "./SchedulePicker";
 
 export interface SettingsSectionProps {
@@ -54,6 +55,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
   const [form, setForm] = useState<FormState>(() => fromView(view));
   const [plannedValue, setPlannedValue] = useState<ScheduleValue | null>(view.publishAt ? scheduleValueFromInstant(view.publishAt, timeZone) : null);
   const [lists, setLists] = useState<MediaListOption[]>([]);
+  const lookup = useActivityLookup(form.activityId);
 
   useEffect(() => {
     // GET /media-lists also returns retired lists: kept here so a release already targeting
@@ -140,6 +142,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
           onChange={(v) => setForm((f) => ({ ...f, activityId: Number.isFinite(v) ? v : null }))}
           isDisabled={readOnly}
         />
+        <ActivityLookupPanel lookup={lookup} storedId={view.activityId} timeZone={timeZone} />
 
         <SchedulePicker
           timeZone={timeZone}

@@ -1,11 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
-import { CREATABLE_TYPES, LANG_EN, LAYOUTS, TYPE_LABEL, createReleaseSchema, typeRules, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
+import {
+  CREATABLE_TYPES, LANG_EN, LAYOUTS, MAX_ACTIVITY_ID, TYPE_LABEL, createReleaseSchema, typeRules, type Layout, type ReleasePrefill, type ReleaseView,
+} from "@gcpe/nrms-contract";
 import type { ZodIssue } from "zod";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { useTenantTimeZone } from "../../format/tenantTimeZone";
+import { dateTimeText } from "../calendar/list/dates";
+import { ActivityLookupPanel, useActivityLookup } from "./ActivityLookupPanel";
 import type { Categories } from "./categories";
 
 type CreatableType = (typeof CREATABLE_TYPES)[number];
@@ -35,6 +40,7 @@ const EMPTY_CATEGORIES: Categories = { ministries: [], sectors: [], themes: [], 
  * issue's `path`) to the field it's about — acceptance: "the API's 422 problems map to fields".
  * Anything unrecognised falls back to "general" (shown as a page-level alert, not lost). */
 function fieldFor(problem: string): string {
+  if (/calendar activity|activity id/i.test(problem)) return "activityId";
   if (/lead ministry/i.test(problem)) return "leadMinistryKey";
   if (/ministry|ministries/i.test(problem)) return "ministries";
   if (/sector/i.test(problem)) return "sectors";
@@ -56,15 +62,26 @@ function groupByField(problems: string[]): Record<string, string[]> {
   return grouped;
 }
 
+/** A typed activity id as a number, or null while it isn't one the Calendar could have. */
+function activityIdOf(text: string): number | null {
+  const t = text.trim();
+  return /^\d{1,10}$/.test(t) && Number(t) >= 1 && Number(t) <= MAX_ACTIVITY_ID ? Number(t) : null;
+}
+
 /**
  * `/hub/releases/new` (task-3-brief.md): type, page title (from `GET /page-types`), layout,
  * page image (`GET /page-images`), categories, and headline — the fields shown and required
  * change per {@link typeRules}. Validates client-side with `createReleaseSchema` before
  * sending; on success, `POST /nrms/api/releases` and navigate to the new release's editor.
+ * The Calendar activity id is looked up as it's typed (spec addendum §11), and legacy's
+ * pre-fill from it is offered; started from a Forecast activity (`?activity=`), it is filled
+ * in at once.
  */
 export function NewReleaseScreen(): React.JSX.Element {
   const session = useSession();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const timeZone = useTenantTimeZone();
   useDocumentTitle(session.has("NRMS.Editor") ? "New release" : "You don’t have permission to create releases");
 
   const [type, setType] = useState<CreatableType>("release");
@@ -78,6 +95,15 @@ export function NewReleaseScreen(): React.JSX.Element {
   const [themes, setThemes] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [mediaListKeys, setMediaListKeys] = useState<string[]>([]);
+
+  const [activityText, setActivityText] = useState(() => searchParams.get("activity") ?? "");
+  const [location, setLocation] = useState("");
+  const [publishAt, setPublishAt] = useState<string | null>(null);
+  // From the Forecast's "Start a release": fill in from that activity once it's looked up.
+  const [fillOnLookup, setFillOnLookup] = useState(() => searchParams.has("activity"));
+  const activityId = activityIdOf(activityText);
+  const lookup = useActivityLookup(activityId);
+  const prefill = lookup?.state === "found" ? lookup.prefill : null;
 
   const [pageTypes, setPageTypes] = useState<PageTypeOption[]>([]);
   const [pageImages, setPageImages] = useState<PageImageOption[]>([]);
@@ -107,6 +133,22 @@ export function NewReleaseScreen(): React.JSX.Element {
     // composer only ever offers active ones.
     apiFetch<MediaListOption[]>("/nrms/api/media-lists").then((all) => setMediaLists(all.filter((l) => l.isActive)), () => {});
   }, []);
+
+  const fillIn = (p: ReleasePrefill) => {
+    setMinistries(p.ministries);
+    setLeadMinistryKey(p.leadMinistryKey);
+    setSectors(p.sectors);
+    setThemes(p.themes);
+    setTags(p.tags);
+    setLocation(p.location);
+    setPublishAt(p.publishAt);
+  };
+
+  useEffect(() => {
+    if (!fillOnLookup || !lookup) return;
+    setFillOnLookup(false);
+    if (prefill) fillIn(prefill);
+  }, [fillOnLookup, lookup, prefill]);
 
   // Fix round 1, finding 1: this route had no role gate at all — a Viewer or Site Editor
   // (anyone who can merely *read* releases) got a live creation form. Only NRMS.Editor may.
@@ -162,7 +204,7 @@ export function NewReleaseScreen(): React.JSX.Element {
     organizations: null,
     byline: null,
     bodyHtml: "",
-    location: "",
+    location,
     contacts: [],
     ministries,
     leadMinistryKey,
@@ -170,8 +212,8 @@ export function NewReleaseScreen(): React.JSX.Element {
     themes: rules.categoriesBeyondMinistries ? themes : [],
     tags: rules.categoriesBeyondMinistries ? tags : [],
     mediaListKeys: rules.mediaListsAllowed ? mediaListKeys : [],
-    activityId: null,
-    publishAt: null,
+    activityId: activityText.trim() === "" ? null : activityText.trim(),
+    publishAt,
   });
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -274,6 +316,25 @@ export function NewReleaseScreen(): React.JSX.Element {
         {fieldProblem("pageImageId") && <p role="alert">{fieldProblem("pageImageId")}</p>}
 
         <TextField label="Headline" value={headline} onChange={setHeadline} isRequired errorMessage={fieldProblem("headline")} isInvalid={!!fieldProblem("headline")} />
+
+        <TextField
+          label="Activity ID"
+          value={activityText}
+          onChange={setActivityText}
+          inputMode="numeric"
+          maxLength={10}
+          errorMessage={fieldProblem("activityId")}
+          isInvalid={!!fieldProblem("activityId")}
+        />
+        <ActivityLookupPanel lookup={lookup} storedId={null} timeZone={timeZone} />
+        {prefill && activityId !== null && (
+          <Button variant="secondary" onPress={() => fillIn(prefill)}>
+            Fill in from activity {activityId}
+          </Button>
+        )}
+
+        <TextField label="Location" value={location} onChange={setLocation} maxLength={50} />
+        {publishAt && <p>Planned publish date: {dateTimeText(publishAt, timeZone)}, from the activity. Change it in Publish settings.</p>}
 
         <fieldset className="gcpe-options">
           <legend>Ministries</legend>
