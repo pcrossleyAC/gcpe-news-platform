@@ -8,11 +8,11 @@ import { createFakeSource } from "@gcpe/legacy-import";
 import { localStore, type ObjectStore } from "@gcpe/storage";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createCoreTestDb } from "../../../core/test/helpers";
-import { userLegacyIds, users as coreUsers } from "../../../core/src/db/schema";
+import { roleGrants, userLegacyIds, users as coreUsers } from "../../../core/src/db/schema";
 import { createCalendarTestDb, TEST_RULES } from "../../test/helpers";
 import { CONFIDENTIAL_MARKER, GUID, legacyCalendarTables, seedCoreForImport, TEST_CUTOFF } from "../../test/legacy-calendar-fixture";
 import { activities, activityChanges, activityFiles, categories, favourites, savedFilters } from "../db/schema";
-import { ImportStageError, parseImportArgs, runCalendarImport, runCalendarImportCli } from "./run";
+import { defaultReportPath, ImportStageError, parseImportArgs, runCalendarImport, runCalendarImportCli } from "./run";
 
 let cal: TestDatabase, core: TestDatabase;
 beforeAll(async () => { [cal, core] = await Promise.all([createCalendarTestDb(), createCoreTestDb()]); });
@@ -183,5 +183,55 @@ describe("calendar:import (acceptance 15)", () => {
     const written = JSON.parse(await readFile(join(dir, "r.json"), "utf8"));
     expect(written.failed).toMatchObject({ stage: "files" });
     expect(written.balanced).toBe(false);
+  });
+
+  it("a favourite survives a failure partway through activities, once the cause is fixed and the run repeated", async () => {
+    const bad = legacyCalendarTables();
+    (bad.activities as Record<string, unknown>[]).find((a) => a.Id === 1004)!.CityId = 99999; // 1001 and 1002 commit (by id order) before this one fails
+    const failure = await runCalendarImport(await deps(bad), confirm).catch((e: unknown) => e);
+    expect(failure).toBeInstanceOf(ImportStageError);
+    expect((failure as ImportStageError).stage).toBe("activities");
+    // The failed run never reached the favourites stage at all, yet 1001's favourite is already
+    // there: it was written in the same transaction as the activity, not as a later step.
+    expect((await cal.db.select().from(favourites)).map((f) => f.activityId).sort()).toEqual([1001]);
+    const report = (await runCalendarImport(await deps(), confirm)).toJSON();
+    expect(report.balanced).toBe(true);
+    expect((await cal.db.select().from(favourites)).map((f) => f.activityId).sort()).toEqual([1001, 1004]);
+    expect(JSON.stringify(report)).not.toContain("its activity was imported before");
+  });
+
+  it("a mapping fallback (an unknown status, an out-of-range section, a dropped comm contact) reaches the report, by activity id and field only", async () => {
+    const t = legacyCalendarTables();
+    (t.activities as Record<string, unknown>[]).find((a) => a.Id === 1010)!.CommunicationContactId = 506; // no ministry: dropped
+    const report = (await runCalendarImport(await deps(t), confirm)).toJSON();
+    const forStatusAndSection = report.mapping.find((m) => m.activityId === 1012);
+    expect(forStatusAndSection?.notes).toEqual(expect.arrayContaining([
+      "HqSection 0 is not a legacy section; imported as Not on LA",
+      "StatusId null imported as New",
+    ]));
+    const forDroppedContact = report.mapping.find((m) => m.activityId === 1010);
+    expect(forDroppedContact?.notes).toContain("its comm contact wasn't imported");
+    expect(JSON.stringify(report.mapping)).not.toContain("Sample");
+  });
+
+  it("lists users whose existing Core access was kept and users the import activated, by legacy id and Core user id; 'updated' counts only real changes", async () => {
+    const [gray] = await core.db.insert(coreUsers).values({ email: "gray.sample@example.test", displayName: "Gray Core", isActive: true }).returning({ id: coreUsers.id });
+    await core.db.insert(roleGrants).values({ userId: gray!.id, role: "Calendar.ReadOnly" });
+    const report = (await runCalendarImport(await deps(), confirm)).toJSON();
+    const id12 = (await core.db.select().from(userLegacyIds).where(eq(userLegacyIds.legacyId, "12")))[0]!.userId;
+    const id19 = (await core.db.select().from(userLegacyIds).where(eq(userLegacyIds.legacyId, "19")))[0]!.userId;
+    expect(report.usersActivated).toEqual(expect.arrayContaining([{ legacyIds: [12], userId: id12 }]));
+    expect(report.usersAccessKept).toEqual(expect.arrayContaining([{ legacyIds: [19], userId: id19 }]));
+    // legacy user 19 already had Calendar access in Core and nothing about it changed, so it must
+    // land in "unchanged", not "updated" -- unlike before the fix, which counted every email match.
+    expect(report.tables.users).toMatchObject({ inserted: 6, updated: 2, unchanged: 1 });
+    expect(JSON.stringify(report)).not.toContain("gray.sample");
+  });
+
+  it("defaultReportPath lands under the app's own, git-ignored report directory, not the process's working directory", () => {
+    const p = defaultReportPath(new Date("2026-11-20T18:04:05.678Z"));
+    expect(p.endsWith("calendar-import-20261120T180405Z.json")).toBe(true);
+    expect(p).toContain("import-reports");
+    expect(p.startsWith("/")).toBe(true);
   });
 });

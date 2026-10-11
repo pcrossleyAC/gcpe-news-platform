@@ -8,7 +8,7 @@ import { GUID, legacyCalendarTables, TEST_CUTOFF } from "../../test/legacy-calen
 import { activities, categories, commContacts, keywords } from "../db/schema";
 import { applyActivities, applyCommContacts, applyLookups, rebaseSequences } from "./apply";
 import { loadLegacy } from "./load";
-import { joinsByActivity, mapActivity, type MappedActivity } from "./map";
+import { favouritesByActivity, joinsByActivity, mapActivity, type MappedActivity } from "./map";
 import { CalendarImportReport } from "./report";
 import { selectScope } from "./scope";
 
@@ -37,7 +37,7 @@ async function importOnce(report = new CalendarImportReport("confirmed", TEST_CU
   const joins = joinsByActivity(scope);
   const list = scope.activities.map((a) => mapActivity(a, joins.get(a.Id)!, { timeZone: "America/Vancouver", userIdOf: (id) => (id === null ? null : userOf(id)), commContactIdOf: (id) => (id === null ? null : (remap.get(id) ?? null)), keys }))
     .filter((m): m is MappedActivity => !("skip" in m));
-  const result = await applyActivities(tdb.db, list, report);
+  const result = await applyActivities(tdb.db, list, favouritesByActivity(scope), userOf, report);
   await rebaseSequences(tdb.db);
   return { s, scope, report, result };
 }

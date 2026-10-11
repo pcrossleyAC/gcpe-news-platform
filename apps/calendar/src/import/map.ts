@@ -51,6 +51,13 @@ export function joinsByActivity(scope: Scope): Map<number, Record<JoinTable, (nu
   return out;
 }
 
+/** In-scope favourites grouped by the activity they belong to, so they can be inserted with it. */
+export function favouritesByActivity(scope: Scope): Map<number, { SystemUserId: number; ActivityId: number }[]> {
+  const out = new Map<number, { SystemUserId: number; ActivityId: number }[]>();
+  for (const f of scope.favourites) out.set(f.ActivityId, [...(out.get(f.ActivityId) ?? []), f]);
+  return out;
+}
+
 export function mapActivity(a: LegacyActivity, j: Record<JoinTable, (number | string)[]>, ctx: ActivityMapContext): MappedActivity | { id: number; skip: string } {
   if (![a.StartDateTime, a.EndDateTime, a.NRDateTime].every(yearOk)) return { id: a.Id, skip: "a date's year is outside 1900–2199" };
   const notes: string[] = [];

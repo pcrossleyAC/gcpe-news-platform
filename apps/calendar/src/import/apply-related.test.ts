@@ -15,7 +15,7 @@ import { applyActivities, applyCommContacts, applyLookups, rebaseSequences } fro
 import type { HistoryContext } from "./history-map";
 import { mapHistory } from "./history-map";
 import { loadLegacy } from "./load";
-import { joinsByActivity, mapActivity, type MappedActivity } from "./map";
+import { favouritesByActivity, joinsByActivity, mapActivity, type MappedActivity } from "./map";
 import { CalendarImportReport } from "./report";
 import { selectScope } from "./scope";
 
@@ -48,7 +48,7 @@ async function importOnce(report = new CalendarImportReport("confirmed", TEST_CU
   const joins = joinsByActivity(scope);
   const list = scope.activities.map((a) => mapActivity(a, joins.get(a.Id)!, { timeZone: "America/Vancouver", userIdOf: (id) => (id === null ? null : userOf(id)), commContactIdOf: (id) => (id === null ? null : (remap.get(id) ?? null)), keys }))
     .filter((m): m is MappedActivity => !("skip" in m));
-  const result = await applyActivities(tdb.db, list, report);
+  const result = await applyActivities(tdb.db, list, favouritesByActivity(scope), userOf, report);
   await rebaseSequences(tdb.db);
   return { s, scope, report, result };
 }
@@ -72,11 +72,13 @@ function historyContext(s: Awaited<ReturnType<typeof loadLegacy>>): HistoryConte
 describe("favourites, profiles, saved filters, attachments and history", () => {
   it("favourites come with a newly inserted activity only, and never come back once removed", async () => {
     const { scope, result, report } = await importOnce();
-    await applyFavourites(tdb.db, scope, userOf, result.inserted, report);
+    // applyActivities already wrote both favourites, atomically with their activities; this call
+    // (run.ts's own "favourites" stage) only reports on what's left, and must not touch either.
+    await applyFavourites(tdb.db, scope, userOf, result.present, result.inserted, report);
     expect(await tdb.db.select().from(favourites)).toEqual(expect.arrayContaining([{ userId: uid(11), activityId: 1001 }, { userId: uid(20), activityId: 1004 }]));
     await tdb.db.delete(favourites).where(eq(favourites.activityId, 1001));
     const again = await importOnce();
-    await applyFavourites(tdb.db, again.scope, userOf, again.result.inserted, again.report);
+    await applyFavourites(tdb.db, again.scope, userOf, again.result.present, again.result.inserted, again.report);
     expect(await tdb.db.select().from(favourites)).toEqual([{ userId: uid(20), activityId: 1004 }]);
   });
 

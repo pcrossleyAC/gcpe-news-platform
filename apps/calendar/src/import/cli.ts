@@ -39,7 +39,7 @@ try {
       { db, coreDb, source, store: localStore(env.CALENDAR_STORAGE_DIR), rules: rulesFromTenant(tenant), coreSubscribers, reportPath: args.reportPath ?? defaultReportPath(), log: console.log },
       { cutoff: args.cutoff, confirm: args.confirm },
     );
-    if (!args.confirm) console.log("Dry run: nothing written. Re-run with --confirm to import.");
+    if (!args.confirm && process.exitCode !== 1) console.log("Dry run: nothing written. Re-run with --confirm to import.");
   } finally {
     await source.close();
     await pool.end();

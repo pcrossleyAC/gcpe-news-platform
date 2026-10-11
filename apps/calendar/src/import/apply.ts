@@ -3,7 +3,7 @@ import type { Db } from "@gcpe/db-kit";
 import type { LegacyKeys } from "../../../core/src/import/legacy-keys";
 import { loadStored, replaceJoins, type JoinIds } from "../activities/store";
 import {
-  activities, categories, cities, commContacts, commMaterials, eventPlanners, governmentRepresentatives, initiatives, keywords,
+  activities, categories, cities, commContacts, commMaterials, eventPlanners, favourites, governmentRepresentatives, initiatives, keywords,
   nrDistributions, nrOrigins, premierRequested, videographers,
 } from "../db/schema";
 import { LOOKUP_TABLES, type LegacySnapshot, type LookupTable } from "./legacy-rows";
@@ -67,8 +67,16 @@ export function fingerprintOf(values: Partial<ActivityValues>, joins: JoinIds): 
  * Activities by legacy id (spec addendum §12.1, safety 3): new ones inserted with imported_version 1;
  * one the Calendar changed since (version past imported_version), or created there (no
  * imported_version), skipped and listed; otherwise updated only when its legacy values moved.
+ *
+ * A newly inserted activity's favourites are inserted in the same transaction: a failure
+ * later in the run can never leave an activity committed with its favourites lost, and a favourite
+ * a user later removes in the Calendar is never resurrected by a re-run, because a re-run only
+ * ever reaches this branch for an activity that isn't already present.
  */
-export async function applyActivities(db: Db, list: MappedActivity[], report: CalendarImportReport): Promise<{ inserted: Set<number>; present: Set<number> }> {
+export async function applyActivities(
+  db: Db, list: MappedActivity[], favouritesByActivity: Map<number, { SystemUserId: number; ActivityId: number }[]>,
+  userIdOf: (legacyId: number) => string | null, report: CalendarImportReport,
+): Promise<{ inserted: Set<number>; present: Set<number> }> {
   const inserted = new Set<number>();
   const present = new Set<number>();
   for (const m of list) {
@@ -77,6 +85,12 @@ export async function applyActivities(db: Db, list: MappedActivity[], report: Ca
       if (!cur) {
         await tx.insert(activities).values({ id: m.id, ...m.values, version: 1, importedVersion: 1 });
         await replaceJoins(tx, m.id, m.joins);
+        for (const f of favouritesByActivity.get(m.id) ?? []) {
+          const userId = userIdOf(f.SystemUserId);
+          if (!userId) { report.skip("favourites", `${f.SystemUserId}/${f.ActivityId}`, "its user wasn't imported"); continue; }
+          const rows = await tx.insert(favourites).values({ userId, activityId: f.ActivityId }).onConflictDoNothing().returning({ userId: favourites.userId });
+          report.count("favourites", rows.length ? "inserted" : "unchanged");
+        }
         return "inserted" as const;
       }
       if (cur.importedVersion === null) return "calendar-owned" as const;

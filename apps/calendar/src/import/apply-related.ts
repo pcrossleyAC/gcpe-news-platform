@@ -13,19 +13,22 @@ import { stripNul } from "./map";
 import type { CalendarImportReport } from "./report";
 import type { Scope } from "./scope";
 
-/** Favourites come only with an activity inserted in this run, so a re-run never re-adds one a user removed. */
-export async function applyFavourites(db: Db, scope: Scope, userIdOf: (id: number) => string | null, inserted: Set<number>, report: CalendarImportReport): Promise<void> {
+/**
+ * Reports on every favourite not already handled by `applyActivities`: one on an activity
+ * inserted in this same run was already inserted, atomically, with that activity, so it's skipped
+ * here without being re-counted. Everything else is reporting only, never an insert: a favourite on
+ * an activity that was already present before this run started either still exists (unchanged) or
+ * was removed since (by a user, or never there to begin with) and must stay that way.
+ */
+export async function applyFavourites(db: Db, scope: Scope, userIdOf: (id: number) => string | null, present: Set<number>, inserted: Set<number>, report: CalendarImportReport): Promise<void> {
   for (const f of scope.favourites) {
+    if (inserted.has(f.ActivityId)) continue;
     const userId = userIdOf(f.SystemUserId);
     if (!userId) { report.skip("favourites", `${f.SystemUserId}/${f.ActivityId}`, "its user wasn't imported"); continue; }
-    if (!inserted.has(f.ActivityId)) {
-      const [has] = await db.select().from(favourites).where(and(eq(favourites.userId, userId), eq(favourites.activityId, f.ActivityId)));
-      if (has) report.count("favourites", "unchanged");
-      else report.skip("favourites", `${f.SystemUserId}/${f.ActivityId}`, "its activity was imported before; favourites are copied with the first import only");
-      continue;
-    }
-    const rows = await db.insert(favourites).values({ userId, activityId: f.ActivityId }).onConflictDoNothing().returning({ userId: favourites.userId });
-    report.count("favourites", rows.length ? "inserted" : "unchanged");
+    if (!present.has(f.ActivityId)) { report.skip("favourites", `${f.SystemUserId}/${f.ActivityId}`, "its activity wasn't imported"); continue; }
+    const [has] = await db.select().from(favourites).where(and(eq(favourites.userId, userId), eq(favourites.activityId, f.ActivityId)));
+    if (has) report.count("favourites", "unchanged");
+    else report.skip("favourites", `${f.SystemUserId}/${f.ActivityId}`, "its activity was already present before this run; favourites are copied only when the activity is inserted");
   }
 }
 

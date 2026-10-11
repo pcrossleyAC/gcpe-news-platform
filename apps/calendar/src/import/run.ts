@@ -1,4 +1,6 @@
-import { writeFile } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { bcDateSchema, type CalendarRules } from "@gcpe/calendar-contract";
 import { withAdvisoryLock, type Db } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
@@ -13,7 +15,7 @@ import { applyFavourites, applyFiles, applyHistory, applyProfiles, applySavedFil
 import { mapHistory, type HistoryContext } from "./history-map";
 import type { LegacySnapshot } from "./legacy-rows";
 import { loadLegacy } from "./load";
-import { joinsByActivity, mapActivity, unknownLegacyKeys, userCandidates, validationProblems, type MappedActivity } from "./map";
+import { favouritesByActivity, joinsByActivity, mapActivity, unknownLegacyKeys, userCandidates, validationProblems, type MappedActivity } from "./map";
 import { CalendarImportReport } from "./report";
 import { selectScope, type Scope } from "./scope";
 
@@ -126,6 +128,7 @@ export async function runCalendarImport(deps: CalendarImportDeps, opts: Calendar
         const ok = mapped.filter((m): m is MappedActivity => !("skip" in m));
         for (const m of mapped) if ("skip" in m) report.skip("activities", String(m.id), m.skip);
         for (const m of ok) report.warn(m.id, validationProblems(m, m.joins.keywordIds.map(keywordName), deps.rules));
+        for (const m of ok) report.mapping(m.id, m.notes);
         report.count("activities", "planned", ok.length);
         for (const t of ["commContacts", "savedFilters", "favourites", "files", "logRows"] as const) {
           const n = { commContacts: scope.commContacts.length, savedFilters: scope.savedFilters.length, favourites: scope.favourites.length, files: scope.files.length, logRows: scope.logs.length }[t];
@@ -137,10 +140,20 @@ export async function runCalendarImport(deps: CalendarImportDeps, opts: Calendar
       }
 
       const users = await applyCalendarUsers(deps.coreDb, plan, deps.coreSubscribers);
+      const changedByEmail = new Set([...users.activated, ...users.accessGranted]);
+      const emailGroups = plan.groups.filter((g) => g.how === "email");
       report.count("users", "inserted", plan.groups.filter((g) => g.how === "new").reduce((n, g) => n + g.legacyIds.length, 0));
-      report.count("users", "updated", plan.groups.filter((g) => g.how === "email").reduce((n, g) => n + g.legacyIds.length, 0));
-      report.count("users", "unchanged", plan.groups.filter((g) => g.how === "legacy-id").reduce((n, g) => n + g.legacyIds.length, 0));
+      report.count("users", "updated", emailGroups.filter((g) => changedByEmail.has(g.existingUserId!)).reduce((n, g) => n + g.legacyIds.length, 0));
+      report.count("users", "unchanged",
+        plan.groups.filter((g) => g.how === "legacy-id").reduce((n, g) => n + g.legacyIds.length, 0)
+        + emailGroups.filter((g) => !changedByEmail.has(g.existingUserId!)).reduce((n, g) => n + g.legacyIds.length, 0));
       for (const g of users.groups) if (g.legacyIds.length > 1) report.note(`legacy users ${g.legacyIds.join(", ")} merged into Core user ${g.userId}`);
+      const accessKept = new Set(users.accessKept);
+      const activated = new Set(users.activated);
+      for (const g of users.groups) {
+        if (accessKept.has(g.userId)) report.userAccessKept(g.legacyIds, g.userId);
+        if (activated.has(g.userId)) report.userActivated(g.legacyIds, g.userId);
+      }
       const userIdOf = (id: number | null) => (id === null ? null : (users.userIdOf.get(id) ?? null));
       stage = "lookups"; await applyLookups(deps.db, s, report);
       stage = "commContacts"; const remap = await applyCommContacts(deps.db, scope, (id) => userIdOf(id), keys, report);
@@ -149,8 +162,9 @@ export async function runCalendarImport(deps: CalendarImportDeps, opts: Calendar
       for (const m of mapped) if ("skip" in m) report.skip("activities", String(m.id), m.skip);
       const ok = mapped.filter((m): m is MappedActivity => !("skip" in m));
       for (const m of ok) report.warn(m.id, validationProblems(m, m.joins.keywordIds.map(keywordName), deps.rules));
-      const { inserted, present } = await applyActivities(deps.db, ok, report);
-      stage = "favourites"; await applyFavourites(deps.db, scope, (id) => userIdOf(id), inserted, report);
+      for (const m of ok) report.mapping(m.id, m.notes);
+      const { inserted, present } = await applyActivities(deps.db, ok, favouritesByActivity(scope), (id) => userIdOf(id), report);
+      stage = "favourites"; await applyFavourites(deps.db, scope, (id) => userIdOf(id), present, inserted, report);
       stage = "profiles"; await applyProfiles(deps.db, s, users.groups, report);
       stage = "savedFilters"; await applySavedFilters(deps.db, scope, (id) => userIdOf(id), keys, report);
       stage = "files"; await applyFiles(deps.db, deps.store, scope, (id) => userIdOf(id), present, tz, report);
@@ -169,10 +183,13 @@ export async function runCalendarImport(deps: CalendarImportDeps, opts: Calendar
 }
 
 const textPath = (p: string) => (p.endsWith(".json") ? `${p.slice(0, -5)}.txt` : `${p}.txt`);
+/** `apps/calendar/import-reports/`, git-ignored: never the npm workspace's own working directory. */
+const DEFAULT_REPORT_DIR = fileURLToPath(new URL("../../import-reports", import.meta.url));
 export function defaultReportPath(now = new Date()): string {
-  return `calendar-import-${now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}.json`;
+  return join(DEFAULT_REPORT_DIR, `calendar-import-${now.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}.json`);
 }
 async function writeReport(report: CalendarImportReport, path: string) {
+  await mkdir(dirname(path), { recursive: true });
   await writeFile(path, JSON.stringify(report.toJSON(), null, 2));
   await writeFile(textPath(path), report.toText());
 }

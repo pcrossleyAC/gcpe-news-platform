@@ -13,8 +13,14 @@ export interface CalendarImportReportJSON {
   changedInCalendar: number[];
   /** Activities that break the shared validation, by field name only (imported anyway; fixed on next save). */
   validation: { activityId: number; fields: string[] }[];
+  /** Per-activity mapping fallbacks (an unknown status or section, a dropped comm contact), by activity id only. */
+  mapping: { activityId: number; notes: string[] }[];
   unknownKeys: { kind: string; guid: string }[];
   savedFilters: { strippedPrefix: number; dropped: { id: number; key: string; reason: string }[]; overCap: { ownerId: string; count: number }[] };
+  /** Users whose existing Core access was left as it was, by legacy id and Core user id only. */
+  usersAccessKept: { legacyIds: number[]; userId: string }[];
+  /** Role-less placeholder users the import activated, by legacy id and Core user id only. */
+  usersActivated: { legacyIds: number[]; userId: string }[];
   facts: Record<string, number>;
   notes: string[];
   failed: { stage: string; message: string } | null;
@@ -24,7 +30,8 @@ export interface CalendarImportReportJSON {
 export class CalendarImportReport {
   private readonly tables = new Map<string, Counts>();
   private readonly data: Omit<CalendarImportReportJSON, "mode" | "cutoff" | "balanced" | "tables"> = {
-    skipped: [], changedInCalendar: [], validation: [], unknownKeys: [], savedFilters: { strippedPrefix: 0, dropped: [], overCap: [] }, facts: {}, notes: [], failed: null,
+    skipped: [], changedInCalendar: [], validation: [], mapping: [], unknownKeys: [], savedFilters: { strippedPrefix: 0, dropped: [], overCap: [] },
+    usersAccessKept: [], usersActivated: [], facts: {}, notes: [], failed: null,
   };
   constructor(readonly mode: "dry-run" | "confirmed", readonly cutoff: string) {}
 
@@ -38,6 +45,9 @@ export class CalendarImportReport {
   skip(table: string, legacyId: string, reason: string): void { this.count(table, "skipped"); this.data.skipped.push({ table, legacyId, reason }); }
   listChangedInCalendar(id: number): void { this.data.changedInCalendar.push(id); }
   warn(activityId: number, fields: string[]): void { if (fields.length) this.data.validation.push({ activityId, fields }); }
+  mapping(activityId: number, notes: string[]): void { if (notes.length) this.data.mapping.push({ activityId, notes }); }
+  userAccessKept(legacyIds: number[], userId: string): void { this.data.usersAccessKept.push({ legacyIds, userId }); }
+  userActivated(legacyIds: number[], userId: string): void { this.data.usersActivated.push({ legacyIds, userId }); }
   fact(name: string, value: number): void { this.data.facts[name] = value; }
   note(text: string): void { this.data.notes.push(text); }
   unknownKeys(list: { kind: string; guid: string }[]): void { this.data.unknownKeys.push(...list); }
@@ -67,6 +77,9 @@ export class CalendarImportReport {
     if (j.changedInCalendar.length) lines.push(`Changed in the Calendar since the last import (not overwritten): ${j.changedInCalendar.join(", ")}`);
     if (j.skipped.length) { lines.push("Skipped:"); for (const s of j.skipped) lines.push(`  [${s.table}] ${s.legacyId}: ${s.reason}`); }
     if (j.validation.length) { lines.push("Validation problems (imported; fixed on next save):"); for (const v of j.validation) lines.push(`  ${v.activityId}: ${v.fields.join(", ")}`); }
+    if (j.mapping.length) { lines.push("Mapping fallbacks:"); for (const m of j.mapping) for (const n of m.notes) lines.push(`  ${m.activityId}: ${n}`); }
+    if (j.usersAccessKept.length) { lines.push("Users whose existing Core access was kept:"); for (const u of j.usersAccessKept) lines.push(`  ${u.legacyIds.join(",")} -> ${u.userId}`); }
+    if (j.usersActivated.length) { lines.push("Users the import activated:"); for (const u of j.usersActivated) lines.push(`  ${u.legacyIds.join(",")} -> ${u.userId}`); }
     if (Object.keys(j.facts).length) { lines.push("Facts:"); for (const [k, v] of Object.entries(j.facts)) lines.push(`  ${k}: ${v}`); }
     for (const n of j.notes) lines.push(`Note: ${n}`);
     return lines.join("\n");
