@@ -824,6 +824,14 @@ plus `CALENDAR_STORAGE_DIR` (where imported attachments are written) and the opt
 ["user.upserted"]` for both the `calendar` and `nrms` entries). None of these are printed or
 written anywhere by the tool itself.
 
+**`CALENDAR_STORAGE_DIR` must be the running Calendar's own attachment store**, not a directory on
+whichever machine happens to run the import. On SiteGround that means running the import on the
+server itself (`ssh boxs`), with `CALENDAR_STORAGE_DIR` left at its default or pointed explicitly
+at `~/gcpe-data/calendar-files` (see "Persistent data" above). An import run from an operator's own
+machine writes the attachment bytes to that machine's disk while the Calendar rows point at keys
+the server never receives; downloads then fail, silently, and a re-run won't repair it, because the
+rows already exist and come back "unchanged".
+
 **Prerequisite:** Core's reference import first (ministries, sectors, themes, tags). An unknown
 legacy ministry, sector, theme or tag GUID stops the run before it writes anything, and is listed
 in the report by kind and GUID ("fix Core first").
@@ -836,10 +844,10 @@ CORE_EVENT_SUBSCRIBERS='[{"name":"calendar","url":"https://import-cli.example.te
   npm run calendar:import -- --cutoff <YYYY-MM-DD> --report calendar-import.json
 ```
 
-That is a dry run — nothing is written. Read the report, then run it again with `--confirm`. The
-cutoff has no default (Q53); at a 2026-11-01 cutoff, Survey 08 estimates about 6,700 activities.
-The CLI prints which configured subscriber(s) `user.upserted` would go to before it does anything
-else.
+That is a dry run: it applies any pending Calendar migrations (the same as a confirmed run), then
+writes no Calendar or Core data. Read the report, then run it again with `--confirm`. The cutoff
+has no default (Q53); at a 2026-11-01 cutoff, Survey 08 estimates about 6,700 activities. The CLI
+prints which configured subscriber(s) `user.upserted` would go to before it does anything else.
 
 **What a re-run does.** Activities are upserted by legacy id under a version guard: a new one is
 inserted; one changed in the Calendar since the last import is skipped and listed ("changed in
@@ -851,7 +859,8 @@ them carries a version the import could use to tell a Calendar edit from stale l
 can take an id a newer legacy activity needs, and the second run then skips that legacy activity
 instead of importing it. A confirmed run takes a whole-run advisory lock, as `nrms:import` does; a
 second one started while the first runs exits at once with "another calendar:import is already
-running" and touches nothing.
+running" and touches nothing. **After exit 1, fix the cause and re-run:** nothing already imported
+is duplicated, and no favourite already imported is lost, whatever stage the failure happened in.
 
 **Reading the report.** Every run writes `--report <path>` (default
 `calendar-import-<UTC timestamp>.json`) plus a matching `.txt`. For each of users, comm contacts,
@@ -866,8 +875,10 @@ lowest and highest imported activity id, comm contacts of inactive users, non-de
 dates, activities with two or more categories, history row counts, and release links in and out
 of scope. The report never holds a person's email, a title or a saved query's typed values.
 Exit code: `0` when the report balances, `2` when it doesn't (the import still completed — read
-the report), `1` on any error (unknown keys, a stage failure, another import already running); a
-partial report is still written on failure.
+the report), `1` on any error (unknown keys, a stage failure, another import already running). A
+partial report is still written once the run has started reading legacy data; it is not written
+when another run already holds the lock, or when the legacy connection or tenant configuration
+fails before that point.
 
 **After a confirmed import, in this order:**
 
