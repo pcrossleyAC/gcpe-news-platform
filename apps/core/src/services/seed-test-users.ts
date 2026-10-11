@@ -28,6 +28,8 @@ export const TEST_USERS: readonly TestUser[] = [
   { email: "cal-advanced@example.test", displayName: "Test Calendar Advanced", roles: [], calendar: { role: "Calendar.Advanced", organizationKeys: ["health"] } },
   { email: "cal-hq-editor@example.test", displayName: "Test Calendar HQ Editor", roles: [], calendar: { role: "Calendar.Editor", organizationKeys: ["gcpe-headquarters"] } },
   { email: "cal-hq-advanced@example.test", displayName: "Test Calendar HQ Advanced", roles: [], calendar: { role: "Calendar.Advanced", organizationKeys: ["gcpe-headquarters"] } },
+  // Releases planned from the Calendar (spec addendum §11): an NRMS Editor who reads every ministry's activities.
+  { email: "planner@example.test", displayName: "Test Release Planner", roles: ["NRMS.Editor"], calendar: { role: "Calendar.ReadOnly", organizationKeys: ["gcpe-headquarters"] } },
 ];
 
 /** The seed CLI's prompt for one user's password, naming what the user will hold. */

@@ -228,7 +228,7 @@ Each sub-plan is planned, built, reviewed and deployed to boxs.ca in turn. Each 
 
 | Event | Producer → consumer | Payload |
 |---|---|---|
-| `user.upserted` | Core → Calendar | §4 |
+| `user.upserted` | Core → Calendar, NRMS | §4; NRMS keeps the role, ministries and active only |
 | `org.upserted` (extended) | Core → all | adds `isHq` |
 | `activity.created` / `activity.updated` | Calendar → NRMS | **For a non-confidential activity:** id, title, details, start, end, NR at, is all day, is confirmed, is deleted, contact ministry key, shared ministry keys, category names, city name, theme, tag and sector keys, translations. **For a confidential one:** only `{ id, isConfidential: true, isDeleted }`, so no confidential text leaves the Calendar (R2). |
 | `activity.deleted` | Calendar → NRMS | id |
@@ -653,7 +653,7 @@ Every report:
 ## 11. NRMS link and Forecast (5h; R11)
 
 - **`release.status_changed`:**
-  - **When NRMS emits it:** at every status write (`apps/nrms/src/releases/workflow.ts`, `publisher.ts`, `service.ts` delete) and whenever a release's `activity_id` changes. In the second case `previousActivityId` lets the Calendar drop the old link.
+  - **When NRMS emits it:** at every status write (`apps/nrms/src/releases/workflow.ts`, `publisher.ts`, `service.ts` delete) and whenever a release's `activity_id` changes. In the second case `previousActivityId` lets the Calendar drop the old link. A correction or an unpublish in progress reads as published, so only settled statuses are sent; the key and English headline travel with each event but don't cause one (5h).
   - **Backfill:** a one-off `npm run nrms:replay-activity-links` sends it for every release with an activity id: 19,046 at legacy volume (SV 4.17). Only those linked to imported activities create links in the Calendar.
 - **On the activity:**
   - The "BC Gov News" list and the list's release icon read `release_links`. Each entry shows the type colour, the document type, the status and its date.
@@ -662,10 +662,11 @@ Every report:
 - **NRMS's activity projection:**
   - `calendar_activities` is fed by `activity.*`. Confidential activities are held as id-only records, kept so that typed ids still resolve.
   - The `activity.*` replay for imported data is `npm run calendar:replay-to-nrms` (§12).
+  - **Visibility in NRMS:** the Forecast and the lookup show an activity only to a staff session the Calendar's `visible()` admits, from Core's `user.upserted` (C191).
 - **Activity lookup in the release editor** (`News/Services.asmx.cs:76-140`):
   - Entering an activity id looks it up in the projection.
-  - **Pre-fill:** when the activity is not deleted, not confidential, has not ended (end ≥ today), and has a category starting with "Approved", the editor offers legacy's pre-fill: publish date from the start, location from the city, lead ministry, shared ministries, themes, tags and sectors (`News/ReleaseManagement/New.aspx:625-700`).
-  - The release shows the activity's Translations as "translations required" (`ReleaseModel.cs:530-541`).
+  - **Pre-fill:** when the activity is not deleted, not confidential, has not ended (end ≥ today), and has a category starting with "Approved", the editor offers legacy's pre-fill: publish date from the start, location from the city, lead ministry, shared ministries, themes, tags and sectors (`News/ReleaseManagement/New.aspx:625-700`). Offered on New release, by a button or at once when started from the Forecast; Organizations isn't filled in (C194). Publish settings shows what the saved id names (C192).
+  - The release shows the activity's Translations as "translations required" (`ReleaseModel.cs:530-541`); Has Translations is not set from them (C193).
   - **Saving an id:** any id the projection knows can be saved, as legacy's text box allowed. Unknown ids are refused. Legacy saved any number (C142).
   - The "not deleted" check is new; legacy's lookup didn't check it (C142).
 - **Forecast tab** (NRMS; `News/ReleaseManagement/ReleasesModel.cs:144-230`; closes C15 except the Forecast iCal):
@@ -673,6 +674,7 @@ Every report:
   - **Eligible activities:** start ≥ now, not confidential, confirmed, not deleted, a category starting with "Approved", and not linked to one of those future releases. Each is shown at `nr_at`, or at its start when there is none.
   - Sorted by time, with the release or activity title, ministry, location and status.
   - The rule is evaluated by NRMS at read time, because "future" changes by the minute.
+  - 25 a page, no filters (legacy hid the type filter); for NRMS's read roles, with Start a release for Editors.
 - **Forecast iCal:** deferred with the Calendar's iCal (R5, C131); its design is in Appendix A.
 - **Releases linked to activities that weren't imported** (R13, C158):
   - NRMS keeps the number it imported in Phase 3, so search by activity id still finds the release.

@@ -1048,6 +1048,24 @@ JSON error means it hasn't been raised.
 4. As cal-hq-admin, run a Look Ahead with no To date (60 days). Note whether it arrived without a "Preparing…" pause, and how many seconds it took; record both here. While it renders, load `/site/` in another tab: it answers at once.
 5. `/stack/errors` holds no "[calendar] a report failed" line. If it does, its label says which limit was hit: `ERR_WORKER_OUT_OF_MEMORY` (raise `CALENDAR_REPORT_HEAP_MB`) or `ERR_REPORT_TIMEOUT`.
 
+### NRMS link and Forecast (Phase 5h)
+
+**Migration:** NRMS's `0015_calendar_link` (`calendar_activities`, `calendar_viewers`, `organizations.is_hq`, an index on `news_releases.publish_at`). It runs at startup like the others. The Calendar's schema doesn't change.
+
+**After deploy:**
+
+1. With the Calendar mounted, the stack's reference-data backfill sees NRMS has no Calendar viewers and asks Core to republish once. Without the Calendar (boxs.ca until `gcpe_calendar` exists), nothing is needed yet. After `gcpe_calendar` exists, if NRMS's Forecast shows "Calendar activities are listed here for people with Calendar access" to an HQ user who has Calendar access, run Core's republish by hand (`POST /core/api/admin/republish`, as in "Smoke test").
+2. Activities created before this deploy reached NRMS as `ignored` events. Fill NRMS's copy once: `npm run calendar:replay-to-nrms` (dry run), then `-- --confirm`, then a tick. Then `npm run nrms:replay-activity-links` (dry run), then `-- --confirm`, then a tick. Both run from a full checkout with the app's `DATABASE_URL` and `EVENT_SUBSCRIBERS`, like `nrms:replay-to-news-api`. Run them in this order after any legacy release import too — `calendar:replay-to-nrms` first, then `nrms:replay-activity-links` — since the bulk importer itself doesn't emit link changes: `nrms:replay-activity-links` is what sends status to the Calendar for the releases the import just linked. Both commands are dry runs unless given `--confirm`.
+3. **Seeded users:** run `scripts/siteground-seed-users.sh https://boxs.ca` again to add `planner@example.test` ("Test Release Planner", NRMS Editor with Calendar Read Only at GCPE Headquarters).
+
+**Hand checks on boxs.ca** (spec §16 acceptance 13 and 14; they need `gcpe_calendar`):
+
+1. As cal-editor: create a confirmed Health activity two weeks out, with a category starting "Approved" (cal-sysadmin adds one on Calendar → Lookups) and a city.
+2. As planner: Releases → Forecast lists it as "Planned for …". "Start a release" opens New release with the id, the date, the city and Health filled in. Create it.
+3. As cal-editor: the activity's "BC Gov News" shows "Release: Draft, …" after a minute. Approve and schedule the release as planner; the activity follows. As editor (no Calendar role), the Forecast lists only releases and says why.
+4. Make the activity confidential as cal-editor. As planner, the lookup of its id says "its details aren't shown to you", and the Forecast no longer lists it.
+5. In NRMS's database, `SELECT title FROM calendar_activities WHERE is_confidential` returns only nulls; the News API's `inbox_events` has no `activity.%` or `release.status_changed` row.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

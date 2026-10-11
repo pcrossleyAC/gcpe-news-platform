@@ -2,16 +2,9 @@
 
 Items one sub-plan leaves for a later one. Delete an item when the plan that takes it is written.
 
-## 5h and later
-
-- **The News API must never gain an `activity.*` handler.** Confidential Calendar content must stay inside the Calendar (C127); only the id-only confidential form of `activity.*` and `release.status_changed` cross that boundary (spec addendum §5.4). The Calendar → NRMS `activity.*` route exists since 5c-1 (`apps/stack/src/env.ts`); 5h adds NRMS's handler. A test in `apps/stack/src/env.test.ts` pins that no route carries `activity.*` to the News API.
-- **NRMS's `activity.*` handler must not bring a deleted activity back.** Reviewing a deleted activity, or clearing its LA status, emits `activity.updated` with `isDeleted: true` after the `activity.deleted` already sent. The handler must treat `isDeleted: true` as deleted, never as an upsert of a live activity.
-- **If service tokens with Calendar roles ever exist, Core's `actorIsHq` should apply only to session callers.** `actorIsHq` (`apps/core/src/services/calendar-access.ts`) today only ever sees a session actor; before a service token could carry a Calendar role, re-check that it still reads HQ membership only for a session caller, not for a bearer/service subject.
-- **The NRMS → News API event route is `"*"`** (`apps/stack/src/env.ts`, the `NRMS`→`NEWSAPI` entry). Before NRMS emits `release.status_changed`, make that route list its types explicitly, or at least exclude `release.status_changed`, so the event goes only to the Calendar. The Calendar's `projectionHandler` (`apps/calendar/src/projections.ts`) also accepts only `core` today: it must accept the `nrms` source for `release.status_changed`.
-- **Re-check NRMS "email me a copy" if service tokens ever carry NRMS roles.** `POST /nrms/api/releases/:id/email-copy` (`apps/nrms/src/http/routes.ts`) sends to the bearer's `email` claim. A service token with an NRMS role could then send a release to whatever address its claims name.
-
 ## 5i
 
+- **After the import:** run `npm run calendar:replay-to-nrms -- --confirm`, a tick, then `npm run nrms:replay-activity-links -- --confirm` (spec addendum §12.1 step 2, §11). Put the second's "name an activity NRMS doesn't hold" count in the import report: it is §11's count of releases linked to activities that weren't imported.
 - **Report parity:** run `npm run calendar:report-compare` (scripts/calendar-report-compare.ts) on each past-period legacy PDF against ours for the same range and filter, with `--out` outside the repo. Settle there what the samples couldn't:
   - whether legacy's Awareness Dates rows carried "Last updated" in the Exec Look Ahead (discrepancy 6; legacy's code says no);
   - whether legacy showed In the News for a day with no rows (we skip such days);
@@ -44,6 +37,8 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 
 - **`apps/nrms`'s site-files and page-images upload routes still take the file name in `?name=`**, so the name lands in every proxy's access logs, the same leak the Calendar's upload route carried until it moved to the `X-GCPE-File-Name` header (5e-1). Move NRMS's two routes to a header the same way.
 - Updates feed at volume: with 2M history rows, Latest 5 for a ministry with no recent entries, or an open-ended range, takes 2–3.4 s (EXPLAIN ANALYZE, 2026-10-10). The bounded paths are under 60 ms. The feed starts empty at cutover. Once history grows, add a default date floor, or an index (pg_trgm on title/details for keyword search, and a covering index for the latest-N scan).
+- **If service tokens with Calendar roles ever exist, Core's `actorIsHq` should apply only to session callers.** `actorIsHq` (`apps/core/src/services/calendar-access.ts`) today only ever sees a session actor; before a service token could carry a Calendar role, re-check that it still reads HQ membership only for a session caller, not for a bearer/service subject. (NRMS's own Calendar viewer, `apps/nrms/src/calendar/viewer.ts`, is session-only already.)
+- **Re-check NRMS "email me a copy" if service tokens ever carry NRMS roles.** `POST /nrms/api/releases/:id/email-copy` (`apps/nrms/src/http/routes.ts`) sends to the bearer's `email` claim. A service token with an NRMS role could then send a release to whatever address its claims name.
 
 ## Entra sign-in (later phase)
 
