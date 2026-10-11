@@ -6,10 +6,11 @@ import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { EventTooLargeError, type SubscriberConfig } from "@gcpe/events";
 import { utcOffsetMinutes } from "@gcpe/config";
 import {
-  addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, listQuerySchema, MAX_ACTIVITY_ID, metaSchema,
+  addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, forecastQuerySchema, listQuerySchema, MAX_ACTIVITY_ID, metaSchema,
   reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
 } from "@gcpe/nrms-contract";
 import { calendarViewerOf } from "../calendar/viewer";
+import { forecast } from "../calendar/forecast";
 import { lookupActivity } from "../calendar/lookup";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError, VersionConflictError } from "../releases/errors";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "../website/errors";
@@ -151,6 +152,16 @@ export function apiRoutes(deps: RouteDeps): Router {
   );
 
   r.get("/categories", read, run(async (_req, res) => void res.json(await listCategories(db))));
+
+  // The Forecast tab (spec addendum §11): releases from now on, and the activities the caller can see.
+  r.get(
+    "/forecast",
+    read,
+    run(async (req, res) => {
+      const q = forecastQuerySchema.parse(req.query);
+      res.json(await forecast(db, await calendarViewerOf(db, req), q, { prefix: deps.forecastCategoryPrefix ?? null, nowMs: Date.now() }));
+    }),
+  );
 
   // The release editor's Calendar activity lookup (spec addendum §11): detail only for an
   // activity the caller can see in the Calendar.
