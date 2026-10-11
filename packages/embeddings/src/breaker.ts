@@ -40,7 +40,14 @@ export class CircuitBreaker {
     return this.now() - this.openedAt >= this.cooldownMs ? "half-open" : "open";
   }
 
-  async run<T>(fn: () => Promise<T>): Promise<T> {
+  /**
+   * `signal` is the caller's own signal, checked only by its `.aborted` flag after `fn` rejects
+   * (never by the error's shape, which a provider's internal timeout can reproduce exactly). A
+   * caller abort is neutral: it isn't counted as a failure or a success, and if it was the
+   * half-open probe, the slot is freed without reopening, so the breaker stays half-open for the
+   * next caller. A provider-side timeout — `signal` absent or not aborted — still counts.
+   */
+  async run<T>(fn: () => Promise<T>, signal?: AbortSignal): Promise<T> {
     if (this.isOpen) {
       if (this.now() - this.openedAt < this.cooldownMs || this.probing) throw new BreakerOpenError();
       this.probing = true;
@@ -50,7 +57,7 @@ export class CircuitBreaker {
         this.failures = 0;
         return value;
       } catch (e) {
-        this.openedAt = this.now();
+        if (!signal?.aborted) this.openedAt = this.now();
         throw e;
       } finally {
         this.probing = false;
@@ -61,10 +68,12 @@ export class CircuitBreaker {
       this.failures = 0;
       return value;
     } catch (e) {
-      this.failures += 1;
-      if (!this.isOpen && this.failures >= this.failureThreshold) {
-        this.isOpen = true;
-        this.openedAt = this.now();
+      if (!signal?.aborted) {
+        this.failures += 1;
+        if (!this.isOpen && this.failures >= this.failureThreshold) {
+          this.isOpen = true;
+          this.openedAt = this.now();
+        }
       }
       throw e;
     }

@@ -38,6 +38,16 @@ describe("createGuardedEmbedder", () => {
     expect(lines).toHaveLength(3);
   });
 
+  it("forwards the caller's signal to the breaker, so an aborted call doesn't count toward it", async () => {
+    const provider = failing(new DOMException("aborted", "AbortError"));
+    const breaker = new CircuitBreaker({ now: () => 0 });
+    const g = createGuardedEmbedder({ provider, breaker, log: () => {} });
+    const controller = new AbortController();
+    controller.abort();
+    for (let i = 0; i < 3; i++) await g.embed(["t"], controller.signal).catch(() => {});
+    expect(breaker.state).toBe("closed");
+  });
+
   it("defaults to console.error and a fresh breaker", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const g = createGuardedEmbedder({ provider: failing(new Error("down")) });

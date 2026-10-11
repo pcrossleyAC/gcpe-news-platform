@@ -25,7 +25,7 @@ export function createGuardedEmbedder(opts: {
     breaker,
     async embed(texts, signal) {
       try {
-        return await breaker.run(() => provider.embed(texts, signal));
+        return await breaker.run(() => provider.embed(texts, signal), signal);
       } catch (e) {
         if (!(e instanceof BreakerOpenError)) log(`[embeddings] ${provider.id} call failed ${safeErrorLabel(e)}`);
         throw e;

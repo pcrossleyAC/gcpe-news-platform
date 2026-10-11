@@ -87,4 +87,37 @@ describe("CircuitBreaker", () => {
   it("labels BreakerOpenError safely", () => {
     expect(safeErrorLabel(new BreakerOpenError())).toBe("breaker_open");
   });
+
+  it("a caller abort is neutral: three in a row leave the breaker closed", async () => {
+    const b = new CircuitBreaker({ now: clock().now });
+    for (let i = 0; i < 3; i++) {
+      const controller = new AbortController();
+      controller.abort();
+      await b.run(() => Promise.reject(new DOMException("aborted", "AbortError")), controller.signal).catch(() => {});
+    }
+    expect(b.state).toBe("closed");
+  });
+
+  it("an aborted half-open probe leaves it half-open, with the next call still allowed to probe", async () => {
+    const c = clock();
+    const b = new CircuitBreaker({ now: c.now });
+    await failTimes(b, 3);
+    c.advance(60_000);
+    expect(b.state).toBe("half-open");
+
+    const controller = new AbortController();
+    controller.abort();
+    await b.run(() => Promise.reject(new DOMException("aborted", "AbortError")), controller.signal).catch(() => {});
+    expect(b.state).toBe("half-open");
+    expect(await b.run(ok)).toBe("ok");
+    expect(b.state).toBe("closed");
+  });
+
+  it("a provider timeout (the caller's own signal never aborts) still counts as a failure", async () => {
+    const b = new CircuitBreaker({ now: clock().now });
+    const controller = new AbortController(); // present, but never aborted by the caller
+    const providerTimeout = () => Promise.reject(new DOMException("The operation timed out.", "TimeoutError"));
+    for (let i = 0; i < 3; i++) await b.run(providerTimeout, controller.signal).catch(() => {});
+    expect(b.state).toBe("open");
+  });
 });
