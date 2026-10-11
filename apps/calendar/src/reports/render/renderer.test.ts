@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { monitorEventLoopDelay } from "node:perf_hooks";
 import { inspect } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { pdfPages } from "../../../test/pdf-text";
@@ -40,16 +41,15 @@ describe("rendering in a worker thread (the stack's event loop stays free)", () 
   });
 
   it("renders a report while the main thread keeps running", async () => {
-    let ticks = 0;
-    const tick = setInterval(() => ticks++, 10);
-    const started = Date.now();
+    const delay = monitorEventLoopDelay({ resolution: 10 });
+    delay.enable();
     const bytes = await make().render(doc(600));
-    clearInterval(tick);
+    delay.disable();
     const pages = await pdfPages(bytes);
     expect(Buffer.from(bytes.subarray(0, 5)).toString("latin1")).toBe("%PDF-");
     expect(pages.at(-1)!.lines.map((l) => l.text).join("\n")).toContain(`Page ${pages.length} of ${pages.length}`);
-    // A 10 ms timer firing through the render: the work happened off this thread.
-    expect(ticks).toBeGreaterThan((Date.now() - started) / 10 / 2);
+    // The work happened off this thread: the main thread's event loop was never held up for long.
+    expect(delay.max / 1e6).toBeLessThan(200);
   });
 
   it("a render past its heap ends the worker, not the process: out_of_memory", async () => {

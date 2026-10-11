@@ -90,6 +90,13 @@ describe("report text (ActivityHandler.ashx.cs:1087-1257)", () => {
     expect(plain(runs)).toBe("Sample launch\nSample details\nSample significance\nSampleton: Sample Hall  Last updated 1 month ago");
     expect(runs.find((r) => r.text === "Sampleton: Sample Hall")).toMatchObject({ bold: true });
     expect(plain(detailedRuns(reportRow({ city: null, venue: "", details: "", significance: "" }), c))).toBe("Sample activity\nLast updated 1 month ago");
+    // Legacy breaks the line before City: Venue only after a significance; otherwise it follows on after a space (ActivityHandler.ashx.cs:1000-1033).
+    expect(plain(detailedRuns(reportRow({ city: "Sampleton, SP", venue: "Sample Hall", significance: "" }), c))).toBe("Sample activity\nSample details Sampleton: Sample Hall  Last updated 1 month ago");
+  });
+
+  it("the Executive Summary drops the private-use characters it marks styles with, so user text can't inject bold or italic", () => {
+    expect(executiveSummaryRuns("a\uE000b **x** _y_\uE003")).toEqual([{ text: "ab " }, { text: "x", bold: true }, { text: " " }, { text: "y", italic: true }]);
+    expect(executiveSummaryRuns("\uE000Sample injected\uE001 and \uE002more\uE003")).toEqual([{ text: "Sample injected and more" }]);
   });
 
   it("the CC ID# links to the activity in the staff app, under the tenant's abbreviation", () => {

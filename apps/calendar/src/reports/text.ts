@@ -64,10 +64,10 @@ export function formatTitle(row: Pick<ReportRow, "city" | "title">, rules: Calen
   return `${city ? `${city} - ` : ""}${cleanTitle(row.title)}`;
 }
 
-const BOLD_OPEN = "";
-const BOLD_CLOSE = "";
-const ITALIC_OPEN = "";
-const ITALIC_CLOSE = "";
+const BOLD_OPEN = "\uE000";
+const BOLD_CLOSE = "\uE001";
+const ITALIC_OPEN = "\uE002";
+const ITALIC_CLOSE = "\uE003";
 
 /**
  * Legacy's FormatHqComments (ActivityHandler.ashx.cs:1087-1112): `**bold**`, then `_italic_`,
@@ -75,7 +75,7 @@ const ITALIC_CLOSE = "";
  */
 export function executiveSummaryRuns(summary: string | null): Run[] | null {
   if (summary === null || summary.length <= 2) return null;
-  let s = summary.replace(/[-]/g, "");
+  let s = summary.replace(/[\uE000-\uE003]/g, "");
   for (;;) {
     let marker = "**";
     let start = s.indexOf(marker);
@@ -92,7 +92,7 @@ export function executiveSummaryRuns(summary: string | null): Run[] | null {
   const out: Run[] = [];
   let bold = 0;
   let italic = 0;
-  for (const part of s.replace(/\r\n/g, "\n").split(/([-])/)) {
+  for (const part of s.replace(/\r\n/g, "\n").split(/([\uE000-\uE003])/)) {
     if (part === BOLD_OPEN) bold++;
     else if (part === BOLD_CLOSE) bold--;
     else if (part === ITALIC_OPEN) italic++;
@@ -201,7 +201,8 @@ export function detailedRuns(row: ReportRow, c: TextContext): Run[] {
   const runs: Run[] = [{ text: cleanTitle(row.title), bold: true }];
   if (row.details) runs.push({ text: `\n${row.details}` });
   if (row.significance) runs.push({ text: `\n${row.significance}` });
-  if (cityVenue) runs.push({ text: "\n" }, { text: cityVenue, bold: true });
+  // Legacy ends only the significance with a line break; without one, City: Venue follows the details after a space.
+  if (cityVenue) runs.push({ text: row.significance ? "\n" : " " }, { text: cityVenue, bold: true });
   runs.push({ text: cityVenue ? "  " : "\n" }, { text: lastUpdatedText(row, c.now, c.rules.timeZone), size: 8, color: COLOURS.lastUpdated });
   return linkify(runs);
 }
