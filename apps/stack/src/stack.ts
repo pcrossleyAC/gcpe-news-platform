@@ -534,18 +534,19 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     .then((r) => r && console.log(`[public-site] self-heal rebuilt ${r.rebuilt} posts`))
     .catch((e) => console.error("[public-site] self-heal failed", safeErrorLabel(e)));
 
-  // NoD's lists and the Calendar's organizations, terms and users come from Core's events, which
-  // only flow on change. A fresh app with no reference data yet (first deploy, or a fresh
-  // database) would otherwise stay empty until each record next changed in Core, so it asks Core
-  // to republish everything once; the events reach it on the next dispatch tick.
-  // Fire-and-forget, never throws.
+  // NoD's lists, the Calendar's organizations, terms and users, and (with the Calendar mounted)
+  // NRMS's Calendar viewers come from Core's events, which only flow on change. A fresh app with
+  // no reference data yet (first deploy, or a fresh database) would otherwise stay empty until each
+  // record next changed in Core, so it asks Core to republish everything once; the events reach
+  // it on the next dispatch tick. Fire-and-forget, never throws.
   void (async () => {
     try {
       const nodNeeds = (await worker(nod, "needsReferenceData")()) === true;
       const calendarNeeds = calendar ? (await worker(calendar, "needsReferenceData")()) === true : false;
-      if (nodNeeds || calendarNeeds) {
+      const nrmsNeeds = calendar ? (await worker(nrms, "needsCalendarViewers")()) === true : false;
+      if (nodNeeds || calendarNeeds || nrmsNeeds) {
         const n = await worker(core, "republish")();
-        console.log(`[stack] ${[nodNeeds && "NoD", calendarNeeds && "the Calendar"].filter(Boolean).join(" and ")} had no reference data; Core republished ${String(n)} records`);
+        console.log(`[stack] ${[nodNeeds && "NoD", calendarNeeds && "the Calendar", nrmsNeeds && "NRMS"].filter(Boolean).join(" and ")} had no reference data; Core republished ${String(n)} records`);
       }
     } catch (e) {
       console.error("[stack] reference-data backfill failed", safeErrorLabel(e));

@@ -1,12 +1,12 @@
 import { and, eq, sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
-import type { EventEnvelope, EventHandler, OrgRecord, TermRecord, UserRecord } from "@gcpe/events";
-import { orgs, terms, TERM_KINDS, users, type TermKind } from "./db/schema";
+import type { EventEnvelope, EventHandler, OrgRecord, ReleaseStatusChanged, TermRecord, UserRecord } from "@gcpe/events";
+import { activities, orgs, releaseLinks, terms, TERM_KINDS, users, type TermKind } from "./db/schema";
 
 // Ordering and redelivery are the receiver's job: it applies an event only when its sequence is
-// past the aggregate's last one, so each handler can simply replace the row with what it carries.
-// Core keys are stored byte for byte, never case-folded (spec §5.2): legacy ministry keys are
-// uppercase GUIDs and Core matches keys exactly.
+// past the aggregate's (a user, an organization, a term, a release) last one, so each handler can
+// simply replace the row with what it carries. Core keys are stored byte for byte, never
+// case-folded (spec §5.2): legacy ministry keys are uppercase GUIDs and Core matches keys exactly.
 
 const isTermKind = (kind: string): kind is TermKind => (TERM_KINDS as readonly string[]).includes(kind);
 
@@ -42,9 +42,26 @@ const onUser: EventHandler = async (tx, e) => {
   };
   await tx.insert(users).values(row).onConflictDoUpdate({ target: users.id, set: row });
 };
+/** NRMS's release.status_changed (spec addendum §11). A deleted release, an unlinked one, or one
+ * moved to an activity the Calendar doesn't hold, leaves no link; otherwise the row is replaced
+ * with the status it carries. */
+const onReleaseStatusChanged: EventHandler = async (tx, e) => {
+  const r = e.data as ReleaseStatusChanged;
+  const drop = () => tx.delete(releaseLinks).where(eq(releaseLinks.releaseId, r.releaseId));
+  if (r.status === "deleted" || r.activityId === null) return void (await drop());
+  const [held] = await tx.select({ id: activities.id }).from(activities).where(eq(activities.id, r.activityId));
+  if (!held) return void (await drop());
+  const row = {
+    releaseId: r.releaseId, activityId: r.activityId, key: r.key, type: r.type, status: r.status,
+    publishAt: at(r.publishAt), releasedAt: at(r.releasedAt), reference: r.reference, headline: r.headline,
+    lastSequence: e.sequence,
+  };
+  await tx.insert(releaseLinks).values(row).onConflictDoUpdate({ target: releaseLinks.releaseId, set: row });
+};
 
-/** Core's reference data and users → the Calendar's projections. Only Core may send these. */
+const at = (iso: string | null) => (iso === null ? null : new Date(iso));
 export function projectionHandler(event: EventEnvelope): EventHandler | undefined {
+  if (event.type === "release.status_changed") return event.source === "nrms" ? onReleaseStatusChanged : undefined;
   if (event.source !== "core") return undefined;
   switch (event.type) {
     case "org.upserted":

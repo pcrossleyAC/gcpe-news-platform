@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Creates (or resets) the test users on a deployed stack, through Core's users API, signed in
-# as the break-glass admin, then gives the eight cal-*@example.test users Calendar access.
+# as the break-glass admin, then gives the eight cal-*@example.test users and
+# planner@example.test Calendar access.
 # Prompts (hidden) for every password; nothing secret
 # is printed, kept, or ever passed as a command-line argument to another process (argv is
 # visible to other local users via `ps`/`/proc/<pid>/cmdline` for as long as that process
@@ -76,6 +77,7 @@ seed cal-readonly@example.test "Test Calendar Read Only" ""
 seed cal-advanced@example.test "Test Calendar Advanced" ""
 seed cal-hq-editor@example.test "Test Calendar HQ Editor" ""
 seed cal-hq-advanced@example.test "Test Calendar HQ Advanced" ""
+seed planner@example.test "Test Release Planner" NRMS.Editor
 calendar_access cal-admin@example.test Calendar.Administrator health
 calendar_access cal-sysadmin@example.test Calendar.SysAdmin health
 calendar_access cal-hq-admin@example.test Calendar.Administrator gcpe-headquarters
@@ -84,4 +86,5 @@ calendar_access cal-readonly@example.test Calendar.ReadOnly finance
 calendar_access cal-advanced@example.test Calendar.Advanced health
 calendar_access cal-hq-editor@example.test Calendar.Editor gcpe-headquarters
 calendar_access cal-hq-advanced@example.test Calendar.Advanced gcpe-headquarters
+calendar_access planner@example.test Calendar.ReadOnly gcpe-headquarters
 curl_api -o /dev/null -X POST "$BASE/core/auth/logout"

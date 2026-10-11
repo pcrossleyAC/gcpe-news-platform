@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
+import { MemoryRouter } from "react-router";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { SettingsSection } from "./SettingsSection";
@@ -9,7 +11,7 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
 }
 
-function stubFetch(handlers: { mediaLists?: unknown; onPut?: (url: string, body: unknown) => Response } = {}) {
+function stubFetch(handlers: { mediaLists?: unknown; onPut?: (url: string, body: unknown) => Response; lookups?: Record<string, unknown> } = {}) {
   const calls: { url: string; body?: unknown }[] = [];
   vi.stubGlobal(
     "fetch",
@@ -17,6 +19,9 @@ function stubFetch(handlers: { mediaLists?: unknown; onPut?: (url: string, body:
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
       calls.push({ url, body });
       if (url === "/nrms/api/media-lists") return jsonResponse(200, handlers.mediaLists ?? []);
+      const lookups = handlers.lookups ?? {};
+      const lookup = /^\/nrms\/api\/calendar-activities\/(\d+)$/.exec(url);
+      if (lookup) return lookups[lookup[1]!] ? jsonResponse(200, lookups[lookup[1]!]) : jsonResponse(404, { error: "not found" });
       if (handlers.onPut) return handlers.onPut(url, body);
       throw new Error(`unexpected fetch: ${url}`);
     }),
@@ -25,7 +30,11 @@ function stubFetch(handlers: { mediaLists?: unknown; onPut?: (url: string, body:
 }
 
 function renderSettings(view: ReleaseView, setView: (v: ReleaseView) => void = () => {}, readOnly = false) {
-  return render(<SettingsSection view={view} setView={setView} timeZone="America/Vancouver" readOnly={readOnly} />);
+  return render(
+    <MemoryRouter>
+      <SettingsSection view={view} setView={setView} timeZone="America/Vancouver" readOnly={readOnly} />
+    </MemoryRouter>,
+  );
 }
 
 describe("SettingsSection", () => {
@@ -213,5 +222,32 @@ describe("SettingsSection", () => {
     expect(screen.getByLabelText("Send to News On Demand subscribers")).not.toBeChecked();
     expect(putCount).toBe(1);
     void calls;
+  });
+
+  it("names the saved activity: its title and the translations it requires (spec addendum §11)", async () => {
+    stubFetch({
+      lookups: {
+        "4102": { id: 4102, state: "found", title: "Sample clinic opening", startAt: "2031-06-11T17:00:00.000Z", endAt: null, ministryName: "Health", location: "Victoria", translations: ["French"], prefill: null, notEligible: "Nothing is filled in: it has ended." },
+      },
+    });
+    const { container } = renderSettings(releaseView({ activityId: 4102 }));
+    expect(await screen.findByRole("link", { name: "Sample clinic opening" })).toHaveAttribute("href", "/calendar/activities/4102");
+    expect(screen.getByText("Translations required: French")).toBeInTheDocument();
+    const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+    expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
+  });
+
+  it("a saved id the Calendar doesn't hold is a legacy link that wasn't migrated; a newly typed unknown one is named as unknown (C158, C142)", async () => {
+    stubFetch();
+    const { container } = renderSettings(releaseView({ activityId: 777000 }));
+    expect(await screen.findByText("Legacy activity 777000, not migrated")).toBeInTheDocument();
+    const legacyResults = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+    expect(legacyResults.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
+    const user = userEvent.setup();
+    const field = screen.getByRole("textbox", { name: "Calendar activity ID" });
+    await user.clear(field);
+    await user.type(field, "9999");
+    await user.tab();
+    expect(await screen.findByText("No Calendar activity has ID 9999.")).toBeInTheDocument();
   });
 });

@@ -8,7 +8,7 @@ type TermKindSingular = keyof typeof TERM_KIND;
 
 const upsertOrg: EventHandler = async (tx, e) => {
   const o = e.data as OrgRecord;
-  const row = { key: o.key.toLowerCase(), displayName: o.displayName, abbreviation: o.abbreviation, sortOrder: o.sortOrder, isActive: o.isActive };
+  const row = { key: o.key.toLowerCase(), displayName: o.displayName, abbreviation: o.abbreviation, sortOrder: o.sortOrder, isActive: o.isActive, isHq: o.isHq };
   await tx.insert(organizations).values(row).onConflictDoUpdate({ target: organizations.key, set: row });
 };
 const deactivateOrg: EventHandler = async (tx, e) => {

@@ -6,9 +6,12 @@ import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import { EventTooLargeError, type SubscriberConfig } from "@gcpe/events";
 import { utcOffsetMinutes } from "@gcpe/config";
 import {
-  addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, listQuerySchema, metaSchema,
+  addDocumentSchema, addTranslationSchema, assetSchema, categoriesSchema, createReleaseSchema, documentLanguageSchema, FEATURE_KINDS, FEATURE_SLOTS, forecastQuerySchema, listQuerySchema, MAX_ACTIVITY_ID, metaSchema,
   reorderDocumentsSchema, scheduleSchema, searchQuerySchema, settingsSchema, statusText, versionOnlySchema, type LanguageId, type ReleaseView,
 } from "@gcpe/nrms-contract";
+import { calendarViewerOf } from "../calendar/viewer";
+import { forecast } from "../calendar/forecast";
+import { lookupActivity } from "../calendar/lookup";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError, ReleaseTooLargeError, VersionConflictError } from "../releases/errors";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "../website/errors";
 import {
@@ -59,10 +62,12 @@ export interface RouteDeps {
    * `workflow.filesBase` (PUBLIC_FILES_BASE); isTestSite defaults to true (fail safe: an
    * unconfigured caller is treated as a test site, never silently as production). */
   config?: { siteUrl?: string; publicSiteUrl?: string; isTestSite?: boolean };
+  /** The tenant's `calendar.forecastCategoryPrefix` (Forecast and the activity lookup); unset → no activity can be planned against. */
+  forecastCategoryPrefix?: string | null;
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
-export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string; key: string };
+export type Params = { id: string; docId: string; lang: string; pubId: string; fileId: string; slot: string; key: string; activityId: string };
 export type Handler = (req: Request<Params>, res: Response) => Promise<void>;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -125,7 +130,11 @@ export function apiRoutes(deps: RouteDeps): Router {
   param("docId", (v) => UUID.test(v));
   param("lang", (v) => v === "4105" || v === "3084");
   param("pubId", (v) => /^\d{1,15}$/.test(v));
+  param("activityId", (v) => /^\d{1,10}$/.test(v) && Number(v) >= 1 && Number(v) <= MAX_ACTIVITY_ID);
   const opts = () => ({ timeZone: deps.workflow.timeZone, nowMs: Date.now() });
+  const subscribers = deps.subscribers ?? [];
+  // The workflow sends release.status_changed (the Calendar) to the app's own subscribers.
+  const workflow: WorkflowDeps = { ...deps.workflow, subscribers };
 
   r.get(
     "/config",
@@ -144,11 +153,32 @@ export function apiRoutes(deps: RouteDeps): Router {
 
   r.get("/categories", read, run(async (_req, res) => void res.json(await listCategories(db))));
 
+  // The Forecast tab (spec addendum §11): releases from now on, and the activities the caller can see.
+  r.get(
+    "/forecast",
+    read,
+    run(async (req, res) => {
+      const q = forecastQuerySchema.parse(req.query);
+      res.json(await forecast(db, await calendarViewerOf(db, req), q, { prefix: deps.forecastCategoryPrefix ?? null, nowMs: Date.now() }));
+    }),
+  );
+
+  // The release editor's Calendar activity lookup (spec addendum §11): detail only for an
+  // activity the caller can see in the Calendar.
+  r.get(
+    "/calendar-activities/:activityId",
+    read,
+    run(async (req, res) => {
+      const options = { prefix: deps.forecastCategoryPrefix ?? null, timeZone: deps.workflow.timeZone, nowMs: Date.now() };
+      res.json(await lookupActivity(db, await calendarViewerOf(db, req), Number(req.params.activityId), options));
+    }),
+  );
+
   r.post(
     "/releases",
     edit,
     run(async (req, res) => {
-      const view = await createRelease(db, createReleaseSchema.parse(req.body), actorOf(req), deps.embeds);
+      const view = await createRelease(db, createReleaseSchema.parse(req.body), actorOf(req), deps.embeds, subscribers);
       res.status(201).json(withStatus(view));
     }),
   );
@@ -239,14 +269,14 @@ export function apiRoutes(deps: RouteDeps): Router {
     }),
   );
 
-  r.post("/releases/:id/approve", edit, run(async (req, res) => void res.json(withStatus(await approve(db, req.params.id, version(req), actorOf(req), deps.workflow)))));
-  r.post("/releases/:id/schedule", edit, run(async (req, res) => void res.json(withStatus(await schedule(db, req.params.id, scheduleSchema.parse(req.body), actorOf(req), deps.workflow)))));
-  r.post("/releases/:id/cancel", edit, run(async (req, res) => void res.json(withStatus(await cancel(db, req.params.id, version(req), actorOf(req))))));
+  r.post("/releases/:id/approve", edit, run(async (req, res) => void res.json(withStatus(await approve(db, req.params.id, version(req), actorOf(req), workflow)))));
+  r.post("/releases/:id/schedule", edit, run(async (req, res) => void res.json(withStatus(await schedule(db, req.params.id, scheduleSchema.parse(req.body), actorOf(req), workflow)))));
+  r.post("/releases/:id/cancel", edit, run(async (req, res) => void res.json(withStatus(await cancel(db, req.params.id, version(req), actorOf(req), subscribers)))));
   r.post("/releases/:id/unpublish", edit, run(async (req, res) => void res.json(withStatus(await unpublish(db, req.params.id, version(req), actorOf(req))))));
   r.post(
     "/releases/:id/delete",
     edit,
-    run(async (req, res) => void res.json({ result: await deleteRelease(db, req.params.id, version(req), actorOf(req), deps.store, deps.subscribers ?? []) })),
+    run(async (req, res) => void res.json({ result: await deleteRelease(db, req.params.id, version(req), actorOf(req), deps.store, subscribers) })),
   );
   r.post(
     "/releases/:id/features",
@@ -324,7 +354,7 @@ export function apiRoutes(deps: RouteDeps): Router {
   r.get("/page-types", read, run(async (_req, res) => void res.json(await listPageTypes(db))));
   r.get("/page-images", read, run(async (_req, res) => void res.json(await listPageImages(db))));
 
-  r.put("/releases/:id/settings", edit, run(async (req, res) => void res.json(withStatus(await saveSettings(db, req.params.id, settingsSchema.parse(req.body), actorOf(req), deps.workflow)))));
+  r.put("/releases/:id/settings", edit, run(async (req, res) => void res.json(withStatus(await saveSettings(db, req.params.id, settingsSchema.parse(req.body), actorOf(req), workflow)))));
   r.put("/releases/:id/categories", edit, run(async (req, res) => void res.json(withStatus(await saveCategories(db, req.params.id, categoriesSchema.parse(req.body), actorOf(req))))));
   r.put("/releases/:id/asset", edit, run(async (req, res) => void res.json(withStatus(await saveAsset(db, req.params.id, assetSchema.parse(req.body), actorOf(req))))));
   r.put("/releases/:id/meta", edit, run(async (req, res) => void res.json(withStatus(await saveMeta(db, req.params.id, metaSchema.parse(req.body), actorOf(req))))));

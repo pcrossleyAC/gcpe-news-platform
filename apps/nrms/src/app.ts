@@ -11,6 +11,7 @@ import type { EmbedDeps } from "./media/embeds";
 import { mediaRoutes } from "./http/media-routes";
 import { apiRoutes } from "./http/routes";
 import { siteRoutes } from "./http/site-routes";
+import { calendarHandler } from "./calendar/projection";
 import type { WorkflowDeps } from "./releases/workflow";
 import { taxonomyHandler } from "./taxonomy";
 
@@ -34,6 +35,8 @@ export function createApp(deps: {
   /** Plan 3d task 4: the public site's base URL, named in Project Blue Bridge's notify subject; unset → "".
    * Task 1 (staff-web): also GET /config's siteUrl and publicSiteUrl (the two names the staff UI uses). */
   siteUrl?: string;
+  /** The tenant's `calendar.forecastCategoryPrefix` (Forecast and the activity lookup); unset → no activity can be planned against. */
+  forecastCategoryPrefix?: string | null;
   /** Task 1 (staff-web): GET /config's isTestSite — same rule as apps/public-site/src/site-env.ts's
    * isTestSite(env) (duplicated here, not imported: apps never import each other's src). Unset → true
    * (fail safe: an unconfigured deployment reads as a test site, never silently as production). */
@@ -49,7 +52,7 @@ export function createApp(deps: {
   // Mounted before any body parser: signatures cover the raw bytes (see
   // packages/events/src/receiver.ts), so an upstream express.json()/raw() that already
   // consumed the body would make every event fail verification.
-  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: taxonomyHandler }));
+  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: (e) => taxonomyHandler(e) ?? calendarHandler(e) }));
 
   if (deps.loginRouter) app.use(deps.loginRouter);
   // Authenticate before parsing so anonymous callers cannot make us buffer and parse bodies.
@@ -78,6 +81,7 @@ export function createApp(deps: {
       embeds: deps.embeds,
       subscribers: deps.subscribers ?? [],
       config: { siteUrl: deps.siteUrl ?? "", publicSiteUrl: deps.siteUrl ?? "", isTestSite: deps.isTestSite ?? true },
+      forecastCategoryPrefix: deps.forecastCategoryPrefix ?? null,
     }),
   );
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets

@@ -12,3 +12,14 @@ export function normaliseCategoryName(s: string): string {
 export function sameCategoryName(a: string, b: string): boolean {
   return normaliseCategoryName(a) === normaliseCategoryName(b);
 }
+
+/**
+ * Whether any of `names` starts with `prefix`: legacy's Forecast and release-lookup test for an
+ * "Approved" category (News/Services.asmx.cs:87, ReleasesModel.cs:155). Legacy compared in SQL
+ * Server's default case-insensitive collation, so case is ignored here; whitespace is normalised
+ * as {@link normaliseCategoryName} does.
+ */
+export function hasCategoryStartingWith(names: readonly string[], prefix: string): boolean {
+  const p = normaliseCategoryName(prefix).toLowerCase();
+  return names.some((n) => normaliseCategoryName(n).toLowerCase().startsWith(p));
+}

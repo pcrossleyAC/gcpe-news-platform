@@ -5,6 +5,7 @@ import { publishProblems, type ReleaseView } from "@gcpe/nrms-contract";
 import { newsReleases, releasePublications } from "./db/schema";
 import { DeferPublish } from "./media/flickr-jobs";
 import { ReleaseRuleError } from "./releases/errors";
+import { emitLinkChange, linkStateOf } from "./releases/link-events";
 import { toReleaseRecord } from "./releases/record";
 import { loadView, SYSTEM_ACTOR, writeLog } from "./releases/store";
 import { clearFeaturesFor } from "./website/features";
@@ -53,6 +54,7 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
   const now = sqlNow(opts.now);
   const view = (await loadView(tx, id))!;
   const key = view.key ?? id;
+  const before = await linkStateOf(tx, id);
   if (status === "unpublishing") {
     await enqueueEvent(tx, { type: "release.unpublished", source: "nrms", aggregateId: key, data: { key } }, opts.subscribers);
     // Off the site, so no longer "live without its Flickr photo", and no longer Top/Feature
@@ -63,6 +65,7 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
       .where(eq(newsReleases.id, id));
     await clearFeaturesFor(tx, id, opts.subscribers);
     await writeLog(tx, id, SYSTEM_ACTOR, "Unpublished from BC Gov News");
+    await emitLinkChange(tx, before, await linkStateOf(tx, id), opts.subscribers);
     return { kind: "unpublished", key };
   }
   const problems = publishProblems(view);
@@ -110,6 +113,7 @@ async function processOne(tx: Tx, opts: PublisherOptions, id: string, status: st
     await writeLog(tx, id, SYSTEM_ACTOR, `Republished to ${destinations(view)}`);
   }
   await tx.insert(releasePublications).values({ releaseId: id, publishedAt: row!.updatedAt, actorId: SYSTEM_ACTOR.id, actorName: SYSTEM_ACTOR.name, record });
+  await emitLinkChange(tx, before, await linkStateOf(tx, id), opts.subscribers);
   return { kind: goLive ? "published" : "updated", key: record.key };
 }
 
@@ -148,12 +152,16 @@ export async function publishDue(opts: PublisherOptions): Promise<PublishResult>
       if (!c) throw e;
       const message = (e instanceof ReleaseRuleError ? e.problems.join(" ") : e instanceof Error ? e.message : String(e)).slice(0, MAX_LAST_ERROR);
       const markedFailed = await opts.db.transaction(async (tx) => {
+        const before = await linkStateOf(tx, c.id);
         const updated = await tx
           .update(newsReleases)
           .set({ status: "failed", lastError: message, updatedAt: sqlNow(opts.now), version: sql`${newsReleases.version} + 1` })
           .where(sql`${newsReleases.id} = ${c.id} AND ${newsReleases.status} IN ('scheduled', 'publishing')`)
           .returning({ id: newsReleases.id });
-        if (updated.length) await writeLog(tx, c.id, SYSTEM_ACTOR, `Publishing failed: ${message}`);
+        if (updated.length) {
+          await writeLog(tx, c.id, SYSTEM_ACTOR, `Publishing failed: ${message}`);
+          await emitLinkChange(tx, before, await linkStateOf(tx, c.id), opts.subscribers);
+        }
         return updated.length > 0;
       });
       console.error(`[nrms] publish failed for ${c.key ?? c.id}: ${message}`);

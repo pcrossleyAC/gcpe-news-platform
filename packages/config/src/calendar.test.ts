@@ -26,6 +26,12 @@ describe("the tenant calendar section", () => {
     expect(c.lookAheadCoverImage).toBeNull();
   });
 
+  it("BC's Forecast and release lookup take categories starting \"Approved\" (News/Services.asmx.cs:87, ReleasesModel.cs:155)", () => {
+    const c = bc().calendar!;
+    expect(c.forecastCategoryPrefix).toBe("Approved");
+    expect(calendarTenantSchema.safeParse({ ...c, forecastCategoryPrefix: "" }).success).toBe(false);
+  });
+
   it("BC's report texts and RLS codes are legacy's (ActivityHandler.ashx.cs:1176-1257, C148)", () => {
     const r = bc().calendar!.reports;
     expect(r.rlsMaterials.map((m) => m.code)).toEqual(["NR", "IB", "OpEd", "Report", "STMT", "TA", "NYCU", "Fact Sheet", "e-news"]);

@@ -4,7 +4,7 @@ import type { Response } from "express";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { hashPassword, localLoginRouter, mintLocalToken, mintSession } from "@gcpe/auth";
 import { EventTooLargeError } from "@gcpe/events";
-import { createNrmsTestDb, createScheduledRelease, sampleCreate, seedTaxonomy } from "../../test/helpers";
+import { createNrmsTestDb, createScheduledRelease, sampleCreate, seedActivity, seedTaxonomy } from "../../test/helpers";
 import { createApp } from "../app";
 import { publishDue } from "../publisher";
 import * as store from "../releases/store";
@@ -35,6 +35,8 @@ describe("NRMS HTTP API", () => {
   beforeAll(async () => {
     tdb = await createNrmsTestDb();
     await seedTaxonomy(tdb.db);
+    // The release links below name these Calendar activities; NRMS refuses an id it doesn't know (C142).
+    for (const id of [77]) await seedActivity(tdb.db, id);
     app = createApp({ db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver" } });
     // A second app on the same db, with the Task 7 embeds dep wired — proves the wiring from
     // createApp through apiRoutes to the service (routes.ts/app.ts), not just the service itself.

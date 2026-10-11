@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link, NavLink, useSearchParams } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import { RELEASE_TYPES, TYPE_LABEL, type ReleaseListItem, type ReleasePage, type ReleaseType } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
@@ -7,10 +7,9 @@ import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { ReleaseRow } from "./ReleaseRow";
 import { Pagination } from "./Pagination";
+import { ReleaseFolderTabs } from "./ReleaseFolderTabs";
 
 export type Folder = "drafts" | "scheduled" | "published";
-const FOLDERS: Folder[] = ["drafts", "scheduled", "published"];
-const FOLDER_LABEL: Record<Folder, string> = { drafts: "Drafts", scheduled: "Scheduled", published: "Published" };
 
 /** The type filter never offers "Update" — the brief: "Updates appear under All only" (legacy
  * imports stay editable but new Updates can't be created). */
@@ -87,15 +86,7 @@ export function ReleaseListScreen({ folder }: ReleaseListScreenProps): React.JSX
 
   return (
     <div className="gcpe-release-list">
-      <nav aria-label="Release folders" className="gcpe-section-tabs">
-        <ul>
-          {FOLDERS.map((f) => (
-            <li key={f}>
-              <NavLink to={`/releases/${f}`}>{FOLDER_LABEL[f]}</NavLink>
-            </li>
-          ))}
-        </ul>
-      </nav>
+      <ReleaseFolderTabs />
 
       <h1>Releases</h1>
 

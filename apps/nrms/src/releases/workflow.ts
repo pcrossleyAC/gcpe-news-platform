@@ -1,11 +1,12 @@
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { Db, DbOrTx } from "@gcpe/db-kit";
-import { indexKeysFor } from "@gcpe/events";
+import { indexKeysFor, type SubscriberConfig } from "@gcpe/events";
 import { wallClockToInstant } from "@gcpe/config";
 import { approveProblems, publishProblems, TYPE_LABEL, typeRules, type ReleaseView, type ScheduleInput } from "@gcpe/nrms-contract";
 import { flickrJobs, governmentTerms, newsReleases } from "../db/schema";
 import { ministryAbbreviation } from "../taxonomy";
 import { ReleaseRuleError, ReleaseStateError } from "./errors";
+import { emitLinkChange, linkStateOf } from "./link-events";
 import { bcYear, nextCounter, pad } from "./numbering";
 import { assertPublishable, toReleaseRecord } from "./record";
 import { loadView, mutateRelease, type Actor } from "./store";
@@ -16,6 +17,8 @@ export interface WorkflowDeps {
   countMediaContacts?: (listKeys: string[]) => Promise<number>;
   /** PUBLIC_FILES_BASE — only affects the size check here (absolute file URLs are longer). */
   filesBase?: string;
+  /** Who gets release.status_changed (the Calendar); unset → enqueued for no one. */
+  subscribers?: SubscriberConfig[];
 }
 
 /** A media list's NoD list key: `media-distribution-lists:<key>`, lowercased. Mirrors
@@ -76,6 +79,7 @@ export async function approve(db: Db, id: string, version: number, actor: Actor,
     async (tx, row) => {
       if (row.reference) throw new ReleaseStateError("This has already been approved.");
       if (row.status !== "draft") throw new ReleaseStateError("Only a draft can be approved.");
+      const before = await linkStateOf(tx, id);
       const view = (await loadView(tx, id))!;
       const lead = row.leadMinistryKey ?? (view.ministries.length === 1 ? view.ministries[0]! : null);
       const problems = approveProblems({ ...view, leadMinistryKey: lead });
@@ -101,6 +105,7 @@ export async function approve(db: Db, id: string, version: number, actor: Actor,
         if (isNumberCollision(e)) throw new ReleaseStateError("That number is already in use — try again.");
         throw e;
       }
+      await emitLinkChange(tx, before, await linkStateOf(tx, id), deps.subscribers ?? []);
       return `Approved ${TYPE_LABEL[row.type]}`;
     },
     { correction: false },
@@ -139,6 +144,7 @@ export async function schedule(db: Db, id: string, input: ScheduleInput, actor: 
     async (tx, row) => {
       if (row.status !== "approved" && row.status !== "failed") throw new ReleaseStateError("Only an approved release can be scheduled.");
       if (!row.key) throw new ReleaseStateError("Approve this release before scheduling it.");
+      const before = await linkStateOf(tx, id);
       const view = (await loadView(tx, id))!;
       const problems = publishProblems(view);
       if (problems.length) throw new ReleaseRuleError(problems);
@@ -175,6 +181,7 @@ export async function schedule(db: Db, id: string, input: ScheduleInput, actor: 
         })
         .where(eq(newsReleases.id, id));
       await dropUnfinishedFlickrJob(tx, id);
+      await emitLinkChange(tx, before, await linkStateOf(tx, id), deps.subscribers ?? []);
       return immediate ? "Scheduled for Immediate Release" : `Scheduled for Release on ${formatBcDateTime(publishAt, deps.timeZone)}`;
     },
     { correction: false },
@@ -190,14 +197,16 @@ async function dropUnfinishedFlickrJob(tx: DbOrTx, id: string): Promise<void> {
   await tx.delete(flickrJobs).where(and(eq(flickrJobs.releaseId, id), ne(flickrJobs.status, "done")));
 }
 
-export async function cancel(db: Db, id: string, version: number, actor: Actor): Promise<ReleaseView> {
+export async function cancel(db: Db, id: string, version: number, actor: Actor, subscribers: SubscriberConfig[] = []): Promise<ReleaseView> {
   return mutateRelease(
     db, id, version, actor,
     async (tx, row) => {
       if (row.status !== "scheduled") throw new ReleaseStateError("Only a scheduled release can be cancelled.");
       if (row.live) throw new ReleaseStateError("This release is live — save a correction or unpublish it instead.");
+      const before = await linkStateOf(tx, id);
       await tx.update(newsReleases).set({ status: row.reference ? "approved" : "draft" }).where(eq(newsReleases.id, id));
       await dropUnfinishedFlickrJob(tx, id);
+      await emitLinkChange(tx, before, await linkStateOf(tx, id), subscribers);
       return "Cancelled Release";
     },
     { correction: false },

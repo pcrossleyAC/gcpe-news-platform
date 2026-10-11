@@ -1,11 +1,16 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, useNavigate, useSearchParams } from "react-router";
 import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
-import { CREATABLE_TYPES, LANG_EN, LAYOUTS, TYPE_LABEL, createReleaseSchema, typeRules, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
+import {
+  CREATABLE_TYPES, LANG_EN, LAYOUTS, MAX_ACTIVITY_ID, TYPE_LABEL, createReleaseSchema, typeRules, type Layout, type ReleasePrefill, type ReleaseView,
+} from "@gcpe/nrms-contract";
 import type { ZodIssue } from "zod";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
+import { useTenantTimeZone } from "../../format/tenantTimeZone";
+import { dateTimeText } from "../calendar/list/dates";
+import { ActivityLookupPanel, useActivityLookup } from "./ActivityLookupPanel";
 import type { Categories } from "./categories";
 
 type CreatableType = (typeof CREATABLE_TYPES)[number];
@@ -35,6 +40,7 @@ const EMPTY_CATEGORIES: Categories = { ministries: [], sectors: [], themes: [], 
  * issue's `path`) to the field it's about — acceptance: "the API's 422 problems map to fields".
  * Anything unrecognised falls back to "general" (shown as a page-level alert, not lost). */
 function fieldFor(problem: string): string {
+  if (/calendar activity|activity id/i.test(problem)) return "activityId";
   if (/lead ministry/i.test(problem)) return "leadMinistryKey";
   if (/ministry|ministries/i.test(problem)) return "ministries";
   if (/sector/i.test(problem)) return "sectors";
@@ -56,15 +62,26 @@ function groupByField(problems: string[]): Record<string, string[]> {
   return grouped;
 }
 
+/** A typed activity id as a number, or null while it isn't one the Calendar could have. */
+function activityIdOf(text: string): number | null {
+  const t = text.trim();
+  return /^\d{1,10}$/.test(t) && Number(t) >= 1 && Number(t) <= MAX_ACTIVITY_ID ? Number(t) : null;
+}
+
 /**
  * `/hub/releases/new` (task-3-brief.md): type, page title (from `GET /page-types`), layout,
  * page image (`GET /page-images`), categories, and headline — the fields shown and required
  * change per {@link typeRules}. Validates client-side with `createReleaseSchema` before
  * sending; on success, `POST /nrms/api/releases` and navigate to the new release's editor.
+ * The Calendar activity id is looked up as it's typed (spec addendum §11), and legacy's
+ * pre-fill from it is offered; started from a Forecast activity (`?activity=`), it is filled
+ * in at once.
  */
 export function NewReleaseScreen(): React.JSX.Element {
   const session = useSession();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const timeZone = useTenantTimeZone();
   useDocumentTitle(session.has("NRMS.Editor") ? "New release" : "You don’t have permission to create releases");
 
   const [type, setType] = useState<CreatableType>("release");
@@ -78,6 +95,26 @@ export function NewReleaseScreen(): React.JSX.Element {
   const [themes, setThemes] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [mediaListKeys, setMediaListKeys] = useState<string[]>([]);
+
+  const [activityText, setActivityText] = useState(() => searchParams.get("activity") ?? "");
+  const [location, setLocation] = useState("");
+  const [publishAt, setPublishAt] = useState<string | null>(null);
+  // From the Forecast's "Start a release": fill in from that activity once it's looked up.
+  const [fillOnLookup, setFillOnLookup] = useState(() => searchParams.has("activity"));
+  // An automatic fill (arriving from the Forecast, or a later lookup while fillOnLookup is still
+  // set) never overwrites a field the user has already touched by hand. The explicit "Fill in
+  // from activity N" button is a deliberate request, so it overwrites every field, touched or
+  // not (see fillIn's force option below).
+  const [touchedFields, setTouchedFields] = useState<ReadonlySet<string>>(() => new Set());
+  const touch = (field: string) => setTouchedFields((prev) => (prev.has(field) ? prev : new Set(prev).add(field)));
+  // The activity id the fields below were last filled in from (or null, before any fill). When
+  // the Activity ID field moves away from this id -- retyped or cleared -- the effect below
+  // clears whatever it set that the user hasn't touched, so a stale pre-fill never survives a
+  // change of activity.
+  const [prefilledFrom, setPrefilledFrom] = useState<number | null>(null);
+  const activityId = activityIdOf(activityText);
+  const { lookup, error: lookupError } = useActivityLookup(activityId);
+  const prefill = lookup?.state === "found" ? lookup.prefill : null;
 
   const [pageTypes, setPageTypes] = useState<PageTypeOption[]>([]);
   const [pageImages, setPageImages] = useState<PageImageOption[]>([]);
@@ -107,6 +144,46 @@ export function NewReleaseScreen(): React.JSX.Element {
     // composer only ever offers active ones.
     apiFetch<MediaListOption[]>("/nrms/api/media-lists").then((all) => setMediaLists(all.filter((l) => l.isActive)), () => {});
   }, []);
+
+  // The automatic fill (arriving from the Forecast, or a later lookup while fillOnLookup is
+  // still set) keeps the touchedFields guard -- it never overwrites a field the user already
+  // edited. The explicit "Fill in from activity N" button (below) is a deliberate user action,
+  // so it passes force: true and overwrites every field, touched or not.
+  const fillIn = (p: ReleasePrefill, opts: { force?: boolean } = {}) => {
+    const skip = (field: string) => !opts.force && touchedFields.has(field);
+    if (!skip("ministries")) {
+      setMinistries(p.ministries);
+      setLeadMinistryKey(p.leadMinistryKey);
+    }
+    if (!skip("sectors")) setSectors(p.sectors);
+    if (!skip("themes")) setThemes(p.themes);
+    if (!skip("tags")) setTags(p.tags);
+    if (!skip("location")) setLocation(p.location);
+    if (!skip("publishAt")) setPublishAt(p.publishAt);
+    if (activityId !== null) setPrefilledFrom(activityId);
+  };
+
+  useEffect(() => {
+    if (!fillOnLookup || !lookup) return;
+    setFillOnLookup(false);
+    if (prefill) fillIn(prefill);
+  }, [fillOnLookup, lookup, prefill]);
+
+  // A change (or clearing) of the Activity ID clears whatever the last fill set that the
+  // user hasn't touched -- never a touched field, and never anything before the first fill.
+  useEffect(() => {
+    if (prefilledFrom === null || activityId === prefilledFrom) return;
+    if (!touchedFields.has("ministries")) {
+      setMinistries([]);
+      setLeadMinistryKey(null);
+    }
+    if (!touchedFields.has("sectors")) setSectors([]);
+    if (!touchedFields.has("themes")) setThemes([]);
+    if (!touchedFields.has("tags")) setTags([]);
+    if (!touchedFields.has("location")) setLocation("");
+    if (!touchedFields.has("publishAt")) setPublishAt(null);
+    setPrefilledFrom(null);
+  }, [activityId, prefilledFrom, touchedFields]);
 
   // Fix round 1, finding 1: this route had no role gate at all — a Viewer or Site Editor
   // (anyone who can merely *read* releases) got a live creation form. Only NRMS.Editor may.
@@ -144,9 +221,13 @@ export function NewReleaseScreen(): React.JSX.Element {
     }
   };
 
-  const toggle = (list: string[], setList: (v: string[]) => void, key: string) => setList(list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
+  const toggle = (list: string[], setList: (v: string[]) => void, key: string, field?: string) => {
+    if (field) touch(field);
+    setList(list.includes(key) ? list.filter((k) => k !== key) : [...list, key]);
+  };
 
   const onMinistryToggle = (key: string) => {
+    touch("ministries");
     const next = ministries.includes(key) ? ministries.filter((k) => k !== key) : [...ministries, key];
     setMinistries(next);
     if (!next.includes(leadMinistryKey ?? "")) setLeadMinistryKey(next.length === 1 ? next[0]! : null);
@@ -162,7 +243,7 @@ export function NewReleaseScreen(): React.JSX.Element {
     organizations: null,
     byline: null,
     bodyHtml: "",
-    location: "",
+    location,
     contacts: [],
     ministries,
     leadMinistryKey,
@@ -170,8 +251,8 @@ export function NewReleaseScreen(): React.JSX.Element {
     themes: rules.categoriesBeyondMinistries ? themes : [],
     tags: rules.categoriesBeyondMinistries ? tags : [],
     mediaListKeys: rules.mediaListsAllowed ? mediaListKeys : [],
-    activityId: null,
-    publishAt: null,
+    activityId: activityText.trim() === "" ? null : activityText.trim(),
+    publishAt,
   });
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
@@ -275,6 +356,33 @@ export function NewReleaseScreen(): React.JSX.Element {
 
         <TextField label="Headline" value={headline} onChange={setHeadline} isRequired errorMessage={fieldProblem("headline")} isInvalid={!!fieldProblem("headline")} />
 
+        <TextField
+          label="Activity ID"
+          value={activityText}
+          onChange={setActivityText}
+          inputMode="numeric"
+          maxLength={10}
+          errorMessage={fieldProblem("activityId")}
+          isInvalid={!!fieldProblem("activityId")}
+        />
+        <ActivityLookupPanel lookup={lookup} error={lookupError} storedId={null} timeZone={timeZone} />
+        {prefill && activityId !== null && (
+          <Button variant="secondary" onPress={() => fillIn(prefill, { force: true })}>
+            Fill in from activity {activityId}
+          </Button>
+        )}
+
+        <TextField
+          label="Location"
+          value={location}
+          onChange={(v) => {
+            touch("location");
+            setLocation(v);
+          }}
+          maxLength={50}
+        />
+        {publishAt && <p>Planned publish date: {dateTimeText(publishAt, timeZone)}, from the activity. Change it in Publish settings.</p>}
+
         <fieldset className="gcpe-options">
           <legend>Ministries</legend>
           {categories.ministries.map((m) => (
@@ -289,7 +397,13 @@ export function NewReleaseScreen(): React.JSX.Element {
         {ministries.length > 1 && (
           <label className="gcpe-field">
             Lead ministry
-            <select value={leadMinistryKey ?? ""} onChange={(e) => setLeadMinistryKey(e.target.value || null)}>
+            <select
+              value={leadMinistryKey ?? ""}
+              onChange={(e) => {
+                touch("ministries");
+                setLeadMinistryKey(e.target.value || null);
+              }}
+            >
               <option value="">(none)</option>
               {ministries.map((key) => (
                 <option key={key} value={key}>
@@ -306,7 +420,7 @@ export function NewReleaseScreen(): React.JSX.Element {
               <legend>Sectors</legend>
               {categories.sectors.map((s) => (
                 <label key={s.key}>
-                  <input type="checkbox" checked={sectors.includes(s.key)} onChange={() => toggle(sectors, setSectors, s.key)} />
+                  <input type="checkbox" checked={sectors.includes(s.key)} onChange={() => toggle(sectors, setSectors, s.key, "sectors")} />
                   {s.name}
                 </label>
               ))}
@@ -315,7 +429,7 @@ export function NewReleaseScreen(): React.JSX.Element {
               <legend>Themes</legend>
               {categories.themes.map((t) => (
                 <label key={t.key}>
-                  <input type="checkbox" checked={themes.includes(t.key)} onChange={() => toggle(themes, setThemes, t.key)} />
+                  <input type="checkbox" checked={themes.includes(t.key)} onChange={() => toggle(themes, setThemes, t.key, "themes")} />
                   {t.name}
                 </label>
               ))}
@@ -324,7 +438,7 @@ export function NewReleaseScreen(): React.JSX.Element {
               <legend>Tags</legend>
               {categories.tags.map((t) => (
                 <label key={t.key}>
-                  <input type="checkbox" checked={tags.includes(t.key)} onChange={() => toggle(tags, setTags, t.key)} />
+                  <input type="checkbox" checked={tags.includes(t.key)} onChange={() => toggle(tags, setTags, t.key, "tags")} />
                   {t.name}
                 </label>
               ))}

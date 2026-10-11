@@ -57,6 +57,7 @@ describe("seedTestUsers", () => {
     expect(await findUserByEmail(tdb.db, "cal-advanced@example.test")).toMatchObject({ calendarRole: "Calendar.Advanced", organizationKeys: ["health"] });
     expect(await findUserByEmail(tdb.db, "cal-hq-editor@example.test")).toMatchObject({ calendarRole: "Calendar.Editor", organizationKeys: ["gcpe-headquarters"] });
     expect(await findUserByEmail(tdb.db, "cal-hq-advanced@example.test")).toMatchObject({ calendarRole: "Calendar.Advanced", organizationKeys: ["gcpe-headquarters"] });
+    expect(await findUserByEmail(tdb.db, "planner@example.test")).toMatchObject({ roles: ["NRMS.Editor"], calendarRole: "Calendar.ReadOnly", organizationKeys: ["gcpe-headquarters"] });
   });
 
   it("users without a Calendar entry report no calendar field", async () => {

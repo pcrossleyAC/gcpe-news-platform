@@ -53,6 +53,8 @@ export const calendarTenantSchema = z
     lookAheadCoverImage: z.string().min(1).nullable(),
     reportBanner: z.object({ province: z.string().min(1), confidentiality: z.string().min(1) }).strict(),
     reports: reportsSchema,
+    /** NRMS's Forecast and release-editor lookup take only activities with a category starting with this (spec addendum §11). */
+    forecastCategoryPrefix: z.string().min(1),
   })
   .strict();
 

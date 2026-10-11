@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import axe from "axe-core";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { view as releaseView } from "@gcpe/nrms-contract/testing";
 import { SessionProvider } from "../../session/SessionContext";
@@ -15,9 +16,10 @@ function jsonResponse(status: number, body: unknown): Response {
 interface StubOptions {
   roles?: string[];
   onPost?: (body: unknown) => Response;
+  lookups?: Record<string, unknown>;
 }
 
-function stubFetch({ roles = ["NRMS.Editor"], onPost }: StubOptions = {}) {
+function stubFetch({ roles = ["NRMS.Editor"], onPost, lookups = {} }: StubOptions = {}) {
   const calls: { url: string; body?: unknown }[] = [];
   vi.stubGlobal(
     "fetch",
@@ -27,6 +29,9 @@ function stubFetch({ roles = ["NRMS.Editor"], onPost }: StubOptions = {}) {
       if (url === "/core/auth/session") {
         return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
       }
+      if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+      const lookup = /^\/nrms\/api\/calendar-activities\/(\d+)$/.exec(url);
+      if (lookup) return lookups[lookup[1]!] ? jsonResponse(200, lookups[lookup[1]!]) : jsonResponse(404, { error: "not found" });
       if (url === "/nrms/api/page-types") {
         return jsonResponse(200, [
           { pageTitle: "News Release", languageId: 4105, releaseType: "release", sortOrder: 0, layout: "formal", pageImageId: IMG_ID },
@@ -61,10 +66,10 @@ function stubFetch({ roles = ["NRMS.Editor"], onPost }: StubOptions = {}) {
   return calls;
 }
 
-function renderScreen() {
+function renderScreen(path = "/releases/new") {
   return render(
     <SessionProvider>
-      <MemoryRouter initialEntries={["/releases/new"]}>
+      <MemoryRouter initialEntries={[path]}>
         <Routes>
           <Route path="/releases/new" element={<NewReleaseScreen />} />
           <Route path="/releases/drafts" element={<p>Drafts list</p>} />
@@ -238,5 +243,171 @@ describe("NewReleaseScreen (acceptance: each type shows exactly its required fie
     expect(screen.queryByText(/don.t have permission/i)).not.toBeInTheDocument();
     // I5: document.title matches the h1.
     await waitFor(() => expect(document.title).toBe("New release — GCPE News Staff"));
+  });
+
+  const ACTIVITY = {
+    id: 4102, state: "found", title: "Sample clinic opening", startAt: "2031-06-11T17:00:00.000Z", endAt: "2031-06-11T18:00:00.000Z",
+    ministryName: "Health", location: "Victoria", translations: ["French"], notEligible: null,
+    prefill: { publishAt: "2031-06-11T17:00:00.000Z", location: "Victoria", ministries: ["health", "education"], leadMinistryKey: "health", sectors: ["sector1"], themes: ["theme1"], tags: [] },
+  };
+
+  it("started from a Forecast activity, fills in legacy's fields from it and sends its id, location and planned time (New.aspx:625-700)", async () => {
+    const calls = stubFetch({ lookups: { "4102": ACTIVITY } });
+    renderScreen("/releases/new?activity=4102");
+    expect(await screen.findByRole("link", { name: "Sample clinic opening" })).toHaveAttribute("href", "/calendar/activities/4102");
+    expect(screen.getByLabelText("Activity ID")).toHaveValue("4102");
+    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+    expect(screen.getByLabelText("Education")).toBeChecked();
+    expect(screen.getByLabelText("Sector One")).toBeChecked();
+    expect(screen.getByLabelText("Theme One")).toBeChecked();
+    expect(screen.getByLabelText("Location")).toHaveValue("Victoria");
+    expect(screen.getByText("Planned publish date: Jun 11, 2031 10:00 AM, from the activity. Change it in Publish settings.")).toBeInTheDocument();
+    expect(screen.getByText("Translations required: French")).toBeInTheDocument();
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    await user.type(screen.getByLabelText("Headline", { exact: false }), "Clinics open");
+    await user.click(screen.getByRole("button", { name: "Create release" }));
+    await waitFor(() => expect(calls.find((c) => c.url === "/nrms/api/releases")?.body).toMatchObject({
+      activityId: 4102, location: "Victoria", publishAt: "2031-06-11T17:00:00.000Z", ministries: ["health", "education"], leadMinistryKey: "health", sectors: ["sector1"], themes: ["theme1"],
+    }));
+  });
+
+  it("an edit made before the Forecast lookup resolves is never overwritten by the pre-fill", async () => {
+    let resolveLookup!: (r: Response) => void;
+    const pendingLookup = new Promise<Response>((resolve) => {
+      resolveLookup = resolve;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") {
+          return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.Editor"] }, expiresAt: new Date().toISOString() });
+        }
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
+        if (url === "/nrms/api/calendar-activities/4102") return pendingLookup;
+        if (url === "/nrms/api/page-types") return jsonResponse(200, []);
+        if (url === "/nrms/api/page-images") return jsonResponse(200, []);
+        if (url === "/nrms/api/categories") {
+          return jsonResponse(200, {
+            ministries: [
+              { key: "health", name: "Health" },
+              { key: "education", name: "Education" },
+            ],
+            sectors: [],
+            themes: [],
+            tags: [],
+          });
+        }
+        if (url === "/nrms/api/media-lists") return jsonResponse(200, []);
+        throw new Error(`unexpected fetch: ${url}`);
+      }),
+    );
+    renderScreen("/releases/new?activity=4102");
+    expect(await screen.findByLabelText("Activity ID")).toHaveValue("4102");
+
+    // The lookup is still in flight: edit fields the pre-fill would otherwise touch.
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Headline", { exact: false }), "My own headline");
+    await user.type(screen.getByLabelText("Location"), "My own city");
+    await user.click(screen.getByLabelText("Health"));
+    expect(screen.getByLabelText("Health")).toBeChecked();
+
+    // Now let the lookup resolve: its pre-fill must not silently overwrite what the user typed.
+    resolveLookup(jsonResponse(200, ACTIVITY));
+    await screen.findByRole("link", { name: "Sample clinic opening" });
+
+    expect(screen.getByLabelText("Headline", { exact: false })).toHaveValue("My own headline");
+    expect(screen.getByLabelText("Location")).toHaveValue("My own city");
+    expect(screen.getByLabelText("Health")).toBeChecked();
+    expect(screen.getByLabelText("Education")).not.toBeChecked();
+  });
+
+  it("a typed id is looked up, and its fields are filled in only when asked", async () => {
+    stubFetch({ lookups: { "4102": ACTIVITY } });
+    renderScreen();
+    await screen.findByText("Legislature");
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Activity ID"), "4102");
+    expect(await screen.findByRole("link", { name: "Sample clinic opening" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Health")).not.toBeChecked();
+    await user.click(screen.getByRole("button", { name: "Fill in from activity 4102" }));
+    expect(screen.getByLabelText("Health")).toBeChecked();
+  });
+
+  it("retyping the Activity ID clears the untouched pre-fill, but never a field the user touched", async () => {
+    const OTHER_ACTIVITY = {
+      id: 4103, state: "found", title: "Other activity", startAt: null, endAt: null,
+      ministryName: "Education", location: "Kamloops", translations: [], notEligible: null,
+      prefill: { publishAt: null, location: "Kamloops", ministries: ["education"], leadMinistryKey: "education", sectors: [], themes: [], tags: [] },
+    };
+    stubFetch({ lookups: { "4102": ACTIVITY, "4103": OTHER_ACTIVITY } });
+    renderScreen("/releases/new?activity=4102");
+    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+    expect(screen.getByLabelText("Location")).toHaveValue("Victoria");
+    expect(screen.getByText(/Planned publish date:/)).toBeInTheDocument();
+
+    // The user touches Location by hand before retyping the id.
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("Location"));
+    await user.type(screen.getByLabelText("Location"), "My own place");
+
+    // Retype the Activity ID to a different activity: the untouched pre-fill (ministries,
+    // the planned publish date) clears, but the touched Location survives.
+    await user.clear(screen.getByLabelText("Activity ID"));
+    await user.type(screen.getByLabelText("Activity ID"), "4103");
+    await waitFor(() => expect(screen.getByLabelText("Health")).not.toBeChecked());
+    expect(screen.getByLabelText("Education")).not.toBeChecked();
+    expect(screen.queryByText(/Planned publish date:/)).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Location")).toHaveValue("My own place");
+  });
+
+  it("clearing the Activity ID clears the untouched pre-fill", async () => {
+    stubFetch({ lookups: { "4102": ACTIVITY } });
+    renderScreen("/releases/new?activity=4102");
+    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+
+    const user = userEvent.setup();
+    await user.clear(screen.getByLabelText("Activity ID"));
+    await waitFor(() => expect(screen.getByLabelText("Health")).not.toBeChecked());
+    expect(screen.getByLabelText("Location")).toHaveValue("");
+    expect(screen.queryByText(/Planned publish date:/)).not.toBeInTheDocument();
+  });
+
+  it("the explicit Fill in button overwrites a field the user already touched", async () => {
+    stubFetch({ lookups: { "4102": ACTIVITY } });
+    renderScreen();
+    await screen.findByText("Legislature");
+    const user = userEvent.setup();
+    await user.click(screen.getByLabelText("Health")); // touched, before any lookup
+    await user.type(screen.getByLabelText("Activity ID"), "4102");
+    await screen.findByRole("button", { name: "Fill in from activity 4102" });
+    expect(screen.getByLabelText("Health")).toBeChecked();
+
+    await user.click(screen.getByLabelText("Health")); // untouch it by hand: unchecked now
+    expect(screen.getByLabelText("Health")).not.toBeChecked();
+
+    await user.click(screen.getByRole("button", { name: "Fill in from activity 4102" }));
+    expect(screen.getByLabelText("Health")).toBeChecked();
+    expect(screen.getByLabelText("Education")).toBeChecked();
+  });
+
+  it("an unknown or deleted id says so, offers nothing to fill in, and the server's refusal shows at the field", async () => {
+    stubFetch({ lookups: {}, onPost: () => jsonResponse(422, { error: "bad", problems: ["No Calendar activity has ID 9999."] }) });
+    renderScreen("/releases/new?activity=9999");
+    expect(await screen.findByText("No Calendar activity has ID 9999.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Fill in from/ })).toBeNull();
+    const user = userEvent.setup();
+    await user.selectOptions(screen.getByLabelText("Page title"), "News Release");
+    await user.type(screen.getByLabelText("Headline", { exact: false }), "A headline");
+    await user.click(screen.getByRole("button", { name: "Create release" }));
+    await waitFor(() => expect(screen.getByLabelText("Activity ID")).toHaveAttribute("aria-invalid", "true"));
+  });
+
+  it("has no serious or critical axe violations, filled in from an activity", async () => {
+    stubFetch({ lookups: { "4102": ACTIVITY } });
+    const { container } = renderScreen("/releases/new?activity=4102");
+    await waitFor(() => expect(screen.getByLabelText("Health")).toBeChecked());
+    const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
+    expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
   });
 });

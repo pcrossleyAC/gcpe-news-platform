@@ -2,7 +2,8 @@
 // drafts included."
 import { test, expect } from "@playwright/test";
 import { EDITOR_EMAIL, TEST_USER_PASSWORDS } from "./constants";
-import { apiCall, approveRelease, baseUrl, createPublishableRelease, loginForCookie, signInAs, uniqueHeadline } from "./playwright-support";
+import { apiCall, approveRelease, baseUrl, createPublishableRelease, loginForCookie, nrmsDb, signInAs, uniqueHeadline } from "./playwright-support";
+import { seedActivity } from "../../apps/nrms/test/helpers";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 
 test.describe("item 11: search", () => {
@@ -12,6 +13,8 @@ test.describe("item 11: search", () => {
     const created = await createPublishableRelease(cookie, { headline });
     const approved = await approveRelease(cookie, created); // approved, never scheduled — still a draft
     const activityId = 424242;
+    // NRMS links only an activity it knows (C142): put one in its projection, as activity.* would.
+    await seedActivity(nrmsDb(), activityId);
     const withActivity = await apiCall<ReleaseView>(cookie, `/nrms/api/releases/${approved.id}/settings`, {
       method: "PUT",
       body: { version: approved.version, activityId, toSubscribers: false, toMediaLists: false, mediaListKeys: [] },

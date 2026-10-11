@@ -11,14 +11,18 @@ const httpUrl = z
 const languageId = z.union([z.literal(4105), z.literal(3084)]);
 const version = z.number().int().positive();
 const contact = z.string().max(250);
+/** The Calendar's activity ids are int4 (apps/calendar's `activities.id`, NRMS's `calendar_activities.id`). */
+export const MAX_ACTIVITY_ID = 2_147_483_647;
+const activityIdNumber = z.number().int().positive().max(MAX_ACTIVITY_ID, "Activity ID is too large");
 const activityId = z
   .union([
-    z.number().int().positive(),
+    activityIdNumber,
     z
       .string()
+      .max(10, "Activity ID is too large")
       .regex(/^\d+$/, "Activity ID must be numeric")
       .transform(Number)
-      .pipe(z.number().int().positive()),
+      .pipe(activityIdNumber),
     z.null(),
   ])
   .default(null);
@@ -166,6 +170,9 @@ export const listQuerySchema = z.object({
   pageSize: z.coerce.number().int().min(1).max(100).default(25),
 });
 export type ListQuery = z.infer<typeof listQuerySchema>;
+/** `GET /forecast` (spec addendum §11): one page of the merged releases and activities. */
+export const forecastQuerySchema = z.object({ page: z.coerce.number().int().min(1).max(1000).default(1) });
+export type ForecastQuery = z.infer<typeof forecastQuerySchema>;
 export const searchQuerySchema = z.object({
   q: z.string().trim().max(200).default(""),
   ministry: z.string().trim().toLowerCase().max(100).optional(),

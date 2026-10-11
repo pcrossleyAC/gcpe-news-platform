@@ -14,6 +14,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 
 import { createCoreTestDb, healthOrg } from "../../core/test/helpers";
 import { upsertOrganization } from "../../core/src/services/organizations";
+import { createUser, createUserSchema } from "../../core/src/services/users";
 import { createNrmsTestDb, sampleCreate, seedTaxonomy } from "../../nrms/test/helpers";
 import { createNewsTestDb } from "../../news-api/test/helpers";
 import { createPublicSiteTestDb } from "../../public-site/test/helpers";
@@ -1087,7 +1088,7 @@ describe("apps/stack: without CALENDAR_DATABASE_URL", () => {
 // fire-and-forget block in stack.ts that runs once at startup — by writing straight into a
 // fresh database before startStack() ever runs, bypassing the event system entirely, so the
 // only way the data could reach NoD is through the backfill.
-describe("apps/stack: reference-data backfill (Task 2 fix round 1)", () => {
+describe("apps/stack: reference-data backfill from Core at startup", () => {
   // A second ministry, distinct from the shared instance's `healthOrg`, so a leftover row from
   // another test can never be mistaken for one this test produced.
   const financeOrg = { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "FIN", sectorKeys: ["finance"] };
@@ -1114,6 +1115,28 @@ describe("apps/stack: reference-data backfill (Task 2 fix round 1)", () => {
         return rows.rows.length > 0;
       };
       await expect.poll(nodHasFinance, { timeout: 5000 }).toBe(true);
+    } finally {
+      await stack.close();
+    }
+  });
+
+  it("an NRMS with no Calendar viewers yet gets Core's users from the backfill, when the Calendar is mounted", async () => {
+    const stack = await setupStack({
+      fetchAdminToken: false,
+      beforeStart: async (dbs) => {
+        // NoD and the Calendar already have reference data, so only NRMS's need can start the backfill.
+        await dbs.nod.pool.query("INSERT INTO lists (list_key, category, key, name) VALUES ('ministries:placeholder', 'ministries', 'placeholder', 'Placeholder')");
+        await dbs.calendar!.pool.query("INSERT INTO orgs (key, display_name, sort_order, is_active) VALUES ('placeholder', 'Placeholder', 0, true)");
+        await createUser(dbs.core.db, createUserSchema.parse({ email: "planner@example.test", displayName: "Sample Planner", roles: ["NRMS.Editor"], password: "a sample password 1" }), []);
+      },
+    });
+    try {
+      const nrmsHasViewers = async (): Promise<boolean> => {
+        await fetch(`${stack.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${stack.tickToken}` } });
+        const rows = await stack.dbs.nrms.pool.query<{ n: number }>("SELECT count(*)::int AS n FROM calendar_viewers");
+        return rows.rows[0]!.n > 0;
+      };
+      await expect.poll(nrmsHasViewers, { timeout: 5000 }).toBe(true);
     } finally {
       await stack.close();
     }
