@@ -4,6 +4,7 @@ import type { CategoryKind } from "@gcpe/events";
 import { normalizeGranville } from "@gcpe/legacy-import";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { recordChanges } from "../changes";
+import { deleteSemanticRows } from "../embeddings/rows";
 import { applyRelease, applySiteContent } from "../projections";
 import { imageTypeFromBytes, justifyFromLegacy, mapLegacyRelease, type LegacyContactRow, type LegacyDocumentRow, type LegacyIndexRow, type LegacyReleaseRow } from "./map";
 import { Q_APP_SETTINGS, Q_CATEGORY_FEATURES, Q_CURRENT_SLIDES, Q_RELEASE_KEYS_BY_ID, Q_RELEASE_YEARS, Q_RESOURCE_LINKS, qContacts, qDocuments, qReleaseIndexes, qReleases } from "./queries";
@@ -92,6 +93,7 @@ export async function importLegacyNews(
             AND lower(key) NOT IN (SELECT lower(value) FROM jsonb_array_elements_text(${JSON.stringify(importedKeys)}::jsonb))
           RETURNING key`);
         const keys = rows.map((r) => r.key);
+        await deleteSemanticRows(tx, keys);
         await recordChanges(tx, keys.map((key) => ({ kind: "post.unpublished" as const, key })));
         return keys;
       });

@@ -1250,6 +1250,16 @@ Then restart the News API. `CONCURRENTLY` keeps the table writable while the ind
 
 **Hand check on boxs.ca:** `curl -si https://boxs.ca/api/v2/changes` is a `401` with `cache-control: no-store`.
 
+### The embedding worker
+
+In semantic mode, each `/stack/tick` (the `news-api.embed` step) embeds up to 50 published posts that have no embedding, or whose text, provider or model changed, newest first, in one provider call, and then recomputes each one's 5 related posts. In text mode the step does nothing.
+
+- **Backlog:** at one tick a minute, 50 posts a tick, about 100,000 posts take about 33 hours to embed the first time. Until a post is embedded, search still finds it through the text half of a semantic search, and its related posts use the text fallback.
+- **Changing provider or model** re-embeds every post, at the same pace.
+- **Failures:** a provider failure is logged as `[embeddings] <provider> call failed <label>` and the posts are retried on the next tick. After three failures in a row the worker's breaker opens and the step skips its ticks for 60 seconds. Search has its own breaker, so a failing batch doesn't turn search off.
+- **Unpublishing** deletes the post's embedding and related posts in the same transaction, so it disappears from semantic results and related lists at once. That includes a legacy import's unpublish step.
+- **After the first 6b deploy**, the search backfill (`npm run news-api:search-backfill`) also fills each post's embedding text hash. Running it isn't required for embeddings: the worker fills missing hashes itself.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

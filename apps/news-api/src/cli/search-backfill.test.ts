@@ -4,6 +4,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNewsTestDb } from "../../test/helpers";
 import { posts } from "../db/schema";
+import { embeddingTextHash } from "../embeddings/source-text";
 import { applyRelease } from "../projections";
 import { searchTextFor } from "../search/search-text";
 import { parseBackfillArgs, printBackfillResult, searchBackfill } from "./search-backfill";
@@ -69,6 +70,13 @@ describe("searchBackfill", () => {
     const all = await searchBackfill(tdb.db, { confirm: true, all: true, batchSize: 2 });
     expect(all).toMatchObject({ all: true, pending: 5, filled: 5 });
     expect(await textOf("c-3")).toBe(searchTextFor(releaseFor("c-3")));
+  });
+
+  it("--confirm writes embedding_text_hash with search_text", async () => {
+    await tdb.pool.query("UPDATE posts SET embedding_text_hash = NULL");
+    await searchBackfill(tdb.db, { confirm: true, all: false });
+    const [row] = await tdb.db.select({ t: posts.searchText, h: posts.embeddingTextHash }).from(posts).where(eq(posts.key, "a-1"));
+    expect(row?.h).toBe(embeddingTextHash(row!.t!));
   });
 
   it("reports a missing column instead of failing on it", async () => {

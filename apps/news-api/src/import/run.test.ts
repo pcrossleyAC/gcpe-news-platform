@@ -221,6 +221,16 @@ describe("importLegacyNews: unpublishes posts missing from legacy's published se
     const { rows } = await tdb.pool.query<{ kind: string; key: string }>("SELECT kind, key FROM changes WHERE kind = 'post.unpublished'");
     expect(rows).toEqual([{ kind: "post.unpublished", key: "STALE-1" }]);
   });
+
+  it("deletes the embeddings and related rows of the posts it unpublishes, in the same transaction", async () => {
+    await tdb.pool.query(`
+      INSERT INTO post_embeddings (post_key, provider, model, dimensions, text_hash, embedding)
+      VALUES ('STALE-1', 'stand-in', 'm', 1536, 'h', array_fill(0.5::real, ARRAY[1536]))`);
+    await tdb.pool.query("INSERT INTO post_related (post_key, related_keys) VALUES ('STALE-1', '{}')");
+    await importLegacyNews(tdb.db, source);
+    expect((await tdb.pool.query("SELECT 1 FROM post_embeddings WHERE post_key = 'STALE-1'")).rows).toEqual([]);
+    expect((await tdb.pool.query("SELECT 1 FROM post_related WHERE post_key = 'STALE-1'")).rows).toEqual([]);
+  });
 });
 
 // Controller ruling P1-R21: the critical case the "flips to event-origin" test above didn't

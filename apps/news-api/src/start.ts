@@ -3,12 +3,13 @@ import express from "express";
 import { authFromEnv, NOD_SUBSCRIBE_API_ROLE, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
-import { createEmbeddingProvider } from "@gcpe/embeddings";
+import { CircuitBreaker, createEmbeddingProvider, createGuardedEmbedder } from "@gcpe/embeddings";
 import type { Closer } from "@gcpe/http-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
 import { pruneChanges } from "./changes";
 import { hasHnswIndex, hasPgvector, resolveSearchMode } from "./embeddings/pgvector";
+import { runEmbeddingTick, WORKER_EMBED_TIMEOUT_MS } from "./embeddings/worker";
 import { newsApiEnvSchema } from "./env";
 import { changesBearerFromEnv } from "./http/v2/changes-auth";
 import { every } from "./loop";
@@ -88,6 +89,12 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     await pool.end();
     throw e;
   }
+
+  // The worker's own provider instance (a longer timeout for a 50-post batch) and its own
+  // breaker, so a slow batch never pushes visitors into text mode.
+  const workerProvider = searchMode === "semantic" ? createEmbeddingProvider({ ...parsed, EMBEDDINGS_TIMEOUT_MS: WORKER_EMBED_TIMEOUT_MS }) : null;
+  const workerEmbedder = workerProvider ? createGuardedEmbedder({ provider: workerProvider, breaker: new CircuitBreaker() }) : null;
+  const embed = () => (workerEmbedder ? runEmbeddingTick({ db, embedder: workerEmbedder }) : Promise.resolve(null));
 
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
@@ -173,10 +180,12 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
       changesPrune: () => pruneChanges(db),
+      embed,
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopLoops.push(every(60_000, "changes prune", () => pruneChanges(db)));
+      if (workerEmbedder) stopLoops.push(every(60_000, "embedding worker", embed));
     },
     attach: hub ? (server: Server) => hub.attach(server) : undefined,
     closeBeforeServer: hub ? [{ name: "updates hub", close: () => hub.close() }] : [],

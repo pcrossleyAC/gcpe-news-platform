@@ -15,6 +15,8 @@ import {
 } from "@gcpe/events";
 import { CATEGORY_CHANGE_KIND, recordChanges } from "./changes";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
+import { deleteSemanticRows } from "./embeddings/rows";
+import { embeddingTextHash } from "./embeddings/source-text";
 import { searchTextFor } from "./search/search-text";
 import { parseOffsetDateTime } from "./time";
 import { notifyUpdate, type UpdateTarget } from "./updates/notify";
@@ -108,6 +110,7 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
     return { skippedEventOwned: true };
   }
   const key = existing?.key ?? r.key;
+  const searchText = searchTextFor(r);
   const values = {
     key,
     kind: r.kind,
@@ -134,7 +137,8 @@ export async function applyRelease(tx: Tx, r: ReleaseRecord, opts: ApplyOptions 
     indexKeys: indexKeysFor(r),
     assets: r.assets,
     translations: r.translations,
-    searchText: searchTextFor(r),
+    searchText,
+    embeddingTextHash: embeddingTextHash(searchText),
     isPublished: true,
     timestamp: parseOffsetDateTime(r.timestamp),
   };
@@ -168,6 +172,7 @@ export async function unpublishRelease(tx: Tx, key: string): Promise<void> {
     .returning({ key: posts.key });
   if (rows.length === 0) return;
   const keys = rows.map((r) => r.key);
+  await deleteSemanticRows(tx, keys);
   await notifyUpdate(tx, "PostUpdate", keys);
   await recordChanges(tx, keys.map((k) => ({ kind: "post.unpublished" as const, key: k })));
 }

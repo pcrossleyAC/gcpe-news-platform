@@ -675,6 +675,7 @@ describe("apps/stack", () => {
         "calendar.dispatch",
         "calendar.lock-sweep",
         "news-api.dispatch",
+        "news-api.embed",
         "news-api.changes-prune",
         "nod.media-sync",
         "nod.bounce-summary",
@@ -686,7 +687,7 @@ describe("apps/stack", () => {
         "distribution.bounces",
         "distribution.dispatch",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 

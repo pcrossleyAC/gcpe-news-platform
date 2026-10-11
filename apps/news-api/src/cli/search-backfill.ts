@@ -12,6 +12,7 @@ import { parseEnv } from "@gcpe/config";
 import { createDb, type Db } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { posts } from "../db/schema";
+import { embeddingTextHash } from "../embeddings/source-text";
 import { searchTextFor } from "../search/search-text";
 
 const DEFAULT_BATCH_SIZE = 200;
@@ -68,10 +69,13 @@ export async function searchBackfill(db: Db, opts: SearchBackfillOptions): Promi
           .limit(size)
           .for("update");
         if (rows.length === 0) return 0;
-        const values = rows.map((r) => ({ key: r.key, text: searchTextFor(r) }));
+        const values = rows.map((r) => {
+          const text = searchTextFor(r);
+          return { key: r.key, text, hash: embeddingTextHash(text) };
+        });
         await tx.execute(sql`
-          UPDATE posts SET search_text = v.text
-          FROM jsonb_to_recordset(${JSON.stringify(values)}::jsonb) AS v(key text, text text)
+          UPDATE posts SET search_text = v.text, embedding_text_hash = v.hash
+          FROM jsonb_to_recordset(${JSON.stringify(values)}::jsonb) AS v(key text, text text, hash text)
           WHERE posts.key = v.key`);
         after = rows[rows.length - 1]!.key;
         return rows.length;

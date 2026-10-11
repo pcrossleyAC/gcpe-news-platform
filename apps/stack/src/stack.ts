@@ -485,6 +485,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         // Deletes edit locks idle for 15 minutes (spec addendum §7.5); a no-op most ticks.
         ...(calendar ? [{ name: "calendar.lock-sweep", run: worker(calendar, "lockSweep") }] : []),
         { name: "news-api.dispatch", run: worker(newsApi, "dispatch") },
+        // Embeds up to 50 published posts and recomputes their related posts (spec §5.2). A
+        // no-op unless the News API's search mode is semantic; it skips the tick while its
+        // breaker is open.
+        { name: "news-api.embed", run: worker(newsApi, "embed") },
         // Deletes change-feed rows older than 90 days (spec §5.4); cheap when there are none.
         { name: "news-api.changes-prune", run: worker(newsApi, "changesPrune") },
         // The nightly Media Hub sync before the digest: an email address or flag it fixes up

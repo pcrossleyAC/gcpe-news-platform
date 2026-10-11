@@ -6,6 +6,7 @@ import type { OrgRecord, ReleaseRecord, TermRecord } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
 import { createNewsTestDb, waitUntilBlockedOnLock } from "../test/helpers";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
+import { embeddingTextHash } from "./embeddings/source-text";
 import { applyOrg, applyRelease, applySiteContent, applyTerm, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
 import { SEARCH_TEXT_MAX_CHARS, searchTextFor } from "./search/search-text";
 import { listenForUpdates, notifyUpdate, type UpdateTarget } from "./updates/notify";
@@ -393,5 +394,12 @@ describe("projections", () => {
         { kind: "ministry", key: "parent-min" },
       ]);
     });
+  });
+
+  it("writes posts.embedding_text_hash from the search text on every post write", async () => {
+    const r = { ...sampleRelease, key: "R-HASH" };
+    await tdb.db.transaction((tx) => applyRelease(tx, r));
+    const [row] = await tdb.db.select({ h: posts.embeddingTextHash }).from(posts).where(eq(posts.key, "R-HASH"));
+    expect(row?.h).toBe(embeddingTextHash(searchTextFor(r)));
   });
 });
