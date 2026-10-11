@@ -248,8 +248,18 @@ blocks or fails startup (the News API may not be reachable yet); a failure is on
    node ~/path/to/your/project/stack.js --check
    ```
    A non-zero exit, or `"ok": false` in the JSON it prints, names exactly which app and which
-   `<PREFIX>_*` prefix is misconfigured.
-5. Run the smoke test below.
+   `<PREFIX>_*` prefix is misconfigured. With the Calendar configured, it also prints
+   `"calendarDbTimeZone"`: `"ok"`, or `"stale"` when the Calendar database's Postgres predates
+   tzdata 2026b (BC's permanent UTC−7), or `"unreachable"`. It is a warning and never fails the
+   check.
+5. **Hand check, after the first request has started the stack:** look in
+   `<DATA_DIR>/logs/errors.jsonl` (or `/hub/error-log`) for "the Calendar database's time-zone
+   data predates BC's permanent UTC−7". The stack checks this once at startup. If the line is
+   there, the Calendar's list, export and reports put an activity between midnight and 1 a.m.
+   (from 2026-11-01) on the previous day: ask the host for a PostgreSQL with tzdata 2026b or
+   later (open question Q64). "the Calendar database's time-zone check failed" means the check
+   couldn't ask; the label after it says why.
+6. Run the smoke test below.
 
 ### Migrations on populated `deliveries` or `messages` tables
 
@@ -1025,6 +1035,18 @@ JSON error means it hasn't been raised.
 3. As cal-hq-editor: a Health activity marked confidential by cal-editor doesn't appear in any view, and `?mode=activity&activity=<its id>` says "Activity not found".
 4. As cal-hq-admin: delete a scratch activity. Its entries show "(deleted)", and the deletion is listed. As cal-editor they are gone.
 5. On boxs.ca new activity ids are small, so typing one in "Search for" searches text. Use `?mode=activity&activity=<id>` instead. Production ids are legacy-sized (above 10,000).
+
+### Reports (Phase 5g)
+
+**No migration.** The artifact now carries `report-worker.cjs` and `fonts/` beside `stack.js`; they deploy with it. Optional settings: `CALENDAR_REPORT_CONCURRENCY` (default 1), `CALENDAR_REPORT_HEAP_MB` (320), `CALENDAR_REPORT_TIMEOUT_SECONDS` (120), `CALENDAR_REPORT_INLINE_WAIT_MS` (5000). If the worker or the fonts are missing, the Calendar still starts, its report buttons say "Reports aren't available on this server right now", and `/stack/errors` shows "[calendar] reports are unavailable…".
+
+**Hand checks on boxs.ca after deploy** (spec §3 row 5g, §16 acceptance 10):
+
+1. As cal-editor: Hub → Calendar, filter a week with activities, click Look Ahead. The PDF downloads: Letter, BC Sans (the viewer's document properties list BCSans fonts), the cover, then "Inside Government". Each CC ID# opens the activity.
+2. Click 30/60/90 (Letter) and Planning (Legal landscape).
+3. As cal-hq-editor the toolbar has no Exec Look Ahead. As cal-hq-admin it does, and its rows end "Last updated …", said once.
+4. As cal-hq-admin, run a Look Ahead with no To date (60 days). Note whether it arrived without a "Preparing…" pause, and how many seconds it took; record both here. While it renders, load `/site/` in another tab: it answers at once.
+5. `/stack/errors` holds no "[calendar] a report failed" line. If it does, its label says which limit was hit: `ERR_WORKER_OUT_OF_MEMORY` (raise `CALENDAR_REPORT_HEAP_MB`) or `ERR_REPORT_TIMEOUT`.
 
 ## Troubleshooting
 

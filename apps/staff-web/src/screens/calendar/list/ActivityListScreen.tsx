@@ -14,6 +14,7 @@ import { isValidBcDate, todayIn } from "./dates";
 import { FilterPanel } from "./FilterPanel";
 import { ClearLaStatus, CorporateQueries, ExportButton, LookAheadFilterChoice, ReviewSelected } from "./HqTools";
 import { MyQueries } from "./MyQueries";
+import { ReportButtons } from "./Reports";
 import type { CalendarConfigView, ListView } from "./types";
 import { WatchStar } from "./WatchStar";
 
@@ -185,6 +186,7 @@ export function ActivityListScreen(): React.JSX.Element {
           {config.list.reviewSelected && <ReviewSelected selected={selected} onDone={reload} />}
           {config.list.clearLaStatus && <ClearLaStatus onDone={reload} />}
           <ExportButton query={query} />
+          <ReportButtons query={query} execLookAhead={config.list.execLookAhead} />
         </section>
         <ViewSwitch view={view} onChange={(v) => setParam("view", v === "list" ? null : v)} />
       </div>

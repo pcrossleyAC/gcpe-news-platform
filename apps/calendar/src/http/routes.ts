@@ -8,7 +8,9 @@ import { configRoutes } from "./config-routes";
 import { deadLetterRoutes } from "./dead-letter-routes";
 import { feedRoutes } from "./feed-routes";
 import { listRoutes } from "./list-routes";
+import type { ReportJobs } from "../reports/jobs";
 import { lookupRoutes } from "./lookup-routes";
+import { reportRoutes } from "./report-routes";
 import { savedFilterRoutes } from "./saved-filter-routes";
 import { transferRoutes } from "./transfer-routes";
 import { userRoutes } from "./user-routes";
@@ -21,6 +23,8 @@ export interface ApiDeps {
   now?: TestClock;
   /** Where attachments live (CALENDAR_STORAGE_DIR); null or unset answers the file routes 503. */
   store?: ObjectStore | null;
+  /** The report jobs and how long a start waits for its PDF before answering 202; null or unset answers the report routes 503. */
+  reports?: { jobs: ReportJobs; inlineWaitMs: number } | null;
 }
 
 /** The Calendar's /api, mounted behind requireBearer and requireCalendarActor. */
@@ -31,6 +35,7 @@ export function apiRoutes(deps: ApiDeps): Router {
   r.use(configRoutes(deps));
   r.use(listRoutes(deps));
   r.use(feedRoutes(deps));
+  r.use(reportRoutes(deps));
   r.use(savedFilterRoutes(deps));
   r.use(activityRoutes(deps));
   r.use(lookupRoutes(deps.db));

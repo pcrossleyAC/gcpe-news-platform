@@ -42,6 +42,13 @@ describe("startCalendar", () => {
     }
   });
 
+  it("reads the report settings, with defaults sized for SiteGround: one render at a time, 320 MB, 2 minutes, a 5 s wait", () => {
+    const base = { DATABASE_URL: "postgres://user:pass@127.0.0.1:1/calendar" };
+    expect(calendarEnvSchema.parse(base)).toMatchObject({ REPORT_CONCURRENCY: 1, REPORT_HEAP_MB: 320, REPORT_TIMEOUT_SECONDS: 120, REPORT_INLINE_WAIT_MS: 5000 });
+    expect(calendarEnvSchema.parse({ ...base, REPORT_CONCURRENCY: "2", REPORT_INLINE_WAIT_MS: "0" })).toMatchObject({ REPORT_CONCURRENCY: 2, REPORT_INLINE_WAIT_MS: 0 });
+    for (const bad of [{ REPORT_CONCURRENCY: "0" }, { REPORT_HEAP_MB: "10" }, { REPORT_INLINE_WAIT_MS: "60000" }]) expect(calendarEnvSchema.safeParse({ ...base, ...bad }).success, JSON.stringify(bad)).toBe(false);
+  });
+
   it("refuses to start when the tenant file has no calendar section (spec addendum §5.1)", async () => {
     const bc = JSON.parse(await readFile(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url)), "utf8")) as Record<string, unknown>;
     delete bc.calendar;

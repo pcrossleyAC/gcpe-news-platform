@@ -24,6 +24,26 @@ const RULES: CalendarRules = {
   cloneKeptKeywordNames: ["Sample kept keyword"],
   lookAheadCoverImage: null,
   reportBanner: { province: "Sample Province", confidentiality: "DRAFT AND CONFIDENTIAL" },
+  reports: {
+    cover: { organization: "Sample Communications Office", lines: ["SAMPLE PROVINCE", "CORPORATE LOOK AHEAD"] },
+    planningTitle: "Sample Corporate Calendar: Schedule of Activities",
+    leadAbbreviations: { FIN: "FN" },
+    cityToBeDecidedName: "Sample undecided city",
+    citySuffix: ", SP",
+    tvRadioCategoryName: "Sample broadcast",
+    issueCategoryText: "Sample issue",
+    fyiOnlyCategoryText: "Sample FYI only",
+    rlsMaterials: [
+      { contains: ["Sample news release"], code: "NR" },
+      { contains: ["Sample report"], code: "Report", notInEvents: true },
+      { contains: ["Sample fact sheet", "Sample factsheet"], code: "Fact Sheet" },
+      { contains: ["Sample newsletter"], code: "e-news", notInEvents: true, releaseTime: false },
+    ],
+    rlsOrigins: [
+      { contains: ["Sample origin"], code: "Gov" },
+      { contains: ["Sample joint origin"], code: "Joint" },
+    ],
+  },
 };
 
 describe("the editor's rules", () => {

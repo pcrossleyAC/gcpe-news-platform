@@ -123,8 +123,18 @@ function defaultHides(scope: ListScope, f: ListFilter): SQL[] {
   return out;
 }
 
+/** Options a reader other than the list itself may set. */
+export interface WhereOptions {
+  /**
+   * The list's bare first load hides Awareness dates and the consultations ministry
+   * (ActivityListProvider.ashx.cs:90-91). Legacy's reports read the filter without that step
+   * (ActivityHandler.ashx.cs:36-53), so their Awareness Dates section has rows.
+   */
+  defaultHides?: boolean;
+}
+
 /** The filter panel and the display (spec addendum §8.1; ActivityDAO.cs:150-258). */
-export function filterWhere(scope: ListScope, f: ListFilter, display: ListDisplay): SQL {
+export function filterWhere(scope: ListScope, f: ListFilter, display: ListDisplay, o: WhereOptions = {}): SQL {
   const { actor, rules } = scope;
   const tz = rules.timeZone;
   const parts: SQL[] = [statusWhere(f.status)];
@@ -168,7 +178,7 @@ export function filterWhere(scope: ListScope, f: ListFilter, display: ListDispla
   }
   if (display === "my_watchlist") {
     parts.push(sql`EXISTS (SELECT 1 FROM ${favourites} WHERE ${favourites.activityId} = ${activities.id} AND ${favourites.userId} = ${actor.userId})`);
-  } else {
+  } else if (o.defaultHides ?? true) {
     parts.push(...defaultHides(scope, f));
   }
   return and(...parts)!;
@@ -201,17 +211,27 @@ function lookAheadWhere(f: ListQuery["lookAhead"]): SQL | undefined {
 }
 
 /** The whole predicate: always inside visibleSql, over the unaliased activities table. */
-export function listWhere(scope: ListScope, q: ListQuery): SQL {
+export function listWhere(scope: ListScope, q: ListQuery, o: WhereOptions = {}): SQL {
   if (q.corporate && !can.corporateQueries(scope.actor)) throw new ActivityForbiddenError("Corporate queries are for HQ Advanced users and above");
   if (q.lookAhead !== "all" && !can.lookAheadFilter(scope.actor)) throw new ActivityForbiddenError("The Look Ahead filter is for HQ Advanced users and above");
   const parts: SQL[] = [visibleSql(scope.actor)];
   const id = q.corporate ? null : idSearchOf(q.filter.quickSearch);
   // An id search ignores the other filters and the dates, as legacy (ActivityDAO.cs:68-76).
   if (id !== null) parts.push(eq(activities.id, id));
-  else parts.push(q.corporate ? corporateWhere(scope, q.corporate) : filterWhere(scope, q.filter, q.display));
+  else parts.push(q.corporate ? corporateWhere(scope, q.corporate) : filterWhere(scope, q.filter, q.display, o));
   const la = lookAheadWhere(q.lookAhead);
   if (la) parts.push(la);
   return and(...parts)!;
+}
+
+/** Legacy's report and export order: start date, end date, then start time, in the tenant's zone (ActivityHandler.ashx.cs:46-48), whatever the list's sort. */
+export function legacyReportOrder(timeZone: string): SQL[] {
+  return [
+    sql`(${activities.startAt} AT TIME ZONE ${timeZone})::date ASC NULLS LAST`,
+    sql`(${activities.endAt} AT TIME ZONE ${timeZone})::date ASC NULLS LAST`,
+    sql`to_char(${activities.startAt} AT TIME ZONE ${timeZone}, 'HH24:MI') ASC NULLS LAST`,
+    sql`${activities.id} ASC`,
+  ];
 }
 
 const ministryAbbreviation = sql`(SELECT ${orgs.abbreviation} FROM ${orgs} WHERE ${orgs.key} = ${activities.contactMinistryKey})`;

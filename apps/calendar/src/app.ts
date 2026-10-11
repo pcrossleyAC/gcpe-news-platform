@@ -8,7 +8,7 @@ import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import type { ObjectStore } from "@gcpe/storage";
 import { requireCalendarActor } from "./actor";
 import { fileRoutes } from "./http/file-routes";
-import { apiRoutes } from "./http/routes";
+import { apiRoutes, type ApiDeps } from "./http/routes";
 import { projectionHandler } from "./projections";
 
 export interface AppDeps {
@@ -19,6 +19,7 @@ export interface AppDeps {
   subscribers?: SubscriberConfig[];
   now?: TestClock;
   store?: ObjectStore | null;
+  reports?: ApiDeps["reports"];
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -30,7 +31,7 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: projectionHandler }));
   // Authenticate and resolve the Calendar actor before parsing, so a caller without Calendar
   // access can't make us buffer a body.
-  const api = { db: deps.db, rules: deps.rules, subscribers: deps.subscribers ?? [], now: deps.now, store: deps.store ?? null };
+  const api: ApiDeps = { db: deps.db, rules: deps.rules, subscribers: deps.subscribers ?? [], now: deps.now, store: deps.store ?? null, reports: deps.reports ?? null };
   app.use("/api", requireBearer(deps.auth), requireCalendarActor(deps.db), fileRoutes(api), express.json({ limit: "100kb" }), apiRoutes(api));
   app.use(jsonErrorHandler({ logPrefix: "[calendar]" }));
   return app;

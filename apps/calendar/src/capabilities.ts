@@ -1,4 +1,4 @@
-import { LEVEL, type CalendarRules } from "@gcpe/calendar-contract";
+import { LEVEL, type CalendarRules, type ReportKind } from "@gcpe/calendar-contract";
 import { isOwnMinistry, visible, type Viewer, type VisibilityFacts } from "./visibility";
 
 export { isOwnMinistry };
@@ -29,6 +29,10 @@ export const can = {
   /** ActivityListProvider.ashx.cs:47-50: the list's needs-review markup. */
   seeListMarkup: (u: Viewer) => u.isHq && u.level >= LEVEL.administrator,
   transfer: (u: Viewer) => u.level >= LEVEL.administrator,
+  /** Spec addendum §6: the Exec Look Ahead is for HQ Administrators and above. */
+  execLookAhead: (u: Viewer) => u.isHq && u.level >= LEVEL.administrator,
+  /** Every report is for any Calendar role, its rows limited by visible(); the Exec Look Ahead as above. */
+  runReport: (u: Viewer, report: ReportKind) => u.level >= LEVEL.readOnly && (report !== "exec-look-ahead" || can.execLookAhead(u)),
   seeLookAheadFieldset: (u: Viewer, rules: Pick<CalendarRules, "showHqCommentsField">, a?: VisibilityFacts) =>
     hqEditor(u) || (rules.showHqCommentsField && (a ? can.edit(u, a) : u.level >= LEVEL.editor)),
   seeNeedsReviewMarkup: (u: Viewer) => hqEditor(u),

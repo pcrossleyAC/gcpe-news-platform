@@ -15,21 +15,35 @@ const updater = alias(users, "updater");
 /** Ids per round trip: far below Postgres's parameter limit. */
 const CHUNK = 1000;
 
-async function grouped(q: Promise<{ id: number; v: string }[]>): Promise<Map<number, string[]>> {
-  const out = new Map<number, string[]>();
+/** Each id's values, in the query's order. */
+export async function grouped<V>(q: Promise<{ id: number; v: V }[]>): Promise<Map<number, V[]>> {
+  const out = new Map<number, V[]>();
   for (const r of await q) out.set(r.id, [...(out.get(r.id) ?? []), r.v]);
   return out;
 }
 const iso = (d: Date | null) => d?.toISOString() ?? null;
 
+/** A list row with the activity record it was built from, for readers that print more than the list. */
+export interface RowWithFacts {
+  row: ListRow;
+  activity: typeof activities.$inferSelect;
+  /** `can.seeLookAheadFieldset` for this viewer and row: where the Look Ahead fields show. */
+  seesLookAhead: boolean;
+}
+
 /** The list's rows for these ids, in this order. Still filtered by visibleSql: a row never carries an activity the caller can't see. */
 export async function rowsOf(tx: DbOrTx, scope: ListScope, ids: readonly number[]): Promise<ListRow[]> {
-  const out: ListRow[] = [];
+  return (await rowsWithFactsOf(tx, scope, ids)).map((r) => r.row);
+}
+
+/** rowsOf's rows, each with its activity record and whether the viewer sees its Look Ahead fields. */
+export async function rowsWithFactsOf(tx: DbOrTx, scope: ListScope, ids: readonly number[]): Promise<RowWithFacts[]> {
+  const out: RowWithFacts[] = [];
   for (let i = 0; i < ids.length; i += CHUNK) out.push(...(await chunk(tx, scope, ids.slice(i, i + CHUNK))));
   return out;
 }
 
-async function chunk(tx: DbOrTx, scope: ListScope, ids: number[]): Promise<ListRow[]> {
+async function chunk(tx: DbOrTx, scope: ListScope, ids: number[]): Promise<RowWithFacts[]> {
   if (ids.length === 0) return [];
   const { actor, rules } = scope;
   const base = await tx
@@ -68,7 +82,7 @@ async function chunk(tx: DbOrTx, scope: ListScope, ids: number[]): Promise<ListR
   const mine = new Set((await tx.select({ id: favourites.activityId }).from(favourites).where(and(inArray(favourites.activityId, ids), eq(favourites.userId, actor.userId)))).map((r) => r.id));
   const markup = can.seeListMarkup(actor);
   const byId = new Map(base.map((r) => [r.a.id, r]));
-  return ids.flatMap((id): ListRow[] => {
+  return ids.flatMap((id): RowWithFacts[] => {
     const r = byId.get(id);
     if (!r) return [];
     const a = r.a;
@@ -78,7 +92,7 @@ async function chunk(tx: DbOrTx, scope: ListScope, ids: number[]): Promise<ListR
       contactMinistryKey: a.contactMinistryKey, sharedMinistryKeys: sharedKeys.get(id) ?? [], isConfidential: a.isConfidential, isDeleted: a.deletedAt !== null,
     };
     const seesLookAhead = can.seeLookAheadFieldset(actor, rules, facts);
-    return [{
+    const row: ListRow = {
       id: a.id, version: a.version, ministryKey: a.contactMinistryKey, ministryAbbreviation: r.ministryAbbreviation,
       status: a.status, hqStatus: seesLookAhead ? a.hqStatus : null, isDeleted: a.deletedAt !== null,
       isWatched: mine.has(id), watcherNames: watchers.get(id) ?? [], isShared: shared.has(id), hasRelease: released.has(id),
@@ -93,6 +107,7 @@ async function chunk(tx: DbOrTx, scope: ListScope, ids: number[]): Promise<ListR
       commContact: a.commContactId === null ? null : { name: r.contactName ?? "Unknown", phone: r.contactPhone },
       governmentRepresentative: r.representative, eventPlanner: r.eventPlanner,
       needsReview: markup ? a.needsReview : [],
-    }];
+    };
+    return [{ row, activity: a, seesLookAhead }];
   });
 }

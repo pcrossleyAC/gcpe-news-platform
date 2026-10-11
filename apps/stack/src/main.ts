@@ -91,9 +91,10 @@ process.on("uncaughtException", (err) => crash("uncaught exception", err));
 /**
  * `node stack.js --check`: validates config (every app's env schema, its resolved
  * MIGRATIONS_FOLDER existing on disk, and the tenant config's time-zone self-check) and exits
- * — no database connection, no listening server. Used by the build script as a build-time
- * smoke test, and by the deploy runbook as a post-deploy one (SSH, before relying on the
- * cron-driven `/stack/tick`).
+ * — no database pool or migration, no listening server. The one connection it opens is a
+ * read-only probe of the Calendar database's tzdata, reported as a warning (`calendarDbTimeZone`).
+ * Used by the build script as a build-time smoke test, and by the deploy runbook as a
+ * post-deploy one (SSH, before relying on the cron-driven `/stack/tick`).
  */
 if (process.argv.includes("--check")) {
   try {

@@ -4,7 +4,7 @@ import type { EditorRules } from "@gcpe/calendar-contract";
 export interface CalendarConfigView {
   timeZone: string;
   freeze: { start: string; end: string; timeZone: string; active: boolean; appliesToYou: boolean; message: string };
-  list: { markup: boolean; corporateQueries: boolean; lookAheadFilter: boolean; reviewSelected: boolean; clearLaStatus: boolean };
+  list: { markup: boolean; corporateQueries: boolean; lookAheadFilter: boolean; reviewSelected: boolean; clearLaStatus: boolean; execLookAhead: boolean };
   /** The caller sees the Look Ahead fieldset on a new activity; an existing one says so through its view's `lookAhead`. */
   lookAheadFieldset: boolean;
   /** Records shows on every activity, not only those that already have files (spec addendum §8.2; Q51). */

@@ -196,6 +196,22 @@ describe("accessibility: the activity list in every state", () => {
     expect(await seriousViolations(container)).toEqual([]);
   });
 
+  it("the reports: all four for an HQ Administrator, one being prepared", async () => {
+    stubFetch([], { me: HQ_ADMIN_ME, config: HQ_ADMIN_CONFIG, other: (url) => (url === "/calendar/api/reports/exec-look-ahead" ? never() : undefined) });
+    const { container } = renderList();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Exec Look Ahead" }));
+    await screen.findByText("Preparing your Exec Look Ahead report…");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("a report refused", async () => {
+    stubFetch([], { other: (url) => (url === "/calendar/api/reports/planning" ? jsonResponse(422, { error: "Too many activities match: narrow the filter and run the report again" }) : undefined) });
+    const { container } = renderList();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Planning" }));
+    await screen.findByText("Too many activities match: narrow the filter and run the report again");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
   it("the grid failing to load", async () => {
     stubFetch([], { other: (url) => (url.startsWith("/calendar/api/list/calendar?") ? new Response("{}", { status: 503 }) : undefined) });
     const { container } = renderList("/calendar?view=month&on=2026-11-15");

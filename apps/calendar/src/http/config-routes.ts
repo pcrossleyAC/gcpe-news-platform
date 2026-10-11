@@ -50,6 +50,7 @@ export function configRoutes(deps: ApiDeps): Router {
           lookAheadFilter: can.lookAheadFilter(actor),
           reviewSelected: can.reviewSelected(actor),
           clearLaStatus: can.clearLaStatus(actor),
+          execLookAhead: can.execLookAhead(actor),
         },
       });
     } catch (e) {

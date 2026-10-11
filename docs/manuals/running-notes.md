@@ -555,3 +555,17 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Calendar editors** — When an activity is made confidential, moved to another ministry or deleted, its updates leave the feed for anyone who can no longer see it.
 - **HQ Editor and above** — Changes to an activity's Look Ahead fields show as "changed activity" only to people who see the Look Ahead fieldset.
 - **HQ Administrator** — Deleted activities' updates, the deletion included, show marked "(deleted)". The link opens the activity read-only, with Review.
+
+## Phase 5g — Reports
+
+- **All Calendar users** — The list's toolbar has Look Ahead, 30/60/90 and Planning buttons after Excel export. Each makes a PDF of the activities the list's current filter finds, in date order, whatever the list is sorted by.
+- **All Calendar users** — A report takes a few seconds. While it's being prepared the page says "Preparing your … report…" and the buttons wait; the PDF then downloads by itself. If you leave the page first, run it again.
+- **All Calendar users** — A report holds only activities you can see. Other ministries' confidential activities, and deleted activities, are never in it.
+- **All Calendar users** — "Too many activities match" or "Too many rows to print" means the filter is too wide for a PDF: narrow the dates or the filter. "Other reports are being prepared" means wait a few seconds and try again.
+- **All Calendar users** — The Look Ahead has six sections; "Consultations and Dialogues" is gone. With no To date it covers 60 days and adds the Long Term Outlook.
+- **All Calendar users** — Each activity number in a report links to the activity in the Hub.
+- **HQ Editor and above** — Your Look Ahead shows each activity's Executive Summary, when it has one, and its NEW or CHANGED flag. Others see titles and details.
+- **HQ Administrator** — Exec Look Ahead is yours alone. With no To date it covers one month.
+- **Operations** — The Calendar puts each activity on its day with the database's own time-zone data. At startup the stack checks it; if the database's data predates BC's permanent UTC−7 (tzdata 2026b), the error log shows "the Calendar database's time-zone data predates BC's permanent UTC−7", and activities between midnight and 1 a.m. (from 2026-11-01) are listed, exported and reported on the previous day until the database is upgraded. `node stack.js --check` shows the same as `"calendarDbTimeZone"`.
+- **Operations** — Reports render in a worker thread of the stack process, one at a time: `CALENDAR_REPORT_CONCURRENCY` (1), `CALENDAR_REPORT_HEAP_MB` (320), `CALENDAR_REPORT_TIMEOUT_SECONDS` (120), `CALENDAR_REPORT_INLINE_WAIT_MS` (5000). A finished PDF stays in memory for 10 minutes; a restart forgets it.
+- **Developer** — `npm run calendar:report-compare -- --legacy <pdf> --new <pdf> --out <folder outside the repo>` compares two reports' sections and activity order (5i's parity check).

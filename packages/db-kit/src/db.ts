@@ -21,6 +21,22 @@ export function createDb(url: string, opts: { max?: number } = {}): { pool: pg.P
   return { pool, db };
 }
 
+/**
+ * One read on its own short-lived connection, outside any pool, for a startup or --check probe.
+ * Both the connect and the query give up after `timeoutMs`; the connection is always closed.
+ */
+export async function queryOnce<R extends pg.QueryResultRow>(url: string, text: string, values: unknown[], timeoutMs = 3000): Promise<R[]> {
+  const client = new pg.Client({ connectionString: url, connectionTimeoutMillis: timeoutMs, query_timeout: timeoutMs });
+  // A connection lost after the query would otherwise surface as an unhandled 'error' event.
+  client.on("error", () => {});
+  await client.connect();
+  try {
+    return (await client.query<R>(text, values)).rows;
+  } finally {
+    await client.end().catch(() => {});
+  }
+}
+
 // Two-int advisory keys live in a different lock space from the single-bigint keys used
 // for per-aggregate locks, so this can never collide with hashtext(aggregateId).
 const MIGRATION_LOCK = [0x67637065 /* "gcpe" */, 1] as const;

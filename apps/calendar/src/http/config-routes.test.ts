@@ -35,8 +35,8 @@ describe("GET /api/config", () => {
     });
     const hq = await request(frozenApp).get("/api/config").set("cookie", await sessionCookie(HQ));
     expect(hq.body).toMatchObject({ freeze: { active: true, appliesToYou: false }, lookAheadFieldset: true });
-    expect(res.body.list).toEqual({ markup: false, corporateQueries: false, lookAheadFilter: false, reviewSelected: false, clearLaStatus: false });
-    expect(hq.body.list).toEqual({ markup: false, corporateQueries: false, lookAheadFilter: false, reviewSelected: false, clearLaStatus: true });
+    expect(res.body.list).toEqual({ markup: false, corporateQueries: false, lookAheadFilter: false, reviewSelected: false, clearLaStatus: false, execLookAhead: false });
+    expect(hq.body.list).toEqual({ markup: false, corporateQueries: false, lookAheadFilter: false, reviewSelected: false, clearLaStatus: true, execLookAhead: false });
   });
 
   it("gives the editor its slice of the rules, and nothing the browser doesn't need", async () => {

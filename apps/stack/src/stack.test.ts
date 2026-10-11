@@ -723,6 +723,14 @@ describe("apps/stack", () => {
       expect(raw.includes("stack.test.ts probe error for persistence check")).toBe(true);
     });
 
+    it("startup asks the Calendar database's own tzdata once, and logs the stale-data warning exactly when it is stale", async () => {
+      // Asked independently, as the Calendar's day buckets do: 2026-12-10 08:00Z is 01:00 in BC under UTC−7.
+      const [r] = (await instance.dbs.calendar!.pool.query<{ t: string }>("SELECT to_char(timestamptz '2026-12-10 08:00:00+00' AT TIME ZONE 'America/Vancouver', 'HH24:MI') AS t")).rows;
+      const raw = await readFile(join(instance.dataDir, "logs", "errors.jsonl"), "utf8");
+      expect(raw.includes("time-zone check failed")).toBe(false);
+      expect(raw.includes("predates BC's permanent UTC−7")).toBe(r!.t !== "01:00");
+    });
+
     it("honours ?limit=, capped at 1000, defaulting to 200", async () => {
       for (let i = 0; i < 5; i++) console.error(`stack.test.ts limit-probe ${i}`);
       const res = await fetch(`${instance.stackUrl}/stack/errors?limit=2`, { headers: { authorization: `Bearer ${instance.adminToken}` } });

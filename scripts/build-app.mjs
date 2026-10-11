@@ -26,4 +26,9 @@ await build({
   external: [...deps],
   banner: { js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);" },
 });
+// The Calendar (alone or in the stack) renders reports in a worker thread: its own bundle beside main.js.
+if (["calendar", "stack"].includes(appDir.split("/").pop())) {
+  const { buildReportWorker } = await import("./build-report-worker.mjs");
+  await buildReportWorker(join(appDir, "dist"), { external: [...deps] });
+}
 console.log(`built ${appDir}/dist/main.js`);

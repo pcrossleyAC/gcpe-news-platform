@@ -13,6 +13,7 @@ import { homedir, userInfo } from "node:os";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
+import { buildReportWorker } from "./build-report-worker.mjs";
 import { runBuild as runStaffWebBuild } from "./build-staff-web.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -133,6 +134,11 @@ async function runBuild() {
   writeFileSync(metafilePath, JSON.stringify(result.metafile));
   console.log(`[build-siteground] esbuild metafile written to ${metafilePath} (NOT inside dist/siteground)`);
 
+  // The Calendar's reports render in a worker thread, which needs a file of its own beside stack.js,
+  // and BC Sans beside that (apps/calendar/src/reports/render/assets.ts).
+  console.log("[build-siteground] bundling the report worker and copying BC Sans …");
+  await buildReportWorker(outDir);
+
   console.log("[build-siteground] copying migrations …");
   for (const app of APPS) {
     const src = join(root, "apps", app, "migrations");
@@ -232,7 +238,8 @@ async function runBuild() {
         ...process.env,
         // Just enough for every one of the six apps' own env schema AND auth config (P2-R34:
         // --check now also runs authFromEnv per app) to parse — url-shaped DATABASE_URLs that
-        // are never dialled (--check never calls createDb), one tick token, a syntactically
+        // are never dialled (--check never calls createDb; only the Calendar's time-zone probe
+        // tries its URL, finds port 1 refused and reports "unreachable" as a warning), one tick token, a syntactically
         // valid (but not secret-for-anything-real) local-admin password hash, and the handful
         // of required non-DB vars (see apps/stack/src/stack.test.ts's env for the full real
         // wiring; this is the minimal structural subset).
