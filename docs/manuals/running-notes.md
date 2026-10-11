@@ -591,3 +591,7 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **System Administrator** — Legacy users without an email come in inactive. Link them on the Calendar users screen to activate them. Legacy users who shared an email are one user.
 - **All Calendar users** — "View changes" on an imported activity shows the old Calendar's recorded changes (title, dates, city, contact, lead ministry, confirmation), marked "from legacy log".
 - **Developer** — The import lives in `apps/calendar/src/import/` (`cli.ts`, `run.ts`, `scope.ts`, `map.ts`, `apply.ts`, `apply-related.ts`, `history-map.ts`, `report.ts`) and `apps/core/src/import/calendar-users.ts`. Tests run it against a fake source (`createFakeSource`, `@gcpe/legacy-import`) loaded with the synthetic fixture in `apps/calendar/test/legacy-calendar-fixture.ts`. Because the fake source ignores SQL, the scope rule runs twice for real: once in the SQL that narrows what's read, and again in `selectScope`, which is what the tests actually check.
+
+## Phase 6a — Search foundations
+
+- **Operations** — Each tenant config (`config/tenants/*.json`) now has `features` (`semanticSearch`, `staffAi`, both off), `search.language` (`english`, `french` or `simple`) and `site.theme` (colours, font, logo, footer links). A service refuses to start when the theme's text on background, text on surface, or primary text on primary is below 4.5:1 contrast; the error names the pair and the ratio. `branding` is gone: the theme replaces it.

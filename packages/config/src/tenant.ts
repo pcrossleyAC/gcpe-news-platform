@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { z } from "zod";
 import { calendarTenantSchema } from "./calendar";
 import { formatIssues } from "./issues";
+import { siteThemeSchema } from "./theme";
 
 function isValidTimeZone(tz: string): boolean {
   try {
@@ -23,6 +24,10 @@ const timeZoneCheckSchema = z.object({
   expectedOffset: z.string().regex(/^[+-]\d{2}:\d{2}$/, "timeZoneCheck.expectedOffset must be ±HH:MM"),
 });
 
+/** A Postgres text-search configuration. It must match the News API's posts.search_vector column. */
+export const searchLanguageSchema = z.enum(["english", "french", "simple"]);
+export type SearchLanguage = z.infer<typeof searchLanguageSchema>;
+
 export const tenantConfigSchema = z.object({
   tenantId: z.string().min(1),
   siteName: z.string().min(1),
@@ -30,10 +35,13 @@ export const tenantConfigSchema = z.object({
   defaultLanguageId: z.number().int(),
   organizationLabel: z.object({ singular: z.string().min(1), plural: z.string().min(1) }),
   publicSiteBaseUrl: z.string().url(),
-  branding: z.object({
-    primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/, "primaryColor must be #RRGGBB"),
-    logoUrl: z.string().url().nullable(),
-  }),
+  /** Spec §3. Semantic search and staff AI each also need a provider and pgvector; both default off. */
+  features: z
+    .object({ semanticSearch: z.boolean().default(false), staffAi: z.boolean().default(false) })
+    .default({}),
+  search: z.object({ language: searchLanguageSchema.default("english") }).default({}),
+  /** The public site's theme. The loader refuses one that fails WCAG AA contrast (siteThemeSchema). */
+  site: z.object({ theme: siteThemeSchema }),
   /** Optional: when present, {@link assertTimeZoneRules} must be called at startup (see
    * apps/news-api and apps/public-site's main.ts) to fail fast if the runtime's tzdata
    * disagrees with the pinned (at, expectedOffset) pair. */

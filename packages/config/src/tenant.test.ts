@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertTimeZoneRules, loadTenantConfig } from "./tenant";
 import { fileURLToPath } from "node:url";
+import { contrastRatio, WCAG_AA_TEXT_CONTRAST } from "./theme";
 
 function writeTemp(content: unknown): string {
   const dir = mkdtempSync(join(tmpdir(), "tenant-"));
@@ -12,6 +13,16 @@ function writeTemp(content: unknown): string {
   return file;
 }
 
+const theme = {
+  colors: {
+    primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D",
+    mutedText: "#474543", surface: "#F2F2F2", background: "#FFFFFF", border: "#D8D8D8",
+  },
+  font: { family: "Example Sans", fallback: "Verdana, Arial, sans-serif" },
+  logo: { path: "assets/logo.svg", alt: "Example Government" },
+  footerLinks: [],
+};
+
 const valid = {
   tenantId: "bc",
   siteName: "BC Gov News",
@@ -19,7 +30,7 @@ const valid = {
   defaultLanguageId: 4105,
   organizationLabel: { singular: "Ministry", plural: "Ministries" },
   publicSiteBaseUrl: "https://news.gov.bc.ca",
-  branding: { primaryColor: "#003366", logoUrl: null },
+  site: { theme },
 };
 
 describe("loadTenantConfig", () => {
@@ -33,10 +44,10 @@ describe("loadTenantConfig", () => {
     expect(() => loadTenantConfig(writeTemp({ ...valid, timeZone: "Mars/Olympus" }))).toThrow(/timeZone/);
   });
 
-  it("rejects a malformed brand colour", () => {
+  it("rejects a malformed theme colour", () => {
     expect(() =>
-      loadTenantConfig(writeTemp({ ...valid, branding: { primaryColor: "blue", logoUrl: null } })),
-    ).toThrow(/primaryColor/);
+      loadTenantConfig(writeTemp({ ...valid, site: { theme: { ...theme, colors: { ...theme.colors, primary: "blue" } } } })),
+    ).toThrow(/site\.theme\.colors\.primary/);
   });
 
   it("rejects a malformed timeZoneCheck.expectedOffset", () => {
@@ -53,6 +64,47 @@ describe("loadTenantConfig", () => {
   it("assertTimeZoneRules passes for the committed BC tenant config under current tzdata (requires Node 24+)", () => {
     const cfg = loadTenantConfig(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url)));
     expect(() => assertTimeZoneRules(cfg)).not.toThrow();
+  });
+
+  it("defaults features off and the search language to english when absent", () => {
+    const cfg = loadTenantConfig(writeTemp(valid));
+    expect(cfg.features).toEqual({ semanticSearch: false, staffAi: false });
+    expect(cfg.search).toEqual({ language: "english" });
+  });
+
+  it("rejects a search language Postgres configuration outside english, french and simple", () => {
+    expect(() => loadTenantConfig(writeTemp({ ...valid, search: { language: "german" } }))).toThrow(/search\.language/);
+  });
+
+  it("refuses a theme below WCAG AA and names the failing pair", () => {
+    const failing = { ...theme, colors: { ...theme.colors, text: "#777777" } };
+    expect(() => loadTenantConfig(writeTemp({ ...valid, site: { theme: failing } }))).toThrow(
+      /site\.theme\.colors\.text: text #777777 on background #FFFFFF has contrast 4\.4\d:1, below WCAG AA 4\.5:1/,
+    );
+  });
+
+  it("requires a site theme", () => {
+    const { site: _site, ...noSite } = valid;
+    expect(() => loadTenantConfig(writeTemp(noSite))).toThrow(/site/);
+  });
+
+  it.each(["bc", "nb"])("loads the committed %s config with flags off, english search and a theme that passes", (id) => {
+    const cfg = loadTenantConfig(fileURLToPath(new URL(`../../../config/tenants/${id}.json`, import.meta.url)));
+    expect(cfg.features).toEqual({ semanticSearch: false, staffAi: false });
+    expect(cfg.search.language).toBe("english");
+    const c = cfg.site.theme.colors;
+    // The spec checks three pairs. The committed themes also keep muted text readable.
+    for (const [fg, bg] of [[c.mutedText, c.background], [c.mutedText, c.surface]] as const) {
+      expect(contrastRatio(fg, bg)).toBeGreaterThanOrEqual(WCAG_AA_TEXT_CONTRAST);
+    }
+  });
+
+  it("gives BC BC Sans, BC blue, BC gold and BC's logo", () => {
+    const cfg = loadTenantConfig(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url)));
+    expect(cfg.site.theme.font.family).toBe("BC Sans");
+    expect(cfg.site.theme.colors.primary).toBe("#013366");
+    expect(cfg.site.theme.colors.accent).toBe("#FCBA19");
+    expect(cfg.site.theme.logo.path).toBe("assets/bc-logo.svg");
   });
 });
 

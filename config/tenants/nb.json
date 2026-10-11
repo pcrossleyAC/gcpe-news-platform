@@ -5,5 +5,17 @@
   "defaultLanguageId": 4105,
   "organizationLabel": { "singular": "Department", "plural": "Departments" },
   "publicSiteBaseUrl": "https://news.gov.nb.ca",
-  "branding": { "primaryColor": "#003366", "logoUrl": null }
+  "features": { "semanticSearch": false, "staffAi": false },
+  "search": { "language": "english" },
+  "site": {
+    "theme": {
+      "colors": {
+        "primary": "#1B365D", "primaryText": "#FFFFFF", "accent": "#C8102E", "text": "#1A1A1A",
+        "mutedText": "#4D4D4D", "surface": "#F4F4F4", "background": "#FFFFFF", "border": "#CCCCCC"
+      },
+      "font": { "family": "Open Sans", "fallback": "Arial, sans-serif" },
+      "logo": { "path": "assets/nb-logo.svg", "alt": "Government of New Brunswick" },
+      "footerLinks": [{ "label": "Government of New Brunswick", "url": "https://www2.gnb.ca/" }]
+    }
+  }
 }
