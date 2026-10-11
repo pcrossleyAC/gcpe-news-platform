@@ -30,6 +30,7 @@ function single(raw: Record<string, unknown>, name: string): string | undefined 
   const v = raw[name];
   if (v === undefined) return undefined;
   if (typeof v !== "string") throw new Invalid(name, `${name} must be given once`);
+  if (v.includes("\u0000")) throw new Invalid(name, `${name} must not contain control characters`);
   return v;
 }
 

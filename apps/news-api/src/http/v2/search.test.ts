@@ -41,6 +41,21 @@ describe("GET /api/v2/search (HTTP)", () => {
     expect(calls).toEqual([{ q: "wildfire", ministry: "Health", page: 2 }]);
   });
 
+  it("passes the request's own AbortSignal to the search service (the seam 6b's semantic branch uses)", async () => {
+    let seen: unknown;
+    const capturing: SearchService = {
+      timeZone: TZ,
+      async search(query, signal) {
+        seen = signal;
+        return { mode: "text", page: query.page, total: 0, results: [] };
+      },
+    };
+    const res = await request(stubApp(capturing)).get("/api/v2/search?q=wildfire");
+    expect(res.status).toBe(200);
+    expect(seen).toBeInstanceOf(AbortSignal);
+    expect((seen as AbortSignal).aborted).toBe(false);
+  });
+
   it.each([
     ["", "q"],
     [`q=${MARKER}&q=${MARKER}`, "q"],
@@ -52,13 +67,19 @@ describe("GET /api/v2/search (HTTP)", () => {
     [`q=x&from=2026-02-30`, "from"],
     [`q=x&from=0099-01-01`, "from"],
     [`q=x&from=2026-10-02&to=2026-10-01`, "to"],
+    [`q=${MARKER}%00x`, "q"],
+    [`q=%00`, "q"],
+    [`q=x&ministry=${MARKER}%00`, "ministry"],
+    [`q=x&sector=%00${MARKER}`, "sector"],
   ])("refuses ?%s with a 400 naming %s, never echoing the value", async (qs, parameter) => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const res = await request(stubApp(stub)).get(`/api/v2/search?${qs}`);
     expect(res.status).toBe(400);
     expect(res.headers["cache-control"]).toBe("no-store");
     expect(res.body).toEqual({ error: { code: "InvalidParameter", parameter, message: expect.any(String) } });
     expect(res.text).not.toContain(MARKER);
     expect(calls).toEqual([]);
+    expect(error).not.toHaveBeenCalled();
   });
 
   it("on a failure answers a generic 500 and logs the route and a safe label, never the query", async () => {

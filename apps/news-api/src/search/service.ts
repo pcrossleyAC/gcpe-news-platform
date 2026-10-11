@@ -24,9 +24,11 @@ export interface SearchResponse {
   results: SearchResult[];
 }
 
-/** Semantic mode (6b): the whole page, or null to fall back to text. */
+/** Semantic mode (6b): the whole page, or null to fall back to text. `signal` is the request's
+ * own AbortSignal, passed through unchanged so a guarded embedder can treat a caller abort as
+ * neutral to its breaker. Text mode may ignore it. */
 export interface SemanticSearch {
-  search(query: SearchQuery): Promise<SearchPage | null>;
+  search(query: SearchQuery, signal?: AbortSignal): Promise<SearchPage | null>;
 }
 
 export interface SearchServiceOptions {
@@ -42,7 +44,8 @@ export interface SearchServiceOptions {
 
 export interface SearchService {
   readonly timeZone: string;
-  search(query: SearchQuery): Promise<SearchResponse>;
+  /** `signal` is the request's own AbortSignal; only the semantic branch (6b) reads it. */
+  search(query: SearchQuery, signal?: AbortSignal): Promise<SearchResponse>;
 }
 
 export function createSearchService(o: SearchServiceOptions): SearchService {
@@ -59,11 +62,11 @@ export function createSearchService(o: SearchServiceOptions): SearchService {
   });
   return {
     timeZone: o.timeZone,
-    async search(query) {
+    async search(query, signal) {
       let semantic: SearchPage | null = null;
       if (o.semantic) {
         try {
-          semantic = await o.semantic.search(query);
+          semantic = await o.semantic.search(query, signal);
         } catch (e) {
           log(`[news-api] search semantic branch failed ${safeErrorLabel(e)}`);
         }

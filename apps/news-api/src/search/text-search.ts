@@ -49,11 +49,19 @@ export async function textSearch(db: Db, query: SearchQuery, opts: TextSearchOpt
 
   const [{ total } = { total: 0 }] = await db.select({ total: sql<number>`count(*)::int` }).from(posts).where(where);
   if (total === 0) return { total: 0, rows: [] };
+  // The default-language document's headline, else the first document's, picked in SQL so a
+  // page of results never detoasts every result's full `documents` jsonb (bodies included) just
+  // to read one headline each.
+  const headline = sql<string | null>`coalesce(
+      (select doc->>'headline' from jsonb_array_elements(${posts.documents}) with ordinality as t(doc, ord)
+        where (doc->>'languageId')::int = ${opts.defaultLanguageId} order by ord limit 1),
+      ${posts.documents}->0->>'headline'
+    )`;
   const rows = await db
     .select({
       key: posts.key,
       kind: posts.kind,
-      documents: posts.documents,
+      headline,
       summary: posts.summary,
       publishDate: posts.publishDate,
       leadMinistryKey: posts.leadMinistryKey,
@@ -63,11 +71,5 @@ export async function textSearch(db: Db, query: SearchQuery, opts: TextSearchOpt
     .orderBy(sql`ts_rank_cd(${posts.searchVector}, ${tsquery}) desc`, desc(posts.publishDate), KEY_DESC)
     .limit(SEARCH_PAGE_SIZE)
     .offset((query.page - 1) * SEARCH_PAGE_SIZE);
-  return {
-    total,
-    rows: rows.map(({ documents, ...r }) => ({
-      ...r,
-      headline: (documents.find((d) => d.languageId === opts.defaultLanguageId) ?? documents[0])?.headline ?? null,
-    })),
-  };
+  return { total, rows };
 }

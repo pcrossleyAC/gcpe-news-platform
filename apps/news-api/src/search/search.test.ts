@@ -158,5 +158,17 @@ describe("textSearch and the search service", () => {
       expect(thrown).toMatchObject({ mode: "text", results: [{ key: "R-TEXT" }] });
       expect(lines).toEqual(["[news-api] search semantic branch failed Error"]);
     });
+
+    it("passes the caller's AbortSignal through to the semantic branch (the seam 6b's guarded embedder uses)", async () => {
+      const controller = new AbortController();
+      let seen: AbortSignal | undefined;
+      await service({
+        search: async (_query, signal) => {
+          seen = signal;
+          return null;
+        },
+      }).search(q({}), controller.signal);
+      expect(seen).toBe(controller.signal);
+    });
   });
 });

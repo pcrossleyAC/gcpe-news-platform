@@ -20,7 +20,18 @@ export function v2Routes(deps: { search?: SearchService }): express.Router {
       if (!parsed.ok) {
         return void res.status(400).json({ error: { code: "InvalidParameter", parameter: parsed.parameter, message: parsed.message } });
       }
-      res.json(await search.search(parsed.query));
+      // The seam for 6b's semantic branch: an aborted request's signal reaches the guarded
+      // embedder, which treats a caller abort as neutral to its circuit breaker.
+      const controller = new AbortController();
+      const onClose = () => {
+        if (!res.writableEnded) controller.abort();
+      };
+      req.on("close", onClose);
+      try {
+        res.json(await search.search(parsed.query, controller.signal));
+      } finally {
+        req.off("close", onClose);
+      }
     });
   }
   r.use((_req, res) => void res.status(404).json({ error: "not found" }));

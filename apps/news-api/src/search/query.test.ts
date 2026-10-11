@@ -49,6 +49,9 @@ describe("parseSearchQuery", () => {
     [{ q: "x", from: "2026-1-5" }, "from"],
     [{ q: "x", to: "2200-01-01" }, "to"],
     [{ q: "x", from: "2026-10-02", to: "2026-10-01" }, "to"],
+    [{ q: "x\u0000y" }, "q"],
+    [{ q: "x", ministry: "Health\u0000" }, "ministry"],
+    [{ q: "x", sector: "\u0000economy" }, "sector"],
   ])("refuses %j, naming %s", (raw, parameter) => {
     const r = parseSearchQuery(raw as Record<string, unknown>, TZ);
     expect(r).toMatchObject({ ok: false, parameter });
