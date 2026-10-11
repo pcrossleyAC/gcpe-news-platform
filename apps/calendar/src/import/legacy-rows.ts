@@ -1,6 +1,6 @@
 /** Legacy calendar.* rows as the importer reads them (Gcpe.Hub.Database/calendar/Tables). DATETIME
  * values arrive as Dates whose UTC fields hold the BC wall-clock time. */
-export interface LegacyActivity extends Record<string, unknown> {
+export interface LegacyActivity {
   Id: number;
   StartDateTime: Date | null; EndDateTime: Date | null; NRDateTime: Date | null;
   PotentialDates: string | null;
@@ -24,22 +24,22 @@ export interface LegacyActivity extends Record<string, unknown> {
   CreatedDateTime: Date | null; CreatedBy: number | null; LastUpdatedDateTime: Date | null; LastUpdatedBy: number | null;
 }
 /** Every activity join table, read as (ActivityId, ValueId): an int lookup id or a GUID. */
-export interface LegacyJoinRow extends Record<string, unknown> { ActivityId: number; ValueId: number | string; IsActive: boolean }
+export interface LegacyJoinRow { ActivityId: number; ValueId: number | string; IsActive: boolean }
 export const JOIN_TABLES = ["categories", "commMaterials", "initiatives", "keywords", "nrOrigins", "sectors", "themes", "tags", "sharedWith"] as const;
 export type JoinTable = (typeof JOIN_TABLES)[number];
-export interface LegacyUser extends Record<string, unknown> {
+export interface LegacyUser {
   Id: number; RoleId: number; DisplayName: string | null; FullName: string | null; EmailAddress: string | null;
   IsActive: boolean; JobTitle: string | null; PhoneNumber: string | null; MobileNumber: string | null; Description: string | null;
   FilterDisplayValue: number | null; HiddenColumns: string | null; LastUpdatedDateTime: Date | null;
 }
-export interface LegacyUserMinistry extends Record<string, unknown> { SystemUserId: number; MinistryId: string; IsActive: boolean }
-export interface LegacyCommContact extends Record<string, unknown> { Id: number; SystemUserId: number; MinistryId: string | null; SortOrder: number | null; IsActive: boolean | null }
-export interface LegacySavedFilter extends Record<string, unknown> { Id: number; CreatedBy: number | null; Name: string | null; QueryString: string | null; SortOrder: number | null; IsActive: boolean | null }
-export interface LegacyFavourite extends Record<string, unknown> { SystemUserId: number; ActivityId: number }
-export interface LegacyFile extends Record<string, unknown> { Id: number; ActivityId: number; Data: Buffer; FileName: string; FileType: string; FileLength: number; Md5: string; LastUpdatedDateTime: Date; LastUpdatedBy: number | null }
-export interface LegacyLog extends Record<string, unknown> { Id: number; ActivityId: number; FieldName: string | null; OldValue: string | null; NewValue: string | null; Operation: string; CreatedDateTime: Date | null; CreatedBy: number | null; LastUpdatedDateTime: Date }
-export interface LegacyLookup extends Record<string, unknown> { Id: number; Name: string | null; SortOrder: number | null; IsActive: boolean | null; PhoneNumber?: string | null; JobTitle?: string | null; Description?: string | null; ShortName?: string | null }
-export interface LegacyReleaseLink extends Record<string, unknown> { ActivityId: number; N: number }
+export interface LegacyUserMinistry { SystemUserId: number; MinistryId: string; IsActive: boolean }
+export interface LegacyCommContact { Id: number; SystemUserId: number; MinistryId: string | null; SortOrder: number | null; IsActive: boolean | null }
+export interface LegacySavedFilter { Id: number; CreatedBy: number | null; Name: string | null; QueryString: string | null; SortOrder: number | null; IsActive: boolean | null }
+export interface LegacyFavourite { SystemUserId: number; ActivityId: number }
+export interface LegacyFile { Id: number; ActivityId: number; Data: Buffer; FileName: string; FileType: string; FileLength: number; Md5: string; LastUpdatedDateTime: Date; LastUpdatedBy: number | null }
+export interface LegacyLog { Id: number; ActivityId: number; FieldName: string | null; OldValue: string | null; NewValue: string | null; Operation: string; CreatedDateTime: Date | null; CreatedBy: number | null; LastUpdatedDateTime: Date }
+export interface LegacyLookup { Id: number; Name: string | null; SortOrder: number | null; IsActive: boolean | null; PhoneNumber?: string | null; JobTitle?: string | null; Description?: string | null; ShortName?: string | null }
+export interface LegacyReleaseLink { ActivityId: number; N: number }
 export const LOOKUP_TABLES = ["categories", "cities", "commMaterials", "eventPlanners", "governmentRepresentatives", "initiatives", "keywords", "nrDistributions", "nrOrigins", "premierRequested", "videographers"] as const;
 export type LookupTable = (typeof LOOKUP_TABLES)[number];
 

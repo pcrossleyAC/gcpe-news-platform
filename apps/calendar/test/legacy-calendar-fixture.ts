@@ -74,7 +74,7 @@ export function legacyCalendarTables(): Record<string, Record<string, unknown>[]
     activity(1014, {}), // no dates, not awareness: out
   ];
   return {
-    activities,
+    activities: activities as (LegacyActivity & Record<string, unknown>)[],
     activityCount: [{ N: activities.length }],
     activityCategories: [j(1001, 12), j(1001, 58), j(1002, 12), j(1004, 12), j(1005, 12), j(1006, 2), j(1007, 2), j(1008, 58), j(1009, 12), j(1010, 12), j(1011, 12), j(1012, 16), j(1013, 12), j(1001, 12) /* duplicate */, j(1002, 58, false) /* inactive */],
     activityCommMaterials: [j(1001, 3), j(1012, 61)],
