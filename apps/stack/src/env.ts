@@ -16,6 +16,13 @@ export function newsApiEventTypesFromCore(handlers: Record<string, unknown> = cr
   return Object.keys(handlers).filter((type) => NEWS_API_SOURCE_EVENT_TYPES.core!(type) && !/^user\./.test(type));
 }
 
+/** NRMS → News API: exactly the release and site types the News API handles. Never
+ * release.status_changed (an unpublished headline and its Calendar activity) or activity.*, even
+ * if the News API ever grew a handler for one (C127). */
+export function newsApiEventTypesFromNrms(handlers: Record<string, unknown> = createProjectionHandlers()): string[] {
+  return Object.keys(handlers).filter((type) => NEWS_API_SOURCE_EVENT_TYPES.nrms!(type) && type !== "release.status_changed" && !type.startsWith("activity."));
+}
+
 // Task 1 (staff-web): the staff app's built output directory. Two on-disk layouts share one
 // default so no SiteGround setting is required: in dev (`tsx apps/stack/src/main.ts`),
 // `import.meta.url` is this source file's own location and the build lives at
@@ -281,8 +288,10 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
 export const INTERNAL_EVENT_ROUTES = [
   { from: "CORE", source: "core", to: "NEWSAPI", name: "news-api", url: "self:/events", types: newsApiEventTypesFromCore() },
   {
+    // user.upserted: Calendar roles and ministries, so NRMS's Forecast and activity lookup show
+    // only what the Calendar would (spec addendum §6, §11). NRMS keeps no email or name.
     from: "CORE", source: "core", to: "NRMS", name: "nrms", url: "self:/nrms/events",
-    types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+    types: ["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
   },
   {
     from: "CORE", source: "core", to: "NOD", name: "nod", url: "self:/nod/events",
@@ -299,10 +308,15 @@ export const INTERNAL_EVENT_ROUTES = [
     from: "CALENDAR", source: "calendar", to: "NRMS", name: "nrms", url: "self:/nrms/events",
     types: ["activity.created", "activity.updated", "activity.deleted"],
   },
-  { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: ["*"] },
+  { from: "NRMS", source: "nrms", to: "NEWSAPI", name: "news-api", url: "self:/events", types: newsApiEventTypesFromNrms() },
   {
     from: "NRMS", source: "nrms", to: "NOD", name: "nod", url: "self:/nod/events",
     types: ["release.published", "release.updated", "release.unpublished", "media_list.created", "media_list.updated", "media_list.deactivated"],
+  },
+  {
+    // Release status on the Calendar's activities (spec addendum §11). Only to the Calendar.
+    from: "NRMS", source: "nrms", to: "CALENDAR", name: "calendar", url: "self:/calendar/events",
+    types: ["release.status_changed"],
   },
   { from: "NEWSAPI", source: "news-api", to: "SITE", name: "public-site", url: "self:/site-builder/events", types: ["site.rebuild_requested"] },
   // Phase 4e: Distribution's recorded bounces, back to the app that sent the original

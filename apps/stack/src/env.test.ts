@@ -14,6 +14,7 @@ import {
   internalEventEnv,
   INTERNAL_EVENT_ROUTES,
   newsApiEventTypesFromCore,
+  newsApiEventTypesFromNrms,
   resolveSelfSubscribers,
   resolveSelfUrls,
   routeSecret,
@@ -279,7 +280,7 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
         name: "nrms",
         url: "self:/nrms/events",
         secret: expect.any(String),
-        types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+        types: ["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
       },
       {
         name: "nod",
@@ -295,8 +296,9 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
       },
     ]);
     expect(nrms.map((s: { name: string; types: string[] }) => [s.name, s.types])).toEqual([
-      ["news-api", ["*"]],
+      ["news-api", ["release.published", "release.updated", "release.unpublished", "site.content.changed"]],
       ["nod", ["release.published", "release.updated", "release.unpublished", "media_list.created", "media_list.updated", "media_list.deactivated"]],
+      ["calendar", ["release.status_changed"]],
     ]);
     expect(newsApiSubs).toEqual([{ name: "public-site", url: "self:/site-builder/events", secret: expect.any(String), types: ["site.rebuild_requested"] }]);
     // Phase 4e: Distribution's own bounce route to NoD.
@@ -396,7 +398,7 @@ describe("Core → NRMS taxonomy route", () => {
     const coreSubs = JSON.parse(wiring.CORE.EVENT_SUBSCRIBERS!) as { name: string; url: string; types: string[] }[];
     const toNrms = coreSubs.find((s) => s.name === "nrms")!;
     expect(toNrms.url).toBe("self:/nrms/events");
-    expect(toNrms.types).toEqual(["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"]);
+    expect(toNrms.types).toEqual(["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"]);
     // The full topology: the Calendar's pair secret is there too (dropped when the Calendar isn't configured).
     expect(Object.keys(JSON.parse(wiring.NRMS.EVENT_SECRETS!))).toEqual(["core", "calendar"]);
   });
@@ -407,13 +409,13 @@ describe("Core → NRMS taxonomy route", () => {
 // subscriber route already names its types explicitly (checked above) — only the News API
 // route used to say "*".
 describe("Core's subscribers never receive user.upserted", () => {
-  it("subscribersFor(\"user.upserted\", ...) is empty for every one of Core's subscribers except the Calendar", () => {
+  it("subscribersFor(\"user.upserted\", ...) is empty for every one of Core's subscribers except the Calendar and NRMS", () => {
     const wiring = internalEventEnv("e".repeat(40));
     const coreSubs = JSON.parse(wiring.CORE.EVENT_SUBSCRIBERS!) as SubscriberConfig[];
-    expect(coreSubs.length).toBeGreaterThan(0);
-    const nonCalendar = coreSubs.filter((s) => s.name !== "calendar");
-    expect(nonCalendar.length).toBeGreaterThan(0);
-    expect(subscribersFor("user.upserted", nonCalendar)).toEqual([]);
+    expect(subscribersFor("user.upserted", coreSubs).map((s) => s.name)).toEqual(["nrms", "calendar"]);
+    const others = coreSubs.filter((s) => s.name !== "calendar" && s.name !== "nrms");
+    expect(others.map((s) => s.name)).toEqual(["news-api", "nod"]);
+    expect(subscribersFor("user.upserted", others)).toEqual([]);
   });
 
   it("the News API still receives every org/reference event type it actually handles", () => {
@@ -623,10 +625,10 @@ describe("Calendar routing", () => {
     // Widened, so a future route the compiler would otherwise rule out is still checked here.
     const routes: readonly { from: string; source: string; to: string; types: readonly string[] }[] = INTERNAL_EVENT_ROUTES;
     expect(routes.some((r) => r.from === "CALENDAR" && r.to === "NEWSAPI")).toBe(false);
-    // A "*" route carries activity.* as far as routing goes; only the News API's own source
-    // restriction, checked below, keeps it out.
+    // No route to the News API names activity.* or "*"; the News API's own source restriction,
+    // checked below, would keep it out besides.
     const reaching = routes.filter((r) => r.to === "NEWSAPI" && r.types.some((t) => t === "*" || t.startsWith("activity.")));
-    expect(reaching.map((r) => r.source)).toEqual(["nrms"]);
+    expect(reaching).toEqual([]);
     expect(NEWS_API_SOURCE_EVENT_TYPES.nrms!("activity.created")).toBe(false);
     const lookup = createSourceRestrictedHandlers();
     for (const source of ["nrms", "calendar"]) {
@@ -642,5 +644,38 @@ describe("Calendar routing", () => {
 
   it("strips the CALENDAR_ prefix", () => {
     expect(envFor({ CALENDAR_DATABASE_URL: "postgres://x/cal" }, "CALENDAR").DATABASE_URL).toBe("postgres://x/cal");
+  });
+});
+
+// NRMS's release.status_changed carries an unpublished release's headline and
+// its activity id. It goes to the Calendar alone; the News API's route from NRMS names its types.
+describe("NRMS → Calendar release.status_changed route", () => {
+  const SECRET = "x".repeat(40);
+  const env = { CALENDAR_DATABASE_URL: "postgres://x/cal", STACK_EVENT_SECRET: SECRET };
+  const nrmsSubs = () => JSON.parse(envFor(env, "NRMS").EVENT_SUBSCRIBERS!) as SubscriberConfig[];
+
+  it("sends release.status_changed to the Calendar and to no one else", () => {
+    expect(subscribersFor("release.status_changed", nrmsSubs()).map((s) => s.name)).toEqual(["calendar"]);
+    expect(JSON.parse(envFor(env, "CALENDAR").EVENT_SECRETS!)).toHaveProperty("nrms");
+  });
+
+  it("no route says \"*\", and none carries release.status_changed or activity.* to the News API", () => {
+    // Widened, so a future route the compiler would otherwise rule out is still checked here.
+    const routes: readonly { to: string; types: readonly string[] }[] = INTERNAL_EVENT_ROUTES;
+    expect(routes.filter((r) => r.types.includes("*"))).toEqual([]);
+    const toNewsApi = routes.filter((r) => r.to === "NEWSAPI").flatMap((r) => r.types);
+    expect(toNewsApi.filter((t) => t === "release.status_changed" || t.startsWith("activity."))).toEqual([]);
+    expect(nrmsSubs().find((s) => s.name === "news-api")!.types).toEqual(["release.published", "release.updated", "release.unpublished", "site.content.changed"]);
+  });
+
+  it("names every NRMS type the News API handles, and only those, even if it grew a handler for release.status_changed", () => {
+    const handled = () => Promise.resolve();
+    const handlers = { "release.published": handled, "release.status_changed": handled, "activity.created": handled, "org.upserted": handled };
+    expect(newsApiEventTypesFromNrms(handlers)).toEqual(["release.published"]);
+  });
+
+  it("no NRMS → Calendar route when the Calendar isn't configured", () => {
+    const subs = JSON.parse(envFor({ STACK_EVENT_SECRET: SECRET }, "NRMS").EVENT_SUBSCRIBERS!) as SubscriberConfig[];
+    expect(subs.map((s) => s.name)).toEqual(["news-api", "nod"]);
   });
 });
