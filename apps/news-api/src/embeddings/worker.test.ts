@@ -207,6 +207,59 @@ describe("runEmbeddingTick (spec §5.2)", () => {
     expect(await embedded()).toEqual(["A", "B"]);
   });
 
+  it("isolates one poison post so the rest of the batch still embeds in the same tick", async () => {
+    await seed(release("A", "alpha"), release("B", "beta"), release("C", "gamma"), release("D", "delta"));
+    const base = standInProvider();
+    const refusesGamma: EmbeddingProvider = {
+      ...base,
+      async embed(texts, signal) {
+        if (texts.some((t) => t.includes("gamma"))) throw new EmbeddingError("embedding_http_400");
+        return base.embed(texts, signal);
+      },
+    };
+    const s = spy(refusesGamma);
+    const r1 = await runEmbeddingTick({ db: tdb.db, embedder: s.embedder });
+    expect(r1.embedded).toBe(3);
+    expect(await embedded()).toEqual(["A", "B", "D"]);
+    // The breaker never sees 3 consecutive failures from one poison post among healthy ones:
+    // a sibling batch without "gamma" always succeeds soon after one that has it, resetting the
+    // breaker's count, however many times the poison post's own batch gets halved.
+    expect(s.embedder.breaker.state).toBe("closed");
+
+    // Skipped on later ticks: no further provider call is made for the poison post.
+    const callsBeforeNextTick = s.calls.length;
+    const r2 = await runEmbeddingTick({ db: tdb.db, embedder: s.embedder });
+    expect(r2).toMatchObject({ embedded: 0, skipped: null });
+    expect(s.calls).toHaveLength(callsBeforeNextTick);
+    expect(await embedded()).toEqual(["A", "B", "D"]);
+
+    // Retried once its text changes, and now succeeds (the new text has no "gamma" in it).
+    await seed(release("C", "zeta"));
+    const r3 = await runEmbeddingTick({ db: tdb.db, embedder: s.embedder });
+    expect(r3.embedded).toBe(1);
+    expect(await embedded()).toEqual(["A", "B", "C", "D"]);
+  });
+
+  it("recomputes a related list left missing by a process restart, without calling the provider", async () => {
+    await seed(release("A", "alpha"), release("B", "beta"), release("C", "gamma"), release("D", "delta"));
+    const s = spy();
+    await runEmbeddingTick({ db: tdb.db, embedder: s.embedder });
+    expect(await relatedOf("D")).toBeDefined();
+    // Simulate the process dying between the embedding commit and this post's own computeRelated.
+    await tdb.pool.query("DELETE FROM post_related WHERE post_key = 'D'");
+    expect(await relatedOf("D")).toBeUndefined();
+
+    const mustNotBeCalled: EmbeddingProvider = {
+      ...standInProvider(),
+      async embed() {
+        throw new Error("the provider must not be called to recompute an existing embedding's related list");
+      },
+    };
+    const result = await runEmbeddingTick({ db: tdb.db, embedder: createGuardedEmbedder({ provider: mustNotBeCalled, log: () => {} }) });
+    expect(result).toMatchObject({ embedded: 0, related: 1, skipped: null });
+    expect(await relatedOf("D")).toBeDefined();
+  });
+
   it("deleteSemanticRows takes 70,000 keys in one call", async () => {
     const keys = Array.from({ length: 70_000 }, (_, i) => `K-${i}`);
     await expect(tdb.db.transaction((tx) => deleteSemanticRows(tx, keys))).resolves.toBeUndefined();
