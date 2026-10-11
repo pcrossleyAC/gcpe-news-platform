@@ -90,6 +90,14 @@ describe("users and keys", () => {
     expect(c.find((u) => u.legacyId === 16)).toMatchObject({ email: null, isActive: false, calendarRole: "Calendar.ReadOnly" });
   });
 
+  it("throws on an in-scope user's unknown active ministry GUID, as a backstop of its own", async () => {
+    const t = legacyCalendarTables();
+    (t.userMinistries as object[]).push({ SystemUserId: 11, MinistryId: GUID.unknown, IsActive: true });
+    const s = await loadLegacy(createFakeSource(t), opts);
+    const scope = selectScope(s, opts);
+    expect(() => userCandidates(s, scope, keys)).toThrow();
+  });
+
   it("lists every unknown GUID the in-scope data uses, and none an out-of-scope user holds", async () => {
     const t = legacyCalendarTables();
     (t.activitySharedWith as object[]).push({ ActivityId: 1001, ValueId: GUID.unknown, IsActive: true });

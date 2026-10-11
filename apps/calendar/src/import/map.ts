@@ -119,6 +119,11 @@ export function mapLookup(table: LookupTable, r: LegacyLookup) {
 }
 
 export function userCandidates(s: LegacySnapshot, scope: Scope, keys: LegacyKeys): CalendarUserCandidate[] {
+  const orgId = (guid: string) => {
+    const o = keys.org(guid);
+    if (!o) throw new Error("an unknown legacy ministry reached mapping; the key check runs first");
+    return o.id;
+  };
   return s.users
     .filter((u) => scope.userIds.has(u.Id))
     .sort((a, b) => a.Id - b.Id)
@@ -128,7 +133,7 @@ export function userCandidates(s: LegacySnapshot, scope: Scope, keys: LegacyKeys
       displayName: (txt(u.DisplayName).trim() || txt(u.FullName).trim() || `Legacy user ${u.Id}`).slice(0, 100),
       isActive: u.IsActive === true,
       calendarRole: CALENDAR_ROLES[u.RoleId - 1] ?? null,
-      organizationIds: [...new Set(s.userMinistries.filter((m) => m.SystemUserId === u.Id && m.IsActive === true).map((m) => keys.org(m.MinistryId)?.id).filter((id): id is string => id !== undefined))].sort(),
+      organizationIds: [...new Set(s.userMinistries.filter((m) => m.SystemUserId === u.Id && m.IsActive === true).map((m) => orgId(m.MinistryId)))].sort(),
       lastUpdated: u.LastUpdatedDateTime?.getTime() ?? 0,
     }));
 }
