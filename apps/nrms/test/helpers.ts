@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { sql } from "drizzle-orm";
 import { createTestDatabase, type Db, type TestDatabase } from "@gcpe/db-kit";
 import type { CreateReleaseInput, ReleaseView } from "@gcpe/nrms-contract";
-import { categoryTerms, mediaLists, organizations } from "../src/db/schema";
+import { calendarActivities, categoryTerms, mediaLists, organizations } from "../src/db/schema";
 import { createRelease } from "../src/releases/service";
 import type { Actor } from "../src/releases/store";
 import { approve, schedule } from "../src/releases/workflow";
@@ -37,6 +37,18 @@ export const sampleCreate: CreateReleaseInput = {
   ministries: ["health"], leadMinistryKey: "health", sectors: ["health"], themes: [], tags: [], mediaListKeys: [], activityId: null, publishAt: null,
 };
 
+
+/** A live, non-confidential Calendar activity in NRMS's projection, as activity.* would leave it. Fictional values. */
+export async function seedActivity(db: Db, id: number, over: Partial<typeof calendarActivities.$inferInsert> = {}): Promise<void> {
+  const row = {
+    id, isConfidential: false, isDeleted: false, title: `Sample activity ${id}`, details: "Sample details.",
+    startAt: new Date("2031-06-11T17:00:00Z"), endAt: new Date("2031-06-11T18:00:00Z"), nrAt: null, isAllDay: false, isConfirmed: true,
+    contactMinistryKey: "health", sharedMinistryKeys: [], categoryNames: ["Approved Event"], cityName: "Victoria, BC",
+    themeKeys: [], tagKeys: [], sectorKeys: ["health"], translations: [],
+    ...over,
+  };
+  await db.insert(calendarActivities).values(row).onConflictDoUpdate({ target: calendarActivities.id, set: row });
+}
 
 /** Created, approved and scheduled (default: due one minute ago via a direct publish_at update). */
 export async function createScheduledRelease(db: Db, over: Partial<CreateReleaseInput> = {}, publishAt?: Date): Promise<ReleaseView> {

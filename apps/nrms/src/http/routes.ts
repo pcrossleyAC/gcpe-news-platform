@@ -126,6 +126,9 @@ export function apiRoutes(deps: RouteDeps): Router {
   param("lang", (v) => v === "4105" || v === "3084");
   param("pubId", (v) => /^\d{1,15}$/.test(v));
   const opts = () => ({ timeZone: deps.workflow.timeZone, nowMs: Date.now() });
+  const subscribers = deps.subscribers ?? [];
+  // The workflow sends release.status_changed (the Calendar) to the app's own subscribers.
+  const workflow: WorkflowDeps = { ...deps.workflow, subscribers };
 
   r.get(
     "/config",
@@ -148,7 +151,7 @@ export function apiRoutes(deps: RouteDeps): Router {
     "/releases",
     edit,
     run(async (req, res) => {
-      const view = await createRelease(db, createReleaseSchema.parse(req.body), actorOf(req), deps.embeds);
+      const view = await createRelease(db, createReleaseSchema.parse(req.body), actorOf(req), deps.embeds, subscribers);
       res.status(201).json(withStatus(view));
     }),
   );
@@ -239,14 +242,14 @@ export function apiRoutes(deps: RouteDeps): Router {
     }),
   );
 
-  r.post("/releases/:id/approve", edit, run(async (req, res) => void res.json(withStatus(await approve(db, req.params.id, version(req), actorOf(req), deps.workflow)))));
-  r.post("/releases/:id/schedule", edit, run(async (req, res) => void res.json(withStatus(await schedule(db, req.params.id, scheduleSchema.parse(req.body), actorOf(req), deps.workflow)))));
-  r.post("/releases/:id/cancel", edit, run(async (req, res) => void res.json(withStatus(await cancel(db, req.params.id, version(req), actorOf(req))))));
+  r.post("/releases/:id/approve", edit, run(async (req, res) => void res.json(withStatus(await approve(db, req.params.id, version(req), actorOf(req), workflow)))));
+  r.post("/releases/:id/schedule", edit, run(async (req, res) => void res.json(withStatus(await schedule(db, req.params.id, scheduleSchema.parse(req.body), actorOf(req), workflow)))));
+  r.post("/releases/:id/cancel", edit, run(async (req, res) => void res.json(withStatus(await cancel(db, req.params.id, version(req), actorOf(req), subscribers)))));
   r.post("/releases/:id/unpublish", edit, run(async (req, res) => void res.json(withStatus(await unpublish(db, req.params.id, version(req), actorOf(req))))));
   r.post(
     "/releases/:id/delete",
     edit,
-    run(async (req, res) => void res.json({ result: await deleteRelease(db, req.params.id, version(req), actorOf(req), deps.store, deps.subscribers ?? []) })),
+    run(async (req, res) => void res.json({ result: await deleteRelease(db, req.params.id, version(req), actorOf(req), deps.store, subscribers) })),
   );
   r.post(
     "/releases/:id/features",
@@ -324,7 +327,7 @@ export function apiRoutes(deps: RouteDeps): Router {
   r.get("/page-types", read, run(async (_req, res) => void res.json(await listPageTypes(db))));
   r.get("/page-images", read, run(async (_req, res) => void res.json(await listPageImages(db))));
 
-  r.put("/releases/:id/settings", edit, run(async (req, res) => void res.json(withStatus(await saveSettings(db, req.params.id, settingsSchema.parse(req.body), actorOf(req), deps.workflow)))));
+  r.put("/releases/:id/settings", edit, run(async (req, res) => void res.json(withStatus(await saveSettings(db, req.params.id, settingsSchema.parse(req.body), actorOf(req), workflow)))));
   r.put("/releases/:id/categories", edit, run(async (req, res) => void res.json(withStatus(await saveCategories(db, req.params.id, categoriesSchema.parse(req.body), actorOf(req))))));
   r.put("/releases/:id/asset", edit, run(async (req, res) => void res.json(withStatus(await saveAsset(db, req.params.id, assetSchema.parse(req.body), actorOf(req))))));
   r.put("/releases/:id/meta", edit, run(async (req, res) => void res.json(withStatus(await saveMeta(db, req.params.id, metaSchema.parse(req.body), actorOf(req))))));

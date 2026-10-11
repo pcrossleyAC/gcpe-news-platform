@@ -20,6 +20,7 @@ import { generateSlug } from "../text/slug";
 import { summaryFromBody } from "../text/plain";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError } from "./errors";
 import { uniqueKey } from "./keys";
+import { emitLinkChange, linkStateOf } from "./link-events";
 import { loadView, mutateRelease, writeLog, type Actor } from "./store";
 import { clearFeaturesFor } from "../website/features";
 import { parseLocalDateTime, type WorkflowDeps } from "./workflow";
@@ -155,7 +156,7 @@ async function normalizedBody(bodyHtml: string, deps: EmbedDeps | undefined): Pr
   return deps && sanitized.includes("<asset") ? normalizeEmbeds(sanitized, deps) : sanitized;
 }
 
-export async function createRelease(db: Db, input: CreateReleaseInput, actor: Actor, deps?: EmbedDeps): Promise<ReleaseView> {
+export async function createRelease(db: Db, input: CreateReleaseInput, actor: Actor, deps?: EmbedDeps, subscribers: SubscriberConfig[] = []): Promise<ReleaseView> {
   const type = input.type;
   const rules = typeRules(type);
   if (!rules.creatable) throw new ReleaseRuleError([`A new ${TYPE_LABEL[type]} can't be created.`]);
@@ -194,13 +195,15 @@ export async function createRelease(db: Db, input: CreateReleaseInput, actor: Ac
       await replaceCategories(tx, id, input);
       await replaceMediaLists(tx, id, listIds);
       await writeLog(tx, id, actor, `Created ${TYPE_LABEL[type]}`);
+      await emitLinkChange(tx, null, await linkStateOf(tx, id), subscribers);
       return (await loadView(tx, id))!;
     }),
   );
 }
 
-export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Actor, deps: Pick<WorkflowDeps, "timeZone">): Promise<ReleaseView> {
+export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Actor, deps: Pick<WorkflowDeps, "timeZone" | "subscribers">): Promise<ReleaseView> {
   return mutateRelease(db, id, input.version, actor, async (tx, row) => {
+    const before = await linkStateOf(tx, row.id);
     const rules = typeRules(row.type);
     assertTypeAllows(row.type, { mediaListKeys: input.mediaListKeys });
     const current = await tx
@@ -240,6 +243,7 @@ export function saveSettings(db: Db, id: string, input: SettingsInput, actor: Ac
       .set({ activityId: input.activityId, publishAt, toSubscribers, toMediaLists: input.mediaListKeys.length > 0 })
       .where(eq(newsReleases.id, row.id));
     if (listsChanged) await replaceMediaLists(tx, row.id, listIds);
+    await emitLinkChange(tx, before, await linkStateOf(tx, row.id), deps.subscribers ?? []);
     return "Updated publish settings";
   });
 }
@@ -454,6 +458,7 @@ export async function deleteRelease(db: Db, id: string, version: number, actor: 
       if (!DELETABLE_STATUSES.has(row.status)) throw new ReleaseStateError("Only a draft, approved or failed release can be deleted.");
       // A live release (e.g. a failed correction) has to be unpublished, not hidden.
       if (row.live) throw new ReleaseStateError("This release has been published — unpublish it first.");
+      const before = await linkStateOf(tx, row.id);
       // Defensive: a release shouldn't hold a slot once it isn't live (the unpublish path already
       // clears it), but deleting it must never leave a dangling category_features reference.
       await clearFeaturesFor(tx, row.id, subs);
@@ -461,10 +466,12 @@ export async function deleteRelease(db: Db, id: string, version: number, actor: 
         storedKeys = (await tx.select({ key: releaseFiles.storageKey }).from(releaseFiles).where(eq(releaseFiles.releaseId, row.id))).map((f) => f.key);
         await tx.delete(newsReleases).where(eq(newsReleases.id, row.id));
         outcome = "deleted";
+        await emitLinkChange(tx, before, null, subs);
         return null; // the row (and its log) is gone
       }
       await tx.update(newsReleases).set({ status: "deleted" }).where(eq(newsReleases.id, row.id));
       outcome = "hidden";
+      await emitLinkChange(tx, before, await linkStateOf(tx, row.id), subs);
       return "Deleted Release";
     },
     { correction: false },
