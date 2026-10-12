@@ -111,9 +111,61 @@ export function syncSite(deps: SyncDeps, extra: { pages?: string[] } = {}): Prom
   });
 }
 
+/**
+ * I1: the receiver's transaction holds a pool connection for as long as its handler runs, so the
+ * handler here only does quick work — it enqueues the event's own pages at live priority, using
+ * the receiver's own `tx` so the insert is atomic with the inbox row — then returns. It never
+ * drains the queue, reads the change feed or calls the News API itself: a storm of concurrent
+ * deliveries during a long drain used to each await a full `syncSite` turn from inside this
+ * transaction, which could exhaust the pool (nine or so deliveries was enough) and wedge every
+ * connection waiting on one that would never free up. The actual drain and feed read now happen
+ * in the background, kicked (not awaited) once the transaction commits — see `onApplied` in
+ * app.ts/start.ts and `kickBackgroundSync` below. The tick (`workers.sync`/the standalone loop)
+ * is the backstop either way, so a live publish still renders within one or two ticks even if
+ * the kicked run is still coalescing behind a backlog.
+ */
 export function createRebuildHandler(deps: SyncDeps): EventHandler {
-  return async (_tx, event) => {
+  return async (tx, event) => {
     const { pages } = event.data as { pages: string[] };
-    await syncSite(deps, { pages: Array.isArray(pages) ? pages.filter((p): p is string => typeof p === "string") : [] });
+    const pageIds = Array.isArray(pages) ? pages.filter((p): p is string => typeof p === "string") : [];
+    if (pageIds.length) await enqueuePages(tx, pageIds.map((pageId) => ({ pageId, priority: livePriority(pageId) })));
   };
+}
+
+/**
+ * Single-flights a background `syncSite` run per `deps`, the same way `singleFlightFeed` above
+ * single-flights the feed read within one turn: one run in flight, at most one more queued
+ * behind it for whoever asked while it was running. Called from the receiver's `onApplied`
+ * (app.ts/start.ts), *not* awaited there — the request path never waits on a drain (I1). An
+ * error is caught and logged with `safeErrorLabel` plus the route; it never reaches an unhandled
+ * rejection, and never propagates to a caller that chose not to await this.
+ *
+ * Returns the promise of whichever run will next settle, which only a test needs: a production
+ * caller fires this and moves on.
+ */
+const backgroundSyncs = new WeakMap<SyncDeps, { running: Promise<void>; pending: boolean }>();
+
+export function kickBackgroundSync(deps: SyncDeps): Promise<void> {
+  const existing = backgroundSyncs.get(deps);
+  if (existing) {
+    existing.pending = true;
+    return existing.running;
+  }
+  const state = { running: undefined as unknown as Promise<void>, pending: false };
+  const run = (): Promise<void> =>
+    syncSite(deps)
+      .then(() => undefined)
+      .catch((err) => {
+        console.error(`[public-site] background site sync failed (POST /events) ${safeErrorLabel(err)}`);
+      })
+      .then((): void | Promise<void> => {
+        if (state.pending) {
+          state.pending = false;
+          return (state.running = run());
+        }
+        backgroundSyncs.delete(deps);
+      });
+  state.running = run();
+  backgroundSyncs.set(deps, state);
+  return state.running;
 }

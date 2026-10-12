@@ -11,8 +11,12 @@ export type Db<TSchema extends Record<string, unknown> = any> = NodePgDatabase<T
 export type Tx<TSchema extends Record<string, unknown> = any> = Parameters<Parameters<Db<TSchema>["transaction"]>[0]>[0];
 export type DbOrTx<TSchema extends Record<string, unknown> = any> = Db<TSchema> | Tx<TSchema>;
 
-export function createDb(url: string, opts: { max?: number } = {}): { pool: pg.Pool; db: Db } {
-  const pool = new pg.Pool({ connectionString: url, max: opts.max ?? 10 });
+export function createDb(url: string, opts: { max?: number; connectionTimeoutMillis?: number } = {}): { pool: pg.Pool; db: Db } {
+  // `connectionTimeoutMillis` also bounds how long a caller waits for a connection to free up
+  // once the pool is at `max` (pg-pool's own pending-request queue), not only the time to
+  // establish a brand-new one — so a caller that passes it gets a loud rejection instead of
+  // hanging forever if every connection is wedged (I1).
+  const pool = new pg.Pool({ connectionString: url, max: opts.max ?? 10, connectionTimeoutMillis: opts.connectionTimeoutMillis });
   // An idle client losing its connection (server restart, failover, admin kill) emits
   // 'error' on the pool; unhandled, that would crash the process. The pool discards the
   // client and opens a new one on demand, so logging is enough.

@@ -52,6 +52,22 @@ describe("runMigrations", () => {
 });
 
 describe("createDb", () => {
+  // I1: once the pool is at `max` and every connection is held, a caller waiting for one must
+  // fail loudly, not hang forever.
+  it("connectionTimeoutMillis bounds how long a caller waits for a connection once the pool is at max", async () => {
+    const { pool } = createDb(adminUrl(), { max: 1, connectionTimeoutMillis: 200 });
+    try {
+      const held = await pool.connect(); // the pool's one connection, held for the whole test
+      try {
+        await expect(pool.query("SELECT 1")).rejects.toThrow(/timeout/i);
+      } finally {
+        held.release();
+      }
+    } finally {
+      await pool.end();
+    }
+  });
+
   it("logs errors from idle pooled connections instead of crashing the process", async () => {
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const { pool } = createDb(adminUrl(), { max: 1 });

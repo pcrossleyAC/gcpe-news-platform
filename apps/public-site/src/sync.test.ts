@@ -116,4 +116,76 @@ describe("syncSite", () => {
     expect(calls).toBeLessThanOrEqual(2);
     expect(feed).toHaveBeenCalledTimes(calls);
   });
+
+  // Two `syncSite` turns can genuinely overlap now (I1): the tick and a `kickBackgroundSync` run
+  // kicked after an event's transaction commits share one `SyncDeps`/`SiteStorage`, so
+  // `enqueueSiteWrite`'s own serialisation (rebuild.ts) is what keeps them from interleaving.
+  it("two overlapping turns with different granville — the later-enqueued one (OFF) wins the final pages and marker, and never interleaves with the first (ON)", async () => {
+    const posts = new Map([["K1", post({ key: "K1" })]]);
+    const deps = setup(posts);
+    const order: string[] = [];
+    let releaseFirstHome: ((v: { granville: string | null; topPostKey: string | null; featurePostKey: string | null }) => void) | undefined;
+    const firstHomeGate = new Promise<{ granville: string | null; topPostKey: string | null; featurePostKey: string | null }>((resolve) => (releaseFirstHome = resolve));
+
+    // chromeChanged's full-rebuild path re-fetches home() again while draining the "home"
+    // page itself, so only the *first* call (turn 1's) is gated/logged here — what matters is
+    // that every one of turn 2's home() calls happens only after turn 1's gated call has
+    // resolved.
+    let gated = false;
+    deps.newsApi.home = async () => {
+      if (!gated) {
+        gated = true;
+        order.push("start-home-1(ON, gated)");
+        const result = await firstHomeGate;
+        order.push("end-home-1(ON)");
+        return result;
+      }
+      return { granville: null, topPostKey: null, featurePostKey: null };
+    };
+
+    const p1 = syncSite(deps, { pages: ["post:K1"] });
+    const p2 = syncSite(deps, { pages: ["post:K1"] });
+
+    releaseFirstHome!({ granville: "true", topPostKey: null, featurePostKey: null });
+    await Promise.all([p1, p2]);
+
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    expect(order).toEqual(["start-home-1(ON, gated)", "end-home-1(ON)"]);
+    expect(storage.files.get("releases/K1/index.html")).not.toContain("blue-bridge-banner");
+    expect(storage.files.get("index.html")).not.toContain("blue-bridge-banner");
+    expect(JSON.parse(storage.files.get(".site-state.json") as string)).toEqual({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
+  });
+
+  it("a rejected turn doesn't wedge the queue — a concurrently-enqueued later turn still runs", async () => {
+    const posts = new Map([["K1", post({ key: "K1" })]]);
+    const deps = setup(posts);
+    let call = 0;
+    deps.newsApi.home = async () => {
+      call++;
+      if (call === 1) throw new Error("News API down");
+      return { granville: null, topPostKey: null, featurePostKey: null };
+    };
+
+    const p1 = syncSite(deps, { pages: ["post:K1"] });
+    const p2 = syncSite(deps, { pages: ["post:K1"] });
+    const [r1, r2] = await Promise.allSettled([p1, p2]);
+
+    expect(r1.status).toBe("rejected");
+    expect(r1.status === "rejected" && r1.reason).toMatchObject({ message: "News API down" });
+    expect(r2.status).toBe("fulfilled");
+    expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true); // the second turn still ran and wrote its pages
+  });
+
+  it("a rejected turn's queue slot still settles sequentially: a later call made after awaiting it runs normally", async () => {
+    const posts = new Map([["K1", post({ key: "K1" })]]);
+    const deps = setup(posts);
+    deps.newsApi.home = async () => {
+      throw new Error("News API down");
+    };
+    await expect(syncSite(deps, { pages: ["post:K1"] })).rejects.toThrow("News API down");
+
+    deps.newsApi.home = async () => ({ granville: null, topPostKey: null, featurePostKey: null });
+    await expect(syncSite(deps, { pages: ["post:K1"] })).resolves.toBeDefined();
+    expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true);
+  });
 });

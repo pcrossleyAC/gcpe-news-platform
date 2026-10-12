@@ -16,7 +16,7 @@ import { selfHeal } from "./self-heal";
 import { isTestSite } from "./site-env";
 import { logoFor } from "./static-pages";
 import { fsStorage } from "./storage";
-import { createRebuildHandler, syncSite, type SyncDeps } from "./sync";
+import { createRebuildHandler, kickBackgroundSync, syncSite, type SyncDeps } from "./sync";
 import { DEFAULT_THEME } from "./theme-css";
 
 export interface AppHandle {
@@ -70,7 +70,9 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
 
   const parsed = parseEnv(publicSiteEnvSchema(tenantConfig), env);
 
-  const { db, pool } = createDb(parsed.DATABASE_URL);
+  // connectionTimeoutMillis (I1): if every connection is ever wedged, a caller waiting for one
+  // fails loudly after 10s instead of hanging forever.
+  const { db, pool } = createDb(parsed.DATABASE_URL, { connectionTimeoutMillis: 10_000 });
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
 
   const newsApi = newsApiClient(parsed.NEWS_API_URL);
@@ -92,7 +94,18 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   const syncDeps: SyncDeps = { db, builder, index, newsApi, storage, site, test, batch: parsed.SITE_REBUILD_BATCH, feed: () => syncChanges({ db, client: changeFeed, builder, index }) };
   const handler = createRebuildHandler(syncDeps);
 
-  const app = createApp({ db, eventSecrets: parsed.EVENT_SECRETS, handler });
+  // I1: the drain and feed sync run outside the receiver's transaction, kicked (not awaited —
+  // the receiver itself awaits onApplied, so this must not return kickBackgroundSync's own
+  // promise, or the response would wait on the whole drain again) only once that transaction
+  // has committed.
+  const app = createApp({
+    db,
+    eventSecrets: parsed.EVENT_SECRETS,
+    handler,
+    onApplied: () => {
+      void kickBackgroundSync(syncDeps);
+    },
+  });
 
   let stop: (() => void) | undefined;
 

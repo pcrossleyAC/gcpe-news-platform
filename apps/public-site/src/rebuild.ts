@@ -73,10 +73,12 @@ export function stateAndBanner(granville: string | null, test: boolean, now: Dat
 
 /**
  * A tolerant `home()` fetch: `null` on failure (logged here), never throws. Used only where a
- * News API outage must not fail the caller outright — selfHeal.ts's startup path.
- * `createRebuildHandler`/`syncSite` (`sync.ts`) do *not* use this — a `home()` failure there
- * propagates, like any other News API failure, so the event receiver 500s and the dispatcher
- * retries instead of silently publishing a stale/missing banner.
+ * News API outage must not fail the caller outright — selfHeal.ts's startup path. `syncSite`
+ * (`sync.ts`) does *not* use this — a `home()` failure there propagates and rejects that turn
+ * rather than silently publishing a stale/missing banner. Since I1, that turn normally runs in
+ * the background (`kickBackgroundSync`, kicked after `createRebuildHandler`'s own transaction
+ * commits), so the rejection is caught and logged there, not surfaced to the event receiver; the
+ * tick/standalone loop's own `syncSite` call is the backstop that retries it.
  */
 export async function tryHome(newsApi: NewsApiClient): Promise<{ granville: string | null } | null> {
   try {

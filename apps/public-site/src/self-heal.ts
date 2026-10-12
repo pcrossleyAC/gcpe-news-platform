@@ -14,7 +14,8 @@ import { writeSubscribePages } from "./subscribe-pages";
  *
  * Tolerant of a News API outage: `tryHome` never throws, so a failed `home()` just means the
  * subscribe pages are written with no banner and nothing else runs this time — unlike
- * `syncSite`, whose `home()` failure propagates so the event is retried. Runs inside the same
+ * `syncSite`, whose `home()` failure propagates and rejects that turn (rebuild.ts's doc comment
+ * on `tryHome` says what becomes of that rejection since I1). Runs inside the same
  * `enqueueSiteWrite` queue as `syncSite`, so this startup pass and an inbound rebuild event in
  * the same process can never interleave (see `enqueueSiteWrite`'s doc comment).
  */
