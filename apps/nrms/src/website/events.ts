@@ -3,6 +3,7 @@ import type { DbOrTx, Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type SiteContentChanged, type SlideRecord, type SubscriberConfig } from "@gcpe/events";
 import { carousels, categoryFeatures, emergencyPins, newsReleases, siteLog, siteSettings, type SiteLogArea, websiteResourceLinks, websiteSlides } from "../db/schema";
 import type { Actor } from "../releases/store";
+import { slideImageRef, type SlideImageFiles } from "./slide-images";
 
 /** Mirrors releases/store.ts's `writeLog`: actor, area and a length-capped line. */
 export async function writeSiteLog(tx: DbOrTx, actor: Actor, area: SiteLogArea, text: string): Promise<void> {
@@ -37,18 +38,21 @@ export async function homeSnapshot(tx: DbOrTx): Promise<SiteContentChanged & { e
   };
 }
 
-function toSlideRecord(s: {
-  id: string;
-  sortIndex: number;
-  headline: string;
-  summary: string;
-  actionUrl: string;
-  facebookPostUrl: string;
-  justify: "left" | "right";
-  image: Buffer | null;
-  imageType: string | null;
-  updatedAt: Date;
-}): SlideRecord {
+function toSlideRecord(
+  s: {
+    id: string;
+    sortIndex: number;
+    headline: string;
+    summary: string;
+    actionUrl: string;
+    facebookPostUrl: string;
+    justify: "left" | "right";
+    image: Buffer | null;
+    imageType: string | null;
+    updatedAt: Date;
+  },
+  files: SlideImageFiles,
+): SlideRecord {
   return {
     id: s.id,
     sortIndex: s.sortIndex,
@@ -56,8 +60,9 @@ function toSlideRecord(s: {
     summary: s.summary,
     actionLabel: null,
     actionUri: s.actionUrl || null,
-    imageBase64: s.image ? s.image.toString("base64") : null,
+    imageBase64: null,
     imageType: s.imageType,
+    ...(s.image && s.imageType ? slideImageRef(files, s.image, s.imageType) : { imageKey: null, imageUrl: null, imageSha256: null }),
     facebookPostUri: s.facebookPostUrl || null,
     justify: s.justify === "right" ? "Right" : "Left",
     timestamp: s.updatedAt.toISOString(),
@@ -66,29 +71,28 @@ function toSlideRecord(s: {
 
 /** The two pinned emergency slides (`primary` → sortIndex -2, `secondary` → -1), only when
  * `pinned` — shared by {@link slidesSnapshotFor} for whichever carousel is being snapshotted. */
-async function pinnedSlides(tx: DbOrTx): Promise<SlideRecord[]> {
+async function pinnedSlides(tx: DbOrTx, files: SlideImageFiles): Promise<SlideRecord[]> {
   const pins = await tx.select().from(emergencyPins).where(eq(emergencyPins.pinned, true));
   const bySlot = new Map(pins.map((p) => [p.slot, p]));
   const pinSlides: SlideRecord[] = [];
   const primary = bySlot.get("primary");
-  if (primary) pinSlides.push(toSlideRecord({ ...primary, id: primary.slideId, sortIndex: -2 }));
+  if (primary) pinSlides.push(toSlideRecord({ ...primary, id: primary.slideId, sortIndex: -2 }, files));
   const secondary = bySlot.get("secondary");
-  if (secondary) pinSlides.push(toSlideRecord({ ...secondary, id: secondary.slideId, sortIndex: -1 }));
+  if (secondary) pinSlides.push(toSlideRecord({ ...secondary, id: secondary.slideId, sortIndex: -1 }, files));
   return pinSlides;
 }
 
 /**
  * Pinned emergency slides first, then `carouselId`'s own slides (if any) renumbered 0..n-1 in
  * their stored order — the same shape {@link slidesSnapshot} emits for the live carousel, but
- * for an arbitrary carousel. Used by carousel.ts's `assertSlidesFit` to size the snapshot the
- * *next* carousel would emit once it goes live, without waiting for that to actually happen.
+ * for an arbitrary carousel.
  */
-export async function slidesSnapshotFor(tx: DbOrTx, carouselId: string | null): Promise<SiteContentChanged & { entity: "slides" }> {
-  const pinSlides = await pinnedSlides(tx);
+export async function slidesSnapshotFor(tx: DbOrTx, carouselId: string | null, files: SlideImageFiles): Promise<SiteContentChanged & { entity: "slides" }> {
+  const pinSlides = await pinnedSlides(tx, files);
   let ownSlides: SlideRecord[] = [];
   if (carouselId) {
     const rows = await tx.select().from(websiteSlides).where(eq(websiteSlides.carouselId, carouselId)).orderBy(asc(websiteSlides.sortIndex));
-    ownSlides = rows.map((s, i) => toSlideRecord({ ...s, sortIndex: i }));
+    ownSlides = rows.map((s, i) => toSlideRecord({ ...s, sortIndex: i }, files));
   }
   return { entity: "slides", slides: [...pinSlides, ...ownSlides] };
 }
@@ -98,9 +102,9 @@ export async function slidesSnapshotFor(tx: DbOrTx, carouselId: string | null): 
  * `pinned`), then the live carousel's slides renumbered 0..n-1 in their stored order. No
  * live carousel → only the pins (possibly none).
  */
-export async function slidesSnapshot(tx: DbOrTx): Promise<SiteContentChanged & { entity: "slides" }> {
+export async function slidesSnapshot(tx: DbOrTx, files: SlideImageFiles): Promise<SiteContentChanged & { entity: "slides" }> {
   const [live] = await tx.select({ id: carousels.id }).from(carousels).where(eq(carousels.state, "live"));
-  return slidesSnapshotFor(tx, live?.id ?? null);
+  return slidesSnapshotFor(tx, live?.id ?? null, files);
 }
 
 /** The resource links list (Task 3), ordered by `sort_index`. */
@@ -132,6 +136,7 @@ export async function emitSite(
   tx: Tx,
   subscribers: SubscriberConfig[],
   which: "home" | "slides" | "links" | { kind: FeatureKind; key: string },
+  files?: SlideImageFiles,
 ): Promise<void> {
   let data: SiteContentChanged;
   let aggregateId: string;
@@ -139,7 +144,8 @@ export async function emitSite(
     data = await homeSnapshot(tx);
     aggregateId = "site:home";
   } else if (which === "slides") {
-    data = await slidesSnapshot(tx);
+    if (!files) throw new Error('emitSite("slides") needs the slide image files');
+    data = await slidesSnapshot(tx, files);
     aggregateId = "site:slides";
   } else if (which === "links") {
     data = await linksSnapshot(tx);

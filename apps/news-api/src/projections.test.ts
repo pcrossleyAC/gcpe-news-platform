@@ -248,7 +248,7 @@ describe("projections", () => {
       await applySiteContent(tx, { entity: "categoryFeatures", kind: "ministries", key: "Health", topPostKey: "t", featurePostKey: "f" });
       await applySiteContent(tx, {
         entity: "slides",
-        slides: [{ id: "f9adfdc2-5933-4c38-a390-a18077acb213", sortIndex: 0, headline: "Get vaccinated", summary: "s", actionLabel: "READ MORE", actionUri: "https://x", imageBase64: "iVBORw0KGgo=", imageType: "image/png", facebookPostUri: null, justify: "right", timestamp: "2026-09-09T16:31:07.5216222-07:00" }],
+        slides: [{ id: "f9adfdc2-5933-4c38-a390-a18077acb213", sortIndex: 0, headline: "Get vaccinated", summary: "s", actionLabel: "READ MORE", actionUri: "https://x", imageBase64: "iVBORw0KGgo=", imageType: "image/png", imageUrl: null, imageKey: null, imageSha256: null, facebookPostUri: null, justify: "right", timestamp: "2026-09-09T16:31:07.5216222-07:00" }],
       });
       await applySiteContent(tx, { entity: "resourceLinks", links: [{ sortIndex: 0, text: "Factsheets", uri: "/factsheets" }], timestamp: "2026-10-02T00:00:00Z" });
     });

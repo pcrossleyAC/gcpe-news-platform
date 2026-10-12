@@ -22,6 +22,7 @@ import {
   slideImage,
   type PinSlot,
 } from "../website/carousel";
+import type { SlideImageFiles } from "../website/slide-images";
 import { deleteFile, listFiles, uploadFile, MAX_SITE_FILE_BYTES } from "../website/files";
 import { featuredWhere } from "../website/features";
 import { getLinks, saveLinks } from "../website/links";
@@ -36,6 +37,8 @@ export interface SiteRouteDeps {
   liveFeedDefaults: LiveFeedDefaults;
   /** Where general files go; unset → the file upload/delete routes answer 503. */
   store?: ObjectStore;
+  /** Where carousel and emergency pin images go, content-addressed (spec addendum §6.4). */
+  slideFiles: SlideImageFiles;
   /** Plan 3d task 4: the public site's base URL, named in Project Blue Bridge's notify subject. */
   siteUrl: string;
   /** Plan 3d task 4: Project Blue Bridge's post-commit notify. */
@@ -165,7 +168,7 @@ const query =
  * own `run`/`UUID` are defined.)
  */
 export function siteRoutes(deps: SiteRouteDeps): Router {
-  const { db, subscribers, timeZone, liveFeedDefaults, siteUrl, notify } = deps;
+  const { db, subscribers, timeZone, liveFeedDefaults, siteUrl, notify, slideFiles } = deps;
   const r = Router();
   const read = requireAnyRole("NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor", "Core.Admin");
   const edit = requireRole("NRMS.SiteEditor");
@@ -197,14 +200,14 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     json,
     run(async (req: Request<Params>, res) => {
       const input = saveCarouselSchema.parse(req.body);
-      res.json(await saveCarousel(db, req.params.id, input, actorOf(req), subscribers, timeZone));
+      res.json(await saveCarousel(db, req.params.id, input, actorOf(req), subscribers, timeZone, slideFiles));
     }),
   );
 
   r.post(
     "/site/carousels/next/make-live",
     edit,
-    run(async (req, res) => void res.json(await makeNextLive(db, actorOf(req), subscribers))),
+    run(async (req, res) => void res.json(await makeNextLive(db, actorOf(req), subscribers, slideFiles))),
   );
 
   r.delete(
@@ -222,7 +225,7 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     edit,
     rawImage,
     run(async (req: Request<Params>, res) => {
-      await setSlideImage(db, req.params.id, bytesOf(req), actorOf(req), subscribers);
+      await setSlideImage(db, req.params.id, bytesOf(req), actorOf(req), subscribers, slideFiles);
       res.status(204).end();
     }),
   );
@@ -243,7 +246,7 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     json,
     run(async (req: Request<Params>, res) => {
       const input = savePinSchema.parse(req.body);
-      res.json(await savePin(db, req.params.slot as PinSlot, input, actorOf(req), subscribers));
+      res.json(await savePin(db, req.params.slot as PinSlot, input, actorOf(req), subscribers, slideFiles));
     }),
   );
   r.post(
@@ -252,7 +255,7 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     json,
     run(async (req: Request<Params>, res) => {
       const input = setPinnedSchema.parse(req.body);
-      res.json(await setPinned(db, req.params.slot as PinSlot, input, actorOf(req), subscribers));
+      res.json(await setPinned(db, req.params.slot as PinSlot, input, actorOf(req), subscribers, slideFiles));
     }),
   );
   r.put(
@@ -260,7 +263,7 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     edit,
     rawImage,
     run(async (req: Request<Params>, res) => {
-      await setPinImage(db, req.params.slot as PinSlot, bytesOf(req), actorOf(req), subscribers);
+      await setPinImage(db, req.params.slot as PinSlot, bytesOf(req), actorOf(req), subscribers, slideFiles);
       res.status(204).end();
     }),
   );

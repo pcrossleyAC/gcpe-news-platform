@@ -16,6 +16,7 @@ const PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0
 describe("NRMS site HTTP API", () => {
   let tdb: TestDatabase;
   let app: ReturnType<typeof createApp>;
+  let slideFilesRoot: string;
   let siteEditorCookie: string;
   let editorOnlyCookie: string;
   let viewerCookie: string;
@@ -30,13 +31,16 @@ describe("NRMS site HTTP API", () => {
 
   beforeAll(async () => {
     tdb = await createNrmsTestDb();
-    app = createApp({ db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver" }, subscribers: [] });
+    slideFilesRoot = await mkdtemp(join(tmpdir(), "nrms-site-routes-slides-"));
+    const slideFiles = { store: localStore(slideFilesRoot, "/files/"), filesBase: "" };
+    app = createApp({ db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver" }, subscribers: [], slideFiles });
     siteEditorCookie = await cookieFor(["NRMS.SiteEditor"], "Sam SiteEditor");
     editorOnlyCookie = await cookieFor(["NRMS.Editor"]);
     viewerCookie = await cookieFor(["NRMS.Viewer"]);
   });
   afterAll(async () => {
     await tdb.drop();
+    await rm(slideFilesRoot, { recursive: true, force: true });
   });
   beforeEach(async () => {
     await tdb.pool.query("TRUNCATE carousels, slides, emergency_pins, site_log, outbox_events, outbox_deliveries, aggregate_sequences CASCADE");
@@ -239,6 +243,7 @@ describe("NRMS site HTTP API — Live Feed, links and files", () => {
       workflow: { timeZone: "America/Vancouver" },
       subscribers: [],
       store,
+      slideFiles: { store, filesBase: "" },
       liveFeedDefaults: defaults,
     });
     siteEditorCookie = await cookieFor(["NRMS.SiteEditor"]);

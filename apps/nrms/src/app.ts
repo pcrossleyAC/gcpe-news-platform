@@ -1,3 +1,4 @@
+import { tmpdir } from "node:os";
 import express, { type Router } from "express";
 import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
@@ -5,7 +6,7 @@ import { requireBearer, type BearerOptions } from "@gcpe/auth";
 import { createEventReceiver, MAX_EVENT_BYTES, type SubscriberConfig } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import type { DistributionClient } from "./clients";
-import type { ObjectStore } from "@gcpe/storage";
+import { localStore, type ObjectStore } from "@gcpe/storage";
 import type { FlickrClient } from "./media/flickr-client";
 import type { EmbedDeps } from "./media/embeds";
 import { mediaRoutes } from "./http/media-routes";
@@ -13,6 +14,7 @@ import { apiRoutes } from "./http/routes";
 import { siteRoutes } from "./http/site-routes";
 import { calendarHandler } from "./calendar/projection";
 import type { WorkflowDeps } from "./releases/workflow";
+import type { SlideImageFiles } from "./website/slide-images";
 import { taxonomyHandler } from "./taxonomy";
 
 export function createApp(deps: {
@@ -24,6 +26,10 @@ export function createApp(deps: {
   distribution?: DistributionClient;
   /** Uploaded release files (STORAGE_DIR); unset → the upload routes answer 503. */
   store?: ObjectStore;
+  /** Carousel and emergency pin images (spec addendum §6.4); unset → falls back to `store` (or,
+   * lacking that, a lazy local store under the OS temp dir — never touched unless a slide or
+   * pin image is actually saved, which no test lacking a real `store` does). */
+  slideFiles?: SlideImageFiles;
   /** Flickr (asset status); null/unset when FLICKR_API_KEY isn't configured. */
   flickr?: FlickrClient | null;
   /** Body `<asset>` embed normalisation on save (Task 7); unset → bodies are sanitised but not normalised. */
@@ -44,6 +50,8 @@ export function createApp(deps: {
   /** Plan 3d task 4: Project Blue Bridge's post-commit notify; unset → logs the subject only (see site-routes.ts). */
   blueBridgeNotify?: (subject: string, text: string) => Promise<void>;
 }): express.Express {
+  const slideFiles: SlideImageFiles = deps.slideFiles ?? { store: deps.store ?? localStore(tmpdir(), "/files/"), filesBase: deps.workflow.filesBase ?? "" };
+
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", 1); // one hop: OpenShift router / SiteGround nginx
@@ -69,6 +77,7 @@ export function createApp(deps: {
       timeZone: deps.workflow.timeZone,
       liveFeedDefaults: deps.liveFeedDefaults ?? { manifestUrl: "", m3uUrl: "" },
       store: deps.store,
+      slideFiles,
       siteUrl: deps.siteUrl ?? "",
       notify: deps.blueBridgeNotify ?? (async (subject) => void console.log(`[nrms] blue bridge: ${subject}`)),
     }),
