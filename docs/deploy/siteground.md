@@ -1341,6 +1341,22 @@ SELECT page_id, attempts FROM rebuild_queue WHERE attempts > 3;
 
 `npm run site:rebuild-all` (with `DATABASE_URL`, `NEWS_API_URL`, `OUTPUT_DIR` and `PUBLIC_SITE_URL` set for the site) queues every page without rendering anything itself — the queue drains on the stack's own ticks afterwards. The public site can also run its own standalone loop (`SYNC_INTERVAL_MS`, default 30000) when it isn't behind the stack's `/stack/tick`.
 
+### The change feed
+
+Each `site.sync` turn (every `/stack/tick`, or the standalone loop) reads the News API's change feed (`GET /api/v2/changes` — see "The change feed" under Phase 6b above) from a stored cursor and queues the pages each change affects, before draining the queue — events (`site.rebuild_requested`) are now just a doorbell that wakes a sync up sooner; the feed is what actually keeps the site current if an event is ever missed.
+
+- **The cursor:** one row, in the public site's own database — `SELECT change_cursor FROM site_state WHERE id = 1`. `NULL` means the builder has never synced; it reads to the News API's current head first, then queues a full rebuild (nothing from the changes themselves), so this deploy's first sync is a one-time full rebuild, not a 100,000-row catch-up.
+- **`410` (behind the News API's 90-day pruning watermark):** the builder queues a full rebuild and jumps its cursor straight to the response's `next`, in the same database transaction — so a site builder left stopped for more than 90 days also gets a full rebuild on its first sync back, same as a brand-new deploy.
+- **Credentials:** the builder authenticates its own `GET /api/v2/changes` calls with a service token carrying the `NewsApi.ChangesRead` role — never a staff session. On boxs.ca (the stack) it mints this from the shared local admin secret; on OpenShift (standalone) it uses Entra client credentials (`NEWS_API_TOKEN_URL`, `NEWS_API_CLIENT_ID`, `NEWS_API_CLIENT_SECRET`, `NEWS_API_SCOPE`, `SITE_`-prefixed on the stack). With neither configured the builder refuses to start.
+- **Failures:** a feed read that errors (the News API down, a bad token) is logged and the sync continues straight to draining whatever is already queued; the feed is retried on the next tick, so a transient outage never blocks pages already queued from rendering.
+
+To watch where the builder's cursor sits relative to the News API's own feed:
+
+```sql
+SELECT change_cursor FROM site_state WHERE id = 1; -- on the public site's database
+SELECT max(id) FROM changes;                       -- on the News API's database
+```
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

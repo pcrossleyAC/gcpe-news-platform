@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
@@ -75,5 +75,23 @@ describe("syncSite", () => {
     expect(releasePages.length).toBeGreaterThan(0);
     for (const [, content] of releasePages) expect(content as string).toContain("blue-bridge-banner");
     expect(storage.files.get("index.html")).toContain("blue-bridge-banner");
+  });
+
+  it("calls deps.feed, if given, before draining (events become a doorbell)", async () => {
+    const deps = setup();
+    const feed = vi.fn(async () => ({ changes: 0, resynced: false }));
+    await syncSite({ ...deps, feed });
+    expect(feed).toHaveBeenCalledOnce();
+  });
+
+  it("a feed error is logged; the turn still drains what is queued, not rejected", async () => {
+    const posts = new Map([["K1", post({ key: "K1" })]]);
+    const deps = setup(posts);
+    const feed = vi.fn(async () => {
+      throw new Error("News API changes 503");
+    });
+    const result = await syncSite({ ...deps, feed }, { pages: ["post:K1"] });
+    expect(result.rendered).toBeGreaterThan(0);
+    expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("releases/K1/index.html")).toBe(true);
   });
 });

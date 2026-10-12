@@ -700,6 +700,13 @@ describe("apps/stack", () => {
       const statuses = [a.status, b.status].sort();
       expect(statuses).toEqual([200, 202]);
     });
+
+    it("the site builder reads the News API change feed with its own service token", async () => {
+      const res = await fetch(`${instance.stackUrl}/stack/tick`, { method: "POST", headers: { authorization: `Bearer ${instance.tickToken}` } });
+      expect(res.status).toBe(200);
+      const { rows } = await instance.dbs.publicSite.pool.query("SELECT change_cursor FROM site_state WHERE id = 1");
+      expect(rows[0]?.change_cursor).not.toBeNull();
+    });
   });
 
   describe("/stack/errors", () => {

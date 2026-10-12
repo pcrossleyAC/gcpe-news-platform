@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { hashPassword, serviceTokenProvider } from "@gcpe/auth";
 import { parseEnv, type TenantConfig } from "@gcpe/config";
-import { defaultSiteAssetsDir, defaultTenantConfigPath, publicSiteEnvSchema, resolveTenantConfig } from "./env";
+import { defaultSiteAssetsDir, defaultTenantConfigPath, newsApiTokenOptions, publicSiteEnvSchema, resolveTenantConfig } from "./env";
 
 const BASE = {
   DATABASE_URL: "postgres://localhost:5432/public_site",
@@ -150,5 +151,81 @@ describe("SYNC_INTERVAL_MS", () => {
 
   it("rejects a value below the bound", () => {
     expect(() => parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SYNC_INTERVAL_MS: "999" } as unknown as NodeJS.ProcessEnv)).toThrow();
+  });
+});
+
+describe("NEWS_API_TOKEN_URL/CLIENT_ID/CLIENT_SECRET/SCOPE", () => {
+  const withSite = { ...BASE, SITE_NAME: "N", PUBLIC_SITE_URL: "https://n.example" };
+
+  it("are optional and unset by default", () => {
+    const env = parseEnv(publicSiteEnvSchema(undefined), withSite as unknown as NodeJS.ProcessEnv);
+    expect(env.NEWS_API_TOKEN_URL).toBeUndefined();
+    expect(env.NEWS_API_CLIENT_ID).toBeUndefined();
+    expect(env.NEWS_API_CLIENT_SECRET).toBeUndefined();
+    expect(env.NEWS_API_SCOPE).toBeUndefined();
+  });
+
+  it("an empty string is treated as unset", () => {
+    const env = parseEnv(
+      publicSiteEnvSchema(undefined),
+      { ...withSite, NEWS_API_TOKEN_URL: "", NEWS_API_CLIENT_ID: "", NEWS_API_CLIENT_SECRET: "", NEWS_API_SCOPE: "" } as unknown as NodeJS.ProcessEnv,
+    );
+    expect(env.NEWS_API_TOKEN_URL).toBeUndefined();
+    expect(env.NEWS_API_CLIENT_ID).toBeUndefined();
+    expect(env.NEWS_API_CLIENT_SECRET).toBeUndefined();
+    expect(env.NEWS_API_SCOPE).toBeUndefined();
+  });
+
+  it("are set from env when given", () => {
+    const env = parseEnv(
+      publicSiteEnvSchema(undefined),
+      { ...withSite, NEWS_API_TOKEN_URL: "https://entra.example/token", NEWS_API_CLIENT_ID: "cid", NEWS_API_CLIENT_SECRET: "secret", NEWS_API_SCOPE: "scope" } as unknown as NodeJS.ProcessEnv,
+    );
+    expect(env.NEWS_API_TOKEN_URL).toBe("https://entra.example/token");
+    expect(env.NEWS_API_CLIENT_ID).toBe("cid");
+    expect(env.NEWS_API_CLIENT_SECRET).toBe("secret");
+    expect(env.NEWS_API_SCOPE).toBe("scope");
+  });
+});
+
+describe("newsApiTokenOptions", () => {
+  const entraParsed = {
+    NEWS_API_TOKEN_URL: "https://entra.example/token",
+    NEWS_API_CLIENT_ID: "cid",
+    NEWS_API_CLIENT_SECRET: "secret",
+    NEWS_API_SCOPE: "scope",
+  };
+  const noEntraParsed = { NEWS_API_TOKEN_URL: undefined, NEWS_API_CLIENT_ID: undefined, NEWS_API_CLIENT_SECRET: undefined, NEWS_API_SCOPE: undefined };
+
+  it("with all four Entra fields: tokenUrl/clientId/clientSecret/scope set, subject site-builder, roles NewsApi.ChangesRead, envPrefix NEWS_API", () => {
+    const opts = newsApiTokenOptions(entraParsed, {});
+    expect(opts).toMatchObject({
+      tokenUrl: "https://entra.example/token",
+      clientId: "cid",
+      clientSecret: "secret",
+      scope: "scope",
+      subject: "site-builder",
+      roles: ["NewsApi.ChangesRead"],
+      envPrefix: "NEWS_API",
+    });
+  });
+
+  it("LOCAL_ADMIN_ENABLED=true with a valid hash and secret plus a shared ENTRA_TENANT_ID (no AUTH_AUDIENCE) sets local, without throwing", async () => {
+    const hash = await hashPassword("fixture-password-for-env-tests");
+    const env = {
+      LOCAL_ADMIN_ENABLED: "true",
+      LOCAL_ADMIN_PASSWORD_HASH: hash,
+      LOCAL_AUTH_SECRET: "x".repeat(32),
+      ENTRA_TENANT_ID: "shared-tenant",
+    };
+    const opts = newsApiTokenOptions(noEntraParsed, env);
+    expect(opts.local).not.toBeNull();
+    expect(opts.local?.secret).toBe("x".repeat(32));
+  });
+
+  it("with neither Entra nor local admin configured: local is null, and serviceTokenProvider throws mentioning NEWS_API_TOKEN_URL", () => {
+    const opts = newsApiTokenOptions(noEntraParsed, {});
+    expect(opts.local).toBeNull();
+    expect(() => serviceTokenProvider(opts)).toThrow(/NEWS_API_TOKEN_URL/);
   });
 });

@@ -1,11 +1,13 @@
 import { z } from "zod";
 import express from "express";
+import { serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createApp } from "./app";
 import { createSiteBuilder } from "./builder";
-import { publicSiteEnvSchema, resolveTenantConfig, tenantConfigPathSchema } from "./env";
+import { changesClient, syncChanges } from "./change-feed";
+import { newsApiTokenOptions, publicSiteEnvSchema, resolveTenantConfig, tenantConfigPathSchema } from "./env";
 import { every } from "./loop";
 import { newsApiClient } from "./news-api-client";
 import { postIndex } from "./post-index";
@@ -83,7 +85,11 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
 
   const index = postIndex(db);
   const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: parsed.SITE_ASSETS_DIR });
-  const syncDeps: SyncDeps = { db, builder, index, newsApi, storage, site, test, batch: parsed.SITE_REBUILD_BATCH };
+  // Throws here, at startup, if neither Entra client credentials nor a local admin secret is
+  // configured (ruling 8) — a misconfigured deployment fails fast rather than on the first tick.
+  const getToken = serviceTokenProvider(newsApiTokenOptions(parsed, env));
+  const changeFeed = changesClient({ baseUrl: parsed.NEWS_API_URL, getToken });
+  const syncDeps: SyncDeps = { db, builder, index, newsApi, storage, site, test, batch: parsed.SITE_REBUILD_BATCH, feed: () => syncChanges({ db, client: changeFeed, builder, index }) };
   const handler = createRebuildHandler(syncDeps);
 
   const app = createApp({ db, eventSecrets: parsed.EVENT_SECRETS, handler });
