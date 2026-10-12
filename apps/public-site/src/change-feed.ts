@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import type { SiteBuilder } from "./builder";
 import { readCursor, saveCursor } from "./cursor";
@@ -13,6 +14,32 @@ export interface ChangesClient { read(after: number, limit: number): Promise<Cha
 
 export const CATEGORY_CHANGE: Record<"ministry" | "sector" | "theme" | "tag", CategoryKind> = { ministry: "ministries", sector: "sectors", theme: "themes", tag: "tags" };
 
+/**
+ * A named error carrying only the HTTP status — never the URL, token or body. `safeErrorLabel`
+ * (`@gcpe/http-kit`) logs `.code` if present, else `.name`; this has no `.code`, so giving it a
+ * status-bearing `.name` is what makes a 401/403 (misconfigured credentials, needs a human)
+ * read differently in the log from a 503 (a transient outage, self-heals next tick) at the one
+ * place a feed failure is logged (`sync.ts`) — a plain `Error` would log as the bare word
+ * "Error" either way.
+ */
+export class ChangeFeedError extends Error {
+  constructor(status: number) {
+    super(`News API changes ${status}`);
+    this.name = `ChangeFeedError ${status}`;
+  }
+}
+
+/**
+ * The wire shape this client trusts. Deliberately doesn't restrict `kind` to the known
+ * `ChangeKind` union: a kind this build doesn't recognise is a forward-compatibility signal
+ * (`pagesForChange` below ignores it safely), not a malformed response. Anything that fails
+ * this — a missing field, the wrong type — *is* a malformed response, and is thrown the same
+ * way a network failure is, so the caller's cursor never advances past it.
+ */
+const changeRowSchema = z.object({ id: z.number(), kind: z.string(), key: z.string().nullable() });
+const changesBodySchema = z.object({ changes: z.array(changeRowSchema), next: z.number() });
+const resyncBodySchema = z.object({ next: z.number() });
+
 /** `GET /api/v2/changes` with the site builder's own service token (spec §5.4). */
 export function changesClient(opts: { baseUrl: string; getToken: () => Promise<string>; fetchImpl?: typeof fetch }): ChangesClient {
   const doFetch = opts.fetchImpl ?? fetch;
@@ -24,17 +51,22 @@ export function changesClient(opts: { baseUrl: string; getToken: () => Promise<s
         signal: AbortSignal.timeout(10_000),
       });
       if (res.status === 410) {
-        const body = (await res.json()) as { next: number };
-        return { resync: true, next: Number(body.next) };
+        const body = resyncBodySchema.parse(await res.json());
+        return { resync: true, next: body.next };
       }
-      if (!res.ok) throw new Error(`News API changes ${res.status}`);
-      const body = (await res.json()) as { changes: ChangeRow[]; next: number };
-      return { resync: false, changes: body.changes, next: Number(body.next) };
+      if (!res.ok) throw new ChangeFeedError(res.status);
+      const body = changesBodySchema.parse(await res.json());
+      return { resync: false, changes: body.changes as ChangeRow[], next: body.next };
     },
   };
 }
 
-/** spec §6.2's table, for one change. A category change's release pages are added by syncChanges. */
+/**
+ * spec §6.2's table, for one change. A category change's release pages are added by
+ * `syncChanges`. A `kind` outside the known union — a News API change kind this build predates
+ * — falls to `default` and is ignored (`[]`) rather than guessed at: no `category:undefined:…`
+ * page, no stray `sitemap:pages` rebuild.
+ */
 export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: string; priority: number }[] {
   const live = PRIORITY.liveAggregate;
   switch (c.kind) {
@@ -45,12 +77,17 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
     case "slides":
     case "resource_links":
       return [{ pageId: "home", priority: live }];
-    default: {
+    case "ministry":
+    case "sector":
+    case "theme":
+    case "tag": {
       const kind = CATEGORY_CHANGE[c.kind];
       const id = c.key ? categoryPageId(kind, c.key) : null;
       if (!id) return [];
       return [{ pageId: id, priority: live }, ...(kind === "ministries" ? [{ pageId: "ministries", priority: live }, { pageId: "search", priority: live }] : []), { pageId: "sitemap:pages", priority: live }];
     }
+    default:
+      return [];
   }
 }
 

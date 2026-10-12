@@ -94,4 +94,26 @@ describe("syncSite", () => {
     expect(result.rendered).toBeGreaterThan(0);
     expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("releases/K1/index.html")).toBe(true);
   });
+
+  // A storm of events (each its own syncSite call) must not turn into a
+  // storm of feed reads — concurrent callers share one in-flight call, plus at most one
+  // follow-up for whoever arrived while it was running.
+  it("single-flights deps.feed: 10 concurrent events cause at most 2 feed calls", async () => {
+    const deps = setup();
+    let calls = 0;
+    let releaseFirst!: () => void;
+    const firstGate = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    const feed = vi.fn(async () => {
+      calls++;
+      if (calls === 1) await firstGate;
+      return { changes: 0, resynced: false };
+    });
+    const runs = Array.from({ length: 10 }, () => syncSite({ ...deps, feed }));
+    releaseFirst();
+    await Promise.all(runs);
+    expect(calls).toBeLessThanOrEqual(2);
+    expect(feed).toHaveBeenCalledTimes(calls);
+  });
 });

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
@@ -9,7 +10,7 @@ import { readCursor } from "./cursor";
 import { postIndex, type PostIndex } from "./post-index";
 import { nextBatch, PRIORITY } from "./queue";
 import { syncSite } from "./sync";
-import { CATEGORY_CHANGE, changesClient, pagesForChange, syncChanges, type ChangeRow, type ChangesClient, type ChangesPage } from "./change-feed";
+import { CATEGORY_CHANGE, ChangeFeedError, changesClient, pagesForChange, syncChanges, type ChangeRow, type ChangesClient, type ChangesPage } from "./change-feed";
 
 describe("pagesForChange", () => {
   it.each([
@@ -29,6 +30,13 @@ describe("pagesForChange", () => {
 
   it("a post change takes the priority it's given", () => {
     expect(pagesForChange({ id: 1, kind: "post.upserted", key: "K1" }, 2)).toEqual([{ pageId: "post:K1", priority: 2 }]);
+  });
+
+  // A kind this build doesn't recognise (a forward-compatible News API addition)
+  // is ignored, not guessed at — no `category:undefined:<key>` page from blindly indexing
+  // CATEGORY_CHANGE with an unknown kind.
+  it("an unrecognised kind is ignored, not guessed at", () => {
+    expect(pagesForChange({ id: 99, kind: "widget_updated" as unknown as ChangeRow["kind"], key: "something" }, 0)).toEqual([]);
   });
 });
 
@@ -90,6 +98,50 @@ describe("changesClient", () => {
     } catch (err) {
       expect(String((err as Error).message)).not.toContain("secret-token-value");
     }
+  });
+
+  // safeErrorLabel (the one place a feed failure is logged, sync.ts) reads
+  // `.name` for a plain Error — which is always the bare word "Error", making a 401 and a 503
+  // indistinguishable in the log. ChangeFeedError's `.name` carries the status instead.
+  it("a 401 and a 503 are distinguishable via safeErrorLabel, and neither carries the token or the URL", async () => {
+    const errorFor = async (status: number): Promise<Error> => {
+      const fetchImpl = vi.fn(async () => fakeResponse({ status, body: { error: "nope" } }));
+      const client = changesClient({ baseUrl: "http://host/news-api", getToken, fetchImpl: fetchImpl as unknown as typeof fetch });
+      try {
+        await client.read(0, 500);
+        throw new Error("expected read() to reject");
+      } catch (err) {
+        return err as Error;
+      }
+    };
+    const err401 = await errorFor(401);
+    const err503 = await errorFor(503);
+    expect(err401).toBeInstanceOf(ChangeFeedError);
+    expect(safeErrorLabel(err401)).not.toBe(safeErrorLabel(err503));
+    for (const err of [err401, err503]) {
+      expect(safeErrorLabel(err)).not.toContain("secret-token-value");
+      expect(safeErrorLabel(err)).not.toContain("http://host");
+      expect(err.message).not.toContain("secret-token-value");
+      expect(err.message).not.toContain("http://host");
+    }
+  });
+
+  it("a malformed 200 body (changes not an array) rejects", async () => {
+    const fetchImpl = vi.fn(async () => fakeResponse({ status: 200, body: { changes: "not-an-array", next: 7 } }));
+    const client = changesClient({ baseUrl: "http://host", getToken, fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.read(0, 500)).rejects.toThrow();
+  });
+
+  it("a malformed 200 body (a change row missing id) rejects", async () => {
+    const fetchImpl = vi.fn(async () => fakeResponse({ status: 200, body: { changes: [{ kind: "home", key: null }], next: 7 } }));
+    const client = changesClient({ baseUrl: "http://host", getToken, fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.read(0, 500)).rejects.toThrow();
+  });
+
+  it("a malformed 410 body (missing next) rejects", async () => {
+    const fetchImpl = vi.fn(async () => fakeResponse({ status: 410, body: { resync: true } }));
+    const client = changesClient({ baseUrl: "http://host", getToken, fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.read(0, 500)).rejects.toThrow();
   });
 });
 
@@ -199,6 +251,40 @@ describe("syncChanges", () => {
     const result = await syncChanges({ db, client, builder, index });
     expect(await readCursor(db)).toBe(500);
     expect(result.resynced).toBe(true);
+  });
+
+  // A well-formed page containing one row with a kind this build doesn't
+  // recognise must not stall or corrupt the sync — it contributes no page (pagesForChange's
+  // own unit test above covers that in isolation), and the page's own `next` still advances
+  // the cursor, same as any other page.
+  it("an unrecognised kind in an otherwise well-formed page is ignored; the cursor still advances past it", async () => {
+    const { db, builder, index } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "widget_updated" as unknown as ChangeRow["kind"], key: "something" }, { id: 5, kind: "home", key: null }], next: 5 },
+      { resync: false, changes: [], next: 5 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    expect(await readCursor(db)).toBe(5);
+    const queued = await items();
+    expect(queued).toEqual(["home@1"]);
+    expect(queued.some((pageId) => pageId.includes("undefined"))).toBe(false);
+  });
+
+  // A malformed response (here, the client itself rejecting the way a real
+  // schema-validation failure would) is a feed failure like any other — the read throws before
+  // syncChanges ever opens the enqueue+cursor transaction for that page.
+  it("a malformed response leaves the cursor unchanged", async () => {
+    const { db, builder, index } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const client: ChangesClient = {
+      read: async () => {
+        throw new Error("malformed response");
+      },
+    };
+    await expect(syncChanges({ db, client, builder, index })).rejects.toThrow("malformed response");
+    expect(await readCursor(db)).toBe(3);
+    expect(await items()).toEqual([]);
   });
 
   it("enqueue and cursor commit together: a failing enqueue leaves the cursor where it was", async () => {
