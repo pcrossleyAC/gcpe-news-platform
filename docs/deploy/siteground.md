@@ -1310,9 +1310,36 @@ Every page the site serves under `<OUTPUT_DIR>`:
 
 The public site keeps a local index of every post it has rendered (`site_posts`, in the public site's own database) — its headline, date, month and category keys — so a post change can rebuild exactly the pages that listed it, both before and after the change (the News API has no "posts in a month" query). A post's publish, update or unpublish event rebuilds its own page, then its dependents (home, archive, sitemap, and its ministry/sector/theme/tag pages), reading the index row from before the change.
 
-A layout change (bumping `RENDER_CHROME_VERSION`) or a Blue Bridge/test-flag switch rebuilds every page on the site — every published post, then every aggregate page — on the next `site.rebuild_requested` event or at the next start. In 6c-1 this runs synchronously inside the event handler and the startup self-heal; fine for boxs.ca's volume (a few dozen posts), a few seconds at most. 6c-2 replaces it with a persistent queue before any larger site exists.
+A layout change (bumping `RENDER_CHROME_VERSION`) or a Blue Bridge/test-flag switch queues every page on the site — every published post, then every aggregate page — on the next `site.rebuild_requested` event or at the next start. See "The rebuild queue" below for how that queue drains.
 
-To force a full rebuild by hand, delete `<OUTPUT_DIR>/.site-state.json` and restart — the next startup finds no marker and rebuilds everything.
+To force a full rebuild by hand, delete `<OUTPUT_DIR>/.site-state.json` and restart — the next startup finds no marker and queues a rebuild of everything.
+
+### The rebuild queue
+
+Every page waiting to be rendered sits in `rebuild_queue` (the public site's own database), one row per page id, in four priorities — lowest drains first:
+
+| Priority | What |
+|---|---|
+| 0 (live post) | A post an event just published, changed or unpublished. |
+| 1 (live aggregate) | That post's dependents (home, archive, sitemap, its ministry/sector/theme/tag pages) — and, on a layout/Blue Bridge change, `static`, `home`, `ministries`, `archive` and `sitemap` themselves, so the home page shows the new chrome at once. |
+| 2 (bulk post) | Every post, newest first, queued by a full rebuild (a layout/Blue Bridge change, or `site:rebuild-all`). |
+| 3 (bulk aggregate) | Every other aggregate page (ministries/sectors/themes/tags, monthly archives and sitemaps), queued by the same full rebuild. |
+
+Each tick (`site.sync`, or the standalone loop) renders up to `SITE_SITE_REBUILD_BATCH` pages (default 200) off the front of the queue, lowest priority first, then whatever's oldest within that priority. A page that fails to render goes to the back of its own priority with its `attempts` count bumped, and is retried on a later run — it never blocks the pages behind it. On a large site (about 100,000 posts), a full rebuild's bulk posts drain at roughly `SITE_SITE_REBUILD_BATCH` pages a tick — about eight hours at one tick a minute (Q84).
+
+To watch a rebuild drain:
+
+```sql
+SELECT priority, count(*) FROM rebuild_queue GROUP BY 1;
+```
+
+To find pages that keep failing (and confirm they're still being retried, not stuck):
+
+```sql
+SELECT page_id, attempts FROM rebuild_queue WHERE attempts > 3;
+```
+
+`npm run site:rebuild-all` (with `DATABASE_URL`, `NEWS_API_URL`, `OUTPUT_DIR` and `PUBLIC_SITE_URL` set for the site) queues every page without rendering anything itself — the queue drains on the stack's own ticks afterwards. The public site can also run its own standalone loop (`SYNC_INTERVAL_MS`, default 30000) when it isn't behind the stack's `/stack/tick`.
 
 ## Troubleshooting
 

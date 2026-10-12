@@ -76,6 +76,7 @@ Status key: **Open** (no answer yet) · **Answered**.
 | Q81 | When the platform's site and the News API are on different hosts, how should the search page reach `/api/v2/search`? | The browser blocks cross-origin calls unless the API sends CORS headers; the stack serves both on one origin, production may not. | Same origin (a reverse proxy routes `/api/v2/search` on the site's host); `SEARCH_API_URL` points elsewhere only once CORS is decided. | 2026-10-11 |
 | Q82 | Should ministry, sector, theme and tag pages have their own monthly archives, or is the site-wide archive plus filtered search enough? | §6.1 says category pages link to "monthly archives"; §6.2 only rebuilds one site-wide month archive per post. | Site-wide archive, plus search filtered by ministry or sector. | 2026-10-11 |
 | Q83 | Is it acceptable that a release page's "Related news" is fixed at its last rebuild? | Related lists change when other posts are embedded, which doesn't trigger a rebuild; a page can show a related post that was later unpublished until something rebuilds it. | Yes: unpublished targets 404 and the page refreshes on its next rebuild; a client-side fetch is the alternative. | 2026-10-11 |
+| Q84 | Is a Blue Bridge switch that reaches older release pages over hours (about eight at 100,000 posts and one tick a minute) acceptable on the platform's own site? | The home page and every new page show the banner at once; older pages lag. | Yes for the platform's site; BC's webapp is unaffected (D1). A larger batch or a faster tick shortens it. | 2026-10-11 |
 
 ## Answered
 

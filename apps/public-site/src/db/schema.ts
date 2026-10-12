@@ -1,4 +1,4 @@
-import { index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { bigint, bigserial, check, index, integer, pgTable, smallint, text, timestamp } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 export * from "@gcpe/events/tables";
 
@@ -22,4 +22,32 @@ export const sitePosts = pgTable(
     indexedAt: timestamp("indexed_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
   (t) => [index("site_posts_month_idx").on(t.month, t.publishedAt), index("site_posts_categories_idx").using("gin", t.categories)],
+);
+
+/**
+ * spec §6.2: pages waiting to be rendered. One row per page; enqueueing again keeps the lower
+ * priority and takes a fresh seq, which moves the page to the back of its priority and tells a
+ * render already in progress that it must not delete the row (queue.ts).
+ */
+export const rebuildQueue = pgTable(
+  "rebuild_queue",
+  {
+    pageId: text("page_id").primaryKey(),
+    priority: smallint("priority").notNull(),
+    seq: bigserial("seq", { mode: "number" }).notNull(),
+    queuedAt: timestamp("queued_at", { withTimezone: true }).notNull().default(sql`now()`),
+    attempts: integer("attempts").notNull().default(0),
+  },
+  (t) => [index("rebuild_queue_order_idx").on(t.priority, t.seq)],
+);
+
+/** One row (id 1): the change-feed cursor (spec §6.2), null until the first sync. */
+export const siteState = pgTable(
+  "site_state",
+  {
+    id: integer("id").primaryKey(),
+    changeCursor: bigint("change_cursor", { mode: "number" }),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => [check("site_state_single_row", sql`${t.id} = 1`)],
 );

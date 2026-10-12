@@ -37,11 +37,11 @@ describe("startPublicSite", () => {
     await Promise.all([...handle.closeBeforeServer, ...handle.closers].map((c) => c.close()));
   });
 
-  it("has no workers and no closeBeforeServer closers (Public Site has no background loops)", async () => {
+  it("has a sync worker and a background-loops closer", async () => {
     const handle = await startPublicSite(await testEnv());
-    expect(Object.keys(handle.workers)).toEqual([]);
-    expect(handle.closeBeforeServer).toEqual([]);
-    await Promise.all(handle.closers.map((c) => c.close()));
+    expect(Object.keys(handle.workers)).toEqual(["sync"]);
+    expect(handle.closeBeforeServer.map((c) => c.name)).toEqual(["background loops"]);
+    await Promise.all([...handle.closeBeforeServer, ...handle.closers].map((c) => c.close()));
   });
 
   it("closers close cleanly, with or without startLoops() having run", async () => {

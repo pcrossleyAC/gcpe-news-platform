@@ -6,14 +6,15 @@ import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createApp } from "./app";
 import { createSiteBuilder } from "./builder";
 import { publicSiteEnvSchema, resolveTenantConfig, tenantConfigPathSchema } from "./env";
+import { every } from "./loop";
 import { newsApiClient } from "./news-api-client";
 import { postIndex } from "./post-index";
-import { createRebuildHandler } from "./rebuild";
 import type { SiteInfo } from "./render";
 import { selfHeal } from "./self-heal";
 import { isTestSite } from "./site-env";
 import { logoFor } from "./static-pages";
 import { fsStorage } from "./storage";
+import { createRebuildHandler, syncSite, type SyncDeps } from "./sync";
 import { DEFAULT_THEME } from "./theme-css";
 
 export interface AppHandle {
@@ -21,14 +22,15 @@ export interface AppHandle {
   /** Parsed PORT (same env var/default as before) — main.ts listens on this; nothing new to
    * parse there. */
   port: number;
-  /** Public Site has no background loops; empty. */
+  /** `sync`: queues and drains up to SITE_REBUILD_BATCH pages (spec §6.2) — what the stack's
+   * `site.sync` tick step runs (apps/stack/src/stack.ts). */
   workers: Record<string, () => Promise<unknown>>;
-  /** No-op: nothing to start. Kept for a uniform AppHandle shape across apps. */
+  /** Starts the standalone `site.sync` loop (main.ts), every SYNC_INTERVAL_MS. A no-op in the
+   * stack, which ticks `workers.sync` itself instead. */
   startLoops(): void;
-  /** Closers that must run *before* the http server closes. Public Site has none — always
-   * empty — but the field exists on every app's AppHandle so main.ts (and the stack) can
-   * build the shutdown order uniformly: `[...closeBeforeServer, httpServer, ...closers]`,
-   * with no app-specific special-casing. */
+  /** Closers that must run *before* the http server closes. Stops the standalone loop (if
+   * `startLoops()` ran) before anything else shuts down — see `closers`'s doc comment for the
+   * order's rationale. */
   closeBeforeServer: Closer[];
   /** The rest of today's shutdown order, run *after* the http server closes, excluding the
    * http server itself (main.ts owns that). */
@@ -81,20 +83,23 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
 
   const index = postIndex(db);
   const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: parsed.SITE_ASSETS_DIR });
-  const handler = createRebuildHandler({ builder, newsApi, storage, site, test });
+  const syncDeps: SyncDeps = { db, builder, index, newsApi, storage, site, test, batch: parsed.SITE_REBUILD_BATCH };
+  const handler = createRebuildHandler(syncDeps);
 
   const app = createApp({ db, eventSecrets: parsed.EVENT_SECRETS, handler });
+
+  let stop: (() => void) | undefined;
 
   return {
     app,
     port: parsed.PORT,
-    workers: {},
+    workers: { sync: () => syncSite(syncDeps) },
     startLoops() {
-      // No background loops.
+      stop = every(parsed.SYNC_INTERVAL_MS, "site.sync", () => syncSite(syncDeps));
     },
-    closeBeforeServer: [],
+    closeBeforeServer: [{ name: "background loops", close: async () => stop?.() }],
     closers: [{ name: "db pool", close: () => pool.end() }],
     // Fix round 1: not called here — see the AppHandle.selfHeal doc comment above for why.
-    selfHeal: () => selfHeal({ builder, newsApi, storage, site, test }),
+    selfHeal: () => selfHeal(syncDeps),
   };
 }

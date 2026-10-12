@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "db:generate": "drizzle-kit generate",
-    "build": "node ../../scripts/build-app.mjs apps/public-site"
+    "build": "node ../../scripts/build-app.mjs apps/public-site",
+    "site:rebuild-all": "tsx src/cli/rebuild-all.ts"
   },
   "dependencies": {
     "@gcpe/config": "0.0.0",

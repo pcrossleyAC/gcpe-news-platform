@@ -491,6 +491,10 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         { name: "news-api.embed", run: worker(newsApi, "embed") },
         // Deletes change-feed rows older than 90 days (spec §5.4); cheap when there are none.
         { name: "news-api.changes-prune", run: worker(newsApi, "changesPrune") },
+        // Reads the change feed into the site's rebuild queue and renders up to
+        // SITE_SITE_REBUILD_BATCH pages (spec §6.2). After the News API's own steps, so this
+        // tick's changes are already in the feed.
+        { name: "site.sync", run: worker(siteBuilder, "sync") },
         // The nightly Media Hub sync before the digest: an email address or flag it fixes up
         // this tick should already be current by the time the digest (and anything else this
         // tick does) looks at that subscriber.

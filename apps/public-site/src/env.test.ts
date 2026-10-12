@@ -115,3 +115,40 @@ describe("SITE_ASSETS_DIR", () => {
     expect(env.SITE_ASSETS_DIR).toBe("/custom/assets");
   });
 });
+
+describe("SITE_REBUILD_BATCH", () => {
+  const withSite = { ...BASE, SITE_NAME: "N", PUBLIC_SITE_URL: "https://n.example" };
+
+  it("defaults to 200", () => {
+    const env = parseEnv(publicSiteEnvSchema(undefined), withSite as unknown as NodeJS.ProcessEnv);
+    expect(env.SITE_REBUILD_BATCH).toBe(200);
+  });
+
+  it("accepts the bounds (1 and 1000)", () => {
+    expect(parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SITE_REBUILD_BATCH: "1" } as unknown as NodeJS.ProcessEnv).SITE_REBUILD_BATCH).toBe(1);
+    expect(parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SITE_REBUILD_BATCH: "1000" } as unknown as NodeJS.ProcessEnv).SITE_REBUILD_BATCH).toBe(1000);
+  });
+
+  it("rejects a value outside the bounds", () => {
+    expect(() => parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SITE_REBUILD_BATCH: "0" } as unknown as NodeJS.ProcessEnv)).toThrow();
+    expect(() => parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SITE_REBUILD_BATCH: "1001" } as unknown as NodeJS.ProcessEnv)).toThrow();
+  });
+});
+
+describe("SYNC_INTERVAL_MS", () => {
+  const withSite = { ...BASE, SITE_NAME: "N", PUBLIC_SITE_URL: "https://n.example" };
+
+  it("defaults to 30000", () => {
+    const env = parseEnv(publicSiteEnvSchema(undefined), withSite as unknown as NodeJS.ProcessEnv);
+    expect(env.SYNC_INTERVAL_MS).toBe(30_000);
+  });
+
+  it("accepts the lower bound (1000)", () => {
+    const env = parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SYNC_INTERVAL_MS: "1000" } as unknown as NodeJS.ProcessEnv);
+    expect(env.SYNC_INTERVAL_MS).toBe(1000);
+  });
+
+  it("rejects a value below the bound", () => {
+    expect(() => parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SYNC_INTERVAL_MS: "999" } as unknown as NodeJS.ProcessEnv)).toThrow();
+  });
+});

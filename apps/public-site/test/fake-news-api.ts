@@ -29,6 +29,6 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): NewsApiClient &
     slides: async () => [],
     resourceLinks: async () => [],
     related: async () => [],
-    postKeys: async (kind) => [...posts.values()].filter((p) => p.kind === kind).map((p) => p.key),
+    postKeys: async (kind) => published().filter((p) => p.kind === kind).map((p) => p.key),
   };
 }

@@ -1,7 +1,5 @@
-import type { EventHandler } from "@gcpe/events";
-import type { SiteBuilder } from "./builder";
 import type { NewsApiClient } from "./news-api-client";
-import type { PageOptions, SiteInfo } from "./render";
+import type { SiteInfo } from "./render";
 import { blueBridgeBanner, isGranvilleOn } from "./site-env";
 import type { SiteStorage } from "./storage";
 
@@ -76,9 +74,9 @@ export function stateAndBanner(granville: string | null, test: boolean, now: Dat
 /**
  * A tolerant `home()` fetch: `null` on failure (logged here), never throws. Used only where a
  * News API outage must not fail the caller outright — selfHeal.ts's startup path.
- * `createRebuildHandler` below does *not* use this — a `home()` failure there propagates, like
- * any other News API failure, so the event receiver 500s and the dispatcher retries instead of
- * silently publishing a stale/missing banner.
+ * `createRebuildHandler`/`syncSite` (`sync.ts`) do *not* use this — a `home()` failure there
+ * propagates, like any other News API failure, so the event receiver 500s and the dispatcher
+ * retries instead of silently publishing a stale/missing banner.
  */
 export async function tryHome(newsApi: NewsApiClient): Promise<{ granville: string | null } | null> {
   try {
@@ -96,19 +94,20 @@ export async function tryHome(newsApi: NewsApiClient): Promise<{ granville: stri
  * independently, at different times), and whichever wrote the marker last "wins", leaving some
  * pages with the wrong banner until the next state change.
  *
- * This serialises every one of those turns — the whole body of `createRebuildHandler` below and
- * of `selfHeal` — through one promise chain *per `SiteStorage` instance*. The public site is a
- * single process with exactly one `SiteStorage` (its `OUTPUT_DIR`), so a module-level map keyed
- * by that instance is enough; there is no cross-process coordination to do. Each turn's own
- * `home()`/`test` read happens *inside* `turn()`, once its slot in the queue actually starts —
- * never before `enqueueSiteWrite` is called — so two overlapping callers can never race: the
- * second's `turn()` doesn't even begin (let alone call `home()`) until the first's has fully
- * settled.
+ * This serialises every one of those turns — the whole body of `syncSite` (`sync.ts`, which
+ * `createRebuildHandler` calls) and of `selfHeal` — through one promise chain *per `SiteStorage`
+ * instance*. The public site is a single process with exactly one `SiteStorage` (its
+ * `OUTPUT_DIR`), so a module-level map keyed by that instance is enough; there is no
+ * cross-process coordination to do. Each turn's own `home()`/`test` read happens *inside*
+ * `turn()`, once its slot in the queue actually starts — never before `enqueueSiteWrite` is
+ * called — so two overlapping callers can never race: the second's `turn()` doesn't even begin
+ * (let alone call `home()`) until the first's has fully settled.
  *
  * A turn that rejects never wedges the queue: the chain variable itself is reset to an
  * already-settled promise after every turn regardless of outcome, so the *next* queued turn
  * still runs — but `enqueueSiteWrite`'s own return value still rejects with that turn's error,
- * so `createRebuildHandler` can still let it propagate and `selfHeal` can still catch and log it.
+ * so `syncSite`/`createRebuildHandler` can still let it propagate and `selfHeal` can still catch
+ * and log it.
  */
 const siteWriteQueues = new WeakMap<SiteStorage, Promise<unknown>>();
 
@@ -127,21 +126,4 @@ export function enqueueSiteWrite<T>(storage: SiteStorage, turn: () => Promise<T>
     ),
   );
   return result;
-}
-
-export function createRebuildHandler(deps: { builder: SiteBuilder; newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo; test: boolean }): EventHandler {
-  return (_tx, event) =>
-    enqueueSiteWrite(deps.storage, async () => {
-      const { pages } = event.data as { pages: string[] };
-      // A home() failure propagates: the receiver answers 500 and the dispatcher retries.
-      const { granville } = await deps.newsApi.home();
-      const { state, banner } = stateAndBanner(granville, deps.test, new Date());
-      const opts: PageOptions = { test: deps.test, banner };
-      if (await chromeChanged(deps.storage, state, deps.site)) {
-        const r = await deps.builder.buildAll(opts);
-        if (r.failures === 0) await writeSiteState(deps.storage, state, deps.site);
-        return;
-      }
-      await deps.builder.rebuild(pages, opts);
-    });
 }

@@ -53,5 +53,9 @@ export function publicSiteEnvSchema(tenantConfig: TenantConfig | undefined) {
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
     TENANT_CONFIG: tenantConfigPathSchema,
     SITE_ASSETS_DIR: z.string().min(1).default(defaultSiteAssetsDir),
+    /** Pages drained per tick/run (spec §6.2). */
+    SITE_REBUILD_BATCH: z.coerce.number().int().min(1).max(1000).default(200),
+    /** The standalone loop's interval (main.ts); the stack ticks instead (apps/stack/src/stack.ts). */
+    SYNC_INTERVAL_MS: z.coerce.number().int().min(1000).default(30_000),
   });
 }

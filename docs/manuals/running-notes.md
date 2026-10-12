@@ -628,3 +628,5 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Viewer** — The public site has a page for every ministry (with its minister and media contacts), sector, theme and tag, each with its latest 20 posts and an RSS feed (`feed.xml`). Older news is in the archive, one page per month.
 - **Site editor** — The home page shows the Top and Featured posts, the carousel's slides as a list (they no longer rotate), the latest 20 posts and the resource links. Slide images arrive in a later update.
 - **Operations** — The site rebuilds every page a post appears on when it's published, changed or unpublished. A deploy that changes the page layout rebuilds the whole site once, on start.
+- **Operations** — Site rebuilds now go through a queue in the site's database and run on each tick (200 pages at a time). A publish, change or unpublish shows on the site at the next tick. A layout change or a Blue Bridge switch updates the home page at once and older pages over the following ticks, newest first.
+- **Developer** — `npm run site:rebuild-all` (with the site's DATABASE_URL, NEWS_API_URL, OUTPUT_DIR and PUBLIC_SITE_URL) queues every page.

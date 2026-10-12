@@ -24,8 +24,8 @@ import { createApp as createPublicSiteApp } from "../../apps/public-site/src/app
 import { createSiteBuilder } from "../../apps/public-site/src/builder";
 import { newsApiClient } from "../../apps/public-site/src/news-api-client";
 import { postIndex } from "../../apps/public-site/src/post-index";
-import { createRebuildHandler } from "../../apps/public-site/src/rebuild";
 import { fsStorage } from "../../apps/public-site/src/storage";
+import { createRebuildHandler } from "../../apps/public-site/src/sync";
 import { createPublicSiteTestDb } from "../../apps/public-site/test/helpers";
 
 import { createApp as createNodApp } from "../../apps/nod/src/app";
@@ -160,12 +160,13 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
       const siteNewsApi = newsApiClient(newsApi.url);
       const siteStorage = fsStorage(outputDir);
       const site = { name: "BC Gov News (E2E)", baseUrl: publicSite.url };
-      const builder = createSiteBuilder({ newsApi: siteNewsApi, storage: siteStorage, index: postIndex(publicSiteDb.db), site, assetsDir: null });
+      const siteIndex = postIndex(publicSiteDb.db);
+      const builder = createSiteBuilder({ newsApi: siteNewsApi, storage: siteStorage, index: siteIndex, site, assetsDir: null });
       publicSite.attach(
         createPublicSiteApp({
           db: publicSiteDb.db,
           eventSecrets: { "news-api": SECRET_NEWS_API_TO_PUBLIC_SITE },
-          handler: createRebuildHandler({ builder, newsApi: siteNewsApi, storage: siteStorage, site, test: false }),
+          handler: createRebuildHandler({ db: publicSiteDb.db, builder, index: siteIndex, newsApi: siteNewsApi, storage: siteStorage, site, test: false, batch: 200 }),
         }),
       );
     }
