@@ -4,6 +4,7 @@ import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
 import { post, site } from "../test/fixtures";
+import type { SiteBuilder } from "./builder";
 import { createSiteBuilder } from "./builder";
 import { drainQueue } from "./drain";
 import { postIndex } from "./post-index";
@@ -71,5 +72,39 @@ describe("drainQueue", () => {
     await drainQueue({ db: tdb.db, builder }, { budget: 10, pageOpts: {} });
     expect(await queueDepth(tdb.db)).toBe(0);
     expect(storage.files.size).toBe(0);
+  });
+
+  it("two concurrent drains never render the same page twice: the second is skipped", async () => {
+    const { api, builder } = setup();
+    for (let i = 0; i < 5; i++) api.posts.set(`K${i}`, post({ key: `K${i}` }));
+    await enqueuePages(tdb.db, [...api.posts.keys()].map((k) => ({ pageId: `post:${k}`, priority: PRIORITY.bulkPost })));
+
+    // Slow enough that the second drainQueue call's own pg_try_advisory_lock attempt lands
+    // while the first is still holding DRAIN_LOCK, instead of the two happening to run back to
+    // back on an in-memory store that renders instantly.
+    const renderedIds: string[] = [];
+    const slow: SiteBuilder = {
+      ...builder,
+      async renderPage(pageId, opts, run) {
+        renderedIds.push(pageId);
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        return builder.renderPage(pageId, opts, run);
+      },
+    };
+
+    const [a, b] = await Promise.all([
+      drainQueue({ db: tdb.db, builder: slow }, { budget: 200, pageOpts: {} }),
+      drainQueue({ db: tdb.db, builder: slow }, { budget: 200, pageOpts: {} }),
+    ]);
+
+    const postRenders = renderedIds.filter((id) => id.startsWith("post:K")).sort();
+    expect(postRenders).toEqual(["post:K0", "post:K1", "post:K2", "post:K3", "post:K4"]); // each exactly once
+    expect(new Set(renderedIds).size).toBe(renderedIds.length); // no page (post or dependent) rendered twice
+
+    const results = [a, b];
+    expect(results.filter((r) => r.skipped === true)).toHaveLength(1);
+    const winner = results.find((r) => !r.skipped)!;
+    expect(winner.rendered).toBe(renderedIds.length);
+    expect(await queueDepth(tdb.db)).toBe(0);
   });
 });

@@ -29,6 +29,9 @@ export interface SyncResult {
   rendered: number;
   deferred: number;
   remaining: number;
+  /** Another drain (another replica, or the tick and the standalone loop overlapping) already
+   * held drain.ts's DRAIN_LOCK; this turn rendered nothing. */
+  skipped?: boolean;
 }
 
 const livePriority = (pageId: string) => (pageId.startsWith("post:") ? PRIORITY.livePost : PRIORITY.liveAggregate);
