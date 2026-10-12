@@ -1,3 +1,4 @@
+import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import type { MinistryDto, PostDto } from "./dto";
 import { renderRssFeed } from "./feeds";
@@ -8,7 +9,7 @@ import { LATEST_COUNT } from "./pages/format";
 import { renderHomePage } from "./pages/home";
 import { renderReleasePage } from "./pages/release";
 import { renderSearchPage } from "./pages/search";
-import { indexEntryOf, membershipOfEntry, type PostIndex } from "./post-index";
+import { indexEntryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
 import { categoryPageId, CATEGORY_KINDS, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, type CategoryKind, type PageId } from "./site-paths";
@@ -25,8 +26,15 @@ export interface RunCache {
 }
 
 export interface SiteBuilder {
-  /** Renders (or removes) one page; returns the ids that now need rebuilding because of it. */
-  renderPage(pageId: string, opts: PageOptions, run?: RunCache): Promise<string[]>;
+  /**
+   * Renders (or removes) one page; returns the ids that now need rebuilding because of it. For a
+   * post page, `tx` (if given) is where the `site_posts` index row is written (M1): the caller
+   * can then enqueue those dependents and complete the queue row in that same transaction, so a
+   * failure after rendering rolls the index write back too, instead of leaving it committed
+   * ahead of a retry that would otherwise compute dependents from the already-updated row.
+   * Absent, the index write goes straight to the pool, as it always did.
+   */
+  renderPage(pageId: string, opts: PageOptions, run?: RunCache, tx?: DbOrTx): Promise<string[]>;
   /** Renders the given pages, then their dependents. The first failure is logged and rethrown. */
   rebuild(pageIds: string[], opts: PageOptions): Promise<void>;
   /** Every post page, then every aggregate page (spec §6.2's "templates change" row). */
@@ -49,13 +57,17 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return { top: pick(top), feature: pick(feature) };
   };
 
-  async function renderPost(key: string, opts: PageOptions, run: RunCache): Promise<string[]> {
+  async function renderPost(key: string, opts: PageOptions, run: RunCache, tx?: DbOrTx): Promise<string[]> {
     const p: PageId = { type: "post", key };
+    // The write below goes through `tx` when the caller gave one (M1), so a transaction that
+    // fails after this point rolls the write back too — the next attempt's own `index.get`
+    // then reads the same `before` this attempt did, not a half-applied one.
+    const writeIndex = tx ? postIndex(tx) : index;
     const before = await index.get(key);
     const post = await newsApi.getPost(key);
     if (!post) {
       await removeAll(p);
-      await index.remove(key);
+      await writeIndex.remove(key);
       return dependentPages(before ? membershipOfEntry(before) : null, null);
     }
     // The output path always uses the requested key; a News API key that differs other than by
@@ -73,8 +85,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     const ministryNames = new Map((await ministries(run)).map((m) => [m.key.toLowerCase(), m.name]));
     await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { ministryNames, related }));
     const entry = indexEntryOf(key, post);
-    if (entry) await index.put(entry);
-    else await index.remove(key);
+    if (entry) await writeIndex.put(entry);
+    else await writeIndex.remove(key);
     return dependentPages(before ? membershipOfEntry(before) : null, membershipOf(post));
   }
 
@@ -117,7 +129,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
   }
 
   const builder: SiteBuilder = {
-    async renderPage(pageId, opts, run = {}) {
+    async renderPage(pageId, opts, run = {}, tx) {
       const p = parsePageId(pageId);
       if (!p) {
         console.warn(`[public-site] skipping unknown page id ${JSON.stringify(pageId)}`);
@@ -125,7 +137,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       }
       switch (p.type) {
         case "post":
-          return renderPost(p.key, opts, run);
+          return renderPost(p.key, opts, run, tx);
         case "home": {
           const home = await newsApi.home();
           const [f, latest, slides, links] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), newsApi.resourceLinks()]);

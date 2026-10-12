@@ -48,8 +48,14 @@ async function drainLocked(deps: { db: Db; builder: SiteBuilder }, opts: { budge
     if (batch.length === 0) break;
     for (const item of batch) {
       try {
-        const dependents = await deps.builder.renderPage(item.pageId, opts.pageOpts, run);
+        // M1: the render (whose post-page branch writes `site_posts`), the dependent enqueue
+        // and completing the queue row all share this one transaction, so a failure after
+        // rendering rolls the index write back too — the retry this page gets on a later run
+        // then recomputes dependents from the same `before` state as this attempt did, not a
+        // half-applied one. `drainLocked`'s own loop is sequential (no concurrent items), so
+        // this doesn't reproduce I1: at most one of these transactions is ever open at once.
         await deps.db.transaction(async (tx) => {
+          const dependents = await deps.builder.renderPage(item.pageId, opts.pageOpts, run, tx);
           if (dependents.length) await enqueuePages(tx, dependents.map((pageId) => ({ pageId, priority: dependentPriority(item.priority) })));
           await completePage(tx, item);
         });

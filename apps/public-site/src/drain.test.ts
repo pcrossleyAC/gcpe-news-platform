@@ -107,4 +107,37 @@ describe("drainQueue", () => {
     expect(winner.rendered).toBe(renderedIds.length);
     expect(await queueDepth(tdb.db)).toBe(0);
   });
+
+  // M1: the post-page index write (builder.ts's renderPost) now goes through this transaction
+  // too, so a failure here rolls both back together — a later retry's own `before` read is
+  // still the true old state, not one a failed-but-already-committed write had moved on from.
+  it("a failure after rendering a post rolls its index write back too, so a later retry still rebuilds the ministry page it left", async () => {
+    const { storage, api, builder } = setup();
+    await postIndex(tdb.db).put({ key: "K1", kind: "releases", headline: "Old headline", summary: null, publishDate: "2026-10-01T09:00:00-07:00", month: "2026-10", categories: ["ministries:health"] });
+    api.posts.set("K1", post({ key: "K1", ministryKeys: ["finance"], tagKeys: [] }));
+    await enqueuePages(tdb.db, [{ pageId: "post:K1", priority: 0 }]);
+
+    let failOnce = true;
+    const faulty: SiteBuilder = {
+      ...builder,
+      async renderPage(pageId, opts, run, tx) {
+        const dependents = await builder.renderPage(pageId, opts, run, tx);
+        if (pageId === "post:K1" && failOnce) {
+          failOnce = false;
+          throw new Error("boom after the index write, before this transaction commits");
+        }
+        return dependents;
+      },
+    };
+
+    await drainQueue({ db: tdb.db, builder: faulty }, { budget: 200, pageOpts: {} });
+    // Without M1's fix, this write would already be visible — rolled back, it still reads Health.
+    expect((await postIndex(tdb.db).get("K1"))?.categories).toEqual(["ministries:health"]);
+
+    const r = await drainQueue({ db: tdb.db, builder: faulty }, { budget: 200, pageOpts: {} });
+    expect(r.remaining).toBe(0);
+    expect(storage.files.has("ministries/health/index.html")).toBe(true); // the ministry it left
+    expect(storage.files.has("ministries/finance/index.html")).toBe(true); // the ministry it joined
+    expect((await postIndex(tdb.db).get("K1"))?.categories).toEqual(["ministries:finance"]);
+  });
 });
