@@ -27,3 +27,57 @@ export interface PostDto {
   azureAssets?: AssetDto[] | null;
   azureTranslations?: AssetDto[] | null;
 }
+
+export interface HomeDto {
+  granville: string | null;
+  topPostKey: string | null;
+  featurePostKey: string | null;
+}
+
+export interface MinistryDto {
+  key: string;
+  name: string;
+  isActive: boolean;
+  ministerName: string | null;
+  ministryUrl: string | null;
+  contactUser: unknown;
+  secondContactUser: unknown;
+  weekendContactNumber: string | null;
+  topPostKey: string | null;
+  featurePostKey: string | null;
+}
+
+export interface MinisterDto {
+  headline: string | null;
+  summary: string | null;
+  details: string | null;
+  photo: string | null;
+}
+
+export interface CategoryDto {
+  key: string;
+  kind: string;
+  name: string;
+  isActive: boolean;
+  topPostKey: string | null;
+  featurePostKey: string | null;
+}
+
+export interface SlideDto {
+  key: string;
+  headline: string | null;
+  summary: string | null;
+  actionUri: string | null;
+  actionLabel: string | null;
+}
+
+export interface ResourceLinkDto {
+  uri: string;
+  key: string;
+}
+
+export interface RelatedPost {
+  key: string;
+  headline: string;
+  publishDate: string;
+}

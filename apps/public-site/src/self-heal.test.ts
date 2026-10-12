@@ -5,10 +5,25 @@ import { afterAll, describe, expect, it, vi } from "vitest";
 import type { Tx } from "@gcpe/db-kit";
 import type { EventEnvelope } from "@gcpe/events";
 import type { NewsApiClient } from "./news-api-client";
+import type { HomeDto } from "./dto";
 import type { PostDto } from "./render";
 import { createRebuildHandler, RENDER_CHROME_VERSION } from "./rebuild";
 import { selfHeal } from "./self-heal";
 import { fsStorage } from "./storage";
+
+const EXTRA_NEWS_API: Omit<NewsApiClient, "getPost" | "latestHome" | "home"> = {
+  latest: async () => [],
+  postsByKeys: async () => [],
+  ministries: async () => [],
+  ministry: async () => null,
+  minister: async () => null,
+  categories: async () => [],
+  category: async () => null,
+  slides: async () => [],
+  resourceLinks: async () => [],
+  related: async () => [],
+  postKeys: async () => [],
+};
 
 const site = { name: "BC Gov News", baseUrl: "https://news.example" };
 
@@ -33,10 +48,10 @@ describe("selfHeal", () => {
     const root = await mkdtemp(join(tmpdir(), "self-heal-"));
     made.push(root);
     const storage = fsStorage(root);
-    const newsApi: NewsApiClient = {
+    const newsApi: NewsApiClient = { ...EXTRA_NEWS_API,
       getPost: vi.fn(async () => null),
       latestHome: vi.fn(async () => [postA, postB]),
-      home: vi.fn(async () => ({ granville: null })),
+      home: vi.fn(async () => ({ granville: null, topPostKey: null, featurePostKey: null })),
     };
 
     const result = await selfHeal({ newsApi, storage, site, test: false });
@@ -59,10 +74,10 @@ describe("selfHeal", () => {
       key: `K${i + 1}`,
       documents: [{ ...postA.documents[0]!, headline: `Headline ${i + 1}` }],
     }));
-    const newsApi: NewsApiClient = {
+    const newsApi: NewsApiClient = { ...EXTRA_NEWS_API,
       getPost: vi.fn(async () => null),
       latestHome: vi.fn(async () => many),
-      home: vi.fn(async () => ({ granville: null })),
+      home: vi.fn(async () => ({ granville: null, topPostKey: null, featurePostKey: null })),
     };
 
     const result = await selfHeal({ newsApi, storage, site, test: false });
@@ -80,12 +95,12 @@ describe("selfHeal", () => {
     const root = await mkdtemp(join(tmpdir(), "self-heal-"));
     made.push(root);
     const storage = fsStorage(root);
-    const newsApi: NewsApiClient = {
+    const newsApi: NewsApiClient = { ...EXTRA_NEWS_API,
       getPost: vi.fn(async () => null),
       latestHome: vi.fn(async () => {
         throw new Error("News API down");
       }),
-      home: vi.fn(async () => ({ granville: null })),
+      home: vi.fn(async () => ({ granville: null, topPostKey: null, featurePostKey: null })),
     };
     await expect(selfHeal({ newsApi, storage, site, test: false })).rejects.toThrow("News API down");
   });
@@ -107,10 +122,10 @@ describe("selfHeal", () => {
         await real.write(relPath, html);
       },
     };
-    const newsApi: NewsApiClient = {
+    const newsApi: NewsApiClient = { ...EXTRA_NEWS_API,
       getPost: vi.fn(async () => null),
       latestHome: vi.fn(async () => [postA, postB]),
-      home: vi.fn(async () => ({ granville: null })),
+      home: vi.fn(async () => ({ granville: null, topPostKey: null, featurePostKey: null })),
     };
 
     await expect(selfHeal({ newsApi, storage, site, test: false })).rejects.toThrow("disk full");
@@ -134,8 +149,8 @@ describe("selfHeal", () => {
     const root = await mkdtemp(join(tmpdir(), "self-heal-"));
     made.push(root);
     const storage = fsStorage(root);
-    const home = vi.fn(async () => ({ granville: "true" }));
-    const newsApi: NewsApiClient = { getPost: vi.fn(async () => null), latestHome: vi.fn(async () => [postA, postB]), home };
+    const home = vi.fn(async () => ({ granville: "true", topPostKey: null, featurePostKey: null }));
+    const newsApi: NewsApiClient = { ...EXTRA_NEWS_API, getPost: vi.fn(async () => null), latestHome: vi.fn(async () => [postA, postB]), home };
 
     await selfHeal({ newsApi, storage, site, test: false });
     expect(home).toHaveBeenCalledTimes(1);
@@ -149,7 +164,7 @@ describe("selfHeal", () => {
     const storage = fsStorage(root);
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const newsApi: NewsApiClient = {
+      const newsApi: NewsApiClient = { ...EXTRA_NEWS_API,
         getPost: vi.fn(async () => null),
         latestHome: vi.fn(async () => [postA]),
         home: vi.fn(async () => {
@@ -176,7 +191,7 @@ describe("selfHeal", () => {
     // Pre-existing pages, as if written by a deploy before this fix shipped — no noindex, no marker.
     await storage.write("index.html", "<!doctype html><html><body>home, pre-fix</body></html>");
     await storage.write("releases/K1/index.html", "<!doctype html><html><body>K1, pre-fix</body></html>");
-    const newsApi: NewsApiClient = { getPost: vi.fn(async () => postA), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+    const newsApi: NewsApiClient = { ...EXTRA_NEWS_API, getPost: vi.fn(async () => postA), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null, topPostKey: null, featurePostKey: null })) };
 
     const result = await selfHeal({ newsApi, storage, site, test: true });
     expect(result).toBeNull(); // index.html already existed — the bootstrap render was skipped
@@ -198,7 +213,7 @@ describe("selfHeal", () => {
     await storage.write("releases/K1/index.html", "<!doctype html><html><body>K1, pre-fix</body></html>");
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     try {
-      const newsApi: NewsApiClient = {
+      const newsApi: NewsApiClient = { ...EXTRA_NEWS_API,
         getPost: vi.fn(async () => postA),
         latestHome: vi.fn(async () => []),
         home: vi.fn(async () => {
@@ -227,8 +242,8 @@ describe("selfHeal", () => {
     await storage.write("releases/K1/index.html", "<!doctype html><html><body>K1, pre-fix</body></html>");
 
     const order: string[] = [];
-    let releaseSelfHealHome: ((v: { granville: string | null }) => void) | undefined;
-    const selfHealHomeGate = new Promise<{ granville: string | null }>((resolve) => (releaseSelfHealHome = resolve));
+    let releaseSelfHealHome: ((v: HomeDto) => void) | undefined;
+    const selfHealHomeGate = new Promise<HomeDto>((resolve) => (releaseSelfHealHome = resolve));
 
     let call = 0;
     const home = vi.fn(async () => {
@@ -240,9 +255,9 @@ describe("selfHeal", () => {
         return result;
       }
       order.push("rebuild-home(OFF)");
-      return { granville: null };
+      return { granville: null, topPostKey: null, featurePostKey: null };
     });
-    const newsApi: NewsApiClient = { getPost: vi.fn(async () => postA), latestHome: vi.fn(async () => []), home };
+    const newsApi: NewsApiClient = { ...EXTRA_NEWS_API, getPost: vi.fn(async () => postA), latestHome: vi.fn(async () => []), home };
 
     const envelope = (data: unknown): EventEnvelope => ({
       id: "00000000-0000-0000-0000-000000000001",
@@ -260,7 +275,7 @@ describe("selfHeal", () => {
     const pSelfHeal = selfHeal({ newsApi, storage, site, test: false }); // calls home() first, ON, gated
     const pRebuild = handler({} as Tx, envelope({ pages: ["post:K1"] })); // enqueued second, OFF
 
-    releaseSelfHealHome!({ granville: "true" });
+    releaseSelfHealHome!({ granville: "true", topPostKey: null, featurePostKey: null });
     await Promise.all([pSelfHeal, pRebuild]);
 
     expect(order).toEqual(["start-selfHeal-home(ON, gated)", "end-selfHeal-home(ON)", "rebuild-home(OFF)"]);
@@ -276,7 +291,7 @@ describe("selfHeal", () => {
     const root = await mkdtemp(join(tmpdir(), "self-heal-"));
     made.push(root);
     const storage = fsStorage(root);
-    const newsApi: NewsApiClient = { getPost: vi.fn(async () => null), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+    const newsApi: NewsApiClient = { ...EXTRA_NEWS_API, getPost: vi.fn(async () => null), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null, topPostKey: null, featurePostKey: null })) };
 
     await selfHeal({ newsApi, storage, site, test: false });
     for (const f of SUBSCRIBE_FILES) expect(await storage.exists(f)).toBe(true);
@@ -287,7 +302,7 @@ describe("selfHeal", () => {
     made.push(root);
     const storage = fsStorage(root);
     await storage.write("index.html", "<!doctype html><html><body>home, pre-fix</body></html>");
-    const newsApi: NewsApiClient = { getPost: vi.fn(async () => null), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null })) };
+    const newsApi: NewsApiClient = { ...EXTRA_NEWS_API, getPost: vi.fn(async () => null), latestHome: vi.fn(async () => []), home: vi.fn(async () => ({ granville: null, topPostKey: null, featurePostKey: null })) };
 
     const result = await selfHeal({ newsApi, storage, site, test: false });
     expect(result).toBeNull(); // index.html already existed — the bootstrap render was skipped

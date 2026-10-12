@@ -1,7 +1,6 @@
 import type { SiteTheme } from "@gcpe/config";
 import { escapeHtml } from "@gcpe/http-kit";
 import { DEFAULT_THEME } from "./theme-css";
-import type { PostDto } from "./dto";
 
 export type { PostDocument, PostDto } from "./dto";
 
@@ -24,17 +23,48 @@ export interface PageOptions {
   feed?: { href: string; title: string } | null;
 }
 
-const ENGLISH = 4105;
-
 export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
-const english = (p: PostDto) => p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0];
+
+/**
+ * Shared by `safeHref` and `safeSrc` below. Escaping (`e()`) only neutralises HTML
+ * metacharacters — it does nothing to stop a `javascript:`/`vbscript:`/`data:` URL from running
+ * as a link or image load, which would be stored XSS. Only an absolute `http:`/`https:` URL (and,
+ * for a link, `mailto:`), or a single-slash site-relative path (`/files/...`, `/releases/...`),
+ * is accepted; everything else, including a protocol-relative `//host` URL, is rejected (`null`)
+ * and the caller must not render the attribute at all.
+ *
+ * Checked after stripping ASCII tabs/newlines/carriage-returns and trimming surrounding
+ * whitespace — browsers do the same before reading a URL's scheme, so a hostile value can hide
+ * `javascript:` as `"java\tscript:"` or `" JaVaScRiPt:"` and still run when a naive check (a
+ * plain `startsWith("javascript:")`) would miss it.
+ */
+function safeUrl(u: string | null | undefined, allowedSchemes: readonly string[]): string | null {
+  if (!u) return null;
+  const stripped = u.replace(/[\t\n\r]/g, "").trim();
+  if (!stripped) return null;
+  if (stripped.startsWith("/") && !stripped.startsWith("//")) return u;
+  let parsed: URL;
+  try {
+    parsed = new URL(stripped);
+  } catch {
+    return null;
+  }
+  return allowedSchemes.includes(parsed.protocol.toLowerCase()) ? u : null;
+}
+
+/** Gates every `href` built from News API data (a ministry URL, a resource link, an asset or
+ * translation file, a slide's action link) before it's escaped with `e()`. See {@link safeUrl}. */
+export const safeHref = (u: string | null | undefined): string | null => safeUrl(u, ["https:", "http:", "mailto:"]);
+
+/** Gates every `src` built from News API data (an asset image, the minister's photo) before it's
+ * escaped with `e()` — same as {@link safeHref} but never `mailto:`, which cannot load as an
+ * image. See {@link safeUrl}. */
+export const safeSrc = (u: string | null | undefined): string | null => safeUrl(u, ["https:", "http:"]);
 
 /** The base URL's path with no trailing slash: "" at a root base, "/site" on boxs.ca. */
 export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
   return new URL(site.baseUrl).pathname.replace(/\/+$/, "");
 }
-
-const releasePath = (site: SiteInfo, key: string) => `${basePath(site)}/releases/${encodeURIComponent(key)}`;
 
 /** Every page's chrome (spec §6.3): skip link, header with brand and nav, main, footer. */
 export function renderPage(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}, bodyAttr = ""): string {
@@ -83,27 +113,4 @@ ${footerLinks}
 </body>
 </html>
 `;
-}
-
-export function renderPostPage(p: PostDto, site: SiteInfo, opts: PageOptions = {}): string {
-  const d = english(p);
-  const headline = d?.headline ?? p.key;
-  const contacts = (d?.contacts ?? [])
-    .map((c) => `<li><strong>${e(c.title)}</strong><br>${e(c.details).replace(/\n/g, "<br>")}</li>`)
-    .join("\n");
-  const body = `<article>
-<h1>${e(headline)}</h1>
-${d?.subheadline ? `<h2>${e(d.subheadline)}</h2>` : ""}
-<p><time datetime="${e(p.publishDate)}">${e(p.publishDate)}</time>${p.location ? ` · ${e(p.location)}` : ""}</p>
-${d?.detailsHtml ?? ""}
-${contacts ? `<section><h2>Contacts</h2><ul>\n${contacts}\n</ul></section>` : ""}
-</article>`;
-  return renderPage(headline, site, releasePath(site, p.key), body, opts);
-}
-
-export function renderHomePage(posts: PostDto[], site: SiteInfo, opts: PageOptions = {}): string {
-  const items = posts
-    .map((p) => `<li><a href="${e(releasePath(site, p.key))}">${e(english(p)?.headline ?? p.key)}</a> <time datetime="${e(p.publishDate)}">${e(p.publishDate)}</time></li>`)
-    .join("\n");
-  return renderPage("Home", site, `${basePath(site)}/`, `<h1>Latest news</h1>\n<ul>\n${items}\n</ul>`, opts);
 }

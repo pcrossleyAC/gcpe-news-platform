@@ -1,6 +1,8 @@
 import type { NewsApiClient } from "./news-api-client";
+import { renderHomePage } from "./pages/home";
+import { renderReleasePage } from "./pages/release";
 import { enqueueSiteWrite, HOME_COUNT, POST_KEY, postPath, resyncPostPages, stateAndBanner, tryHome } from "./rebuild";
-import { renderHomePage, renderPostPage, type SiteInfo } from "./render";
+import type { SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
 import { writeSubscribePages } from "./subscribe-pages";
 
@@ -70,12 +72,12 @@ export function selfHeal(deps: { newsApi: NewsApiClient; storage: SiteStorage; s
         console.warn(`[public-site] self-heal skipping post with invalid key ${JSON.stringify(post.key)}`);
         continue;
       }
-      await storage.write(postPath(post.key), renderPostPage(post, site, opts));
+      await storage.write(postPath(post.key), renderReleasePage(post, site, opts, { ministryNames: new Map(), related: [] }));
       rebuilt++;
     }
     // The home page itself still lists only the normal count — `posts` is generous (above) so
     // every recent post page gets healed, but the home page shouldn't suddenly show 200 items.
-    await storage.write("index.html", renderHomePage(posts.slice(0, HOME_COUNT), site, opts));
+    await storage.write("index.html", renderHomePage({ top: null, feature: null, latest: posts.slice(0, HOME_COUNT), slides: [], links: [] }, site, opts));
     return { rebuilt };
   });
 }

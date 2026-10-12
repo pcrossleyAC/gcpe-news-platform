@@ -1,6 +1,8 @@
 import type { EventHandler } from "@gcpe/events";
 import type { NewsApiClient } from "./news-api-client";
-import { renderHomePage, renderPostPage, type PageOptions, type SiteInfo } from "./render";
+import { renderHomePage } from "./pages/home";
+import { renderReleasePage } from "./pages/release";
+import type { PageOptions, SiteInfo } from "./render";
 import { blueBridgeBanner, isGranvilleOn } from "./site-env";
 import type { SiteStorage } from "./storage";
 
@@ -99,7 +101,7 @@ export async function renderExistingPost(newsApi: NewsApiClient, storage: SiteSt
     console.warn(`[public-site] skipping page post:${key}: News API returned a different key (${JSON.stringify(post.key)})`);
     return;
   }
-  await storage.write(path, renderPostPage(post, site, opts));
+  await storage.write(path, renderReleasePage(post, site, opts, { ministryNames: new Map(), related: [] }));
 }
 
 /**
@@ -149,7 +151,8 @@ export async function resyncPostPages(deps: { newsApi: NewsApiClient; storage: S
   // baked in as every post page — only re-render it if it's already there (a brand-new output
   // dir has none yet; that first render is selfHeal's bootstrap job, not this one's).
   if (await deps.storage.exists("index.html")) {
-    await deps.storage.write("index.html", renderHomePage(await deps.newsApi.latestHome(HOME_COUNT), deps.site, opts));
+    const posts = await deps.newsApi.latestHome(HOME_COUNT);
+    await deps.storage.write("index.html", renderHomePage({ top: null, feature: null, latest: posts, slides: [], links: [] }, deps.site, opts));
   }
   await writeSiteState(deps.storage, state, deps.site);
 }
@@ -228,7 +231,8 @@ export function createRebuildHandler(deps: { newsApi: NewsApiClient; storage: Si
 
       for (const id of new Set(pages)) {
         if (id === "home") {
-          await deps.storage.write("index.html", renderHomePage(await deps.newsApi.latestHome(HOME_COUNT), deps.site, opts));
+          const posts = await deps.newsApi.latestHome(HOME_COUNT);
+          await deps.storage.write("index.html", renderHomePage({ top: null, feature: null, latest: posts, slides: [], links: [] }, deps.site, opts));
           continue;
         }
         const key = id.startsWith("post:") ? id.slice(5) : null;
