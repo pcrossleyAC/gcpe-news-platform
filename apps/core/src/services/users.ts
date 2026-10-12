@@ -309,7 +309,12 @@ export async function matchEntraUser(db: Db, oid: string, email: string | null):
     return user ? { ok: true, user } : { ok: false, code: "inactive", userId: linked.id };
   }
   if (!email) return { ok: false, code: "not_provisioned" };
-  const [candidate] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${email}`);
+  // lower() on both sides, not just the stored column: email is already trimmed and lowercased
+  // by the caller (JS toLowerCase), which Postgres's own lower() can disagree with on a non-ASCII
+  // codepoint depending on the server's locale. Comparing lower() to lower() here means this
+  // query and the locked re-check below use the one, same-engine comparison throughout, so a
+  // stored row can't pass one and fail the other.
+  const [candidate] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = lower(${email})`);
   if (!candidate) return { ok: false, code: "not_provisioned" };
   let outcome: "linked" | EntraRefusal;
   try {
@@ -318,9 +323,9 @@ export async function matchEntraUser(db: Db, oid: string, email: string | null):
       const [row] = await tx
         .select({ id: users.id, email: users.email, isActive: users.isActive, entraOid: users.entraOid })
         .from(users)
-        .where(eq(users.id, candidate.id))
+        .where(and(eq(users.id, candidate.id), sql`lower(${users.email}) = lower(${email})`))
         .for("update");
-      if (!row || row.email === null || row.email.toLowerCase() !== email) return "not_provisioned";
+      if (!row) return "not_provisioned";
       if (row.entraOid !== null) return row.entraOid === oid ? "linked" : "conflict";
       if (!row.isActive) return "inactive";
       await tx.update(users).set({ entraOid: oid, signInMethod: "entra", updatedAt: new Date() }).where(eq(users.id, row.id));

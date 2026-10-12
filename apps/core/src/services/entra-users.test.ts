@@ -80,6 +80,71 @@ describe("Entra identities on Core users", () => {
     expect(results.filter((r) => !r.ok)).toEqual([{ ok: false, code: "conflict", userId: u.id }]);
   });
 
+  // The two tests above race on the *same* row, which lockUser's per-user advisory lock fully
+  // serialises — neither can reach the isUniqueViolation catch at users.ts:329-333, since the
+  // second caller always observes the first's commit through its own locked SELECT, not a
+  // colliding UPDATE. This forces the real race the catch guards against:
+  // two *different*, not-yet-linked rows, both trying to link the *same* oid. Two raw pg clients
+  // hold a FOR UPDATE row lock on each candidate row from outside Drizzle, so both matchEntraUser
+  // calls pass their outer, unlocked "oid not yet linked" check (line ~306) and then block on
+  // their own per-row SELECT ... FOR UPDATE — exactly the TOCTOU window the catch's own comment
+  // describes. Releasing row a's lock first lets it link and commit; releasing row b's lock then
+  // makes its UPDATE collide with the now-committed oid on the unique index.
+  it("two different unlinked rows racing to link the same oid: the first commit wins, the second gets a clean conflict", async () => {
+    const a = await make("race-row-a@example.test");
+    const b = await make("race-row-b@example.test");
+
+    const clientA = await tdb.pool.connect();
+    const clientB = await tdb.pool.connect();
+    try {
+      await clientA.query("BEGIN");
+      await clientA.query("SELECT 1 FROM users WHERE id = $1 FOR UPDATE", [a.id]);
+      await clientB.query("BEGIN");
+      await clientB.query("SELECT 1 FROM users WHERE id = $1 FOR UPDATE", [b.id]);
+
+      const pA = matchEntraUser(tdb.db, "oid-row-race", "race-row-a@example.test");
+      const pB = matchEntraUser(tdb.db, "oid-row-race", "race-row-b@example.test");
+      // Give both calls time to pass their outer, unlocked check and block on the row lock each
+      // held client is holding, before either client commits and opens the window.
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      await clientA.query("COMMIT");
+      expect(await pA).toEqual({ ok: true, user: { id: a.id, name: a.displayName, email: "race-row-a@example.test", roles: [] } });
+
+      await clientB.query("COMMIT");
+      expect(await pB).toEqual({ ok: false, code: "conflict", userId: b.id });
+
+      expect((await row(a.id)).entraOid).toBe("oid-row-race");
+      expect((await row(b.id)).entraOid).toBeNull();
+    } finally {
+      clientA.release();
+      clientB.release();
+    }
+  });
+
+  // lower() on both sides of the comparison (users.ts:312,326) means the candidate lookup and
+  // the locked re-check both go through Postgres's own lower(), not a
+  // mix of it and JS's toLowerCase — so the two queries can't disagree with each other about the
+  // very same row. A non-ASCII email already stored in the exact case the Entra claim normalises
+  // to (the ordinary case: nobody retypes their own address in a different case) matches and
+  // links, with no encoding problem.
+  it("matches a non-ASCII stored email", async () => {
+    const [u] = await tdb.db.insert(users).values({ email: "jörg.müller@example.test", displayName: "Non-ASCII Email" }).returning();
+    expect(await matchEntraUser(tdb.db, "oid-non-ascii", "jörg.müller@example.test")).toMatchObject({ ok: true, user: { id: u!.id } });
+  });
+
+  // This Postgres's lc_ctype is C (confirmed: `lower('Übergrün')` leaves it unchanged), so unlike
+  // JS's full-Unicode toLowerCase, its lower() doesn't fold non-ASCII case — tracked separately as
+  // Q58, not resolved by this fix wave. A genuinely cased mismatch (stored "Ü", claim normalised
+  // to "ü") must still fail *safe*: refused as not_provisioned, never crossed to the wrong user.
+  it("a non-ASCII email whose stored case Postgres's lower() can't fold still fails safe, not crossed", async () => {
+    // Stored with the non-ASCII letters (Ö, Ü) uppercase. This Postgres's C-locale lower() folds
+    // the plain ASCII letters but leaves Ö/Ü untouched, so comparing it against the claim's
+    // fully-folded JS toLowerCase() (which does fold them, correctly) can never match here.
+    await tdb.db.insert(users).values({ email: "INGRID.KRÜGER@example.test", displayName: "Non-ASCII Mismatch" });
+    expect(await matchEntraUser(tdb.db, "oid-non-ascii-mismatch", "INGRID.KRÜGER@example.test".toLowerCase())).toEqual({ ok: false, code: "not_provisioned" });
+  });
+
   it("a linked user is refused at password sign-in like a wrong password", async () => {
     const both = await make("both@example.test", { password: PW });
     expect(await authenticate(tdb.db, "both@example.test", PW)).not.toBeNull();

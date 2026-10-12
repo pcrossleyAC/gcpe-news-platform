@@ -140,6 +140,9 @@ describe("Core users API", () => {
 
     expect((await as(viewerCookie).post(`/api/users/${staff.id}/unlink-entra`)).status).toBe(403);
     expect((await request(app).post(`/api/users/${staff.id}/unlink-entra`).set("cookie", adminCookie)).status).toBe(403);
+    // With no session at all (not just a missing CSRF header), refused as 401, the same
+    // shared admin middleware every other /users route already gets.
+    expect((await request(app).post(`/api/users/${staff.id}/unlink-entra`).set("x-gcpe-request", "1")).status).toBe(401);
     const before = await count(`user:${staff.id}`);
     const res = await as(adminCookie).post(`/api/users/${staff.id}/unlink-entra`);
     expect(res.status).toBe(200);

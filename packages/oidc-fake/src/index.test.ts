@@ -129,6 +129,29 @@ describe("fake Entra", () => {
     expect(second).toMatchObject({ tid: TENANT, aud: "client-1", nonce: "n-1" });
   });
 
+  it("applies an exp override, and can omit the oid claim", async () => {
+    const exp = Math.floor(Date.now() / 1000) - 10;
+    fake.controls.setNextTokenOverrides({ exp });
+    const withExp = decodeJwt((await token((await approve()).searchParams.get("code")!)).body.id_token);
+    expect(withExp.exp).toBe(exp);
+
+    fake.controls.setNextTokenOverrides({ omitOid: true });
+    const withoutOid = decodeJwt((await token((await approve()).searchParams.get("code")!)).body.id_token);
+    expect(withoutOid.oid).toBeUndefined();
+  });
+
+  // A test site's fake is reachable by anyone, unauthenticated and with no rate limit — an
+  // unredeemed code must not grow the pending-code map without bound. 1001 approvals (one
+  // past the cap) must evict only the single oldest, never the most recent.
+  it("caps the number of pending codes, dropping only the oldest once the cap is reached", async () => {
+    const issued: string[] = [];
+    for (let i = 0; i < 1001; i++) {
+      issued.push((await approve()).searchParams.get("code")!);
+    }
+    expect((await token(issued[0]!)).body).toEqual({ error: "invalid_grant" });
+    expect((await token(issued[issued.length - 1]!)).status).toBe(200);
+  }, 30_000);
+
   it("can sign with a key the JWKS doesn't publish", async () => {
     fake.controls.setNextTokenOverrides({ signWithUnpublishedKey: true });
     const idToken = (await token((await approve()).searchParams.get("code")!)).body.id_token;

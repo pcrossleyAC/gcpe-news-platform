@@ -138,10 +138,27 @@ describe("Entra sign-in routes", () => {
     ["the wrong issuer", { iss: "https://login.microsoftonline.com/another/v2.0" }],
     ["the wrong tenant", { tid: "0000fa4e-0000-4000-8000-0000000000ff" }],
     ["a signature the tenant's JWKS doesn't verify", { signWithUnpublishedKey: true }],
+    // openid-client allows a 30s default clock tolerance, so this must expire well past that.
+    ["an already-expired ID token", { exp: Math.floor(Date.now() / 1000) - 120 }],
+    ["a token missing the oid claim", { omitOid: true }],
   ])("refuses a token with %s as failed", async (_label, overrides) => {
     const res = await signIn("staff", overrides);
     expect(res.headers.location).toBe("/hub/sign-in?error=failed");
     expect(cookieValue(res, "gcpe_session")).toBeUndefined();
+  });
+
+  it("refuses a replayed authorization code as failed, and issues no second session", async () => {
+    const { query, stateCookie } = await startAndPick("staff");
+    const first = await callback(query, stateCookie);
+    expect(first.status).toBe(302);
+    expect(first.headers.location).toBe("/hub/search?q=fire");
+    expect(cookieValue(first, "gcpe_session")).toBeTruthy();
+
+    // The fake's code is single-use; replaying the same callback query (with a fresh state
+    // cookie, since the first callback already cleared it) must fail, not mint a second session.
+    const replay = await callback(query, stateCookie);
+    expect(replay.headers.location).toBe("/hub/sign-in?error=failed");
+    expect(cookieValue(replay, "gcpe_session")).toBeUndefined();
   });
 
   it("refuses a wrong PKCE verifier as failed (the token endpoint rejects it)", async () => {

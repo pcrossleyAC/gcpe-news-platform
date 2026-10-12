@@ -30,6 +30,11 @@ export interface FakeOidcTokenOverrides {
   nonce?: string;
   iss?: string;
   signWithUnpublishedKey?: boolean;
+  /** Absolute unix-seconds `exp`, in place of the default `iat + 3600`. Lets a test send an
+   * already-expired ID token. */
+  exp?: number;
+  /** Leaves the `oid` claim out of the token entirely, in place of the identity's own oid. */
+  omitOid?: boolean;
 }
 
 export interface FakeOidcOptions {
@@ -60,6 +65,10 @@ interface PendingCode {
 }
 
 const CODE_TTL_MS = 60_000;
+// A test site's fake is reachable by anyone, unauthenticated and with no rate limit, so an
+// unredeemed or expired code must not grow this map without bound. Pruned on every approve, and
+// capped so even a burst of never-redeemed codes within one TTL window can't exceed this.
+const MAX_PENDING_CODES = 1000;
 const escapeHtml = (s: string): string => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const s256 = (v: string): string => createHash("sha256").update(v).digest("base64url");
 const str = (v: unknown): string => (typeof v === "string" ? v : "");
@@ -72,6 +81,18 @@ export async function createFakeOidc(o: FakeOidcOptions): Promise<FakeOidc> {
   const issuer = `${o.serverBase}/${o.tenantId}/v2.0`;
   const codes = new Map<string, PendingCode>();
   let overrides: FakeOidcTokenOverrides = {};
+
+  /** Drops every expired code, then, if still at the cap, the single oldest (Map iterates in
+   * insertion order) — called before each new code is issued, the map's only growth point. */
+  function sweepPendingCodes(now: number): void {
+    for (const [code, pending] of codes) {
+      if (pending.expiresAt < now) codes.delete(code);
+    }
+    if (codes.size >= MAX_PENDING_CODES) {
+      const oldest = codes.keys().next().value;
+      if (oldest !== undefined) codes.delete(oldest);
+    }
+  }
 
   const authRequest = (q: Record<string, unknown>) => {
     const ok =
@@ -129,8 +150,10 @@ export async function createFakeOidc(o: FakeOidcOptions): Promise<FakeOidc> {
     const a = authRequest(req.query as Record<string, unknown>);
     const identity = o.identities.find((i) => i.key === req.query.user);
     if (!a || !identity) return void res.status(400).type("text/plain").send("invalid authorization request");
+    const now = Date.now();
+    sweepPendingCodes(now);
     const code = randomBytes(24).toString("base64url");
-    codes.set(code, { identity, redirectUri: a.redirectUri, challenge: a.challenge, nonce: a.nonce, expiresAt: Date.now() + CODE_TTL_MS });
+    codes.set(code, { identity, redirectUri: a.redirectUri, challenge: a.challenge, nonce: a.nonce, expiresAt: now + CODE_TTL_MS });
     res.redirect(302, backTo(a.redirectUri, { code, state: a.state }));
   });
 
@@ -154,7 +177,7 @@ export async function createFakeOidc(o: FakeOidcOptions): Promise<FakeOidc> {
     overrides = {};
     const now = Math.floor(Date.now() / 1000);
     const idToken = await new SignJWT({
-      oid: pending.identity.oid,
+      ...(t.omitOid ? {} : { oid: pending.identity.oid }),
       tid: t.tid ?? o.tenantId,
       nonce: t.nonce ?? pending.nonce,
       preferred_username: pending.identity.email,
@@ -167,7 +190,7 @@ export async function createFakeOidc(o: FakeOidcOptions): Promise<FakeOidc> {
       .setAudience(t.aud ?? o.clientId)
       .setSubject(s256(`${o.clientId}:${pending.identity.oid}`))
       .setIssuedAt(now)
-      .setExpirationTime(now + 3600)
+      .setExpirationTime(t.exp ?? now + 3600)
       .sign(t.signWithUnpublishedKey ? unpublished : signing.privateKey);
     res.set("cache-control", "no-store").json({ token_type: "Bearer", access_token: randomBytes(24).toString("base64url"), expires_in: 3600, scope: "openid profile email", id_token: idToken });
   });
