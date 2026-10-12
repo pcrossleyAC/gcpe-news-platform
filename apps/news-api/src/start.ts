@@ -13,6 +13,7 @@ import { runEmbeddingTick, WORKER_EMBED_TIMEOUT_MS } from "./embeddings/worker";
 import { newsApiEnvSchema } from "./env";
 import { changesBearerFromEnv } from "./http/v2/changes-auth";
 import { every } from "./loop";
+import { slideImageFetcher } from "./slide-images";
 import { assertSearchLanguage } from "./search/language";
 import { createRelatedService } from "./search/related";
 import { createSemanticSearch } from "./search/semantic";
@@ -165,6 +166,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     // Not ready while the LISTEN connection is down: this instance would silently miss
     // updates. Omitted entirely when the hub is disabled.
     readinessChecks: hubEnabled ? [() => isListening()] : [],
+    slideImages: slideImageFetcher({ fetchBase: parsed.SLIDE_IMAGES_FETCH_BASE }),
     subscribe: parsed.NOD_BASE_URL
       ? {
           baseUrl: parsed.NOD_BASE_URL,

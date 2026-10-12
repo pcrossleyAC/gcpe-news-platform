@@ -1,12 +1,18 @@
+import { tmpdir } from "node:os";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { outboxEvents, siteContentChangedSchema, type SubscriberConfig } from "@gcpe/events";
+import { localStore } from "@gcpe/storage";
 import { createNrmsTestDb, createScheduledRelease, editor } from "../../test/helpers";
 import { carousels, categoryFeatures, emergencyPins, siteLog, siteSettings, websiteSlides as slides } from "../db/schema";
 import { emitSite, homeSnapshot, slidesSnapshot, writeSiteLog } from "./events";
+import type { SlideImageFiles } from "./slide-images";
 
 const subscribers: SubscriberConfig[] = [];
+// None of this file's slides carry an image, so this store is declared but never actually
+// touched (slideImageRef is only reached when a slide/pin row has image bytes).
+const files: SlideImageFiles = { store: localStore(tmpdir(), "/files/"), filesBase: "" };
 
 describe("website/events", () => {
   let tdb: TestDatabase;
@@ -77,7 +83,7 @@ describe("website/events", () => {
       { carouselId: carousel!.id, sortIndex: 9, headline: "Second", justify: "right" },
     ]);
 
-    const snap = await tdb.db.transaction((tx) => slidesSnapshot(tx));
+    const snap = await tdb.db.transaction((tx) => slidesSnapshot(tx, files));
     expect(snap.entity).toBe("slides");
     expect(snap.slides.map((s) => [s.sortIndex, s.headline, s.justify])).toEqual([
       [-2, "Primary pin", "Left"],
@@ -92,7 +98,7 @@ describe("website/events", () => {
       { slot: "secondary", pinned: true, headline: "Secondary pin" },
     ]);
 
-    const snap = await tdb.db.transaction((tx) => slidesSnapshot(tx));
+    const snap = await tdb.db.transaction((tx) => slidesSnapshot(tx, files));
     expect(snap.slides.map((s) => [s.sortIndex, s.headline])).toEqual([
       [-2, "Primary pin"],
       [-1, "Secondary pin"],
@@ -100,7 +106,7 @@ describe("website/events", () => {
   });
 
   it("emitSite('slides') enqueues one outbox event of type site.content.changed that round-trips through the catalogue schema", async () => {
-    await tdb.db.transaction((tx) => emitSite(tx, subscribers, "slides"));
+    await tdb.db.transaction((tx) => emitSite(tx, subscribers, "slides", files));
     const rows = await tdb.db.select().from(outboxEvents);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ type: "site.content.changed", aggregateId: "site:slides" });

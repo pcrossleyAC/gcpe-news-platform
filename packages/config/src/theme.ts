@@ -1,3 +1,4 @@
+import { isSafeUrl } from "@gcpe/http-kit";
 import { z } from "zod";
 
 /** WCAG 2.2 AA minimum contrast for normal-size text (success criterion 1.4.3). */
@@ -41,19 +42,37 @@ const CHECKED_PAIRS = [
 // Relative, no leading slash, no "..", no URL scheme: the file lives in the site's own assets.
 const ASSET_PATH = /^(?![A-Za-z][A-Za-z0-9+.-]*:)(?!\/)(?!.*\.\.)[A-Za-z0-9._/-]+$/;
 
+/** A footer link's `url`: `http:`/`https:`/`mailto:`, or a single-slash site-relative path.
+ * Refuses `javascript:`/`data:`, a protocol-relative `//host`, and a backslash-prefixed
+ * `/\host` (which a browser resolves the same as `//host`) — any scheme or form a malicious or
+ * compromised tenant config could use to run script or redirect off-site when a visitor clicks
+ * a footer link. See `@gcpe/http-kit`'s `isSafeUrl`. */
+const isAllowedFooterUrl = (value: string): boolean => isSafeUrl(value, { mailto: true });
+
 export const siteThemeSchema = z
   .object({
     colors: colorsSchema,
     font: z.object({
       family: z.string().min(1),
       fallback: z.string().min(1),
-      stylesheetUrl: z.string().url().optional(),
+      // https: or a single-slash site-relative path only — never http: (plain `z.string().url()`
+      // accepted any scheme, including javascript:) and never mailto:, which makes no sense for
+      // a <link rel="stylesheet">. See `@gcpe/http-kit`'s `isSafeUrl`.
+      stylesheetUrl: z
+        .string()
+        .refine((v) => isSafeUrl(v, { schemes: ["https:"] }), "font.stylesheetUrl must be https: or a single-slash site-relative path")
+        .optional(),
     }),
     logo: z.object({
       path: z.string().regex(ASSET_PATH, "logo.path must be a relative path under the site's assets"),
       alt: z.string().min(1),
     }),
-    footerLinks: z.array(z.object({ label: z.string().min(1), url: z.string().url() })),
+    footerLinks: z.array(
+      z.object({
+        label: z.string().min(1),
+        url: z.string().min(1).refine(isAllowedFooterUrl, "footerLinks url must be http:, https:, mailto: or a single-slash site-relative path"),
+      }),
+    ),
   })
   .superRefine((theme, ctx) => {
     for (const [fg, bg] of CHECKED_PAIRS) {

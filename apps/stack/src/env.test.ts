@@ -121,6 +121,14 @@ describe("envFor", () => {
     expect(envFor({ STACK_EVENT_SECRET: "x".repeat(32) }, "NEWSAPI").NOD_BASE_URL).toBe("self:/nod");
   });
 
+  // Addendum §6.4: SiteGround blocks loopback, so the News API can't fetch a slide image
+  // from its own public /files/… URL; it reaches this same stack's NRMS file store in-process
+  // instead, resolved exactly like NOD_BASE_URL above (Q85).
+  it("addendum §6.4: NEWSAPI's view resolves SLIDE_IMAGES_FETCH_BASE to this stack's own in-process files", () => {
+    expect(envFor({}, "NEWSAPI").SLIDE_IMAGES_FETCH_BASE).toBe("self:/files");
+    expect(resolveSelfUrls(envFor({}, "NEWSAPI")).SLIDE_IMAGES_FETCH_BASE).toBe("http://stack.internal/files");
+  });
+
   // Plan 3d task 4: SITE_ENVIRONMENT (e.g. "test") reaches Public Site's isTestSite the same
   // way NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION do, with no per-app SITE_SITE_ENVIRONMENT
   // setting needed.
@@ -205,6 +213,13 @@ describe("resolveSelfUrls", () => {
       DISTRIBUTION_URL: "http://stack.internal/distribution",
       NOD_BASE_URL: "http://stack.internal/nod",
     });
+  });
+
+  // Addendum §6.4: SLIDE_IMAGES_FETCH_BASE ends in _BASE, not _URL — the heuristic above was
+  // widened to cover it (and any future *_BASE var) the same way.
+  it("resolves a plain self: URL on any var ending in _BASE too", () => {
+    const env = { SLIDE_IMAGES_FETCH_BASE: "self:/files" };
+    expect(resolveSelfUrls(env)).toEqual({ SLIDE_IMAGES_FETCH_BASE: "http://stack.internal/files" });
   });
 
   it("leaves a real external URL alone, including one ending in _URL that looks like a token endpoint", () => {

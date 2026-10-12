@@ -2,13 +2,15 @@ import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
-import type { OrgRecord, ReleaseRecord, TermRecord } from "@gcpe/events";
+import type { EventEnvelope, OrgRecord, ReleaseRecord, TermRecord } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
-import { createNewsTestDb, waitUntilBlockedOnLock } from "../test/helpers";
+import { createNewsTestDb, TZ, waitUntilBlockedOnLock } from "../test/helpers";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
 import { embeddingTextHash } from "./embeddings/source-text";
-import { applyOrg, applyRelease, applySiteContent, applyTerm, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
+import { applyOrg, applyRelease, applySiteContent, applyTerm, createProjectionHandlers, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
+import { listSlides } from "./read";
 import { SEARCH_TEXT_MAX_CHARS, searchTextFor } from "./search/search-text";
+import { SlideImageError, type SlideImageFetcher } from "./slide-images";
 import { listenForUpdates, notifyUpdate, type UpdateTarget } from "./updates/notify";
 
 const org: OrgRecord = {
@@ -248,7 +250,7 @@ describe("projections", () => {
       await applySiteContent(tx, { entity: "categoryFeatures", kind: "ministries", key: "Health", topPostKey: "t", featurePostKey: "f" });
       await applySiteContent(tx, {
         entity: "slides",
-        slides: [{ id: "f9adfdc2-5933-4c38-a390-a18077acb213", sortIndex: 0, headline: "Get vaccinated", summary: "s", actionLabel: "READ MORE", actionUri: "https://x", imageBase64: "iVBORw0KGgo=", imageType: "image/png", facebookPostUri: null, justify: "right", timestamp: "2026-09-09T16:31:07.5216222-07:00" }],
+        slides: [{ id: "f9adfdc2-5933-4c38-a390-a18077acb213", sortIndex: 0, headline: "Get vaccinated", summary: "s", actionLabel: "READ MORE", actionUri: "https://x", imageBase64: "iVBORw0KGgo=", imageType: "image/png", imageUrl: null, imageKey: null, imageSha256: null, facebookPostUri: null, justify: "right", timestamp: "2026-09-09T16:31:07.5216222-07:00" }],
       });
       await applySiteContent(tx, { entity: "resourceLinks", links: [{ sortIndex: 0, text: "Factsheets", uri: "/factsheets" }], timestamp: "2026-10-02T00:00:00Z" });
     });
@@ -256,6 +258,60 @@ describe("projections", () => {
     expect((await tdb.db.select().from(categoryFeatures))[0]).toEqual({ kind: "ministries", key: "health", topPostKey: "t", featurePostKey: "f" });
     expect((await tdb.db.select().from(slides))[0]!.image!.toString("base64")).toBe("iVBORw0KGgo=");
     expect(await tdb.db.select().from(resourceLinks)).toHaveLength(1);
+  });
+
+  describe("slide images from event URLs (addendum §6.4)", () => {
+    const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(100)]);
+    const sha = createHash("sha256").update(png).digest("hex");
+    const urlSlide = {
+      id: "f9adfdc2-5933-4c38-a390-a18077acb213",
+      sortIndex: 0,
+      headline: "Get vaccinated",
+      summary: "s",
+      actionLabel: "READ MORE",
+      actionUri: "https://x",
+      imageBase64: null,
+      imageType: "image/png",
+      imageUrl: `https://files.example/files/slides/${sha}.png`,
+      imageKey: `slides/${sha}.png`,
+      imageSha256: sha,
+      facebookPostUri: null,
+      justify: "right",
+      timestamp: "2026-09-09T16:31:07.5216222-07:00",
+    };
+    const fakeFetcher = (bytes: Buffer): SlideImageFetcher => ({ fetch: async () => bytes });
+    const failingFetcher: SlideImageFetcher = { fetch: () => Promise.reject(new SlideImageError("does not match its hash")) };
+
+    it("a slides event with URLs stores the fetched bytes, so v1 /api/Slides is unchanged", async () => {
+      const handlers = createProjectionHandlers({ slideImages: fakeFetcher(png) });
+      const envelope = { data: { entity: "slides", slides: [urlSlide] }, correlationId: "c1" } as unknown as EventEnvelope;
+      await tdb.db.transaction((tx) => handlers["site.content.changed"]!(tx, envelope));
+      const [dto] = await listSlides(tdb.db, TZ);
+      expect(dto!.image).toBe(png.toString("base64"));
+      expect(dto!.imageType).toBe("image/png");
+    });
+
+    it("a fetch failure fails the projection and changes no slide", async () => {
+      await tdb.db.transaction((tx) => applySiteContent(tx, { entity: "slides", slides: [{ ...urlSlide, id: "11111111-1111-1111-1111-111111111111" }] }, fakeFetcher(png)));
+      await expect(
+        tdb.db.transaction((tx) => applySiteContent(tx, { entity: "slides", slides: [urlSlide] }, failingFetcher)),
+      ).rejects.toBeInstanceOf(SlideImageError);
+      const rows = await tdb.db.select().from(slides);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.id).toBe("11111111-1111-1111-1111-111111111111");
+    });
+
+    it("an old envelope with base64 still works without a fetcher", async () => {
+      await tdb.db.transaction((tx) =>
+        applySiteContent(tx, { entity: "slides", slides: [{ ...urlSlide, imageBase64: "iVBORw0KGgo=", imageUrl: null, imageKey: null, imageSha256: null }] }),
+      );
+      const [row] = await tdb.db.select().from(slides);
+      expect(row!.image!.toString("base64")).toBe("iVBORw0KGgo=");
+    });
+
+    it("a URL slide without a fetcher configured fails loudly", async () => {
+      await expect(tdb.db.transaction((tx) => applySiteContent(tx, { entity: "slides", slides: [urlSlide] }))).rejects.toThrow(/fetcher/);
+    });
   });
 
   it("notifies listeners only after commit", async () => {

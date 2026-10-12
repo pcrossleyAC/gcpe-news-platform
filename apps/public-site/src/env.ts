@@ -1,8 +1,18 @@
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
+import { authFromEnv, NEWS_API_CHANGES_ROLE, type LocalAuthConfig, type ServiceTokenOptions } from "@gcpe/auth";
 import { eventSecretsSchema, loadTenantConfig, type TenantConfig } from "@gcpe/config";
 
+/** An optional setting where "" (an emptied SiteGround field) means unset — NRMS's own
+ * `optionalSetting` (apps/nrms/src/start.ts), duplicated rather than imported: apps never
+ * import another app's src, only shared packages. */
+const optionalSetting = z
+  .string()
+  .optional()
+  .transform((v) => (v === "" ? undefined : v));
+
 export const defaultTenantConfigPath = fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url));
+export const defaultSiteAssetsDir = fileURLToPath(new URL("../../../config/site", import.meta.url));
 
 /**
  * TENANT_CONFIG's own schema. Parsed once by main.ts (to resolve the path to load before the
@@ -51,5 +61,46 @@ export function publicSiteEnvSchema(tenantConfig: TenantConfig | undefined) {
     EVENT_SECRETS: eventSecretsSchema,
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
     TENANT_CONFIG: tenantConfigPathSchema,
+    SITE_ASSETS_DIR: z.string().min(1).default(defaultSiteAssetsDir),
+    /** Pages drained per tick/run (spec §6.2). */
+    SITE_REBUILD_BATCH: z.coerce.number().int().min(1).max(1000).default(200),
+    /** The standalone loop's interval (main.ts); the stack ticks instead (apps/stack/src/stack.ts). */
+    SYNC_INTERVAL_MS: z.coerce.number().int().min(1000).default(30_000),
+    // The site builder's own service token for GET /api/v2/changes (spec §5.4): Entra client
+    // credentials, all four or none (newsApiTokenOptions below), with a local-admin-token
+    // fallback on a test deployment. "" (an emptied SiteGround field) is treated as unset.
+    NEWS_API_TOKEN_URL: optionalSetting.pipe(z.string().url().optional()),
+    NEWS_API_CLIENT_ID: optionalSetting,
+    NEWS_API_CLIENT_SECRET: optionalSetting,
+    NEWS_API_SCOPE: optionalSetting,
+    /** The search page's `/api/v2/search` host, when it isn't the site's own origin (Q81).
+     * Unset on the stack and on a single-host deployment: the page calls its own origin. "" (an
+     * emptied SiteGround field, e.g. clearing a once-set value) is treated as unset, like every
+     * other optional setting in this file. */
+    SEARCH_API_URL: optionalSetting.pipe(z.string().url().optional()),
   });
+}
+
+/**
+ * The site builder's token for GET /api/v2/changes (spec §5.4): Entra client credentials when
+ * NEWS_API_TOKEN_URL/CLIENT_ID/CLIENT_SECRET/SCOPE are set, else a locally minted token on a
+ * test deployment. The local branch reads a view without ENTRA_TENANT_ID/AUTH_AUDIENCE: on the
+ * stack the tenant id is shared but this app has no audience, and authFromEnv would refuse it.
+ */
+export function newsApiTokenOptions(
+  parsed: Pick<z.infer<ReturnType<typeof publicSiteEnvSchema>>, "NEWS_API_TOKEN_URL" | "NEWS_API_CLIENT_ID" | "NEWS_API_CLIENT_SECRET" | "NEWS_API_SCOPE">,
+  env: NodeJS.ProcessEnv,
+): ServiceTokenOptions {
+  const local: LocalAuthConfig | null =
+    env.LOCAL_ADMIN_ENABLED === "true" ? authFromEnv({ ...env, ENTRA_TENANT_ID: undefined, AUTH_AUDIENCE: undefined, SESSION_SECRET: undefined }).local : null;
+  return {
+    tokenUrl: parsed.NEWS_API_TOKEN_URL,
+    clientId: parsed.NEWS_API_CLIENT_ID,
+    clientSecret: parsed.NEWS_API_CLIENT_SECRET,
+    scope: parsed.NEWS_API_SCOPE,
+    local,
+    subject: "site-builder",
+    roles: [NEWS_API_CHANGES_ROLE],
+    envPrefix: "NEWS_API",
+  };
 }

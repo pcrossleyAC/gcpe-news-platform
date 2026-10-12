@@ -2,13 +2,14 @@ import { asc, desc, eq, inArray, sql } from "drizzle-orm";
 import type { Db, DbOrTx, Tx, TestClock } from "@gcpe/db-kit";
 import { sqlNow } from "@gcpe/db-kit";
 import { wallClockToInstant } from "@gcpe/config";
-import { envelopeByteLength, EventTooLargeError, MAX_EVENT_BYTES, sizingEnvelope, type SubscriberConfig } from "@gcpe/events";
+import { EventTooLargeError, type SubscriberConfig } from "@gcpe/events";
 import { sniff } from "@gcpe/storage";
 import { carousels, emergencyPins, websiteSlides } from "../db/schema";
 import type { Actor } from "../releases/store";
 import { SYSTEM_ACTOR } from "../releases/store";
 import { formatBcDateTime, parseLocalDateTime } from "../releases/workflow";
-import { emitSite, slidesSnapshotFor, writeSiteLog } from "./events";
+import { emitSite, writeSiteLog } from "./events";
+import { publishSlideImage, type SlideImageFiles } from "./slide-images";
 import { SiteConflictError, SiteNotFoundError, SiteRuleError } from "./errors";
 
 /**
@@ -129,43 +130,6 @@ function resolveGoLiveAt(input: { goLiveAt?: string; goLiveAtLocal?: string }, t
   return input.goLiveAt !== undefined ? new Date(input.goLiveAt) : wallClockToInstant(parseLocalDateTime(input.goLiveAtLocal!), timeZone);
 }
 
-/**
- * I4 (controller ruling): keeps the News API's legacy base64-inline contract, but a `slides`
- * snapshot that inlines a few large images can exceed the shared event-size cap
- * (`MAX_EVENT_BYTES`, packages/events) — every future `slides` emit then fails outright
- * (including `switchCarousels`, every tick). This budget leaves a margin for the rest of the
- * envelope (id/type/source/aggregateId/sequence/occurredAt/correlationId and JSON punctuation)
- * so a snapshot that fits here is guaranteed to actually enqueue.
- */
-export const SLIDES_EVENT_BUDGET_BYTES = MAX_EVENT_BYTES - 64 * 1024;
-
-/** The serialised size (as `enqueueEvent` would store it) of the `slides` snapshot `carouselId`
- * (plus the pinned emergency slides) would produce — `null` for "no carousel". */
-async function slidesEventBytes(tx: Tx, carouselId: string | null): Promise<number> {
-  const data = await slidesSnapshotFor(tx, carouselId);
-  return envelopeByteLength(sizingEnvelope({ type: "site.content.changed", source: "nrms", aggregateId: "site:slides", data }));
-}
-
-/**
- * Guards every write that can grow a `slides` snapshot (setSlideImage, setPinImage,
- * setPinned(true), savePin, saveCarousel, createNextCarousel's live-image copy): computes the
- * size of the snapshot that would now result for (a) the live carousel + pinned pins — what
- * saving/imaging the live carousel emits right now — and (b) the next carousel (if any) +
- * pinned pins — what `switchCarousels` will emit once it goes live — and refuses the write
- * (rolling back the whole transaction) when either exceeds the budget. Called *after* the
- * write it's guarding, inside the same transaction, so it sees exactly the snapshot that write
- * just produced.
- */
-async function assertSlidesFit(tx: Tx): Promise<void> {
-  const [live] = await tx.select({ id: carousels.id }).from(carousels).where(eq(carousels.state, "live"));
-  const [next] = await tx.select({ id: carousels.id }).from(carousels).where(eq(carousels.state, "next"));
-  const liveBytes = await slidesEventBytes(tx, live?.id ?? null);
-  const nextBytes = next ? await slidesEventBytes(tx, next.id) : 0;
-  if (liveBytes > SLIDES_EVENT_BUDGET_BYTES || nextBytes > SLIDES_EVENT_BUDGET_BYTES) {
-    throw new SiteRuleError(["The carousel's images are too large together. Use smaller images (the total for all slides shown at once must stay under about 700 KB)."]);
-  }
-}
-
 /** The unique partial index that enforces at most one `next` carousel at a time (schema.ts). */
 const NEXT_CAROUSEL_UNIQUE_INDEX = "carousels_one_next_idx";
 
@@ -237,9 +201,6 @@ export async function createNextCarousel(
         );
       }
     }
-    // I4: this copies the live carousel's images onto the new next carousel — re-check the
-    // budget here too (the live carousel could already be at the edge of it).
-    await assertSlidesFit(tx);
     await writeSiteLog(tx, actor, "carousel", `Created the next carousel for ${formatBcDateTime(goLiveAt, timeZone)}`);
     return carouselView(created, await slidesOf(tx, created.id));
   });
@@ -257,6 +218,7 @@ export async function saveCarousel(
   actor: Actor,
   subs: SubscriberConfig[],
   timeZone: string,
+  files: SlideImageFiles,
 ): Promise<CarouselView> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(carousels).where(eq(carousels.id, id)).for("update");
@@ -296,9 +258,8 @@ export async function saveCarousel(
       .set({ version: row.version + 1, updatedAt: sql`now()`, ...(goLiveAt !== undefined ? { goLiveAt } : {}) })
       .where(eq(carousels.id, id))
       .returning();
-    await assertSlidesFit(tx); // I4 — a longer slide list/text can still grow the snapshot
     await writeSiteLog(tx, actor, "carousel", row.state === "live" ? "Saved the live carousel" : "Saved the next carousel");
-    if (row.state === "live") await emitSite(tx, subs, "slides");
+    if (row.state === "live") await emitSite(tx, subs, "slides", files);
     return carouselView(updated!, await slidesOf(tx, id));
   });
 }
@@ -310,8 +271,12 @@ async function checkImageBytes(bytes: Buffer): Promise<"image/png" | "image/jpeg
 }
 
 /** Sets a carousel slide's image. Emits a `slides` snapshot when the slide belongs to the live carousel. */
-export async function setSlideImage(db: Db, slideId: string, bytes: Buffer, actor: Actor, subs: SubscriberConfig[]): Promise<void> {
+export async function setSlideImage(db: Db, slideId: string, bytes: Buffer, actor: Actor, subs: SubscriberConfig[], files: SlideImageFiles): Promise<void> {
   const mimeType = await checkImageBytes(bytes);
+  // The file must exist before any event names it; writing it ahead of the transaction means a
+  // rolled-back transaction just leaves a harmless orphan (content-addressed, never served
+  // unless something actually references that hash).
+  await publishSlideImage(files, bytes, mimeType);
   await db.transaction(async (tx) => {
     const [slide] = await tx.select({ carouselId: websiteSlides.carouselId }).from(websiteSlides).where(eq(websiteSlides.id, slideId));
     if (!slide) throw new SiteNotFoundError("slide not found");
@@ -320,27 +285,26 @@ export async function setSlideImage(db: Db, slideId: string, bytes: Buffer, acto
     // the slides before this write lands, permanently missing the image from that snapshot.
     const [carousel] = await tx.select({ state: carousels.state }).from(carousels).where(eq(carousels.id, slide.carouselId)).for("update");
     await tx.update(websiteSlides).set({ image: bytes, imageType: mimeType, updatedAt: sql`now()` }).where(eq(websiteSlides.id, slideId));
-    await assertSlidesFit(tx);
     await writeSiteLog(tx, actor, "carousel", "Updated a slide's image");
-    if (carousel?.state === "live") await emitSite(tx, subs, "slides");
+    if (carousel?.state === "live") await emitSite(tx, subs, "slides", files);
   });
 }
 
 /** Sets an emergency pin's image. Both slots are seeded by migration 0012 — see {@link getPins}. Emits when the pin is pinned. */
-export async function setPinImage(db: Db, slot: PinSlot, bytes: Buffer, actor: Actor, subs: SubscriberConfig[]): Promise<void> {
+export async function setPinImage(db: Db, slot: PinSlot, bytes: Buffer, actor: Actor, subs: SubscriberConfig[], files: SlideImageFiles): Promise<void> {
   const mimeType = await checkImageBytes(bytes);
+  await publishSlideImage(files, bytes, mimeType);
   await db.transaction(async (tx) => {
     const [row] = await tx.select().from(emergencyPins).where(eq(emergencyPins.slot, slot)).for("update");
     if (!row) throw new SiteNotFoundError(`emergency_pins has no row for slot ${slot}`);
     await tx.update(emergencyPins).set({ image: bytes, imageType: mimeType, updatedAt: sql`now()` }).where(eq(emergencyPins.slot, slot));
-    await assertSlidesFit(tx); // I4 — a no-op unless this pin is currently pinned
     await writeSiteLog(tx, actor, "pins", `Updated the ${slot} emergency slide's image`);
-    if (row.pinned) await emitSite(tx, subs, "slides");
+    if (row.pinned) await emitSite(tx, subs, "slides", files);
   });
 }
 
 /** `performSwitch`'s shared mechanics: `nextId` becomes `live`, the old live becomes `past`, past is trimmed to five, logged and emitted. */
-async function performSwitch(tx: Tx, nextId: string, subs: SubscriberConfig[], actor: Actor, logText: string, clock?: TestClock): Promise<void> {
+async function performSwitch(tx: Tx, nextId: string, subs: SubscriberConfig[], actor: Actor, logText: string, files: SlideImageFiles, clock?: TestClock): Promise<void> {
   const now = sqlNow(clock);
   const [liveRow] = await tx.select({ id: carousels.id }).from(carousels).where(eq(carousels.state, "live"));
   if (liveRow) await tx.update(carousels).set({ state: "past", updatedAt: now }).where(eq(carousels.id, liveRow.id));
@@ -351,16 +315,16 @@ async function performSwitch(tx: Tx, nextId: string, subs: SubscriberConfig[], a
   if (toDelete.length) await tx.delete(carousels).where(inArray(carousels.id, toDelete));
 
   await writeSiteLog(tx, actor, "carousel", logText);
-  await emitSite(tx, subs, "slides");
+  await emitSite(tx, subs, "slides", files);
 }
 
 /** The "Make live now" button: promotes the next carousel immediately, ignoring its `go_live_at`. */
-export async function makeNextLive(db: Db, actor: Actor, subs: SubscriberConfig[]): Promise<{ switched: boolean }> {
+export async function makeNextLive(db: Db, actor: Actor, subs: SubscriberConfig[], files: SlideImageFiles): Promise<{ switched: boolean }> {
   return db.transaction(async (tx) => {
     const r = await tx.execute<{ id: string }>(sql`SELECT id FROM ${carousels} WHERE state = 'next' FOR UPDATE SKIP LOCKED`);
     const row = r.rows[0];
     if (!row) throw new SiteNotFoundError("no next carousel");
-    await performSwitch(tx, row.id, subs, actor, "Made the next carousel live", undefined);
+    await performSwitch(tx, row.id, subs, actor, "Made the next carousel live", files, undefined);
     return { switched: true };
   });
 }
@@ -370,12 +334,12 @@ export async function makeNextLive(db: Db, actor: Actor, subs: SubscriberConfig[
  * `go_live_at <= now()`, promotes it. Claims with `FOR UPDATE SKIP LOCKED` so two concurrent
  * ticks switch once.
  */
-export async function switchCarousels(db: Db, subs: SubscriberConfig[], opts: { now?: TestClock } = {}): Promise<{ switched: boolean }> {
-  // I4 backstop: assertSlidesFit guards every write that can grow a snapshot, but data that
-  // predates this fix (or a bug) could still leave a next carousel's emit too large. Caught
-  // *outside* the transaction below: performSwitch's emit is its last statement, so throwing
-  // out of the transaction callback rolls back the whole switch (live/next/past, trimming, the
-  // log line) — "left queued" below means genuinely untouched, not merely unreported.
+export async function switchCarousels(db: Db, subs: SubscriberConfig[], files: SlideImageFiles, opts: { now?: TestClock } = {}): Promise<{ switched: boolean }> {
+  // A guard against any oversized envelope (e.g. an unusually long slide list), not specific to
+  // images now that they travel as URLs. Caught *outside* the transaction below: performSwitch's
+  // emit is its last statement, so throwing out of the transaction callback rolls back the whole
+  // switch (live/next/past, trimming, the log line) — "left queued" below means genuinely
+  // untouched, not merely unreported.
   let claimedId: string | undefined;
   try {
     return await db.transaction(async (tx) => {
@@ -384,7 +348,7 @@ export async function switchCarousels(db: Db, subs: SubscriberConfig[], opts: { 
       const row = r.rows[0];
       if (!row) return { switched: false };
       claimedId = row.id;
-      await performSwitch(tx, row.id, subs, SYSTEM_ACTOR, "The next carousel went live", opts.now);
+      await performSwitch(tx, row.id, subs, SYSTEM_ACTOR, "The next carousel went live", files, opts.now);
       return { switched: true };
     });
   } catch (e) {
@@ -402,11 +366,11 @@ export async function switchCarousels(db: Db, subs: SubscriberConfig[], opts: { 
  * Same shape as `startFlickrJobs`/`startPublisher`: unref'd timer, overlap-guarded, errors
  * logged rather than thrown, returns an async stopper.
  */
-export function startSiteLoop(opts: { db: Db; subscribers: SubscriberConfig[]; intervalMs?: number }): () => Promise<void> {
+export function startSiteLoop(opts: { db: Db; subscribers: SubscriberConfig[]; files: SlideImageFiles; intervalMs?: number }): () => Promise<void> {
   let running: Promise<unknown> | null = null;
   const timer = setInterval(() => {
     if (running) return;
-    running = switchCarousels(opts.db, opts.subscribers)
+    running = switchCarousels(opts.db, opts.subscribers, opts.files)
       .catch((e) => console.error(`[nrms] carousel switch-over failed: ${e instanceof Error ? e.message : String(e)}`))
       .finally(() => {
         running = null;
@@ -446,7 +410,7 @@ export async function getPins(db: DbOrTx): Promise<PinView[]> {
 }
 
 /** Saves a pin's content (not its pinned flag — see {@link setPinned}). */
-export async function savePin(db: Db, slot: PinSlot, input: { version: number } & PinInput, actor: Actor, subs: SubscriberConfig[]): Promise<PinView> {
+export async function savePin(db: Db, slot: PinSlot, input: { version: number } & PinInput, actor: Actor, subs: SubscriberConfig[], files: SlideImageFiles): Promise<PinView> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(emergencyPins).where(eq(emergencyPins.slot, slot)).for("update");
     if (!row) throw new SiteNotFoundError(`emergency_pins has no row for slot ${slot}`);
@@ -456,15 +420,14 @@ export async function savePin(db: Db, slot: PinSlot, input: { version: number } 
       .set({ headline: input.headline, summary: input.summary, actionUrl: input.actionUrl, facebookPostUrl: input.facebookPostUrl, justify: input.justify, version: row.version + 1, updatedAt: sql`now()` })
       .where(eq(emergencyPins.slot, slot))
       .returning();
-    if (row.pinned) await assertSlidesFit(tx); // I4
     await writeSiteLog(tx, actor, "pins", `Saved the ${slot} emergency slide`);
-    if (row.pinned) await emitSite(tx, subs, "slides");
+    if (row.pinned) await emitSite(tx, subs, "slides", files);
     return pinView(updated!);
   });
 }
 
 /** Pins or unpins a slot. Pinning requires a headline. */
-export async function setPinned(db: Db, slot: PinSlot, input: { version: number; pinned: boolean }, actor: Actor, subs: SubscriberConfig[]): Promise<PinView> {
+export async function setPinned(db: Db, slot: PinSlot, input: { version: number; pinned: boolean }, actor: Actor, subs: SubscriberConfig[], files: SlideImageFiles): Promise<PinView> {
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(emergencyPins).where(eq(emergencyPins.slot, slot)).for("update");
     if (!row) throw new SiteNotFoundError(`emergency_pins has no row for slot ${slot}`);
@@ -475,9 +438,8 @@ export async function setPinned(db: Db, slot: PinSlot, input: { version: number;
       .set({ pinned: input.pinned, version: row.version + 1, updatedAt: sql`now()` })
       .where(eq(emergencyPins.slot, slot))
       .returning();
-    if (input.pinned) await assertSlidesFit(tx); // I4 — only newly pinning can grow a snapshot
     await writeSiteLog(tx, actor, "pins", `${input.pinned ? "Pinned" : "Unpinned"} the ${slot} emergency slide`);
-    if (input.pinned || row.pinned) await emitSite(tx, subs, "slides");
+    if (input.pinned || row.pinned) await emitSite(tx, subs, "slides", files);
     return pinView(updated!);
   });
 }

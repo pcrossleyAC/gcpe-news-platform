@@ -1,13 +1,17 @@
 import express from "express";
 import { sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
-import { createEventReceiver, type EventHandler } from "@gcpe/events";
+import { createEventReceiver, type EventEnvelope, type EventHandler } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 
 export interface AppDeps {
   db: Db;
   eventSecrets: Record<string, string>;
   handler: EventHandler;
+  /** Runs after an applied event's transaction has committed (I1): the event receiver's own
+   * response never waits on this. start.ts uses it to kick a background `syncSite` run — see
+   * `kickBackgroundSync` (sync.ts) — without the request path waiting on a drain. */
+  onApplied?: (event: EventEnvelope) => void;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -24,6 +28,7 @@ export function createApp(deps: AppDeps): express.Express {
       // This app has no staff /api: its only inbound traffic is /events and /health/*, and
       // it only ever honours site.rebuild_requested from the News API.
       handlers: (event) => (event.source === "news-api" && event.type === "site.rebuild_requested" ? deps.handler : undefined),
+      onApplied: deps.onApplied,
     }),
   );
 

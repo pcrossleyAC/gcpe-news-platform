@@ -1,29 +1,38 @@
 import { z } from "zod";
 import express from "express";
+import { serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createApp } from "./app";
-import { publicSiteEnvSchema, resolveTenantConfig, tenantConfigPathSchema } from "./env";
+import { createSiteBuilder } from "./builder";
+import { changesClient, syncChanges } from "./change-feed";
+import { newsApiTokenOptions, publicSiteEnvSchema, resolveTenantConfig, tenantConfigPathSchema } from "./env";
+import { every } from "./loop";
 import { newsApiClient } from "./news-api-client";
-import { createRebuildHandler } from "./rebuild";
+import { postIndex } from "./post-index";
+import type { SiteInfo } from "./render";
 import { selfHeal } from "./self-heal";
 import { isTestSite } from "./site-env";
+import { logoFor } from "./static-pages";
 import { fsStorage } from "./storage";
+import { createRebuildHandler, kickBackgroundSync, syncSite, type SyncDeps } from "./sync";
+import { DEFAULT_THEME } from "./theme-css";
 
 export interface AppHandle {
   app: express.Express;
   /** Parsed PORT (same env var/default as before) — main.ts listens on this; nothing new to
    * parse there. */
   port: number;
-  /** Public Site has no background loops; empty. */
+  /** `sync`: queues and drains up to SITE_REBUILD_BATCH pages (spec §6.2) — what the stack's
+   * `site.sync` tick step runs (apps/stack/src/stack.ts). */
   workers: Record<string, () => Promise<unknown>>;
-  /** No-op: nothing to start. Kept for a uniform AppHandle shape across apps. */
+  /** Starts the standalone `site.sync` loop (main.ts), every SYNC_INTERVAL_MS. A no-op in the
+   * stack, which ticks `workers.sync` itself instead. */
   startLoops(): void;
-  /** Closers that must run *before* the http server closes. Public Site has none — always
-   * empty — but the field exists on every app's AppHandle so main.ts (and the stack) can
-   * build the shutdown order uniformly: `[...closeBeforeServer, httpServer, ...closers]`,
-   * with no app-specific special-casing. */
+  /** Closers that must run *before* the http server closes. Stops the standalone loop (if
+   * `startLoops()` ran) before anything else shuts down — see `closers`'s doc comment for the
+   * order's rationale. */
   closeBeforeServer: Closer[];
   /** The rest of today's shutdown order, run *after* the http server closes, excluding the
    * http server itself (main.ts owns that). */
@@ -61,31 +70,55 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
 
   const parsed = parseEnv(publicSiteEnvSchema(tenantConfig), env);
 
-  const { db, pool } = createDb(parsed.DATABASE_URL);
+  // connectionTimeoutMillis (I1): if every connection is ever wedged, a caller waiting for one
+  // fails loudly after 10s instead of hanging forever.
+  const { db, pool } = createDb(parsed.DATABASE_URL, { connectionTimeoutMillis: 10_000 });
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
 
   const newsApi = newsApiClient(parsed.NEWS_API_URL);
   const storage = fsStorage(parsed.OUTPUT_DIR);
-  const site = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL };
+  const theme = tenantConfig?.site.theme ?? DEFAULT_THEME;
+  const site: SiteInfo = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL, theme };
+  site.logo = logoFor(theme, parsed.SITE_ASSETS_DIR, site);
   // Plan 3d task 4: the TEST banner prefix and noindex meta — decided once, from this process's
   // own env view (the stack's envFor shares NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION/SITE_ENVIRONMENT
   // into it the same way for every app).
   const test = isTestSite(env);
 
-  const handler = createRebuildHandler({ newsApi, storage, site, test });
+  const index = postIndex(db);
+  const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: parsed.SITE_ASSETS_DIR, searchApiBase: parsed.SEARCH_API_URL ?? "" });
+  // Throws here, at startup, if neither Entra client credentials nor a local admin secret is
+  // configured — a misconfigured deployment fails fast rather than on the first tick.
+  const getToken = serviceTokenProvider(newsApiTokenOptions(parsed, env));
+  const changeFeed = changesClient({ baseUrl: parsed.NEWS_API_URL, getToken });
+  const syncDeps: SyncDeps = { db, builder, index, newsApi, storage, site, test, batch: parsed.SITE_REBUILD_BATCH, feed: () => syncChanges({ db, client: changeFeed, builder, index }) };
+  const handler = createRebuildHandler(syncDeps);
 
-  const app = createApp({ db, eventSecrets: parsed.EVENT_SECRETS, handler });
+  // I1: the drain and feed sync run outside the receiver's transaction, kicked (not awaited —
+  // the receiver itself awaits onApplied, so this must not return kickBackgroundSync's own
+  // promise, or the response would wait on the whole drain again) only once that transaction
+  // has committed.
+  const app = createApp({
+    db,
+    eventSecrets: parsed.EVENT_SECRETS,
+    handler,
+    onApplied: () => {
+      void kickBackgroundSync(syncDeps);
+    },
+  });
+
+  let stop: (() => void) | undefined;
 
   return {
     app,
     port: parsed.PORT,
-    workers: {},
+    workers: { sync: () => syncSite(syncDeps) },
     startLoops() {
-      // No background loops.
+      stop = every(parsed.SYNC_INTERVAL_MS, "site.sync", () => syncSite(syncDeps));
     },
-    closeBeforeServer: [],
+    closeBeforeServer: [{ name: "background loops", close: async () => stop?.() }],
     closers: [{ name: "db pool", close: () => pool.end() }],
     // Fix round 1: not called here — see the AppHandle.selfHeal doc comment above for why.
-    selfHeal: () => selfHeal({ newsApi, storage, site, test }),
+    selfHeal: () => selfHeal(syncDeps),
   };
 }

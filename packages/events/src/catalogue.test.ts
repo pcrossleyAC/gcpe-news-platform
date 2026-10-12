@@ -100,3 +100,41 @@ describe("media_list.* events", () => {
     expect(() => parseEvent(envelope("media_list.deactivated", {}))).toThrow();
   });
 });
+
+const slide = {
+  id: "11111111-1111-4111-8111-111111111111",
+  sortIndex: 0,
+  headline: "H",
+  summary: null,
+  actionLabel: null,
+  actionUri: null,
+  imageBase64: null,
+  imageType: null,
+  facebookPostUri: null,
+  justify: "Left",
+  timestamp: "2026-10-11T00:00:00Z",
+};
+
+describe("site.content.changed 'slides' — content-addressed image fields", () => {
+  it("a slide without imageUrl/imageKey/imageSha256 still parses (an older envelope defaults them to null)", () => {
+    const parsed = parseEvent(envelope("site.content.changed", { entity: "slides", slides: [slide] }));
+    expect(parsed.data).toMatchObject({ entity: "slides", slides: [{ ...slide, imageUrl: null, imageKey: null, imageSha256: null }] });
+  });
+
+  it("accepts a slide with a valid imageUrl/imageKey/imageSha256", () => {
+    const sha = "a".repeat(64);
+    const withImage = { ...slide, imageUrl: `/files/slides/${sha}.png`, imageKey: `slides/${sha}.png`, imageSha256: sha };
+    const parsed = parseEvent(envelope("site.content.changed", { entity: "slides", slides: [withImage] }));
+    expect(parsed.data).toMatchObject({ entity: "slides", slides: [withImage] });
+  });
+
+  it("rejects a malformed imageKey", () => {
+    const bad = { ...slide, imageKey: "slides/../x.png" };
+    expect(() => parseEvent(envelope("site.content.changed", { entity: "slides", slides: [bad] }))).toThrow();
+  });
+
+  it("rejects a malformed imageSha256", () => {
+    const bad = { ...slide, imageSha256: "XYZ" };
+    expect(() => parseEvent(envelope("site.content.changed", { entity: "slides", slides: [bad] }))).toThrow();
+  });
+});

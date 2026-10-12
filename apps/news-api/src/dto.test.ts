@@ -67,7 +67,7 @@ describe("dto", () => {
 
   it("serializes a slide image as base64 and key as the id", () => {
     const dto = toSlideDto(
-      { id: "f9adfdc2-5933-4c38-a390-a18077acb213", sortIndex: 0, headline: "h", summary: "s", actionLabel: "READ MORE", actionUri: "u", image: Buffer.from("iVBORw0KGgo=", "base64"), imageType: "image/png", facebookPostUri: null, justify: "right", timestamp: new Date("2026-09-09T23:31:07.521Z") },
+      { id: "f9adfdc2-5933-4c38-a390-a18077acb213", sortIndex: 0, headline: "h", summary: "s", actionLabel: "READ MORE", actionUri: "u", image: Buffer.from("iVBORw0KGgo=", "base64"), imageType: "image/png", imageUrl: null, imageKey: null, imageSha256: null, facebookPostUri: null, justify: "right", timestamp: new Date("2026-09-09T23:31:07.521Z") },
       tz,
     );
     expect(dto.image).toBe("iVBORw0KGgo=");
@@ -76,7 +76,7 @@ describe("dto", () => {
 
   it("serializes a slide with a null image as null", () => {
     const dto = toSlideDto(
-      { id: "f9adfdc2-5933-4c38-a390-a18077acb213", sortIndex: 0, headline: "h", summary: "s", actionLabel: "READ MORE", actionUri: "u", image: null, imageType: null, facebookPostUri: null, justify: "right", timestamp: new Date("2026-09-09T23:31:07.521Z") },
+      { id: "f9adfdc2-5933-4c38-a390-a18077acb213", sortIndex: 0, headline: "h", summary: "s", actionLabel: "READ MORE", actionUri: "u", image: null, imageType: null, imageUrl: null, imageKey: null, imageSha256: null, facebookPostUri: null, justify: "right", timestamp: new Date("2026-09-09T23:31:07.521Z") },
       tz,
     );
     expect(dto.image).toBeNull();

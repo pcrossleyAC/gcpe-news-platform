@@ -1,8 +1,10 @@
 import express from "express";
 import { rateLimit } from "express-rate-limit";
+import type { Db } from "@gcpe/db-kit";
 import { clientIpKey } from "../client-ip";
 import { changesRoutes, type ChangesRouteOptions } from "./changes";
 import { parseSearchQuery } from "../../search/query";
+import { listSlidesV2 } from "../../read";
 import { RELATED_MAX_KEY_CHARS, type RelatedService } from "../../search/related";
 import type { SearchService } from "../../search/service";
 
@@ -17,13 +19,19 @@ export function v2Routes(deps: {
   searchRateLimit?: { perMinute: number; clientIpHeader?: string };
   changes?: ChangesRouteOptions;
   related?: RelatedService;
+  /** GET /api/v2/slides (addendum §6.4; public, no bearer needed). Absent (some tests): that
+   * path answers v2's 404. */
+  db?: Db;
 }): express.Router {
   const r = express.Router();
   r.use((_req, res, next) => {
     res.set("Cache-Control", "no-store");
     next();
   });
-  const { search } = deps;
+  const { search, db } = deps;
+  if (db) {
+    r.get("/slides", async (_req, res) => void res.json({ slides: await listSlidesV2(db) }));
+  }
   if (search) {
     const limiter = deps.searchRateLimit
       ? [

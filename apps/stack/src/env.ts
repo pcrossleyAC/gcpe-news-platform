@@ -98,7 +98,10 @@ export const STACK_APP_DEFAULTS: Partial<Record<AppPrefix, Record<string, string
   NRMS: { NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", CORE_URL: "self:/core" },
   // Phase 4a: the public Subscribe API proxies to this stack's own NoD, same in-process-URL
   // pattern (and local-admin-token fallback) as NRMS's calls to NoD/Distribution/Core above.
-  NEWSAPI: { NOD_BASE_URL: "self:/nod" },
+  // Addendum §6.4: SiteGround blocks loopback networking, so the News API can't fetch a
+  // slide image from its own public https://boxs.ca/files/… URL; self:/files routes it to
+  // this same stack's in-process NRMS file store instead (resolved below, like NOD_BASE_URL).
+  NEWSAPI: { NOD_BASE_URL: "self:/nod", SLIDE_IMAGES_FETCH_BASE: "self:/files" },
 };
 
 /** Where the stack mounts its fake Flickr when no real Flickr key is configured. */
@@ -415,12 +418,13 @@ export function resolveSelfSubscribers(value: string | undefined): string | unde
  * Resolves every `self:/…` URL in one app's already-prefix-stripped env view to a concrete
  * loopback URL at the stack's own port (fix round 1, P2-R30 — important fix 1 and M9):
  * `EVENT_SUBSCRIBERS` (via {@link resolveSelfSubscribers}, scoped to each entry's `url`
- * field), and every *other* var whose name ends in `_URL` whose whole value is a `self:/…`
- * URL — e.g. `NEWS_API_URL`, `DISTRIBUTION_URL`, `NOD_BASE_URL` (News API's own var name for
- * NoD's base URL, seen here as `NEWSAPI_NOD_BASE_URL` before `envFor` strips the prefix).
- * An external URL (a real public domain, or an OAuth2/Entra token endpoint) never starts with
- * `self:/`, so this never touches one — "leave external token URLs alone" falls out of the
- * same check, with no separate case needed for them.
+ * field), and every *other* var whose name ends in `_URL` or `_BASE` whose whole value is a
+ * `self:/…` URL — e.g. `NEWS_API_URL`, `DISTRIBUTION_URL`, `NOD_BASE_URL` (News API's own var
+ * name for NoD's base URL, seen here as `NEWSAPI_NOD_BASE_URL` before `envFor` strips the
+ * prefix), and `SLIDE_IMAGES_FETCH_BASE` (addendum §6.4, Q85). An external URL (a real public
+ * domain, or an OAuth2/Entra token endpoint) never starts with `self:/`, so this never touches
+ * one — "leave external token URLs alone" falls out of the same check, with no separate case
+ * needed for them.
  *
  * Ruling P2-R32 (Task 14 re-review r1 residual): any var whose name ends in `DATABASE_URL`
  * (bare `DATABASE_URL` or a prefixed `<PREFIX>_DATABASE_URL`, which `envFor` has already
@@ -438,7 +442,7 @@ export function resolveSelfUrls(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     if (value === undefined) continue;
     if (key === "EVENT_SUBSCRIBERS") {
       view[key] = resolveSelfSubscribers(value)!;
-    } else if (key.endsWith("_URL") && !key.endsWith("DATABASE_URL") && isSelfUrl(value)) {
+    } else if ((key.endsWith("_URL") || key.endsWith("_BASE")) && !key.endsWith("DATABASE_URL") && isSelfUrl(value)) {
       view[key] = `${INTERNAL_ORIGIN}${stripSelfPrefix(value)}`;
     } else {
       view[key] = value;

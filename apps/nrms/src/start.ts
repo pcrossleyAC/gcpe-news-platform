@@ -15,6 +15,7 @@ import { flickrClient, type FlickrConfig } from "./media/flickr-client";
 import { flickrPrepareMedia, processFlickrJobs, startFlickrJobs } from "./media/flickr-jobs";
 import { publishDue, startPublisher } from "./publisher";
 import { startSiteLoop, switchCarousels } from "./website/carousel";
+import { ensureSlideImageFiles } from "./website/slide-images";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset. */
 const optionalSetting = z
@@ -262,6 +263,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   // supplies the `media-distribution-lists:<key>` keys, NoD counts whatever keys it's given.
   const workflow = { timeZone: tenant.timeZone, countSubscribers, countMediaContacts: countSubscribers, filesBase };
   const store = localStore(parsed.STORAGE_DIR, "/files/");
+  const slideFiles = { store, filesBase };
   const liveFeedDefaults = { manifestUrl: parsed.LIVE_WEBCAST_MANIFEST_URL_DEFAULT ?? "", m3uUrl: parsed.LIVE_WEBCAST_M3U_URL_DEFAULT ?? "" };
   const distribution = parsed.DISTRIBUTION_URL
     ? distributionClient({ baseUrl: parsed.DISTRIBUTION_URL, getToken: serviceTokenProvider(distributionServiceTokenOptions(parsed, auth.local)) })
@@ -279,6 +281,10 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const embeds: EmbedDeps = { flickr, soundcloudOembed: defaultSoundcloudOembed(fetch) };
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
+  // Backfills the file store for images stored before content-addressed slide files existed
+  // (and recovers after a lost file) — a no-op once every stored image already has one.
+  const backfilled = await ensureSlideImageFiles(db, slideFiles);
+  if (backfilled) console.log(`[nrms] published ${backfilled} slide image files`);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
   const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -292,6 +298,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     workflow,
     distribution,
     store,
+    slideFiles,
     flickr,
     embeds,
     subscribers,
@@ -332,7 +339,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     port: parsed.PORT,
     workers: {
       flickr: () => processFlickrJobs(flickrJobsOpts),
-      site: () => switchCarousels(db, subscribers),
+      site: () => switchCarousels(db, subscribers, slideFiles),
       publish: () => publishDue({ db, subscribers, filesBase, prepareMedia, timeZone: tenant.timeZone }),
       dispatch: () => dispatchOnce({ db, subscribers }),
       needsCalendarViewers: () => needsCalendarViewers(db),
@@ -340,7 +347,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       stopFlickr = startFlickrJobs({ ...flickrJobsOpts, intervalMs: 30_000 });
-      stopSite = startSiteLoop({ db, subscribers, intervalMs: parsed.PUBLISH_INTERVAL_MS });
+      stopSite = startSiteLoop({ db, subscribers, files: slideFiles, intervalMs: parsed.PUBLISH_INTERVAL_MS });
       stopPublisher = startPublisher({ db, subscribers, filesBase, prepareMedia, timeZone: tenant.timeZone, intervalMs: parsed.PUBLISH_INTERVAL_MS });
     },
     closeBeforeServer: [],

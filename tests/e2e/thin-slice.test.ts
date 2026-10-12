@@ -21,9 +21,11 @@ import { createApp as createNewsApiApp } from "../../apps/news-api/src/app";
 import { createNewsTestDb } from "../../apps/news-api/test/helpers";
 
 import { createApp as createPublicSiteApp } from "../../apps/public-site/src/app";
-import { createRebuildHandler } from "../../apps/public-site/src/rebuild";
+import { createSiteBuilder } from "../../apps/public-site/src/builder";
 import { newsApiClient } from "../../apps/public-site/src/news-api-client";
+import { postIndex } from "../../apps/public-site/src/post-index";
 import { fsStorage } from "../../apps/public-site/src/storage";
+import { createRebuildHandler, kickBackgroundSync, type SyncDeps } from "../../apps/public-site/src/sync";
 import { createPublicSiteTestDb } from "../../apps/public-site/test/helpers";
 
 import { createApp as createNodApp } from "../../apps/nod/src/app";
@@ -86,6 +88,9 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
   let editorToken: string;
   let nrmsSubscribers: SubscriberConfig[];
   let newsApiSubscribers: SubscriberConfig[];
+  // I1: the event handler only enqueues now; rendering is a separate step (kicked in
+  // production, invoked directly here like every other worker this test drives by hand).
+  let publicSiteDeps: SyncDeps;
 
   beforeAll(async () => {
     // Fix round 1 item 1 (P2-R19): create all five DBs with allSettled so a failure partway
@@ -154,18 +159,27 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
       }),
     );
 
-    publicSite.attach(
-      createPublicSiteApp({
-        db: publicSiteDb.db,
-        eventSecrets: { "news-api": SECRET_NEWS_API_TO_PUBLIC_SITE },
-        handler: createRebuildHandler({
-          newsApi: newsApiClient(newsApi.url),
-          storage: fsStorage(outputDir),
-          site: { name: "BC Gov News (E2E)", baseUrl: publicSite.url },
-          test: false,
+    {
+      const siteNewsApi = newsApiClient(newsApi.url);
+      const siteStorage = fsStorage(outputDir);
+      const site = { name: "BC Gov News (E2E)", baseUrl: publicSite.url };
+      const siteIndex = postIndex(publicSiteDb.db);
+      const builder = createSiteBuilder({ newsApi: siteNewsApi, storage: siteStorage, index: siteIndex, site, assetsDir: null });
+      publicSiteDeps = { db: publicSiteDb.db, builder, index: siteIndex, newsApi: siteNewsApi, storage: siteStorage, site, test: false, batch: 200 };
+      publicSite.attach(
+        createPublicSiteApp({
+          db: publicSiteDb.db,
+          eventSecrets: { "news-api": SECRET_NEWS_API_TO_PUBLIC_SITE },
+          handler: createRebuildHandler(publicSiteDeps),
+          // Same wiring as start.ts: kicked (not awaited) once the event's own transaction
+          // commits. The test still drives the actual drain by calling kickBackgroundSync
+          // itself below, the same way it calls every other worker directly.
+          onApplied: () => {
+            void kickBackgroundSync(publicSiteDeps);
+          },
         }),
-      }),
-    );
+      );
+    }
 
     newsApiSubscribers = [{ name: "public-site", url: `${publicSite.url}/events`, secret: SECRET_NEWS_API_TO_PUBLIC_SITE, types: ["site.rebuild_requested"] }];
     newsApi.attach(
@@ -296,12 +310,17 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     const newsApiDispatch = await dispatchOnce({ db: newsApiDb.db, subscribers: newsApiSubscribers });
     expect(newsApiDispatch).toEqual({ delivered: 1, retried: 0, dead: 0 });
 
+    // I1: the delivery above only enqueued the page; render it now, the same way the kicked
+    // background run (or the next tick) would — joining it if the delivery's own `onApplied`
+    // already started one.
+    await kickBackgroundSync(publicSiteDeps);
+
     const postHtml = await readFile(join(outputDir!, "releases", key, "index.html"), "utf8");
     expect(postHtml).toContain("Clinics &amp; &lt;weekend&gt; care");
     expect(postHtml).not.toContain("<weekend>");
-    // Pin the link format (fix round 1 item 4): the home page's own link is site-relative.
+    // Pin the link format: the home page's own link is site-relative, a directory path.
     const homeHtml = await readFile(join(outputDir!, "index.html"), "utf8");
-    expect(homeHtml).toContain(`href="/releases/${key}"`);
+    expect(homeHtml).toContain(`href="/releases/${key}/"`);
 
     // Step 6: NoD's As-It-Happens send job reaches Distribution over real HTTP (NoD's own
     // minted local service token, azp "nod"), and Distribution's sender delivers it to the

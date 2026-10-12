@@ -133,6 +133,9 @@ export type ReleaseRecord = z.infer<typeof releaseRecordSchema>;
 export const categoryKindSchema = z.enum(["ministries", "sectors", "themes", "tags"]);
 export type CategoryKind = z.infer<typeof categoryKindSchema>;
 
+/** A slide image's storage key: `slides/<sha256 hex>.<png|jpg>` (spec addendum §6.4). */
+export const SLIDE_IMAGE_KEY = /^slides\/[0-9a-f]{64}\.(png|jpg)$/;
+
 export const slideRecordSchema = z.object({
   id: z.string().uuid(),
   sortIndex: z.number().int(),
@@ -142,6 +145,16 @@ export const slideRecordSchema = z.object({
   actionUri: z.string().nullable(),
   imageBase64: z.string().nullable(),
   imageType: z.string().nullable(),
+  // Addendum §6.4: the carousel image budget is retired — a slide image now travels as a
+  // content-addressed URL plus its hash, with imageBase64 always null going forward. Defaulted
+  // so an envelope stored before these fields existed still parses.
+  imageUrl: z.string().nullable().default(null),
+  imageKey: z.string().regex(SLIDE_IMAGE_KEY).nullable().default(null),
+  imageSha256: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/)
+    .nullable()
+    .default(null),
   facebookPostUri: z.string().nullable(),
   justify: z.string().nullable(),
   timestamp: offsetDateTime,

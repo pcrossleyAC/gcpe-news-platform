@@ -1286,6 +1286,91 @@ In semantic mode, `GET /api/v2/search` embeds the query (each distinct query onc
 2. `curl -si https://boxs.ca/api/v2/posts/no-such-key/related` is a `404` with `cache-control: no-store`.
 3. `curl -s https://boxs.ca/stack/health` includes `"newsApiSearch":"text"`.
 
+## The public site (Phase 6c)
+
+### Theme and assets
+
+The public site's colours, font and footer links come from `site.theme` in `config/tenants/<tenant>.json`. Files under `config/site/assets/` are published at `<site>/assets/…`; `SITE_SITE_ASSETS_DIR` overrides the folder (the stack prefixes every public-site variable with `SITE_`) — the BC logo and BC Sans font files themselves aren't committed until Q76 (brand and font licensing) is answered. Test sites serve `robots.txt` with `Disallow: /` and add `<meta name="robots" content="noindex, nofollow">` to every page.
+
+### Pages and rebuilds
+
+Every page the site serves under `<OUTPUT_DIR>`:
+
+| Page | Path |
+|---|---|
+| Home | `/index.html`, `/feed.xml` |
+| Release/story/factsheet/update/advisory | `/releases/<key>/index.html` |
+| Ministries index | `/ministries/index.html` |
+| Ministry/sector/theme/tag | `/<kind>/<key>/index.html`, `/<kind>/<key>/feed.xml` |
+| Archive index | `/archive/index.html` |
+| Monthly archive | `/archive/<yyyy>/<mm>/index.html` |
+| Sitemap index | `/sitemap.xml` |
+| Monthly/pages sitemap | `/sitemaps/<yyyy-mm>.xml`, `/sitemaps/pages.xml` |
+| Static (theme, 404, robots) | `/assets/theme.css`, `/404.html`, `/robots.txt` |
+
+The public site keeps a local index of every post it has rendered (`site_posts`, in the public site's own database) — its headline, date, month and category keys — so a post change can rebuild exactly the pages that listed it, both before and after the change (the News API has no "posts in a month" query). A post's publish, update or unpublish event rebuilds its own page, then its dependents (home, archive, sitemap, and its ministry/sector/theme/tag pages), reading the index row from before the change.
+
+A layout change (bumping `RENDER_CHROME_VERSION`) or a Blue Bridge/test-flag switch queues every page on the site — every published post, then every aggregate page — on the next `site.rebuild_requested` event, at the next start, or on the next `site.sync` tick (the chrome check runs every tick, not only on an event or a start). See "The rebuild queue" below for how that queue drains.
+
+To force a full rebuild by hand, delete `<OUTPUT_DIR>/.site-state.json` and restart — the next startup finds no marker and queues a rebuild of everything.
+
+### The rebuild queue
+
+Every page waiting to be rendered sits in `rebuild_queue` (the public site's own database), one row per page id, in four priorities — lowest drains first:
+
+| Priority | What |
+|---|---|
+| 0 (live post) | A post an event just published, changed or unpublished. |
+| 1 (live aggregate) | That post's dependents (home, archive, sitemap, its ministry/sector/theme/tag pages) — and, on a layout/Blue Bridge change, `static`, `home`, `ministries`, `archive` and `sitemap` themselves, so the home page shows the new chrome at once. |
+| 2 (bulk post) | Every post, newest first, queued by a full rebuild (a layout/Blue Bridge change, or `site:rebuild-all`). |
+| 3 (bulk aggregate) | Every other aggregate page (ministries/sectors/themes/tags, monthly archives and sitemaps), queued by the same full rebuild. |
+
+Each tick (`site.sync`, or the standalone loop) renders up to `SITE_SITE_REBUILD_BATCH` pages (default 200) off the front of the queue, lowest priority first, then whatever's oldest within that priority. A page that fails to render goes to the back of its own priority with its `attempts` count bumped, and is retried on a later run — it never blocks the pages behind it. On a large site (about 100,000 posts), a full rebuild's bulk posts drain at roughly `SITE_SITE_REBUILD_BATCH` pages a tick — about eight hours at one tick a minute (Q84).
+
+To watch a rebuild drain:
+
+```sql
+SELECT priority, count(*) FROM rebuild_queue GROUP BY 1;
+```
+
+To find pages that keep failing (and confirm they're still being retried, not stuck):
+
+```sql
+SELECT page_id, attempts FROM rebuild_queue WHERE attempts > 3;
+```
+
+`npm run site:rebuild-all` (with `DATABASE_URL`, `NEWS_API_URL`, `OUTPUT_DIR` and `PUBLIC_SITE_URL` set for the site) queues every page without rendering anything itself — the queue drains on the stack's own ticks afterwards. The public site can also run its own standalone loop (`SYNC_INTERVAL_MS`, default 30000) when it isn't behind the stack's `/stack/tick`.
+
+### The change feed
+
+Each `site.sync` turn (every `/stack/tick`, or the standalone loop) reads the News API's change feed (`GET /api/v2/changes` — see "The change feed" under Phase 6b above) from a stored cursor and queues the pages each change affects, before draining the queue — events (`site.rebuild_requested`) are now just a doorbell that wakes a sync up sooner; the feed is what actually keeps the site current if an event is ever missed.
+
+- **The cursor:** one row, in the public site's own database — `SELECT change_cursor FROM site_state WHERE id = 1`. `NULL` means the builder has never synced; it reads to the News API's current head first, then queues a full rebuild (nothing from the changes themselves), so this deploy's first sync is a one-time full rebuild, not a 100,000-row catch-up.
+- **`410` (behind the News API's 90-day pruning watermark):** the builder queues a full rebuild and jumps its cursor straight to the response's `next`, in the same database transaction — so a site builder left stopped for more than 90 days also gets a full rebuild on its first sync back, same as a brand-new deploy.
+- **Credentials:** the builder authenticates its own `GET /api/v2/changes` calls with a service token carrying the `NewsApi.ChangesRead` role — never a staff session. On boxs.ca (the stack) it mints this from the shared local admin secret; on OpenShift (standalone) it uses Entra client credentials (`NEWS_API_TOKEN_URL`, `NEWS_API_CLIENT_ID`, `NEWS_API_CLIENT_SECRET`, `NEWS_API_SCOPE`, `SITE_`-prefixed on the stack). With neither configured the builder refuses to start.
+- **Failures:** a feed read that errors (the News API down, a bad token) is logged and the sync continues straight to draining whatever is already queued; the feed is retried on the next tick, so a transient outage never blocks pages already queued from rendering.
+
+To watch where the builder's cursor sits relative to the News API's own feed:
+
+```sql
+SELECT change_cursor FROM site_state WHERE id = 1; -- on the public site's database
+SELECT max(id) FROM changes;                       -- on the News API's database
+```
+
+### Search page
+
+`/search/` is a static page that calls the News API's `GET /api/v2/search` (Phase 6b) from the browser, client-side — nothing server-rendered. `SITE_SEARCH_API_URL` (the stack prefixes every public-site variable with `SITE_`) names the host to call when it isn't the site's own origin; unset on the stack and left unset until Q81 (same origin: a reverse proxy routes `/api/v2/search` on the site's own host) is settled, in which case the page calls `location.origin`.
+
+The News API limits `/api/v2/search` to 60 requests a minute per client IP (Q74, Phase 6b). A visitor who hits it sees "Too many searches. Wait a minute and try again." in the page's alert region, same as a 400 ("Enter between 1 and 200 characters to search.") or any other failure ("Search isn't available right now. You can browse the archive instead.").
+
+### Carousel images
+
+A slide or pin image lives at `<NRMS STORAGE_DIR>/slides/<sha256>.<png|jpg>` (content-addressed: the same image uploaded twice shares one file) and is served publicly at `/files/slides/…`, same as any other uploaded file. On start, NRMS writes a file for any stored slide or pin image that has none yet (the backfill for images stored before this change, or recovery after a lost file) and logs `[nrms] published <n> slide image files` when it writes any.
+
+A `slides` event now carries each image's URL, storage key and SHA-256 instead of its bytes (C42, reversed — there's no longer a combined size limit; each image still keeps NRMS's own 2 MB upload limit). The News API fetches and verifies the bytes once while projecting the event, so v1 `/api/Slides` keeps returning base64, byte-identical to before. The fetch target is always `NEWSAPI_SLIDE_IMAGES_FETCH_BASE` plus the event's own storage key — never the event's own `imageUrl` (that has no host allow-list, and the fetch refuses a redirect too). `NEWSAPI_SLIDE_IMAGES_FETCH_BASE` is therefore **required**: the News API refuses to start without it. On the stack it's built in as `self:/files`, resolved in-process (SiteGround blocks loopback, so the News API can't reach its own public `https://boxs.ca/files/…`); a standalone deployment must set it to a route that reaches NRMS's files (Q85).
+
+A stuck slide event (a mismatched hash, a missing file, or a file over 2 MB) fails the projection: NRMS's outbox keeps retrying it, and the carousel doesn't show the new image until it's fixed. `/stack/errors` shows `SlideImageError` for it; the slide and pin editors keep whatever image they last showed until the retry succeeds.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

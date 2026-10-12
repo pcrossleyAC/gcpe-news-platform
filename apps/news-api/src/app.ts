@@ -13,6 +13,7 @@ import { v2Routes } from "./http/v2/routes";
 import { createSourceRestrictedHandlers } from "./projections";
 import type { RelatedService } from "./search/related";
 import type { SearchService } from "./search/service";
+import type { SlideImageFetcher } from "./slide-images";
 
 export type { SubscribeProxyOptions };
 
@@ -33,6 +34,9 @@ export interface AppDeps {
   changes?: ChangesRouteOptions;
   /** GET /api/v2/posts/{key}/related. Absent: v2's 404. */
   related?: RelatedService;
+  /** Fetches a slide's image bytes from its event's URL while projecting site.content.changed
+   * (addendum §6.4). Absent: an old base64 envelope still works; a URL slide fails loudly. */
+  slideImages?: SlideImageFetcher;
 }
 
 export function createApp(deps: AppDeps): express.Express {
@@ -42,10 +46,16 @@ export function createApp(deps: AppDeps): express.Express {
 
   app.use(healthRoutes([() => deps.db.execute(sql`SELECT 1`), ...(deps.readinessChecks ?? [])]));
 
-  app.use(createEventReceiver({ db: deps.db, secrets: deps.eventSecrets, handlers: createSourceRestrictedHandlers({ subscribers: deps.subscribers }) }));
+  app.use(
+    createEventReceiver({
+      db: deps.db,
+      secrets: deps.eventSecrets,
+      handlers: createSourceRestrictedHandlers({ subscribers: deps.subscribers, slideImages: deps.slideImages }),
+    }),
+  );
   if (deps.hubRouter) app.use(deps.hubRouter);
 
-  app.use("/api/v2", v2Routes({ search: deps.search, searchRateLimit: deps.searchRateLimit, changes: deps.changes, related: deps.related }));
+  app.use("/api/v2", v2Routes({ search: deps.search, searchRateLimit: deps.searchRateLimit, changes: deps.changes, related: deps.related, db: deps.db }));
 
   const api = express.Router();
   api.use((_req, res, next) => {

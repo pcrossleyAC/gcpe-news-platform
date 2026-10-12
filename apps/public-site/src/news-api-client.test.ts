@@ -77,4 +77,102 @@ describe("newsApiClient", () => {
     const client = newsApiClient("http://host", fetchImpl as unknown as typeof fetch);
     await expect(client.home()).rejects.toThrow(/503/);
   });
+
+  it("latest: an unknown category (404 problem JSON) is an empty list, not an error", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => new Response(JSON.stringify({ status: 404 }), { status: 404 }));
+    const c = newsApiClient("http://api.example/", fetchImpl as unknown as typeof fetch);
+    expect(await c.latest("ministries", "gone", 20)).toEqual([]);
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Posts/Latest/ministries/gone?api-version=1.0&count=20");
+  });
+
+  it("latest: a known category is fetched by kind and key, count included", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json([{ key: "K1" }]));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    expect(await c.latest("sectors", "economy", 5)).toEqual([{ key: "K1" }]);
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Posts/Latest/sectors/economy?api-version=1.0&count=5");
+  });
+
+  it("latestHome: fetches the home latest list and encodes the count", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json([{ key: "K1" }]));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    expect(await c.latestHome(20)).toEqual([{ key: "K1" }]);
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Posts/Latest/home/default?api-version=1.0&count=20");
+  });
+
+  it("postsByKeys: fetches by a comma-joined, encoded key list; an empty list skips the call", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json([{ key: "K1" }, { key: "K2" }]));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    expect(await c.postsByKeys(["K1", "K2"])).toEqual([{ key: "K1" }, { key: "K2" }]);
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Posts?api-version=1.0&postKeys=K1%2CK2");
+    expect(await c.postsByKeys([])).toEqual([]);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("ministries/categories/slides/resourceLinks: fetch their list endpoints, defaulting a null 200 body to []", async () => {
+    const empty = vi.fn(async (_url: string | URL | Request) => new Response("", { status: 200 }));
+    const c = newsApiClient("http://api.example", empty as unknown as typeof fetch);
+    expect(await c.ministries()).toEqual([]);
+    expect(empty.mock.calls[0]![0].toString()).toBe("http://api.example/api/Ministries?api-version=1.0");
+    expect(await c.categories("sectors")).toEqual([]);
+    expect(empty.mock.calls[1]![0].toString()).toBe("http://api.example/api/Sectors?api-version=1.0");
+    expect(await c.categories("themes")).toEqual([]);
+    expect(empty.mock.calls[2]![0].toString()).toBe("http://api.example/api/Themes?api-version=1.0");
+    expect(await c.categories("tags")).toEqual([]);
+    expect(empty.mock.calls[3]![0].toString()).toBe("http://api.example/api/Tags?api-version=1.0");
+    expect(await c.slides()).toEqual([]);
+    expect(empty.mock.calls[4]![0].toString()).toBe("http://api.example/api/v2/slides");
+    expect(await c.resourceLinks()).toEqual([]);
+    expect(empty.mock.calls[5]![0].toString()).toBe("http://api.example/api/ResourceLinks?api-version=1.0");
+  });
+
+  it("slides: reads the v2 shape (emergency, imageUrl) from GET api/v2/slides", async () => {
+    const body = { slides: [{ id: "a", sortIndex: -1, emergency: true, headline: "h", summary: "s", actionUri: null, actionLabel: null, imageUrl: "https://files.example/x.png", justify: null }] };
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json(body));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    expect(await c.slides()).toEqual(body.slides);
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/v2/slides");
+  });
+
+  it("category: fetches one category of a kind by key", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json({ key: "economy" }));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    expect(await c.category("sectors", "economy")).toEqual({ key: "economy" });
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Sectors/economy?api-version=1.0");
+  });
+
+  it("related: maps v2 results; a 404 (unpublished meanwhile) is an empty list", async () => {
+    const ok = vi.fn(async (_url: string | URL | Request) => Response.json({ mode: "text", results: [{ key: "K2", kind: "releases", headline: "H", summary: null, publishDate: "2026-10-01T09:00:00-07:00", leadMinistryKey: null, url: "x" }] }));
+    expect(await newsApiClient("http://api.example", ok as unknown as typeof fetch).related("K1")).toEqual([{ key: "K2", headline: "H", publishDate: "2026-10-01T09:00:00-07:00" }]);
+    expect(ok.mock.calls[0]![0].toString()).toBe("http://api.example/api/v2/posts/K1/related");
+    const gone = vi.fn(async (_url: string | URL | Request) => new Response("{}", { status: 404 }));
+    expect(await newsApiClient("http://api.example", gone as unknown as typeof fetch).related("K1")).toEqual([]);
+  });
+
+  it("postKeys: every published key of one kind", async () => {
+    const f = vi.fn(async (_url: string | URL | Request) => Response.json([{ key: "A", value: "stories" }, { key: "B", value: "stories" }]));
+    expect(await newsApiClient("http://api.example", f as unknown as typeof fetch).postKeys("stories")).toEqual(["A", "B"]);
+    expect(f.mock.calls[0]![0].toString()).toBe("http://api.example/api/Posts/Keys/home/default?api-version=1.0&postKind=stories");
+  });
+
+  it("ministry/category/minister: v1's empty 200 is null", async () => {
+    const empty = vi.fn(async (_url: string | URL | Request) => new Response("", { status: 200 }));
+    const c = newsApiClient("http://api.example", empty as unknown as typeof fetch);
+    expect(await c.ministry("x")).toBeNull();
+    expect(await c.minister("x")).toBeNull();
+    expect(await c.category("tags", "x")).toBeNull();
+  });
+
+  it("ministry: fetches one ministry by key", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json({ key: "health" }));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    expect(await c.ministry("health")).toEqual({ key: "health" });
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Ministries/health?api-version=1.0");
+  });
+
+  it("minister: fetches a ministry's minister", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json({ headline: "H" }));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    expect(await c.minister("health")).toEqual({ headline: "H" });
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Ministries/health/Minister?api-version=1.0");
+  });
 });

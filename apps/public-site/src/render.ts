@@ -1,91 +1,112 @@
-import { escapeHtml } from "@gcpe/http-kit";
+import type { SiteTheme } from "@gcpe/config";
+import { escapeHtml, isSafeUrl } from "@gcpe/http-kit";
+import { DEFAULT_THEME } from "./theme-css";
 
-export interface PostDocument {
-  languageId: number;
-  headline: string | null;
-  subheadline: string | null;
-  detailsHtml: string | null;
-  contacts: { title: string | null; details: string | null }[];
-}
-export interface PostDto {
-  key: string;
-  kind: string;
-  publishDate: string;
-  summary: string | null;
-  location: string | null;
-  ministryKeys: string[];
-  documents: PostDocument[];
-}
+export type { PostDocument, PostDto } from "./dto";
+
 export interface SiteInfo {
   name: string;
   baseUrl: string;
+  /** Tenant `site.theme`; DEFAULT_THEME when absent. */
+  theme?: SiteTheme;
+  /** Set by start.ts only when the logo file exists under SITE_ASSETS_DIR (static-pages.ts's logoFor). */
+  logo?: { src: string; alt: string } | null;
 }
 
-const ENGLISH = 4105;
-
-const e = (s: string | null | undefined) => escapeHtml(s ?? "");
-const english = (p: PostDto) => p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0];
-
-/** Plan 3d task 4: every page's TEST noindex and Project Blue Bridge banner. */
 export interface PageOptions {
-  /** A test site (site-env.ts's isTestSite) gets `<meta name="robots" content="noindex, nofollow">`. */
+  /** A test site gets `<meta name="robots" content="noindex, nofollow">` (site-env.ts's isTestSite). */
   test?: boolean;
   /** Project Blue Bridge's banner text (site-env.ts's blueBridgeBanner), or null/absent for none. */
   banner?: string | null;
+  description?: string | null;
+  /** The page's RSS feed, linked as an alternate. */
+  feed?: { href: string; title: string } | null;
 }
 
-/** The base URL's path with no trailing slash — "" at a root base ("https://news.gov.bc.ca"),
- * "/site" on boxs.ca ("https://boxs.ca/site"). Every in-site link starts with it. */
-function basePath(site: SiteInfo): string {
+export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
+
+/**
+ * `e()` for text and attribute values written into an RSS feed or sitemap (`feeds.ts`,
+ * `sitemaps.ts`). `escapeHtml`'s five entities are all valid XML, but XML 1.0's `Char`
+ * production additionally excludes the C0 control characters other than tab, LF and CR, and the
+ * U+FFFE/U+FFFF noncharacters — a document containing one of those is not well-formed, and
+ * `escapeHtml` alone would let it through. The underlying value (a headline, a summary, a path)
+ * can be arbitrary NRMS free text, so every such value is stripped before it's escaped.
+ */
+const XML_ILLEGAL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
+export const ex = (s: string | null | undefined): string => e((s ?? "").replace(XML_ILLEGAL_CHARS, ""));
+
+/** Gates every `href` built from News API data (a ministry URL, a resource link, an asset or
+ * translation file, a slide's action link) before it's escaped with `e()`. `isSafeUrl`
+ * (`@gcpe/http-kit`, shared with `@gcpe/config`'s theme validation) is the single source of
+ * truth for what's safe — see its doc comment for why a bare "starts with / and not //" check
+ * isn't enough (the backslash-as-separator bypass). */
+export const safeHref = (u: string | null | undefined): string | null => (isSafeUrl(u, { mailto: true }) ? (u as string) : null);
+
+/** Gates every `src` built from News API data (an asset image, the minister's photo) before it's
+ * escaped with `e()` — same as {@link safeHref} but never `mailto:`, which cannot load as an
+ * image. */
+export const safeSrc = (u: string | null | undefined): string | null => (isSafeUrl(u) ? (u as string) : null);
+
+/** The base URL's path with no trailing slash: "" at a root base, "/site" on boxs.ca. */
+export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
   return new URL(site.baseUrl).pathname.replace(/\/+$/, "");
 }
 
-const releasePath = (site: SiteInfo, key: string) => `${basePath(site)}/releases/${encodeURIComponent(key)}`;
-
-/** Plan 3d task 4's page chrome: header, canonical link, test noindex, Blue Bridge banner.
- * Task 7 (Phase 4a): exported so subscribe-pages.ts can reuse the same chrome for the static
- * subscribe/manage/unsubscribe test pages. `bodyAttr`, if given, is spliced straight into the
- * `<body>` tag (e.g. ` data-page="manage"`) — every other caller leaves it at its default. */
+/** Every page's chrome (spec §6.3): skip link, header with brand and nav, main, footer. */
 export function renderPage(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}, bodyAttr = ""): string {
+  const base = basePath(site);
+  const theme = site.theme ?? DEFAULT_THEME;
   const robots = opts.test ? `\n<meta name="robots" content="noindex, nofollow">` : "";
+  const description = opts.description ? `\n<meta name="description" content="${e(opts.description)}">` : "";
+  // Defence in depth: the tenant config schema (`@gcpe/config`'s siteThemeSchema) already
+  // restricts stylesheetUrl to https:/relative, but render time doesn't re-trust config-time
+  // validation for anything else that reaches an href/src — this shouldn't either.
+  const fontHref = theme.font.stylesheetUrl && isSafeUrl(theme.font.stylesheetUrl, { schemes: ["https:"] }) ? theme.font.stylesheetUrl : null;
+  const font = fontHref ? `\n<link rel="stylesheet" href="${e(fontHref)}">` : "";
+  const feed = opts.feed ? `\n<link rel="alternate" type="application/rss+xml" title="${e(opts.feed.title)}" href="${e(opts.feed.href)}">` : "";
   const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
+  const brand = site.logo
+    ? `<img class="logo" src="${e(site.logo.src)}" alt="${e(site.logo.alt)}"><span class="wordmark">${e(site.name)}</span>`
+    : `<span class="wordmark">${e(site.name)}</span>`;
+  const footerLinks = theme.footerLinks
+    .map((l) => {
+      const href = safeHref(l.url);
+      return href ? `<li><a href="${e(href)}">${e(l.label)}</a></li>` : `<li>${e(l.label)}</li>`;
+    })
+    .join("\n");
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)} | ${e(site.name)}</title>
-<link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}
+<link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}${description}
+<link rel="stylesheet" href="${e(base)}/assets/theme.css">${font}${feed}
 </head>
-<body${bodyAttr}>${banner}
-<header><a href="${e(basePath(site))}/">${e(site.name)}</a></header>
-<main>
+<body${bodyAttr}>
+<a class="skip-link" href="#main">Skip to main content</a>${banner}
+<header class="site-header">
+<a class="brand" href="${e(base)}/">${brand}</a>
+<nav aria-label="Site">
+<ul>
+<li><a href="${e(base)}/">Home</a></li>
+<li><a href="${e(base)}/ministries/">Ministries</a></li>
+<li><a href="${e(base)}/archive/">Archive</a></li>
+<li><a href="${e(base)}/search/">Search</a></li>
+</ul>
+</nav>
+</header>
+<main id="main" tabindex="-1">
 ${body}
 </main>
+<footer class="site-footer">
+<ul>
+${footerLinks}
+</ul>
+<p class="muted">${e(site.name)}</p>
+</footer>
 </body>
 </html>
 `;
-}
-
-export function renderPostPage(p: PostDto, site: SiteInfo, opts: PageOptions = {}): string {
-  const d = english(p);
-  const headline = d?.headline ?? p.key;
-  const contacts = (d?.contacts ?? [])
-    .map((c) => `<li><strong>${e(c.title)}</strong><br>${e(c.details).replace(/\n/g, "<br>")}</li>`)
-    .join("\n");
-  const body = `<article>
-<h1>${e(headline)}</h1>
-${d?.subheadline ? `<h2>${e(d.subheadline)}</h2>` : ""}
-<p><time datetime="${e(p.publishDate)}">${e(p.publishDate)}</time>${p.location ? ` · ${e(p.location)}` : ""}</p>
-${d?.detailsHtml ?? ""}
-${contacts ? `<section><h2>Contacts</h2><ul>\n${contacts}\n</ul></section>` : ""}
-</article>`;
-  return renderPage(headline, site, releasePath(site, p.key), body, opts);
-}
-
-export function renderHomePage(posts: PostDto[], site: SiteInfo, opts: PageOptions = {}): string {
-  const items = posts
-    .map((p) => `<li><a href="${e(releasePath(site, p.key))}">${e(english(p)?.headline ?? p.key)}</a> <time datetime="${e(p.publishDate)}">${e(p.publishDate)}</time></li>`)
-    .join("\n");
-  return renderPage("Home", site, `${basePath(site)}/`, `<h1>Latest news</h1>\n<ul>\n${items}\n</ul>`, opts);
 }

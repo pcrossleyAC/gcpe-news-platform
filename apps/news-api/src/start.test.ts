@@ -30,6 +30,7 @@ describe("startNewsApi", () => {
     return {
       DATABASE_URL: tdb.url,
       EVENT_SECRETS: JSON.stringify(EVENT_SECRETS),
+      SLIDE_IMAGES_FETCH_BASE: "http://files.internal.test",
     };
   }
 
