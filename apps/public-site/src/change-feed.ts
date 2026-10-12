@@ -157,7 +157,7 @@ export async function syncChanges(
       const isPost = c.kind === "post.upserted" || c.kind === "post.unpublished";
       const priority = isPost && livePosts > 0 ? (livePosts--, PRIORITY.livePost) : PRIORITY.bulkPost;
       changeItems.push(...pagesForChange(c, priority));
-      if (!isPost && c.key && c.kind in CATEGORY_CHANGE) {
+      if (!isPost && c.key && Object.hasOwn(CATEGORY_CHANGE, c.kind)) {
         const kind = CATEGORY_CHANGE[c.kind as keyof typeof CATEGORY_CHANGE];
         const id = categoryPageId(kind, c.key);
         if (id) for (const key of await deps.index.inCategory(id.slice("category:".length))) changeItems.push({ pageId: `post:${key}`, priority: PRIORITY.bulkPost });

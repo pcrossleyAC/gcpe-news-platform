@@ -1290,7 +1290,7 @@ In semantic mode, `GET /api/v2/search` embeds the query (each distinct query onc
 
 ### Theme and assets
 
-The public site's colours, font and footer links come from `site.theme` in `config/tenants/<tenant>.json`. Files under `config/site/assets/` are published at `<site>/assets/…`; `SITE_SITE_ASSETS_DIR` overrides the folder (the stack prefixes every public-site variable with `SITE_`). Test sites serve `robots.txt` with `Disallow: /`.
+The public site's colours, font and footer links come from `site.theme` in `config/tenants/<tenant>.json`. Files under `config/site/assets/` are published at `<site>/assets/…`; `SITE_SITE_ASSETS_DIR` overrides the folder (the stack prefixes every public-site variable with `SITE_`) — the BC logo and BC Sans font files themselves aren't committed until Q76 (brand and font licensing) is answered. Test sites serve `robots.txt` with `Disallow: /` and add `<meta name="robots" content="noindex, nofollow">` to every page.
 
 ### Pages and rebuilds
 
@@ -1310,7 +1310,7 @@ Every page the site serves under `<OUTPUT_DIR>`:
 
 The public site keeps a local index of every post it has rendered (`site_posts`, in the public site's own database) — its headline, date, month and category keys — so a post change can rebuild exactly the pages that listed it, both before and after the change (the News API has no "posts in a month" query). A post's publish, update or unpublish event rebuilds its own page, then its dependents (home, archive, sitemap, and its ministry/sector/theme/tag pages), reading the index row from before the change.
 
-A layout change (bumping `RENDER_CHROME_VERSION`) or a Blue Bridge/test-flag switch queues every page on the site — every published post, then every aggregate page — on the next `site.rebuild_requested` event or at the next start. See "The rebuild queue" below for how that queue drains.
+A layout change (bumping `RENDER_CHROME_VERSION`) or a Blue Bridge/test-flag switch queues every page on the site — every published post, then every aggregate page — on the next `site.rebuild_requested` event, at the next start, or on the next `site.sync` tick (the chrome check runs every tick, not only on an event or a start). See "The rebuild queue" below for how that queue drains.
 
 To force a full rebuild by hand, delete `<OUTPUT_DIR>/.site-state.json` and restart — the next startup finds no marker and queues a rebuild of everything.
 
@@ -1361,7 +1361,7 @@ SELECT max(id) FROM changes;                       -- on the News API's database
 
 `/search/` is a static page that calls the News API's `GET /api/v2/search` (Phase 6b) from the browser, client-side — nothing server-rendered. `SITE_SEARCH_API_URL` (the stack prefixes every public-site variable with `SITE_`) names the host to call when it isn't the site's own origin; unset on the stack and left unset until Q81 (same origin: a reverse proxy routes `/api/v2/search` on the site's own host) is settled, in which case the page calls `location.origin`.
 
-The News API limits `/api/v2/search` to 30 requests a minute per client IP (Q74, Phase 6b). A visitor who hits it sees "Too many searches. Wait a minute and try again." in the page's alert region, same as a 400 ("Enter between 1 and 200 characters to search.") or any other failure ("Search isn't available right now. You can browse the archive instead.").
+The News API limits `/api/v2/search` to 60 requests a minute per client IP (Q74, Phase 6b). A visitor who hits it sees "Too many searches. Wait a minute and try again." in the page's alert region, same as a 400 ("Enter between 1 and 200 characters to search.") or any other failure ("Search isn't available right now. You can browse the archive instead.").
 
 ### Carousel images
 

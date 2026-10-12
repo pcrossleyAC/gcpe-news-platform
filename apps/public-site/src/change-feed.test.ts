@@ -44,6 +44,12 @@ describe("CATEGORY_CHANGE", () => {
   it("maps every category change kind to its CategoryKind", () => {
     expect(CATEGORY_CHANGE).toEqual({ ministry: "ministries", sector: "sectors", theme: "themes", tag: "tags" });
   });
+
+  // `Object.hasOwn`, not a bare `in`, which also matches inherited names from Object.prototype.
+  it("does not match an Object.prototype property name", () => {
+    expect(Object.hasOwn(CATEGORY_CHANGE, "constructor")).toBe(false);
+    expect("constructor" in CATEGORY_CHANGE).toBe(true); // the very thing a bare `in` gets wrong
+  });
 });
 
 function fakeResponse(opts: { status: number; body: unknown }): Response {
@@ -262,6 +268,22 @@ describe("syncChanges", () => {
     await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
     const client = scriptedClient([
       { resync: false, changes: [{ id: 4, kind: "widget_updated" as unknown as ChangeRow["kind"], key: "something" }, { id: 5, kind: "home", key: null }], next: 5 },
+      { resync: false, changes: [], next: 5 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    expect(await readCursor(db)).toBe(5);
+    const queued = await items();
+    expect(queued).toEqual(["home@1"]);
+  });
+
+  // `kind` is validated only as a non-empty string (changeRowSchema), so a value such as
+  // "constructor" must not reach the prototype chain's own `Object.prototype.constructor` via a
+  // bare `in` check — it's an unrecognised kind like any other, contributing no page.
+  it("a kind matching an Object.prototype property name is ignored, not matched via the prototype chain", async () => {
+    const { db, builder, index } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "constructor" as unknown as ChangeRow["kind"], key: "something" }, { id: 5, kind: "home", key: null }], next: 5 },
       { resync: false, changes: [], next: 5 },
     ]);
     await syncChanges({ db, client, builder, index });

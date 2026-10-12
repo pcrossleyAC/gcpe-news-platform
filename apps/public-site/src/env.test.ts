@@ -204,6 +204,13 @@ describe("SEARCH_API_URL", () => {
   it("rejects a non-URL value", () => {
     expect(() => parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SEARCH_API_URL: "not-a-url" } as unknown as NodeJS.ProcessEnv)).toThrow();
   });
+
+  // An emptied SiteGround field (clearing a once-set value) sends "" , not a missing key — must
+  // not fail z.string().url()'s own validation, which would stop the whole public site starting.
+  it("treats an emptied value the same as unset", () => {
+    const env = parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SEARCH_API_URL: "" } as unknown as NodeJS.ProcessEnv);
+    expect(env.SEARCH_API_URL).toBeUndefined();
+  });
 });
 
 describe("newsApiTokenOptions", () => {
