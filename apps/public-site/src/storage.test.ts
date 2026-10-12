@@ -73,8 +73,8 @@ describe("fsStorage", () => {
     expect(await readdir(outside)).toEqual([]); // no "K1" directory was created outside root
   });
 
-  // Fix round 3 (plan 3d task 4, fix round 1): read()/listDirs() back the site-wide
-  // render-state marker and the "which post pages exist on disk" enumeration.
+  // read()/listDirs() back the site-wide render-state marker (Project Blue Bridge, plan 3d
+  // task 4) and the "which post pages exist on disk" enumeration.
   describe("read", () => {
     it("returns a written file's contents, and null when missing", async () => {
       const root = await mkdtemp(join(tmpdir(), "site-"));

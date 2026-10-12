@@ -41,7 +41,7 @@ describe("safeHref", () => {
     expect(safeHref("not a url")).toBeNull();
   });
 
-  // Fix round 2 (Critical): a leading "/\host" "starts with / and not //", but every major
+  // C209: a leading "/\host" "starts with / and not //", but every major
   // browser (and Node's own URL, same WHATWG algorithm) resolves a backslash the same as a
   // forward slash for http(s), so this used to land on a different origin entirely.
   it("rejects a backslash anywhere, including the /\\host bypass of the site-relative check", () => {

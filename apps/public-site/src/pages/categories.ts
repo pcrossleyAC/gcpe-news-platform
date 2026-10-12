@@ -31,7 +31,7 @@ function postsSections(site: SiteInfo, posts: CategoryPosts): string {
 const SEARCH_FILTER: Partial<Record<CategoryKind, string>> = { ministries: "ministry", sectors: "sector" };
 
 /** "Browse the archive by month" plus, only for the kinds `/api/v2/search` can filter by
- * (ministries, sectors — ruling 3), "search <name> news". */
+ * (ministries, sectors — §6.1; Q82), "search <name> news". */
 function moreLinks(site: SiteInfo, kind: CategoryKind, key: string, name: string): string {
   const filter = SEARCH_FILTER[kind];
   const search = filter ? ` or <a href="${e(basePath(site))}/search/?${filter}=${e(encodeURIComponent(key))}">search ${e(name)} news</a>` : "";

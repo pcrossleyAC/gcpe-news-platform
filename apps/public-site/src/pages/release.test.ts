@@ -16,7 +16,7 @@ describe("release page", () => {
   });
 
   it("demotes body headings so the page keeps one h1", () => {
-    // "class" isn't in the body sanitiser's allow-list (fix round 2, C209), so it's stripped
+    // "class" isn't in the body sanitiser's allow-list (C209), so it's stripped
     // along with the heading demotion — the behaviour under test is the demotion, not the class.
     const html = renderReleasePage(post({ documents: [{ languageId: 4105, headline: "H", subheadline: null, detailsHtml: "<H1 class=\"x\">Inner</H1><h2>Two</h2><h6>Six</h6>", contacts: [] }] }), site, {}, ctx);
     const doc = expectAccessibleStructure(html);

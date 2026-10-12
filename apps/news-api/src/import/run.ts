@@ -155,7 +155,7 @@ export async function importLegacyNews(
           imageBase64: s.Image ? s.Image.toString("base64") : null,
           imageType: imageTypeFromBytes(s.Image),
           // The legacy importer still carries images inline; it never produces the
-          // content-addressed URL fields (spec addendum §6.4, ruling 10).
+          // content-addressed URL fields (spec addendum §6.4).
           imageUrl: null,
           imageKey: null,
           imageSha256: null,
