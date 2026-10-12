@@ -94,9 +94,10 @@ describe("site builder", () => {
     const r = await builder.buildAll({});
     expect(r).toEqual({ posts: 3, failures: 0 });
     expect(storage.files.has("releases/OLD/index.html")).toBe(false);
-    for (const f of ["releases/K1/index.html", "releases/S1/index.html", "index.html", "ministries/index.html", "ministries/health/index.html", "ministries/finance/index.html", "archive/index.html", "sitemap.xml", "sitemaps/pages.xml", "assets/theme.css", "robots.txt", "404.html"]) {
+    for (const f of ["releases/K1/index.html", "releases/S1/index.html", "index.html", "ministries/index.html", "ministries/health/index.html", "ministries/finance/index.html", "archive/index.html", "search/index.html", "sitemap.xml", "sitemaps/pages.xml", "assets/theme.css", "robots.txt", "404.html"]) {
       expect(storage.files.has(f), f).toBe(true);
     }
+    expect(html(storage, "sitemaps/pages.xml")).toContain("/search/");
   });
 
   it("every generated HTML page passes the structure check", async () => {

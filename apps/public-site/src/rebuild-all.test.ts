@@ -24,7 +24,7 @@ describe("enqueueRebuildAll", () => {
     await enqueueRebuildAll(tdb.db, builder);
     const batch = await nextBatch(tdb.db, 1000, []);
     const at = (p: number) => batch.filter((i) => i.priority === p).map((i) => i.pageId);
-    expect(at(PRIORITY.liveAggregate)).toEqual(["static", "home", "ministries", "archive", "sitemap"]);
+    expect(at(PRIORITY.liveAggregate)).toEqual(["static", "home", "ministries", "archive", "search", "sitemap"]);
     expect(at(PRIORITY.bulkPost)).toEqual(["post:NEW", "post:OLD"]);
     expect(at(PRIORITY.bulkAggregate)).toContain("sitemap:pages");
     expect(at(PRIORITY.bulkAggregate)).toContain("category:ministries:health");

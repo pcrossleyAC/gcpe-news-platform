@@ -632,3 +632,4 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Developer** — `npm run site:rebuild-all` (with the site's DATABASE_URL, NEWS_API_URL, OUTPUT_DIR and PUBLIC_SITE_URL) queues every page.
 - **Operations** — If the site builder was stopped, it catches up from the News API's change feed when it starts again; if it was stopped for more than 90 days it rebuilds the whole site.
 - **Administrator** — Standalone (OpenShift): the site builder needs an Entra app registration with the News API's `NewsApi.ChangesRead` app role (NEWS_API_TOKEN_URL, NEWS_API_CLIENT_ID, NEWS_API_CLIENT_SECRET, NEWS_API_SCOPE), and the News API needs AUTH_AUDIENCE. It won't start without them.
+- **Viewer** — The site's Search page searches every published post, optionally within one ministry. Ministry and sector pages link to it. Without JavaScript it points to the archive instead.

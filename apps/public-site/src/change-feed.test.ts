@@ -18,7 +18,7 @@ describe("pagesForChange", () => {
     [{ id: 3, kind: "home", key: null }, [{ pageId: "home", priority: 1 }]],
     [{ id: 4, kind: "slides", key: null }, [{ pageId: "home", priority: 1 }]],
     [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }]],
-    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 7, kind: "tag", key: "covid-19" }, [{ pageId: "category:tags:covid-19", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 8, kind: "post.upserted", key: "../x" }, []],
     [{ id: 9, kind: "ministry", key: null }, []],

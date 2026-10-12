@@ -40,3 +40,14 @@ test("a published release appears on every page that lists it, and leaves them a
     expect((await text(path)).body, path).not.toContain(link);
   }
 });
+
+test("the search page finds a just-published release", async ({ page }) => {
+  const cookie = await loginForCookie(EDITOR_EMAIL, TEST_USER_PASSWORDS[EDITOR_EMAIL]!);
+  const word = `zebrafinch${Date.now().toString(36)}`;
+  const published = await createApprovedAndPublished(cookie, { headline: `Search check ${word}` });
+  await page.goto(`${baseUrl()}/site/search/?q=${word}`);
+  await expect(page.getByRole("status")).toContainText("Results 1 to 1 of 1.");
+  await expect(page.getByRole("link", { name: new RegExp(word) })).toHaveAttribute("href", `/site/releases/${published.key}/`);
+  await page.getByRole("link", { name: new RegExp(word) }).click();
+  await expect(page.getByRole("heading", { level: 1 })).toContainText(word);
+});

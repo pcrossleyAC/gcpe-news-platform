@@ -7,6 +7,7 @@ import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./
 import { LATEST_COUNT } from "./pages/format";
 import { renderHomePage } from "./pages/home";
 import { renderReleasePage } from "./pages/release";
+import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, membershipOfEntry, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
@@ -36,7 +37,7 @@ export interface SiteBuilder {
   aggregatePageIds(): Promise<string[]>;
 }
 
-export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteStorage; index: PostIndex; site: SiteInfo; assetsDir: string | null }): SiteBuilder {
+export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteStorage; index: PostIndex; site: SiteInfo; assetsDir: string | null; searchApiBase?: string }): SiteBuilder {
   const { newsApi, storage, index, site } = deps;
   const ministries = (run: RunCache) => (run.ministries ??= newsApi.ministries());
   const removeAll = async (p: PageId) => {
@@ -142,6 +143,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         case "archive":
           await storage.write(pageFiles(p)[0]!, renderArchiveIndex(await index.months(), site, opts));
           return [];
+        case "search":
+          await storage.write(pageFiles(p)[0]!, renderSearchPage(await ministries(run), site, opts, deps.searchApiBase ?? ""));
+          return [];
         case "archive-month": {
           const posts = await index.inMonth(p.month);
           if (posts.length === 0) await removeAll(p);
@@ -160,7 +164,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         }
         case "sitemap-pages": {
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" })];
+          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "search" })];
           for (const id of await categoryIds(run)) paths.push(pageUrl(site, parsePageId(id)!));
           for (const m of await index.months()) paths.push(pageUrl(site, { type: "archive-month", month: m.month }));
           await storage.write(pageFiles(p)[0]!, renderUrlSet(paths.map((path) => ({ path })), site));
@@ -193,7 +197,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
 
     async aggregatePageIds() {
       const run: RunCache = {};
-      const ids = ["static", "home", "ministries", "archive", "sitemap", "sitemap:pages", ...(await categoryIds(run))];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "sitemap:pages", ...(await categoryIds(run))];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       return ids;
     },

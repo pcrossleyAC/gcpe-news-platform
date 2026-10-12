@@ -18,6 +18,7 @@ export type PageId =
   | { type: "category"; kind: CategoryKind; key: string }
   | { type: "archive" }
   | { type: "archive-month"; month: string }
+  | { type: "search" }
   | { type: "sitemap" }
   | { type: "sitemap-month"; month: string }
   | { type: "sitemap-pages" }
@@ -27,6 +28,7 @@ const SINGLE: Record<string, PageId> = {
   home: { type: "home" },
   ministries: { type: "ministries" },
   archive: { type: "archive" },
+  search: { type: "search" },
   sitemap: { type: "sitemap" },
   "sitemap:pages": { type: "sitemap-pages" },
   static: { type: "static" },
@@ -72,6 +74,7 @@ export function pageFiles(p: PageId): string[] {
     case "category": return [`${p.kind}/${p.key}/index.html`, `${p.kind}/${p.key}/feed.xml`];
     case "archive": return ["archive/index.html"];
     case "archive-month": return [`archive/${p.month.slice(0, 4)}/${p.month.slice(5)}/index.html`];
+    case "search": return ["search/index.html"];
     case "sitemap": return ["sitemap.xml"];
     case "sitemap-month": return [`sitemaps/${p.month}.xml`];
     case "sitemap-pages": return ["sitemaps/pages.xml"];
@@ -89,6 +92,7 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "category": return `${base}/${p.kind}/${p.key}/`;
     case "archive": return `${base}/archive/`;
     case "archive-month": return `${base}/archive/${p.month.slice(0, 4)}/${p.month.slice(5)}/`;
+    case "search": return `${base}/search/`;
     case "sitemap": return `${base}/sitemap.xml`;
     case "sitemap-month": return `${base}/sitemaps/${p.month}.xml`;
     case "sitemap-pages": return `${base}/sitemaps/pages.xml`;

@@ -3,7 +3,7 @@ import type { SiteBuilder } from "./builder";
 import { enqueuePages, PRIORITY } from "./queue";
 
 /** Rendered on the same run as the trigger, so a layout or Blue Bridge change shows on home at once. */
-const FIRST = ["static", "home", "ministries", "archive", "sitemap"];
+const FIRST = ["static", "home", "ministries", "archive", "search", "sitemap"];
 
 /** spec §6.2 "templates change": every page. Network reads only; the caller enqueues. */
 export async function rebuildAllItems(builder: SiteBuilder): Promise<{ pageId: string; priority: number }[]> {

@@ -49,7 +49,7 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       const kind = CATEGORY_CHANGE[c.kind];
       const id = c.key ? categoryPageId(kind, c.key) : null;
       if (!id) return [];
-      return [{ pageId: id, priority: live }, ...(kind === "ministries" ? [{ pageId: "ministries", priority: live }] : []), { pageId: "sitemap:pages", priority: live }];
+      return [{ pageId: id, priority: live }, ...(kind === "ministries" ? [{ pageId: "ministries", priority: live }, { pageId: "search", priority: live }] : []), { pageId: "sitemap:pages", priority: live }];
     }
   }
 }

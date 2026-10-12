@@ -12,6 +12,7 @@ describe("parsePageId", () => {
     ["category:tags:covid-19", { type: "category", kind: "tags", key: "covid-19" }],
     ["archive", { type: "archive" }],
     ["archive:2026-10", { type: "archive-month", month: "2026-10" }],
+    ["search", { type: "search" }],
     ["sitemap", { type: "sitemap" }],
     ["sitemap:2026-01", { type: "sitemap-month", month: "2026-01" }],
     ["sitemap:pages", { type: "sitemap-pages" }],
@@ -47,6 +48,7 @@ describe("pageFiles", () => {
     ["category:sectors:economy", ["sectors/economy/index.html", "sectors/economy/feed.xml"]],
     ["archive", ["archive/index.html"]],
     ["archive:2026-10", ["archive/2026/10/index.html"]],
+    ["search", ["search/index.html"]],
     ["sitemap", ["sitemap.xml"]],
     ["sitemap:2026-10", ["sitemaps/2026-10.xml"]],
     ["sitemap:pages", ["sitemaps/pages.xml"]],
@@ -62,6 +64,7 @@ describe("urls", () => {
     expect(pageUrl(site, { type: "post", key: "K1" })).toBe("/site/releases/K1/");
     expect(pageUrl(site, { type: "category", kind: "themes", key: "health" })).toBe("/site/themes/health/");
     expect(pageUrl(site, { type: "archive-month", month: "2026-10" })).toBe("/site/archive/2026/10/");
+    expect(pageUrl(site, { type: "search" })).toBe("/site/search/");
     expect(feedUrl(site, { type: "home" })).toBe("/site/feed.xml");
     expect(feedUrl(site, { type: "category", kind: "tags", key: "covid-19" })).toBe("/site/tags/covid-19/feed.xml");
     expect(absoluteUrl(site, "/site/x/")).toBe("https://boxs.example/site/x/");

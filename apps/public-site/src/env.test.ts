@@ -188,6 +188,24 @@ describe("NEWS_API_TOKEN_URL/CLIENT_ID/CLIENT_SECRET/SCOPE", () => {
   });
 });
 
+describe("SEARCH_API_URL", () => {
+  const withSite = { ...BASE, SITE_NAME: "N", PUBLIC_SITE_URL: "https://n.example" };
+
+  it("is optional and unset by default", () => {
+    const env = parseEnv(publicSiteEnvSchema(undefined), withSite as unknown as NodeJS.ProcessEnv);
+    expect(env.SEARCH_API_URL).toBeUndefined();
+  });
+
+  it("is set from env when given", () => {
+    const env = parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SEARCH_API_URL: "https://api.example" } as unknown as NodeJS.ProcessEnv);
+    expect(env.SEARCH_API_URL).toBe("https://api.example");
+  });
+
+  it("rejects a non-URL value", () => {
+    expect(() => parseEnv(publicSiteEnvSchema(undefined), { ...withSite, SEARCH_API_URL: "not-a-url" } as unknown as NodeJS.ProcessEnv)).toThrow();
+  });
+});
+
 describe("newsApiTokenOptions", () => {
   const entraParsed = {
     NEWS_API_TOKEN_URL: "https://entra.example/token",

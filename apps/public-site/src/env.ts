@@ -73,6 +73,9 @@ export function publicSiteEnvSchema(tenantConfig: TenantConfig | undefined) {
     NEWS_API_CLIENT_ID: optionalSetting,
     NEWS_API_CLIENT_SECRET: optionalSetting,
     NEWS_API_SCOPE: optionalSetting,
+    /** The search page's `/api/v2/search` host, when it isn't the site's own origin (Q81).
+     * Unset on the stack and on a single-host deployment: the page calls its own origin. */
+    SEARCH_API_URL: z.string().url().optional(),
   });
 }
 

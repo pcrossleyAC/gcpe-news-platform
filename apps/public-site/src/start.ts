@@ -84,7 +84,7 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   const test = isTestSite(env);
 
   const index = postIndex(db);
-  const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: parsed.SITE_ASSETS_DIR });
+  const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: parsed.SITE_ASSETS_DIR, searchApiBase: parsed.SEARCH_API_URL ?? "" });
   // Throws here, at startup, if neither Entra client credentials nor a local admin secret is
   // configured — a misconfigured deployment fails fast rather than on the first tick.
   const getToken = serviceTokenProvider(newsApiTokenOptions(parsed, env));

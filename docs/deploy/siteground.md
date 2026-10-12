@@ -1357,6 +1357,12 @@ SELECT change_cursor FROM site_state WHERE id = 1; -- on the public site's datab
 SELECT max(id) FROM changes;                       -- on the News API's database
 ```
 
+### Search page
+
+`/search/` is a static page that calls the News API's `GET /api/v2/search` (Phase 6b) from the browser, client-side — nothing server-rendered. `SITE_SEARCH_API_URL` (the stack prefixes every public-site variable with `SITE_`) names the host to call when it isn't the site's own origin; unset on the stack and left unset until Q81 (same origin: a reverse proxy routes `/api/v2/search` on the site's own host) is settled, in which case the page calls `location.origin`.
+
+The News API limits `/api/v2/search` to 30 requests a minute per client IP (Q74, Phase 6b). A visitor who hits it sees "Too many searches. Wait a minute and try again." in the page's alert region, same as a 400 ("Enter between 1 and 200 characters to search.") or any other failure ("Search isn't available right now. You can browse the archive instead.").
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
