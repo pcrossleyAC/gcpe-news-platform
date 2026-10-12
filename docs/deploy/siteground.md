@@ -1292,6 +1292,28 @@ In semantic mode, `GET /api/v2/search` embeds the query (each distinct query onc
 
 The public site's colours, font and footer links come from `site.theme` in `config/tenants/<tenant>.json`. Files under `config/site/assets/` are published at `<site>/assets/…`; `SITE_SITE_ASSETS_DIR` overrides the folder (the stack prefixes every public-site variable with `SITE_`). Test sites serve `robots.txt` with `Disallow: /`.
 
+### Pages and rebuilds
+
+Every page the site serves under `<OUTPUT_DIR>`:
+
+| Page | Path |
+|---|---|
+| Home | `/index.html`, `/feed.xml` |
+| Release/story/factsheet/update/advisory | `/releases/<key>/index.html` |
+| Ministries index | `/ministries/index.html` |
+| Ministry/sector/theme/tag | `/<kind>/<key>/index.html`, `/<kind>/<key>/feed.xml` |
+| Archive index | `/archive/index.html` |
+| Monthly archive | `/archive/<yyyy>/<mm>/index.html` |
+| Sitemap index | `/sitemap.xml` |
+| Monthly/pages sitemap | `/sitemaps/<yyyy-mm>.xml`, `/sitemaps/pages.xml` |
+| Static (theme, 404, robots) | `/assets/theme.css`, `/404.html`, `/robots.txt` |
+
+The public site keeps a local index of every post it has rendered (`site_posts`, in the public site's own database) — its headline, date, month and category keys — so a post change can rebuild exactly the pages that listed it, both before and after the change (the News API has no "posts in a month" query). A post's publish, update or unpublish event rebuilds its own page, then its dependents (home, archive, sitemap, and its ministry/sector/theme/tag pages), reading the index row from before the change.
+
+A layout change (bumping `RENDER_CHROME_VERSION`) or a Blue Bridge/test-flag switch rebuilds every page on the site — every published post, then every aggregate page — on the next `site.rebuild_requested` event or at the next start. In 6c-1 this runs synchronously inside the event handler and the startup self-heal; fine for boxs.ca's volume (a few dozen posts), a few seconds at most. 6c-2 replaces it with a persistent queue before any larger site exists.
+
+To force a full rebuild by hand, delete `<OUTPUT_DIR>/.site-state.json` and restart — the next startup finds no marker and rebuilds everything.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

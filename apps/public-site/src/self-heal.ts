@@ -1,83 +1,45 @@
+import type { SiteBuilder } from "./builder";
 import type { NewsApiClient } from "./news-api-client";
-import { renderHomePage } from "./pages/home";
-import { renderReleasePage } from "./pages/release";
-import { enqueueSiteWrite, HOME_COUNT, POST_KEY, postPath, resyncPostPages, stateAndBanner, tryHome } from "./rebuild";
+import { chromeChanged, enqueueSiteWrite, stateAndBanner, tryHome, writeSiteState } from "./rebuild";
 import type { SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
 import { writeSubscribePages } from "./subscribe-pages";
 
-/** How many of the latest posts to rebuild when the output folder is found empty — generous
- * (most sites publish far fewer than this in their whole history) since this only runs once,
- * right after a cold start, when the alternative is a 404 for every page until the next event
- * happens to rebuild it. */
-const DEFAULT_COUNT = 200;
-
 /**
- * Task 1: SiteGround unpacks each deploy into a brand-new folder, so a redeploy can leave the
- * public site's `OUTPUT_DIR` empty even though DATA_DIR itself survived (e.g. the very first
- * deploy after this fix, or DATA_DIR pointed somewhere new) — every `/site` page would 404
- * until the next `site.rebuild_requested` event happened to touch it. Called once at startup
- * (see start.ts): if `index.html` is already there, the bootstrap render below is a no-op
- * (`null`) — otherwise it renders the home page and the latest `count` posts from the News
- * API, the same way createRebuildHandler would if it received a rebuild event for every one of
- * them.
+ * Runs once at startup (see start.ts): makes sure the output folder actually has every page it
+ * should, the same way `createRebuildHandler`'s chrome-change path would — either because the
+ * folder came up empty (e.g. a SiteGround redeploy into a brand-new folder) or because the
+ * chrome baked into every page (Blue Bridge, the test flag, `RENDER_CHROME_VERSION`, the base
+ * URL) differs from the last run's marker.
  *
- * Plan 3d task 4 fix round 1 (CRITICAL): regardless of whether the bootstrap render runs, this
- * always also resyncs the Blue Bridge banner/TEST state onto every post page already on disk
- * (rebuild.ts's `resyncPostPages`) — a site that survived the redeploy (so the bootstrap is a
- * no-op) still needs its existing post pages fixed the first time this ships, or whenever
- * granville changes between rebuild events. Tolerant of a News API outage (logs and skips;
- * never fails startup) — unlike `createRebuildHandler`, which lets the same failure propagate
- * so the dispatcher retries (Important 1).
- *
- * Fix round 2 (Important): this runs after `app.listen()` (main.ts/stack.ts), so it can overlap
- * an inbound rebuild event in the same process — the whole function body below is wrapped in
- * `enqueueSiteWrite` (rebuild.ts), the same per-`SiteStorage` serialisation queue
- * `createRebuildHandler` uses, so this run and any concurrent rebuild can never race each
- * other's read-marker/render/write-marker turn. See `enqueueSiteWrite`'s doc comment for why a
- * per-storage promise chain is enough here (one process, one `SiteStorage`).
+ * Tolerant of a News API outage: `tryHome` never throws, so a failed `home()` just means the
+ * subscribe pages are written with no banner and nothing else runs this time — unlike
+ * `createRebuildHandler`, whose `home()` failure propagates so the event is retried. Runs
+ * inside the same `enqueueSiteWrite` queue as `createRebuildHandler`, so this startup pass and
+ * an inbound rebuild event in the same process can never interleave (see `enqueueSiteWrite`'s
+ * doc comment).
  */
-export function selfHeal(deps: { newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo; test: boolean; count?: number }): Promise<{ rebuilt: number } | null> {
-  const { newsApi, storage, site, test, count = DEFAULT_COUNT } = deps;
+export function selfHeal(deps: { builder: SiteBuilder; newsApi: NewsApiClient; storage: SiteStorage; site: SiteInfo; test: boolean }): Promise<{ rebuilt: number } | null> {
+  const { builder, newsApi, storage, site, test } = deps;
 
   return enqueueSiteWrite(storage, async () => {
-    // One tolerant home() fetch covers both the resync below and, if needed, the bootstrap
-    // render's own banner — a failure (logged inside tryHome) means both proceed without one.
     const home = await tryHome(newsApi);
     const computed = home ? stateAndBanner(home.granville, test, new Date()) : null;
-    if (computed) {
-      await resyncPostPages({ newsApi, storage, site }, computed.state, computed.banner);
-    }
-
-    // Phase 4a test pages: cheap and stateless, so rewritten on every start (they pick up any
-    // chrome change without a marker bump).
-    await writeSubscribePages(storage, site, { test, banner: computed?.banner ?? null });
-
-    if (await storage.exists("index.html")) return null;
-
     const opts = { test, banner: computed?.banner ?? null };
 
-    const posts = await newsApi.latestHome(count);
+    // Cheap and stateless, so rewritten on every start regardless of what follows.
+    await writeSubscribePages(storage, site, opts);
 
-    // Fix round 1: post pages first, index.html LAST — index.html's existence is the signal
-    // this function (and the next cold start) uses to decide "already healed, nothing to do"
-    // (the check above). Writing it first would mark the job done before a single post page
-    // was actually written; if a later post write then failed, the next start would see
-    // index.html and skip retrying, leaving some post pages permanently missing. Writing it
-    // last means any failure midway leaves index.html absent, so the next start retries
-    // everything from scratch.
-    let rebuilt = 0;
-    for (const post of posts) {
-      if (!POST_KEY.test(post.key)) {
-        console.warn(`[public-site] self-heal skipping post with invalid key ${JSON.stringify(post.key)}`);
-        continue;
-      }
-      await storage.write(postPath(post.key), renderReleasePage(post, site, opts, { ministryNames: new Map(), related: [] }));
-      rebuilt++;
+    if (!computed) return null; // News API unreachable: nothing more can be rendered correctly now
+
+    const needsBuild = (await chromeChanged(storage, computed.state, site)) || !(await storage.exists("index.html"));
+    if (!needsBuild) {
+      await builder.renderPage("static", opts);
+      return null;
     }
-    // The home page itself still lists only the normal count — `posts` is generous (above) so
-    // every recent post page gets healed, but the home page shouldn't suddenly show 200 items.
-    await storage.write("index.html", renderHomePage({ top: null, feature: null, latest: posts.slice(0, HOME_COUNT), slides: [], links: [] }, site, opts));
-    return { rebuilt };
+
+    const r = await builder.buildAll(opts);
+    if (r.failures === 0) await writeSiteState(storage, computed.state, site);
+    return { rebuilt: r.posts };
   });
 }

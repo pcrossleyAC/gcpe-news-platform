@@ -625,3 +625,6 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 - **Site editor** — The public site now has a header with the site's name (and logo, once one is supplied), a menu (Home, Ministries, Archive, Search) and a footer with the tenant's footer links. A "Skip to main content" link appears when you press Tab.
 - **Operations** — The site's colours and font come from the tenant config's `site.theme`. Logo and font files go in `config/site/assets/`; the site copies them on every start. Until a logo file exists the header shows the site name as text.
+- **Viewer** — The public site has a page for every ministry (with its minister and media contacts), sector, theme and tag, each with its latest 20 posts and an RSS feed (`feed.xml`). Older news is in the archive, one page per month.
+- **Site editor** — The home page shows the Top and Featured posts, the carousel's slides as a list (they no longer rotate), the latest 20 posts and the resource links. Slide images arrive in a later update.
+- **Operations** — The site rebuilds every page a post appears on when it's published, changed or unpublished. A deploy that changes the page layout rebuilds the whole site once, on start.

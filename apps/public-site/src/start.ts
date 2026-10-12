@@ -4,8 +4,10 @@ import { assertTimeZoneRules, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createApp } from "./app";
+import { createSiteBuilder } from "./builder";
 import { publicSiteEnvSchema, resolveTenantConfig, tenantConfigPathSchema } from "./env";
 import { newsApiClient } from "./news-api-client";
+import { postIndex } from "./post-index";
 import { createRebuildHandler } from "./rebuild";
 import type { SiteInfo } from "./render";
 import { selfHeal } from "./self-heal";
@@ -77,7 +79,9 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   // into it the same way for every app).
   const test = isTestSite(env);
 
-  const handler = createRebuildHandler({ newsApi, storage, site, test });
+  const index = postIndex(db);
+  const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: parsed.SITE_ASSETS_DIR });
+  const handler = createRebuildHandler({ builder, newsApi, storage, site, test });
 
   const app = createApp({ db, eventSecrets: parsed.EVENT_SECRETS, handler });
 
@@ -91,6 +95,6 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
     closeBeforeServer: [],
     closers: [{ name: "db pool", close: () => pool.end() }],
     // Fix round 1: not called here — see the AppHandle.selfHeal doc comment above for why.
-    selfHeal: () => selfHeal({ newsApi, storage, site, test }),
+    selfHeal: () => selfHeal({ builder, newsApi, storage, site, test }),
   };
 }

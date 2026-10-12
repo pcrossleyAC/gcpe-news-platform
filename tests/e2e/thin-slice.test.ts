@@ -21,8 +21,10 @@ import { createApp as createNewsApiApp } from "../../apps/news-api/src/app";
 import { createNewsTestDb } from "../../apps/news-api/test/helpers";
 
 import { createApp as createPublicSiteApp } from "../../apps/public-site/src/app";
-import { createRebuildHandler } from "../../apps/public-site/src/rebuild";
+import { createSiteBuilder } from "../../apps/public-site/src/builder";
 import { newsApiClient } from "../../apps/public-site/src/news-api-client";
+import { postIndex } from "../../apps/public-site/src/post-index";
+import { createRebuildHandler } from "../../apps/public-site/src/rebuild";
 import { fsStorage } from "../../apps/public-site/src/storage";
 import { createPublicSiteTestDb } from "../../apps/public-site/test/helpers";
 
@@ -154,18 +156,19 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
       }),
     );
 
-    publicSite.attach(
-      createPublicSiteApp({
-        db: publicSiteDb.db,
-        eventSecrets: { "news-api": SECRET_NEWS_API_TO_PUBLIC_SITE },
-        handler: createRebuildHandler({
-          newsApi: newsApiClient(newsApi.url),
-          storage: fsStorage(outputDir),
-          site: { name: "BC Gov News (E2E)", baseUrl: publicSite.url },
-          test: false,
+    {
+      const siteNewsApi = newsApiClient(newsApi.url);
+      const siteStorage = fsStorage(outputDir);
+      const site = { name: "BC Gov News (E2E)", baseUrl: publicSite.url };
+      const builder = createSiteBuilder({ newsApi: siteNewsApi, storage: siteStorage, index: postIndex(publicSiteDb.db), site, assetsDir: null });
+      publicSite.attach(
+        createPublicSiteApp({
+          db: publicSiteDb.db,
+          eventSecrets: { "news-api": SECRET_NEWS_API_TO_PUBLIC_SITE },
+          handler: createRebuildHandler({ builder, newsApi: siteNewsApi, storage: siteStorage, site, test: false }),
         }),
-      }),
-    );
+      );
+    }
 
     newsApiSubscribers = [{ name: "public-site", url: `${publicSite.url}/events`, secret: SECRET_NEWS_API_TO_PUBLIC_SITE, types: ["site.rebuild_requested"] }];
     newsApi.attach(
@@ -299,9 +302,9 @@ describe("Phase 2 exit check: NRMS release -> publish -> News API -> static page
     const postHtml = await readFile(join(outputDir!, "releases", key, "index.html"), "utf8");
     expect(postHtml).toContain("Clinics &amp; &lt;weekend&gt; care");
     expect(postHtml).not.toContain("<weekend>");
-    // Pin the link format (fix round 1 item 4): the home page's own link is site-relative.
+    // Pin the link format: the home page's own link is site-relative, a directory path.
     const homeHtml = await readFile(join(outputDir!, "index.html"), "utf8");
-    expect(homeHtml).toContain(`href="/releases/${key}"`);
+    expect(homeHtml).toContain(`href="/releases/${key}/"`);
 
     // Step 6: NoD's As-It-Happens send job reaches Distribution over real HTTP (NoD's own
     // minted local service token, azp "nod"), and Distribution's sender delivers it to the
