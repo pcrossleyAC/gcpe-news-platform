@@ -29,8 +29,8 @@ describe("startPublicSite", () => {
       // still requires a valid URL.
       NEWS_API_URL: "http://127.0.0.1:1",
       OUTPUT_DIR: outputDir,
-      // The site builder's own service token for the change feed (ruling 8): a local admin
-      // secret, since no test here configures Entra client credentials.
+      // The site builder's own service token for the change feed: a local admin secret, since
+      // no test here configures Entra client credentials.
       LOCAL_ADMIN_ENABLED: "true",
       LOCAL_ADMIN_PASSWORD_HASH: hash,
       LOCAL_AUTH_SECRET: "x".repeat(32),
@@ -60,8 +60,8 @@ describe("startPublicSite", () => {
     await expect(Promise.all([...started.closeBeforeServer, ...started.closers].map((c) => c.close()))).resolves.not.toThrow();
   });
 
-  // Ruling 8: without Entra client credentials or a local admin secret for the change feed's
-  // service token, the site builder refuses to start rather than fail on its first tick.
+  // Without Entra client credentials or a local admin secret for the change feed's service
+  // token, the site builder refuses to start rather than fail on its first tick.
   it("rejects with neither Entra client credentials nor local admin configured", async () => {
     const env = await testEnv();
     delete env.LOCAL_ADMIN_ENABLED;
