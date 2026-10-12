@@ -57,6 +57,13 @@
       "when": 1791751514733,
       "tag": "0007_post_embedding_failures",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1791779800398,
+      "tag": "0008_slide_image_urls",
+      "breakpoints": true
     }
   ]
 }
