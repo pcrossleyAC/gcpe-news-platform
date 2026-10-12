@@ -16,6 +16,10 @@ export const CORE_ADMIN_DIRECTORY_ROLE = "Core.AdminDirectory";
  * "SubscribeApiUser"). Not a staff role. */
 export const NOD_SUBSCRIBE_API_ROLE = "NoD.SubscribeApi";
 
+/** Phase 6b: the service role that may read the News API's change feed (`GET /api/v2/changes`).
+ * The public site's builder holds it. Not a staff role. */
+export const NEWS_API_CHANGES_ROLE = "NewsApi.ChangesRead";
+
 /** Distribution's own admin surface (its pause/resume settings routes) — a service role
  * NoD's Distribution client carries, not a staff role (staff control it through NoD's own
  * `NoD.Admin`-gated routes, never by calling Distribution directly). */

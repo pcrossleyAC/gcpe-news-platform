@@ -3,6 +3,8 @@ import type { Db } from "@gcpe/db-kit";
 import type { CategoryKind } from "@gcpe/events";
 import { normalizeGranville } from "@gcpe/legacy-import";
 import type { LegacySource } from "@gcpe/legacy-import";
+import { recordChanges } from "../changes";
+import { deleteSemanticRows } from "../embeddings/rows";
 import { applyRelease, applySiteContent } from "../projections";
 import { imageTypeFromBytes, justifyFromLegacy, mapLegacyRelease, type LegacyContactRow, type LegacyDocumentRow, type LegacyIndexRow, type LegacyReleaseRow } from "./map";
 import { Q_APP_SETTINGS, Q_CATEGORY_FEATURES, Q_CURRENT_SLIDES, Q_RELEASE_KEYS_BY_ID, Q_RELEASE_YEARS, Q_RESOURCE_LINKS, qContacts, qDocuments, qReleaseIndexes, qReleases } from "./queries";
@@ -81,14 +83,22 @@ export async function importLegacyNews(
       // origin = 'legacy' only: an 'event' row is NRMS-owned (it published or was later
       // re-published there even if legacy first created it), and legacy not listing it here
       // must never unpublish it.
-      const { rows } = await db.execute<{ key: string }>(sql`
-        UPDATE posts SET is_published = false
-        WHERE is_published
-          AND origin = 'legacy'
-          AND lower(key) NOT IN (SELECT lower(value) FROM jsonb_array_elements_text(${JSON.stringify(importedKeys)}::jsonb))
-        RETURNING key`);
-      result.unpublished = rows.length;
-      log(`[import] unpublished ${rows.length} post(s) no longer published in legacy`);
+      // One transaction: the unpublish and its change rows commit together. Keys travel as one
+      // JSON parameter, never one bind parameter each.
+      const unpublished = await db.transaction(async (tx) => {
+        const { rows } = await tx.execute<{ key: string }>(sql`
+          UPDATE posts SET is_published = false
+          WHERE is_published
+            AND origin = 'legacy'
+            AND lower(key) NOT IN (SELECT lower(value) FROM jsonb_array_elements_text(${JSON.stringify(importedKeys)}::jsonb))
+          RETURNING key`);
+        const keys = rows.map((r) => r.key);
+        await deleteSemanticRows(tx, keys);
+        await recordChanges(tx, keys.map((key) => ({ kind: "post.unpublished" as const, key })));
+        return keys;
+      });
+      result.unpublished = unpublished.length;
+      log(`[import] unpublished ${unpublished.length} post(s) no longer published in legacy`);
     }
   }
 

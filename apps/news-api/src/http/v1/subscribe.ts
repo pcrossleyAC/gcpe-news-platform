@@ -1,7 +1,7 @@
 import express, { Router } from "express";
 import type { Request, Response } from "express";
-import { isIP } from "node:net";
-import { ipKeyGenerator, rateLimit } from "express-rate-limit";
+import { rateLimit } from "express-rate-limit";
+import { clientIpKey } from "../client-ip";
 
 export interface SubscribeProxyOptions {
   baseUrl: string;
@@ -73,14 +73,7 @@ export function subscribeRoutes(opts: SubscribeProxyOptions | undefined): Router
   // be reassigned before the closure runs.
   const subscribeOpts = opts;
   const doFetch = subscribeOpts.fetchImpl ?? fetch;
-  const clientIpHeader = subscribeOpts.clientIpHeader;
-  const keyGenerator = (req: Request) => {
-    // A missing/malformed header falls back to req.ip; ipKeyGenerator groups IPv6
-    // addresses by subnet so one host can't rotate through its /64 for fresh buckets.
-    const forwarded = clientIpHeader ? req.get(clientIpHeader)?.split(",")[0]?.trim() : undefined;
-    const ip = forwarded && isIP(forwarded) ? forwarded : (req.ip ?? "");
-    return ipKeyGenerator(ip);
-  };
+  const keyGenerator = clientIpKey(subscribeOpts.clientIpHeader);
 
   // Shared forwarding: token, 15s timeout, status and (allow-listed) content-type
   // passthrough, X-Content-Type-Options: nosniff, and the 502 log line. The log line never

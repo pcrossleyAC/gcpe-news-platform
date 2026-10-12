@@ -1,34 +1,15 @@
 import { createHash } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq, sql } from "drizzle-orm";
-import type pg from "pg";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { OrgRecord, ReleaseRecord, TermRecord } from "@gcpe/events";
 import { sampleRelease } from "@gcpe/events/testing";
-import { createNewsTestDb } from "../test/helpers";
+import { createNewsTestDb, waitUntilBlockedOnLock } from "../test/helpers";
 import { categories, categoryFeatures, home, posts, resourceLinks, slides } from "./db/schema";
+import { embeddingTextHash } from "./embeddings/source-text";
 import { applyOrg, applyRelease, applySiteContent, applyTerm, deactivateCategory, indexKeysFor, unpublishRelease } from "./projections";
 import { SEARCH_TEXT_MAX_CHARS, searchTextFor } from "./search/search-text";
 import { listenForUpdates, notifyUpdate, type UpdateTarget } from "./updates/notify";
-
-/**
- * Polls pg_stat_activity until some backend in this database is actually blocked waiting on a
- * lock. Used instead of an arbitrary sleep so the race test's interleaving — issue the
- * importer's write while a row lock is held, then release it — is guaranteed to occur, not
- * just likely to occur within some fixed delay. `query` in pg_stat_activity holds a
- * parameterized statement's placeholders, not its bound values, so this deliberately doesn't
- * try to match the query text — on this throwaway, single-use test database, any backend
- * blocked on a lock at this moment is the one the test is waiting for.
- */
-async function waitUntilBlockedOnLock(pool: pg.Pool, timeoutMs = 5_000): Promise<void> {
-  const deadline = Date.now() + timeoutMs;
-  for (;;) {
-    const { rows } = await pool.query("SELECT 1 FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND datname = current_database()");
-    if (rows.length > 0) return;
-    if (Date.now() > deadline) throw new Error("timed out waiting for a backend to block on a lock");
-    await new Promise((r) => setTimeout(r, 10));
-  }
-}
 
 const org: OrgRecord = {
   key: "health", displayName: "Health", abbreviation: "HLTH", sortOrder: 5, isActive: true, parentKey: null, url: "http://gov.bc.ca/health",
@@ -47,7 +28,7 @@ describe("projections", () => {
     await tdb.drop();
   });
   beforeEach(async () => {
-    await tdb.pool.query("TRUNCATE posts, categories, category_features, home, slides, resource_links");
+    await tdb.pool.query("TRUNCATE posts, categories, category_features, home, slides, resource_links CASCADE");
   });
 
   it("builds lowercased index keys", () => {
@@ -353,5 +334,72 @@ describe("projections", () => {
       );
       expect(got).toEqual([["MinistryUpdate", ["Health"]]]);
     });
+  });
+
+  describe("change rows (spec §5.4)", () => {
+    beforeEach(async () => {
+      await tdb.pool.query("TRUNCATE changes RESTART IDENTITY");
+    });
+    const changeRows = async () => (await tdb.pool.query<{ kind: string; key: string | null }>("SELECT kind, key FROM changes ORDER BY id")).rows;
+    const term: TermRecord = { kind: "tag", key: "Fires", displayName: "Fires", sortOrder: 0, isActive: true, social: org.social, updatedAt: org.updatedAt };
+
+    it("writes one change row in the same transaction as each projection write, with the stored key", async () => {
+      await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "R-CH" }));
+      await tdb.db.transaction((tx) => unpublishRelease(tx, "r-ch"));
+      await tdb.db.transaction((tx) => applyOrg(tx, org));
+      await tdb.db.transaction((tx) => applyTerm(tx, term));
+      await tdb.db.transaction((tx) => deactivateCategory(tx, "tags", "FIRES"));
+      await tdb.db.transaction(async (tx) => {
+        await applySiteContent(tx, { entity: "home", topPostKey: null, featurePostKey: null, liveWebcastFlashMediaManifestUrl: null, liveWebcastM3uPlaylist: null, granville: null, timestamp: org.updatedAt });
+        await applySiteContent(tx, { entity: "categoryFeatures", kind: "ministries", key: "HEALTH", topPostKey: null, featurePostKey: null });
+        await applySiteContent(tx, { entity: "slides", slides: [] });
+        await applySiteContent(tx, { entity: "resourceLinks", links: [], timestamp: org.updatedAt });
+      });
+      expect(await changeRows()).toEqual([
+        { kind: "post.upserted", key: "R-CH" },
+        { kind: "post.unpublished", key: "R-CH" },
+        { kind: "ministry", key: "health" },
+        { kind: "tag", key: "Fires" },
+        { kind: "tag", key: "Fires" },
+        { kind: "home", key: null },
+        { kind: "ministry", key: "health" },
+        { kind: "slides", key: null },
+        { kind: "resource_links", key: null },
+      ]);
+    });
+
+    it("writes nothing when the transaction rolls back", async () => {
+      await expect(
+        tdb.db.transaction(async (tx) => {
+          await applyRelease(tx, { ...sampleRelease, key: "R-RB" });
+          throw new Error("rollback");
+        }),
+      ).rejects.toThrow("rollback");
+      expect(await changeRows()).toEqual([]);
+    });
+
+    it("writes nothing for a legacy write refused because NRMS owns the key", async () => {
+      await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "R-OWN" }));
+      await tdb.pool.query("TRUNCATE changes");
+      await tdb.db.transaction((tx) => applyRelease(tx, { ...sampleRelease, key: "R-OWN" }, { origin: "legacy" }));
+      expect(await changeRows()).toEqual([]);
+    });
+
+    it("records a ministry change for the ministry and its parent", async () => {
+      await tdb.db.transaction((tx) => applyOrg(tx, { ...org, key: "parent-min", parentKey: null }));
+      await tdb.pool.query("TRUNCATE changes");
+      await tdb.db.transaction((tx) => applyOrg(tx, { ...org, key: "child-min", parentKey: "parent-min" }));
+      expect(await changeRows()).toEqual([
+        { kind: "ministry", key: "child-min" },
+        { kind: "ministry", key: "parent-min" },
+      ]);
+    });
+  });
+
+  it("writes posts.embedding_text_hash from the search text on every post write", async () => {
+    const r = { ...sampleRelease, key: "R-HASH" };
+    await tdb.db.transaction((tx) => applyRelease(tx, r));
+    const [row] = await tdb.db.select({ h: posts.embeddingTextHash }).from(posts).where(eq(posts.key, "R-HASH"));
+    expect(row?.h).toBe(embeddingTextHash(searchTextFor(r)));
   });
 });

@@ -103,6 +103,19 @@ describe("GET /api/v2/search (HTTP)", () => {
       expect(res.body).toEqual({ error: "not found" });
     }
   });
+
+  it("limits each client IP per minute, answering 429 with no-store (Q74)", async () => {
+    const app = express();
+    app.use("/api/v2", v2Routes({ search: stub, searchRateLimit: { perMinute: 2, clientIpHeader: "x-client-ip" } }));
+    const get = (ip: string) => request(app).get("/api/v2/search?q=x").set("x-client-ip", ip);
+    expect((await get("203.0.113.1")).status).toBe(200);
+    expect((await get("203.0.113.1")).status).toBe(200);
+    const limited = await get("203.0.113.1");
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ error: "too many requests" });
+    expect(limited.headers["cache-control"]).toBe("no-store");
+    expect((await get("203.0.113.2")).status).toBe(200);
+  });
 });
 
 describe("GET /api/v2/search through createApp (real Postgres)", () => {

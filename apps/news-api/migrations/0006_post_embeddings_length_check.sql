@@ -1,0 +1,1 @@
+ALTER TABLE "post_embeddings" ADD CONSTRAINT "post_embeddings_embedding_length_check" CHECK (cardinality("post_embeddings"."embedding") = 1536);

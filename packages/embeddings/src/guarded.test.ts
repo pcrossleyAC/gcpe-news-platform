@@ -48,6 +48,23 @@ describe("createGuardedEmbedder", () => {
     expect(breaker.state).toBe("closed");
   });
 
+  it("doesn't log a call the caller aborted", async () => {
+    const lines: string[] = [];
+    const provider = {
+      id: "p",
+      model: "m",
+      dimensions: 2,
+      embed: (_texts: string[], signal?: AbortSignal) =>
+        new Promise<number[][]>((_resolve, reject) => signal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")))),
+    };
+    const guarded = createGuardedEmbedder({ provider, log: (l) => lines.push(l) });
+    const controller = new AbortController();
+    const pending = guarded.embed(["x"], controller.signal);
+    controller.abort();
+    await expect(pending).rejects.toThrow();
+    expect(lines).toEqual([]);
+  });
+
   it("defaults to console.error and a fresh breaker", async () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const g = createGuardedEmbedder({ provider: failing(new Error("down")) });

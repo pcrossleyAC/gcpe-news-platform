@@ -29,7 +29,7 @@ export const MEDIA_TYPE_PATTERNS: Record<string, RegExp> = {
 const KEY_DESC = sql`${posts.key} collate "C" desc`;
 
 // Every posts column v1 renders: search_text and search_vector are large and never part of a v1 response.
-const { searchText: _searchText, searchVector: _searchVector, ...postReadColumns } = getTableColumns(posts);
+const { searchText: _searchText, searchVector: _searchVector, embeddingTextHash: _embeddingTextHash, ...postReadColumns } = getTableColumns(posts);
 
 export async function resolveIndex(db: Db, kind: string, key: string): Promise<ResolvedIndex | "unknown-kind" | "not-found"> {
   const k = kind.toLowerCase();

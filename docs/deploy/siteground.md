@@ -1214,6 +1214,78 @@ It is safe to re-run: it fills only posts with no search text. `-- --all --confi
 2. `curl -si 'https://boxs.ca/api/v2/search?q=highway&page=99'` is a 400 whose body names `page`, with `cache-control: no-store`.
 3. `curl -si 'https://boxs.ca/api/Home'` is still the 400 `ApiVersionUnspecified`: v1 is unchanged.
 
+## Semantic search, related posts and the change feed (Phase 6b)
+
+### pgvector and the search mode
+
+**Migrations:** `0004_semantic_tables` adds `post_embeddings`, `post_related`, `changes`, `change_feed_state` and `posts.embedding_text_hash`. `0005_pgvector_optional` then tries to enable pgvector and index the embeddings. On SiteGround the database user may not create extensions, so that step is skipped with a notice and every migration still succeeds. No setting is needed.
+
+**The search mode** is decided once, when the News API starts. It is `semantic` only when all of these hold:
+- the tenant config has `"features": { "semanticSearch": true }`;
+- `NEWSAPI_EMBEDDINGS_PROVIDER` is set (`azure-openai`, or `stand-in` on a test site);
+- the News API's database has the `vector` extension.
+
+Otherwise it is `text`. `/stack/health` reports it as `"newsApiSearch": "semantic"` or `"text"`. When the flag is on but something is missing, the News API logs one line at startup, for example `[news-api] semantic search is off: missing pgvector`.
+
+On boxs.ca it is always `text`: SiteGround's Postgres user can't enable pgvector.
+
+**Enabling pgvector later** (OpenShift or any Postgres where a DBA can): connect to the News API's database as a role allowed to create extensions, and run:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE INDEX CONCURRENTLY IF NOT EXISTS post_embeddings_embedding_hnsw_idx
+  ON post_embeddings USING hnsw ((embedding::vector(1536)) vector_cosine_ops);
+```
+
+Then restart the News API. `CONCURRENTLY` keeps the table writable while the index builds; it can't run inside a transaction block. Without the index, semantic search still works, but each related-posts computation scans every embedding, and the News API logs `post_embeddings has no HNSW index` at startup.
+
+### The change feed
+
+`GET /api/v2/changes?after=<id>&limit=<1-500>` lists what changed in the News API, oldest first, for the public site's builder (6c). Every post write, unpublish, ministry, sector, theme and tag change, and every home, slides and resource-links change adds one row, in the same transaction as the change itself.
+
+- **Access:** a bearer token with the `NewsApi.ChangesRead` service role, or an operator's `Core.Admin` token. Staff sign-in cookies don't work here. With no Entra audience (`NEWSAPI_AUTH_AUDIENCE` with `ENTRA_TENANT_ID`) and no local admin, the route answers `503 changes feed not configured`. On boxs.ca local admin is on, so it works with a local token.
+- **Reading it:** start with `after=0`; each response has `next`, the `after` to send next time. A response with `"changes": []` means nothing new.
+- **Retention:** rows older than 90 days are deleted on every `/stack/tick` (the `news-api.changes-prune` step). A cursor older than that gets `410` with `{ "resync": true, "next": <id> }`: rebuild everything, then continue from `next`.
+- **Volume:** a full legacy import writes one row per release it applies (Q78), about 100,000 rows. They are pruned after 90 days like any other.
+
+**Hand check on boxs.ca:** `curl -si https://boxs.ca/api/v2/changes` is a `401` with `cache-control: no-store`.
+
+### The embedding worker
+
+In semantic mode, each `/stack/tick` (the `news-api.embed` step) embeds up to 50 published posts that have no embedding, or whose text, provider or model changed, newest first, in one provider call, and then recomputes each one's 5 related posts. In text mode the step does nothing.
+
+- **Backlog:** at one tick a minute, 50 posts a tick, about 100,000 posts take about 33 hours or less to embed the first time — `STACK_LOOPS` (default on) also runs the worker's own internal 60 s loop in the same process, and the two can run back to back, so the real pace can be faster than one tick a minute. Until a post is embedded, search still finds it through the text half of a semantic search, and its related posts use the text fallback.
+- **Changing provider or model** re-embeds every post, at the same pace.
+- **Failures:** a provider failure is logged as `[embeddings] <provider> call failed <label>` and the posts are retried on the next tick. If a batch of several posts fails, the worker splits it and keeps retrying the halves, in the same tick, down to single posts, so one bad post never blocks the healthy ones behind it. A post that still fails alone is skipped by later ticks (until its text changes) rather than retried forever. After three failures in a row with no success between them the worker's breaker opens and the step skips its ticks for 60 seconds — isolating a single bad post among healthy ones is specifically designed not to trip this, since a healthy post's success resets the count. Search has its own breaker, so a failing batch doesn't turn search off.
+- **Unpublishing** deletes the post's embedding and related posts in the same transaction, so it disappears from semantic results and related lists at once. That includes a legacy import's unpublish step.
+- **Before turning semantic search on**, make sure the 6a search backfill has run: the worker skips a post whose `search_text` is still NULL, so such a post is never embedded until that backfill fills it in. A plain re-run of the backfill fills only posts with no search text; `--all` recomputes every post's search text. Either way, the worker fills missing embedding hashes itself, so re-running the backfill is never required just for that.
+
+### Semantic search
+
+In semantic mode, `GET /api/v2/search` embeds the query (each distinct query once per 5 minutes; up to 5,000 kept) and lists posts whose meaning is close to it first, nearest first, then the full-text matches not already listed. Responses say `"mode": "semantic"`. If the provider fails or its breaker is open, the same request answers in text mode and says `"mode": "text"`; while the breaker is open nothing is logged per request.
+
+| Variable | Meaning |
+|---|---|
+| `NEWSAPI_SEARCH_SEMANTIC_THRESHOLD` | Cosine distance at or below which a post counts as a semantic match. Default `0.6`; 0–2. Lower is stricter. |
+| `NEWSAPI_SEARCH_RATE_LIMIT_PER_MIN` | Search requests a minute per client IP (Q74). Default `60`. A client over it gets `429 {"error":"too many requests"}`. Uses `NEWSAPI_SUBSCRIBE_CLIENT_IP_HEADER` to find the client's address, as Subscribe does. |
+
+**Cost:** an uncached semantic query compares the query with every published post's vector that the filters allow: 120–170 ms at 20,000 posts on a laptop, growing in proportion (Q79).
+
+**Hand check on boxs.ca** (text mode there): after 61 quick `curl -s -o /dev/null -w '%{http_code}\n' 'https://boxs.ca/api/v2/search?q=x'` calls from one machine within a minute, the last is `429`.
+
+### Related posts
+
+`GET /api/v2/posts/<key>/related` lists up to 5 published posts related to a published post, in the same shape as search results, `no-store`.
+
+- In semantic mode it serves the post's 5 nearest posts by meaning, computed when the post was embedded (`"mode": "semantic"`). A post unpublished since is left out at once.
+- Otherwise, and before a post is embedded, it serves the newest published posts with the same lead ministry and at least one shared tag (`"mode": "text"`). A post with neither gets an empty list.
+- An unknown or unpublished key is a `404`.
+
+**Hand checks on boxs.ca:**
+1. `curl -s https://boxs.ca/api/v2/posts/<a published key>/related` answers `"mode":"text"`.
+2. `curl -si https://boxs.ca/api/v2/posts/no-such-key/related` is a `404` with `cache-control: no-store`.
+3. `curl -s https://boxs.ca/stack/health` includes `"newsApiSearch":"text"`.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

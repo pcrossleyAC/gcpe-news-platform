@@ -10,7 +10,8 @@ export interface GuardedEmbedder {
 
 /**
  * A provider behind a breaker. The one place a provider failure is logged: the provider id and
- * safeErrorLabel only, never the texts (spec §4). An open breaker isn't logged; it isn't a call.
+ * safeErrorLabel only, never the texts (spec §4). An open breaker and a call the caller aborted
+ * aren't logged.
  */
 export function createGuardedEmbedder(opts: {
   provider: EmbeddingProvider;
@@ -27,7 +28,8 @@ export function createGuardedEmbedder(opts: {
       try {
         return await breaker.run(() => provider.embed(texts, signal), signal);
       } catch (e) {
-        if (!(e instanceof BreakerOpenError)) log(`[embeddings] ${provider.id} call failed ${safeErrorLabel(e)}`);
+        // An open breaker isn't a call, and a caller's own abort isn't a provider failure.
+        if (!(e instanceof BreakerOpenError) && !signal?.aborted) log(`[embeddings] ${provider.id} call failed ${safeErrorLabel(e)}`);
         throw e;
       }
     },

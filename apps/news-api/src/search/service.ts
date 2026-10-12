@@ -1,9 +1,10 @@
 import type { SearchLanguage } from "@gcpe/config";
 import type { Db } from "@gcpe/db-kit";
+import { BreakerOpenError } from "@gcpe/embeddings";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { formatOffsetDateTime } from "../time";
 import type { SearchQuery } from "./query";
-import { textSearch, type SearchPage, type SearchRow } from "./text-search";
+import { READ_SNAPSHOT, textSearch, type SearchPage, type SearchRow } from "./text-search";
 
 export type SearchMode = "text" | "semantic";
 
@@ -24,9 +25,10 @@ export interface SearchResponse {
   results: SearchResult[];
 }
 
-/** Semantic mode (6b): the whole page, or null to fall back to text. `signal` is the request's
- * own AbortSignal, passed through unchanged so a guarded embedder can treat a caller abort as
- * neutral to its breaker. Text mode may ignore it. */
+/** Semantic mode: the whole page, or null to fall back to text. It catches its own embed
+ * failures; a throw means its SQL failed, which the service logs once. `signal` is the
+ * request's own AbortSignal, passed through unchanged so a guarded embedder can treat a caller
+ * abort as neutral to its breaker. Text mode may ignore it. */
 export interface SemanticSearch {
   search(query: SearchQuery, signal?: AbortSignal): Promise<SearchPage | null>;
 }
@@ -48,18 +50,23 @@ export interface SearchService {
   search(query: SearchQuery, signal?: AbortSignal): Promise<SearchResponse>;
 }
 
-export function createSearchService(o: SearchServiceOptions): SearchService {
-  const base = o.publicSiteUrl.replace(/\/+$/, "");
-  const log = o.log ?? ((line: string) => console.error(line));
-  const toResult = (r: SearchRow): SearchResult => ({
+/** The mapper from a SearchRow to the public SearchResult shape, shared by text and semantic mode. */
+export function searchResultMapper(publicSiteUrl: string, timeZone: string): (r: SearchRow) => SearchResult {
+  const base = publicSiteUrl.replace(/\/+$/, "");
+  return (r) => ({
     key: r.key,
     kind: r.kind,
     headline: r.headline,
     summary: r.summary,
-    publishDate: formatOffsetDateTime(r.publishDate, o.timeZone),
+    publishDate: formatOffsetDateTime(r.publishDate, timeZone),
     leadMinistryKey: r.leadMinistryKey,
     url: `${base}/releases/${encodeURIComponent(r.key)}`,
   });
+}
+
+export function createSearchService(o: SearchServiceOptions): SearchService {
+  const log = o.log ?? ((line: string) => console.error(line));
+  const toResult = searchResultMapper(o.publicSiteUrl, o.timeZone);
   return {
     timeZone: o.timeZone,
     async search(query, signal) {
@@ -68,10 +75,12 @@ export function createSearchService(o: SearchServiceOptions): SearchService {
         try {
           semantic = await o.semantic.search(query, signal);
         } catch (e) {
-          log(`[news-api] search semantic branch failed ${safeErrorLabel(e)}`);
+          if (!(e instanceof BreakerOpenError)) log(`[news-api] search semantic branch failed ${safeErrorLabel(e)}`);
         }
       }
-      const page = semantic ?? (await textSearch(o.db, query, { language: o.language, defaultLanguageId: o.defaultLanguageId }));
+      const page =
+        semantic ??
+        (await o.db.transaction((tx) => textSearch(tx, query, { language: o.language, defaultLanguageId: o.defaultLanguageId }), READ_SNAPSHOT));
       return { mode: semantic ? "semantic" : "text", page: query.page, total: page.total, results: page.rows.map(toResult) };
     },
   };

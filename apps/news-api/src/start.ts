@@ -3,12 +3,21 @@ import express from "express";
 import { authFromEnv, NOD_SUBSCRIBE_API_ROLE, serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createDb, runMigrations } from "@gcpe/db-kit";
+import { CircuitBreaker, createEmbeddingProvider, createGuardedEmbedder } from "@gcpe/embeddings";
 import type { Closer } from "@gcpe/http-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
+import { pruneChanges } from "./changes";
+import { hasHnswIndex, hasPgvector, resolveSearchMode } from "./embeddings/pgvector";
+import { runEmbeddingTick, WORKER_EMBED_TIMEOUT_MS } from "./embeddings/worker";
 import { newsApiEnvSchema } from "./env";
+import { changesBearerFromEnv } from "./http/v2/changes-auth";
+import { every } from "./loop";
 import { assertSearchLanguage } from "./search/language";
-import { createSearchService } from "./search/service";
+import { createRelatedService } from "./search/related";
+import { createSemanticSearch } from "./search/semantic";
+import { createSearchService, type SearchMode } from "./search/service";
+import { QueryVectorCache } from "./search/vector-cache";
 import { createUpdatesHub } from "./updates/hub";
 import { listenForUpdates } from "./updates/notify";
 
@@ -20,6 +29,9 @@ export interface AppHandle {
   /** Tenant id/time zone (for main.ts's listening log line — unchanged text). */
   tenantId: string;
   timeZone: string;
+  /** "semantic" only when the flag, a provider and pgvector are all present (spec §5.3). Read
+   * once at startup: enabling pgvector later needs a restart. Reported by /stack/health. */
+  searchMode: SearchMode;
   /** One iteration of each background loop, using the same function and options the loop
    * itself uses. The hub's ping timer and the LISTEN connection are not loops of this kind
    * — there is no "run once" for them. */
@@ -66,12 +78,39 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
   assertTimeZoneRules(tenant);
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
+  const provider = createEmbeddingProvider(parsed);
+  let searchMode: SearchMode;
   try {
     await assertSearchLanguage(db, tenant.search.language);
+    const resolved = resolveSearchMode({ flag: tenant.features.semanticSearch, provider, pgvector: await hasPgvector(db) });
+    searchMode = resolved.mode;
+    if (tenant.features.semanticSearch && searchMode === "text") console.warn(`[news-api] semantic search is off: missing ${resolved.missing.join(", ")}`);
+    if (searchMode === "semantic" && !(await hasHnswIndex(db))) {
+      console.warn("[news-api] post_embeddings has no HNSW index: related posts scan every embedding (see the runbook, pgvector and the search mode)");
+    }
   } catch (e) {
     await pool.end();
     throw e;
   }
+
+  // The worker's own provider instance (a longer timeout for a 50-post batch) and its own
+  // breaker, so a slow batch never pushes visitors into text mode.
+  const workerProvider = searchMode === "semantic" ? createEmbeddingProvider({ ...parsed, EMBEDDINGS_TIMEOUT_MS: WORKER_EMBED_TIMEOUT_MS }) : null;
+  const workerEmbedder = workerProvider ? createGuardedEmbedder({ provider: workerProvider, breaker: new CircuitBreaker() }) : null;
+  const embed = () => (workerEmbedder ? runEmbeddingTick({ db, embedder: workerEmbedder }) : Promise.resolve(null));
+
+  // Search's own guarded provider (EMBEDDINGS_TIMEOUT_MS) and breaker, apart from the worker's.
+  const semantic =
+    searchMode === "semantic" && provider
+      ? createSemanticSearch({
+          db,
+          embedder: createGuardedEmbedder({ provider }),
+          cache: new QueryVectorCache(),
+          language: tenant.search.language,
+          defaultLanguageId: tenant.defaultLanguageId,
+          threshold: parsed.SEARCH_SEMANTIC_THRESHOLD,
+        })
+      : null;
 
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
 
@@ -112,6 +151,16 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
       language: tenant.search.language,
       defaultLanguageId: tenant.defaultLanguageId,
       publicSiteUrl: parsed.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl,
+      semantic,
+    }),
+    searchRateLimit: { perMinute: parsed.SEARCH_RATE_LIMIT_PER_MIN, clientIpHeader: parsed.SUBSCRIBE_CLIENT_IP_HEADER },
+    changes: { db, timeZone: tenant.timeZone, bearer: changesBearerFromEnv(env) },
+    related: createRelatedService({
+      db,
+      timeZone: tenant.timeZone,
+      defaultLanguageId: tenant.defaultLanguageId,
+      publicSiteUrl: parsed.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl,
+      semantic: searchMode === "semantic",
     }),
     // Not ready while the LISTEN connection is down: this instance would silently miss
     // updates. Omitted entirely when the hub is disabled.
@@ -145,22 +194,29 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
   // Set by startLoops(); the closer below references it lazily so it's safe to call even
   // if startLoops() was never invoked.
   let stopDispatcher: (() => Promise<void>) | undefined;
+  const stopLoops: Array<() => void> = [];
 
   return {
     app,
     port: parsed.PORT,
     tenantId: tenant.tenantId,
     timeZone: tenant.timeZone,
+    searchMode,
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
+      changesPrune: () => pruneChanges(db),
+      embed,
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
+      stopLoops.push(every(60_000, "changes prune", () => pruneChanges(db)));
+      if (workerEmbedder) stopLoops.push(every(60_000, "embedding worker", embed));
     },
     attach: hub ? (server: Server) => hub.attach(server) : undefined,
     closeBeforeServer: hub ? [{ name: "updates hub", close: () => hub.close() }] : [],
     closers: [
       ...(stopListening ? [{ name: "LISTEN connection", close: stopListening }] : []),
+      { name: "background loops", close: async () => { for (const stop of stopLoops.splice(0)) stop(); } },
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
       { name: "db pool", close: () => pool.end() },
     ],
