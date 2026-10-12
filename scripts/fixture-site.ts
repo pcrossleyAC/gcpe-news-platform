@@ -1,0 +1,119 @@
+/**
+ * A fictional site for the Phase 6 exit checks (spec §9): every page type, built by the public
+ * site's real builder from in-memory posts, with BC's theme and no database (an in-memory post
+ * index). Used by scripts/site-quality.ts (axe and Lighthouse) and tests/fixture-site.test.ts.
+ */
+import { readFile, stat } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { extname, join, relative, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { loadTenantConfig } from "@gcpe/config";
+import { createSiteBuilder } from "../apps/public-site/src/builder";
+import type { CategoryDto, PostDto } from "../apps/public-site/src/dto";
+import type { NewsApiClient } from "../apps/public-site/src/news-api-client";
+import type { IndexedPost, PostIndex } from "../apps/public-site/src/post-index";
+import type { SiteInfo } from "../apps/public-site/src/render";
+import { fsStorage } from "../apps/public-site/src/storage";
+import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
+import { post } from "../apps/public-site/test/fixtures";
+
+const BC_TENANT = fileURLToPath(new URL("../config/tenants/bc.json", import.meta.url));
+
+const CATEGORIES: CategoryDto[] = [
+  { key: "economy", kind: "sectors", name: "Economy", isActive: true, topPostKey: null, featurePostKey: null },
+  { key: "housing", kind: "themes", name: "Housing", isActive: true, topPostKey: null, featurePostKey: null },
+  { key: "covid-19", kind: "tags", name: "COVID-19", isActive: true, topPostKey: null, featurePostKey: null },
+];
+
+const FIRST_KEY = "2026HLTH0001-000001";
+
+/** One URL per page type (spec §6.1). Sector, theme and tag pages share a template; all three are checked. */
+export const FIXTURE_PAGES = [
+  "/",
+  `/releases/${FIRST_KEY}/`,
+  "/ministries/",
+  "/ministries/health/",
+  "/sectors/economy/",
+  "/themes/housing/",
+  "/tags/covid-19/",
+  "/archive/",
+  "/archive/2026/10/",
+  "/search/",
+  "/404.html",
+];
+
+function memoryIndex(): PostIndex {
+  const rows = new Map<string, IndexedPost>();
+  const newest = (a: IndexedPost, b: IndexedPost) => b.publishDate.localeCompare(a.publishDate) || (a.key < b.key ? 1 : -1);
+  return {
+    get: async (k) => rows.get(k) ?? null,
+    put: async (p) => void rows.set(p.key, p),
+    remove: async (k) => void rows.delete(k),
+    inMonth: async (m) => [...rows.values()].filter((p) => p.month === m).sort(newest),
+    months: async () => {
+      const counts = new Map<string, number>();
+      for (const p of rows.values()) counts.set(p.month, (counts.get(p.month) ?? 0) + 1);
+      return [...counts].map(([month, count]) => ({ month, count })).sort((a, b) => b.month.localeCompare(a.month));
+    },
+    keys: async () => [...rows.keys()],
+    categories: async () => [...new Set([...rows.values()].flatMap((p) => p.categories))].sort(),
+    inCategory: async (token) => [...rows.values()].filter((p) => p.categories.includes(token)).map((p) => p.key).sort(),
+  };
+}
+
+/** 24 fictional releases over two months, two ministries, one sector, theme and tag. */
+export async function buildFixtureSite(outDir: string, o: { baseUrl: string; test: boolean }): Promise<void> {
+  const posts = new Map<string, PostDto>();
+  for (let i = 1; i <= 24; i++) {
+    const key = `2026HLTH${String(i).padStart(4, "0")}-${String(i).padStart(6, "0")}`;
+    const ministry = i % 2 ? "health" : "finance";
+    const day = String(((i - 1) % 28) + 1).padStart(2, "0");
+    posts.set(
+      key,
+      post({ key, publishDate: `2026-${i <= 12 ? "10" : "09"}-${day}T10:00:00-07:00`, ministryKeys: [ministry], leadMinistryKey: ministry, sectorKeys: ["economy"], themeKeys: ["housing"], tagKeys: ["covid-19"] }),
+    );
+  }
+  const newsApi: NewsApiClient = {
+    ...fakeNewsApi(posts),
+    categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
+    category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
+  };
+  const tenant = loadTenantConfig(BC_TENANT);
+  const site: SiteInfo = { name: tenant.siteName, baseUrl: o.baseUrl, theme: tenant.site.theme, logo: null };
+  const builder = createSiteBuilder({ newsApi, storage: fsStorage(outDir), index: memoryIndex(), site, assetsDir: null });
+  const result = await builder.buildAll({ test: o.test });
+  if (result.failures > 0) throw new Error(`fixture site: ${result.failures} page(s) failed to build`);
+}
+
+const TYPES: Record<string, string> = {
+  ".html": "text/html; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+  ".xml": "application/xml; charset=utf-8",
+  ".txt": "text/plain; charset=utf-8",
+  ".js": "text/javascript; charset=utf-8",
+  ".svg": "image/svg+xml",
+};
+
+/** A static server for the built site: "/x/" serves "x/index.html", a missing file 404.html. */
+export async function serveStatic(dir: string): Promise<{ url: string; close(): Promise<void> }> {
+  const root = resolve(dir);
+  const server = createServer(async (req, res) => {
+    let file = resolve(root, `.${decodeURIComponent(new URL(req.url ?? "/", "http://fixture.invalid").pathname)}`);
+    try {
+      if (relative(root, file).startsWith("..")) throw new Error("outside");
+      if ((await stat(file)).isDirectory()) file = join(file, "index.html");
+      const body = await readFile(file);
+      res.writeHead(200, { "content-type": TYPES[extname(file)] ?? "application/octet-stream" });
+      res.end(body);
+    } catch {
+      res.writeHead(404, { "content-type": TYPES[".html"]! });
+      res.end(await readFile(join(root, "404.html")).catch(() => ""));
+    }
+  });
+  await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
+  return {
+    url: `http://127.0.0.1:${(server.address() as AddressInfo).port}`,
+    close: () => new Promise<void>((r) => server.close(() => r())),
+  };
+}

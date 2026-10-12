@@ -1385,6 +1385,10 @@ Both flags live in the tenant config (`config/tenants/<tenant>.json`), under `"f
 - **`staffAi`** (AI matching in "Similar published releases") **sends unpublished draft text to the AI service. Do not turn it on in any environment that holds real drafts until the privacy impact assessment approves it (D4, Q71).** NRMS and the News API each check their own copy of the flag: NRMS only asks for AI matching when its flag is on, and the News API only calls the provider when its own flag, a provider and pgvector are all present. On the stack both read the same `TENANT_CONFIG`; standalone, set it in both apps' tenant files. With it off, the panel still works with text matching, and nothing is sent anywhere but the News API.
 - After turning `staffAi` on, check the News API's start log has no `staff AI is off: missing …` line, then press **Find similar** on a draft: results labelled *AI match* mean the whole path works.
 
+### Exit checks: site quality and the search spot-check
+
+Both run on a developer machine (or in CI), never against boxs.ca. `npm run site:quality` needs Playwright's Chromium; `npm run search:spot-check` needs the local Postgres (`TEST_DATABASE_ADMIN_URL`) with pgvector, and creates and drops its own database. Once Azure is configured (Q70), run the spot-check with `EMBEDDINGS_PROVIDER=azure-openai`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` set: that's the relevance check the Phase 6 exit is waiting for.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token
