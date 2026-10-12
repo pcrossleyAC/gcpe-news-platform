@@ -19,9 +19,10 @@ export const THRESHOLDS: Record<string, number> = { performance: 90, accessibili
 
 export async function runSiteQuality(log: (line: string) => void = console.log): Promise<string[]> {
   const dir = await mkdtemp(join(tmpdir(), "gcpe-site-quality-"));
-  const server = await serveStatic(dir);
   const failures: string[] = [];
+  let server: { url: string; close(): Promise<void> } | undefined;
   try {
+    server = await serveStatic(dir);
     await buildFixtureSite(dir, { baseUrl: server.url, test: false });
     log(`Fixture site (production config, fictional content) at ${server.url}`);
 
@@ -55,7 +56,7 @@ export async function runSiteQuality(log: (line: string) => void = console.log):
       chrome.kill();
     }
   } finally {
-    await server.close();
+    await server?.close();
     await rm(dir, { recursive: true, force: true });
   }
   return failures;

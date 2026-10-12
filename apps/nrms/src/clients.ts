@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 const DEFAULT_TIMEOUT_MS = 5000;
 
 export interface NodClientOptions {
@@ -128,10 +130,27 @@ export interface SimilarRequestBody {
   excludeKey?: string;
 }
 
-export interface SimilarFound {
-  mode: "ai" | "text";
-  results: { key: string; headline: string | null; publishDate: string; leadMinistryKey: string | null; url: string; match: "ai" | "text" }[];
-}
+/** One result item. A null `url`, an unparseable `publishDate`, or any other malformed field
+ * fails this schema; parsed with `safeParse` per item below, which drops just that item rather
+ * than the whole response. */
+const similarResultSchema = z.object({
+  key: z.string(),
+  headline: z.string().nullable(),
+  publishDate: z.string().refine((s) => !Number.isNaN(Date.parse(s))),
+  leadMinistryKey: z.string().nullable(),
+  url: z.string().min(1),
+  match: z.enum(["ai", "text"]),
+});
+
+/** The News API is a trusted service, but its response still crosses a network boundary, so it
+ * isn't trusted blindly (M2): a malformed item is dropped, and a structurally wrong response
+ * (not even `{ mode, results: [] }`) throws, which `findSimilar` turns into `{ kind: "failed" }`
+ * and a 502 — the same path as a network or HTTP failure. */
+const similarFoundSchema = z.object({
+  mode: z.enum(["ai", "text"]),
+  results: z.array(z.unknown()).transform((rows) => rows.map((r) => similarResultSchema.safeParse(r)).filter((p) => p.success).map((p) => p.data)),
+});
+export type SimilarFound = z.infer<typeof similarFoundSchema>;
 
 export interface NewsApiSimilarClientOptions {
   baseUrl: string;
@@ -157,7 +176,7 @@ export function newsApiSimilarClient(opts: NewsApiSimilarClientOptions): NewsApi
         signal: AbortSignal.timeout(NEWS_API_SIMILAR_TIMEOUT_MS),
       });
       if (!res.ok) throw new Error(`News API similar failed: HTTP ${res.status}`);
-      return (await res.json()) as SimilarFound;
+      return similarFoundSchema.parse(await res.json());
     },
   };
 }

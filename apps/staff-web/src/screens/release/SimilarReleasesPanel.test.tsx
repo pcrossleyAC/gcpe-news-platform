@@ -78,6 +78,27 @@ describe("SimilarReleasesPanel (addendum §7)", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Add a headline or some body text first.");
   });
 
+  it("renders an unsafe url as plain text, not a link (M6)", async () => {
+    stub({ similarAvailable: true, staffAi: false }, () => jsonResponse(200, { mode: "text", results: [{ ...RESULT, match: "text", url: "javascript:alert(1)" }] }));
+    renderPanel();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Find similar" }));
+    expect(await screen.findByText("Clinics budget")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("degrades a malformed item instead of crashing the editor (M2)", async () => {
+    // A non-string `url` and an unparseable `publishDate` can't happen once NRMS's own
+    // validation is in place, but the panel guards independently rather than trusting the
+    // wire shape — a network mock bypasses TypeScript the way a real malformed response would.
+    const bad = { ...RESULT, match: "text" as const, url: null as unknown as string, publishDate: "not-a-date" };
+    stub({ similarAvailable: true, staffAi: false }, () => jsonResponse(200, { mode: "text", results: [bad] }));
+    renderPanel();
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Find similar" }));
+    expect(await screen.findByText("Clinics budget")).toBeInTheDocument();
+    expect(screen.queryByRole("link")).not.toBeInTheDocument();
+    expect(screen.getByText(/not-a-date/)).toBeInTheDocument();
+  });
+
   it("has no serious or critical axe violations with results shown", async () => {
     stub({ similarAvailable: true, staffAi: true }, () => jsonResponse(200, { mode: "ai", results: [RESULT, { ...RESULT, key: "K2", headline: null, leadMinistry: null, match: "text" }] }));
     const { container } = renderPanel();

@@ -99,8 +99,9 @@ const TYPES: Record<string, string> = {
 export async function serveStatic(dir: string): Promise<{ url: string; close(): Promise<void> }> {
   const root = resolve(dir);
   const server = createServer(async (req, res) => {
-    let file = resolve(root, `.${decodeURIComponent(new URL(req.url ?? "/", "http://fixture.invalid").pathname)}`);
+    let file: string;
     try {
+      file = resolve(root, `.${decodeURIComponent(new URL(req.url ?? "/", "http://fixture.invalid").pathname)}`);
       if (relative(root, file).startsWith("..")) throw new Error("outside");
       if ((await stat(file)).isDirectory()) file = join(file, "index.html");
       const body = await readFile(file);

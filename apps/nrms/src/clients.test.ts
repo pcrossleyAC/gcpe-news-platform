@@ -107,4 +107,26 @@ describe("newsApiSimilarClient", () => {
     expect(String(err)).not.toContain("quokkadraftmarker");
     expect(String(err)).not.toContain("secret-token");
   });
+
+  const good = { key: "2026FIN0002-000002", headline: "Clinics budget", publishDate: "2026-10-03T10:00:00-07:00", leadMinistryKey: "fin", url: "https://site.example.test/x", match: "text" as const };
+
+  it("drops a malformed item (M2: a null url) rather than failing the whole response", async () => {
+    const found = { mode: "text", results: [good, { ...good, key: "bad", url: null }] };
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(found), { status: 200 }));
+    const client = newsApiSimilarClient({ baseUrl: "http://news.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.similar(body)).resolves.toEqual({ mode: "text", results: [good] });
+  });
+
+  it("drops an item with an unparseable publishDate", async () => {
+    const found = { mode: "text", results: [good, { ...good, key: "bad", publishDate: "not-a-date" }] };
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(found), { status: 200 }));
+    const client = newsApiSimilarClient({ baseUrl: "http://news.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.similar(body)).resolves.toEqual({ mode: "text", results: [good] });
+  });
+
+  it("rejects when the response isn't even the right shape", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ oops: true }), { status: 200 }));
+    const client = newsApiSimilarClient({ baseUrl: "http://news.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.similar(body)).rejects.toThrow();
+  });
 });

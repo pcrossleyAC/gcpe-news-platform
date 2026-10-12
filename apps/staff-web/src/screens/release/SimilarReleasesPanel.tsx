@@ -1,29 +1,11 @@
 import { useEffect, useId, useState } from "react";
 import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { isSafeUrl } from "@gcpe/http-kit/url";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
 
 /** Shown under the button while the staff-AI flag is on (addendum §7). */
 export const AI_NOTE = "Sends this draft's text to the AI service to compare.";
-
-/**
- * Same rule as `@gcpe/http-kit`'s `isSafeUrl` (default options: an absolute http/https URL, or a
- * single-slash site-relative path), duplicated here since browser code can never import
- * `@gcpe/http-kit` — its barrel pulls in `express` (api/client.ts's CSRF_HEADER is the same
- * situation, for `@gcpe/auth`). Guards the News API's `url` field before it's written into an
- * `href`: that field is server-built from a configured base URL and the post's own key, but this
- * is the one place in the staff app that renders a News API string as a link.
- */
-function isSafeUrl(u: string): boolean {
-  // eslint-disable-next-line no-control-regex -- the control-character range is the point.
-  if (/[\\\s\u0000-\u001F\u007F]/.test(u)) return false;
-  if (u.startsWith("/")) return u[1] !== "/";
-  try {
-    return ["http:", "https:"].includes(new URL(u).protocol.toLowerCase());
-  } catch {
-    return false;
-  }
-}
 
 export interface SimilarRelease {
   key: string;
@@ -42,12 +24,24 @@ interface SimilarConfig {
   staffAi?: boolean;
 }
 
-const dateText = (iso: string, timeZone: string) => new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(new Date(iso));
+/** Falls back to the raw string on an unparseable `publishDate` rather than letting
+ * `Intl.DateTimeFormat` throw (M2: a defensive backstop — the News API response is already
+ * validated in NRMS before it reaches here). */
+function dateText(iso: string, timeZone: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  return new Intl.DateTimeFormat("en-US", { timeZone, month: "short", day: "numeric", year: "numeric" }).format(d);
+}
 
-function statusText(found: SimilarResponse | null): string {
+/** The status region's full text, including the AI-fallback sentence when it applies — folded
+ * in here (rather than a separate paragraph outside the live region) so a screen-reader user
+ * hears it, and shown only when there are results to qualify. */
+function statusText(found: SimilarResponse | null, ai: boolean): string {
   if (!found) return "";
   const n = found.results.length;
-  return n === 0 ? "No similar published releases found." : `Found ${n} similar published release${n === 1 ? "" : "s"}.`;
+  if (n === 0) return "No similar published releases found.";
+  const base = `Found ${n} similar published release${n === 1 ? "" : "s"}.`;
+  return ai && found.mode === "text" ? `${base} The AI service wasn’t available, so these are text matches.` : base;
 }
 
 /**
@@ -103,7 +97,7 @@ export function SimilarReleasesPanel({ view, timeZone }: { view: ReleaseView; ti
     <section id="similar-releases" className="gcpe-release-editor__similar" aria-labelledby={headingId}>
       <h2 id={headingId}>Similar published releases</h2>
       <p className="gcpe-similar__hint">Compares the last saved version of this release with published posts.</p>
-      <Button onPress={() => void find()} isDisabled={busy} aria-describedby={ai ? noteId : undefined}>
+      <Button onPress={() => void find()} isPending={busy} aria-describedby={ai ? noteId : undefined}>
         Find similar
       </Button>
       {ai && (
@@ -111,13 +105,12 @@ export function SimilarReleasesPanel({ view, timeZone }: { view: ReleaseView; ti
           {AI_NOTE}
         </p>
       )}
-      <div role="status">{busy ? "Looking for similar releases…" : statusText(found)}</div>
-      {ai && found?.mode === "text" && <p>The AI service wasn&rsquo;t available, so these are text matches.</p>}
+      <div role="status">{busy ? "Looking for similar releases…" : statusText(found, ai)}</div>
       {error && <InlineAlert variant="danger" role="alert" description={error} />}
       {found && found.results.length > 0 && (
         <ol className="gcpe-similar__results">
           {found.results.map((r) => {
-            const href = isSafeUrl(r.url) ? r.url : null;
+            const href = typeof r.url === "string" && isSafeUrl(r.url) ? r.url : null;
             const label = r.headline || r.key;
             return (
               <li key={r.key}>
