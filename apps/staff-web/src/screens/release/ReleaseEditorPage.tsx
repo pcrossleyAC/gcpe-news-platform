@@ -17,6 +17,7 @@ import { AssetSection } from "./sections/AssetSection";
 import { PageDetailsSection } from "./sections/PageDetailsSection";
 import { DocumentsSection } from "./documents/DocumentsSection";
 import { FilesSection } from "./documents/FilesSection";
+import { SimilarReleasesPanel } from "./SimilarReleasesPanel";
 import { SideBar } from "./sidebar/SideBar";
 import { SaveQueueContext, useSaveQueueController } from "./saveQueue";
 
@@ -192,6 +193,7 @@ export function ReleaseEditorPage(): React.JSX.Element {
           <PageDetailsSection view={view} setView={setView} readOnly={!canEdit} />
           <DocumentsSection view={view} setView={setView} readOnly={!canEdit} />
           <FilesSection view={view} setView={setView} readOnly={!canEdit} />
+          {canEdit && <SimilarReleasesPanel view={view} timeZone={timeZone} />}
           <SideBar view={view} timeZone={timeZone} />
         </div>
         <UnsavedChangesBar sections={guard.dirtySections} />
