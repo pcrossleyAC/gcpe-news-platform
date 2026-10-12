@@ -26,6 +26,17 @@ export interface PageOptions {
 export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
 
 /**
+ * `e()` for text and attribute values written into an RSS feed or sitemap (`feeds.ts`,
+ * `sitemaps.ts`). `escapeHtml`'s five entities are all valid XML, but XML 1.0's `Char`
+ * production additionally excludes the C0 control characters other than tab, LF and CR, and the
+ * U+FFFE/U+FFFF noncharacters — a document containing one of those is not well-formed, and
+ * `escapeHtml` alone would let it through. The underlying value (a headline, a summary, a path)
+ * can be arbitrary NRMS free text, so every such value is stripped before it's escaped.
+ */
+const XML_ILLEGAL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
+export const ex = (s: string | null | undefined): string => e((s ?? "").replace(XML_ILLEGAL_CHARS, ""));
+
+/**
  * Shared by `safeHref` and `safeSrc` below. Escaping (`e()`) only neutralises HTML
  * metacharacters — it does nothing to stop a `javascript:`/`vbscript:`/`data:` URL from running
  * as a link or image load, which would be stored XSS. Only an absolute `http:`/`https:` URL (and,
