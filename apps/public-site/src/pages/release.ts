@@ -1,7 +1,8 @@
 import type { PostDto, RelatedPost } from "../dto";
 import { e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
 import { categoryPageId, pageUrl, parsePageId } from "../site-paths";
-import { demoteHeadings, displayDate, postListItem } from "./format";
+import { displayDate, postListItem } from "./format";
+import { sanitizeBodyHtml } from "../sanitize-body";
 
 const ENGLISH = 4105;
 const english = (p: PostDto) => p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0];
@@ -80,7 +81,7 @@ export function renderReleasePage(post: PostDto, site: SiteInfo, opts: PageOptio
   const subheadline = d?.subheadline ? `<p class="subheadline">${e(d.subheadline)}</p>` : "";
   const leadKey = post.leadMinistryKey ?? post.ministryKeys[0] ?? null;
   const meta = `<p class="meta"><time datetime="${e(post.publishDate)}">${e(displayDate(post.publishDate))}</time>${post.location ? ` · ${e(post.location)}` : ""}${ministryLink(site, leadKey, ctx.ministryNames)}</p>`;
-  const body = demoteHeadings(d?.detailsHtml ?? "");
+  const body = sanitizeBodyHtml(d?.detailsHtml ?? "");
 
   const sections = [contactsSection(d?.contacts ?? []), mediaAssetsSection(post.azureAssets ?? []), translationsSection(post.azureTranslations ?? []), relatedSection(site, ctx.related)]
     .filter(Boolean)

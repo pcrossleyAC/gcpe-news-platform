@@ -44,7 +44,7 @@ describe("renderMinistryPage", () => {
     expect(doc.querySelector("h1")?.textContent).toBe("Health");
   });
 
-  it("shows the minister's summary escaped, their details trusted (demoted), and the photo alt as the minister's name", () => {
+  it("shows the minister's summary escaped, their details sanitised and demoted, and the photo alt as the minister's name", () => {
     const minister = { headline: "Minister of Health", summary: "Alex <leads> the ministry.", details: "<h1>Biography</h1><p>Served since 2020.</p>", photo: "https://files.example/files/minister.jpg" };
     const doc = expectAccessibleStructure(renderMinistryPage(ministry({ ministerName: "Minister Alex Example" }), minister, emptyPosts, site, {}));
     const html = doc.documentElement.outerHTML;
@@ -52,6 +52,15 @@ describe("renderMinistryPage", () => {
     expect(html).toContain("<p>Served since 2020.</p>");
     expect(doc.querySelectorAll("h1")).toHaveLength(1); // the demoted body h1 doesn't create a second one
     expect(doc.querySelector("img")?.getAttribute("alt")).toBe("Minister Alex Example");
+  });
+
+  it("sanitises the minister's details (C209)", () => {
+    const minister = { headline: "H", summary: null, details: '<p>Safe.</p><script>alert(1)</script><a href="javascript:alert(1)">Click</a>', photo: null };
+    const html = renderMinistryPage(ministry({}), minister, emptyPosts, site, {});
+    expect(html).toContain("<p>Safe.</p>");
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain("Click");
   });
 
   it("links the ministry URL, lists top/feature/latest posts, and links the archive and ministry search", () => {

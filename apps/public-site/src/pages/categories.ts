@@ -1,7 +1,8 @@
 import type { CategoryDto, MinisterDto, MinistryDto, PostDto } from "../dto";
 import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
 import { categoryPageId, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
-import { demoteHeadings, displayDate, postListItem } from "./format";
+import { displayDate, postListItem } from "./format";
+import { sanitizeBodyHtml } from "../sanitize-body";
 
 interface CategoryPosts {
   top: PostDto | null;
@@ -85,7 +86,7 @@ export function renderMinistryPage(m: MinistryDto, minister: MinisterDto | null,
   const key = m.key.toLowerCase();
   const photoSrc = minister ? safeSrc(minister.photo) : null;
   const ministerSection = minister
-    ? `<section>\n<h2>Minister</h2>\n${photoSrc ? `<img src="${e(photoSrc)}" alt="${e(m.ministerName)}">` : ""}${minister.summary ? `<p>${e(minister.summary)}</p>` : ""}${demoteHeadings(minister.details ?? "")}\n</section>`
+    ? `<section>\n<h2>Minister</h2>\n${photoSrc ? `<img src="${e(photoSrc)}" alt="${e(m.ministerName)}">` : ""}${minister.summary ? `<p>${e(minister.summary)}</p>` : ""}${sanitizeBodyHtml(minister.details ?? "")}\n</section>`
     : "";
   const ministryHref = safeHref(m.ministryUrl);
   const ministryUrl = ministryHref ? `<p><a href="${e(ministryHref)}">Ministry website</a></p>` : "";

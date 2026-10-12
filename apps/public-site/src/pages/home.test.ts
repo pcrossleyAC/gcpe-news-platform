@@ -84,6 +84,15 @@ describe("home page", () => {
     expect(html).not.toContain('<a href="javascript');
   });
 
+  // Fix round 2 (Critical): a leading "/\host" is browser-resolved the same as "//host" — a
+  // different origin — even though it "starts with / and not //" under a naive relative check.
+  it("refuses a /\\host slide action (the backslash-as-separator bypass), producing no link", () => {
+    const slides = [slide({ actionUri: "/\\evil.example/phish", actionLabel: "Go" })];
+    const html = renderHomePage({ ...emptyView, slides }, site, {});
+    expect(html).not.toContain("evil.example");
+    expect(html).not.toContain(">Go<");
+  });
+
   it("links the feed alternate at /feed.xml", () => {
     const html = renderHomePage(emptyView, site, {});
     expect(html).toContain('<link rel="alternate" type="application/rss+xml"');

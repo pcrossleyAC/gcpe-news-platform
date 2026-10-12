@@ -56,10 +56,17 @@ describe("siteThemeSchema", () => {
     },
   );
 
-  it("accepts an optional font stylesheet URL and refuses a non-URL", () => {
+  it("accepts an https or site-relative font stylesheet URL", () => {
     expect(siteThemeSchema.safeParse({ ...theme, font: { ...theme.font, stylesheetUrl: "https://example.test/font.css" } }).success).toBe(true);
-    expect(siteThemeSchema.safeParse({ ...theme, font: { ...theme.font, stylesheetUrl: "font.css" } }).success).toBe(false);
+    expect(siteThemeSchema.safeParse({ ...theme, font: { ...theme.font, stylesheetUrl: "/assets/font.css" } }).success).toBe(true);
   });
+
+  it.each(["font.css", "http://example.test/font.css", "javascript:alert(1)", "//evil.example/font.css", "/\\evil.example/font.css"])(
+    "refuses a font stylesheet URL of %j (not a non-http(s) scheme, not http:, and never the backslash bypass)",
+    (stylesheetUrl) => {
+      expect(siteThemeSchema.safeParse({ ...theme, font: { ...theme.font, stylesheetUrl } }).success).toBe(false);
+    },
+  );
 
   it.each(["https://example.test/privacy", "http://example.test/privacy", "mailto:info@example.test", "/privacy"])(
     "accepts a footer link url of %j",
@@ -68,7 +75,7 @@ describe("siteThemeSchema", () => {
     },
   );
 
-  it.each(["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "//evil.example/phish", ""])(
+  it.each(["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "//evil.example/phish", "/\\evil.example/phish", "\\/evil.example", ""])(
     "refuses a footer link url of %j",
     (url) => {
       const result = siteThemeSchema.safeParse({ ...theme, footerLinks: [{ label: "Privacy", url }] });

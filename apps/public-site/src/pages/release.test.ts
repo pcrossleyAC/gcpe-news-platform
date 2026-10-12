@@ -16,10 +16,12 @@ describe("release page", () => {
   });
 
   it("demotes body headings so the page keeps one h1", () => {
+    // "class" isn't in the body sanitiser's allow-list (fix round 2, C209), so it's stripped
+    // along with the heading demotion — the behaviour under test is the demotion, not the class.
     const html = renderReleasePage(post({ documents: [{ languageId: 4105, headline: "H", subheadline: null, detailsHtml: "<H1 class=\"x\">Inner</H1><h2>Two</h2><h6>Six</h6>", contacts: [] }] }), site, {}, ctx);
     const doc = expectAccessibleStructure(html);
     expect(doc.querySelectorAll("h1")).toHaveLength(1);
-    expect(html).toContain('<h2 class="x">Inner</h2>');
+    expect(html).toContain("<h2>Inner</h2>");
     expect(html).toContain("<h3>Two</h3>");
     expect(html).toContain("<h6>Six</h6>");
   });
@@ -62,6 +64,32 @@ describe("release page", () => {
     expect(html).not.toContain("Evil doc");
     expect(html).not.toContain("Evil photo");
     expect(html).not.toContain("Évil");
+  });
+
+  it("sanitises the body, on top of (not instead of) the headline/field escaping (C209)", () => {
+    const html = renderReleasePage(
+      post({
+        documents: [
+          {
+            languageId: 4105,
+            headline: "H",
+            subheadline: null,
+            detailsHtml: '<p>Safe.</p><script>alert(1)</script><img src=x onerror=alert(1)><a href="javascript:alert(1)">Click</a><iframe src="https://evil.example"></iframe><style>body{display:none}</style>',
+            contacts: [],
+          },
+        ],
+      }),
+      site,
+      {},
+      ctx,
+    );
+    expect(html).toContain("<p>Safe.</p>");
+    expect(html).not.toContain("<script");
+    expect(html).not.toContain("onerror");
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("<iframe");
+    expect(html).not.toContain("<style");
+    expect(html).toContain("Click"); // the link's text survives; only the href is stripped
   });
 
   it("escapes every interpolated field (asset labels, contacts, location)", () => {

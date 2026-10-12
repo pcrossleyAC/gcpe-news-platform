@@ -40,6 +40,15 @@ describe("safeHref", () => {
     expect(safeHref("")).toBeNull();
     expect(safeHref("not a url")).toBeNull();
   });
+
+  // Fix round 2 (Critical): a leading "/\host" "starts with / and not //", but every major
+  // browser (and Node's own URL, same WHATWG algorithm) resolves a backslash the same as a
+  // forward slash for http(s), so this used to land on a different origin entirely.
+  it("rejects a backslash anywhere, including the /\\host bypass of the site-relative check", () => {
+    expect(safeHref("/\\evil.example/phish")).toBeNull();
+    expect(safeHref("\\/evil.example")).toBeNull();
+    expect(safeHref("/files/a\\b.png")).toBeNull();
+  });
 });
 
 describe("safeSrc", () => {
@@ -55,6 +64,10 @@ describe("safeSrc", () => {
   it("rejects javascript: and //host, like safeHref", () => {
     expect(safeSrc("javascript:alert(1)")).toBeNull();
     expect(safeSrc("//evil.example/x")).toBeNull();
+  });
+
+  it("rejects a backslash anywhere, like safeHref", () => {
+    expect(safeSrc("/\\evil.example/phish")).toBeNull();
   });
 });
 
@@ -99,6 +112,18 @@ describe("renderPage chrome", () => {
     expect(renderPage("T", themed, "/site/", "<h1>H</h1>")).not.toContain("fonts.example");
     const font = { ...themed, theme: { ...themed.theme, font: { ...themed.theme.font, stylesheetUrl: "https://fonts.example/a.css" } } };
     expect(renderPage("T", font, "/site/", "<h1>H</h1>")).toContain('<link rel="stylesheet" href="https://fonts.example/a.css">');
+  });
+
+  // Important #3: the config schema already restricts this to https:/relative, but render time
+  // re-checks rather than trusting that a value reaching it was validated there — defence in
+  // depth against the same class of bug the footer link check closed.
+  it("drops the font stylesheet link when the URL isn't https: or site-relative, even if it slipped past config validation", () => {
+    for (const bad of ["http://fonts.example/a.css", "javascript:alert(1)", "/\\evil.example/a.css"]) {
+      const font = { ...themed, theme: { ...themed.theme, font: { ...themed.theme.font, stylesheetUrl: bad } } };
+      const html = renderPage("T", font, "/site/", "<h1>H</h1>");
+      expect(html).not.toContain('rel="stylesheet" href="' + bad);
+      expect(html.match(/<link rel="stylesheet"/g)?.length).toBe(1); // only theme.css — no font link
+    }
   });
 
   it("adds the feed alternate link and description when given", () => {

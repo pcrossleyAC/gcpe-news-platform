@@ -1,5 +1,5 @@
 import type { SiteTheme } from "@gcpe/config";
-import { escapeHtml } from "@gcpe/http-kit";
+import { escapeHtml, isSafeUrl } from "@gcpe/http-kit";
 import { DEFAULT_THEME } from "./theme-css";
 
 export type { PostDocument, PostDto } from "./dto";
@@ -36,41 +36,17 @@ export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
 const XML_ILLEGAL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFE\uFFFF]/g;
 export const ex = (s: string | null | undefined): string => e((s ?? "").replace(XML_ILLEGAL_CHARS, ""));
 
-/**
- * Shared by `safeHref` and `safeSrc` below. Escaping (`e()`) only neutralises HTML
- * metacharacters — it does nothing to stop a `javascript:`/`vbscript:`/`data:` URL from running
- * as a link or image load, which would be stored XSS. Only an absolute `http:`/`https:` URL (and,
- * for a link, `mailto:`), or a single-slash site-relative path (`/files/...`, `/releases/...`),
- * is accepted; everything else, including a protocol-relative `//host` URL, is rejected (`null`)
- * and the caller must not render the attribute at all.
- *
- * Checked after stripping ASCII tabs/newlines/carriage-returns and trimming surrounding
- * whitespace — browsers do the same before reading a URL's scheme, so a hostile value can hide
- * `javascript:` as `"java\tscript:"` or `" JaVaScRiPt:"` and still run when a naive check (a
- * plain `startsWith("javascript:")`) would miss it.
- */
-function safeUrl(u: string | null | undefined, allowedSchemes: readonly string[]): string | null {
-  if (!u) return null;
-  const stripped = u.replace(/[\t\n\r]/g, "").trim();
-  if (!stripped) return null;
-  if (stripped.startsWith("/") && !stripped.startsWith("//")) return u;
-  let parsed: URL;
-  try {
-    parsed = new URL(stripped);
-  } catch {
-    return null;
-  }
-  return allowedSchemes.includes(parsed.protocol.toLowerCase()) ? u : null;
-}
-
 /** Gates every `href` built from News API data (a ministry URL, a resource link, an asset or
- * translation file, a slide's action link) before it's escaped with `e()`. See {@link safeUrl}. */
-export const safeHref = (u: string | null | undefined): string | null => safeUrl(u, ["https:", "http:", "mailto:"]);
+ * translation file, a slide's action link) before it's escaped with `e()`. `isSafeUrl`
+ * (`@gcpe/http-kit`, shared with `@gcpe/config`'s theme validation) is the single source of
+ * truth for what's safe — see its doc comment for why a bare "starts with / and not //" check
+ * isn't enough (the backslash-as-separator bypass). */
+export const safeHref = (u: string | null | undefined): string | null => (isSafeUrl(u, { mailto: true }) ? (u as string) : null);
 
 /** Gates every `src` built from News API data (an asset image, the minister's photo) before it's
  * escaped with `e()` — same as {@link safeHref} but never `mailto:`, which cannot load as an
- * image. See {@link safeUrl}. */
-export const safeSrc = (u: string | null | undefined): string | null => safeUrl(u, ["https:", "http:"]);
+ * image. */
+export const safeSrc = (u: string | null | undefined): string | null => (isSafeUrl(u) ? (u as string) : null);
 
 /** The base URL's path with no trailing slash: "" at a root base, "/site" on boxs.ca. */
 export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
@@ -83,7 +59,11 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   const theme = site.theme ?? DEFAULT_THEME;
   const robots = opts.test ? `\n<meta name="robots" content="noindex, nofollow">` : "";
   const description = opts.description ? `\n<meta name="description" content="${e(opts.description)}">` : "";
-  const font = theme.font.stylesheetUrl ? `\n<link rel="stylesheet" href="${e(theme.font.stylesheetUrl)}">` : "";
+  // Defence in depth: the tenant config schema (`@gcpe/config`'s siteThemeSchema) already
+  // restricts stylesheetUrl to https:/relative, but render time doesn't re-trust config-time
+  // validation for anything else that reaches an href/src — this shouldn't either.
+  const fontHref = theme.font.stylesheetUrl && isSafeUrl(theme.font.stylesheetUrl, { schemes: ["https:"] }) ? theme.font.stylesheetUrl : null;
+  const font = fontHref ? `\n<link rel="stylesheet" href="${e(fontHref)}">` : "";
   const feed = opts.feed ? `\n<link rel="alternate" type="application/rss+xml" title="${e(opts.feed.title)}" href="${e(opts.feed.href)}">` : "";
   const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
   const brand = site.logo
