@@ -108,6 +108,16 @@ service calls. NRMS calls NoD (the subscriber count shown at schedule time) and 
 from the local-admin settings. Turning local admin off without setting both Entra sets leaves
 NRMS with no way to authenticate those calls.
 
+NRMS calls the News API the same way, for "Similar published releases" (addendum §7) — under
+`NRMS_NEWS_API_TOKEN_URL`/`NRMS_NEWS_API_CLIENT_ID`/`NRMS_NEWS_API_CLIENT_SECRET`/
+`NRMS_NEWS_API_SCOPE` (that Entra app registration needs the News API's `NewsApi.Similar` app
+role). `NRMS_NEWS_API_URL` itself already defaults to this stack's own in-process `self:/`, so
+it needs no setting of its own; only the four credential vars are missing when Entra is
+configured for NoD, Distribution and Core but not for this. All four or none, with the same
+local-token fallback as `NOD_*`/`DISTRIBUTION_*` above: turning local admin off without setting
+this set too leaves NRMS unable to authenticate that call, and the "Similar published releases"
+panel 503s.
+
 NoD calls Distribution the same way, under its own `NOD_DISTRIBUTION_TOKEN_URL`/
 `NOD_DISTRIBUTION_CLIENT_ID`/`NOD_DISTRIBUTION_CLIENT_SECRET`/`NOD_DISTRIBUTION_SCOPE` (the
 stack's `NOD_` prefix on the same four `DISTRIBUTION_*` names NoD reads). **That Entra app

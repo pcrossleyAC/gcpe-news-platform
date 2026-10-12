@@ -11,7 +11,7 @@ Recorded at the end of 6e on `feat/phase-6de`. Each check names the command that
 | Search spot-check, semantic relevance | **Waits on Q70** (Azure OpenAI). With the stand-in provider the run proves only the plumbing: embedding, storage, the vector query and the two-group order. | the same script with `EMBEDDINGS_PROVIDER=azure-openai` |
 | Semantic search on a shared test environment | **Waits on Q80**: boxs.ca's Postgres has no pgvector, so it always answers in text mode. Semantic mode is verified locally and in CI only. | `/stack/health` → `newsApiSearch` |
 | Staff-AI flag enforcement (News API flag off → zero provider calls for `mode: "ai"`, NRMS flag on) | Passed | `apps/news-api/src/search/similar-flag.test.ts` |
-| Staff AI in production | **Off until the PIA approves it (Q71)**. The runbook's "Turning the flags on, and the PIA gate for staff AI" is the procedure. | — |
+| Staff AI in production | **Off until the PIA approves it (Q71)**. The runbook's "Turning the flags on, and the PIA gate for staff AI" is the procedure. Turning `staffAi` on also embeds every published post (Q88), not just drafts an editor compares. | — |
 
 ## Lighthouse scores (fixture site)
 
