@@ -194,4 +194,43 @@ describe("UsersScreen", () => {
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/old-1/link")).toBe(true));
     expect(JSON.parse(calls.find((c) => c.url === "/core/api/users/old-1/link")!.init!.body as string)).toEqual({ email: "kim.imported@x.invalid" });
   });
+
+  it("unlinks a user's Microsoft sign-in, then offers a password again", async () => {
+    const LINKED: UserView = { ...OTHER, signInMethod: "entra" };
+    let current = LINKED;
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, current]);
+      if (url === "/core/api/users/other-1/unlink-entra" && init?.method === "POST") {
+        current = { ...OTHER, signInMethod: "local" };
+        return jsonResponse(200, current);
+      }
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    expect(within(row).getByText("Sign-in: Microsoft (Entra)")).toBeInTheDocument();
+    expect(within(row).queryByLabelText("other@x.invalid new password")).not.toBeInTheDocument();
+
+    await userEvent.setup().click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
+
+    await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1/unlink-entra" && c.init?.method === "POST")).toBe(true));
+    const after = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    expect(await within(after).findByText("Sign-in: Local password")).toBeInTheDocument();
+    expect(within(after).getByLabelText("other@x.invalid new password")).toBeInTheDocument();
+    expect(within(after).queryByRole("button", { name: /unlink/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the server's message when unlinking fails", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, { ...OTHER, signInMethod: "entra" }]);
+      if (url === "/core/api/users/other-1/unlink-entra") return jsonResponse(404, { error: "not found" });
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    await userEvent.setup().click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
+    expect(await within(row).findByRole("alert")).toHaveTextContent("not found");
+  });
 });

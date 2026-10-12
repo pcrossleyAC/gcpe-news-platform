@@ -42,6 +42,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
   const [rolesMessages, setRolesMessages] = useState<string[]>([]);
   const [passwordMessages, setPasswordMessages] = useState<string[]>([]);
   const [passwordSaved, setPasswordSaved] = useState(false);
+  const [unlinkMessages, setUnlinkMessages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
   const saveName = async () => {
@@ -102,6 +103,19 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
     }
   };
 
+  const unlink = async () => {
+    setBusy(true);
+    setUnlinkMessages([]);
+    try {
+      await apiFetch<UserView>(`/core/api/users/${user.id}/unlink-entra`, { method: "POST" });
+      onChanged();
+    } catch (caught) {
+      setUnlinkMessages(messagesOf(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const who = user.email ?? `${user.displayName} (no email)`;
 
   return (
@@ -109,7 +123,20 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
       <h3 className="gcpe-users__who">
         {who} {!user.isActive && "(inactive)"}
       </h3>
-      <p className="gcpe-users__sign-in">Sign-in: {user.signInMethod === "local" ? "Local password" : "Entra"}</p>
+      <p className="gcpe-users__sign-in">Sign-in: {user.signInMethod === "local" ? "Local password" : "Microsoft (Entra)"}</p>
+      {user.signInMethod === "entra" && (
+        <>
+          {unlinkMessages.map((m) => (
+            <p role="alert" key={m}>
+              {m}
+            </p>
+          ))}
+          <p>Unlinking lets this user sign in with a password set here. Their next Microsoft sign-in links them again by email.</p>
+          <Button variant="secondary" onPress={() => void unlink()} isDisabled={busy} aria-label={`Unlink ${who} from Microsoft sign-in`}>
+            Unlink Microsoft sign-in
+          </Button>
+        </>
+      )}
 
       {nameMessages.map((m) => (
         <p role="alert" key={m}>
