@@ -60,14 +60,19 @@ export const users = pgTable(
     isActive: boolean("is_active").notNull().default(true),
     signInMethod: text("sign_in_method").$type<"local" | "entra">().notNull().default("local"),
     passwordHash: text("password_hash"),
+    /** The Entra object id (`oid`) this user signs in as, once linked. Set together with sign_in_method 'entra'. */
+    entraOid: text("entra_oid"),
     legacyId: uuid("legacy_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("users_email_lower_idx").on(sql`lower(${t.email})`),
+    uniqueIndex("users_entra_oid_idx").on(t.entraOid),
     check("users_sign_in_method_check", sql`${t.signInMethod} IN ('local','entra')`),
     check("users_active_needs_email", sql`${t.isActive} = false OR ${t.email} IS NOT NULL`),
+    // Linked to Entra exactly when signing in with Entra: a linked user never has a usable password.
+    check("users_entra_link_check", sql`(${t.signInMethod} = 'entra') = (${t.entraOid} IS NOT NULL)`),
   ],
 );
 
