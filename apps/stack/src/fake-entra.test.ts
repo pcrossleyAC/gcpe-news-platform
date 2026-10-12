@@ -33,6 +33,8 @@ describe("fake Microsoft sign-in", () => {
   it("is refused on a real production deployment, allowed on a production-mode test site", () => {
     expect(() => usesFakeEntra({ ...ON, NODE_ENV: "production" })).toThrow("FAKE_ENTRA_ENABLED is refused on a production deployment");
     expect(usesFakeEntra({ ...ON, NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
+    // SITE_ENVIRONMENT=test marks a test site exactly as LOCAL_ADMIN_ALLOW_IN_PRODUCTION does.
+    expect(usesFakeEntra({ ...ON, NODE_ENV: "production", SITE_ENVIRONMENT: "test" })).toBe(true);
   });
 
   it("can't be combined with real Entra settings", () => {

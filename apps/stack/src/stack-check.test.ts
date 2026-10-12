@@ -176,6 +176,19 @@ describe("checkStack", () => {
     expect(result.apps.core).toEqual({ ok: true, migrationsFolder: expect.any(String) });
   });
 
+  it("reports a refused FAKE_ENTRA_ENABLED as Core's own result, instead of throwing", async () => {
+    const env = baseEnv();
+    env.NODE_ENV = "production";
+    env.FAKE_ENTRA_ENABLED = "true";
+    // usesFakeEntra throws on a real production deployment (apps/stack/src/env.ts) before Core's
+    // own env schema or auth checks run — the per-app loop must catch that, not propagate it.
+    const result = await checkStack(env);
+    expect(result.ok).toBe(false);
+    expect(result.apps.core?.ok).toBe(false);
+    expect(result.apps.core?.error).toContain("(its variables are CORE_*)");
+    expect(result.apps.core?.error).toContain("FAKE_ENTRA_ENABLED is refused on a production deployment");
+  });
+
   it("fails LOCAL_ADMIN_ENABLED=true under NODE_ENV=production without the explicit override", async () => {
     const env = baseEnv();
     env.NODE_ENV = "production";

@@ -712,7 +712,18 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   if (!calendarConfigured(env)) apps.calendar = { ok: true, skipped: "CALENDAR_DATABASE_URL is not set" };
   let ok = true;
   for (const c of checks) {
-    const view = resolvedEnvFor(env, c.prefix, dataDir);
+    // resolvedEnvFor (CORE only) can throw — usesFakeEntra refuses FAKE_ENTRA_ENABLED on a real
+    // production deployment or alongside real Entra settings. Report that refusal as this app's
+    // own result, the same shape as every other failure here, instead of letting it abort the
+    // whole check.
+    let view: NodeJS.ProcessEnv;
+    try {
+      view = resolvedEnvFor(env, c.prefix, dataDir);
+    } catch (e) {
+      ok = false;
+      apps[c.label] = { ok: false, error: `(its variables are ${c.prefix}_*): ${e instanceof Error ? e.message : String(e)}` };
+      continue;
+    }
     const errors: string[] = [];
 
     const parsed = c.schema.safeParse(view);

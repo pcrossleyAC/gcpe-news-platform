@@ -15,7 +15,8 @@ export interface EntraSignInConfig {
 
 export interface SignInSettings {
   entra: EntraSignInConfig | null;
-  /** False only in production with Entra on and LOCAL_PASSWORDS_ALLOWED not "true". The break-glass admin is unaffected. */
+  /** False only in real production (C39: not a test site) with Entra on and
+   * LOCAL_PASSWORDS_ALLOWED not "true". The break-glass admin is unaffected. */
   userPasswordsAllowed: boolean;
 }
 
@@ -53,8 +54,11 @@ function publicOrigin(value: string): string {
 export function signInSettingsFromEnv(env: NodeJS.ProcessEnv): SignInSettings {
   const allowed = env.LOCAL_PASSWORDS_ALLOWED;
   if (allowed !== undefined && allowed !== "true" && allowed !== "false") throw new Error('LOCAL_PASSWORDS_ALLOWED must be "true" or "false"');
-  const production = env.NODE_ENV === "production";
-  const testDeployment = !production || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true";
+  // C39's test-site rule, shared with the fake's own production guard (apps/stack/src/env.ts,
+  // usesFakeEntra): NODE_ENV isn't "production", or it is but the deployment is marked a test
+  // site anyway (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, or SITE_ENVIRONMENT=test, e.g. boxs.ca).
+  // Computed once and reused below for both guards this function makes, so the two can't drift.
+  const testDeployment = env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || env.SITE_ENVIRONMENT === "test";
 
   if (!TRIGGERS.some((k) => set(env, k))) {
     if (set(env, "ENTRA_AUTHORITY_URL")) throw new Error("ENTRA_AUTHORITY_URL is set but Entra sign-in is not: set ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET and PUBLIC_BASE_URL too");
@@ -77,6 +81,6 @@ export function signInSettingsFromEnv(env: NodeJS.ProcessEnv): SignInSettings {
       authority,
       redirectUri: `${publicOrigin(env.PUBLIC_BASE_URL!)}${ENTRA_CALLBACK_PATH}`,
     },
-    userPasswordsAllowed: !production || allowed === "true",
+    userPasswordsAllowed: testDeployment || allowed === "true",
   };
 }
