@@ -25,14 +25,18 @@ export function logoFor(theme: SiteTheme, assetsDir: string | null, site: Pick<S
   return { src: `${basePath(site)}/${theme.logo.path}`, alt: theme.logo.alt };
 }
 
-/** Every file under `<assetsDir>/assets`, as paths relative to assetsDir; dotfiles skipped. */
+/** Every file under `<assetsDir>/assets`, as paths relative to assetsDir; any path segment
+ * starting with a dot is skipped — a dotfile itself (e.g. `.hidden`) and any file inside a
+ * hidden directory (e.g. `.git/config`), since `entry.name` is only the file's own basename. */
 async function assetFiles(assetsDir: string): Promise<string[]> {
   const root = join(assetsDir, "assets");
   if (!existsSync(root)) return [];
   const out: string[] = [];
   for (const entry of await readdir(root, { recursive: true, withFileTypes: true })) {
-    if (!entry.isFile() || entry.name.startsWith(".")) continue;
-    out.push(relative(assetsDir, join(entry.parentPath, entry.name)).split(sep).join("/"));
+    if (!entry.isFile()) continue;
+    const rel = relative(assetsDir, join(entry.parentPath, entry.name)).split(sep).join("/");
+    if (rel.split("/").some((seg) => seg.startsWith("."))) continue;
+    out.push(rel);
   }
   return out.sort();
 }

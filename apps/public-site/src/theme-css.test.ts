@@ -24,6 +24,15 @@ describe("themeCss", () => {
     const evil = { ...DEFAULT_THEME, font: { family: 'X"; } body { color: red', fallback: "serif" } };
     expect(themeCss(evil)).not.toContain("color: red");
   });
+  it("refuses a hostile font fallback that could open an unterminated string", () => {
+    const evil = { ...DEFAULT_THEME, font: { family: "Noto Sans", fallback: 'serif", color: red; } body { color: blue' } };
+    const css = themeCss(evil);
+    expect(css).not.toContain("color: red");
+    expect(css).not.toContain("color: blue");
+    // Exactly the one quoted pair around the family name survives — no stray quote from the
+    // hostile fallback is left in to open an unterminated string.
+    expect(css.match(/"/g)).toHaveLength(2);
+  });
   it("the default theme passes the tenant schema's contrast check", () => {
     expect(siteThemeSchema.safeParse(DEFAULT_THEME).success).toBe(true);
   });

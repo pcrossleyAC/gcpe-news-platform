@@ -60,4 +60,19 @@ describe("siteThemeSchema", () => {
     expect(siteThemeSchema.safeParse({ ...theme, font: { ...theme.font, stylesheetUrl: "https://example.test/font.css" } }).success).toBe(true);
     expect(siteThemeSchema.safeParse({ ...theme, font: { ...theme.font, stylesheetUrl: "font.css" } }).success).toBe(false);
   });
+
+  it.each(["https://example.test/privacy", "http://example.test/privacy", "mailto:info@example.test", "/privacy"])(
+    "accepts a footer link url of %j",
+    (url) => {
+      expect(siteThemeSchema.safeParse({ ...theme, footerLinks: [{ label: "Privacy", url }] }).success).toBe(true);
+    },
+  );
+
+  it.each(["javascript:alert(1)", "data:text/html,<script>alert(1)</script>", "//evil.example/phish", ""])(
+    "refuses a footer link url of %j",
+    (url) => {
+      const result = siteThemeSchema.safeParse({ ...theme, footerLinks: [{ label: "Privacy", url }] });
+      expect(result.success).toBe(false);
+    },
+  );
 });

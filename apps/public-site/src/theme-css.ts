@@ -22,8 +22,12 @@ const kebab = (name: string) => name.replace(/[A-Z]/g, (c) => `-${c.toLowerCase(
 /** A CSS string literal: quotes, backslashes and anything that could end the rule or start a
  * new declaration (including a bare colon) are dropped. */
 const cssString = (s: string) => `"${s.replace(/["\\;:{}<>\n\r]/g, "")}"`;
-/** The fallback stack: family names, quotes, commas, spaces and hyphens only. */
-const cssStack = (s: string) => s.replace(/[^A-Za-z0-9 ,"'-]/g, "");
+/** The fallback stack: letters, digits, spaces, commas and hyphens only — no quotes. Unlike
+ * `cssString`'s family value, this text is spliced in unquoted; a stray quote left in would
+ * open an unterminated string that drops the whole --font-family declaration. A multi-word
+ * family name needs no quotes here either way: CSS reads consecutive identifiers in a
+ * font-family value as one name joined by spaces. */
+const cssStack = (s: string) => s.replace(/[^A-Za-z0-9 ,-]/g, "");
 
 /** spec §6.3: theme.css from site.theme, as CSS variables; every rule below uses only them. */
 export function themeCss(theme: SiteTheme): string {

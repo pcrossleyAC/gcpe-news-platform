@@ -80,6 +80,13 @@ describe("renderPage chrome", () => {
     expect(html).toContain('href="https://example.test/privacy?a=1&amp;b=2"');
   });
 
+  it("gates footer links through safeHref, rendering an unsafe scheme as plain text, defence in depth against a tenant config that bypassed the scheme check", () => {
+    const hostile = { ...themed, theme: { ...themed.theme, footerLinks: [{ label: "Click me", url: "javascript:alert(1)" }] } };
+    const html = renderPage("T", hostile, "/site/", "<h1>H</h1>");
+    expect(html).not.toContain("javascript:");
+    expect(html).toContain("<li>Click me</li>");
+  });
+
   it("shows the logo when one is set, the wordmark otherwise", () => {
     const withLogo = expectAccessibleStructure(renderPage("T", { ...themed, logo: { src: "/site/assets/logo.svg", alt: "Example <Gov>" } }, "/site/", "<h1>H</h1>"));
     expect(withLogo.querySelector("header img")?.getAttribute("alt")).toBe("Example <Gov>");

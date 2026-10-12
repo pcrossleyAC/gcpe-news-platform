@@ -78,7 +78,12 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   const brand = site.logo
     ? `<img class="logo" src="${e(site.logo.src)}" alt="${e(site.logo.alt)}"><span class="wordmark">${e(site.name)}</span>`
     : `<span class="wordmark">${e(site.name)}</span>`;
-  const footerLinks = theme.footerLinks.map((l) => `<li><a href="${e(l.url)}">${e(l.label)}</a></li>`).join("\n");
+  const footerLinks = theme.footerLinks
+    .map((l) => {
+      const href = safeHref(l.url);
+      return href ? `<li><a href="${e(href)}">${e(l.label)}</a></li>` : `<li>${e(l.label)}</li>`;
+    })
+    .join("\n");
   return `<!doctype html>
 <html lang="en">
 <head>

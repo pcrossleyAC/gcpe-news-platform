@@ -30,6 +30,15 @@ describe("static pages", () => {
     expect([...storage.files.keys()].sort()).toEqual(["404.html", "assets/img/a.png", "assets/logo.svg", "assets/theme.css", "robots.txt"]);
     expect(storage.files.get("assets/img/a.png")).toBeInstanceOf(Uint8Array);
   });
+  it("skips every file inside a hidden directory, not just a dotfile's own name", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "site-assets-"));
+    await mkdir(join(dir, "assets", ".git"), { recursive: true });
+    await writeFile(join(dir, "assets", ".git", "config"), "x");
+    await writeFile(join(dir, "assets", "logo.svg"), "<svg/>");
+    const storage = memoryStorage();
+    await writeStaticPages(storage, site, {}, dir);
+    expect([...storage.files.keys()].sort()).toEqual(["404.html", "assets/logo.svg", "assets/theme.css", "robots.txt"]);
+  });
   it("a missing assets folder is not an error", async () => {
     const storage = memoryStorage();
     await writeStaticPages(storage, site, {}, "/nonexistent/folder");
