@@ -284,6 +284,7 @@ describe("startNewsApi's embedding worker", () => {
         EVENT_SECRETS: JSON.stringify(EVENT_SECRETS),
         TENANT_CONFIG: writeTenantConfig({ features: { semanticSearch: flag, staffAi: false } }),
         EMBEDDINGS_PROVIDER: "stand-in",
+        SLIDE_IMAGES_FETCH_BASE: "http://files.internal.test",
       },
       { hub: false },
     );

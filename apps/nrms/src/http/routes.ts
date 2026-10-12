@@ -93,9 +93,10 @@ export function handleError(e: unknown, res: Response): boolean {
   if (e instanceof SiteRuleError) return void res.status(422).json({ errors: e.problems }), true;
   if (e instanceof SiteConflictError) return void res.status(409).json({ error: e.message }), true;
   if (e instanceof SiteNotFoundError) return void res.status(404).json({ error: "not found" }), true;
-  // I4 backstop: website/carousel.ts's assertSlidesFit refuses a write that would grow a
-  // `slides` snapshot past the budget before it's ever emitted, so this is a last resort for
-  // an emit that's still too large (e.g. pre-existing data from before that fix shipped).
+  // I4 backstop: a generic guard for any outbox emit that ends up over the shared event-size
+  // cap, whatever the cause — maps it to 413 rather than a bare 500. Carousel images no longer
+  // travel as inline bytes (slide events carry a URL instead, addendum §6.4), so this is no
+  // longer specific to the carousel; it covers any oversized envelope, from any emitter.
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: e.message }), true;
   if (e instanceof MediaListConflictError) return void res.status(409).json({ error: e.message }), true;
   if (e instanceof MediaListNotFoundError) return void res.status(404).json({ error: "not found" }), true;

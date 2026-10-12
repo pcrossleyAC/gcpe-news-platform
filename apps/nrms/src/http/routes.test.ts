@@ -613,10 +613,8 @@ describe("NRMS HTTP API", () => {
   });
 });
 
-// I4 backstop: assertSlidesFit (website/carousel.ts) guards every write that can grow a
-// `slides` snapshot before it's ever emitted, so this almost never fires in practice — but if
-// an emit still produces an oversized envelope (e.g. pre-existing data from before that fix),
-// handleError maps it to 413 rather than a bare 500.
+// I4 backstop: EventTooLargeError is a generic guard for any outbox emit over the shared
+// event-size cap, from any cause — handleError maps it to 413 rather than a bare 500.
 describe("handleError", () => {
   const fakeRes = (): { res: Response; status?: number; body?: unknown } => {
     const captured: { status?: number; body?: unknown } = {};

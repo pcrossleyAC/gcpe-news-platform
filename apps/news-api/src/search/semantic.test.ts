@@ -163,7 +163,13 @@ describe("semantic mode (spec §5.4)", () => {
     for (const [flag, mode] of [[true, "semantic"], [false, "text"]] as const) {
       const own = await createNewsTestDb();
       const handle = await startNewsApi(
-        { DATABASE_URL: own.url, EVENT_SECRETS: JSON.stringify(EVENT_SECRETS), TENANT_CONFIG: writeTenantConfig({ features: { semanticSearch: flag, staffAi: false } }), EMBEDDINGS_PROVIDER: "stand-in" },
+        {
+          DATABASE_URL: own.url,
+          EVENT_SECRETS: JSON.stringify(EVENT_SECRETS),
+          TENANT_CONFIG: writeTenantConfig({ features: { semanticSearch: flag, staffAi: false } }),
+          EMBEDDINGS_PROVIDER: "stand-in",
+          SLIDE_IMAGES_FETCH_BASE: "http://files.internal.test",
+        },
         { hub: false },
       );
       try {

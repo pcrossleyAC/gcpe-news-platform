@@ -19,27 +19,51 @@ export interface SlideImageFetcher {
 }
 
 /**
- * spec §6.4 with v1 kept: the bytes behind a slide event's URL, checked against its SHA-256.
- * fetchBase (the stack: self:/files) replaces the public origin, which SiteGround can't loop
- * back to. Never fetches an arbitrary host taken from the event: with fetchBase set, only
- * imageKey (validated against SLIDE_IMAGE_KEY) ever reaches the URL — imageUrl is used only
- * when fetchBase is absent (a standalone deployment, Q85).
+ * Reads `res.body`, counting bytes as they arrive, and throws as soon as the running total
+ * passes `maxBytes` — never buffers more than one over-limit chunk, so a server that lies
+ * about (or omits) `content-length` can't be used to force an unbounded read into memory.
  */
-export function slideImageFetcher(opts: { fetchBase?: string; fetchImpl?: typeof fetch; timeoutMs?: number }): SlideImageFetcher {
+async function readBounded(res: Response, maxBytes: number): Promise<Buffer> {
+  if (!res.body) return Buffer.alloc(0);
+  const chunks: Buffer[] = [];
+  let total = 0;
+  for await (const chunk of res.body as unknown as AsyncIterable<Uint8Array>) {
+    total += chunk.length;
+    if (total > maxBytes) throw new SlideImageError("slide image too large");
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+/**
+ * spec §6.4 with v1 kept: the bytes behind a slide event's URL, checked against its SHA-256.
+ * The fetch target is always `fetchBase` plus the event's own `imageKey` — validated against
+ * `SLIDE_IMAGE_KEY` before it ever reaches a URL — never the event's `imageUrl`: an NRMS event
+ * is signed, but that only authenticates its *content*, not its *destination*, so nothing here
+ * ever makes a request to a host the event itself names. `fetchBase` is required (the News API
+ * refuses to start without it — env.ts), so there is no fallback path that would fetch an
+ * arbitrary host. `redirect: "error"` keeps a redirect from `fetchBase` from being silently
+ * followed to a different host.
+ */
+export function slideImageFetcher(opts: { fetchBase: string; fetchImpl?: typeof fetch; timeoutMs?: number }): SlideImageFetcher {
   const doFetch = opts.fetchImpl ?? fetch;
+  const base = opts.fetchBase.replace(/\/+$/, "");
   return {
     async fetch(s) {
       if (!s.imageSha256 || !s.imageKey || !SLIDE_IMAGE_KEY.test(s.imageKey)) throw new SlideImageError("slide image reference is incomplete");
-      const url = opts.fetchBase ? `${opts.fetchBase.replace(/\/+$/, "")}/${s.imageKey}` : s.imageUrl;
-      if (!url) throw new SlideImageError("slide image has no URL");
-      const res = await doFetch(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 5_000) });
+      const url = `${base}/${s.imageKey}`;
+      let res: Response;
+      try {
+        res = await doFetch(url, { signal: AbortSignal.timeout(opts.timeoutMs ?? 5_000), redirect: "error" });
+      } catch (e) {
+        if (e instanceof SlideImageError) throw e;
+        throw new SlideImageError(`slide image fetch failed: ${e instanceof Error ? e.name : "error"}`);
+      }
       if (!res.ok) throw new SlideImageError(`slide image fetch failed: HTTP ${res.status}`);
+      // An early, cheap rejection for an honest server's declared length; readBounded below is
+      // what actually enforces the bound against a dishonest or absent one, while streaming.
       if (Number(res.headers.get("content-length") ?? 0) > SLIDE_IMAGE_MAX_BYTES) throw new SlideImageError("slide image too large");
-      // arrayBuffer() reads the whole body before the size check below; the content-length
-      // check above catches an honest server first, and NRMS's file store is the only source
-      // this ever points at — streaming is not worth the complexity here.
-      const bytes = Buffer.from(await res.arrayBuffer());
-      if (bytes.length > SLIDE_IMAGE_MAX_BYTES) throw new SlideImageError("slide image too large");
+      const bytes = await readBounded(res, SLIDE_IMAGE_MAX_BYTES);
       if (createHash("sha256").update(bytes).digest("hex") !== s.imageSha256) throw new SlideImageError("slide image does not match its hash");
       return bytes;
     },

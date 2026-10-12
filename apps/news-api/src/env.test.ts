@@ -5,7 +5,7 @@ import { parseEnv } from "@gcpe/config";
 import { describe, expect, it } from "vitest";
 import { newsApiEnvSchema } from "./env";
 
-const BASE = { DATABASE_URL: "postgres://localhost:5432/news_api" };
+const BASE = { DATABASE_URL: "postgres://localhost:5432/news_api", SLIDE_IMAGES_FETCH_BASE: "http://stack.internal/files" };
 
 describe("newsApiEnvSchema EVENT_SECRETS", () => {
   it("defaults to an empty object", () => {
@@ -106,11 +106,18 @@ describe("newsApiEnvSchema PUBLIC_SITE_URL", () => {
 });
 
 describe("newsApiEnvSchema SLIDE_IMAGES_FETCH_BASE", () => {
-  it("is optional and must be a URL when set", () => {
-    expect(parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv).SLIDE_IMAGES_FETCH_BASE).toBeUndefined();
-    expect(() => parseEnv(newsApiEnvSchema, { ...BASE, SLIDE_IMAGES_FETCH_BASE: "not-a-url" } as unknown as NodeJS.ProcessEnv)).toThrow(/SLIDE_IMAGES_FETCH_BASE/);
-    const env = parseEnv(newsApiEnvSchema, { ...BASE, SLIDE_IMAGES_FETCH_BASE: "http://stack.internal/files" } as unknown as NodeJS.ProcessEnv);
+  it("is required and must be a URL", () => {
+    const env = parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv);
     expect(env.SLIDE_IMAGES_FETCH_BASE).toBe("http://stack.internal/files");
+    expect(() => parseEnv(newsApiEnvSchema, { ...BASE, SLIDE_IMAGES_FETCH_BASE: "not-a-url" } as unknown as NodeJS.ProcessEnv)).toThrow(/SLIDE_IMAGES_FETCH_BASE/);
+  });
+
+  // The fetch never falls back to the event's own imageUrl, so without this set the News API
+  // can't safely fetch slide images at all — it refuses to start with a clear message, the
+  // same way it refuses to start with a bad DATABASE_URL (both are the one schema's job).
+  it("refuses to start when it's unset, with a clear message naming it", () => {
+    const { SLIDE_IMAGES_FETCH_BASE: _omit, ...withoutIt } = BASE;
+    expect(() => parseEnv(newsApiEnvSchema, withoutIt as unknown as NodeJS.ProcessEnv)).toThrow(/SLIDE_IMAGES_FETCH_BASE/);
   });
 });
 

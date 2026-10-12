@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { dbClock, type TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import { localStore, type ObjectStore } from "@gcpe/storage";
@@ -198,6 +198,31 @@ describe("home-page carousel", () => {
 
     const log = await lastLog();
     expect(log).toMatchObject({ actor_name: "System", area: "carousel", text: "The next carousel went live" });
+  });
+
+  // Backstop: EventTooLargeError guards any outbox emit over the shared event-size cap, from
+  // any cause — not specific to images now that they travel as URLs. A giant text field is
+  // enough to trigger it cheaply; switchCarousels must not crash the tick loop on that — it
+  // logs once and leaves the next carousel queued (not switched), so it's retried rather than
+  // wedging or crash-looping.
+  it("switchCarousels: an emit that's still too large (e.g. a giant slide field) logs once and is left queued, not switched", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await seedLiveCarousel([]);
+      const goLiveAt = new Date(t.getTime() + 1000);
+      const next = await createNextCarousel(tdb.db, { goLiveAt: goLiveAt.toISOString() }, editor, subs, TZ);
+      await saveCarousel(tdb.db, next.id, { version: next.version, slides: [slide("Big", { summary: "x".repeat(1_100_000) })] }, editor, subs, TZ, files);
+
+      t = new Date(goLiveAt.getTime() + 1000);
+      expect(await switchCarousels(tdb.db, subs, files, { now })).toEqual({ switched: false });
+      expect(errSpy).toHaveBeenCalled();
+
+      const { next: stillNext, live } = await getCarousels(tdb.db);
+      expect(stillNext!.id).toBe(next.id); // left in place — the switch rolled back
+      expect(live!.slides).toEqual([]);
+    } finally {
+      errSpy.mockRestore();
+    }
   });
 
   it("5. after seven switch-overs exactly five past carousels remain and their slides are deleted with them", async () => {
