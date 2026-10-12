@@ -34,6 +34,7 @@ describe("envFor", () => {
       NOD_URL: "self:/nod",
       DISTRIBUTION_URL: "self:/distribution",
       CORE_URL: "self:/core",
+      NEWS_API_URL: "self:/",
       ...FAKE_FLICKR_ENV,
     });
   });
@@ -64,6 +65,7 @@ describe("envFor", () => {
       NOD_URL: "self:/nod",
       DISTRIBUTION_URL: "self:/distribution",
       CORE_URL: "self:/core",
+      NEWS_API_URL: "self:/",
       ...FAKE_FLICKR_ENV,
     });
   });
@@ -82,6 +84,7 @@ describe("envFor", () => {
       NOD_URL: "self:/nod",
       DISTRIBUTION_URL: "self:/distribution",
       CORE_URL: "self:/core",
+      NEWS_API_URL: "self:/",
       ...FAKE_FLICKR_ENV,
     });
   });
@@ -97,6 +100,7 @@ describe("envFor", () => {
       NOD_URL: "self:/nod",
       DISTRIBUTION_URL: "self:/distribution",
       CORE_URL: "self:/core",
+      NEWS_API_URL: "self:/",
       ...FAKE_FLICKR_ENV,
     });
   });
@@ -106,7 +110,7 @@ describe("envFor", () => {
   // something that's always the same inside one stack — so these are built-in per-app
   // defaults, overridable by an explicit <PREFIX>_<VAR> like any other var.
   it("applies STACK_APP_DEFAULTS for an app that has them, overridable by an explicit prefixed var", () => {
-    expect(envFor({}, "NRMS")).toMatchObject({ NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", CORE_URL: "self:/core" });
+    expect(envFor({}, "NRMS")).toMatchObject({ NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", CORE_URL: "self:/core", NEWS_API_URL: "self:/" });
     expect(envFor({ NRMS_NOD_URL: "https://nod.example" }, "NRMS").NOD_URL).toBe("https://nod.example");
     expect(envFor({ NRMS_CORE_URL: "https://core.example" }, "NRMS").CORE_URL).toBe("https://core.example");
   });

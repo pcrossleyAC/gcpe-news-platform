@@ -3,7 +3,7 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts" },
+  "exports": { ".": "./src/index.ts", "./url": "./src/url.ts" },
   "dependencies": { "express": "^5.2.1" },
   "devDependencies": { "@types/express": "^5.0.6", "supertest": "^7.1.0", "@types/supertest": "^7.2.1" }
 }

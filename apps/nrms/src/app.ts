@@ -14,6 +14,7 @@ import { apiRoutes } from "./http/routes";
 import { siteRoutes } from "./http/site-routes";
 import { calendarHandler } from "./calendar/projection";
 import type { WorkflowDeps } from "./releases/workflow";
+import type { SimilarDeps } from "./releases/similar";
 import type { SlideImageFiles } from "./website/slide-images";
 import { taxonomyHandler } from "./taxonomy";
 
@@ -49,6 +50,8 @@ export function createApp(deps: {
   isTestSite?: boolean;
   /** Plan 3d task 4: Project Blue Bridge's post-commit notify; unset → logs the subject only (see site-routes.ts). */
   blueBridgeNotify?: (subject: string, text: string) => Promise<void>;
+  /** "Similar published releases" (addendum §7): the News API client and NRMS's own staffAi flag; unset → the route answers 503 and the panel hides. */
+  similar?: SimilarDeps;
 }): express.Express {
   const slideFiles: SlideImageFiles = deps.slideFiles ?? { store: deps.store ?? localStore(tmpdir(), "/files/"), filesBase: deps.workflow.filesBase ?? "" };
 
@@ -91,6 +94,7 @@ export function createApp(deps: {
       subscribers: deps.subscribers ?? [],
       config: { siteUrl: deps.siteUrl ?? "", publicSiteUrl: deps.siteUrl ?? "", isTestSite: deps.isTestSite ?? true },
       forecastCategoryPrefix: deps.forecastCategoryPrefix ?? null,
+      similar: deps.similar,
     }),
   );
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets

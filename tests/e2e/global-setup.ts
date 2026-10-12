@@ -117,6 +117,13 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
   bcTenant.calendar.showRecordsSection = true;
   const calendarTenant = join(tenantDir, "bc-e2e.json");
   await writeFile(calendarTenant, JSON.stringify(bcTenant));
+  // Every app's tenant file for the suite: BC's, with staff AI on (addendum §7), so the
+  // "Similar published releases" E2E runs AI matching with the stand-in provider. Semantic
+  // search stays off, so the search specs see text mode as before.
+  const staffAiTenantConfig = JSON.parse(await readFile(join(repoRoot, "config/tenants/bc.json"), "utf8")) as { features: { semanticSearch: boolean; staffAi: boolean } };
+  staffAiTenantConfig.features = { semanticSearch: false, staffAi: true };
+  const staffAiTenant = join(tenantDir, "bc-e2e-staff-ai.json");
+  await writeFile(staffAiTenant, JSON.stringify(staffAiTenantConfig));
   const sink = await startSmtpSink();
 
   // The SMTP sink's `messages` array only lives in *this* (the main CLI) process's memory —
@@ -185,10 +192,12 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     STAFF_WEB_DIR: staffWebDir,
     CALENDAR_DATABASE_URL: calendar.url,
     CALENDAR_TENANT_CONFIG: calendarTenant,
+    TENANT_CONFIG: staffAiTenant,
 
     CORE_DATABASE_URL: core.url,
     NRMS_DATABASE_URL: nrms.url,
     NEWSAPI_DATABASE_URL: newsApi.url,
+    NEWSAPI_EMBEDDINGS_PROVIDER: "stand-in",
 
     SITE_DATABASE_URL: publicSite.url,
     SITE_NEWS_API_URL: "self:/",

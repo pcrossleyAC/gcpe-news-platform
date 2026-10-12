@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { coreClient, distributionClient, nodClient } from "./clients";
+import { coreClient, distributionClient, newsApiSimilarClient, nodClient } from "./clients";
 
 describe("nodClient", () => {
   it("counts subscribers via a signed GET, encoding the list keys and the bearer token", async () => {
@@ -81,5 +81,52 @@ describe("distributionClient", () => {
     const client = distributionClient({ baseUrl: "https://dist.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
 
     await expect(client.send(msg)).rejects.toThrow(/HTTP 400/);
+  });
+});
+
+describe("newsApiSimilarClient", () => {
+  const body = { text: "quokkadraftmarker draft", terms: "draft", mode: "text" as const };
+
+  it("posts the body as JSON to /api/v2/internal/similar with bearer auth", async () => {
+    const found = { mode: "text", results: [] };
+    const fetchImpl = vi.fn(async (_url: string | URL | Request, _init?: RequestInit) => new Response(JSON.stringify(found), { status: 200 }));
+    const client = newsApiSimilarClient({ baseUrl: "http://stack.internal/", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.similar(body)).resolves.toEqual(found);
+    const [url, init] = fetchImpl.mock.calls[0]!;
+    expect(String(url)).toBe("http://stack.internal/api/v2/internal/similar");
+    expect(init?.method).toBe("POST");
+    expect(init?.headers).toMatchObject({ authorization: "Bearer tok", "content-type": "application/json" });
+    expect(JSON.parse(String(init?.body))).toEqual(body);
+  });
+
+  it("rejects with the status only, never the text or the token", async () => {
+    const fetchImpl = vi.fn(async () => new Response("nope", { status: 500 }));
+    const client = newsApiSimilarClient({ baseUrl: "http://news.example", getToken: async () => "secret-token", fetchImpl: fetchImpl as unknown as typeof fetch });
+    const err: unknown = await client.similar(body).catch((e: unknown) => e);
+    expect(String(err)).toMatch(/News API similar failed: HTTP 500/);
+    expect(String(err)).not.toContain("quokkadraftmarker");
+    expect(String(err)).not.toContain("secret-token");
+  });
+
+  const good = { key: "2026FIN0002-000002", headline: "Clinics budget", publishDate: "2026-10-03T10:00:00-07:00", leadMinistryKey: "fin", url: "https://site.example.test/x", match: "text" as const };
+
+  it("drops a malformed item (M2: a null url) rather than failing the whole response", async () => {
+    const found = { mode: "text", results: [good, { ...good, key: "bad", url: null }] };
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(found), { status: 200 }));
+    const client = newsApiSimilarClient({ baseUrl: "http://news.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.similar(body)).resolves.toEqual({ mode: "text", results: [good] });
+  });
+
+  it("drops an item with an unparseable publishDate", async () => {
+    const found = { mode: "text", results: [good, { ...good, key: "bad", publishDate: "not-a-date" }] };
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify(found), { status: 200 }));
+    const client = newsApiSimilarClient({ baseUrl: "http://news.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.similar(body)).resolves.toEqual({ mode: "text", results: [good] });
+  });
+
+  it("rejects when the response isn't even the right shape", async () => {
+    const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ oops: true }), { status: 200 }));
+    const client = newsApiSimilarClient({ baseUrl: "http://news.example", getToken: async () => "tok", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(client.similar(body)).rejects.toThrow();
   });
 });

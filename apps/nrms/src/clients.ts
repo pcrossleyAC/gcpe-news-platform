@@ -1,3 +1,5 @@
+import { z } from "zod";
+
 const DEFAULT_TIMEOUT_MS = 5000;
 
 export interface NodClientOptions {
@@ -113,6 +115,68 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
       });
       if (!res.ok) throw new Error(`Distribution send failed: HTTP ${res.status}`);
       return (await res.json()) as { batchId: string };
+    },
+  };
+}
+
+// Embedding the draft (about 1s at most) plus two short queries.
+const NEWS_API_SIMILAR_TIMEOUT_MS = 10_000;
+
+/** The body of the News API's `POST /api/v2/internal/similar` (addendum §7). Draft text: never logged. */
+export interface SimilarRequestBody {
+  text: string;
+  terms: string;
+  mode: "ai" | "text";
+  excludeKey?: string;
+}
+
+/** One result item. A null `url`, an unparseable `publishDate`, or any other malformed field
+ * fails this schema; parsed with `safeParse` per item below, which drops just that item rather
+ * than the whole response. */
+const similarResultSchema = z.object({
+  key: z.string(),
+  headline: z.string().nullable(),
+  publishDate: z.string().refine((s) => !Number.isNaN(Date.parse(s))),
+  leadMinistryKey: z.string().nullable(),
+  url: z.string().min(1),
+  match: z.enum(["ai", "text"]),
+});
+
+/** The News API is a trusted service, but its response still crosses a network boundary, so it
+ * isn't trusted blindly (M2): a malformed item is dropped, and a structurally wrong response
+ * (not even `{ mode, results: [] }`) throws, which `findSimilar` turns into `{ kind: "failed" }`
+ * and a 502 — the same path as a network or HTTP failure. */
+const similarFoundSchema = z.object({
+  mode: z.enum(["ai", "text"]),
+  results: z.array(z.unknown()).transform((rows) => rows.map((r) => similarResultSchema.safeParse(r)).filter((p) => p.success).map((p) => p.data)),
+});
+export type SimilarFound = z.infer<typeof similarFoundSchema>;
+
+export interface NewsApiSimilarClientOptions {
+  baseUrl: string;
+  getToken: () => Promise<string>;
+  fetchImpl?: typeof fetch;
+}
+
+export interface NewsApiSimilarClient {
+  similar(body: SimilarRequestBody): Promise<SimilarFound>;
+}
+
+/** NRMS's client for the News API's similar route. A non-2xx rejects with the status only. */
+export function newsApiSimilarClient(opts: NewsApiSimilarClientOptions): NewsApiSimilarClient {
+  const doFetch = opts.fetchImpl ?? fetch;
+  const url = `${opts.baseUrl.replace(/\/+$/, "")}/api/v2/internal/similar`;
+  return {
+    async similar(body) {
+      const token = await opts.getToken();
+      const res = await doFetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(NEWS_API_SIMILAR_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`News API similar failed: HTTP ${res.status}`);
+      return similarFoundSchema.parse(await res.json());
     },
   };
 }

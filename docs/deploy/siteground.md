@@ -108,6 +108,16 @@ service calls. NRMS calls NoD (the subscriber count shown at schedule time) and 
 from the local-admin settings. Turning local admin off without setting both Entra sets leaves
 NRMS with no way to authenticate those calls.
 
+NRMS calls the News API the same way, for "Similar published releases" (addendum §7) — under
+`NRMS_NEWS_API_TOKEN_URL`/`NRMS_NEWS_API_CLIENT_ID`/`NRMS_NEWS_API_CLIENT_SECRET`/
+`NRMS_NEWS_API_SCOPE` (that Entra app registration needs the News API's `NewsApi.Similar` app
+role). `NRMS_NEWS_API_URL` itself already defaults to this stack's own in-process `self:/`, so
+it needs no setting of its own; only the four credential vars are missing when Entra is
+configured for NoD, Distribution and Core but not for this. All four or none, with the same
+local-token fallback as `NOD_*`/`DISTRIBUTION_*` above: turning local admin off without setting
+this set too leaves NRMS unable to authenticate that call, and the "Similar published releases"
+panel 503s.
+
 NoD calls Distribution the same way, under its own `NOD_DISTRIBUTION_TOKEN_URL`/
 `NOD_DISTRIBUTION_CLIENT_ID`/`NOD_DISTRIBUTION_CLIENT_SECRET`/`NOD_DISTRIBUTION_SCOPE` (the
 stack's `NOD_` prefix on the same four `DISTRIBUTION_*` names NoD reads). **That Entra app
@@ -1370,6 +1380,24 @@ A slide or pin image lives at `<NRMS STORAGE_DIR>/slides/<sha256>.<png|jpg>` (co
 A `slides` event now carries each image's URL, storage key and SHA-256 instead of its bytes (C42, reversed — there's no longer a combined size limit; each image still keeps NRMS's own 2 MB upload limit). The News API fetches and verifies the bytes once while projecting the event, so v1 `/api/Slides` keeps returning base64, byte-identical to before. The fetch target is always `NEWSAPI_SLIDE_IMAGES_FETCH_BASE` plus the event's own storage key — never the event's own `imageUrl` (that has no host allow-list, and the fetch refuses a redirect too). `NEWSAPI_SLIDE_IMAGES_FETCH_BASE` is therefore **required**: the News API refuses to start without it. On the stack it's built in as `self:/files`, resolved in-process (SiteGround blocks loopback, so the News API can't reach its own public `https://boxs.ca/files/…`); a standalone deployment must set it to a route that reaches NRMS's files (Q85).
 
 A stuck slide event (a mismatched hash, a missing file, or a file over 2 MB) fails the projection: NRMS's outbox keeps retrying it, and the carousel doesn't show the new image until it's fixed. `/stack/errors` shows `SlideImageError` for it; the slide and pin editors keep whatever image they last showed until the retry succeeds.
+
+## Staff help and the exit checks (Phases 6d–6e)
+
+### The internal similar route
+
+`POST /api/v2/internal/similar` answers NRMS's "Similar published releases" panel. It accepts only a bearer token with the `NewsApi.Similar` role, verified the same way as the change feed (Entra with `NEWSAPI_AUTH_AUDIENCE`, or local tokens where `LOCAL_ADMIN_ENABLED=true`); with neither it answers 503. A staff session cookie never opens it. It uses AI matching only when this News API's own tenant config has `features.staffAi: true`, an embeddings provider is configured and pgvector is present; otherwise it answers in text mode and says so (`"mode": "text"`). At start the News API logs `staff AI is off: missing …` when the flag is on but something else is missing.
+
+### Turning the flags on, and the PIA gate for staff AI
+
+Both flags live in the tenant config (`config/tenants/<tenant>.json`), under `"features"`, and both are off by default. Changing one needs a restart (the stack reads the file at start).
+
+- **`semanticSearch`** (public search and related posts). Safe to turn on once an embeddings provider is configured (`NEWSAPI_EMBEDDINGS_PROVIDER` plus the Azure settings, Q70) and the News API's database has pgvector (see "pgvector and the search mode"). `/stack/health` then reports `"newsApiSearch": "semantic"`; it stays `text` on boxs.ca, whose Postgres has no pgvector (Q80).
+- **`staffAi`** (AI matching in "Similar published releases") **sends unpublished draft text to the AI service. Do not turn it on in any environment that holds real drafts until the privacy impact assessment approves it (D4, Q71).** NRMS and the News API each check their own copy of the flag: NRMS only asks for AI matching when its flag is on, and the News API only calls the provider when its own flag, a provider and pgvector are all present. On the stack both read the same `TENANT_CONFIG`; standalone, set it in both apps' tenant files. With it off, the panel still works with text matching, and nothing is sent anywhere but the News API.
+- After turning `staffAi` on, check the News API's start log has no `staff AI is off: missing …` line, then press **Find similar** on a draft: results labelled *AI match* mean the whole path works.
+
+### Exit checks: site quality and the search spot-check
+
+Both run on a developer machine (or in CI), never against boxs.ca. `npm run site:quality` needs Playwright's Chromium; `npm run search:spot-check` needs the local Postgres (`TEST_DATABASE_ADMIN_URL`) with pgvector, and creates and drops its own database. Once Azure is configured (Q70), run the spot-check with `EMBEDDINGS_PROVIDER=azure-openai`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` set: that's the relevance check the Phase 6 exit is waiting for.
 
 ## Troubleshooting
 

@@ -51,3 +51,17 @@ jobs:
         run: npm --workspace @gcpe/distribution run build
       - name: Build Distribution image
         run: docker build -f apps/distribution/Dockerfile -t gcpe-distribution:ci .
+  # Phase 6 exit (spec §9): axe and Lighthouse on a fictional fixture site. Separate from `test`
+  # so a browser problem never hides unit-test results; not a required check until it has run
+  # green here (Q87).
+  site-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run site:quality

@@ -1097,3 +1097,19 @@ body {
   min-height: 40px;
   padding: 0 0.75rem;
 }
+
+/* "Similar published releases" (release editor) */
+.gcpe-similar__results {
+  padding-left: 1.5rem;
+}
+.gcpe-similar__results li {
+  margin-bottom: 0.5rem;
+}
+.gcpe-similar__match {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0 0.375rem;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 0.875rem;
+}
