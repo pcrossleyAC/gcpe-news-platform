@@ -1371,6 +1371,12 @@ A `slides` event now carries each image's URL, storage key and SHA-256 instead o
 
 A stuck slide event (a mismatched hash, a missing file, or a file over 2 MB) fails the projection: NRMS's outbox keeps retrying it, and the carousel doesn't show the new image until it's fixed. `/stack/errors` shows `SlideImageError` for it; the slide and pin editors keep whatever image they last showed until the retry succeeds.
 
+## Staff help and the exit checks (Phases 6d–6e)
+
+### The internal similar route
+
+`POST /api/v2/internal/similar` answers NRMS's "Similar published releases" panel. It accepts only a bearer token with the `NewsApi.Similar` role, verified the same way as the change feed (Entra with `NEWSAPI_AUTH_AUDIENCE`, or local tokens where `LOCAL_ADMIN_ENABLED=true`); with neither it answers 503. A staff session cookie never opens it. It uses AI matching only when this News API's own tenant config has `features.staffAi: true`, an embeddings provider is configured and pgvector is present; otherwise it answers in text mode and says so (`"mode": "text"`). At start the News API logs `staff AI is off: missing …` when the flag is on but something else is missing.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

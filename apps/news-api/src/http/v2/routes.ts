@@ -1,11 +1,13 @@
 import express from "express";
 import { rateLimit } from "express-rate-limit";
+import { NEWS_API_SIMILAR_ROLE, requireAnyRole, requireBearer, type BearerOptions } from "@gcpe/auth";
 import type { Db } from "@gcpe/db-kit";
 import { clientIpKey } from "../client-ip";
 import { changesRoutes, type ChangesRouteOptions } from "./changes";
 import { parseSearchQuery } from "../../search/query";
 import { listSlidesV2 } from "../../read";
 import { RELATED_MAX_KEY_CHARS, type RelatedService } from "../../search/related";
+import { similarRequestSchema, type SimilarService } from "../../search/similar";
 import type { SearchService } from "../../search/service";
 
 /**
@@ -19,6 +21,8 @@ export function v2Routes(deps: {
   searchRateLimit?: { perMinute: number; clientIpHeader?: string };
   changes?: ChangesRouteOptions;
   related?: RelatedService;
+  /** POST /internal/similar (addendum §7): NRMS's service token only; bearer null → 503. */
+  similar?: { service: SimilarService; bearer: BearerOptions | null };
   /** GET /api/v2/slides (addendum §6.4; public, no bearer needed). Absent (some tests): that
    * path answers v2's 404. */
   db?: Db;
@@ -76,6 +80,31 @@ export function v2Routes(deps: {
       if (!result) return void res.status(404).json({ error: "not found" });
       res.json(result);
     });
+  }
+  if (deps.similar) {
+    const { service, bearer } = deps.similar;
+    if (!bearer) {
+      r.post("/internal/similar", (_req, res) => void res.status(503).json({ error: "similar not configured" }));
+    } else {
+      // Authenticated before the body is parsed. The body is draft text: a validation error names
+      // the parameter only, and the app's error handler logs the path and a safe label, never it.
+      r.post("/internal/similar", requireBearer(bearer), requireAnyRole(NEWS_API_SIMILAR_ROLE), express.json({ limit: "64kb" }), async (req, res) => {
+        const parsed = similarRequestSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return void res.status(400).json({ error: { code: "InvalidParameter", parameter: String(parsed.error.issues[0]?.path[0] ?? "body") } });
+        }
+        const controller = new AbortController();
+        const onClose = () => {
+          if (!res.writableEnded) controller.abort();
+        };
+        req.on("close", onClose);
+        try {
+          res.json(await service.similar(parsed.data, controller.signal));
+        } finally {
+          req.off("close", onClose);
+        }
+      });
+    }
   }
   r.use((_req, res) => void res.status(404).json({ error: "not found" }));
   // A path segment that isn't valid percent-encoding: Express raises a URIError with status 400

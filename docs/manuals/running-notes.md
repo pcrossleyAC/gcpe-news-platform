@@ -634,3 +634,8 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Administrator** — Standalone (OpenShift): the site builder needs an Entra app registration with the News API's `NewsApi.ChangesRead` app role (NEWS_API_TOKEN_URL, NEWS_API_CLIENT_ID, NEWS_API_CLIENT_SECRET, NEWS_API_SCOPE), and the News API needs AUTH_AUDIENCE. It won't start without them.
 - **Viewer** — The site's Search page searches every published post, optionally within one ministry. Ministry and sector pages link to it. Without JavaScript it points to the archive instead.
 - **Site editor** — Carousel images no longer have a combined size limit (each image is still limited to 2 MB). Pinned emergency slides show at the top of the platform site's home page.
+
+## Phase 6d–6e — Staff help and the exit checks
+
+- **Developer** — The News API has a service-only `POST /api/v2/internal/similar` for NRMS (role `NewsApi.Similar`). It never stores, caches or logs the draft text it is sent, and only ever returns published posts.
+- **Operations** — With the staff-AI flag on (and a provider and pgvector), the News API's embedding worker runs even when semantic search is off: AI matching compares drafts with published posts' vectors. Search and related posts stay in text mode until `semanticSearch` is also on.

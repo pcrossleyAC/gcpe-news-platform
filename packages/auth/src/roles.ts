@@ -20,6 +20,10 @@ export const NOD_SUBSCRIBE_API_ROLE = "NoD.SubscribeApi";
  * The public site's builder holds it. Not a staff role. */
 export const NEWS_API_CHANGES_ROLE = "NewsApi.ChangesRead";
 
+/** Phase 6d: the service role that may call the News API's `POST /api/v2/internal/similar`
+ * (spec addendum §7). NRMS holds it. Not a staff role. */
+export const NEWS_API_SIMILAR_ROLE = "NewsApi.Similar";
+
 /** Distribution's own admin surface (its pause/resume settings routes) — a service role
  * NoD's Distribution client carries, not a staff role (staff control it through NoD's own
  * `NoD.Admin`-gated routes, never by calling Distribution directly). */

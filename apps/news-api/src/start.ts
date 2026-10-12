@@ -17,6 +17,7 @@ import { slideImageFetcher } from "./slide-images";
 import { assertSearchLanguage } from "./search/language";
 import { createRelatedService } from "./search/related";
 import { createSemanticSearch } from "./search/semantic";
+import { createSimilarService } from "./search/similar";
 import { createSearchService, type SearchMode } from "./search/service";
 import { QueryVectorCache } from "./search/vector-cache";
 import { createUpdatesHub } from "./updates/hub";
@@ -81,12 +82,19 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const provider = createEmbeddingProvider(parsed);
   let searchMode: SearchMode;
+  // Spec §7: staff AI needs this News API's own staffAi flag, a provider and pgvector, whatever
+  // NRMS's flag says.
+  let similarAi = false;
   try {
     await assertSearchLanguage(db, tenant.search.language);
-    const resolved = resolveSearchMode({ flag: tenant.features.semanticSearch, provider, pgvector: await hasPgvector(db) });
+    const pgvector = await hasPgvector(db);
+    const resolved = resolveSearchMode({ flag: tenant.features.semanticSearch, provider, pgvector });
     searchMode = resolved.mode;
     if (tenant.features.semanticSearch && searchMode === "text") console.warn(`[news-api] semantic search is off: missing ${resolved.missing.join(", ")}`);
-    if (searchMode === "semantic" && !(await hasHnswIndex(db))) {
+    const staffAi = resolveSearchMode({ flag: tenant.features.staffAi, provider, pgvector });
+    similarAi = staffAi.mode === "semantic";
+    if (tenant.features.staffAi && !similarAi) console.warn(`[news-api] staff AI is off: missing ${staffAi.missing.join(", ")}`);
+    if ((searchMode === "semantic" || similarAi) && !(await hasHnswIndex(db))) {
       console.warn("[news-api] post_embeddings has no HNSW index: related posts scan every embedding (see the runbook, pgvector and the search mode)");
     }
   } catch (e) {
@@ -94,9 +102,9 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     throw e;
   }
 
-  // The worker's own provider instance (a longer timeout for a 50-post batch) and its own
-  // breaker, so a slow batch never pushes visitors into text mode.
-  const workerProvider = searchMode === "semantic" ? createEmbeddingProvider({ ...parsed, EMBEDDINGS_TIMEOUT_MS: WORKER_EMBED_TIMEOUT_MS }) : null;
+  // The worker runs for semantic search or staff AI: AI matching compares drafts with published
+  // posts' vectors. Its own provider instance (a longer timeout for a 50-post batch) and breaker.
+  const workerProvider = searchMode === "semantic" || similarAi ? createEmbeddingProvider({ ...parsed, EMBEDDINGS_TIMEOUT_MS: WORKER_EMBED_TIMEOUT_MS }) : null;
   const workerEmbedder = workerProvider ? createGuardedEmbedder({ provider: workerProvider, breaker: new CircuitBreaker() }) : null;
   const embed = () => (workerEmbedder ? runEmbeddingTick({ db, embedder: workerEmbedder }) : Promise.resolve(null));
 
@@ -140,6 +148,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
       })
     : undefined;
 
+  const serviceBearer = changesBearerFromEnv(env);
   const app = createApp({
     db,
     timeZone: tenant.timeZone,
@@ -155,7 +164,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
       semantic,
     }),
     searchRateLimit: { perMinute: parsed.SEARCH_RATE_LIMIT_PER_MIN, clientIpHeader: parsed.SUBSCRIBE_CLIENT_IP_HEADER },
-    changes: { db, timeZone: tenant.timeZone, bearer: changesBearerFromEnv(env) },
+    changes: { db, timeZone: tenant.timeZone, bearer: serviceBearer },
     related: createRelatedService({
       db,
       timeZone: tenant.timeZone,
@@ -163,6 +172,19 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
       publicSiteUrl: parsed.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl,
       semantic: searchMode === "semantic",
     }),
+    similar: {
+      bearer: serviceBearer,
+      service: createSimilarService({
+        db,
+        timeZone: tenant.timeZone,
+        language: tenant.search.language,
+        defaultLanguageId: tenant.defaultLanguageId,
+        publicSiteUrl: parsed.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl,
+        threshold: parsed.SEARCH_SEMANTIC_THRESHOLD,
+        // Its own breaker; never the search route's query-vector cache.
+        embedder: similarAi && provider ? createGuardedEmbedder({ provider }) : null,
+      }),
+    },
     // Not ready while the LISTEN connection is down: this instance would silently miss
     // updates. Omitted entirely when the hub is disabled.
     readinessChecks: hubEnabled ? [() => isListening()] : [],

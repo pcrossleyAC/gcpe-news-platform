@@ -1,5 +1,6 @@
 import express from "express";
 import { sql } from "drizzle-orm";
+import type { BearerOptions } from "@gcpe/auth";
 import type { Db } from "@gcpe/db-kit";
 import { createEventReceiver, type SubscriberConfig } from "@gcpe/events";
 import { healthRoutes, jsonErrorHandler, type ReadinessCheck } from "@gcpe/http-kit";
@@ -12,6 +13,7 @@ import type { ChangesRouteOptions } from "./http/v2/changes";
 import { v2Routes } from "./http/v2/routes";
 import { createSourceRestrictedHandlers } from "./projections";
 import type { RelatedService } from "./search/related";
+import type { SimilarService } from "./search/similar";
 import type { SearchService } from "./search/service";
 import type { SlideImageFetcher } from "./slide-images";
 
@@ -34,6 +36,8 @@ export interface AppDeps {
   changes?: ChangesRouteOptions;
   /** GET /api/v2/posts/{key}/related. Absent: v2's 404. */
   related?: RelatedService;
+  /** POST /api/v2/internal/similar (addendum §7). Absent: v2's 404. */
+  similar?: { service: SimilarService; bearer: BearerOptions | null };
   /** Fetches a slide's image bytes from its event's URL while projecting site.content.changed
    * (addendum §6.4). Absent: an old base64 envelope still works; a URL slide fails loudly. */
   slideImages?: SlideImageFetcher;
@@ -55,7 +59,7 @@ export function createApp(deps: AppDeps): express.Express {
   );
   if (deps.hubRouter) app.use(deps.hubRouter);
 
-  app.use("/api/v2", v2Routes({ search: deps.search, searchRateLimit: deps.searchRateLimit, changes: deps.changes, related: deps.related, db: deps.db }));
+  app.use("/api/v2", v2Routes({ search: deps.search, searchRateLimit: deps.searchRateLimit, changes: deps.changes, related: deps.related, similar: deps.similar, db: deps.db }));
 
   const api = express.Router();
   api.use((_req, res, next) => {
