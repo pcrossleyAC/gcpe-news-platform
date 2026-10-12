@@ -543,9 +543,14 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // `stackApp` above is assigned (installInternalFetch's lookup throws "the stack app is not
   // ready yet" before that). Firing it from inside startPublicSite would always lose that race,
   // since News API (which self-heal reads from over a self: URL) starts after Public Site.
-  // Fire-and-forget, and must never throw past here. A failure logs only safeErrorLabel: the
-  // error's message can carry file-system paths or a query's bound values.
-  void siteBuilder
+  // Fire-and-forget (startLoops/the caller never awaits this directly), and must never throw
+  // past here. A failure logs only safeErrorLabel: the error's message can carry file-system
+  // paths or a query's bound values. Kept (below, as a closeBeforeServer entry) so shutdown
+  // waits for it to settle before any app's DB pool closes -- otherwise a slow self-heal still
+  // running when the pool closes would throw a second, unrelated "self-heal failed" (the pool
+  // error, not whatever this run was actually testing) that lands however long after this
+  // instance is gone, console.error included.
+  const selfHealDone = siteBuilder
     .selfHeal()
     .then((r) => r && console.log(`[public-site] self-heal rebuilt ${r.rebuilt} posts`))
     .catch((e) => console.error("[public-site] self-heal failed", safeErrorLabel(e)));
@@ -554,8 +559,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // NRMS's Calendar viewers come from Core's events, which only flow on change. A fresh app with
   // no reference data yet (first deploy, or a fresh database) would otherwise stay empty until each
   // record next changed in Core, so it asks Core to republish everything once; the events reach
-  // it on the next dispatch tick. Fire-and-forget, never throws.
-  void (async () => {
+  // it on the next dispatch tick. Fire-and-forget, never throws. Kept (below, as a
+  // closeBeforeServer entry) for the same reason as selfHealDone above.
+  const referenceDataBackfillDone = (async () => {
     try {
       const nodNeeds = (await worker(nod, "needsReferenceData")()) === true;
       const calendarNeeds = calendar ? (await worker(calendar, "needsReferenceData")()) === true : false;
@@ -583,8 +589,20 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
       siteBuilder.startLoops();
       newsApi.startLoops();
     },
-    // Mount order: core, nrms, nod, calendar, distribution, siteBuilder, newsApi.
-    closeBeforeServer: [...core.closeBeforeServer, ...nrms.closeBeforeServer, ...nod.closeBeforeServer, ...(calendar?.closeBeforeServer ?? []), ...distribution.closeBeforeServer, ...siteBuilder.closeBeforeServer, ...newsApi.closeBeforeServer],
+    // Mount order: core, nrms, nod, calendar, distribution, siteBuilder, newsApi, then this
+    // stack's own two startup-time background turns, both already self-catching -- waited on
+    // here only so neither is still touching a pool once the closers below start closing them.
+    closeBeforeServer: [
+      ...core.closeBeforeServer,
+      ...nrms.closeBeforeServer,
+      ...nod.closeBeforeServer,
+      ...(calendar?.closeBeforeServer ?? []),
+      ...distribution.closeBeforeServer,
+      ...siteBuilder.closeBeforeServer,
+      ...newsApi.closeBeforeServer,
+      { name: "public-site self-heal", close: async () => void (await selfHealDone) },
+      { name: "stack reference-data backfill", close: async () => void (await referenceDataBackfillDone) },
+    ],
     // Reverse mount order, then the error capture last so it's still installed while every
     // other closer's own console.error calls (e.g. a failed shutdown step) run.
     closers: [...newsApi.closers, ...siteBuilder.closers, ...distribution.closers, ...(calendar?.closers ?? []), ...nod.closers, ...nrms.closers, ...core.closers, { name: "error capture", close: () => errorCapture.close() }, { name: "internal fetch", close: () => uninstallInternalFetch() }],

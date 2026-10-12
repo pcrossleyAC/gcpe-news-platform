@@ -186,8 +186,11 @@ describe("Records (spec addendum §8.2, §8.4)", () => {
       await userEvent.type(await screen.findByRole("textbox", { name: "Title" }), " x");
       await userEvent.click(screen.getByRole("button", { name: "Save" }));
       await screen.findByText("Sample Admin is editing this activity", { exact: false });
+      // The async form: the poll's reload is itself async (a fetch, then the state update it
+      // drives), so advancing with the sync form can resolve before that chain's re-render has
+      // actually landed (useEditLock.test.tsx's own POLL_MS advances use this same form).
       await act(async () => {
-        vi.advanceTimersByTime(31_000);
+        await vi.advanceTimersByTimeAsync(31_000);
       });
       await screen.findByLabelText("Add files");
       expect(screen.queryByRole("link", { name: "Sample brief.pdf" })).toBeNull();
