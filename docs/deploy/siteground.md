@@ -1286,6 +1286,12 @@ In semantic mode, `GET /api/v2/search` embeds the query (each distinct query onc
 2. `curl -si https://boxs.ca/api/v2/posts/no-such-key/related` is a `404` with `cache-control: no-store`.
 3. `curl -s https://boxs.ca/stack/health` includes `"newsApiSearch":"text"`.
 
+## The public site (Phase 6c)
+
+### Theme and assets
+
+The public site's colours, font and footer links come from `site.theme` in `config/tenants/<tenant>.json`. Files under `config/site/assets/` are published at `<site>/assets/…`; `SITE_SITE_ASSETS_DIR` overrides the folder (the stack prefixes every public-site variable with `SITE_`). Test sites serve `robots.txt` with `Disallow: /`.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

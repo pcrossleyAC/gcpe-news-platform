@@ -620,3 +620,8 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Developer** — The worker also looks directly for a published post with a current embedding but no `post_related` row (left behind by a process restart between the embedding commit and the related computation) and recomputes just its related list, with no provider call, even in a tick that found nothing new to embed.
 - **Developer** — The worker's row lock (`SELECT … FOR UPDATE`) now uses `SKIP LOCKED`: a post a legacy import's bulk unpublish or `search-backfill --all` is locking at that moment is simply left for the next tick, instead of the worker waiting on it, so the two can never deadlock.
 - **Operations** — Before turning semantic search on, the 6a search backfill must have already run: the worker skips a post whose `search_text` is still NULL. The 33-hour backlog figure is an upper bound — with the stack's internal loop also running, ticks can run back to back and the real pace can be faster.
+
+## Phase 6c — The public site
+
+- **Site editor** — The public site now has a header with the site's name (and logo, once one is supplied), a menu (Home, Ministries, Archive, Search) and a footer with the tenant's footer links. A "Skip to main content" link appears when you press Tab.
+- **Operations** — The site's colours and font come from the tenant config's `site.theme`. Logo and font files go in `config/site/assets/`; the site copies them on every start. Until a logo file exists the header shows the site name as text.

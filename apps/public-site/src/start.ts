@@ -7,9 +7,12 @@ import { createApp } from "./app";
 import { publicSiteEnvSchema, resolveTenantConfig, tenantConfigPathSchema } from "./env";
 import { newsApiClient } from "./news-api-client";
 import { createRebuildHandler } from "./rebuild";
+import type { SiteInfo } from "./render";
 import { selfHeal } from "./self-heal";
 import { isTestSite } from "./site-env";
+import { logoFor } from "./static-pages";
 import { fsStorage } from "./storage";
+import { DEFAULT_THEME } from "./theme-css";
 
 export interface AppHandle {
   app: express.Express;
@@ -66,7 +69,9 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
 
   const newsApi = newsApiClient(parsed.NEWS_API_URL);
   const storage = fsStorage(parsed.OUTPUT_DIR);
-  const site = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL };
+  const theme = tenantConfig?.site.theme ?? DEFAULT_THEME;
+  const site: SiteInfo = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL, theme };
+  site.logo = logoFor(theme, parsed.SITE_ASSETS_DIR, site);
   // Plan 3d task 4: the TEST banner prefix and noindex meta — decided once, from this process's
   // own env view (the stack's envFor shares NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION/SITE_ENVIRONMENT
   // into it the same way for every app).

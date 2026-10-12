@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { dirname, isAbsolute, relative, resolve, sep } from "node:path";
 
 export interface SiteStorage {
-  write(relPath: string, html: string): Promise<void>;
+  write(relPath: string, content: string | Uint8Array): Promise<void>;
   remove(relPath: string): Promise<void>;
   /** Whether `relPath` exists under root. Same path-safety checks as `write`/`remove` — a
    * symlink planted inside root that would redirect `relPath` outside it is treated as "no",
@@ -70,7 +70,7 @@ export function fsStorage(root: string): SiteStorage {
     return full;
   };
   return {
-    async write(relPath, html) {
+    async write(relPath, content) {
       const full = target(relPath);
       const dir = dirname(full);
 
@@ -95,7 +95,7 @@ export function fsStorage(root: string): SiteStorage {
 
       const tmp = `${full}.${randomUUID()}.tmp`;
       try {
-        await writeFile(tmp, html, "utf8");
+        await writeFile(tmp, content);
         await rename(tmp, full); // atomic on one filesystem: readers never see a half-written page
       } catch (err) {
         await rm(tmp, { force: true }); // don't leave a stray .tmp behind on failure

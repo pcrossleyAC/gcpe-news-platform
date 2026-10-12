@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { parseEnv, type TenantConfig } from "@gcpe/config";
-import { defaultTenantConfigPath, publicSiteEnvSchema, resolveTenantConfig } from "./env";
+import { defaultSiteAssetsDir, defaultTenantConfigPath, publicSiteEnvSchema, resolveTenantConfig } from "./env";
 
 const BASE = {
   DATABASE_URL: "postgres://localhost:5432/public_site",
@@ -98,5 +98,20 @@ describe("publicSiteEnvSchema", () => {
 describe("defaultTenantConfigPath", () => {
   it("resolves to a real file on disk (the repo's bc tenant config)", () => {
     expect(() => readFileSync(defaultTenantConfigPath, "utf8")).not.toThrow();
+  });
+});
+
+describe("SITE_ASSETS_DIR", () => {
+  it("defaults to the repo's config/site folder when unset", () => {
+    const env = parseEnv(publicSiteEnvSchema(undefined), { ...BASE, SITE_NAME: "N", PUBLIC_SITE_URL: "https://n.example" } as unknown as NodeJS.ProcessEnv);
+    expect(env.SITE_ASSETS_DIR).toBe(defaultSiteAssetsDir);
+  });
+
+  it("uses the given value when set", () => {
+    const env = parseEnv(
+      publicSiteEnvSchema(undefined),
+      { ...BASE, SITE_NAME: "N", PUBLIC_SITE_URL: "https://n.example", SITE_ASSETS_DIR: "/custom/assets" } as unknown as NodeJS.ProcessEnv,
+    );
+    expect(env.SITE_ASSETS_DIR).toBe("/custom/assets");
   });
 });

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { eventSecretsSchema, loadTenantConfig, type TenantConfig } from "@gcpe/config";
 
 export const defaultTenantConfigPath = fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url));
+export const defaultSiteAssetsDir = fileURLToPath(new URL("../../../config/site", import.meta.url));
 
 /**
  * TENANT_CONFIG's own schema. Parsed once by main.ts (to resolve the path to load before the
@@ -51,5 +52,6 @@ export function publicSiteEnvSchema(tenantConfig: TenantConfig | undefined) {
     EVENT_SECRETS: eventSecretsSchema,
     MIGRATIONS_FOLDER: z.string().default(fileURLToPath(new URL("../migrations", import.meta.url))),
     TENANT_CONFIG: tenantConfigPathSchema,
+    SITE_ASSETS_DIR: z.string().min(1).default(defaultSiteAssetsDir),
   });
 }

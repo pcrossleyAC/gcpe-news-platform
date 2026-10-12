@@ -1,12 +1,8 @@
 import { escapeHtml } from "@gcpe/http-kit";
-import { renderPage, type PageOptions, type SiteInfo } from "./render";
+import { basePath, renderPage, type PageOptions, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
 
 const e = (s: string) => escapeHtml(s);
-
-/** Same computation as render.ts's own (private) `basePath` — the base URL's path with no
- * trailing slash. Needed here to bake the Unsubscribe button's target page in at render time. */
-const basePath = (site: SiteInfo): string => new URL(site.baseUrl).pathname.replace(/\/+$/, "");
 
 /** Categories offered as checkbox groups (spec §4; lists.ts's PUBLIC_CATEGORIES). */
 const CATEGORIES: { key: string; legend: string }[] = [

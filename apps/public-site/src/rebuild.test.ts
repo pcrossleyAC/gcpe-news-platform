@@ -3,39 +3,10 @@ import type { Tx } from "@gcpe/db-kit";
 import type { EventEnvelope } from "@gcpe/events";
 import { createRebuildHandler, enqueueSiteWrite, RENDER_CHROME_VERSION, resyncPostPages, tryHome } from "./rebuild";
 import type { NewsApiClient } from "./news-api-client";
-import type { SiteStorage } from "./storage";
+import { memoryStorage } from "../test/memory-storage";
 import type { PostDto } from "./render";
 
 const site = { name: "BC Gov News", baseUrl: "https://news.example" };
-
-function memoryStorage(): SiteStorage & { files: Map<string, string> } {
-  const files = new Map<string, string>();
-  return {
-    files,
-    async write(relPath, html) {
-      files.set(relPath, html);
-    },
-    async remove(relPath) {
-      files.delete(relPath);
-    },
-    async exists(relPath) {
-      return files.has(relPath);
-    },
-    async read(relPath) {
-      return files.get(relPath) ?? null;
-    },
-    async listDirs(relPath) {
-      const prefix = `${relPath}/`;
-      const names = new Set<string>();
-      for (const key of files.keys()) {
-        if (!key.startsWith(prefix)) continue;
-        const seg = key.slice(prefix.length).split("/")[0];
-        if (seg) names.add(seg);
-      }
-      return [...names];
-    },
-  };
-}
 
 const post: PostDto = {
   key: "K1",
@@ -412,7 +383,7 @@ describe("enqueueSiteWrite / resync serialisation", () => {
     expect(order).toEqual(["start-home-1(ON, gated)", "end-home-1(ON)", "home-2(OFF)"]);
     expect(storage.files.get("releases/K1/index.html")).not.toContain("blue-bridge-banner");
     expect(storage.files.get("index.html")).not.toContain("blue-bridge-banner");
-    expect(JSON.parse(storage.files.get(".site-state.json")!)).toEqual({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
+    expect(JSON.parse(storage.files.get(".site-state.json") as string)).toEqual({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
   });
 
   it("a rejected turn doesn't wedge the queue — a concurrently-enqueued later turn still runs", async () => {

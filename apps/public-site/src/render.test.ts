@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { renderHomePage, renderPostPage, type PostDto } from "./render";
+import { renderHomePage, renderPage, renderPostPage, type PostDto } from "./render";
+import { expectAccessibleStructure } from "../test/structure";
+import { DEFAULT_THEME } from "./theme-css";
 
 const post: PostDto = {
   key: "2026HLTH0001-000001", kind: "releases", publishDate: "2026-10-03T10:00:00-07:00", summary: "Summary <b>", location: "VICTORIA",
@@ -70,15 +72,65 @@ describe("render", () => {
       const sub = { name: "BC Gov News", baseUrl };
       const home = renderHomePage([post], sub);
       expect(home).toContain('href="/site/releases/2026HLTH0001-000001"');
-      expect(home).toContain('<header><a href="/site/">');
+      expect(home).toContain('<a class="brand" href="/site/">');
       expect(home).toContain('<link rel="canonical" href="https://boxs.ca/site/">');
       const page = renderPostPage(post, sub);
-      expect(page).toContain('<header><a href="/site/">');
+      expect(page).toContain('<a class="brand" href="/site/">');
       expect(page).toContain('<link rel="canonical" href="https://boxs.ca/site/releases/2026HLTH0001-000001">');
     }
   });
   it("a root base URL keeps root links", () => {
-    expect(renderHomePage([post], { name: "BC Gov News", baseUrl: "https://news.example/" })).toContain('<header><a href="/">');
-    expect(renderPostPage(post, site)).toContain('<header><a href="/">');
+    expect(renderHomePage([post], { name: "BC Gov News", baseUrl: "https://news.example/" })).toContain('<a class="brand" href="/">');
+    expect(renderPostPage(post, site)).toContain('<a class="brand" href="/">');
+  });
+});
+
+describe("renderPage chrome", () => {
+  const themed = { name: "BC Gov News", baseUrl: "https://boxs.example/site", theme: { ...DEFAULT_THEME, footerLinks: [{ label: 'Privacy & "you"', url: "https://example.test/privacy?a=1&b=2" }] } };
+
+  it("has the skip link, the four landmarks, one h1 and lang", () => {
+    const html = renderPage("Title", themed, "/site/x/", "<h1>Heading</h1><p>x</p>");
+    const doc = expectAccessibleStructure(html);
+    expect(doc.querySelector("a.skip-link")?.textContent).toBe("Skip to main content");
+    expect(doc.querySelector("main")?.getAttribute("tabindex")).toBe("-1");
+    expect(doc.querySelector('link[rel="stylesheet"]')?.getAttribute("href")).toBe("/site/assets/theme.css");
+  });
+
+  it("nav links carry the base path", () => {
+    const doc = expectAccessibleStructure(renderPage("T", themed, "/site/", "<h1>H</h1>"));
+    expect([...doc.querySelectorAll("nav a")].map((a) => a.getAttribute("href"))).toEqual(["/site/", "/site/ministries/", "/site/archive/", "/site/search/"]);
+  });
+
+  it("escapes footer labels and URLs", () => {
+    const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
+    expect(html).toContain('Privacy &amp; &quot;you&quot;');
+    expect(html).toContain('href="https://example.test/privacy?a=1&amp;b=2"');
+  });
+
+  it("shows the logo when one is set, the wordmark otherwise", () => {
+    const withLogo = expectAccessibleStructure(renderPage("T", { ...themed, logo: { src: "/site/assets/logo.svg", alt: "Example <Gov>" } }, "/site/", "<h1>H</h1>"));
+    expect(withLogo.querySelector("header img")?.getAttribute("alt")).toBe("Example <Gov>");
+    const without = expectAccessibleStructure(renderPage("T", themed, "/site/", "<h1>H</h1>"));
+    expect(without.querySelector("header img")).toBeNull();
+    expect(without.querySelector("header .wordmark")?.textContent).toBe("BC Gov News");
+  });
+
+  it("links the font stylesheet only when configured", () => {
+    expect(renderPage("T", themed, "/site/", "<h1>H</h1>")).not.toContain("fonts.example");
+    const font = { ...themed, theme: { ...themed.theme, font: { ...themed.theme.font, stylesheetUrl: "https://fonts.example/a.css" } } };
+    expect(renderPage("T", font, "/site/", "<h1>H</h1>")).toContain('<link rel="stylesheet" href="https://fonts.example/a.css">');
+  });
+
+  it("adds the feed alternate link and description when given", () => {
+    const html = renderPage("T", themed, "/site/", "<h1>H</h1>", { feed: { href: "/site/feed.xml", title: "Latest <news>" }, description: "A & B" });
+    expect(html).toContain('<link rel="alternate" type="application/rss+xml" title="Latest &lt;news&gt;" href="/site/feed.xml">');
+    expect(html).toContain('<meta name="description" content="A &amp; B">');
+  });
+
+  it("keeps the test noindex and the banner, and the skip link stays first", () => {
+    const html = renderPage("T", themed, "/site/", "<h1>H</h1>", { test: true, banner: "TEST — ALERT" });
+    const doc = expectAccessibleStructure(html);
+    expect(doc.querySelector('meta[name="robots"]')?.getAttribute("content")).toBe("noindex, nofollow");
+    expect(doc.querySelector('[role="alert"]')?.textContent).toBe("TEST — ALERT");
   });
 });

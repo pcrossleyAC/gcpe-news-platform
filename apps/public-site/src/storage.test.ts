@@ -14,6 +14,12 @@ describe("fsStorage", () => {
     await s.remove("releases/K1/index.html");
     await s.remove("releases/K1/index.html"); // removing a missing file is fine
   });
+  it("writes bytes as well as text", async () => {
+    const root = await mkdtemp(join(tmpdir(), "site-"));
+    const s = fsStorage(root);
+    await s.write("assets/a.png", new Uint8Array([1, 2, 3]));
+    expect([...(await readFile(join(root, "assets/a.png")))]).toEqual([1, 2, 3]);
+  });
   it("refuses paths that escape the root", async () => {
     const s = fsStorage(await mkdtemp(join(tmpdir(), "site-")));
     await expect(s.write("../escape.html", "x")).rejects.toThrow(/outside/);

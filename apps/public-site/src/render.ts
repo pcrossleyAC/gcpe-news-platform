@@ -1,4 +1,6 @@
+import type { SiteTheme } from "@gcpe/config";
 import { escapeHtml } from "@gcpe/http-kit";
+import { DEFAULT_THEME } from "./theme-css";
 
 export interface PostDocument {
   languageId: number;
@@ -16,52 +18,82 @@ export interface PostDto {
   ministryKeys: string[];
   documents: PostDocument[];
 }
+
 export interface SiteInfo {
   name: string;
   baseUrl: string;
+  /** Tenant `site.theme`; DEFAULT_THEME when absent. */
+  theme?: SiteTheme;
+  /** Set by start.ts only when the logo file exists under SITE_ASSETS_DIR (static-pages.ts's logoFor). */
+  logo?: { src: string; alt: string } | null;
+}
+
+export interface PageOptions {
+  /** A test site gets `<meta name="robots" content="noindex, nofollow">` (site-env.ts's isTestSite). */
+  test?: boolean;
+  /** Project Blue Bridge's banner text (site-env.ts's blueBridgeBanner), or null/absent for none. */
+  banner?: string | null;
+  description?: string | null;
+  /** The page's RSS feed, linked as an alternate. */
+  feed?: { href: string; title: string } | null;
 }
 
 const ENGLISH = 4105;
 
-const e = (s: string | null | undefined) => escapeHtml(s ?? "");
+export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
 const english = (p: PostDto) => p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0];
 
-/** Plan 3d task 4: every page's TEST noindex and Project Blue Bridge banner. */
-export interface PageOptions {
-  /** A test site (site-env.ts's isTestSite) gets `<meta name="robots" content="noindex, nofollow">`. */
-  test?: boolean;
-  /** Project Blue Bridge's banner text (site-env.ts's blueBridgeBanner), or null/absent for none. */
-  banner?: string | null;
-}
-
-/** The base URL's path with no trailing slash — "" at a root base ("https://news.gov.bc.ca"),
- * "/site" on boxs.ca ("https://boxs.ca/site"). Every in-site link starts with it. */
-function basePath(site: SiteInfo): string {
+/** The base URL's path with no trailing slash: "" at a root base, "/site" on boxs.ca. */
+export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
   return new URL(site.baseUrl).pathname.replace(/\/+$/, "");
 }
 
 const releasePath = (site: SiteInfo, key: string) => `${basePath(site)}/releases/${encodeURIComponent(key)}`;
 
-/** Plan 3d task 4's page chrome: header, canonical link, test noindex, Blue Bridge banner.
- * Task 7 (Phase 4a): exported so subscribe-pages.ts can reuse the same chrome for the static
- * subscribe/manage/unsubscribe test pages. `bodyAttr`, if given, is spliced straight into the
- * `<body>` tag (e.g. ` data-page="manage"`) — every other caller leaves it at its default. */
+/** Every page's chrome (spec §6.3): skip link, header with brand and nav, main, footer. */
 export function renderPage(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}, bodyAttr = ""): string {
+  const base = basePath(site);
+  const theme = site.theme ?? DEFAULT_THEME;
   const robots = opts.test ? `\n<meta name="robots" content="noindex, nofollow">` : "";
+  const description = opts.description ? `\n<meta name="description" content="${e(opts.description)}">` : "";
+  const font = theme.font.stylesheetUrl ? `\n<link rel="stylesheet" href="${e(theme.font.stylesheetUrl)}">` : "";
+  const feed = opts.feed ? `\n<link rel="alternate" type="application/rss+xml" title="${e(opts.feed.title)}" href="${e(opts.feed.href)}">` : "";
   const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
+  const brand = site.logo
+    ? `<img class="logo" src="${e(site.logo.src)}" alt="${e(site.logo.alt)}"><span class="wordmark">${e(site.name)}</span>`
+    : `<span class="wordmark">${e(site.name)}</span>`;
+  const footerLinks = theme.footerLinks.map((l) => `<li><a href="${e(l.url)}">${e(l.label)}</a></li>`).join("\n");
   return `<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)} | ${e(site.name)}</title>
-<link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}
+<link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}${description}
+<link rel="stylesheet" href="${e(base)}/assets/theme.css">${font}${feed}
 </head>
-<body${bodyAttr}>${banner}
-<header><a href="${e(basePath(site))}/">${e(site.name)}</a></header>
-<main>
+<body${bodyAttr}>
+<a class="skip-link" href="#main">Skip to main content</a>${banner}
+<header class="site-header">
+<a class="brand" href="${e(base)}/">${brand}</a>
+<nav aria-label="Site">
+<ul>
+<li><a href="${e(base)}/">Home</a></li>
+<li><a href="${e(base)}/ministries/">Ministries</a></li>
+<li><a href="${e(base)}/archive/">Archive</a></li>
+<li><a href="${e(base)}/search/">Search</a></li>
+</ul>
+</nav>
+</header>
+<main id="main" tabindex="-1">
 ${body}
 </main>
+<footer class="site-footer">
+<ul>
+${footerLinks}
+</ul>
+<p class="muted">${e(site.name)}</p>
+</footer>
 </body>
 </html>
 `;
