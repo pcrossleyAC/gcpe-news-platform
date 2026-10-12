@@ -18,6 +18,7 @@ import { categories, categoryFeatures, home, posts, resourceLinks, slides } from
 import { deleteSemanticRows } from "./embeddings/rows";
 import { embeddingTextHash } from "./embeddings/source-text";
 import { searchTextFor } from "./search/search-text";
+import type { SlideImageFetcher } from "./slide-images";
 import { parseOffsetDateTime } from "./time";
 import { notifyUpdate, type UpdateTarget } from "./updates/notify";
 
@@ -267,7 +268,7 @@ export async function deactivateCategory(tx: Tx, kind: CategoryKind, key: string
   await recordChanges(tx, keys.map((k) => ({ kind: CATEGORY_CHANGE_KIND[kind], key: k })));
 }
 
-export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<void> {
+export async function applySiteContent(tx: Tx, c: SiteContentChanged, slideImages?: SlideImageFetcher): Promise<void> {
   switch (c.entity) {
     case "home": {
       const values = {
@@ -295,24 +296,36 @@ export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<v
       return;
     }
     case "slides": {
-      await tx.delete(slides);
-      if (c.slides.length) {
-        await tx.insert(slides).values(
-          c.slides.map((s) => ({
-            id: s.id,
-            sortIndex: s.sortIndex,
-            headline: s.headline,
-            summary: s.summary,
-            actionLabel: s.actionLabel,
-            actionUri: s.actionUri,
-            image: s.imageBase64 === null ? null : Buffer.from(s.imageBase64, "base64"),
-            imageType: s.imageType,
-            facebookPostUri: s.facebookPostUri,
-            justify: s.justify,
-            timestamp: parseOffsetDateTime(s.timestamp),
-          })),
-        );
+      // Resolved before the delete/insert below: a fetch failure (a hash mismatch, a 404, an
+      // oversized file) then throws before any write, so the transaction rolls back and the
+      // existing slides are untouched — NRMS's outbox retries the event (addendum §6.4).
+      const rows = [];
+      for (const s of c.slides) {
+        let image: Buffer | null = null;
+        if (s.imageBase64 !== null) image = Buffer.from(s.imageBase64, "base64");
+        else if (s.imageKey !== null) {
+          if (!slideImages) throw new Error("slide images need a fetcher (SLIDE_IMAGES_FETCH_BASE / slideImages)");
+          image = await slideImages.fetch(s);
+        }
+        rows.push({
+          id: s.id,
+          sortIndex: s.sortIndex,
+          headline: s.headline,
+          summary: s.summary,
+          actionLabel: s.actionLabel,
+          actionUri: s.actionUri,
+          image,
+          imageType: s.imageType,
+          imageUrl: s.imageUrl,
+          imageKey: s.imageKey,
+          imageSha256: s.imageSha256,
+          facebookPostUri: s.facebookPostUri,
+          justify: s.justify,
+          timestamp: parseOffsetDateTime(s.timestamp),
+        });
       }
+      await tx.delete(slides);
+      if (rows.length) await tx.insert(slides).values(rows);
       await notifyUpdate(
         tx,
         "SlideUpdate",
@@ -334,6 +347,9 @@ export async function applySiteContent(tx: Tx, c: SiteContentChanged): Promise<v
 
 export interface ProjectionOptions {
   subscribers?: SubscriberConfig[];
+  /** Fetches a slide's image bytes when its event carries a URL instead of base64 (addendum
+   * §6.4). Absent: an old base64 envelope still works; a URL slide fails loudly. */
+  slideImages?: SlideImageFetcher;
 }
 
 /**
@@ -373,6 +389,7 @@ async function requestHomeRebuild(tx: Tx, correlationId: string, subscribers: Su
 
 export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<string, EventHandler> {
   const subscribers = opts.subscribers ?? [];
+  const slideImages = opts.slideImages;
   const termUpserted: EventHandler = (tx, e) => applyTerm(tx, e.data as TermRecord);
   const termDeactivated: EventHandler = async (tx, e) => {
     const d = e.data as { kind: TermKind; key: string };
@@ -402,7 +419,7 @@ export function createProjectionHandlers(opts: ProjectionOptions = {}): Record<s
     },
     "site.content.changed": async (tx, e) => {
       const c = e.data as SiteContentChanged;
-      await applySiteContent(tx, c);
+      await applySiteContent(tx, c, slideImages);
       if (c.entity === "home") await requestHomeRebuild(tx, e.correlationId, subscribers);
     },
   };

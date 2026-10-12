@@ -105,6 +105,15 @@ describe("newsApiEnvSchema PUBLIC_SITE_URL", () => {
   });
 });
 
+describe("newsApiEnvSchema SLIDE_IMAGES_FETCH_BASE", () => {
+  it("is optional and must be a URL when set", () => {
+    expect(parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv).SLIDE_IMAGES_FETCH_BASE).toBeUndefined();
+    expect(() => parseEnv(newsApiEnvSchema, { ...BASE, SLIDE_IMAGES_FETCH_BASE: "not-a-url" } as unknown as NodeJS.ProcessEnv)).toThrow(/SLIDE_IMAGES_FETCH_BASE/);
+    const env = parseEnv(newsApiEnvSchema, { ...BASE, SLIDE_IMAGES_FETCH_BASE: "http://stack.internal/files" } as unknown as NodeJS.ProcessEnv);
+    expect(env.SLIDE_IMAGES_FETCH_BASE).toBe("http://stack.internal/files");
+  });
+});
+
 describe("newsApiEnvSchema embeddings", () => {
   it("has no provider by default, and the default timeout", () => {
     const env = parseEnv(newsApiEnvSchema, BASE as unknown as NodeJS.ProcessEnv);

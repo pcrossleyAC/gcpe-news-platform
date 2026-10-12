@@ -197,6 +197,12 @@ export const slides = pgTable("slides", {
   actionUri: text("action_uri"),
   image: bytea("image"),
   imageType: text("image_type"),
+  // Addendum §6.4: the content-addressed URL plus its hash a slide event now carries. The
+  // News API fetches and verifies these once while projecting the event (slide-images.ts),
+  // storing the bytes in `image` above so v1 stays byte-identical.
+  imageUrl: text("image_url"),
+  imageKey: text("image_key"),
+  imageSha256: text("image_sha256"),
   facebookPostUri: text("facebook_post_uri"),
   justify: text("justify"),
   timestamp: timestamp("timestamp", { withTimezone: true }).notNull(),

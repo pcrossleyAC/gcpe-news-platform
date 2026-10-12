@@ -28,6 +28,11 @@ export const newsApiEnvSchema = z
     SEARCH_SEMANTIC_THRESHOLD: z.coerce.number().min(0).max(2).default(0.6),
     /** Requests a minute per client IP on /api/v2/search (Q74), keyed like Subscribe. */
     SEARCH_RATE_LIMIT_PER_MIN: z.coerce.number().int().positive().default(60),
+    /** Where a slide event's imageKey is fetched from (addendum §6.4), replacing the event's
+     * own imageUrl — the stack sets this to its own self:/files (SiteGround can't loop back
+     * to its public origin); a standalone deployment leaves it unset and fetches imageUrl as
+     * given (Q85). */
+    SLIDE_IMAGES_FETCH_BASE: z.string().url().optional(),
     ...embeddingsEnvShape,
   })
   .superRefine(refineEmbeddingsEnv);

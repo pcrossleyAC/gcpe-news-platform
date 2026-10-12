@@ -120,9 +120,17 @@ describe("newsApiClient", () => {
     expect(await c.categories("tags")).toEqual([]);
     expect(empty.mock.calls[3]![0].toString()).toBe("http://api.example/api/Tags?api-version=1.0");
     expect(await c.slides()).toEqual([]);
-    expect(empty.mock.calls[4]![0].toString()).toBe("http://api.example/api/Slides?api-version=1.0");
+    expect(empty.mock.calls[4]![0].toString()).toBe("http://api.example/api/v2/slides");
     expect(await c.resourceLinks()).toEqual([]);
     expect(empty.mock.calls[5]![0].toString()).toBe("http://api.example/api/ResourceLinks?api-version=1.0");
+  });
+
+  it("slides: reads the v2 shape (emergency, imageUrl) from GET api/v2/slides", async () => {
+    const body = { slides: [{ id: "a", sortIndex: -1, emergency: true, headline: "h", summary: "s", actionUri: null, actionLabel: null, imageUrl: "https://files.example/x.png", justify: null }] };
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json(body));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    expect(await c.slides()).toEqual(body.slides);
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/v2/slides");
   });
 
   it("category: fetches one category of a kind by key", async () => {

@@ -105,7 +105,8 @@ async function determineActualPort(requested: number): Promise<number> {
 
 /**
  * Builds one app's env view, with every `self:/…` URL (EVENT_SUBSCRIBERS entries and any
- * other `*_URL` var — see `resolveSelfUrls`) resolved to the stack's own loopback port. Fix
+ * other `*_URL`/`*_BASE` var — see `resolveSelfUrls`) resolved to the stack's own loopback
+ * port. Fix
  * round 1, P2-R30 important fix 1: applied to every app, not just NRMS/NEWSAPI — Core's own
  * EVENT_SUBSCRIBERS needs this exactly as much as NRMS's does (Core publishes org.upserted
  * the same way NRMS publishes release.published).

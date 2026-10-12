@@ -85,6 +85,25 @@ export async function listSlides(db: Db, tz: string) {
   return (await db.select().from(slides).orderBy(asc(slides.sortIndex))).map((s) => toSlideDto(s, tz));
 }
 
+/**
+ * `GET /api/v2/slides` (addendum §6.4): the public site's own shape, with the content's image
+ * URL instead of base64 bytes, and `emergency` — true for NRMS's two pinned emergency slides
+ * (sortIndex -2 and -1) — since v1's slide DTO has no sortIndex to derive it from.
+ */
+export async function listSlidesV2(db: Db) {
+  return (await db.select().from(slides).orderBy(asc(slides.sortIndex))).map((s) => ({
+    id: s.id,
+    sortIndex: s.sortIndex,
+    emergency: s.sortIndex < 0,
+    headline: s.headline,
+    summary: s.summary,
+    actionUri: s.actionUri,
+    actionLabel: s.actionLabel,
+    imageUrl: s.imageUrl,
+    justify: s.justify,
+  }));
+}
+
 export async function getSlide(db: Db, id: string, tz: string) {
   if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) return null;
   const [row] = await db.select().from(slides).where(eq(slides.id, id.toLowerCase()));

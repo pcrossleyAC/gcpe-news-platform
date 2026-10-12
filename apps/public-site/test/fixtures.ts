@@ -69,6 +69,9 @@ export function slide(over: Partial<SlideDto> = {}): SlideDto {
     summary: "New clinics are opening this month.",
     actionUri: null,
     actionLabel: null,
+    emergency: false,
+    imageUrl: null,
+    sortIndex: 0,
     ...over,
   };
 }

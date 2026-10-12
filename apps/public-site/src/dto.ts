@@ -69,6 +69,12 @@ export interface SlideDto {
   summary: string | null;
   actionUri: string | null;
   actionLabel: string | null;
+  /** True for one of NRMS's two pinned emergency slides (addendum §6.4); shown in the home
+   * page's "Emergency information" region, above the ordinary Highlights. */
+  emergency: boolean;
+  /** The slide's content-addressed image URL, or null when it has none. */
+  imageUrl: string | null;
+  sortIndex: number;
 }
 
 export interface ResourceLinkDto {

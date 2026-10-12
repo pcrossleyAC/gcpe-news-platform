@@ -48,6 +48,43 @@ describe("home page", () => {
     expect(articles[1]!.querySelector("a")).toBeNull();
   });
 
+  it("shows a labelled Emergency information region, with its pinned slides, before Highlights", () => {
+    const slides = [slide({ key: "E1", headline: "Flood warning", emergency: true }), slide({ key: "H1", headline: "Highlight one", emergency: false })];
+    const doc = expectAccessibleStructure(renderHomePage({ ...emptyView, slides }, site, {}));
+    const sections = [...doc.querySelectorAll("section[aria-labelledby]")];
+    const headingTexts = sections.map((s) => doc.getElementById(s.getAttribute("aria-labelledby")!)?.textContent);
+    expect(headingTexts).toEqual(["Emergency information", "Highlights"]);
+    const emergencySection = sections[0]!;
+    expect(emergencySection.querySelector("h3")?.textContent).toBe("Flood warning");
+    expect(emergencySection.querySelectorAll("article")).toHaveLength(1);
+  });
+
+  it("shows no Emergency information region when no slide is pinned emergency", () => {
+    const slides = [slide({ key: "H1", emergency: false })];
+    const doc = expectAccessibleStructure(renderHomePage({ ...emptyView, slides }, site, {}));
+    expect(doc.getElementById("emergency-heading")).toBeNull();
+  });
+
+  it("renders a slide's image through safeSrc, decorative (alt=\"\")", () => {
+    const slides = [slide({ key: "S1", imageUrl: "https://files.example/files/slides/abc.png" })];
+    const doc = expectAccessibleStructure(renderHomePage({ ...emptyView, slides }, site, {}));
+    const img = doc.querySelector("article img");
+    expect(img?.getAttribute("src")).toBe("https://files.example/files/slides/abc.png");
+    expect(img?.getAttribute("alt")).toBe("");
+  });
+
+  it("renders no <img> for a slide without an imageUrl", () => {
+    const slides = [slide({ key: "S1", imageUrl: null })];
+    const doc = expectAccessibleStructure(renderHomePage({ ...emptyView, slides }, site, {}));
+    expect(doc.querySelector("article img")).toBeNull();
+  });
+
+  it("refuses an unsafe slide image URL (javascript:) instead of rendering an <img>", () => {
+    const slides = [slide({ key: "S1", imageUrl: "javascript:alert(1)" })];
+    const doc = expectAccessibleStructure(renderHomePage({ ...emptyView, slides }, site, {}));
+    expect(doc.querySelector("article img")).toBeNull();
+  });
+
   it("defaults an action link's text to 'Learn more' when no actionLabel is given", () => {
     const slides = [slide({ actionUri: "/archive/", actionLabel: null })];
     const doc = expectAccessibleStructure(renderHomePage({ ...emptyView, slides }, site, {}));
