@@ -10,6 +10,7 @@ Status key: **Agreed** (approved in design) · **Proposed** (in a design section
 |---|---|---|---|---|
 | C1 | Windows/SiteMinder sign-in; one check (role "Advanced" or higher) for the whole News module. | Core holds users and roles (NRMS.Editor, NRMS.SiteEditor, NRMS.Viewer, Core.Admin) and signs everyone in; Entra plugs in later. | Legacy's sign-in depends on government Windows infrastructure we can't run; finer roles let site editors and read-only users exist. NRMS.Editor keeps legacy's "Advanced" powers, and there's still no per-ministry restriction, as in legacy. | Agreed |
 | C2 | Background publisher's log entries have no user. | Every log entry has an actor; the publisher is logged as "system". | Every entry says who did it. | Agreed |
+| C210 | Hub staff signed in with Windows/AD authentication. | Staff sign in with their government Microsoft account through Entra OIDC (authorization code with PKCE); Core holds the roles. Someone without a Core account is refused until an administrator creates one. Local passwords stay for test sites and the break-glass administrator. | Legacy's Windows authentication depends on government infrastructure the platform can't run; Entra is the government's identity provider, and keeping roles in Core keeps one place to manage access. | Agreed |
 
 ## Releases and the publish workflow
 

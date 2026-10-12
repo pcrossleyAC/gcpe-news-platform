@@ -159,6 +159,49 @@ export function usesFakeEmergencyFeed(env: NodeJS.ProcessEnv): boolean {
   return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true";
 }
 
+/** Where the stack mounts its fake Microsoft sign-in when FAKE_ENTRA_ENABLED=true. */
+export const FAKE_ENTRA_PATH = "/fake-entra";
+
+/** The fake's fixed tenant and client: not secrets, made up, and only ever valid against the fake. */
+export const FAKE_ENTRA = {
+  tenantId: "0000fa4e-0000-4000-8000-000000000000",
+  clientId: "fake-entra-core",
+  clientSecret: "fake-entra-secret-0123456789",
+  audience: "api://fake-entra-core",
+} as const;
+
+/** The identities the fake's picker offers. Signing in as one works only where an administrator
+ * has created a Core user with that email; none is seeded. */
+export const FAKE_ENTRA_IDENTITIES = [
+  { key: "staff", oid: "fake-oid-0000-0001", email: "entra-staff@example.test", name: "Entra Test Staff" },
+  { key: "unknown", oid: "fake-oid-0000-0002", email: "entra-unknown@example.test", name: "Entra Unknown Person" },
+] as const;
+
+/**
+ * True when the stack mounts the fake Microsoft sign-in and points Core at it: only when asked
+ * for (FAKE_ENTRA_ENABLED=true). Throws on a real production deployment, or when real Entra
+ * sign-in settings are present, so the fake can never stand in for Microsoft by accident.
+ */
+export function usesFakeEntra(env: NodeJS.ProcessEnv): boolean {
+  if (env.FAKE_ENTRA_ENABLED !== "true") return false;
+  if (env.NODE_ENV === "production" && env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION !== "true") {
+    throw new Error("FAKE_ENTRA_ENABLED is refused on a production deployment");
+  }
+  const real = ["ENTRA_TENANT_ID", "CORE_ENTRA_TENANT_ID", "CORE_ENTRA_CLIENT_ID", "CORE_ENTRA_CLIENT_SECRET", "CORE_ENTRA_AUTHORITY_URL"].filter((k) => env[k]);
+  if (real.length > 0) throw new Error(`FAKE_ENTRA_ENABLED can't be combined with real Entra settings (${real.join(", ")})`);
+  return true;
+}
+
+/** What Core's env view gets in fake mode: the fake's tenant, client and in-process issuer.
+ * AUTH_AUDIENCE comes along because authFromEnv needs one whenever ENTRA_TENANT_ID is set. */
+export const FAKE_ENTRA_CORE_ENV: Readonly<Record<string, string>> = {
+  ENTRA_TENANT_ID: FAKE_ENTRA.tenantId,
+  AUTH_AUDIENCE: FAKE_ENTRA.audience,
+  ENTRA_CLIENT_ID: FAKE_ENTRA.clientId,
+  ENTRA_CLIENT_SECRET: FAKE_ENTRA.clientSecret,
+  ENTRA_AUTHORITY_URL: `self:${FAKE_ENTRA_PATH}/${FAKE_ENTRA.tenantId}/v2.0`,
+};
+
 /** What NRMS's env view gets in fake mode: the fake's credentials and its in-process URLs. */
 export const FAKE_FLICKR_ENV: Readonly<Record<string, string>> = {
   FLICKR_MODE: "fake",
@@ -263,6 +306,8 @@ export function envFor(env: NodeJS.ProcessEnv, prefix: AppPrefix, dataDir?: stri
   // No Media Hub configured at all → the stack's fake Media Hub (see stack.ts).
   if (prefix === "NOD" && usesFakeMediaHub(env)) Object.assign(view, FAKE_MEDIA_HUB_ENV);
   if (prefix === "NOD" && usesFakeEmergencyFeed(env)) Object.assign(view, FAKE_EMERGENCY_FEED_ENV);
+  // FAKE_ENTRA_ENABLED on a test site → Core signs staff in through the stack's fake Microsoft.
+  if (prefix === "CORE" && usesFakeEntra(env)) Object.assign(view, FAKE_ENTRA_CORE_ENV);
   if (dataDir && prefix === "SITE" && view.OUTPUT_DIR && !isAbsolute(view.OUTPUT_DIR)) {
     view.OUTPUT_DIR = join(dataDir, view.OUTPUT_DIR);
   }

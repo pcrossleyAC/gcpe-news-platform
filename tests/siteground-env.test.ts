@@ -103,6 +103,11 @@ describe("buildEnvLines", () => {
     expect(map.has("PORT")).toBe(false);
   });
 
+  it("sets no Entra sign-in setting, so a generated site keeps password sign-in", () => {
+    const keys = [...parseEnvLines(buildEnvLines(sampleInput(), generateSecrets()).join("\n")).keys()];
+    expect(keys.filter((k) => /ENTRA|PUBLIC_BASE_URL|LOCAL_PASSWORDS_ALLOWED/.test(k))).toEqual([]);
+  });
+
   it("writes CALENDAR_DATABASE_URL when a Calendar database is named, and leaves it out when blank", () => {
     const withCalendar = buildEnvLines(sampleInput({ dbNames: { ...sampleInput().dbNames, calendar: "gcpe_calendar" } }), generateSecrets()).join("\n");
     expect(withCalendar).toMatch(/^CALENDAR_DATABASE_URL=postgres:\/\/.*\/gcpe_calendar$/m);

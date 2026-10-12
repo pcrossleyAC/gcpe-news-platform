@@ -11,6 +11,7 @@ import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createFakeEmergencyFeed } from "@gcpe/emergency-feed-fake";
 import { createFakeFlickr } from "@gcpe/flickr-fake";
 import { createFakeMediaHub } from "@gcpe/media-hub-fake";
+import { createFakeOidc } from "@gcpe/oidc-fake";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 
 import { calendarEnvSchema, startCalendar, type AppHandle as CalendarHandle } from "../../calendar/src/start";
@@ -35,6 +36,9 @@ import {
   calendarConfigured,
   envFor,
   FAKE_EMERGENCY_FEED_PATH,
+  FAKE_ENTRA,
+  FAKE_ENTRA_IDENTITIES,
+  FAKE_ENTRA_PATH,
   FAKE_FLICKR,
   FAKE_FLICKR_PATH,
   FAKE_MEDIA_HUB_PATH,
@@ -42,6 +46,7 @@ import {
   type AppPrefix,
   stackEnvSchema,
   usesFakeEmergencyFeed,
+  usesFakeEntra,
   usesFakeFlickr,
   usesFakeMediaHub,
 } from "./env";
@@ -457,6 +462,24 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     const fakeFeed = createFakeEmergencyFeed({ statePath: join(dataDir, "fake-emergency-feed-state.json") });
     app.use(`${FAKE_EMERGENCY_FEED_PATH}/__fake`, requireBearer(errorsAuth.bearer), requireRole("Core.Admin"));
     app.use(FAKE_EMERGENCY_FEED_PATH, fakeFeed.router);
+  }
+
+  // FAKE_ENTRA_ENABLED=true on a test site → a fake Microsoft sign-in that Core's env view already
+  // points at (envFor; see usesFakeEntra). Core reaches it in-process; the browser reaches its
+  // picker under CORE_PUBLIC_BASE_URL. It offers only FAKE_ENTRA_IDENTITIES.
+  if (usesFakeEntra(env)) {
+    console.warn(`[stack] ENTRA: using the FAKE Microsoft sign-in at ${FAKE_ENTRA_PATH} — test sites only`);
+    const publicOrigin = new URL(coreEnv.PUBLIC_BASE_URL!).origin;
+    const fakeEntra = await createFakeOidc({
+      tenantId: FAKE_ENTRA.tenantId,
+      clientId: FAKE_ENTRA.clientId,
+      clientSecret: FAKE_ENTRA.clientSecret,
+      redirectUris: [`${publicOrigin}/core/auth/entra/callback`],
+      serverBase: `${INTERNAL_ORIGIN}${FAKE_ENTRA_PATH}`,
+      browserBase: `${publicOrigin}${FAKE_ENTRA_PATH}`,
+      identities: [...FAKE_ENTRA_IDENTITIES],
+    });
+    app.use(FAKE_ENTRA_PATH, fakeEntra.router);
   }
 
   // One combined login-attempt budget (10/min/IP) across every app's local-admin login route
