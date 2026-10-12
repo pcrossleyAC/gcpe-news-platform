@@ -6,19 +6,19 @@ import {
   ADMIN_ROLES,
   clearedSessionCookie,
   CSRF_HEADER,
-  mintSession,
   readCookie,
   SESSION_COOKIE,
   SESSION_RENEW_WINDOW_SECONDS,
-  SESSION_TTL_SECONDS,
-  sessionCookie,
   verifyPassword,
   verifySession,
   type LocalAuthConfig,
   type SessionUser,
   type VerifiedSession,
 } from "@gcpe/auth";
+import type { EntraClient } from "../entra/client";
+import { entraRoutes } from "../entra/routes";
 import { authenticate, sessionRolesOf, sessionUserFor } from "../services/users";
+import { newSessionCookie } from "./session-cookie";
 
 /** Session id for the environment break-glass admin (LOCAL_ADMIN_*); it has no users row. */
 export const BREAK_GLASS_ID = "local:admin";
@@ -31,7 +31,13 @@ export interface SessionRouteDeps {
   secret: string;
   secure: boolean;
   local: LocalAuthConfig | null;
+  /** Entra sign-in, when configured. */
+  entra?: EntraClient | null;
+  /** False refuses every users-row password (production with Entra on); break-glass is unaffected. Default true. */
+  userPasswordsAllowed?: boolean;
   ratePerMinute?: number;
+  /** Per-IP limit on each Entra route. Default 30 a minute. */
+  entraRatePerMinute?: number;
 }
 
 const sameRoles = (a: string[], b: string[]) => a.length === b.length && [...a].sort().every((r, i) => r === [...b].sort()[i]);
@@ -47,10 +53,11 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
   const requireCsrf: RequestHandler = (req, res, next) =>
     req.header(CSRF_HEADER) === "1" ? next() : void res.status(403).json({ error: "missing X-GCPE-Request header" });
   const issue = async (res: Response, user: SessionUser) => {
-    const { token, expiresAt } = await mintSession(deps.secret, user);
-    res.setHeader("set-cookie", sessionCookie(token, { secure: deps.secure, maxAgeSeconds: SESSION_TTL_SECONDS }));
+    const { cookie, expiresAt } = await newSessionCookie(deps.secret, deps.secure, user);
+    res.setHeader("set-cookie", cookie);
     res.json({ user, expiresAt: new Date(expiresAt * 1000).toISOString() });
   };
+  const userPasswordsAllowed = deps.userPasswordsAllowed ?? true;
   const notSignedIn = (res: Response) => {
     clear(res);
     res.status(401).json({ error: "not signed in" });
@@ -71,7 +78,7 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
           if (!(await verifyPassword(password, deps.local.passwordHash))) return void res.status(401).json({ error: "invalid credentials" });
           return void (await issue(res, { id: BREAK_GLASS_ID, name: BREAK_GLASS_NAME, email: "", roles: [...ADMIN_ROLES] }));
         }
-        const user = await authenticate(deps.db, username, password);
+        const user = await authenticate(deps.db, username, password, { usersAllowed: userPasswordsAllowed });
         if (!user) return void res.status(401).json({ error: "invalid credentials" });
         await issue(res, { id: user.id, name: user.displayName, email: user.email ?? "", roles: sessionRolesOf(user) });
       } catch (e) {
@@ -79,6 +86,13 @@ export function sessionRoutes(deps: SessionRouteDeps): Router {
       }
     },
   );
+
+  /** Which sign-in methods the sign-in screen offers. `local` covers the break-glass admin too. */
+  r.get("/auth/methods", (_req, res) => {
+    res.json({ entra: deps.entra != null, local: userPasswordsAllowed || deps.local !== null });
+  });
+
+  if (deps.entra) r.use(entraRoutes({ db: deps.db, secret: deps.secret, secure: deps.secure, entra: deps.entra, ratePerMinute: deps.entraRatePerMinute }));
 
   r.post("/auth/logout", requireCsrf, (_req, res) => {
     clear(res);

@@ -7,6 +7,8 @@ import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { createApp } from "./app";
+import { createEntraClient } from "./entra/client";
+import { signInSettingsFromEnv } from "./entra/config";
 import { republishAll } from "./services/republish";
 
 export const coreEnvSchema = z.object({
@@ -46,6 +48,7 @@ export interface AppHandle {
 export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const parsed = parseEnv(coreEnvSchema, env);
   const auth = authFromEnv(env);
+  const signIn = signInSettingsFromEnv(env);
   const { db, pool } = createDb(parsed.DATABASE_URL);
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
@@ -55,7 +58,15 @@ export async function startCore(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     subscribers,
     auth: auth.bearer,
     loginRouter: auth.loginRouter,
-    session: auth.session ? { secret: auth.session.secret, secure: parsed.SESSION_COOKIE_SECURE, local: auth.local } : undefined,
+    session: auth.session
+      ? {
+          secret: auth.session.secret,
+          secure: parsed.SESSION_COOKIE_SECURE,
+          local: auth.local,
+          entra: signIn.entra ? createEntraClient(signIn.entra) : null,
+          userPasswordsAllowed: signIn.userPasswordsAllowed,
+        }
+      : undefined,
   });
 
   // Set by startLoops(); closers below reference it lazily so they're safe to call even if

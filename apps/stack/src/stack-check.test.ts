@@ -154,6 +154,28 @@ describe("checkStack", () => {
     expect(result.apps.core?.error).toMatch(/ENTRA_TENANT_ID.*AUTH_AUDIENCE|AUTH_AUDIENCE.*ENTRA_TENANT_ID/);
   });
 
+  it("fails Core when Entra sign-in is partly configured, naming the missing settings", async () => {
+    const result = await checkStack({ ...baseEnv(), CORE_ENTRA_CLIENT_ID: "core-client" });
+    expect(result.ok).toBe(false);
+    expect(result.apps.core?.ok).toBe(false);
+    expect(result.apps.core?.error).toContain("(its variables are CORE_*)");
+    expect(result.apps.core?.error).toContain("Entra sign-in is partly configured: missing ENTRA_TENANT_ID, ENTRA_CLIENT_SECRET, PUBLIC_BASE_URL, SESSION_SECRET");
+    expect(result.apps.nrms?.ok).toBe(true);
+  });
+
+  it("passes Core with Entra sign-in fully configured", async () => {
+    const result = await checkStack({
+      ...baseEnv(),
+      ENTRA_TENANT_ID: "0000fa4e-0000-4000-8000-000000000004",
+      SESSION_SECRET: "s".repeat(32),
+      CORE_AUTH_AUDIENCE: "api://core.example.test",
+      CORE_ENTRA_CLIENT_ID: "core-client",
+      CORE_ENTRA_CLIENT_SECRET: "core-secret",
+      CORE_PUBLIC_BASE_URL: "https://news.example.test",
+    });
+    expect(result.apps.core).toEqual({ ok: true, migrationsFolder: expect.any(String) });
+  });
+
   it("fails LOCAL_ADMIN_ENABLED=true under NODE_ENV=production without the explicit override", async () => {
     const env = baseEnv();
     env.NODE_ENV = "production";

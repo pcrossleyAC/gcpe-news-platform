@@ -56,4 +56,10 @@ describe("startCore", () => {
     started.startLoops();
     await expect(Promise.all([...started.closeBeforeServer, ...started.closers].map((c) => c.close()))).resolves.not.toThrow();
   });
+
+  it("refuses to start with Entra sign-in partly configured, naming what's missing", async () => {
+    await expect(startCore({ ...(await testEnv()), ENTRA_CLIENT_ID: "core-client" })).rejects.toThrow(
+      "Entra sign-in is partly configured: missing ENTRA_TENANT_ID, ENTRA_CLIENT_SECRET, PUBLIC_BASE_URL, SESSION_SECRET",
+    );
+  });
 });

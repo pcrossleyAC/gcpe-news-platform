@@ -14,6 +14,7 @@ import { createFakeMediaHub } from "@gcpe/media-hub-fake";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 
 import { calendarEnvSchema, startCalendar, type AppHandle as CalendarHandle } from "../../calendar/src/start";
+import { signInSettingsFromEnv } from "../../core/src/entra/config";
 import { coreEnvSchema, startCore, type AppHandle as CoreHandle } from "../../core/src/start";
 import { distributionEnvSchema } from "../../distribution/src/env";
 import { startDistribution, type AppHandle as DistributionHandle } from "../../distribution/src/start";
@@ -705,6 +706,14 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
       authFromEnv(view);
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
+    }
+    // Core's sign-in settings (Entra on or off, partial configuration), checked as startCore checks them.
+    if (c.prefix === "CORE") {
+      try {
+        signInSettingsFromEnv(view);
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
     }
     if (c.label === "calendar" && calendarStorageError) errors.push(calendarStorageError);
 
