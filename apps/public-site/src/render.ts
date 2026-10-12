@@ -1,23 +1,9 @@
 import type { SiteTheme } from "@gcpe/config";
 import { escapeHtml } from "@gcpe/http-kit";
 import { DEFAULT_THEME } from "./theme-css";
+import type { PostDto } from "./dto";
 
-export interface PostDocument {
-  languageId: number;
-  headline: string | null;
-  subheadline: string | null;
-  detailsHtml: string | null;
-  contacts: { title: string | null; details: string | null }[];
-}
-export interface PostDto {
-  key: string;
-  kind: string;
-  publishDate: string;
-  summary: string | null;
-  location: string | null;
-  ministryKeys: string[];
-  documents: PostDocument[];
-}
+export type { PostDocument, PostDto } from "./dto";
 
 export interface SiteInfo {
   name: string;
