@@ -31,7 +31,7 @@ Staff sign in to the staff web app with their government Microsoft account. Loca
 | # | Decision |
 |---|---|
 | D1 | **An unknown identity is refused.** An admin must create the user in Core first. The user sees "Your account hasn't been set up. Contact an administrator." |
-| D2 | **Local sign-in stays.** The break-glass admin is unchanged: `LOCAL_ADMIN_ENABLED`, refused in production unless explicitly allowed. User passwords remain available on test sites. In production, when Entra is configured, password sign-in is refused unless `LOCAL_PASSWORDS_ALLOWED=true`. |
+| D2 | **Local sign-in stays.** The break-glass admin is unchanged: `LOCAL_ADMIN_ENABLED`, refused in production unless explicitly allowed. User passwords remain available on test sites — including a test site that happens to run with `NODE_ENV=production` (C39: `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true` or `SITE_ENVIRONMENT=test`), such as boxs.ca. In *real* production, when Entra is configured, password sign-in is refused unless `LOCAL_PASSWORDS_ALLOWED=true`. |
 | D3 | **Sign-out ends the platform session only.** It does not sign the user out of Microsoft. |
 
 ## 3. Flow
