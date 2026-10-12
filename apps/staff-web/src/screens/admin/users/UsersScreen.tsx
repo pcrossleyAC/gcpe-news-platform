@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, Button, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
@@ -43,6 +43,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
   const [passwordMessages, setPasswordMessages] = useState<string[]>([]);
   const [passwordSaved, setPasswordSaved] = useState(false);
   const [unlinkMessages, setUnlinkMessages] = useState<string[]>([]);
+  const [confirmingUnlink, setConfirmingUnlink] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const saveName = async () => {
@@ -104,6 +105,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
   };
 
   const unlink = async () => {
+    setConfirmingUnlink(false);
     setBusy(true);
     setUnlinkMessages([]);
     try {
@@ -131,10 +133,28 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
               {m}
             </p>
           ))}
-          <p>Unlinking lets this user sign in with a password set here. Their next Microsoft sign-in links them again by email.</p>
-          <Button variant="secondary" onPress={() => void unlink()} isDisabled={busy} aria-label={`Unlink ${who} from Microsoft sign-in`}>
+          <p>Unlinking returns this user to password sign-in; any password they had before works again. Their next Microsoft sign-in links them again by email.</p>
+          <Button variant="secondary" onPress={() => setConfirmingUnlink(true)} isDisabled={busy} aria-label={`Unlink ${who} from Microsoft sign-in`}>
             Unlink Microsoft sign-in
           </Button>
+          <Modal isOpen={confirmingUnlink} onOpenChange={(open) => { if (!open) setConfirmingUnlink(false); }} isDismissable>
+            <AlertDialog
+              role="alertdialog"
+              aria-label={`Unlink ${who} from Microsoft sign-in`}
+              variant="warning"
+              title="Unlink Microsoft sign-in?"
+              buttons={
+                <>
+                  <Button onPress={() => setConfirmingUnlink(false)}>Cancel</Button>
+                  <Button danger isDisabled={busy} onPress={() => void unlink()}>
+                    Unlink
+                  </Button>
+                </>
+              }
+            >
+              <p>{who} will sign in with a password instead, if one was set before. Their next Microsoft sign-in links them again by email.</p>
+            </AlertDialog>
+          </Modal>
         </>
       )}
 

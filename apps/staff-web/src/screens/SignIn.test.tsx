@@ -136,6 +136,26 @@ describe("SignIn", () => {
     expect(screen.queryByRole("link", { name: "Sign in with Microsoft" })).not.toBeInTheDocument();
   });
 
+  // A failed /core/auth/methods must not silently hide Microsoft sign-in without saying why —
+  // the screen still offers the password form, and says Microsoft sign-in is unavailable.
+  it("when /core/auth/methods fails, offers the password form and says Microsoft sign-in is unavailable", async () => {
+    stubFetch(noLogin, jsonResponse(500, { error: "boom" }));
+    renderSignIn();
+    expect(await screen.findByLabelText(/user name/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Microsoft sign-in is unavailable right now/)).toBeInTheDocument();
+  });
+
+  it.each(["__proto__", "toString", "constructor", "hasOwnProperty", "<script>alert(1)</script>"])(
+    "a crafted ?error=%s shows no alert and doesn't crash",
+    async (code) => {
+      stubFetch(noLogin, jsonResponse(200, { entra: true, local: true }));
+      renderSignIn(`/sign-in?error=${encodeURIComponent(code)}`);
+      await screen.findByLabelText(/user name/i);
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+      expect(document.body.textContent).not.toContain(code);
+    },
+  );
+
   it.each(Object.entries(ENTRA_ERRORS))("shows the message for ?error=%s", async (code, message) => {
     stubFetch(noLogin, jsonResponse(200, { entra: true, local: true }));
     renderSignIn(`/sign-in?error=${code}`);

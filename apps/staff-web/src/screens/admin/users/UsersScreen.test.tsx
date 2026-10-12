@@ -212,7 +212,9 @@ describe("UsersScreen", () => {
     expect(within(row).getByText("Sign-in: Microsoft (Entra)")).toBeInTheDocument();
     expect(within(row).queryByLabelText("other@x.invalid new password")).not.toBeInTheDocument();
 
-    await userEvent.setup().click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
+    const user = userEvent.setup();
+    await user.click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Unlink" }));
 
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/other-1/unlink-entra" && c.init?.method === "POST")).toBe(true));
     const after = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
@@ -230,7 +232,26 @@ describe("UsersScreen", () => {
     });
     render(withAuth(<UsersScreen />));
     const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
-    await userEvent.setup().click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
+    const user = userEvent.setup();
+    await user.click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Unlink" }));
     expect(await within(row).findByRole("alert")).toHaveTextContent("not found");
+  });
+
+  it("asks before unlinking, and does nothing on Cancel", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, { ...OTHER, signInMethod: "entra" }]);
+      if (url === "/core/api/users/other-1/unlink-entra") return jsonResponse(200, { ...OTHER, signInMethod: "local" });
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const row = (await screen.findByRole("heading", { name: "other@x.invalid", level: 3 })).closest("li")!;
+    const user = userEvent.setup();
+    await user.click(within(row).getByRole("button", { name: "Unlink other@x.invalid from Microsoft sign-in" }));
+    await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    expect(calls.some((c) => c.url === "/core/api/users/other-1/unlink-entra")).toBe(false);
+    expect(within(row).getByText("Sign-in: Microsoft (Entra)")).toBeInTheDocument();
   });
 });

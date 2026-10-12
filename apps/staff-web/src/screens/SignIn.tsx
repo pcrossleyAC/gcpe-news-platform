@@ -9,6 +9,7 @@ import { useDocumentTitle } from "../shared/useDocumentTitle";
 const SIGN_IN_FAILED = "Sign-in failed. Check your user name and password.";
 const RATE_LIMITED = "Too many attempts, wait a minute";
 const NOT_SET_UP = "Your account hasn't been set up. Contact an administrator.";
+const METHODS_UNAVAILABLE = "Microsoft sign-in is unavailable right now.";
 
 /** Core's `?error=` codes from Microsoft sign-in (GET /core/auth/entra/callback). */
 export const ENTRA_ERRORS: Record<string, string> = {
@@ -36,12 +37,13 @@ export function SignIn(): React.JSX.Element {
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [methods, setMethods] = useState<SignInMethods>(DEFAULT_METHODS);
+  const [methodsUnavailable, setMethodsUnavailable] = useState(false);
 
   useEffect(() => {
     let live = true;
     apiFetch<SignInMethods>("/core/auth/methods").then(
       (m) => live && setMethods({ entra: m.entra === true, local: m.local !== false }),
-      () => undefined,
+      () => live && setMethodsUnavailable(true),
     );
     return () => {
       live = false;
@@ -51,7 +53,12 @@ export function SignIn(): React.JSX.Element {
   const returnTo = safeReturnTo(params.get("return"));
   if (user) return <Navigate to={returnTo} replace />;
 
-  const entraError = ENTRA_ERRORS[params.get("error") ?? ""] ?? null;
+  // Looked up with Object.hasOwn, never a plain `[]` index: ENTRA_ERRORS is a plain object
+  // literal, so `?error=__proto__` would otherwise return Object.prototype (which React
+  // refuses to render) and `?error=toString`/`constructor` would return a function (an alert
+  // with no text). Never reflects the query value itself.
+  const errorCode = params.get("error");
+  const entraError = errorCode !== null && Object.hasOwn(ENTRA_ERRORS, errorCode) ? ENTRA_ERRORS[errorCode] : null;
   // Core takes a /hub/ path: the router's paths are relative to its /hub basename.
   const entraHref = `/core/auth/entra?returnTo=${encodeURIComponent(`/hub${returnTo}`)}`;
 
@@ -74,6 +81,7 @@ export function SignIn(): React.JSX.Element {
       <Header title="GCPE News — Staff" />
       <h1>Sign in</h1>
       {(error ?? entraError) && <InlineAlert variant="danger" role="alert" description={(error ?? entraError)!} />}
+      {methodsUnavailable && !methods.entra && <InlineAlert variant="info" description={METHODS_UNAVAILABLE} />}
       {methods.entra && (
         <p className="gcpe-sign-in__entra">
           <a className="gcpe-button-link" href={entraHref}>
