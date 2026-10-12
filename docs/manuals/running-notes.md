@@ -639,3 +639,4 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 - **Developer** — The News API has a service-only `POST /api/v2/internal/similar` for NRMS (role `NewsApi.Similar`). It never stores, caches or logs the draft text it is sent, and only ever returns published posts.
 - **Operations** — With the staff-AI flag on (and a provider and pgvector), the News API's embedding worker runs even when semantic search is off: AI matching compares drafts with published posts' vectors. Search and related posts stay in text mode until `semanticSearch` is also on.
+- **Administrator** — Standalone (OpenShift): NRMS needs `NEWS_API_URL` and an Entra app registration holding the News API's `NewsApi.Similar` app role (`NEWS_API_TOKEN_URL`, `NEWS_API_CLIENT_ID`, `NEWS_API_CLIENT_SECRET`, `NEWS_API_SCOPE`) for "Similar published releases". Without `NEWS_API_URL` the panel doesn't appear. On the stack it's wired automatically.

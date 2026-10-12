@@ -1,13 +1,13 @@
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
-import { authFromEnv, serviceTokenProvider, type LocalAuthConfig, type ServiceTokenOptions } from "@gcpe/auth";
+import { authFromEnv, NEWS_API_SIMILAR_ROLE, serviceTokenProvider, type LocalAuthConfig, type ServiceTokenOptions } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
-import { coreClient, distributionClient, nodClient, type CoreClient, type DistributionClient } from "./clients";
+import { coreClient, distributionClient, newsApiSimilarClient, nodClient, type CoreClient, type DistributionClient } from "./clients";
 import { createApp } from "./app";
 import { needsCalendarViewers } from "./calendar/projection";
 import { defaultSoundcloudOembed, type EmbedDeps } from "./media/embeds";
@@ -60,6 +60,14 @@ export const nrmsEnvSchema = z.object({
   CORE_CLIENT_ID: z.string().optional(),
   CORE_CLIENT_SECRET: z.string().optional(),
   CORE_SCOPE: z.string().optional(),
+  // Addendum §7: the News API, for "Similar published releases". Optional (the route answers 503
+  // and the panel hides when unset); the stack defaults it to self:/. Same all-or-none Entra
+  // fields and local-token fallback as NOD_*.
+  NEWS_API_URL: z.string().url().optional(),
+  NEWS_API_TOKEN_URL: z.string().url().optional(),
+  NEWS_API_CLIENT_ID: z.string().optional(),
+  NEWS_API_CLIENT_SECRET: z.string().optional(),
+  NEWS_API_SCOPE: z.string().optional(),
   // Phase 3c: uploaded release files (translations, media assets). The stack sets this to
   // <DATA_DIR>/storage (survives a redeploy) and serves it publicly at /files; this default is
   // only for standalone dev.
@@ -188,6 +196,24 @@ export function coreServiceTokenOptions(
   };
 }
 
+/** {@link ServiceTokenOptions} for NRMS's calls to the News API's similar route: only the
+ * `NewsApi.Similar` service role (not a staff role). */
+export function newsApiServiceTokenOptions(
+  parsed: Pick<z.infer<typeof nrmsEnvSchema>, "NEWS_API_TOKEN_URL" | "NEWS_API_CLIENT_ID" | "NEWS_API_CLIENT_SECRET" | "NEWS_API_SCOPE">,
+  local: LocalAuthConfig | null,
+): ServiceTokenOptions {
+  return {
+    tokenUrl: parsed.NEWS_API_TOKEN_URL,
+    clientId: parsed.NEWS_API_CLIENT_ID,
+    clientSecret: parsed.NEWS_API_CLIENT_SECRET,
+    scope: parsed.NEWS_API_SCOPE,
+    local,
+    subject: "nrms",
+    roles: [NEWS_API_SIMILAR_ROLE],
+    envPrefix: "NEWS_API",
+  };
+}
+
 const escapeHtmlForEmail = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 
 /**
@@ -271,6 +297,14 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   const core = parsed.CORE_URL
     ? coreClient({ baseUrl: parsed.CORE_URL, getToken: serviceTokenProvider(coreServiceTokenOptions(parsed, auth.local)) })
     : undefined;
+  const similar = parsed.NEWS_API_URL
+    ? {
+        client: newsApiSimilarClient({ baseUrl: parsed.NEWS_API_URL, getToken: serviceTokenProvider(newsApiServiceTokenOptions(parsed, auth.local)) }),
+        staffAi: tenant.features.staffAi,
+      }
+    : undefined;
+  // The flag only, never a URL or token.
+  console.log(`[nrms] similar releases: ${similar ? (similar.staffAi ? "AI and text" : "text only") : "not configured"}`);
   const flickrConfig = flickrConfigFromEnv(parsed);
   const flickr = flickrConfig ? flickrClient(flickrConfig) : null;
   // The mode only — never the key, secrets or tokens.
@@ -307,6 +341,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     forecastCategoryPrefix: tenant.calendar?.forecastCategoryPrefix ?? null,
     isTestSite: nrmsIsTestSite(env),
     blueBridgeNotify,
+    similar,
   });
 
   const alertEmails = parsed.FLICKR_ALERT_EMAILS;

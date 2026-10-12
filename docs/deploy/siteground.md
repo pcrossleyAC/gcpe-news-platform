@@ -1377,6 +1377,14 @@ A stuck slide event (a mismatched hash, a missing file, or a file over 2 MB) fai
 
 `POST /api/v2/internal/similar` answers NRMS's "Similar published releases" panel. It accepts only a bearer token with the `NewsApi.Similar` role, verified the same way as the change feed (Entra with `NEWSAPI_AUTH_AUDIENCE`, or local tokens where `LOCAL_ADMIN_ENABLED=true`); with neither it answers 503. A staff session cookie never opens it. It uses AI matching only when this News API's own tenant config has `features.staffAi: true`, an embeddings provider is configured and pgvector is present; otherwise it answers in text mode and says so (`"mode": "text"`). At start the News API logs `staff AI is off: missing …` when the flag is on but something else is missing.
 
+### Turning the flags on, and the PIA gate for staff AI
+
+Both flags live in the tenant config (`config/tenants/<tenant>.json`), under `"features"`, and both are off by default. Changing one needs a restart (the stack reads the file at start).
+
+- **`semanticSearch`** (public search and related posts). Safe to turn on once an embeddings provider is configured (`NEWSAPI_EMBEDDINGS_PROVIDER` plus the Azure settings, Q70) and the News API's database has pgvector (see "pgvector and the search mode"). `/stack/health` then reports `"newsApiSearch": "semantic"`; it stays `text` on boxs.ca, whose Postgres has no pgvector (Q80).
+- **`staffAi`** (AI matching in "Similar published releases") **sends unpublished draft text to the AI service. Do not turn it on in any environment that holds real drafts until the privacy impact assessment approves it (D4, Q71).** NRMS and the News API each check their own copy of the flag: NRMS only asks for AI matching when its flag is on, and the News API only calls the provider when its own flag, a provider and pgvector are all present. On the stack both read the same `TENANT_CONFIG`; standalone, set it in both apps' tenant files. With it off, the panel still works with text matching, and nothing is sent anywhere but the News API.
+- After turning `staffAi` on, check the News API's start log has no `staff AI is off: missing …` line, then press **Find similar** on a draft: results labelled *AI match* mean the whole path works.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

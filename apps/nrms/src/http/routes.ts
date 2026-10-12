@@ -22,6 +22,7 @@ import {
   saveDocumentLanguage, saveMeta, saveSettings,
 } from "../releases/service";
 import { loadView, writeLog } from "../releases/store";
+import { findSimilar, type SimilarDeps } from "../releases/similar";
 import { mediaLists, newsReleases, pageImages } from "../db/schema";
 import {
   createMediaList, createMediaListInputSchema, listMediaLists, MediaListConflictError, MediaListNotFoundError, republishMediaLists, updateMediaList, updateMediaListInputSchema,
@@ -64,6 +65,8 @@ export interface RouteDeps {
   config?: { siteUrl?: string; publicSiteUrl?: string; isTestSite?: boolean };
   /** The tenant's `calendar.forecastCategoryPrefix` (Forecast and the activity lookup); unset → no activity can be planned against. */
   forecastCategoryPrefix?: string | null;
+  /** "Similar published releases" (addendum §7): the News API client and NRMS's own staffAi flag; unset → 503. */
+  similar?: SimilarDeps;
 }
 
 // A type alias (not an interface) so it satisfies express's ParamsDictionary index signature.
@@ -148,6 +151,8 @@ export function apiRoutes(deps: RouteDeps): Router {
         filesBase: deps.workflow.filesBase ?? "",
         isTestSite: deps.config?.isTestSite ?? true,
         tzCheck: { at: TZ_CHECK_AT, offsetMinutes: utcOffsetMinutes(TZ_CHECK_AT, deps.workflow.timeZone) },
+        similarAvailable: deps.similar !== undefined,
+        staffAi: deps.similar?.staffAi ?? false,
       });
     }),
   );
@@ -267,6 +272,22 @@ export function apiRoutes(deps: RouteDeps): Router {
       }
       await writeLog(db, view.id, actorOf(req), `Emailed a copy to ${to}`);
       res.status(202).json({ sentTo: to });
+    }),
+  );
+
+  // "Similar published releases" (addendum §7): editors only, on an explicit click. Read-only:
+  // no history entry, nothing stored, and the draft text never reaches a log line.
+  r.post(
+    "/releases/:id/similar",
+    edit,
+    run(async (req, res) => {
+      if (!deps.similar) return void res.status(503).json({ error: "Similar releases aren't set up here." });
+      const view = await visibleView(req.params.id);
+      if (!view) return notFound(res);
+      const outcome = await findSimilar(db, view, deps.similar);
+      if (outcome.kind === "empty") return void res.status(422).json({ error: "Add a headline or some body text first." });
+      if (outcome.kind === "failed") return void res.status(502).json({ error: "Couldn't look for similar releases — try again." });
+      res.json(outcome.found);
     }),
   );
 

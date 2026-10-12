@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import request from "supertest";
 import { decodeJwt } from "jose";
-import { hashPassword, serviceTokenProvider } from "@gcpe/auth";
+import { hashPassword, NEWS_API_SIMILAR_ROLE, serviceTokenProvider } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createNrmsTestDb } from "../test/helpers";
-import { buildBlueBridgeNotify, coreServiceTokenOptions, distributionServiceTokenOptions, flickrConfigFromEnv, nodServiceTokenOptions, nrmsEnvSchema, startNrms } from "./start";
+import { buildBlueBridgeNotify, coreServiceTokenOptions, distributionServiceTokenOptions, flickrConfigFromEnv, newsApiServiceTokenOptions, nodServiceTokenOptions, nrmsEnvSchema, startNrms } from "./start";
 import type { CoreClient, DistributionClient } from "./clients";
 
 describe("startNrms", () => {
@@ -116,6 +116,12 @@ describe("coreServiceTokenOptions", () => {
     const payload = decodeJwt(token);
     expect(payload).toMatchObject({ sub: "nrms", azp: "nrms", roles: ["Core.AdminDirectory"] });
   });
+});
+
+it("newsApiServiceTokenOptions: subject nrms, only the NewsApi.Similar role, NEWS_API_* env names", () => {
+  const local = { username: "admin", passwordHash: "x", secret: "x".repeat(40) };
+  const o = newsApiServiceTokenOptions({ NEWS_API_TOKEN_URL: undefined, NEWS_API_CLIENT_ID: undefined, NEWS_API_CLIENT_SECRET: undefined, NEWS_API_SCOPE: undefined }, local);
+  expect(o).toMatchObject({ subject: "nrms", roles: [NEWS_API_SIMILAR_ROLE], envPrefix: "NEWS_API" });
 });
 
 // Minor 2 (fix round 1): pulled out of startNrms so the branching can be tested directly.

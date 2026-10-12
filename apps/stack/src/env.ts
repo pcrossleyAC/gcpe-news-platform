@@ -95,7 +95,8 @@ export const STACK_APP_DEFAULTS: Partial<Record<AppPrefix, Record<string, string
   // Plan 3d task 4: Core's in-process URL too, for Project Blue Bridge's admin-directory lookup
   // (NRMS's own CORE_CLIENT_ID/SECRET stay unset in-stack, same as NOD_*/DISTRIBUTION_* — the
   // local-admin token fallback covers it, just like NRMS's calls to NoD and Distribution).
-  NRMS: { NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", CORE_URL: "self:/core" },
+  // NEWS_API_URL (addendum §7): the News API is mounted at the stack's root.
+  NRMS: { NOD_URL: "self:/nod", DISTRIBUTION_URL: "self:/distribution", CORE_URL: "self:/core", NEWS_API_URL: "self:/" },
   // Phase 4a: the public Subscribe API proxies to this stack's own NoD, same in-process-URL
   // pattern (and local-admin-token fallback) as NRMS's calls to NoD/Distribution/Core above.
   // Addendum §6.4: SiteGround blocks loopback networking, so the News API can't fetch a

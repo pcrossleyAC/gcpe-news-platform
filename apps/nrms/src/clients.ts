@@ -116,3 +116,48 @@ export function distributionClient(opts: DistributionClientOptions): Distributio
     },
   };
 }
+
+// Embedding the draft (about 1s at most) plus two short queries.
+const NEWS_API_SIMILAR_TIMEOUT_MS = 10_000;
+
+/** The body of the News API's `POST /api/v2/internal/similar` (addendum §7). Draft text: never logged. */
+export interface SimilarRequestBody {
+  text: string;
+  terms: string;
+  mode: "ai" | "text";
+  excludeKey?: string;
+}
+
+export interface SimilarFound {
+  mode: "ai" | "text";
+  results: { key: string; headline: string | null; publishDate: string; leadMinistryKey: string | null; url: string; match: "ai" | "text" }[];
+}
+
+export interface NewsApiSimilarClientOptions {
+  baseUrl: string;
+  getToken: () => Promise<string>;
+  fetchImpl?: typeof fetch;
+}
+
+export interface NewsApiSimilarClient {
+  similar(body: SimilarRequestBody): Promise<SimilarFound>;
+}
+
+/** NRMS's client for the News API's similar route. A non-2xx rejects with the status only. */
+export function newsApiSimilarClient(opts: NewsApiSimilarClientOptions): NewsApiSimilarClient {
+  const doFetch = opts.fetchImpl ?? fetch;
+  const url = `${opts.baseUrl.replace(/\/+$/, "")}/api/v2/internal/similar`;
+  return {
+    async similar(body) {
+      const token = await opts.getToken();
+      const res = await doFetch(url, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(NEWS_API_SIMILAR_TIMEOUT_MS),
+      });
+      if (!res.ok) throw new Error(`News API similar failed: HTTP ${res.status}`);
+      return (await res.json()) as SimilarFound;
+    },
+  };
+}
