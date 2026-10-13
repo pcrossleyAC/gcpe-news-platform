@@ -657,8 +657,8 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 
 ## Hardening batch 1
 
-- **Editor**, **Site editor** — Saving no longer throws keyboard focus back to the top of the page: the button you pressed (or the field you pressed Enter in) keeps focus and reads as busy until the save finishes.
-- **Site editor** — If an upload fails with "Name the file." straight after a release of the platform, reload the page and try again: a page left open from before the release still sends file names the old way.
+- **Editor**, **Site editor** — Saving no longer throws keyboard focus back to the top of the page: the button you pressed (or the field you pressed Enter in) keeps focus. It shows and reads as busy until the save finishes: sighted users see a highlighted border on the button, and a screen reader announces it as unavailable.
+- **Site editor** — If an upload fails with "invalid request" straight after a release of the platform, reload the page and try again: a page left open from before the release still sends the file name the old way, which the server now refuses outright.
 - **Operations** — The tick now runs `calendar.orphan-sweep`. It deletes Calendar attachment bytes that no attachment references any more (left behind when a delete failed after a replace or remove), only once they are a day old, at most 50 per tick. A failure logs "[calendar] orphan sweep could not delete a stored file" with the error's type only; it retries on its next pass.
 - **Developer** — `npm run test:clean-dbs` lists leftover test databases (`test_<20 hex>`, `test_nr_<16 hex>`) and roles (`nr_<16 hex>`); `-- --confirm` drops them. It skips anything in use or created in the last hour (`-- --min-age-minutes=N` to change), so it is safe while another checkout's tests run.
 - **Developer** — NRMS's upload routes (release files, site files, page images) take the name in the `X-GCPE-File-Name` header, percent-encoded, like the Calendar's. `?name=` is refused with a 400.
