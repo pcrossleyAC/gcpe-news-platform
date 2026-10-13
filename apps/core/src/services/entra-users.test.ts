@@ -133,16 +133,15 @@ describe("Entra identities on Core users", () => {
     expect(await matchEntraUser(tdb.db, "oid-non-ascii", "jörg.müller@example.test")).toMatchObject({ ok: true, user: { id: u!.id } });
   });
 
-  // This Postgres's lc_ctype is C (confirmed: `lower('Übergrün')` leaves it unchanged), so unlike
-  // JS's full-Unicode toLowerCase, its lower() doesn't fold non-ASCII case — tracked separately as
-  // Q58, not resolved by this fix wave. A genuinely cased mismatch (stored "Ü", claim normalised
-  // to "ü") must still fail *safe*: refused as not_provisioned, never crossed to the wrong user.
-  it("a non-ASCII email whose stored case Postgres's lower() can't fold still fails safe, not crossed", async () => {
-    // Stored with the non-ASCII letters (Ö, Ü) uppercase. This Postgres's C-locale lower() folds
-    // the plain ASCII letters but leaves Ö/Ü untouched, so comparing it against the claim's
-    // fully-folded JS toLowerCase() (which does fold them, correctly) can never match here.
-    await tdb.db.insert(users).values({ email: "INGRID.KRÜGER@example.test", displayName: "Non-ASCII Mismatch" });
-    expect(await matchEntraUser(tdb.db, "oid-non-ascii-mismatch", "INGRID.KRÜGER@example.test".toLowerCase())).toEqual({ ok: false, code: "not_provisioned" });
+  // Postgres's lower() folds non-ASCII letters only under a UTF-8 collation; under the C locale it
+  // leaves them alone (Q58). Either way a non-ASCII address must never reach a different user: it
+  // either links the user who owns it (UTF-8) or is refused as not_provisioned (C locale).
+  it("a non-ASCII email links its own user or is refused, never a different user", async () => {
+    const [owner] = await tdb.db.insert(users).values({ email: "INGRID.KRÜGER@example.test", displayName: "Non-ASCII Owner" }).returning({ id: users.id });
+    await tdb.db.insert(users).values({ email: "ingrid.kruger@example.test", displayName: "ASCII Lookalike" });
+    const result = await matchEntraUser(tdb.db, "oid-non-ascii-owner", "INGRID.KRÜGER@example.test".toLowerCase());
+    if (result.ok) expect(result.user.id).toBe(owner!.id);
+    else expect(result).toEqual({ ok: false, code: "not_provisioned" });
   });
 
   it("a linked user is refused at password sign-in like a wrong password", async () => {
