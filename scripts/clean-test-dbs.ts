@@ -69,14 +69,24 @@ export async function cleanTestDbs(opts: CleanOptions): Promise<CleanResult> {
       }
     }
 
+    // A role is only ever dropped in the very same run that just dropped (or, in a dry run,
+    // would drop) its own twin database — never on its own, however long it has had no twin.
+    // Otherwise a role created a moment before its database (createRestrictedNewsTestDb does
+    // `CREATE ROLE` first) looks exactly like a genuinely orphaned one to a run that lands in
+    // that gap, and would be dropped out from under the database creation still in flight.
+    const handledDbNames = new Set(databases.filter((d) => d.outcome === "dropped" || d.outcome === "would drop").map((d) => d.name));
+
     const roles: Outcome[] = [];
     const roleNames = (await c.query<{ rolname: string }>("SELECT rolname FROM pg_roles ORDER BY rolname")).rows
       .map((r) => r.rolname)
       .filter((n) => isHarnessRole(n) && only(n));
     for (const name of roleNames) {
-      const twin = await c.query("SELECT 1 FROM pg_database WHERE datname = $1", [`test_${name}`]);
+      const twinName = `test_${name}`;
+      const twinHandledThisRun = handledDbNames.has(twinName);
+      const twinScanned = databases.some((d) => d.name === twinName);
       const sessions = await c.query("SELECT 1 FROM pg_stat_activity WHERE usename = $1", [name]);
-      if ((twin.rowCount ?? 0) > 0) roles.push({ name, outcome: "skipped", reason: "its database still exists" });
+      if (!twinHandledThisRun && twinScanned) roles.push({ name, outcome: "skipped", reason: "its database still exists" });
+      else if (!twinHandledThisRun) roles.push({ name, outcome: "skipped", reason: "no database was dropped alongside it this run" });
       else if ((sessions.rowCount ?? 0) > 0) roles.push({ name, outcome: "skipped", reason: "in use" });
       else if (!opts.confirm) roles.push({ name, outcome: "would drop" });
       else {
@@ -103,7 +113,18 @@ function minAgeArg(argv: string[]): number | undefined {
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
   const confirm = argv.includes("--confirm");
-  const r = await cleanTestDbs({ confirm, minAgeMinutes: minAgeArg(argv) });
+  let minAgeMinutes: number | undefined;
+  try {
+    minAgeMinutes = minAgeArg(argv);
+  } catch (e) {
+    // The script's own argument-parsing text, not a database error: it never carries a bound
+    // value, so printing it directly (not safeErrorLabel, which would flatten it to "Error") is
+    // safe and is the only way the caller finds out what was actually wrong.
+    console.error(e instanceof Error ? e.message : "invalid --min-age-minutes");
+    process.exitCode = 1;
+    return;
+  }
+  const r = await cleanTestDbs({ confirm, minAgeMinutes });
   for (const [kind, list] of [["database", r.databases], ["role", r.roles]] as const) {
     for (const o of list) console.log(`${o.outcome.padEnd(10)} ${kind} ${o.name}${o.reason ? ` (${o.reason})` : ""}`);
   }

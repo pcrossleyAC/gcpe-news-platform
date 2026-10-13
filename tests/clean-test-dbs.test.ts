@@ -1,8 +1,13 @@
+import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { adminUrl, withAdmin } from "@gcpe/db-kit";
 import { cleanTestDbs, isHarnessDatabase, isHarnessRole } from "../scripts/clean-test-dbs";
+
+const TSX = fileURLToPath(new URL("../node_modules/.bin/tsx", import.meta.url));
+const SCRIPT = fileURLToPath(new URL("../scripts/clean-test-dbs.ts", import.meta.url));
 
 const hex = (n: number) => randomBytes(n).toString("hex").slice(0, n);
 const exists = (name: string) => withAdmin(async (c) => (await c.query("SELECT 1 FROM pg_database WHERE datname = $1", [name])).rowCount === 1);
@@ -16,6 +21,22 @@ describe("isHarnessDatabase / isHarnessRole", () => {
       expect(isHarnessDatabase(name), name).toBe(false);
     expect(isHarnessRole(`nr_${"9".repeat(16)}`)).toBe(true);
     for (const name of [`nr_${"9".repeat(15)}`, `nr_${"9".repeat(17)}`, `NR_${"9".repeat(16)}`, "postgres", `nr_${"g".repeat(16)}`]) expect(isHarnessRole(name), name).toBe(false);
+  });
+});
+
+describe("npm run test:clean-dbs -- --min-age-minutes", () => {
+  it("an invalid value prints the script's own message, not just 'Error', and exits non-zero", () => {
+    let error: unknown;
+    try {
+      execFileSync(TSX, [SCRIPT, "--min-age-minutes=abc"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+    } catch (e) {
+      error = e;
+    }
+    const failure = error as { status: number | null; stderr: string } | undefined;
+    expect(failure).toBeDefined();
+    expect(failure!.status).not.toBe(0);
+    expect(failure!.stderr).toContain("--min-age-minutes takes a whole number of minutes");
+    expect(failure!.stderr.trim()).not.toBe("Error");
   });
 });
 
@@ -66,17 +87,40 @@ describe("npm run test:clean-dbs", () => {
     expect(await exists(idle)).toBe(true);
   });
 
-  it("--confirm drops idle harness databases and their roles, skips one in use, and never touches another name", async () => {
+  it("--confirm drops idle harness databases and the role dropped alongside its own database, skips one in use, and never touches another name", async () => {
     const r = await cleanTestDbs({ confirm: true, minAgeMinutes: 0, only });
     expect(r.databases).toContainEqual({ name: idle, outcome: "dropped" });
     expect(r.databases).toContainEqual({ name: pairDb, outcome: "dropped" });
     expect(r.databases).toContainEqual({ name: busy, outcome: "skipped", reason: "in use" });
     expect(r.databases.map((d) => d.name)).not.toContain(decoy);
     expect(r.roles).toContainEqual({ name: pairRole, outcome: "dropped" });
-    expect(r.roles).toContainEqual({ name: loneRole, outcome: "dropped" });
+    // loneRole never had a twin database in this run (or any run): an orphaned role is never
+    // dropped on its own, however long it has had no twin.
+    expect(r.roles).toContainEqual({ name: loneRole, outcome: "skipped", reason: "no database was dropped alongside it this run" });
     expect(await exists(idle)).toBe(false);
     expect(await exists(pairDb)).toBe(false);
     expect(await exists(busy)).toBe(true);
     expect(await exists(decoy)).toBe(true);
+    expect(await roleExists(pairRole)).toBe(false);
+    expect(await roleExists(loneRole)).toBe(true);
+  });
+
+  it("never drops a role whose twin database was not dropped in this very run, even once the database is long gone", async () => {
+    // Simulates the race the harness itself can hit: a role is created, then (for whatever
+    // reason — a crashed run, or simply never getting far enough to create its database) its
+    // twin database never exists at the moment a `--confirm` run scans for leftovers. The role
+    // must never be dropped just because it currently has no twin; only a run that drops (or,
+    // in a dry run, would drop) that exact twin in the same pass may drop the role.
+    const orphanId = hex(16);
+    const orphanRole = `nr_${orphanId}`;
+    await withAdmin((c) => c.query(`CREATE ROLE "${orphanRole}" NOLOGIN`));
+    try {
+      const r = await cleanTestDbs({ confirm: true, minAgeMinutes: 0, only: (n) => n === orphanRole });
+      expect(r.databases).toEqual([]);
+      expect(r.roles).toEqual([{ name: orphanRole, outcome: "skipped", reason: "no database was dropped alongside it this run" }]);
+      expect(await roleExists(orphanRole)).toBe(true);
+    } finally {
+      await withAdmin((c) => c.query(`DROP ROLE IF EXISTS "${orphanRole}"`));
+    }
   });
 });
