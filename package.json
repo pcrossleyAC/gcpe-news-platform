@@ -9,6 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:clean-dbs": "tsx scripts/clean-test-dbs.ts",
     "auth:hash-password": "tsx packages/auth/src/cli/hash-password.ts",
     "nod:membership-hash": "tsx scripts/hash-membership-password.ts",
     "core:seed-test-users": "npm --workspace @gcpe/core run seed:test-users",

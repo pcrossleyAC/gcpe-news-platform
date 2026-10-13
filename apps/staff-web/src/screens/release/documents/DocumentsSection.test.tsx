@@ -186,6 +186,33 @@ describe("DocumentsSection", () => {
     expect(JSON.parse(calls[0]!.init?.body as string)).toEqual({ version: 1, pageTitle: "New page", layout: "formal" });
   });
 
+  it("pressing Enter twice in the Page title field while the add is in flight sends only one request", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    let resolvePost!: (v: Response) => void;
+    stubFetch((url, init) => {
+      calls.push({ url, init });
+      return new Promise<Response>((resolve) => (resolvePost = resolve));
+    });
+    renderSection(TWO_DOCS);
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Add document" }));
+    const addForm = within(screen.getByRole("form", { name: "Add document" }));
+    const title = addForm.getByLabelText("Page title", { exact: false });
+    await user.type(title, "New page{Enter}");
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    // The request is still hanging: the button is pending, not a native submit button any more.
+    // A second Enter in the same (still-focused, still-only) text field must not fire a second
+    // implicit submission.
+    await user.type(title, "{Enter}");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls).toHaveLength(1);
+
+    resolvePost(jsonResponse(201, releaseView({ ...TWO_DOCS, version: 2, documents: [...TWO_DOCS.documents, doc("doc-3", 2, "")] })));
+    await waitFor(() => expect(screen.queryByRole("form", { name: "Add document" })).not.toBeInTheDocument());
+    expect(calls).toHaveLength(1);
+  });
+
   it("removes a document after confirmation, and can't remove the only remaining document", async () => {
     stubFetch(() => jsonResponse(200, releaseView({ ...TWO_DOCS, version: 2, documents: [doc("doc-2", 0, "Second")] })));
     renderSection(TWO_DOCS);

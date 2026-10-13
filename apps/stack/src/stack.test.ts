@@ -436,9 +436,13 @@ describe("apps/stack", () => {
     });
     expect(created.status).toBe(201);
     const { id, version } = (await created.json()) as { id: string; version: number };
-    const up = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/files?kind=translation&version=${version}&name=Budget%20FR.pdf`, {
+    const up = await fetch(`${instance.stackUrl}/nrms/api/releases/${id}/files?kind=translation&version=${version}`, {
       method: "POST",
-      headers: { authorization: `Bearer ${instance.adminToken}`, "content-type": "application/pdf" },
+      headers: {
+        authorization: `Bearer ${instance.adminToken}`,
+        "content-type": "application/pdf",
+        "x-gcpe-file-name": encodeURIComponent("Budget FR.pdf"),
+      },
       body: Buffer.from("%PDF-1.7 uploaded"),
     });
     expect(up.status).toBe(201);
@@ -674,6 +678,7 @@ describe("apps/stack", () => {
         "core.dispatch",
         "calendar.dispatch",
         "calendar.lock-sweep",
+        "calendar.orphan-sweep",
         "news-api.dispatch",
         "news-api.embed",
         "news-api.changes-prune",
@@ -688,7 +693,7 @@ describe("apps/stack", () => {
         "distribution.bounces",
         "distribution.dispatch",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 

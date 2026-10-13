@@ -138,7 +138,7 @@ function PreferencesForm({ detail, options, onSaved }: { detail: SubscriberDetai
         disabled={saving}
       />
 
-      <Button type="submit" isDisabled={saving}>
+      <Button type="submit" isPending={saving}>
         Save preferences
       </Button>
     </Form>
@@ -179,13 +179,13 @@ function StatusSection({ detail, onChanged }: { detail: SubscriberDetail; onChan
       {detail.status === "disabled" && (
         // Reversible and harmless (unlike Deactivate/Delete), so this posts at once with no
         // confirm dialog.
-        <Button onPress={() => void postStatus("active")} isDisabled={busy}>
+        <Button onPress={() => void postStatus("active")} isPending={busy}>
           Activate
         </Button>
       )}
       {detail.status === "active" && (
         <DialogTrigger isOpen={deactivateOpen} onOpenChange={setDeactivateOpen}>
-          <Button variant="secondary" isDisabled={busy}>
+          <Button variant="secondary" isPending={busy}>
             Deactivate
           </Button>
           <Modal isDismissable>
@@ -195,10 +195,10 @@ function StatusSection({ detail, onChanged }: { detail: SubscriberDetail; onChan
               title="Deactivate this subscriber?"
               buttons={
                 <>
-                  <Button onPress={() => setDeactivateOpen(false)} isDisabled={busy}>
+                  <Button onPress={() => setDeactivateOpen(false)} isPending={busy}>
                     Cancel
                   </Button>
-                  <Button danger onPress={() => void postStatus("disabled")} isDisabled={busy}>
+                  <Button danger onPress={() => void postStatus("disabled")} isPending={busy}>
                     Confirm deactivate
                   </Button>
                 </>
@@ -310,7 +310,7 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
           setEmail(v);
           setTakenId(null);
         }}
-        isDisabled={busy}
+        isReadOnly={busy}
         maxLength={MAX_EMAIL_LENGTH}
       />
       <TextField
@@ -321,10 +321,10 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
           setConfirmEmail(v);
           setTakenId(null);
         }}
-        isDisabled={busy}
+        isReadOnly={busy}
         maxLength={MAX_EMAIL_LENGTH}
       />
-      <Button type="submit" isDisabled={busy}>
+      <Button type="submit" isPending={busy}>
         Change email
       </Button>
       <p>No confirmation email is sent. Links in emails already sent to the old address stop working, except unsubscribe links.</p>
@@ -336,10 +336,10 @@ function ChangeEmailSection({ detail, onChanged }: { detail: SubscriberDetail; o
             title="That address unsubscribed"
             buttons={
               <>
-                <Button onPress={closeOptOutPrompt} isDisabled={busy}>
+                <Button onPress={closeOptOutPrompt} isPending={busy}>
                   Cancel
                 </Button>
-                <Button onPress={() => void change(optOutPrompt.email, true)} isDisabled={busy}>
+                <Button onPress={() => void change(optOutPrompt.email, true)} isPending={busy}>
                   Change anyway
                 </Button>
               </>
@@ -375,7 +375,7 @@ function DeleteSection({ detail, onDeleted }: { detail: SubscriberDetail; onDele
 
   return (
     <DialogTrigger isOpen={open} onOpenChange={setOpen}>
-      <Button variant="secondary" danger isDisabled={busy}>
+      <Button variant="secondary" danger isPending={busy}>
         Delete
       </Button>
       <Modal isDismissable>
@@ -385,10 +385,10 @@ function DeleteSection({ detail, onDeleted }: { detail: SubscriberDetail; onDele
           title="Delete this subscriber?"
           buttons={
             <>
-              <Button onPress={() => setOpen(false)} isDisabled={busy}>
+              <Button onPress={() => setOpen(false)} isPending={busy}>
                 Cancel
               </Button>
-              <Button danger onPress={() => void confirmDelete()} isDisabled={busy}>
+              <Button danger onPress={() => void confirmDelete()} isPending={busy}>
                 Confirm delete
               </Button>
             </>

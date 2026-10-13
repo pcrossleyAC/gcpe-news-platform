@@ -107,7 +107,7 @@ export function MediaListsScreen(): React.JSX.Element {
         {message && <p role="status">{message}</p>}
         {syncError && <InlineAlert variant="danger" role="alert" description={syncError} />}
         {canEdit && (
-          <Button variant="secondary" onPress={() => void runSync()} isDisabled={busy}>
+          <Button variant="secondary" onPress={() => void runSync()} isPending={busy}>
             Sync with Media Hub now
           </Button>
         )}

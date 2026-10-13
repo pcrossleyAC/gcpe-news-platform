@@ -123,8 +123,8 @@ export function AddSubscriberScreen(): React.JSX.Element {
         ))}
         {existingId && <Link to={`/subscribers/${existingId}`}>Open their record</Link>}
 
-        <TextField label="Email" type="email" value={email} onChange={setEmail} isRequired isDisabled={submitting} />
-        <TextField label="Confirm email" type="email" value={confirmEmail} onChange={setConfirmEmail} isRequired isDisabled={submitting} />
+        <TextField label="Email" type="email" value={email} onChange={setEmail} isRequired isReadOnly={submitting} />
+        <TextField label="Confirm email" type="email" value={confirmEmail} onChange={setConfirmEmail} isRequired isReadOnly={submitting} />
 
         <ListPicker
           categories={options?.categories ?? []}
@@ -144,7 +144,7 @@ export function AddSubscriberScreen(): React.JSX.Element {
           <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} disabled={submitting} /> Daily digest
         </label>
 
-        <Button type="submit" isDisabled={submitting}>
+        <Button type="submit" isPending={submitting}>
           Add subscriber
         </Button>
       </Form>

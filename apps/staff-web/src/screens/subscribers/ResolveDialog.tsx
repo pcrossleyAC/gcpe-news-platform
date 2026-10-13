@@ -78,15 +78,15 @@ export function ResolveDialog({ member, onClose, onResolved }: { member: MediaMe
         title={bouncing ? "Clear the bouncing flag?" : "Resolve this member"}
         buttons={
           <>
-            <Button onPress={onClose} isDisabled={busy}>
+            <Button onPress={onClose} isPending={busy}>
               Cancel
             </Button>
             {chooseEmail && (
-              <Button variant="secondary" onPress={() => void resolve()} isDisabled={busy}>
+              <Button variant="secondary" onPress={() => void resolve()} isPending={busy}>
                 Clear the flag only
               </Button>
             )}
-            <Button onPress={() => void resolve(chooseEmail ? (ref ?? undefined) : undefined)} isDisabled={busy || (chooseEmail && !ref)}>
+            <Button onPress={() => void resolve(chooseEmail ? (ref ?? undefined) : undefined)} isPending={busy} isDisabled={chooseEmail && !ref}>
               {chooseEmail ? "Use this email" : "Clear flag"}
             </Button>
           </>

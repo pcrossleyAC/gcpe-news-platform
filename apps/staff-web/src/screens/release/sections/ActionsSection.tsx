@@ -111,14 +111,14 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
 
       <div className="gcpe-release-editor__action-buttons">
         {canApprove && (
-          <Button onPress={approve} isDisabled={section.saving || approveBlockers.length > 0} aria-describedby={approveBlockers.length > 0 ? "actions-approve-why" : undefined}>
+          <Button onPress={approve} isPending={section.saving} isDisabled={approveBlockers.length > 0} aria-describedby={approveBlockers.length > 0 ? "actions-approve-why" : undefined}>
             Approve
           </Button>
         )}
 
         {canPublish && (
           <>
-            <Button onPress={publishNow} isDisabled={section.saving || publishBlockers.length > 0} aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}>
+            <Button onPress={publishNow} isPending={section.saving} isDisabled={publishBlockers.length > 0} aria-describedby={publishBlockers.length > 0 ? "actions-publish-why" : undefined}>
               Publish now
             </Button>
             <Button
@@ -134,7 +134,7 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
         {needsKeyFirst && <p>Set a URL key in Page details before this can be published.</p>}
 
         {canCancel && (
-          <Button variant="secondary" onPress={cancelSchedule} isDisabled={section.saving}>
+          <Button variant="secondary" onPress={cancelSchedule} isPending={section.saving}>
             Cancel schedule
           </Button>
         )}
@@ -143,7 +143,7 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
           // Minors: this takes a public release down — a confirm dialog, same pattern as
           // Delete, instead of firing the POST straight from the button press.
           <DialogTrigger isOpen={unpublishOpen} onOpenChange={setUnpublishOpen}>
-            <Button variant="secondary" isDisabled={section.saving}>
+            <Button variant="secondary" isPending={section.saving}>
               Unpublish
             </Button>
             <Modal isDismissable>
@@ -152,10 +152,10 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
                 title="Unpublish this release?"
                 buttons={
                   <>
-                    <Button onPress={() => setUnpublishOpen(false)} isDisabled={section.saving}>
+                    <Button onPress={() => setUnpublishOpen(false)} isPending={section.saving}>
                       Cancel
                     </Button>
-                    <Button danger onPress={unpublish} isDisabled={section.saving}>
+                    <Button danger onPress={unpublish} isPending={section.saving}>
                       Confirm unpublish
                     </Button>
                   </>
@@ -173,7 +173,7 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
           // *this* trigger button specifically — instead of a bare `<div role="dialog">`, which
           // left other action buttons clickable, trapped no focus, and restored nothing.
           <DialogTrigger isOpen={deleteOpen} onOpenChange={setDeleteOpen}>
-            <Button variant="secondary" danger isDisabled={section.saving}>
+            <Button variant="secondary" danger isPending={section.saving}>
               Delete
             </Button>
             <Modal isDismissable>
@@ -182,10 +182,10 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
                 title="Delete this release?"
                 buttons={
                   <>
-                    <Button onPress={() => setDeleteOpen(false)} isDisabled={deleting}>
+                    <Button onPress={() => setDeleteOpen(false)} isPending={deleting}>
                       Cancel
                     </Button>
-                    <Button danger onPress={() => void confirmDelete()} isDisabled={deleting}>
+                    <Button danger onPress={() => void confirmDelete()} isPending={deleting}>
                       Confirm delete
                     </Button>
                   </>
@@ -211,7 +211,7 @@ export function ActionsSection({ view, setView, timeZone }: ActionsSectionProps)
       {schedulerOpen && canPublish && (
         <div className="gcpe-release-editor__scheduler">
           <SchedulePicker timeZone={timeZone} legend="Schedule for" idPrefix="schedule" onChange={setScheduleValue} />
-          <Button onPress={() => void submitSchedule()} isDisabled={!scheduleValue || section.saving}>
+          <Button onPress={() => void submitSchedule()} isDisabled={!scheduleValue} isPending={section.saving}>
             Confirm schedule
           </Button>
         </div>

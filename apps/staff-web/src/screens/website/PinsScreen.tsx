@@ -65,7 +65,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
       {imageError && <InlineAlert variant="danger" role="alert" description={imageError} />}
 
-      <Switch isSelected={pin.pinned} isDisabled={!canEdit || section.saving} onChange={togglePinned}>
+      <Switch isSelected={pin.pinned} isDisabled={!canEdit} isReadOnly={section.saving} onChange={togglePinned}>
         {pin.pinned ? `${SLOT_LABEL[pin.slot]} is pinned` : `${SLOT_LABEL[pin.slot]} is not pinned`}
       </Switch>
 
@@ -101,7 +101,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
       )}
 
       {canEdit && (
-        <Button onPress={save} isDisabled={section.saving}>
+        <Button onPress={save} isPending={section.saving}>
           Save {SLOT_LABEL[pin.slot].toLowerCase()} pin
         </Button>
       )}

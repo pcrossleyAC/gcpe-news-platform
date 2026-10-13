@@ -1,3 +1,5 @@
+import { isTestSite } from "@gcpe/config";
+
 /**
  * Core's staff sign-in settings, read from Core's own env view: in the
  * stack these are CORE_ENTRA_CLIENT_ID, CORE_ENTRA_CLIENT_SECRET, CORE_PUBLIC_BASE_URL and
@@ -54,11 +56,8 @@ function publicOrigin(value: string): string {
 export function signInSettingsFromEnv(env: NodeJS.ProcessEnv): SignInSettings {
   const allowed = env.LOCAL_PASSWORDS_ALLOWED;
   if (allowed !== undefined && allowed !== "true" && allowed !== "false") throw new Error('LOCAL_PASSWORDS_ALLOWED must be "true" or "false"');
-  // C39's test-site rule, shared with the fake's own production guard (apps/stack/src/env.ts,
-  // usesFakeEntra): NODE_ENV isn't "production", or it is but the deployment is marked a test
-  // site anyway (LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true, or SITE_ENVIRONMENT=test, e.g. boxs.ca).
-  // Computed once and reused below for both guards this function makes, so the two can't drift.
-  const testDeployment = env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || env.SITE_ENVIRONMENT === "test";
+  // The platform's test-site rule (@gcpe/config), computed once for both production guards below.
+  const testDeployment = isTestSite(env);
 
   if (!TRIGGERS.some((k) => set(env, k))) {
     if (set(env, "ENTRA_AUTHORITY_URL")) throw new Error("ENTRA_AUTHORITY_URL is set but Entra sign-in is not: set ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET and PUBLIC_BASE_URL too");

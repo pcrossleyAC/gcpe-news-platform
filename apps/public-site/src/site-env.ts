@@ -1,22 +1,11 @@
 /**
- * Plan 3d task 4: whether this deployment is a test site (the TEST banner and noindex), and
- * Project Blue Bridge's public banner text. See constraints.md's "Test-site rule" and "Blue
- * Bridge banner text".
+ * Project Blue Bridge's public banner text. Whether this deployment is a test site (the TEST
+ * banner prefix and noindex) is @gcpe/config's isTestSite.
  */
 
 const BC_TIME_ZONE = "America/Vancouver";
 /** His Majesty King Charles III's birth date, for the banner's age-in-years (BC time). */
 const CHARLES_BORN = { year: 1948, month: 11, day: 14 };
-
-/**
- * A site is a test site unless it is the real production deployment (constraints.md, ruling
- * C39): `NODE_ENV` isn't "production", or it is but `LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true`
- * (a test deployment left in "production" for other reasons), or `SITE_ENVIRONMENT=test`
- * says so explicitly.
- */
-export function isTestSite(env: NodeJS.ProcessEnv): boolean {
-  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || env.SITE_ENVIRONMENT === "test";
-}
 
 /** His Majesty's age in whole years on `now`, in BC time. */
 function ageInBcYears(now: Date): number {

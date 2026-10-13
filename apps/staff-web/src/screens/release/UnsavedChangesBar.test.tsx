@@ -39,9 +39,10 @@ describe("UnsavedChangesBar", () => {
     const user = userEvent.setup();
     const button = screen.getByRole("button", { name: "Save page details" });
     await user.click(button);
-    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    expect(button).not.toHaveAttribute("disabled");
     resolveSave();
-    await waitFor(() => expect(button).toBeEnabled());
+    await waitFor(() => expect(button).not.toHaveAttribute("aria-disabled"));
   });
 
   it("a section that drops out of `sections` (because it saved and is clean again) loses its button", () => {

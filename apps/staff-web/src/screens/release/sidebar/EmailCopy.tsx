@@ -40,7 +40,7 @@ export function EmailCopy({ view }: EmailCopyProps): React.JSX.Element {
 
   return (
     <div className="gcpe-sidebar__email-copy">
-      <Button onPress={() => void send()} isDisabled={sending || noAddress} aria-describedby={noAddress ? "email-copy-why" : undefined}>
+      <Button onPress={() => void send()} isPending={sending} isDisabled={noAddress} aria-describedby={noAddress ? "email-copy-why" : undefined}>
         Email me a copy
       </Button>
       {noAddress && (

@@ -4,3 +4,4 @@ export { calendarTenantSchema, type CalendarTenantConfig } from "./calendar";
 export { parseEnv } from "./env";
 export { eventSecretsSchema } from "./event-secrets";
 export { utcOffsetMinutes, wallClockToInstant } from "./timezone";
+export { isRealProduction, isTestSite, type TestSiteEnv } from "./test-site";

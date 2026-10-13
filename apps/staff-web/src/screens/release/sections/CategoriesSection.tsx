@@ -144,7 +144,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
         )}
 
         {!readOnly && (
-          <Button type="submit" isDisabled={section.saving}>
+          <Button type="submit" isPending={section.saving}>
             Save categories
           </Button>
         )}

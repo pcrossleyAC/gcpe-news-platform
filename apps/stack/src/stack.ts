@@ -509,6 +509,9 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
         ...(calendar ? [{ name: "calendar.dispatch", run: worker(calendar, "dispatch") }] : []),
         // Deletes edit locks idle for 15 minutes (spec addendum §7.5); a no-op most ticks.
         ...(calendar ? [{ name: "calendar.lock-sweep", run: worker(calendar, "lockSweep") }] : []),
+        // Deletes attachment bytes a failed delete left behind: a day old or more and referenced
+        // by no row, at most 50 per tick (activities/orphan-sweep.ts).
+        ...(calendar ? [{ name: "calendar.orphan-sweep", run: worker(calendar, "orphanSweep") }] : []),
         { name: "news-api.dispatch", run: worker(newsApi, "dispatch") },
         // Embeds up to 50 published posts and recomputes their related posts (spec §5.2). A
         // no-op unless the News API's search mode is semantic; it skips the tick while its

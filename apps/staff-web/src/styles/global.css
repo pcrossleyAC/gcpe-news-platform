@@ -330,6 +330,18 @@ body {
   white-space: nowrap;
 }
 
+/* A pending (in-flight) Button stays focusable and keeps its usual colours — unlike a disabled
+ * one, it must not look unfocusable — but the design system gives it no visual cue of its own
+ * beyond the screen-reader announcement, so a sighted mouse user sees no response and may click
+ * again. The ring reuses the same colour the design system's own focus-visible outline uses, so
+ * it reads as "something is happening here" without weakening the button's own text/background
+ * contrast the way dimming it would.
+ */
+.bcds-react-aria-Button[data-pending] {
+  cursor: progress;
+  box-shadow: inset 0 0 0 2px var(--surface-color-border-active);
+}
+
 .gcpe-sign-in {
   max-width: 24rem;
   margin: 3rem auto;

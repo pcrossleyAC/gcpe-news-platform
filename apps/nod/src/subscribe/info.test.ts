@@ -46,6 +46,13 @@ describe("SubscriberInfo", () => {
     expect(subscriberInfoSchema.safeParse({ emailAddress: `${"a".repeat(145)}@x.test` }).success).toBe(false);
   });
 
+  it("names its error, and refuses preferences with no categories at all", async () => {
+    const err = await toPrefs(tdb.db, info({ subscribedCategories: {} })).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(PreferencesError);
+    expect((err as Error).name).toBe("PreferencesError");
+    expect((err as Error).message).toBe("Choose at least one topic, or all news.");
+  });
+
   it("infoFor returns legacy-shaped preferences", async () => {
     await tdb.db.execute(sql`
       INSERT INTO subscribers (id, email, status, as_it_happens, digest) VALUES ('00000000-0000-0000-0000-0000000000b1', 'info@example.test', 'active', false, true);

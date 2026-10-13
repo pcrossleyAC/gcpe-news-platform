@@ -1433,6 +1433,12 @@ Both flags live in the tenant config (`config/tenants/<tenant>.json`), under `"f
 
 Both run on a developer machine (or in CI), never against boxs.ca. `npm run site:quality` needs Playwright's Chromium; `npm run search:spot-check` needs the local Postgres (`TEST_DATABASE_ADMIN_URL`) with pgvector, and creates and drops its own database. Once Azure is configured (Q70), run the spot-check with `EMBEDDINGS_PROVIDER=azure-openai`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` and `AZURE_OPENAI_EMBEDDING_DEPLOYMENT` set: that's the relevance check the Phase 6 exit is waiting for.
 
+## Hardening batch 1
+
+**No migration.** **New tick step:** `calendar.orphan-sweep` (after `calendar.lock-sweep`).
+
+**Hand check on boxs.ca:** run `bash scripts/siteground-website-walkthrough.sh`. Its file upload now sends the name in `X-GCPE-File-Name` and must still pass. Upload a release translation from the editor. The access log line for `POST /nrms/api/releases/<id>/files` must show `?kind=…&version=…` and no file name.
+
 ## Troubleshooting
 
 - **`/stack/errors`** (`GET`, bearer token with the `Core.Admin` role — the same admin token

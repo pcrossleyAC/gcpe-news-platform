@@ -193,7 +193,7 @@ export function SettingsSection({ view, setView, timeZone, readOnly }: SettingsS
         )}
 
         {!readOnly && (
-          <Button type="submit" isDisabled={section.saving}>
+          <Button type="submit" isPending={section.saving}>
             Save settings
           </Button>
         )}

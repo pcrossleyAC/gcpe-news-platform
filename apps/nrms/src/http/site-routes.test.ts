@@ -227,8 +227,10 @@ describe("NRMS site HTTP API — Live Feed, links and files", () => {
     `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-00000000000c", name, email: "sam@example.invalid", roles })).token}`;
   const get = (path: string, cookie: string) => request(app).get(path).set("cookie", cookie);
   const put = (path: string, cookie: string, body: unknown) => request(app).put(path).set("cookie", cookie).set("x-gcpe-request", "1").send(body as object);
-  const upload = (path: string, cookie: string, bytes: Buffer) =>
-    request(app).post(path).set("cookie", cookie).set("x-gcpe-request", "1").set("content-type", "application/octet-stream").send(bytes);
+  const upload = (path: string, cookie: string, bytes: Buffer, name?: string) => {
+    const r = request(app).post(path).set("cookie", cookie).set("x-gcpe-request", "1").set("content-type", "application/octet-stream");
+    return (name === undefined ? r : r.set("x-gcpe-file-name", encodeURIComponent(name))).send(bytes);
+  };
 
   const defaults = { manifestUrl: "https://default.invalid/manifest.f4m", m3uUrl: "https://default.invalid/playlist.m3u8" };
 
@@ -303,13 +305,13 @@ describe("NRMS site HTTP API — Live Feed, links and files", () => {
   });
 
   it("a site editor uploads a PDF: 201, served at /files/<name>, readable from the store; a viewer gets 403", async () => {
-    const res = await upload("/api/site/files?name=Budget%202026.pdf", siteEditorCookie, PDF);
+    const res = await upload("/api/site/files", siteEditorCookie, PDF, "Budget 2026.pdf");
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ name: "budget-2026.pdf", url: "/files/budget-2026.pdf", contentType: "application/pdf" });
     const stored = await store.get("budget-2026.pdf");
     expect(stored!.bytes.equals(PDF)).toBe(true);
 
-    const denied = await upload("/api/site/files?name=other.pdf", viewerCookie, PDF);
+    const denied = await upload("/api/site/files", viewerCookie, PDF, "other.pdf");
     expect(denied.status).toBe(403);
 
     const list = await get("/api/site/files", siteEditorCookie);
@@ -323,10 +325,32 @@ describe("NRMS site HTTP API — Live Feed, links and files", () => {
 
   it("a 26 MiB upload is refused with 413 and nothing is stored", async () => {
     const big = Buffer.concat([PDF, Buffer.alloc(26 * 1024 * 1024)]);
-    const res = await upload("/api/site/files?name=big.pdf", siteEditorCookie, big);
+    const res = await upload("/api/site/files", siteEditorCookie, big, "big.pdf");
     expect(res.status).toBe(413);
     expect(await store.get("big.pdf")).toBeNull();
   });
+
+  it("site files: the name comes only from X-GCPE-File-Name; ?name= is refused and nothing is stored", async () => {
+    const viaQuery = await upload("/api/site/files?name=sample.pdf&replace=false", siteEditorCookie, PDF);
+    const both = await upload("/api/site/files?name=sample.pdf", siteEditorCookie, PDF, "sample.pdf");
+    const missing = await upload("/api/site/files?replace=false", siteEditorCookie, PDF);
+    for (const res of [viaQuery, both, missing]) expect(res.status).toBe(400);
+    expect(missing.body.issues).toEqual([expect.objectContaining({ path: ["name"], message: "Name the file." })]);
+    expect(await store.get("sample.pdf")).toBeNull();
+  });
+
+  it.each([["NUL", "\u0000", "00"], ["\\x01", "\u0001", "01"], ["\\x7f", "\u007f", "7f"], ["newline", "\n", "0a"]])(
+    "a %s in a site file's name is sanitised into the stored key, not passed through raw",
+    async (_label, ctrl, tag) => {
+      // Each case needs its own final key — site file names are unique, and every one of these
+      // control characters sanitises down to the same "-".
+      const res = await upload("/api/site/files", siteEditorCookie, PDF, `evil${ctrl}name-${tag}.pdf`);
+      expect(res.status).toBe(201);
+      expect(res.body.name).toBe(`evil-name-${tag}.pdf`);
+      expect(res.body.name).not.toContain(ctrl);
+      expect(await store.get(`evil-name-${tag}.pdf`)).not.toBeNull();
+    },
+  );
 
   it("GET /site/features lists what's featured where; a viewer can read it", async () => {
     const top = await createScheduledRelease(tdb.db, { headline: "Featured headline" });

@@ -113,7 +113,7 @@ export function DeadLettersScreen(): React.JSX.Element {
                   <td>{d.lastError ?? ""}</td>
                   <td>{d.queuedAtBc}</td>
                   <td>
-                    <Button variant="secondary" size="small" onPress={() => void retry(d)} isDisabled={retrying.has(keyOf(d))} aria-label={`Retry ${d.type} for ${d.aggregateId} to ${d.subscriber}, queued ${d.queuedAtBc}`}>
+                    <Button variant="secondary" size="small" onPress={() => void retry(d)} isPending={retrying.has(keyOf(d))} aria-label={`Retry ${d.type} for ${d.aggregateId} to ${d.subscriber}, queued ${d.queuedAtBc}`}>
                       Retry
                     </Button>
                   </td>

@@ -46,7 +46,7 @@ export function UnsavedChangesBar({ sections }: UnsavedChangesBarProps): React.J
       <p className="gcpe-save-bar__message">You have unsaved changes in: {sections.map((s) => sectionName(s.label)).join(", ")}</p>
       <div className="gcpe-save-bar__buttons">
         {sections.map((section) => (
-          <Button key={section.key} onPress={() => onSave(section)} isDisabled={pending.has(section.key)}>
+          <Button key={section.key} onPress={() => onSave(section)} isPending={pending.has(section.key)}>
             {section.label}
           </Button>
         ))}

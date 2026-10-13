@@ -150,17 +150,17 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
           {canEdit && (
             <>
               <span data-move-id={slide.clientKey} data-move-dir="up">
-                <Button variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0 || section.saving}>
+                <Button variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0} isPending={section.saving}>
                   Move slide {index + 1} up
                 </Button>
               </span>
               <span data-move-id={slide.clientKey} data-move-dir="down">
-                <Button variant="secondary" onPress={() => moveDown(index)} isDisabled={index === slides.length - 1 || section.saving}>
+                <Button variant="secondary" onPress={() => moveDown(index)} isDisabled={index === slides.length - 1} isPending={section.saving}>
                   Move slide {index + 1} down
                 </Button>
               </span>
               <DialogTrigger isOpen={removeIndex === index} onOpenChange={(open) => setRemoveIndex(open ? index : null)}>
-                <Button variant="secondary" danger isDisabled={section.saving}>
+                <Button variant="secondary" danger isPending={section.saving}>
                   Remove slide {index + 1}
                 </Button>
                 <Modal isDismissable>
@@ -207,13 +207,13 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
         <Button
           variant="secondary"
           onPress={() => setSlides((s) => [...s, { clientKey: `new-${nextClientKey.current++}`, headline: "", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" }])}
-          isDisabled={section.saving}
+          isPending={section.saving}
         >
           Add slide
         </Button>
       )}
       {canEdit && (
-        <Button onPress={save} isDisabled={section.saving}>
+        <Button onPress={save} isPending={section.saving}>
           Save carousel
         </Button>
       )}
@@ -337,7 +337,7 @@ export function CarouselScreen(): React.JSX.Element {
                 {makeLive.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
                 {makeLive.error && <InlineAlert variant="danger" role="alert" description={makeLive.error} />}
                 <DialogTrigger isOpen={makeLiveOpen} onOpenChange={setMakeLiveOpen}>
-                  <Button isDisabled={makeLive.saving}>Make live now</Button>
+                  <Button isPending={makeLive.saving}>Make live now</Button>
                   <Modal isDismissable>
                     <AlertDialog
                       variant="warning"
@@ -359,7 +359,7 @@ export function CarouselScreen(): React.JSX.Element {
                 {deleteNext.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
                 {deleteNext.error && <InlineAlert variant="danger" role="alert" description={deleteNext.error} />}
                 <DialogTrigger isOpen={deleteOpen} onOpenChange={setDeleteOpen}>
-                  <Button variant="secondary" danger isDisabled={deleteNext.saving}>
+                  <Button variant="secondary" danger isPending={deleteNext.saving}>
                     Delete next carousel
                   </Button>
                   <Modal isDismissable>
@@ -397,7 +397,7 @@ export function CarouselScreen(): React.JSX.Element {
                 {createNext.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
                 {createNext.error && <InlineAlert variant="danger" role="alert" description={createNext.error} />}
                 <SchedulePicker timeZone={timeZone} legend="Go live at (BC time)" idPrefix="carousel-create-next" onChange={setGoLive} />
-                <Button onPress={onCreateNext} isDisabled={createNext.saving || !goLive}>
+                <Button onPress={onCreateNext} isPending={createNext.saving} isDisabled={!goLive}>
                   Create next carousel
                 </Button>
               </>

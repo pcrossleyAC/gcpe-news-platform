@@ -25,15 +25,16 @@ describe("NRMS media routes", () => {
 
   const cookieFor = async (roles: string[]) =>
     `gcpe_session=${(await mintSession(SECRET, { id: "00000000-0000-4000-8000-00000000000a", name: "Pat Editor", email: "pat@example.invalid", roles })).token}`;
-  const upload = (path: string, cookie: string, bytes: Buffer) =>
-    request(app).post(path).set("cookie", cookie).set("x-gcpe-request", "1").set("content-type", "application/octet-stream").send(bytes);
+  const upload = (path: string, cookie: string, bytes: Buffer, name?: string) => {
+    const r = request(app).post(path).set("cookie", cookie).set("x-gcpe-request", "1").set("content-type", "application/octet-stream");
+    return (name === undefined ? r : r.set("x-gcpe-file-name", encodeURIComponent(name))).send(bytes);
+  };
   const create = async () => {
     const res = await request(app).post("/api/releases").set("cookie", editorCookie).set("x-gcpe-request", "1").send(sampleCreate);
     expect(res.status).toBe(201);
     return res.body as { id: string; version: number };
   };
-  const filesPath = (id: string, version: number, name: string, kind = "translation") =>
-    `/api/releases/${id}/files?kind=${kind}&version=${version}&name=${encodeURIComponent(name)}`;
+  const filesPath = (id: string, version: number, kind = "translation") => `/api/releases/${id}/files?kind=${kind}&version=${version}`;
 
   beforeAll(async () => {
     tdb = await createNrmsTestDb();
@@ -52,7 +53,7 @@ describe("NRMS media routes", () => {
 
   it("an editor uploads a PDF translation: 201 with the view listing the file", async () => {
     const { id, version } = await create();
-    const res = await upload(filesPath(id, version, "Budget FR.pdf"), editorCookie, PDF);
+    const res = await upload(filesPath(id, version), editorCookie, PDF, "Budget FR.pdf");
     expect(res.status).toBe(201);
     expect(res.body).toMatchObject({ id, version: version + 1, hasTranslations: true, statusText: "Draft" });
     expect(res.body.files).toHaveLength(1);
@@ -70,20 +71,24 @@ describe("NRMS media routes", () => {
 
   it("a viewer can't upload: 403, nothing stored", async () => {
     const { id, version } = await create();
-    const res = await upload(filesPath(id, version, "fr.pdf"), viewerCookie, PDF);
+    const res = await upload(filesPath(id, version), viewerCookie, PDF, "fr.pdf");
     expect(res.status).toBe(403);
     expect(await store.list(`releases/${id}`)).toEqual([]);
   });
 
   it("an anonymous upload is 401", async () => {
     const { id, version } = await create();
-    const res = await request(app).post(filesPath(id, version, "fr.pdf")).set("content-type", "application/pdf").send(PDF);
+    const res = await request(app)
+      .post(filesPath(id, version))
+      .set("content-type", "application/pdf")
+      .set("x-gcpe-file-name", "fr.pdf")
+      .send(PDF);
     expect(res.status).toBe(401);
   });
 
   it("a hostile file name is stored under a safe generated key", async () => {
     const { id, version } = await create();
-    const res = await upload(filesPath(id, version, "../../etc/passwd.pdf"), editorCookie, PDF);
+    const res = await upload(filesPath(id, version), editorCookie, PDF, "../../etc/passwd.pdf");
     expect(res.status).toBe(201);
     const [obj] = await store.list(`releases/${id}`);
     expect(obj!.key).toMatch(/-etc-passwd\.pdf$/);
@@ -95,7 +100,7 @@ describe("NRMS media routes", () => {
   it("a file whose bytes don't match a PDF is 422 and nothing is stored", async () => {
     const { id, version } = await create();
     const exe = Buffer.from("MZ\x90\x00 pretend exe", "latin1");
-    const res = await upload(filesPath(id, version, "budget.pdf"), editorCookie, exe);
+    const res = await upload(filesPath(id, version), editorCookie, exe, "budget.pdf");
     expect(res.status).toBe(422);
     expect(res.body.problems).toEqual(["This file isn't a PDF."]);
     expect(await store.list(`releases/${id}`)).toEqual([]);
@@ -103,26 +108,26 @@ describe("NRMS media routes", () => {
 
   it("a bad kind or version is a 400", async () => {
     const { id, version } = await create();
-    expect((await upload(`/api/releases/${id}/files?kind=photo&version=${version}&name=a.pdf`, editorCookie, PDF)).status).toBe(400);
-    expect((await upload(`/api/releases/${id}/files?kind=asset&version=x&name=a.pdf`, editorCookie, PDF)).status).toBe(400);
-    expect((await upload(`/api/releases/not-a-uuid/files?kind=asset&version=1&name=a.pdf`, editorCookie, PDF)).status).toBe(404);
+    expect((await upload(`/api/releases/${id}/files?kind=photo&version=${version}`, editorCookie, PDF, "a.pdf")).status).toBe(400);
+    expect((await upload(`/api/releases/${id}/files?kind=asset&version=x`, editorCookie, PDF, "a.pdf")).status).toBe(400);
+    expect((await upload(`/api/releases/not-a-uuid/files?kind=asset&version=1`, editorCookie, PDF, "a.pdf")).status).toBe(404);
   });
 
   it("a 26 MiB body is 413", async () => {
     const { id, version } = await create();
     const big = Buffer.concat([PDF, Buffer.alloc(26 * 1024 * 1024)]);
-    const res = await upload(filesPath(id, version, "big.pdf"), editorCookie, big);
+    const res = await upload(filesPath(id, version), editorCookie, big, "big.pdf");
     expect(res.status).toBe(413);
     expect(await store.list(`releases/${id}`)).toEqual([]);
   });
 
   it("page images: a site editor uploads (201), a viewer can't (403), anyone signed in reads the bytes, a duplicate name is 409", async () => {
-    const path = "/api/page-images?name=BC%20Logo&altEn=B.C.%20logo&altFr=Logo&sortOrder=2";
-    const created = await upload(path, siteEditorCookie, PNG);
+    const path = "/api/page-images?altEn=B.C.%20logo&altFr=Logo&sortOrder=2";
+    const created = await upload(path, siteEditorCookie, PNG, "BC Logo");
     expect(created.status).toBe(201);
     expect(created.body).toEqual({ id: expect.any(String), name: "BC Logo" });
 
-    expect((await upload("/api/page-images?name=Other", viewerCookie, PNG)).status).toBe(403);
+    expect((await upload("/api/page-images", viewerCookie, PNG, "Other")).status).toBe(403);
 
     const img = await request(app).get(`/api/page-images/${created.body.id}/image`).set("cookie", viewerCookie).buffer(true).parse((res, cb) => {
       const chunks: Buffer[] = [];
@@ -134,7 +139,7 @@ describe("NRMS media routes", () => {
     expect(img.headers["cache-control"]).toBe("private, max-age=300");
     expect(Buffer.compare(img.body as Buffer, PNG)).toBe(0);
 
-    const dup = await upload(path, editorCookie, PNG);
+    const dup = await upload(path, editorCookie, PNG, "BC Logo");
     expect(dup.status).toBe(409);
     expect(dup.body).toEqual({ error: "A page image with that name already exists.", code: "state" });
 
@@ -148,6 +153,54 @@ describe("NRMS media routes", () => {
 
     expect((await request(app).get("/api/page-images/00000000-0000-4000-8000-000000000999/image").set("cookie", viewerCookie)).status).toBe(404);
   });
+
+  it.each([["NUL", "\u0000", "00"], ["\\x01", "\u0001", "01"], ["\\x7f", "\u007f", "7f"], ["newline", "\n", "0a"]])(
+    "a %s in a page image's name is sanitised, not passed to Postgres raw: no 500",
+    async (_label, ctrl, tag) => {
+      // Each case needs its own final name — page image names are unique, and every one of
+      // these control characters sanitises down to the same single space.
+      const res = await upload("/api/page-images", siteEditorCookie, PNG, `evil${ctrl}name-${tag}.pdf`);
+      expect(res.status).toBe(201);
+      expect(res.body.name).toBe(`evil name-${tag}.pdf`);
+      expect(res.body.name).not.toContain(ctrl);
+    },
+  );
+
+  it("takes the file name only from X-GCPE-File-Name: none, empty, undecodable or ?name= is a 400 and stores nothing", async () => {
+    const { id, version } = await create();
+    const missing = await upload(filesPath(id, version), editorCookie, PDF);
+    const empty = await upload(filesPath(id, version), editorCookie, PDF, "");
+    const undecodable = await request(app).post(filesPath(id, version)).set("cookie", editorCookie).set("x-gcpe-request", "1").set("x-gcpe-file-name", "%").send(PDF);
+    const oldClient = await upload(`${filesPath(id, version)}&name=fr.pdf`, editorCookie, PDF);
+    const both = await upload(`${filesPath(id, version)}&name=fr.pdf`, editorCookie, PDF, "fr.pdf");
+    for (const res of [missing, empty, undecodable, oldClient, both]) {
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("invalid request");
+    }
+    expect(missing.body.issues).toEqual([expect.objectContaining({ path: ["name"], message: "Name the file." })]);
+    expect(await store.list(`releases/${id}`)).toEqual([]);
+
+    const pageImage = await upload("/api/page-images?name=Sample", siteEditorCookie, PNG, "Sample");
+    expect(pageImage.status).toBe(400);
+  });
+
+  it("round-trips a name with spaces, accents and a percent sign through the header", async () => {
+    const { id, version } = await create();
+    const res = await upload(filesPath(id, version), editorCookie, PDF, "Résumé 100% final.pdf");
+    expect(res.status).toBe(201);
+    expect(res.body.files[0]).toMatchObject({ label: "Résumé 100% final.pdf" });
+  });
+
+  it.each([["NUL", "\u0000"], ["\\x01", "\u0001"], ["\\x7f", "\u007f"], ["newline", "\n"]])(
+    "a %s in the file name is sanitised, not stored raw or passed to Postgres as-is: release files",
+    async (_label, ctrl) => {
+      const { id, version } = await create();
+      const res = await upload(filesPath(id, version), editorCookie, PDF, `evil${ctrl}name.pdf`);
+      expect(res.status).toBe(201);
+      expect(res.body.files[0].label).toBe("evil name.pdf");
+      expect(res.body.files[0].label).not.toContain(ctrl);
+    },
+  );
 });
 
 describe("GET /api/releases/:id/asset-status", () => {

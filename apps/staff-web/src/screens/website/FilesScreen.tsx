@@ -59,7 +59,7 @@ export function FilesScreen(): React.JSX.Element {
   const doUpload = async (file: File, replace: boolean) => {
     setUpload({ busy: true, error: null, replacePrompt: null });
     try {
-      await apiFetch<SiteFileView>(`/nrms/api/site/files?name=${encodeURIComponent(file.name)}&replace=${replace}`, { method: "POST", raw: file });
+      await apiFetch<SiteFileView>(`/nrms/api/site/files?replace=${replace}`, { method: "POST", raw: file, headers: { "X-GCPE-File-Name": encodeURIComponent(file.name) } });
       setUpload(INITIAL_UPLOAD);
       reload(q);
     } catch (caught) {
@@ -117,7 +117,7 @@ export function FilesScreen(): React.JSX.Element {
             <a href={f.url}>{f.name}</a>
             {canEdit && (
               <DialogTrigger isOpen={removeTarget?.id === f.id} onOpenChange={(open) => setRemoveTarget(open ? f : null)}>
-                <Button variant="secondary" danger isDisabled={upload.busy}>
+                <Button variant="secondary" danger isPending={upload.busy}>
                   Delete {f.name}
                 </Button>
                 <Modal isDismissable>

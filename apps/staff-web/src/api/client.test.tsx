@@ -85,7 +85,7 @@ describe("apiFetch", () => {
       }),
     );
     const bytes = new Uint8Array([1, 2, 3]);
-    await apiFetch("/nrms/api/releases/abc-123/files?kind=asset&version=1&name=a.png", { method: "POST", raw: bytes });
+    await apiFetch("/nrms/api/releases/abc-123/files?kind=asset&version=1", { method: "POST", raw: bytes });
 
     const call = calls[0]!;
     const headers = new Headers(call.init.headers);

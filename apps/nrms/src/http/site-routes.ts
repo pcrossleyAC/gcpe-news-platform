@@ -27,6 +27,7 @@ import { deleteFile, listFiles, uploadFile, MAX_SITE_FILE_BYTES } from "../websi
 import { featuredWhere } from "../website/features";
 import { getLinks, saveLinks } from "../website/links";
 import { getBlueBridge, getLiveFeed, saveLiveFeed, setBlueBridge, type LiveFeedDefaults } from "../website/settings";
+import { fileNameHeader } from "./file-name";
 import { run, UUID, type Params } from "./routes";
 
 export interface SiteRouteDeps {
@@ -138,10 +139,10 @@ const filesQuerySchema = z.object({
   q: z.string().trim().max(255).optional(),
   page: z.coerce.number().int().min(1).default(1),
 });
-const uploadFileQuerySchema = z.object({
-  name: z.string().min(1).max(1000),
-  replace: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
-});
+const uploadFileQuerySchema = z
+  .object({ replace: z.enum(["true", "false"]).default("false").transform((v) => v === "true") })
+  .strict();
+const siteFileName = z.string().min(1).max(1000);
 
 const bytesOf = (req: Request): Buffer => (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
 const notFound = (res: Response) => void res.status(404).json({ error: "not found" });
@@ -344,10 +345,11 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     edit,
     needStore,
     query(uploadFileQuerySchema),
+    fileNameHeader(siteFileName),
     rawFile,
     run(async (req, res) => {
       const q = res.locals.query as z.infer<typeof uploadFileQuerySchema>;
-      const view = await uploadFile(db, deps.store!, { name: q.name, bytes: bytesOf(req), replace: q.replace }, actorOf(req));
+      const view = await uploadFile(db, deps.store!, { name: res.locals.fileName as string, bytes: bytesOf(req), replace: q.replace }, actorOf(req));
       res.status(201).json(view);
     }),
   );

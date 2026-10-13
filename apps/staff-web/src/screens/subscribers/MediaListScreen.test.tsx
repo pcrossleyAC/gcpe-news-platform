@@ -25,7 +25,7 @@ const CONTACT = {
 
 type Call = { url: string; method: string; body: unknown };
 interface StubOptions {
-  onAdd?: (body: Record<string, unknown>) => Response;
+  onAdd?: (body: Record<string, unknown>) => Response | Promise<Response>;
   onSearch?: (body: Record<string, unknown>) => Response | Promise<Response>;
   members?: () => Response;
   onRemove?: () => Response;
@@ -105,6 +105,24 @@ describe("MediaListScreen", () => {
     await user.click(within(await screen.findByRole("alertdialog")).getByRole("button", { name: "Add anyway" }));
     await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/media-lists/budget/members", method: "POST", body: { email: "gone@example.test", confirmOptOut: true } }));
     expect(await screen.findByRole("status")).toHaveTextContent("Added to the list.");
+  });
+
+  it("pressing Enter twice in the Email address field while adding sends only one request", async () => {
+    let resolveAdd!: (v: Response) => void;
+    const calls = stub(["NoD.Editor"], { onAdd: () => new Promise<Response>((resolve) => (resolveAdd = resolve)) });
+    renderIt();
+    const user = userEvent.setup();
+    const email = await screen.findByRole("textbox", { name: "Email address" });
+    await user.type(email, "new@example.test{Enter}");
+    await waitFor(() => expect(calls.filter((c) => c.method === "POST")).toHaveLength(1));
+
+    await user.type(email, "{Enter}");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
+
+    resolveAdd(jsonResponse(201, { subscriberId: "x", created: true }));
+    await screen.findByText("Added to the list.");
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(1);
   });
 
   it("Media Hub search posts the term (never in the URL) and adds the chosen email", async () => {

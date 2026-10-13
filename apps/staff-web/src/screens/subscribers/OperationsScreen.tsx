@@ -4,6 +4,7 @@ import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
+import { ignoreWhileBusy } from "../../shared/guardSubmit";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canAdminSubscribers } from "./access";
 import type { EmergencyFeedStatus, OperationsStatus, PurgeStatus } from "./types";
@@ -145,10 +146,10 @@ function PauseControl(props: {
             title={`${props.paused ? "Resume" : "Pause"} ${props.title}?`}
             buttons={
               <>
-                <Button onPress={() => setOpen(false)} isDisabled={busy}>
+                <Button onPress={() => setOpen(false)} isPending={busy}>
                   Cancel
                 </Button>
-                <Button danger={!props.paused} onPress={() => void run()} isDisabled={busy}>
+                <Button danger={!props.paused} onPress={() => void run()} isPending={busy}>
                   {`Confirm ${verb}`}
                 </Button>
               </>
@@ -184,7 +185,7 @@ function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceS
     }
   };
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    if (ignoreWhileBusy(busy, e)) return;
     void put(address.trim() || null, "Bounce summary address saved.");
   };
   return (
@@ -195,11 +196,11 @@ function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceS
       {value.from === null && <p>No address is set, so no summary is sent.</p>}
       <Form onSubmit={onSubmit} aria-label="Bounce summary address">
         <TextField label="Bounce summary email" name="address" value={address} onChange={setAddress} />
-        <Button type="submit" isDisabled={busy}>
+        <Button type="submit" isPending={busy}>
           Save address
         </Button>
         {value.from === "setting" && (
-          <Button variant="secondary" isDisabled={busy} onPress={() => void put(null, "Using the server default again.")}>
+          <Button variant="secondary" isPending={busy} onPress={() => void put(null, "Using the server default again.")}>
             Use the server default
           </Button>
         )}
@@ -216,7 +217,7 @@ function SoftCodesForm({ value, onDone }: { value: string[]; onDone(text: string
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setCodes(saved), [saved]);
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    if (ignoreWhileBusy(busy, e)) return;
     setBusy(true);
     setError(null);
     try {
@@ -238,7 +239,7 @@ function SoftCodesForm({ value, onDone }: { value: string[]; onDone(text: string
       </p>
       <Form onSubmit={(e) => void onSubmit(e)} aria-label="Soft bounce codes">
         <TextField label="Soft codes counted as hard" name="codes" value={codes} onChange={setCodes} />
-        <Button type="submit" isDisabled={busy}>
+        <Button type="submit" isPending={busy}>
           Save codes
         </Button>
       </Form>
@@ -310,10 +311,10 @@ function PurgeControl({ purge, timeZone, onDone }: { purge: PurgeStatus; timeZon
             title={turningOn ? "Turn on the retention purge?" : "Turn off the retention purge?"}
             buttons={
               <>
-                <Button onPress={() => setOpen(false)} isDisabled={busy}>
+                <Button onPress={() => setOpen(false)} isPending={busy}>
                   Cancel
                 </Button>
-                <Button danger={turningOn} onPress={() => void run()} isDisabled={busy}>
+                <Button danger={turningOn} onPress={() => void run()} isPending={busy}>
                   {turningOn ? "Turn on purge" : "Turn off purge"}
                 </Button>
               </>
@@ -404,7 +405,7 @@ function BounceUpload({ onDone }: { onDone(text: string): void }): React.JSX.Ele
       </label>
       <label htmlFor="ops-bounce-raw">Or paste the message</label>
       <textarea id="ops-bounce-raw" rows={8} value={raw} onChange={(e) => setRaw(e.target.value)} disabled={busy} />
-      <Button onPress={() => void upload()} isDisabled={busy}>
+      <Button onPress={() => void upload()} isPending={busy}>
         Upload bounce
       </Button>
       {error && <InlineAlert variant="danger" role="alert" description={error} />}

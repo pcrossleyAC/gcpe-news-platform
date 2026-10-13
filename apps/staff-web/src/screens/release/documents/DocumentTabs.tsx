@@ -75,13 +75,13 @@ export function DocumentTabs({ view, setView, documentId, readOnly }: DocumentTa
       <div className="gcpe-document-tabs__translation-actions">
         {!readOnly &&
           missing.map((l) => (
-            <Button key={l} variant="secondary" onPress={() => addTranslation(l)} isDisabled={section.saving}>
+            <Button key={l} variant="secondary" onPress={() => addTranslation(l)} isPending={section.saving}>
               Add {LANGUAGE_NAME[l]} translation
             </Button>
           ))}
         {!readOnly && removableLanguage && (
           <DialogTrigger isOpen={removeOpen} onOpenChange={setRemoveOpen}>
-            <Button variant="secondary" danger isDisabled={section.saving}>
+            <Button variant="secondary" danger isPending={section.saving}>
               Remove {LANGUAGE_NAME[removableLanguage]} translation
             </Button>
             <Modal isDismissable>

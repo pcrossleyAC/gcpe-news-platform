@@ -1,7 +1,7 @@
 import { z } from "zod";
 import express from "express";
 import { serviceTokenProvider } from "@gcpe/auth";
-import { assertTimeZoneRules, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, isTestSite, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { createApp } from "./app";
@@ -13,7 +13,6 @@ import { newsApiClient } from "./news-api-client";
 import { postIndex } from "./post-index";
 import type { SiteInfo } from "./render";
 import { selfHeal } from "./self-heal";
-import { isTestSite } from "./site-env";
 import { logoFor } from "./static-pages";
 import { fsStorage } from "./storage";
 import { createRebuildHandler, kickBackgroundSync, syncSite, type SyncDeps } from "./sync";

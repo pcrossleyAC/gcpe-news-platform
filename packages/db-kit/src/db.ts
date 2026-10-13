@@ -57,6 +57,9 @@ export async function runMigrations(db: Db, migrationsFolder: string): Promise<v
   try {
     await conn.query("SELECT pg_advisory_lock($1, $2)", [...MIGRATION_LOCK]);
     try {
+      // drizzle applies only journal entries whose `when` (folderMillis) is later than the last
+      // applied migration's created_at, and skips anything older without a word. A migration
+      // generated on a branch and merged after a newer one would never run: regenerate it instead.
       await migrate(drizzle(conn), { migrationsFolder });
     } finally {
       await conn.query("SELECT pg_advisory_unlock($1, $2)", [...MIGRATION_LOCK]).catch(() => {

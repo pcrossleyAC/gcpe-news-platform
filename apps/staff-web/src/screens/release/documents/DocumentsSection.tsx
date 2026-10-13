@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { LANG_EN, LAYOUTS, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
 import { useAnnouncer } from "../../../shared/Announcer";
+import { ignoreWhileBusy } from "../../../shared/guardSubmit";
 import { DragHandle, useDragReorder } from "../../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../../shared/useMoveFocusRestore";
 import { moveBy, moveTo } from "../../../shared/reorder";
@@ -64,7 +65,7 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
   });
 
   const submitAdd = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    if (ignoreWhileBusy(section.saving, e)) return;
     void section.save("/documents", { version: view.version, pageTitle: newPageTitle.trim(), layout: newLayout }, "POST").then((next) => {
       if (next) {
         setAdding(false);
@@ -109,17 +110,17 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
             {!readOnly && (
               <>
                 <span data-move-id={doc.id} data-move-dir="up">
-                  <Button size="small" variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0 || section.saving}>
+                  <Button size="small" variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0} isPending={section.saving}>
                     <span>Move <span className="gcpe-visually-hidden">document {index + 1}</span> up</span>
                   </Button>
                 </span>
                 <span data-move-id={doc.id} data-move-dir="down">
-                  <Button size="small" variant="secondary" onPress={() => moveDown(index)} isDisabled={index === docs.length - 1 || section.saving}>
+                  <Button size="small" variant="secondary" onPress={() => moveDown(index)} isDisabled={index === docs.length - 1} isPending={section.saving}>
                     <span>Move <span className="gcpe-visually-hidden">document {index + 1}</span> down</span>
                   </Button>
                 </span>
                 <DialogTrigger isOpen={removeTarget === doc.id} onOpenChange={(open) => setRemoveTarget(open ? doc.id : null)}>
-                  <Button size="small" variant="secondary" danger isDisabled={section.saving || docs.length <= 1}>
+                  <Button size="small" variant="secondary" danger isPending={section.saving} isDisabled={docs.length <= 1}>
                     <span>Remove <span className="gcpe-visually-hidden">document {index + 1}</span></span>
                   </Button>
                   <Modal isDismissable>
@@ -160,7 +161,7 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
               ))}
             </select>
           </label>
-          <Button type="submit" isDisabled={section.saving}>
+          <Button type="submit" isPending={section.saving}>
             Add
           </Button>
           <Button variant="secondary" onPress={() => setAdding(false)}>

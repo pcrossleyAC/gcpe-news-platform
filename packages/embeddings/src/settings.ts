@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { isRealProduction } from "@gcpe/config";
 import { azureOpenAiProvider } from "./azure-openai";
 import type { EmbeddingProvider } from "./provider";
 import { standInProvider } from "./stand-in";
@@ -30,11 +31,6 @@ export const embeddingsEnvShape = {
 
 const embeddingsEnvObject = z.object(embeddingsEnvShape);
 export type EmbeddingsEnv = z.output<typeof embeddingsEnvObject>;
-
-/** The platform's test-site rule (apps/public-site/src/site-env.ts, isTestSite), inverted. */
-function isRealProduction(env: EmbeddingsEnv): boolean {
-  return env.NODE_ENV === "production" && env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION !== "true" && env.SITE_ENVIRONMENT !== "test";
-}
 
 const AZURE_REQUIRED = ["AZURE_OPENAI_ENDPOINT", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_EMBEDDING_DEPLOYMENT"] as const;
 

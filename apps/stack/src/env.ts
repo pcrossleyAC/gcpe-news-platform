@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { existsSync } from "node:fs";
 import { isAbsolute, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isRealProduction } from "@gcpe/config";
 import { INTERNAL_ORIGIN } from "./internal-fetch";
 import { createProjectionHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
 import { z } from "zod";
@@ -181,14 +182,11 @@ export const FAKE_ENTRA_IDENTITIES = [
  * True when the stack mounts the fake Microsoft sign-in and points Core at it: only when asked
  * for (FAKE_ENTRA_ENABLED=true). Throws on a real production deployment, or when real Entra
  * sign-in settings are present, so the fake can never stand in for Microsoft by accident. "Real
- * production" is C39's shared test-site rule (same one apps/core/src/entra/config.ts's own
- * production guard uses): NODE_ENV=production is not real production when
- * LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true or SITE_ENVIRONMENT=test marks the deployment a test site.
+ * production" is @gcpe/config's isRealProduction, the same rule Core's own production guard uses.
  */
 export function usesFakeEntra(env: NodeJS.ProcessEnv): boolean {
   if (env.FAKE_ENTRA_ENABLED !== "true") return false;
-  const testDeployment = env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || env.SITE_ENVIRONMENT === "test";
-  if (!testDeployment) {
+  if (isRealProduction(env)) {
     throw new Error("FAKE_ENTRA_ENABLED is refused on a production deployment");
   }
   const real = ["ENTRA_TENANT_ID", "CORE_ENTRA_TENANT_ID", "CORE_ENTRA_CLIENT_ID", "CORE_ENTRA_CLIENT_SECRET", "CORE_ENTRA_AUTHORITY_URL"].filter((k) => env[k]);

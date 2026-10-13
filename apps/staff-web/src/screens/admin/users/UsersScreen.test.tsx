@@ -22,7 +22,7 @@ function withAuth(children: React.ReactNode) {
 const SELF: UserView = { id: "self-1", email: "self@x.invalid", displayName: "Self", isActive: true, signInMethod: "local", roles: ["Core.Admin"] };
 const OTHER: UserView = { id: "other-1", email: "other@x.invalid", displayName: "Other", isActive: true, signInMethod: "local", roles: ["NRMS.Viewer"] };
 
-function stubSession(calls: { url: string; init?: RequestInit }[], extra: (url: string, init?: RequestInit) => Response | null) {
+function stubSession(calls: { url: string; init?: RequestInit }[], extra: (url: string, init?: RequestInit) => Response | Promise<Response> | null) {
   vi.stubGlobal(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
@@ -153,6 +153,29 @@ describe("UsersScreen", () => {
     expect(await screen.findByText("Password updated.")).toBeInTheDocument();
   });
 
+  it("pressing Enter twice while the password save is in flight sends only one request", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    let resolvePost!: (v: Response) => void;
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF]);
+      if (url === "/core/api/users/self-1/password" && init?.method === "POST") return new Promise<Response>((resolve) => (resolvePost = resolve));
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    const passwordField = (await screen.findByLabelText("self@x.invalid new password")) as HTMLInputElement;
+    await user.type(passwordField, "a-new-strong-password{Enter}");
+    await waitFor(() => expect(calls.filter((c) => c.url === "/core/api/users/self-1/password")).toHaveLength(1));
+
+    await user.type(passwordField, "{Enter}");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.filter((c) => c.url === "/core/api/users/self-1/password")).toHaveLength(1);
+
+    resolvePost(new Response(null, { status: 204 }));
+    await screen.findByText("Password updated.");
+    expect(calls.filter((c) => c.url === "/core/api/users/self-1/password")).toHaveLength(1);
+  });
+
   // Fix round 1, item 3: onCreate clears the password field on failure too (not just success),
   // same rule as savePassword — a typed password is never left sitting in the form.
   it("clears the create form's password field even when creation fails", async () => {
@@ -193,6 +216,31 @@ describe("UsersScreen", () => {
     await user.click(within(form).getByRole("button", { name: "Link and activate" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/core/api/users/old-1/link")).toBe(true));
     expect(JSON.parse(calls.find((c) => c.url === "/core/api/users/old-1/link")!.init!.body as string)).toEqual({ email: "kim.imported@x.invalid" });
+  });
+
+  it("pressing Enter twice in the link-to-email field while linking sends only one request", async () => {
+    const IMPORTED: UserView = { id: "old-1", email: null, displayName: "Kim Imported", isActive: false, signInMethod: "local", roles: [] };
+    const calls: { url: string; init?: RequestInit }[] = [];
+    let resolvePost!: (v: Response) => void;
+    stubSession(calls, (url, init) => {
+      if (url === "/core/api/users" && (init?.method ?? "GET") === "GET") return jsonResponse(200, [SELF, IMPORTED]);
+      if (url === "/core/api/users/old-1/link" && init?.method === "POST") return new Promise<Response>((resolve) => (resolvePost = resolve));
+      return null;
+    });
+    render(withAuth(<UsersScreen />));
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Link Kim Imported to an email" });
+    const email = within(form).getByLabelText(/^Email for Kim Imported/);
+    await user.type(email, "kim.imported@x.invalid{Enter}");
+    await waitFor(() => expect(calls.filter((c) => c.url === "/core/api/users/old-1/link")).toHaveLength(1));
+
+    await user.type(email, "{Enter}");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.filter((c) => c.url === "/core/api/users/old-1/link")).toHaveLength(1);
+
+    resolvePost(jsonResponse(200, { ...IMPORTED, email: "kim.imported@x.invalid", isActive: true }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.filter((c) => c.url === "/core/api/users/old-1/link")).toHaveLength(1);
   });
 
   it("unlinks a user's Microsoft sign-in, then offers a password again", async () => {

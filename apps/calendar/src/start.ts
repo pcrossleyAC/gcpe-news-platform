@@ -8,6 +8,7 @@ import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { type Closer, safeErrorLabel } from "@gcpe/http-kit";
 import { localStore } from "@gcpe/storage";
 import { sweepLocks } from "./activities/locks";
+import { createOrphanSweeper } from "./activities/orphan-sweep";
 import { createApp } from "./app";
 import type { ApiDeps } from "./http/routes";
 import { needsReferenceData } from "./projections";
@@ -68,12 +69,14 @@ export async function startCalendar(env: NodeJS.ProcessEnv): Promise<AppHandle> 
   await runMigrations(db, parsed.MIGRATIONS_FOLDER);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
   const store = localStore(parsed.STORAGE_DIR);
+  const orphanSweep = createOrphanSweeper(db, store);
   // No local login router: the token it issues is a bearer token, which has no Calendar access.
   const reports = startReports(parsed);
   const app = createApp({ db, auth: auth.bearer, eventSecrets: parsed.EVENT_SECRETS, rules, subscribers, store, reports });
 
   let stopDispatcher: (() => Promise<void>) | undefined;
   let sweep: NodeJS.Timeout | undefined;
+  let orphans: NodeJS.Timeout | undefined;
   return {
     app,
     port: parsed.PORT,
@@ -83,16 +86,21 @@ export async function startCalendar(env: NodeJS.ProcessEnv): Promise<AppHandle> 
       dispatch: () => dispatchOnce({ db, subscribers }),
       needsReferenceData: () => needsReferenceData(db),
       lockSweep: () => sweepLocks(db),
+      // Deletes attachment bytes no row references, a batch of activities per call.
+      orphanSweep,
     },
     startLoops() {
       stopDispatcher = startDispatcher({ db, subscribers });
       sweep = setInterval(() => void sweepLocks(db).catch((e) => console.error("[calendar] lock sweep failed", safeErrorLabel(e))), 60_000);
       sweep.unref();
+      orphans = setInterval(() => void orphanSweep().catch((e) => console.error("[calendar] orphan sweep failed", safeErrorLabel(e))), 60_000);
+      orphans.unref();
     },
     closeBeforeServer: [],
     closers: [
       { name: "event dispatcher", close: async () => { await stopDispatcher?.(); } },
       { name: "lock sweep", close: async () => clearInterval(sweep) },
+      { name: "orphan sweep", close: async () => clearInterval(orphans) },
       { name: "report jobs", close: async () => { await reports?.jobs.close(); } },
       { name: "db pool", close: () => pool.end() },
     ],

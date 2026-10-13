@@ -116,13 +116,14 @@ export async function apiCall<T = unknown>(
  * (I6's axe-sweep seeding; website.spec.ts's own upload test builds the same bytes inline). */
 export const ONE_PX_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
 
-/** `POST /nrms/api/site/files?name=&replace=` with raw bytes — `apiCall` always JSON-encodes
- * its body, which this route doesn't take (apps/nrms/src/http/site-routes.ts's `rawFile`
- * middleware reads the raw request body). Used to seed a Website file outside the browser. */
+/** `POST /nrms/api/site/files?replace=` with raw bytes and the name in X-GCPE-File-Name —
+ * `apiCall` always JSON-encodes its body, which this route doesn't take
+ * (apps/nrms/src/http/site-routes.ts's `rawFile` middleware reads the raw request body). Used to
+ * seed a Website file outside the browser. */
 export async function uploadSiteFile(cookie: string, name: string, bytes: Buffer, contentType = "image/png"): Promise<{ id: string; url: string }> {
-  const res = await fetch(`${baseUrl()}/nrms/api/site/files?${new URLSearchParams({ name, replace: "false" })}`, {
+  const res = await fetch(`${baseUrl()}/nrms/api/site/files?replace=false`, {
     method: "POST",
-    headers: { cookie, [CSRF_HEADER]: "1", "content-type": contentType },
+    headers: { cookie, [CSRF_HEADER]: "1", "content-type": contentType, "x-gcpe-file-name": encodeURIComponent(name) },
     body: new Uint8Array(bytes),
   });
   if (!res.ok) throw new Error(`uploadSiteFile(${name}) -> ${res.status}: ${await res.text()}`);
@@ -192,7 +193,14 @@ const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"];
  * serious/critical violations). Returns the violations so a caller can also assert specifics;
  * always asserts the serious/critical gate itself. */
 export async function expectNoSeriousA11yViolations(page: Page, context?: string): Promise<void> {
-  const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+  // A pending Button that has focus announces its new accessible name through react-aria's
+  // live-announcer: a node appended straight to document.body, outside the page's own markup,
+  // referencing the button's id, that removes itself after a few seconds. A scan that lands in
+  // that window can find a leftover announcement still pointing at a button an earlier step in
+  // this same test already replaced — a transient screen-reader utility node, not page content,
+  // so it's excluded here rather than chased with a wait (same idea as settleModalTransition,
+  // for a different kind of transient state).
+  const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).exclude("[data-live-announcer] [role=\"img\"]").analyze();
   const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   if (blocking.length > 0) {
     const detail = blocking

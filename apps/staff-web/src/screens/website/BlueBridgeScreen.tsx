@@ -103,7 +103,7 @@ export function BlueBridgeScreen(): React.JSX.Element {
 
       {isAdmin && (
         <>
-          <Switch isSelected={state.on} isDisabled={section.saving} onChange={openDialog}>
+          <Switch isSelected={state.on} isReadOnly={section.saving} onChange={openDialog}>
             Project Blue Bridge
           </Switch>
 
@@ -117,7 +117,7 @@ export function BlueBridgeScreen(): React.JSX.Element {
               buttons={
                 <>
                   <Button onPress={() => setDialogOpen(false)}>Cancel</Button>
-                  <Button danger onPress={onConfirm} isDisabled={!confirmEnabled || section.saving}>
+                  <Button danger onPress={onConfirm} isDisabled={!confirmEnabled} isPending={section.saving}>
                     Confirm {pendingOn ? "turn on" : "turn off"}
                   </Button>
                 </>
