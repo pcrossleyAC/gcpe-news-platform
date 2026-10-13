@@ -200,7 +200,7 @@ export async function expectNoSeriousA11yViolations(page: Page, context?: string
   // this same test already replaced — a transient screen-reader utility node, not page content,
   // so it's excluded here rather than chased with a wait (same idea as settleModalTransition,
   // for a different kind of transient state).
-  const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).exclude("[data-live-announcer]").analyze();
+  const results = await new AxeBuilder({ page }).withTags(AXE_TAGS).exclude("[data-live-announcer] [role=\"img\"]").analyze();
   const blocking = results.violations.filter((v) => v.impact === "serious" || v.impact === "critical");
   if (blocking.length > 0) {
     const detail = blocking
