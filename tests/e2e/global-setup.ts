@@ -190,6 +190,10 @@ export default async function globalSetup(): Promise<() => Promise<void>> {
     LOCAL_AUTH_SECRET,
     STACK_EVENT_SECRET,
     STAFF_WEB_DIR: staffWebDir,
+    // Entra sign-in through the stack's fake Microsoft (entra-sign-in.spec.ts): the browser
+    // reaches the fake's picker and Core's callback at this origin.
+    FAKE_ENTRA_ENABLED: "true",
+    CORE_PUBLIC_BASE_URL: `http://127.0.0.1:${port}`,
     CALENDAR_DATABASE_URL: calendar.url,
     CALENDAR_TENANT_CONFIG: calendarTenant,
     TENANT_CONFIG: staffAiTenant,

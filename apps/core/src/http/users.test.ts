@@ -7,7 +7,7 @@ import { outboxEvents } from "@gcpe/events";
 import { createCoreTestDb } from "../../test/helpers";
 import { createApp } from "../app";
 import { users } from "../db/schema";
-import { createUser, createUserSchema } from "../services/users";
+import { createUser, createUserSchema, matchEntraUser } from "../services/users";
 
 const SECRET = "session-secret-for-users-tests-0123456789";
 
@@ -127,5 +127,29 @@ describe("Core users API", () => {
     expect(linked.status).toBe(200);
     expect(await count(`user:${noEmail!.id}`)).toBe(1);
     expect(await count(`user:${noEmail!.id.toUpperCase()}`)).toBe(0);
+  });
+
+  it("unlinks Microsoft sign-in (Core.Admin only, emitting user.upserted) and refuses a password while linked", async () => {
+    const count = async (aggregateId: string) => (await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, aggregateId))).length;
+    const staff = await createUser(tdb.db, createUserSchema.parse({ email: "linked.staff@example.test", displayName: "Linked Staff" }), []);
+    await matchEntraUser(tdb.db, "oid-linked-staff", "linked.staff@example.test");
+
+    const refused = await as(adminCookie).post(`/api/users/${staff.id}/password`, { password: "a long enough password" });
+    expect(refused.status).toBe(409);
+    expect(refused.body).toEqual({ error: "this user signs in with Microsoft; unlink them first" });
+
+    expect((await as(viewerCookie).post(`/api/users/${staff.id}/unlink-entra`)).status).toBe(403);
+    expect((await request(app).post(`/api/users/${staff.id}/unlink-entra`).set("cookie", adminCookie)).status).toBe(403);
+    // With no session at all (not just a missing CSRF header), refused as 401, the same
+    // shared admin middleware every other /users route already gets.
+    expect((await request(app).post(`/api/users/${staff.id}/unlink-entra`).set("x-gcpe-request", "1")).status).toBe(401);
+    const before = await count(`user:${staff.id}`);
+    const res = await as(adminCookie).post(`/api/users/${staff.id}/unlink-entra`);
+    expect(res.status).toBe(200);
+    expect(res.body).toMatchObject({ id: staff.id, signInMethod: "local" });
+    expect(res.body).not.toHaveProperty("entraOid");
+    expect(await count(`user:${staff.id}`)).toBe(before + 1);
+    expect((await as(adminCookie).post(`/api/users/${staff.id}/password`, { password: "a long enough password" })).status).toBe(204);
+    expect((await as(adminCookie).post("/api/users/00000000-0000-4000-8000-000000000000/unlink-entra")).status).toBe(404);
   });
 });

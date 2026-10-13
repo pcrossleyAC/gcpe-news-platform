@@ -1,4 +1,4 @@
-import { and, asc, eq, inArray, notLike, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, notLike, sql } from "drizzle-orm";
 import { z } from "zod";
 import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { hashPassword, isCalendarRole, STAFF_ROLES, verifyPassword, type CalendarRole, type SessionUser } from "@gcpe/auth";
@@ -57,6 +57,8 @@ export class UserNotFoundError extends Error {}
 export class UserNeedsEmailError extends Error {}
 /** Linking an email onto a user that already has one. */
 export class UserAlreadyHasEmailError extends Error {}
+/** Setting a password for a user who signs in with Entra: unlink them first. */
+export class UserLinkedToEntraError extends Error {}
 
 const isUuid = (id: string) => z.string().uuid().safeParse(id).success;
 /** Postgres stores and returns UUIDs lowercased: locking that form makes two differently-cased
@@ -68,6 +70,10 @@ const lockUser = (tx: Tx, id: string) => lockAggregate(tx, userAggregateId(id.to
 const isDuplicateEmail = (e: unknown) => {
   const cause = (e as { cause?: { code?: string; constraint?: string } }).cause;
   return cause?.code === "23505" && cause.constraint === "users_email_lower_idx";
+};
+const isUniqueViolation = (e: unknown, constraint: string) => {
+  const cause = (e as { cause?: { code?: string; constraint?: string } }).cause;
+  return cause?.code === "23505" && cause.constraint === constraint;
 };
 const isCheckViolation = (e: unknown, constraint: string) => {
   const cause = (e as { cause?: { code?: string; constraint?: string } }).cause;
@@ -252,19 +258,30 @@ export async function setRoles(db: Db, id: string, next: string[], subscribers: 
 export async function setPassword(db: Db, id: string, pw: string): Promise<void> {
   if (!isUuid(id)) throw new UserNotFoundError(id);
   const passwordHash = await hashPassword(pw);
-  const updated = await db.update(users).set({ passwordHash, signInMethod: "local", updatedAt: new Date() }).where(eq(users.id, id)).returning({ id: users.id });
-  if (updated.length === 0) throw new UserNotFoundError(id);
+  const updated = await db
+    .update(users)
+    .set({ passwordHash, signInMethod: "local", updatedAt: new Date() })
+    .where(and(eq(users.id, id), isNull(users.entraOid)))
+    .returning({ id: users.id });
+  if (updated.length > 0) return;
+  const [exists] = await db.select({ id: users.id }).from(users).where(eq(users.id, id));
+  throw exists ? new UserLinkedToEntraError(id) : new UserNotFoundError(id);
 }
 
 // Compared against when the email is unknown or has no password, so every sign-in attempt
 // costs exactly one scrypt verification (no timing tell for "no such user").
 let dummyHash: Promise<string> | undefined;
 
-export async function authenticate(db: Db, address: string, pw: string): Promise<UserView | null> {
+/**
+ * Password sign-in for a users row. `usersAllowed: false` (production with Entra on, unless
+ * LOCAL_PASSWORDS_ALLOWED) refuses every user; a user linked to Entra is always refused. Both
+ * refusals still cost the one verification and look exactly like a wrong password.
+ */
+export async function authenticate(db: Db, address: string, pw: string, opts: { usersAllowed?: boolean } = {}): Promise<UserView | null> {
   const [row] = await db.select().from(users).where(sql`lower(${users.email}) = ${address.trim().toLowerCase()}`);
   const stored = row?.passwordHash ?? (await (dummyHash ??= hashPassword("placeholder-never-matches-anything")));
   const ok = await verifyPassword(pw, stored);
-  if (!row || !row.isActive || !row.passwordHash || !ok) return null;
+  if (!row || !row.isActive || !row.passwordHash || row.signInMethod === "entra" || opts.usersAllowed === false || !ok) return null;
   return getUser(db, row.id);
 }
 
@@ -273,4 +290,68 @@ export async function sessionUserFor(db: Db, id: string): Promise<SessionUser | 
   const u = await getUser(db, id);
   // An active user always has an email (users_active_needs_email).
   return u && u.isActive ? { id: u.id, name: u.displayName, email: u.email ?? "", roles: sessionRolesOf(u) } : null;
+}
+
+/** Why an Entra identity was refused: the sign-in screen's codes. */
+export type EntraRefusal = "not_provisioned" | "inactive" | "conflict";
+export type EntraMatch = { ok: true; user: SessionUser } | { ok: false; code: EntraRefusal; userId?: string };
+
+/**
+ * Finds the Core user for an Entra identity: by `oid` first, then by email
+ * (already trimmed and lowercased; null when the token carried none) among users not yet linked,
+ * linking that user in the same transaction. Never creates a user and never matches a user
+ * without an email.
+ */
+export async function matchEntraUser(db: Db, oid: string, email: string | null): Promise<EntraMatch> {
+  const [linked] = await db.select({ id: users.id }).from(users).where(eq(users.entraOid, oid));
+  if (linked) {
+    const user = await sessionUserFor(db, linked.id);
+    return user ? { ok: true, user } : { ok: false, code: "inactive", userId: linked.id };
+  }
+  if (!email) return { ok: false, code: "not_provisioned" };
+  // lower() on both sides, not just the stored column: email is already trimmed and lowercased
+  // by the caller (JS toLowerCase), which Postgres's own lower() can disagree with on a non-ASCII
+  // codepoint depending on the server's locale. Comparing lower() to lower() here means this
+  // query and the locked re-check below use the one, same-engine comparison throughout, so a
+  // stored row can't pass one and fail the other.
+  const [candidate] = await db.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = lower(${email})`);
+  if (!candidate) return { ok: false, code: "not_provisioned" };
+  let outcome: "linked" | EntraRefusal;
+  try {
+    outcome = await db.transaction(async (tx) => {
+      await lockUser(tx, candidate.id);
+      const [row] = await tx
+        .select({ id: users.id, email: users.email, isActive: users.isActive, entraOid: users.entraOid })
+        .from(users)
+        .where(and(eq(users.id, candidate.id), sql`lower(${users.email}) = lower(${email})`))
+        .for("update");
+      if (!row) return "not_provisioned";
+      if (row.entraOid !== null) return row.entraOid === oid ? "linked" : "conflict";
+      if (!row.isActive) return "inactive";
+      await tx.update(users).set({ entraOid: oid, signInMethod: "entra", updatedAt: new Date() }).where(eq(users.id, row.id));
+      return "linked";
+    });
+  } catch (e) {
+    // Another user took this oid between the lookup above and this write.
+    if (isUniqueViolation(e, "users_entra_oid_idx")) return { ok: false, code: "conflict", userId: candidate.id };
+    throw e;
+  }
+  if (outcome === "not_provisioned") return { ok: false, code: outcome };
+  if (outcome !== "linked") return { ok: false, code: outcome, userId: candidate.id };
+  const user = await sessionUserFor(db, candidate.id);
+  return user ? { ok: true, user } : { ok: false, code: "inactive", userId: candidate.id };
+}
+
+/** Core.Admin unlink: forgets the user's Entra identity and returns them to
+ * local sign-in. The next Entra sign-in matches by email again. */
+export async function unlinkEntra(db: Db, id: string, subscribers: SubscriberConfig[]): Promise<UserView> {
+  if (!isUuid(id)) throw new UserNotFoundError(id);
+  await db.transaction(async (tx) => {
+    await lockUser(tx, id);
+    const [row] = await tx.select({ id: users.id }).from(users).where(eq(users.id, id)).for("update");
+    if (!row) throw new UserNotFoundError(id);
+    await tx.update(users).set({ entraOid: null, signInMethod: "local", updatedAt: new Date() }).where(eq(users.id, row.id));
+    await emitUserUpserted(tx, row.id, subscribers);
+  });
+  return (await getUser(db, id))!;
 }

@@ -5,6 +5,7 @@ import { ADMIN_ROLES, requireBearer, type BearerOptions, type LocalAuthConfig } 
 import { healthRoutes, jsonErrorHandler } from "@gcpe/http-kit";
 import { MAX_EVENT_BYTES, type SubscriberConfig } from "@gcpe/events";
 import { apiRoutes } from "./http/routes";
+import type { EntraClient } from "./entra/client";
 import { BREAK_GLASS_ID, sessionRoutes } from "./http/session";
 import { sessionUserFor } from "./services/users";
 
@@ -38,7 +39,7 @@ export function createApp(deps: {
   subscribers: SubscriberConfig[];
   auth: BearerOptions;
   loginRouter?: Router | null;
-  session?: { secret: string; secure: boolean; local: LocalAuthConfig | null };
+  session?: { secret: string; secure: boolean; local: LocalAuthConfig | null; entra?: EntraClient | null; userPasswordsAllowed?: boolean; entraRatePerMinute?: number };
 }): express.Express {
   const app = express();
   app.disable("x-powered-by");

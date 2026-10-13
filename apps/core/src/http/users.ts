@@ -12,10 +12,12 @@ import {
   setPasswordSchema,
   setRoles,
   setRolesSchema,
+  unlinkEntra,
   updateUser,
   updateUserSchema,
   UserAlreadyHasEmailError,
   UserExistsError,
+  UserLinkedToEntraError,
   UserNeedsEmailError,
   UserNotFoundError,
 } from "../services/users";
@@ -30,6 +32,7 @@ const run = <P>(h: (req: Request<P>, res: Response) => Promise<void>) => (req: R
     if (e instanceof SelfLockoutError) return void res.status(409).json({ error: "you can't remove your own admin access" });
     if (e instanceof UserNeedsEmailError) return void res.status(409).json({ error: "set an email before activating this user" });
     if (e instanceof UserAlreadyHasEmailError) return void res.status(409).json({ error: "this user already has an email" });
+    if (e instanceof UserLinkedToEntraError) return void res.status(409).json({ error: "this user signs in with Microsoft; unlink them first" });
     next(e);
   });
 
@@ -68,6 +71,10 @@ export function usersRouter(db: Db, subscribers: SubscriberConfig[]): Router {
       const { email } = linkUserSchema.parse(req.body);
       res.json(await linkUser(db, req.params.id, email, subscribers));
     }),
+  );
+  r.post(
+    "/:id/unlink-entra",
+    run<IdParams>(async (req, res) => void res.json(await unlinkEntra(db, req.params.id, subscribers))),
   );
   return r;
 }

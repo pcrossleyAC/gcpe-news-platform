@@ -11,9 +11,11 @@ import { assertTimeZoneRules, loadTenantConfig, parseEnv } from "@gcpe/config";
 import { createFakeEmergencyFeed } from "@gcpe/emergency-feed-fake";
 import { createFakeFlickr } from "@gcpe/flickr-fake";
 import { createFakeMediaHub } from "@gcpe/media-hub-fake";
+import { createFakeOidc } from "@gcpe/oidc-fake";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 
 import { calendarEnvSchema, startCalendar, type AppHandle as CalendarHandle } from "../../calendar/src/start";
+import { signInSettingsFromEnv } from "../../core/src/entra/config";
 import { coreEnvSchema, startCore, type AppHandle as CoreHandle } from "../../core/src/start";
 import { distributionEnvSchema } from "../../distribution/src/env";
 import { startDistribution, type AppHandle as DistributionHandle } from "../../distribution/src/start";
@@ -34,6 +36,9 @@ import {
   calendarConfigured,
   envFor,
   FAKE_EMERGENCY_FEED_PATH,
+  FAKE_ENTRA,
+  FAKE_ENTRA_IDENTITIES,
+  FAKE_ENTRA_PATH,
   FAKE_FLICKR,
   FAKE_FLICKR_PATH,
   FAKE_MEDIA_HUB_PATH,
@@ -41,6 +46,7 @@ import {
   type AppPrefix,
   stackEnvSchema,
   usesFakeEmergencyFeed,
+  usesFakeEntra,
   usesFakeFlickr,
   usesFakeMediaHub,
 } from "./env";
@@ -458,6 +464,24 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
     app.use(FAKE_EMERGENCY_FEED_PATH, fakeFeed.router);
   }
 
+  // FAKE_ENTRA_ENABLED=true on a test site → a fake Microsoft sign-in that Core's env view already
+  // points at (envFor; see usesFakeEntra). Core reaches it in-process; the browser reaches its
+  // picker under CORE_PUBLIC_BASE_URL. It offers only FAKE_ENTRA_IDENTITIES.
+  if (usesFakeEntra(env)) {
+    console.warn(`[stack] ENTRA: using the FAKE Microsoft sign-in at ${FAKE_ENTRA_PATH} — test sites only`);
+    const publicOrigin = new URL(coreEnv.PUBLIC_BASE_URL!).origin;
+    const fakeEntra = await createFakeOidc({
+      tenantId: FAKE_ENTRA.tenantId,
+      clientId: FAKE_ENTRA.clientId,
+      clientSecret: FAKE_ENTRA.clientSecret,
+      redirectUris: [`${publicOrigin}/core/auth/entra/callback`],
+      serverBase: `${INTERNAL_ORIGIN}${FAKE_ENTRA_PATH}`,
+      browserBase: `${publicOrigin}${FAKE_ENTRA_PATH}`,
+      identities: [...FAKE_ENTRA_IDENTITIES],
+    });
+    app.use(FAKE_ENTRA_PATH, fakeEntra.router);
+  }
+
   // One combined login-attempt budget (10/min/IP) across every app's local-admin login route
   // and staff sign-in (/core/auth/login), mounted on those exact paths *before* the apps
   // themselves are mounted below. Each app's own localLoginRouter keeps its own 10/min/IP
@@ -688,7 +712,18 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
   if (!calendarConfigured(env)) apps.calendar = { ok: true, skipped: "CALENDAR_DATABASE_URL is not set" };
   let ok = true;
   for (const c of checks) {
-    const view = resolvedEnvFor(env, c.prefix, dataDir);
+    // resolvedEnvFor (CORE only) can throw — usesFakeEntra refuses FAKE_ENTRA_ENABLED on a real
+    // production deployment or alongside real Entra settings. Report that refusal as this app's
+    // own result, the same shape as every other failure here, instead of letting it abort the
+    // whole check.
+    let view: NodeJS.ProcessEnv;
+    try {
+      view = resolvedEnvFor(env, c.prefix, dataDir);
+    } catch (e) {
+      ok = false;
+      apps[c.label] = { ok: false, error: `(its variables are ${c.prefix}_*): ${e instanceof Error ? e.message : String(e)}` };
+      continue;
+    }
     const errors: string[] = [];
 
     const parsed = c.schema.safeParse(view);
@@ -705,6 +740,14 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
       authFromEnv(view);
     } catch (e) {
       errors.push(e instanceof Error ? e.message : String(e));
+    }
+    // Core's sign-in settings (Entra on or off, partial configuration), checked as startCore checks them.
+    if (c.prefix === "CORE") {
+      try {
+        signInSettingsFromEnv(view);
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
     }
     if (c.label === "calendar" && calendarStorageError) errors.push(calendarStorageError);
 

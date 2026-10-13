@@ -496,6 +496,40 @@ It asks for the admin password and a password for each test user (12+ characters
 
 **Revoking access.** A session renews (and its roles refresh) while the user stays active; changing a password or logging out does not end a user's *other* sessions. To cut someone off, deactivate the user — that takes effect at once in Core, and within the cookie's remaining life (at most 1 hour) in other apps. To end every session at once, including break-glass, rotate `SESSION_SECRET` (or `STACK_EVENT_SECRET`, which also re-derives the event secrets).
 
+## Staff sign-in with Microsoft Entra
+
+Staff can sign in with their government Microsoft account. It is **off** unless configured: boxs.ca sets none of these settings and keeps password sign-in exactly as before (`npm run siteground:env` never generates them).
+
+**Entra app registration** (for the Entra administrator):
+
+- Platform: **Web**. Redirect URI, exactly: **`https://boxs.ca/core/auth/entra/callback`** on boxs.ca; elsewhere `<CORE_PUBLIC_BASE_URL>/core/auth/entra/callback`, for example `https://news.example.gov.bc.ca/core/auth/entra/callback`.
+- Supported account types: this organization only (single tenant).
+- A client secret.
+- Delegated permissions `openid`, `profile` and `email` (Microsoft Graph). No app roles or groups: roles stay in Core.
+- No front-channel logout URL: signing out of the staff app doesn't sign anyone out of Microsoft.
+
+**Settings:**
+
+| Setting | Value |
+|---|---|
+| `ENTRA_TENANT_ID` | The tenant id (shared by every app). |
+| `CORE_ENTRA_CLIENT_ID` | The app registration's client id. |
+| `CORE_ENTRA_CLIENT_SECRET` | Its client secret. |
+| `CORE_PUBLIC_BASE_URL` | The site's origin, e.g. `https://boxs.ca`: https, no path. The redirect URI is this plus `/core/auth/entra/callback`. |
+| `CORE_LOCAL_PASSWORDS_ALLOWED` | Optional, and only matters in **real** production: a deployment with `NODE_ENV=production` that is *not* also a test site under the same rule `LOCAL_ADMIN_ALLOW_IN_PRODUCTION`/`SITE_ENVIRONMENT=test` use (boxs.ca is a test site, so it's unaffected either way). There, with Entra on, user passwords are refused unless this is `true`. The break-glass admin isn't affected. |
+
+Entra sign-in is on when `CORE_ENTRA_CLIENT_ID`, `CORE_ENTRA_CLIENT_SECRET` or `CORE_PUBLIC_BASE_URL` is set. Setting only some of them fails at startup and in `node stack.js --check`, naming what's missing. `SESSION_SECRET` is needed too; on the stack it is derived from `STACK_EVENT_SECRET`.
+
+**Setting `ENTRA_TENANT_ID` on the stack also turns on Entra token checks in every app**, so each app then needs its `<PREFIX>_AUTH_AUDIENCE` (`CORE_`, `NRMS_`, `NEWSAPI_`, `SITE_`, `NOD_`, `DIST_`, and `CALENDAR_` when the Calendar runs), or the site won't start. `--check` names any that are missing.
+
+**Who can sign in.** Only people who already have an active Core user with the same address: matching tries the token's `preferred_username` (the person's Microsoft sign-in name, usually their government email) first, falling back to its `email` claim only when `preferred_username` is absent — so create the Core user with the sign-in name. The first sign-in links the user to their Microsoft account (Users shows "Sign-in: Microsoft (Entra)"), and their password stops working. "Unlink Microsoft sign-in" on the Users screen undoes that. Anyone else sees "Your account hasn't been set up. Contact an administrator."
+
+**`returnTo`.** Core's own check (`apps/core/src/entra/return-to.ts`) is deliberately stricter than staff-web's `safeReturnTo.ts`: it scopes the path to `/hub/`, resolves `.`/`..` segments before checking, and refuses control characters, on top of staff-web's own same-origin check. This is intentional, not drift — a sign-in link is a more sensitive redirect target than an in-app navigation.
+
+**Troubleshooting.** Staff must start sign-in on the `CORE_PUBLIC_BASE_URL` host: a sign-in started on another host (say `www.` when the setting has none) can't read its state cookie at the callback and ends with "Your sign-in took too long". Refusals are logged as `[core] entra sign-in refused route=… code=… user=…`, with no names, emails or tokens. `code=failed` and `code=conflict` also go to the error log (`/hub/error-log`); `failed` carries an `error=` label such as `OAUTH_JWT_CLAIM_COMPARISON_FAILED` or `wrong_tenant`.
+
+**Fake Microsoft sign-in (test sites only).** `FAKE_ENTRA_ENABLED=true` plus `CORE_PUBLIC_BASE_URL` mounts a fake at `/fake-entra` and points Core at it. Its picker offers two made-up identities, `entra-staff@example.test` and `entra-unknown@example.test`; create a Core user with the first email to try a successful sign-in. **Anyone who can reach the site can then sign in as that user without a password**, so enable it only while testing and give that user no more roles than the test needs. The stack refuses it in real production and alongside any real Entra setting; on a test site such as boxs.ca, turning it on doesn't touch `CORE_LOCAL_PASSWORDS_ALLOWED` or anyone's existing password.
+
 ## Flickr (Phase 3c)
 
 Fake mode is automatic whenever NRMS has no effective Flickr key (`FLICKR_API_KEY` /

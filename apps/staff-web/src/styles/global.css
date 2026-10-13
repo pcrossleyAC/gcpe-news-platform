@@ -343,6 +343,19 @@ body {
   margin-top: 1rem;
 }
 
+.gcpe-sign-in__entra {
+  margin-top: 1rem;
+}
+
+.gcpe-sign-in__entra .gcpe-button-link {
+  padding: 0.5rem 1rem;
+  font-weight: 700;
+}
+
+.gcpe-sign-in__or {
+  margin: 1.5rem 0 0;
+}
+
 /* Release lists and search. */
 
 .gcpe-release-list__toolbar,

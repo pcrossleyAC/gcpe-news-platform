@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, Button, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
@@ -42,6 +42,8 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
   const [rolesMessages, setRolesMessages] = useState<string[]>([]);
   const [passwordMessages, setPasswordMessages] = useState<string[]>([]);
   const [passwordSaved, setPasswordSaved] = useState(false);
+  const [unlinkMessages, setUnlinkMessages] = useState<string[]>([]);
+  const [confirmingUnlink, setConfirmingUnlink] = useState(false);
   const [busy, setBusy] = useState(false);
 
   const saveName = async () => {
@@ -102,6 +104,20 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
     }
   };
 
+  const unlink = async () => {
+    setConfirmingUnlink(false);
+    setBusy(true);
+    setUnlinkMessages([]);
+    try {
+      await apiFetch<UserView>(`/core/api/users/${user.id}/unlink-entra`, { method: "POST" });
+      onChanged();
+    } catch (caught) {
+      setUnlinkMessages(messagesOf(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const who = user.email ?? `${user.displayName} (no email)`;
 
   return (
@@ -109,7 +125,38 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
       <h3 className="gcpe-users__who">
         {who} {!user.isActive && "(inactive)"}
       </h3>
-      <p className="gcpe-users__sign-in">Sign-in: {user.signInMethod === "local" ? "Local password" : "Entra"}</p>
+      <p className="gcpe-users__sign-in">Sign-in: {user.signInMethod === "local" ? "Local password" : "Microsoft (Entra)"}</p>
+      {user.signInMethod === "entra" && (
+        <>
+          {unlinkMessages.map((m) => (
+            <p role="alert" key={m}>
+              {m}
+            </p>
+          ))}
+          <p>Unlinking returns this user to password sign-in; any password they had before works again. Their next Microsoft sign-in links them again by email.</p>
+          <Button variant="secondary" onPress={() => setConfirmingUnlink(true)} isDisabled={busy} aria-label={`Unlink ${who} from Microsoft sign-in`}>
+            Unlink Microsoft sign-in
+          </Button>
+          <Modal isOpen={confirmingUnlink} onOpenChange={(open) => { if (!open) setConfirmingUnlink(false); }} isDismissable>
+            <AlertDialog
+              role="alertdialog"
+              aria-label={`Unlink ${who} from Microsoft sign-in`}
+              variant="warning"
+              title="Unlink Microsoft sign-in?"
+              buttons={
+                <>
+                  <Button onPress={() => setConfirmingUnlink(false)}>Cancel</Button>
+                  <Button danger isDisabled={busy} onPress={() => void unlink()}>
+                    Unlink
+                  </Button>
+                </>
+              }
+            >
+              <p>{who} will sign in with a password instead, if one was set before. Their next Microsoft sign-in links them again by email.</p>
+            </AlertDialog>
+          </Modal>
+        </>
+      )}
 
       {nameMessages.map((m) => (
         <p role="alert" key={m}>
