@@ -4,6 +4,7 @@ import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
+import { ignoreWhileBusy } from "../../shared/guardSubmit";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canAdminSubscribers } from "./access";
 import type { EmergencyFeedStatus, OperationsStatus, PurgeStatus } from "./types";
@@ -184,7 +185,7 @@ function BounceSummaryForm({ value, onDone }: { value: OperationsStatus["bounceS
     }
   };
   const onSubmit = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    if (ignoreWhileBusy(busy, e)) return;
     void put(address.trim() || null, "Bounce summary address saved.");
   };
   return (
@@ -216,7 +217,7 @@ function SoftCodesForm({ value, onDone }: { value: string[]; onDone(text: string
   const [error, setError] = useState<string | null>(null);
   useEffect(() => setCodes(saved), [saved]);
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    if (ignoreWhileBusy(busy, e)) return;
     setBusy(true);
     setError(null);
     try {

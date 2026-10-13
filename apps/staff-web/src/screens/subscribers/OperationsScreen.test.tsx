@@ -31,7 +31,13 @@ type Call = { url: string; method: string; body: unknown };
 function stub(
   roles: string[],
   ops: OperationsStatus = OPS,
-  opts: { load?: () => Response; upload?: () => Response; softCodes?: () => Response; purge?: () => Response | Promise<Response> } = {},
+  opts: {
+    load?: () => Response;
+    upload?: () => Response;
+    softCodes?: () => Response | Promise<Response>;
+    purge?: () => Response | Promise<Response>;
+    bounceAddress?: () => Response | Promise<Response>;
+  } = {},
 ) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
@@ -42,7 +48,7 @@ function stub(
     if (url === "/nod/api/operations") return opts.load?.() ?? jsonResponse(200, ops);
     if (url === "/nod/api/operations/purge") return opts.purge?.() ?? jsonResponse(200, { changed: true, purge: { ...ops.purge, enabled: true } });
     if (url.endsWith("/pause")) return jsonResponse(200, { paused: true, changed: true });
-    if (url === "/nod/api/operations/bounce-summary-address") return jsonResponse(200, { changed: true, bounceSummary: { address: "staff@example.test", from: "setting" } });
+    if (url === "/nod/api/operations/bounce-summary-address") return opts.bounceAddress?.() ?? jsonResponse(200, { changed: true, bounceSummary: { address: "staff@example.test", from: "setting" } });
     if (url === "/nod/api/operations/bounce-soft-codes") return opts.softCodes?.() ?? jsonResponse(200, { changed: true, softCodesCounted: ["4.2.2", "4.4.7"] });
     if (url === "/nod/api/bounces/inbox") return opts.upload?.() ?? jsonResponse(201, { id: "b1" });
     throw new Error(`unhandled: ${method} ${url}`);
@@ -112,6 +118,43 @@ describe("OperationsScreen", () => {
     await user.click(screen.getByRole("button", { name: "Save address" }));
     await waitFor(() => expect(calls).toContainEqual({ url: "/nod/api/operations/bounce-summary-address", method: "PUT", body: { address: "staff@example.test" } }));
     expect(await screen.findByRole("status")).toHaveTextContent("Bounce summary address saved.");
+  });
+
+  it("pressing Enter twice in the Bounce summary email field while saving sends only one request", async () => {
+    let resolvePut!: (v: Response) => void;
+    const calls = stub(["NoD.Admin"], OPS, { bounceAddress: () => new Promise<Response>((resolve) => (resolvePut = resolve)) });
+    renderIt();
+    const user = userEvent.setup();
+    const field = await screen.findByRole("textbox", { name: "Bounce summary email" });
+    await user.type(field, "staff@example.test{Enter}");
+    await waitFor(() => expect(calls.filter((c) => c.url === "/nod/api/operations/bounce-summary-address")).toHaveLength(1));
+
+    await user.type(field, "{Enter}");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.filter((c) => c.url === "/nod/api/operations/bounce-summary-address")).toHaveLength(1);
+
+    resolvePut(jsonResponse(200, { changed: true, bounceSummary: { address: "staff@example.test", from: "setting" } }));
+    await screen.findByRole("status");
+    expect(calls.filter((c) => c.url === "/nod/api/operations/bounce-summary-address")).toHaveLength(1);
+  });
+
+  it("pressing Enter twice in the Soft codes field while saving sends only one request", async () => {
+    let resolvePut!: (v: Response) => void;
+    const calls = stub(["NoD.Admin"], OPS, { softCodes: () => new Promise<Response>((resolve) => (resolvePut = resolve)) });
+    renderIt();
+    const user = userEvent.setup();
+    const region = await screen.findByRole("region", { name: "Soft bounces counted as hard" });
+    const field = within(region).getByRole("textbox", { name: "Soft codes counted as hard" });
+    await user.type(field, "4.4.7{Enter}");
+    await waitFor(() => expect(calls.filter((c) => c.url === "/nod/api/operations/bounce-soft-codes")).toHaveLength(1));
+
+    await user.type(field, "{Enter}");
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.filter((c) => c.url === "/nod/api/operations/bounce-soft-codes")).toHaveLength(1);
+
+    resolvePut(jsonResponse(200, { changed: true, softCodesCounted: ["4.4.7"] }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(calls.filter((c) => c.url === "/nod/api/operations/bounce-soft-codes")).toHaveLength(1);
   });
 
   it("uploads a pasted bounce on a fake-mailbox site", async () => {

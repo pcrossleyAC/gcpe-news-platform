@@ -5,6 +5,7 @@ import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
+import { ignoreWhileBusy } from "../../shared/guardSubmit";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
 import { attentionLabel, mediaErrorText, memberSourceLabel } from "./labels";
@@ -80,7 +81,7 @@ export function MediaListScreen(): React.JSX.Element {
   };
 
   const onAddManual = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    if (ignoreWhileBusy(busy, e)) return;
     if (email.trim()) void add({ email: email.trim() });
   };
 

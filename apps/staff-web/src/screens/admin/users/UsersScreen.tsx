@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { AlertDialog, Button, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
+import { ignoreWhileBusy } from "../../../shared/guardSubmit";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { HiddenPrefixLabel, ShortLabel } from "../../../shared/ShortLabel";
 import { messagesOf } from "../messages";
@@ -86,7 +87,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
   };
 
   const savePassword = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    if (ignoreWhileBusy(busy, e)) return;
     setBusy(true);
     setPasswordMessages([]);
     setPasswordSaved(false);
@@ -235,7 +236,7 @@ function LinkForm({ user, onChanged }: { user: UserView; onChanged(): void }): R
   const [messages, setMessages] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const submit = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    if (ignoreWhileBusy(busy, e)) return;
     setBusy(true);
     setMessages([]);
     try {

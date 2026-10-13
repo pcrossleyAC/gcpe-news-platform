@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { LANG_EN, LAYOUTS, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
 import { useAnnouncer } from "../../../shared/Announcer";
+import { ignoreWhileBusy } from "../../../shared/guardSubmit";
 import { DragHandle, useDragReorder } from "../../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../../shared/useMoveFocusRestore";
 import { moveBy, moveTo } from "../../../shared/reorder";
@@ -64,7 +65,7 @@ export function DocumentsSection({ view, setView, readOnly }: DocumentsSectionPr
   });
 
   const submitAdd = (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
+    if (ignoreWhileBusy(section.saving, e)) return;
     void section.save("/documents", { version: view.version, pageTitle: newPageTitle.trim(), layout: newLayout }, "POST").then((next) => {
       if (next) {
         setAdding(false);
