@@ -109,19 +109,24 @@ describe("scripts/siteground-website-walkthrough.sh", () => {
     expect(pinOnAssign).toBeLessThan(pinPost);
   });
 
-  it("uploads the test PDF with replace=false first, retrying with replace=true only on a 409 conflict", () => {
+  it("uploads the test PDF with replace=false first, retrying with replace=true only on a 409 conflict; the name travels in X-GCPE-File-Name, never the URL", () => {
     const s = readFileSync(SCRIPT, "utf8");
     const lines = s.split("\n");
     // Matched against the actual curl invocations (the URL query string), not the explanatory
     // comment above them, which mentions both words too.
-    const falseLine = lines.findIndex((l) => l.includes("name=website-walkthrough.pdf&replace=false"));
+    const falseLine = lines.findIndex((l) => l.includes('"$BASE/nrms/api/site/files?replace=false"'));
     const checkLine = lines.findIndex((l) => l.includes('"$UPLOAD_STATUS" = "409"'));
-    const trueLine = lines.findIndex((l) => l.includes("name=website-walkthrough.pdf&replace=true"));
+    const trueLine = lines.findIndex((l) => l.includes('"$BASE/nrms/api/site/files?replace=true"'));
     const genericCase = lines.findIndex((l) => l.includes('case "$UPLOAD_STATUS" in'));
     expect(falseLine).toBeGreaterThanOrEqual(0);
     expect(checkLine).toBeGreaterThan(falseLine);
     expect(trueLine).toBeGreaterThan(checkLine);
     expect(genericCase).toBeGreaterThan(trueLine); // any other non-2xx still fails, after the retry
+    // The name never travels in the URL — it goes in the X-GCPE-File-Name header instead.
+    expect(lines[falseLine]).not.toMatch(/[?&]name=/);
+    expect(lines[trueLine]).not.toMatch(/[?&]name=/);
+    expect(lines[falseLine]).toContain("X-GCPE-File-Name: website-walkthrough.pdf");
+    expect(lines[trueLine]).toContain("X-GCPE-File-Name: website-walkthrough.pdf");
   });
 
   // Minor 7: Live Feed and resource links are restored to their prior state on exit; the
