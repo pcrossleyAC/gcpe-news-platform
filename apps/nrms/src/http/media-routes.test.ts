@@ -154,6 +154,18 @@ describe("NRMS media routes", () => {
     expect((await request(app).get("/api/page-images/00000000-0000-4000-8000-000000000999/image").set("cookie", viewerCookie)).status).toBe(404);
   });
 
+  it.each([["NUL", "\u0000", "00"], ["\\x01", "\u0001", "01"], ["\\x7f", "\u007f", "7f"], ["newline", "\n", "0a"]])(
+    "a %s in a page image's name is sanitised, not passed to Postgres raw: no 500",
+    async (_label, ctrl, tag) => {
+      // Each case needs its own final name — page image names are unique, and every one of
+      // these control characters sanitises down to the same single space.
+      const res = await upload("/api/page-images", siteEditorCookie, PNG, `evil${ctrl}name-${tag}.pdf`);
+      expect(res.status).toBe(201);
+      expect(res.body.name).toBe(`evil name-${tag}.pdf`);
+      expect(res.body.name).not.toContain(ctrl);
+    },
+  );
+
   it("takes the file name only from X-GCPE-File-Name: none, empty, undecodable or ?name= is a 400 and stores nothing", async () => {
     const { id, version } = await create();
     const missing = await upload(filesPath(id, version), editorCookie, PDF);
@@ -178,6 +190,17 @@ describe("NRMS media routes", () => {
     expect(res.status).toBe(201);
     expect(res.body.files[0]).toMatchObject({ label: "Résumé 100% final.pdf" });
   });
+
+  it.each([["NUL", "\u0000"], ["\\x01", "\u0001"], ["\\x7f", "\u007f"], ["newline", "\n"]])(
+    "a %s in the file name is sanitised, not stored raw or passed to Postgres as-is: release files",
+    async (_label, ctrl) => {
+      const { id, version } = await create();
+      const res = await upload(filesPath(id, version), editorCookie, PDF, `evil${ctrl}name.pdf`);
+      expect(res.status).toBe(201);
+      expect(res.body.files[0].label).toBe("evil name.pdf");
+      expect(res.body.files[0].label).not.toContain(ctrl);
+    },
+  );
 });
 
 describe("GET /api/releases/:id/asset-status", () => {

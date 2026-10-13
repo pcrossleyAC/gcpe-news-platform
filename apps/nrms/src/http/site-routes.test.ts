@@ -339,6 +339,19 @@ describe("NRMS site HTTP API — Live Feed, links and files", () => {
     expect(await store.get("sample.pdf")).toBeNull();
   });
 
+  it.each([["NUL", "\u0000", "00"], ["\\x01", "\u0001", "01"], ["\\x7f", "\u007f", "7f"], ["newline", "\n", "0a"]])(
+    "a %s in a site file's name is sanitised into the stored key, not passed through raw",
+    async (_label, ctrl, tag) => {
+      // Each case needs its own final key — site file names are unique, and every one of these
+      // control characters sanitises down to the same "-".
+      const res = await upload("/api/site/files", siteEditorCookie, PDF, `evil${ctrl}name-${tag}.pdf`);
+      expect(res.status).toBe(201);
+      expect(res.body.name).toBe(`evil-name-${tag}.pdf`);
+      expect(res.body.name).not.toContain(ctrl);
+      expect(await store.get(`evil-name-${tag}.pdf`)).not.toBeNull();
+    },
+  );
+
   it("GET /site/features lists what's featured where; a viewer can read it", async () => {
     const top = await createScheduledRelease(tdb.db, { headline: "Featured headline" });
     await tdb.db.insert(categoryFeatures).values({ kind: "home", key: "default", topReleaseId: top.id });

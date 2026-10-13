@@ -3,6 +3,7 @@ import type { Db, DbOrTx } from "@gcpe/db-kit";
 import { LANG_EN, LANG_FR } from "@gcpe/nrms-contract";
 import { sniff } from "@gcpe/storage";
 import { pageImageLanguages, pageImages } from "../db/schema";
+import { fileLabel } from "./files";
 import { ReleaseNotFoundError, ReleaseRuleError, ReleaseStateError } from "../releases/errors";
 
 /** Page images (the letterhead banner at the top of a release) — 2 MiB per upload (constraints.md). */
@@ -57,7 +58,9 @@ export async function addPageImage(db: Db, input: AddPageImageInput): Promise<{ 
   if (input.bytes.length > MAX_PAGE_IMAGE_BYTES) throw new ReleaseRuleError(["A page image can be at most 2 MB."]);
   const mimeType = sniff(input.bytes);
   if (mimeType !== "image/png" && mimeType !== "image/jpeg") throw new ReleaseRuleError(["Upload a PNG or JPEG image."]);
-  const name = input.name.trim();
+  // Same sanitization as a release file's label: strips control characters (a NUL reaches
+  // Postgres as a 22021 error, surfacing as a bare 500, not a 400) before anything is stored.
+  const name = fileLabel(input.name);
   try {
     return await db.transaction(async (tx) => {
       const [row] = await tx
