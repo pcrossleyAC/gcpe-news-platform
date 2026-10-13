@@ -35,7 +35,9 @@ export const subscriberInfoSchema = z.object({
 });
 export type SubscriberInfo = z.infer<typeof subscriberInfoSchema>;
 
-export class PreferencesError extends Error {}
+export class PreferencesError extends Error {
+  override name = "PreferencesError";
+}
 
 export const normaliseEmail = (raw: string): string => raw.trim().toLowerCase();
 
