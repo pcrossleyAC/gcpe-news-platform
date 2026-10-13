@@ -37,6 +37,7 @@ describe("startCalendar", () => {
       expect(await handle.workers.needsReferenceData!()).toBe(true);
       expect(await handle.workers.dispatch!()).toEqual({ delivered: 0, retried: 0, dead: 0 });
       expect(await handle.workers.lockSweep!()).toEqual({ deleted: 0 });
+      expect(await handle.workers.orphanSweep!()).toEqual({ scanned: 0, deleted: 0, failed: 0 });
     } finally {
       for (const c of [...handle.closeBeforeServer, ...handle.closers]) await c.close();
     }
