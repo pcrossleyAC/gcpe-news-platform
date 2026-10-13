@@ -20,6 +20,7 @@ function withAuth(children: React.ReactNode) {
 
 const EMPTY: ListFilesResult = { total: 0, files: [] };
 const ONE_FILE: ListFilesResult = { total: 1, files: [{ id: "f1", name: "report.pdf", url: "/files/report.pdf", contentType: "application/pdf", size: 10, createdAt: "2026-01-01T00:00:00.000Z", createdBy: "u" }] };
+const nameOf = (init?: RequestInit) => decodeURIComponent(new Headers(init?.headers).get("X-GCPE-File-Name") ?? "");
 
 describe("FilesScreen", () => {
   afterEach(() => {
@@ -51,8 +52,8 @@ describe("FilesScreen", () => {
       vi.fn(async (url: string, init?: RequestInit) => {
         calls.push({ url, init });
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
-        if (url.startsWith("/nrms/api/site/files?name=report.pdf&replace=false")) return jsonResponse(409, { error: "A file with that name already exists." });
-        if (url.startsWith("/nrms/api/site/files?name=report.pdf&replace=true")) {
+        if (url === "/nrms/api/site/files?replace=false" && nameOf(init) === "report.pdf") return jsonResponse(409, { error: "A file with that name already exists." });
+        if (url === "/nrms/api/site/files?replace=true" && nameOf(init) === "report.pdf") {
           listing = ONE_FILE;
           return jsonResponse(201, ONE_FILE.files[0]);
         }
@@ -105,7 +106,7 @@ describe("FilesScreen", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
-        if (url.startsWith("/nrms/api/site/files?name=notes.txt&replace=false") && init?.method === "POST") return jsonResponse(422, { errors: ["Upload a PDF, PNG or JPEG file."] });
+        if (url === "/nrms/api/site/files?replace=false" && nameOf(init) === "notes.txt" && init?.method === "POST") return jsonResponse(422, { errors: ["Upload a PDF, PNG or JPEG file."] });
         if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, EMPTY);
         throw new Error(`unhandled: ${url}`);
       }),
@@ -122,7 +123,7 @@ describe("FilesScreen", () => {
       "fetch",
       vi.fn(async (url: string, init?: RequestInit) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
-        if (url.startsWith("/nrms/api/site/files?name=big.pdf&replace=false") && init?.method === "POST") return jsonResponse(413, { error: "request entity too large" });
+        if (url === "/nrms/api/site/files?replace=false" && nameOf(init) === "big.pdf" && init?.method === "POST") return jsonResponse(413, { error: "request entity too large" });
         if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, EMPTY);
         throw new Error(`unhandled: ${url}`);
       }),
@@ -148,5 +149,29 @@ describe("FilesScreen", () => {
     await screen.findByText("You don’t have permission to view the files.");
     expect(screen.queryByText("report.pdf")).toBeNull();
     expect(screen.queryByLabelText("Upload a file (PDF, PNG or JPEG)")).toBeNull();
+  });
+
+  it("never puts the file name in the URL: it goes in X-GCPE-File-Name, percent-encoded", async () => {
+    const posts: { url: string; init?: RequestInit }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NRMS.SiteEditor"] }, expiresAt: new Date().toISOString() });
+        if (url.startsWith("/nrms/api/site/files?q=")) return jsonResponse(200, EMPTY);
+        if (init?.method === "POST") {
+          posts.push({ url, init });
+          return jsonResponse(201, ONE_FILE.files[0]);
+        }
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    render(withAuth(<FilesScreen />));
+    await screen.findByText("No files found.");
+    const name = "Résumé 100% final.pdf";
+    await userEvent.setup().upload(screen.getByLabelText("Upload a file (PDF, PNG or JPEG)"), new File(["bytes"], name, { type: "application/pdf" }));
+    await waitFor(() => expect(posts).toHaveLength(1));
+    expect(posts[0]!.url).toBe("/nrms/api/site/files?replace=false");
+    expect(posts[0]!.url).not.toContain(encodeURIComponent(name));
+    expect(new Headers(posts[0]!.init!.headers).get("X-GCPE-File-Name")).toBe(encodeURIComponent(name));
   });
 });

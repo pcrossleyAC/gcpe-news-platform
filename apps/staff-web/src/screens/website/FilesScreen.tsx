@@ -59,7 +59,7 @@ export function FilesScreen(): React.JSX.Element {
   const doUpload = async (file: File, replace: boolean) => {
     setUpload({ busy: true, error: null, replacePrompt: null });
     try {
-      await apiFetch<SiteFileView>(`/nrms/api/site/files?name=${encodeURIComponent(file.name)}&replace=${replace}`, { method: "POST", raw: file });
+      await apiFetch<SiteFileView>(`/nrms/api/site/files?replace=${replace}`, { method: "POST", raw: file, headers: { "X-GCPE-File-Name": encodeURIComponent(file.name) } });
       setUpload(INITIAL_UPLOAD);
       reload(q);
     } catch (caught) {

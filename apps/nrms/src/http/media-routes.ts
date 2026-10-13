@@ -9,6 +9,7 @@ import { addReleaseFile, MAX_RELEASE_FILE_BYTES, removeReleaseFile } from "../me
 import type { FlickrClient } from "../media/flickr-client";
 import { addPageImage, MAX_PAGE_IMAGE_BYTES, pageImageBytes, updatePageImage } from "../media/page-images";
 import { loadView } from "../releases/store";
+import { fileNameHeader } from "./file-name";
 import { handleError, run, UUID, type Params } from "./routes";
 
 export interface MediaRouteDeps {
@@ -20,17 +21,21 @@ export interface MediaRouteDeps {
 }
 
 const int = (re: RegExp) => z.string().regex(re).transform(Number);
-const fileQuerySchema = z.object({
-  kind: z.enum(["translation", "asset"]),
-  version: int(/^\d{1,9}$/),
-  name: z.string().min(1).max(1000),
-});
-const pageImageQuerySchema = z.object({
-  name: z.string().trim().min(1).max(100),
-  altEn: z.string().max(500).default(""),
-  altFr: z.string().max(500).default(""),
-  sortOrder: int(/^-?\d{1,6}$/).default("0"),
-});
+const fileQuerySchema = z
+  .object({
+    kind: z.enum(["translation", "asset"]),
+    version: int(/^\d{1,9}$/),
+  })
+  .strict();
+const releaseFileName = z.string().min(1).max(1000);
+const pageImageQuerySchema = z
+  .object({
+    altEn: z.string().max(500).default(""),
+    altFr: z.string().max(500).default(""),
+    sortOrder: int(/^-?\d{1,6}$/).default("0"),
+  })
+  .strict();
+const pageImageName = z.string().trim().min(1).max(100);
 const pageImageUpdateSchema = z
   .object({
     altEn: z.string().max(500).optional(),
@@ -85,10 +90,17 @@ export function mediaRoutes(deps: MediaRouteDeps): Router {
     edit,
     needStore,
     query(fileQuerySchema),
+    fileNameHeader(releaseFileName),
     rawFile,
     run(async (req: Request<Params>, res) => {
       const q = res.locals.query as z.infer<typeof fileQuerySchema>;
-      const view = await addReleaseFile(db, deps.store!, req.params.id, { version: q.version, kind: q.kind, fileName: q.name, bytes: bytesOf(req) }, actorOf(req));
+      const view = await addReleaseFile(
+        db,
+        deps.store!,
+        req.params.id,
+        { version: q.version, kind: q.kind, fileName: res.locals.fileName as string, bytes: bytesOf(req) },
+        actorOf(req),
+      );
       res.status(201).json(withStatus(view));
     }),
   );
@@ -118,10 +130,11 @@ export function mediaRoutes(deps: MediaRouteDeps): Router {
     "/page-images",
     images,
     query(pageImageQuerySchema),
+    fileNameHeader(pageImageName),
     rawImage,
     run(async (req, res) => {
       const q = res.locals.query as z.infer<typeof pageImageQuerySchema>;
-      res.status(201).json(await addPageImage(db, { ...q, bytes: bytesOf(req) }));
+      res.status(201).json(await addPageImage(db, { ...q, name: res.locals.fileName as string, bytes: bytesOf(req) }));
     }),
   );
   r.put("/page-images/:id", images, json, run(async (req, res) => void res.json(await updatePageImage(db, req.params.id, pageImageUpdateSchema.parse(req.body)))));

@@ -240,10 +240,10 @@ python3 -c "import sys; open(sys.argv[1], 'wb').write(b'%PDF-1.4\n%%EOF\n')" "$P
 # first; only on a 409 (a file with that name already exists, from a previous run) retry with
 # replace=true. Any other non-2xx is a real failure.
 UPLOAD_BODY="$(mktemp)"
-UPLOAD_STATUS="$(curl_bin -o "$UPLOAD_BODY" -w '%{http_code}' -X POST "$BASE/nrms/api/site/files?name=website-walkthrough.pdf&replace=false" -H 'content-type: application/pdf' --data-binary "@$PDF_FILE")"
+UPLOAD_STATUS="$(curl_bin -o "$UPLOAD_BODY" -w '%{http_code}' -X POST "$BASE/nrms/api/site/files?replace=false" -H 'content-type: application/pdf' -H 'X-GCPE-File-Name: website-walkthrough.pdf' --data-binary "@$PDF_FILE")"
 if [ "$UPLOAD_STATUS" = "409" ]; then
   echo "a file named website-walkthrough.pdf already exists (from a previous run) -- replacing it..."
-  UPLOAD_STATUS="$(curl_bin -o "$UPLOAD_BODY" -w '%{http_code}' -X POST "$BASE/nrms/api/site/files?name=website-walkthrough.pdf&replace=true" -H 'content-type: application/pdf' --data-binary "@$PDF_FILE")"
+  UPLOAD_STATUS="$(curl_bin -o "$UPLOAD_BODY" -w '%{http_code}' -X POST "$BASE/nrms/api/site/files?replace=true" -H 'content-type: application/pdf' -H 'X-GCPE-File-Name: website-walkthrough.pdf' --data-binary "@$PDF_FILE")"
 fi
 case "$UPLOAD_STATUS" in
   2??) : ;;

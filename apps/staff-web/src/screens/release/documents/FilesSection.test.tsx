@@ -27,7 +27,7 @@ describe("FilesSection", () => {
     expect(screen.getByRole("button", { name: "Remove photo.jpg" })).toBeInTheDocument();
   });
 
-  it("uploads a translation file as a raw body to POST .../files?kind=translation&version=...&name=...", async () => {
+  it("uploads a translation as a raw body; the file name goes in X-GCPE-File-Name, never the URL", async () => {
     const calls: { url: string; init: RequestInit }[] = [];
     vi.stubGlobal(
       "fetch",
@@ -43,7 +43,9 @@ describe("FilesSection", () => {
     await user.upload(screen.getByLabelText("Upload a translation (PDF)"), file);
 
     await waitFor(() => expect(calls).toHaveLength(1));
-    expect(calls[0]!.url).toBe(`/nrms/api/releases/${BASE.id}/files?kind=translation&version=${BASE.version}&name=translation.pdf`);
+    expect(calls[0]!.url).toBe(`/nrms/api/releases/${BASE.id}/files?kind=translation&version=${BASE.version}`);
+    expect(calls[0]!.url).not.toContain("translation.pdf");
+    expect(new Headers(calls[0]!.init.headers).get("X-GCPE-File-Name")).toBe("translation.pdf");
     expect(calls[0]!.init.method).toBe("POST");
     expect(calls[0]!.init.body).toBe(file);
     expect(current.version).toBe(2);

@@ -25,9 +25,9 @@ interface GroupState {
 const INITIAL: GroupState = { busy: false, waiting: false, conflict: false, problems: null, error: null };
 
 /** Uploaded translation PDFs and media asset files (task-4-brief.md) — both go through the
- * same raw-body endpoint (`POST .../files?kind=...&version=...&name=...`), which is why this
- * is one component with two groups rather than two separate ones. Both go through the page's
- * save queue like every other section save, with the version read when the request is sent. */
+ * same raw-body endpoint (`POST .../files?kind=...&version=...`, name in X-GCPE-File-Name), which
+ * is why this is one component with two groups rather than two separate ones. Both go through the
+ * page's save queue like every other section save, with the version read when the request is sent. */
 export function FilesSection({ view, setView, readOnly }: FilesSectionProps): React.JSX.Element {
   const [state, setState] = useState<Record<Kind, GroupState>>({ translation: INITIAL, asset: INITIAL });
   const queue = useSaveQueue();
@@ -42,10 +42,11 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
     try {
       const next = await queue.run((version) => {
         setGroup(kind, { waiting: false });
-        return apiFetch<ReleaseView>(
-          `/nrms/api/releases/${view.id}/files?kind=${kind}&version=${version ?? view.version}&name=${encodeURIComponent(file.name)}`,
-          { method: "POST", raw: file },
-        );
+        return apiFetch<ReleaseView>(`/nrms/api/releases/${view.id}/files?kind=${kind}&version=${version ?? view.version}`, {
+          method: "POST",
+          raw: file,
+          headers: { "X-GCPE-File-Name": encodeURIComponent(file.name) },
+        });
       });
       setView(next);
       setGroup(kind, INITIAL);

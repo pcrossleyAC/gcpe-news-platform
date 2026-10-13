@@ -116,13 +116,14 @@ export async function apiCall<T = unknown>(
  * (I6's axe-sweep seeding; website.spec.ts's own upload test builds the same bytes inline). */
 export const ONE_PX_PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64");
 
-/** `POST /nrms/api/site/files?name=&replace=` with raw bytes — `apiCall` always JSON-encodes
- * its body, which this route doesn't take (apps/nrms/src/http/site-routes.ts's `rawFile`
- * middleware reads the raw request body). Used to seed a Website file outside the browser. */
+/** `POST /nrms/api/site/files?replace=` with raw bytes and the name in X-GCPE-File-Name —
+ * `apiCall` always JSON-encodes its body, which this route doesn't take
+ * (apps/nrms/src/http/site-routes.ts's `rawFile` middleware reads the raw request body). Used to
+ * seed a Website file outside the browser. */
 export async function uploadSiteFile(cookie: string, name: string, bytes: Buffer, contentType = "image/png"): Promise<{ id: string; url: string }> {
-  const res = await fetch(`${baseUrl()}/nrms/api/site/files?${new URLSearchParams({ name, replace: "false" })}`, {
+  const res = await fetch(`${baseUrl()}/nrms/api/site/files?replace=false`, {
     method: "POST",
-    headers: { cookie, [CSRF_HEADER]: "1", "content-type": contentType },
+    headers: { cookie, [CSRF_HEADER]: "1", "content-type": contentType, "x-gcpe-file-name": encodeURIComponent(name) },
     body: new Uint8Array(bytes),
   });
   if (!res.ok) throw new Error(`uploadSiteFile(${name}) -> ${res.status}: ${await res.text()}`);
