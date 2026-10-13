@@ -123,4 +123,30 @@ describe("AddSubscriberScreen", () => {
     expect(await screen.findByLabelText(/^Email/)).toBeInTheDocument();
     expect(screen.getByRole("checkbox", { name: "All news" })).toBeInTheDocument();
   });
+
+  it("submitting with Enter keeps focus where it was: the field turns read-only and the button pending, neither disabled", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: RequestInit) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles: ["NoD.Editor"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/nod/api/subscriber-list-options") return jsonResponse(200, OPTIONS);
+        if (url === "/nod/api/subscribers" && init?.method === "POST") return new Promise<Response>(() => {});
+        throw new Error(`unhandled: ${url}`);
+      }),
+    );
+    renderAt();
+    const user = userEvent.setup();
+    await user.type(await screen.findByLabelText(/^Email/), "new@example.test");
+    await user.click(await screen.findByRole("checkbox", { name: "Health" }));
+    const confirm = screen.getByLabelText(/^Confirm email/);
+    await user.type(confirm, "new@example.test{Enter}");
+
+    const button = screen.getByRole("button", { name: "Add subscriber" });
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+    expect(button).not.toHaveAttribute("disabled");
+    expect(confirm).toHaveAttribute("readonly");
+    expect(confirm).not.toHaveAttribute("disabled");
+    expect(document.activeElement).toBe(confirm);
+  });
 });

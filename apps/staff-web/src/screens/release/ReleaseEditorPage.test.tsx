@@ -177,7 +177,9 @@ describe("ReleaseEditorPage", () => {
 
       await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
       expect(await within(settingsRegion()).findByText("Waiting to save…")).toBeInTheDocument();
-      expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).toBeDisabled();
+      const saveSettings = within(settingsRegion()).getByRole("button", { name: "Save settings" });
+      expect(saveSettings).toHaveAttribute("aria-disabled", "true");
+      expect(saveSettings).not.toHaveAttribute("disabled");
       expect(writes).toHaveLength(1); // held: Settings has not gone out yet
 
       writes[0]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] })));
@@ -189,7 +191,7 @@ describe("ReleaseEditorPage", () => {
       expect(await within(settingsRegion()).findByText("Saving…")).toBeInTheDocument();
 
       writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 3, sectors: ["sector1"] })));
-      await waitFor(() => expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).toBeEnabled());
+      await waitFor(() => expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).not.toHaveAttribute("aria-disabled"));
       expect(within(settingsRegion()).queryByText(/Saving…|Waiting to save…/)).not.toBeInTheDocument();
       expect(within(categoriesRegion()).queryByText(/Saving…|Waiting to save…/)).not.toBeInTheDocument();
       expect(within(settingsRegion()).queryByRole("alert")).not.toBeInTheDocument();
@@ -249,7 +251,7 @@ describe("ReleaseEditorPage", () => {
       writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2 })));
 
       expect(await within(categoriesRegion()).findByRole("alert")).toHaveTextContent("Something went wrong saving categories.");
-      await waitFor(() => expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).toBeEnabled());
+      await waitFor(() => expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).not.toHaveAttribute("aria-disabled"));
       expect(within(settingsRegion()).queryByRole("alert")).not.toBeInTheDocument();
       expect(screen.getByLabelText("Sector One")).toBeChecked(); // the failed section keeps its edit
     });

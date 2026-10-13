@@ -62,11 +62,11 @@ function RowForm({ lookup, row, label, submitLabel, onSubmit, onCancel }: {
           <label htmlFor={`${idBase}-active`}>Active</label>
         </div>
       )}
-      <Button type="submit" isDisabled={busy}>
+      <Button type="submit" isPending={busy}>
         {submitLabel}
       </Button>
       {onCancel && (
-        <Button variant="secondary" onPress={onCancel} isDisabled={busy}>
+        <Button variant="secondary" onPress={onCancel} isPending={busy}>
           Cancel
         </Button>
       )}

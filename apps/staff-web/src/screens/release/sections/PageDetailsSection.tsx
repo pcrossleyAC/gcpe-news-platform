@@ -118,7 +118,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
         {!showSummaryFields && <p>A {TYPE_LABEL[view.type]} has no summary, keywords or social media summary.</p>}
 
         {!readOnly && (
-          <Button type="submit" isDisabled={section.saving}>
+          <Button type="submit" isPending={section.saving}>
             Save page details
           </Button>
         )}

@@ -134,7 +134,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
             </p>
           ))}
           <p>Unlinking returns this user to password sign-in; any password they had before works again. Their next Microsoft sign-in links them again by email.</p>
-          <Button variant="secondary" onPress={() => setConfirmingUnlink(true)} isDisabled={busy} aria-label={`Unlink ${who} from Microsoft sign-in`}>
+          <Button variant="secondary" onPress={() => setConfirmingUnlink(true)} isPending={busy} aria-label={`Unlink ${who} from Microsoft sign-in`}>
             Unlink Microsoft sign-in
           </Button>
           <Modal isOpen={confirmingUnlink} onOpenChange={(open) => { if (!open) setConfirmingUnlink(false); }} isDismissable>
@@ -146,7 +146,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
               buttons={
                 <>
                   <Button onPress={() => setConfirmingUnlink(false)}>Cancel</Button>
-                  <Button danger isDisabled={busy} onPress={() => void unlink()}>
+                  <Button danger isPending={busy} onPress={() => void unlink()}>
                     Unlink
                   </Button>
                 </>
@@ -165,8 +165,8 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
       ))}
       <div className="gcpe-field-row">
         {/* TextField types `label` as a string, but renders it as the label's content. */}
-        <TextField label={(<HiddenPrefixLabel prefix={who} text="display name" />) as unknown as string} value={displayName} onChange={setDisplayName} isDisabled={busy} />
-        <Button variant="secondary" onPress={() => void saveName()} isDisabled={busy}>
+        <TextField label={(<HiddenPrefixLabel prefix={who} text="display name" />) as unknown as string} value={displayName} onChange={setDisplayName} isReadOnly={busy} />
+        <Button variant="secondary" onPress={() => void saveName()} isPending={busy}>
           Save name
         </Button>
       </div>
@@ -182,7 +182,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
           <LinkForm user={user} onChanged={onChanged} />
         </>
       ) : (
-        <Switch isSelected={user.isActive} isDisabled={busy} onChange={(v) => void toggleActive(v)}>
+        <Switch isSelected={user.isActive} isReadOnly={busy} onChange={(v) => void toggleActive(v)}>
           <ShortLabel short="Active" full={`${who} is ${user.isActive ? "active" : "inactive"}`} />
         </Switch>
       )}
@@ -193,7 +193,7 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
         </p>
       ))}
       <RoleCheckboxes selected={roles} onChange={setRoles} idPrefix={`roles-${user.id}`} disabled={busy} />
-      <Button variant="secondary" onPress={() => void saveRoles()} isDisabled={busy}>
+      <Button variant="secondary" onPress={() => void saveRoles()} isPending={busy}>
         Save roles
       </Button>
 
@@ -216,10 +216,10 @@ function UserRow({ user, onChanged }: { user: UserView; onChanged(): void }): Re
                 setPassword(v);
                 setPasswordSaved(false);
               }}
-              isDisabled={busy}
+              isReadOnly={busy}
               autoComplete="new-password"
             />
-            <Button variant="secondary" type="submit" isDisabled={busy || password.length === 0}>
+            <Button variant="secondary" type="submit" isPending={busy} isDisabled={password.length === 0}>
               Set password
             </Button>
           </div>
@@ -255,8 +255,8 @@ function LinkForm({ user, onChanged }: { user: UserView; onChanged(): void }): R
         </p>
       ))}
       <p>Linking sets this user&rsquo;s email and activates them, so they can sign in.</p>
-      <TextField label={`Email for ${user.displayName}`} type="email" value={email} onChange={setEmail} isRequired isDisabled={busy} />
-      <Button type="submit" isDisabled={busy || email.trim() === ""}>
+      <TextField label={`Email for ${user.displayName}`} type="email" value={email} onChange={setEmail} isRequired isReadOnly={busy} />
+      <Button type="submit" isPending={busy} isDisabled={email.trim() === ""}>
         Link and activate
       </Button>
     </form>
@@ -339,17 +339,17 @@ export function UsersScreen(): React.JSX.Element {
             {m}
           </p>
         ))}
-        <TextField label="Email" type="email" value={email} onChange={setEmail} isRequired isDisabled={creating} />
-        <TextField label="Display name" value={displayName} onChange={setDisplayName} isRequired isDisabled={creating} />
+        <TextField label="Email" type="email" value={email} onChange={setEmail} isRequired isReadOnly={creating} />
+        <TextField label="Display name" value={displayName} onChange={setDisplayName} isRequired isReadOnly={creating} />
         <RoleCheckboxes selected={roles} onChange={setRoles} idPrefix="create-roles" disabled={creating} />
         <label className="gcpe-check">
           <input type="checkbox" checked={setPasswordNow} onChange={(e) => setSetPasswordNow(e.target.checked)} disabled={creating} />
           Set a password now
         </label>
         {setPasswordNow && (
-          <TextField label="Password (at least 12 characters)" type="password" value={password} onChange={setPassword} isDisabled={creating} autoComplete="new-password" />
+          <TextField label="Password (at least 12 characters)" type="password" value={password} onChange={setPassword} isReadOnly={creating} autoComplete="new-password" />
         )}
-        <Button type="submit" isDisabled={creating}>
+        <Button type="submit" isPending={creating}>
           Add user
         </Button>
       </form>

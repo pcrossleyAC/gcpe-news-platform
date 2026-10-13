@@ -113,7 +113,7 @@ function MediaListNamesEditor(): React.JSX.Element {
       <Form onSubmit={(e) => void onAdd(e)} aria-label="Add a media list" className="gcpe-field-row">
         <TextField label="Key" name="key" value={key} onChange={setKey} />
         <TextField label="Name" name="name" value={name} onChange={setName} />
-        <Button type="submit" isDisabled={busy}>
+        <Button type="submit" isPending={busy}>
           Add media list
         </Button>
       </Form>
@@ -185,7 +185,7 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
         </label>
       </td>
       <td>
-        <Button variant="secondary" isDisabled={busy} onPress={onSave}>
+        <Button variant="secondary" isPending={busy} onPress={onSave}>
           <span>
             Save <span className="gcpe-visually-hidden">{record.key}</span>
           </span>
@@ -199,10 +199,10 @@ function MediaListRow({ record, onSaved }: { record: MediaListRecord; onSaved(te
               title={`Retire ${record.key}?`}
               buttons={
                 <>
-                  <Button onPress={closeRetire} isDisabled={busy}>
+                  <Button onPress={closeRetire} isPending={busy}>
                     Cancel
                   </Button>
-                  <Button onPress={() => void save()} isDisabled={busy}>
+                  <Button onPress={() => void save()} isPending={busy}>
                     Retire list
                   </Button>
                 </>

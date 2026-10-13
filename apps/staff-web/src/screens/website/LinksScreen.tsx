@@ -134,16 +134,16 @@ export function LinksScreen(): React.JSX.Element {
           {canEdit && (
             <>
               <span data-move-id={link.clientKey} data-move-dir="up">
-                <Button variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0 || section.saving}>
+                <Button variant="secondary" onPress={() => moveUp(index)} isDisabled={index === 0} isPending={section.saving}>
                   Move link {index + 1} up
                 </Button>
               </span>
               <span data-move-id={link.clientKey} data-move-dir="down">
-                <Button variant="secondary" onPress={() => moveDown(index)} isDisabled={index === links.length - 1 || section.saving}>
+                <Button variant="secondary" onPress={() => moveDown(index)} isDisabled={index === links.length - 1} isPending={section.saving}>
                   Move link {index + 1} down
                 </Button>
               </span>
-              <Button variant="secondary" danger onPress={() => remove(index)} isDisabled={section.saving}>
+              <Button variant="secondary" danger onPress={() => remove(index)} isPending={section.saving}>
                 Remove link {index + 1}
               </Button>
             </>
@@ -154,10 +154,10 @@ export function LinksScreen(): React.JSX.Element {
 
       {canEdit && (
         <>
-          <Button variant="secondary" onPress={() => setLinks((l) => [...l, { clientKey: `new-${nextClientKey.current++}`, text: "", url: "" }])} isDisabled={section.saving}>
+          <Button variant="secondary" onPress={() => setLinks((l) => [...l, { clientKey: `new-${nextClientKey.current++}`, text: "", url: "" }])} isPending={section.saving}>
             Add link
           </Button>
-          <Button onPress={save} isDisabled={section.saving}>
+          <Button onPress={save} isPending={section.saving}>
             Save links
           </Button>
         </>

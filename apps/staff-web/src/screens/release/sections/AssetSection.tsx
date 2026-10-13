@@ -125,7 +125,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
           Includes additional media assets
         </label>
         {!readOnly && (
-          <Button type="submit" isDisabled={section.saving || urlProblem !== null}>
+          <Button type="submit" isPending={section.saving} isDisabled={urlProblem !== null}>
             Save media asset
           </Button>
         )}

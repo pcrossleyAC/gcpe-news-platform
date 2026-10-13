@@ -67,7 +67,7 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
       {view.can.review && (
         <Button
           variant="secondary"
-          isDisabled={busy || dirty}
+          isPending={busy} isDisabled={dirty}
           onPress={() =>
             void act(async () => {
               await activityApi.review(view.id, view.version);
@@ -81,7 +81,7 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
       {view.can.clone && !frozen && !view.isDeleted && (
         <Button
           variant="secondary"
-          isDisabled={busy || dirty}
+          isPending={busy} isDisabled={dirty}
           onPress={() =>
             void act(async () => {
               const r = await activityApi.clone(view.id);
@@ -95,7 +95,7 @@ export function ActivityActions({ view, myName, dirty, frozen, deletable, reload
         </Button>
       )}
       {view.can.delete && !frozen && deletable && !view.isDeleted && (
-        <Button variant="secondary" danger isDisabled={busy} onPress={() => setConfirmDelete(true)}>
+        <Button variant="secondary" danger isPending={busy} onPress={() => setConfirmDelete(true)}>
           Delete
         </Button>
       )}

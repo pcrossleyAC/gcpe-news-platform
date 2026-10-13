@@ -163,7 +163,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
         </fieldset>
 
         {!readOnly && (
-          <Button type="submit" isDisabled={section.saving}>
+          <Button type="submit" isPending={section.saving}>
             Save {languageLabel} content
           </Button>
         )}

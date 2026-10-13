@@ -7,7 +7,7 @@ import type { AddMemberBody, MediaHubContactPage } from "./types";
 
 /** Finds Media Hub contacts by name, email or outlet and adds the chosen email (spec §5.3).
  * The term lives in component state and goes to NoD in a POST body, never in a URL. */
-export function MediaHubSearch({ onAdd, disabled }: { onAdd(body: AddMemberBody): void; disabled: boolean }): React.JSX.Element {
+export function MediaHubSearch({ onAdd, busy }: { onAdd(body: AddMemberBody): void; busy: boolean }): React.JSX.Element {
   const [input, setInput] = useState("");
   const [q, setQ] = useState<string | null>(null);
   // Bumped on every Search press, so searching the same term again fetches it again.
@@ -60,7 +60,7 @@ export function MediaHubSearch({ onAdd, disabled }: { onAdd(body: AddMemberBody)
                 {c.emails.map((e) => (
                   <li key={e.ref}>
                     {`${e.address} (${e.kind}${e.preferred ? ", preferred" : ""}) `}
-                    <Button variant="secondary" isDisabled={disabled} onPress={() => onAdd({ mediaHubContactId: c.id, emailRef: e.ref })}>
+                    <Button variant="secondary" isPending={busy} onPress={() => onAdd({ mediaHubContactId: c.id, emailRef: e.ref })}>
                       {`Add ${e.address}`}
                     </Button>
                   </li>

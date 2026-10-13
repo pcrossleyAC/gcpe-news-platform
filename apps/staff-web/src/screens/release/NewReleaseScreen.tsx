@@ -461,7 +461,7 @@ export function NewReleaseScreen(): React.JSX.Element {
         )}
         {fieldProblem("mediaListKeys") && <p role="alert">{fieldProblem("mediaListKeys")}</p>}
 
-        <Button type="submit" isDisabled={submitting}>
+        <Button type="submit" isPending={submitting}>
           Create release
         </Button>
       </Form>

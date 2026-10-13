@@ -94,7 +94,7 @@ export function SignIn(): React.JSX.Element {
         <Form onSubmit={onSubmit}>
           <TextField label="User name" name="username" value={username} onChange={setUsername} isRequired autoComplete="username" />
           <TextField label="Password" name="password" type="password" value={password} onChange={setPassword} isRequired autoComplete="current-password" />
-          <Button type="submit" isDisabled={submitting}>
+          <Button type="submit" isPending={submitting}>
             Sign in
           </Button>
         </Form>

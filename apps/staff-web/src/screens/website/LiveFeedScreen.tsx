@@ -92,13 +92,13 @@ export function LiveFeedScreen(): React.JSX.Element {
       {section.error && <InlineAlert variant="danger" role="alert" description={section.error} />}
 
       <form onSubmit={onSubmit} aria-label="Live Feed settings">
-        <Switch isSelected={enabled} isDisabled={!canEdit || section.saving} onChange={setEnabled}>
+        <Switch isSelected={enabled} isDisabled={!canEdit} isReadOnly={section.saving} onChange={setEnabled}>
           Live Feed on
         </Switch>
         <TextField label="Manifest URL" value={manifestUrl} onChange={setManifestUrl} isDisabled={!canEdit} />
         <TextField label="M3U URL" value={m3uUrl} onChange={setM3uUrl} isDisabled={!canEdit} />
         {canEdit && (
-          <Button type="submit" isDisabled={section.saving}>
+          <Button type="submit" isPending={section.saving}>
             Save Live Feed
           </Button>
         )}

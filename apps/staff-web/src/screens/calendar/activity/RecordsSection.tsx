@@ -141,7 +141,7 @@ export function RecordsSection({ activityId, files, canChange, beforeChange, onF
               {canChange && (
                 <>
                   {" "}
-                  <Button variant="secondary" isDisabled={busy} aria-label={`Remove ${f.fileName}`} onPress={() => setRemoving(f)}>
+                  <Button variant="secondary" isPending={busy} aria-label={`Remove ${f.fileName}`} onPress={() => setRemoving(f)}>
                     Remove
                   </Button>
                 </>

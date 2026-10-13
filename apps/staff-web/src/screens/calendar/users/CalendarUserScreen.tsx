@@ -59,7 +59,7 @@ function ProfileForm({ userId, profile, onSaved }: { userId: string; profile: Pr
         <label htmlFor="profile-description">Description</label>
         <textarea id="profile-description" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} disabled={busy} />
       </div>
-      <Button type="submit" isDisabled={busy}>
+      <Button type="submit" isPending={busy}>
         Save contact details
       </Button>
     </form>

@@ -105,7 +105,7 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
               <a href={f.url}>{f.label}</a>
               {!readOnly && (
                 <DialogTrigger isOpen={removeTarget?.file.id === f.id} onOpenChange={(open) => setRemoveTarget(open ? { kind, file: f } : null)}>
-                  <Button variant="secondary" danger isDisabled={s.busy}>
+                  <Button variant="secondary" danger isPending={s.busy}>
                     Remove {f.label}
                   </Button>
                   <Modal isDismissable>
@@ -114,10 +114,10 @@ export function FilesSection({ view, setView, readOnly }: FilesSectionProps): Re
                       title={`Remove ${f.label}?`}
                       buttons={
                         <>
-                          <Button onPress={() => setRemoveTarget(null)} isDisabled={s.busy}>
+                          <Button onPress={() => setRemoveTarget(null)} isPending={s.busy}>
                             Cancel
                           </Button>
-                          <Button danger onPress={() => void confirmRemove()} isDisabled={s.busy}>
+                          <Button danger onPress={() => void confirmRemove()} isPending={s.busy}>
                             Confirm remove
                           </Button>
                         </>

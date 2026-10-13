@@ -133,7 +133,7 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
       {total !== null && rows.length < total && (
         <>
           <div ref={sentinel} />
-          <Button variant="secondary" isDisabled={loading} onPress={more}>{`Show ${Math.min(LIST_PAGE_SIZE, total - rows.length)} more`}</Button>
+          <Button variant="secondary" isPending={loading} onPress={more}>{`Show ${Math.min(LIST_PAGE_SIZE, total - rows.length)} more`}</Button>
         </>
       )}
     </section>

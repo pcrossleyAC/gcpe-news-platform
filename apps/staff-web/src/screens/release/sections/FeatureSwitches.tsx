@@ -47,7 +47,7 @@ export function FeatureSwitches({ view, setView, places, readOnly }: FeatureSwit
         <fieldset key={`${place.kind}:${place.key}`} className="gcpe-release-editor__feature-place">
           <legend>{place.label}</legend>
           {FEATURE_SLOTS.map((slot) => (
-            <Switch key={slot} isSelected={isOn(place, slot)} isDisabled={!enabled || section.saving} onChange={(on) => toggle(place, slot, on)}>
+            <Switch key={slot} isSelected={isOn(place, slot)} isDisabled={!enabled} isReadOnly={section.saving} onChange={(on) => toggle(place, slot, on)}>
               {SLOT_LABEL[slot]}
             </Switch>
           ))}

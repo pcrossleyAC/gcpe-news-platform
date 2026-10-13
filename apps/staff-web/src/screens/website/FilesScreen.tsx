@@ -117,7 +117,7 @@ export function FilesScreen(): React.JSX.Element {
             <a href={f.url}>{f.name}</a>
             {canEdit && (
               <DialogTrigger isOpen={removeTarget?.id === f.id} onOpenChange={(open) => setRemoveTarget(open ? f : null)}>
-                <Button variant="secondary" danger isDisabled={upload.busy}>
+                <Button variant="secondary" danger isPending={upload.busy}>
                   Delete {f.name}
                 </Button>
                 <Modal isDismissable>

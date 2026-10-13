@@ -116,7 +116,8 @@ describe("DeadLettersScreen", () => {
     const user = userEvent.setup();
     const button = await screen.findByRole("button", { name: RETRY_NAME });
     await user.click(button);
-    await waitFor(() => expect(button).toBeDisabled());
+    await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
+    expect(button).not.toHaveAttribute("disabled");
     await user.click(button);
     expect(calls.filter((c) => c === "POST /calendar/api/dead-letters/retry")).toHaveLength(1);
     finish(new Response(null, { status: 204 }));

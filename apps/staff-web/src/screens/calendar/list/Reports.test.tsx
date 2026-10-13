@@ -69,11 +69,13 @@ describe("the list's reports (spec addendum §8.1, §10)", () => {
     await screen.findByText("Sample listed");
     await userEvent.setup().click(screen.getByRole("button", { name: "Planning" }));
     expect(await screen.findByText("Preparing your Planning report…")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Look Ahead" })).toBeDisabled();
+    const lookAhead = screen.getByRole("button", { name: "Look Ahead" });
+    expect(lookAhead).toHaveAttribute("aria-disabled", "true");
+    expect(lookAhead).not.toHaveAttribute("disabled");
     expect(await screen.findByText("The Planning report has downloaded.", undefined, { timeout: 3000 })).toBeInTheDocument();
     expect(calls.filter((c) => c.url === `/calendar/api/reports/jobs/${ID}`)).toHaveLength(1);
     expect(names).toEqual(["PlanningReport.pdf"]);
-    expect(screen.getByRole("button", { name: "Look Ahead" })).toBeEnabled();
+    expect(lookAhead).not.toHaveAttribute("aria-disabled");
   });
 
   it("a report that failed, or one turned away while others run, says why", async () => {

@@ -455,7 +455,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
         </fieldset>
         <div className="gcpe-actions">
           {!readOnly && (
-            <Button type="submit" isDisabled={saving}>
+            <Button type="submit" isPending={saving}>
               Save
             </Button>
           )}

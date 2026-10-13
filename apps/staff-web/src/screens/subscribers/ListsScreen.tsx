@@ -115,10 +115,10 @@ export function ListsScreen(): React.JSX.Element {
                   {`Offer ${c.name}`}
                 </label>
               )}
-              <Button variant="secondary" isDisabled={busy || ci === 0} onPress={() => moveCategory(ci, -1)}>
+              <Button variant="secondary" isPending={busy} isDisabled={ci === 0} onPress={() => moveCategory(ci, -1)}>
                 {`Move ${c.name} up`}
               </Button>
-              <Button variant="secondary" isDisabled={busy || ci === view.categories.length - 1} onPress={() => moveCategory(ci, 1)}>
+              <Button variant="secondary" isPending={busy} isDisabled={ci === view.categories.length - 1} onPress={() => moveCategory(ci, 1)}>
                 {`Move ${c.name} down`}
               </Button>
             </div>
@@ -162,10 +162,10 @@ export function ListsScreen(): React.JSX.Element {
                     </td>
                     {canAdmin && c.editable && (
                       <td>
-                        <Button variant="secondary" isDisabled={busy || li === 0} onPress={() => moveList(c, li, -1)}>
+                        <Button variant="secondary" isPending={busy} isDisabled={li === 0} onPress={() => moveList(c, li, -1)}>
                           {`Move ${l.name} up`}
                         </Button>
-                        <Button variant="secondary" isDisabled={busy || li === c.lists.length - 1} onPress={() => moveList(c, li, 1)}>
+                        <Button variant="secondary" isPending={busy} isDisabled={li === c.lists.length - 1} onPress={() => moveList(c, li, 1)}>
                           {`Move ${l.name} down`}
                         </Button>
                       </td>

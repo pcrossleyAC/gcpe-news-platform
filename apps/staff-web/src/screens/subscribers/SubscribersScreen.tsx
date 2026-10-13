@@ -199,10 +199,10 @@ export function SubscribersScreen(): React.JSX.Element {
                   title={BULK_COPY[a].title(selected.length)}
                   buttons={
                     <>
-                      <Button onPress={() => setPendingAction(null)} isDisabled={busy}>
+                      <Button onPress={() => setPendingAction(null)} isPending={busy}>
                         Cancel
                       </Button>
-                      <Button danger={a === "delete"} onPress={() => void runBulk(a)} isDisabled={busy}>
+                      <Button danger={a === "delete"} onPress={() => void runBulk(a)} isPending={busy}>
                         {`Confirm ${BULK_COPY[a].verb}`}
                       </Button>
                     </>

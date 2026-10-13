@@ -121,10 +121,10 @@ export function AccessEditor({ user, orgs, actor, onSaved, onCancel }: { user: C
         })}
       </fieldset>
       <div className="gcpe-button-row">
-        <Button type="submit" isDisabled={busy}>
+        <Button type="submit" isPending={busy}>
           Save Calendar access
         </Button>
-        <Button variant="secondary" onPress={onCancel} isDisabled={busy}>
+        <Button variant="secondary" onPress={onCancel} isPending={busy}>
           Cancel
         </Button>
       </div>

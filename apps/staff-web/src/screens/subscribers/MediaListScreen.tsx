@@ -148,14 +148,14 @@ export function MediaListScreen(): React.JSX.Element {
                 {canEdit && (
                   <td>
                     {m.needsAttention && (
-                      <Button variant="secondary" isDisabled={busy} onPress={() => setResolving(m)}>
+                      <Button variant="secondary" isPending={busy} onPress={() => setResolving(m)}>
                         {`Resolve ${m.email}`}
                       </Button>
                     )}
                     <Button
                       variant="secondary"
                       danger
-                      isDisabled={busy}
+                      isPending={busy}
                       onPress={() => {
                         setActionError(null);
                         setRemoving(m);
@@ -178,12 +178,12 @@ export function MediaListScreen(): React.JSX.Element {
             <p>For people who aren&rsquo;t in Media Hub.</p>
             <Form onSubmit={onAddManual} aria-label="Add an address by hand">
               <TextField label="Email address" name="email" value={email} onChange={setEmail} />
-              <Button type="submit" isDisabled={busy}>
+              <Button type="submit" isPending={busy}>
                 Add to list
               </Button>
             </Form>
           </section>
-          <MediaHubSearch onAdd={(body) => void add(body)} disabled={busy} />
+          <MediaHubSearch onAdd={(body) => void add(body)} busy={busy} />
         </>
       )}
 
@@ -223,10 +223,10 @@ export function MediaListScreen(): React.JSX.Element {
             title="This person unsubscribed"
             buttons={
               <>
-                <Button onPress={closeOptOutPrompt} isDisabled={busy}>
+                <Button onPress={closeOptOutPrompt} isPending={busy}>
                   Cancel
                 </Button>
-                <Button onPress={() => void add({ ...optOutPrompt.body, confirmOptOut: true })} isDisabled={busy}>
+                <Button onPress={() => void add({ ...optOutPrompt.body, confirmOptOut: true })} isPending={busy}>
                   Add anyway
                 </Button>
               </>
@@ -246,10 +246,10 @@ export function MediaListScreen(): React.JSX.Element {
             title={`Remove ${removing.email} from this list?`}
             buttons={
               <>
-                <Button onPress={closeRemoving} isDisabled={busy}>
+                <Button onPress={closeRemoving} isPending={busy}>
                   Cancel
                 </Button>
-                <Button danger onPress={() => void remove(removing)} isDisabled={busy}>
+                <Button danger onPress={() => void remove(removing)} isPending={busy}>
                   Confirm remove
                 </Button>
               </>
