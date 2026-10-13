@@ -2,7 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import express from "express";
 import { authFromEnv, NEWS_API_SIMILAR_ROLE, serviceTokenProvider, type LocalAuthConfig, type ServiceTokenOptions } from "@gcpe/auth";
-import { assertTimeZoneRules, eventSecretsSchema, loadTenantConfig, parseEnv } from "@gcpe/config";
+import { assertTimeZoneRules, eventSecretsSchema, isTestSite, loadTenantConfig, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
@@ -101,18 +101,6 @@ export const nrmsEnvSchema = z.object({
     if (!env[name]) ctx.addIssue({ code: z.ZodIssueCode.custom, path: [name], message: `${name} is required when FLICKR_API_KEY is set` });
   }
 });
-
-/**
- * Task 1 (staff-web) GET /config's isTestSite: the exact same rule as
- * apps/public-site/src/site-env.ts's `isTestSite(env)` (deliberately duplicated — apps never
- * import another app's src, only shared packages). A site is a test site unless it is the real
- * production deployment: NODE_ENV isn't "production", or it is but
- * LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true (a test deployment left in "production" for other
- * reasons), or SITE_ENVIRONMENT=test says so explicitly.
- */
-export function nrmsIsTestSite(env: NodeJS.ProcessEnv): boolean {
-  return env.NODE_ENV !== "production" || env.LOCAL_ADMIN_ALLOW_IN_PRODUCTION === "true" || env.SITE_ENVIRONMENT === "test";
-}
 
 /** NRMS's Flickr client config, or null when FLICKR_API_KEY is unset (Flickr then reads as unavailable). */
 export function flickrConfigFromEnv(parsed: z.infer<typeof nrmsEnvSchema>): FlickrConfig | null {
@@ -339,7 +327,7 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
     liveFeedDefaults,
     siteUrl: tenant.publicSiteBaseUrl,
     forecastCategoryPrefix: tenant.calendar?.forecastCategoryPrefix ?? null,
-    isTestSite: nrmsIsTestSite(env),
+    isTestSite: isTestSite(env),
     blueBridgeNotify,
     similar,
   });

@@ -14,7 +14,7 @@ export interface SiteInfo {
 }
 
 export interface PageOptions {
-  /** A test site gets `<meta name="robots" content="noindex, nofollow">` (site-env.ts's isTestSite). */
+  /** A test site gets `<meta name="robots" content="noindex, nofollow">` (@gcpe/config's isTestSite). */
   test?: boolean;
   /** Project Blue Bridge's banner text (site-env.ts's blueBridgeBanner), or null/absent for none. */
   banner?: string | null;

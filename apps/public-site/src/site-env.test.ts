@@ -1,27 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blueBridgeBanner, isGranvilleOn, isTestSite } from "./site-env";
-
-describe("isTestSite", () => {
-  it("production, nothing else set: false", () => {
-    expect(isTestSite({ NODE_ENV: "production" })).toBe(false);
-  });
-
-  it("production with LOCAL_ADMIN_ALLOW_IN_PRODUCTION=true: true (a test deployment, e.g. boxs.ca)", () => {
-    expect(isTestSite({ NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "true" })).toBe(true);
-  });
-
-  it("not production at all (e.g. development): true", () => {
-    expect(isTestSite({ NODE_ENV: "development" })).toBe(true);
-  });
-
-  it("production with SITE_ENVIRONMENT=test: true", () => {
-    expect(isTestSite({ NODE_ENV: "production", SITE_ENVIRONMENT: "test" })).toBe(true);
-  });
-
-  it("production with LOCAL_ADMIN_ALLOW_IN_PRODUCTION=false and no SITE_ENVIRONMENT: false", () => {
-    expect(isTestSite({ NODE_ENV: "production", LOCAL_ADMIN_ALLOW_IN_PRODUCTION: "false" })).toBe(false);
-  });
-});
+import { blueBridgeBanner, isGranvilleOn } from "./site-env";
 
 // Fix round 1 (IMPORTANT 2): legacy stores "true"/"false"; ON iff the trimmed, case-insensitive
 // value is exactly "true" — not "any non-empty string".

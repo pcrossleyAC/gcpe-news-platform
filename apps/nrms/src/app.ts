@@ -44,9 +44,8 @@ export function createApp(deps: {
   siteUrl?: string;
   /** The tenant's `calendar.forecastCategoryPrefix` (Forecast and the activity lookup); unset → no activity can be planned against. */
   forecastCategoryPrefix?: string | null;
-  /** Task 1 (staff-web): GET /config's isTestSite — same rule as apps/public-site/src/site-env.ts's
-   * isTestSite(env) (duplicated here, not imported: apps never import each other's src). Unset → true
-   * (fail safe: an unconfigured deployment reads as a test site, never silently as production). */
+  /** GET /config's isTestSite: @gcpe/config's isTestSite(env). Unset → true (fail safe: an
+   * unconfigured deployment reads as a test site, never silently as production). */
   isTestSite?: boolean;
   /** Plan 3d task 4: Project Blue Bridge's post-commit notify; unset → logs the subject only (see site-routes.ts). */
   blueBridgeNotify?: (subject: string, text: string) => Promise<void>;
