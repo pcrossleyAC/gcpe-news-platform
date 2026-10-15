@@ -40,6 +40,20 @@ const MONTH = /^(?:January|February|March|April|May|June|July|August|September|O
 /** An activity's link: ours (/hub/calendar/activities/123) or legacy's (Activity.aspx?ActivityId=123). */
 const ACTIVITY_LINK = /(?:\/hub\/calendar\/activities\/|[?&]ActivityId=)(\d+)$/;
 
+/** A section, day or month heading as its outline token, or null for any other line. */
+export function outlineToken(text: string): string | null {
+  const day = DAY.exec(text);
+  if (SECTIONS.includes(text.toLowerCase())) return `§ ${text.toUpperCase()}`;
+  if (day) return `${day[1] ? "∅" : "#"} ${day[2]}`;
+  if (MONTH.test(text)) return `# ${text}`;
+  return null;
+}
+/** The activity a link opens, ours or legacy's, or null. */
+export function activityIdOf(url: string): number | null {
+  const m = ACTIVITY_LINK.exec(url);
+  return m ? Number(m[1]) : null;
+}
+
 /**
  * A report's structure in reading order, for golden tests and the 5i comparison with legacy's
  * PDFs: "§ SECTION", "# day or month heading", "∅ day with no activities", and "id:123" for each
@@ -51,14 +65,12 @@ export function outlineOf(pages: PdfPage[]): string[] {
     if (page.lines.some((l) => l.text === "Contents:")) continue;
     const tokens: { y: number; t: string }[] = [];
     for (const l of page.lines) {
-      const day = DAY.exec(l.text);
-      if (SECTIONS.includes(l.text.toLowerCase())) tokens.push({ y: l.y, t: `§ ${l.text.toUpperCase()}` });
-      else if (day) tokens.push({ y: l.y, t: `${day[1] ? "∅" : "#"} ${day[2]}` });
-      else if (MONTH.test(l.text)) tokens.push({ y: l.y, t: `# ${l.text}` });
+      const token = outlineToken(l.text);
+      if (token !== null) tokens.push({ y: l.y, t: token });
     }
     for (const link of page.links) {
-      const m = ACTIVITY_LINK.exec(link.url);
-      if (m) tokens.push({ y: link.y, t: `id:${m[1]}` });
+      const id = activityIdOf(link.url);
+      if (id !== null) tokens.push({ y: link.y, t: `id:${id}` });
     }
     out.push(...tokens.sort((a, b) => b.y - a.y).map((x) => x.t));
   }
