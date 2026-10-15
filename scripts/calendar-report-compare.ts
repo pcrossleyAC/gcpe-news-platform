@@ -125,7 +125,17 @@ export function compareRowTexts(legacy: Map<string, string>, ours: Map<string, s
   return { counts, lines };
 }
 
+/** Everything this creates holds real data, so files and folders are owner-only whatever the caller's umask. */
 export async function compareReports(o: { legacy: string; ours: string; out: string }): Promise<{ same: boolean; diff: string[]; rows: RowCounts }> {
+  const previousUmask = process.umask(0o077);
+  try {
+    return await compareReportsUnmasked(o);
+  } finally {
+    process.umask(previousUmask);
+  }
+}
+
+async function compareReportsUnmasked(o: { legacy: string; ours: string; out: string }): Promise<{ same: boolean; diff: string[]; rows: RowCounts }> {
   if (insideRepo(o.out)) throw new Error("--out must be outside the repository: the legacy reports hold real activities");
   const legacyPages = await pdfPages(new Uint8Array(readFileSync(o.legacy)));
   const oursPages = await pdfPages(new Uint8Array(readFileSync(o.ours)));

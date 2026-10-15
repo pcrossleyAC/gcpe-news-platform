@@ -121,7 +121,17 @@ export async function projectCoreIntoCalendar(coreDb: Db, calDb: Db): Promise<nu
 
 const readFile = (p: string): CsvFile => ({ name: basename(p), bytes: new Uint8Array(readFileSync(p)) });
 
+/** Everything this creates holds real data, so files and folders are owner-only whatever the caller's umask. */
 export async function runParity(o: ParityOptions): Promise<ParityResult> {
+  const previousUmask = process.umask(0o077);
+  try {
+    return await runParityUnmasked(o);
+  } finally {
+    process.umask(previousUmask);
+  }
+}
+
+async function runParityUnmasked(o: ParityOptions): Promise<ParityResult> {
   const log = o.log ?? (() => {});
   if (insideRepo(o.out)) throw new ParityArgumentError("--out must be outside the repository: the run holds real activities");
   mkdirSync(o.out, { recursive: true, mode: 0o700 });

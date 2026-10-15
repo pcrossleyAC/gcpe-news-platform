@@ -1,5 +1,5 @@
 // The 5i comparison hook, on our own reports only: the past-period legacy PDFs never enter the repo.
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -41,6 +41,8 @@ describe("the report comparison hook for 5i (spec addendum §12.3)", () => {
     expect(r.rows).toMatchObject({ same: 1, onlyLegacy: 1, onlyOurs: 1 });
     expect(readFileSync(join(dir, "differ", "outline-legacy.txt"), "utf8")).toBe("§ AWARENESS DATES\nid:1\nid:2\n");
     expect(readFileSync(join(dir, "differ", "rows-legacy.txt"), "utf8")).toBe("id:1#1\tSample 1 HLTH-1\nid:2#1\tSample 2 HLTH-2\n");
+    // Everything written holds report text: no group or other access, even under a permissive umask.
+    for (const name of ["", ...readdirSync(join(dir, "differ"))]) expect(statSync(join(dir, "differ", name)).mode & 0o077).toBe(0);
     expect(insideRepo(resolve(import.meta.dirname, "..", "docs"))).toBe(true);
     expect(insideRepo(dir)).toBe(false);
     await expect(compareReports({ legacy: join(dir, "legacy.pdf"), ours: join(dir, "ours.pdf"), out: resolve(import.meta.dirname, "report-parity") })).rejects.toThrow("--out must be outside the repository");
