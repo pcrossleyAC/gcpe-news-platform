@@ -31,6 +31,7 @@
     "distribution:capacity": "tsx scripts/distribution-capacity.ts",
     "site:rebuild-all": "npm --workspace @gcpe/public-site run site:rebuild-all --",
     "calendar:report-compare": "tsx scripts/calendar-report-compare.ts",
+    "calendar:report-parity": "tsx scripts/calendar-report-parity.ts",
     "site:quality": "tsx scripts/site-quality.ts",
     "search:spot-check": "tsx scripts/search-spot-check.ts"
   },
