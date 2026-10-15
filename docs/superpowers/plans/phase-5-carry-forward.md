@@ -4,14 +4,38 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 
 ## 5i parity check
 
-- **Report parity:** run `npm run calendar:report-compare` (scripts/calendar-report-compare.ts) on each past-period legacy PDF against ours for the same range and filter, with `--out` outside the repo. Settle there what the samples couldn't:
-  - whether legacy's Awareness Dates rows carried "Last updated" in the Exec Look Ahead (discrepancy 6; legacy's code says no);
-  - whether legacy showed In the News for a day with no rows (we skip such days);
-  - where legacy broke pages around "Outside Government" and the Long Term Outlook;
-  - Q63.
+Run on the June 2026 legacy snapshot on 2026-10-15; results in `docs/parity/calendar-report-parity.md`.
+Every difference is explained, fixed or listed here; the plain Look Ahead is inconclusive (Q100).
 
-  The import report's `cutoff` is the earliest `--from` the check may use.
-- Survey 08 (2026-10-10): `UNK` in `contactMinistryExcludedAbbreviations` matches no legacy ministry (the tenant setting stays as it is), and query 8.20 (linked releases) is missing from the export and still needs re-running for this half.
+- **Settled by the run:**
+  - Awareness Dates rows in the Exec Look Ahead carry no "Last updated" line, in legacy as in ours
+    (0 of 52 rows each). Legacy's code was right; discrepancy 6 doesn't hold for Awareness.
+  - A day with no In the News rows shows no In the News section, in legacy as in ours.
+  - Query 8.20 (linked releases): the v2 export holds it, 342 rows.
+- **Still open from the original list:**
+  - Where legacy broke pages around "Outside Government" and the Long Term Outlook. The section order
+    matches; break positions may differ (Q48) and are compared by eye. Legacy repeats the day and
+    section headings at the top of a continued page and we don't (Q101). Repeating them means
+    carrying a heading into pdfmake's repeated header rows, which is more than a builder tweak.
+  - Q63: an explicit To date leaves the Long Term Outlook out of both sides, so this run says nothing
+    about it.
+- **Re-export for the next run:**
+  - The plain Look Ahead (Q100): both Look Ahead files exported were the Exec.
+  - Query 8.10 as UTF-8: the Windows-1252 export turns characters outside that code page into "?".
+  - Queries 8.30–8.46 straight from SSMS, not through a spreadsheet: keyword names shaped like a month
+    and year came back rewritten. This is inferred from their shape and the file's padding, not
+    confirmed.
+- **The compare tool (`scripts/calendar-report-compare.ts`), before the next run:**
+  - Treat as page furniture only the lines in a page's header and footer bands. Today a short line
+    that repeats inside rows on half the pages (a wrapped "N months ago") is dropped from the rows.
+  - Drop the tables' repeated column headers, which now join the row above a page break.
+  - Legacy draws some characters and words in a fallback font whose text doesn't extract. Flag those
+    runs, by font, so they can be reported apart from real differences.
+  - Optionally, join two link rectangles for the same activity on consecutive lines: a guard in case
+    a CC ID# ever wraps again.
+- The import report's `cutoff` is the earliest `--from` the check may use.
+- Survey 08 (2026-10-10): `UNK` in `contactMinistryExcludedAbbreviations` matches no legacy ministry
+  (the tenant setting stays as it is).
 
 ## Platform hardening (no phase yet)
 
