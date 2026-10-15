@@ -16,6 +16,8 @@ export interface Run {
   size?: number;
   /** An absolute http(s) URL. */
   link?: string;
+  /** Kept on one line, even past its cell's edge, rather than broken between characters. */
+  noWrap?: boolean;
 }
 
 export interface Cell {

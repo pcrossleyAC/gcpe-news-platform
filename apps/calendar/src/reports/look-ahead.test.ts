@@ -9,6 +9,9 @@ import { reportData, ReportTooLargeError, type ReportRow } from "./data";
 import { LOOK_AHEAD_MAX_DAYS, lookAheadDoc, lookAheadRange, type LookAheadContext } from "./look-ahead";
 import { rowCountOf, type TableBlock } from "./model";
 import { COLOURS } from "./text";
+import { reportAssets } from "./render/assets";
+import { renderPdf, useBcSans } from "./render/pdf";
+import { pdfPages } from "../../test/pdf-text";
 
 const tz = TEST_RULES.timeZone;
 // 2026-11-03 11:00 BC. 2026-11-13 is a Friday.
@@ -356,5 +359,14 @@ describe("what building a Look Ahead costs the event loop", () => {
     const n = rowCountOf(lookAheadDoc(ctx(some, { q: q({ filter: { from: "2026-11-10" } }) }), { detailed: false }));
     expect(rowCountOf(lookAheadDoc(ctx(some, { q: q({ filter: { from: "2026-11-10" } }) }), { detailed: false, maxRows: n }))).toBe(n);
     expect(() => lookAheadDoc(ctx(some, { q: q({ filter: { from: "2026-11-10" } }) }), { detailed: false, maxRows: n - 1 })).toThrow(ReportTooLargeError);
+  });
+});
+
+describe("a CC ID# wider than its column, as drawn", () => {
+  it("stays on one line, so the row has one link, as legacy's did", async () => {
+    useBcSans(reportAssets().fontsDir);
+    const wide = row(20011, { hqSection: "events_and_speeches", ministryAbbreviation: "WWMW", startAt: at("2026-11-10", "09:00"), endAt: at("2026-11-10", "10:00") });
+    const pages = await pdfPages(await renderPdf(lookAheadDoc(ctx([wide]), { detailed: false })));
+    expect(pages.flatMap((p) => p.links).filter((l) => l.url.endsWith("/activities/20011"))).toHaveLength(1);
   });
 });

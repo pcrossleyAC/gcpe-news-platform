@@ -100,8 +100,8 @@ describe("report text (ActivityHandler.ashx.cs:1087-1257)", () => {
   });
 
   it("the CC ID# links to the activity in the staff app, under the tenant's abbreviation", () => {
-    expect(minIdRuns(reportRow(), c)).toEqual([{ text: "HLTH-20001", color: COLOURS.link, link: "https://staff.example.test/hub/calendar/activities/20001" }]);
-    expect(minIdRuns(reportRow({ ministryAbbreviation: "FIN" }), { ...c, origin: null })).toEqual([{ text: "FN-20001", color: COLOURS.link }]);
+    expect(minIdRuns(reportRow(), c)).toEqual([{ text: "HLTH-20001", color: COLOURS.link, noWrap: true, link: "https://staff.example.test/hub/calendar/activities/20001" }]);
+    expect(minIdRuns(reportRow({ ministryAbbreviation: "FIN" }), { ...c, origin: null })).toEqual([{ text: "FN-20001", color: COLOURS.link, noWrap: true }]);
   });
 
   it("RLS: origin above material, the first rule wins, Report only outside Events, both fact sheet spellings (C148), the NR time on its day", () => {

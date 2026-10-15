@@ -25,6 +25,7 @@ function textOf(runs: Run[]) {
     ...(r.color ? { color: r.color } : {}),
     ...(r.size ? { fontSize: r.size } : {}),
     ...(r.link ? { link: r.link } : {}),
+    ...(r.noWrap ? { noWrap: true } : {}),
   }));
 }
 

@@ -218,9 +218,12 @@ export function leadOf(row: Pick<ReportRow, "ministryAbbreviation">, rules: Cale
   return rules.reports.leadAbbreviations[abbr] ?? abbr;
 }
 
-/** "MIN-Id", blue, linked to the activity in the staff app (carry-forward § 5g). */
+/**
+ * "MIN-Id", blue, linked to the activity in the staff app (carry-forward § 5g). Never broken: in BC Sans a
+ * four-letter abbreviation and a six-digit id are wider than the column, and legacy kept them on one line.
+ */
 export function minIdRuns(row: Pick<ReportRow, "id" | "ministryAbbreviation">, c: Pick<TextContext, "rules" | "origin">): Run[] {
-  return [{ text: `${leadOf(row, c.rules)}-${row.id}`, color: COLOURS.link, ...(c.origin ? { link: `${c.origin}/hub/calendar/activities/${row.id}` } : {}) }];
+  return [{ text: `${leadOf(row, c.rules)}-${row.id}`, color: COLOURS.link, noWrap: true, ...(c.origin ? { link: `${c.origin}/hub/calendar/activities/${row.id}` } : {}) }];
 }
 
 /** Which Look Ahead table a row is in: legacy's `inTheNews` is true for Issues and Reports and for In the News. */
