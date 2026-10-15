@@ -24,6 +24,8 @@ export interface CalendarImportReportJSON {
   facts: Record<string, number>;
   notes: string[];
   failed: { stage: string; message: string } | null;
+  /** Tables the snapshot didn't hold (a CSV export): listed here, never counted as zero rows. */
+  notProvided: { table: string; note: string }[];
 }
 
 /** Holds counts, ids, field names and reasons only: never a title, an email or a saved query's typed values. */
@@ -31,7 +33,7 @@ export class CalendarImportReport {
   private readonly tables = new Map<string, Counts>();
   private readonly data: Omit<CalendarImportReportJSON, "mode" | "cutoff" | "balanced" | "tables"> = {
     skipped: [], changedInCalendar: [], validation: [], mapping: [], unknownKeys: [], savedFilters: { strippedPrefix: 0, dropped: [], overCap: [] },
-    usersAccessKept: [], usersActivated: [], facts: {}, notes: [], failed: null,
+    usersAccessKept: [], usersActivated: [], facts: {}, notes: [], failed: null, notProvided: [],
   };
   constructor(readonly mode: "dry-run" | "confirmed", readonly cutoff: string) {}
 
@@ -57,15 +59,19 @@ export class CalendarImportReport {
     this.data.savedFilters.overCap.push(...n.overCap);
   }
   markFailed(stage: string, message: string): void { this.data.failed = { stage, message }; }
+  notProvided(table: string, note: string): void { this.data.notProvided.push({ table, note }); }
+  private missing(): Set<string> { return new Set(this.data.notProvided.map((n) => n.table)); }
   balanced(): boolean {
     if (this.data.failed) return false;
-    for (const r of this.tables.values()) if (r.legacy !== OUTCOMES.reduce((n, o) => n + r[o], 0)) return false;
+    const missing = this.missing();
+    for (const [t, r] of this.tables) if (!missing.has(t) && r.legacy !== OUTCOMES.reduce((n, o) => n + r[o], 0)) return false;
     return true;
   }
   toJSON(): CalendarImportReportJSON {
+    const missing = this.missing();
     return {
       mode: this.mode, cutoff: this.cutoff, balanced: this.balanced(),
-      tables: Object.fromEntries([...this.tables.entries()].sort(([a], [b]) => a.localeCompare(b))),
+      tables: Object.fromEntries([...this.tables.entries()].filter(([t]) => !missing.has(t)).sort(([a], [b]) => a.localeCompare(b))),
       ...structuredClone(this.data),
     };
   }
@@ -82,6 +88,7 @@ export class CalendarImportReport {
     if (j.usersActivated.length) { lines.push("Users the import activated:"); for (const u of j.usersActivated) lines.push(`  ${u.legacyIds.join(",")} -> ${u.userId}`); }
     if (Object.keys(j.facts).length) { lines.push("Facts:"); for (const [k, v] of Object.entries(j.facts)) lines.push(`  ${k}: ${v}`); }
     for (const n of j.notes) lines.push(`Note: ${n}`);
+    for (const n of j.notProvided) lines.push(`Not provided: ${n.table} (${n.note})`);
     return lines.join("\n");
   }
 }
