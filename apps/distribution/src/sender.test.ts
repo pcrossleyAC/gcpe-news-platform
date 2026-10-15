@@ -772,16 +772,23 @@ describe("sendDue", () => {
         internalDomains,
       );
 
-      // The first run's lock (300ms) is far shorter than 6 messages at 150ms each (~900ms) —
-      // exactly the "lock expires mid-batch" scenario that used to double-send. It is started
-      // without awaiting so the second run below genuinely overlaps it instead of running
-      // strictly after it finishes. lockMarginMs is set well below lockMs (sendDue requires
-      // lockMs > lockMarginMs) and far below the default (perMessageMs, tens of seconds) so the
-      // margin check doesn't trip before the very first message of this short-lived lock.
-      const firstRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 6, lockMs: 300, lockMarginMs: 100 });
-      await sleep(320); // past the first run's lock, while it may still be mid-batch
+      // The first run's lock (600ms) is far shorter than 6 messages at 150ms each (~900ms) —
+      // exactly the "lock expires mid-batch" scenario that used to double-send. Its margin
+      // (400ms) still covers one whole send with room for a slow CI machine, as the production
+      // default (one message's worst case) does: a margin shorter than a send would let a send
+      // outlive the lock and be reclaimed, which is a broken configuration rather than the bug
+      // this test guards. The first run is started without awaiting so the second run below
+      // genuinely overlaps it instead of running strictly after it finishes.
+      const firstRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 6, lockMs: 600, lockMarginMs: 400 });
+      await sleep(620); // past the first run's lock, while it may still be mid-batch
       const secondRun = sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 6 }); // generous default lock
       await Promise.all([firstRun, secondRun]);
+      // How the two runs split the batch depends on timing (on a slow machine the second run can
+      // find every row still locked), so later runs pick up whatever was released; the point is
+      // that nothing is ever sent twice.
+      for (let i = 0; i < 5 && (await tdb.db.select().from(messages)).some((r) => r.status === "pending"); i++) {
+        await sendDue({ db: tdb.db, transport, from: "news@example.com", redirectTo: [], batchSize: 6 });
+      }
 
       expect(sink.messages).toHaveLength(6);
       const recipients = sink.messages.map((m) => (m.to && "value" in m.to ? m.to.value[0]!.address : undefined));
