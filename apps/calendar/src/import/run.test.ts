@@ -11,7 +11,10 @@ import { createCoreTestDb } from "../../../core/test/helpers";
 import { roleGrants, userLegacyIds, users as coreUsers } from "../../../core/src/db/schema";
 import { createCalendarTestDb, TEST_RULES } from "../../test/helpers";
 import { CONFIDENTIAL_MARKER, GUID, legacyCalendarTables, seedCoreForImport, TEST_CUTOFF } from "../../test/legacy-calendar-fixture";
-import { activities, activityChanges, activityFiles, categories, favourites, savedFilters } from "../db/schema";
+import { legacyCsvFiles, partCFile, CSV_CUTOFF } from "../../test/legacy-csv-fixture";
+import { snapshotFromCsv } from "./csv-snapshot";
+import { seedCoreFromLegacyKeys } from "../../../../scripts/lib/calendar-parity-core";
+import { activities, activityChanges, activityFiles, categories, commContacts as calCommContacts, favourites, savedFilters } from "../db/schema";
 import { defaultReportPath, ImportStageError, parseImportArgs, runCalendarImport, runCalendarImportCli } from "./run";
 
 let cal: TestDatabase, core: TestDatabase;
@@ -233,5 +236,35 @@ describe("calendar:import (acceptance 15)", () => {
     expect(p.endsWith("calendar-import-20261120T180405Z.json")).toBe(true);
     expect(p).toContain("import-reports");
     expect(p.startsWith("/")).toBe(true);
+  });
+});
+
+describe("calendar:import from a CSV snapshot", () => {
+  it("imports every activity, makes users from comm contacts, and reports the tables it never had as not provided", async () => {
+    await core.db.execute(sql`TRUNCATE users, organizations, terms, outbox_events, outbox_deliveries, aggregate_sequences CASCADE`);
+    const { snapshot, keys } = snapshotFromCsv(legacyCsvFiles(), { partC: partCFile(), usersFromCommContacts: true });
+    expect(await seedCoreFromLegacyKeys(core.db, keys)).toBe("sample-hq");
+    const d = await deps();
+    const report = await runCalendarImport({ db: d.db, coreDb: d.coreDb, snapshot, store: d.store, rules: TEST_RULES, coreSubscribers: [] }, { cutoff: CSV_CUTOFF, confirm: true });
+    const j = report.toJSON();
+    expect(j.balanced).toBe(true);
+    expect(j.tables.activities).toMatchObject({ legacy: 5, inserted: 5 });
+    expect(j.tables.users).toMatchObject({ legacy: 3, inserted: 3 });
+    expect(j.tables.commContacts).toMatchObject({ legacy: 4, inserted: 3, skipped: 1 });
+    expect(Object.keys(j.tables)).not.toContain("favourites");
+    expect(j.notProvided.map((n) => n.table)).toEqual(["userMinistries", "savedFilters", "favourites", "files", "logRows"]);
+    expect(j.notes).toEqual(expect.arrayContaining(["users are made from comm contacts: names only, no email, no role, inactive"]));
+    expect(j.facts).not.toHaveProperty("historyRows");
+    expect(j.facts).not.toHaveProperty("usersWithoutEmail");
+    expect((await cal.db.select({ id: activities.id }).from(activities).orderBy(asc(activities.id))).map((r) => r.id)).toEqual([41001, 41002, 41003, 41004, 41005]);
+    const [a] = await cal.db.select({ commContactId: activities.commContactId }).from(activities).where(eq(activities.id, 41001));
+    expect(a!.commContactId).toBe(501);
+    expect((await cal.db.select({ id: calCommContacts.id }).from(calCommContacts).orderBy(asc(calCommContacts.id))).map((r) => r.id)).toEqual([501, 502, 503]);
+    const made = await core.db.select({ name: coreUsers.displayName, email: coreUsers.email, active: coreUsers.isActive }).from(coreUsers).orderBy(asc(coreUsers.displayName));
+    expect(made).toEqual([
+      { name: "Sample Contact One", email: null, active: false },
+      { name: "Sample Contact Two", email: null, active: false },
+      { name: "Sample No Ministry", email: null, active: false },
+    ]);
   });
 });

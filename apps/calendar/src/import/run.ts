@@ -13,7 +13,7 @@ import { commContactLabel } from "../activities/history";
 import { applyActivities, applyCommContacts, applyLookups, rebaseSequences } from "./apply";
 import { applyFavourites, applyFiles, applyHistory, applyProfiles, applySavedFilters } from "./apply-related";
 import { mapHistory, type HistoryContext } from "./history-map";
-import type { LegacySnapshot } from "./legacy-rows";
+import type { LegacySnapshot, OptionalTable } from "./legacy-rows";
 import { loadLegacy } from "./load";
 import { favouritesByActivity, joinsByActivity, mapActivity, unknownLegacyKeys, userCandidates, validationProblems, type MappedActivity } from "./map";
 import { CalendarImportReport } from "./report";
@@ -39,7 +39,9 @@ export class ImportStageError extends Error {
   }
 }
 
-export interface CalendarImportDeps { db: Db; coreDb: Db; source: LegacySource; store: ObjectStore; rules: CalendarRules; coreSubscribers: SubscriberConfig[]; log?: (s: string) => void }
+interface CalendarImportBase { db: Db; coreDb: Db; store: ObjectStore; rules: CalendarRules; coreSubscribers: SubscriberConfig[]; log?: (s: string) => void }
+/** The legacy rows come from SQL Server, or from a snapshot already read (the CSV export the report parity check uses). */
+export type CalendarImportDeps = CalendarImportBase & ({ source: LegacySource; snapshot?: undefined } | { snapshot: LegacySnapshot; source?: undefined });
 export interface CalendarImportOptions { cutoff: string; confirm: boolean }
 
 export function parseImportArgs(argv: string[]): { cutoff: string; confirm: boolean; reportPath?: string } {
@@ -70,6 +72,8 @@ export function historyContextOf(s: LegacySnapshot, scope: Scope, keys: LegacyKe
   };
 }
 
+const REPORT_TABLE: Record<OptionalTable, string> = { users: "users", userMinistries: "userMinistries", savedFilters: "savedFilters", favourites: "favourites", files: "files", logs: "logRows" };
+
 function balanceScope(report: CalendarImportReport, s: LegacySnapshot, scope: Scope) {
   report.legacy("activities", s.totals.activities); report.count("activities", "outOfScope", scope.outOfScope.activities);
   report.legacy("users", s.users.length); report.count("users", "outOfScope", s.users.length - scope.userIds.size);
@@ -80,23 +84,31 @@ function balanceScope(report: CalendarImportReport, s: LegacySnapshot, scope: Sc
   report.legacy("logRows", s.totals.logs); report.count("logRows", "outOfScope", scope.outOfScope.logs);
   report.fact("releaseLinksInScope", scope.outOfScope.releaseLinksInScope);
   report.fact("releaseLinksOutOfScope", scope.outOfScope.releaseLinks);
+  for (const t of s.provenance?.notProvided ?? []) report.notProvided(REPORT_TABLE[t], "not in the snapshot");
+  for (const n of s.provenance?.notes ?? []) report.note(n);
 }
 
 function recordFacts(report: CalendarImportReport, s: LegacySnapshot, scope: Scope, imported: MappedActivity[], invalidEmails: number, duplicateGroups: number, history: { activityId: number; logIds: number[] }[], awarenessIds: readonly number[]) {
-  const selectedUsers = s.users.filter((u) => scope.userIds.has(u.Id));
-  report.fact("usersWithoutEmail", selectedUsers.filter((u) => (u.EmailAddress ?? "").trim() === "").length + invalidEmails);
-  report.fact("usersWithInvalidEmail", invalidEmails);
-  report.fact("duplicateEmailGroups", duplicateGroups);
+  const missing = new Set(s.provenance?.notProvided ?? []);
+  const usersAreReal = !missing.has("users") && s.provenance?.usersFromCommContacts !== true;
   report.fact("activityIdMin", imported.length ? Math.min(...imported.map((m) => m.id)) : 0);
   report.fact("activityIdMax", imported.length ? Math.max(...imported.map((m) => m.id)) : 0);
-  const inactive = new Set(s.users.filter((u) => u.IsActive !== true).map((u) => u.Id));
-  report.fact("commContactsOfInactiveUsers", scope.commContacts.filter((c) => inactive.has(c.SystemUserId)).length);
+  if (usersAreReal) {
+    const selectedUsers = s.users.filter((u) => scope.userIds.has(u.Id));
+    report.fact("usersWithoutEmail", selectedUsers.filter((u) => (u.EmailAddress ?? "").trim() === "").length + invalidEmails);
+    report.fact("usersWithInvalidEmail", invalidEmails);
+    report.fact("duplicateEmailGroups", duplicateGroups);
+    const inactive = new Set(s.users.filter((u) => u.IsActive !== true).map((u) => u.Id));
+    report.fact("commContactsOfInactiveUsers", scope.commContacts.filter((c) => inactive.has(c.SystemUserId)).length);
+  }
   report.fact("awarenessNotDeleted", imported.filter((m) => m.values.deletedAt === null && m.joins.categoryIds.some((c) => awarenessIds.includes(c))).length);
   report.fact("activitiesWithTwoOrMoreCategories", imported.filter((m) => m.joins.categoryIds.length >= 2).length);
-  const perActivity = new Map<number, number>();
-  for (const h of history) perActivity.set(h.activityId, (perActivity.get(h.activityId) ?? 0) + h.logIds.length);
-  report.fact("historyRows", [...perActivity.values()].reduce((a, b) => a + b, 0));
-  report.fact("historyRowsMostOnOneActivity", Math.max(0, ...perActivity.values()));
+  if (!missing.has("logs")) {
+    const perActivity = new Map<number, number>();
+    for (const h of history) perActivity.set(h.activityId, (perActivity.get(h.activityId) ?? 0) + h.logIds.length);
+    report.fact("historyRows", [...perActivity.values()].reduce((a, b) => a + b, 0));
+    report.fact("historyRowsMostOnOneActivity", Math.max(0, ...perActivity.values()));
+  }
 }
 
 export async function runCalendarImport(deps: CalendarImportDeps, opts: CalendarImportOptions): Promise<CalendarImportReport> {
@@ -106,7 +118,7 @@ export async function runCalendarImport(deps: CalendarImportDeps, opts: Calendar
   let stage = "read";
   const body = async () => {
     try {
-      const s = await loadLegacy(deps.source, scopeOpts);
+      const s = deps.snapshot !== undefined ? deps.snapshot : await loadLegacy(deps.source, scopeOpts);
       const scope = selectScope(s, scopeOpts);
       balanceScope(report, s, scope);
       stage = "keys";

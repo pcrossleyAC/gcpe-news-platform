@@ -57,4 +57,19 @@ export interface LegacySnapshot {
   releaseLinks: LegacyReleaseLink[];
   /** Whole-table counts, so rows SQL already left out are still counted as out of scope. */
   totals: { activities: number; favourites: number; files: number; logs: number };
+  /** Absent for a full SQL Server read. */
+  provenance?: SnapshotProvenance;
+}
+
+/** Tables a snapshot may lack: survey 08's CSV export never queried them. */
+export const OPTIONAL_TABLES = ["users", "userMinistries", "savedFilters", "favourites", "files", "logs"] as const;
+export type OptionalTable = (typeof OPTIONAL_TABLES)[number];
+/** Where a snapshot came from, when it isn't a full read of SQL Server. */
+export interface SnapshotProvenance {
+  /** Tables the source didn't hold: reported as such, never as zero rows. */
+  notProvided: OptionalTable[];
+  /** Users were made from comm contacts (names only, no email, no role). */
+  usersFromCommContacts: boolean;
+  /** Plain notes for the import report: no values. */
+  notes: string[];
 }
