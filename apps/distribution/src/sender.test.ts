@@ -921,7 +921,11 @@ describe("sendDue", () => {
     let fakeMonotonicMs = 0;
     const stop = startSender({ db: tdb.db, transport: stubTransport, from: "news@example.com", redirectTo: [], intervalMs: 10, cooldownClock: () => fakeMonotonicMs });
     try {
-      await vi.waitFor(() => expect(sendCalls).toBe(1));
+      // Wait for the pause itself, not just the failed send: the run still has to verify the
+      // transport and defer the row before it sets the pause, and moving the clock or bringing
+      // the server back before then tests something else (a pause that starts late, or no pause).
+      await vi.waitFor(() => expect(warnSpy).toHaveBeenCalledWith("[distribution] SMTP unavailable: pausing sends for 300s"), { timeout: 5_000 });
+      expect(sendCalls).toBe(1);
       down = false;
       fakeMonotonicMs += 300_000 - 1;
       await sleep(100);
