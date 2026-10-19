@@ -40,7 +40,7 @@ export function ReportButtons({ query, execLookAhead }: { query: ListQuery; exec
   return (
     <div role="group" aria-label="Reports (PDF)">
       {kinds.map((k) => (
-        <Button key={k} variant="secondary" isPending={busy !== null} pendingLabel="Preparing…" onPress={() => void run(k)}>
+        <Button key={k} variant="secondary" isPending={busy !== null} pendingLabel={busy === k ? "Preparing…" : undefined} onPress={() => void run(k)}>
           {REPORT_LABELS[k]}
         </Button>
       ))}
