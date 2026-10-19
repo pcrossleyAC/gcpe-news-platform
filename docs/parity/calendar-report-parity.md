@@ -22,8 +22,11 @@ files, our PDFs, the row-by-row differences and the private analysis stay outsid
   Ahead. They have the same 117 pages, and every Look Ahead row in them carries the Exec-only "Last
   updated" line (431 rows; `legacy-report-layouts.md` discrepancy 5). Our Exec render has that line on
   431 rows.
-- **Look Ahead:** **inconclusive**: the plain Look Ahead wasn't exported (Q100). Its outline is
-  the Exec's, because our two renders share their structure.
+- **Look Ahead:** compared on 2026-10-19 from the plain Look Ahead re-exported for Q100 (58 pages).
+  Its rows show the Executive Summary (HqComments) in legacy as in ours: 464 of the 473 rows whose
+  summary and details differ show the summary in legacy, 471 in ours, and none shows the details
+  alone. The Exec's rows show the details (386 legacy, 388 ours). Q102 asks staff to confirm, because
+  Anne described the two the other way round.
 - **Planning and 30-60-90:** compared.
 
 ## Snapshot consistency (Q50)
@@ -44,8 +47,9 @@ rows repeat), 439 in Planning and 834 in the 30-60-90. The id sets are identical
 |---|---|---|---|---|---|---|
 | Exec Look Ahead | before the fix | 108 / 11 | 8 | 475 | 0 | 7 |
 | Exec Look Ahead | after the fix | 108 / 4 | 8 | 475 | 0 | 0 |
-| Look Ahead (inconclusive) | after the fix | 108 / 4 | 8 | 475 | 0 | 0 |
+| Look Ahead | 2026-10-19 re-run | 25 | 8 | 475 | 0 | 0 |
 | Planning | before and after | 8 / 8 | 0 | 439 | 0 | 0 |
+| Planning | 2026-10-19 re-run | 16 | 18 | 421 | 0 | 0 |
 | 30-60-90 | before the fix | 8 / 64 | 16 | 818 | 0 | 56 |
 | 30-60-90 | after the fix | 8 / 8 | 16 | 818 | 0 | 0 |
 
@@ -96,4 +100,19 @@ flags, dates or titles.
 
 - Layout by eye: §12.3, Q48 and Q101.
 - The Excel export: plan ruling 19.
-- The plain Look Ahead, until it is re-exported (Q100).
+
+## 2026-10-19 re-run
+
+Inputs: the plain Look Ahead re-exported for Q100, query 8.10 re-exported as UTF-8, and queries
+8.30–8.46 re-exported from SSMS. Both CSVs came without column headers; the headers were taken from
+the 2026-10-15 exports of the same queries, and every row's cell count matched them. Query 8.40's
+label came through as `8.4` and was restored. 948 of 948 activities imported. The re-run's outline
+column is a single count of differing lines.
+
+- **Look Ahead:** no row is missing on either side. Compared as words, ignoring the column-heading
+  words a page break moves into a neighbouring row (Q101): 447 of 483 rows match exactly, 27 differ
+  by one or two words and 9 by more. Those 36 rows are not yet examined.
+- **Exec Look Ahead and 30-60-90:** unchanged from the 2026-10-15 run.
+- **Planning:** 18 rows now match, from 0; the UTF-8 export of 8.10 is the likely cause, unconfirmed.
+- **Keywords (8.37):** the spreadsheet-saved export had rewritten 126 of 336 names into month-and-year
+  shapes; the SSMS export has them as typed.

@@ -5,7 +5,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 ## 5i parity check
 
 Run on the June 2026 legacy snapshot on 2026-10-15; results in `docs/parity/calendar-report-parity.md`.
-Every difference is explained, fixed or listed here; the plain Look Ahead is inconclusive (Q100).
+Every difference is explained, fixed or listed here. The plain Look Ahead was compared on 2026-10-19 (Q100); 36 of its rows still differ by a few words and are not yet examined.
 
 - **Settled by the run:**
   - Awareness Dates rows in the Exec Look Ahead carry no "Last updated" line, in legacy as in ours
@@ -19,12 +19,8 @@ Every difference is explained, fixed or listed here; the plain Look Ahead is inc
     carrying a heading into pdfmake's repeated header rows, which is more than a builder tweak.
   - Q63: an explicit To date leaves the Long Term Outlook out of both sides, so this run says nothing
     about it.
-- **Re-export for the next run:**
-  - The plain Look Ahead (Q100): both Look Ahead files exported were the Exec.
-  - Query 8.10 as UTF-8: the Windows-1252 export turns characters outside that code page into "?".
-  - Queries 8.30–8.46 straight from SSMS, not through a spreadsheet: keyword names shaped like a month
-    and year came back rewritten. This is inferred from their shape and the file's padding, not
-    confirmed.
+- **Re-exports:** all received by 2026-10-19. The SSMS export of 8.30–8.46 confirmed the spreadsheet
+  had rewritten 126 of 336 keyword names into month-and-year shapes.
 - **The compare tool (`scripts/calendar-report-compare.ts`), before the next run:**
   - Treat as page furniture only the lines in a page's header and footer bands. Today a short line
     that repeats inside rows on half the pages (a wrapped "N months ago") is dropped from the rows.
