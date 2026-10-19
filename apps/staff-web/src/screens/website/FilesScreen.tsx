@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite } from "./access";
 import type { ListFilesResult, SiteFileView } from "./types";

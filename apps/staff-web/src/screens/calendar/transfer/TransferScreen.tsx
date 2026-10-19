@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { InlineAlert } from "@bcgov/design-system-react-components";
 import { ApiError, apiFetch } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
 import { plural, type TransferContact, type TransferPreview } from "./types";
@@ -130,7 +131,7 @@ export function TransferScreen(): React.JSX.Element {
       {preview && (
         <section aria-label="Transfer preview">
           <p>{`${plural(preview.count)} will move from ${preview.from.label} to ${preview.to.label}. Their lead ministry becomes ${preview.to.ministryName}.`}</p>
-          <Button onPress={() => void doTransfer()} isPending={busy} isDisabled={preview.count === 0}>{`Transfer ${plural(preview.count)}`}</Button>
+          <Button onPress={() => void doTransfer()} isPending={busy} isDisabled={preview.count === 0} pendingLabel="Transferring…">{`Transfer ${plural(preview.count)}`}</Button>
         </section>
       )}
     </div>

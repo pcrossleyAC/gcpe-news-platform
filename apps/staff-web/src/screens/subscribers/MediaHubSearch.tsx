@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
-import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
+import { Button } from "../../shared/BusyButton";
 import { Pagination } from "../releases/Pagination";
 import { mediaErrorText } from "./labels";
 import type { AddMemberBody, MediaHubContactPage } from "./types";

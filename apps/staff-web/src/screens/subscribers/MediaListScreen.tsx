@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { Link, useParams } from "react-router";
-import { AlertDialog, Button, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
+import { Button } from "../../shared/BusyButton";
 import { ignoreWhileBusy } from "../../shared/guardSubmit";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";

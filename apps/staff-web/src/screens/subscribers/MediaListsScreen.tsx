@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
+import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
 import { describeSync, mediaErrorText } from "./labels";
@@ -107,7 +108,7 @@ export function MediaListsScreen(): React.JSX.Element {
         {message && <p role="status">{message}</p>}
         {syncError && <InlineAlert variant="danger" role="alert" description={syncError} />}
         {canEdit && (
-          <Button variant="secondary" onPress={() => void runSync()} isPending={busy}>
+          <Button variant="secondary" onPress={() => void runSync()} isPending={busy} pendingLabel="Syncing…">
             Sync with Media Hub now
           </Button>
         )}

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Navigate, useSearchParams } from "react-router";
-import { Button, Form, Header, InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { Form, Header, InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { Button } from "../shared/BusyButton";
 import { ApiError, apiFetch } from "../api/client";
 import { safeReturnTo } from "../session/safeReturnTo";
 import { useSession } from "../session/SessionContext";
@@ -94,7 +95,7 @@ export function SignIn(): React.JSX.Element {
         <Form onSubmit={onSubmit}>
           <TextField label="User name" name="username" value={username} onChange={setUsername} isRequired autoComplete="username" />
           <TextField label="Password" name="password" type="password" value={password} onChange={setPassword} isRequired autoComplete="current-password" />
-          <Button type="submit" isPending={submitting}>
+          <Button type="submit" isPending={submitting} pendingLabel="Signing in…">
             Sign in
           </Button>
         </Form>

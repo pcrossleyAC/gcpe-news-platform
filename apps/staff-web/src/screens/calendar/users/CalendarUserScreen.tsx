@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { InlineAlert } from "@bcgov/design-system-react-components";
 import { ApiError, apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
+import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
 import { AccessEditor, actorFor, lockedMessage } from "../../admin/calendar-access/AccessEditor";
@@ -59,7 +60,7 @@ function ProfileForm({ userId, profile, onSaved }: { userId: string; profile: Pr
         <label htmlFor="profile-description">Description</label>
         <textarea id="profile-description" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })} disabled={busy} />
       </div>
-      <Button type="submit" isPending={busy}>
+      <Button type="submit" isPending={busy} pendingLabel="Saving…">
         Save contact details
       </Button>
     </form>

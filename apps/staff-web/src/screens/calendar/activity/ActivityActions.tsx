@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { Link } from "react-router";
-import { AlertDialog, Button, InlineAlert, Modal } from "@bcgov/design-system-react-components";
+import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import type { ActivityView, FieldError } from "@gcpe/calendar-contract";
 import { ApiError } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { WatchStar, type WatchState } from "../list/WatchStar";
 import { activityApi } from "./api";
 import { minIdOf } from "./form";

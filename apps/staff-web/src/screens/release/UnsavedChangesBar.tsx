@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button } from "@bcgov/design-system-react-components";
+import { Button } from "../../shared/BusyButton";
 import type { DirtySection } from "./useUnsavedChanges";
 
 export interface UnsavedChangesBarProps {
@@ -46,7 +46,7 @@ export function UnsavedChangesBar({ sections }: UnsavedChangesBarProps): React.J
       <p className="gcpe-save-bar__message">You have unsaved changes in: {sections.map((s) => sectionName(s.label)).join(", ")}</p>
       <div className="gcpe-save-bar__buttons">
         {sections.map((section) => (
-          <Button key={section.key} onPress={() => onSave(section)} isPending={pending.has(section.key)}>
+          <Button key={section.key} onPress={() => onSave(section)} isPending={pending.has(section.key)} pendingLabel="Saving…">
             {section.label}
           </Button>
         ))}

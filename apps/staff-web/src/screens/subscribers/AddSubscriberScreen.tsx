@@ -1,8 +1,9 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
-import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canEditSubscribers } from "./access";
 import { ListPicker } from "./ListPicker";
@@ -144,7 +145,7 @@ export function AddSubscriberScreen(): React.JSX.Element {
           <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} disabled={submitting} /> Daily digest
         </label>
 
-        <Button type="submit" isPending={submitting}>
+        <Button type="submit" isPending={submitting} pendingLabel="Adding…">
           Add subscriber
         </Button>
       </Form>

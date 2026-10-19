@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Button } from "@bcgov/design-system-react-components";
+import { Button } from "../../../shared/BusyButton";
 import { ApiError, apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { messagesOf } from "../messages";

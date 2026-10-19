@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useAnnouncer } from "../../shared/Announcer";
+import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";

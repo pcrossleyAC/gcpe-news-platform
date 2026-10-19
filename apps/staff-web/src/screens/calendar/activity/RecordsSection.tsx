@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { AlertDialog, Button, Modal } from "@bcgov/design-system-react-components";
+import { AlertDialog, Modal } from "@bcgov/design-system-react-components";
 import { ATTACHMENT_ACCEPT, ATTACHMENT_MAX_BYTES, ATTACHMENT_MAX_FILES, type ActivityFileView, type FieldError } from "@gcpe/calendar-contract";
 import { ApiError } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { activityApi } from "./api";
 
 const TOO_BIG = "A file can be at most 25 MB.";

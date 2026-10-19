@@ -67,9 +67,12 @@ describe("the list's reports (spec addendum §8.1, §10)", () => {
     });
     renderList();
     await screen.findByText("Sample listed");
+    // Grabbed before the click: every report button's own label becomes "Preparing…" while one
+    // is in flight (busy-button wording), so it can no longer be found by its idle name "Look
+    // Ahead" afterwards.
+    const lookAhead = screen.getByRole("button", { name: "Look Ahead" });
     await userEvent.setup().click(screen.getByRole("button", { name: "Planning" }));
     expect(await screen.findByText("Preparing your Planning report…")).toBeInTheDocument();
-    const lookAhead = screen.getByRole("button", { name: "Look Ahead" });
     expect(lookAhead).toHaveAttribute("aria-disabled", "true");
     expect(lookAhead).not.toHaveAttribute("disabled");
     expect(await screen.findByText("The Planning report has downloaded.", undefined, { timeout: 3000 })).toBeInTheDocument();

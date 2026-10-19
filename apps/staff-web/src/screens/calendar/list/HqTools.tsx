@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Button } from "@bcgov/design-system-react-components";
 import { CORPORATE_STATUSES, type CorporateQuery, type CorporateStatus, type ListQuery, type LookAheadFilter } from "@gcpe/calendar-contract";
+import { Button } from "../../../shared/BusyButton";
 import { messagesOf } from "../../admin/messages";
 import { downloadExport, listApi } from "./api";
 
@@ -55,7 +55,7 @@ export function ReviewSelected({ selected, onDone }: { selected: Map<number, { v
   const tooMany = selected.size > REVIEW_SELECTED_MAX;
   return (
     <div>
-      <Button isPending={busy} isDisabled={selected.size === 0 || tooMany} onPress={() => void run()}>{`Review selected (${selected.size})`}</Button>
+      <Button isPending={busy} isDisabled={selected.size === 0 || tooMany} pendingLabel="Reviewing…" onPress={() => void run()}>{`Review selected (${selected.size})`}</Button>
       {tooMany && <p className="gcpe-hint">{`Select at most ${REVIEW_SELECTED_MAX} at a time.`}</p>}
       <Result status={status} error={error} />
     </div>
@@ -88,7 +88,7 @@ export function ClearLaStatus({ onDone }: { onDone: () => void }): React.JSX.Ele
     <div>
       <label htmlFor="la-days">Days ahead</label>
       <input id="la-days" type="number" min={0} max={366} value={days} aria-invalid={!valid} onChange={(e) => setDays(e.target.value)} />
-      <Button variant="secondary" isPending={busy} isDisabled={!valid} onPress={() => void run()}>
+      <Button variant="secondary" isPending={busy} isDisabled={!valid} pendingLabel="Clearing…" onPress={() => void run()}>
         Clear LA Status
       </Button>
       <Result status={status} error={error} />
@@ -184,7 +184,7 @@ export function ExportButton({ query }: { query: ListQuery }): React.JSX.Element
   };
   return (
     <div>
-      <Button variant="secondary" isPending={busy} onPress={() => void run()}>
+      <Button variant="secondary" isPending={busy} pendingLabel="Exporting…" onPress={() => void run()}>
         Excel export
       </Button>
       {error && <p role="alert">{error}</p>}

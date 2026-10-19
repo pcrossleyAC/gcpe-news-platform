@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { AlertDialog, Button, InlineAlert, Modal } from "@bcgov/design-system-react-components";
+import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
+import { Button } from "../../shared/BusyButton";
 import { attentionLabel, mediaErrorText } from "./labels";
 import type { MediaHubContact, MediaMember } from "./types";
 

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
+import { InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite } from "./access";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
@@ -98,7 +99,7 @@ export function LiveFeedScreen(): React.JSX.Element {
         <TextField label="Manifest URL" value={manifestUrl} onChange={setManifestUrl} isDisabled={!canEdit} />
         <TextField label="M3U URL" value={m3uUrl} onChange={setM3uUrl} isDisabled={!canEdit} />
         {canEdit && (
-          <Button type="submit" isPending={section.saving}>
+          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
             Save Live Feed
           </Button>
         )}

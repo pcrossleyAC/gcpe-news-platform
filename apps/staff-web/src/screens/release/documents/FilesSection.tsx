@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
+import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import type { ReleaseFileView, ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE } from "../useReleaseSection";
 import { useSaveQueue, withVersion } from "../saveQueue";
 import { SaveStatus } from "../SaveStatus";

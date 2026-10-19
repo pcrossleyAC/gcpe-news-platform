@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
+import { AlertDialog, DialogTrigger, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { LANG_EN, LANG_FR, LANGUAGE_NAME, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
+import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { findDocument } from "./documentHelpers";
 import { DocumentLanguageForm } from "./DocumentLanguageForm";

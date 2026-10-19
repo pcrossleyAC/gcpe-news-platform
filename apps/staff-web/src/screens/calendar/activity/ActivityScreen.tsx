@@ -1,8 +1,9 @@
 import { forwardRef, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useBlocker, useLocation, useNavigate, useParams, useSearchParams } from "react-router";
-import { AlertDialog, Button, InlineAlert, Modal } from "@bcgov/design-system-react-components";
+import { AlertDialog, InlineAlert, Modal } from "@bcgov/design-system-react-components";
 import { checkActivity, friendlySpan, inferLookAhead, type ActivityFields, type ActivityView, type EditorOptions, type FieldError, type HqSection } from "@gcpe/calendar-contract";
 import { ApiError, onUnauthorized } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import type { CalendarMe } from "../access";
 import { useCalendarContext } from "../CalendarSection";
@@ -455,7 +456,7 @@ function ActivityEditor({ me, config, options, view: initial, returnTo, notice }
         </fieldset>
         <div className="gcpe-actions">
           {!readOnly && (
-            <Button type="submit" isPending={saving}>
+            <Button type="submit" isPending={saving} pendingLabel="Saving…">
               Save
             </Button>
           )}

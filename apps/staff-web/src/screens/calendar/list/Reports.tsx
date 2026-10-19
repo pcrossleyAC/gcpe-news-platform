@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { Button } from "@bcgov/design-system-react-components";
 import { REPORT_KINDS, REPORT_LABELS, type ListQuery, type ReportKind } from "@gcpe/calendar-contract";
+import { Button } from "../../../shared/BusyButton";
 import { runReport, type ReportCancellation } from "./api";
 
 /**
@@ -40,7 +40,7 @@ export function ReportButtons({ query, execLookAhead }: { query: ListQuery; exec
   return (
     <div role="group" aria-label="Reports (PDF)">
       {kinds.map((k) => (
-        <Button key={k} variant="secondary" isPending={busy !== null} onPress={() => void run(k)}>
+        <Button key={k} variant="secondary" isPending={busy !== null} pendingLabel="Preparing…" onPress={() => void run(k)}>
           {REPORT_LABELS[k]}
         </Button>
       ))}
