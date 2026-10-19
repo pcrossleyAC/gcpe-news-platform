@@ -5,7 +5,7 @@ Items one sub-plan leaves for a later one. Delete an item when the plan that tak
 ## 5i parity check
 
 Run on the June 2026 legacy snapshot on 2026-10-15; results in `docs/parity/calendar-report-parity.md`.
-Every difference is explained, fixed or listed here. The plain Look Ahead was compared on 2026-10-19 (Q100); 36 of its rows still differ by a few words and are not yet examined.
+Every difference is explained, fixed or listed here. The plain Look Ahead was compared on 2026-10-19 (Q100); every differing row is extraction noise or C148.
 
 - **Settled by the run:**
   - Awareness Dates rows in the Exec Look Ahead carry no "Last updated" line, in legacy as in ours

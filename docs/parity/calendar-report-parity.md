@@ -110,8 +110,15 @@ label came through as `8.4` and was restored. 948 of 948 activities imported. Th
 column is a single count of differing lines.
 
 - **Look Ahead:** no row is missing on either side. Compared as words, ignoring the column-heading
-  words a page break moves into a neighbouring row (Q101): 447 of 483 rows match exactly, 27 differ
-  by one or two words and 9 by more. Those 36 rows are not yet examined.
+  words a page break moves into a neighbouring row (Q101): 447 of 483 rows match exactly. The other
+  36 were checked page by page against both PDFs, and none is a fault in our rendering:
+  - 20: legacy draws any run holding a character outside its base font (a trademark sign, curly
+    punctuation, a diacritic) in a fallback font whose text doesn't extract, so the whole run comes
+    out garbled; the pages read the same.
+  - 14: a day heading's date lands in the row beside a page break, and the two PDFs break pages in
+    different places; the pages read the same.
+  - 2: ours prints the Fact Sheet code in the RLS column and legacy prints "-": C148 (legacy's code
+    looked for "Fact Sheet", but the material is named "Factsheet").
 - **Exec Look Ahead and 30-60-90:** unchanged from the 2026-10-15 run.
 - **Planning:** 18 rows now match, from 0; the UTF-8 export of 8.10 is the likely cause, unconfirmed.
 - **Keywords (8.37):** the spreadsheet-saved export had rewritten 126 of 336 names into month-and-year
