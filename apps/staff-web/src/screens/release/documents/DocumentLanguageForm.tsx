@@ -1,10 +1,11 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
+import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { LANGUAGE_NAME, type LanguageId, type ReleaseView } from "@gcpe/nrms-contract";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
 import { useSession } from "../../../session/SessionContext";
+import { Button } from "../../../shared/BusyButton";
 import { BodyEditor } from "../../../editor/BodyEditor";
 import { findDocument, findLanguage } from "./documentHelpers";
 import { clearDraft, loadDraft, saveDraft } from "./unsavedDocumentStorage";
@@ -163,7 +164,7 @@ export function DocumentLanguageForm({ view, setView, documentId, languageId, re
         </fieldset>
 
         {!readOnly && (
-          <Button type="submit" isPending={section.saving}>
+          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
             Save {languageLabel} content
           </Button>
         )}

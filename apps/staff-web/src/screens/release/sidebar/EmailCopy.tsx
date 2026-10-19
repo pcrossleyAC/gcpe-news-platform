@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { InlineAlert } from "@bcgov/design-system-react-components";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
+import { Button } from "../../../shared/BusyButton";
 
 export interface EmailCopyProps {
   view: ReleaseView;
@@ -40,7 +41,7 @@ export function EmailCopy({ view }: EmailCopyProps): React.JSX.Element {
 
   return (
     <div className="gcpe-sidebar__email-copy">
-      <Button onPress={() => void send()} isPending={sending} isDisabled={noAddress} aria-describedby={noAddress ? "email-copy-why" : undefined}>
+      <Button onPress={() => void send()} isPending={sending} isDisabled={noAddress} pendingLabel="Sending…" aria-describedby={noAddress ? "email-copy-why" : undefined}>
         Email me a copy
       </Button>
       {noAddress && (

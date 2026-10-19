@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { LANG_EN, LAYOUTS, type Layout, type ReleaseView } from "@gcpe/nrms-contract";
 import { useAnnouncer } from "../../../shared/Announcer";
+import { Button } from "../../../shared/BusyButton";
 import { ignoreWhileBusy } from "../../../shared/guardSubmit";
 import { DragHandle, useDragReorder } from "../../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../../shared/useMoveFocusRestore";

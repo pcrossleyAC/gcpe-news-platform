@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { InlineAlert } from "@bcgov/design-system-react-components";
 import { LIST_COLUMN_LABELS, LIST_COLUMNS, LIST_PAGE_SIZE, LIST_SORTS, type HideableColumn, type ListColumn, type ListQuery, type ListRow, type ListSort } from "@gcpe/calendar-contract";
 import { ApiError } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { messagesOf } from "../../admin/messages";
 import { listApi } from "./api";
 import { CellContent, needsReviewOf, type TableTools } from "./cells";
@@ -133,7 +134,7 @@ export function ActivityTable({ query, hidden, timeZone, reloadToken, onSort, to
       {total !== null && rows.length < total && (
         <>
           <div ref={sentinel} />
-          <Button variant="secondary" isPending={loading} onPress={more}>{`Show ${Math.min(LIST_PAGE_SIZE, total - rows.length)} more`}</Button>
+          <Button variant="secondary" isPending={loading} pendingLabel="Loading…" onPress={more}>{`Show ${Math.min(LIST_PAGE_SIZE, total - rows.length)} more`}</Button>
         </>
       )}
     </section>

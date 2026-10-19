@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
 
@@ -113,7 +114,14 @@ export function DeadLettersScreen(): React.JSX.Element {
                   <td>{d.lastError ?? ""}</td>
                   <td>{d.queuedAtBc}</td>
                   <td>
-                    <Button variant="secondary" size="small" onPress={() => void retry(d)} isPending={retrying.has(keyOf(d))} aria-label={`Retry ${d.type} for ${d.aggregateId} to ${d.subscriber}, queued ${d.queuedAtBc}`}>
+                    <Button
+                      variant="secondary"
+                      size="small"
+                      onPress={() => void retry(d)}
+                      isPending={retrying.has(keyOf(d))}
+                      pendingLabel="Retrying…"
+                      aria-label={`Retry ${d.type} for ${d.aggregateId} to ${d.subscriber}, queued ${d.queuedAtBc}`}
+                    >
                       Retry
                     </Button>
                   </td>

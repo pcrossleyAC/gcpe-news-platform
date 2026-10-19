@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import { assetUrlProblem, typeRules, TYPE_LABEL, type AssetStatus, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
@@ -125,7 +126,7 @@ export function AssetSection({ view, setView, readOnly }: AssetSectionProps): Re
           Includes additional media assets
         </label>
         {!readOnly && (
-          <Button type="submit" isPending={section.saving} isDisabled={urlProblem !== null}>
+          <Button type="submit" isPending={section.saving} isDisabled={urlProblem !== null} pendingLabel="Saving…">
             Save media asset
           </Button>
         )}

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { AlertDialog, Button, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
+import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 
 interface MediaListRecord {
@@ -113,7 +114,7 @@ function MediaListNamesEditor(): React.JSX.Element {
       <Form onSubmit={(e) => void onAdd(e)} aria-label="Add a media list" className="gcpe-field-row">
         <TextField label="Key" name="key" value={key} onChange={setKey} />
         <TextField label="Name" name="name" value={name} onChange={setName} />
-        <Button type="submit" isPending={busy}>
+        <Button type="submit" isPending={busy} pendingLabel="Adding…">
           Add media list
         </Button>
       </Form>

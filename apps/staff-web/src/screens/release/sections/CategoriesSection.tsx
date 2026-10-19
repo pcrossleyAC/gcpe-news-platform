@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from "react";
-import { Button, Form, InlineAlert } from "@bcgov/design-system-react-components";
+import { Form, InlineAlert } from "@bcgov/design-system-react-components";
 import { typeRules, type ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
@@ -144,7 +145,7 @@ export function CategoriesSection({ view, setView, readOnly }: CategoriesSection
         )}
 
         {!readOnly && (
-          <Button type="submit" isPending={section.saving}>
+          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
             Save categories
           </Button>
         )}

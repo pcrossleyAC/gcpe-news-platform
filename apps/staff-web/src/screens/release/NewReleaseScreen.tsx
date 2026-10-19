@@ -1,12 +1,13 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router";
-import { Button, Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
+import { Form, InlineAlert, TextField } from "@bcgov/design-system-react-components";
 import {
   CREATABLE_TYPES, LANG_EN, LAYOUTS, MAX_ACTIVITY_ID, TYPE_LABEL, createReleaseSchema, typeRules, type Layout, type ReleasePrefill, type ReleaseView,
 } from "@gcpe/nrms-contract";
 import type { ZodIssue } from "zod";
 import { apiFetch, ApiError } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { dateTimeText } from "../calendar/list/dates";
@@ -461,7 +462,7 @@ export function NewReleaseScreen(): React.JSX.Element {
         )}
         {fieldProblem("mediaListKeys") && <p role="alert">{fieldProblem("mediaListKeys")}</p>}
 
-        <Button type="submit" isPending={submitting}>
+        <Button type="submit" isPending={submitting} pendingLabel="Creating…">
           Create release
         </Button>
       </Form>

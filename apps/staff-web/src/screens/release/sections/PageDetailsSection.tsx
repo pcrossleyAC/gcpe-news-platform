@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
-import { Button, Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
+import { Form, InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { typeRules, TYPE_LABEL, type ReleaseView } from "@gcpe/nrms-contract";
+import { Button } from "../../../shared/BusyButton";
 import { RELOAD_MESSAGE, useReleaseSection } from "../useReleaseSection";
 import { SaveStatus } from "../SaveStatus";
 import { useRegisterDirty } from "../useUnsavedChanges";
@@ -118,7 +119,7 @@ export function PageDetailsSection({ view, setView, readOnly }: PageDetailsSecti
         {!showSummaryFields && <p>A {TYPE_LABEL[view.type]} has no summary, keywords or social media summary.</p>}
 
         {!readOnly && (
-          <Button type="submit" isPending={section.saving}>
+          <Button type="submit" isPending={section.saving} pendingLabel="Saving…">
             Save page details
           </Button>
         )}

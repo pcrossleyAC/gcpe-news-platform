@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
+import { InlineAlert, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite } from "./access";
 import { RELOAD_MESSAGE, useVersionedSave } from "./useVersionedSave";
@@ -101,7 +102,7 @@ function PinForm({ pin, canEdit, onSaved }: PinFormProps): React.JSX.Element {
       )}
 
       {canEdit && (
-        <Button onPress={save} isPending={section.saving}>
+        <Button onPress={save} isPending={section.saving} pendingLabel="Saving…">
           Save {SLOT_LABEL[pin.slot].toLowerCase()} pin
         </Button>
       )}

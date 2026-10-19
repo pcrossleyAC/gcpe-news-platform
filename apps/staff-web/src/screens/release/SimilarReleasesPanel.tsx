@@ -1,8 +1,9 @@
 import { useEffect, useId, useState } from "react";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { InlineAlert } from "@bcgov/design-system-react-components";
 import { isSafeUrl } from "@gcpe/http-kit/url";
 import type { ReleaseView } from "@gcpe/nrms-contract";
 import { apiFetch, ApiError } from "../../api/client";
+import { Button } from "../../shared/BusyButton";
 
 /** Shown under the button while the staff-AI flag is on (addendum §7). */
 export const AI_NOTE = "Sends this draft's text to the AI service to compare.";
@@ -97,7 +98,7 @@ export function SimilarReleasesPanel({ view, timeZone }: { view: ReleaseView; ti
     <section id="similar-releases" className="gcpe-release-editor__similar" aria-labelledby={headingId}>
       <h2 id={headingId}>Similar published releases</h2>
       <p className="gcpe-similar__hint">Compares the last saved version of this release with published posts.</p>
-      <Button onPress={() => void find()} isPending={busy} aria-describedby={ai ? noteId : undefined}>
+      <Button onPress={() => void find()} isPending={busy} pendingLabel="Finding…" aria-describedby={ai ? noteId : undefined}>
         Find similar
       </Button>
       {ai && (

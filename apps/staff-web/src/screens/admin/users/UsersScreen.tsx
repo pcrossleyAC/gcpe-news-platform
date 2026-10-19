@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertDialog, Button, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
+import { Button } from "../../../shared/BusyButton";
 import { ignoreWhileBusy } from "../../../shared/guardSubmit";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { HiddenPrefixLabel, ShortLabel } from "../../../shared/ShortLabel";
@@ -257,7 +258,7 @@ function LinkForm({ user, onChanged }: { user: UserView; onChanged(): void }): R
       ))}
       <p>Linking sets this user&rsquo;s email and activates them, so they can sign in.</p>
       <TextField label={`Email for ${user.displayName}`} type="email" value={email} onChange={setEmail} isRequired isReadOnly={busy} />
-      <Button type="submit" isPending={busy} isDisabled={email.trim() === ""}>
+      <Button type="submit" isPending={busy} isDisabled={email.trim() === ""} pendingLabel="Linking…">
         Link and activate
       </Button>
     </form>
@@ -350,7 +351,7 @@ export function UsersScreen(): React.JSX.Element {
         {setPasswordNow && (
           <TextField label="Password (at least 12 characters)" type="password" value={password} onChange={setPassword} isReadOnly={creating} autoComplete="new-password" />
         )}
-        <Button type="submit" isPending={creating}>
+        <Button type="submit" isPending={creating} pendingLabel="Adding…">
           Add user
         </Button>
       </form>

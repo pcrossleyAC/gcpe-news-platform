@@ -173,11 +173,13 @@ describe("ReleaseEditorPage", () => {
     it("a second section saved while the first is in flight waits, then sends the version the first returned", async () => {
       const { writes, user } = renderWithHeldWrites();
       await startCategoriesSave(writes, user);
-      expect(within(categoriesRegion()).getByText("Saving…")).toBeInTheDocument();
+      // The button's own label changed to "Saving…" too (busy-button wording) — scope to the
+      // status span so this still checks SaveStatus specifically, not the button.
+      expect(within(categoriesRegion()).getByText("Saving…", { selector: "span" })).toBeInTheDocument();
 
       await user.click(within(settingsRegion()).getByRole("button", { name: "Save settings" }));
       expect(await within(settingsRegion()).findByText("Waiting to save…")).toBeInTheDocument();
-      const saveSettings = within(settingsRegion()).getByRole("button", { name: "Save settings" });
+      const saveSettings = within(settingsRegion()).getByRole("button", { name: "Saving…" });
       expect(saveSettings).toHaveAttribute("aria-disabled", "true");
       expect(saveSettings).not.toHaveAttribute("disabled");
       expect(writes).toHaveLength(1); // held: Settings has not gone out yet
@@ -188,7 +190,7 @@ describe("ReleaseEditorPage", () => {
       expect(writes[0]!.body.version).toBe(1);
       expect(writes[1]!.url).toMatch(/\/settings$/);
       expect(writes[1]!.body.version).toBe(2); // the version /categories returned, not the stale 1
-      expect(await within(settingsRegion()).findByText("Saving…")).toBeInTheDocument();
+      expect(await within(settingsRegion()).findByText("Saving…", { selector: "span" })).toBeInTheDocument();
 
       writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 3, sectors: ["sector1"] })));
       await waitFor(() => expect(within(settingsRegion()).getByRole("button", { name: "Save settings" })).not.toHaveAttribute("aria-disabled"));
@@ -211,7 +213,7 @@ describe("ReleaseEditorPage", () => {
 
       writes[0]!.respond(jsonResponse(200, releaseView({ ...initial, version: 2, sectors: ["sector1"] })));
       await waitFor(() => expect(writes).toHaveLength(2));
-      expect(within(categoriesRegion()).getByText("Saving…")).toBeInTheDocument(); // still busy with the second
+      expect(within(categoriesRegion()).getByText("Saving…", { selector: "span" })).toBeInTheDocument(); // still busy with the second
       writes[1]!.respond(jsonResponse(200, releaseView({ ...initial, version: 3, sectors: ["sector1"] })));
 
       await waitFor(() => expect(within(categoriesRegion()).queryByText("Saving…")).not.toBeInTheDocument());

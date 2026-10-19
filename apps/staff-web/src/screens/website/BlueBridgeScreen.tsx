@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertDialog, Button, Checkbox, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, Checkbox, InlineAlert, Modal, Switch, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
+import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canManageWebsite } from "./access";
 import { useIsTestSite } from "./useIsTestSite";
@@ -117,7 +118,7 @@ export function BlueBridgeScreen(): React.JSX.Element {
               buttons={
                 <>
                   <Button onPress={() => setDialogOpen(false)}>Cancel</Button>
-                  <Button danger onPress={onConfirm} isDisabled={!confirmEnabled} isPending={section.saving}>
+                  <Button danger onPress={onConfirm} isDisabled={!confirmEnabled} isPending={section.saving} pendingLabel={pendingOn ? "Turning on…" : "Turning off…"}>
                     Confirm {pendingOn ? "turn on" : "turn off"}
                   </Button>
                 </>

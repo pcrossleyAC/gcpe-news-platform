@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Button, InlineAlert } from "@bcgov/design-system-react-components";
+import { InlineAlert } from "@bcgov/design-system-react-components";
 import { ApiError, apiFetch } from "../../../api/client";
+import { Button } from "../../../shared/BusyButton";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../../admin/messages";
 import { plural, type TransferContact, type TransferPreview } from "./types";

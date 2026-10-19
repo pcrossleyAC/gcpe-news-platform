@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AlertDialog, Button, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, DialogTrigger, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../api/client";
 import { useSession } from "../../session/SessionContext";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { formatWhen } from "../../format/dates";
 import { useAnnouncer } from "../../shared/Announcer";
+import { Button } from "../../shared/BusyButton";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { DragHandle, useDragReorder } from "../../shared/useDragReorder";
 import { useMoveFocusRestore } from "../../shared/useMoveFocusRestore";
@@ -337,7 +338,7 @@ export function CarouselScreen(): React.JSX.Element {
                 {makeLive.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
                 {makeLive.error && <InlineAlert variant="danger" role="alert" description={makeLive.error} />}
                 <DialogTrigger isOpen={makeLiveOpen} onOpenChange={setMakeLiveOpen}>
-                  <Button isPending={makeLive.saving}>Make live now</Button>
+                  <Button isPending={makeLive.saving} pendingLabel="Making live…">Make live now</Button>
                   <Modal isDismissable>
                     <AlertDialog
                       variant="warning"
@@ -359,7 +360,7 @@ export function CarouselScreen(): React.JSX.Element {
                 {deleteNext.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
                 {deleteNext.error && <InlineAlert variant="danger" role="alert" description={deleteNext.error} />}
                 <DialogTrigger isOpen={deleteOpen} onOpenChange={setDeleteOpen}>
-                  <Button variant="secondary" danger isPending={deleteNext.saving}>
+                  <Button variant="secondary" danger isPending={deleteNext.saving} pendingLabel="Deleting…">
                     Delete next carousel
                   </Button>
                   <Modal isDismissable>
@@ -397,7 +398,7 @@ export function CarouselScreen(): React.JSX.Element {
                 {createNext.conflict && <InlineAlert variant="danger" role="alert" description={RELOAD_MESSAGE} buttons={<Button onPress={reload}>Reload</Button>} />}
                 {createNext.error && <InlineAlert variant="danger" role="alert" description={createNext.error} />}
                 <SchedulePicker timeZone={timeZone} legend="Go live at (BC time)" idPrefix="carousel-create-next" onChange={setGoLive} />
-                <Button onPress={onCreateNext} isPending={createNext.saving} isDisabled={!goLive}>
+                <Button onPress={onCreateNext} isPending={createNext.saving} isDisabled={!goLive} pendingLabel="Creating…">
                   Create next carousel
                 </Button>
               </>

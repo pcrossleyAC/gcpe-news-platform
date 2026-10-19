@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useRef, useState, type ChangeEvent, type FormEvent } from "react";
-import { AlertDialog, Button, DialogTrigger, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
+import { AlertDialog, DialogTrigger, Form, InlineAlert, Modal, TextField } from "@bcgov/design-system-react-components";
 import { apiFetch, ApiError } from "../../api/client";
 import { formatWhen } from "../../format/dates";
 import { useTenantTimeZone } from "../../format/tenantTimeZone";
 import { useSession } from "../../session/SessionContext";
+import { Button } from "../../shared/BusyButton";
 import { ignoreWhileBusy } from "../../shared/guardSubmit";
 import { useDocumentTitle } from "../../shared/useDocumentTitle";
 import { canAdminSubscribers } from "./access";
@@ -239,7 +240,7 @@ function SoftCodesForm({ value, onDone }: { value: string[]; onDone(text: string
       </p>
       <Form onSubmit={(e) => void onSubmit(e)} aria-label="Soft bounce codes">
         <TextField label="Soft codes counted as hard" name="codes" value={codes} onChange={setCodes} />
-        <Button type="submit" isPending={busy}>
+        <Button type="submit" isPending={busy} pendingLabel="Saving…">
           Save codes
         </Button>
       </Form>
@@ -405,7 +406,7 @@ function BounceUpload({ onDone }: { onDone(text: string): void }): React.JSX.Ele
       </label>
       <label htmlFor="ops-bounce-raw">Or paste the message</label>
       <textarea id="ops-bounce-raw" rows={8} value={raw} onChange={(e) => setRaw(e.target.value)} disabled={busy} />
-      <Button onPress={() => void upload()} isPending={busy}>
+      <Button onPress={() => void upload()} isPending={busy} pendingLabel="Uploading…">
         Upload bounce
       </Button>
       {error && <InlineAlert variant="danger" role="alert" description={error} />}

@@ -142,7 +142,7 @@ describe("AddSubscriberScreen", () => {
     const confirm = screen.getByLabelText(/^Confirm email/);
     await user.type(confirm, "new@example.test{Enter}");
 
-    const button = screen.getByRole("button", { name: "Add subscriber" });
+    const button = await screen.findByRole("button", { name: "Adding…" });
     await waitFor(() => expect(button).toHaveAttribute("aria-disabled", "true"));
     expect(button).not.toHaveAttribute("disabled");
     expect(confirm).toHaveAttribute("readonly");
