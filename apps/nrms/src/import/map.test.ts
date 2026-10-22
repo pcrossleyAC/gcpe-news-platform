@@ -178,8 +178,12 @@ describe("mapDocument / layoutFromLegacy", () => {
     expect(layoutFromLegacy(2)).toBe("informal");
   });
 
+  it("maps legacy's out-of-enum PageLayout 0 to informal, as legacy's templates render it", () => {
+    expect(layoutFromLegacy(0)).toBe("informal");
+  });
+
   it("throws on an unknown PageLayout", () => {
-    expect(() => layoutFromLegacy(0)).toThrow();
+    expect(() => layoutFromLegacy(3)).toThrow();
   });
 
   it("maps sortIndex and layout for a release's internal id", () => {

@@ -25,6 +25,7 @@ const source = createFakeSource({
   themes: [{ Id: "33333333-3333-3333-3333-333333333333", Key: "health", SortOrder: 0, IsActive: true, DisplayName: "Health" }],
   tags: [],
   services: [],
+  servicesPresent: [{ present: 1 }],
 });
 
 describe("importLegacyReference", () => {
@@ -38,7 +39,7 @@ describe("importLegacyReference", () => {
 
   it("imports organizations and terms and emits events", async () => {
     const result = await importLegacyReference(tdb.db, source, subs);
-    expect(result).toEqual({ organizations: { total: 1, changed: 1 }, terms: { total: 2, changed: 2 } });
+    expect(result).toEqual({ organizations: { total: 1, changed: 1 }, terms: { total: 2, changed: 2 }, missingTables: [] });
     const [org] = await listOrganizations(tdb.db);
     expect(org!.topicLinks).toEqual([{ text: "Get immunized", url: "https://x" }]);
     expect(org!.sectorKeys).toEqual(["health"]);
@@ -47,7 +48,22 @@ describe("importLegacyReference", () => {
 
   it("second import emits no events", async () => {
     const result = await importLegacyReference(tdb.db, source, subs);
-    expect(result).toEqual({ organizations: { total: 1, changed: 0 }, terms: { total: 2, changed: 0 } });
+    expect(result).toEqual({ organizations: { total: 1, changed: 0 }, terms: { total: 2, changed: 0 }, missingTables: [] });
     expect(await tdb.db.select().from(outboxEvents)).toHaveLength(3);
+  });
+
+  it("skips dbo.Service when the legacy database doesn't have it, and still imports ministries", async () => {
+    const other = await createCoreTestDb();
+    try {
+      const withoutServices = createFakeSource({
+        ministries: [ministryRow], ministryTopics: [], ministryServices: [], ministrySectors: [],
+        sectors: [], themes: [], tags: [], servicesPresent: [{ present: 0 }],
+      });
+      const result = await importLegacyReference(other.db, withoutServices, subs);
+      expect(result).toEqual({ organizations: { total: 1, changed: 1 }, terms: { total: 0, changed: 0 }, missingTables: ["dbo.Service"] });
+      expect(await listOrganizations(other.db)).toHaveLength(1);
+    } finally {
+      await other.drop();
+    }
   });
 });
