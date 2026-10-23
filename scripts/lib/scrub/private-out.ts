@@ -24,7 +24,7 @@ function real(p: string): string {
   }
   return join(realpathSync(cur), ...rest);
 }
-const strictlyInside = (root: string, p: string) => {
+export const strictlyInside = (root: string, p: string) => {
   const rel = relative(real(root), real(p));
   return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
 };
@@ -44,8 +44,11 @@ export function writePrivate(path: string, content: string | Uint8Array): void {
 }
 
 const KEY = /^[0-9a-f]{64}$/;
-/** The key that makes fictional identities stable from run to run without being guessable from the repo. */
-export function loadOrCreateKey(path: string): string {
+/** The key that makes fictional identities stable from run to run without being guessable from the repo.
+ * `path` must resolve inside `root` (the private root): this is the one place every caller passes
+ * through, so it's the one place this is checked, no matter how the path was chosen upstream. */
+export function loadOrCreateKey(path: string, root = PRIVATE_ROOT): string {
+  if (!strictlyInside(root, path)) throw new ScrubArgumentError("--key-file must be inside the private root");
   if (existsSync(path)) {
     const k = readFileSync(path, "utf8").trim();
     if (!KEY.test(k)) throw new ScrubArgumentError("the scrub key file must hold 64 hex characters");

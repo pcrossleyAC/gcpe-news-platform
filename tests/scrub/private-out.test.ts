@@ -31,18 +31,30 @@ describe("private output", () => {
   });
 
   it("creates the key once and reads the same key back", () => {
-    const p = join(root(), "scrub-key");
-    const k = loadOrCreateKey(p);
+    const r = root();
+    const p = join(r, "scrub-key");
+    const k = loadOrCreateKey(p, r);
     expect(k).toMatch(/^[0-9a-f]{64}$/);
-    expect(loadOrCreateKey(p)).toBe(k);
+    expect(loadOrCreateKey(p, r)).toBe(k);
     expect(statSync(p).mode & 0o777).toBe(0o600);
   });
 
   it("rejects a malformed key file", () => {
-    const p = join(root(), "bad-key");
+    const r = root();
+    const p = join(r, "bad-key");
     writeFileSync(p, "not hex");
-    expect(() => loadOrCreateKey(p)).toThrow(ScrubArgumentError);
+    expect(() => loadOrCreateKey(p, r)).toThrow(ScrubArgumentError);
     expect(readFileSync(p, "utf8")).toBe("not hex");
+  });
+
+  it("refuses a key file outside the private root", () => {
+    const r = root();
+    expect(() => loadOrCreateKey(join(tmpdir(), "elsewhere-key"), r)).toThrow(ScrubArgumentError);
+  });
+
+  it("refuses a key file inside the repository", () => {
+    const p = resolve(import.meta.dirname, "..", "..", "repo-key");
+    expect(() => loadOrCreateKey(p)).toThrow(ScrubArgumentError);
   });
 
   it("stamps a run in UTC", () => {

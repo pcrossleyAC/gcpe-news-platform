@@ -1,6 +1,6 @@
 import { join, resolve } from "node:path";
 import { bcDateSchema } from "@gcpe/calendar-contract";
-import { PRIVATE_ROOT, ScrubArgumentError } from "./private-out";
+import { PRIVATE_ROOT, ScrubArgumentError, strictlyInside } from "./private-out";
 
 export const STEPS = ["copy", "scrub", "gate1", "import", "gate2", "trial", "approve", "backup", "load"] as const;
 export type Step = (typeof STEPS)[number];
@@ -53,5 +53,7 @@ export function parseScrubArgs(argv: string[], privateRoot = PRIVATE_ROOT): Scru
   if (!EMAIL.test(calendarUser)) throw new ScrubArgumentError("--calendar-user must be an email address");
   const releaseUser = o["--release-user"] ?? "editor@example.test";
   if (!EMAIL.test(releaseUser)) throw new ScrubArgumentError("--release-user must be an email address");
-  return { backup, out: resolve(out), keyFile: resolve(o["--key-file"] ?? join(privateRoot, "scrub-key")), scrubbedDb, calendarCutoff, site, sshHost, stopAfter, calendarUser, releaseUser, leadDays: 14 };
+  const keyFile = resolve(o["--key-file"] ?? join(privateRoot, "scrub-key"));
+  if (!strictlyInside(privateRoot, keyFile)) throw new ScrubArgumentError("--key-file must be inside the private root");
+  return { backup, out: resolve(out), keyFile, scrubbedDb, calendarCutoff, site, sshHost, stopAfter, calendarUser, releaseUser, leadDays: 14 };
 }
