@@ -270,6 +270,13 @@ describe("backupCheckScript", () => {
     expect(s.replace(/[\w-]+\.(sql|tar)\.gz/g, "")).not.toMatch(/\b(rm|mv|psql|tar|mkdir|cat|gunzip)\b/);
     expect(() => backupCheckScript("latest")).toThrow(/stamp/);
   });
+
+  it("refuses a backup folder without its COMPLETE marker, which is an empty file", () => {
+    const s = backupCheckScript("20261022-120000");
+    expect(s).toContain('[ -f "$DIR/COMPLETE" ] || { echo missing; exit 0; }');
+    expect(s).not.toContain('-s "$DIR/COMPLETE"');
+    expect(s.indexOf("COMPLETE")).toBeLessThan(s.indexOf("echo ok"));
+  });
 });
 
 describe("parseRestoreArgs", () => {

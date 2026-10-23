@@ -33,11 +33,12 @@ export function parseRestoreArgs(argv: string[]): { stamp: string; sshHost: stri
   return { stamp, sshHost, site };
 }
 
-/** A read-only look at the backup folder: the dumps and the site-output archive the restore will need. */
+/** A read-only look at the backup folder: the COMPLETE marker the backup writes last, then the dumps and the site-output archive. */
 export function backupCheckScript(stamp: string): string {
   if (!STAMP_RE.test(stamp)) throw new ScrubArgumentError("a stamp is YYYYMMDD-HHMMSS");
   const files = [...BOXS_APPS.map((a) => `${a.app}.sql.gz`), "site-output.tar.gz"];
-  return [`DIR="$HOME/gcpe-data/backups/${stamp}"`, `for f in ${files.join(" ")}; do [ -s "$DIR/$f" ] || { echo missing; exit 0; }; done`, "echo ok", ""].join("\n");
+  // COMPLETE is an empty file, so it is checked with -f; the dumps and archive must also be non-empty.
+  return [`DIR="$HOME/gcpe-data/backups/${stamp}"`, '[ -f "$DIR/COMPLETE" ] || { echo missing; exit 0; }', `for f in ${files.join(" ")}; do [ -s "$DIR/$f" ] || { echo missing; exit 0; }; done`, "echo ok", ""].join("\n");
 }
 
 export interface RestoreDeps {
