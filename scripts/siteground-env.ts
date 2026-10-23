@@ -238,7 +238,7 @@ async function readHiddenFromTTY(label: string, stdin: NodeJS.ReadStream & { fd:
   });
 }
 
-async function promptHidden(label: string): Promise<string> {
+export async function promptHidden(label: string): Promise<string> {
   if (!process.stdin.isTTY) throw new Error(`cannot prompt for "${label}" without a TTY -- use --non-interactive`);
   return readHiddenFromTTY(label, process.stdin as NodeJS.ReadStream & { fd: 0 });
 }
@@ -250,7 +250,7 @@ async function promptHidden(label: string): Promise<string> {
  * interface doesn't notice — its next question then waits forever and Node exits silently.
  * So the readline interface is closed before every hidden prompt and recreated after it.
  */
-class Prompter {
+export class Prompter {
   private rl: ReturnType<typeof createInterface> | null = null;
 
   private open(): ReturnType<typeof createInterface> {
