@@ -42,8 +42,8 @@ export const LINKS = new Set(["of", "for", "and", "to", "on", "the", "responsibl
 const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "kc", "qc", "phd", "md", "mla", "mp"]);
 /** A multi-word part before the comma is a surname only when it starts like one ("Van Dyk, Quill"); otherwise it is "Name, office". */
 const SURNAME_PARTICLES = new Set(["van", "von", "de", "del", "della", "der", "den", "di", "du", "da", "dos", "das", "la", "le", "st", "ter", "ten", "mac", "mc", "bin", "ibn", "al", "el"]);
-/** Particles that begin a surname rather than end the given names, so a fallback never starts with one. */
-const FALLBACK_PARTICLES = new Set([...SURNAME_PARTICLES, "los", "las"]);
+/** Particles that begin a surname rather than end the given names: a fallback never starts with one, and they may be written in lower case. */
+export const NAME_PARTICLES = new Set([...SURNAME_PARTICLES, "los", "las"]);
 /** Names made only of these are roles or placeholders, not people. */
 const ROLE_WORDS = new Set([
   "premier", "minister", "deputy", "parliamentary", "secretary", "mla", "mp", "assistant", "associate", "acting", "staff", "team",
@@ -62,6 +62,8 @@ const OFFICE_ENDS = new Set([
   "ombudsperson", "ombudsman", "clerk", "superintendent", "inspector", "chancellor", "ambassador", "consul", "specialist", "strategist",
   "lead", "analyst", "editor", "gallery",
 ]);
+/** Offices written "Office, Place or Body" ("Mayor, Nelson", "Speaker, Legislative Assembly"). */
+const PLACE_OFFICES = new Set(["mayor", "speaker", "leader", "general"]);
 /** Role words that stand in for an unknown surname or name a crew job ("Quill TBD", "Quill Videographer"): the given name is still a person's. */
 const STAND_INS = new Set(["tbd", "tba", "none", "other", "unknown", "test", "staff", "videographer", "photographer"]);
 const isRole = (t: string) => ROLE_WORDS.has(t) || TITLES.has(t) || HONORIFICS.has(t) || LINKS.has(t);
@@ -120,11 +122,14 @@ function givenFirst(words: string[]): ParsedName | null {
 }
 
 function surnameFirst(head: string[], tail: string[]): ParsedName | null {
-  // A one-word head that is also an office word ("Elder, Quill") is the surname; the role checks still reject "Premier, Quill".
-  const titled = withoutInitials(stripTitles(head).rest);
-  const surname = titled.length === 0 && head.length === 1 && TITLES.has(head[0]!) ? head : titled;
   const given = stripSuffixes(stripTitles(tail).rest);
   const named = withoutInitials(given);
+  // A one-word office head is the surname only before a single given name ("Elder, Quill"), not before the place or
+  // body the office belongs to ("Leader, Official Opposition"). Offices held over a place are always read that way
+  // ("Mayor, Nelson"), and the role checks still reject "Premier, Quill".
+  const titled = withoutInitials(stripTitles(head).rest);
+  const asSurname = head.length === 1 && TITLES.has(head[0]!) && !PLACE_OFFICES.has(head[0]!) && named.length === 1;
+  const surname = titled.length === 0 && asSurname ? head : titled;
   return surname.length > 0 && given.length > 0 ? { given: named.length > 0 ? named : given, surname } : null;
 }
 
@@ -187,7 +192,9 @@ export interface NameVariant { key: string; surnameFirst: boolean; fallback?: tr
  */
 export function nameVariants(raw: string | null): NameVariant[] {
   const p = parseName(raw);
-  if (!p) return [];
+  // A stand-in surname ("News Staff") or a given part ending in "and" ("Arts and Culture") is kept as a row but
+  // gives no forms to match, since its words are ordinary ones.
+  if (!p || p.surname.some((t) => STAND_INS.has(t)) || p.given[p.given.length - 1] === "and") return [];
   const first = p.given[0]!;
   const last = p.surname.join(" ");
   const v = new Map<string, boolean>([
@@ -196,11 +203,13 @@ export function nameVariants(raw: string | null): NameVariant[] {
     [`${last} , ${p.given.join(" ")}`, true],
     [`${last} , ${first}`, true],
   ]);
-  const out: NameVariant[] = [...v].map(([key, surnameFirst]) => ({ key, surnameFirst }));
+  // "Quill and Bryn Ashbury" is matched as "Quill Ashbury" and by the fallback "Bryn Ashbury", never with the "and".
+  const paired = p.given.includes("and");
+  const out: NameVariant[] = [...v].filter(([key]) => !paired || !key.split(" ").includes("and")).map(([key, surnameFirst]) => ({ key, surnameFirst }));
   const lastGiven = p.given[p.given.length - 1]!;
   const fallback = `${lastGiven} ${last}`;
   // Not from a surname particle ("Quill de la Cruz" gives no "la cruz") or a directory tag ("Ashbury, Quill FOR:EX" gives no "ex ashbury").
-  if (p.given.length > 1 && lastGiven.length > 1 && !isRole(lastGiven) && !FALLBACK_PARTICLES.has(lastGiven) && !tagWords(raw!).has(lastGiven) && !v.has(fallback)) {
+  if (p.given.length > 1 && lastGiven.length > 1 && !isRole(lastGiven) && !NAME_PARTICLES.has(lastGiven) && !tagWords(raw!).has(lastGiven) && !v.has(fallback)) {
     out.push({ key: fallback, surnameFirst: false, fallback: true });
   }
   return out;

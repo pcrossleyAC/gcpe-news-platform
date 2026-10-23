@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPeopleIndex } from "../../scripts/lib/scrub/people";
+import { buildLiteralNeedles, literalHits } from "../../scripts/lib/scrub/mssql-text";
 import { findLeaks, plainContactHits, plainNameHits, scrubText } from "../../scripts/lib/scrub/text";
 
 const KEY = "d".repeat(64);
@@ -48,7 +49,14 @@ describe("names", () => {
     expect(s("Quill Ashbury’s plan")).toBe(`${quill.first} ${quill.last}’s plan`);
   });
   it("leaves an honorific and replaces the person", () => expect(s("Hon. Dorian Feld spoke")).not.toMatch(/Dorian|Feld/));
-  it("ignores accents and case", () => expect(s("with jose nunez")).not.toMatch(/jose|nunez/i));
+  it("ignores accents", () => expect(s("with Jose Nunez")).not.toMatch(/jose|nunez/i));
+  it.each(["with jose nunez", "met quill ashbury today", "quill ashbury-led", "Quill ashbury said"])(
+    "leaves the lower-case or mixed %j to the literal route", (raw) => {
+      expect(s(raw)).toBe(raw);
+      expect(findLeaks(raw, index)).toEqual([]);
+      expect(literalHits(raw, buildLiteralNeedles(index)).map((h) => h.kind)).toContain("literal-name");
+    },
+  );
   it("matches hyphenated surnames whole", () => {
     expect(s("Marisol Tennant-Vey")).not.toMatch(/Marisol/);
     expect(s("Marisol Tennant arrived")).toBe("Marisol Tennant arrived");
@@ -197,6 +205,39 @@ describe("names joined by a dash, link-word surnames and office-word heads", () 
       expect(findLeaks(t, ix)).toEqual(["name", "name-plain"]);
       expect(findLeaks(sx(t), ix)).toEqual([]);
     }
+  });
+});
+
+describe("ordinary words that look like listed names", () => {
+  const rows = ["Leader, Official Opposition", "Speaker, Legislative Assembly", "Mayor, Nelson", "General, Canadian Forces", "News Staff",
+    "Support Staff", "Arts and Culture", "Parks and Recreation", "Mark Short", "Quill Ashbury"];
+  const ix = buildPeopleIndex(rows.map((n, i) => ({ source: "media.Contact", id: String(i), names: [n], email: null, phones: [] })), KEY);
+  const sx = (t: string) => scrubText(t, { index: ix, key: KEY }).text;
+  const mark = ix.persons.find((p) => p.names.includes("Mark Short"))!.fake;
+
+  it.each([
+    "The Opposition Leader said", "The Official Opposition Leader said", "Leader, Official Opposition", "the Legislative Assembly Speaker",
+    "Speaker, Legislative Assembly", "Nelson Mayor", "Mayor, Nelson", "Canadian Forces General", "General, Canadian Forces",
+    "news staff", "support staff", "News Staff", "Support Staff", "arts and culture", "Arts and Culture", "ARTS AND CULTURE", "parks and recreation",
+    "Parks and Recreation", "to mark short-term gains", "Government to Mark Short-Term Milestones", "MARK SHORT-TERM GAINS",
+    "GOVERNMENT TO MARK SHORT", "asked mark short to wait",
+  ])("leaves %j unchanged", (raw) => {
+    expect(sx(raw)).toBe(raw);
+    expect(findLeaks(raw, ix)).toEqual([]);
+  });
+
+  it("still replaces the person written like a name", () => {
+    expect(sx("Mark Short said")).toBe(`${mark.first} ${mark.last} said`);
+    expect(sx("MARK SHORT said")).toBe(`${mark.first.toUpperCase()} ${mark.last.toUpperCase()} said`);
+    expect(sx("a Mark Short-led plan")).toBe(`a ${mark.first} ${mark.last}-led plan`);
+  });
+
+  it.each([800, 5000])("finishes a %i-piece dash-joined word in under a second", (pieces) => {
+    const word = Array.from({ length: pieces }, (_, i) => (i % 2 ? "Ashbury" : "Quill")).join("-");
+    const t0 = performance.now();
+    scrubText(`a ${word} b`, { index: ix, key: KEY });
+    findLeaks(`a ${word} b`, ix);
+    expect(performance.now() - t0).toBeLessThan(1000);
   });
 });
 

@@ -1,5 +1,5 @@
 import { FAKE_PHONE, fakeEmailFor, fakePhone } from "./identity";
-import { LINKS, normToken, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people";
+import { NAME_PARTICLES, normToken, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people";
 
 export const EMAIL_RE = /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g;
 /** North American numbers with an area code: 604-555-0142, (604) 555-0142, 604.555.0142, +1 604 555 0142, 1-800-…, with ext./x. */
@@ -104,13 +104,20 @@ function gapBetween(text: string, a: { end: number; norm: string }, b: { start: 
 }
 
 const DASHES = /[-\u2010\u2011\u2013]/g;
-const upperFirst = (s: string) => /^\p{Lu}/u.test(s);
+/** A piece of a name is capitalised, or is a lower-case particle ("de", "van"), or reads like "d'Arcy". */
+const nameCased = (piece: string) => /^\p{Lu}/u.test(piece) || NAME_PARTICLES.has(normToken(piece)) || /^\p{Ll}{1,3}['’]\p{Lu}/u.test(piece);
+const upperCased = (piece: string) => /\p{Lu}/u.test(piece) && !/\p{Ll}/u.test(piece);
+/** All-upper-case runs this long are shouted headlines ("MARK SHORT-TERM GAINS"), not names. */
+const SHOUTED = 4;
 /**
- * A name read from part of a word ("Quill Ashbury-led", "Victoria–Thea Marchbank") or ending in a link word
- * ("Kevin To") is a name only when its first and last words share their case, so "Marisol short-term" and
- * "asked Kevin to" are left alone.
+ * Only words written like a name are replaced: each capitalised (particles aside), or all of them upper case outside a
+ * shouted run. Lower-case and mixed matches ("asked Kevin to", "news staff", "to mark short-term gains") are left
+ * alone; Gate 1's literal route is case-insensitive, so a real name left that way fails the gate loudly.
  */
-const sameCase = (first: string, last: string) => upperFirst(first) === upperFirst(last);
+function writtenLikeName(pieces: string[], run: () => number): boolean {
+  if (pieces.every(upperCased)) return run() < SHOUTED;
+  return pieces.every(nameCased);
+}
 
 function piecesOf(view: View): Tok[] {
   const toks: Tok[] = [];
@@ -143,6 +150,14 @@ function groupsOf(view: View, toks: Tok[], a: number, b: number): Group[] {
 
 function matchView(text: string, view: View, index: PeopleIndex, out: NameMatch[]): void {
   const toks = piecesOf(view);
+  const cap = index.maxWords + 1;
+  const adjacent = (x: number) => toks[x + 1]!.word === toks[x]!.word || gapBetween(text, toks[x]!, toks[x + 1]!) === "join";
+  const runAround = (a: number, b: number) => {
+    let lo = a, hi = b;
+    while (lo > 0 && b - lo < SHOUTED && upperCased(toks[lo - 1]!.shape) && adjacent(lo - 1)) lo--;
+    while (hi < toks.length - 1 && hi - lo < SHOUTED && upperCased(toks[hi + 1]!.shape) && adjacent(hi)) hi++;
+    return hi - lo + 1;
+  };
   const tryWindow = (a: number, b: number): NameMatch | null => {
     const groups = groupsOf(view, toks, a, b);
     const n = groups.length;
@@ -164,9 +179,10 @@ function matchView(text: string, view: View, index: PeopleIndex, out: NameMatch[
       const initials = words.map((_, k) => k).filter((k) => k > 0 && k < n - 1 && words[k]!.length === 1);
       if (initials.length === 1 && initials[0] !== commaAt && initials[0]! + 1 !== commaAt) hit = index.byVariant.get(keyOf(initials[0]!));
     }
-    if (!hit) return null;
-    const surname = hit.surnameFirst ? words[0]! : words[n - 1]!;
-    if ((toks[a]!.joined || toks[b]!.cut || LINKS.has(surname)) && !sameCase(groups[0]!.shape, lastG.shape)) return null;
+    if (!hit || !writtenLikeName(toks.slice(a, b + 1).map((t) => t.shape), () => runAround(a, b))) return null;
+    // A name cut from the front of a word is followed by a lower-case suffix ("Ashbury-led") or by another name
+    // ("Ashbury–Thea Marchbank"), never by a capitalised word of its own ("Mark Short-Term").
+    if (toks[b]!.cut && !/^\p{Ll}/u.test(toks[b + 1]!.shape) && !matchAt(b + 1)) return null;
     const found = hit;
     const parts = groups.map((g, k) => {
       const role: Role = found.surnameFirst ? (k === 0 ? "surname" : k === commaAt ? "given" : "drop") : k === 0 ? "given" : k === n - 1 ? "surname" : "drop";
@@ -181,22 +197,31 @@ function matchView(text: string, view: View, index: PeopleIndex, out: NameMatch[
     });
     return { start: parts[0]!.start, end: parts[parts.length - 1]!.end, hit: found, parts };
   };
-  for (let i = 0; i < toks.length; i++) {
+  const memo = new Map<number, { match: NameMatch; last: number } | null>();
+  function matchAt(i: number): { match: NameMatch; last: number } | null {
+    if (memo.has(i)) return memo.get(i)!;
+    memo.set(i, null);
     let head = toks[i]!.norm;
     let starts = index.firstTokens.has(head);
-    for (let j = i + 1; !starts && j < toks.length && toks[j]!.word === toks[i]!.word; j++) starts = index.firstTokens.has((head += `-${toks[j]!.norm}`));
-    if (!starts) continue;
-    // The window may end inside a word ("Ashbury-led") and reaches one word past the longest variant, so a middle
-    // initial can be skipped; the longest window that names someone wins.
-    let far = i;
-    for (let j = i + 1, words = 1; j < toks.length; j++) {
-      if (toks[j]!.word !== toks[j - 1]!.word && ++words > index.maxWords + 1) break;
-      far = j;
+    for (let j = i + 1; !starts && j < toks.length && j - i < cap && toks[j]!.word === toks[i]!.word; j++) starts = index.firstTokens.has((head += `-${toks[j]!.norm}`));
+    let found: { match: NameMatch; last: number } | null = null;
+    if (starts) {
+      // The window may end inside a word ("Ashbury-led") and reaches one word past the longest variant, so a middle
+      // initial can be skipped; the longest window that names someone wins. A word counts for at most that many pieces.
+      let far = i;
+      for (let j = i + 1, words = 1, pieces = 1; j < toks.length; j++) {
+        if (toks[j]!.word !== toks[j - 1]!.word) { words++; pieces = 1; } else pieces++;
+        if (words > cap || pieces > cap) break;
+        far = j;
+      }
+      for (let b = far; b > i && !found; b--) { const m = tryWindow(i, b); if (m) found = { match: m, last: b }; }
     }
-    let match: NameMatch | null = null;
-    let b = far;
-    for (; b > i && !match; b--) match = tryWindow(i, b);
-    if (match) { out.push(match); i = b + 1; }
+    memo.set(i, found);
+    return found;
+  }
+  for (let i = 0; i < toks.length; i++) {
+    const m = matchAt(i);
+    if (m) { out.push(m.match); i = m.last; }
   }
 }
 
@@ -277,14 +302,29 @@ function plainSegmentHits(segment: string, index: PeopleIndex): number {
     else words.push(w);
   }
   const subs = words.flatMap((w, word) => w.split(PLAIN_DASH).map((raw, k, all) => ({ raw, word, joined: k > 0, cut: k < all.length - 1 })));
-  let hits = 0;
-  for (let i = 0; i < subs.length; i++) {
+  const cap = index.maxWords + 1;
+  const bare = (raw: string) => raw.replace(LEADING_PUNCT, "").replace(TRAILING_PUNCT, "");
+  // Two pieces are side by side when they share a word, or when no punctuation sits between their words.
+  const adjacent = (x: number) => subs[x + 1]!.word === subs[x]!.word || (!TRAILING_PUNCT.test(subs[x]!.raw) && !LEADING_PUNCT.test(subs[x + 1]!.raw));
+  const runAround = (a: number, b: number) => {
+    let lo = a, hi = b;
+    while (lo > 0 && b - lo < SHOUTED && upperCased(bare(subs[lo - 1]!.raw)) && adjacent(lo - 1)) lo--;
+    while (hi < subs.length - 1 && hi - lo < SHOUTED && upperCased(bare(subs[hi + 1]!.raw)) && adjacent(hi)) hi++;
+    return hi - lo + 1;
+  };
+  const memo = new Map<number, number | null>();
+  /** The last piece of the name starting at piece i, or null. */
+  function nameAt(i: number): number | null {
+    if (memo.has(i)) return memo.get(i)!;
+    memo.set(i, null);
     let far = i;
-    for (let j = i + 1, count = 1; j < subs.length; j++) {
-      if (subs[j]!.word !== subs[j - 1]!.word && ++count > index.maxWords + 1) break;
+    for (let j = i + 1, count = 1, pieces = 1; j < subs.length; j++) {
+      if (subs[j]!.word !== subs[j - 1]!.word) { count++; pieces = 1; } else pieces++;
+      if (count > cap || pieces > cap) break;
       far = j;
     }
-    for (let b = far; b > i; b--) {
+    let found: number | null = null;
+    for (let b = far; b > i && found === null; b--) {
       const groups: string[] = [];
       for (let j = i; j <= b; j++) {
         if (j > i && subs[j]!.word === subs[j - 1]!.word) groups[groups.length - 1] += `-${subs[j]!.raw}`;
@@ -303,20 +343,22 @@ function plainSegmentHits(segment: string, index: PeopleIndex): number {
         return INITIAL_WORD.test(t) ? t.slice(0, 1) : t;
       });
       const keyOf = (skip: number) => ws.filter((_, k) => k !== skip).map((w, k) => (k === 1 && comma ? `, ${w}` : w)).join(" ");
-      let hit = index.byVariant.get(keyOf(-1));
+      let hit = index.byVariant.has(keyOf(-1));
       if (!hit && n >= 3) {
         const initials = ws.map((w, k) => (k > 0 && k < n - 1 && INITIAL_WORD.test(w) ? k : -1)).filter((k) => k >= 0);
-        if (initials.length === 1 && !(comma && initials[0] === 1)) hit = index.byVariant.get(keyOf(initials[0]!));
+        if (initials.length === 1 && !(comma && initials[0] === 1)) hit = index.byVariant.has(keyOf(initials[0]!));
       }
-      if (!hit) continue;
-      // Part of a word, or a link-word surname, names someone only when the first and last words share their case.
-      const surname = hit.surnameFirst ? ws[0]! : ws[n - 1]!;
-      const caseOf = (g: string) => /^\p{Lu}/u.test(g.replace(LEADING_PUNCT, ""));
-      if ((subs[i]!.joined || subs[b]!.cut || LINKS.has(surname)) && caseOf(groups[0]!) !== caseOf(groups[n - 1]!)) continue;
-      hits++;
-      i = b;
-      break;
+      if (!hit || !writtenLikeName(subs.slice(i, b + 1).map((x) => bare(x.raw)), () => runAround(i, b))) continue;
+      if (subs[b]!.cut && !/^\p{Ll}/u.test(subs[b + 1]!.raw) && nameAt(b + 1) === null) continue;
+      found = b;
     }
+    memo.set(i, found);
+    return found;
+  }
+  let hits = 0;
+  for (let i = 0; i < subs.length; i++) {
+    const last = nameAt(i);
+    if (last !== null) { hits++; i = last; }
   }
   return hits;
 }

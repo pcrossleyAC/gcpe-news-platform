@@ -75,15 +75,22 @@ describe("parseName", () => {
     expect(nameVariants("Ashbury, Quill Bryn").map((v) => v.key)).toContain("bryn ashbury");
   });
 
-  it.each([["Elder, Quill", "elder"], ["Mayor, Quill", "mayor"], ["Grand, Quill", "grand"]])("reads the one-word office head of %j as a surname", (raw, surname) => {
+  it.each([["Elder, Quill", "elder"], ["Elder, Q. Quill", "elder"], ["Grand, Quill", "grand"]])("reads the one-word office head of %j as a surname", (raw, surname) => {
     expect(parseName(raw)).toEqual({ given: ["quill"], surname: [surname] });
   });
-  it.each(["Premier, Quill", "Chief, Quill", "Minister, Quill", "Director, Quill"])("still rejects the office head %j", (raw) => expect(parseName(raw)).toBeNull());
+  it.each([
+    "Premier, Quill", "Chief, Quill", "Minister, Quill", "Director, Quill", "Elder, Quill Bryn", "Mayor, Quill",
+    "Leader, Official Opposition", "Speaker, Legislative Assembly", "Mayor, Nelson", "General, Canadian Forces",
+  ])("rejects the office head %j", (raw) => expect(nameVariants(raw)).toEqual([]));
 
-  it("reads two people sharing a surname from the first and the fallback", () => {
+  it("reads two people sharing a surname from the first and the fallback, never with the and", () => {
     expect(parseName("Quill and Bryn Ashbury")).toEqual({ given: ["quill", "and", "bryn"], surname: ["ashbury"] });
-    expect(nameVariants("Quill and Bryn Ashbury").map((v) => v.key)).toEqual(expect.arrayContaining(["quill ashbury", "bryn ashbury"]));
+    expect(nameVariants("Quill and Bryn Ashbury").map((v) => v.key).sort()).toEqual(["ashbury , quill", "bryn ashbury", "quill ashbury"]);
     expect(parseName("And Quill Ashbury")).toBeNull();
+  });
+  it.each(["Arts and Culture", "Parks and Recreation", "News Staff", "Support Staff", "Quill TBD"])("keeps %j as a row but gives it no forms to match", (raw) => {
+    expect(parseName(raw)).not.toBeNull();
+    expect(nameVariants(raw)).toEqual([]);
   });
 
   it.each([["Quill TBD", "tbd"], ["Quill Unknown", "unknown"], ["Quill Videographer", "videographer"], ["Quill Staff", "staff"]])(
