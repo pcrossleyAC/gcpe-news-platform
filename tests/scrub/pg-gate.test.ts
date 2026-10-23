@@ -16,6 +16,7 @@ const index = buildPeopleIndex([
   { source: "t", id: "1", names: ["Quill Ashbury"], email: "quill.ashbury@gov.example", phones: [] },
   { source: "t", id: "2", names: [UNPARSED], email: "ximena.ruiz@gov.example", phones: [] },
   { source: "dbo.Ministry", id: "M1", names: [MINISTER], email: "okonkwo-bell@gov.example", phones: [] },
+  { source: "t", id: "3", names: ["Ivo Wren Talbot"], email: "ivo.talbot@gov.example", phones: [] },
 ], "f".repeat(64));
 
 describe("gatePostgres", () => {
@@ -76,6 +77,21 @@ describe("gatePostgres", () => {
     const r = await gatePostgres([{ name: "core", url: core.url }], index, { coreUrl: core.url, signInAllowed: new Set(["QA.Tester@boxs.example", "editor@example.test"]) });
     expect(r.hits.filter((h) => h.table === "core.users" && h.kind === "email")).toEqual([{ table: "core.users", column: "email", kind: "email", count: 1 }]);
     expect(r.hits.some((h) => h.table === "core.organizations" && h.column === "display_additional_name")).toBe(false);
+  });
+});
+
+describe("gatePostgres and fallback forms", () => {
+  let db: TestDatabase;
+  beforeAll(async () => { db = await createTestDatabase({ migrationsFolder: CORE_MIGRATIONS }); });
+  afterAll(async () => { await db?.drop(); });
+  const exec = async (text: string, values: unknown[] = []) => { const c = new pg.Client({ connectionString: db.url }); await c.connect(); try { await c.query(text, values); } finally { await c.end(); } };
+  const hitsIn = (r: { hits: { table: string; column: string }[] }) => r.hits.filter((h) => h.table === "core.organizations" && h.column === "url");
+  it("doesn't fail on text that lines up only a fallback form, and still fails on the full name", async () => {
+    expect(index.byVariant.get("wren talbot")?.fallback).toBe(true);
+    await exec("INSERT INTO organizations (key, display_name, minister, social, url) VALUES ('parks', 'Parks', '{}'::jsonb, '{}'::jsonb, $1)", ["Victoria Wren Talbot Lake trail"]);
+    expect(hitsIn(await gatePostgres([{ name: "core", url: db.url }], index, { coreUrl: db.url, signInAllowed: new Set() }))).toEqual([]);
+    await exec("UPDATE organizations SET url = $1 WHERE key = 'parks'", ["Met Ivo Talbot at the trail"]);
+    expect(hitsIn(await gatePostgres([{ name: "core", url: db.url }], index, { coreUrl: db.url, signInAllowed: new Set() })).length).toBeGreaterThan(0);
   });
 });
 

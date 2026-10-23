@@ -1,14 +1,16 @@
-import { FAKE_PHONE, fakeEmailFor, fakePhone, type FakeIdentity } from "./identity";
+import { fakeEmailFor, fakePhone, isFakePhone, type FakeIdentity } from "./identity";
 import { cleanName, isPlaceholderOrTitle, NAME_PARTICLES, nameRunOf, normToken, parseName, PUBLIC_OFFICE_SOURCES, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people";
 
 export const EMAIL_RE = /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g;
 /** North American numbers with an area code: 604-555-0142, (604) 555-0142, 604.555.0142, +1 604 555 0142, 1-800-…, with ext./x. */
 /**
  * Separators are matched over entity-decoded text, so they include no-break and thin spaces and the Unicode hyphens
- * and dashes; a dash may have one space on either side ("604 – 555 – 0142"). The area code may run straight into the
- * number ("604555-0142"), and a letter may touch either end ("Cell604 555-0142c"), as contact blocks are often typed.
+ * and dashes. A separator is a dash or period with any whitespace around it, or any run of whitespace, line breaks
+ * included ("604 – 555 – 0142", "604\n555-0142", "250  555-0142"), so an area code is never left beside a number.
+ * The area code may run straight into the number ("604555-0142"), and a letter may touch either end
+ * ("Cell604 555-0142c"), as contact blocks are often typed.
  */
-const SEP = "(?:[ \\u00a0]?[\\-\\u2010-\\u2014\\u2212][ \\u00a0]?|[ .\\u00a0\\u2000-\\u200a\\u202f])";
+const SEP = "(?:\\s*[\\-\\u2010-\\u2014\\u2212.]\\s*|\\s+)";
 const FULL_PHONE_RE = new RegExp(
   `(?<![\\d_+\\-\\u2010-\\u2014\\u2212])(?:\\+?1${SEP}?)?(?:\\(\\d{3}\\)${SEP}?|\\d{3}${SEP}?)\\d{3}${SEP}\\d{4}(?:\\s*(?:ext\\.?|extension|x)\\s*\\d{1,6})?(?![\\d_]|[\\-\\u2010-\\u2014\\u2212]\\d)`,
   "gi",
@@ -246,7 +248,7 @@ function contactSpans(text: string): { start: number; end: number; kind: "email"
   for (const m of view.text.matchAll(EMAIL_RE)) if (!m[0].toLowerCase().endsWith(TEST_DOMAIN)) out.push({ ...span(m.index, m.index + m[0].length), kind: "email", local: false });
   for (const sp of phoneSpans(view.text)) {
     const v = span(sp.start, sp.end);
-    if (!FAKE_PHONE.test(v.value) && !out.some((x) => v.start < x.end && v.end > x.start)) out.push({ ...v, kind: "phone", local: sp.local });
+    if (!isFakePhone(v.value) && !out.some((x) => v.start < x.end && v.end > x.start)) out.push({ ...v, kind: "phone", local: sp.local });
   }
   return out.sort((a, b) => a.start - b.start);
 }
@@ -401,37 +403,119 @@ export interface LiteralNameSpan { start: number; end: number; fake: FakeIdentit
 
 /**
  * What the literal route would report as a real name, in any case, with the fictional name that replaces it (public
- * office holders' names are left). Searched with tags blanked, and inside each tag. Each word of the name is its own
- * part, so the markup and entities between them stay exactly where they were.
+ * office holders' names are left). Searched with tags blanked, inside each tag, and with tags removed as a reader sees
+ * the text (a tag inside a word: "Ash</a>bury"). Each word of the name is its own part, written into the first piece
+ * of the original it comes from, so the markup and entities between and within words stay where they were.
  */
 export function literalNameSpans(text: string, index: PeopleIndex): LiteralNameSpan[] {
   const needles = nameNeedlesOf(index);
   const out: LiteralNameSpan[] = [];
-  const scan = (v: View) => {
-    for (const m of literalNameMatches(v.text, needles)) {
+  // `pieces` maps a stretch of the folded view to the pieces of the original it stands for.
+  const scan = (folded: string, pieces: (a: number, b: number) => { start: number; end: number }[]) => {
+    for (const m of literalNameMatches(folded, needles)) {
       if (m.owner.pub || !m.owner.fake) continue;
       // The words of the match as written: runs of folded text between single spaces, a surname-first comma left out.
-      const words: [number, number][] = [];
-      for (const w of v.text.slice(m.at, m.at + m.len).matchAll(/[^ ]+/g)) {
+      const words: { start: number; end: number }[][] = [];
+      for (const w of folded.slice(m.at, m.at + m.len).matchAll(/[^ ]+/g)) {
         const a = m.at + w.index;
         let b = a + w[0].length;
-        if (v.text[b - 1] === "," && b - 1 > a) b--;
-        words.push([v.start[a]!, v.end[b - 1]!]);
+        if (folded[b - 1] === "," && b - 1 > a) b--;
+        const ps = pieces(a, b);
+        if (ps.length > 0) words.push(ps);
       }
+      if (words.length === 0) continue;
       const n = words.length, sf = m.needle.includes(", ");
-      const parts = words.map(([a, b], k) => {
+      const parts = words.flatMap((ps, k) => {
         const role: LiteralRole = n === 1 ? "full" : sf ? (k === 0 ? "surname" : k === 1 ? "given" : "drop") : k === 0 ? "given" : k === n - 1 ? "surname" : "drop";
-        // A dropped word takes the plain space before it, so no double space is left.
-        const before = k > 0 ? words[k - 1]![1] : a;
-        return { start: role === "drop" && /^\s+$/.test(text.slice(before, a)) ? before : a, end: b, role };
+        return ps.map((p, j) => {
+          // A dropped word takes the plain space before it, so no double space is left.
+          const before = k > 0 && j === 0 ? words[k - 1]![words[k - 1]!.length - 1]!.end : p.start;
+          const startAt = role === "drop" && j === 0 && /^\s+$/.test(text.slice(before, p.start)) ? before : p.start;
+          return { start: startAt, end: p.end, role: j === 0 ? role : ("drop" as const) };
+        });
       });
-      out.push({ start: words[0]![0], end: words[n - 1]![1], fake: m.owner.fake, parts });
+      out.push({ start: words[0]![0]!.start, end: words[n - 1]![words[n - 1]!.length - 1]!.end, fake: m.owner.fake, parts });
     }
   };
-  scan(foldView(text, 0, text.length, MARKUP_RE));
-  for (const t of text.matchAll(TAG_RE)) scan(foldView(text, t.index + 1, t.index + t[0].length - 1, ENTITY_RE));
-  out.sort((a, b) => a.start - b.start);
-  return out.filter((x, k) => k === 0 || x.start >= out[k - 1]!.end);
+  const viewPieces = (v: View) => (a: number, b: number) => [{ start: v.start[a]!, end: v.end[b - 1]! }];
+  const blanked = foldView(text, 0, text.length, MARKUP_RE);
+  scan(blanked.text, viewPieces(blanked));
+  for (const t of text.matchAll(TAG_RE)) { const v = foldView(text, t.index + 1, t.index + t[0].length - 1, ENTITY_RE); scan(v.text, viewPieces(v)); }
+  // With tags removed: fold the reader's view, and map each folded character back through it to the original.
+  const pv = plainView(text);
+  const fv = foldView(pv.text, 0, pv.text.length, /(?!)/g);
+  scan(fv.text, (a, b) => piecesOfPlain(pv, fv.start[a]!, fv.end[b - 1]!));
+  out.sort((a, b) => a.start - b.start || b.end - a.end);
+  const kept: LiteralNameSpan[] = [];
+  for (const x of out) if (kept.length === 0 || x.start >= kept[kept.length - 1]!.end) kept.push(x);
+  return kept;
+}
+
+/** Block-level tags read as a break between words; any other tag joins the text on either side. */
+const BLOCK_TAGS = new Set([
+  "address", "article", "aside", "blockquote", "br", "dd", "div", "dl", "dt", "figcaption", "figure", "footer",
+  "h1", "h2", "h3", "h4", "h5", "h6", "header", "hr", "li", "ol", "p", "pre", "section", "table", "td", "th", "tr", "ul",
+]);
+const SKIP_TAGS = new Set(["script", "style", "noscript", "template", "head"]);
+const PLAIN_MARKUP_RE = /<!--[\s\S]*?-->|<(\/?)([a-zA-Z][a-zA-Z0-9-]*)?[^<>]{0,200}>|&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+);/gi;
+
+/** A readable view in which some characters stand for markup (a block tag's break), not for text. */
+interface PlainView extends View { markup: boolean[] }
+
+/**
+ * Release HTML as a reader sees it, the way the public site's search text is made (htmlToPlainText): entities
+ * decoded, inline tags giving nothing, block tags a space, scripts and styles left out, whitespace collapsed. Each
+ * character keeps its span of the original, and the spaces block tags give are marked as markup.
+ */
+export function plainView(text: string): PlainView {
+  const chars: string[] = [], start: number[] = [], end: number[] = [], markup: boolean[] = [];
+  const push = (c: string, a: number, b: number, isMarkup: boolean) => {
+    if (/\s/u.test(c)) {
+      if (chars.length > 0 && chars[chars.length - 1] === " ") { end[end.length - 1] = b; markup[markup.length - 1] ||= isMarkup; return; }
+      c = " ";
+    }
+    chars.push(c); start.push(a); end.push(b); markup.push(isMarkup);
+  };
+  let at = 0;
+  let skipUntil: string | null = null;
+  for (const m of text.matchAll(PLAIN_MARKUP_RE)) {
+    if (skipUntil === null) for (let k = at; k < m.index; k++) push(text[k]!, k, k + 1, false);
+    const a = m.index, b = a + m[0].length;
+    at = b;
+    if (m[0].startsWith("&")) { if (skipUntil === null) for (const c of entityText(m[0]) ?? " ") push(c, a, b, false); continue; }
+    const name = (m[2] ?? "").toLowerCase();
+    if (skipUntil !== null) { if (m[1] === "/" && name === skipUntil) skipUntil = null; continue; }
+    if (m[1] !== "/" && SKIP_TAGS.has(name) && !m[0].endsWith("/>")) { skipUntil = name; continue; }
+    if (BLOCK_TAGS.has(name)) push(" ", a, b, true);
+  }
+  if (skipUntil === null) for (let k = at; k < text.length; k++) push(text[k]!, k, k + 1, false);
+  let lo = 0, hi = chars.length;
+  while (lo < hi && chars[lo] === " ") lo++;
+  while (hi > lo && chars[hi - 1] === " ") hi--;
+  return { text: chars.slice(lo, hi).join(""), start: start.slice(lo, hi), end: end.slice(lo, hi), markup: markup.slice(lo, hi) };
+}
+
+/** The pieces of the original a stretch of the plain view comes from: text between tags, never the tags themselves. */
+function piecesOfPlain(v: PlainView, a: number, b: number): { start: number; end: number }[] {
+  const pieces: { start: number; end: number }[] = [];
+  for (let k = a; k < b; k++) {
+    if (v.markup[k]) continue;
+    const last = pieces[pieces.length - 1];
+    if (last && last.end === v.start[k] && !v.markup[k - 1]) last.end = v.end[k]!;
+    else pieces.push({ start: v.start[k]!, end: v.end[k]! });
+  }
+  return pieces;
+}
+
+/** Emails and phones over the plain view: what a reader, or the site's search text, sees once tags are gone. */
+function plainContactMatches(v: PlainView): { start: number; end: number; kind: "email" | "phone"; value: string; local: boolean }[] {
+  const out: { start: number; end: number; kind: "email" | "phone"; value: string; local: boolean }[] = [];
+  for (const m of v.text.matchAll(EMAIL_RE)) if (!m[0].toLowerCase().endsWith(TEST_DOMAIN)) out.push({ start: m.index, end: m.index + m[0].length, kind: "email", value: m[0], local: false });
+  for (const sp of phoneSpans(v.text)) {
+    const value = v.text.slice(sp.start, sp.end);
+    if (!isFakePhone(value) && !out.some((x) => sp.start < x.end && sp.end > x.start)) out.push({ ...sp, kind: "phone", value });
+  }
+  return out;
 }
 
 export function scrubText(text: string, ctx: ScrubCtx): { text: string; counts: Counts } {
@@ -446,6 +530,17 @@ export function scrubText(text: string, ctx: ScrubCtx): { text: string; counts: 
     const f = fakePhone(ctx.key, sp.value.replace(/\D/g, ""));
     return sp.local ? f.slice(4) : f;
   });
+  // Then emails and phones a tag splits ("604-555<br />\n0142", "quill@gov</a><a …>.example"): the fictional value
+  // goes in the first piece, the other pieces' characters are removed, and every tag between them stays.
+  const pv = plainView(out);
+  const split = plainContactMatches(pv).flatMap((m) => {
+    if (m.kind === "email") counts.emails++; else counts.phones++;
+    const e = m.value.toLowerCase();
+    const f = m.kind === "email" ? ctx.index.byEmail.get(e)?.fake.email ?? fakeEmailFor(ctx.key, e) : fakePhone(ctx.key, m.value.replace(/\D/g, ""));
+    const value = m.kind === "phone" && m.local ? f.slice(4) : f;
+    return piecesOfPlain(pv, m.start, m.end).map((p, k) => ({ ...p, value: k === 0 ? value : "" }));
+  });
+  out = replaceSpans(out, split, (_orig, p) => p.value);
   // Replaced until nothing more matches: a fictional first name can complete a real person's name with the word
   // before it ("Ashbury, <fictional first>"), which a second pass would otherwise find.
   for (let pass = 0; pass < 6; pass++) {
@@ -564,7 +659,7 @@ export function plainNameHits(text: string, index: PeopleIndex): number {
 export function plainContactHits(text: string): { emails: number; phones: number } {
   const decoded = text.replace(ENTITY_RE, (e) => entityText(e) ?? " ");
   const emails = [...decoded.matchAll(EMAIL_RE)].filter((m) => !m[0].toLowerCase().endsWith(TEST_DOMAIN)).length;
-  const phones = phoneSpans(decoded).filter((sp) => !FAKE_PHONE.test(decoded.slice(sp.start, sp.end))).length;
+  const phones = phoneSpans(decoded).filter((sp) => !isFakePhone(decoded.slice(sp.start, sp.end))).length;
   return { emails, phones };
 }
 
@@ -572,9 +667,12 @@ export function findLeaks(text: string, index: PeopleIndex): LeakKind[] {
   const kinds: LeakKind[] = [];
   const strict = contactSpans(text);
   const plain = plainContactHits(text);
-  // Either route seeing more than the other is a leak the other missed, so the larger count is reported.
-  for (let i = Math.max(strict.filter((x) => x.kind === "email").length, plain.emails); i > 0; i--) kinds.push("email");
-  for (let i = Math.max(strict.filter((x) => x.kind === "phone").length, plain.phones); i > 0; i--) kinds.push("phone");
+  // And with tags removed, as a reader sees it: an address or number a tag splits.
+  const read = plainContactMatches(plainView(text));
+  // Any route seeing more than another is a leak the other missed, so the largest count is reported.
+  const most = (kind: "email" | "phone", n: number) => Math.max(strict.filter((x) => x.kind === kind).length, n, read.filter((x) => x.kind === kind).length);
+  for (let i = most("email", plain.emails); i > 0; i--) kinds.push("email");
+  for (let i = most("phone", plain.phones); i > 0; i--) kinds.push("phone");
   kinds.push(...nameSpans(text, index).map((): LeakKind => "name"));
   for (let i = plainNameHits(text, index); i > 0; i--) kinds.push("name-plain");
   return kinds;

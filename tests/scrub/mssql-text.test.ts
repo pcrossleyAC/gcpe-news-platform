@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyScope, emptyTables } from "../../scripts/lib/scrub/mssql";
 import { fakeEmailFor } from "../../scripts/lib/scrub/identity";
-import { buildLiteralNeedles, fitText, gateMssql, literalHits, readPeopleSources, scrubAllText, writeStructuredPeople } from "../../scripts/lib/scrub/mssql-text";
+import { htmlToPlainText } from "@gcpe/embeddings";
+import { buildLiteralNeedles, fitText, gateMssql, literalHits, readPeopleSources, scrubAllText, textTables, writeStructuredPeople } from "../../scripts/lib/scrub/mssql-text";
 import { buildPeopleIndex, isPlaceholderOrTitle, parseName, type PeopleIndex } from "../../scripts/lib/scrub/people";
 import { ScrubStepError } from "../../scripts/lib/scrub/private-out";
 import { findLeaks, scrubText } from "../../scripts/lib/scrub/text";
@@ -227,7 +228,8 @@ describe.skipIf(!cfg)("people and text on a fictional SQL Server fixture", () =>
     const a = (await q<{ Title: string; Comments: string }>("SELECT Title, Comments FROM calendar.Activity WHERE Id = 1"))[0]!;
     expect(a.Title).not.toMatch(/Quill|Ashbury/);
     expect(a.Comments).toMatch(/person\d+@example\.test/);
-    expect(a.Comments).toMatch(/555-01\d\d/);
+    // A number in the fictional range is fictional however it is laid out (Ruling 26), so it stays as written.
+    expect(a.Comments).toMatch(/250\.555\.0161/);
     expect((await q<{ Key: string }>("SELECT [Key] FROM dbo.NewsRelease ORDER BY [Key]")).map((r) => r.Key)).toEqual(["2026HLTH0001-000001", "2026HLTH0004-000004"]);
   });
 
@@ -285,11 +287,34 @@ describe.skipIf(!cfg)("Gate 1's literal route on a fictional SQL Server fixture"
     expect(gate.publicOfficeHits).toBe(0);
   });
 
+  it("leaves nothing a reader would see once tags are removed, in any text column", async () => {
+    const needles = buildLiteralNeedles(index);
+    let values = 0;
+    for (const t of await textTables(fx.pool)) {
+      const rows = (await fx.pool.request().query(`SELECT ${t.columns.map((c) => `[${c.name}]`).join(", ")} FROM ${t.table.split(".").map((x) => `[${x}]`).join(".")}`)).recordset as Record<string, unknown>[];
+      for (const r of rows) for (const c of t.columns) {
+        const v = r[c.name];
+        if (typeof v !== "string" || v === "") continue;
+        values++;
+        const plain = htmlToPlainText(v);
+        expect(findLeaks(plain, index), `${t.table}.${c.name}`).toEqual([]);
+        expect(literalHits(plain, needles).filter((h) => !h.publicOffice), `${t.table}.${c.name}`).toEqual([]);
+      }
+    }
+    expect(values).toBeGreaterThan(20);
+  });
+
+
   it("a second pass changes nothing, cut columns included", async () => {
     const narrow = (await fx.pool.request().query<{ Te: string; Tes: string }>("SELECT Te, Tes FROM dbo.ScrubNarrow")).recordset[0]!;
     expect(narrow).toEqual({ Te: "Back-up contact: ", Tes: "Back-up contact: " });
     const again = await scrubAllText(fx.pool, { index, key: FIXTURE_KEY });
     for (const [table, r] of Object.entries(again)) expect(r.changed, table).toBe(0);
+  });
+
+  it("fails on an address or number a tag splits", async () => {
+    expect((await plant("Call 604-387<br />\n1234 today")).hits.map((h) => h.kind)).toContain("phone");
+    expect((await plant('<a href="mailto:x">quill.ashbury@gov</a><a href="mailto:x">.example</a>')).hits.map((h) => h.kind)).toEqual(expect.arrayContaining(["email", "literal-email"]));
   });
 
   it("gives each row of one person its own value in a unique column, fitted to the column", async () => {

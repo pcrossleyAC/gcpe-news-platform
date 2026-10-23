@@ -1,6 +1,6 @@
 import pg from "pg";
 import { buildLiteralNeedles, literalHits, type GateHit, type GateKind, type GateResult } from "./mssql-text";
-import type { PeopleIndex } from "./people";
+import { withoutFallbacks, type PeopleIndex } from "./people";
 import { findLeaks } from "./text";
 
 export interface PgGateResult extends GateResult { signInProblems: number }
@@ -27,7 +27,9 @@ function stringsOf(v: unknown, out: string[] = []): string[] {
   return out;
 }
 
-export async function gatePostgres(dbs: { name: string; url: string }[], index: PeopleIndex, o: { coreUrl: string; signInAllowed: ReadonlySet<string> }): Promise<PgGateResult> {
+export async function gatePostgres(dbs: { name: string; url: string }[], people: PeopleIndex, o: { coreUrl: string; signInAllowed: ReadonlySet<string> }): Promise<PgGateResult> {
+  // Gate 2 doesn't count a fallback form alone: the News API's search text joins fields, which can line one up.
+  const index = withoutFallbacks(people);
   const needles = buildLiteralNeedles(index);
   const allowed = new Set([...o.signInAllowed].map((e) => e.toLowerCase()));
   const counts = new Map<string, GateHit>();

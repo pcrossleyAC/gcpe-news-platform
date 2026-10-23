@@ -6,6 +6,17 @@ export interface FakeIdentity { slot: number; first: string; last: string; full:
 export const CAPACITY = FIRST_NAMES.length * SURNAMES.length;
 /** What the scrubber writes, so a second pass leaves it alone and the gates accept it. */
 export const FAKE_PHONE = /^(?:250-)?555-01\d\d$/;
+/** The digits of a fictional number: 250 555 01xx, or the local 555 01xx. */
+export const FAKE_DIGITS = /^(?:250)?55501\d\d$/;
+/**
+ * A fictional number however it is laid out: its digits, without an extension or a leading 1, are in the fictional
+ * range ("250 555-0142", "1 250-555-0142", "250-555-0142 ext 1234").
+ */
+export function isFakePhone(value: string): boolean {
+  let d = value.replace(/\s*(?:ext\.?|extension|x)\s*\d{1,6}\s*$/i, "").replace(/\D/g, "");
+  if (d.length === 11 && d[0] === "1") d = d.slice(1);
+  return FAKE_DIGITS.test(d);
+}
 
 export function hmacInt(key: string, value: string): number {
   return createHmac("sha256", key).update(value).digest().readUIntBE(0, 6);

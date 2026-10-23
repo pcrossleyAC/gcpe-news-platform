@@ -16,7 +16,7 @@ export type Stray = PersonSource & { fake: FakeIdentity };
 /** Sources whose people hold public office (MLAs, ministers): their names may stay in text, their contacts may not. */
 export const PUBLIC_OFFICE_SOURCES = ["calendar.GovernmentRepresentative", "dbo.Ministry"] as const;
 export interface Person { key: string; names: string[]; emails: string[]; phones: string[]; sources: string[]; fake: FakeIdentity }
-export interface VariantHit { person: Person; surnameFirst: boolean }
+export interface VariantHit { person: Person; surnameFirst: boolean; fallback?: true }
 export interface PeopleIndex {
   persons: Person[];
   bySource: Map<string, Person>;
@@ -358,18 +358,34 @@ export function buildPeopleIndex(sources: PersonSource[], key: string, reservedE
   const index: PeopleIndex = { persons, bySource: new Map(), byVariant: new Map(), byEmail: new Map(), firstTokens: new Set(), maxWords: 0, strays };
   // Fallback variants go in last, so they never take a form that is some other person's own name.
   for (const fallback of [false, true]) {
-    for (const p of persons) for (const n of p.names) for (const v of nameVariants(n)) if (!!v.fallback === fallback && !index.byVariant.has(v.key)) index.byVariant.set(v.key, { person: p, surnameFirst: v.surnameFirst });
+    for (const p of persons) for (const n of p.names) for (const v of nameVariants(n)) if (!!v.fallback === fallback && !index.byVariant.has(v.key)) index.byVariant.set(v.key, { person: p, surnameFirst: v.surnameFirst, ...(fallback ? { fallback: true as const } : {}) });
   }
   for (const p of persons) {
     for (const e of p.emails) if (!index.byEmail.has(e)) index.byEmail.set(e, p);
     for (const s of p.sources) index.bySource.set(s, p);
   }
+  indexWords(index);
+  return index;
+}
+
+function indexWords(index: PeopleIndex): void {
+  index.firstTokens = new Set();
+  index.maxWords = 0;
   for (const k of index.byVariant.keys()) {
     const words = k.split(" ").filter((w) => w !== ",");
     index.firstTokens.add(words[0]!);
     index.maxWords = Math.max(index.maxWords, words.length);
   }
-  return index;
+}
+
+/**
+ * The same people without the weak fallback forms (last given word plus surname). Gate 2 reads with this: text it
+ * builds by joining fields ("<location> <body>") can line up a fallback form by accident, but never a full name.
+ */
+export function withoutFallbacks(index: PeopleIndex): PeopleIndex {
+  const out: PeopleIndex = { ...index, byVariant: new Map([...index.byVariant].filter(([, hit]) => !hit.fallback)), firstTokens: new Set(), maxWords: 0 };
+  indexWords(out);
+  return out;
 }
 
 const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);

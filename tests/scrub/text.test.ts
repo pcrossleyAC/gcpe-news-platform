@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildPeopleIndex } from "../../scripts/lib/scrub/people";
 import { buildLiteralNeedles, literalHits } from "../../scripts/lib/scrub/mssql-text";
+import { htmlToPlainText } from "@gcpe/embeddings";
 import { findLeaks, plainContactHits, plainNameHits, scrubText } from "../../scripts/lib/scrub/text";
 
 const KEY = "d".repeat(64);
@@ -289,10 +290,14 @@ describe("phones", () => {
     const out = s(`Call ${p} now`);
     expect(out).toMatch(/^Call 250-555-01\d\d now$/);
   });
-  it("replaces a seven-digit local number", () => expect(s("Call 555.0142 now")).toMatch(/^Call 555-01\d\d now$/));
+  it("replaces a seven-digit local number", () => expect(s("Call 387.1234 now")).toMatch(/^Call 555-01\d\d now$/));
+  it.each(["Call 555.0142 now", "Call 250 555-0142 now", "Call 1 250-555-0142 now", "Call 250-555-0142 ext 1234 now", "Call 250 555 0142 now"])("leaves the fictional-range number in %j alone, however it is laid out", (raw) => {
+    expect(s(raw)).toBe(raw);
+    expect(findLeaks(raw, index)).toEqual([]);
+  });
   it("replaces a seven-digit local number at the end of a sentence", () => {
     expect(s("Call 604-555-0142 or 555-0142.")).toMatch(/^Call 250-555-01\d\d or 555-01\d\d\.$/);
-    expect(s("Call 555.0142.")).toMatch(/^Call 555-01\d\d\.$/);
+    expect(s("Call 387.1234.")).toMatch(/^Call 555-01\d\d\.$/);
     expect(s("Version 555.0142.7")).toBe("Version 555.0142.7");
   });
   it("replaces a number written with en dashes", () => expect(s("Call 604–555–0142 now")).toMatch(/^Call 250-555-01\d\d now$/));
@@ -414,7 +419,7 @@ describe("findLeaks", () => {
     expect(findLeaks(s(raw), index)).toEqual([]);
   });
 
-  it.each(["Call 555.0142.", "Call 604–555–0142 now", "Call 604 \u2013 555 \u2013 0142 now", "Call 604 - 555 - 0142 now"])("finds the phone in %j", (raw) => {
+  it.each(["Call 387.1234.", "Call 604–555–0142 now", "Call 604 \u2013 555 \u2013 0142 now", "Call 604 - 555 - 0142 now"])("finds the phone in %j", (raw) => {
     expect(findLeaks(raw, index)).toContain("phone");
     expect(findLeaks(s(raw), index)).toEqual([]);
   });
@@ -486,4 +491,47 @@ describe("rows that are offices only because of an outlet or crew word", () => {
   it("makes no needle from words split by punctuation", () => {
     expect(literalHits("Contract Pell said", needles)).toEqual([]);
   });
+});
+
+describe("emails and phones a tag splits (Ruling 26)", () => {
+  const tagNames = (t: string) => [...t.matchAll(/<\/?([a-z0-9]+)/gi)].map((m) => m[1]!.toLowerCase());
+  it("replaces an address split across two links, keeping both links", () => {
+    const raw = '<a href="mailto:quill.ashbury@gov.example">quill.ashbury@gov</a><a href="mailto:quill.ashbury@gov.example">.example</a>';
+    expect(findLeaks(raw, index)).toContain("email");
+    const out = s(raw);
+    expect(out).toBe(`<a href="mailto:${quill.email}">${quill.email}</a><a href="mailto:${quill.email}"></a>`);
+    expect(tagNames(out)).toEqual(tagNames(raw));
+    expect(findLeaks(htmlToPlainText(out), index)).toEqual([]);
+    expect(findLeaks(out, index)).toEqual([]);
+    expect(s(out)).toBe(out);
+  });
+  it.each([["604-387<br />\n1234", /604|387|1234/], ["Call 604</a> 387-1234", /604|387|1234/], ["604\n387-1234", /604|387|1234/], ["250  387-1234", /387|1234/], ["604&nbsp;\n387-1234", /604|387|1234/]])(
+    "replaces the number in %j whole, so no real area code is left", (raw, real) => {
+      expect(findLeaks(raw, index)).toContain("phone");
+      const out = s(raw);
+      expect(out).not.toMatch(real);
+      expect(tagNames(out)).toEqual(tagNames(raw));
+      expect(findLeaks(htmlToPlainText(out), index)).toEqual([]);
+      expect(findLeaks(out, index)).toEqual([]);
+      expect(s(out)).toBe(out);
+    },
+  );
+  it.each(["250 555-0142", "1 250-555-0142", "250-555-0142 ext 1234", "250-555-0142</span> ext 1234", "250\n555-0142", "9 &nbsp;250-555-0142", "250</a> 555-0142"])("doesn't count the fictional number %j", (raw) => {
+    expect(findLeaks(raw, index)).toEqual([]);
+    expect(findLeaks(htmlToPlainText(raw), index)).toEqual([]);
+  });
+});
+
+describe("names a tag splits inside a word", () => {
+  const tagNames = (t: string) => [...t.matchAll(/<\/?([a-z0-9]+)/gi)].map((m) => m[1]!.toLowerCase());
+  it.each(['<p>Quill <a href="https://news.example/x">Ash</a>bury said</p>', "Qu<b>ill</b> Ashbury spoke", "<i>Quill</i> Ash<span>bury</span>"])(
+    "replaces the name a reader sees in %j, keeping every tag", (raw) => {
+      expect(findLeaks(htmlToPlainText(raw), index)).toContain("name");
+      const out = s(raw);
+      expect(tagNames(out)).toEqual(tagNames(raw));
+      expect(findLeaks(htmlToPlainText(out), index)).toEqual([]);
+      expect(htmlToPlainText(out)).toContain(quill.last);
+      expect(s(out)).toBe(out);
+    },
+  );
 });

@@ -1,5 +1,7 @@
 import sql from "mssql";
+import { htmlToPlainText } from "@gcpe/embeddings";
 import { IDENTIFIER_COLUMNS, PEOPLE_QUERIES, quoteCol, quoteName, STRUCTURED } from "./legacy-schema";
+import { FAKE_DIGITS } from "./identity";
 import { assertScrubCopy } from "./mssql";
 import { ScrubStepError } from "./private-out";
 import { normEmail, PUBLIC_OFFICE_SOURCES, type PeopleIndex, type Person, type PersonSource } from "./people";
@@ -188,8 +190,6 @@ const TAG_RE = /<[^<>]{0,200}>/g;
 const LOOSE_EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/g;
 /** Digit groups a phone may be written in: "604 555 0142", "(604)555-0142", "+1.604.555.0142", "604 — 555 — 0142" (en dashes are folded to "-"). */
 const DIGIT_RUN_RE = /\d+(?:[ ().\-+/\u2014\u2212]{1,3}\d+)*/g;
-/** What the scrubber itself writes; a real number in that range can't be told from a fictional one. */
-const FAKE_DIGITS = /^(?:250)?55501\d\d$/;
 
 /** The digits a stored phone is found by: ten without a leading 1, or a seven-digit local number. */
 function phoneDigits(raw: string): string | null {
@@ -253,8 +253,22 @@ export function literalHits(text: string, needles: LiteralNeedles): { kind: Lite
   const push = (kind: LiteralKind, publicOffice: boolean, n: number) => { for (let i = 0; i < n; i++) out.push({ kind, publicOffice }); };
   push("literal-name", false, Math.max(a.leaks, b.leaks));
   push("literal-name", true, Math.max(a.publicOffice, b.publicOffice));
-  push("literal-email", false, [...kept.matchAll(LOOSE_EMAIL_RE)].filter((m) => needles.emails.has(m[0])).length);
-  push("literal-phone", false, phoneMentions(kept, needles.phones));
+  // Emails and phones also with tags blanked and with tags removed, so one a tag splits is still seen.
+  const read = literalFold(htmlToPlainText(text));
+  const emailsIn = (t: string) => [...t.matchAll(LOOSE_EMAIL_RE)].filter((m) => needles.emails.has(m[0])).length;
+  push("literal-email", false, Math.max(emailsIn(kept), emailsIn(blanked), emailsIn(read)));
+  push("literal-phone", false, Math.max(phoneMentions(kept, needles.phones), phoneMentions(blanked, needles.phones), phoneMentions(read, needles.phones)));
+  return out;
+}
+
+/**
+ * Gate 1's name, email and phone routes, over the value as stored and over its text as a reader sees it
+ * (htmlToPlainText, the way the public site builds its search text). Each kind counts the larger of the two.
+ */
+export function leakKinds(v: string, index: PeopleIndex): GateKind[] {
+  const a = findLeaks(v, index), b = findLeaks(htmlToPlainText(v), index);
+  const out: GateKind[] = [];
+  for (const kind of new Set([...a, ...b])) for (let i = Math.max(a.filter((k) => k === kind).length, b.filter((k) => k === kind).length); i > 0; i--) out.push(kind);
   return out;
 }
 
@@ -287,7 +301,7 @@ export async function gateMssql(pool: sql.ConnectionPool, index: PeopleIndex, lo
         for (const c of cols) {
           const v = row[c];
           if (typeof v !== "string" || v === "") continue;
-          const kinds: GateKind[] = [...findLeaks(v, index)];
+          const kinds: GateKind[] = leakKinds(v, index);
           for (const h of literalHits(v, needles)) {
             if (h.publicOffice) { tally(office, t.table, c, h.kind); mentions++; } else kinds.push(h.kind);
           }
