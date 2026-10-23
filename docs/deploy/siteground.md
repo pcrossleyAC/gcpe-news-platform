@@ -945,7 +945,7 @@ the only place to see activities outside the import.
 
 `npm run scrub:test-data` turns a legacy SQL Server backup into fictional calendar, release and
 public-site data, then loads it onto boxs.ca. Real data never leaves the operator's Mac: only the
-scrubbed copy, which has already passed two leak checks, is ever uploaded.
+scrubbed copy, which has already passed both leak gates, is ever uploaded.
 
 **What it sends.** Ended, non-confidential calendar activities and published releases are kept,
 with their reference data (ministries, sectors, themes, tags and the rest). Everyone in them
@@ -962,7 +962,10 @@ existing test accounts and its mail redirect to the operator are all left alone.
 - Use Node 24.
 - The SQL Server container must be running, with the backup file in
   `~/gcpe-parity-private/legacy/`, which the container sees as `/backup/`.
-- `ssh boxs` must work.
+- `ssh boxs` must work. Even a `--stop-after trial` run uses it once: right after restoring the
+  backup, it makes one read-only call to boxs.ca to download the site's test accounts (their
+  emails, roles and sign-in hashes). Those emails are kept out of the fictional ones, and the
+  accounts are seeded into the local Core so the trial can sign in. Nothing on boxs.ca changes.
 - Partway through the run it prints the size of each local database it's about to upload, and
   their total. Have Site Tools' storage meter open and check it has room before you type the
   approval below.
@@ -975,9 +978,10 @@ LEGACY_SQL_SERVER=127.0.0.1 LEGACY_SQL_USER=sa LEGACY_SQL_PASSWORD="$MSSQL_SA_PA
   npx -y -p node@24 -- npm run scrub:test-data -- --backup /backup/<file>.bak --out ~/gcpe-parity-private/scrub --stop-after trial
 ```
 
-Run it once with `--stop-after trial` first: it restores the backup, scrubs it, runs both leak
-gates, imports it into fresh local databases, runs the gates again, and trials it locally — then
-stops before anything on boxs.ca changes. Once that run is clean, run the same command without
+Run it once with `--stop-after trial` first. It restores the backup, downloads boxs.ca's test
+accounts (read only, as above), scrubs the copy and runs Gate 1. It then imports into fresh local
+databases, seeding the test accounts after Core's import, and runs Gate 2. It trials the result
+locally and runs Gate 2 again. Then it stops, before anything on boxs.ca changes. Once that run is clean, run the same command without
 `--stop-after` for the real load; it starts over from the backup rather than continuing. The run
 folder (under `--out`) ends up with `mapping.csv` (real person to invented person), `reports/`,
 `logs/` and `dumps/`. All of it is private: never copy any of it out of `~/gcpe-parity-private`.
@@ -985,11 +989,16 @@ folder (under `--out`) ends up with `mapping.csv` (real person to invented perso
 **The gates.** Gate 1 runs once, against the scrubbed copy on SQL Server, right after scrubbing.
 Gate 2 runs against the imported Postgres databases, twice: once right after import, and again
 after the local trial, on the exact databases that later get dumped to boxs.ca. Each gate run
-does two searches over every text column: a structured search for the people list's names,
-emails and phones, and a separate, independent literal search for the same names, emails and
-phones as plain text — including a name the structured search couldn't parse. Either search
-finding anything fails the gate. A gate also fails if it finds someone who could sign in to
-boxs.ca but isn't one of its known test accounts.
+searches every text column three ways:
+- **strict:** the people list's names as parsed, matched word by word, with emails and phones by
+  pattern;
+- **plain:** the same names matched a second, independent way;
+- **literal:** every stored name, email and phone as plain text. This includes a name neither of
+  the others could parse, and a people row that matched no person.
+
+Any of the three finding anything fails the gate. Gate 2 also fails if it finds someone who could
+sign in to boxs.ca but isn't one of its known test accounts. Those test accounts' own addresses,
+exactly as boxs.ca holds them, are not counted as leaks, even when they aren't at `example.test`.
 
 A gate's pass condition is zero. What prints to the console is table, column, kind (name, email
 or phone) and a count — never a row, a name, an address or a number. One exception: an MLA's or a
@@ -1004,42 +1013,78 @@ issue or anywhere else — the ids it carries can be real key values. Once you u
 fix the underlying rule (never hand-edit the scrubbed copy) and run the pipeline again from the
 start.
 
-**Approval and load.** After a clean trial, the command prints every area's counts, the date
-offset, both gates' results, and each local database's size with a running total — check that
-total against Site Tools' storage meter now, if you haven't already. It then asks you to type
-`load boxs.ca` (the site's own host name) before anything on boxs.ca changes.
+**Approval and load.** After a clean trial, the command prints:
+- every area's counts and the date offset;
+- every gate's result;
+- each local database it's about to upload, with its size and the total.
 
-Once you approve:
-- It backs up every one of boxs.ca's databases to `~/gcpe-data/backups/<stamp>/` on boxs.ca, and
-  downloads a copy into the run folder. The stamp it prints is also the undo command's argument.
-- It asks you to stop the site's Node.js app in Site Tools (Devs → Node.js), and waits for
-  `/stack/health` to stop answering before going on.
-- It uploads and restores the new databases, clears News On Demand's read positions for Core and
-  NRMS so it re-reads their new data from the start, then asks you to start the app again in
-  Site Tools and waits for `/stack/health` to answer healthy.
-- It signs in as the break-glass administrator, republishes Core's reference data and the media
-  lists, and runs a handful of ticks by hand so the public site starts rebuilding.
-- It finishes with the same smoke test as the local trial: it asks for three passwords (the
-  break-glass administrator's, a Calendar test account's and a release test account's), then
-  signs in, opens the calendar, makes a Look Ahead PDF, opens a release and loads the public
-  site's home page.
+Check that total against Site Tools' storage meter now, if you haven't already.
+
+The approval must be typed at a terminal: piped input stops the run with nothing changed. Then,
+still before anything on boxs.ca changes:
+- **Approve.** Type `load boxs.ca` (the site's own host name). Anything else stops the run.
+- **User name.** It asks for the break-glass administrator's user name. The default is `admin`.
+- **Passwords.** It asks for three, hidden: the break-glass administrator's, the Calendar test
+  account's and the release test account's. An empty one stops the run.
+- **Sign-in check.** It signs in to boxs.ca with each of the three. One that fails stops the run,
+  so a mistyped password costs nothing.
+
+Then, in this order:
+1. **Backup.** It backs up all seven of boxs.ca's databases and its site output to
+   `~/gcpe-data/backups/<stamp>/` on boxs.ca. Each file is checked, then a `COMPLETE` marker is
+   written. It downloads the backup into the run folder as `boxs-backup-<stamp>.tar` and prints the
+   stamp: that is the undo command's argument.
+2. **Upload.** It dumps the five databases it replaces (Core, NRMS, News API, the site and
+   Calendar) into `dumps/` in the run folder and uploads each to boxs.ca, checking its size and
+   checksum. The site is still running, unchanged, throughout.
+3. **Stop.** It asks you to stop the site's Node.js app in Site Tools (Devs → Node.js), then
+   waits up to five minutes for `/stack/health` to stop answering. If the site still answers,
+   nothing is replaced and the backup stays ready.
+4. **Restore.** It restores the five databases and clears News On Demand's read positions for Core
+   and NRMS, so NoD re-reads their new data from the start. It empties the public site's output
+   so the site rebuilds it.
+5. **Start.** It asks you to start the app again in Site Tools, then waits up to ten minutes for
+   `/stack/health` to answer healthy.
+6. **Republish.** It signs in as the break-glass administrator with the password given at
+   approval, republishes Core's reference data and the media lists, and runs six ticks by hand so
+   the public site starts rebuilding.
+7. **Smoke test.** It runs the same smoke test as the local trial, signing in as the two test
+   accounts with the passwords given at approval. It lists the calendar, makes a Look Ahead PDF,
+   opens a published release and loads the public site's home page. It asks for nothing more.
+
+If the restore fails, the site doesn't come back healthy, or the smoke test fails, it prints the
+undo command with the backup's stamp.
 
 The public site then rebuilds every page from empty, at about 200 pages a tick — roughly four
 hours at legacy's volume. The home page and the latest posts are rebuilt first, so the site looks
 right well before the rest catches up.
 
-**Undo.** `npm run scrub:test-data:restore -- <stamp>` puts boxs.ca back exactly as that backup
-found it. It asks for the same typed confirmation style (`restore <stamp>`), the same two Site
-Tools pauses (stop, then start), and the same `/stack/health` wait each time.
+**Undo.** `npm run scrub:test-data:restore -- <stamp>` puts all seven databases and the site output
+back exactly as that backup found them.
+1. It must be run at a terminal.
+2. Before asking anything, it checks over SSH that the backup is on boxs.ca and complete: its
+   `COMPLETE` marker, every database dump and the site-output archive. If not, it stops with
+   nothing changed.
+3. It asks you to type `restore <stamp>`.
+4. It asks you to stop the app in Site Tools, and waits up to five minutes for `/stack/health` to
+   stop answering.
+5. It restores everything from the backup.
+6. It asks you to start the app again, and waits up to ten minutes for `/stack/health` to answer
+   healthy.
 
 **Known limits.**
 - A real person who appears in none of legacy's people tables — a member of the public named
   only in a comment, say — isn't found or replaced.
 - A real name typed in lower case is left alone by the structured name search. The literal
   search still finds it and fails the gate loudly, rather than letting it through quietly.
-- An MLA's or a minister's name stored as a bare surname, with no first name, isn't rewritten in
-  free text: it can still appear, unreplaced, in calendar or release text on boxs.ca. It's public
-  record, so it isn't a leak — just something to expect when reading the test content.
+- **Public office holders' names never fail a gate.** A name from a GovernmentRepresentative or
+  Ministry row (an MLA, a minister) is public record. However it's written, its literal mention
+  is counted and printed, but it doesn't fail a gate. Their emails and phones still do.
+- **About 246 representative rows keep their stored value.** These are rows stored as a bare
+  surname, with no first name, often behind a title ("MLA Xx", "Minister Xx"). They aren't parsed,
+  so their own column keeps its stored value, and the name isn't rewritten in free text. It can
+  still appear, unreplaced, in calendar or release text on boxs.ca. It isn't a leak, just
+  something to expect when reading the test content.
 
 **UAT rows to re-point after a load.** Carolynn's test script has rows that assume the old
 hand-built sample data, or rely on data this load removes:
