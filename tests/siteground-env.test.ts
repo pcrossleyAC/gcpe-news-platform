@@ -3,6 +3,7 @@
 // as a real `tsx` child process reading SITEGROUND_* env vars, to prove --non-interactive
 // genuinely works end to end, not just its internal helpers.
 import { execFileSync } from "node:child_process";
+import { PassThrough } from "node:stream";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
@@ -10,6 +11,8 @@ import {
   collectNonInteractiveInput,
   generateSecret,
   generateSecrets,
+  PromptEndedError,
+  Prompter,
   type SiteGroundEnvInput,
 } from "../scripts/siteground-env";
 
@@ -238,5 +241,31 @@ describe("CLI entry point, --non-interactive (real child process)", () => {
     expect(map.get("LOCAL_ADMIN_PASSWORD_HASH")).toMatch(/^scrypt\$/);
     expect(map.get("CORE_DATABASE_URL")).toContain("cli-db-password");
     expect(map.get("TICK_TOKEN")!.length).toBeGreaterThanOrEqual(32);
+  });
+});
+
+describe("Prompter.plain", () => {
+  it("returns the typed answer, or the default for an empty one", async () => {
+    const input = new PassThrough();
+    const p = new Prompter(input, new PassThrough());
+    try {
+      const first = p.plain("Name");
+      input.write("Quill Ashbury\n");
+      expect(await first).toBe("Quill Ashbury");
+      const second = p.plain("Port", "587");
+      input.write("\n");
+      expect(await second).toBe("587");
+    } finally {
+      p.close();
+    }
+  });
+
+  it("rejects instead of hanging when the input ends before an answer", async () => {
+    const input = new PassThrough();
+    const p = new Prompter(input, new PassThrough());
+    const pending = p.plain("Type the phrase", "");
+    input.end();
+    await expect(pending).rejects.toBeInstanceOf(PromptEndedError);
+    await expect(p.plain("Again", "")).rejects.toBeInstanceOf(PromptEndedError);
   });
 });

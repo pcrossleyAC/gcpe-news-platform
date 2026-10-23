@@ -664,3 +664,7 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Operations** — The tick now runs `calendar.orphan-sweep`. It deletes Calendar attachment bytes that no attachment references any more (left behind when a delete failed after a replace or remove), only once they are a day old, at most 50 per tick. A failure logs "[calendar] orphan sweep could not delete a stored file" with the error's type only; it retries on its next pass.
 - **Developer** — `npm run test:clean-dbs` lists leftover test databases (`test_<20 hex>`, `test_nr_<16 hex>`) and roles (`nr_<16 hex>`); `-- --confirm` drops them. It skips anything in use or created in the last hour (`-- --min-age-minutes=N` to change), so it is safe while another checkout's tests run.
 - **Developer** — NRMS's upload routes (release files, site files, page images) take the name in the `X-GCPE-File-Name` header, percent-encoded, like the Calendar's. `?name=` is refused with a 400.
+
+## Scrubbed test data
+
+- **Operations** — boxs.ca's calendar, releases and public site can be refreshed from a legacy backup with `npm run scrub:test-data` (see "Refreshing test data from a legacy backup" in docs/deploy/siteground.md). People are fictional, only ended non-confidential activities and published releases are kept, and calendar dates move forward so the coming weeks have activities. Test accounts, subscribers and settings stay. After a refresh, re-check the UAT rows the runbook lists; `npm run scrub:test-data:restore -- <stamp>` puts the previous data back.

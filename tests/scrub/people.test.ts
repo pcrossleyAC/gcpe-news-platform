@@ -1,0 +1,267 @@
+import { describe, expect, it } from "vitest";
+import { buildPeopleIndex, cleanName, isPlaceholderOrTitle, mappingCsv, nameRunOf, nameVariants, normEmail, parseName, type PersonSource } from "../../scripts/lib/scrub/people";
+
+const KEY = "c".repeat(64);
+const src = (source: string, id: string, names: (string | null)[], email: string | null = null, extra: Partial<PersonSource> = {}): PersonSource => ({ source, id, names, email, phones: [], ...extra });
+
+describe("parseName", () => {
+  it.each([
+    ["Quill Ashbury", { given: ["quill"], surname: ["ashbury"] }],
+    ["Ashbury, Quill", { given: ["quill"], surname: ["ashbury"] }],
+    ["Hon. Dorian Feld", { given: ["dorian"], surname: ["feld"] }],
+    ["José Ñúñez", { given: ["jose"], surname: ["nunez"] }],
+    ["Marisol Tennant-Vey", { given: ["marisol"], surname: ["tennant-vey"] }],
+    ["Quill Q. Ashbury", { given: ["quill"], surname: ["ashbury"] }],
+  ])("parses %s", (raw, expected) => expect(parseName(raw)).toEqual(expected));
+
+  it.each(["Premier", "Deputy Minister", "Admin", "", null, "Room 250", "a@b.example", "One Two Three Four Five"])("rejects %j", (raw) => expect(parseName(raw)).toBeNull());
+
+  it.each([
+    "Premier Quill Ashbury", "Minister Quill Ashbury", "Hon. Minister Quill Ashbury", "Parliamentary Secretary Quill Ashbury", "MLA Quill Ashbury",
+    "The Honourable Quill Ashbury", "Assistant Deputy Minister Quill Ashbury", "Minister of Health Quill Ashbury", "Minister of State for Trade Quill Ashbury",
+    "Quill Ashbury, MLA", "Quill Ashbury (Acting)", "Hon. Quill Ashbury, Minister of Health", "Quill Ashbury, Jr.", "Quill Ashbury MLA",
+    "Ashbury, Quill (Acting)", "Ashbury, Hon. Quill", "Quill A. Ashbury", "Quill A Ashbury", "Minister of Health (Quill Ashbury)",
+  ])("finds the name inside %j", (raw) => expect(parseName(raw)).toEqual({ given: ["quill"], surname: ["ashbury"] }));
+
+  it("keeps a lone initial as the given name and reads a surname particle before the comma", () => {
+    expect(parseName("Q. Ashbury")).toEqual({ given: ["q"], surname: ["ashbury"] });
+    expect(parseName("Van Dyk, Quill")).toEqual({ given: ["quill"], surname: ["van", "dyk"] });
+  });
+
+  it.each([
+    "Executive Assistant to the Minister", "Special Advisor to the Premier", "Deputy Minister to the Premier", "Secretary to Cabinet",
+    "Minister of Tourism, Arts, Culture and Sport", "Minister of Lakes, Trails and Parks", "Chief Information Officer",
+    "Government Chief Information Officer", "Health Minister", "Board Chair", "Grand Chief", "Lieutenant Governor", "Provincial Health Officer",
+  ])("gives the office %j no variants", (raw) => expect(nameVariants(raw)).toEqual([]));
+
+  it.each([
+    ["Grand Chief Ira Yellowhorse", "ira", "yellowhorse"], ["Regional Chief Ira Yellowhorse", "ira", "yellowhorse"], ["Elder Ira Yellowhorse", "ira", "yellowhorse"],
+    ["Board Chair Ira Yellowhorse", "ira", "yellowhorse"], ["Lieutenant Governor Ira Yellowhorse", "ira", "yellowhorse"], ["Health Minister Ira Yellowhorse", "ira", "yellowhorse"],
+    ["Provincial Health Officer Dr. Nell Ambrose", "nell", "ambrose"], ["Quill Elder", "quill", "elder"], ["Quill Mayor", "quill", "mayor"],
+  ])("finds the name inside the office %j", (raw, given, surname) => expect(parseName(raw)).toEqual({ given: [given], surname: [surname] }));
+
+  it("reads a non-breaking hyphen or en dash in a surname as a hyphen", () => {
+    expect(parseName("Ira Yellow\u2011Horse")).toEqual({ given: ["ira"], surname: ["yellow-horse"] });
+    expect(parseName("Ira Yellow\u2013Horse")).toEqual({ given: ["ira"], surname: ["yellow-horse"] });
+  });
+
+  it("indexes the last given word with the surname behind an unknown office, unless another person owns that form", () => {
+    expect(nameVariants("Grand Poobah Quill Ashbury").map((v) => v.key)).toContain("quill ashbury");
+    const both = buildPeopleIndex([src("media.Contact", "1", ["Quill Bryn Ashbury"]), src("media.Contact", "2", ["Bryn Ashbury"])], KEY);
+    expect(both.byVariant.get("bryn ashbury")?.person.sources).toEqual(["media.Contact:2"]);
+  });
+
+  it.each(["Minister of Health", "Deputy Minister of Health Services", "Minister of Health and Addictions", "Director, Communications", "Premier (Acting)", "Quill A.", "Executive Director, Media Relations"])("rejects the office %j", (raw) => expect(parseName(raw)).toBeNull());
+
+  it.each([
+    ["Kevin To", ["kevin"], ["to"]], ["Mai On", ["mai"], ["on"]], ["Ivo And", ["ivo"], ["and"]],
+  ])("reads a link word as the surname of a two-word name %j", (raw, given, surname) => expect(parseName(raw)).toEqual({ given, surname }));
+  it.each(["Quill Ashbury To", "Assistant to", "Minister of", "Chief of Staff to"])("still rejects a link word that ties an office %j", (raw) => expect(parseName(raw)).toBeNull());
+
+  it.each([
+    ["Ashbury, Quill Bryn", ["quill", "bryn"]], ["Ashbury, Quill B Bryn", ["quill", "bryn"]], ["Ashbury, Quill FOR:EX", ["quill", "for", "ex"]],
+    ["Ashbury, Quill B FOR:EX", ["quill", "for", "ex"]], ["Ashbury, Quill ON:IN", ["quill", "on", "in"]],
+  ])("reads %j as Last, First Middle", (raw, given) => {
+    expect(parseName(raw)).toEqual({ given, surname: ["ashbury"] });
+    expect(nameVariants(raw).map((v) => v.key)).toEqual(expect.arrayContaining(["quill ashbury", "ashbury , quill"]));
+  });
+  it("reads a name pushed past four words by a directory tag without the tag", () => {
+    expect(parseName("Ashbury, Quill Bryn GCPE:EX")).toEqual({ given: ["quill", "bryn"], surname: ["ashbury"] });
+    expect(parseName("Ashbury, Quill Bryn FOR:EX")).toEqual({ given: ["quill", "bryn"], surname: ["ashbury"] });
+    expect(parseName("One Two Three Four Five")).toBeNull();
+  });
+  it("makes no fallback from a directory tag", () => {
+    expect(nameVariants("Ashbury, Quill FOR:EX").map((v) => v.key)).not.toContain("ex ashbury");
+    expect(nameVariants("Ashbury, Quill Bryn").map((v) => v.key)).toContain("bryn ashbury");
+  });
+
+  it.each([["Elder, Quill", "elder"], ["Elder, Q. Quill", "elder"], ["Grand, Quill", "grand"]])("reads the one-word office head of %j as a surname", (raw, surname) => {
+    expect(parseName(raw)).toEqual({ given: ["quill"], surname: [surname] });
+  });
+  it.each([
+    "Premier, Quill", "Chief, Quill", "Minister, Quill", "Director, Quill", "Elder, Quill Bryn", "Mayor, Quill",
+    "Leader, Official Opposition", "Speaker, Legislative Assembly", "Mayor, Nelson", "General, Canadian Forces",
+  ])("rejects the office head %j", (raw) => expect(nameVariants(raw)).toEqual([]));
+
+  it("reads two people sharing a surname from the first and the fallback, never with the and", () => {
+    expect(parseName("Quill and Bryn Ashbury")).toEqual({ given: ["quill", "and", "bryn"], surname: ["ashbury"] });
+    expect(nameVariants("Quill and Bryn Ashbury").map((v) => v.key).sort()).toEqual(["ashbury , quill", "bryn ashbury", "quill ashbury"]);
+    expect(parseName("And Quill Ashbury")).toBeNull();
+  });
+  it.each(["Arts and Culture", "Parks and Recreation", "Support Staff", "Quill TBD"])("keeps %j as a row but gives it no forms to match", (raw) => {
+    expect(parseName(raw)).not.toBeNull();
+    expect(nameVariants(raw)).toEqual([]);
+  });
+
+  it.each([["Quill TBD", "tbd"], ["Quill Unknown", "unknown"], ["Quill Videographer", "videographer"], ["Quill Staff", "staff"]])(
+    "keeps a given name with a stand-in surname %j", (raw, surname) => expect(parseName(raw)).toEqual({ given: ["quill"], surname: [surname] }),
+  );
+  it.each(["Media Relations", "Communications Team", "GCPE Office"])("still rejects the role %j", (raw) => expect(parseName(raw)).toBeNull());
+
+  it.each(["Digital Strategist", "Senior Policy Analyst", "Content Lead", "News Editor", "Photo Gallery", "Outreach Specialist", "Events Coordinator", "Project Manager"])(
+    "rejects the job title %j", (raw) => expect(parseName(raw)).toBeNull(),
+  );
+});
+
+describe("names crowded by notes, addresses, numbers and crew words", () => {
+  it.each([
+    ["Quill Ashbury Videographer [mailto:q.ashbury@news.example]", ["quill"], ["ashbury"]],
+    ["Quill Ashbury q.ashbury@news.example", ["quill"], ["ashbury"]],
+    ["Quill Ashbury 2", ["quill"], ["ashbury"]],
+    ["Quill Ashbury Staff", ["quill"], ["ashbury"]],
+    ["Quill Bryn Ashbury TBD", ["quill", "bryn"], ["ashbury"]],
+  ])("reads %j", (raw, given, surname) => expect(parseName(raw)).toEqual({ given, surname }));
+  it("strips the note, the address and the trailing number, and nothing else", () => {
+    expect(cleanName("Quill [mailto:q@news.example]")).toBe("Quill");
+    expect(cleanName("Quill Ashbury 2 3")).toBe("Quill Ashbury");
+    expect(cleanName("Room 250 East")).toBe("Room 250 East");
+    expect(parseName("Quill [mailto:q@news.example]")).toBeNull();
+    expect(isPlaceholderOrTitle("Contract Photographer")).toBe(true);
+  });
+});
+
+describe("people that no rule can read", () => {
+  it("makes every crew and comm contact row a person, and a comm contact still joins the user it names", () => {
+    const ix = buildPeopleIndex([
+      src("calendar.SystemUser", "1", ["Quill Ashbury"], null, { alwaysPerson: true }),
+      src("calendar.CommunicationContact", "1", ["Q. A."], null, { linkId: "1", linkSource: "calendar.SystemUser", alwaysPerson: true }),
+      src("calendar.CommunicationContact", "2", ["Media Desk"], null, { linkId: "99", linkSource: "calendar.SystemUser", alwaysPerson: true }),
+      src("calendar.Videographer", "1", ["Pell [mailto:pell@news.example]"], null, { alwaysPerson: true }),
+      src("calendar.EventPlanner", "1", ["Fen"], null, { alwaysPerson: true }),
+    ], KEY);
+    expect(ix.bySource.get("calendar.CommunicationContact:1")).toBe(ix.bySource.get("calendar.SystemUser:1"));
+    for (const k of ["calendar.CommunicationContact:2", "calendar.Videographer:1", "calendar.EventPlanner:1"]) expect(ix.bySource.get(k), k).toBeDefined();
+    expect(ix.strays).toEqual([]);
+  });
+  it("keeps a row that joined no person, for the literal route", () => {
+    const ix = buildPeopleIndex([src("media.Contact", "1", ["Ximena de la Paz Okonkwo Ruiz"]), src("media.Contact", "2", ["Quill Ashbury"])], KEY);
+    expect(ix.strays.map((s) => `${s.source}:${s.id}`)).toEqual(["media.Contact:1"]);
+  });
+});
+
+describe("shared lines, outlets and organisations", () => {
+  it.each(["Media Line", "News Desk", "Quill Public Information", "BC CEO", "The Ledger", "Harbour News", "KXYZ Television", "Coastline Productions"])(
+    "reads %j as an office, line or outlet", (raw) => {
+      expect(isPlaceholderOrTitle(raw)).toBe(true);
+      expect(nameVariants(raw)).toEqual([]);
+    },
+  );
+  it.each(["The Honourable Quill Ashbury", "Quill Ashbury", "Quill Ashbury - KXYZ News", "Quill Ashbury – Harbour Radio"])("still reads %j as a person", (raw) => expect(parseName(raw)).toEqual({ given: ["quill"], surname: ["ashbury"] }));
+  it.each([["Quill In Ashbury", "in ashbury"], ["Quill KTV Ashbury", "ktv ashbury"], ["Quill At Ashbury", "at ashbury"]])("makes no fallback %j from a short word or an acronym", (raw, form) => {
+    expect(nameVariants(raw).map((v) => v.key)).not.toContain(form);
+    expect(nameVariants(raw).map((v) => v.key)).toContain("quill ashbury");
+  });
+  it("keeps the fallback of an ordinary middle name", () => expect(nameVariants("Quill Bryn Ashbury").map((v) => v.key)).toContain("bryn ashbury"));
+});
+
+describe("nameRunOf", () => {
+  it.each([["Quill Ashbury newspaper", "Quill Ashbury"], ["general Quill Ashbury tv", "Quill Ashbury"], ["Quill Ashbury Ministry Videographer", "Quill Ashbury"]])(
+    "reads the name in the office %j", (raw, run) => expect(nameRunOf(raw)).toBe(run),
+  );
+  it.each(["Contract Videographer (Quill)", "Quill, Ashbury TV", "Harbour News", "Media Line", "Quill Ashbury", "Chief Information Officer"])("reads no name run in %j", (raw) => expect(nameRunOf(raw)).toBeNull());
+});
+
+describe("isPlaceholderOrTitle", () => {
+  it.each([
+    "News Staff", "Support Staff", "Arts and Culture", "Parks and Recreation", "Contract Photographer", "Pool Videographer", "Media Relations",
+    "Chief Information Officer", "Executive Assistant to the Minister", "Premier", "Director, Communications", "Leader, Official Opposition", "Mayor, Nelson",
+  ])("says %j is an office or placeholder", (raw) => expect(isPlaceholderOrTitle(raw)).toBe(true));
+  it.each([
+    "Quill Ashbury", "Ashbury, Quill", "Elder, Quill", "Quill and Bryn Ashbury", "Kevin To", "Hon. Okonkwo-Bell", "Tavi Quenby Rook Lindgard Oduya",
+    "Minister of Health (Quill Ashbury)", "Quill", "", null,
+  ])("doesn't say %j is one", (raw) => expect(isPlaceholderOrTitle(raw)).toBe(false));
+});
+
+describe("nameVariants", () => {
+  it("covers the full, first-last and surname-first forms", () => {
+    expect(nameVariants("Quill Bryn Ashbury").map((v) => v.key).sort()).toEqual(["ashbury , quill", "ashbury , quill bryn", "bryn ashbury", "quill ashbury", "quill bryn ashbury"].sort());
+    expect(nameVariants("Quill Bryn Ashbury").find((v) => v.key === "bryn ashbury")?.fallback).toBe(true);
+    expect(nameVariants("Quill Ashbury").find((v) => v.key === "ashbury , quill")?.surnameFirst).toBe(true);
+  });
+  it.each([["Quill de la Cruz", "la cruz"], ["Quill van Dyk", "van dyk"], ["Quill Bryn de Souza", "de souza"], ["Quill del Rio", "del rio"], ["Quill Los Santos", "los santos"]])(
+    "makes no fallback starting with a surname particle in %j", (raw, form) => {
+      expect(nameVariants(raw).filter((v) => v.fallback).map((v) => v.key)).not.toContain(form);
+      expect(nameVariants(raw).length).toBeGreaterThan(0);
+    },
+  );
+});
+
+describe("normEmail", () => {
+  it("lowercases valid addresses and drops invalid ones", () => {
+    expect(normEmail(" Quill.Ashbury@Gov.Example ")).toBe("quill.ashbury@gov.example");
+    expect(normEmail("quill at gov")).toBeNull();
+    expect(normEmail(null)).toBeNull();
+  });
+});
+
+describe("buildPeopleIndex", () => {
+  const sources: PersonSource[] = [
+    src("calendar.SystemUser", "1", ["Quill Ashbury", "Ashbury, Quill"], "quill.ashbury@gov.example", { alwaysPerson: true, phones: ["(604) 555-0142"] }),
+    src("dbo.User", "U1", ["Quill Ashbury"], "Quill.Ashbury@gov.example", { alwaysPerson: true }),
+    src("calendar.CommunicationContact", "7", ["Q. Ashbury"], null, { linkId: "1", linkSource: "calendar.SystemUser" }),
+    src("calendar.GovernmentRepresentative", "1", ["Hon. Dorian Feld"]),
+    src("dbo.Ministry", "M1", ["Dorian Feld"], "dorian.feld@gov.example"),
+    src("calendar.GovernmentRepresentative", "2", ["Premier"]),
+    src("calendar.SystemUser", "3", ["Admin"], null, { alwaysPerson: true }),
+  ];
+  const index = buildPeopleIndex(sources, KEY, new Set(["editor@example.test"]));
+  const of = (k: string) => index.bySource.get(k);
+
+  it("joins rows sharing an email, whatever the case", () => {
+    expect(of("calendar.SystemUser:1")).toBe(of("dbo.User:U1"));
+  });
+
+  it("joins a comm contact to the user it names", () => {
+    expect(of("calendar.CommunicationContact:7")).toBe(of("calendar.SystemUser:1"));
+  });
+
+  it("joins a name-only row to the person with that name", () => {
+    expect(of("calendar.GovernmentRepresentative:1")).toBe(of("dbo.Ministry:M1"));
+  });
+
+  it("leaves a role name out but still gives every user row an identity", () => {
+    expect(of("calendar.GovernmentRepresentative:2")).toBeUndefined();
+    expect(of("calendar.SystemUser:3")?.fake.full).toMatch(/^[A-Z][a-z]+ [A-Z][a-z]+$/);
+  });
+
+  it("indexes variants, emails and the tokens a match can start with", () => {
+    expect(index.byVariant.get("quill ashbury")?.person).toBe(of("calendar.SystemUser:1"));
+    expect(index.byVariant.get("ashbury , quill")?.surnameFirst).toBe(true);
+    expect(index.byEmail.get("quill.ashbury@gov.example")).toBe(of("calendar.SystemUser:1"));
+    expect(index.firstTokens.has("quill") && index.firstTokens.has("ashbury")).toBe(true);
+    expect(index.maxWords).toBeGreaterThanOrEqual(2);
+  });
+
+  it("joins a row whose name carries an office to the person without it", () => {
+    const withTitles = buildPeopleIndex([
+      src("dbo.Ministry", "M2", ["Hon. Corin Vale, Minister of Health"]),
+      src("calendar.GovernmentRepresentative", "5", ["Premier Corin Vale (Acting)"]),
+      src("calendar.SystemUser", "9", ["Corin Vale"], "corin.vale@gov.example", { alwaysPerson: true }),
+    ], KEY);
+    expect(withTitles.persons).toHaveLength(1);
+    expect(withTitles.byVariant.get("corin vale")?.person.sources).toHaveLength(3);
+  });
+
+  it("is deterministic for the same rows in any order", () => {
+    const again = buildPeopleIndex([...sources].reverse(), KEY, new Set(["editor@example.test"]));
+    expect(again.bySource.get("calendar.SystemUser:1")?.fake).toEqual(of("calendar.SystemUser:1")?.fake);
+  });
+
+  it("never gives a fake name equal to a real one", () => {
+    const real = new Set(index.persons.flatMap((p) => p.names.flatMap((n) => nameVariants(n).map((v) => v.key))));
+    for (const p of index.persons) expect(real.has(p.fake.full.toLowerCase())).toBe(false);
+  });
+
+  it("writes a mapping with one row per person and per row that joined no person", () => {
+    const csv = mappingCsv(index).trim().split("\n");
+    expect(csv[0]).toBe("person_key,real_names,real_emails,fake_name,fake_email,fake_phone");
+    expect(csv).toHaveLength(index.persons.length + index.strays.length + 1);
+  });
+  it("gives a row that joined no person its own fictional identity, after every person's", () => {
+    const ix = buildPeopleIndex([src("media.Contact", "1", ["Ximena de la Paz Okonkwo Ruiz"]), src("media.Contact", "2", ["Quill Ashbury"], "qa@news.example")], KEY);
+    expect(ix.strays).toHaveLength(1);
+    expect(ix.strays[0]!.fake.full).not.toBe(ix.persons[0]!.fake.full);
+    expect(buildPeopleIndex([src("media.Contact", "1", ["Ximena de la Paz Okonkwo Ruiz"])], KEY).strays[0]!.fake).toEqual(buildPeopleIndex([src("media.Contact", "1", ["Ximena de la Paz Okonkwo Ruiz"])], KEY).strays[0]!.fake);
+    expect(mappingCsv(ix)).toContain("x:media.Contact:1");
+  });
+});
