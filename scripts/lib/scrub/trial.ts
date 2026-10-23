@@ -15,16 +15,44 @@ import { PLACEHOLDER_SUBSCRIBER, runStep, type CommandStep, type LocalApp } from
 import { ScrubStepError } from "./private-out";
 import { runSmoke, type SmokeCheck } from "./smoke";
 
-export async function drainUntilIdle(o: { tick(): Promise<void>; pending(): Promise<{ pending: number; dead: number }>; maxTicks?: number }): Promise<number> {
+/**
+ * Ticks until deliveries drain, judged by progress rather than a fixed tick count: a legacy-scale
+ * replay (tens of thousands of activities/release statuses) can take far more than a few hundred
+ * ticks to drain, so what matters is whether the pending count keeps falling, not how many ticks
+ * that takes. Fails only when the lowest pending count seen hasn't improved for `staleTicks`
+ * consecutive ticks (default 50 — tolerates a tick or two of no progress without tolerating a
+ * real stall), or when `maxWallMs` (default two hours) has passed. The dead-delivery check and
+ * the two-quiet-ticks completion are unchanged. `log`, if given, gets one line every 100 ticks —
+ * the tick number and the pending count, nothing else.
+ */
+export async function drainUntilIdle(o: {
+  tick(): Promise<void>;
+  pending(): Promise<{ pending: number; dead: number }>;
+  staleTicks?: number;
+  maxWallMs?: number;
+  log?(line: string): void;
+}): Promise<number> {
+  const staleTicks = o.staleTicks ?? 50;
+  const deadline = Date.now() + (o.maxWallMs ?? 2 * 60 * 60 * 1000);
   let quiet = 0;
-  for (let i = 1; i <= (o.maxTicks ?? 300); i++) {
+  let lowest = Infinity;
+  let stale = 0;
+  for (let i = 1; ; i++) {
     await o.tick();
     const s = await o.pending();
     if (s.dead > 0) throw new ScrubStepError(`${s.dead} event deliveries failed for good`);
+    if (o.log && i % 100 === 0) o.log(`tick ${i}: ${s.pending} pending`);
     quiet = s.pending === 0 ? quiet + 1 : 0;
     if (quiet >= 2) return i;
+    if (s.pending < lowest) {
+      lowest = s.pending;
+      stale = 0;
+    } else {
+      stale++;
+      if (stale >= staleTicks) throw new ScrubStepError(`event delivery stalled with ${s.pending} still pending`);
+    }
+    if (Date.now() > deadline) throw new ScrubStepError(`event delivery timed out with ${s.pending} still pending`);
   }
-  throw new ScrubStepError("events are still pending after the last tick");
 }
 
 export function replaySteps(urls: Record<LocalApp, string>): CommandStep[] {
@@ -90,13 +118,13 @@ export async function runTrial(o: { urls: Record<LocalApp, string>; out: string;
     if (!token) throw new ScrubStepError("the trial stack refused its own admin sign-in");
     const rep = await fetch(`${base}/core/api/admin/republish`, { method: "POST", headers: { authorization: `Bearer ${token}` } });
     if (rep.status !== 202) throw new ScrubStepError(`Core's republish answered HTTP ${rep.status}`);
-    let ticks = await drainUntilIdle({ tick, pending });
+    let ticks = await drainUntilIdle({ tick, pending, log: o.log });
     o.log(`Delivered Core's republish in ${ticks} ticks.`);
     for (const s of replaySteps(o.urls)) {
       const code = await runStep(s, join(o.out, "logs", `${s.name}.log`));
       if (code !== 0) throw new ScrubStepError(`${s.name} exited ${code}: see logs/${s.name}.log`);
     }
-    ticks += await drainUntilIdle({ tick, pending });
+    ticks += await drainUntilIdle({ tick, pending, log: o.log });
     const { db, pool } = createDb(o.urls.core);
     let calendarCookie: string, releaseCookie: string;
     try {
