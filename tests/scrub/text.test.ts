@@ -141,6 +141,65 @@ describe("offices and dashed surnames", () => {
   });
 });
 
+describe("names joined by a dash, link-word surnames and office-word heads", () => {
+  const ix = buildPeopleIndex([
+    { source: "media.Contact", id: "1", names: ["Quill Ashbury"], email: null, phones: [] },
+    { source: "media.Contact", id: "2", names: ["Thea Marchbank"], email: null, phones: [] },
+    { source: "media.Contact", id: "3", names: ["Wendell Okafor-Brice"], email: null, phones: [] },
+    { source: "media.Contact", id: "4", names: ["Kevin To"], email: null, phones: [] },
+    { source: "media.Contact", id: "5", names: ["Marisol Short"], email: null, phones: [] },
+    { source: "calendar.SystemUser", id: "6", names: ["Elder, Odile"], email: null, phones: [] },
+    { source: "calendar.SystemUser", id: "7", names: ["Pellam, Isak FOR:EX"], email: null, phones: [] },
+    { source: "calendar.SystemUser", id: "8", names: ["Marrowby, Juno Tamsin GCPE:EX"], email: null, phones: [] },
+  ], KEY);
+  const f = (id: string) => ix.persons.find((p) => p.sources.some((x) => x.endsWith(`:${id}`)))!.fake;
+  const sx = (t: string) => scrubText(t, { index: ix, key: KEY }).text;
+  const [qa, tm, wo, kt, ms, oe, ip, jm] = ["1", "2", "3", "4", "5", "6", "7", "8"].map(f);
+  const realX = /Quill|Ashbury|Thea|Marchbank|Wendell|Okafor|Brice|Kevin|Odile|Isak|Pellam|Juno|Tamsin|Marrowby/;
+
+  it.each([
+    ["the Quill Ashbury\u2013Thea Marchbank meeting", () => `the ${qa!.first} ${qa!.last}\u2013${tm!.first} ${tm!.last} meeting`],
+    ["the Quill Ashbury&ndash;Thea Marchbank meeting", () => `the ${qa!.first} ${qa!.last}&ndash;${tm!.first} ${tm!.last} meeting`],
+    ["Victoria\u2013Thea Marchbank", () => `Victoria\u2013${tm!.first} ${tm!.last}`],
+    ["Wendell Okafor-Brice\u2013Thea Marchbank", () => `${wo!.first} ${wo!.last}\u2013${tm!.first} ${tm!.last}`],
+    ["Wendell Okafor-Brice\u2011Thea Marchbank", () => `${wo!.first} ${wo!.last}\u2011${tm!.first} ${tm!.last}`],
+    ["Thea Marchbank-Quill Ashbury", () => `${tm!.first} ${tm!.last}-${qa!.first} ${qa!.last}`],
+  ])("replaces both names in %j and both routes see them", (raw, want) => {
+    const names = (raw.match(/Thea|Quill|Wendell/g) ?? []).length;
+    expect(sx(raw)).toBe(want());
+    expect(findLeaks(raw, ix).filter((k) => k === "name")).toHaveLength(names);
+    expect(plainNameHits(raw, ix)).toBe(names);
+    expect(findLeaks(sx(raw), ix)).toEqual([]);
+    expect(sx(raw)).not.toMatch(realX);
+  });
+
+  it("leaves a hyphenated word alone when its case doesn't match the given name", () => {
+    expect(sx("a Marisol short-term plan")).toBe("a Marisol short-term plan");
+    expect(findLeaks("a Marisol short-term plan", ix)).toEqual([]);
+    expect(sx("a Marisol Short-led plan")).toBe(`a ${ms!.first} ${ms!.last}-led plan`);
+  });
+
+  it("replaces a link-word surname only when it is cased like a name", () => {
+    expect(sx("Kevin To said")).toBe(`${kt!.first} ${kt!.last} said`);
+    expect(sx("To, Kevin said")).toBe(`${kt!.last}, ${kt!.first} said`);
+    expect(sx("We asked Kevin to attend.")).toBe("We asked Kevin to attend.");
+    expect(findLeaks("We asked Kevin to attend.", ix)).toEqual([]);
+    expect(findLeaks("Kevin To said", ix)).toEqual(["name", "name-plain"]);
+  });
+
+  it("finds people listed as Elder, Given and as Last, First Middle with a directory tag", () => {
+    expect(sx("Odile Elder spoke")).toBe(`${oe!.first} ${oe!.last} spoke`);
+    expect(sx("Elder, Odile spoke")).toBe(`${oe!.last}, ${oe!.first} spoke`);
+    expect(sx("Isak Pellam spoke")).toBe(`${ip!.first} ${ip!.last} spoke`);
+    expect(sx("an ex Pellam rule")).toBe("an ex Pellam rule");
+    expect(sx("Juno Marrowby and Juno Tamsin Marrowby")).toBe(`${jm!.first} ${jm!.last} and ${jm!.first} ${jm!.last}`);
+    for (const t of ["Isak Pellam spoke", "Juno Tamsin Marrowby spoke"]) {
+      expect(findLeaks(t, ix)).toEqual(["name", "name-plain"]);
+      expect(findLeaks(sx(t), ix)).toEqual([]);
+    }
+  });
+});
+
 describe("emails", () => {
   it("maps a known person's email to their fictional one", () => expect(s("Write quill.ashbury@gov.example.")).toBe(`Write ${quill.email}.`));
   it("maps an unknown email to a numbered example.test address", () => expect(s("press@news.example")).toMatch(/^person\d+@example\.test$/));

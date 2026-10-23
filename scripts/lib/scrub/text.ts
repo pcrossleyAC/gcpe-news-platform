@@ -1,5 +1,5 @@
 import { FAKE_PHONE, fakeEmailFor, fakePhone } from "./identity";
-import { normToken, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people";
+import { LINKS, normToken, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people";
 
 export const EMAIL_RE = /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g;
 /** North American numbers with an area code: 604-555-0142, (604) 555-0142, 604.555.0142, +1 604 555 0142, 1-800-…, with ext./x. */
@@ -29,7 +29,6 @@ export function phoneSpans(text: string): { start: number; end: number; local: b
 const JOIN_GAP = /^(?:\s|&nbsp;|&#160;|&#xa0;|<[^<>]{0,200}>)+$/i;
 const COMMA_GAP = /^(?:\s|&nbsp;|&#160;|&#xa0;)*,(?:\s|&nbsp;|&#160;|&#xa0;)*$/i;
 const POSSESSIVE = /['’]s$/i;
-const HYPHEN = /[-\u2010\u2011\u2013]/;
 
 const TAG_RE = /<[^<>]{0,200}>/g;
 const ENTITY_RE = /&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+);/gi;
@@ -87,10 +86,13 @@ function readableView(text: string, from: number, to: number, markup: RegExp = M
 
 type Role = "given" | "surname" | "drop";
 export interface NameMatch { start: number; end: number; hit: VariantHit; parts: { start: number; end: number; role: Role; shape: string }[] }
-interface Tok { start: number; end: number; ve: number; shape: string; norm: string }
+/** A word, or one piece of a word joined by hyphens or dashes ("Ashbury–Thea" is two pieces of one word). */
+interface Tok { start: number; end: number; vs: number; ve: number; shape: string; norm: string; word: number; joined: boolean; cut: boolean }
+/** Consecutive pieces of one word inside a window, joined back with a hyphen. */
+interface Group { start: number; end: number; vs: number; shape: string; norm: string; last: number }
 
 /** How two words of one name may be separated; a period right after an initial ("Q. Ashbury") counts as part of the space. */
-function gapBetween(text: string, a: Tok, b: Tok): "join" | "comma" | null {
+function gapBetween(text: string, a: { end: number; norm: string }, b: { start: number }): "join" | "comma" | null {
   let gap = text.slice(a.end, b.start);
   if (a.norm.length === 1 && gap.startsWith(".")) {
     gap = gap.slice(1);
@@ -101,63 +103,100 @@ function gapBetween(text: string, a: Tok, b: Tok): "join" | "comma" | null {
   return null;
 }
 
-function matchView(text: string, view: View, index: PeopleIndex, out: NameMatch[]): void {
-  const toks: Tok[] = [...view.text.matchAll(TOKEN_RE)].map((m) => {
-    const ve = m.index + m[0].length;
-    return { start: view.start[m.index]!, end: view.end[ve - 1]!, ve, shape: m[0], norm: normToken(m[0]) };
-  });
-  for (let i = 0; i < toks.length; i++) {
-    if (!index.firstTokens.has(toks[i]!.norm)) continue;
-    let match: NameMatch | null = null;
-    let used = 0;
-    // One window longer than any variant, so a middle initial ("Quill A. Ashbury") can be skipped.
-    for (let n = Math.min(index.maxWords + 1, toks.length - i); n >= 2 && !match; n--) {
-      const last = i + n - 1;
-      let commaAt = -1;
-      let ok = true;
-      for (let j = i + 1; j <= last && ok; j++) {
-        const gap = gapBetween(text, toks[j - 1]!, toks[j]!);
-        if (gap === "comma" && commaAt === -1) commaAt = j;
-        else if (gap !== "join") ok = false;
-      }
-      if (!ok) continue;
-      const words = toks.slice(i, i + n).map((t, k) => (i + k === last ? t.norm.replace(POSSESSIVE, "") : t.norm));
-      const keyOf = (skip: number) => words.map((w, k) => (i + k === skip ? null : i + k === commaAt ? `, ${w}` : w)).filter((w) => w !== null).join(" ");
-      let hit = index.byVariant.get(keyOf(-1));
-      if (!hit && n >= 3) {
-        const initials = words.map((_, k) => i + k).filter((j) => j > i && j < last && toks[j]!.norm.length === 1);
-        if (initials.length === 1 && initials[0] !== commaAt && initials[0]! + 1 !== commaAt) hit = index.byVariant.get(keyOf(initials[0]!));
-      }
-      const lastTok = toks[last]!;
-      const poss = POSSESSIVE.exec(lastTok.shape);
-      let keep = lastTok.shape.length - (poss ? poss[0].length : 0);
-      if (!hit) {
-        // "Quill Ashbury-led", "Ashbury–era": the name is the part before the hyphen.
-        const h = lastTok.shape.search(HYPHEN);
-        if (h > 0) {
-          words[words.length - 1] = normToken(lastTok.shape.slice(0, h));
-          hit = index.byVariant.get(keyOf(-1));
-          keep = h;
-        }
-      }
-      if (!hit) continue;
-      const found = hit;
-      const parts = toks.slice(i, i + n).map((t, k) => {
-        const j = i + k;
-        const role: Role = found.surnameFirst ? (j === i ? "surname" : j === commaAt ? "given" : "drop") : j === i ? "given" : j === last ? "surname" : "drop";
-        let start = t.start;
-        let end = j === last ? view.end[t.ve - t.shape.length + keep - 1]! : t.end;
-        if (role === "drop") {
-          // Take the space before a dropped word with it, and an initial's period, so no double space is left.
-          if (/^\s+$/.test(text.slice(toks[j - 1]!.end, t.start))) start = toks[j - 1]!.end;
-          if (t.norm.length === 1 && j < last && text[end] === ".") end++;
-        }
-        return { start, end, role, shape: j === last ? t.shape.slice(0, keep) : t.shape };
-      });
-      match = { start: parts[0]!.start, end: parts[parts.length - 1]!.end, hit: found, parts };
-      used = n;
+const DASHES = /[-\u2010\u2011\u2013]/g;
+const upperFirst = (s: string) => /^\p{Lu}/u.test(s);
+/**
+ * A name read from part of a word ("Quill Ashbury-led", "Victoria–Thea Marchbank") or ending in a link word
+ * ("Kevin To") is a name only when its first and last words share their case, so "Marisol short-term" and
+ * "asked Kevin to" are left alone.
+ */
+const sameCase = (first: string, last: string) => upperFirst(first) === upperFirst(last);
+
+function piecesOf(view: View): Tok[] {
+  const toks: Tok[] = [];
+  let word = 0;
+  for (const m of view.text.matchAll(TOKEN_RE)) {
+    const cuts = [...m[0].matchAll(DASHES)].map((d) => d.index);
+    let at = 0;
+    for (const c of [...cuts, m[0].length]) {
+      const vs = m.index + at, ve = m.index + c;
+      const shape = m[0].slice(at, c);
+      toks.push({ start: view.start[vs]!, end: view.end[ve - 1]!, vs, ve, shape, norm: normToken(shape), word, joined: at > 0, cut: c < m[0].length });
+      at = c + 1;
     }
-    if (match) { out.push(match); i += used - 1; }
+    word++;
+  }
+  return toks;
+}
+
+function groupsOf(view: View, toks: Tok[], a: number, b: number): Group[] {
+  const groups: Group[] = [];
+  for (let j = a; j <= b; j++) {
+    const t = toks[j]!;
+    const g = groups[groups.length - 1];
+    if (g && toks[g.last]!.word === t.word) {
+      g.last = j; g.end = t.end; g.shape = view.text.slice(g.vs, t.ve); g.norm += `-${t.norm}`;
+    } else groups.push({ start: t.start, end: t.end, vs: t.vs, shape: t.shape, norm: t.norm, last: j });
+  }
+  return groups;
+}
+
+function matchView(text: string, view: View, index: PeopleIndex, out: NameMatch[]): void {
+  const toks = piecesOf(view);
+  const tryWindow = (a: number, b: number): NameMatch | null => {
+    const groups = groupsOf(view, toks, a, b);
+    const n = groups.length;
+    if (n < 2 || !index.firstTokens.has(groups[0]!.norm)) return null;
+    let commaAt = -1;
+    for (let k = 1; k < n; k++) {
+      const gap = gapBetween(text, groups[k - 1]!, groups[k]!);
+      if (gap === "comma" && commaAt === -1) commaAt = k;
+      else if (gap !== "join") return null;
+    }
+    const lastG = groups[n - 1]!;
+    const poss = toks[b]!.cut ? null : POSSESSIVE.exec(lastG.shape);
+    const keep = lastG.shape.length - (poss ? poss[0].length : 0);
+    const words = groups.map((g, k) => (k === n - 1 && poss ? g.norm.replace(POSSESSIVE, "") : g.norm));
+    const keyOf = (skip: number) => words.map((w, k) => (k === skip ? null : k === commaAt ? `, ${w}` : w)).filter((w) => w !== null).join(" ");
+    let hit = index.byVariant.get(keyOf(-1));
+    if (!hit && n >= 3) {
+      // One middle initial may be skipped ("Quill A. Ashbury").
+      const initials = words.map((_, k) => k).filter((k) => k > 0 && k < n - 1 && words[k]!.length === 1);
+      if (initials.length === 1 && initials[0] !== commaAt && initials[0]! + 1 !== commaAt) hit = index.byVariant.get(keyOf(initials[0]!));
+    }
+    if (!hit) return null;
+    const surname = hit.surnameFirst ? words[0]! : words[n - 1]!;
+    if ((toks[a]!.joined || toks[b]!.cut || LINKS.has(surname)) && !sameCase(groups[0]!.shape, lastG.shape)) return null;
+    const found = hit;
+    const parts = groups.map((g, k) => {
+      const role: Role = found.surnameFirst ? (k === 0 ? "surname" : k === commaAt ? "given" : "drop") : k === 0 ? "given" : k === n - 1 ? "surname" : "drop";
+      let start = g.start;
+      let end = k === n - 1 ? view.end[g.vs + keep - 1]! : g.end;
+      if (role === "drop") {
+        // Take the space before a dropped word with it, and an initial's period, so no double space is left.
+        if (/^\s+$/.test(text.slice(groups[k - 1]!.end, g.start))) start = groups[k - 1]!.end;
+        if (g.norm.length === 1 && text[end] === ".") end++;
+      }
+      return { start, end, role, shape: k === n - 1 ? g.shape.slice(0, keep) : g.shape };
+    });
+    return { start: parts[0]!.start, end: parts[parts.length - 1]!.end, hit: found, parts };
+  };
+  for (let i = 0; i < toks.length; i++) {
+    let head = toks[i]!.norm;
+    let starts = index.firstTokens.has(head);
+    for (let j = i + 1; !starts && j < toks.length && toks[j]!.word === toks[i]!.word; j++) starts = index.firstTokens.has((head += `-${toks[j]!.norm}`));
+    if (!starts) continue;
+    // The window may end inside a word ("Ashbury-led") and reaches one word past the longest variant, so a middle
+    // initial can be skipped; the longest window that names someone wins.
+    let far = i;
+    for (let j = i + 1, words = 1; j < toks.length; j++) {
+      if (toks[j]!.word !== toks[j - 1]!.word && ++words > index.maxWords + 1) break;
+      far = j;
+    }
+    let match: NameMatch | null = null;
+    let b = far;
+    for (; b > i && !match; b--) match = tryWindow(i, b);
+    if (match) { out.push(match); i = b + 1; }
   }
 }
 
@@ -226,6 +265,9 @@ const LEADING_PUNCT = /^[("'“‘[]+/;
 const TRAILING_PUNCT = /[.,;:!?)\]"”']+$/;
 const INITIAL_WORD = /^\p{L}\.?$/u;
 
+/** Splits a word at a hyphen or dash between two other characters, so "Ashbury–Thea" yields both names' pieces. */
+const PLAIN_DASH = /(?<=[^\s\-\u2010\u2011\u2013])[-\u2010\u2011\u2013](?=[^\s\-\u2010\u2011\u2013])/u;
+
 function plainSegmentHits(segment: string, index: PeopleIndex): number {
   const words: string[] = [];
   for (const w of segment.split(/\s+/)) {
@@ -234,31 +276,46 @@ function plainSegmentHits(segment: string, index: PeopleIndex): number {
     else if (/^(?:\p{L}\.){2,}$/u.test(w)) words.push(...w.match(/\p{L}\./gu)!);
     else words.push(w);
   }
+  const subs = words.flatMap((w, word) => w.split(PLAIN_DASH).map((raw, k, all) => ({ raw, word, joined: k > 0, cut: k < all.length - 1 })));
   let hits = 0;
-  for (let i = 0; i < words.length; i++) {
-    for (let n = Math.min(index.maxWords + 1, words.length - i); n >= 2; n--) {
+  for (let i = 0; i < subs.length; i++) {
+    let far = i;
+    for (let j = i + 1, count = 1; j < subs.length; j++) {
+      if (subs[j]!.word !== subs[j - 1]!.word && ++count > index.maxWords + 1) break;
+      far = j;
+    }
+    for (let b = far; b > i; b--) {
+      const groups: string[] = [];
+      for (let j = i; j <= b; j++) {
+        if (j > i && subs[j]!.word === subs[j - 1]!.word) groups[groups.length - 1] += `-${subs[j]!.raw}`;
+        else groups.push(subs[j]!.raw);
+      }
+      const n = groups.length;
+      if (n < 2) continue;
       let comma = false;
-      const ws = words.slice(i, i + n).map((w, k) => {
-        let t = normToken(w);
+      const ws = groups.map((g, k) => {
+        let t = normToken(g);
         if (k === 0) {
           t = t.replace(LEADING_PUNCT, "");
           if (t.endsWith(",")) { comma = true; t = t.slice(0, -1); }
         }
-        if (k === n - 1) return t.replace(TRAILING_PUNCT, "").replace(POSSESSIVE, "");
+        if (k === n - 1) return subs[b]!.cut ? t : t.replace(TRAILING_PUNCT, "").replace(POSSESSIVE, "");
         return INITIAL_WORD.test(t) ? t.slice(0, 1) : t;
       });
       const keyOf = (skip: number) => ws.filter((_, k) => k !== skip).map((w, k) => (k === 1 && comma ? `, ${w}` : w)).join(" ");
-      let found = index.byVariant.has(keyOf(-1));
-      if (!found && n >= 3) {
+      let hit = index.byVariant.get(keyOf(-1));
+      if (!hit && n >= 3) {
         const initials = ws.map((w, k) => (k > 0 && k < n - 1 && INITIAL_WORD.test(w) ? k : -1)).filter((k) => k >= 0);
-        if (initials.length === 1 && !(comma && initials[0] === 1)) found = index.byVariant.has(keyOf(initials[0]!));
+        if (initials.length === 1 && !(comma && initials[0] === 1)) hit = index.byVariant.get(keyOf(initials[0]!));
       }
-      if (!found && ws[n - 1]!.includes("-")) {
-        // The name before a hyphen ("Quill Ashbury-led").
-        ws[n - 1] = ws[n - 1]!.slice(0, ws[n - 1]!.indexOf("-"));
-        found = ws[n - 1] !== "" && index.byVariant.has(keyOf(-1));
-      }
-      if (found) { hits++; i += n - 1; break; }
+      if (!hit) continue;
+      // Part of a word, or a link-word surname, names someone only when the first and last words share their case.
+      const surname = hit.surnameFirst ? ws[0]! : ws[n - 1]!;
+      const caseOf = (g: string) => /^\p{Lu}/u.test(g.replace(LEADING_PUNCT, ""));
+      if ((subs[i]!.joined || subs[b]!.cut || LINKS.has(surname)) && caseOf(groups[0]!) !== caseOf(groups[n - 1]!)) continue;
+      hits++;
+      i = b;
+      break;
     }
   }
   return hits;

@@ -52,6 +52,48 @@ describe("parseName", () => {
   });
 
   it.each(["Minister of Health", "Deputy Minister of Health Services", "Minister of Health and Addictions", "Director, Communications", "Premier (Acting)", "Quill A.", "Executive Director, Media Relations"])("rejects the office %j", (raw) => expect(parseName(raw)).toBeNull());
+
+  it.each([
+    ["Kevin To", ["kevin"], ["to"]], ["Mai On", ["mai"], ["on"]], ["Ivo And", ["ivo"], ["and"]],
+  ])("reads a link word as the surname of a two-word name %j", (raw, given, surname) => expect(parseName(raw)).toEqual({ given, surname }));
+  it.each(["Quill Ashbury To", "Assistant to", "Minister of", "Chief of Staff to"])("still rejects a link word that ties an office %j", (raw) => expect(parseName(raw)).toBeNull());
+
+  it.each([
+    ["Ashbury, Quill Bryn", ["quill", "bryn"]], ["Ashbury, Quill B Bryn", ["quill", "bryn"]], ["Ashbury, Quill FOR:EX", ["quill", "for", "ex"]],
+    ["Ashbury, Quill B FOR:EX", ["quill", "for", "ex"]], ["Ashbury, Quill ON:IN", ["quill", "on", "in"]],
+  ])("reads %j as Last, First Middle", (raw, given) => {
+    expect(parseName(raw)).toEqual({ given, surname: ["ashbury"] });
+    expect(nameVariants(raw).map((v) => v.key)).toEqual(expect.arrayContaining(["quill ashbury", "ashbury , quill"]));
+  });
+  it("reads a name pushed past four words by a directory tag without the tag", () => {
+    expect(parseName("Ashbury, Quill Bryn GCPE:EX")).toEqual({ given: ["quill", "bryn"], surname: ["ashbury"] });
+    expect(parseName("Ashbury, Quill Bryn FOR:EX")).toEqual({ given: ["quill", "bryn"], surname: ["ashbury"] });
+    expect(parseName("One Two Three Four Five")).toBeNull();
+  });
+  it("makes no fallback from a directory tag", () => {
+    expect(nameVariants("Ashbury, Quill FOR:EX").map((v) => v.key)).not.toContain("ex ashbury");
+    expect(nameVariants("Ashbury, Quill Bryn").map((v) => v.key)).toContain("bryn ashbury");
+  });
+
+  it.each([["Elder, Quill", "elder"], ["Mayor, Quill", "mayor"], ["Grand, Quill", "grand"]])("reads the one-word office head of %j as a surname", (raw, surname) => {
+    expect(parseName(raw)).toEqual({ given: ["quill"], surname: [surname] });
+  });
+  it.each(["Premier, Quill", "Chief, Quill", "Minister, Quill", "Director, Quill"])("still rejects the office head %j", (raw) => expect(parseName(raw)).toBeNull());
+
+  it("reads two people sharing a surname from the first and the fallback", () => {
+    expect(parseName("Quill and Bryn Ashbury")).toEqual({ given: ["quill", "and", "bryn"], surname: ["ashbury"] });
+    expect(nameVariants("Quill and Bryn Ashbury").map((v) => v.key)).toEqual(expect.arrayContaining(["quill ashbury", "bryn ashbury"]));
+    expect(parseName("And Quill Ashbury")).toBeNull();
+  });
+
+  it.each([["Quill TBD", "tbd"], ["Quill Unknown", "unknown"], ["Quill Videographer", "videographer"], ["Quill Staff", "staff"]])(
+    "keeps a given name with a stand-in surname %j", (raw, surname) => expect(parseName(raw)).toEqual({ given: ["quill"], surname: [surname] }),
+  );
+  it.each(["Media Relations", "Communications Team", "GCPE Office"])("still rejects the role %j", (raw) => expect(parseName(raw)).toBeNull());
+
+  it.each(["Digital Strategist", "Senior Policy Analyst", "Content Lead", "News Editor", "Photo Gallery", "Outreach Specialist", "Events Coordinator", "Project Manager"])(
+    "rejects the job title %j", (raw) => expect(parseName(raw)).toBeNull(),
+  );
 });
 
 describe("nameVariants", () => {
@@ -60,6 +102,12 @@ describe("nameVariants", () => {
     expect(nameVariants("Quill Bryn Ashbury").find((v) => v.key === "bryn ashbury")?.fallback).toBe(true);
     expect(nameVariants("Quill Ashbury").find((v) => v.key === "ashbury , quill")?.surnameFirst).toBe(true);
   });
+  it.each([["Quill de la Cruz", "la cruz"], ["Quill van Dyk", "van dyk"], ["Quill Bryn de Souza", "de souza"], ["Quill del Rio", "del rio"], ["Quill Los Santos", "los santos"]])(
+    "makes no fallback starting with a surname particle in %j", (raw, form) => {
+      expect(nameVariants(raw).filter((v) => v.fallback).map((v) => v.key)).not.toContain(form);
+      expect(nameVariants(raw).length).toBeGreaterThan(0);
+    },
+  );
 });
 
 describe("normEmail", () => {

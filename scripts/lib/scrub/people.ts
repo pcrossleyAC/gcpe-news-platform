@@ -37,11 +37,13 @@ const TITLES = new Set([
   "board", "lieutenant", "governor", "provincial", "chancellor", "ambassador", "consul", "registrar", "auditor", "comptroller",
   "ombudsperson", "ombudsman", "clerk", "superintendent", "inspector", "commander", "captain", "councillors", "manager", "coordinator",
 ]);
-/** Words that tie an office to its portfolio or its principal ("Minister of State for Trade", "Secretary to Cabinet"). A name never contains them. */
-const LINKS = new Set(["of", "for", "and", "to", "on", "the", "responsible", "state"]);
+/** Words that tie an office to its portfolio or its principal ("Minister of State for Trade", "Secretary to Cabinet"). A name rarely contains them. */
+export const LINKS = new Set(["of", "for", "and", "to", "on", "the", "responsible", "state"]);
 const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "kc", "qc", "phd", "md", "mla", "mp"]);
 /** A multi-word part before the comma is a surname only when it starts like one ("Van Dyk, Quill"); otherwise it is "Name, office". */
 const SURNAME_PARTICLES = new Set(["van", "von", "de", "del", "della", "der", "den", "di", "du", "da", "dos", "das", "la", "le", "st", "ter", "ten", "mac", "mc", "bin", "ibn", "al", "el"]);
+/** Particles that begin a surname rather than end the given names, so a fallback never starts with one. */
+const FALLBACK_PARTICLES = new Set([...SURNAME_PARTICLES, "los", "las"]);
 /** Names made only of these are roles or placeholders, not people. */
 const ROLE_WORDS = new Set([
   "premier", "minister", "deputy", "parliamentary", "secretary", "mla", "mp", "assistant", "associate", "acting", "staff", "team",
@@ -57,12 +59,18 @@ const OFFICE_ENDS = new Set([
   "officer", "secretary", "minister", "ministers", "premier", "chair", "chairperson", "president", "commissioner", "advisor", "adviser",
   "councillor", "councillors", "deputy", "assistant", "associate", "executive", "director", "coordinator", "manager", "governor",
   "lieutenant", "provincial", "regional", "board", "cabinet", "council", "committee", "registrar", "auditor", "comptroller",
-  "ombudsperson", "ombudsman", "clerk", "superintendent", "inspector", "chancellor", "ambassador", "consul",
+  "ombudsperson", "ombudsman", "clerk", "superintendent", "inspector", "chancellor", "ambassador", "consul", "specialist", "strategist",
+  "lead", "analyst", "editor", "gallery",
 ]);
+/** Role words that stand in for an unknown surname or name a crew job ("Quill TBD", "Quill Videographer"): the given name is still a person's. */
+const STAND_INS = new Set(["tbd", "tba", "none", "other", "unknown", "test", "staff", "videographer", "photographer"]);
 const isRole = (t: string) => ROLE_WORDS.has(t) || TITLES.has(t) || HONORIFICS.has(t) || LINKS.has(t);
 /** What a part after a comma starts with when it describes the person rather than naming them ("…, MLA", "…, Minister of Health", "…, Jr."). */
 const isDescriptor = (t: string) => ROLE_WORDS.has(t) || TITLES.has(t) || SUFFIXES.has(t);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** A directory tag after a name ("Ashbury, Quill GCPE:EX"): ministry code and staff type. */
+const DIRECTORY_TAG = /(?<![\p{L}\p{M}])[\p{L}\p{M}]+:[\p{L}\p{M}]+(?![\p{L}\p{M}])/gu;
+const tagWords = (s: string) => new Set([...s.matchAll(DIRECTORY_TAG)].flatMap((m) => m[0].split(":").map(normToken)));
 
 export function normToken(t: string): string {
   return t.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/’/g, "'").replace(/[‐‑–]/g, "-");
@@ -112,7 +120,9 @@ function givenFirst(words: string[]): ParsedName | null {
 }
 
 function surnameFirst(head: string[], tail: string[]): ParsedName | null {
-  const surname = withoutInitials(stripTitles(head).rest);
+  // A one-word head that is also an office word ("Elder, Quill") is the surname; the role checks still reject "Premier, Quill".
+  const titled = withoutInitials(stripTitles(head).rest);
+  const surname = titled.length === 0 && head.length === 1 && TITLES.has(head[0]!) ? head : titled;
   const given = stripSuffixes(stripTitles(tail).rest);
   const named = withoutInitials(given);
   return surname.length > 0 && given.length > 0 ? { given: named.length > 0 ? named : given, surname } : null;
@@ -137,7 +147,14 @@ function parseCandidate(s: string): ParsedName | null {
   if (!p || p.given.length === 0 || p.surname.length === 0 || p.given.length + p.surname.length > 4) return null;
   if (p.surname.some((t) => t.length < 2)) return null;
   const all = [...p.given, ...p.surname];
-  if (all.some((t) => LINKS.has(t)) || p.surname.some((t) => OFFICE_ENDS.has(t) || ROLE_WORDS.has(t)) || all.every(isRole)) return null;
+  if (p.surname.some((t) => OFFICE_ENDS.has(t) || (ROLE_WORDS.has(t) && !STAND_INS.has(t) && !LINKS.has(t))) || all.every(isRole)) return null;
+  // Link words tie an office to its portfolio, so a parse holding one is an office, except where a name carries one:
+  // a directory tag ("Ashbury, Quill FOR:EX"), "and" after a given name ("Quill and Bryn Ashbury"), or the surname
+  // of a plain two-word name ("Kevin To").
+  const tags = tagWords(s);
+  const linkedSurname = p.given.length === 1 && p.surname.length === 1 && !isRole(p.given[0]!);
+  if (p.given.some((t, k) => LINKS.has(t) && !tags.has(t) && !(t === "and" && k > 0))) return null;
+  if (p.surname.some((t) => LINKS.has(t) && !tags.has(t)) && !linkedSurname) return null;
   return p;
 }
 
@@ -156,7 +173,9 @@ export function parseName(raw: string | null): ParsedName | null {
     const p = parseCandidate(c);
     if (p) return p;
   }
-  return null;
+  // A directory tag ("Ashbury, Quill Bryn GCPE:EX") can push a name past four words; then the name is read without it.
+  const untagged = outside.replace(DIRECTORY_TAG, " ");
+  return untagged !== outside ? parseCandidate(untagged) : null;
 }
 
 export interface NameVariant { key: string; surnameFirst: boolean; fallback?: true }
@@ -180,7 +199,10 @@ export function nameVariants(raw: string | null): NameVariant[] {
   const out: NameVariant[] = [...v].map(([key, surnameFirst]) => ({ key, surnameFirst }));
   const lastGiven = p.given[p.given.length - 1]!;
   const fallback = `${lastGiven} ${last}`;
-  if (p.given.length > 1 && lastGiven.length > 1 && !isRole(lastGiven) && !v.has(fallback)) out.push({ key: fallback, surnameFirst: false, fallback: true });
+  // Not from a surname particle ("Quill de la Cruz" gives no "la cruz") or a directory tag ("Ashbury, Quill FOR:EX" gives no "ex ashbury").
+  if (p.given.length > 1 && lastGiven.length > 1 && !isRole(lastGiven) && !FALLBACK_PARTICLES.has(lastGiven) && !tagWords(raw!).has(lastGiven) && !v.has(fallback)) {
+    out.push({ key: fallback, surnameFirst: false, fallback: true });
+  }
   return out;
 }
 
