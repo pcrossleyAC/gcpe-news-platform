@@ -243,6 +243,14 @@ export async function promptHidden(label: string): Promise<string> {
   return readHiddenFromTTY(label, process.stdin as NodeJS.ReadStream & { fd: 0 });
 }
 
+/** The input ended (Ctrl-D, a closed pipe) before a prompt was answered. Its message names only our own label. */
+export class PromptEndedError extends Error {
+  override name = "PromptEndedError";
+  constructor(label: string) {
+    super(`input ended before "${label}" was answered`);
+  }
+}
+
 /**
  * Plain prompts use readline; hidden prompts read raw bytes from the TTY. The two must never be
  * attached to stdin at the same time: readline would also receive (and could echo) the hidden
@@ -252,23 +260,41 @@ export async function promptHidden(label: string): Promise<string> {
  */
 export class Prompter {
   private rl: ReturnType<typeof createInterface> | null = null;
+  /** Set when the input itself ended: a new readline on it would never answer or close. */
+  private ended = false;
+
+  constructor(private readonly input: NodeJS.ReadableStream = process.stdin, private readonly output: NodeJS.WritableStream = process.stderr) {}
 
   private open(): ReturnType<typeof createInterface> {
     if (!this.rl) {
-      this.rl = createInterface({ input: process.stdin, output: process.stderr });
-      process.stdin.resume();
+      const rl = createInterface({ input: this.input, output: this.output });
+      rl.once("close", () => { if (this.rl === rl) { this.rl = null; this.ended = true; } });
+      this.rl = rl;
+      this.input.resume();
     }
     return this.rl;
   }
 
   close(): void {
-    this.rl?.close();
+    const rl = this.rl;
     this.rl = null;
+    rl?.close();
   }
 
   async plain(label: string, defaultValue?: string): Promise<string> {
     const suffix = defaultValue ? ` [${defaultValue}]` : "";
-    const answer = (await this.open().question(`${label}${suffix}: `)).trim();
+    if (this.ended) throw new PromptEndedError(label);
+    const rl = this.open();
+    // readline never settles a pending question when its input ends, so Node would exit mid-await
+    // with no message and no `finally` run; ending the input is turned into an error instead.
+    let onClose = () => {};
+    const ended = new Promise<never>((_, reject) => { onClose = () => reject(new PromptEndedError(label)); rl.once("close", onClose); });
+    let answer: string;
+    try {
+      answer = (await Promise.race([rl.question(`${label}${suffix}: `), ended])).trim();
+    } finally {
+      rl.off("close", onClose);
+    }
     if (answer.length > 0) return answer;
     if (defaultValue !== undefined) return defaultValue;
     throw new Error(`"${label}" is required`);

@@ -13,6 +13,7 @@ import { pathToFileURL } from "node:url";
 import { withAdmin } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { Prompter } from "./siteground-env";
+import { NOT_AT_A_TERMINAL, printable } from "./scrub-test-data-restore";
 import { parseScrubArgs, STEPS, type ScrubOptions, type Step } from "./lib/scrub/args";
 import { BOXS_APPS, backupScript, downloadBackup, localDump, restoreScript, runRemote, testAccountsScript, tickScript, uploadFile } from "./lib/scrub/boxs";
 import { bcToday, wallClockOf } from "./lib/scrub/dates";
@@ -21,7 +22,7 @@ import { applyScope, assertRequiredTables, emptyTables, mssqlConfigFromEnv, open
 import { gateMssql, readPeopleSources, scrubAllText, writeStructuredPeople, type GateResult } from "./lib/scrub/mssql-text";
 import { buildPeopleIndex, mappingCsv, type PeopleIndex } from "./lib/scrub/people";
 import { gatePostgres } from "./lib/scrub/pg-gate";
-import { loadOrCreateKey, preparePrivateDir, PRIVATE_ROOT, runStamp, ScrubArgumentError, ScrubStepError, withPrivateUmask, writePrivate } from "./lib/scrub/private-out";
+import { loadOrCreateKey, preparePrivateDir, PRIVATE_ROOT, runStamp, ScrubStepError, withPrivateUmask, writePrivate } from "./lib/scrub/private-out";
 import { loginWithPassword, runSmoke, stackHealthy, waitFor, type SmokeCheck } from "./lib/scrub/smoke";
 import { runTrial, type TrialResult } from "./lib/scrub/trial";
 
@@ -70,6 +71,7 @@ export async function runPipeline(stopAfter: Step, d: PipelineDeps): Promise<Pip
   lines.push(`local trial: ${trial.ticks} ticks, smoke test passed`);
   if (stop("trial")) return { status: "stopped", at: "trial" };
   if (!(await d.approve(lines))) return { status: "failed", at: "approve", reason: "not approved" };
+  if (stop("approve")) return { status: "stopped", at: "approve" };
   const backupStamp = await d.backup();
   d.log(`boxs.ca backup: ${backupStamp} (undo with npm run scrub:test-data:restore -- ${backupStamp})`);
   if (stop("backup")) return { status: "stopped", at: "backup" };
@@ -106,6 +108,46 @@ export function prepareRun(o: Pick<ScrubOptions, "out" | "keyFile">, stamp: stri
   return { out, key: loadOrCreateKey(o.keyFile, root) };
 }
 
+/** The prompts a step needs: plain answers and hidden passwords. */
+export interface Asker { plain(label: string, defaultValue?: string): Promise<string>; hidden(label: string): Promise<string> }
+export interface LoadSecrets { adminUser: string; adminPassword: string; calendarPassword: string; releasePassword: string }
+
+/**
+ * The typed approval, then every password the load will need, all before anything on boxs.ca changes: a piped
+ * "approval" or a missing password must stop the run here, not after the backup and upload.
+ */
+export async function approveLoad(o: { isTTY: boolean; ask: Asker; host: string; calendarUser: string; releaseUser: string }): Promise<LoadSecrets | null> {
+  if (!o.isTTY) throw new ScrubStepError(NOT_AT_A_TERMINAL);
+  if ((await o.ask.plain(`Type "load ${o.host}" to back up ${o.host} and replace its calendar, release and public-site data`, "")) !== `load ${o.host}`) return null;
+  const secret = async (label: string, what: string) => {
+    const v = await o.ask.hidden(label);
+    if (v === "") throw new ScrubStepError(`no ${what} was given: nothing on ${o.host} changed`);
+    return v;
+  };
+  const adminUser = await o.ask.plain("Break-glass admin user name", "admin");
+  return {
+    adminUser,
+    adminPassword: await secret("Break-glass admin password: ", "break-glass password"),
+    calendarPassword: await secret(`Password for ${o.calendarUser}: `, `password for ${o.calendarUser}`),
+    releasePassword: await secret(`Password for ${o.releaseUser}: `, `password for ${o.releaseUser}`),
+  };
+}
+
+export async function breakGlassToken(site: string, user: string, password: string, f: typeof fetch = fetch): Promise<string> {
+  const res = await f(`${site}/nrms/auth/local/token`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: user, password }) });
+  const token = res.status === 200 ? ((await res.json()) as { access_token?: string }).access_token : undefined;
+  if (!token) throw new ScrubStepError(`the break-glass sign-in failed (HTTP ${res.status})`);
+  return token;
+}
+
+/** Signs in with each password while boxs.ca still holds its own data, so a mistyped one stops the run before the backup. */
+export async function checkSecrets(site: string, users: { calendarUser: string; releaseUser: string }, s: LoadSecrets, f: typeof fetch = fetch): Promise<void> {
+  await breakGlassToken(site, s.adminUser, s.adminPassword, f);
+  for (const [email, password] of [[users.calendarUser, s.calendarPassword], [users.releaseUser, s.releasePassword]] as const) {
+    try { await loginWithPassword(site, email, password, f); } catch { throw new ScrubStepError(`signing in as ${email} failed: nothing on ${new URL(site).host} changed`); }
+  }
+}
+
 const mb = (bytes: number) => `${(bytes / 1_048_576).toFixed(1)} MB`;
 
 async function localSizes(): Promise<string[]> {
@@ -128,6 +170,7 @@ async function main(): Promise<void> {
   let index: PeopleIndex | null = null;
   let accounts: TestAccounts | null = null;
   let urls: Record<LocalApp, string> | null = null;
+  let secrets: LoadSecrets | null = null;
   const need = <T>(v: T | null, what: string): T => { if (v === null) throw new ScrubStepError(`${what} isn't ready: run the earlier steps first`); return v; };
   const scrubPool = () => openPool(cfg, opts.scrubbedDb);
 
@@ -202,8 +245,11 @@ async function main(): Promise<void> {
     },
     async approve(lines) {
       for (const l of [...lines, ...(await localSizes())]) log(l);
-      const answer = await prompt.plain(`Type "load ${host}" to back up ${host} and replace its calendar, release and public-site data`, "");
-      return answer === `load ${host}`;
+      secrets = await approveLoad({ isTTY: Boolean(process.stdin.isTTY), ask: prompt, host, calendarUser: opts.calendarUser, releaseUser: opts.releaseUser });
+      if (!secrets) return false;
+      await checkSecrets(opts.site, opts, secrets);
+      log("The break-glass and both test-account sign-ins work.");
+      return true;
     },
     async backup() {
       const b = runStamp();
@@ -213,6 +259,7 @@ async function main(): Promise<void> {
     },
     async load(backupStamp) {
       const local = need(urls, "the local databases");
+      const s = need(secrets, "the passwords");
       const replaced = BOXS_APPS.filter((a) => a.replaced);
       for (const a of replaced) {
         const file = join(out, "dumps", `${a.app}.sql.gz`);
@@ -223,20 +270,21 @@ async function main(): Promise<void> {
       }
       await prompt.plain(`Stop the ${host} Node.js app in Site Tools (Devs → Node.js), then press Enter`, "");
       if (!(await waitFor(async () => !(await stackHealthy(opts.site)), { timeoutMs: 300_000, everyMs: 5_000 }))) throw new ScrubStepError(`${host} still answers: stop it in Site Tools first. Nothing was replaced; backup ${backupStamp} is ready`);
-      await runRemote(opts.sshHost, restoreScript({ stamp, from: "scrub-load", apps: replaced.map((a) => a.app), resetNodPositions: true, siteOutput: "clear" }));
-      await prompt.plain(`Start the ${host} Node.js app in Site Tools, then press Enter`, "");
+      try {
+        await runRemote(opts.sshHost, restoreScript({ stamp, from: "scrub-load", apps: replaced.map((a) => a.app), resetNodPositions: true, siteOutput: "clear" }));
+        await prompt.plain(`Start the ${host} Node.js app in Site Tools, then press Enter`, "");
+      } catch (e) {
+        throw new ScrubStepError(`${printable(e) ? e.message : safeErrorLabel(e)}: start the app again in Site Tools, then undo with npm run scrub:test-data:restore -- ${backupStamp}`);
+      }
       if (!(await waitFor(() => stackHealthy(opts.site), { timeoutMs: 600_000, everyMs: 10_000 }))) throw new ScrubStepError(`${host} isn't healthy: undo with npm run scrub:test-data:restore -- ${backupStamp}`);
-      const adminUser = await prompt.plain("Break-glass admin user name", "admin");
-      const tokenRes = await fetch(`${opts.site}/nrms/auth/local/token`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: adminUser, password: await prompt.hidden("Break-glass admin password: ") }) });
-      const token = ((await tokenRes.json()) as { access_token?: string }).access_token;
-      if (!token) throw new ScrubStepError("the break-glass sign-in failed");
+      const token = await breakGlassToken(opts.site, s.adminUser, s.adminPassword);
       for (const path of ["/core/api/admin/republish", "/nrms/api/media-lists/republish"]) {
         const r = await fetch(`${opts.site}${path}`, { method: "POST", headers: { authorization: `Bearer ${token}` } });
         if (!r.ok) throw new ScrubStepError(`${path} answered HTTP ${r.status}`);
       }
       await runRemote(opts.sshHost, tickScript(opts.site, 6));
-      const calendarCookie = await loginWithPassword(opts.site, opts.calendarUser, await prompt.hidden(`Password for ${opts.calendarUser}: `));
-      const releaseCookie = await loginWithPassword(opts.site, opts.releaseUser, await prompt.hidden(`Password for ${opts.releaseUser}: `));
+      const calendarCookie = await loginWithPassword(opts.site, opts.calendarUser, s.calendarPassword);
+      const releaseCookie = await loginWithPassword(opts.site, opts.releaseUser, s.releasePassword);
       return runSmoke({ base: opts.site, calendarCookie, releaseCookie, today: bcToday() });
     },
   };
@@ -254,7 +302,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   try {
     await main();
   } catch (e) {
-    console.error(e instanceof ScrubArgumentError || e instanceof ScrubStepError ? e.message : safeErrorLabel(e));
+    console.error(printable(e) ? e.message : safeErrorLabel(e));
     process.exitCode = 1;
   }
 }

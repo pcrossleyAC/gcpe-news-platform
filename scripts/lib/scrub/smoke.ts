@@ -1,4 +1,5 @@
 import { setTimeout as sleep } from "node:timers/promises";
+import { safeErrorLabel } from "@gcpe/http-kit";
 import { addDays } from "./dates";
 
 export interface SmokeCheck { name: string; ok: boolean; detail: string }
@@ -30,51 +31,54 @@ export async function waitFor(cond: () => Promise<boolean>, o: { timeoutMs: numb
   }
 }
 
+/** A check that failed for a reason we wrote ourselves, safe to print. Anything else (a body that isn't JSON quotes the body) prints as its label only. */
+class SmokeFailure extends Error { override name = "SmokeFailure"; }
+
 export async function runSmoke(o: { base: string; calendarCookie: string; releaseCookie: string; today: string; fetch?: typeof fetch; pollMs?: number; timeoutMs?: number }): Promise<SmokeCheck[]> {
   const f = o.fetch ?? fetch;
   const checks: SmokeCheck[] = [];
   const step = async (name: string, fn: () => Promise<string>) => {
-    try { checks.push({ name, ok: true, detail: await fn() }); } catch (e) { checks.push({ name, ok: false, detail: e instanceof Error ? e.message : "error" }); }
+    try { checks.push({ name, ok: true, detail: await fn() }); } catch (e) { checks.push({ name, ok: false, detail: e instanceof SmokeFailure ? e.message : safeErrorLabel(e) }); }
   };
   const cal = { cookie: o.calendarCookie };
   const rel = { cookie: o.releaseCookie };
-  const expectOk = (r: Response) => { if (r.status !== 200) throw new Error(`HTTP ${r.status}`); };
+  const expectOk = (r: Response) => { if (r.status !== 200) throw new SmokeFailure(`HTTP ${r.status}`); };
 
   await step("calendar list", async () => {
     const r = await f(`${o.base}/calendar/api/list?q=${encodeURIComponent("{}")}`, { headers: cal });
     expectOk(r);
     const total = ((await r.json()) as { total: number }).total;
-    if (!(total > 0)) throw new Error("the list is empty");
+    if (!(total > 0)) throw new SmokeFailure("the list is empty");
     return `${total} activities`;
   });
   await step("look ahead pdf", async () => {
     const start = await f(`${o.base}/calendar/api/reports/look-ahead`, { method: "POST", headers: { ...cal, "content-type": "application/json", "x-gcpe-request": "1" }, body: JSON.stringify({ q: { filter: { from: o.today, to: addDays(o.today, 6) } } }) });
-    if (start.status !== 201 && start.status !== 202) throw new Error(`HTTP ${start.status}`);
+    if (start.status !== 201 && start.status !== 202) throw new SmokeFailure(`HTTP ${start.status}`);
     let job = (await start.json()) as { id: string; status: string };
     const deadline = Date.now() + (o.timeoutMs ?? 120_000);
     while (job.status === "running") {
-      if (Date.now() > deadline) throw new Error("the report timed out");
+      if (Date.now() > deadline) throw new SmokeFailure("the report timed out");
       await sleep(o.pollMs ?? 1000);
       job = (await (await f(`${o.base}/calendar/api/reports/jobs/${job.id}`, { headers: cal })).json()) as typeof job;
     }
-    if (job.status !== "ready") throw new Error(`the report ${job.status}`);
+    if (job.status !== "ready") throw new SmokeFailure(`the report ${/^[a-z-]{1,20}$/.test(String(job.status)) ? job.status : "ended in an unknown state"}`);
     const pdf = await f(`${o.base}/calendar/api/reports/jobs/${job.id}/pdf`, { headers: cal });
     const bytes = new Uint8Array(await pdf.arrayBuffer());
-    if (pdf.status !== 200 || new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw new Error("not a PDF");
+    if (pdf.status !== 200 || new TextDecoder().decode(bytes.slice(0, 5)) !== "%PDF-") throw new SmokeFailure("not a PDF");
     return `${bytes.length} bytes`;
   });
   await step("open a release", async () => {
     const list = await f(`${o.base}/nrms/api/releases?folder=published&pageSize=1`, { headers: rel });
     expectOk(list);
     const first = ((await list.json()) as { items: { id: string }[] }).items[0];
-    if (!first) throw new Error("no published release");
+    if (!first) throw new SmokeFailure("no published release");
     expectOk(await f(`${o.base}/nrms/api/releases/${first.id}`, { headers: rel }));
     return "opened";
   });
   await step("public home page", async () => {
     const r = await f(`${o.base}/site/`);
     expectOk(r);
-    if (!(await r.text()).includes("<html")) throw new Error("not an HTML page");
+    if (!(await r.text()).includes("<html")) throw new SmokeFailure("not an HTML page");
     return "ok";
   });
   return checks;

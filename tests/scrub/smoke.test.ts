@@ -31,6 +31,17 @@ describe("runSmoke", () => {
     const checks = await runSmoke(opts(fakeFetch({ "GET /calendar/api/list": () => json({ rows: [], total: 0, offset: 0 }), "GET /calendar/api/reports/jobs/AAAAAAAAAAAAAAAAAAAAAA/pdf": () => new Response("oops") })));
     expect(checks.filter((c) => !c.ok).map((c) => c.name)).toEqual(["calendar list", "look ahead pdf"]);
   });
+
+  it("reports a body that isn't JSON by its error label, never quoting the body", async () => {
+    const checks = await runSmoke(opts(fakeFetch({ "GET /calendar/api/list": () => new Response("Quill Ashbury, (604) 555-0142", { status: 200 }) })));
+    const list = checks.find((c) => c.name === "calendar list")!;
+    expect(list).toEqual({ name: "calendar list", ok: false, detail: "SyntaxError" });
+  });
+
+  it("names a report state it doesn't recognise without quoting it", async () => {
+    const checks = await runSmoke(opts(fakeFetch({ "GET /calendar/api/reports/jobs/AAAAAAAAAAAAAAAAAAAAAA": () => json({ id: "AAAAAAAAAAAAAAAAAAAAAA", status: "failed: Quill Ashbury" }) })));
+    expect(checks.find((c) => c.name === "look ahead pdf")!.detail).toBe("the report ended in an unknown state");
+  });
 });
 
 describe("sign-in and health", () => {

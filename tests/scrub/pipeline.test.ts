@@ -5,8 +5,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { Step } from "../../scripts/lib/scrub/args";
 import type { LocalApp } from "../../scripts/lib/scrub/local";
 import type { PgGateResult } from "../../scripts/lib/scrub/pg-gate";
-import { parseRestoreArgs } from "../../scripts/scrub-test-data-restore";
-import { gateOutcome, pgGateDbs, prepareRun, runPipeline, type PipelineDeps } from "../../scripts/scrub-test-data";
+import { ScrubStepError } from "../../scripts/lib/scrub/private-out";
+import { PromptEndedError } from "../../scripts/siteground-env";
+import { backupCheckScript, NOT_AT_A_TERMINAL, parseRestoreArgs, runRestore, type RestoreDeps } from "../../scripts/scrub-test-data-restore";
+import { approveLoad, checkSecrets, gateOutcome, pgGateDbs, prepareRun, runPipeline, type Asker, type PipelineDeps } from "../../scripts/scrub-test-data";
 
 function deps(over: Partial<PipelineDeps> = {}): { d: PipelineDeps; calls: string[] } {
   const calls: string[] = [];
@@ -62,6 +64,27 @@ describe("runPipeline", () => {
     const { d, calls } = deps({ gate2: async (label) => { calls.push(`gate2:${label}`); return { passed: label !== "after trial", lines: [] }; } });
     expect(await runPipeline("load", d)).toEqual({ status: "failed", at: "trial", reason: "the Postgres leak check after the trial found hits" });
     expect(calls).not.toContain("approve");
+  });
+
+  it("stops at a failed Gate 2 after import, before the trial", async () => {
+    const { d, calls } = deps({ gate2: async (label) => { calls.push(`gate2:${label}`); return { passed: false, lines: [] }; } });
+    expect(await runPipeline("load", d)).toEqual({ status: "failed", at: "gate2", reason: "the Postgres leak check found hits" });
+    expect(calls).toEqual(["copy", "scrub", "gate1", "import", "gate2:after import"]);
+  });
+
+  it.each<[Step, string]>([["approve", "approve"], ["backup", "backup"]])("--stop-after %s goes no further than %s", async (step, last) => {
+    const { d, calls } = deps();
+    expect(await runPipeline(step, d)).toEqual({ status: "stopped", at: step });
+    expect(calls[calls.length - 1]).toBe(last);
+  });
+
+  it("an approval refused for want of a terminal never reaches the backup", async () => {
+    const asked: string[] = [];
+    const ask: Asker = { plain: async (l) => { asked.push(l); return "load boxs.ca"; }, hidden: async (l) => { asked.push(l); return "fictional"; } };
+    const { d, calls } = deps({ approve: async () => (await approveLoad({ isTTY: false, ask, host: "boxs.ca", calendarUser: "cal@example.test", releaseUser: "rel@example.test" })) !== null });
+    await expect(runPipeline("load", d)).rejects.toThrow(NOT_AT_A_TERMINAL);
+    expect(calls).not.toContain("backup");
+    expect(asked).toEqual([]);
   });
 
   it("shows the operator every summary line before asking", async () => {
@@ -140,6 +163,112 @@ describe("prepareRun", () => {
   it("refuses a key file outside the private root", () => {
     const r = fresh();
     expect(() => prepareRun({ out: join(r, "scrub"), keyFile: join(tmpdir(), "scrub-key-elsewhere") }, "20261022-120000", r)).toThrow(/--key-file must be inside/);
+  });
+});
+
+function asker(answers: Record<string, string>): { ask: Asker; asked: string[] } {
+  const asked: string[] = [];
+  const answer = async (l: string) => { asked.push(l); const k = Object.keys(answers).find((x) => l.startsWith(x)); return k === undefined ? "" : answers[k]!; };
+  return { ask: { plain: answer, hidden: answer }, asked };
+}
+const users = { host: "boxs.ca", calendarUser: "cal-hq-editor@example.test", releaseUser: "editor@example.test" };
+
+describe("approveLoad", () => {
+  it("refuses without a terminal, before asking anything", async () => {
+    const { ask, asked } = asker({ Type: "load boxs.ca" });
+    await expect(approveLoad({ isTTY: false, ask, ...users })).rejects.toThrow(NOT_AT_A_TERMINAL);
+    expect(asked).toEqual([]);
+  });
+
+  it("asks for no password when the phrase is wrong", async () => {
+    const { ask, asked } = asker({ Type: "load boxs" });
+    expect(await approveLoad({ isTTY: true, ask, ...users })).toBeNull();
+    expect(asked).toHaveLength(1);
+  });
+
+  it("collects every password the load needs as soon as it is approved", async () => {
+    const { ask, asked } = asker({ Type: "load boxs.ca", "Break-glass admin user": "admin", "Break-glass admin password": "pw-admin", "Password for cal-hq": "pw-cal", "Password for editor": "pw-rel" });
+    expect(await approveLoad({ isTTY: true, ask, ...users })).toEqual({ adminUser: "admin", adminPassword: "pw-admin", calendarPassword: "pw-cal", releasePassword: "pw-rel" });
+    expect(asked).toHaveLength(5);
+  });
+
+  it("stops on an empty password", async () => {
+    const { ask } = asker({ Type: "load boxs.ca", "Break-glass admin user": "admin", "Break-glass admin password": "pw-admin", "Password for cal-hq": "pw-cal" });
+    await expect(approveLoad({ isTTY: true, ask, ...users })).rejects.toThrow("no password for editor@example.test was given: nothing on boxs.ca changed");
+  });
+});
+
+describe("checkSecrets", () => {
+  const secrets = { adminUser: "admin", adminPassword: "pw-admin", calendarPassword: "pw-cal", releasePassword: "pw-rel" };
+  const fake = (wrong: string): typeof fetch => (async (input: string | URL | Request, init?: RequestInit) => {
+    const body = JSON.parse(String(init?.body)) as { username: string; password: string };
+    if (body.password === wrong) return new Response("{}", { status: 401 });
+    if (String(input).endsWith("/nrms/auth/local/token")) return new Response(JSON.stringify({ access_token: "t" }), { status: 200 });
+    return new Response("{}", { status: 200, headers: { "set-cookie": "gcpe_session=s; Path=/" } });
+  }) as typeof fetch;
+
+  it("passes when every sign-in works", async () => {
+    await expect(checkSecrets("https://boxs.example", users, secrets, fake("none"))).resolves.toBeUndefined();
+  });
+
+  it.each([["pw-admin", "the break-glass sign-in failed (HTTP 401)"], ["pw-rel", "signing in as editor@example.test failed: nothing on boxs.example changed"]])("names the sign-in that failed (%s)", async (wrong, message) => {
+    await expect(checkSecrets("https://boxs.example", users, secrets, fake(wrong))).rejects.toThrow(message);
+  });
+});
+
+function restoreDeps(over: Partial<RestoreDeps> = {}): { d: RestoreDeps; calls: string[] } {
+  const calls: string[] = [];
+  const d: RestoreDeps = {
+    isTTY: true,
+    ask: async (l) => { calls.push(`ask:${l.split(" ")[0]}`); return l.startsWith("Type") ? "restore 20261022-120000" : ""; },
+    backupReady: async () => { calls.push("check"); return true; },
+    stopped: async () => { calls.push("stopped"); return true; },
+    restore: async () => { calls.push("restore"); },
+    started: async () => { calls.push("started"); return true; },
+    log: () => {},
+    ...over,
+  };
+  return { d, calls };
+}
+const target = { stamp: "20261022-120000", host: "boxs.ca" };
+
+describe("runRestore", () => {
+  it("checks the backup, confirms, then restores between the stop and the start", async () => {
+    const { d, calls } = restoreDeps();
+    await runRestore(target, d);
+    expect(calls).toEqual(["check", "ask:Type", "ask:Stop", "stopped", "restore", "ask:Start", "started"]);
+  });
+
+  it("refuses without a terminal, before anything", async () => {
+    const { d, calls } = restoreDeps({ isTTY: false });
+    await expect(runRestore(target, d)).rejects.toThrow(NOT_AT_A_TERMINAL);
+    expect(calls).toEqual([]);
+  });
+
+  it("finds a missing backup before the operator is asked to stop the app", async () => {
+    const { d, calls } = restoreDeps({ backupReady: async () => { calls.push("check"); return false; } });
+    await expect(runRestore(target, d)).rejects.toThrow("backup 20261022-120000 isn't on boxs.ca or is incomplete: nothing changed");
+    expect(calls).toEqual(["check"]);
+  });
+
+  it("asks for the app to be started again when the restore fails after the stop", async () => {
+    const { d } = restoreDeps({ restore: async () => { throw new ScrubStepError("a step on boxs failed (exit 1)"); } });
+    await expect(runRestore(target, d)).rejects.toThrow("a step on boxs failed (exit 1): start the app again in Site Tools");
+  });
+
+  it("asks for the app to be started again when the input ends after the stop", async () => {
+    const { d } = restoreDeps({ ask: async (l) => { if (l.startsWith("Start")) throw new PromptEndedError(l); return l.startsWith("Type") ? "restore 20261022-120000" : ""; } });
+    await expect(runRestore(target, d)).rejects.toThrow(/start the app again in Site Tools$/);
+  });
+});
+
+describe("backupCheckScript", () => {
+  it("looks for every dump and the site-output archive, and changes nothing", () => {
+    const s = backupCheckScript("20261022-120000");
+    expect(s).toContain('DIR="$HOME/gcpe-data/backups/20261022-120000"');
+    for (const f of ["core.sql.gz", "nrms.sql.gz", "news-api.sql.gz", "site.sql.gz", "calendar.sql.gz", "nod.sql.gz", "distribution.sql.gz", "site-output.tar.gz"]) expect(s).toContain(f);
+    expect(s.replace(/[\w-]+\.(sql|tar)\.gz/g, "")).not.toMatch(/\b(rm|mv|psql|tar|mkdir|cat|gunzip)\b/);
+    expect(() => backupCheckScript("latest")).toThrow(/stamp/);
   });
 });
 
