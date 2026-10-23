@@ -23,9 +23,20 @@ export interface PeopleIndex {
   maxWords: number;
 }
 
-/** A word: letters and marks, with inner apostrophes and hyphens (O'Neil, Tennant-Vey). */
-export const TOKEN_RE = /[\p{L}\p{M}][\p{L}\p{M}'’-]*/gu;
-const HONORIFICS = new Set(["hon", "honourable", "honorable", "the", "rt", "dr", "mr", "mrs", "ms", "mx", "sir", "dame"]);
+/** A word: letters and marks, with an apostrophe or hyphen only between letters (O'Neil, Tennant-Vey), so a closing quote or plural possessive stays outside. */
+export const TOKEN_RE = /[\p{L}\p{M}](?:[\p{L}\p{M}]|['’-](?=[\p{L}\p{M}]))*/gu;
+const HONORIFICS = new Set(["hon", "honourable", "honorable", "the", "rt", "right", "dr", "mr", "mrs", "ms", "mx", "miss", "sir", "dame", "prof", "professor", "rev", "reverend"]);
+/** Offices that stand in front of a name in government lists ("Premier", "Parliamentary Secretary", "Assistant Deputy Minister"). */
+const TITLES = new Set([
+  "premier", "minister", "ministers", "deputy", "assistant", "associate", "parliamentary", "secretary", "mla", "mp", "chief", "chair",
+  "chairperson", "acting", "interim", "executive", "director", "president", "vice", "officer", "attorney", "solicitor", "general",
+  "speaker", "leader", "commissioner", "mayor", "councillor", "senior", "special", "advisor", "adviser",
+]);
+/** Words that tie an office to its portfolio ("Minister of State for Trade"); the portfolio's own words then precede the name. */
+const PORTFOLIO_LINKS = new Set(["of", "for", "and", "responsible", "state"]);
+const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "kc", "qc", "phd", "md", "mla", "mp"]);
+/** A multi-word part before the comma is a surname only when it starts like one ("Van Dyk, Quill"); otherwise it is "Name, office". */
+const SURNAME_PARTICLES = new Set(["van", "von", "de", "del", "della", "der", "den", "di", "du", "da", "dos", "das", "la", "le", "st", "ter", "ten", "mac", "mc", "bin", "ibn", "al", "el"]);
 /** Names made only of these are roles or placeholders, not people. */
 const ROLE_WORDS = new Set([
   "premier", "minister", "deputy", "parliamentary", "secretary", "mla", "mp", "assistant", "associate", "acting", "staff", "team",
@@ -33,6 +44,9 @@ const ROLE_WORDS = new Set([
   "relations", "director", "executive", "chief", "of", "and", "for", "government", "representative", "events", "event",
   "planner", "videographer", "photographer", "coordinator", "admin", "administrator", "system", "test", "user", "hq",
 ]);
+const isRole = (t: string) => ROLE_WORDS.has(t) || TITLES.has(t) || HONORIFICS.has(t) || PORTFOLIO_LINKS.has(t);
+/** What a part after a comma starts with when it describes the person rather than naming them ("…, MLA", "…, Minister of Health", "…, Jr."). */
+const isDescriptor = (t: string) => ROLE_WORDS.has(t) || TITLES.has(t) || SUFFIXES.has(t);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function normToken(t: string): string {
@@ -45,28 +59,80 @@ export function normEmail(raw: string | null): string | null {
   return EMAIL.test(e) ? e : null;
 }
 
-const tokensOf = (raw: string) => [...raw.matchAll(TOKEN_RE)].map((m) => normToken(m[0])).filter((t) => t.length > 1);
+type ParsedName = { given: string[]; surname: string[] };
+const tokensOf = (raw: string) => [...raw.matchAll(TOKEN_RE)].map((m) => normToken(m[0]));
+const withoutInitials = (t: string[]) => t.filter((w) => w.length > 1);
 
-/** A person's name as given names and surname, or null for roles, placeholders and anything that isn't a name. */
-export function parseName(raw: string | null): { given: string[]; surname: string[] } | null {
+function stripTitles(t: string[]): { rest: string[]; portfolio: boolean } {
+  let i = 0;
+  let portfolio = false;
+  while (i < t.length && (TITLES.has(t[i]!) || HONORIFICS.has(t[i]!) || PORTFOLIO_LINKS.has(t[i]!))) { if (PORTFOLIO_LINKS.has(t[i]!)) portfolio = true; i++; }
+  return { rest: t.slice(i), portfolio };
+}
+function stripSuffixes(t: string[]): string[] {
+  let j = t.length;
+  while (j > 0 && SUFFIXES.has(t[j - 1]!)) j--;
+  return t.slice(0, j);
+}
+
+function givenFirst(words: string[]): ParsedName | null {
+  const { rest: titled, portfolio } = stripTitles(words);
+  let rest = stripSuffixes(titled);
+  if (portfolio) {
+    // "Minister of Health Quill Ashbury": the portfolio runs from the last link word; the name is the two words after it.
+    let k = rest.length;
+    while (k > 0 && !PORTFOLIO_LINKS.has(rest[k - 1]!)) k--;
+    rest = rest.slice(k);
+    if (rest.length < 3) return null;
+    rest = rest.slice(-2);
+  }
+  if (rest.length < 2) return null;
+  return { given: rest.slice(0, -1), surname: rest.slice(-1) };
+}
+
+function surnameFirst(head: string[], tail: string[]): ParsedName | null {
+  const surname = withoutInitials(stripTitles(head).rest);
+  const given = stripSuffixes(stripTitles(tail).rest);
+  const named = withoutInitials(given);
+  return surname.length > 0 && given.length > 0 ? { given: named.length > 0 ? named : given, surname } : null;
+}
+
+/** Middle initials are dropped, but a lone initial is kept as the given name ("Q. Ashbury"). */
+const initialsAware = (words: string[], f: (w: string[]) => ParsedName | null) => f(withoutInitials(words)) ?? f(words);
+
+function parseCandidate(s: string): ParsedName | null {
+  if (/[\d@]/.test(s)) return null;
+  const parts = s.split(",").map(tokensOf).filter((p) => p.length > 0);
+  while (parts.length > 1 && isDescriptor(parts[parts.length - 1]![0]!)) parts.pop();
+  if (parts.length === 0) return null;
+  let p: ParsedName | null;
+  if (parts.length === 1) p = initialsAware(parts[0]!, givenFirst);
+  else {
+    const head = withoutInitials(stripTitles(parts[0]!).rest);
+    p = head.length >= 2 && !SURNAME_PARTICLES.has(head[0]!) ? initialsAware(parts[0]!, givenFirst) : surnameFirst(parts[0]!, parts[1]!);
+  }
+  if (!p || p.given.length === 0 || p.surname.length === 0 || p.given.length + p.surname.length > 4) return null;
+  if (p.surname.some((t) => t.length < 2)) return null;
+  if ([...p.given, ...p.surname].every(isRole)) return null;
+  return p;
+}
+
+/**
+ * A person's name as given names and surname, or null for roles, placeholders and anything that isn't a name.
+ * Offices and honorifics in front, suffixes and descriptions after a comma, and a parenthesised note are not
+ * part of the name; when the text outside the brackets isn't a name, the text inside them is tried.
+ */
+export function parseName(raw: string | null): ParsedName | null {
   if (raw === null) return null;
   const s = raw.trim();
-  if (s === "" || /[\d@]/.test(s)) return null;
-  const parts = s.split(",");
-  let given: string[];
-  let surname: string[];
-  if (parts.length === 2) {
-    surname = tokensOf(parts[0]!);
-    given = tokensOf(parts[1]!);
-  } else if (parts.length === 1) {
-    const t = tokensOf(s);
-    surname = t.slice(-1);
-    given = t.slice(0, -1);
-  } else return null;
-  while (given.length > 0 && HONORIFICS.has(given[0]!)) given.shift();
-  if (given.length === 0 || surname.length === 0 || given.length + surname.length > 4) return null;
-  if ([...given, ...surname].every((t) => ROLE_WORDS.has(t))) return null;
-  return { given, surname };
+  if (s === "") return null;
+  const outside = s.replace(/\([^()]*\)/g, " ");
+  const inside = [...s.matchAll(/\(([^()]*)\)/g)].map((m) => m[1]!);
+  for (const c of [outside, ...inside]) {
+    const p = parseCandidate(c);
+    if (p) return p;
+  }
+  return null;
 }
 
 export function nameVariants(raw: string | null): { key: string; surnameFirst: boolean }[] {

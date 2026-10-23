@@ -15,6 +15,20 @@ describe("parseName", () => {
   ])("parses %s", (raw, expected) => expect(parseName(raw)).toEqual(expected));
 
   it.each(["Premier", "Deputy Minister", "Admin", "", null, "Room 250", "a@b.example", "One Two Three Four Five"])("rejects %j", (raw) => expect(parseName(raw)).toBeNull());
+
+  it.each([
+    "Premier Quill Ashbury", "Minister Quill Ashbury", "Hon. Minister Quill Ashbury", "Parliamentary Secretary Quill Ashbury", "MLA Quill Ashbury",
+    "The Honourable Quill Ashbury", "Assistant Deputy Minister Quill Ashbury", "Minister of Health Quill Ashbury", "Minister of State for Trade Quill Ashbury",
+    "Quill Ashbury, MLA", "Quill Ashbury (Acting)", "Hon. Quill Ashbury, Minister of Health", "Quill Ashbury, Jr.", "Quill Ashbury MLA",
+    "Ashbury, Quill (Acting)", "Ashbury, Hon. Quill", "Quill A. Ashbury", "Quill A Ashbury", "Minister of Health (Quill Ashbury)",
+  ])("finds the name inside %j", (raw) => expect(parseName(raw)).toEqual({ given: ["quill"], surname: ["ashbury"] }));
+
+  it("keeps a lone initial as the given name and reads a surname particle before the comma", () => {
+    expect(parseName("Q. Ashbury")).toEqual({ given: ["q"], surname: ["ashbury"] });
+    expect(parseName("Van Dyk, Quill")).toEqual({ given: ["quill"], surname: ["van", "dyk"] });
+  });
+
+  it.each(["Minister of Health", "Deputy Minister of Health Services", "Minister of Health and Addictions", "Director, Communications", "Premier (Acting)", "Quill A.", "Executive Director, Media Relations"])("rejects the office %j", (raw) => expect(parseName(raw)).toBeNull());
 });
 
 describe("nameVariants", () => {
@@ -68,6 +82,16 @@ describe("buildPeopleIndex", () => {
     expect(index.byEmail.get("quill.ashbury@gov.example")).toBe(of("calendar.SystemUser:1"));
     expect(index.firstTokens.has("quill") && index.firstTokens.has("ashbury")).toBe(true);
     expect(index.maxWords).toBeGreaterThanOrEqual(2);
+  });
+
+  it("joins a row whose name carries an office to the person without it", () => {
+    const withTitles = buildPeopleIndex([
+      src("dbo.Ministry", "M2", ["Hon. Corin Vale, Minister of Health"]),
+      src("calendar.GovernmentRepresentative", "5", ["Premier Corin Vale (Acting)"]),
+      src("calendar.SystemUser", "9", ["Corin Vale"], "corin.vale@gov.example", { alwaysPerson: true }),
+    ], KEY);
+    expect(withTitles.persons).toHaveLength(1);
+    expect(withTitles.byVariant.get("corin vale")?.person.sources).toHaveLength(3);
   });
 
   it("is deterministic for the same rows in any order", () => {
