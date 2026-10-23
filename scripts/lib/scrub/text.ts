@@ -1,5 +1,5 @@
-import { FAKE_PHONE, fakeEmailFor, fakePhone } from "./identity";
-import { NAME_PARTICLES, normToken, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people";
+import { FAKE_PHONE, fakeEmailFor, fakePhone, type FakeIdentity } from "./identity";
+import { cleanName, isPlaceholderOrTitle, NAME_PARTICLES, normToken, parseName, PUBLIC_OFFICE_SOURCES, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people";
 
 export const EMAIL_RE = /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g;
 /** North American numbers with an area code: 604-555-0142, (604) 555-0142, 604.555.0142, +1 604 555 0142, 1-800-…, with ext./x. */
@@ -251,6 +251,164 @@ function contactSpans(text: string): { start: number; end: number; kind: "email"
   return out.sort((a, b) => a.start - b.start);
 }
 
+/**
+ * Text as the literal route compares it: entities decoded, accents and case folded, whitespace collapsed, commas
+ * spaced one way. Each character keeps the span of the original it came from, so a match can be replaced in place.
+ */
+function foldView(text: string, from: number, to: number, markup: RegExp): View {
+  const v = readableView(text, from, to, markup);
+  const chars: string[] = [], start: number[] = [], end: number[] = [];
+  const inserted: boolean[] = [];
+  const push = (c: string, a: number, b: number, ins = false) => { chars.push(c); start.push(a); end.push(b); inserted.push(ins); };
+  for (let i = 0; i < v.text.length;) {
+    const ch = String.fromCodePoint(v.text.codePointAt(i)!);
+    const a = v.start[i]!, b = v.end[i + ch.length - 1]!;
+    i += ch.length;
+    const f = ch.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[\u200b\ufeff]/g, " ").replace(/[‘’]/g, "'").replace(/[‐-–]/g, "-");
+    for (const c of f) {
+      if (/\s/u.test(c)) {
+        // A run of whitespace is one space, standing for the whole run.
+        if (chars.length > 0 && chars[chars.length - 1] === " " && !inserted[inserted.length - 1]) { end[end.length - 1] = b; continue; }
+        push(" ", a, b);
+      } else if (c === ",") {
+        if (chars.length > 0 && chars[chars.length - 1] === " " && !inserted[inserted.length - 1]) { chars.pop(); start.pop(); end.pop(); inserted.pop(); }
+        push(",", a, b);
+        push(" ", b, b, true);
+      } else push(c, a, b);
+    }
+  }
+  // A source space right after a comma's own space folds into it.
+  const out: { c: string; a: number; b: number; ins: boolean }[] = [];
+  for (let k = 0; k < chars.length; k++) {
+    const prev = out[out.length - 1];
+    if (chars[k] === " " && !inserted[k] && prev && prev.c === " " && prev.ins) { prev.b = end[k]!; continue; }
+    out.push({ c: chars[k]!, a: start[k]!, b: end[k]!, ins: inserted[k]! });
+  }
+  let lo = 0, hi = out.length;
+  while (lo < hi && out[lo]!.c === " ") lo++;
+  while (hi > lo && out[hi - 1]!.c === " ") hi--;
+  const kept = out.slice(lo, hi);
+  return { text: kept.map((x) => x.c).join(""), start: kept.map((x) => x.a), end: kept.map((x) => x.b) };
+}
+
+export function literalFold(s: string): string {
+  return foldView(s, 0, s.length, ENTITY_RE).text;
+}
+
+/** Who a literal needle names: public office holders only, or someone whose fictional name replaces it. */
+export interface NameNeedle { pub: boolean; fake: FakeIdentity | null }
+/** Needles keyed by their first folded word. */
+export type NameNeedles = Map<string, Map<string, NameNeedle>>;
+const LIT_WORD_RE = /[\p{L}\p{N}]+/gu;
+const LIT_WORD_CHAR = /[\p{L}\p{N}]/u;
+const isPublicOfficeSource = (source: string) => (PUBLIC_OFFICE_SOURCES as readonly string[]).includes(source);
+
+/**
+ * Gate 1's literal needles for names: every real full name as stored (without a bracketed note, address or trailing
+ * number), given-first and surname-first where it parses, and every form the name routes match by. Offices, roles and
+ * placeholders make none, nor does a bare word or anything under four characters.
+ */
+export function buildNameNeedles(index: PeopleIndex): NameNeedles {
+  const n: NameNeedles = new Map();
+  const variantsOf = new Map<unknown, string[]>();
+  for (const [key, hit] of index.byVariant) variantsOf.set(hit.person, [...(variantsOf.get(hit.person) ?? []), key]);
+  const add = (names: Iterable<string | null>, owner: NameNeedle, variants: string[] = []) => {
+    const forms = new Set<string>(variants);
+    for (const raw of names) {
+      if (!raw || raw.trim() === "" || isPlaceholderOrTitle(raw)) continue;
+      forms.add(cleanName(raw));
+      const parsed = parseName(raw);
+      if (parsed) {
+        const given = parsed.given.join(" "), first = parsed.given[0]!, last = parsed.surname.join(" ");
+        for (const f of [`${given} ${last}`, `${first} ${last}`, `${last}, ${given}`, `${last}, ${first}`]) forms.add(f);
+      }
+    }
+    for (const f of forms) {
+      const folded = literalFold(f);
+      const words = [...folded.matchAll(LIT_WORD_RE)];
+      if (words.length < 2) continue;
+      const first = words[0]!, last = words[words.length - 1]!;
+      const needle = folded.slice(first.index, last.index + last[0].length);
+      if (needle.length < 4) continue;
+      const byFirst = n.get(first[0]) ?? new Map<string, NameNeedle>();
+      const had = byFirst.get(needle);
+      // Public office only while every owner holds one; the first other owner's fictional name replaces it.
+      byFirst.set(needle, had ? { pub: had.pub && owner.pub, fake: had.fake && !had.pub ? had.fake : owner.pub ? had.fake : owner.fake } : owner);
+      n.set(first[0], byFirst);
+    }
+  };
+  for (const p of index.persons) add(p.names, { pub: p.sources.some((s) => isPublicOfficeSource(s.slice(0, s.indexOf(":")))), fake: p.fake }, variantsOf.get(p));
+  for (const r of index.strays) add(r.names, { pub: isPublicOfficeSource(r.source), fake: r.fake });
+  return n;
+}
+const needleCache = new WeakMap<PeopleIndex, NameNeedles>();
+export function nameNeedlesOf(index: PeopleIndex): NameNeedles {
+  let n = needleCache.get(index);
+  if (!n) { n = buildNameNeedles(index); needleCache.set(index, n); }
+  return n;
+}
+
+/** A lone letter that may sit inside a name ("quill b. ashbury"); "a" and "i" only with a period, since alone they are words. */
+const INITIAL_GAP = /^ (?:[^\P{L}ai]\.?|[ai]\.) /u;
+
+/**
+ * The length of a needle found at `at` in the folded text, or 0. As in the name routes, one middle initial the needle
+ * doesn't hold may be skipped between two of its words, but not beside a comma.
+ */
+function needleAt(text: string, at: number, needle: string): number {
+  const whole = (end: number) => !LIT_WORD_CHAR.test(text[end] ?? "");
+  if (text.startsWith(needle, at) && whole(at + needle.length)) return needle.length;
+  for (let k = needle.indexOf(" "); k > 0; k = needle.indexOf(" ", k + 1)) {
+    if (needle[k - 1] === "," || !text.startsWith(needle.slice(0, k), at)) continue;
+    const gap = INITIAL_GAP.exec(text.slice(at + k, at + k + 4));
+    if (!gap) continue;
+    const tail = at + k + gap[0].length;
+    const rest = needle.slice(k + 1);
+    if (text.startsWith(rest, tail) && whole(tail + rest.length)) return tail + rest.length - at;
+  }
+  return 0;
+}
+
+/** Every needle found in folded text, longest first at each word, as the literal route counts them. */
+export function literalNameMatches(folded: string, needles: NameNeedles): { at: number; len: number; needle: string; owner: NameNeedle }[] {
+  const out: { at: number; len: number; needle: string; owner: NameNeedle }[] = [];
+  let resume = 0;
+  for (const m of folded.matchAll(LIT_WORD_RE)) {
+    if (m.index < resume) continue;
+    const candidates = needles.get(m[0]);
+    if (!candidates) continue;
+    let best = 0;
+    let found: { needle: string; owner: NameNeedle } | null = null;
+    for (const [needle, owner] of candidates) {
+      const len = needleAt(folded, m.index, needle);
+      if (len > best) { best = len; found = { needle, owner }; }
+    }
+    if (!found) continue;
+    out.push({ at: m.index, len: best, ...found });
+    resume = m.index + best;
+  }
+  return out;
+}
+
+/**
+ * What the literal route would report as a real name, in any case, as spans of the original with the fictional name
+ * that replaces each (public office holders' names are left). Searched with tags blanked, and inside each tag.
+ */
+function literalSpans(text: string, index: PeopleIndex): { start: number; end: number; fake: FakeIdentity; surnameFirst: boolean }[] {
+  const needles = nameNeedlesOf(index);
+  const out: { start: number; end: number; fake: FakeIdentity; surnameFirst: boolean }[] = [];
+  const scan = (v: View) => {
+    for (const m of literalNameMatches(v.text, needles)) {
+      if (m.owner.pub || !m.owner.fake) continue;
+      out.push({ start: v.start[m.at]!, end: v.end[m.at + m.len - 1]!, fake: m.owner.fake, surnameFirst: m.needle.includes(", ") });
+    }
+  };
+  scan(foldView(text, 0, text.length, MARKUP_RE));
+  for (const t of text.matchAll(TAG_RE)) scan(foldView(text, t.index + 1, t.index + t[0].length - 1, ENTITY_RE));
+  out.sort((a, b) => a.start - b.start);
+  return out.filter((x, k) => k === 0 || x.start >= out[k - 1]!.end);
+}
+
 export function scrubText(text: string, ctx: ScrubCtx): { text: string; counts: Counts } {
   const counts: Counts = { names: 0, emails: 0, phones: 0 };
   let out = replaceSpans(text, contactSpans(text), (_orig, sp) => {
@@ -265,17 +423,26 @@ export function scrubText(text: string, ctx: ScrubCtx): { text: string; counts: 
   });
   // Replaced until nothing more matches: a fictional first name can complete a real person's name with the word
   // before it ("Ashbury, <fictional first>"), which a second pass would otherwise find.
-  for (let pass = 0; pass < 4; pass++) {
+  for (let pass = 0; pass < 6; pass++) {
     const matches = nameSpans(out, ctx.index);
-    if (matches.length === 0) break;
-    counts.names += matches.length;
-    const parts = matches.flatMap((m) => m.parts.map((p) => ({ ...p, fake: m.hit.person.fake })));
-    out = replaceSpans(out, parts, (_orig, p) => {
-      if (p.role === "drop") return "";
-      const fake = p.role === "given" ? p.fake.first : p.fake.last;
-      // An initial stays an initial: "Q. Ashbury" becomes "F. Last", not "First. Last".
-      return upperIf(p.shape, p.role === "given" && p.shape.length === 1 ? fake[0]! : fake);
-    });
+    if (matches.length > 0) {
+      counts.names += matches.length;
+      const parts = matches.flatMap((m) => m.parts.map((p) => ({ ...p, fake: m.hit.person.fake })));
+      out = replaceSpans(out, parts, (_orig, p) => {
+        if (p.role === "drop") return "";
+        const fake = p.role === "given" ? p.fake.first : p.fake.last;
+        // An initial stays an initial: "Q. Ashbury" becomes "F. Last", not "First. Last".
+        return upperIf(p.shape, p.role === "given" && p.shape.length === 1 ? fake[0]! : fake);
+      });
+    }
+    // Then whatever the literal route would still report as a real name, in any case: an unreadable name, a name
+    // written in lower case, an ordinary phrase that equals a real full name. Each becomes that person's fictional name.
+    const literal = literalSpans(out, ctx.index);
+    if (literal.length > 0) {
+      counts.names += literal.length;
+      out = replaceSpans(out, literal, (orig, sp) => upperIf(orig, sp.surnameFirst ? `${sp.fake.last}, ${sp.fake.first}` : sp.fake.full));
+    }
+    if (matches.length === 0 && literal.length === 0) break;
   }
   return { text: out, counts };
 }

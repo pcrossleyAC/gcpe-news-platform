@@ -245,9 +245,16 @@ describe("buildPeopleIndex", () => {
     for (const p of index.persons) expect(real.has(p.fake.full.toLowerCase())).toBe(false);
   });
 
-  it("writes a mapping with one row per person", () => {
+  it("writes a mapping with one row per person and per row that joined no person", () => {
     const csv = mappingCsv(index).trim().split("\n");
     expect(csv[0]).toBe("person_key,real_names,real_emails,fake_name,fake_email,fake_phone");
-    expect(csv).toHaveLength(index.persons.length + 1);
+    expect(csv).toHaveLength(index.persons.length + index.strays.length + 1);
+  });
+  it("gives a row that joined no person its own fictional identity, after every person's", () => {
+    const ix = buildPeopleIndex([src("media.Contact", "1", ["Ximena de la Paz Okonkwo Ruiz"]), src("media.Contact", "2", ["Quill Ashbury"], "qa@news.example")], KEY);
+    expect(ix.strays).toHaveLength(1);
+    expect(ix.strays[0]!.fake.full).not.toBe(ix.persons[0]!.fake.full);
+    expect(buildPeopleIndex([src("media.Contact", "1", ["Ximena de la Paz Okonkwo Ruiz"])], KEY).strays[0]!.fake).toEqual(buildPeopleIndex([src("media.Contact", "1", ["Ximena de la Paz Okonkwo Ruiz"])], KEY).strays[0]!.fake);
+    expect(mappingCsv(ix)).toContain("x:media.Contact:1");
   });
 });

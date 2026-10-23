@@ -65,13 +65,17 @@ describe("names", () => {
   });
   it("leaves an honorific and replaces the person", () => expect(s("Hon. Dorian Feld spoke")).not.toMatch(/Dorian|Feld/));
   it("ignores accents", () => expect(s("with Jose Nunez")).not.toMatch(/jose|nunez/i));
-  it.each(["with jose nunez", "met quill ashbury today", "quill ashbury-led", "Quill ashbury said"])(
-    "leaves the lower-case or mixed %j to the literal route", (raw) => {
-      expect(s(raw)).toBe(raw);
-      expect(findLeaks(raw, index)).toEqual([]);
-      expect(literalHits(raw, buildLiteralNeedles(index)).map((h) => h.kind)).toContain("literal-name");
-    },
-  );
+  it.each([
+    ["with jose nunez", () => `with ${fakeOf("media.Contact:9").full}`], ["met quill ashbury today", () => `met ${quill.full} today`],
+    ["quill ashbury-led", () => `${quill.full}-led`], ["Quill ashbury said", () => `${quill.full} said`], ["ashbury, quill said", () => `${quill.last}, ${quill.first} said`],
+    ['<img alt="quill ashbury">', () => `<img alt="${quill.full}">`],
+  ])("replaces the lower-case or mixed %j as the literal route would report it", (raw, want) => {
+    expect(literalHits(raw, buildLiteralNeedles(index)).map((h) => h.kind)).toContain("literal-name");
+    expect(s(raw)).toBe(want());
+    expect(literalHits(s(raw), buildLiteralNeedles(index))).toEqual([]);
+    expect(findLeaks(s(raw), index)).toEqual([]);
+    expect(s(s(raw))).toBe(s(raw));
+  });
   it("matches hyphenated surnames whole", () => {
     expect(s("Marisol Tennant-Vey")).not.toMatch(/Marisol/);
     expect(s("Marisol Tennant arrived")).toBe("Marisol Tennant arrived");
@@ -196,17 +200,18 @@ describe("names joined by a dash, link-word surnames and office-word heads", () 
     expect(sx(raw)).not.toMatch(realX);
   });
 
-  it("leaves a hyphenated word alone when its case doesn't match the given name", () => {
-    expect(sx("a Marisol short-term plan")).toBe("a Marisol short-term plan");
-    expect(findLeaks("a Marisol short-term plan", ix)).toEqual([]);
+  it("replaces a real full name inside a hyphenated word whatever its case", () => {
+    expect(sx("a Marisol short-term plan")).toBe(`a ${ms!.full}-term plan`);
+    expect(findLeaks(sx("a Marisol short-term plan"), ix)).toEqual([]);
     expect(sx("a Marisol Short-led plan")).toBe(`a ${ms!.first} ${ms!.last}-led plan`);
   });
 
   it("replaces a link-word surname only when it is cased like a name", () => {
     expect(sx("Kevin To said")).toBe(`${kt!.first} ${kt!.last} said`);
     expect(sx("To, Kevin said")).toBe(`${kt!.last}, ${kt!.first} said`);
-    expect(sx("We asked Kevin to attend.")).toBe("We asked Kevin to attend.");
-    expect(findLeaks("We asked Kevin to attend.", ix)).toEqual([]);
+    // Ruling 23: an ordinary phrase that equals a real full name is rewritten too.
+    expect(sx("We asked Kevin to attend.")).toBe(`We asked ${kt!.full} attend.`);
+    expect(findLeaks(sx("We asked Kevin to attend."), ix)).toEqual([]);
     expect(findLeaks("Kevin To said", ix)).toEqual(["name", "name-plain"]);
   });
 
@@ -234,10 +239,16 @@ describe("ordinary words that look like listed names", () => {
     "The Opposition Leader said", "The Official Opposition Leader said", "Leader, Official Opposition", "the Legislative Assembly Speaker",
     "Speaker, Legislative Assembly", "Nelson Mayor", "Mayor, Nelson", "Canadian Forces General", "General, Canadian Forces",
     "news staff", "support staff", "News Staff", "Support Staff", "arts and culture", "Arts and Culture", "ARTS AND CULTURE", "parks and recreation",
-    "Parks and Recreation", "to mark short-term gains", "asked mark short to wait",
+    "Parks and Recreation",
   ])("leaves %j unchanged", (raw) => {
     expect(sx(raw)).toBe(raw);
     expect(findLeaks(raw, ix)).toEqual([]);
+  });
+
+  it("replaces a real full name written in lower case too (Ruling 23)", () => {
+    expect(sx("to mark short-term gains")).toBe(`to ${mark.full}-term gains`);
+    expect(sx("asked mark short to wait")).toBe(`asked ${mark.full} to wait`);
+    expect(sx(sx("asked mark short to wait"))).toBe(sx("asked mark short to wait"));
   });
 
   it("still replaces the person written like a name", () => {
@@ -406,5 +417,36 @@ describe("findLeaks", () => {
   it.each(["Call 555.0142.", "Call 604–555–0142 now", "Call 604 \u2013 555 \u2013 0142 now", "Call 604 - 555 - 0142 now"])("finds the phone in %j", (raw) => {
     expect(findLeaks(raw, index)).toContain("phone");
     expect(findLeaks(s(raw), index)).toEqual([]);
+  });
+});
+
+describe("Ruling 23: everything the literal route reports is replaced", () => {
+  const LONG = "Ximena de la Paz Okonkwo Ruiz";
+  const ix = buildPeopleIndex([
+    { source: "media.Contact", id: "1", names: [LONG], email: null, phones: [] },
+    { source: "calendar.GovernmentRepresentative", id: "9", names: ["Tavi Quenby Rook Lindgard Oduya"], email: null, phones: [] },
+    { source: "calendar.SystemUser", id: "1", names: ["Quill Ashbury"], email: null, phones: [], alwaysPerson: true },
+  ], KEY);
+  const sx = (t: string) => scrubText(t, { index: ix, key: KEY }).text;
+  const needles = buildLiteralNeedles(ix);
+  const stray = ix.strays.find((x) => x.id === "1")!.fake;
+
+  it.each([`Met ${LONG} today`, `met ${LONG.toLowerCase()} today`, `MET ${LONG.toUpperCase()} TODAY`])("replaces an unreadable name with its row's fictional name in %j", (raw) => {
+    expect(literalHits(raw, needles).map((h) => h.kind)).toEqual(["literal-name"]);
+    const out = sx(raw);
+    expect(out).toMatch(new RegExp(stray.full, "i"));
+    expect(literalHits(out, needles)).toEqual([]);
+    expect(sx(out)).toBe(out);
+  });
+  it("leaves an unreadable public office holder's name for the literal route to count", () => {
+    const raw = "tavi quenby rook lindgard oduya spoke";
+    expect(sx(raw)).toBe(raw);
+    expect(literalHits(raw, needles)).toEqual([{ kind: "literal-name", publicOffice: true }]);
+  });
+  it("replaces names written with entities and split by markup", () => {
+    for (const raw of ["quill&nbsp;ashbury said", "<b>quill</b> ashbury said", "Q&#117;ill ashb&uacute;ry said"]) {
+      expect(literalHits(sx(raw), needles)).toEqual([]);
+      expect(sx(sx(raw))).toBe(sx(raw));
+    }
   });
 });

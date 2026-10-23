@@ -12,6 +12,9 @@ export interface PersonSource {
   /** User and crew rows always get an identity, even when their name can't be parsed. */
   alwaysPerson?: boolean;
 }
+export type Stray = PersonSource & { fake: FakeIdentity };
+/** Sources whose people hold public office (MLAs, ministers): their names may stay in text, their contacts may not. */
+export const PUBLIC_OFFICE_SOURCES = ["calendar.GovernmentRepresentative", "dbo.Ministry"] as const;
 export interface Person { key: string; names: string[]; emails: string[]; phones: string[]; sources: string[]; fake: FakeIdentity }
 export interface VariantHit { person: Person; surnameFirst: boolean }
 export interface PeopleIndex {
@@ -21,8 +24,11 @@ export interface PeopleIndex {
   byEmail: Map<string, Person>;
   firstTokens: Set<string>;
   maxWords: number;
-  /** Rows that joined no person: their stored names, emails and phones are still searched for by the literal route. */
-  strays: PersonSource[];
+  /**
+   * Rows that joined no person: their stored names, emails and phones are still searched for by the literal route,
+   * and each has a fictional identity of its own so a mention of it can be replaced.
+   */
+  strays: Stray[];
 }
 
 /**
@@ -314,12 +320,15 @@ export function buildPeopleIndex(sources: PersonSource[], key: string, reservedE
 
   const forbidden = new Set<string>();
   for (const d of drafts.values()) for (const n of d.names) for (const v of nameVariants(n)) if (!v.surnameFirst) forbidden.add(v.key);
+  const unplaced = sorted.filter((s) => !sourceDraft.has(sk(s)));
+  for (const s of unplaced) for (const n of s.names) if (n && n.trim()) forbidden.add(tokensOf(cleanName(n)).join(" "));
   const allocator = createIdentityAllocator(key, { forbiddenNames: forbidden, reservedEmails });
   const persons: Person[] = [...drafts.values()].sort((a, b) => cmp(a.key, b.key)).map((d) => ({
     key: d.key, names: [...d.names].sort(cmp), emails: [...d.emails].sort(cmp), phones: [...d.phones].sort(cmp), sources: [...d.sources].sort(cmp), fake: allocator.allocate(d.key),
   }));
 
-  const strays = sorted.filter((s) => !sourceDraft.has(sk(s)));
+  // Allocated after every person, so a stray never takes a person's identity.
+  const strays: Stray[] = unplaced.map((s) => ({ ...s, fake: allocator.allocate(`x:${sk(s)}`) }));
   const index: PeopleIndex = { persons, bySource: new Map(), byVariant: new Map(), byEmail: new Map(), firstTokens: new Set(), maxWords: 0, strays };
   // Fallback variants go in last, so they never take a form that is some other person's own name.
   for (const fallback of [false, true]) {
@@ -340,6 +349,9 @@ export function buildPeopleIndex(sources: PersonSource[], key: string, reservedE
 const csvCell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
 /** The real-to-fictional table. It holds real names: write it only with writePrivate. */
 export function mappingCsv(index: PeopleIndex): string {
-  const rows = index.persons.map((p) => [p.key, p.names.join(" | "), p.emails.join(" | "), p.fake.full, p.fake.email, p.fake.phone].map(csvCell).join(","));
+  const rows = [
+    ...index.persons.map((p) => [p.key, p.names.join(" | "), p.emails.join(" | "), p.fake.full, p.fake.email, p.fake.phone]),
+    ...index.strays.map((s) => [`x:${s.source}:${s.id}`, s.names.filter((n): n is string => !!n && n.trim() !== "").join(" | "), s.email ?? "", s.fake.full, s.fake.email, s.fake.phone]),
+  ].map((r) => r.map(csvCell).join(","));
   return ["person_key,real_names,real_emails,fake_name,fake_email,fake_phone", ...rows].join("\n") + "\n";
 }

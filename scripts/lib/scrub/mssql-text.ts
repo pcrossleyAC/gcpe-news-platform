@@ -2,8 +2,10 @@ import sql from "mssql";
 import { IDENTIFIER_COLUMNS, PEOPLE_QUERIES, quoteCol, quoteName, STRUCTURED } from "./legacy-schema";
 import { assertScrubCopy } from "./mssql";
 import { ScrubStepError } from "./private-out";
-import { cleanName, isPlaceholderOrTitle, normEmail, parseName, type PeopleIndex, type Person, type PersonSource } from "./people";
-import { entityText, findLeaks, scrubText, type LeakKind, type ScrubCtx } from "./text";
+import { normEmail, PUBLIC_OFFICE_SOURCES, type PeopleIndex, type Person, type PersonSource } from "./people";
+import { findLeaks, literalFold, literalNameMatches, nameNeedlesOf, scrubText, type LeakKind, type NameNeedles, type ScrubCtx } from "./text";
+
+export { literalFold, PUBLIC_OFFICE_SOURCES };
 
 interface PeopleRow { Id: string; Name1: string | null; Name2: string | null; Email: string | null; Phone1: string | null; Phone2: string | null; LinkId: string | null }
 
@@ -182,26 +184,12 @@ export async function scrubAllText(pool: sql.ConnectionPool, ctx: ScrubCtx, log:
 export type LiteralKind = "literal-name" | "literal-email" | "literal-phone";
 export type GateKind = LeakKind | LiteralKind;
 
-/** Sources whose people hold public office (MLAs, ministers): their names may stay in text, their contacts may not. */
-export const PUBLIC_OFFICE_SOURCES = ["calendar.GovernmentRepresentative", "dbo.Ministry"] as const;
-const isPublicOffice = (p: Person) => p.sources.some((s) => PUBLIC_OFFICE_SOURCES.some((src) => s.startsWith(`${src}:`)));
-const isPublicOfficeSource = (s: PersonSource) => (PUBLIC_OFFICE_SOURCES as readonly string[]).includes(s.source);
-
-const ENTITY_RE = /&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+);/gi;
 const TAG_RE = /<[^<>]{0,200}>/g;
-const WORD_RE = /[\p{L}\p{N}]+/gu;
-const WORD_CHAR = /[\p{L}\p{N}]/u;
 const LOOSE_EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/g;
 /** Digit groups a phone may be written in: "604 555 0142", "(604)555-0142", "+1.604.555.0142", "604 — 555 — 0142" (en dashes are folded to "-"). */
 const DIGIT_RUN_RE = /\d+(?:[ ().\-+/\u2014\u2212]{1,3}\d+)*/g;
 /** What the scrubber itself writes; a real number in that range can't be told from a fictional one. */
 const FAKE_DIGITS = /^(?:250)?55501\d\d$/;
-
-/** Text as the literal route compares it: entities decoded, accents and case folded, whitespace collapsed, commas spaced one way. */
-export function literalFold(s: string): string {
-  return s.replace(ENTITY_RE, (e) => entityText(e) ?? " ").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()
-    .replace(/[\u200b\ufeff]/g, " ").replace(/[‘’]/g, "'").replace(/[‐-–]/g, "-").replace(/\s+/g, " ").replace(/ ?, ?/g, ", ").trim();
-}
 
 /** The digits a stored phone is found by: ten without a leading 1, or a seven-digit local number. */
 function phoneDigits(raw: string): string | null {
@@ -212,90 +200,25 @@ function phoneDigits(raw: string): string | null {
   return FAKE_DIGITS.test(d) ? null : d;
 }
 
-/** Real names, emails and phones keyed for the literal route; each value says whether every owner holds public office. */
-export interface LiteralNeedles { names: Map<string, Map<string, boolean>>; emails: Map<string, boolean>; phones: Map<string, boolean> }
+/** Real names (from the people list, with who each names), emails and phones keyed for the literal route; each email and phone fails the gate for anyone. */
+export interface LiteralNeedles { names: NameNeedles; emails: Map<string, boolean>; phones: Map<string, boolean> }
 
 export function buildLiteralNeedles(index: PeopleIndex): LiteralNeedles {
-  const n: LiteralNeedles = { names: new Map(), emails: new Map(), phones: new Map() };
-  const put = (m: Map<string, boolean>, k: string, pub: boolean) => m.set(k, (m.get(k) ?? true) && pub);
-  // Every form the name routes match by, fallbacks included, is also searched for literally.
-  const variantsOf = new Map<Person, string[]>();
-  for (const [key, hit] of index.byVariant) variantsOf.set(hit.person, [...(variantsOf.get(hit.person) ?? []), key]);
-  const add = (names: Iterable<string>, emails: Iterable<string>, phones: Iterable<string>, pub: boolean, variants: string[] = []) => {
-    const forms = new Set<string>(variants);
-    for (const raw of names) {
-      // An office, role or placeholder ("Media Relations", "News Staff") is ordinary words, not a name to search for.
-      if (isPlaceholderOrTitle(raw)) continue;
-      // The name without a bracketed note, address or trailing number: "News 1130" is searched for as "News", which is no needle.
-      forms.add(cleanName(raw));
-      const parsed = parseName(raw);
-      if (parsed) {
-        const given = parsed.given.join(" "), first = parsed.given[0]!, last = parsed.surname.join(" ");
-        for (const f of [`${given} ${last}`, `${first} ${last}`, `${last}, ${given}`, `${last}, ${first}`]) forms.add(f);
-      }
-    }
-    for (const f of forms) {
-      const words = [...literalFold(f).matchAll(WORD_RE)];
-      // A bare word, a surname alone, would match ordinary text; so would anything shorter than four characters.
-      if (words.length < 2) continue;
-      const first = words[0]!, last = words[words.length - 1]!;
-      const needle = literalFold(f).slice(first.index, last.index + last[0].length);
-      if (needle.length < 4) continue;
-      const byFirst = n.names.get(first[0]) ?? new Map<string, boolean>();
-      put(byFirst, needle, pub);
-      n.names.set(first[0], byFirst);
-    }
+  const n: LiteralNeedles = { names: nameNeedlesOf(index), emails: new Map(), phones: new Map() };
+  const add = (emails: Iterable<string>, phones: Iterable<string | null>) => {
     // Contacts fail the gate for everyone, office holders included.
-    for (const e of emails) if (e.length >= 4) put(n.emails, literalFold(e), false);
-    for (const ph of phones) { const d = phoneDigits(ph); if (d) put(n.phones, d, false); }
+    for (const e of emails) if (e.length >= 4) n.emails.set(literalFold(e), false);
+    for (const ph of phones) { const d = ph ? phoneDigits(ph) : null; if (d) n.phones.set(d, false); }
   };
-  for (const p of index.persons) add(p.names, p.emails, p.phones, isPublicOffice(p), variantsOf.get(p));
+  for (const p of index.persons) add(p.emails, p.phones);
   // A row that joined no person (an unreadable name with no email) is still searched for by what it stores.
-  for (const r of index.strays) {
-    const email = normEmail(r.email);
-    add(r.names.filter((x): x is string => !!x && x.trim() !== ""), email ? [email] : [], r.phones.filter((x): x is string => !!x), isPublicOfficeSource(r));
-  }
+  for (const r of index.strays) { const email = normEmail(r.email); add(email ? [email] : [], r.phones); }
   return n;
 }
 
-/** A lone letter that may sit inside a name ("quill b. ashbury"); "a" and "i" only with a period, since alone they are words. */
-const INITIAL_GAP = /^ (?:[^\P{L}ai]\.?|[ai]\.) /u;
-
-/**
- * The length of a needle found at `at` in the folded text, or 0. As in the name routes, one middle initial the needle
- * doesn't hold may be skipped between two of its words, but not beside a comma.
- */
-function needleAt(text: string, at: number, needle: string): number {
-  const whole = (end: number) => !WORD_CHAR.test(text[end] ?? "");
-  if (text.startsWith(needle, at) && whole(at + needle.length)) return needle.length;
-  for (let k = needle.indexOf(" "); k > 0; k = needle.indexOf(" ", k + 1)) {
-    if (needle[k - 1] === "," || !text.startsWith(needle.slice(0, k), at)) continue;
-    const gap = INITIAL_GAP.exec(text.slice(at + k, at + k + 4));
-    if (!gap) continue;
-    const tail = at + k + gap[0].length;
-    const rest = needle.slice(k + 1);
-    if (text.startsWith(rest, tail) && whole(tail + rest.length)) return tail + rest.length - at;
-  }
-  return 0;
-}
-
-function nameMentions(text: string, names: LiteralNeedles["names"]): { leaks: number; publicOffice: number } {
+function nameMentions(text: string, names: NameNeedles): { leaks: number; publicOffice: number } {
   const r = { leaks: 0, publicOffice: 0 };
-  let resume = 0;
-  for (const m of text.matchAll(WORD_RE)) {
-    if (m.index < resume) continue;
-    const candidates = names.get(m[0]);
-    if (!candidates) continue;
-    let best = 0;
-    let pub = false;
-    for (const [needle, isPub] of candidates) {
-      const len = needleAt(text, m.index, needle);
-      if (len > best) { best = len; pub = isPub; }
-    }
-    if (best === 0) continue;
-    if (pub) r.publicOffice++; else r.leaks++;
-    resume = m.index + best;
-  }
+  for (const m of literalNameMatches(text, names)) if (m.owner.pub) r.publicOffice++; else r.leaks++;
   return r;
 }
 
