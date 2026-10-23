@@ -28,12 +28,36 @@ describe("parseName", () => {
     expect(parseName("Van Dyk, Quill")).toEqual({ given: ["quill"], surname: ["van", "dyk"] });
   });
 
+  it.each([
+    "Executive Assistant to the Minister", "Special Advisor to the Premier", "Deputy Minister to the Premier", "Secretary to Cabinet",
+    "Minister of Tourism, Arts, Culture and Sport", "Minister of Lakes, Trails and Parks", "Chief Information Officer",
+    "Government Chief Information Officer", "Health Minister", "Board Chair", "Grand Chief", "Lieutenant Governor", "Provincial Health Officer",
+  ])("gives the office %j no variants", (raw) => expect(nameVariants(raw)).toEqual([]));
+
+  it.each([
+    ["Grand Chief Ira Yellowhorse", "ira", "yellowhorse"], ["Regional Chief Ira Yellowhorse", "ira", "yellowhorse"], ["Elder Ira Yellowhorse", "ira", "yellowhorse"],
+    ["Board Chair Ira Yellowhorse", "ira", "yellowhorse"], ["Lieutenant Governor Ira Yellowhorse", "ira", "yellowhorse"], ["Health Minister Ira Yellowhorse", "ira", "yellowhorse"],
+    ["Provincial Health Officer Dr. Nell Ambrose", "nell", "ambrose"], ["Quill Elder", "quill", "elder"], ["Quill Mayor", "quill", "mayor"],
+  ])("finds the name inside the office %j", (raw, given, surname) => expect(parseName(raw)).toEqual({ given: [given], surname: [surname] }));
+
+  it("reads a non-breaking hyphen or en dash in a surname as a hyphen", () => {
+    expect(parseName("Ira Yellow\u2011Horse")).toEqual({ given: ["ira"], surname: ["yellow-horse"] });
+    expect(parseName("Ira Yellow\u2013Horse")).toEqual({ given: ["ira"], surname: ["yellow-horse"] });
+  });
+
+  it("indexes the last given word with the surname behind an unknown office, unless another person owns that form", () => {
+    expect(nameVariants("Grand Poobah Quill Ashbury").map((v) => v.key)).toContain("quill ashbury");
+    const both = buildPeopleIndex([src("media.Contact", "1", ["Quill Bryn Ashbury"]), src("media.Contact", "2", ["Bryn Ashbury"])], KEY);
+    expect(both.byVariant.get("bryn ashbury")?.person.sources).toEqual(["media.Contact:2"]);
+  });
+
   it.each(["Minister of Health", "Deputy Minister of Health Services", "Minister of Health and Addictions", "Director, Communications", "Premier (Acting)", "Quill A.", "Executive Director, Media Relations"])("rejects the office %j", (raw) => expect(parseName(raw)).toBeNull());
 });
 
 describe("nameVariants", () => {
   it("covers the full, first-last and surname-first forms", () => {
-    expect(nameVariants("Quill Bryn Ashbury").map((v) => v.key).sort()).toEqual(["ashbury , quill", "ashbury , quill bryn", "quill ashbury", "quill bryn ashbury"].sort());
+    expect(nameVariants("Quill Bryn Ashbury").map((v) => v.key).sort()).toEqual(["ashbury , quill", "ashbury , quill bryn", "bryn ashbury", "quill ashbury", "quill bryn ashbury"].sort());
+    expect(nameVariants("Quill Bryn Ashbury").find((v) => v.key === "bryn ashbury")?.fallback).toBe(true);
     expect(nameVariants("Quill Ashbury").find((v) => v.key === "ashbury , quill")?.surnameFirst).toBe(true);
   });
 });

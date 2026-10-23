@@ -23,17 +23,22 @@ export interface PeopleIndex {
   maxWords: number;
 }
 
-/** A word: letters and marks, with an apostrophe or hyphen only between letters (O'Neil, Tennant-Vey), so a closing quote or plural possessive stays outside. */
-export const TOKEN_RE = /[\p{L}\p{M}](?:[\p{L}\p{M}]|['’-](?=[\p{L}\p{M}]))*/gu;
+/**
+ * A word: letters and marks, with an apostrophe or hyphen only between letters (O'Neil, Tennant-Vey), so a closing
+ * quote or plural possessive stays outside. Non-breaking hyphens and en dashes inside a name count as hyphens.
+ */
+export const TOKEN_RE = /[\p{L}\p{M}](?:[\p{L}\p{M}]|['’\-‐‑–](?=[\p{L}\p{M}]))*/gu;
 const HONORIFICS = new Set(["hon", "honourable", "honorable", "the", "rt", "right", "dr", "mr", "mrs", "ms", "mx", "miss", "sir", "dame", "prof", "professor", "rev", "reverend"]);
-/** Offices that stand in front of a name in government lists ("Premier", "Parliamentary Secretary", "Assistant Deputy Minister"). */
+/** Office words in government and First Nations usage; everything up to the last of them before a name is the office. */
 const TITLES = new Set([
   "premier", "minister", "ministers", "deputy", "assistant", "associate", "parliamentary", "secretary", "mla", "mp", "chief", "chair",
   "chairperson", "acting", "interim", "executive", "director", "president", "vice", "officer", "attorney", "solicitor", "general",
-  "speaker", "leader", "commissioner", "mayor", "councillor", "senior", "special", "advisor", "adviser",
+  "speaker", "leader", "commissioner", "mayor", "councillor", "senior", "special", "advisor", "adviser", "grand", "regional", "elder",
+  "board", "lieutenant", "governor", "provincial", "chancellor", "ambassador", "consul", "registrar", "auditor", "comptroller",
+  "ombudsperson", "ombudsman", "clerk", "superintendent", "inspector", "commander", "captain", "councillors", "manager", "coordinator",
 ]);
-/** Words that tie an office to its portfolio ("Minister of State for Trade"); the portfolio's own words then precede the name. */
-const PORTFOLIO_LINKS = new Set(["of", "for", "and", "responsible", "state"]);
+/** Words that tie an office to its portfolio or its principal ("Minister of State for Trade", "Secretary to Cabinet"). A name never contains them. */
+const LINKS = new Set(["of", "for", "and", "to", "on", "the", "responsible", "state"]);
 const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "kc", "qc", "phd", "md", "mla", "mp"]);
 /** A multi-word part before the comma is a surname only when it starts like one ("Van Dyk, Quill"); otherwise it is "Name, office". */
 const SURNAME_PARTICLES = new Set(["van", "von", "de", "del", "della", "der", "den", "di", "du", "da", "dos", "das", "la", "le", "st", "ter", "ten", "mac", "mc", "bin", "ibn", "al", "el"]);
@@ -44,13 +49,23 @@ const ROLE_WORDS = new Set([
   "relations", "director", "executive", "chief", "of", "and", "for", "government", "representative", "events", "event",
   "planner", "videographer", "photographer", "coordinator", "admin", "administrator", "system", "test", "user", "hq",
 ]);
-const isRole = (t: string) => ROLE_WORDS.has(t) || TITLES.has(t) || HONORIFICS.has(t) || PORTFOLIO_LINKS.has(t);
+/**
+ * Words that end an office title ("Chief Information Officer", "Board Chair"). A parse whose surname is one of these is
+ * an office, not a person. Office words that are also common surnames (Mayor, Speaker, Leader, Elder, General) are left out.
+ */
+const OFFICE_ENDS = new Set([
+  "officer", "secretary", "minister", "ministers", "premier", "chair", "chairperson", "president", "commissioner", "advisor", "adviser",
+  "councillor", "councillors", "deputy", "assistant", "associate", "executive", "director", "coordinator", "manager", "governor",
+  "lieutenant", "provincial", "regional", "board", "cabinet", "council", "committee", "registrar", "auditor", "comptroller",
+  "ombudsperson", "ombudsman", "clerk", "superintendent", "inspector", "chancellor", "ambassador", "consul",
+]);
+const isRole = (t: string) => ROLE_WORDS.has(t) || TITLES.has(t) || HONORIFICS.has(t) || LINKS.has(t);
 /** What a part after a comma starts with when it describes the person rather than naming them ("…, MLA", "…, Minister of Health", "…, Jr."). */
 const isDescriptor = (t: string) => ROLE_WORDS.has(t) || TITLES.has(t) || SUFFIXES.has(t);
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function normToken(t: string): string {
-  return t.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/’/g, "'");
+  return t.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/’/g, "'").replace(/[‐‑–]/g, "-");
 }
 
 export function normEmail(raw: string | null): string | null {
@@ -66,7 +81,7 @@ const withoutInitials = (t: string[]) => t.filter((w) => w.length > 1);
 function stripTitles(t: string[]): { rest: string[]; portfolio: boolean } {
   let i = 0;
   let portfolio = false;
-  while (i < t.length && (TITLES.has(t[i]!) || HONORIFICS.has(t[i]!) || PORTFOLIO_LINKS.has(t[i]!))) { if (PORTFOLIO_LINKS.has(t[i]!)) portfolio = true; i++; }
+  while (i < t.length && (TITLES.has(t[i]!) || HONORIFICS.has(t[i]!) || LINKS.has(t[i]!))) { if (LINKS.has(t[i]!) && !HONORIFICS.has(t[i]!)) portfolio = true; i++; }
   return { rest: t.slice(i), portfolio };
 }
 function stripSuffixes(t: string[]): string[] {
@@ -76,12 +91,18 @@ function stripSuffixes(t: string[]): string[] {
 }
 
 function givenFirst(words: string[]): ParsedName | null {
-  const { rest: titled, portfolio } = stripTitles(words);
-  let rest = stripSuffixes(titled);
-  if (portfolio) {
+  let rest = stripSuffixes(words);
+  // "Health Minister Quill Ashbury", "Grand Chief …", "Provincial Health Officer Dr. …": whatever comes before the last
+  // office word or honorific that still leaves two words is the office.
+  let cut = -1;
+  for (let k = 0; k <= rest.length - 3; k++) if (TITLES.has(rest[k]!) || HONORIFICS.has(rest[k]!)) cut = k;
+  rest = rest.slice(cut + 1);
+  const stripped = stripTitles(rest);
+  rest = stripped.rest;
+  if (stripped.portfolio) {
     // "Minister of Health Quill Ashbury": the portfolio runs from the last link word; the name is the two words after it.
     let k = rest.length;
-    while (k > 0 && !PORTFOLIO_LINKS.has(rest[k - 1]!)) k--;
+    while (k > 0 && !LINKS.has(rest[k - 1]!)) k--;
     rest = rest.slice(k);
     if (rest.length < 3) return null;
     rest = rest.slice(-2);
@@ -108,12 +129,15 @@ function parseCandidate(s: string): ParsedName | null {
   let p: ParsedName | null;
   if (parts.length === 1) p = initialsAware(parts[0]!, givenFirst);
   else {
-    const head = withoutInitials(stripTitles(parts[0]!).rest);
-    p = head.length >= 2 && !SURNAME_PARTICLES.has(head[0]!) ? initialsAware(parts[0]!, givenFirst) : surnameFirst(parts[0]!, parts[1]!);
+    // A head that held a portfolio ("Minister of Tourism, Arts, …") is an office list, never "Surname, Given".
+    const { rest, portfolio } = stripTitles(parts[0]!);
+    const head = withoutInitials(rest);
+    p = portfolio || (head.length >= 2 && !SURNAME_PARTICLES.has(head[0]!)) ? initialsAware(parts[0]!, givenFirst) : surnameFirst(parts[0]!, parts[1]!);
   }
   if (!p || p.given.length === 0 || p.surname.length === 0 || p.given.length + p.surname.length > 4) return null;
   if (p.surname.some((t) => t.length < 2)) return null;
-  if ([...p.given, ...p.surname].every(isRole)) return null;
+  const all = [...p.given, ...p.surname];
+  if (all.some((t) => LINKS.has(t)) || p.surname.some((t) => OFFICE_ENDS.has(t) || ROLE_WORDS.has(t)) || all.every(isRole)) return null;
   return p;
 }
 
@@ -135,7 +159,14 @@ export function parseName(raw: string | null): ParsedName | null {
   return null;
 }
 
-export function nameVariants(raw: string | null): { key: string; surnameFirst: boolean }[] {
+export interface NameVariant { key: string; surnameFirst: boolean; fallback?: true }
+
+/**
+ * The forms a name is matched in. With more than one given word, the last given word plus the surname is a fallback:
+ * it catches a name behind an office the role lists don't know ("Grand Poobah Quill Ashbury"), and gives way to any
+ * other person's own variant.
+ */
+export function nameVariants(raw: string | null): NameVariant[] {
   const p = parseName(raw);
   if (!p) return [];
   const first = p.given[0]!;
@@ -146,7 +177,11 @@ export function nameVariants(raw: string | null): { key: string; surnameFirst: b
     [`${last} , ${p.given.join(" ")}`, true],
     [`${last} , ${first}`, true],
   ]);
-  return [...v].map(([key, surnameFirst]) => ({ key, surnameFirst }));
+  const out: NameVariant[] = [...v].map(([key, surnameFirst]) => ({ key, surnameFirst }));
+  const lastGiven = p.given[p.given.length - 1]!;
+  const fallback = `${lastGiven} ${last}`;
+  if (p.given.length > 1 && lastGiven.length > 1 && !isRole(lastGiven) && !v.has(fallback)) out.push({ key: fallback, surnameFirst: false, fallback: true });
+  return out;
 }
 
 const cmp = (a: string, b: string) => (a < b ? -1 : a > b ? 1 : 0);
@@ -206,8 +241,11 @@ export function buildPeopleIndex(sources: PersonSource[], key: string, reservedE
   }));
 
   const index: PeopleIndex = { persons, bySource: new Map(), byVariant: new Map(), byEmail: new Map(), firstTokens: new Set(), maxWords: 0 };
+  // Fallback variants go in last, so they never take a form that is some other person's own name.
+  for (const fallback of [false, true]) {
+    for (const p of persons) for (const n of p.names) for (const v of nameVariants(n)) if (!!v.fallback === fallback && !index.byVariant.has(v.key)) index.byVariant.set(v.key, { person: p, surnameFirst: v.surnameFirst });
+  }
   for (const p of persons) {
-    for (const n of p.names) for (const v of nameVariants(n)) if (!index.byVariant.has(v.key)) index.byVariant.set(v.key, { person: p, surnameFirst: v.surnameFirst });
     for (const e of p.emails) if (!index.byEmail.has(e)) index.byEmail.set(e, p);
     for (const s of p.sources) index.bySource.set(s, p);
   }

@@ -3,7 +3,18 @@ import { buildPeopleIndex } from "../../scripts/lib/scrub/people";
 import { findLeaks, plainContactHits, plainNameHits, scrubText } from "../../scripts/lib/scrub/text";
 
 const KEY = "d".repeat(64);
+/** Office-only rows that must not become persons, and people behind offices or with dashed surnames. */
+const more = [
+  { source: "calendar.GovernmentRepresentative", id: "10", names: ["Executive Assistant to the Minister"], email: null, phones: [] },
+  { source: "calendar.GovernmentRepresentative", id: "11", names: ["Secretary to Cabinet"], email: null, phones: [] },
+  { source: "dbo.Ministry", id: "M9", names: ["Minister of Tourism, Arts, Culture and Sport"], email: null, phones: [] },
+  { source: "calendar.GovernmentRepresentative", id: "12", names: ["Chief Information Officer"], email: null, phones: [] },
+  { source: "calendar.GovernmentRepresentative", id: "13", names: ["Grand Chief Ira Yellowhorse"], email: null, phones: [] },
+  { source: "calendar.GovernmentRepresentative", id: "14", names: ["Provincial Health Officer Dr. Nell Ambrose"], email: null, phones: [] },
+  { source: "media.Contact", id: "13", names: ["Odette Marrow-Lisle"], email: null, phones: [] },
+];
 const index = buildPeopleIndex([
+  ...more,
   { source: "calendar.SystemUser", id: "1", names: ["Quill Ashbury"], email: "quill.ashbury@gov.example", phones: ["(604) 555-0142"], alwaysPerson: true },
   { source: "calendar.GovernmentRepresentative", id: "1", names: ["Hon. Dorian Feld"], email: null, phones: [] },
   { source: "media.Contact", id: "9", names: ["José Ñúñez"], email: null, phones: [] },
@@ -19,7 +30,7 @@ const ctx = { index, key: KEY };
 const quill = index.bySource.get("calendar.SystemUser:1")!.fake;
 const s = (t: string) => scrubText(t, ctx).text;
 const fakeOf = (k: string) => index.bySource.get(k)!.fake;
-const real = /\b(?:Quill|Ashbury|Dorian|Feld|Marisol|Tennant|Corin|Vale|Bexley|Strand|Perrin|Halloways|Brennick|Fenna|Rook|Lindqvist|Pellow)\b|Jos(?:e|é|&eacute;|&#233;)|N(?:u|ú|&uacute;)(?:n|ñ|&ntilde;)ez/i;
+const real = /\b(?:Quill|Ashbury|Dorian|Feld|Marisol|Tennant|Corin|Vale|Bexley|Strand|Perrin|Halloways|Brennick|Fenna|Rook|Lindqvist|Pellow|Yellowhorse|Ambrose|Marrow|Lisle)\b|Jos(?:e|é|&eacute;|&#233;)|N(?:u|ú|&uacute;)(?:n|ñ|&ntilde;)ez/i;
 
 describe("names", () => {
   it("replaces a full name inside a sentence", () => expect(s("Met with Quill Ashbury today.")).toBe(`Met with ${quill.first} ${quill.last} today.`));
@@ -105,6 +116,31 @@ describe("names with offices, initials and quotes", () => {
   it("accepts a space before the surname-first comma", () => expect(s("Ashbury , Quill said")).toBe(`${quill.last} , ${quill.first} said`));
 });
 
+describe("offices and dashed surnames", () => {
+  it.each([
+    "The report goes to the Minister today.", "Send it to Cabinet first.", "Ask the Chief Information Officer.", "The Government Chief Information Officer spoke.",
+    "Minister of Tourism, Arts, Culture and Sport", "Tourism, arts and culture grew.", "An assistant to the Premier called.",
+  ])("leaves %j unchanged", (t) => {
+    expect(s(t)).toBe(t);
+    expect(findLeaks(t, index)).toEqual([]);
+  });
+  it("finds people behind offices the old role list didn't know", () => {
+    const ira = fakeOf("calendar.GovernmentRepresentative:13");
+    const nell = fakeOf("calendar.GovernmentRepresentative:14");
+    expect(s("Grand Chief Ira Yellowhorse spoke")).toBe(`Grand Chief ${ira.first} ${ira.last} spoke`);
+    expect(s("Provincial Health Officer Dr. Nell Ambrose")).toBe(`Provincial Health Officer Dr. ${nell.first} ${nell.last}`);
+  });
+  it("reads a non-breaking hyphen or en dash in a surname as a hyphen", () => {
+    const odette = fakeOf("media.Contact:13");
+    for (const dash of ["-", "\u2011", "&#8209;", "\u2013", "&ndash;", "&#8211;"]) expect(s(`Odette Marrow${dash}Lisle said`)).toBe(`${odette.first} ${odette.last} said`);
+  });
+  it("finds a name before a hyphenated suffix", () => {
+    expect(s("a Quill Ashbury-led review")).toBe(`a ${quill.first} ${quill.last}-led review`);
+    expect(s("the Quill Ashbury\u2013era rules")).toBe(`the ${quill.first} ${quill.last}\u2013era rules`);
+    expect(s("Marisol Tennant-Smith")).toBe("Marisol Tennant-Smith");
+  });
+});
+
 describe("emails", () => {
   it("maps a known person's email to their fictional one", () => expect(s("Write quill.ashbury@gov.example.")).toBe(`Write ${quill.email}.`));
   it("maps an unknown email to a numbered example.test address", () => expect(s("press@news.example")).toMatch(/^person\d+@example\.test$/));
@@ -169,6 +205,7 @@ describe("re-running", () => {
   });
   it("gives the same output from an index built from the rows in another order", () => {
     const reordered = buildPeopleIndex([
+      ...[...more].reverse(),
       { source: "media.Contact", id: "12", names: ["J.R. Pellow"], email: null, phones: [] },
       { source: "calendar.SystemUser", id: "3", names: ["Fenna Rook Lindqvist"], email: null, phones: [], alwaysPerson: true },
       { source: "media.Contact", id: "11", names: ["T. Brennick"], email: null, phones: [] },
@@ -215,6 +252,11 @@ describe("findLeaks", () => {
     "Quill Ashbury&#8217;s team",
     `<img data-src="${"z".repeat(250)}" alt="Quill Ashbury">`,
     "J.R. Pellow said",
+    "Grand Chief Ira Yellowhorse spoke",
+    "Provincial Health Officer Dr. Nell Ambrose",
+    "Odette Marrow\u2011Lisle said",
+    "Odette Marrow&ndash;Lisle said",
+    "a Quill Ashbury-led review",
   ])("finds %j by both routes before scrubbing and nothing after", (raw) => {
     const before = findLeaks(raw, index);
     expect(before).toContain("name");

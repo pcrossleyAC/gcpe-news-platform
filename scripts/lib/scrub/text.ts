@@ -29,6 +29,7 @@ export function phoneSpans(text: string): { start: number; end: number; local: b
 const JOIN_GAP = /^(?:\s|&nbsp;|&#160;|&#xa0;|<[^<>]{0,200}>)+$/i;
 const COMMA_GAP = /^(?:\s|&nbsp;|&#160;|&#xa0;)*,(?:\s|&nbsp;|&#160;|&#xa0;)*$/i;
 const POSSESSIVE = /['’]s$/i;
+const HYPHEN = /[-\u2010\u2011\u2013]/;
 
 const TAG_RE = /<[^<>]{0,200}>/g;
 const ENTITY_RE = /&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+);/gi;
@@ -127,21 +128,31 @@ function matchView(text: string, view: View, index: PeopleIndex, out: NameMatch[
         const initials = words.map((_, k) => i + k).filter((j) => j > i && j < last && toks[j]!.norm.length === 1);
         if (initials.length === 1 && initials[0] !== commaAt && initials[0]! + 1 !== commaAt) hit = index.byVariant.get(keyOf(initials[0]!));
       }
-      if (!hit) continue;
-      const found = hit;
       const lastTok = toks[last]!;
       const poss = POSSESSIVE.exec(lastTok.shape);
+      let keep = lastTok.shape.length - (poss ? poss[0].length : 0);
+      if (!hit) {
+        // "Quill Ashbury-led", "Ashbury–era": the name is the part before the hyphen.
+        const h = lastTok.shape.search(HYPHEN);
+        if (h > 0) {
+          words[words.length - 1] = normToken(lastTok.shape.slice(0, h));
+          hit = index.byVariant.get(keyOf(-1));
+          keep = h;
+        }
+      }
+      if (!hit) continue;
+      const found = hit;
       const parts = toks.slice(i, i + n).map((t, k) => {
         const j = i + k;
         const role: Role = found.surnameFirst ? (j === i ? "surname" : j === commaAt ? "given" : "drop") : j === i ? "given" : j === last ? "surname" : "drop";
         let start = t.start;
-        let end = j === last && poss ? view.end[t.ve - poss[0].length - 1]! : t.end;
+        let end = j === last ? view.end[t.ve - t.shape.length + keep - 1]! : t.end;
         if (role === "drop") {
           // Take the space before a dropped word with it, and an initial's period, so no double space is left.
           if (/^\s+$/.test(text.slice(toks[j - 1]!.end, t.start))) start = toks[j - 1]!.end;
           if (t.norm.length === 1 && j < last && text[end] === ".") end++;
         }
-        return { start, end, role, shape: j === last && poss ? t.shape.slice(0, -poss[0].length) : t.shape };
+        return { start, end, role, shape: j === last ? t.shape.slice(0, keep) : t.shape };
       });
       match = { start: parts[0]!.start, end: parts[parts.length - 1]!.end, hit: found, parts };
       used = n;
@@ -241,6 +252,11 @@ function plainSegmentHits(segment: string, index: PeopleIndex): number {
       if (!found && n >= 3) {
         const initials = ws.map((w, k) => (k > 0 && k < n - 1 && INITIAL_WORD.test(w) ? k : -1)).filter((k) => k >= 0);
         if (initials.length === 1 && !(comma && initials[0] === 1)) found = index.byVariant.has(keyOf(initials[0]!));
+      }
+      if (!found && ws[n - 1]!.includes("-")) {
+        // The name before a hyphen ("Quill Ashbury-led").
+        ws[n - 1] = ws[n - 1]!.slice(0, ws[n - 1]!.indexOf("-"));
+        found = ws[n - 1] !== "" && index.byVariant.has(keyOf(-1));
       }
       if (found) { hits++; i += n - 1; break; }
     }
