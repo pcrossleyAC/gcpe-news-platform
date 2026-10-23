@@ -14,6 +14,7 @@ import { withAdvisoryLock, type Db } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { importLegacyUsers } from "../../../core/src/import/users";
+import { syncCoreTaxonomy } from "./core-taxonomy";
 import { legacyUserMap, type LegacyUserRow } from "./map";
 import { importReference } from "./reference";
 import { importReleases, type ImportReleasesContext } from "./releases";
@@ -90,6 +91,10 @@ export async function runImport(db: Db, coreDb: Db, source: LegacySource, opts: 
       report.count("users", "imported", legacyUserRows.length - skipped.length);
       const users = legacyUserMap(legacyUserRows, emailMap);
       log(`[nrms:import] users: ${legacyUserRows.length} legacy, ${skipped.length} skipped`);
+
+      stage = "taxonomy";
+      const taxonomy = await syncCoreTaxonomy(coreDb, db);
+      log(`[nrms:import] Core taxonomy: ${taxonomy.organizations} organizations, ${taxonomy.terms} terms`);
 
       stage = "reference";
       const { pageImageIds, mediaListIds, termIds } = await importReference(db, source, report, opts.subscribers ?? []);

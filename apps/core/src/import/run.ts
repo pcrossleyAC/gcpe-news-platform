@@ -4,7 +4,7 @@ import type { LegacySource } from "@gcpe/legacy-import";
 import { isHqAbbreviation, isNonPublicAbbreviation, upsertOrganization } from "../services/organizations";
 import { upsertTerm } from "../services/terms";
 import { mapMinistry, mapTerm, type LegacyLinkRow, type LegacyMinistryRow, type LegacyMinistrySectorRow, type LegacyTermRow } from "./map";
-import { Q_MINISTRIES, Q_MINISTRY_SECTORS, Q_MINISTRY_SERVICES, Q_MINISTRY_TOPICS, Q_SECTORS, Q_SERVICES, Q_TAGS, Q_THEMES } from "./queries";
+import { Q_MINISTRIES, Q_MINISTRY_SECTORS, Q_MINISTRY_SERVICES, Q_MINISTRY_TOPICS, Q_SECTORS, Q_SERVICES, Q_SERVICES_PRESENT, Q_TAGS, Q_THEMES } from "./queries";
 
 function groupBy<T, K>(rows: T[], key: (r: T) => K): Map<K, T[]> {
   const map = new Map<K, T[]>();
@@ -15,14 +15,16 @@ function groupBy<T, K>(rows: T[], key: (r: T) => K): Map<K, T[]> {
 const norm = (id: string) => id.toLowerCase();
 
 export async function importLegacyReference(db: Db, source: LegacySource, subscribers: SubscriberConfig[]) {
-  const result = { organizations: { total: 0, changed: 0 }, terms: { total: 0, changed: 0 } };
+  const result = { organizations: { total: 0, changed: 0 }, terms: { total: 0, changed: 0 }, missingTables: [] as string[] };
 
   const termQueries: [TermKind, string][] = [
     ["sector", Q_SECTORS],
     ["theme", Q_THEMES],
     ["tag", Q_TAGS],
-    ["service", Q_SERVICES],
   ];
+  const [servicesTable] = await source.query<{ present: number }>(Q_SERVICES_PRESENT);
+  if (servicesTable?.present) termQueries.push(["service", Q_SERVICES]);
+  else result.missingTables.push("dbo.Service");
   for (const [kind, q] of termQueries) {
     for (const row of await source.query<LegacyTermRow>(q)) {
       const { changed } = await upsertTerm(db, mapTerm(kind, row), subscribers, { legacyId: norm(row.Id) });

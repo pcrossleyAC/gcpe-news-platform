@@ -19,10 +19,11 @@ export function releaseTypeFromLegacy(value: number): ReleaseType {
   return type;
 }
 
-// Legacy: Gcpe.Hub.Data_Legacy/Entity/PageLayout.cs — Formal = 1, Informal = 2.
+// Legacy: Gcpe.Hub.Data_Legacy/Entity/PageLayout.cs — Formal = 1, Informal = 2. Legacy data also
+// holds 0, outside the enum; legacy's document templates render anything but 1 as Informal (Q104).
 export function layoutFromLegacy(value: number): Layout {
   if (value === 1) return "formal";
-  if (value === 2) return "informal";
+  if (value === 2 || value === 0) return "informal";
   throw new Error(`Unknown legacy PageLayout ${value}`);
 }
 

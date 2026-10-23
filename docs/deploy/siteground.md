@@ -692,9 +692,11 @@ target environment at cutover**, not necessarily SiteGround's. Confirm the real 
 networking before scripting this into a deploy step.
 
 **Prerequisites.** Import Core's reference data first (`npm --workspace @gcpe/core run
-import:legacy` — ministries, sectors, themes, tags) — NRMS's release categories resolve against
-those keys, and unresolved ones are dropped with a warning, not an error, so an incomplete Core
-import silently loses data rather than failing loudly.
+import:legacy` — ministries, sectors, themes, tags). The importer copies them from
+`CORE_DATABASE_URL` into NRMS's own copy before importing releases, so the NRMS service doesn't
+need to be running to receive Core's events. Release categories resolve against those keys, and
+unresolved ones are dropped with a warning, not an error, so an incomplete Core import still
+silently loses data rather than failing loudly.
 
 **Running it:**
 

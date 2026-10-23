@@ -31,5 +31,9 @@ SELECT Id, [Key], SortOrder, IsActive, DisplayName FROM dbo.Theme`;
 export const Q_TAGS = `-- name: tags
 SELECT Id, [Key], SortOrder, IsActive, DisplayName FROM dbo.Tag`;
 
+// dbo.Service is missing from some legacy databases (Q103), so it is read only when present.
+export const Q_SERVICES_PRESENT = `-- name: servicesPresent
+SELECT CASE WHEN OBJECT_ID('dbo.Service', 'U') IS NULL THEN 0 ELSE 1 END AS present`;
+
 export const Q_SERVICES = `-- name: services
 SELECT Id, [Key], SortOrder, IsActive, DisplayName FROM dbo.Service`;

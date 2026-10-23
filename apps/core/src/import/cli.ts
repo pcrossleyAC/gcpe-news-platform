@@ -29,6 +29,7 @@ const source = await createMssqlSource({
 });
 try {
   const result = await importLegacyReference(db, source, parseSubscribers(env.EVENT_SUBSCRIBERS));
+  for (const table of result.missingTables) console.warn(`[core] legacy table ${table} not found: skipped`);
   console.log(JSON.stringify(result, null, 2));
 } finally {
   await source.close();
