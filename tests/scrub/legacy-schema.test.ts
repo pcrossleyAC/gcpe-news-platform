@@ -35,9 +35,9 @@ describe("legacy table rules", () => {
     for (const s of STRUCTURED) for (const c of Object.keys(s.columns)) expect(TEXT_COLUMNS[s.table], `${s.table}.${c}`).toContain(c);
   });
 
-  it("reads every people source, with user rows always becoming people", () => {
+  it("reads every people source, with user, comm contact and crew rows always becoming people", () => {
     expect(PEOPLE_QUERIES.map((q) => q.source)).toEqual(["calendar.SystemUser", "dbo.User", "calendar.CommunicationContact", "calendar.GovernmentRepresentative", "calendar.EventPlanner", "calendar.Videographer", "dbo.Ministry", "media.Contact"]);
-    expect(PEOPLE_QUERIES.filter((q) => q.alwaysPerson).map((q) => q.source)).toEqual(["calendar.SystemUser", "dbo.User"]);
+    expect(PEOPLE_QUERIES.filter((q) => q.alwaysPerson).map((q) => q.source)).toEqual(["calendar.SystemUser", "dbo.User", "calendar.CommunicationContact", "calendar.EventPlanner", "calendar.Videographer"]);
     for (const q of PEOPLE_QUERIES) for (const col of ["AS Id", "AS Name1", "AS Name2", "AS Email", "AS Phone1", "AS Phone2", "AS LinkId"]) expect(q.sql, q.source).toContain(col);
   });
 

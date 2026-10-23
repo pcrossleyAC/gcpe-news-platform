@@ -9,7 +9,7 @@ export interface PersonSource {
   /** A row that names another row's person (a comm contact's user). */
   linkId?: string | null;
   linkSource?: string;
-  /** User rows always get an identity, even when their name can't be parsed. */
+  /** User and crew rows always get an identity, even when their name can't be parsed. */
   alwaysPerson?: boolean;
 }
 export interface Person { key: string; names: string[]; emails: string[]; phones: string[]; sources: string[]; fake: FakeIdentity }
@@ -21,6 +21,8 @@ export interface PeopleIndex {
   byEmail: Map<string, Person>;
   firstTokens: Set<string>;
   maxWords: number;
+  /** Rows that joined no person: their stored names, emails and phones are still searched for by the literal route. */
+  strays: PersonSource[];
 }
 
 /**
@@ -156,6 +158,8 @@ function parseCandidate(s: string): Reading {
     // An office alone before the comma, with no surname read from it, is "Office, Place" ("Mayor, Nelson").
     if (!p && rest.length === 0) return OFFICE;
   }
+  // A crew word or placeholder after a full name ("Quill Ashbury Videographer") isn't the surname: the name before it is.
+  if (p && p.given.length >= 2 && p.surname.length === 1 && STAND_INS.has(p.surname[0]!)) p = { given: p.given.slice(0, -1), surname: p.given.slice(-1) };
   if (!p || p.given.length === 0 || p.surname.length === 0 || p.given.length + p.surname.length > 4) return null;
   if (p.surname.some((t) => t.length < 2)) return null;
   const all = [...p.given, ...p.surname];
@@ -180,9 +184,17 @@ export function parseName(raw: string | null): ParsedName | null {
   return r === OFFICE ? null : r;
 }
 
+/**
+ * A stored name without what crowds it: a bracketed note ("[mailto:…]"), an email address and a trailing number
+ * ("Quill Ashbury 2"). The parser and the literal route both start from this.
+ */
+export function cleanName(raw: string): string {
+  return raw.replace(/\[[^\]]*\]?/g, " ").replace(/(?:mailto:)?[^\s@,;()[\]<>]+@[^\s@,;()[\]<>]+/gi, " ").replace(/(?:\s+\d+)+\s*$/, "").replace(/\s+/g, " ").trim();
+}
+
 function readName(raw: string | null): Reading {
   if (raw === null) return null;
-  const s = raw.trim();
+  const s = cleanName(raw);
   if (s === "") return null;
   const outside = s.replace(/\([^()]*\)/g, " ");
   const inside = [...s.matchAll(/\(([^()]*)\)/g)].map((m) => m[1]!);
@@ -276,8 +288,8 @@ export function buildPeopleIndex(sources: PersonSource[], key: string, reservedE
     const c = canonicalOf(s);
     if (c) add(byCanonical.get(c) ?? draft(`n:${c}`), s);
   }
-  // Every user row is a person, named or not.
-  for (const s of sorted) if (!sourceDraft.has(sk(s)) && s.alwaysPerson) add(draft(`s:${sk(s)}`), s);
+  // Every user and crew row is a person, named or not; a row that names another row's person tries that first, below.
+  for (const s of sorted) if (!sourceDraft.has(sk(s)) && s.alwaysPerson && !linked(s)) add(draft(`s:${sk(s)}`), s);
   // Rows that name another row's person join that person.
   for (const s of sorted) {
     if (sourceDraft.has(sk(s)) || !linked(s)) continue;
@@ -285,6 +297,7 @@ export function buildPeopleIndex(sources: PersonSource[], key: string, reservedE
     const c = canonicalOf(s);
     if (target) add(target, s);
     else if (c) add(byCanonical.get(c) ?? draft(`n:${c}`), s);
+    else if (s.alwaysPerson) add(draft(`s:${sk(s)}`), s);
   }
 
   const forbidden = new Set<string>();
@@ -294,7 +307,8 @@ export function buildPeopleIndex(sources: PersonSource[], key: string, reservedE
     key: d.key, names: [...d.names].sort(cmp), emails: [...d.emails].sort(cmp), phones: [...d.phones].sort(cmp), sources: [...d.sources].sort(cmp), fake: allocator.allocate(d.key),
   }));
 
-  const index: PeopleIndex = { persons, bySource: new Map(), byVariant: new Map(), byEmail: new Map(), firstTokens: new Set(), maxWords: 0 };
+  const strays = sorted.filter((s) => !sourceDraft.has(sk(s)));
+  const index: PeopleIndex = { persons, bySource: new Map(), byVariant: new Map(), byEmail: new Map(), firstTokens: new Set(), maxWords: 0, strays };
   // Fallback variants go in last, so they never take a form that is some other person's own name.
   for (const fallback of [false, true]) {
     for (const p of persons) for (const n of p.names) for (const v of nameVariants(n)) if (!!v.fallback === fallback && !index.byVariant.has(v.key)) index.byVariant.set(v.key, { person: p, surnameFirst: v.surnameFirst });

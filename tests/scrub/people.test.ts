@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPeopleIndex, isPlaceholderOrTitle, mappingCsv, nameVariants, normEmail, parseName, type PersonSource } from "../../scripts/lib/scrub/people";
+import { buildPeopleIndex, cleanName, isPlaceholderOrTitle, mappingCsv, nameVariants, normEmail, parseName, type PersonSource } from "../../scripts/lib/scrub/people";
 
 const KEY = "c".repeat(64);
 const src = (source: string, id: string, names: (string | null)[], email: string | null = null, extra: Partial<PersonSource> = {}): PersonSource => ({ source, id, names, email, phones: [], ...extra });
@@ -101,6 +101,42 @@ describe("parseName", () => {
   it.each(["Digital Strategist", "Senior Policy Analyst", "Content Lead", "News Editor", "Photo Gallery", "Outreach Specialist", "Events Coordinator", "Project Manager"])(
     "rejects the job title %j", (raw) => expect(parseName(raw)).toBeNull(),
   );
+});
+
+describe("names crowded by notes, addresses, numbers and crew words", () => {
+  it.each([
+    ["Quill Ashbury Videographer [mailto:q.ashbury@news.example]", ["quill"], ["ashbury"]],
+    ["Quill Ashbury q.ashbury@news.example", ["quill"], ["ashbury"]],
+    ["Quill Ashbury 2", ["quill"], ["ashbury"]],
+    ["Quill Ashbury Staff", ["quill"], ["ashbury"]],
+    ["Quill Bryn Ashbury TBD", ["quill", "bryn"], ["ashbury"]],
+  ])("reads %j", (raw, given, surname) => expect(parseName(raw)).toEqual({ given, surname }));
+  it("strips the note, the address and the trailing number, and nothing else", () => {
+    expect(cleanName("Quill [mailto:q@news.example]")).toBe("Quill");
+    expect(cleanName("Quill Ashbury 2 3")).toBe("Quill Ashbury");
+    expect(cleanName("Room 250 East")).toBe("Room 250 East");
+    expect(parseName("Quill [mailto:q@news.example]")).toBeNull();
+    expect(isPlaceholderOrTitle("Contract Photographer")).toBe(true);
+  });
+});
+
+describe("people that no rule can read", () => {
+  it("makes every crew and comm contact row a person, and a comm contact still joins the user it names", () => {
+    const ix = buildPeopleIndex([
+      src("calendar.SystemUser", "1", ["Quill Ashbury"], null, { alwaysPerson: true }),
+      src("calendar.CommunicationContact", "1", ["Q. A."], null, { linkId: "1", linkSource: "calendar.SystemUser", alwaysPerson: true }),
+      src("calendar.CommunicationContact", "2", ["Media Desk"], null, { linkId: "99", linkSource: "calendar.SystemUser", alwaysPerson: true }),
+      src("calendar.Videographer", "1", ["Pell [mailto:pell@news.example]"], null, { alwaysPerson: true }),
+      src("calendar.EventPlanner", "1", ["Fen"], null, { alwaysPerson: true }),
+    ], KEY);
+    expect(ix.bySource.get("calendar.CommunicationContact:1")).toBe(ix.bySource.get("calendar.SystemUser:1"));
+    for (const k of ["calendar.CommunicationContact:2", "calendar.Videographer:1", "calendar.EventPlanner:1"]) expect(ix.bySource.get(k), k).toBeDefined();
+    expect(ix.strays).toEqual([]);
+  });
+  it("keeps a row that joined no person, for the literal route", () => {
+    const ix = buildPeopleIndex([src("media.Contact", "1", ["Ximena de la Paz Okonkwo Ruiz"]), src("media.Contact", "2", ["Quill Ashbury"])], KEY);
+    expect(ix.strays.map((s) => `${s.source}:${s.id}`)).toEqual(["media.Contact:1"]);
+  });
 });
 
 describe("isPlaceholderOrTitle", () => {

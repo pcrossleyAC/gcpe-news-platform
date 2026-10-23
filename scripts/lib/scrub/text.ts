@@ -3,8 +3,15 @@ import { NAME_PARTICLES, normToken, TOKEN_RE, type PeopleIndex, type VariantHit 
 
 export const EMAIL_RE = /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g;
 /** North American numbers with an area code: 604-555-0142, (604) 555-0142, 604.555.0142, +1 604 555 0142, 1-800-…, with ext./x. */
-/** Separators are matched over entity-decoded text, so they include no-break and thin spaces and the Unicode hyphens and dashes. */
-const FULL_PHONE_RE = /(?<![\w+\-\u2010-\u2013])(?:\+?1[ .\-\u00a0\u2000-\u200a\u202f\u2010-\u2013]?)?(?:\(\d{3}\)[ .\-\u00a0\u2000-\u200a\u202f\u2010-\u2013]?|\d{3}[ .\-\u00a0\u2000-\u200a\u202f\u2010-\u2013])\d{3}[ .\-\u00a0\u2000-\u200a\u202f\u2010-\u2013]\d{4}(?:\s*(?:ext\.?|extension|x)\s*\d{1,6})?(?![\w\-\u2010-\u2013])/gi;
+/**
+ * Separators are matched over entity-decoded text, so they include no-break and thin spaces and the Unicode hyphens
+ * and dashes; a dash may have one space on either side ("604 – 555 – 0142").
+ */
+const SEP = "(?:[ \\u00a0]?[\\-\\u2010-\\u2014\\u2212][ \\u00a0]?|[ .\\u00a0\\u2000-\\u200a\\u202f])";
+const FULL_PHONE_RE = new RegExp(
+  `(?<![\\w+\\-\\u2010-\\u2014\\u2212])(?:\\+?1${SEP}?)?(?:\\(\\d{3}\\)${SEP}?|\\d{3}${SEP})\\d{3}${SEP}\\d{4}(?:\\s*(?:ext\\.?|extension|x)\\s*\\d{1,6})?(?![\\w\\-\\u2010-\\u2014\\u2212])`,
+  "gi",
+);
 /**
  * Seven-digit local numbers, only with a hyphen or dot, so years, ids and keys aren't mistaken for them.
  * A following period is a sentence end unless a digit comes after it.

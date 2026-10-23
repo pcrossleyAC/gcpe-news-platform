@@ -2,7 +2,7 @@ import { join, resolve } from "node:path";
 import pg from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createTestDatabase, type TestDatabase } from "@gcpe/db-kit";
-import { gatePostgres } from "../../scripts/lib/scrub/pg-gate";
+import { gatePostgres, withoutTestAccounts } from "../../scripts/lib/scrub/pg-gate";
 import { buildPeopleIndex } from "../../scripts/lib/scrub/people";
 
 const CORE_MIGRATIONS = join(resolve(import.meta.dirname, "..", ".."), "apps", "core", "migrations");
@@ -68,5 +68,22 @@ describe("gatePostgres", () => {
     await exec("INSERT INTO users (email, display_name, password_hash) VALUES ('alex.ashfield@example.test', 'Alex Ashfield', 'scrypt$x'), ('editor@example.test', 'Test Editor', 'scrypt$y')");
     const r = await gatePostgres([], index, { coreUrl: core.url, signInAllowed: new Set(["editor@example.test"]) });
     expect(r.signInProblems).toBe(1);
+  });
+
+  it("doesn't count a carried-over test account's own address as a leak, and counts any other", async () => {
+    await exec("INSERT INTO users (email, display_name, password_hash) VALUES ('qa.tester@boxs.example', 'QA Tester', 'scrypt$z'), ('qa.tester2@boxs.example', 'QA Two', NULL)");
+    await exec("UPDATE organizations SET display_additional_name = $1 WHERE key = 'tourism'", ["Ask qa.tester@boxs.example or QA.Tester@boxs.example"]);
+    const r = await gatePostgres([{ name: "core", url: core.url }], index, { coreUrl: core.url, signInAllowed: new Set(["QA.Tester@boxs.example", "editor@example.test"]) });
+    expect(r.hits.filter((h) => h.table === "core.users" && h.kind === "email")).toEqual([{ table: "core.users", column: "email", kind: "email", count: 1 }]);
+    expect(r.hits.some((h) => h.table === "core.organizations" && h.column === "display_additional_name")).toBe(false);
+  });
+});
+
+describe("withoutTestAccounts", () => {
+  const allowed = new Set(["qa.tester@boxs.example"]);
+  it("blanks exactly the allowed addresses, whole", () => {
+    expect(withoutTestAccounts("to QA.Tester@boxs.example, cc x@boxs.example", allowed)).toBe("to  , cc x@boxs.example");
+    expect(withoutTestAccounts("xqa.tester@boxs.example and qa.tester@boxs.example.org", allowed)).toBe("xqa.tester@boxs.example and qa.tester@boxs.example.org");
+    expect(withoutTestAccounts("qa.tester@boxs.example", new Set())).toBe("qa.tester@boxs.example");
   });
 });

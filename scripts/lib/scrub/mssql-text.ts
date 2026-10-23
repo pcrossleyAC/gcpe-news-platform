@@ -2,7 +2,7 @@ import sql from "mssql";
 import { IDENTIFIER_COLUMNS, PEOPLE_QUERIES, quoteCol, quoteName, STRUCTURED } from "./legacy-schema";
 import { assertScrubCopy } from "./mssql";
 import { ScrubStepError } from "./private-out";
-import { isPlaceholderOrTitle, normEmail, parseName, type PeopleIndex, type Person, type PersonSource } from "./people";
+import { cleanName, isPlaceholderOrTitle, normEmail, parseName, type PeopleIndex, type Person, type PersonSource } from "./people";
 import { entityText, findLeaks, scrubText, type LeakKind, type ScrubCtx } from "./text";
 
 interface PeopleRow { Id: string; Name1: string | null; Name2: string | null; Email: string | null; Phone1: string | null; Phone2: string | null; LinkId: string | null }
@@ -185,14 +185,15 @@ export type GateKind = LeakKind | LiteralKind;
 /** Sources whose people hold public office (MLAs, ministers): their names may stay in text, their contacts may not. */
 export const PUBLIC_OFFICE_SOURCES = ["calendar.GovernmentRepresentative", "dbo.Ministry"] as const;
 const isPublicOffice = (p: Person) => p.sources.some((s) => PUBLIC_OFFICE_SOURCES.some((src) => s.startsWith(`${src}:`)));
+const isPublicOfficeSource = (s: PersonSource) => (PUBLIC_OFFICE_SOURCES as readonly string[]).includes(s.source);
 
 const ENTITY_RE = /&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+);/gi;
 const TAG_RE = /<[^<>]{0,200}>/g;
 const WORD_RE = /[\p{L}\p{N}]+/gu;
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 const LOOSE_EMAIL_RE = /[a-z0-9._%+-]+@[a-z0-9-]+(?:\.[a-z0-9-]+)+/g;
-/** Digit groups a phone may be written in: "604 555 0142", "(604)555-0142", "+1.604.555.0142". */
-const DIGIT_RUN_RE = /\d+(?:[ ().\-+/]{1,3}\d+)*/g;
+/** Digit groups a phone may be written in: "604 555 0142", "(604)555-0142", "+1.604.555.0142", "604 — 555 — 0142" (en dashes are folded to "-"). */
+const DIGIT_RUN_RE = /\d+(?:[ ().\-+/\u2014\u2212]{1,3}\d+)*/g;
 /** What the scrubber itself writes; a real number in that range can't be told from a fictional one. */
 const FAKE_DIGITS = /^(?:250)?55501\d\d$/;
 
@@ -220,13 +221,13 @@ export function buildLiteralNeedles(index: PeopleIndex): LiteralNeedles {
   // Every form the name routes match by, fallbacks included, is also searched for literally.
   const variantsOf = new Map<Person, string[]>();
   for (const [key, hit] of index.byVariant) variantsOf.set(hit.person, [...(variantsOf.get(hit.person) ?? []), key]);
-  for (const p of index.persons) {
-    const pub = isPublicOffice(p);
-    const forms = new Set<string>(variantsOf.get(p) ?? []);
-    for (const raw of p.names) {
+  const add = (names: Iterable<string>, emails: Iterable<string>, phones: Iterable<string>, pub: boolean, variants: string[] = []) => {
+    const forms = new Set<string>(variants);
+    for (const raw of names) {
       // An office, role or placeholder ("Media Relations", "News Staff") is ordinary words, not a name to search for.
       if (isPlaceholderOrTitle(raw)) continue;
       forms.add(raw);
+      forms.add(cleanName(raw));
       const parsed = parseName(raw);
       if (parsed) {
         const given = parsed.given.join(" "), first = parsed.given[0]!, last = parsed.surname.join(" ");
@@ -245,14 +246,20 @@ export function buildLiteralNeedles(index: PeopleIndex): LiteralNeedles {
       n.names.set(first[0], byFirst);
     }
     // Contacts fail the gate for everyone, office holders included.
-    for (const e of p.emails) if (e.length >= 4) put(n.emails, literalFold(e), false);
-    for (const ph of p.phones) { const d = phoneDigits(ph); if (d) put(n.phones, d, false); }
+    for (const e of emails) if (e.length >= 4) put(n.emails, literalFold(e), false);
+    for (const ph of phones) { const d = phoneDigits(ph); if (d) put(n.phones, d, false); }
+  };
+  for (const p of index.persons) add(p.names, p.emails, p.phones, isPublicOffice(p), variantsOf.get(p));
+  // A row that joined no person (an unreadable name with no email) is still searched for by what it stores.
+  for (const r of index.strays) {
+    const email = normEmail(r.email);
+    add(r.names.filter((x): x is string => !!x && x.trim() !== ""), email ? [email] : [], r.phones.filter((x): x is string => !!x), isPublicOfficeSource(r));
   }
   return n;
 }
 
-/** A lone letter, with or without its period, that may sit inside a name ("quill b. ashbury"). */
-const INITIAL_GAP = /^ \p{L}\.? /u;
+/** A lone letter that may sit inside a name ("quill b. ashbury"); "a" and "i" only with a period, since alone they are words. */
+const INITIAL_GAP = /^ (?:[^\P{L}ai]\.?|[ai]\.) /u;
 
 /**
  * The length of a needle found at `at` in the folded text, or 0. As in the name routes, one middle initial the needle

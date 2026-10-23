@@ -32,10 +32,10 @@ const NULLS = (cols: string[]) => cols.map((c) => `CAST(NULL AS nvarchar(50)) AS
 export const PEOPLE_QUERIES: readonly PeopleQuery[] = [
   { source: "calendar.SystemUser", alwaysPerson: true, sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, FullName AS Name1, DisplayName AS Name2, EmailAddress AS Email, PhoneNumber AS Phone1, MobileNumber AS Phone2, ${NULLS(["LinkId"])} FROM calendar.SystemUser` },
   { source: "dbo.User", alwaysPerson: true, sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, DisplayName AS Name1, EmailAddress AS Email, ${NULLS(["Name2", "Phone1", "Phone2", "LinkId"])} FROM dbo.[User]` },
-  { source: "calendar.CommunicationContact", linkSource: "calendar.SystemUser", sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, Name AS Name1, CAST(SystemUserId AS nvarchar(50)) AS LinkId, ${NULLS(["Name2", "Email", "Phone1", "Phone2"])} FROM calendar.CommunicationContact` },
+  { source: "calendar.CommunicationContact", alwaysPerson: true, linkSource: "calendar.SystemUser", sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, Name AS Name1, CAST(SystemUserId AS nvarchar(50)) AS LinkId, ${NULLS(["Name2", "Email", "Phone1", "Phone2"])} FROM calendar.CommunicationContact` },
   { source: "calendar.GovernmentRepresentative", sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, Name AS Name1, ${NULLS(["Name2", "Email", "Phone1", "Phone2", "LinkId"])} FROM calendar.GovernmentRepresentative` },
-  { source: "calendar.EventPlanner", sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, Name AS Name1, PhoneNumber AS Phone1, ${NULLS(["Name2", "Email", "Phone2", "LinkId"])} FROM calendar.EventPlanner` },
-  { source: "calendar.Videographer", sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, Name AS Name1, ${NULLS(["Name2", "Email", "Phone1", "Phone2", "LinkId"])} FROM calendar.Videographer` },
+  { source: "calendar.EventPlanner", alwaysPerson: true, sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, Name AS Name1, PhoneNumber AS Phone1, ${NULLS(["Name2", "Email", "Phone2", "LinkId"])} FROM calendar.EventPlanner` },
+  { source: "calendar.Videographer", alwaysPerson: true, sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, Name AS Name1, ${NULLS(["Name2", "Email", "Phone1", "Phone2", "LinkId"])} FROM calendar.Videographer` },
   { source: "dbo.Ministry", sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, MinisterName AS Name1, MinisterEmail AS Email, ${NULLS(["Name2", "Phone1", "Phone2", "LinkId"])} FROM dbo.Ministry` },
   { source: "media.Contact", sql: `SELECT CAST(Id AS nvarchar(50)) AS Id, NULLIF(LTRIM(RTRIM(CONCAT(FirstName, N' ', LastName))), N'') AS Name1, ${NULLS(["Name2", "Email", "Phone1", "Phone2", "LinkId"])} FROM media.Contact` },
 ];

@@ -111,6 +111,37 @@ describe("the literal route's middle initials, fallback forms and offices", () =
   });
 });
 
+describe("the literal route's strays, crew rows and lone a or i", () => {
+  const index = buildPeopleIndex([
+    { source: "media.Contact", id: "1", names: ["Ximena de la Paz Okonkwo Ruiz"], email: null, phones: ["604 555 0198"] },
+    { source: "calendar.Videographer", id: "1", names: ["Pell Varga Videographer [mailto:pv@news.example]"], email: null, phones: [], alwaysPerson: true },
+    { source: "calendar.SystemUser", id: "1", names: ["Mark Short"], email: null, phones: [], alwaysPerson: true },
+  ], "f".repeat(64));
+  const needles = buildLiteralNeedles(index);
+  const kinds = (text: string) => literalHits(text, needles).map((h) => h.kind);
+
+  it("searches for a row that joined no person, its phone included", () => {
+    expect(index.strays).toHaveLength(1);
+    expect(kinds("met ximena de la paz okonkwo ruiz")).toEqual(["literal-name"]);
+    expect(kinds("ref 6045550198")).toEqual(["literal-phone"]);
+  });
+  it("searches for a crew row's name without its note or address", () => {
+    expect(kinds("Pell Varga filmed it")).toEqual(["literal-name"]);
+    expect(findLeaks("Pell Varga filmed it", index)).toEqual(["name", "name-plain"]);
+  });
+  it("skips a lone a or i only with its period", () => {
+    expect(kinds("mark a short walk")).toEqual([]);
+    expect(kinds("mark i short")).toEqual([]);
+    expect(kinds("mark a. short")).toEqual(["literal-name"]);
+    expect(kinds("mark b short")).toEqual(["literal-name"]);
+  });
+  it.each(["604 \u2013 555 \u2013 0142", "604 &ndash; 555 &ndash; 0142", "604 \u2014 555 \u2014 0142", "(604) 555 - 0142"])("finds the spaced-dash phone %j by both routes", (raw) => {
+    const ix = buildPeopleIndex([{ source: "calendar.SystemUser", id: "1", names: ["Quill Ashbury"], email: null, phones: ["604-555-0142"], alwaysPerson: true }], "f".repeat(64));
+    expect(literalHits(raw, buildLiteralNeedles(ix)).map((h) => h.kind)).toEqual(["literal-phone"]);
+    expect(findLeaks(raw, ix)).toEqual(["phone"]);
+  });
+});
+
 describe("fitting scrubbed text to its column", () => {
   const index = buildPeopleIndex([{ source: "calendar.SystemUser", id: "1", names: ["Quill Ashbury"], email: "quill.ashbury@gov.example", phones: [], alwaysPerson: true }], FIXTURE_KEY);
   const ctx = { index, key: FIXTURE_KEY };
@@ -209,6 +240,7 @@ describe.skipIf(!cfg)("Gate 1's literal route on a fictional SQL Server fixture"
     fx = await createFixture(cfg!);
     await fx.pool.request().input("n", UNPARSED).query("INSERT calendar.SystemUser (Id, Username, FullName, DisplayName, EmailAddress) VALUES (5, N'xruiz', @n, @n, N'ximena.ruiz@gov.example')");
     await fx.pool.request().query("INSERT calendar.SystemUser (Id, Username, FullName, DisplayName, EmailAddress) VALUES (6, N'newsdesk', N'News Staff', N'Arts and Culture', N'newsdesk@gov.example')");
+    await fx.pool.request().query("INSERT calendar.Videographer (Id, Name) VALUES (2, N'Pell Varga Videographer [mailto:pv@news.example]'); INSERT calendar.EventPlanner (Id, Name, PhoneNumber) VALUES (2, N'Fen', N'6045550198')");
     await fx.pool.request().input("n", MINISTER).query("INSERT dbo.Ministry (Id, [Key], MinisterName, MinisterEmail) VALUES ('70000000-0000-4000-8000-000000000002', N'tourism', @n, N'okonkwo-bell@gov.example')");
     // A scrubbed address that ends two and one characters past the column.
     await fx.pool.request().query(`CREATE TABLE dbo.ScrubNarrow (Id int PRIMARY KEY, Te nvarchar(${NARROW - 2}) NULL, Tes nvarchar(${NARROW - 1}) NULL); INSERT dbo.ScrubNarrow VALUES (1, N'Back-up contact: qa@gov.example', N'Back-up contact: qa@gov.example')`);
@@ -259,6 +291,15 @@ describe.skipIf(!cfg)("Gate 1's literal route on a fictional SQL Server fixture"
   it("fails on a lower-case name with a middle initial, through the literal route alone", async () => {
     const gate = await plant("quill b. ashbury signed off");
     expect(gate.hits).toEqual([{ table: "calendar.Activity", column: "Comments", kind: "literal-name", count: 1 }]);
+  });
+
+  it("rewrites crew rows no rule can read, and fails on their name or bare-digit phone", async () => {
+    const crew = (await fx.pool.request().query<{ v: string; p: string | null }>("SELECT Name AS v, NULL AS p FROM calendar.Videographer WHERE Id = 2 UNION ALL SELECT Name, PhoneNumber FROM calendar.EventPlanner WHERE Id = 2")).recordset;
+    expect(crew.map((r) => r.v)).not.toContain("Fen");
+    expect(crew.some((r) => /Pell|Varga|pv@/.test(r.v))).toBe(false);
+    expect(crew.some((r) => r.p === "6045550198")).toBe(false);
+    expect((await plant("Pell Varga filmed it")).hits.map((h) => h.kind)).toEqual(expect.arrayContaining(["name", "literal-name"]));
+    expect((await plant("ref 6045550198")).hits.map((h) => h.kind)).toEqual(["literal-phone"]);
   });
 
   it("passes ordinary words a placeholder row is named by", async () => {

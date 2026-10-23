@@ -347,9 +347,11 @@ export async function localDump(url: string, outFile: string): Promise<void> {
   written.catch(() => {});
   try {
     let inCopy = false;
-    // `pg_dump`'s plain-format output is always bare-\n between lines (it's generated on this
-    // machine, never on Windows), and readline already normalises \r\n itself, so there's no
-    // stray \r left on `line` to strip here — a line is only ever cut on \n.
+    // readline cuts a line at \n, at \r\n (crlfDelay: Infinity keeps a \r\n split across chunks
+    // as one break) and at a lone \r, so no \r is ever left on `line`. A COPY data row can't be
+    // cut early: pg_dump writes a \r or \n inside a value as the two characters \\r or \\n. A raw \r
+    // elsewhere, in a function body or a comment say, cuts that line in two, and each piece is
+    // checked on its own.
     for await (const line of createInterface({ input: child.stdout!, crlfDelay: Infinity })) {
       if (inCopy) {
         if (line === "\\.") inCopy = false;

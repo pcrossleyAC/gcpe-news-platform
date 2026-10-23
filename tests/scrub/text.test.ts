@@ -366,7 +366,12 @@ describe("findLeaks", () => {
     expect(after).not.toMatch(real);
   });
 
-  it.each(["Call 555.0142.", "Call 604–555–0142 now"])("finds the phone in %j", (raw) => {
+  it.each(["2024 \u2013 2025 \u2013 2026", "pages 100 \u2013 200", "1 \u2013 800 \u2013 22", "scores 604 \u2013 55 \u2013 0142", "604 \u2013 5550 \u2013 142"])("leaves the dashed non-phone %j alone", (raw) => {
+    expect(s(raw)).toBe(raw);
+    expect(findLeaks(raw, index)).toEqual([]);
+  });
+
+  it.each(["Call 555.0142.", "Call 604–555–0142 now", "Call 604 \u2013 555 \u2013 0142 now", "Call 604 - 555 - 0142 now"])("finds the phone in %j", (raw) => {
     expect(findLeaks(raw, index)).toContain("phone");
     expect(findLeaks(s(raw), index)).toEqual([]);
   });
