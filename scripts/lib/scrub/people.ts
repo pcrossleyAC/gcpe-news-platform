@@ -234,6 +234,32 @@ export function isPlaceholderOrTitle(raw: string | null): boolean {
   return r === OFFICE || (r !== null && nameVariants(raw).length === 0);
 }
 
+/** Outlet and crew words: a row is an office because of one of these, not because it names no one. */
+const OUTLET_OR_CREW = new Set(["news", "radio", "tv", "television", "productions", "studio", "studios", "network", "broadcasting", "newspaper", "magazine", "videographer", "photographer"]);
+
+/**
+ * For a row read as an office only because it carries an outlet or crew word ("Quill Ashbury newspaper", "general Quill
+ * Ashbury tv"), the run of two or more capitalised words left once those words are taken out, none of them a role,
+ * title or link word. Null for any other row.
+ */
+export function nameRunOf(raw: string | null): string | null {
+  if (!raw || !isPlaceholderOrTitle(raw)) return null;
+  const clean = cleanName(raw);
+  const toks = [...clean.matchAll(TOKEN_RE)].map((m) => ({ w: m[0], at: m.index, end: m.index + m[0].length }));
+  if (!toks.some((t) => OUTLET_OR_CREW.has(normToken(t.w)))) return null;
+  let best: string[] = [], run: string[] = [];
+  let prevEnd = -1;
+  for (const t of toks) {
+    // A run continues across spaces and outlet or crew words only, never across punctuation ("Contract Videographer (Quill)").
+    const gap = prevEnd < 0 ? "" : clean.slice(prevEnd, t.at);
+    if (OUTLET_OR_CREW.has(normToken(t.w))) { if (!/^\s*$/.test(gap)) run = []; prevEnd = t.end; continue; }
+    if (!/^\s*$/.test(gap)) run = [];
+    if (/^\p{Lu}/u.test(t.w) && t.w.length > 1 && !isRole(normToken(t.w))) { run.push(t.w); if (run.length > best.length) best = [...run]; } else run = [];
+    prevEnd = t.end;
+  }
+  return best.length >= 2 ? best.join(" ") : null;
+}
+
 export interface NameVariant { key: string; surnameFirst: boolean; fallback?: true }
 
 /**

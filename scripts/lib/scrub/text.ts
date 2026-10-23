@@ -1,5 +1,5 @@
 import { FAKE_PHONE, fakeEmailFor, fakePhone, type FakeIdentity } from "./identity";
-import { cleanName, isPlaceholderOrTitle, NAME_PARTICLES, normToken, parseName, PUBLIC_OFFICE_SOURCES, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people";
+import { cleanName, isPlaceholderOrTitle, NAME_PARTICLES, nameRunOf, normToken, parseName, PUBLIC_OFFICE_SOURCES, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people";
 
 export const EMAIL_RE = /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g;
 /** North American numbers with an area code: 604-555-0142, (604) 555-0142, 604.555.0142, +1 604 555 0142, 1-800-…, with ext./x. */
@@ -315,7 +315,13 @@ export function buildNameNeedles(index: PeopleIndex): NameNeedles {
   const add = (names: Iterable<string | null>, owner: NameNeedle, variants: string[] = []) => {
     const forms = new Set<string>(variants);
     for (const raw of names) {
-      if (!raw || raw.trim() === "" || isPlaceholderOrTitle(raw)) continue;
+      if (!raw || raw.trim() === "") continue;
+      if (isPlaceholderOrTitle(raw)) {
+        // An office only because of an outlet or crew word still names the person around it.
+        const run = nameRunOf(raw);
+        if (run) forms.add(run);
+        continue;
+      }
       forms.add(cleanName(raw));
       const parsed = parseName(raw);
       if (parsed) {
@@ -390,17 +396,36 @@ export function literalNameMatches(folded: string, needles: NameNeedles): { at: 
   return out;
 }
 
+type LiteralRole = "given" | "surname" | "full" | "drop";
+export interface LiteralNameSpan { start: number; end: number; fake: FakeIdentity; parts: { start: number; end: number; role: LiteralRole }[] }
+
 /**
- * What the literal route would report as a real name, in any case, as spans of the original with the fictional name
- * that replaces each (public office holders' names are left). Searched with tags blanked, and inside each tag.
+ * What the literal route would report as a real name, in any case, with the fictional name that replaces it (public
+ * office holders' names are left). Searched with tags blanked, and inside each tag. Each word of the name is its own
+ * part, so the markup and entities between them stay exactly where they were.
  */
-function literalSpans(text: string, index: PeopleIndex): { start: number; end: number; fake: FakeIdentity; surnameFirst: boolean }[] {
+export function literalNameSpans(text: string, index: PeopleIndex): LiteralNameSpan[] {
   const needles = nameNeedlesOf(index);
-  const out: { start: number; end: number; fake: FakeIdentity; surnameFirst: boolean }[] = [];
+  const out: LiteralNameSpan[] = [];
   const scan = (v: View) => {
     for (const m of literalNameMatches(v.text, needles)) {
       if (m.owner.pub || !m.owner.fake) continue;
-      out.push({ start: v.start[m.at]!, end: v.end[m.at + m.len - 1]!, fake: m.owner.fake, surnameFirst: m.needle.includes(", ") });
+      // The words of the match as written: runs of folded text between single spaces, a surname-first comma left out.
+      const words: [number, number][] = [];
+      for (const w of v.text.slice(m.at, m.at + m.len).matchAll(/[^ ]+/g)) {
+        const a = m.at + w.index;
+        let b = a + w[0].length;
+        if (v.text[b - 1] === "," && b - 1 > a) b--;
+        words.push([v.start[a]!, v.end[b - 1]!]);
+      }
+      const n = words.length, sf = m.needle.includes(", ");
+      const parts = words.map(([a, b], k) => {
+        const role: LiteralRole = n === 1 ? "full" : sf ? (k === 0 ? "surname" : k === 1 ? "given" : "drop") : k === 0 ? "given" : k === n - 1 ? "surname" : "drop";
+        // A dropped word takes the plain space before it, so no double space is left.
+        const before = k > 0 ? words[k - 1]![1] : a;
+        return { start: role === "drop" && /^\s+$/.test(text.slice(before, a)) ? before : a, end: b, role };
+      });
+      out.push({ start: words[0]![0], end: words[n - 1]![1], fake: m.owner.fake, parts });
     }
   };
   scan(foldView(text, 0, text.length, MARKUP_RE));
@@ -437,10 +462,11 @@ export function scrubText(text: string, ctx: ScrubCtx): { text: string; counts: 
     }
     // Then whatever the literal route would still report as a real name, in any case: an unreadable name, a name
     // written in lower case, an ordinary phrase that equals a real full name. Each becomes that person's fictional name.
-    const literal = literalSpans(out, ctx.index);
+    const literal = literalNameSpans(out, ctx.index);
     if (literal.length > 0) {
       counts.names += literal.length;
-      out = replaceSpans(out, literal, (orig, sp) => upperIf(orig, sp.surnameFirst ? `${sp.fake.last}, ${sp.fake.first}` : sp.fake.full));
+      const parts = literal.flatMap((m) => m.parts.map((p) => ({ ...p, fake: m.fake })));
+      out = replaceSpans(out, parts, (orig, p) => (p.role === "drop" ? "" : upperIf(orig, p.role === "given" ? p.fake.first : p.role === "surname" ? p.fake.last : p.fake.full)));
     }
     if (matches.length === 0 && literal.length === 0) break;
   }

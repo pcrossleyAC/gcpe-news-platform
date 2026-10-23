@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPeopleIndex, cleanName, isPlaceholderOrTitle, mappingCsv, nameVariants, normEmail, parseName, type PersonSource } from "../../scripts/lib/scrub/people";
+import { buildPeopleIndex, cleanName, isPlaceholderOrTitle, mappingCsv, nameRunOf, nameVariants, normEmail, parseName, type PersonSource } from "../../scripts/lib/scrub/people";
 
 const KEY = "c".repeat(64);
 const src = (source: string, id: string, names: (string | null)[], email: string | null = null, extra: Partial<PersonSource> = {}): PersonSource => ({ source, id, names, email, phones: [], ...extra });
@@ -152,6 +152,13 @@ describe("shared lines, outlets and organisations", () => {
     expect(nameVariants(raw).map((v) => v.key)).toContain("quill ashbury");
   });
   it("keeps the fallback of an ordinary middle name", () => expect(nameVariants("Quill Bryn Ashbury").map((v) => v.key)).toContain("bryn ashbury"));
+});
+
+describe("nameRunOf", () => {
+  it.each([["Quill Ashbury newspaper", "Quill Ashbury"], ["general Quill Ashbury tv", "Quill Ashbury"], ["Quill Ashbury Ministry Videographer", "Quill Ashbury"]])(
+    "reads the name in the office %j", (raw, run) => expect(nameRunOf(raw)).toBe(run),
+  );
+  it.each(["Contract Videographer (Quill)", "Quill, Ashbury TV", "Harbour News", "Media Line", "Quill Ashbury", "Chief Information Officer"])("reads no name run in %j", (raw) => expect(nameRunOf(raw)).toBeNull());
 });
 
 describe("isPlaceholderOrTitle", () => {

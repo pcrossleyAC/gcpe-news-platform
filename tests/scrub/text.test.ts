@@ -443,10 +443,47 @@ describe("Ruling 23: everything the literal route reports is replaced", () => {
     expect(sx(raw)).toBe(raw);
     expect(literalHits(raw, needles)).toEqual([{ kind: "literal-name", publicOffice: true }]);
   });
-  it("replaces names written with entities and split by markup", () => {
+  const markup = (t: string) => [...t.matchAll(/<[^<>]*>|&(?:[a-z][a-z0-9]*|#\d+|#x[0-9a-f]+);/gi)].map((m) => m[0]);
+  const quill = ix.persons.find((p) => p.names.includes("Quill Ashbury"))!.fake;
+
+  it("replaces names written with entities and split by markup, keeping every tag and entity", () => {
     for (const raw of ["quill&nbsp;ashbury said", "<b>quill</b> ashbury said", "Q&#117;ill ashb&uacute;ry said"]) {
       expect(literalHits(sx(raw), needles)).toEqual([]);
       expect(sx(sx(raw))).toBe(sx(raw));
     }
+    expect(markup(sx("quill&nbsp;ashbury said"))).toEqual(["&nbsp;"]);
+    expect(markup(sx("<b>quill</b> ashbury said"))).toEqual(["<b>", "</b>"]);
+  });
+
+  it.each([
+    ["<p>quill <b>ashbury</b> said</p>", () => `<p>${quill.first} <b>${quill.last}</b> said</p>`],
+    ["<td>quill</td><td>ashbury</td>", () => `<td>${quill.first}</td><td>${quill.last}</td>`],
+    ['quill <a href="https://news.example/x">ashbury</a> said', () => `${quill.first} <a href="https://news.example/x">${quill.last}</a> said`],
+    ["ashbury,<br>quill", () => `${quill.last},<br>${quill.first}`],
+  ])("writes each part of a name split by markup in its own place: %j", (raw, want) => {
+    expect(literalHits(raw, needles).map((h) => h.kind)).toEqual(["literal-name"]);
+    expect(sx(raw)).toBe(want());
+    expect(markup(sx(raw))).toEqual(markup(raw));
+    expect(literalHits(sx(raw), needles)).toEqual([]);
+    expect(sx(sx(raw))).toBe(sx(raw));
+  });
+});
+
+describe("rows that are offices only because of an outlet or crew word", () => {
+  const ix = buildPeopleIndex([
+    { source: "media.Contact", id: "1", names: ["Quill Ashbury newspaper"], email: null, phones: [] },
+    { source: "media.Contact", id: "2", names: ["general Wren Talbot tv"], email: null, phones: [] },
+    { source: "calendar.Videographer", id: "1", names: ["Contract Videographer (Pell)"], email: null, phones: [], alwaysPerson: true },
+  ], KEY);
+  const sx = (t: string) => scrubText(t, { index: ix, key: KEY }).text;
+  const needles = buildLiteralNeedles(ix);
+  it.each([["met quill ashbury", "1"], ["Wren Talbot filmed it", "2"]])("still searches for and replaces the person in %j", (raw, id) => {
+    expect(literalHits(raw, needles).map((h) => h.kind)).toEqual(["literal-name"]);
+    const fake = ix.strays.find((x) => x.id === id)!.fake;
+    expect(sx(raw)).toContain(fake.last);
+    expect(literalHits(sx(raw), needles)).toEqual([]);
+  });
+  it("makes no needle from words split by punctuation", () => {
+    expect(literalHits("Contract Pell said", needles)).toEqual([]);
   });
 });
