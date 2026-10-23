@@ -336,3 +336,95 @@ describe("fix round 2: site-output restore swaps on the same filesystem", () => 
     expect(readdirSync(join(home, "gcpe-data")).filter((n) => n.startsWith("site-output-swap."))).toEqual([]);
   });
 });
+
+describe("post-review fix: url_of strips the quoting boxs.ca's real settings file uses", () => {
+  function fakeHome(envLines: string[]): string {
+    const dir = mkdtempSync(join(tmpdir(), "scrub-home-quoted-"));
+    mkdirSync(join(dir, "www", "boxs.ca", "public_html", ".nodeapp"), { recursive: true });
+    writeFileSync(join(dir, "www", "boxs.ca", "public_html", ".nodeapp", ".env-local"), `${envLines.join("\n")}\n`);
+    return dir;
+  }
+  const lookup = (envLines: string[], vars: string[]) => {
+    const home = fakeHome(envLines);
+    const script = [PRELUDE, ...vars.map((v, i) => `printf "${i > 0 ? "|" : ""}%s" "$(url_of ${v})"`)].join("\n");
+    return spawnSync("bash", ["-c", script], { env: { ...process.env, HOME: home } });
+  };
+
+  it("unwraps a single-quoted value (boxs.ca's actual shape) without sourcing the file", () => {
+    const r = lookup(["CORE_DATABASE_URL='postgres://user:pass!@localhost:5432/db'"], ["CORE_DATABASE_URL"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString()).toBe("postgres://user:pass!@localhost:5432/db");
+  });
+
+  it("turns a shell-escaped embedded quote (\\'\\\\''\\') back into a plain quote", () => {
+    const r = lookup([`ESCAPED='it'\\''s a secret'`], ["ESCAPED"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString()).toBe("it's a secret");
+  });
+
+  it("unwraps a double-quoted value", () => {
+    const r = lookup(['DOUBLE="hello world"'], ["DOUBLE"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString()).toBe("hello world");
+  });
+
+  it("leaves an unquoted value exactly as it is", () => {
+    const r = lookup(["PLAIN=plainvalue"], ["PLAIN"]);
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString()).toBe("plainvalue");
+  });
+
+  it("handles multiple quoting styles in the same file, each looked up correctly", () => {
+    const r = lookup(
+      ["CORE_DATABASE_URL='postgres://user:pass!@localhost:5432/db'", `ESCAPED='it'\\''s a secret'`, 'DOUBLE="hello world"', "PLAIN=plainvalue"],
+      ["CORE_DATABASE_URL", "ESCAPED", "DOUBLE", "PLAIN"],
+    );
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString()).toBe("postgres://user:pass!@localhost:5432/db|it's a secret|hello world|plainvalue");
+  });
+});
+
+describe("post-review fix: a single-quoted password with ! authenticates end to end", () => {
+  // Same throwaway-cluster approach as fix round 2: a scratch scram-sha-256 Postgres, on a
+  // scratch port, created and torn down entirely inside this test — never the shared local
+  // Postgres, never boxs.ca. This time the settings file wraps the URL in single quotes, as
+  // boxs.ca's real one does, and the password holds `!`, boxs.ca's real password shape.
+  const pgDataDir = mkdtempSync(join(tmpdir(), "scrub-scram-bang-"));
+  const sockDir = `/tmp/scrub-pw-bang-${process.pid}`;
+  const pwFile = join(pgDataDir, "..", `scrub-scram-bang-pw-${process.pid}.txt`);
+  const port = 21000 + (process.pid % 10000);
+  const password = "p@ss!w0rd";
+  const dbUrl = `postgres://${encodeURIComponent("scrubtest")}:${encodeURIComponent(password)}@127.0.0.1:${port}/scrubtest_db`;
+  let started = false;
+
+  const pgCtl = (args: string[]) => spawnSync("pg_ctl", args, { encoding: "utf8" });
+
+  beforeAll(() => {
+    mkdirSync(sockDir, { recursive: true });
+    writeFileSync(pwFile, "initpass\n");
+    const init = spawnSync("initdb", ["-D", pgDataDir, "-A", "scram-sha-256", "-U", "paul", `--pwfile=${pwFile}`, "--no-sync"], { encoding: "utf8" });
+    expect(init.status).toBe(0);
+    const start = pgCtl(["-D", pgDataDir, "-o", `-p ${port} -k ${sockDir}`, "-l", join(pgDataDir, "..", "scrub-scram-bang.log"), "start"]);
+    expect(start.status).toBe(0);
+    started = true;
+    const setup = spawnSync("psql", ["-h", sockDir, "-p", String(port), "-U", "paul", "-d", "postgres", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", `CREATE ROLE scrubtest LOGIN PASSWORD '${password}'`, "-c", "CREATE DATABASE scrubtest_db OWNER scrubtest"], { env: { ...process.env, PGPASSWORD: "initpass" }, encoding: "utf8" });
+    expect(setup.status).toBe(0);
+  });
+
+  afterAll(() => {
+    if (started) pgCtl(["-D", pgDataDir, "stop", "-m", "fast"]);
+    rmSync(pgDataDir, { recursive: true, force: true });
+    rmSync(sockDir, { recursive: true, force: true });
+    rmSync(pwFile, { force: true });
+  });
+
+  it("url_of unwraps the quoted URL, pg_url_noauth decodes the ! password, and psql authenticates", () => {
+    const home = mkdtempSync(join(tmpdir(), "scrub-home-bang-"));
+    mkdirSync(join(home, "www", "boxs.ca", "public_html", ".nodeapp"), { recursive: true });
+    writeFileSync(join(home, "www", "boxs.ca", "public_html", ".nodeapp", ".env-local"), `CORE_DATABASE_URL='${dbUrl}'\n`);
+    const script = [PRELUDE, 'u="$(url_of CORE_DATABASE_URL)"', 'pg_url_noauth "$u"', 'psql "$PGURL_NOAUTH" -X -A -t -q -c "SELECT current_user"'].join("\n");
+    const r = spawnSync("bash", ["-c", script], { env: { ...process.env, HOME: home } });
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString().trim()).toBe("scrubtest");
+  });
+});

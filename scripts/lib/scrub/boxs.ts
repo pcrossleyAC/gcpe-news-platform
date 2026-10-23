@@ -43,10 +43,26 @@ export const PRELUDE = [
   "umask 077",
   `ENV_FILE="${BOXS_ENV_FILE}"`,
   '[ -r "$ENV_FILE" ] || { echo "cannot read the stack settings file" >&2; exit 1; }',
+  // On boxs.ca every value in the settings file is wrapped in single quotes; locally (and in
+  // these generated scripts' own tests) it may not be. Either way this never sources or evals
+  // the file: it takes the first `VAR=` line with `sed`, then strips at most one surrounding
+  // pair of quotes — single quotes first, turning a shell-escaped `'\''` back into `'`; failing
+  // that, double quotes; failing that, the raw value is used as-is.
   'url_of() {',
   '  local v',
   '  v="$(sed -n "s/^$1=//p" "$ENV_FILE" | head -n1)"',
   '  [ -n "$v" ] || { echo "$1 is not set" >&2; exit 1; }',
+  '  case "$v" in',
+  "    \\'*\\')",
+  "      v=\"${v#\\'}\"",
+  "      v=\"${v%\\'}\"",
+  "      v=\"$(printf '%s' \"$v\" | sed \"s/'\\\\\\\\''/'/g\")\"",
+  '      ;;',
+  '    \\"*\\")',
+  '      v="${v#\\"}"',
+  '      v="${v%\\"}"',
+  '      ;;',
+  '  esac',
   '  printf "%s" "$v"',
   '}',
   'pg_url_noauth() {',
