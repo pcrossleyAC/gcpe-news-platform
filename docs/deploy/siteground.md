@@ -941,6 +941,128 @@ See "NRMS link and Forecast (Phase 5h)" above for how these two commands take th
 **R14 (Phase 7):** legacy stays readable for one HQ administrator for a year after cutover; it's
 the only place to see activities outside the import.
 
+## Refreshing test data from a legacy backup
+
+`npm run scrub:test-data` turns a legacy SQL Server backup into fictional calendar, release and
+public-site data, then loads it onto boxs.ca. Real data never leaves the operator's Mac: only the
+scrubbed copy, which has already passed two leak checks, is ever uploaded.
+
+**What it sends.** Ended, non-confidential calendar activities and published releases are kept,
+with their reference data (ministries, sectors, themes, tags and the rest). Everyone in them
+becomes an invented person at `example.test`, and calendar dates are shifted forward so the
+coming weeks have activities. Change history for a kept activity or release is kept too, since
+the Calendar and release-history screens read it; nothing else from legacy's logs survives.
+Draft, scheduled and confidential activities, draft and unpublished releases, every attachment,
+and every media request are left out. News On Demand, Distribution, the site's settings, its
+existing test accounts and its mail redirect to the operator are all left alone.
+
+**Before you start.**
+- The importers (Core, NRMS, Calendar, News API) must already run cleanly against the backup.
+  This tool doesn't fix an importer bug: it stops at the import step and names it.
+- Use Node 24.
+- The SQL Server container must be running, with the backup file in
+  `~/gcpe-parity-private/legacy/`, which the container sees as `/backup/`.
+- `ssh boxs` must work.
+- Partway through the run it prints the size of each local database it's about to upload, and
+  their total. Have Site Tools' storage meter open and check it has room before you type the
+  approval below.
+
+**Running it.**
+
+```sh
+set -a; . ~/gcpe-parity-private/mssql.env; set +a
+LEGACY_SQL_SERVER=127.0.0.1 LEGACY_SQL_USER=sa LEGACY_SQL_PASSWORD="$MSSQL_SA_PASSWORD" LEGACY_SQL_TRUST_CERT=true \
+  npx -y -p node@24 -- npm run scrub:test-data -- --backup /backup/<file>.bak --out ~/gcpe-parity-private/scrub --stop-after trial
+```
+
+Run it once with `--stop-after trial` first: it restores the backup, scrubs it, runs both leak
+gates, imports it into fresh local databases, runs the gates again, and trials it locally — then
+stops before anything on boxs.ca changes. Once that run is clean, run the same command without
+`--stop-after` for the real load; it starts over from the backup rather than continuing. The run
+folder (under `--out`) ends up with `mapping.csv` (real person to invented person), `reports/`,
+`logs/` and `dumps/`. All of it is private: never copy any of it out of `~/gcpe-parity-private`.
+
+**The gates.** Gate 1 runs once, against the scrubbed copy on SQL Server, right after scrubbing.
+Gate 2 runs against the imported Postgres databases, twice: once right after import, and again
+after the local trial, on the exact databases that later get dumped to boxs.ca. Each gate run
+does two searches over every text column: a structured search for the people list's names,
+emails and phones, and a separate, independent literal search for the same names, emails and
+phones as plain text — including a name the structured search couldn't parse. Either search
+finding anything fails the gate. A gate also fails if it finds someone who could sign in to
+boxs.ca but isn't one of its known test accounts.
+
+A gate's pass condition is zero. What prints to the console is table, column, kind (name, email
+or phone) and a count — never a row, a name, an address or a number. One exception: an MLA's or a
+minister's name is public record, so it's counted and printed on its own line, but doesn't fail
+the gate by itself. Their email address and phone number are not exempt: either one failing the
+gate stops the run exactly as anyone else's would.
+
+**How to read a gate failure.** The console only ever shows counts. The row ids behind them are
+in that run's private report, `reports/gate1.json` or `reports/gate2-<label>.json`, under
+`--out`. Open that file locally to see which rows hit; never paste its contents into a chat, an
+issue or anywhere else — the ids it carries can be real key values. Once you understand the hit,
+fix the underlying rule (never hand-edit the scrubbed copy) and run the pipeline again from the
+start.
+
+**Approval and load.** After a clean trial, the command prints every area's counts, the date
+offset, both gates' results, and each local database's size with a running total — check that
+total against Site Tools' storage meter now, if you haven't already. It then asks you to type
+`load boxs.ca` (the site's own host name) before anything on boxs.ca changes.
+
+Once you approve:
+- It backs up every one of boxs.ca's databases to `~/gcpe-data/backups/<stamp>/` on boxs.ca, and
+  downloads a copy into the run folder. The stamp it prints is also the undo command's argument.
+- It asks you to stop the site's Node.js app in Site Tools (Devs → Node.js), and waits for
+  `/stack/health` to stop answering before going on.
+- It uploads and restores the new databases, clears News On Demand's read positions for Core and
+  NRMS so it re-reads their new data from the start, then asks you to start the app again in
+  Site Tools and waits for `/stack/health` to answer healthy.
+- It signs in as the break-glass administrator, republishes Core's reference data and the media
+  lists, and runs a handful of ticks by hand so the public site starts rebuilding.
+- It finishes with the same smoke test as the local trial: it asks for three passwords (the
+  break-glass administrator's, a Calendar test account's and a release test account's), then
+  signs in, opens the calendar, makes a Look Ahead PDF, opens a release and loads the public
+  site's home page.
+
+The public site then rebuilds every page from empty, at about 200 pages a tick — roughly four
+hours at legacy's volume. The home page and the latest posts are rebuilt first, so the site looks
+right well before the rest catches up.
+
+**Undo.** `npm run scrub:test-data:restore -- <stamp>` puts boxs.ca back exactly as that backup
+found it. It asks for the same typed confirmation style (`restore <stamp>`), the same two Site
+Tools pauses (stop, then start), and the same `/stack/health` wait each time.
+
+**Known limits.**
+- A real person who appears in none of legacy's people tables — a member of the public named
+  only in a comment, say — isn't found or replaced.
+- A real name typed in lower case is left alone by the structured name search. The literal
+  search still finds it and fails the gate loudly, rather than letting it through quietly.
+- An MLA's or a minister's name stored as a bare surname, with no first name, isn't rewritten in
+  free text: it can still appear, unreplaced, in calendar or release text on boxs.ca. It's public
+  record, so it isn't a leak — just something to expect when reading the test content.
+
+**UAT rows to re-point after a load.** Carolynn's test script has rows that assume the old
+hand-built sample data, or rely on data this load removes:
+- The retired test media list lives in NRMS, which this load replaces. Re-create a retired list
+  among the legacy ones before testing it.
+- The media-list membership rows need a legacy media list: after the load and the media-lists
+  republish, point them at one of those instead of the old test list. NoD keeps its own test
+  list, but it no longer has a matching NRMS list.
+- The rows that need a confidential activity need one created fresh: the load removes every
+  confidential activity, so a Calendar editor creates one first.
+- "A Core user with no Calendar role" now has imported pseudonymised users to choose from: pick
+  one of those, or one of the existing test accounts.
+- The rows that need two ministry comm contacts, one with an open activity, now use pseudonymised
+  legacy comm contacts; an open activity will be among the ones whose dates were shifted into the
+  coming weeks.
+- The rows that need a confirmed, non-confidential, "Approved…" activity from today onward may
+  find one among the shifted legacy activities; otherwise create one the same way the ordinary
+  "create an activity" row does.
+- Unaffected: the test accounts and their sign-in rows, and NoD's own subscriber rows (NoD keeps
+  its data). Rows that create their own release or site content are also unaffected, except the
+  two that assume a release from "this month", which need a fresh test release first, since
+  legacy's own releases keep their real publish dates.
+
 ## Calendar access (Phase 5a)
 
 - **Migration:** Core's `0002_calendar_access` is additive: a column, a nullable email with a check, two
