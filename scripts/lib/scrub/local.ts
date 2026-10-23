@@ -38,8 +38,8 @@ export function legacyEnv(cfg: MssqlConfig, scrubbedDb: string): Record<string, 
 }
 
 /** A command-line subscriber: only its name and types matter; the running stack delivers by name.
- * Used once the stack is up (the replay steps, elsewhere) — never during these one-shot import
- * steps, which run before any stack exists to deliver to. */
+ * The placeholder URL is never called by the CLI itself — the later trial step's in-process
+ * stack delivers queued events to the named subscriber once it's up. */
 export const PLACEHOLDER_SUBSCRIBER = (name: string, types: string[]) => ({ name, url: "https://import-cli.example.test/unused", secret: "unused-by-cli-000000000000000000000000", types });
 
 export interface CommandStep { name: string; npmArgs: string[]; env: Record<string, string> }
@@ -51,7 +51,7 @@ export function importSteps(urls: Record<LocalApp, string>, legacy: Record<strin
     {
       name: "calendar",
       npmArgs: ["run", "calendar:import", "--", "--cutoff", o.cutoff, "--confirm", "--report", join(o.out, "reports", "calendar-import.json")],
-      env: { ...legacy, DATABASE_URL: urls.calendar, CORE_DATABASE_URL: urls.core, CALENDAR_STORAGE_DIR: join(o.out, "calendar-files") },
+      env: { ...legacy, DATABASE_URL: urls.calendar, CORE_DATABASE_URL: urls.core, CALENDAR_STORAGE_DIR: join(o.out, "calendar-files"), CORE_EVENT_SUBSCRIBERS: JSON.stringify([PLACEHOLDER_SUBSCRIBER("calendar", ["user.upserted"]), PLACEHOLDER_SUBSCRIBER("nrms", ["user.upserted"])]) },
     },
     { name: "news-api", npmArgs: ["--workspace", "@gcpe/news-api", "run", "import:legacy"], env: { ...legacy, DATABASE_URL: urls.newsApi } },
   ];

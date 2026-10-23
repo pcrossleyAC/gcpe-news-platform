@@ -18,9 +18,11 @@ describe("importer steps", () => {
     expect(steps.map((s) => s.name)).toEqual(["core", "nrms", "calendar", "news-api"]);
     for (const s of steps) expect(s.env.LEGACY_SQL_DATABASE).toBe("Gcpe.Hub_Scrubbed");
     expect(steps[2]!.npmArgs).toEqual(["run", "calendar:import", "--", "--cutoff", "2000-01-01", "--confirm", "--report", "/p/run/reports/calendar-import.json"]);
-    // The running stack delivers Core's user.upserted events once it's up; a one-shot import
-    // run never sets EVENT_SUBSCRIBERS/CORE_EVENT_SUBSCRIBERS (no stack is listening yet).
+    expect(JSON.parse(steps[2]!.env.CORE_EVENT_SUBSCRIBERS!).map((s: { name: string }) => s.name)).toEqual(["calendar", "nrms"]);
+    // Only the calendar step queues Core's user.upserted events (for the later trial step's
+    // in-process stack to deliver); core, nrms and news-api set no subscribers.
     for (const s of steps) {
+      if (s.name === "calendar") continue;
       expect(s.env.EVENT_SUBSCRIBERS).toBeUndefined();
       expect(s.env.CORE_EVENT_SUBSCRIBERS).toBeUndefined();
     }
