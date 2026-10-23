@@ -1,6 +1,7 @@
 import sql from "mssql";
 import { IDENTIFIER_COLUMNS, PEOPLE_QUERIES, quoteCol, quoteName, STRUCTURED } from "./legacy-schema";
 import { assertScrubCopy } from "./mssql";
+import { ScrubStepError } from "./private-out";
 import { normEmail, parseName, type PeopleIndex, type Person, type PersonSource } from "./people";
 import { entityText, findLeaks, scrubText, type LeakKind, type ScrubCtx } from "./text";
 
@@ -25,6 +26,25 @@ function structuredValue(kind: "full" | "email" | "phone" | "username", p: Perso
   return normEmail(original) ? p.fake.email : `invalid-${p.fake.slot}`;
 }
 
+/** The nth copy of a value in a unique column: a suffix before an address's @, after anything else. */
+function nthCopy(kind: "full" | "email" | "phone" | "username", v: string, n: number): string {
+  if (n === 1) return v;
+  const at = v.indexOf("@");
+  return kind === "email" && at > 0 ? `${v.slice(0, at)}-${n}${v.slice(at)}` : `${v} ${n}`;
+}
+
+/** A value that fits its column without leaving a cut address or number behind: shorter forms first, then a plain cut. */
+function fitStructured(kind: "full" | "email" | "phone" | "username", v: string, p: Person, max: number): string {
+  if (max <= 0 || v.length <= max) return v;
+  const shorter = kind === "email" && v.endsWith("@example.test") ? [`${p.fake.username}@example.test`, `invalid-${p.fake.slot}`] : kind === "phone" ? [p.fake.phone.slice(4)] : [];
+  return shorter.find((s) => s.length <= max) ?? v.slice(0, max).trimEnd();
+}
+
+async function rollback(tx: sql.Transaction): Promise<void> {
+  // The error that caused the rollback is the one worth reporting.
+  try { await tx.rollback(); } catch { /* already rolled back or the connection is gone */ }
+}
+
 export async function writeStructuredPeople(pool: sql.ConnectionPool, index: PeopleIndex): Promise<number> {
   await assertScrubCopy(pool);
   const tx = new sql.Transaction(pool);
@@ -33,19 +53,42 @@ export async function writeStructuredPeople(pool: sql.ConnectionPool, index: Peo
   try {
     for (const spec of STRUCTURED) {
       const cols = Object.keys(spec.columns);
-      const rows = (await new sql.Request(tx).query<Record<string, string | null> & { Id: string }>(`SELECT CAST(Id AS nvarchar(50)) AS Id, ${cols.map(quoteCol).join(", ")} FROM ${quoteName(spec.table)}`)).recordset;
+      const [schema, table] = spec.table.split(".");
+      const meta = await new sql.Request(tx).input("s", schema).input("t", table).query<{ c: string; m: number | null; u: number }>(
+        "SELECT c.name AS c, CASE WHEN c.max_length = -1 THEN NULL WHEN ty.name IN ('nchar', 'nvarchar') THEN c.max_length / 2 ELSE c.max_length END AS m, CASE WHEN EXISTS (SELECT 1 FROM sys.index_columns ic JOIN sys.indexes i ON i.object_id = ic.object_id AND i.index_id = ic.index_id WHERE ic.object_id = c.object_id AND ic.column_id = c.column_id AND i.is_unique = 1 AND (SELECT COUNT(*) FROM sys.index_columns k WHERE k.object_id = i.object_id AND k.index_id = i.index_id AND k.is_included_column = 0) = 1) THEN 1 ELSE 0 END AS u FROM sys.columns c JOIN sys.types ty ON ty.user_type_id = c.user_type_id WHERE c.object_id = OBJECT_ID(QUOTENAME(@s) + '.' + QUOTENAME(@t))",
+      );
+      const width = new Map(meta.recordset.map((r) => [r.c, r.m ?? -1]));
+      const unique = new Set(meta.recordset.filter((r) => r.u === 1).map((r) => r.c));
+      const taken = new Map(cols.map((c) => [c, new Set<string>()]));
+      const rows = (await new sql.Request(tx).query<Record<string, string | null> & { Id: string }>(`SELECT CAST(Id AS nvarchar(50)) AS Id, ${cols.map(quoteCol).join(", ")} FROM ${quoteName(spec.table)} ORDER BY Id`)).recordset;
       for (const row of rows) {
         const p = index.bySource.get(`${spec.source}:${row.Id}`);
         if (!p) continue;
         const req = new sql.Request(tx).input("id", sql.NVarChar(50), row.Id);
-        cols.forEach((c, i) => req.input(`v${i}`, sql.NVarChar(sql.MAX), structuredValue(spec.columns[c]!, p, row[c] ?? null)));
-        await req.query(`UPDATE ${quoteName(spec.table)} SET ${cols.map((c, i) => `${quoteCol(c)} = @v${i}`).join(", ")} WHERE Id = @id`);
+        cols.forEach((c, i) => {
+          const kind = spec.columns[c]!;
+          const base = structuredValue(kind, p, row[c] ?? null);
+          let v = base;
+          if (base !== null && base.trim() !== "") {
+            // Two rows of one person in a unique column (dbo.User's display name and address) each get their own copy.
+            const seen = taken.get(c)!;
+            for (let n = 1; ; n++) {
+              v = fitStructured(kind, nthCopy(kind, base, n), p, width.get(c) ?? -1);
+              if (!unique.has(c) || !seen.has(v.toLowerCase())) break;
+              if (n > 1000) throw new ScrubStepError(`${spec.table}.${c}: no unique fictional value fits the column`);
+            }
+            seen.add(v!.toLowerCase());
+          }
+          req.input(`v${i}`, sql.NVarChar(sql.MAX), v);
+        });
+        const r = await req.query(`UPDATE ${quoteName(spec.table)} SET ${cols.map((c, i) => `${quoteCol(c)} = @v${i}`).join(", ")} WHERE Id = @id`);
+        if (r.rowsAffected[0] !== 1) throw new ScrubStepError(`${spec.table}: a people row was not matched by its id`);
         updated++;
       }
     }
     await tx.commit();
   } catch (e) {
-    await tx.rollback();
+    await rollback(tx);
     throw e;
   }
   return updated;
@@ -69,13 +112,25 @@ export async function textTables(pool: sql.ConnectionPool): Promise<TextTable[]>
 
 async function forEachPage(db: sql.ConnectionPool | sql.Transaction, t: TextTable, cols: string[], fn: (rows: Record<string, unknown>[]) => Promise<void>, pageSize = 2000): Promise<void> {
   const select = [...new Set([...t.pk, ...cols])].map(quoteCol).join(", ");
-  const order = t.pk.length ? t.pk.map(quoteCol).join(", ") : "(SELECT NULL)";
+  if (t.pk.length === 0) throw new ScrubStepError(`${t.table} has text columns but no primary key`);
+  const order = t.pk.map(quoteCol).join(", ");
   for (let offset = 0; ; offset += pageSize) {
     const req = db instanceof sql.Transaction ? new sql.Request(db) : new sql.Request(db);
     const rows = (await req.input("o", sql.Int, offset).input("n", sql.Int, pageSize).query<Record<string, unknown>>(`SELECT ${select} FROM ${quoteName(t.table)} ORDER BY ${order} OFFSET @o ROWS FETCH NEXT @n ROWS ONLY`)).recordset;
     if (rows.length > 0) await fn(rows);
     if (rows.length < pageSize) return;
   }
+}
+
+/**
+ * Scrubbed text cut to its column. A cut inside a word drops the whole word, so no address or number is left half
+ * written ("…@example.te" still reads as an address); what remains must be text a second scrub would leave alone.
+ */
+export function fitText(text: string, max: number, ctx: ScrubCtx, where = "a column"): string {
+  let next = text.slice(0, max);
+  if (!/\s/.test(text[max] ?? " ")) next = next.replace(/\S+$/, "");
+  if (scrubText(next, ctx).text !== next) throw new ScrubStepError(`${where}: text cut to the column would change on a second scrub`);
+  return next;
 }
 
 export interface TableScrub { rows: number; changed: number; truncated: number; names: number; emails: number; phones: number }
@@ -85,7 +140,8 @@ export async function scrubAllText(pool: sql.ConnectionPool, ctx: ScrubCtx, log:
   const report: Record<string, TableScrub> = {};
   for (const t of await textTables(pool)) {
     const cols = t.columns.filter((c) => !t.pk.includes(c.name) && !(IDENTIFIER_COLUMNS[t.table] ?? []).includes(c.name));
-    if (cols.length === 0 || t.pk.length === 0) continue;
+    if (cols.length === 0) continue;
+    if (t.pk.length === 0) throw new ScrubStepError(`${t.table} has text columns but no primary key`);
     const r: TableScrub = { rows: 0, changed: 0, truncated: 0, names: 0, emails: 0, phones: 0 };
     const tx = new sql.Transaction(pool);
     await tx.begin();
@@ -100,20 +156,21 @@ export async function scrubAllText(pool: sql.ConnectionPool, ctx: ScrubCtx, log:
             const s = scrubText(v, ctx);
             r.names += s.counts.names; r.emails += s.counts.emails; r.phones += s.counts.phones;
             let next = s.text;
-            if (c.max > 0 && next.length > c.max) { next = next.slice(0, c.max); r.truncated++; }
+            if (c.max > 0 && next.length > c.max) { next = fitText(next, c.max, ctx, `${t.table}.${c.name}`); r.truncated++; }
             if (next !== v) set.push([c.name, next]);
           }
           if (set.length === 0) continue;
           const req = new sql.Request(tx);
           set.forEach(([, v], i) => req.input(`v${i}`, sql.NVarChar(sql.MAX), v));
           t.pk.forEach((k, i) => req.input(`k${i}`, row[k]));
-          await req.query(`UPDATE ${quoteName(t.table)} SET ${set.map(([c], i) => `${quoteCol(c)} = @v${i}`).join(", ")} WHERE ${t.pk.map((k, i) => `${quoteCol(k)} = @k${i}`).join(" AND ")}`);
+          const done = await req.query(`UPDATE ${quoteName(t.table)} SET ${set.map(([c], i) => `${quoteCol(c)} = @v${i}`).join(", ")} WHERE ${t.pk.map((k, i) => `${quoteCol(k)} = @k${i}`).join(" AND ")}`);
+          if (done.rowsAffected[0] !== 1) throw new ScrubStepError(`${t.table}: a row was not matched by its key`);
           r.changed++;
         }
       });
       await tx.commit();
     } catch (e) {
-      await tx.rollback();
+      await rollback(tx);
       throw e;
     }
     report[t.table] = r;
@@ -142,7 +199,7 @@ const FAKE_DIGITS = /^(?:250)?55501\d\d$/;
 /** Text as the literal route compares it: entities decoded, accents and case folded, whitespace collapsed, commas spaced one way. */
 export function literalFold(s: string): string {
   return s.replace(ENTITY_RE, (e) => entityText(e) ?? " ").normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase()
-    .replace(/[‘’]/g, "'").replace(/[‐-–]/g, "-").replace(/\s+/g, " ").replace(/ ?, ?/g, ", ").trim();
+    .replace(/[\u200b\ufeff]/g, " ").replace(/[‘’]/g, "'").replace(/[‐-–]/g, "-").replace(/\s+/g, " ").replace(/ ?, ?/g, ", ").trim();
 }
 
 /** The digits a stored phone is found by: ten without a leading 1, or a seven-digit local number. */
