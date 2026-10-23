@@ -70,6 +70,7 @@ const legacySource = createFakeSource({
   themes: [],
   tags: [],
   services: [],
+  servicesPresent: [{ present: 1 }],
 });
 
 async function hqFlags(tdb: TestDatabase): Promise<Record<string, boolean | undefined>> {
