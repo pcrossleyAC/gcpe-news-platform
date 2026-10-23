@@ -19,11 +19,14 @@ import { runSmoke, type SmokeCheck } from "./smoke";
  * Ticks until deliveries drain, judged by progress rather than a fixed tick count: a legacy-scale
  * replay (tens of thousands of activities/release statuses) can take far more than a few hundred
  * ticks to drain, so what matters is whether the pending count keeps falling, not how many ticks
- * that takes. Fails only when the lowest pending count seen hasn't improved for `staleTicks`
- * consecutive ticks (default 50 — tolerates a tick or two of no progress without tolerating a
- * real stall), or when `maxWallMs` (default two hours) has passed. The dead-delivery check and
- * the two-quiet-ticks completion are unchanged. `log`, if given, gets one line every 100 ticks —
- * the tick number and the pending count, nothing else.
+ * that takes. A tick counts as stale when its pending count did not fall from the PREVIOUS tick's
+ * — not "below the lowest ever seen", which would wrongly keep counting a stall against a queue
+ * that legitimately rose (e.g. delivered events fanning out into new ones) and then resumed
+ * falling. Fails only when `staleTicks` consecutive ticks (default 50 — tolerates a tick or two
+ * of no progress without tolerating a real stall) are stale this way, or when `maxWallMs`
+ * (default two hours) has passed. The dead-delivery check and the two-quiet-ticks completion are
+ * unchanged. `log`, if given, gets one line every 100 ticks — the tick number and the pending
+ * count, nothing else.
  */
 export async function drainUntilIdle(o: {
   tick(): Promise<void>;
@@ -35,7 +38,7 @@ export async function drainUntilIdle(o: {
   const staleTicks = o.staleTicks ?? 50;
   const deadline = Date.now() + (o.maxWallMs ?? 2 * 60 * 60 * 1000);
   let quiet = 0;
-  let lowest = Infinity;
+  let previous = Infinity;
   let stale = 0;
   for (let i = 1; ; i++) {
     await o.tick();
@@ -44,13 +47,13 @@ export async function drainUntilIdle(o: {
     if (o.log && i % 100 === 0) o.log(`tick ${i}: ${s.pending} pending`);
     quiet = s.pending === 0 ? quiet + 1 : 0;
     if (quiet >= 2) return i;
-    if (s.pending < lowest) {
-      lowest = s.pending;
+    if (s.pending < previous) {
       stale = 0;
     } else {
       stale++;
       if (stale >= staleTicks) throw new ScrubStepError(`event delivery stalled with ${s.pending} still pending`);
     }
+    previous = s.pending;
     if (Date.now() > deadline) throw new ScrubStepError(`event delivery timed out with ${s.pending} still pending`);
   }
 }

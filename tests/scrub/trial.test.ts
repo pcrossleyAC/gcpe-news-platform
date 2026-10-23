@@ -32,6 +32,22 @@ describe("drainUntilIdle", () => {
     ).rejects.toThrow(/event delivery stalled with 50 still pending/);
   });
 
+  it("completes a rise-then-fall queue without a false stall", async () => {
+    // Delivered events can fan out into new ones: the count falls, then genuinely rises well
+    // above its lowest-ever value, then resumes falling. That single rise must not be judged
+    // against "the lowest ever seen" (which would count every one of the ~290 ticks it takes to
+    // fall back below 10 as stale, and falsely stall) — only against the immediately previous
+    // tick, so the one rising tick counts as stale once and the very next falling tick clears it.
+    const sequence: number[] = [];
+    for (let p = 100; p >= 10; p--) sequence.push(p); // falls: 100..10
+    sequence.push(300); // one-tick burst, far above the lowest-ever value (10)
+    for (let p = 299; p >= 0; p--) sequence.push(p); // falls again: 299..0
+    sequence.push(0); // second quiet tick, so the drain completes
+    let i = 0;
+    const ticks = await drainUntilIdle({ tick: async () => {}, pending: async () => ({ pending: sequence[i++]!, dead: 0 }) });
+    expect(ticks).toBe(sequence.length);
+  });
+
   describe("the wall-clock cap", () => {
     beforeEach(() => {
       vi.useFakeTimers();
