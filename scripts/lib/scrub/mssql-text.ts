@@ -226,7 +226,7 @@ export function buildLiteralNeedles(index: PeopleIndex): LiteralNeedles {
     for (const raw of names) {
       // An office, role or placeholder ("Media Relations", "News Staff") is ordinary words, not a name to search for.
       if (isPlaceholderOrTitle(raw)) continue;
-      forms.add(raw);
+      // The name without a bracketed note, address or trailing number: "News 1130" is searched for as "News", which is no needle.
       forms.add(cleanName(raw));
       const parsed = parseName(raw);
       if (parsed) {

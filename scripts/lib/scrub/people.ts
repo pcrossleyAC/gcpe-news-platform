@@ -44,6 +44,8 @@ export const LINKS = new Set(["of", "for", "and", "to", "on", "the", "responsibl
 const SUFFIXES = new Set(["jr", "sr", "ii", "iii", "iv", "kc", "qc", "phd", "md", "mla", "mp"]);
 /** A multi-word part before the comma is a surname only when it starts like one ("Van Dyk, Quill"); otherwise it is "Name, office". */
 const SURNAME_PARTICLES = new Set(["van", "von", "de", "del", "della", "der", "den", "di", "du", "da", "dos", "das", "la", "le", "st", "ter", "ten", "mac", "mc", "bin", "ibn", "al", "el"]);
+/** Short words a given name is never, so "in Surrey" is not read as one person's fallback form. */
+const FUNCTION_WORDS = new Set(["in", "at", "by", "is", "as", "an", "or", "if", "it", "be", "we", "us", "my", "so", "up", "no", "do", "go", "he", "me", "am", "via", "per", "with", "from", "into"]);
 /** Particles that begin a surname rather than end the given names: a fallback never starts with one, and they may be written in lower case. */
 export const NAME_PARTICLES = new Set([...SURNAME_PARTICLES, "los", "las"]);
 /** Names made only of these are roles or placeholders, not people. */
@@ -52,6 +54,10 @@ const ROLE_WORDS = new Set([
   "office", "tbd", "tba", "none", "other", "various", "multiple", "ministry", "unknown", "gcpe", "communications", "media",
   "relations", "director", "executive", "chief", "of", "and", "for", "government", "representative", "events", "event",
   "planner", "videographer", "photographer", "coordinator", "admin", "administrator", "system", "test", "user", "hq",
+  // Shared lines and inboxes ("Media Line", "News Desk") and the province itself ("BC CEO").
+  "line", "desk", "inbox", "hotline", "mailbox", "account", "information", "inquiries", "bc",
+  // Outlets listed as media contacts ("Global News", "CHEK Television").
+  "news", "radio", "tv", "television", "productions", "studio", "studios", "network", "broadcasting", "newspaper", "magazine",
 ]);
 /**
  * Words that end an office title ("Chief Information Officer", "Board Chair"). A parse whose surname is one of these is
@@ -62,7 +68,7 @@ const OFFICE_ENDS = new Set([
   "councillor", "councillors", "deputy", "assistant", "associate", "executive", "director", "coordinator", "manager", "governor",
   "lieutenant", "provincial", "regional", "board", "cabinet", "council", "committee", "registrar", "auditor", "comptroller",
   "ombudsperson", "ombudsman", "clerk", "superintendent", "inspector", "chancellor", "ambassador", "consul", "specialist", "strategist",
-  "lead", "analyst", "editor", "gallery",
+  "lead", "analyst", "editor", "gallery", "ceo", "cfo", "coo", "cio", "cto", "information",
 ]);
 /** Offices written "Office, Place or Body" ("Mayor, Nelson", "Speaker, Legislative Assembly"). */
 const PLACE_OFFICES = new Set(["mayor", "speaker", "leader", "general"]);
@@ -146,6 +152,8 @@ function parseCandidate(s: string): Reading {
   if (/[\d@]/.test(s)) return null;
   const parts = s.split(",").map(tokensOf).filter((p) => p.length > 0);
   if (parts.length > 0 && parts.flat().every(isRole)) return OFFICE;
+  // "The Tyee", "The Province": an outlet or organisation, not "The Honourable …".
+  if (parts.length === 1 && parts[0]![0] === "the" && parts[0]!.length >= 2 && !HONORIFICS.has(parts[0]![1]!) && !TITLES.has(parts[0]![1]!)) return OFFICE;
   while (parts.length > 1 && isDescriptor(parts[parts.length - 1]![0]!)) parts.pop();
   if (parts.length === 0) return null;
   let p: ParsedName | null;
@@ -198,7 +206,9 @@ function readName(raw: string | null): Reading {
   if (s === "") return null;
   const outside = s.replace(/\([^()]*\)/g, " ");
   const inside = [...s.matchAll(/\(([^()]*)\)/g)].map((m) => m[1]!);
-  const readings = [outside, ...inside].map(parseCandidate);
+  // "Quill Ashbury - CBC News": the part before a spaced dash is tried after the whole, like a bracketed note.
+  const beforeDash = outside.split(/\s[-–—]\s/)[0]!;
+  const readings = [outside, ...inside, ...(beforeDash !== outside ? [beforeDash] : [])].map(parseCandidate);
   const p = readings.find((x) => x !== null && x !== OFFICE);
   if (p) return p;
   // A directory tag ("Ashbury, Quill Bryn GCPE:EX") can push a name past four words; then the name is read without it.
@@ -243,8 +253,10 @@ export function nameVariants(raw: string | null): NameVariant[] {
   const out: NameVariant[] = [...v].filter(([key]) => !paired || !key.split(" ").includes("and")).map(([key, surnameFirst]) => ({ key, surnameFirst }));
   const lastGiven = p.given[p.given.length - 1]!;
   const fallback = `${lastGiven} ${last}`;
-  // Not from a surname particle ("Quill de la Cruz" gives no "la cruz") or a directory tag ("Ashbury, Quill FOR:EX" gives no "ex ashbury").
-  if (p.given.length > 1 && lastGiven.length > 1 && !isRole(lastGiven) && !NAME_PARTICLES.has(lastGiven) && !tagWords(raw!).has(lastGiven) && !v.has(fallback)) {
+  // Not from a surname particle ("Quill de la Cruz" gives no "la cruz"), a directory tag ("Ashbury, Quill FOR:EX" gives no
+  // "ex ashbury"), a short word ("in"), or an acronym ("Quill CBC Radio" gives no "cbc radio").
+  const acronym = [...raw!.matchAll(TOKEN_RE)].some((m) => normToken(m[0]) === lastGiven && m[0].length >= 2 && m[0] === m[0].toUpperCase() && m[0] !== m[0].toLowerCase());
+  if (p.given.length > 1 && lastGiven.length > 1 && !isRole(lastGiven) && !NAME_PARTICLES.has(lastGiven) && !FUNCTION_WORDS.has(lastGiven) && !acronym && !tagWords(raw!).has(lastGiven) && !v.has(fallback)) {
     out.push({ key: fallback, surnameFirst: false, fallback: true });
   }
   return out;

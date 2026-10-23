@@ -88,7 +88,7 @@ describe("parseName", () => {
     expect(nameVariants("Quill and Bryn Ashbury").map((v) => v.key).sort()).toEqual(["ashbury , quill", "bryn ashbury", "quill ashbury"]);
     expect(parseName("And Quill Ashbury")).toBeNull();
   });
-  it.each(["Arts and Culture", "Parks and Recreation", "News Staff", "Support Staff", "Quill TBD"])("keeps %j as a row but gives it no forms to match", (raw) => {
+  it.each(["Arts and Culture", "Parks and Recreation", "Support Staff", "Quill TBD"])("keeps %j as a row but gives it no forms to match", (raw) => {
     expect(parseName(raw)).not.toBeNull();
     expect(nameVariants(raw)).toEqual([]);
   });
@@ -137,6 +137,21 @@ describe("people that no rule can read", () => {
     const ix = buildPeopleIndex([src("media.Contact", "1", ["Ximena de la Paz Okonkwo Ruiz"]), src("media.Contact", "2", ["Quill Ashbury"])], KEY);
     expect(ix.strays.map((s) => `${s.source}:${s.id}`)).toEqual(["media.Contact:1"]);
   });
+});
+
+describe("shared lines, outlets and organisations", () => {
+  it.each(["Media Line", "News Desk", "Quill Public Information", "BC CEO", "The Ledger", "Harbour News", "KXYZ Television", "Coastline Productions"])(
+    "reads %j as an office, line or outlet", (raw) => {
+      expect(isPlaceholderOrTitle(raw)).toBe(true);
+      expect(nameVariants(raw)).toEqual([]);
+    },
+  );
+  it.each(["The Honourable Quill Ashbury", "Quill Ashbury", "Quill Ashbury - KXYZ News", "Quill Ashbury – Harbour Radio"])("still reads %j as a person", (raw) => expect(parseName(raw)).toEqual({ given: ["quill"], surname: ["ashbury"] }));
+  it.each([["Quill In Ashbury", "in ashbury"], ["Quill KTV Ashbury", "ktv ashbury"], ["Quill At Ashbury", "at ashbury"]])("makes no fallback %j from a short word or an acronym", (raw, form) => {
+    expect(nameVariants(raw).map((v) => v.key)).not.toContain(form);
+    expect(nameVariants(raw).map((v) => v.key)).toContain("quill ashbury");
+  });
+  it("keeps the fallback of an ordinary middle name", () => expect(nameVariants("Quill Bryn Ashbury").map((v) => v.key)).toContain("bryn ashbury"));
 });
 
 describe("isPlaceholderOrTitle", () => {

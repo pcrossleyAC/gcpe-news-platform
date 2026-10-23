@@ -86,7 +86,16 @@ describe("the literal route's middle initials, fallback forms and offices", () =
   const needles = buildLiteralNeedles(index);
   const kinds = (text: string) => literalHits(text, needles).map((h) => h.kind);
 
-  it.each(["quill b. ashbury said", "quill b ashbury said", "PREMIER QUILL B. ASHBURY ANNOUNCES FUNDING", "bryn ashbury said", "MEDIA CONTACT BRYN ASHBURY TODAY"])(
+  it("leaves no shouted name for the literal route: the name routes replace it", () => {
+    for (const raw of ["PREMIER QUILL B. ASHBURY ANNOUNCES FUNDING", "MEDIA CONTACT BRYN ASHBURY TODAY"]) {
+      expect(findLeaks(raw, index)).toEqual(["name", "name-plain"]);
+      const after = scrubText(raw, { index, key: "f".repeat(64) }).text;
+      expect(kinds(after)).toEqual([]);
+      expect(findLeaks(after, index)).toEqual([]);
+    }
+  });
+
+  it.each(["quill b. ashbury said", "quill b ashbury said", "bryn ashbury said"])(
     "catches %j, which the name routes leave alone", (raw) => {
       expect(findLeaks(raw, index)).toEqual([]);
       expect(kinds(raw)).toEqual(["literal-name"]);
@@ -139,6 +148,20 @@ describe("the literal route's strays, crew rows and lone a or i", () => {
     const ix = buildPeopleIndex([{ source: "calendar.SystemUser", id: "1", names: ["Quill Ashbury"], email: null, phones: ["604-555-0142"], alwaysPerson: true }], "f".repeat(64));
     expect(literalHits(raw, buildLiteralNeedles(ix)).map((h) => h.kind)).toEqual(["literal-phone"]);
     expect(findLeaks(raw, ix)).toEqual(["phone"]);
+  });
+});
+
+describe("the literal route's stored forms", () => {
+  const index = buildPeopleIndex([
+    { source: "media.Contact", id: "1", names: ["Wave 1130"], email: null, phones: [] },
+    { source: "media.Contact", id: "2", names: ["Media Line"], email: "medialine@news.example", phones: [] },
+  ], "f".repeat(64));
+  const kinds = (text: string) => literalHits(text, buildLiteralNeedles(index)).map((h) => h.kind);
+  it("searches for a stored name without its trailing number, and not at all when one word is left", () => {
+    expect(kinds("Wave 1130 reported it")).toEqual([]);
+  });
+  it("makes no name needle for a shared line, but keeps its address", () => {
+    expect(kinds("Call the media line (Media Line) or medialine@news.example")).toEqual(["literal-email"]);
   });
 });
 

@@ -34,6 +34,21 @@ const fakeOf = (k: string) => index.bySource.get(k)!.fake;
 const real = /\b(?:Quill|Ashbury|Dorian|Feld|Marisol|Tennant|Corin|Vale|Bexley|Strand|Perrin|Halloways|Brennick|Fenna|Rook|Lindqvist|Pellow|Yellowhorse|Ambrose|Marrow|Lisle)\b|Jos(?:e|é|&eacute;|&#233;)|N(?:u|ú|&uacute;)(?:n|ñ|&ntilde;)ez/i;
 
 describe("names", () => {
+  it("replaces again when a fictional first name completes a real surname-first name", () => {
+    const a = { source: "media.Contact", id: "1", names: ["Quill Ashbury"], email: "qa@news.example", phones: [] };
+    const f = buildPeopleIndex([a], KEY).persons[0]!.fake.first;
+    const ix = buildPeopleIndex([a, { source: "media.Contact", id: "2", names: [`${f} Brennick`], email: "fb@news.example", phones: [] }], KEY);
+    expect(ix.bySource.get("media.Contact:1")!.fake.first).toBe(f);
+    const out = scrubText("Met Brennick, Quill Ashbury today", { index: ix, key: KEY }).text;
+    expect(findLeaks(out, ix)).toEqual([]);
+    expect(scrubText(out, { index: ix, key: KEY }).text).toBe(out);
+  });
+  it("reads a surname-first name with tags around its comma by both routes", () => {
+    const raw = "<b>Ashbury,</b> <b>Quill</b> said";
+    expect(findLeaks(raw, index)).toEqual(["name", "name-plain"]);
+    expect(s(raw)).toBe(`<b>${quill.last},</b> <b>${quill.first}</b> said`);
+    expect(findLeaks(s(raw), index)).toEqual([]);
+  });
   it("replaces a full name inside a sentence", () => expect(s("Met with Quill Ashbury today.")).toBe(`Met with ${quill.first} ${quill.last} today.`));
   it("keeps capitals", () => expect(s("QUILL ASHBURY")).toBe(`${quill.first.toUpperCase()} ${quill.last.toUpperCase()}`));
   it("matches across a line break", () => expect(s("Quill\nAshbury")).toBe(`${quill.first}\n${quill.last}`));
@@ -219,8 +234,7 @@ describe("ordinary words that look like listed names", () => {
     "The Opposition Leader said", "The Official Opposition Leader said", "Leader, Official Opposition", "the Legislative Assembly Speaker",
     "Speaker, Legislative Assembly", "Nelson Mayor", "Mayor, Nelson", "Canadian Forces General", "General, Canadian Forces",
     "news staff", "support staff", "News Staff", "Support Staff", "arts and culture", "Arts and Culture", "ARTS AND CULTURE", "parks and recreation",
-    "Parks and Recreation", "to mark short-term gains", "Government to Mark Short-Term Milestones", "MARK SHORT-TERM GAINS",
-    "GOVERNMENT TO MARK SHORT", "asked mark short to wait",
+    "Parks and Recreation", "to mark short-term gains", "asked mark short to wait",
   ])("leaves %j unchanged", (raw) => {
     expect(sx(raw)).toBe(raw);
     expect(findLeaks(raw, ix)).toEqual([]);
@@ -230,6 +244,18 @@ describe("ordinary words that look like listed names", () => {
     expect(sx("Mark Short said")).toBe(`${mark.first} ${mark.last} said`);
     expect(sx("MARK SHORT said")).toBe(`${mark.first.toUpperCase()} ${mark.last.toUpperCase()} said`);
     expect(sx("a Mark Short-led plan")).toBe(`a ${mark.first} ${mark.last}-led plan`);
+  });
+
+  it("replaces a listed name written like one even in a shouted headline or before a capitalised hyphen part", () => {
+    const up = (x: string) => x.toUpperCase();
+    expect(sx("GOVERNMENT TO MARK SHORT")).toBe(`GOVERNMENT TO ${up(mark.first)} ${up(mark.last)}`);
+    expect(sx("MARK SHORT-TERM GAINS")).toBe(`${up(mark.first)} ${up(mark.last)} GAINS`);
+    expect(sx("Government to Mark Short-Term Milestones")).toBe(`Government to ${mark.first} ${mark.last} Milestones`);
+    expect(sx("Mark Short-Vale said")).toBe(`${mark.first} ${mark.last} said`);
+    for (const t of ["MARK SHORT-TERM GAINS", "Mark Short-Vale said"]) {
+      expect(findLeaks(t, ix)).toEqual(["name", "name-plain"]);
+      expect(findLeaks(sx(t), ix)).toEqual([]);
+    }
   });
 
   it.each([800, 5000])("finishes a %i-piece dash-joined word in under a second", (pieces) => {
@@ -369,6 +395,12 @@ describe("findLeaks", () => {
   it.each(["2024 \u2013 2025 \u2013 2026", "pages 100 \u2013 200", "1 \u2013 800 \u2013 22", "scores 604 \u2013 55 \u2013 0142", "604 \u2013 5550 \u2013 142"])("leaves the dashed non-phone %j alone", (raw) => {
     expect(s(raw)).toBe(raw);
     expect(findLeaks(raw, index)).toEqual([]);
+  });
+
+  it.each(["Call 604 555-0142c now", "Cell604 555-0142", "Call 604555-0142 now", "Call 604-555-0142Media now"])("finds the phone with no space around it in %j", (raw) => {
+    expect(findLeaks(raw, index)).toContain("phone");
+    expect(s(raw)).not.toMatch(/604/);
+    expect(findLeaks(s(raw), index)).toEqual([]);
   });
 
   it.each(["Call 555.0142.", "Call 604–555–0142 now", "Call 604 \u2013 555 \u2013 0142 now", "Call 604 - 555 - 0142 now"])("finds the phone in %j", (raw) => {

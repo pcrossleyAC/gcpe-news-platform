@@ -5,11 +5,12 @@ export const EMAIL_RE = /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-
 /** North American numbers with an area code: 604-555-0142, (604) 555-0142, 604.555.0142, +1 604 555 0142, 1-800-…, with ext./x. */
 /**
  * Separators are matched over entity-decoded text, so they include no-break and thin spaces and the Unicode hyphens
- * and dashes; a dash may have one space on either side ("604 – 555 – 0142").
+ * and dashes; a dash may have one space on either side ("604 – 555 – 0142"). The area code may run straight into the
+ * number ("604555-0142"), and a letter may touch either end ("Cell604 555-0142c"), as contact blocks are often typed.
  */
 const SEP = "(?:[ \\u00a0]?[\\-\\u2010-\\u2014\\u2212][ \\u00a0]?|[ .\\u00a0\\u2000-\\u200a\\u202f])";
 const FULL_PHONE_RE = new RegExp(
-  `(?<![\\w+\\-\\u2010-\\u2014\\u2212])(?:\\+?1${SEP}?)?(?:\\(\\d{3}\\)${SEP}?|\\d{3}${SEP})\\d{3}${SEP}\\d{4}(?:\\s*(?:ext\\.?|extension|x)\\s*\\d{1,6})?(?![\\w\\-\\u2010-\\u2014\\u2212])`,
+  `(?<![\\d_+\\-\\u2010-\\u2014\\u2212])(?:\\+?1${SEP}?)?(?:\\(\\d{3}\\)${SEP}?|\\d{3}${SEP}?)\\d{3}${SEP}\\d{4}(?:\\s*(?:ext\\.?|extension|x)\\s*\\d{1,6})?(?![\\d_]|[\\-\\u2010-\\u2014\\u2212]\\d)`,
   "gi",
 );
 /**
@@ -34,7 +35,7 @@ export function phoneSpans(text: string): { start: number; end: number; local: b
 
 /** What may sit between two parts of one name: spaces, line breaks, non-breaking spaces and tags. */
 const JOIN_GAP = /^(?:\s|&nbsp;|&#160;|&#xa0;|<[^<>]{0,200}>)+$/i;
-const COMMA_GAP = /^(?:\s|&nbsp;|&#160;|&#xa0;)*,(?:\s|&nbsp;|&#160;|&#xa0;)*$/i;
+const COMMA_GAP = /^(?:\s|&nbsp;|&#160;|&#xa0;|<[^<>]{0,200}>)*,(?:\s|&nbsp;|&#160;|&#xa0;|<[^<>]{0,200}>)*$/i;
 const POSSESSIVE = /['’]s$/i;
 
 const TAG_RE = /<[^<>]{0,200}>/g;
@@ -113,18 +114,12 @@ function gapBetween(text: string, a: { end: number; norm: string }, b: { start: 
 const DASHES = /[-\u2010\u2011\u2013]/g;
 /** A piece of a name is capitalised, or is a lower-case particle ("de", "van"), or reads like "d'Arcy". */
 const nameCased = (piece: string) => /^\p{Lu}/u.test(piece) || NAME_PARTICLES.has(normToken(piece)) || /^\p{Ll}{1,3}['’]\p{Lu}/u.test(piece);
-const upperCased = (piece: string) => /\p{Lu}/u.test(piece) && !/\p{Ll}/u.test(piece);
-/** All-upper-case runs this long are shouted headlines ("MARK SHORT-TERM GAINS"), not names. */
-const SHOUTED = 4;
 /**
- * Only words written like a name are replaced: each capitalised (particles aside), or all of them upper case outside a
- * shouted run. Lower-case and mixed matches ("asked Kevin to", "news staff", "to mark short-term gains") are left
- * alone; Gate 1's literal route is case-insensitive, so a real name left that way fails the gate loudly.
+ * Only words written like a name are replaced: each capitalised or upper case (particles aside). Lower-case and mixed
+ * matches ("asked Kevin to", "news staff", "to mark short-term gains") are left alone; Gate 1's literal route is
+ * case-insensitive, so a real name left that way fails the gate loudly.
  */
-function writtenLikeName(pieces: string[], run: () => number): boolean {
-  if (pieces.every(upperCased)) return run() < SHOUTED;
-  return pieces.every(nameCased);
-}
+const writtenLikeName = (pieces: string[]) => pieces.every(nameCased);
 
 function piecesOf(view: View): Tok[] {
   const toks: Tok[] = [];
@@ -158,14 +153,7 @@ function groupsOf(view: View, toks: Tok[], a: number, b: number): Group[] {
 function matchView(text: string, view: View, index: PeopleIndex, out: NameMatch[]): void {
   const toks = piecesOf(view);
   const cap = index.maxWords + 1;
-  const adjacent = (x: number) => toks[x + 1]!.word === toks[x]!.word || gapBetween(text, toks[x]!, toks[x + 1]!) === "join";
-  const runAround = (a: number, b: number) => {
-    let lo = a, hi = b;
-    while (lo > 0 && b - lo < SHOUTED && upperCased(toks[lo - 1]!.shape) && adjacent(lo - 1)) lo--;
-    while (hi < toks.length - 1 && hi - lo < SHOUTED && upperCased(toks[hi + 1]!.shape) && adjacent(hi)) hi++;
-    return hi - lo + 1;
-  };
-  const tryWindow = (a: number, b: number): NameMatch | null => {
+  const tryWindow = (a: number, b: number): { match: NameMatch; last: number } | null => {
     const groups = groupsOf(view, toks, a, b);
     const n = groups.length;
     if (n < 2 || !index.firstTokens.has(groups[0]!.norm)) return null;
@@ -186,23 +174,25 @@ function matchView(text: string, view: View, index: PeopleIndex, out: NameMatch[
       const initials = words.map((_, k) => k).filter((k) => k > 0 && k < n - 1 && words[k]!.length === 1);
       if (initials.length === 1 && initials[0] !== commaAt && initials[0]! + 1 !== commaAt) hit = index.byVariant.get(keyOf(initials[0]!));
     }
-    if (!hit || !writtenLikeName(toks.slice(a, b + 1).map((t) => t.shape), () => runAround(a, b))) return null;
-    // A name cut from the front of a word is followed by a lower-case suffix ("Ashbury-led") or by another name
-    // ("Ashbury–Thea Marchbank"), never by a capitalised word of its own ("Mark Short-Term").
-    if (toks[b]!.cut && !/^\p{Ll}/u.test(toks[b + 1]!.shape) && !matchAt(b + 1)) return null;
+    if (!hit || !writtenLikeName(toks.slice(a, b + 1).map((t) => t.shape))) return null;
+    // A name cut from the front of a word keeps a lower-case suffix ("Ashbury-led") or another name that follows
+    // ("Ashbury–Thea Marchbank"). Anything else after the hyphen is the rest of the surname ("Ashbury-Vale" for a
+    // person listed as Quill Ashbury), so the whole word is replaced.
+    let tail = b;
+    if (toks[b]!.cut && !/^\p{Ll}/u.test(toks[b + 1]!.shape) && !matchAt(b + 1)) while (tail + 1 < toks.length && toks[tail + 1]!.word === toks[b]!.word) tail++;
     const found = hit;
     const parts = groups.map((g, k) => {
       const role: Role = found.surnameFirst ? (k === 0 ? "surname" : k === commaAt ? "given" : "drop") : k === 0 ? "given" : k === n - 1 ? "surname" : "drop";
       let start = g.start;
-      let end = k === n - 1 ? view.end[g.vs + keep - 1]! : g.end;
+      let end = k === n - 1 ? (tail > b ? toks[tail]!.end : view.end[g.vs + keep - 1]!) : g.end;
       if (role === "drop") {
         // Take the space before a dropped word with it, and an initial's period, so no double space is left.
         if (/^\s+$/.test(text.slice(groups[k - 1]!.end, g.start))) start = groups[k - 1]!.end;
         if (g.norm.length === 1 && text[end] === ".") end++;
       }
-      return { start, end, role, shape: k === n - 1 ? g.shape.slice(0, keep) : g.shape };
+      return { start, end, role, shape: k === n - 1 ? (tail > b ? view.text.slice(g.vs, toks[tail]!.ve) : g.shape.slice(0, keep)) : g.shape };
     });
-    return { start: parts[0]!.start, end: parts[parts.length - 1]!.end, hit: found, parts };
+    return { match: { start: parts[0]!.start, end: parts[parts.length - 1]!.end, hit: found, parts }, last: tail };
   };
   const memo = new Map<number, { match: NameMatch; last: number } | null>();
   function matchAt(i: number): { match: NameMatch; last: number } | null {
@@ -221,7 +211,7 @@ function matchView(text: string, view: View, index: PeopleIndex, out: NameMatch[
         if (words > cap || pieces > cap) break;
         far = j;
       }
-      for (let b = far; b > i && !found; b--) { const m = tryWindow(i, b); if (m) found = { match: m, last: b }; }
+      for (let b = far; b > i && !found; b--) found = tryWindow(i, b);
     }
     memo.set(i, found);
     return found;
@@ -273,15 +263,20 @@ export function scrubText(text: string, ctx: ScrubCtx): { text: string; counts: 
     const f = fakePhone(ctx.key, sp.value.replace(/\D/g, ""));
     return sp.local ? f.slice(4) : f;
   });
-  const matches = nameSpans(out, ctx.index);
-  counts.names += matches.length;
-  const parts = matches.flatMap((m) => m.parts.map((p) => ({ ...p, fake: m.hit.person.fake })));
-  out = replaceSpans(out, parts, (_orig, p) => {
-    if (p.role === "drop") return "";
-    const fake = p.role === "given" ? p.fake.first : p.fake.last;
-    // An initial stays an initial: "Q. Ashbury" becomes "F. Last", not "First. Last".
-    return upperIf(p.shape, p.role === "given" && p.shape.length === 1 ? fake[0]! : fake);
-  });
+  // Replaced until nothing more matches: a fictional first name can complete a real person's name with the word
+  // before it ("Ashbury, <fictional first>"), which a second pass would otherwise find.
+  for (let pass = 0; pass < 4; pass++) {
+    const matches = nameSpans(out, ctx.index);
+    if (matches.length === 0) break;
+    counts.names += matches.length;
+    const parts = matches.flatMap((m) => m.parts.map((p) => ({ ...p, fake: m.hit.person.fake })));
+    out = replaceSpans(out, parts, (_orig, p) => {
+      if (p.role === "drop") return "";
+      const fake = p.role === "given" ? p.fake.first : p.fake.last;
+      // An initial stays an initial: "Q. Ashbury" becomes "F. Last", not "First. Last".
+      return upperIf(p.shape, p.role === "given" && p.shape.length === 1 ? fake[0]! : fake);
+    });
+  }
   return { text: out, counts };
 }
 
@@ -311,14 +306,6 @@ function plainSegmentHits(segment: string, index: PeopleIndex): number {
   const subs = words.flatMap((w, word) => w.split(PLAIN_DASH).map((raw, k, all) => ({ raw, word, joined: k > 0, cut: k < all.length - 1 })));
   const cap = index.maxWords + 1;
   const bare = (raw: string) => raw.replace(LEADING_PUNCT, "").replace(TRAILING_PUNCT, "");
-  // Two pieces are side by side when they share a word, or when no punctuation sits between their words.
-  const adjacent = (x: number) => subs[x + 1]!.word === subs[x]!.word || (!TRAILING_PUNCT.test(subs[x]!.raw) && !LEADING_PUNCT.test(subs[x + 1]!.raw));
-  const runAround = (a: number, b: number) => {
-    let lo = a, hi = b;
-    while (lo > 0 && b - lo < SHOUTED && upperCased(bare(subs[lo - 1]!.raw)) && adjacent(lo - 1)) lo--;
-    while (hi < subs.length - 1 && hi - lo < SHOUTED && upperCased(bare(subs[hi + 1]!.raw)) && adjacent(hi)) hi++;
-    return hi - lo + 1;
-  };
   const memo = new Map<number, number | null>();
   /** The last piece of the name starting at piece i, or null. */
   function nameAt(i: number): number | null {
@@ -355,9 +342,11 @@ function plainSegmentHits(segment: string, index: PeopleIndex): number {
         const initials = ws.map((w, k) => (k > 0 && k < n - 1 && INITIAL_WORD.test(w) ? k : -1)).filter((k) => k >= 0);
         if (initials.length === 1 && !(comma && initials[0] === 1)) hit = index.byVariant.has(keyOf(initials[0]!));
       }
-      if (!hit || !writtenLikeName(subs.slice(i, b + 1).map((x) => bare(x.raw)), () => runAround(i, b))) continue;
-      if (subs[b]!.cut && !/^\p{Ll}/u.test(subs[b + 1]!.raw) && nameAt(b + 1) === null) continue;
-      found = b;
+      if (!hit || !writtenLikeName(subs.slice(i, b + 1).map((x) => bare(x.raw)))) continue;
+      // As in the strict route: after a cut, anything but a lower-case suffix or another name is the rest of the surname.
+      let tail = b;
+      if (subs[b]!.cut && !/^\p{Ll}/u.test(subs[b + 1]!.raw) && nameAt(b + 1) === null) while (tail + 1 < subs.length && subs[tail + 1]!.word === subs[b]!.word) tail++;
+      found = tail;
     }
     memo.set(i, found);
     return found;
