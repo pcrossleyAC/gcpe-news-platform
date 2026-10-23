@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { gzipSync } from "node:zlib";
@@ -246,5 +246,93 @@ describe("fix round 1: localDump", () => {
     await localDump(clean.url, out);
     const r = spawnSync("bash", ["-c", `gunzip -c "${out}" | tail -n 5 | grep -qF -- '-- PostgreSQL database dump complete'`]);
     expect(r.status).toBe(0);
+  });
+});
+
+describe("fix round 2: a password with special characters, over real scram-sha-256 auth", () => {
+  // The local admin database used everywhere else in this file runs on trust auth, which never
+  // exercises PGPASSWORD at all. Proving the percent-decode fix needs a cluster that actually
+  // checks a password, so one is built from scratch here, on a scratch port, and torn down
+  // afterwards — never the shared local Postgres, never boxs.ca.
+  const pgDataDir = mkdtempSync(join(tmpdir(), "scrub-scram-"));
+  const sockDir = `/tmp/scrub-pw-test-${process.pid}`; // short path: unix socket paths have ~100 byte limit
+  const pwFile = join(pgDataDir, "..", `scrub-scram-pw-${process.pid}.txt`);
+  const port = 20000 + (process.pid % 10000);
+  const password = "p@ss(w)rd x%z"; // @, (, ), a space and % — every character the fix must survive
+  const dbUrl = `postgres://${encodeURIComponent("scrubtest")}:${encodeURIComponent(password)}@127.0.0.1:${port}/scrubtest_db`;
+  let started = false;
+
+  const pgCtl = (args: string[]) => spawnSync("pg_ctl", args, { encoding: "utf8" });
+
+  beforeAll(() => {
+    mkdirSync(sockDir, { recursive: true });
+    writeFileSync(pwFile, "initpass\n");
+    const init = spawnSync("initdb", ["-D", pgDataDir, "-A", "scram-sha-256", "-U", "paul", `--pwfile=${pwFile}`, "--no-sync"], { encoding: "utf8" });
+    expect(init.status).toBe(0);
+    const start = pgCtl(["-D", pgDataDir, "-o", `-p ${port} -k ${sockDir}`, "-l", join(pgDataDir, "..", "scrub-scram.log"), "start"]);
+    expect(start.status).toBe(0);
+    started = true;
+    const setup = spawnSync("psql", ["-h", sockDir, "-p", String(port), "-U", "paul", "-d", "postgres", "-X", "-q", "-v", "ON_ERROR_STOP=1", "-c", `CREATE ROLE scrubtest LOGIN PASSWORD '${password}'`, "-c", "CREATE DATABASE scrubtest_db OWNER scrubtest"], { env: { ...process.env, PGPASSWORD: "initpass" }, encoding: "utf8" });
+    expect(setup.status).toBe(0);
+  });
+
+  afterAll(() => {
+    if (started) pgCtl(["-D", pgDataDir, "stop", "-m", "fast"]);
+    rmSync(pgDataDir, { recursive: true, force: true });
+    rmSync(sockDir, { recursive: true, force: true });
+    rmSync(pwFile, { force: true });
+  });
+
+  it("pg_url_noauth decodes the password so psql actually authenticates", () => {
+    const home = fakeHomeForPwTest();
+    const r = spawnSync("bash", ["-c", [PRELUDE, `pg_url_noauth "${dbUrl}"`, 'psql "$PGURL_NOAUTH" -X -A -t -q -c "SELECT current_user"'].join("\n")], { env: { ...process.env, HOME: home } });
+    expect(r.status).toBe(0);
+    expect(r.stdout.toString().trim()).toBe("scrubtest");
+  });
+
+  it("localDump authenticates with the decoded password", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "scrub-localdump-pw-"));
+    const out = join(dir, "core.sql.gz");
+    await localDump(dbUrl, out);
+    expect(existsSync(out)).toBe(true);
+  });
+
+  function fakeHomeForPwTest(): string {
+    const dir = mkdtempSync(join(tmpdir(), "scrub-home-pw-"));
+    mkdirSync(join(dir, "www", "boxs.ca", "public_html", ".nodeapp"), { recursive: true });
+    writeFileSync(join(dir, "www", "boxs.ca", "public_html", ".nodeapp", ".env-local"), "X=1\n");
+    return dir;
+  }
+});
+
+describe("fix round 2: site-output restore swaps on the same filesystem", () => {
+  function fakeHome(): string {
+    const dir = mkdtempSync(join(tmpdir(), "scrub-home-so-"));
+    mkdirSync(join(dir, "www", "boxs.ca", "public_html", ".nodeapp"), { recursive: true });
+    writeFileSync(join(dir, "www", "boxs.ca", "public_html", ".nodeapp", ".env-local"), "X=1\n");
+    mkdirSync(join(dir, "gcpe-data", "site-output"), { recursive: true });
+    writeFileSync(join(dir, "gcpe-data", "site-output", "old.html"), "old");
+    return dir;
+  }
+
+  it("extracts to a scratch directory under gcpe-data (not the system tmp) and swaps it in", () => {
+    const home = fakeHome();
+    const stamp = "20261022-140001";
+    const srcDir = join(home, "gcpe-data", "scrub-load", stamp);
+    mkdirSync(srcDir, { recursive: true });
+    const stageDir = mkdtempSync(join(tmpdir(), "scrub-siteoutput-"));
+    mkdirSync(join(stageDir, "site-output"));
+    writeFileSync(join(stageDir, "site-output", "new.html"), "new");
+    spawnSync("tar", ["-C", stageDir, "-czf", join(srcDir, "site-output.tar.gz"), "site-output"]);
+
+    const script = restoreScript({ stamp, from: "scrub-load", apps: [], resetNodPositions: false, siteOutput: "restore" });
+    expect(script).toContain('mktemp -d "$HOME/gcpe-data/site-output-swap.XXXXXX"');
+    const r = spawnSync("bash", ["-c", script], { env: { ...process.env, HOME: home } });
+    expect(r.status).toBe(0);
+
+    expect(existsSync(join(home, "gcpe-data", "site-output", "new.html"))).toBe(true);
+    expect(existsSync(join(home, "gcpe-data", "site-output", "old.html"))).toBe(false);
+    // The scratch swap directory cleans itself up (the script's EXIT trap), leaving nothing behind.
+    expect(readdirSync(join(home, "gcpe-data")).filter((n) => n.startsWith("site-output-swap."))).toEqual([]);
   });
 });

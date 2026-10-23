@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { spawn } from "node:child_process";
-import { createReadStream, createWriteStream, mkdirSync, rmSync, statSync } from "node:fs";
+import { createReadStream, createWriteStream, mkdirSync, renameSync, rmSync, statSync } from "node:fs";
 import { createInterface } from "node:readline";
 import { dirname } from "node:path";
 import { pipeline } from "node:stream/promises";
@@ -68,6 +68,11 @@ export const PRELUDE = [
   '      PGURL_NOAUTH="$u"',
   '      ;;',
   '  esac',
+  // The URL carries the password percent-encoded (siteground-env.ts writes it with
+  // encodeURIComponent); libpq decodes that itself when it parses a whole URL, but PGPASSWORD is
+  // taken literally, so it has to be decoded here or a password holding `@`, `(`, space, `%` etc.
+  // reaches the server wrong and auth fails. `%XX` -> `\xXX` -> `printf %b` decodes every escape.
+  '  pass="$(printf \'%b\' "${pass//%/\\\\x}")"',
   '  if [ -n "$pass" ]; then export PGPASSWORD="$pass"; else unset PGPASSWORD; fi',
   '}',
   'validate_dump() {',
@@ -202,8 +207,11 @@ export function restoreScript(o: { stamp: string; from: "scrub-load" | "backups"
       ? ['mkdir -p "$HOME/gcpe-data/site-output"', 'find "$HOME/gcpe-data/site-output" -mindepth 1 -delete', 'echo "cleared site-output: the site rebuilds on start"']
       : [
           // Extracted to a scratch directory and swapped in with one `mv`, so a tar that fails
-          // partway through never leaves site-output half-deleted and half-restored.
-          'TMP_SO="$(mktemp -d)"',
+          // partway through never leaves site-output half-deleted and half-restored. The scratch
+          // directory is under the same parent as the real one (not the system tmp, which can be
+          // a different filesystem) so that `mv` is a same-filesystem rename, not a copy.
+          'mkdir -p "$HOME/gcpe-data"',
+          'TMP_SO="$(mktemp -d "$HOME/gcpe-data/site-output-swap.XXXXXX")"',
           'tar -C "$TMP_SO" -xzf "$SRC/site-output.tar.gz"',
           'rm -rf "$HOME/gcpe-data/site-output"',
           'mv "$TMP_SO/site-output" "$HOME/gcpe-data/site-output"',
@@ -301,17 +309,31 @@ export async function uploadFile(host: string, localPath: string, stamp: string,
 export async function downloadBackup(host: string, stamp: string, localFile: string): Promise<void> {
   stampOk(stamp);
   mkdirSync(dirname(localFile), { recursive: true, mode: 0o700 });
+  const partFile = `${localFile}.part`;
   const child = spawn("ssh", ["-o", "BatchMode=yes", host, `tar -C "$HOME/gcpe-data/backups" -cf - ${stamp}`], { stdio: ["ignore", "pipe", "inherit"] });
   const done = new Promise<void>((res, rej) => { child.on("error", rej); child.on("close", (code) => (code === 0 ? res() : rej(new ScrubStepError(`downloading the backup failed (exit ${code})`)))); });
-  await pipeline(child.stdout!, createWriteStream(localFile, { mode: 0o600 }));
-  await done;
+  // Written to a `.part` name first, renamed into place only once the remote `tar` has actually
+  // succeeded: a dropped connection or a remote failure leaves a `.part` behind, never an empty
+  // or truncated file sitting at the name a later restore would read.
+  done.catch(() => {});
+  try {
+    await pipeline(child.stdout!, createWriteStream(partFile, { mode: 0o600 }));
+    await done;
+  } catch (e) {
+    rmSync(partFile, { force: true });
+    throw e;
+  }
+  renameSync(partFile, localFile);
 }
 
 /** A plain-SQL dump, gzipped, after checking it holds nothing boxs.ca's user can't restore. */
 export async function localDump(url: string, outFile: string): Promise<void> {
   mkdirSync(dirname(outFile), { recursive: true, mode: 0o700 });
   const u = new URL(url);
-  const password = u.password;
+  // `URL.password` is still percent-encoded (the URL was built with it, same as every DB URL
+  // here) — decoded here because PGPASSWORD is taken literally, unlike the URL libpq itself
+  // decodes when parsing a whole connection string.
+  const password = decodeURIComponent(u.password);
   u.password = "";
   const child = spawn("pg_dump", ["--format=plain", "--no-owner", "--no-acl", `--dbname=${u.toString()}`], { stdio: ["ignore", "pipe", "inherit"], env: { ...process.env, PGPASSWORD: password } });
   const done = new Promise<void>((res, rej) => { child.on("error", rej); child.on("close", (code) => (code === 0 ? res() : rej(new ScrubStepError(`pg_dump failed (exit ${code})`)))); });
@@ -325,10 +347,10 @@ export async function localDump(url: string, outFile: string): Promise<void> {
   written.catch(() => {});
   try {
     let inCopy = false;
-    for await (const rawLine of createInterface({ input: child.stdout!, crlfDelay: Infinity })) {
-      // readline already splits on a bare \r, but strip one defensively in case a line arrived
-      // whole (e.g. the last line before EOF with no trailing newline at all).
-      const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    // `pg_dump`'s plain-format output is always bare-\n between lines (it's generated on this
+    // machine, never on Windows), and readline already normalises \r\n itself, so there's no
+    // stray \r left on `line` to strip here — a line is only ever cut on \n.
+    for await (const line of createInterface({ input: child.stdout!, crlfDelay: Infinity })) {
       if (inCopy) {
         if (line === "\\.") inCopy = false;
       } else if (/^COPY .* FROM stdin;$/.test(line)) {
