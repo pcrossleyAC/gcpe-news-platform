@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildPeopleIndex, mappingCsv, nameVariants, normEmail, parseName, type PersonSource } from "../../scripts/lib/scrub/people";
+import { buildPeopleIndex, isPlaceholderOrTitle, mappingCsv, nameVariants, normEmail, parseName, type PersonSource } from "../../scripts/lib/scrub/people";
 
 const KEY = "c".repeat(64);
 const src = (source: string, id: string, names: (string | null)[], email: string | null = null, extra: Partial<PersonSource> = {}): PersonSource => ({ source, id, names, email, phones: [], ...extra });
@@ -101,6 +101,17 @@ describe("parseName", () => {
   it.each(["Digital Strategist", "Senior Policy Analyst", "Content Lead", "News Editor", "Photo Gallery", "Outreach Specialist", "Events Coordinator", "Project Manager"])(
     "rejects the job title %j", (raw) => expect(parseName(raw)).toBeNull(),
   );
+});
+
+describe("isPlaceholderOrTitle", () => {
+  it.each([
+    "News Staff", "Support Staff", "Arts and Culture", "Parks and Recreation", "Contract Photographer", "Pool Videographer", "Media Relations",
+    "Chief Information Officer", "Executive Assistant to the Minister", "Premier", "Director, Communications", "Leader, Official Opposition", "Mayor, Nelson",
+  ])("says %j is an office or placeholder", (raw) => expect(isPlaceholderOrTitle(raw)).toBe(true));
+  it.each([
+    "Quill Ashbury", "Ashbury, Quill", "Elder, Quill", "Quill and Bryn Ashbury", "Kevin To", "Hon. Okonkwo-Bell", "Tavi Quenby Rook Lindgard Oduya",
+    "Minister of Health (Quill Ashbury)", "Quill", "", null,
+  ])("doesn't say %j is one", (raw) => expect(isPlaceholderOrTitle(raw)).toBe(false));
 });
 
 describe("nameVariants", () => {

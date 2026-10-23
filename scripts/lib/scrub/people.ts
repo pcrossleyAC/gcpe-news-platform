@@ -136,9 +136,14 @@ function surnameFirst(head: string[], tail: string[]): ParsedName | null {
 /** Middle initials are dropped, but a lone initial is kept as the given name ("Q. Ashbury"). */
 const initialsAware = (words: string[], f: (w: string[]) => ParsedName | null) => f(withoutInitials(words)) ?? f(words);
 
-function parseCandidate(s: string): ParsedName | null {
+/** What a rule positively identified as an office, role or placeholder, as against text that just isn't readable as a name. */
+const OFFICE = "office";
+type Reading = ParsedName | typeof OFFICE | null;
+
+function parseCandidate(s: string): Reading {
   if (/[\d@]/.test(s)) return null;
   const parts = s.split(",").map(tokensOf).filter((p) => p.length > 0);
+  if (parts.length > 0 && parts.flat().every(isRole)) return OFFICE;
   while (parts.length > 1 && isDescriptor(parts[parts.length - 1]![0]!)) parts.pop();
   if (parts.length === 0) return null;
   let p: ParsedName | null;
@@ -148,18 +153,20 @@ function parseCandidate(s: string): ParsedName | null {
     const { rest, portfolio } = stripTitles(parts[0]!);
     const head = withoutInitials(rest);
     p = portfolio || (head.length >= 2 && !SURNAME_PARTICLES.has(head[0]!)) ? initialsAware(parts[0]!, givenFirst) : surnameFirst(parts[0]!, parts[1]!);
+    // An office alone before the comma, with no surname read from it, is "Office, Place" ("Mayor, Nelson").
+    if (!p && rest.length === 0) return OFFICE;
   }
   if (!p || p.given.length === 0 || p.surname.length === 0 || p.given.length + p.surname.length > 4) return null;
   if (p.surname.some((t) => t.length < 2)) return null;
   const all = [...p.given, ...p.surname];
-  if (p.surname.some((t) => OFFICE_ENDS.has(t) || (ROLE_WORDS.has(t) && !STAND_INS.has(t) && !LINKS.has(t))) || all.every(isRole)) return null;
+  if (p.surname.some((t) => OFFICE_ENDS.has(t) || (ROLE_WORDS.has(t) && !STAND_INS.has(t) && !LINKS.has(t))) || all.every(isRole)) return OFFICE;
   // Link words tie an office to its portfolio, so a parse holding one is an office, except where a name carries one:
   // a directory tag ("Ashbury, Quill FOR:EX"), "and" after a given name ("Quill and Bryn Ashbury"), or the surname
   // of a plain two-word name ("Kevin To").
   const tags = tagWords(s);
   const linkedSurname = p.given.length === 1 && p.surname.length === 1 && !isRole(p.given[0]!);
-  if (p.given.some((t, k) => LINKS.has(t) && !tags.has(t) && !(t === "and" && k > 0))) return null;
-  if (p.surname.some((t) => LINKS.has(t) && !tags.has(t)) && !linkedSurname) return null;
+  if (p.given.some((t, k) => LINKS.has(t) && !tags.has(t) && !(t === "and" && k > 0))) return OFFICE;
+  if (p.surname.some((t) => LINKS.has(t) && !tags.has(t)) && !linkedSurname) return OFFICE;
   return p;
 }
 
@@ -169,18 +176,34 @@ function parseCandidate(s: string): ParsedName | null {
  * part of the name; when the text outside the brackets isn't a name, the text inside them is tried.
  */
 export function parseName(raw: string | null): ParsedName | null {
+  const r = readName(raw);
+  return r === OFFICE ? null : r;
+}
+
+function readName(raw: string | null): Reading {
   if (raw === null) return null;
   const s = raw.trim();
   if (s === "") return null;
   const outside = s.replace(/\([^()]*\)/g, " ");
   const inside = [...s.matchAll(/\(([^()]*)\)/g)].map((m) => m[1]!);
-  for (const c of [outside, ...inside]) {
-    const p = parseCandidate(c);
-    if (p) return p;
-  }
+  const readings = [outside, ...inside].map(parseCandidate);
+  const p = readings.find((x) => x !== null && x !== OFFICE);
+  if (p) return p;
   // A directory tag ("Ashbury, Quill Bryn GCPE:EX") can push a name past four words; then the name is read without it.
   const untagged = outside.replace(DIRECTORY_TAG, " ");
-  return untagged !== outside ? parseCandidate(untagged) : null;
+  const t = untagged !== outside ? parseCandidate(untagged) : null;
+  if (t !== null && t !== OFFICE) return t;
+  return readings[0] === OFFICE ? OFFICE : null;
+}
+
+/**
+ * True when a stored name is, by the rules above, an office, role or placeholder rather than a person: "Chief Information
+ * Officer", "Media Relations", "News Staff", "Arts and Culture". A name that is merely unreadable ("Hon. Okonkwo-Bell",
+ * six words) is not one, so the literal route still searches for it.
+ */
+export function isPlaceholderOrTitle(raw: string | null): boolean {
+  const r = readName(raw);
+  return r === OFFICE || (r !== null && nameVariants(raw).length === 0);
 }
 
 export interface NameVariant { key: string; surnameFirst: boolean; fallback?: true }

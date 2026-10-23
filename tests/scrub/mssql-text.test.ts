@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { applyScope, emptyTables } from "../../scripts/lib/scrub/mssql";
 import { fakeEmailFor } from "../../scripts/lib/scrub/identity";
 import { buildLiteralNeedles, fitText, gateMssql, literalHits, readPeopleSources, scrubAllText, writeStructuredPeople } from "../../scripts/lib/scrub/mssql-text";
-import { buildPeopleIndex, parseName, type PeopleIndex } from "../../scripts/lib/scrub/people";
+import { buildPeopleIndex, isPlaceholderOrTitle, parseName, type PeopleIndex } from "../../scripts/lib/scrub/people";
 import { ScrubStepError } from "../../scripts/lib/scrub/private-out";
 import { findLeaks, scrubText } from "../../scripts/lib/scrub/text";
 import { createFixture, FIXTURE_KEY, ID, mssqlTestConfig, REF_UTC, REF_WALL, SKIP_MESSAGE } from "./mssql-fixture";
@@ -71,6 +71,43 @@ describe("the literal route", () => {
 
   it("counts a name shared with someone who isn't an office holder as a leak", () => {
     expect(kinds("Dorian Feld called")).toEqual(["literal-name"]);
+  });
+});
+
+describe("the literal route's middle initials, fallback forms and offices", () => {
+  /** Five words: the parser can't read it, so only its stored form is a needle. */
+  const LONG = "Tavi Quenby Rook Lindgard Oduya";
+  const OFFICES = ["News Staff", "Support Staff", "Arts and Culture", "Parks and Recreation", "Contract Photographer", "Pool Videographer", "Media Relations", "Mayor, Nelson"];
+  const index = buildPeopleIndex([
+    { source: "media.Contact", id: "1", names: ["Quill Bryn Ashbury"], email: null, phones: [] },
+    { source: "calendar.SystemUser", id: "2", names: [LONG], email: null, phones: [], alwaysPerson: true },
+    ...OFFICES.map((n, i) => ({ source: "media.Contact", id: `o${i}`, names: [n], email: i === 0 ? "newsdesk@news.example" : null, phones: i === 0 ? ["604 555 0177"] : [] })),
+  ], "f".repeat(64));
+  const needles = buildLiteralNeedles(index);
+  const kinds = (text: string) => literalHits(text, needles).map((h) => h.kind);
+
+  it.each(["quill b. ashbury said", "quill b ashbury said", "PREMIER QUILL B. ASHBURY ANNOUNCES FUNDING", "bryn ashbury said", "MEDIA CONTACT BRYN ASHBURY TODAY"])(
+    "catches %j, which the name routes leave alone", (raw) => {
+      expect(findLeaks(raw, index)).toEqual([]);
+      expect(kinds(raw)).toEqual(["literal-name"]);
+    },
+  );
+
+  it("skips one initial only, and never right after the comma", () => {
+    expect(kinds("quill b. c. ashbury")).toEqual([]);
+    expect(kinds("ashbury, b. quill")).toEqual([]);
+  });
+
+  it.each(OFFICES)("makes no name needle for the office or placeholder %j", (raw) => {
+    expect(isPlaceholderOrTitle(raw)).toBe(true);
+    expect(kinds(`the ${raw.toLowerCase()} met; ${raw} said`)).toEqual([]);
+  });
+
+  it("still searches for the office row's contacts and for a real name the parser can't read", () => {
+    expect(kinds("Write newsdesk@news.example or call 604-555-0177")).toEqual(["literal-email", "literal-phone"]);
+    expect(isPlaceholderOrTitle(LONG)).toBe(false);
+    expect(parseName(LONG)).toBeNull();
+    expect(kinds(`met ${LONG.toLowerCase()} today`)).toEqual(["literal-name"]);
   });
 });
 
@@ -171,6 +208,7 @@ describe.skipIf(!cfg)("Gate 1's literal route on a fictional SQL Server fixture"
   beforeAll(async () => {
     fx = await createFixture(cfg!);
     await fx.pool.request().input("n", UNPARSED).query("INSERT calendar.SystemUser (Id, Username, FullName, DisplayName, EmailAddress) VALUES (5, N'xruiz', @n, @n, N'ximena.ruiz@gov.example')");
+    await fx.pool.request().query("INSERT calendar.SystemUser (Id, Username, FullName, DisplayName, EmailAddress) VALUES (6, N'newsdesk', N'News Staff', N'Arts and Culture', N'newsdesk@gov.example')");
     await fx.pool.request().input("n", MINISTER).query("INSERT dbo.Ministry (Id, [Key], MinisterName, MinisterEmail) VALUES ('70000000-0000-4000-8000-000000000002', N'tourism', @n, N'okonkwo-bell@gov.example')");
     // A scrubbed address that ends two and one characters past the column.
     await fx.pool.request().query(`CREATE TABLE dbo.ScrubNarrow (Id int PRIMARY KEY, Te nvarchar(${NARROW - 2}) NULL, Tes nvarchar(${NARROW - 1}) NULL); INSERT dbo.ScrubNarrow VALUES (1, N'Back-up contact: qa@gov.example', N'Back-up contact: qa@gov.example')`);
@@ -216,6 +254,16 @@ describe.skipIf(!cfg)("Gate 1's literal route on a fictional SQL Server fixture"
     const gate = await plant(`Met ${UNPARSED} at noon`);
     expect(gate.hits).toEqual([{ table: "calendar.Activity", column: "Comments", kind: "literal-name", count: 1 }]);
     expect(gate.rows).toEqual([{ table: "calendar.Activity", column: "Comments", kind: "literal-name", id: "5" }]);
+  });
+
+  it("fails on a lower-case name with a middle initial, through the literal route alone", async () => {
+    const gate = await plant("quill b. ashbury signed off");
+    expect(gate.hits).toEqual([{ table: "calendar.Activity", column: "Comments", kind: "literal-name", count: 1 }]);
+  });
+
+  it("passes ordinary words a placeholder row is named by", async () => {
+    const gate = await plant("Arts and culture grew; news staff and the Arts and Culture team met");
+    expect(gate.hits).toEqual([]);
   });
 
   it("counts a public office holder's name without failing", async () => {

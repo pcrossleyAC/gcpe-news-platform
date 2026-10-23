@@ -2,7 +2,7 @@ import sql from "mssql";
 import { IDENTIFIER_COLUMNS, PEOPLE_QUERIES, quoteCol, quoteName, STRUCTURED } from "./legacy-schema";
 import { assertScrubCopy } from "./mssql";
 import { ScrubStepError } from "./private-out";
-import { normEmail, parseName, type PeopleIndex, type Person, type PersonSource } from "./people";
+import { isPlaceholderOrTitle, normEmail, parseName, type PeopleIndex, type Person, type PersonSource } from "./people";
 import { entityText, findLeaks, scrubText, type LeakKind, type ScrubCtx } from "./text";
 
 interface PeopleRow { Id: string; Name1: string | null; Name2: string | null; Email: string | null; Phone1: string | null; Phone2: string | null; LinkId: string | null }
@@ -217,10 +217,15 @@ export interface LiteralNeedles { names: Map<string, Map<string, boolean>>; emai
 export function buildLiteralNeedles(index: PeopleIndex): LiteralNeedles {
   const n: LiteralNeedles = { names: new Map(), emails: new Map(), phones: new Map() };
   const put = (m: Map<string, boolean>, k: string, pub: boolean) => m.set(k, (m.get(k) ?? true) && pub);
+  // Every form the name routes match by, fallbacks included, is also searched for literally.
+  const variantsOf = new Map<Person, string[]>();
+  for (const [key, hit] of index.byVariant) variantsOf.set(hit.person, [...(variantsOf.get(hit.person) ?? []), key]);
   for (const p of index.persons) {
     const pub = isPublicOffice(p);
-    const forms = new Set<string>();
+    const forms = new Set<string>(variantsOf.get(p) ?? []);
     for (const raw of p.names) {
+      // An office, role or placeholder ("Media Relations", "News Staff") is ordinary words, not a name to search for.
+      if (isPlaceholderOrTitle(raw)) continue;
       forms.add(raw);
       const parsed = parseName(raw);
       if (parsed) {
@@ -246,6 +251,27 @@ export function buildLiteralNeedles(index: PeopleIndex): LiteralNeedles {
   return n;
 }
 
+/** A lone letter, with or without its period, that may sit inside a name ("quill b. ashbury"). */
+const INITIAL_GAP = /^ \p{L}\.? /u;
+
+/**
+ * The length of a needle found at `at` in the folded text, or 0. As in the name routes, one middle initial the needle
+ * doesn't hold may be skipped between two of its words, but not beside a comma.
+ */
+function needleAt(text: string, at: number, needle: string): number {
+  const whole = (end: number) => !WORD_CHAR.test(text[end] ?? "");
+  if (text.startsWith(needle, at) && whole(at + needle.length)) return needle.length;
+  for (let k = needle.indexOf(" "); k > 0; k = needle.indexOf(" ", k + 1)) {
+    if (needle[k - 1] === "," || !text.startsWith(needle.slice(0, k), at)) continue;
+    const gap = INITIAL_GAP.exec(text.slice(at + k, at + k + 4));
+    if (!gap) continue;
+    const tail = at + k + gap[0].length;
+    const rest = needle.slice(k + 1);
+    if (text.startsWith(rest, tail) && whole(tail + rest.length)) return tail + rest.length - at;
+  }
+  return 0;
+}
+
 function nameMentions(text: string, names: LiteralNeedles["names"]): { leaks: number; publicOffice: number } {
   const r = { leaks: 0, publicOffice: 0 };
   let resume = 0;
@@ -253,14 +279,15 @@ function nameMentions(text: string, names: LiteralNeedles["names"]): { leaks: nu
     if (m.index < resume) continue;
     const candidates = names.get(m[0]);
     if (!candidates) continue;
-    let best = "";
+    let best = 0;
     let pub = false;
     for (const [needle, isPub] of candidates) {
-      if (needle.length > best.length && text.startsWith(needle, m.index) && !WORD_CHAR.test(text[m.index + needle.length] ?? "")) { best = needle; pub = isPub; }
+      const len = needleAt(text, m.index, needle);
+      if (len > best) { best = len; pub = isPub; }
     }
-    if (best === "") continue;
+    if (best === 0) continue;
     if (pub) r.publicOffice++; else r.leaks++;
-    resume = m.index + best.length;
+    resume = m.index + best;
   }
   return r;
 }
@@ -282,9 +309,10 @@ function phoneMentions(text: string, phones: LiteralNeedles["phones"]): number {
 }
 
 /**
- * Gate 1's literal route: every real full name (as stored, and given-first and surname-first where it parses), email
- * and phone, searched for as whole words in the folded text. It leans on no variant index, so a person the name parser
- * can't read is still found. Tags are searched both blanked out and in place, so names split by markup and names in
+ * Gate 1's literal route: every real full name (as stored, given-first and surname-first where it parses, and every
+ * form the name routes match by), email and phone, searched for as whole words in the folded text, with one middle
+ * initial allowed. Stored names don't depend on the parser, so a person it can't read is still found; names it reads
+ * as offices or placeholders are left out, their contacts are not. Tags are searched both blanked out and in place, so names split by markup and names in
  * attributes are both seen; the larger count stands.
  */
 export function literalHits(text: string, needles: LiteralNeedles): { kind: LiteralKind; publicOffice: boolean }[] {
