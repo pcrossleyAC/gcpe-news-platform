@@ -3,7 +3,8 @@ import { normToken, TOKEN_RE, type PeopleIndex, type VariantHit } from "./people
 
 export const EMAIL_RE = /(?<![\w.%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}(?![\w-])/g;
 /** North American numbers with an area code: 604-555-0142, (604) 555-0142, 604.555.0142, +1 604 555 0142, 1-800-…, with ext./x. */
-const FULL_PHONE_RE = /(?<![\w+\-–])(?:\+?1[ .\-–]?)?(?:\(\d{3}\)[ .\-–]?|\d{3}[ .\-–])\d{3}[ .\-–]\d{4}(?:\s*(?:ext\.?|extension|x)\s*\d{1,6})?(?![\w\-–])/gi;
+/** Separators are matched over entity-decoded text, so they include no-break and thin spaces and the Unicode hyphens and dashes. */
+const FULL_PHONE_RE = /(?<![\w+\-\u2010-\u2013])(?:\+?1[ .\-\u00a0\u2000-\u200a\u202f\u2010-\u2013]?)?(?:\(\d{3}\)[ .\-\u00a0\u2000-\u200a\u202f\u2010-\u2013]?|\d{3}[ .\-\u00a0\u2000-\u200a\u202f\u2010-\u2013])\d{3}[ .\-\u00a0\u2000-\u200a\u202f\u2010-\u2013]\d{4}(?:\s*(?:ext\.?|extension|x)\s*\d{1,6})?(?![\w\-\u2010-\u2013])/gi;
 /**
  * Seven-digit local numbers, only with a hyphen or dot, so years, ids and keys aren't mistaken for them.
  * A following period is a sentence end unless a digit comes after it.
@@ -40,7 +41,7 @@ const ACCENT_MARKS: Record<string, string> = {
   uml: "\u0308", ring: "\u030a", dblac: "\u030b", caron: "\u030c", cedil: "\u0327", ogon: "\u0328",
 };
 const NAMED_ENTITIES: Record<string, string> = {
-  nbsp: "\u00a0", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", ndash: "–", mdash: "—", shy: "",
+  nbsp: "\u00a0", ensp: "\u2002", emsp: "\u2003", thinsp: "\u2009", numsp: "\u2007", puncsp: "\u2008", hairsp: "\u200a", commat: "@", period: ".", hyphen: "\u2010", dash: "\u2010", amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", rsquo: "’", lsquo: "‘", rdquo: "”", ldquo: "“", ndash: "–", mdash: "—", shy: "",
   AElig: "Æ", aelig: "æ", szlig: "ß", ETH: "Ð", eth: "ð", THORN: "Þ", thorn: "þ", Oslash: "Ø", oslash: "ø", OElig: "Œ", oelig: "œ",
   Lstrok: "Ł", lstrok: "ł", Dstrok: "Đ", dstrok: "đ", Hstrok: "Ħ", hstrok: "ħ", Tstrok: "Ŧ", tstrok: "ŧ", ENG: "Ŋ", eng: "ŋ",
   imath: "ı", inodot: "ı", IJlig: "Ĳ", ijlig: "ĳ", Lmidot: "Ŀ", lmidot: "ŀ",
@@ -66,14 +67,14 @@ export function entityText(entity: string): string | null {
 /** Text as a reader sees it, each character tied to the span of the original it came from. */
 interface View { text: string; start: number[]; end: number[] }
 
-function readableView(text: string, from: number, to: number): View {
+function readableView(text: string, from: number, to: number, markup: RegExp = MARKUP_RE): View {
   const chunks: string[] = [];
   const start: number[] = [];
   const end: number[] = [];
   const push = (s: string, a: number, b: number) => { chunks.push(s); for (let k = 0; k < s.length; k++) { start.push(a); end.push(b); } };
   const seg = text.slice(from, to);
   let at = 0;
-  for (const m of seg.matchAll(MARKUP_RE)) {
+  for (const m of seg.matchAll(markup)) {
     for (let k = at; k < m.index; k++) push(seg[k]!, from + k, from + k + 1);
     const a = from + m.index, b = a + m[0].length;
     push(m[0][0] === "<" ? " " : entityText(m[0]) ?? " ", a, b);
@@ -165,18 +166,29 @@ function replaceSpans<T extends { start: number; end: number }>(text: string, sp
 }
 const upperIf = (original: string, s: string) => (original === original.toUpperCase() && original !== original.toLowerCase() ? s.toUpperCase() : s);
 
+/** Emails and phones over the text with entities decoded (tags kept, so mailto: links count), as spans of the original. */
+function contactSpans(text: string): { start: number; end: number; kind: "email" | "phone"; value: string; local: boolean }[] {
+  const view = readableView(text, 0, text.length, ENTITY_RE);
+  const span = (a: number, b: number) => ({ start: view.start[a]!, end: view.end[b - 1]!, value: view.text.slice(a, b) });
+  const out: { start: number; end: number; kind: "email" | "phone"; value: string; local: boolean }[] = [];
+  for (const m of view.text.matchAll(EMAIL_RE)) if (!m[0].toLowerCase().endsWith(TEST_DOMAIN)) out.push({ ...span(m.index, m.index + m[0].length), kind: "email", local: false });
+  for (const sp of phoneSpans(view.text)) {
+    const v = span(sp.start, sp.end);
+    if (!FAKE_PHONE.test(v.value) && !out.some((x) => v.start < x.end && v.end > x.start)) out.push({ ...v, kind: "phone", local: sp.local });
+  }
+  return out.sort((a, b) => a.start - b.start);
+}
+
 export function scrubText(text: string, ctx: ScrubCtx): { text: string; counts: Counts } {
   const counts: Counts = { names: 0, emails: 0, phones: 0 };
-  let out = text.replace(EMAIL_RE, (m) => {
-    const e = m.toLowerCase();
-    if (e.endsWith(TEST_DOMAIN)) return m;
-    counts.emails++;
-    return ctx.index.byEmail.get(e)?.fake.email ?? fakeEmailFor(ctx.key, e);
-  });
-  out = replaceSpans(out, phoneSpans(out), (m, sp) => {
-    if (FAKE_PHONE.test(m)) return m;
+  let out = replaceSpans(text, contactSpans(text), (_orig, sp) => {
+    if (sp.kind === "email") {
+      counts.emails++;
+      const e = sp.value.toLowerCase();
+      return ctx.index.byEmail.get(e)?.fake.email ?? fakeEmailFor(ctx.key, e);
+    }
     counts.phones++;
-    const f = fakePhone(ctx.key, m.replace(/\D/g, ""));
+    const f = fakePhone(ctx.key, sp.value.replace(/\D/g, ""));
     return sp.local ? f.slice(4) : f;
   });
   const matches = nameSpans(out, ctx.index);
@@ -244,10 +256,21 @@ export function plainNameHits(text: string, index: PeopleIndex): number {
   return [body, ...inTags].reduce((sum, seg) => sum + plainSegmentHits(decode(seg), index), 0);
 }
 
+/** The plain route for emails and phones: entities decoded by straight replacement, then the patterns run over the result. */
+export function plainContactHits(text: string): { emails: number; phones: number } {
+  const decoded = text.replace(ENTITY_RE, (e) => entityText(e) ?? " ");
+  const emails = [...decoded.matchAll(EMAIL_RE)].filter((m) => !m[0].toLowerCase().endsWith(TEST_DOMAIN)).length;
+  const phones = phoneSpans(decoded).filter((sp) => !FAKE_PHONE.test(decoded.slice(sp.start, sp.end))).length;
+  return { emails, phones };
+}
+
 export function findLeaks(text: string, index: PeopleIndex): LeakKind[] {
   const kinds: LeakKind[] = [];
-  for (const m of text.matchAll(EMAIL_RE)) if (!m[0].toLowerCase().endsWith(TEST_DOMAIN)) kinds.push("email");
-  for (const sp of phoneSpans(text)) if (!FAKE_PHONE.test(text.slice(sp.start, sp.end))) kinds.push("phone");
+  const strict = contactSpans(text);
+  const plain = plainContactHits(text);
+  // Either route seeing more than the other is a leak the other missed, so the larger count is reported.
+  for (let i = Math.max(strict.filter((x) => x.kind === "email").length, plain.emails); i > 0; i--) kinds.push("email");
+  for (let i = Math.max(strict.filter((x) => x.kind === "phone").length, plain.phones); i > 0; i--) kinds.push("phone");
   kinds.push(...nameSpans(text, index).map((): LeakKind => "name"));
   for (let i = plainNameHits(text, index); i > 0; i--) kinds.push("name-plain");
   return kinds;

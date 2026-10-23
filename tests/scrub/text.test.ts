@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildPeopleIndex } from "../../scripts/lib/scrub/people";
-import { findLeaks, plainNameHits, scrubText } from "../../scripts/lib/scrub/text";
+import { findLeaks, plainContactHits, plainNameHits, scrubText } from "../../scripts/lib/scrub/text";
 
 const KEY = "d".repeat(64);
 const index = buildPeopleIndex([
@@ -124,6 +124,40 @@ describe("phones", () => {
   });
   it("replaces a number written with en dashes", () => expect(s("Call 604–555–0142 now")).toMatch(/^Call 250-555-01\d\d now$/));
   it.each(["2025-2026", "2026HLTH0001-000001", "1b4e28ba-2fa1-11d2-883f-0016d3cca427", "$1,250,000", "10:30 a.m.", "NEWS-12345", "2026-10-22"])("leaves %s alone", (t) => expect(s(t)).toBe(t));
+});
+
+describe("emails and phones written with entities", () => {
+  it.each([
+    "604&nbsp;555&nbsp;0142", "(604)&nbsp;555-0142", "+1&nbsp;604&nbsp;555&nbsp;0142", "604&#160;555-0142", "604&#xA0;555&#xa0;0142",
+    "604\u00a0555\u00a00142", "604&thinsp;555&thinsp;0142", "604&ndash;555&ndash;0142", "604&#8211;555&#8211;0142",
+    "604&#8209;555&#8209;0142", "604-555-0142&nbsp;ext.&nbsp;12",
+  ])("replaces %s and both routes report it first", (p) => {
+    const raw = `Call ${p} now`;
+    expect(s(raw)).toMatch(/^Call 250-555-01\d\d now$/);
+    expect(findLeaks(raw, index)).toContain("phone");
+    expect(plainContactHits(raw).phones).toBe(1);
+    expect(findLeaks(s(raw), index)).toEqual([]);
+  });
+  it.each([
+    ["quill.ashbury&#64;gov.example", quill.email],
+    ["quill.ashbury&commat;gov.example", quill.email],
+    ["quill.ashbury&#x40;gov.example", quill.email],
+  ])("replaces %s and both routes report it first", (e, fake) => {
+    const raw = `Write <a href="mailto:${e}">${e}</a>.`;
+    expect(s(raw)).toBe(`Write <a href="mailto:${fake}">${fake}</a>.`);
+    expect(findLeaks(raw, index).filter((k) => k === "email")).toHaveLength(2);
+    expect(plainContactHits(raw).emails).toBe(2);
+    expect(findLeaks(s(raw), index)).toEqual([]);
+  });
+  it("maps an unknown encoded email to a numbered example.test address", () => expect(s("press&#64;news.example")).toMatch(/^person\d+@example\.test$/));
+  it.each([
+    "October 22&nbsp;2026", "2026&nbsp;22", "1&nbsp;000 people", "1&nbsp;000&nbsp;000 dollars", "250&nbsp;000 people", "ISBN 978-0-306-40615-7",
+    "ISBN&nbsp;978&nbsp;0&nbsp;306&nbsp;40615&nbsp;7", "0-306-40615-2", "978&ndash;1&ndash;55501&ndash;142&ndash;6", "pages 100&ndash;1000", "2025&ndash;2026",
+  ])("leaves %s alone", (t) => {
+    expect(s(t)).toBe(t);
+    expect(findLeaks(t, index)).toEqual([]);
+    expect(plainContactHits(t)).toEqual({ emails: 0, phones: 0 });
+  });
 });
 
 describe("re-running", () => {
