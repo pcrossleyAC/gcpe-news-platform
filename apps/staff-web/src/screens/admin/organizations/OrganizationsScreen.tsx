@@ -5,6 +5,7 @@ import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../messages";
 import type { OrgRecord } from "@gcpe/events/catalogue";
+import { AddOrganizationForm } from "./AddOrganizationForm";
 import { OrganizationEditForm, SAVED_MESSAGE } from "./OrganizationEditForm";
 import { canEditOrgProfile, isCoreAdmin } from "./access";
 
@@ -27,6 +28,9 @@ export function OrganizationsScreen(): React.JSX.Element {
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [confirmingKey, setConfirmingKey] = useState<string | null>(null);
+  const addButton = useRef<HTMLButtonElement>(null);
   const latest = useRef(0);
 
   const reload = useCallback(() => {
@@ -92,6 +96,43 @@ export function OrganizationsScreen(): React.JSX.Element {
     }
   };
 
+  const deactivate = async (o: OrgRecord) => {
+    setBusy(true);
+    setMessages([]);
+    setStatus(null);
+    try {
+      await apiFetch(
+        `/core/api/organizations/${encodeURIComponent(o.key)}/deactivate`,
+        { method: "POST" },
+      );
+      setConfirmingKey(null);
+      setStatus(`${o.displayName} is deactivated.`);
+      reload();
+    } catch (caught) {
+      setMessages(messagesOf(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const reactivate = async (o: OrgRecord) => {
+    setBusy(true);
+    setMessages([]);
+    setStatus(null);
+    try {
+      await apiFetch(
+        `/core/api/organizations/${encodeURIComponent(o.key)}/profile`,
+        { method: "PATCH", body: { isActive: true } },
+      );
+      setStatus(`${o.displayName} is active again.`);
+      reload();
+    } catch (caught) {
+      setMessages(messagesOf(caught));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="gcpe-organizations">
       <h1>Organizations</h1>
@@ -120,6 +161,36 @@ export function OrganizationsScreen(): React.JSX.Element {
       ))}
       {status && <p role="status">{status}</p>}
       {orgs === null && !loadError && <p>Loading…</p>}
+      {isAdmin && orgs && !adding && (
+        <p>
+          <button
+            type="button"
+            ref={addButton}
+            onClick={() => {
+              setStatus(null);
+              setEditingKey(null);
+              setAdding(true);
+            }}
+          >
+            Add ministry
+          </button>
+        </p>
+      )}
+      {isAdmin && adding && (
+        <AddOrganizationForm
+          onCancel={() => {
+            setAdding(false);
+            setTimeout(() => addButton.current?.focus(), 0);
+          }}
+          onCreated={(key) => {
+            setAdding(false);
+            setMessages([]);
+            setStatus(null);
+            reload();
+            setEditingKey(key);
+          }}
+        />
+      )}
       {orgs && editingKey && orgs.some((o) => o.key === editingKey) && (
         <OrganizationEditForm
           key={editingKey}
@@ -199,6 +270,62 @@ export function OrganizationsScreen(): React.JSX.Element {
                   >
                     Edit
                   </button>
+                  {isAdmin && o.isActive && confirmingKey !== o.key && (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        aria-label={`Deactivate ${o.displayName}`}
+                        disabled={busy}
+                        onClick={() => {
+                          setStatus(null);
+                          setConfirmingKey(o.key);
+                        }}
+                      >
+                        Deactivate
+                      </button>
+                    </>
+                  )}
+                  {isAdmin && !o.isActive && (
+                    <>
+                      {" "}
+                      <button
+                        type="button"
+                        aria-label={`Reactivate ${o.displayName}`}
+                        disabled={busy}
+                        onClick={() => void reactivate(o)}
+                      >
+                        Reactivate
+                      </button>
+                    </>
+                  )}
+                  {isAdmin && confirmingKey === o.key && (
+                    <div
+                      role="group"
+                      aria-label={`Deactivate ${o.displayName}`}
+                    >
+                      <p>
+                        Deactivate {o.displayName}? It disappears from the
+                        public site, and its subscribers stop receiving news.
+                        This can be undone with Reactivate, but subscribers are
+                        not moved to another ministry.
+                      </p>
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void deactivate(o)}
+                      >
+                        Confirm
+                      </button>{" "}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => setConfirmingKey(null)}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  )}
                 </td>
               </tr>
             ))}

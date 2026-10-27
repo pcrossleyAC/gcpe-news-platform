@@ -127,4 +127,22 @@ describe("accessibility — Users, Media list names and error log", () => {
     await screen.findByRole("form", { name: `Edit ${ORGS[0]!.displayName}` });
     expect(await seriousViolations(container)).toEqual([]);
   });
+
+  it("OrganizationsScreen, with the add and deactivate prompts open", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/core/api/organizations") return jsonResponse(200, ORGS.map((o) => ({ ...o, sortOrder: 1, parentKey: null, minister: { name: "Pat Minister" } })));
+        return jsonResponse(200, {});
+      }),
+    );
+    const { container } = render(withAuth(<OrganizationsScreen />));
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: `Deactivate ${ORGS[0]!.displayName}` }));
+    await user.click(screen.getByRole("button", { name: "Add ministry" }));
+    await user.type(screen.getByLabelText(/Ministry name/), "Citizens' Services");
+    await screen.findByRole("form", { name: "Add a ministry" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
 });
