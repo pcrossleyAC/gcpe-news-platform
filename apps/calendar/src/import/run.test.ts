@@ -1,6 +1,6 @@
 import { mkdtemp, readdir, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { asc, eq, sql } from "drizzle-orm";
 import { inferLookAhead } from "@gcpe/calendar-contract";
@@ -235,7 +235,7 @@ describe("calendar:import (acceptance 15)", () => {
     const p = defaultReportPath(new Date("2026-11-20T18:04:05.678Z"));
     expect(p.endsWith("calendar-import-20261120T180405Z.json")).toBe(true);
     expect(p).toContain("import-reports");
-    expect(p.startsWith("/")).toBe(true);
+    expect(isAbsolute(p)).toBe(true);
   });
 });
 

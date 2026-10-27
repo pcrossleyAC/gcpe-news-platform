@@ -3,7 +3,7 @@
 // both build scripts do and renders a page with it.
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildReportWorker } from "../scripts/build-report-worker.mjs";
@@ -28,7 +28,7 @@ describe("the bundled report worker", () => {
 
   it("is found beside a bundle and renders a PDF in BC Sans", async () => {
     const assets = reportAssets(pathToFileURL(join(dir, "stack.js")).href);
-    expect(assets).toEqual({ workerFile: join(dir, "report-worker.cjs"), execArgv: [], fontsDir: `${join(dir, "fonts")}/` });
+    expect(assets).toEqual({ workerFile: join(dir, "report-worker.cjs"), execArgv: [], fontsDir: `${join(dir, "fonts")}${sep}` });
     const renderer = workerRenderer({ ...assets, heapMb: 128, timeoutMs: 30_000 });
     try {
       const bytes = await renderer.render({ page: "letter-portrait", title: "Sample", header: null, footer: { pageNumbers: true }, blocks: [{ kind: "heading", runs: [{ text: "Sample bundled render" }], size: 12 }] });

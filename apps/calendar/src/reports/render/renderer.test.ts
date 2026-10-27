@@ -1,5 +1,6 @@
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { join, resolve, sep } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { monitorEventLoopDelay } from "node:perf_hooks";
 import { inspect } from "node:util";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -33,11 +34,14 @@ describe("rendering in a worker thread (the stack's event loop stays free)", () 
 
   it("finds the worker and BC Sans in a source checkout, and beside a bundle when they're there", () => {
     const src = reportAssets();
-    expect(src.workerFile).toMatch(/reports\/render\/worker\.ts$/);
+    expect(src.workerFile).toMatch(/reports[\\/]render[\\/]worker\.ts$/);
     expect(src.execArgv).toEqual(["--import", "tsx"]);
-    expect(src.fontsDir).toMatch(/@bcgov\/bc-sans\/fonts$/);
-    const bundle = reportAssets("file:///srv/app/stack.js", (p) => p === `/srv/app/${BUNDLED_WORKER}` || p === "/srv/app/fonts/");
-    expect(bundle).toEqual({ workerFile: `/srv/app/${BUNDLED_WORKER}`, execArgv: [], fontsDir: "/srv/app/fonts/" });
+    expect(src.fontsDir).toMatch(/@bcgov[\\/]bc-sans[\\/]fonts$/);
+    const app = resolve("/srv/app");
+    const worker = join(app, BUNDLED_WORKER);
+    const fonts = `${join(app, "fonts")}${sep}`;
+    const bundle = reportAssets(pathToFileURL(join(app, "stack.js")).href, (p) => p === worker || p === fonts);
+    expect(bundle).toEqual({ workerFile: worker, execArgv: [], fontsDir: fonts });
   });
 
   it("renders a report while the main thread keeps running", async () => {

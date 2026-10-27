@@ -6,7 +6,7 @@
 // real bundle (which, correctly, doesn't currently leak anything).
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { assertHubBuilt, copyStaffWebToHub, findLeakedPaths } from "../scripts/build-siteground.mjs";
 
@@ -52,7 +52,7 @@ describe("findLeakedPaths", () => {
     writeFileSync(join(dir, "c.js"), "nothing here\n");
 
     const offenders = findLeakedPaths(dir, [{ label: "username", value: "carol" }]);
-    expect(offenders.map((o) => o.file.split("/").pop()).sort()).toEqual(["a.js", "b.js"]);
+    expect(offenders.map((o) => basename(o.file)).sort()).toEqual(["a.js", "b.js"]);
   });
 
   it("never flags anything for an empty forbidden value (never a false 'everything leaks')", () => {
