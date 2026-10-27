@@ -3,8 +3,8 @@ import { z, ZodError } from "zod";
 import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import { EventTooLargeError, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
-import { ADMIN_ONLY_PROFILE_FIELDS, deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, orgProfilePatchSchema, patchOrganizationProfile, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
+import { EventTooLargeError, orgKeyFromName, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
+import { ADMIN_ONLY_PROFILE_FIELDS, createOrganization, deactivateOrganization, orgCreateSchema, getOrganization, listOrganizations, orgInputSchema, orgProfilePatchSchema, patchOrganizationProfile, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
@@ -41,6 +41,16 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
   r.get(
     "/organizations",
     safe(async (_req, res) => void res.json(await listOrganizations(db))),
+  );
+  r.post(
+    "/organizations",
+    admin,
+    safe(async (req, res) => {
+      const input = orgCreateSchema.parse(req.body);
+      if (!orgKeyFromName(input.displayName)) return void res.status(400).json({ error: "name must contain a letter or digit" });
+      const result = await createOrganization(db, input, subscribers);
+      "conflict" in result ? res.status(409).json({ error: "exists", key: result.conflict }) : res.status(201).json(result.record);
+    }),
   );
   r.get(
     "/organizations/:key",

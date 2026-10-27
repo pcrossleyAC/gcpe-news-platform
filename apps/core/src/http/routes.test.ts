@@ -284,6 +284,36 @@ describe("Core HTTP API", () => {
     expect((await attempt(ipB)).status).toBe(401);
   });
 
+  describe("POST /api/organizations", () => {
+    const create = (token: string, body: unknown) => request(app).post("/api/organizations").set(auth(token)).send(body as object);
+
+    it("creates a ministry and derives its key", async () => {
+      const res = await create(admin, { displayName: "Mining and Critical Minerals", minister: { name: "Honourable A B" } });
+      expect(res.status).toBe(201);
+      expect(res.body.key).toBe("mining-and-critical-minerals");
+      const got = await request(app).get("/api/organizations/mining-and-critical-minerals").set(auth(reader)).expect(200);
+      expect(got.body.isPublic).toBe(true);
+      expect(got.body.isActive).toBe(true);
+      expect(got.body.minister.name).toBe("Honourable A B");
+      const [row] = await tdb.db.select().from(organizations).where(eq(organizations.key, "mining-and-critical-minerals"));
+      expect(row!.staffEditedAt).toBeInstanceOf(Date);
+    });
+
+    it("409s a duplicate name", async () => {
+      const res = await create(admin, { displayName: "Mining and Critical Minerals" });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: "exists", key: "mining-and-critical-minerals" });
+    });
+
+    it("is Core.Admin only", async () => {
+      expect((await create(siteEditor, { displayName: "Energy Transition" })).status).toBe(403);
+    });
+
+    it("400s a name with no letters or digits", async () => {
+      expect((await create(admin, { displayName: "!!!" })).status).toBe(400);
+    });
+  });
+
   describe("PATCH /api/organizations/:key/profile", () => {
     // Own key: this file shares one database and other tests PUT healthOrg repeatedly.
     // One key per test: a staff-edited organization must never be PUT again (it will 409 later).

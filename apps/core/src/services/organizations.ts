@@ -1,7 +1,7 @@
-import { asc, eq } from "drizzle-orm";
+import { asc, eq, max } from "drizzle-orm";
 import { z } from "zod";
 import type { Db } from "@gcpe/db-kit";
-import { enqueueEvent, orgRecordSchema, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
+import { enqueueEvent, orgKeyFromName, orgRecordSchema, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
 import { organizations } from "../db/schema";
 import { CORE_SOURCE, lockAggregate, orgAggregateId } from "./aggregate";
 
@@ -166,6 +166,66 @@ export async function patchOrganizationProfile(
     const merged: OrgInput = { ...current, ...rest, minister: { ...current.minister, ...minister } };
     // tx is a Db-compatible handle; upsertOrganization opens a nested transaction (savepoint) on it and re-takes the same lock.
     return (await upsertOrganization(tx as unknown as Db, merged, subscribers, { staffEdit: true })).record;
+  });
+}
+
+export const orgCreateSchema = z
+  .object({
+    displayName: z.string().trim().min(1),
+    sortOrder: z.number().int().optional(),
+    parentKey: trimmedOrNull.optional(),
+    minister: orgProfilePatchSchema.shape.minister.optional(),
+  })
+  .strict();
+export type OrgCreate = z.infer<typeof orgCreateSchema>;
+
+/**
+ * Creates an organization whose key is derived from its name. New ministries are public, active, not HQ,
+ * and staff-edited (so the seed and importer leave them alone). Returns `{ conflict: key }` when the key
+ * already exists (active or not) and throws when the name yields no key.
+ */
+export async function createOrganization(
+  db: Db,
+  input: { displayName: string; sortOrder?: number; parentKey?: string | null; minister?: Partial<OrgRecord["minister"]> },
+  subscribers: SubscriberConfig[],
+): Promise<{ record: OrgRecord } | { conflict: string }> {
+  const displayName = input.displayName.trim();
+  const key = orgKeyFromName(displayName);
+  if (!key) throw new Error("displayName must contain a letter or digit");
+  return db.transaction(async (tx) => {
+    await lockAggregate(tx, orgAggregateId(key));
+    const sortOrder = input.sortOrder ?? ((await tx.select({ m: max(organizations.sortOrder) }).from(organizations))[0]?.m ?? 0) + 10;
+    const now = new Date();
+    const [row] = await tx
+      .insert(organizations)
+      .values({
+        key,
+        displayName,
+        abbreviation: null,
+        sortOrder,
+        isActive: true,
+        parentKey: input.parentKey ?? null,
+        url: null,
+        displayAdditionalName: null,
+        minister: { name: null, summary: null, detailsHtml: null, email: null, photoUrl: null, address: null, ...input.minister },
+        contact: null,
+        secondContact: null,
+        weekendContactNumber: null,
+        social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null },
+        topicLinks: [],
+        serviceLinks: [],
+        sectorKeys: [],
+        isHq: false,
+        isPublic: true,
+        updatedAt: now,
+        staffEditedAt: now,
+      })
+      .onConflictDoNothing({ target: organizations.key })
+      .returning();
+    if (!row) return { conflict: key };
+    const record = toOrgRecord(row);
+    await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: record }, subscribers);
+    return { record };
   });
 }
 
