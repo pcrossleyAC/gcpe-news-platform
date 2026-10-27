@@ -100,4 +100,15 @@ describe("OrganizationsScreen", () => {
     renderScreen();
     expect(await screen.findByText("You don’t have permission to view this page.")).toBeInTheDocument();
   });
+
+  it("opens the form for a row, then returns focus to its Edit button on cancel", async () => {
+    stub(["NRMS.SiteEditor"], []);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Edit Health" }));
+    expect(screen.getByRole("heading", { name: "Edit Health" })).toHaveFocus();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByRole("form")).toBeNull();
+    expect(screen.getByRole("button", { name: "Edit Health" })).toHaveFocus();
+  });
 });

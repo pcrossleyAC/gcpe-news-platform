@@ -5,6 +5,7 @@ import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../messages";
 import type { OrgRecord } from "@gcpe/events/catalogue";
+import { OrganizationEditForm, SAVED_MESSAGE } from "./OrganizationEditForm";
 import { canEditOrgProfile, isCoreAdmin } from "./access";
 
 /**
@@ -18,8 +19,9 @@ export function OrganizationsScreen(): React.JSX.Element {
   useDocumentTitle("Organizations");
   const isAdmin = isCoreAdmin(session);
   const canEdit = canEditOrgProfile(session);
-  // Task 5 renders the edit form for this key.
-  const [, setEditingKey] = useState<string | null>(null);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const editButtons = useRef(new Map<string, HTMLButtonElement>());
+  const refocusKey = useRef<string | null>(null);
   const [orgs, setOrgs] = useState<OrgRecord[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
@@ -42,6 +44,14 @@ export function OrganizationsScreen(): React.JSX.Element {
   useEffect(() => {
     if (canEdit) reload();
   }, [canEdit, reload]);
+
+  // After the form closes (save or cancel), focus returns to that row's Edit button.
+  useEffect(() => {
+    if (editingKey === null && refocusKey.current) {
+      editButtons.current.get(refocusKey.current)?.focus();
+      refocusKey.current = null;
+    }
+  }, [editingKey, orgs]);
 
   if (!canEdit) {
     return (
@@ -85,6 +95,25 @@ export function OrganizationsScreen(): React.JSX.Element {
       ))}
       {status && <p role="status">{status}</p>}
       {orgs === null && !loadError && <p>Loading…</p>}
+      {orgs && editingKey && orgs.some((o) => o.key === editingKey) && (
+        <OrganizationEditForm
+          key={editingKey}
+          org={orgs.find((o) => o.key === editingKey)!}
+          orgs={orgs}
+          isAdmin={isAdmin}
+          onCancel={() => {
+            refocusKey.current = editingKey;
+            setEditingKey(null);
+          }}
+          onSaved={() => {
+            refocusKey.current = editingKey;
+            setEditingKey(null);
+            setMessages([]);
+            setStatus(SAVED_MESSAGE);
+            reload();
+          }}
+        />
+      )}
       {orgs && (
         <table className="gcpe-table">
           <caption>Organizations and their ministers</caption>
@@ -123,7 +152,17 @@ export function OrganizationsScreen(): React.JSX.Element {
                   </td>
                 )}
                 <td>
-                  <button type="button" aria-label={`Edit ${o.displayName}`} onClick={() => setEditingKey(o.key)}>
+                  <button
+                    type="button"
+                    ref={(el) => {
+                      if (el) editButtons.current.set(o.key, el);
+                      else editButtons.current.delete(o.key);
+                    }}
+                    aria-label={`Edit ${o.displayName}`} onClick={() => {
+                      setStatus(null);
+                      setEditingKey(o.key);
+                    }}
+                  >
                     Edit
                   </button>
                 </td>

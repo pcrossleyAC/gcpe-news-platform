@@ -112,4 +112,19 @@ describe("accessibility — Users, Media list names and error log", () => {
     await screen.findByLabelText("Health is an HQ organization");
     expect(await seriousViolations(container)).toEqual([]);
   });
+
+  it("OrganizationsScreen, with the edit form open", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/core/api/organizations") return jsonResponse(200, ORGS.map((o) => ({ ...o, sortOrder: 1, parentKey: null, minister: { name: "Pat Minister" } })));
+        return jsonResponse(200, {});
+      }),
+    );
+    const { container } = render(withAuth(<OrganizationsScreen />));
+    await userEvent.setup().click(await screen.findByRole("button", { name: `Edit ${ORGS[0]!.displayName}` }));
+    await screen.findByRole("form", { name: `Edit ${ORGS[0]!.displayName}` });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
 });
