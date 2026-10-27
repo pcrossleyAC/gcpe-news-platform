@@ -197,6 +197,24 @@ body {
   max-width: 36rem;
 }
 
+/* A field for long values (a full photo URL): the whole form width, not the 36rem cap. */
+.gcpe-stack > .gcpe-field--wide {
+  max-width: none;
+}
+
+.gcpe-field--wide input {
+  width: 100%;
+}
+
+/* The minister photo's thumbnail under its URL field. */
+.gcpe-photo-preview img {
+  display: block;
+  margin-top: 0.5rem;
+  max-width: 8rem;
+  max-height: 10rem;
+  border: 1px solid var(--surface-color-border-medium, #898785);
+}
+
 /* An option group in a stacked form uses the full width. */
 .gcpe-stack > .gcpe-options,
 .gcpe-stack > .gcpe-field-row {

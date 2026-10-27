@@ -52,6 +52,8 @@ export function OrganizationEditForm({
   const [parentKey, setParentKey] = useState(initial.parentKey);
   const [isActive, setIsActive] = useState(initial.isActive);
   const [removeBio, setRemoveBio] = useState(false);
+  // The address the preview last failed to load, so a typo shows a message instead of a broken image.
+  const [failedPhoto, setFailedPhoto] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
@@ -64,6 +66,9 @@ export function OrganizationEditForm({
   const sortTrimmed = sortOrder.trim();
   const sortInvalid = !/^-?\d+$/.test(sortTrimmed);
   const ministerBlank = minister.name.trim() === "";
+  // Only a full https:// address is previewed — the same rule the server applies on save.
+  const photo = minister.photoUrl.trim();
+  const photoPreview = photo.startsWith("https://") ? photo : null;
   const hasBio = !!org.minister.detailsHtml;
   const ministerNameChanged =
     minister.name.trim() !== (org.minister.name ?? "");
@@ -229,7 +234,7 @@ export function OrganizationEditForm({
         />
       </div>
 
-      <div>
+      <div className="gcpe-field gcpe-field--wide">
         <label htmlFor={id("mphoto")}>Minister photo URL</label>
         <p id={id("mphoto-hint")}>
           Upload the photo under Website → Files, then paste its address here.
@@ -239,8 +244,33 @@ export function OrganizationEditForm({
           type="text"
           value={minister.photoUrl}
           onChange={setM("photoUrl")}
-          aria-describedby={id("mphoto-hint")}
+          aria-describedby={`${id("mphoto-hint")} ${id("mphoto-preview")}`}
         />
+        <div
+          id={id("mphoto-preview")}
+          className="gcpe-photo-preview"
+          aria-live="polite"
+        >
+          {photoPreview === null ? (
+            photo !== "" && (
+              <p>
+                Enter the full address, starting with https://, to see a
+                preview.
+              </p>
+            )
+          ) : failedPhoto === photoPreview ? (
+            <p>
+              This address didn&apos;t load an image. Check that it&apos;s the
+              right URL.
+            </p>
+          ) : (
+            <img
+              src={photoPreview}
+              alt="Preview of the minister photo"
+              onError={() => setFailedPhoto(photoPreview)}
+            />
+          )}
+        </div>
       </div>
 
       {isAdmin && (

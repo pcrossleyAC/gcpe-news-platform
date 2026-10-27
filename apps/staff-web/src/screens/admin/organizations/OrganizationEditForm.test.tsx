@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { jsonResponse } from "../../../../test/jsonResponse";
@@ -103,6 +109,82 @@ describe("OrganizationEditForm", () => {
     expect(calls[0]!.init!.method).toBe("PATCH");
     expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
       minister: { name: "Honourable New Person" },
+    });
+  });
+
+  describe("minister photo", () => {
+    const PHOTO =
+      "https://www2.gov.bc.ca/assets/download/F41BD93F51AE4923A6B7E059AB96B133";
+    const withPhoto = {
+      ...HEALTH,
+      minister: { ...HEALTH.minister, photoUrl: PHOTO },
+    } as OrgRecord;
+
+    it("uses a full-width field", () => {
+      setup(false, undefined, withPhoto);
+      expect(
+        screen.getByLabelText("Minister photo URL").closest(".gcpe-field"),
+      ).toHaveClass("gcpe-field--wide");
+    });
+
+    it("previews the stored photo", () => {
+      setup(false, undefined, withPhoto);
+      expect(
+        screen.getByRole("img", { name: "Preview of the minister photo" }),
+      ).toHaveAttribute("src", PHOTO);
+    });
+
+    it("updates the preview as the address changes", async () => {
+      const { user } = setup(false, undefined, withPhoto);
+      const field = screen.getByLabelText("Minister photo URL");
+      await user.clear(field);
+      await user.type(field, "https://boxs.ca/files/new-minister.jpg");
+      expect(
+        screen.getByRole("img", { name: "Preview of the minister photo" }),
+      ).toHaveAttribute("src", "https://boxs.ca/files/new-minister.jpg");
+    });
+
+    it("shows no preview until the address starts with https://", async () => {
+      const { user } = setup(false);
+      expect(
+        screen.queryByRole("img", { name: "Preview of the minister photo" }),
+      ).toBeNull();
+      await user.type(
+        screen.getByLabelText("Minister photo URL"),
+        "/files/new-minister.jpg",
+      );
+      expect(
+        screen.queryByRole("img", { name: "Preview of the minister photo" }),
+      ).toBeNull();
+      expect(
+        screen.getByText(
+          "Enter the full address, starting with https://, to see a preview.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("says so when the address doesn't load an image, and clears that when the address changes", async () => {
+      const { user } = setup(false, undefined, withPhoto);
+      fireEvent.error(
+        screen.getByRole("img", { name: "Preview of the minister photo" }),
+      );
+      expect(
+        screen.getByText(
+          "This address didn't load an image. Check that it's the right URL.",
+        ),
+      ).toBeInTheDocument();
+      expect(
+        screen.queryByRole("img", { name: "Preview of the minister photo" }),
+      ).toBeNull();
+      await user.type(screen.getByLabelText("Minister photo URL"), "x");
+      expect(
+        screen.queryByText(
+          "This address didn't load an image. Check that it's the right URL.",
+        ),
+      ).toBeNull();
+      expect(
+        screen.getByRole("img", { name: "Preview of the minister photo" }),
+      ).toBeInTheDocument();
     });
   });
 
