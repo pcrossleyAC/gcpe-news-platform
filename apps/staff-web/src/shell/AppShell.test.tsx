@@ -52,7 +52,12 @@ describe("AppShell nav — roles decide what's shown", () => {
 
   it("a site editor also sees Website", async () => {
     await renderShell(["NRMS.SiteEditor"]);
-    expect(visibleLabels()).toEqual(["Releases", "Search", "Website"]);
+    expect(visibleLabels()).toEqual(["Releases", "Search", "Website", "Organizations"]);
+  });
+
+  it("shows Organizations in the nav for NRMS.SiteEditor", async () => {
+    await renderShell(["NRMS.SiteEditor"]);
+    expect(visibleLabels()).toEqual(["Releases", "Search", "Website", "Organizations"]);
   });
 
   it("Core.Admin sees Website (to reach Project Blue Bridge), Users, Media list names and the error log", async () => {

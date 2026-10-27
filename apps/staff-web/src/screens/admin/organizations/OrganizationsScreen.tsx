@@ -4,18 +4,23 @@ import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../messages";
-import type { OrgOption } from "../calendar-access/CalendarAccessScreen";
+import type { OrgRecord } from "@gcpe/events/catalogue";
+import { canEditOrgProfile, isCoreAdmin } from "./access";
 
 /**
- * `/hub/organizations`: Core.Admin's HQ and public switches (spec addendum §4, C124; Q54).
- * Organizations themselves are edited by the seed and the importer; this screen only sets
- * `isHq` and `isPublic`, each through its own dedicated route.
+ * `/hub/organizations`: Core.Admin and NRMS.SiteEditor see each organization's name and
+ * minister and can open its public-facing profile for editing; only Core.Admin also sees and
+ * sets the HQ and public switches (spec addendum §4, C124; Q54), each through its own
+ * dedicated route. The HQ and Public columns are hidden, not disabled, for SiteEditors.
  */
 export function OrganizationsScreen(): React.JSX.Element {
   const session = useSession();
   useDocumentTitle("Organizations");
-  const isAdmin = session.has("Core.Admin");
-  const [orgs, setOrgs] = useState<OrgOption[] | null>(null);
+  const isAdmin = isCoreAdmin(session);
+  const canEdit = canEditOrgProfile(session);
+  // Task 5 renders the edit form for this key.
+  const [, setEditingKey] = useState<string | null>(null);
+  const [orgs, setOrgs] = useState<OrgRecord[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
@@ -24,7 +29,7 @@ export function OrganizationsScreen(): React.JSX.Element {
 
   const reload = useCallback(() => {
     const call = ++latest.current;
-    apiFetch<OrgOption[]>("/core/api/organizations").then(
+    apiFetch<OrgRecord[]>("/core/api/organizations").then(
       (o) => {
         if (call === latest.current) setOrgs(o);
       },
@@ -35,10 +40,10 @@ export function OrganizationsScreen(): React.JSX.Element {
   }, []);
 
   useEffect(() => {
-    if (isAdmin) reload();
-  }, [isAdmin, reload]);
+    if (canEdit) reload();
+  }, [canEdit, reload]);
 
-  if (!isAdmin) {
+  if (!canEdit) {
     return (
       <div className="gcpe-organizations">
         <h1>Organizations</h1>
@@ -47,7 +52,7 @@ export function OrganizationsScreen(): React.JSX.Element {
     );
   }
 
-  const setFlag = async (o: OrgOption, flag: "hq" | "public", value: boolean) => {
+  const setFlag = async (o: OrgRecord, flag: "hq" | "public", value: boolean) => {
     setBusy(true);
     setMessages([]);
     setStatus(null);
@@ -65,8 +70,13 @@ export function OrganizationsScreen(): React.JSX.Element {
   return (
     <div className="gcpe-organizations">
       <h1>Organizations</h1>
-      <p>Members of an HQ organization see every ministry in the Corporate Calendar and get its HQ-only fields and actions.</p>
-      <p>Organizations that aren&rsquo;t public are left out of the public ministry list and the subscribe page.</p>
+      <p>Ministry and minister names here appear on the public Ministries page.</p>
+      {isAdmin && (
+        <>
+          <p>Members of an HQ organization see every ministry in the Corporate Calendar and get its HQ-only fields and actions.</p>
+          <p>Organizations that aren&rsquo;t public are left out of the public ministry list and the subscribe page.</p>
+        </>
+      )}
       {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
       {messages.map((m) => (
         <p role="alert" key={m}>
@@ -77,14 +87,16 @@ export function OrganizationsScreen(): React.JSX.Element {
       {orgs === null && !loadError && <p>Loading…</p>}
       {orgs && (
         <table className="gcpe-table">
-          <caption>Organizations, their HQ flag and whether they&rsquo;re public</caption>
+          <caption>Organizations and their ministers</caption>
           <thead>
             <tr>
               <th scope="col">Name</th>
               <th scope="col">Abbreviation</th>
+              <th scope="col">Minister</th>
               <th scope="col">Active</th>
-              <th scope="col">HQ</th>
-              <th scope="col">Public</th>
+              {isAdmin && <th scope="col">HQ</th>}
+              {isAdmin && <th scope="col">Public</th>}
+              <th scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -92,18 +104,28 @@ export function OrganizationsScreen(): React.JSX.Element {
               <tr key={o.key}>
                 <td>{o.displayName}</td>
                 <td>{o.abbreviation ?? ""}</td>
+                <td>{o.minister.name ?? ""}</td>
                 <td>{o.isActive ? "Yes" : "No"}</td>
+                {isAdmin && (
+                  <td>
+                    <input type="checkbox" aria-label={`${o.displayName} is an HQ organization`} checked={o.isHq} disabled={busy} onChange={(e) => void setFlag(o, "hq", e.target.checked)} />
+                  </td>
+                )}
+                {isAdmin && (
+                  <td>
+                    <input
+                      type="checkbox"
+                      aria-label={`${o.displayName} is listed publicly`}
+                      checked={o.isPublic}
+                      disabled={busy}
+                      onChange={(e) => void setFlag(o, "public", e.target.checked)}
+                    />
+                  </td>
+                )}
                 <td>
-                  <input type="checkbox" aria-label={`${o.displayName} is an HQ organization`} checked={o.isHq} disabled={busy} onChange={(e) => void setFlag(o, "hq", e.target.checked)} />
-                </td>
-                <td>
-                  <input
-                    type="checkbox"
-                    aria-label={`${o.displayName} is listed publicly`}
-                    checked={o.isPublic}
-                    disabled={busy}
-                    onChange={(e) => void setFlag(o, "public", e.target.checked)}
-                  />
+                  <button type="button" aria-label={`Edit ${o.displayName}`} onClick={() => setEditingKey(o.key)}>
+                    Edit
+                  </button>
                 </td>
               </tr>
             ))}

@@ -8,8 +8,8 @@ import { RequireAuth } from "../../../session/RequireAuth";
 import { OrganizationsScreen } from "./OrganizationsScreen";
 
 const ORGS = [
-  { key: "health", displayName: "Health", abbreviation: "HLTH", isActive: true, isHq: false, isPublic: true },
-  { key: "gcpe-media-relations", displayName: "GCPE Media Relations", abbreviation: "GCPEMEDIA", isActive: true, isHq: true, isPublic: false },
+  { key: "health", displayName: "Health", abbreviation: "HLTH", isActive: true, isHq: false, isPublic: true, minister: { name: "Josie Osborne" } },
+  { key: "gcpe-media-relations", displayName: "GCPE Media Relations", abbreviation: "GCPEMEDIA", isActive: true, isHq: true, isPublic: false, minister: { name: null } },
 ];
 
 function stub(roles: string[], calls: { url: string; init?: RequestInit }[]) {
@@ -69,6 +69,30 @@ describe("OrganizationsScreen", () => {
     await waitFor(() => expect(calls.some((c) => c.url.endsWith("/public") && c.init?.method === "PUT")).toBe(true));
     expect(JSON.parse(calls.find((c) => c.url.endsWith("/public"))!.init!.body as string)).toEqual({ isPublic: false });
     expect(await screen.findByRole("status")).toHaveTextContent("Health is no longer listed publicly.");
+  });
+
+  it("a SiteEditor sees names, ministers and Edit buttons but no HQ/Public checkboxes", async () => {
+    stub(["NRMS.SiteEditor"], []);
+    renderScreen();
+    expect(await screen.findByText("Josie Osborne")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Edit Health" })).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "HQ" })).toBeNull();
+    expect(screen.queryByRole("columnheader", { name: "Public" })).toBeNull();
+  });
+
+  it("Core.Admin sees the HQ and Public columns plus Minister and Edit", async () => {
+    stub(["Core.Admin"], []);
+    renderScreen();
+    expect(await screen.findByRole("button", { name: "Edit Health" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Minister" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "HQ" })).toBeInTheDocument();
+  });
+
+  it("NRMS.Editor still gets the no-permission message", async () => {
+    stub(["NRMS.Editor"], []);
+    renderScreen();
+    expect(await screen.findByText("You don’t have permission to view this page.")).toBeInTheDocument();
   });
 
   it("is Core.Admin only", async () => {

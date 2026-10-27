@@ -104,7 +104,7 @@ describe("accessibility — Users, Media list names and error log", () => {
       "fetch",
       vi.fn(async (url: string) => {
         if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
-        if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
+        if (url === "/core/api/organizations") return jsonResponse(200, ORGS.map((o) => ({ ...o, minister: { name: "Pat Minister" } })));
         return jsonResponse(200, {});
       }),
     );
