@@ -35,6 +35,17 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
   const remove = (who: Who, id: number, fileId: number | string) => call(app, "delete", `/api/activities/${id}/files/${fileId}`, w.as[who].cookie);
   const create = async (over = {}) => (await call(app, "post", "/api/activities", w.as.editor.cookie, validInput(w, over))).body.id as number;
   const stored = async (id: number) => (await store.list(`activities/${id}`)).map((o) => o.key);
+  // On Windows, a server that answers (and closes) before a 25 MB body has been sent resets the
+  // socket, and the reset discards the response the client hasn't read yet, so the client sees
+  // ECONNRESET/EPIPE instead of the status. Everywhere else the status itself is asserted.
+  const refusedStatus = (req: PromiseLike<{ status: number }>): Promise<number | "reset"> =>
+    Promise.resolve(req).then(
+      (r) => r.status,
+      (e: NodeJS.ErrnoException) => {
+        if (process.platform === "win32" && (e.code === "ECONNRESET" || e.code === "EPIPE")) return "reset";
+        throw e;
+      },
+    );
   const names = (body: { fileName: string }[]) => body.map((f) => f.fileName);
 
   beforeAll(async () => {
@@ -125,7 +136,7 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
 
   it("is refused before the body is read: invisible 404 (even over 25 MB), view-only 403, deleted 409, someone else's lock 423, the freeze 423", async () => {
     const secret = await create({ isConfidential: true });
-    expect((await upload("financeEditor", secret, "Sample.pdf", Buffer.alloc(26 * 1024 * 1024, 0x25))).status).toBe(404);
+    expect([404, ...(process.platform === "win32" ? ["reset"] : [])]).toContain(await refusedStatus(upload("financeEditor", secret, "Sample.pdf", Buffer.alloc(26 * 1024 * 1024, 0x25))));
     const shared = await create({ sharedWithKeys: ["finance"] });
     expect((await upload("financeEditor", shared, "Sample.pdf")).status).toBe(403);
     const gone = await create();
@@ -148,8 +159,8 @@ describe("attachments: upload, replace and remove (spec addendum §8.4)", () => 
 
   it("a file over 25 MB is 413, and nothing is stored", async () => {
     const id = await create();
-    const res = await upload("editor", id, "Sample.pdf", Buffer.concat([PDF, Buffer.alloc(25 * 1024 * 1024)]));
-    expect(res.status).toBe(413);
+    const status = await refusedStatus(upload("editor", id, "Sample.pdf", Buffer.concat([PDF, Buffer.alloc(25 * 1024 * 1024)])));
+    expect([413, ...(process.platform === "win32" ? ["reset"] : [])]).toContain(status);
     expect(await stored(id)).toEqual([]);
   });
 

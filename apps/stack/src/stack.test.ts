@@ -1256,7 +1256,8 @@ describe("apps/stack: an unwritable explicit CALENDAR_STORAGE_DIR fails startSta
     if (dataDir) await rm(dataDir, { recursive: true, force: true });
   });
 
-  it("fails before any app starts, naming the directory", async () => {
+  // chmod 0o500 doesn't make a directory unwritable on Windows (POSIX permission bits).
+  it.skipIf(process.platform === "win32")("fails before any app starts, naming the directory", async () => {
     dataDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-data-"));
     lockedDir = await mkdtemp(join(tmpdir(), "gcpe-stack-test-calendar-locked-"));
     await chmod(lockedDir, 0o500); // read+execute only: can't create a file inside it
@@ -1477,7 +1478,8 @@ describe("apps/stack: a failed public-site self-heal logs only a safe label", ()
     const failures = () => errorSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("self-heal failed"));
     await expect.poll(() => failures().length, { timeout: 5000 }).toBe(1);
     const logged = failures()[0]!.map(String).join(" ");
-    expect(logged).toContain("EISDIR");
+    // Renaming a file over a directory is EISDIR on POSIX and EPERM on Windows.
+    expect(logged).toMatch(/\b(EISDIR|EPERM)\b/);
     expect(logged).not.toContain(instance.outputDir);
   });
 });
