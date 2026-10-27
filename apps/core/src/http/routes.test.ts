@@ -315,6 +315,19 @@ describe("Core HTTP API", () => {
     });
   });
 
+  it("PUT 409s a staff-edited organization unless overwriteStaffEdits=true", async () => {
+    const key = "labour-staff-edit";
+    const org = { ...healthOrg, key, displayName: "Labour" };
+    await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send(org).expect(200);
+    await request(app).patch(`/api/organizations/${key}/profile`).set(auth(siteEditor)).send({ displayName: "Labour and Skills" }).expect(200);
+    const blocked = await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send(org);
+    expect(blocked.status).toBe(409);
+    expect(blocked.body).toEqual({ error: "staff-edited" });
+    expect((await request(app).get(`/api/organizations/${key}`).set(auth(reader))).body.displayName).toBe("Labour and Skills");
+    await request(app).put(`/api/organizations/${key}?overwriteStaffEdits=true`).set(auth(admin)).send(org).expect(200);
+    expect((await request(app).get(`/api/organizations/${key}`).set(auth(reader))).body.displayName).toBe("Labour");
+  });
+
   describe("PATCH /api/organizations/:key/profile", () => {
     // Own key: this file shares one database and other tests PUT healthOrg repeatedly.
     // One key per test: a staff-edited organization must never be PUT again (it will 409 later).

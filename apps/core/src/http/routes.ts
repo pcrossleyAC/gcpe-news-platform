@@ -65,7 +65,9 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe<{ key: string }>(async (req, res) => {
       const input = orgInputSchema.parse(req.body);
       if (input.key !== req.params.key) return void res.status(400).json({ error: "body key must match path" });
-      res.json((await upsertOrganization(db, input, subscribers)).record);
+      const result = await upsertOrganization(db, input, subscribers, { respectStaffEdits: req.query.overwriteStaffEdits !== "true" });
+      if (result.skippedStaffEdit) return void res.status(409).json({ error: "staff-edited" });
+      res.json(result.record);
     }),
   );
   const hqSchema = z.object({ isHq: z.boolean() });

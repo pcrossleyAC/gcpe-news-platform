@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { outboxEvents, type SubscriberConfig } from "@gcpe/events";
 import { createFakeSource } from "@gcpe/legacy-import";
 import { createCoreTestDb } from "../../test/helpers";
-import { listOrganizations } from "../services/organizations";
+import { listOrganizations, patchOrganizationProfile } from "../services/organizations";
 import { importLegacyReference } from "./run";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://x/events", secret: "s", types: ["*"] }];
@@ -39,7 +39,7 @@ describe("importLegacyReference", () => {
 
   it("imports organizations and terms and emits events", async () => {
     const result = await importLegacyReference(tdb.db, source, subs);
-    expect(result).toEqual({ organizations: { total: 1, changed: 1 }, terms: { total: 2, changed: 2 }, missingTables: [] });
+    expect(result).toEqual({ organizations: { total: 1, changed: 1, skippedStaffEdited: 0 }, terms: { total: 2, changed: 2 }, missingTables: [] });
     const [org] = await listOrganizations(tdb.db);
     expect(org!.topicLinks).toEqual([{ text: "Get immunized", url: "https://x" }]);
     expect(org!.sectorKeys).toEqual(["health"]);
@@ -48,8 +48,21 @@ describe("importLegacyReference", () => {
 
   it("second import emits no events", async () => {
     const result = await importLegacyReference(tdb.db, source, subs);
-    expect(result).toEqual({ organizations: { total: 1, changed: 0 }, terms: { total: 2, changed: 0 }, missingTables: [] });
+    expect(result).toEqual({ organizations: { total: 1, changed: 0, skippedStaffEdited: 0 }, terms: { total: 2, changed: 0 }, missingTables: [] });
     expect(await tdb.db.select().from(outboxEvents)).toHaveLength(3);
+  });
+
+  it("the importer skips a staff-edited organization", async () => {
+    const other = await createCoreTestDb();
+    try {
+      await importLegacyReference(other.db, source, subs);
+      await patchOrganizationProfile(other.db, "health", { displayName: "Health (staff)" }, subs);
+      const result = await importLegacyReference(other.db, source, subs);
+      expect(result.organizations).toEqual({ total: 1, changed: 0, skippedStaffEdited: 1 });
+      expect((await listOrganizations(other.db))[0]!.displayName).toBe("Health (staff)");
+    } finally {
+      await other.drop();
+    }
   });
 
   it("skips dbo.Service when the legacy database doesn't have it, and still imports ministries", async () => {
@@ -60,7 +73,7 @@ describe("importLegacyReference", () => {
         sectors: [], themes: [], tags: [], servicesPresent: [{ present: 0 }],
       });
       const result = await importLegacyReference(other.db, withoutServices, subs);
-      expect(result).toEqual({ organizations: { total: 1, changed: 1 }, terms: { total: 0, changed: 0 }, missingTables: ["dbo.Service"] });
+      expect(result).toEqual({ organizations: { total: 1, changed: 1, skippedStaffEdited: 0 }, terms: { total: 0, changed: 0 }, missingTables: ["dbo.Service"] });
       expect(await listOrganizations(other.db)).toHaveLength(1);
     } finally {
       await other.drop();

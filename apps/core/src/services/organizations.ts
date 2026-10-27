@@ -73,12 +73,17 @@ export async function upsertOrganization(
     isPublicOnCreate?: boolean;
     /** Stamp staffEditedAt: the write comes from a staff edit in the Hub, not the seed or importer. */
     staffEdit?: boolean;
+    /** Leave a staff-edited organization untouched (no write at all, legacyId backfill included) and report skippedStaffEdit. For the seed and importer; staff edits never pass it. */
+    respectStaffEdits?: boolean;
   } = {},
-): Promise<{ record: OrgRecord; changed: boolean }> {
+): Promise<{ record: OrgRecord; changed: boolean; skippedStaffEdit?: true }> {
   const parsed = orgInputSchema.parse(input);
   return db.transaction(async (tx) => {
     await lockAggregate(tx, orgAggregateId(parsed.key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, parsed.key)).for("update");
+    if (opts.respectStaffEdits && existing?.staffEditedAt) {
+      return { record: toOrgRecord(existing), changed: false, skippedStaffEdit: true };
+    }
     const data = {
       ...parsed,
       isHq: parsed.isHq ?? (existing ? existing.isHq : (opts.isHqOnCreate ?? false)),
