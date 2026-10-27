@@ -20,7 +20,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-const tsxBin = fileURLToPath(new URL("../../../../node_modules/.bin/tsx", import.meta.url));
+// tsx's CLI script run by node: node_modules/.bin/tsx is a .cmd shim on Windows, which spawn can't start directly.
+const TSX_CLI = fileURLToPath(new URL("../../../../node_modules/tsx/dist/cli.mjs", import.meta.url));
 const cliDir = dirname(fileURLToPath(import.meta.url));
 
 function runViaSpacedSymlink(realFile: string): { stdout: string; stderr: string; status: number | null } {
@@ -28,7 +29,7 @@ function runViaSpacedSymlink(realFile: string): { stdout: string; stderr: string
   symlinkSync(join(cliDir, realFile), linkPath);
   try {
     const { DATABASE_URL: _unused, ...envWithoutDatabaseUrl } = process.env;
-    const result = spawnSync(tsxBin, [linkPath], { encoding: "utf8", env: envWithoutDatabaseUrl });
+    const result = spawnSync(process.execPath, [TSX_CLI, linkPath], { encoding: "utf8", env: envWithoutDatabaseUrl });
     return { stdout: result.stdout, stderr: result.stderr, status: result.status };
   } finally {
     unlinkSync(linkPath);

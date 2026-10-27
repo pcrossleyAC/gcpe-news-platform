@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
-import { join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { parseEnv } from "@gcpe/config";
 import { describe, expect, it } from "vitest";
 import { newsApiEnvSchema } from "./env";
@@ -92,9 +92,11 @@ describe("newsApiEnvSchema path defaults", () => {
   });
 
   it("fileURLToPath decodes what URL#pathname would leave percent-encoded", () => {
-    const url = new URL("../migrations", "file:///srv/my%20checkout/apps/news-api/src/env.ts");
-    expect(url.pathname).toBe("/srv/my%20checkout/apps/news-api/migrations");
-    expect(fileURLToPath(url)).toBe("/srv/my checkout/apps/news-api/migrations");
+    // Built from a platform path: "file:///srv/..." has no drive letter, so isn't absolute on Windows.
+    const checkout = resolve("/srv/my checkout");
+    const url = new URL("../migrations", pathToFileURL(join(checkout, "apps/news-api/src/env.ts")));
+    expect(url.pathname).toContain("my%20checkout/apps/news-api/migrations");
+    expect(fileURLToPath(url)).toBe(join(checkout, "apps/news-api/migrations"));
   });
 });
 

@@ -1,3 +1,4 @@
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { subscribersFor, type EventEnvelope, type SubscriberConfig } from "@gcpe/events";
 import { createSourceRestrictedHandlers, SOURCE_EVENT_TYPES as NEWS_API_SOURCE_EVENT_TYPES } from "../../news-api/src/projections";
@@ -394,20 +395,21 @@ describe("SESSION_SECRET for the stack", () => {
 
 describe("persistent data dir in env views", () => {
   it("resolves a relative SITE_OUTPUT_DIR under the data dir and defaults NRMS STORAGE_DIR", () => {
-    expect(envFor({ SITE_OUTPUT_DIR: "./site-output" }, "SITE", "/data").OUTPUT_DIR).toBe("/data/site-output");
+    const data = resolve("/data");
+    expect(envFor({ SITE_OUTPUT_DIR: "./site-output" }, "SITE", data).OUTPUT_DIR).toBe(join(data, "site-output"));
     expect(envFor({ SITE_OUTPUT_DIR: "/abs/out" }, "SITE", "/data").OUTPUT_DIR).toBe("/abs/out");
-    expect(envFor({}, "NRMS", "/data").STORAGE_DIR).toBe("/data/storage");
+    expect(envFor({}, "NRMS", data).STORAGE_DIR).toBe(join(data, "storage"));
     expect(envFor({ NRMS_STORAGE_DIR: "/x" }, "NRMS", "/data").STORAGE_DIR).toBe("/x");
     expect(envFor({}, "CORE", "/data").STORAGE_DIR).toBeUndefined();
   });
 
   it("defaults the Calendar's STORAGE_DIR under the data dir, beside NRMS's public files", () => {
-    expect(envFor({}, "CALENDAR", "/data").STORAGE_DIR).toBe("/data/calendar-files");
+    expect(envFor({}, "CALENDAR", resolve("/data")).STORAGE_DIR).toBe(join(resolve("/data"), "calendar-files"));
     expect(envFor({ CALENDAR_STORAGE_DIR: "/private/calendar" }, "CALENDAR", "/data").STORAGE_DIR).toBe("/private/calendar");
   });
 
   it("resolves a relative CALENDAR_STORAGE_DIR override under the data dir, same as SITE_OUTPUT_DIR", () => {
-    expect(envFor({ CALENDAR_STORAGE_DIR: "./private-calendar" }, "CALENDAR", "/data").STORAGE_DIR).toBe("/data/private-calendar");
+    expect(envFor({ CALENDAR_STORAGE_DIR: "./private-calendar" }, "CALENDAR", resolve("/data")).STORAGE_DIR).toBe(join(resolve("/data"), "private-calendar"));
   });
 });
 
