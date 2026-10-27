@@ -1,0 +1,63 @@
+name: windows-package
+# Builds the Windows Server package (scripts/build-windows.mjs) as the artifact "gcpe-windows":
+# pgvector compiled on Windows against PostgreSQL 17 (the major Install-Gcpe.ps1 installs), then the
+# stack, the importers and deploy/windows zipped on Linux. Called by windows.yml (install test) and
+# deploy-windows-dev.yml (deploy).
+on:
+  workflow_call:
+env:
+  PGVECTOR_VERSION: v0.8.7
+jobs:
+  pgvector:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Check the runner's PostgreSQL is major 17
+        shell: pwsh
+        run: |
+          $v = & "$env:PGBIN\pg_config.exe" --version
+          Write-Host $v
+          if ($v -notmatch 'PostgreSQL 17\.') { throw "pgvector must be built against PostgreSQL 17 (Install-Gcpe.ps1 installs 17); this runner has $v" }
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build pgvector ${{ env.PGVECTOR_VERSION }}
+        shell: cmd
+        run: |
+          git clone --depth 1 --branch %PGVECTOR_VERSION% https://github.com/pgvector/pgvector.git "%RUNNER_TEMP%\pgvector"
+          cd /d "%RUNNER_TEMP%\pgvector"
+          nmake /NOLOGO /F Makefile.win || exit /b 1
+          nmake /NOLOGO /F Makefile.win install || exit /b 1
+      - name: Collect the extension files
+        shell: pwsh
+        run: |
+          $out = New-Item -ItemType Directory -Force -Path pgvector-out
+          Copy-Item "$env:PGROOT\lib\vector.dll" $out
+          Copy-Item "$env:PGROOT\share\extension\vector.control", "$env:PGROOT\share\extension\vector--*.sql" $out
+          Set-Content -Path (Join-Path $out 'VERSION.txt') -Value "pgvector $env:PGVECTOR_VERSION for $(& "$env:PGBIN\pg_config.exe" --version)"
+          Get-ChildItem $out | Format-Table Name, Length
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pgvector
+          path: pgvector-out
+          retention-days: 1
+
+  package:
+    needs: pgvector
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - uses: actions/download-artifact@v4
+        with:
+          name: pgvector
+          path: pgvector-out
+      - run: node scripts/build-windows.mjs --pgvector pgvector-out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gcpe-windows
+          path: dist/gcpe-windows-*.zip
+          retention-days: 14

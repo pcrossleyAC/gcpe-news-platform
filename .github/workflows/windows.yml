@@ -9,7 +9,7 @@ on:
   pull_request:
   workflow_dispatch:
 env:
-  PGVECTOR_VERSION: v0.8.1
+  PGVECTOR_VERSION: v0.8.7
 jobs:
   test:
     runs-on: windows-2025
@@ -47,3 +47,91 @@ jobs:
         env:
           # The runner image's documented superuser password for its preinstalled PostgreSQL.
           TEST_DATABASE_ADMIN_URL: postgres://postgres:root@localhost:5432/postgres
+
+  package:
+    uses: ./.github/workflows/windows-package.yml
+
+  # Installs the package on a Windows Server 2025 runner exactly as docs/deploy/windows.md tells the
+  # developer to (one Install-Gcpe.ps1 run: IIS, ARR, Node, PostgreSQL 17 + pgvector, the service),
+  # then checks the site through IIS, a re-run, and the deploy script's rollback.
+  install:
+    needs: package
+    runs-on: windows-2025
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: gcpe-windows
+          path: drop
+      - name: Remove the runner's own PostgreSQL, so the installer sees a clean server
+        run: |
+          $svc = Get-Service -Name 'postgresql*' -ErrorAction SilentlyContinue
+          foreach ($s in @($svc)) { if ($s) { Stop-Service $s.Name -Force -ErrorAction SilentlyContinue; sc.exe delete $s.Name | Out-Null } }
+          Remove-Item -Recurse -Force "$env:ProgramFiles\PostgreSQL" -ErrorAction SilentlyContinue
+          Remove-Item -Recurse -Force 'HKLM:\SOFTWARE\PostgreSQL' -ErrorAction SilentlyContinue
+      - name: Extract the package
+        run: |
+          $zip = Get-ChildItem drop\*.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath C:\pkg
+          Get-ChildItem C:\pkg\gcpe-windows | Format-Table Name
+      - name: Install-Gcpe.ps1 (first install)
+        run: |
+          $pw = ConvertTo-SecureString 'ci-admin-password-0001' -AsPlainText -Force
+          C:\pkg\gcpe-windows\Install-Gcpe.ps1 -HostName gcpe-ci.example.test -SmtpHost 127.0.0.1 -MailFrom noreply@example.test -MailRedirectTo ci@example.test -AdminPassword $pw
+      - name: The site works through IIS
+        run: |
+          $ErrorActionPreference = 'Stop'
+          function Check($label, $ok) { if (-not $ok) { throw "FAILED: $label" } else { Write-Host "ok: $label" } }
+          $health = curl.exe -k -sS -f https://localhost/stack/health | ConvertFrom-Json
+          $health | ConvertTo-Json -Depth 5
+          Check 'health ok through IIS' ($health.status -eq 'ok')
+          Check 'every app up' (@($health.apps.PSObject.Properties | Where-Object { -not $_.Value }).Count -eq 0)
+          Check 'semantic search can use pgvector' ((Get-Content C:\gcpe\logs\install-*.log -Raw) -match 'pgvector: on')
+          $hub = curl.exe -k -sS -o NUL -w '%{http_code}' https://localhost/hub/
+          Check "staff app served (HTTP $hub)" ($hub -eq '200')
+          $redirect = curl.exe -sS -o NUL -w '%{http_code} %{redirect_url}' http://localhost/hub/
+          Check "http redirects to https ($redirect)" ($redirect -like '301 https://localhost/hub/*')
+          $body = '{"username":"admin","password":"ci-admin-password-0001"}'
+          $login = $body | curl.exe -k -sS -o NUL -w '%{http_code}' -c jar.txt -H 'x-gcpe-request: 1' -H 'content-type: application/json' --data-binary '@-' https://localhost/core/auth/login
+          Check "admin signs in through IIS (HTTP $login)" ($login -eq '200')
+          $orgs = curl.exe -k -sS -o NUL -w '%{http_code}' -b jar.txt -H 'x-gcpe-request: 1' https://localhost/core/api/organizations
+          Check "the session cookie works through IIS (HTTP $orgs)" ($orgs -eq '200')
+          $account = (Get-CimInstance Win32_Service -Filter "Name='gcpe-stack'").StartName
+          Check "service runs as NT SERVICE\gcpe-stack ($account)" ($account -eq 'NT SERVICE\gcpe-stack')
+          $direct = Test-NetConnection -ComputerName $env:COMPUTERNAME -Port 3000 -WarningAction SilentlyContinue
+          Write-Host "port 3000 from the machine's own name: $($direct.TcpTestSucceeded) (loopback isn't firewalled; the rule blocks other machines)"
+      - name: Install-Gcpe.ps1 again (safe to re-run; deploys a second release)
+        run: |
+          C:\pkg\gcpe-windows\Install-Gcpe.ps1 -HostName gcpe-ci.example.test
+          if (@(Get-ChildItem C:\gcpe\releases -Directory).Count -ne 2) { throw 'expected two releases' }
+      - name: A release that never becomes healthy is rolled back
+        run: |
+          $before = (Get-Item C:\gcpe\current).Target
+          Copy-Item -Recurse C:\pkg\gcpe-windows C:\pkg-broken
+          Set-Content C:\pkg-broken\app\stack.js "if (process.argv.includes('--check')) process.exit(0); setInterval(() => {}, 1000);"
+          $failed = $false
+          try { C:\pkg-broken\Deploy-GcpeRelease.ps1 -Package C:\pkg-broken -HealthTimeoutSec 30 } catch { $failed = $true; Write-Host "deploy failed as expected: $_" }
+          if (-not $failed) { throw 'the broken release was not refused' }
+          if ((Get-Item C:\gcpe\current).Target -ne $before) { throw 'current was not rolled back' }
+          $health = curl.exe -k -sS -f https://localhost/stack/health | ConvertFrom-Json
+          if ($health.status -ne 'ok') { throw 'the site is not healthy after the rollback' }
+          Write-Host 'ok: rolled back and healthy'
+      - name: The importers load and reach for SQL Server
+        run: |
+          $sqlpw = ConvertTo-SecureString 'not-a-real-password' -AsPlainText -Force
+          $adminpw = ConvertTo-SecureString 'ci-admin-password-0001' -AsPlainText -Force
+          $failed = $false
+          try { C:\pkg\gcpe-windows\Import-GcpeLegacy.ps1 -SqlServer 127.0.0.1 -SqlUser nobody -SqlPassword $sqlpw -AdminPassword $adminpw -Only Core } catch { $failed = $true; Write-Host "$_" }
+          if (-not $failed) { throw 'expected the Core import to fail: there is no SQL Server here' }
+          $log = Get-Content (Get-ChildItem C:\gcpe\import-reports\*\core.log | Select-Object -First 1).FullName -Raw
+          Write-Host $log
+          if ($log -notmatch 'ESOCKET|ECONNREFUSED|Failed to connect') { throw 'the Core importer failed for some reason other than reaching SQL Server' }
+          Write-Host 'ok: the bundled importer started and tried to connect'
+      - name: Logs
+        if: always()
+        run: |
+          Get-ChildItem C:\gcpe\service\logs -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "=== $($_.Name)"; Get-Content $_.FullName -Tail 80 }
+          Get-ChildItem C:\gcpe\logs -ErrorAction SilentlyContinue | ForEach-Object { Write-Host "=== $($_.Name)"; Get-Content $_.FullName -Tail 120 }
