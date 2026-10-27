@@ -54,9 +54,15 @@ jobs:
   # Installs the package on a Windows Server 2025 runner exactly as docs/deploy/windows.md tells the
   # developer to (one Install-Gcpe.ps1 run: IIS, ARR, Node, PostgreSQL 17 + pgvector, the service),
   # then checks the site through IIS, a re-run, and the deploy script's rollback.
+  # GitHub no longer offers Windows Server 2019 runners (the target servers are 2019): 2022 is the
+  # nearest, and 2025 the newest.
   install:
     needs: package
-    runs-on: windows-2025
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     defaults:
       run:

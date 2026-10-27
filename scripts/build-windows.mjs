@@ -61,8 +61,8 @@ async function bundleTool(entry) {
     target: "node24",
     external: ["pg-native", "bufferutil", "utf-8-validate"],
     banner: { js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);" },
-    minifyWhitespace: true,
-    minifySyntax: true,
+    // Not minified: an importer's crash prints the offending source line, and minified that is one
+    // line of the whole bundle.
     keepNames: true,
     metafile: true,
     logLevel: "warning",
