@@ -203,7 +203,12 @@ Write-GcpeOk "login $($db.user) $($dbResult.role); created: $(@($dbResult.create
 # --- 4. Windows service -----------------------------------------------------------------------
 Write-GcpeStep "Windows service $serviceName"
 $winsw = Join-Path $paths.Service "$serviceName.exe"
-Copy-Item -LiteralPath (Get-GcpePrereq -Name WinSW -PackageRoot $PSScriptRoot).Path -Destination $winsw -Force
+$winswSource = (Get-GcpePrereq -Name WinSW -PackageRoot $PSScriptRoot).Path
+if (-not (Test-Path -LiteralPath $winsw) -or (Get-FileHash -LiteralPath $winsw).Hash -ne (Get-FileHash -LiteralPath $winswSource).Hash) {
+    # The running service holds its own exe open: stop it to replace it (the deploy below starts it).
+    if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) { Stop-Service -Name $serviceName; (Get-Service -Name $serviceName).WaitForStatus('Stopped', [TimeSpan]::FromSeconds(60)) }
+    Copy-Item -LiteralPath $winswSource -Destination $winsw -Force
+}
 $depend = ''
 if ($pgServiceName) { $depend = "  <depend>$pgServiceName</depend>" }
 $xml = @"

@@ -42,7 +42,8 @@ describe("the report comparison hook for 5i (spec addendum §12.3)", () => {
     expect(readFileSync(join(dir, "differ", "outline-legacy.txt"), "utf8")).toBe("§ AWARENESS DATES\nid:1\nid:2\n");
     expect(readFileSync(join(dir, "differ", "rows-legacy.txt"), "utf8")).toBe("id:1#1\tSample 1 HLTH-1\nid:2#1\tSample 2 HLTH-2\n");
     // Everything written holds report text: no group or other access, even under a permissive umask.
-    for (const name of ["", ...readdirSync(join(dir, "differ"))]) expect(statSync(join(dir, "differ", name)).mode & 0o077).toBe(0);
+    // POSIX permission bits only: Windows reports every file as 0o666 and controls access by ACL.
+    if (process.platform !== "win32") for (const name of ["", ...readdirSync(join(dir, "differ"))]) expect(statSync(join(dir, "differ", name)).mode & 0o077).toBe(0);
     expect(insideRepo(resolve(import.meta.dirname, "..", "docs"))).toBe(true);
     expect(insideRepo(dir)).toBe(false);
     await expect(compareReports({ legacy: join(dir, "legacy.pdf"), ours: join(dir, "ours.pdf"), out: resolve(import.meta.dirname, "report-parity") })).rejects.toThrow("--out must be outside the repository");

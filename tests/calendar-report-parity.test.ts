@@ -56,7 +56,8 @@ describe("the report parity runner (spec addendum §12.3)", () => {
     expect(first.reports.map((r) => r.kind)).toEqual(["look-ahead", "exec-look-ahead", "planning", "30-60-90"]);
     expect(first.reports.every((r) => !r.same)).toBe(true);
     const out = join(dir, "out");
-    expect(statSync(out).mode & 0o777).toBe(0o700);
+    // POSIX permission bits only: Windows reports every directory as 0o666 and controls access by ACL.
+    if (process.platform !== "win32") expect(statSync(out).mode & 0o777).toBe(0o700);
     expect(readdirSync(out).sort()).toEqual(["compare", "import-report.json", "import-report.txt", "ours", "store", "summary.json"]);
     expect(readFileSync(join(out, "import-report.txt"), "utf8")).toContain("Not provided: favourites");
     const la = outlineOf(await pdfPages(new Uint8Array(readFileSync(join(out, "ours", "LookAhead.pdf")))));
