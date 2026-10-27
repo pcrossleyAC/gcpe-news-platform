@@ -18,7 +18,7 @@
 
 ## Global Constraints
 
-- Key rule (verified against all 27 live keys on boxs.ca, 2026-10-27): lowercase, delete `'`, replace each run of non-`[a-z0-9]` with `-`, trim leading/trailing `-`. Keys are immutable after creation.
+- Key rule (verified against all 27 live keys on boxs.ca, 2026-10-27): lowercase, delete `'` and `’`, fold accents (NFKD, drop combining marks), replace each run of non-`[a-z0-9]` with `-`, trim leading/trailing `-`. Keys are immutable after creation. (Accent folding and `’` added by ruling during Task 2.)
 - All text fields are trimmed server-side; `displayName` must be non-empty after trimming.
 - Minister name is stored with its title as one string ("Honourable Lana Popham", "Premier David Eby"); the form does not split it.
 - v1 does not edit: `minister.detailsHtml`, `minister.address`, contacts, social, topic/service links, sectors, `url`, `displayAdditionalName`, `abbreviation`. They must survive every save unchanged.
