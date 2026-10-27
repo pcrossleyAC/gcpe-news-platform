@@ -93,9 +93,12 @@ function Invoke-Importer([string]$Step, [string]$Tool, [hashtable]$Variables, [s
     foreach ($k in $Variables.Keys) { $vars[$k] = $Variables[$k] }
     $log = Join-Path $reports "$($Step.Split(' ')[0].ToLowerInvariant()).log"
     $exit = Invoke-GcpeWithEnv -Variables $vars -Script {
+        # Continue, and each stderr line turned back into text: under Stop, Windows PowerShell 5.1
+        # ends the step at an importer's first warning, before its exit code is read.
+        $ErrorActionPreference = 'Continue'
         Push-Location $release
         try {
-            & $node (Join-Path $release $Tool) @Arguments 2>&1 | Tee-Object -FilePath $log | Out-Host
+            & $node (Join-Path $release $Tool) @Arguments 2>&1 | ForEach-Object { "$_" } | Tee-Object -FilePath $log | Out-Host
             $LASTEXITCODE
         } finally { Pop-Location }
     }
@@ -135,6 +138,7 @@ try {
         Write-GcpeStep 'Republishing Core''s reference data and NRMS''s media lists to the other apps'
         if (-not $AdminPassword) { $AdminPassword = Read-Host "Password for the break-glass admin '$($envValues['LOCAL_ADMIN_USERNAME'])'" -AsSecureString }
         $script:jar = Join-Path $reports '.session'
+        Write-GcpeSecretFile -Path $script:jar
         $login = @{ username = $envValues['LOCAL_ADMIN_USERNAME']; password = ConvertFrom-GcpeSecureString $AdminPassword } | ConvertTo-Json -Compress
         Invoke-Admin POST '/core/auth/login' $login | Out-Null
         Invoke-Admin POST '/core/api/admin/republish' | Out-Null

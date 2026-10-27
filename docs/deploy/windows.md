@@ -137,7 +137,9 @@ Dev (PostgreSQL on the same server, self-signed certificate):
 It asks for a password for the break-glass `admin` login (12+ characters). Keep it in the team's
 password manager.
 
-Test/Prod add `-PostgresAdminUrl '<from step 2>'` and `-CertificateThumbprint <thumbprint>`.
+Test/Prod add `-PostgresAdminUrl postgres://postgres@<database server>:5432/postgres` (it asks
+for the superuser password, from step 2's `postgres-superuser.txt`) and
+`-CertificateThumbprint <thumbprint>`.
 All the options: `Get-Help .\Install-Gcpe.ps1 -Full`.
 
 What it does, in order (a full log goes to `C:\gcpe\logs\install-<time>.log`):
@@ -160,7 +162,9 @@ What it does, in order (a full log goes to `C:\gcpe\logs\install-<time>.log`):
 7. Deploys the release (step 10's script) and checks `/stack/health` directly and through IIS.
 
 Re-running `Install-Gcpe.ps1` is safe; use it to repair a setup or to apply a new package's
-server changes.
+server changes. A re-run keeps `gcpe.env` (it says which options it ignored because of that),
+keeps the certificate already bound to port 443 unless you pass `-CertificateThumbprint`, and
+refuses to run without `-PostgresAdminUrl` when the databases are on another server.
 
 ### Check it
 

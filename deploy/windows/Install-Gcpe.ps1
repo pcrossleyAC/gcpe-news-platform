@@ -28,8 +28,10 @@ param(
     [int]$Port = 3000,
     # The thumbprint of a certificate already in Cert:\LocalMachine\My. Omit for a self-signed one (Dev only).
     [string]$CertificateThumbprint,
-    # postgres://<superuser>:<password>@<host>:5432/postgres for an existing server. Omit to install PostgreSQL 17 here.
+    # postgres://<superuser>@<host>:5432/postgres for an existing server (the password is asked for).
+    # Omit to install PostgreSQL 17 on this server.
     [string]$PostgresAdminUrl,
+    [Security.SecureString]$PostgresAdminPassword,
     [string]$PostgresDataDir,
     [string]$SmtpHost,
     [int]$SmtpPort = 25,
@@ -63,9 +65,25 @@ if (-not $PostgresDataDir) { $PostgresDataDir = Join-Path $Root 'pgdata' }
 foreach ($dir in @($paths.Root, $paths.Releases, $paths.Config, $paths.Data, $paths.Service, $paths.ServiceLogs, $paths.Site, $paths.ImportReports, $paths.Logs)) {
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
 }
+# A re-run keeps gcpe.env, so check what it says before installing anything.
+$existingEnv = $null
+if (Test-Path -LiteralPath $paths.EnvFile) {
+    $existingEnv = Read-GcpeEnv -Path $paths.EnvFile
+    $dbHost = ([Uri]$existingEnv['CORE_DATABASE_URL']).Host
+    if (-not $PostgresAdminUrl -and @('localhost', '127.0.0.1', '::1') -notcontains $dbHost) {
+        throw "This server's databases are on $dbHost (gcpe.env). Re-run with -PostgresAdminUrl postgres://postgres@$($dbHost):5432/postgres, or PostgreSQL would be installed here instead."
+    }
+    $ignored = @('SmtpHost', 'SmtpPort', 'SmtpSecure', 'SmtpUser', 'SmtpPassword', 'MailFrom', 'MailRedirectTo', 'AdminUsername', 'AdminPassword', 'EntraTenantId', 'EntraClientId', 'EntraClientSecret', 'EntraAudience', 'Port') | Where-Object { $PSBoundParameters.ContainsKey($_) }
+    $configuredHost = ([Uri]$existingEnv['SITE_PUBLIC_SITE_URL']).Host
+}
+
 $transcript = Join-Path $paths.Logs ('install-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '.log')
 Start-Transcript -Path $transcript | Out-Null
 try {
+if ($existingEnv) {
+    foreach ($name in $ignored) { Write-GcpeNote "-$name is ignored: $($paths.EnvFile) already exists. Edit that file instead, then Restart-Service gcpe-stack." }
+    if ($configuredHost -ne $HostName) { Write-GcpeNote "the site is configured for $configuredHost (gcpe.env); -HostName $HostName only changes the self-signed certificate's name." }
+}
 
 # --- 1. Prerequisites ------------------------------------------------------------------------
 Write-GcpeStep 'IIS with WebSockets'
@@ -92,7 +110,15 @@ else { Invoke-GcpeMsi -MsiPath $nodePrereq.Path; Write-GcpeOk "Node.js $($nodePr
 $pgServiceName = $null
 if ($PostgresAdminUrl) {
     Write-GcpeStep 'PostgreSQL: using the existing server given by -PostgresAdminUrl'
-    $adminUrl = $PostgresAdminUrl
+    $given = [Uri]$PostgresAdminUrl
+    if ($given.UserInfo -match ':') {
+        Write-GcpeNote 'the password is part of -PostgresAdminUrl, so it is now in this console''s history; next time leave it out and type it when asked'
+        $adminUrl = $PostgresAdminUrl
+    } else {
+        if (-not $PostgresAdminPassword) { $PostgresAdminPassword = Read-Host "Password for PostgreSQL user '$($given.UserInfo)' on $($given.Host)" -AsSecureString }
+        $pgPort = $(if ($given.Port -gt 0) { $given.Port } else { 5432 })
+        $adminUrl = 'postgres://{0}:{1}@{2}:{3}{4}' -f $given.UserInfo, [Uri]::EscapeDataString((ConvertFrom-GcpeSecureString $PostgresAdminPassword)), $given.Host, $pgPort, $given.AbsolutePath
+    }
 } else {
     $pg = Get-GcpePrereq -Name PostgreSQL -PackageRoot $PSScriptRoot
     $pgServiceName = "postgresql-x64-$($pg.Item.Major)"
@@ -105,15 +131,13 @@ if ($PostgresAdminUrl) {
         Write-GcpeOk 'already installed'
     } else {
         $superPassword = New-GcpeSecret -Bytes 24
-        Set-Content -LiteralPath $paths.PgSuperuser -Value $superPassword -NoNewline -Encoding ASCII
-        Set-GcpeSecretFileAcl -Path $paths.PgSuperuser
+        Write-GcpeSecretFile -Path $paths.PgSuperuser -Value $superPassword
         # An option file keeps the superuser password off the installer's command line.
         $optionFile = Join-Path $paths.Config 'pg-install-options.txt'
-        Set-Content -LiteralPath $optionFile -Encoding ASCII -Value @(
+        Write-GcpeSecretFile -Path $optionFile -Value ((@(
             'mode=unattended', 'unattendedmodeui=none', "superpassword=$superPassword", 'serverport=5432',
             "servicename=$pgServiceName", "prefix=$pgPrefix", "datadir=$PostgresDataDir",
-            'enable-components=server,commandlinetools', 'disable-components=pgAdmin,stackbuilder')
-        Set-GcpeSecretFileAcl -Path $optionFile
+            'enable-components=server,commandlinetools', 'disable-components=pgAdmin,stackbuilder') -join "`r`n") + "`r`n")
         try { Invoke-GcpeInstaller -FilePath $pg.Path -Arguments @('--optionfile', "`"$optionFile`"") }
         finally { Remove-Item -LiteralPath $optionFile -Force -ErrorAction SilentlyContinue }
         Write-GcpeOk "installed: service $pgServiceName, data in $PostgresDataDir, superuser password in $($paths.PgSuperuser)"
@@ -141,10 +165,9 @@ if ($PostgresAdminUrl) {
 
 # --- 2. Configuration -------------------------------------------------------------------------
 Write-GcpeStep "Configuration ($($paths.EnvFile))"
-if (Test-Path -LiteralPath $paths.EnvFile) {
+if ($existingEnv) {
     Write-GcpeOk 'keeping the existing file (edit it and run Restart-Service gcpe-stack to change a setting)'
-    $envValues = Read-GcpeEnv -Path $paths.EnvFile
-    $coreUrl = [Uri]$envValues['CORE_DATABASE_URL']
+    $coreUrl = [Uri]$existingEnv['CORE_DATABASE_URL']
     $userInfo = $coreUrl.UserInfo.Split(':', 2)
     $db = @{ user = [Uri]::UnescapeDataString($userInfo[0]); password = [Uri]::UnescapeDataString($userInfo[1]); prefix = $coreUrl.AbsolutePath.TrimStart('/') -replace '_core$', '' }
 } else {
@@ -168,7 +191,7 @@ if (Test-Path -LiteralPath $paths.EnvFile) {
         $settings.entra = @{ tenantId = $EntraTenantId; clientId = $EntraClientId; clientSecret = ConvertFrom-GcpeSecureString $EntraClientSecret; audience = $EntraAudience }
     }
     $lines = Invoke-GcpeNodeTool -Arguments @((Join-Path $packageApp 'scripts\windows-env.js')) -InputText ($settings | ConvertTo-Json -Depth 5 -Compress)
-    [IO.File]::WriteAllText($paths.EnvFile, $lines, (New-Object Text.UTF8Encoding($false)))
+    Write-GcpeSecretFile -Path $paths.EnvFile -Value $lines
     Write-GcpeOk 'written'
 }
 
@@ -237,6 +260,12 @@ foreach ($var in @('HTTP_X_FORWARDED_PROTO', 'HTTP_X_FORWARDED_HOST')) {
 }
 
 $cert = $null
+$boundThumbprint = Get-GcpeSslBinding
+if (-not $CertificateThumbprint -and $boundThumbprint) {
+    # A re-run keeps the certificate already in use: only -CertificateThumbprint replaces it.
+    $CertificateThumbprint = $boundThumbprint
+    Write-GcpeOk "keeping the certificate already bound to port 443 ($boundThumbprint)"
+}
 if ($CertificateThumbprint) {
     $cert = Get-Item -LiteralPath "Cert:\LocalMachine\My\$CertificateThumbprint" -ErrorAction SilentlyContinue
     if (-not $cert) { throw "No certificate $CertificateThumbprint in Cert:\LocalMachine\My" }
@@ -260,9 +289,11 @@ if (-not (& $appcmd list site $siteName)) {
     if ($LASTEXITCODE -ne 0) { throw "could not create the IIS site $siteName" }
 }
 & $appcmd set app "$siteName/" /applicationPool:$siteName | Out-Null
-& netsh.exe http delete sslcert ipport=0.0.0.0:443 2>$null | Out-Null
-& netsh.exe http add sslcert ipport=0.0.0.0:443 certhash=$($cert.Thumbprint) appid='{4dc3e181-e14b-4a21-b022-59fc669b0914}' certstorename=MY | Out-Null
-if ($LASTEXITCODE -ne 0) { throw 'could not bind the certificate to port 443' }
+if ($boundThumbprint -ne $cert.Thumbprint.ToUpperInvariant()) {
+    if ($boundThumbprint) { Invoke-GcpeQuiet -FilePath netsh.exe -Arguments @('http', 'delete', 'sslcert', 'ipport=0.0.0.0:443') }
+    & netsh.exe http add sslcert ipport=0.0.0.0:443 certhash=$($cert.Thumbprint) appid='{4dc3e181-e14b-4a21-b022-59fc669b0914}' certstorename=MY | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'could not bind the certificate to port 443' }
+}
 
 $webConfig = @"
 <?xml version="1.0" encoding="UTF-8"?>
@@ -296,7 +327,7 @@ $webConfig = @"
 </configuration>
 "@
 [IO.File]::WriteAllText((Join-Path $paths.Site 'web.config'), $webConfig, (New-Object Text.UTF8Encoding($false)))
-& $appcmd start site $siteName 2>$null | Out-Null
+Invoke-GcpeQuiet -FilePath $appcmd -Arguments @('start', 'site', $siteName)
 Write-GcpeOk "https://$HostName/ forwards to 127.0.0.1:$Port"
 
 # --- 6. Deploy --------------------------------------------------------------------------------

@@ -151,6 +151,15 @@ function Set-GcpeSecretFileAcl {
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
 
+# Creates the file empty, locks it down, then writes it: written first, it would inherit
+# BUILTIN\Users read access from C:\ for a moment.
+function Write-GcpeSecretFile {
+    param([Parameter(Mandatory)][string]$Path, [string]$Value = '', [string]$ReaderAccount)
+    [IO.File]::WriteAllText($Path, '')
+    Set-GcpeSecretFileAcl -Path $Path -ReaderAccount $ReaderAccount
+    [IO.File]::WriteAllText($Path, $Value, (New-Object Text.UTF8Encoding($false)))
+}
+
 function Grant-GcpeDirectoryAccess {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)][string]$Account, [ValidateSet('Modify', 'ReadAndExecute')][string]$Rights)
     $acl = Get-Acl -LiteralPath $Path
@@ -203,7 +212,9 @@ function Wait-GcpeHealth {
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     $last = ''
     while ((Get-Date) -lt $deadline) {
-        $body = & curl.exe -k -sS --max-time 10 $Url 2>&1
+        # -s and no 2>&1: Windows PowerShell 5.1 turns a native command's redirected stderr into a
+        # terminating error under ErrorActionPreference=Stop, so "not up yet" would end the wait.
+        $body = & curl.exe -k -s --max-time 10 $Url
         $last = ($body | Out-String).Trim()
         if ($LASTEXITCODE -eq 0) {
             try {
@@ -234,6 +245,25 @@ function Set-GcpeJunction {
         if ($LASTEXITCODE -ne 0) { throw "could not remove the junction $Path" }
     }
     New-Item -ItemType Junction -Path $Path -Target $Target | Out-Null
+}
+
+# The thumbprint bound to https on 0.0.0.0:443, or $null when there is no binding.
+function Get-GcpeSslBinding {
+    $ErrorActionPreference = 'Continue'
+    $out = (& netsh.exe http show sslcert ipport=0.0.0.0:443 | Out-String)
+    if ($out -match 'Certificate Hash\s*:\s*([0-9a-fA-F]{40})') { return $Matches[1].ToUpperInvariant() }
+    $null
+}
+
+# Runs a native command whose output and exit code we don't act on ("delete if present"). Its
+# output goes to temporary files: piped back into Windows PowerShell 5.1, stderr would stop the
+# script under ErrorActionPreference=Stop.
+function Invoke-GcpeQuiet {
+    param([Parameter(Mandatory)][string]$FilePath, [Parameter(Mandatory)][string[]]$Arguments)
+    $out = [IO.Path]::GetTempFileName()
+    $err = [IO.Path]::GetTempFileName()
+    try { Start-Process -FilePath $FilePath -ArgumentList $Arguments -Wait -NoNewWindow -RedirectStandardOutput $out -RedirectStandardError $err | Out-Null }
+    finally { Remove-Item -LiteralPath $out, $err -Force -ErrorAction SilentlyContinue }
 }
 
 Export-ModuleMember -Function *-Gcpe*

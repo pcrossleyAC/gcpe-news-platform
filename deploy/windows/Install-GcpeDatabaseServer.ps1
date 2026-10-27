@@ -45,14 +45,12 @@ if (Get-Service -Name $pgServiceName -ErrorAction SilentlyContinue) {
     Write-GcpeOk 'already installed'
 } else {
     $superPassword = New-GcpeSecret -Bytes 24
-    Set-Content -LiteralPath $paths.PgSuperuser -Value $superPassword -NoNewline -Encoding ASCII
-    Set-GcpeSecretFileAcl -Path $paths.PgSuperuser
+    Write-GcpeSecretFile -Path $paths.PgSuperuser -Value $superPassword
     $optionFile = Join-Path $paths.Config 'pg-install-options.txt'
-    Set-Content -LiteralPath $optionFile -Encoding ASCII -Value @(
+    Write-GcpeSecretFile -Path $optionFile -Value ((@(
         'mode=unattended', 'unattendedmodeui=none', "superpassword=$superPassword", 'serverport=5432',
         "servicename=$pgServiceName", "prefix=$pgPrefix", "datadir=$PostgresDataDir",
-        'enable-components=server,commandlinetools', 'disable-components=pgAdmin,stackbuilder')
-    Set-GcpeSecretFileAcl -Path $optionFile
+        'enable-components=server,commandlinetools', 'disable-components=pgAdmin,stackbuilder') -join "`r`n") + "`r`n")
     try { Invoke-GcpeInstaller -FilePath $pg.Path -Arguments @('--optionfile', "`"$optionFile`"") }
     finally { Remove-Item -LiteralPath $optionFile -Force -ErrorAction SilentlyContinue }
     Write-GcpeOk "installed, data in $PostgresDataDir"
@@ -61,26 +59,33 @@ if (Get-Service -Name $pgServiceName -ErrorAction SilentlyContinue) {
 Write-GcpeStep 'pgvector'
 $pgvector = Join-Path $PSScriptRoot 'prereqs\pgvector'
 if (-not (Test-Path -LiteralPath (Join-Path $pgvector 'vector.dll'))) { throw 'This package has no prereqs\pgvector; use a package built by CI.' }
-Copy-Item -LiteralPath (Join-Path $pgvector 'vector.dll') -Destination (Join-Path $pgPrefix 'lib') -Force
-Get-ChildItem -LiteralPath $pgvector -File | Where-Object { $_.Name -like 'vector*.sql' -or $_.Name -eq 'vector.control' } |
-    Copy-Item -Destination (Join-Path $pgPrefix 'share\extension') -Force
-Write-GcpeOk 'installed'
+# Only files that differ: a vector.dll loaded by a running backend can't be overwritten.
+$copies = @(@{ From = Join-Path $pgvector 'vector.dll'; To = Join-Path $pgPrefix 'lib\vector.dll' })
+foreach ($f in Get-ChildItem -LiteralPath $pgvector -File | Where-Object { $_.Name -like 'vector*.sql' -or $_.Name -eq 'vector.control' }) {
+    $copies += @{ From = $f.FullName; To = Join-Path $pgPrefix "share\extension\$($f.Name)" }
+}
+$changed = 0
+foreach ($c in $copies) {
+    if ((Test-Path -LiteralPath $c.To) -and (Get-FileHash -LiteralPath $c.To).Hash -eq (Get-FileHash -LiteralPath $c.From).Hash) { continue }
+    Copy-Item -LiteralPath $c.From -Destination $c.To -Force
+    $changed++
+}
+Write-GcpeOk "$changed file(s) updated"
 
 Write-GcpeStep "Allowing connections from $AppServerAddress only"
 $hba = Join-Path $PostgresDataDir 'pg_hba.conf'
 $cidr = if ($AppServerAddress.AddressFamily -eq 'InterNetworkV6') { "$AppServerAddress/128" } else { "$AppServerAddress/32" }
 $line = "host    all             all             $cidr            scram-sha-256    # GCPE app server (Install-GcpeDatabaseServer.ps1)"
-if (-not (Select-String -LiteralPath $hba -SimpleMatch $cidr -Quiet)) { Add-Content -LiteralPath $hba -Value $line -Encoding ASCII }
+if (-not (Select-String -LiteralPath $hba -Pattern ('(^|\s)' + [regex]::Escape($cidr) + '(\s|$)') -Quiet)) { Add-Content -LiteralPath $hba -Value $line -Encoding ASCII }
 Restart-Service -Name $pgServiceName
 $ruleName = 'GCPE PostgreSQL from the app server'
 Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue | Remove-NetFirewallRule
 New-NetFirewallRule -DisplayName $ruleName -Direction Inbound -Protocol TCP -LocalPort 5432 -RemoteAddress $AppServerAddress.ToString() -Action Allow | Out-Null
 Write-GcpeOk 'pg_hba.conf and Windows Firewall updated'
 
-$password = [Uri]::EscapeDataString((Get-Content -Raw -LiteralPath $paths.PgSuperuser).Trim())
 Write-Host ''
 Write-Host 'Database server ready.' -ForegroundColor Green
 Write-Host 'On the app server, run Install-Gcpe.ps1 with:'
-Write-Host "  -PostgresAdminUrl 'postgres://postgres:$password@$($env:COMPUTERNAME):5432/postgres'"
+Write-Host "  -PostgresAdminUrl postgres://postgres@$($env:COMPUTERNAME):5432/postgres"
 Write-Host '(use this server''s DNS name or IP address if the app server can''t resolve its computer name).'
-Write-Host "The superuser password is also in $($paths.PgSuperuser) on this server."
+Write-Host "It asks for the superuser password: copy it from $($paths.PgSuperuser) on this server."
