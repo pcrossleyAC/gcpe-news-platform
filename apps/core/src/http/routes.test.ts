@@ -300,9 +300,10 @@ describe("Core HTTP API", () => {
     });
 
     it("409s a duplicate name", async () => {
-      const res = await create(admin, { displayName: "Mining and Critical Minerals" });
+      expect((await create(admin, { displayName: "Francophone Affairs Secretariat" })).status).toBe(201);
+      const res = await create(admin, { displayName: "Francophone Affairs Secretariat" });
       expect(res.status).toBe(409);
-      expect(res.body).toEqual({ error: "exists", key: "mining-and-critical-minerals" });
+      expect(res.body).toEqual({ error: "exists", key: "francophone-affairs-secretariat" });
     });
 
     it("is Core.Admin only", async () => {
