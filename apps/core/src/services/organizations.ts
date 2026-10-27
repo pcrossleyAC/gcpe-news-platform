@@ -71,6 +71,8 @@ export async function upsertOrganization(
     isHqOnCreate?: boolean;
     /** The public flag to give the organization if this upsert creates it. Ignored when it already exists. */
     isPublicOnCreate?: boolean;
+    /** Stamp staffEditedAt: the write comes from a staff edit in the Hub, not the seed or importer. */
+    staffEdit?: boolean;
   } = {},
 ): Promise<{ record: OrgRecord; changed: boolean }> {
   const parsed = orgInputSchema.parse(input);
@@ -96,7 +98,7 @@ export async function upsertOrganization(
         return { record: toOrgRecord(existing), changed: false };
       }
     }
-    const values = { ...data, legacyId: opts.legacyId ?? existing?.legacyId ?? null, updatedAt: new Date() };
+    const values = { ...data, legacyId: opts.legacyId ?? existing?.legacyId ?? null, updatedAt: new Date(), ...(opts.staffEdit ? { staffEditedAt: new Date() } : {}) };
     const [row] = await tx
       .insert(organizations)
       .values(values)
@@ -105,6 +107,65 @@ export async function upsertOrganization(
     const record = toOrgRecord(row!);
     await enqueueEvent(tx, { type: "org.upserted", source: CORE_SOURCE, aggregateId: orgAggregateId(record.key), data: record }, subscribers);
     return { record, changed: true };
+  });
+}
+
+const trimmedOrNull = z
+  .string()
+  .nullable()
+  .transform((v) => (v === null ? null : v.trim() || null));
+
+/** What the Hub's organization form may change. Everything else on the record survives a save untouched. */
+export const orgProfilePatchSchema = z
+  .object({
+    displayName: z.string().trim().min(1),
+    sortOrder: z.number().int(),
+    minister: z
+      .object({
+        name: trimmedOrNull,
+        summary: trimmedOrNull,
+        email: trimmedOrNull.pipe(z.string().email().nullable()),
+        photoUrl: trimmedOrNull.pipe(
+          z
+            .string()
+            .url()
+            .refine((u) => new URL(u).protocol === "https:", "photoUrl must be https")
+            .nullable(),
+        ),
+      })
+      .partial()
+      .strict(),
+    parentKey: trimmedOrNull,
+    isActive: z.boolean(),
+  })
+  .partial()
+  .strict();
+export type OrgProfilePatch = z.infer<typeof orgProfilePatchSchema>;
+
+/** Profile fields only Core.Admin may change. isHq and isPublic are not in the schema at all; the route rejects them first. */
+export const ADMIN_ONLY_PROFILE_FIELDS = ["parentKey", "isActive"] as const;
+
+/**
+ * Staff edit of the form fields. Merges `minister` field by field onto the stored minister, reuses the
+ * upsert path (so org.upserted fires only on a real change) and stamps staffEditedAt when it writes.
+ * Returns null when the key does not exist.
+ */
+export async function patchOrganizationProfile(
+  db: Db,
+  key: string,
+  patch: OrgProfilePatch,
+  subscribers: SubscriberConfig[],
+): Promise<OrgRecord | null> {
+  const parsed = orgProfilePatchSchema.parse(patch);
+  return db.transaction(async (tx) => {
+    await lockAggregate(tx, orgAggregateId(key));
+    const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
+    if (!existing) return null;
+    const { updatedAt: _u, isHq: _h, isPublic: _p, ...current } = toOrgRecord(existing);
+    const { minister, ...rest } = parsed;
+    const merged: OrgInput = { ...current, ...rest, minister: { ...current.minister, ...minister } };
+    // tx is a Db-compatible handle; upsertOrganization opens a nested transaction (savepoint) on it and re-takes the same lock.
+    return (await upsertOrganization(tx as unknown as Db, merged, subscribers, { staffEdit: true })).record;
   });
 }
 

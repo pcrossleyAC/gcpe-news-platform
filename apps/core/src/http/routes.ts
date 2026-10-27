@@ -4,7 +4,7 @@ import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { EventTooLargeError, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
-import { deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
+import { ADMIN_ONLY_PROFILE_FIELDS, deactivateOrganization, getOrganization, listOrganizations, orgInputSchema, orgProfilePatchSchema, patchOrganizationProfile, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
@@ -75,6 +75,19 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     safe<{ key: string }>(async (req, res) => {
       const { isPublic } = publicSchema.parse(req.body);
       const record = await setOrganizationPublic(db, req.params.key, isPublic, subscribers);
+      record ? res.json(record) : res.status(404).json({ error: "not found" });
+    }),
+  );
+  r.patch(
+    "/organizations/:key/profile",
+    requireAnyRole("Core.Admin", "NRMS.SiteEditor"),
+    safe<{ key: string }>(async (req, res) => {
+      const body: unknown = req.body;
+      const isAdmin = req.auth?.roles.includes("Core.Admin") ?? false;
+      if (!isAdmin && body && typeof body === "object" && [...ADMIN_ONLY_PROFILE_FIELDS, "isHq", "isPublic"].some((f) => f in body)) {
+        return void res.status(403).json({ error: "forbidden" });
+      }
+      const record = await patchOrganizationProfile(db, req.params.key, orgProfilePatchSchema.parse(body), subscribers);
       record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );

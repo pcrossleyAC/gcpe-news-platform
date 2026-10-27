@@ -1,0 +1,1 @@
+ALTER TABLE "organizations" ADD COLUMN "staff_edited_at" timestamp with time zone;

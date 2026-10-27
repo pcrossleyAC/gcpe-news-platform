@@ -30,6 +30,8 @@ export const organizations = pgTable("organizations", {
   /** Listed on public surfaces (Q54). False for GCPE Headquarters and GCPE Media Relations. */
   isPublic: boolean("is_public").notNull().default(true),
   legacyId: uuid("legacy_id"),
+  /** Set when staff edit the organization from the Hub; the seed and importer leave such rows alone. Not part of OrgRecord. */
+  staffEditedAt: timestamp("staff_edited_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
