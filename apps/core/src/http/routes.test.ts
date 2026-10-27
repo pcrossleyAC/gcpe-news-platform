@@ -354,6 +354,15 @@ describe("Core HTTP API", () => {
       expect({ ...after, minister: { ...after.minister, name: before.minister.name }, updatedAt: before.updatedAt }).toEqual(before);
     });
 
+    it("answers a validation failure with error and an issues array", async () => {
+      await seed("forests-issues");
+      const res = await patch(siteEditor, { minister: { email: "not-an-email" } }, "forests-issues");
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("invalid request");
+      expect(Array.isArray(res.body.issues)).toBe(true);
+      expect(res.body.issues[0].message).toEqual(expect.any(String));
+    });
+
     it("trims text and rejects a blank name", async () => {
       await seed("forests-trim");
       const res = await patch(siteEditor, { displayName: "  Health  " }, "forests-trim");

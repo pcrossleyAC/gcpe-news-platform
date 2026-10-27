@@ -14,11 +14,28 @@ const HEALTH: OrgRecord = {
   parentKey: null,
   url: "http://gov.bc.ca/health",
   displayAdditionalName: null,
-  minister: { name: "Honourable Josie Osborne", summary: null, detailsHtml: "<p>x</p>", email: null, photoUrl: null, address: "PO BOX 1" },
-  contact: { fullName: "A", phoneNumber: "", mobileNumber: "", emailAddress: "" },
+  minister: {
+    name: "Honourable Josie Osborne",
+    summary: null,
+    detailsHtml: "<p>x</p>",
+    email: null,
+    photoUrl: null,
+    address: "PO BOX 1",
+  },
+  contact: {
+    fullName: "A",
+    phoneNumber: "",
+    mobileNumber: "",
+    emailAddress: "",
+  },
   secondContact: null,
   weekendContactNumber: "",
-  social: { twitterUsername: "", flickrUrl: null, youtubeUrl: null, audioUrl: null },
+  social: {
+    twitterUsername: "",
+    flickrUrl: null,
+    youtubeUrl: null,
+    audioUrl: null,
+  },
   topicLinks: [],
   serviceLinks: [],
   sectorKeys: [],
@@ -26,10 +43,22 @@ const HEALTH: OrgRecord = {
   isPublic: true,
   updatedAt: "2026-10-02T16:46:05.527-07:00",
 } as OrgRecord;
-const FINANCE = { ...HEALTH, key: "finance", displayName: "Finance" } as OrgRecord;
-const GONE = { ...HEALTH, key: "gone", displayName: "Gone Ministry", isActive: false } as OrgRecord;
+const FINANCE = {
+  ...HEALTH,
+  key: "finance",
+  displayName: "Finance",
+} as OrgRecord;
+const GONE = {
+  ...HEALTH,
+  key: "gone",
+  displayName: "Gone Ministry",
+  isActive: false,
+} as OrgRecord;
 
-function setup(isAdmin: boolean, patch: (init?: RequestInit) => Response = () => jsonResponse(200, HEALTH)) {
+function setup(
+  isAdmin: boolean,
+  patch: (init?: RequestInit) => Response = () => jsonResponse(200, HEALTH),
+) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal(
     "fetch",
@@ -40,7 +69,15 @@ function setup(isAdmin: boolean, patch: (init?: RequestInit) => Response = () =>
   );
   const onSaved = vi.fn();
   const onCancel = vi.fn();
-  render(<OrganizationEditForm org={HEALTH} orgs={[HEALTH, FINANCE, GONE]} isAdmin={isAdmin} onSaved={onSaved} onCancel={onCancel} />);
+  render(
+    <OrganizationEditForm
+      org={HEALTH}
+      orgs={[HEALTH, FINANCE, GONE]}
+      isAdmin={isAdmin}
+      onSaved={onSaved}
+      onCancel={onCancel}
+    />,
+  );
   return { calls, onSaved, onCancel, user: userEvent.setup() };
 }
 
@@ -59,22 +96,32 @@ describe("OrganizationEditForm", () => {
     await waitFor(() => expect(calls).toHaveLength(1));
     expect(calls[0]!.url).toBe("/core/api/organizations/health/profile");
     expect(calls[0]!.init!.method).toBe("PATCH");
-    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({ minister: { name: "Honourable New Person" } });
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+      minister: { name: "Honourable New Person" },
+    });
   });
 
   it("shows the saved message and calls onSaved", async () => {
     const { onSaved, user } = setup(false);
     await user.type(screen.getByLabelText("Minister summary"), "Hi");
     await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Saved. The public Ministries page updates when the site next rebuilds.");
-    expect(SAVED_MESSAGE).toBe("Saved. The public Ministries page updates when the site next rebuilds.");
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Saved. The public Ministries page updates when the site next rebuilds.",
+    );
+    expect(SAVED_MESSAGE).toBe(
+      "Saved. The public Ministries page updates when the site next rebuilds.",
+    );
     expect(onSaved).toHaveBeenCalledWith(HEALTH);
   });
 
   it("warns but allows an empty minister name", async () => {
     const { user } = setup(false);
     await user.clear(screen.getByLabelText("Minister name"));
-    expect(screen.getByText("This ministry will show no minister on the public site.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "This ministry will show no minister on the public site.",
+      ),
+    ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
@@ -101,14 +148,29 @@ describe("OrganizationEditForm", () => {
     await user.click(screen.getByLabelText("Active"));
     await user.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls).toHaveLength(1));
-    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({ parentKey: "finance", isActive: false });
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+      parentKey: "finance",
+      isActive: false,
+    });
   });
 
   it("shows server validation messages", async () => {
-    const { onSaved, user } = setup(false, () => jsonResponse(400, { error: "invalid", issues: [{ message: "Enter a valid email address." }] }));
+    const { onSaved, user } = setup(false, () =>
+      jsonResponse(400, {
+        error: "invalid request",
+        issues: [
+          {
+            code: "invalid_string",
+            validation: "email",
+            path: ["minister", "email"],
+            message: "Invalid email",
+          },
+        ],
+      }),
+    );
     await user.type(screen.getByLabelText("Minister email"), "nope");
     await user.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Enter a valid email address.");
+    expect(await screen.findByRole("alert")).toHaveTextContent("Invalid email");
     expect(onSaved).not.toHaveBeenCalled();
   });
 

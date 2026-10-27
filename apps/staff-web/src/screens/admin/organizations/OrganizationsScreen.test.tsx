@@ -8,8 +8,24 @@ import { RequireAuth } from "../../../session/RequireAuth";
 import { OrganizationsScreen } from "./OrganizationsScreen";
 
 const ORGS = [
-  { key: "health", displayName: "Health", abbreviation: "HLTH", isActive: true, isHq: false, isPublic: true, minister: { name: "Josie Osborne" } },
-  { key: "gcpe-media-relations", displayName: "GCPE Media Relations", abbreviation: "GCPEMEDIA", isActive: true, isHq: true, isPublic: false, minister: { name: null } },
+  {
+    key: "health",
+    displayName: "Health",
+    abbreviation: "HLTH",
+    isActive: true,
+    isHq: false,
+    isPublic: true,
+    minister: { name: "Josie Osborne" },
+  },
+  {
+    key: "gcpe-media-relations",
+    displayName: "GCPE Media Relations",
+    abbreviation: "GCPEMEDIA",
+    isActive: true,
+    isHq: true,
+    isPublic: false,
+    minister: { name: null },
+  },
 ];
 
 function stub(roles: string[], calls: { url: string; init?: RequestInit }[]) {
@@ -17,10 +33,19 @@ function stub(roles: string[], calls: { url: string; init?: RequestInit }[]) {
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
-      if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
+      if (url === "/core/auth/session")
+        return jsonResponse(200, {
+          user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles },
+          expiresAt: new Date().toISOString(),
+        });
       if (url === "/core/api/organizations") return jsonResponse(200, ORGS);
-      if (url === "/core/api/organizations/health/hq" && init?.method === "PUT") return jsonResponse(200, { ...ORGS[0], isHq: true });
-      if (url === "/core/api/organizations/health/public" && init?.method === "PUT") return jsonResponse(200, { ...ORGS[0], isPublic: false });
+      if (url === "/core/api/organizations/health/hq" && init?.method === "PUT")
+        return jsonResponse(200, { ...ORGS[0], isHq: true });
+      if (
+        url === "/core/api/organizations/health/public" &&
+        init?.method === "PUT"
+      )
+        return jsonResponse(200, { ...ORGS[0], isPublic: false });
       throw new Error(`unhandled: ${url}`);
     }),
   );
@@ -48,34 +73,64 @@ describe("OrganizationsScreen", () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(["Core.Admin"], calls);
     renderScreen();
-    await waitFor(() => expect(document.title).toBe("Organizations — GCPE News Staff"));
-    expect(await screen.findByLabelText("GCPE Media Relations is an HQ organization")).toBeChecked();
+    await waitFor(() =>
+      expect(document.title).toBe("Organizations — GCPE News Staff"),
+    );
+    expect(
+      await screen.findByLabelText(
+        "GCPE Media Relations is an HQ organization",
+      ),
+    ).toBeChecked();
     const health = screen.getByLabelText("Health is an HQ organization");
     expect(health).not.toBeChecked();
     await userEvent.setup().click(health);
-    await waitFor(() => expect(calls.some((c) => c.init?.method === "PUT")).toBe(true));
-    expect(JSON.parse(calls.find((c) => c.init?.method === "PUT")!.init!.body as string)).toEqual({ isHq: true });
-    expect(await screen.findByRole("status")).toHaveTextContent("Health is now an HQ organization.");
+    await waitFor(() =>
+      expect(calls.some((c) => c.init?.method === "PUT")).toBe(true),
+    );
+    expect(
+      JSON.parse(
+        calls.find((c) => c.init?.method === "PUT")!.init!.body as string,
+      ),
+    ).toEqual({ isHq: true });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Health is now an HQ organization.",
+    );
   });
 
   it("shows and sets whether each organization is listed publicly", async () => {
     const calls: { url: string; init?: RequestInit }[] = [];
     stub(["Core.Admin"], calls);
     renderScreen();
-    expect(await screen.findByLabelText("GCPE Media Relations is listed publicly")).not.toBeChecked();
+    expect(
+      await screen.findByLabelText("GCPE Media Relations is listed publicly"),
+    ).not.toBeChecked();
     const health = screen.getByLabelText("Health is listed publicly");
     expect(health).toBeChecked();
     await userEvent.setup().click(health);
-    await waitFor(() => expect(calls.some((c) => c.url.endsWith("/public") && c.init?.method === "PUT")).toBe(true));
-    expect(JSON.parse(calls.find((c) => c.url.endsWith("/public"))!.init!.body as string)).toEqual({ isPublic: false });
-    expect(await screen.findByRole("status")).toHaveTextContent("Health is no longer listed publicly.");
+    await waitFor(() =>
+      expect(
+        calls.some(
+          (c) => c.url.endsWith("/public") && c.init?.method === "PUT",
+        ),
+      ).toBe(true),
+    );
+    expect(
+      JSON.parse(
+        calls.find((c) => c.url.endsWith("/public"))!.init!.body as string,
+      ),
+    ).toEqual({ isPublic: false });
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Health is no longer listed publicly.",
+    );
   });
 
   it("a SiteEditor sees names, ministers and Edit buttons but no HQ/Public checkboxes", async () => {
     stub(["NRMS.SiteEditor"], []);
     renderScreen();
     expect(await screen.findByText("Josie Osborne")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Edit Health" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Edit Health" }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "HQ" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Public" })).toBeNull();
@@ -84,28 +139,40 @@ describe("OrganizationsScreen", () => {
   it("Core.Admin sees the HQ and Public columns plus Minister and Edit", async () => {
     stub(["Core.Admin"], []);
     renderScreen();
-    expect(await screen.findByRole("button", { name: "Edit Health" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Minister" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "HQ" })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("button", { name: "Edit Health" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "Minister" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("columnheader", { name: "HQ" }),
+    ).toBeInTheDocument();
   });
 
   it("NRMS.Editor still gets the no-permission message", async () => {
     stub(["NRMS.Editor"], []);
     renderScreen();
-    expect(await screen.findByText("You don’t have permission to view this page.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("You don’t have permission to view this page."),
+    ).toBeInTheDocument();
   });
 
   it("is Core.Admin only", async () => {
     stub(["Calendar.SysAdmin"], []);
     renderScreen();
-    expect(await screen.findByText("You don’t have permission to view this page.")).toBeInTheDocument();
+    expect(
+      await screen.findByText("You don’t have permission to view this page."),
+    ).toBeInTheDocument();
   });
 
   it("opens the form for a row, then returns focus to its Edit button on cancel", async () => {
     stub(["NRMS.SiteEditor"], []);
     renderScreen();
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Edit Health" }));
+    await user.click(
+      await screen.findByRole("button", { name: "Edit Health" }),
+    );
     expect(screen.getByRole("heading", { name: "Edit Health" })).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(screen.queryByRole("form")).toBeNull();

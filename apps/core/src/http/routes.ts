@@ -21,7 +21,7 @@ function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | nu
 }
 
 function handleError(res: Response, e: unknown) {
-  if (e instanceof ZodError) return void res.status(400).json({ error: e.issues });
+  if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: "record too large to publish" });
   // Only the label: a failed query's message carries its bound parameters, which can be an email.
   console.error("[core] request failed", safeErrorLabel(e));

@@ -36,7 +36,8 @@ export function OrganizationsScreen(): React.JSX.Element {
         if (call === latest.current) setOrgs(o);
       },
       () => {
-        if (call === latest.current) setLoadError("Couldn't load organizations.");
+        if (call === latest.current)
+          setLoadError("Couldn't load organizations.");
       },
     );
   }, []);
@@ -62,13 +63,27 @@ export function OrganizationsScreen(): React.JSX.Element {
     );
   }
 
-  const setFlag = async (o: OrgRecord, flag: "hq" | "public", value: boolean) => {
+  const setFlag = async (
+    o: OrgRecord,
+    flag: "hq" | "public",
+    value: boolean,
+  ) => {
     setBusy(true);
     setMessages([]);
     setStatus(null);
     try {
-      await apiFetch(`/core/api/organizations/${encodeURIComponent(o.key)}/${flag}`, { method: "PUT", body: flag === "hq" ? { isHq: value } : { isPublic: value } });
-      setStatus(flag === "hq" ? `${o.displayName} is ${value ? "now" : "no longer"} an HQ organization.` : `${o.displayName} is ${value ? "now" : "no longer"} listed publicly.`);
+      await apiFetch(
+        `/core/api/organizations/${encodeURIComponent(o.key)}/${flag}`,
+        {
+          method: "PUT",
+          body: flag === "hq" ? { isHq: value } : { isPublic: value },
+        },
+      );
+      setStatus(
+        flag === "hq"
+          ? `${o.displayName} is ${value ? "now" : "no longer"} an HQ organization.`
+          : `${o.displayName} is ${value ? "now" : "no longer"} listed publicly.`,
+      );
       reload();
     } catch (caught) {
       setMessages(messagesOf(caught));
@@ -80,14 +95,24 @@ export function OrganizationsScreen(): React.JSX.Element {
   return (
     <div className="gcpe-organizations">
       <h1>Organizations</h1>
-      <p>Ministry and minister names here appear on the public Ministries page.</p>
+      <p>
+        Ministry and minister names here appear on the public Ministries page.
+      </p>
       {isAdmin && (
         <>
-          <p>Members of an HQ organization see every ministry in the Corporate Calendar and get its HQ-only fields and actions.</p>
-          <p>Organizations that aren&rsquo;t public are left out of the public ministry list and the subscribe page.</p>
+          <p>
+            Members of an HQ organization see every ministry in the Corporate
+            Calendar and get its HQ-only fields and actions.
+          </p>
+          <p>
+            Organizations that aren&rsquo;t public are left out of the public
+            ministry list and the subscribe page.
+          </p>
         </>
       )}
-      {loadError && <InlineAlert variant="danger" role="alert" description={loadError} />}
+      {loadError && (
+        <InlineAlert variant="danger" role="alert" description={loadError} />
+      )}
       {messages.map((m) => (
         <p role="alert" key={m}>
           {m}
@@ -137,7 +162,13 @@ export function OrganizationsScreen(): React.JSX.Element {
                 <td>{o.isActive ? "Yes" : "No"}</td>
                 {isAdmin && (
                   <td>
-                    <input type="checkbox" aria-label={`${o.displayName} is an HQ organization`} checked={o.isHq} disabled={busy} onChange={(e) => void setFlag(o, "hq", e.target.checked)} />
+                    <input
+                      type="checkbox"
+                      aria-label={`${o.displayName} is an HQ organization`}
+                      checked={o.isHq}
+                      disabled={busy}
+                      onChange={(e) => void setFlag(o, "hq", e.target.checked)}
+                    />
                   </td>
                 )}
                 {isAdmin && (
@@ -147,7 +178,9 @@ export function OrganizationsScreen(): React.JSX.Element {
                       aria-label={`${o.displayName} is listed publicly`}
                       checked={o.isPublic}
                       disabled={busy}
-                      onChange={(e) => void setFlag(o, "public", e.target.checked)}
+                      onChange={(e) =>
+                        void setFlag(o, "public", e.target.checked)
+                      }
                     />
                   </td>
                 )}
@@ -158,7 +191,8 @@ export function OrganizationsScreen(): React.JSX.Element {
                       if (el) editButtons.current.set(o.key, el);
                       else editButtons.current.delete(o.key);
                     }}
-                    aria-label={`Edit ${o.displayName}`} onClick={() => {
+                    aria-label={`Edit ${o.displayName}`}
+                    onClick={() => {
                       setStatus(null);
                       setEditingKey(o.key);
                     }}
