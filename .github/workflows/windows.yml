@@ -1,0 +1,49 @@
+name: windows
+# The platform's target production host is Windows Server + IIS (docs/deploy/windows.md). This
+# runs the same type-check and test suite as ci.yml's `test` job, on Windows, against the
+# runner's own preinstalled PostgreSQL with pgvector built from source. Separate from ci.yml so a
+# Windows-only failure never hides the Linux results; not a required check until it has run green.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+env:
+  PGVECTOR_VERSION: v0.8.1
+jobs:
+  test:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      # The deployed artifact is built on Linux and never checked out on the server, so test the
+      # bytes as committed: CRLF conversion would only produce failures the server can't have.
+      - run: git config --global core.autocrlf false
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - name: Start the preinstalled PostgreSQL
+        run: |
+          $svc = Get-Service -Name 'postgresql*' | Select-Object -First 1
+          if (-not $svc) { throw 'no preinstalled PostgreSQL service on this runner image' }
+          Set-Service -Name $svc.Name -StartupType Manual
+          Start-Service -Name $svc.Name
+          & "$env:PGBIN\pg_config.exe" --version
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build and install pgvector ${{ env.PGVECTOR_VERSION }}
+        shell: cmd
+        run: |
+          git clone --depth 1 --branch %PGVECTOR_VERSION% https://github.com/pgvector/pgvector.git "%RUNNER_TEMP%\pgvector"
+          cd /d "%RUNNER_TEMP%\pgvector"
+          nmake /NOLOGO /F Makefile.win || exit /b 1
+          nmake /NOLOGO /F Makefile.win install || exit /b 1
+      - run: npm ci
+      - run: npm run check
+      - run: npm test
+        env:
+          # The runner image's documented superuser password for its preinstalled PostgreSQL.
+          TEST_DATABASE_ADMIN_URL: postgres://postgres:root@localhost:5432/postgres
