@@ -1,5 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { jsonResponse } from "../../../../test/jsonResponse";
@@ -28,6 +34,8 @@ const ORGS = [
   },
 ];
 
+let failures: Record<string, () => Response> = {};
+
 function stub(
   roles: string[],
   calls: { url: string; init?: RequestInit }[],
@@ -37,6 +45,8 @@ function stub(
     "fetch",
     vi.fn(async (url: string, init?: RequestInit) => {
       calls.push({ url, init });
+      const failure = failures[`${init?.method ?? "GET"} ${url}`];
+      if (failure) return failure();
       if (url === "/core/auth/session")
         return jsonResponse(200, {
           user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles },
@@ -88,6 +98,7 @@ const renderScreen = () =>
 describe("OrganizationsScreen", () => {
   afterEach(() => {
     cleanup();
+    failures = {};
     vi.unstubAllGlobals();
     sessionStorage.clear();
   });
@@ -312,5 +323,129 @@ describe("OrganizationsScreen", () => {
     expect(screen.queryByRole("button", { name: "Add ministry" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Deactivate/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Reactivate/ })).toBeNull();
+  });
+
+  it("moves focus into the Deactivate prompt, and back to Deactivate on Cancel", async () => {
+    stub(["Core.Admin"], []);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Deactivate Health" }),
+    );
+    const group = screen.getByRole("group", { name: "Deactivate Health" });
+    expect(group).toHaveFocus();
+    expect(group).toHaveAccessibleDescription(/subscribers are not moved/);
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      screen.getByRole("button", { name: "Deactivate Health" }),
+    ).toHaveFocus();
+  });
+
+  it("returns focus to the row's Edit button after Deactivate succeeds", async () => {
+    stub(["Core.Admin"], []);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Deactivate Health" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await screen.findByText("Health is deactivated.");
+    expect(screen.getByRole("button", { name: "Edit Health" })).toHaveFocus();
+  });
+
+  it("returns focus to the row's Edit button after Reactivate succeeds", async () => {
+    stub(
+      ["Core.Admin"],
+      [],
+      [
+        {
+          ...ORGS[0],
+          key: "old",
+          displayName: "Old Ministry",
+          isActive: false,
+        },
+      ],
+    );
+    renderScreen();
+    await userEvent
+      .setup()
+      .click(
+        await screen.findByRole("button", { name: "Reactivate Old Ministry" }),
+      );
+    await screen.findByText("Old Ministry is active again.");
+    expect(
+      screen.getByRole("button", { name: "Edit Old Ministry" }),
+    ).toHaveFocus();
+  });
+
+  it("Deactivate 404 keeps the prompt open with the error inside it", async () => {
+    failures["POST /core/api/organizations/health/deactivate"] = () =>
+      jsonResponse(404, { error: "not found" });
+    stub(["Core.Admin"], []);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Deactivate Health" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    const group = screen.getByRole("group", { name: "Deactivate Health" });
+    const alert = await within(group).findByRole("alert");
+    expect(alert).toHaveTextContent(/not found/i);
+    expect(screen.getByRole("button", { name: "Confirm" })).toHaveFocus();
+  });
+
+  it("Reactivate network error shows an alert in the row and keeps focus on the button", async () => {
+    failures["PATCH /core/api/organizations/old/profile"] = () => {
+      throw new TypeError("network down");
+    };
+    stub(
+      ["Core.Admin"],
+      [],
+      [
+        {
+          ...ORGS[0],
+          key: "old",
+          displayName: "Old Ministry",
+          isActive: false,
+        },
+      ],
+    );
+    renderScreen();
+    await userEvent
+      .setup()
+      .click(
+        await screen.findByRole("button", { name: "Reactivate Old Ministry" }),
+      );
+    const alert = await screen.findByRole("alert");
+    expect(alert.closest("tr")).toHaveTextContent("Old Ministry");
+    expect(
+      screen.getByRole("button", { name: "Reactivate Old Ministry" }),
+    ).toHaveFocus();
+  });
+
+  it("Add 400 shows the server's message inside the add form", async () => {
+    failures["POST /core/api/organizations"] = () =>
+      jsonResponse(400, {
+        error: "invalid request",
+        issues: [{ message: "Name is too long." }],
+      });
+    stub(["Core.Admin"], []);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Add ministry" }),
+    );
+    await user.type(
+      screen.getByLabelText(/Ministry name/),
+      "Citizens' Services",
+    );
+    await user.click(screen.getByRole("button", { name: "Create ministry" }));
+    const form = screen.getByRole("form", { name: "Add a ministry" });
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Name is too long.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Create ministry" }),
+    ).toHaveFocus();
   });
 });

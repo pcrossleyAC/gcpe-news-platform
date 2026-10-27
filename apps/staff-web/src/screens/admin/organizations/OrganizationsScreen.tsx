@@ -23,6 +23,17 @@ export function OrganizationsScreen(): React.JSX.Element {
   const [editingKey, setEditingKey] = useState<string | null>(null);
   const editButtons = useRef(new Map<string, HTMLButtonElement>());
   const refocusKey = useRef<string | null>(null);
+  // Where focus goes after a row action re-renders the row (Deactivate/Reactivate/confirm).
+  const rowFocus = useRef<{
+    key: string;
+    target: "edit" | "deactivate" | "group";
+  } | null>(null);
+  const deactivateButtons = useRef(new Map<string, HTMLButtonElement>());
+  const confirmGroups = useRef(new Map<string, HTMLDivElement>());
+  const [rowError, setRowError] = useState<{
+    key: string;
+    messages: string[];
+  } | null>(null);
   const [orgs, setOrgs] = useState<OrgRecord[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [messages, setMessages] = useState<string[]>([]);
@@ -57,6 +68,21 @@ export function OrganizationsScreen(): React.JSX.Element {
       refocusKey.current = null;
     }
   }, [editingKey, orgs]);
+
+  useEffect(() => {
+    const f = rowFocus.current;
+    if (!f) return;
+    const el =
+      f.target === "edit"
+        ? editButtons.current.get(f.key)
+        : f.target === "deactivate"
+          ? deactivateButtons.current.get(f.key)
+          : confirmGroups.current.get(f.key);
+    if (el) {
+      el.focus();
+      rowFocus.current = null;
+    }
+  }, [confirmingKey, orgs]);
 
   if (!canEdit) {
     return (
@@ -97,37 +123,43 @@ export function OrganizationsScreen(): React.JSX.Element {
   };
 
   const deactivate = async (o: OrgRecord) => {
+    if (busy) return;
     setBusy(true);
     setMessages([]);
+    setRowError(null);
     setStatus(null);
     try {
       await apiFetch(
         `/core/api/organizations/${encodeURIComponent(o.key)}/deactivate`,
         { method: "POST" },
       );
+      rowFocus.current = { key: o.key, target: "edit" };
       setConfirmingKey(null);
       setStatus(`${o.displayName} is deactivated.`);
       reload();
     } catch (caught) {
-      setMessages(messagesOf(caught));
+      setRowError({ key: o.key, messages: messagesOf(caught) });
     } finally {
       setBusy(false);
     }
   };
 
   const reactivate = async (o: OrgRecord) => {
+    if (busy) return;
     setBusy(true);
     setMessages([]);
+    setRowError(null);
     setStatus(null);
     try {
       await apiFetch(
         `/core/api/organizations/${encodeURIComponent(o.key)}/profile`,
         { method: "PATCH", body: { isActive: true } },
       );
+      rowFocus.current = { key: o.key, target: "edit" };
       setStatus(`${o.displayName} is active again.`);
       reload();
     } catch (caught) {
-      setMessages(messagesOf(caught));
+      setRowError({ key: o.key, messages: messagesOf(caught) });
     } finally {
       setBusy(false);
     }
@@ -275,10 +307,16 @@ export function OrganizationsScreen(): React.JSX.Element {
                       {" "}
                       <button
                         type="button"
+                        ref={(el) => {
+                          if (el) deactivateButtons.current.set(o.key, el);
+                          else deactivateButtons.current.delete(o.key);
+                        }}
                         aria-label={`Deactivate ${o.displayName}`}
                         disabled={busy}
                         onClick={() => {
                           setStatus(null);
+                          setRowError(null);
+                          rowFocus.current = { key: o.key, target: "group" };
                           setConfirmingKey(o.key);
                         }}
                       >
@@ -292,7 +330,6 @@ export function OrganizationsScreen(): React.JSX.Element {
                       <button
                         type="button"
                         aria-label={`Reactivate ${o.displayName}`}
-                        disabled={busy}
                         onClick={() => void reactivate(o)}
                       >
                         Reactivate
@@ -302,30 +339,51 @@ export function OrganizationsScreen(): React.JSX.Element {
                   {isAdmin && confirmingKey === o.key && (
                     <div
                       role="group"
+                      tabIndex={-1}
+                      ref={(el) => {
+                        if (el) confirmGroups.current.set(o.key, el);
+                        else confirmGroups.current.delete(o.key);
+                      }}
                       aria-label={`Deactivate ${o.displayName}`}
+                      aria-describedby={`confirm-${o.key}`}
                     >
-                      <p>
+                      <p id={`confirm-${o.key}`}>
                         Deactivate {o.displayName}? It disappears from the
                         public site, and its subscribers stop receiving news.
                         This can be undone with Reactivate, but subscribers are
                         not moved to another ministry.
                       </p>
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void deactivate(o)}
-                      >
+                      <button type="button" onClick={() => void deactivate(o)}>
                         Confirm
                       </button>{" "}
                       <button
                         type="button"
-                        disabled={busy}
-                        onClick={() => setConfirmingKey(null)}
+                        onClick={() => {
+                          rowFocus.current = {
+                            key: o.key,
+                            target: "deactivate",
+                          };
+                          setRowError(null);
+                          setConfirmingKey(null);
+                        }}
                       >
                         Cancel
                       </button>
+                      {rowError?.key === o.key &&
+                        rowError.messages.map((m) => (
+                          <p role="alert" key={m}>
+                            {m}
+                          </p>
+                        ))}
                     </div>
                   )}
+                  {rowError?.key === o.key &&
+                    confirmingKey !== o.key &&
+                    rowError.messages.map((m) => (
+                      <p role="alert" key={m}>
+                        {m}
+                      </p>
+                    ))}
                 </td>
               </tr>
             ))}

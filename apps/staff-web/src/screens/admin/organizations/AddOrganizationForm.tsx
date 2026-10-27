@@ -94,10 +94,10 @@ export function AddOrganizationForm({
         </p>
       </div>
       <div>
-        <button type="submit" disabled={busy || nameBlank || keyEmpty}>
+        <button type="submit" disabled={nameBlank || keyEmpty}>
           Create ministry
         </button>{" "}
-        <button type="button" onClick={onCancel} disabled={busy}>
+        <button type="button" onClick={onCancel}>
           Cancel
         </button>
       </div>
