@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { outboxEvents, type SubscriberConfig } from "@gcpe/events";
 import { createFakeSource } from "@gcpe/legacy-import";
 import { createCoreTestDb } from "../../test/helpers";
-import { listOrganizations, patchOrganizationProfile } from "../services/organizations";
+import { deactivateOrganization, listOrganizations, patchOrganizationProfile } from "../services/organizations";
 import { importLegacyReference } from "./run";
 
 const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://x/events", secret: "s", types: ["*"] }];
@@ -60,6 +60,19 @@ describe("importLegacyReference", () => {
       const result = await importLegacyReference(other.db, source, subs);
       expect(result.organizations).toEqual({ total: 1, changed: 0, skippedStaffEdited: 1 });
       expect((await listOrganizations(other.db))[0]!.displayName).toBe("Health (staff)");
+    } finally {
+      await other.drop();
+    }
+  });
+
+  it("the importer leaves a deactivated organization inactive", async () => {
+    const other = await createCoreTestDb();
+    try {
+      await importLegacyReference(other.db, source, subs);
+      expect(await deactivateOrganization(other.db, "health", subs)).toBe(true);
+      const result = await importLegacyReference(other.db, source, subs);
+      expect(result.organizations).toEqual({ total: 1, changed: 0, skippedStaffEdited: 1 });
+      expect((await listOrganizations(other.db))[0]!.isActive).toBe(false);
     } finally {
       await other.drop();
     }

@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { jsonResponse } from "../../../../test/jsonResponse";
+import type { OrgRecord } from "@gcpe/events/catalogue";
 import { AddOrganizationForm } from "./AddOrganizationForm";
 
 function stub(
@@ -71,6 +72,66 @@ describe("AddOrganizationForm", () => {
       "A ministry with this name already exists (citizens-services).",
     );
     expect(onCreated).not.toHaveBeenCalled();
+  });
+
+  it("409 for an inactive ministry points to Reactivate", async () => {
+    stub(
+      () => jsonResponse(409, { error: "exists", key: "citizens-services" }),
+      [],
+    );
+    const orgs = [
+      {
+        key: "citizens-services",
+        displayName: "Citizens' Services",
+        isActive: false,
+      },
+    ] as OrgRecord[];
+    render(
+      <AddOrganizationForm
+        orgs={orgs}
+        onCreated={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByLabelText(/Ministry name/),
+      "Citizens Services",
+    );
+    await user.click(screen.getByRole("button", { name: "Create ministry" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Citizens' Services already exists but is inactive. Use Reactivate on its row.",
+    );
+  });
+
+  it("409 for an active ministry keeps the generic message", async () => {
+    stub(
+      () => jsonResponse(409, { error: "exists", key: "citizens-services" }),
+      [],
+    );
+    const orgs = [
+      {
+        key: "citizens-services",
+        displayName: "Citizens' Services",
+        isActive: true,
+      },
+    ] as OrgRecord[];
+    render(
+      <AddOrganizationForm
+        orgs={orgs}
+        onCreated={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    const user = userEvent.setup();
+    await user.type(
+      screen.getByLabelText(/Ministry name/),
+      "Citizens Services",
+    );
+    await user.click(screen.getByRole("button", { name: "Create ministry" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "A ministry with this name already exists (citizens-services).",
+    );
   });
 
   it("will not submit a name that has no letters or digits", async () => {

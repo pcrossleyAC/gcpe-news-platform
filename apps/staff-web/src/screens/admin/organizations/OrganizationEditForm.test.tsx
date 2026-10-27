@@ -3,7 +3,11 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { jsonResponse } from "../../../../test/jsonResponse";
-import { OrganizationEditForm, SAVED_MESSAGE } from "./OrganizationEditForm";
+import {
+  OrganizationEditForm,
+  SAVED_MESSAGE,
+  deactivateWarning,
+} from "./OrganizationEditForm";
 
 const HEALTH: OrgRecord = {
   key: "health",
@@ -58,6 +62,7 @@ const GONE = {
 function setup(
   isAdmin: boolean,
   patch: (init?: RequestInit) => Response = () => jsonResponse(200, HEALTH),
+  org: OrgRecord = HEALTH,
 ) {
   const calls: { url: string; init?: RequestInit }[] = [];
   vi.stubGlobal(
@@ -71,7 +76,7 @@ function setup(
   const onCancel = vi.fn();
   render(
     <OrganizationEditForm
-      org={HEALTH}
+      org={org}
       orgs={[HEALTH, FINANCE, GONE]}
       isAdmin={isAdmin}
       onSaved={onSaved}
@@ -179,5 +184,111 @@ describe("OrganizationEditForm", () => {
     expect(screen.getByRole("heading", { name: "Edit Health" })).toHaveFocus();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onCancel).toHaveBeenCalled();
+  });
+
+  const NO_BIO = {
+    ...HEALTH,
+    minister: { ...HEALTH.minister, detailsHtml: null },
+  } as OrgRecord;
+  const BIO_LABEL = "Remove the previous minister's biography";
+  const BIO_WARNING =
+    "The public page still shows the previous minister's biography.";
+
+  it("hides the biography checkbox when the minister has no biography", () => {
+    setup(false, undefined, NO_BIO);
+    expect(screen.queryByLabelText(BIO_LABEL)).toBeNull();
+  });
+
+  it("shows the biography checkbox with its hint and sends exactly detailsHtml null", async () => {
+    const { calls, user } = setup(false);
+    const box = screen.getByLabelText(BIO_LABEL);
+    expect(box).not.toBeChecked();
+    expect(
+      screen.getByText(
+        "The biography on the public ministry page belongs to the current minister. Remove it when the minister changes.",
+      ),
+    ).toBeInTheDocument();
+    await user.click(box);
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+      minister: { detailsHtml: null },
+    });
+  });
+
+  it("combines the biography removal with other minister changes", async () => {
+    const { calls, user } = setup(false);
+    const name = screen.getByLabelText("Minister name");
+    await user.clear(name);
+    await user.type(name, "Honourable New Person");
+    await user.click(screen.getByLabelText(BIO_LABEL));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+      minister: { name: "Honourable New Person", detailsHtml: null },
+    });
+  });
+
+  it("warns when the minister name changes while the old biography stays", async () => {
+    const { user } = setup(false);
+    expect(screen.queryByText(BIO_WARNING)).toBeNull();
+    await user.type(screen.getByLabelText("Minister name"), "x");
+    expect(screen.getByText(BIO_WARNING)).toBeInTheDocument();
+    await user.click(screen.getByLabelText(BIO_LABEL));
+    expect(screen.queryByText(BIO_WARNING)).toBeNull();
+  });
+
+  it("does not warn about the biography when there is none", async () => {
+    const { user } = setup(false, undefined, NO_BIO);
+    await user.type(screen.getByLabelText("Minister name"), "x");
+    expect(screen.queryByText(BIO_WARNING)).toBeNull();
+  });
+
+  it("unchecking Active shows the subscriber warning before Save", async () => {
+    const { calls, user } = setup(true);
+    expect(screen.queryByText(deactivateWarning("Health"))).toBeNull();
+    await user.click(screen.getByLabelText("Active"));
+    expect(
+      screen.getByText(
+        "Deactivate Health? It disappears from the public site, and its subscribers stop receiving news. This can be undone with Reactivate, but subscribers are not moved to another ministry.",
+      ),
+    ).toBeInTheDocument();
+    expect(calls).toHaveLength(0);
+    await user.click(screen.getByLabelText("Active"));
+    expect(screen.queryByText(deactivateWarning("Health"))).toBeNull();
+  });
+
+  it("does not send isActive or parentKey the user did not touch, even if the org prop changed since opening", async () => {
+    const { calls, user } = setup(true);
+    cleanup();
+    calls.length = 0;
+    const onSaved = vi.fn();
+    const view = render(
+      <OrganizationEditForm
+        org={HEALTH}
+        orgs={[HEALTH, FINANCE, GONE]}
+        isAdmin
+        onSaved={onSaved}
+        onCancel={() => {}}
+      />,
+    );
+    // Deactivated elsewhere (row button) while this form stayed open.
+    view.rerender(
+      <OrganizationEditForm
+        org={{ ...HEALTH, isActive: false, parentKey: "finance" }}
+        orgs={[HEALTH, FINANCE, GONE]}
+        isAdmin
+        onSaved={onSaved}
+        onCancel={() => {}}
+      />,
+    );
+    const name = screen.getByLabelText("Minister name");
+    await user.clear(name);
+    await user.type(name, "Honourable New Person");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(JSON.parse(calls[0]!.init!.body as string)).toEqual({
+      minister: { name: "Honourable New Person" },
+    });
   });
 });

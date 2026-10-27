@@ -137,6 +137,8 @@ export const orgProfilePatchSchema = z
             .refine((u) => new URL(u).protocol === "https:", "photoUrl must be https")
             .nullable(),
         ),
+        /** Only null is accepted: the form can remove the biography but never write one (v1 has no biography editor). */
+        detailsHtml: z.null(),
       })
       .partial()
       .strict(),
@@ -268,7 +270,7 @@ export async function deactivateOrganization(db: Db, key: string, subscribers: S
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, key)).for("update");
     if (!existing) return false;
     if (!existing.isActive) return true;
-    await tx.update(organizations).set({ isActive: false, updatedAt: new Date() }).where(eq(organizations.key, key));
+    await tx.update(organizations).set({ isActive: false, updatedAt: new Date(), staffEditedAt: new Date() }).where(eq(organizations.key, key));
     await enqueueEvent(tx, { type: "org.deactivated", source: CORE_SOURCE, aggregateId: orgAggregateId(key), data: { key } }, subscribers);
     return true;
   });

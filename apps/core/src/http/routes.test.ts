@@ -74,7 +74,7 @@ describe("Core HTTP API", () => {
   });
 
   it("PUT /organizations/:key/hq is Core.Admin only, 404s an unknown key and 400s a non-boolean", async () => {
-    await request(app).put("/api/organizations/health").set(auth(admin)).send(healthOrg).expect(200);
+    await request(app).put("/api/organizations/health?overwriteStaffEdits=true").set(auth(admin)).send(healthOrg).expect(200);
     expect((await request(app).put("/api/organizations/health/hq").set(auth(editorOnly)).send({ isHq: true })).status).toBe(403);
     const set = await request(app).put("/api/organizations/health/hq").set(auth(admin)).send({ isHq: true });
     expect(set.status).toBe(200);
@@ -85,7 +85,7 @@ describe("Core HTTP API", () => {
   });
 
   it("PUT /api/organizations/:key/public is Core.Admin only and returns the record", async () => {
-    await request(app).put("/api/organizations/health").set(auth(admin)).send(healthOrg).expect(200);
+    await request(app).put("/api/organizations/health?overwriteStaffEdits=true").set(auth(admin)).send(healthOrg).expect(200);
     const res = await request(app).put("/api/organizations/health/public").set(auth(admin)).send({ isPublic: false });
     expect(res.status).toBe(200);
     expect(res.body.isPublic).toBe(false);
@@ -387,6 +387,28 @@ describe("Core HTTP API", () => {
       expect((await patch(editorOnly, { displayName: "X" }, "forests-roles")).status).toBe(403);
       expect((await patch(admin, { displayName: "X" }, "nope")).status).toBe(404);
       expect((await patch(admin, { colour: "red" }, "forests-roles")).status).toBe(400);
+    });
+
+    it("clears the minister biography with detailsHtml null, keeping the other minister fields", async () => {
+      await seed("forests-bio");
+      await patch(siteEditor, { minister: { detailsHtml: null } }, "forests-bio").expect(200);
+      const before = await get("forests-bio");
+      expect(before.minister.detailsHtml).toBeNull();
+      expect(before.minister.name).toBe(healthOrg.minister.name);
+      expect(before.minister.address).toBe(healthOrg.minister.address);
+      const res = await patch(siteEditor, { minister: { name: "Y", detailsHtml: null } }, "forests-bio");
+      expect(res.status).toBe(200);
+      expect(res.body.minister.name).toBe("Y");
+      expect(res.body.minister.detailsHtml).toBeNull();
+    });
+
+    it("clears a stored biography and rejects any string detailsHtml", async () => {
+      await seed("forests-bio2");
+      expect((await get("forests-bio2")).minister.detailsHtml).toBeTruthy();
+      expect((await patch(siteEditor, { minister: { detailsHtml: "<p>x</p>" } }, "forests-bio2")).status).toBe(400);
+      expect((await get("forests-bio2")).minister.detailsHtml).toBeTruthy();
+      await patch(siteEditor, { minister: { detailsHtml: null } }, "forests-bio2").expect(200);
+      expect((await get("forests-bio2")).minister.detailsHtml).toBeNull();
     });
 
     it("rejects a non-https photo URL and a bad email", async () => {

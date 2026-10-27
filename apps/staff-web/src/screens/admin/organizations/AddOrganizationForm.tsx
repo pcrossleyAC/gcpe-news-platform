@@ -5,6 +5,8 @@ import { orgKeyFromName } from "@gcpe/events/org-key";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 
 export interface AddOrganizationFormProps {
+  /** The loaded list, used to tell an inactive ministry's 409 from an active one's. */
+  orgs?: OrgRecord[];
   onCreated: (key: string) => void;
   onCancel: () => void;
 }
@@ -15,6 +17,7 @@ export interface AddOrganizationFormProps {
  * form shows it as you type.
  */
 export function AddOrganizationForm({
+  orgs = [],
   onCreated,
   onCancel,
 }: AddOrganizationFormProps): React.JSX.Element {
@@ -47,8 +50,11 @@ export function AddOrganizationForm({
       if (caught instanceof ApiError && caught.status === 409) {
         const existing =
           (caught.body as { key?: string } | undefined)?.key ?? key;
+        const inactive = orgs.find((o) => o.key === existing && !o.isActive);
         setMessages([
-          `A ministry with this name already exists (${existing}).`,
+          inactive
+            ? `${inactive.displayName} already exists but is inactive. Use Reactivate on its row.`
+            : `A ministry with this name already exists (${existing}).`,
         ]);
       } else {
         setMessages(messagesOf(caught));

@@ -6,7 +6,11 @@ import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { messagesOf } from "../messages";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { AddOrganizationForm } from "./AddOrganizationForm";
-import { OrganizationEditForm, SAVED_MESSAGE } from "./OrganizationEditForm";
+import {
+  OrganizationEditForm,
+  SAVED_MESSAGE,
+  deactivateWarning,
+} from "./OrganizationEditForm";
 import { canEditOrgProfile, isCoreAdmin } from "./access";
 
 /**
@@ -122,6 +126,10 @@ export function OrganizationsScreen(): React.JSX.Element {
     }
   };
 
+  // An open edit form was built from the row's old state; saving it after a row action would undo that action.
+  const closeFormFor = (key: string) =>
+    setEditingKey((k) => (k === key ? null : k));
+
   const deactivate = async (o: OrgRecord) => {
     if (busy) return;
     setBusy(true);
@@ -134,6 +142,7 @@ export function OrganizationsScreen(): React.JSX.Element {
         { method: "POST" },
       );
       rowFocus.current = { key: o.key, target: "edit" };
+      closeFormFor(o.key);
       setConfirmingKey(null);
       setStatus(`${o.displayName} is deactivated.`);
       reload();
@@ -156,6 +165,7 @@ export function OrganizationsScreen(): React.JSX.Element {
         { method: "PATCH", body: { isActive: true } },
       );
       rowFocus.current = { key: o.key, target: "edit" };
+      closeFormFor(o.key);
       setStatus(`${o.displayName} is active again.`);
       reload();
     } catch (caught) {
@@ -210,6 +220,7 @@ export function OrganizationsScreen(): React.JSX.Element {
       )}
       {isAdmin && adding && (
         <AddOrganizationForm
+          orgs={orgs ?? []}
           onCancel={() => {
             setAdding(false);
             setTimeout(() => addButton.current?.focus(), 0);
@@ -348,10 +359,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                       aria-describedby={`confirm-${o.key}`}
                     >
                       <p id={`confirm-${o.key}`}>
-                        Deactivate {o.displayName}? It disappears from the
-                        public site, and its subscribers stop receiving news.
-                        This can be undone with Reactivate, but subscribers are
-                        not moved to another ministry.
+                        {deactivateWarning(o.displayName)}
                       </p>
                       <button type="button" onClick={() => void deactivate(o)}>
                         Confirm

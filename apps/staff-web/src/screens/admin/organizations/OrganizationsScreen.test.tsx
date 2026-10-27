@@ -304,6 +304,73 @@ describe("OrganizationsScreen", () => {
     ).toEqual({ isActive: true });
   });
 
+  it("closes an open edit form when its row is deactivated", async () => {
+    stub(["Core.Admin"], []);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Edit Health" }),
+    );
+    expect(
+      screen.getByRole("form", { name: "Edit Health" }),
+    ).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Deactivate Health" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Health is deactivated.",
+    );
+    expect(screen.queryByRole("form", { name: "Edit Health" })).toBeNull();
+  });
+
+  it("closes an open edit form when its row is reactivated", async () => {
+    stub(
+      ["Core.Admin"],
+      [],
+      [
+        {
+          ...ORGS[0],
+          key: "old",
+          displayName: "Old Ministry",
+          isActive: false,
+        },
+      ],
+    );
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Edit Old Ministry" }),
+    );
+    expect(
+      screen.getByRole("form", { name: "Edit Old Ministry" }),
+    ).toBeInTheDocument();
+    await user.click(
+      screen.getByRole("button", { name: "Reactivate Old Ministry" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Old Ministry is active again.",
+    );
+    expect(
+      screen.queryByRole("form", { name: "Edit Old Ministry" }),
+    ).toBeNull();
+  });
+
+  it("keeps another row's edit form open when a different row is deactivated", async () => {
+    stub(["Core.Admin"], []);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Edit GCPE Media Relations" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Deactivate Health" }));
+    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Health is deactivated.",
+    );
+    expect(
+      screen.getByRole("form", { name: "Edit GCPE Media Relations" }),
+    ).toBeInTheDocument();
+  });
+
   it("SiteEditor sees neither Add nor Deactivate/Reactivate", async () => {
     stub(
       ["NRMS.SiteEditor"],

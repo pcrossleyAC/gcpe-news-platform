@@ -7,6 +7,10 @@ import type { OrgRecord } from "@gcpe/events/catalogue";
 export const SAVED_MESSAGE =
   "Saved. The public Ministries page updates when the site next rebuilds.";
 
+/** The confirmation shown before a ministry is deactivated, by the row button and the edit form's Active checkbox alike. */
+export const deactivateWarning = (displayName: string): string =>
+  `Deactivate ${displayName}? It disappears from the public site, and its subscribers stop receiving news. This can be undone with Reactivate, but subscribers are not moved to another ministry.`;
+
 export interface OrganizationEditFormProps {
   org: OrgRecord;
   orgs: OrgRecord[];
@@ -39,8 +43,15 @@ export function OrganizationEditForm({
     email: org.minister.email ?? "",
     photoUrl: org.minister.photoUrl ?? "",
   });
-  const [parentKey, setParentKey] = useState(org.parentKey ?? "");
-  const [isActive, setIsActive] = useState(org.isActive);
+  // What the form opened with. The patch compares against these, not the live `org` prop, so a
+  // row Deactivate/Reactivate that reloads the list can't be silently undone by saving this form.
+  const [initial] = useState({
+    parentKey: org.parentKey ?? "",
+    isActive: org.isActive,
+  });
+  const [parentKey, setParentKey] = useState(initial.parentKey);
+  const [isActive, setIsActive] = useState(initial.isActive);
+  const [removeBio, setRemoveBio] = useState(false);
   const [busy, setBusy] = useState(false);
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
@@ -53,6 +64,9 @@ export function OrganizationEditForm({
   const sortTrimmed = sortOrder.trim();
   const sortInvalid = !/^-?\d+$/.test(sortTrimmed);
   const ministerBlank = minister.name.trim() === "";
+  const hasBio = !!org.minister.detailsHtml;
+  const ministerNameChanged =
+    minister.name.trim() !== (org.minister.name ?? "");
   const parents = orgs.filter(
     (o) => o.key !== org.key && (o.isActive || o.key === org.parentKey),
   );
@@ -63,16 +77,16 @@ export function OrganizationEditForm({
       body.displayName = displayName.trim();
     if (Number(sortTrimmed) !== org.sortOrder)
       body.sortOrder = Number(sortTrimmed);
-    const m: Record<string, string> = {};
+    const m: Record<string, string | null> = {};
     for (const f of ["name", "summary", "email", "photoUrl"] as const) {
       if (minister[f].trim() !== (org.minister[f] ?? ""))
         m[f] = minister[f].trim();
     }
+    if (hasBio && removeBio) m.detailsHtml = null;
     if (Object.keys(m).length > 0) body.minister = m;
     if (isAdmin) {
-      if ((parentKey || null) !== (org.parentKey ?? null))
-        body.parentKey = parentKey || null;
-      if (isActive !== org.isActive) body.isActive = isActive;
+      if (parentKey !== initial.parentKey) body.parentKey = parentKey || null;
+      if (isActive !== initial.isActive) body.isActive = isActive;
     }
     return body;
   };
@@ -170,6 +184,31 @@ export function OrganizationEditForm({
         )}
       </div>
 
+      {hasBio && (
+        <div>
+          <input
+            id={id("mbio")}
+            type="checkbox"
+            checked={removeBio}
+            onChange={(e) => setRemoveBio(e.target.checked)}
+            aria-describedby={id("mbio-hint")}
+          />{" "}
+          <label htmlFor={id("mbio")}>
+            Remove the previous minister&apos;s biography
+          </label>
+          <p id={id("mbio-hint")}>
+            The biography on the public ministry page belongs to the current
+            minister. Remove it when the minister changes.
+          </p>
+          {ministerNameChanged && !removeBio && (
+            <p>
+              The public page still shows the previous minister&apos;s
+              biography.
+            </p>
+          )}
+        </div>
+      )}
+
       <div>
         <label htmlFor={id("msummary")}>Minister summary</label>
         <textarea
@@ -229,6 +268,9 @@ export function OrganizationEditForm({
               onChange={(e) => setIsActive(e.target.checked)}
             />{" "}
             <label htmlFor={id("active")}>Active</label>
+            {initial.isActive && !isActive && (
+              <p role="note">{deactivateWarning(org.displayName)}</p>
+            )}
           </div>
         </>
       )}
