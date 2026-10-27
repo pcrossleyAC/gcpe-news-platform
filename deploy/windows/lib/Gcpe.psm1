@@ -121,12 +121,17 @@ function Invoke-GcpeNodeTool {
     $psi.RedirectStandardInput = $true
     $psi.RedirectStandardOutput = $true
     $psi.RedirectStandardError = $true
+    $psi.StandardOutputEncoding = [Text.Encoding]::UTF8
+    $psi.StandardErrorEncoding = [Text.Encoding]::UTF8
     foreach ($name in $Environment.Keys) { $psi.EnvironmentVariables[$name] = [string]$Environment[$name] }
     $process = [System.Diagnostics.Process]::Start($psi)
     $stdout = $process.StandardOutput.ReadToEndAsync()
     $stderr = $process.StandardError.ReadToEndAsync()
-    $process.StandardInput.Write($InputText)
-    $process.StandardInput.Close()
+    # Raw UTF-8 bytes on the base stream: .NET Framework's StandardInput writer would add a
+    # byte-order mark (when the console's input encoding is UTF-8), even on Close with nothing written.
+    $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($InputText)
+    $process.StandardInput.BaseStream.Write($bytes, 0, $bytes.Length)
+    $process.StandardInput.BaseStream.Close()
     $process.WaitForExit()
     if ($process.ExitCode -ne 0) { throw "node $($Arguments[0]) failed (exit $($process.ExitCode)): $($stderr.Result.Trim())" }
     $stdout.Result

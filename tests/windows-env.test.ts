@@ -157,6 +157,10 @@ describe("eventSubscribersFor", () => {
 });
 
 describe("parseJsonQuietly", () => {
+  it("ignores the byte-order mark Windows PowerShell 5.1 puts at the start of a child's stdin", () => {
+    expect(parseJsonQuietly('\uFEFF{"a":1}')).toEqual({ a: 1 });
+  });
+
   it("never repeats the input in its error, since the input carries passwords", () => {
     expect(() => parseJsonQuietly('{"adminPassword":"hunter2-secret\\q"}')).toThrow("the input on stdin is not valid JSON");
     try {

@@ -347,14 +347,17 @@ C:\gcpe\
 Checked automatically on every pull request (`windows` workflow, Windows Server 2022 and 2025):
 the full test suite; a clean install with `Install-Gcpe.ps1`; the site, staff app, https redirect
 and admin sign-in through IIS; a second run of the installer; the automatic rollback of a broken
-release; the bundled importers starting and connecting out. Checked by hand on a Mac: the
-bundled importers against a copy of the legacy databases.
+release; the bundled importers starting and connecting out. Checked by hand on a Mac, from the
+built package against a copy of `Gcpe.Hub`: the Core, News API (34,895 releases, under 2 minutes)
+and NRMS (balanced, about 3 minutes) imports, and the Calendar dry run.
 
 Not yet checked anywhere:
 
 - **Windows Server 2019** itself (GitHub has no 2019 machines). Everything used is supported on
   2019, but the first Dev install is the first real run.
 - **The legacy import on Windows against the real legacy SQL Server**, and how long it takes.
+- **The NoD import against real data**: the copy used for the check above has no
+  `Gcpe.NewsOnDemand` database (the importer's own tests cover it).
 - **SQL Server with Windows authentication only**: the importers need a SQL login.
 - **Entra sign-in** end to end on a government tenant.
 - **WebSockets through IIS** for the News API's live-updates hub (`UPDATES_HUB_ENABLED=true`).
