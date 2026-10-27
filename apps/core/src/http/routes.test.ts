@@ -286,60 +286,60 @@ describe("Core HTTP API", () => {
 
   describe("PATCH /api/organizations/:key/profile", () => {
     // Own key: this file shares one database and other tests PUT healthOrg repeatedly.
-    const forestsOrg = { ...healthOrg, key: "forests", displayName: "Forests" };
-    const seed = async () => void (await request(app).put("/api/organizations/forests").set(auth(admin)).send(forestsOrg).expect(200));
-    const get = async () => (await request(app).get("/api/organizations/forests").set(auth(reader)).expect(200)).body;
-    const patch = (token: string, body: unknown, key = "forests") => request(app).patch(`/api/organizations/${key}/profile`).set(auth(token)).send(body as object);
+    // One key per test: a staff-edited organization must never be PUT again (it will 409 later).
+    const seed = async (key: string) => void (await request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName: "Forests" }).expect(200));
+    const get = async (key: string) => (await request(app).get(`/api/organizations/${key}`).set(auth(reader)).expect(200)).body;
+    const patch = (token: string, body: unknown, key: string) => request(app).patch(`/api/organizations/${key}/profile`).set(auth(token)).send(body as object);
 
     it("renames and updates the minister for a SiteEditor", async () => {
-      await seed();
-      const res = await patch(siteEditor, { displayName: "Health and Wellness", minister: { name: "Honourable Pat Doe" } });
+      await seed("forests-rename");
+      const res = await patch(siteEditor, { displayName: "Health and Wellness", minister: { name: "Honourable Pat Doe" } }, "forests-rename");
       expect(res.status).toBe(200);
       expect(res.body.displayName).toBe("Health and Wellness");
       expect(res.body.minister.name).toBe("Honourable Pat Doe");
-      const [row] = await tdb.db.select().from(organizations).where(eq(organizations.key, "forests"));
+      const [row] = await tdb.db.select().from(organizations).where(eq(organizations.key, "forests-rename"));
       expect(row!.staffEditedAt).toBeInstanceOf(Date);
     });
 
     it("preserves fields the form doesn't send", async () => {
-      await seed();
-      const before = await get();
-      await patch(siteEditor, { minister: { name: "X" } }).expect(200);
-      const after = await get();
+      await seed("forests-preserve");
+      const before = await get("forests-preserve");
+      await patch(siteEditor, { minister: { name: "X" } }, "forests-preserve").expect(200);
+      const after = await get("forests-preserve");
       expect(after.minister.name).toBe("X");
       expect({ ...after, minister: { ...after.minister, name: before.minister.name }, updatedAt: before.updatedAt }).toEqual(before);
     });
 
     it("trims text and rejects a blank name", async () => {
-      await seed();
-      const res = await patch(siteEditor, { displayName: "  Health  " });
+      await seed("forests-trim");
+      const res = await patch(siteEditor, { displayName: "  Health  " }, "forests-trim");
       expect(res.status).toBe(200);
       expect(res.body.displayName).toBe("Health");
-      expect((await patch(siteEditor, { displayName: "   " })).status).toBe(400);
+      expect((await patch(siteEditor, { displayName: "   " }, "forests-trim")).status).toBe(400);
     });
 
     it("forbids admin-only fields for a SiteEditor", async () => {
-      await seed();
-      const before = await get();
+      await seed("forests-forbid");
+      const before = await get("forests-forbid");
       for (const body of [{ isActive: false }, { parentKey: null }, { isHq: true }, { isPublic: false }]) {
-        expect((await patch(siteEditor, body)).status).toBe(403);
-        expect(await get()).toEqual(before);
+        expect((await patch(siteEditor, body, "forests-forbid")).status).toBe(403);
+        expect(await get("forests-forbid")).toEqual(before);
       }
-      expect((await patch(admin, { isActive: false })).status).toBe(200);
-      expect((await get()).isActive).toBe(false);
+      expect((await patch(admin, { isActive: false }, "forests-forbid")).status).toBe(200);
+      expect((await get("forests-forbid")).isActive).toBe(false);
     });
 
     it("403 for NRMS.Editor, 404 for an unknown key, 400 for an unknown field", async () => {
-      await seed();
-      expect((await patch(editorOnly, { displayName: "X" })).status).toBe(403);
+      await seed("forests-roles");
+      expect((await patch(editorOnly, { displayName: "X" }, "forests-roles")).status).toBe(403);
       expect((await patch(admin, { displayName: "X" }, "nope")).status).toBe(404);
-      expect((await patch(admin, { colour: "red" })).status).toBe(400);
+      expect((await patch(admin, { colour: "red" }, "forests-roles")).status).toBe(400);
     });
 
     it("rejects a non-https photo URL and a bad email", async () => {
-      await seed();
-      expect((await patch(siteEditor, { minister: { photoUrl: "http://x/y.jpg" } })).status).toBe(400);
-      expect((await patch(siteEditor, { minister: { email: "nope" } })).status).toBe(400);
+      await seed("forests-invalid");
+      expect((await patch(siteEditor, { minister: { photoUrl: "http://x/y.jpg" } }, "forests-invalid")).status).toBe(400);
+      expect((await patch(siteEditor, { minister: { email: "nope" } }, "forests-invalid")).status).toBe(400);
     });
   });
 });
