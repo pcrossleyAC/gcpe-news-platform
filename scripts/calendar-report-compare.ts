@@ -63,7 +63,8 @@ export function diffOutlines(a: string[], b: string[]): string[] {
 /** True when `dir` is this repository or inside it, every symlink in `dir` followed first. */
 export function insideRepo(dir: string): boolean {
   const rel = relative(REPO, weakRealpath(dir));
-  return rel === "" || (!rel.startsWith("..") && !rel.startsWith("/"));
+  // On Windows a path on another drive comes back from relative() as an absolute path ("C:\..."), not "..".
+  return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 }
 
 /** A line's top may sit this many points above its row's link. */
