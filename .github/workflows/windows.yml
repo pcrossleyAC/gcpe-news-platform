@@ -136,6 +136,8 @@ jobs:
           Write-Host $log
           if ($log -notmatch 'ESOCKET|ECONNREFUSED|Failed to connect') { throw 'the Core importer failed for some reason other than reaching SQL Server' }
           Write-Host 'ok: the bundled importer started and tried to connect'
+          # The step's result would otherwise be the importer's expected exit code 1.
+          exit 0
       - name: Logs
         if: always()
         run: |
