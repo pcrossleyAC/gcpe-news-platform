@@ -416,6 +416,41 @@ describe("Site identity in the render-state marker", () => {
     expect(r.all).toBe(false);
   });
 
+  it("a Blue Bridge text edit while the switch is off queues nothing", async () => {
+    const off = (m: (s: ReturnType<typeof bcSettings>) => void = () => {}) => { const s = bcSettings(); m(s); return stateAndBanner("false", false, new Date("2026-10-28T12:00:00Z"), s, site, []).state; };
+    const storage = memoryStorage();
+    await writeSiteState(storage as SiteStorage, off(), site);
+    expect(await chromeChanges(storage as SiteStorage, off((s) => { s.siteIdentity.blueBridge.message = "Changed {age}"; s.siteIdentity.blueBridge.birthDate = "1950-01-01"; }), site)).toMatchObject({ all: false, sections: [] });
+  });
+
+  it("a Blue Bridge text edit while the switch is on queues every page", async () => {
+    const on = (m: (s: ReturnType<typeof bcSettings>) => void = () => {}) => { const s = bcSettings(); m(s); return stateAndBanner("true", false, new Date("2026-10-28T12:00:00Z"), s, site, []).state; };
+    const storage = memoryStorage();
+    await writeSiteState(storage as SiteStorage, on(), site);
+    expect(await chromeChanges(storage as SiteStorage, on(), site)).toMatchObject({ all: false, sections: [] });
+    expect(await chromeChanges(storage as SiteStorage, on((s) => { s.siteIdentity.blueBridge.message = "Changed {age}"; }), site)).toMatchObject({ all: true });
+    expect(await chromeChanges(storage as SiteStorage, on((s) => { s.siteIdentity.blueBridge.birthDate = "1950-01-01"; }), site)).toMatchObject({ all: true });
+  });
+
+  it("an old marker without blueBridgeTextHash: switch off queues nothing; switch on queues one rebuild, then none", async () => {
+    const strip = (storage: ReturnType<typeof memoryStorage>) => {
+      const old = JSON.parse(storage.files.get(".site-state.json") as string);
+      delete old.blueBridgeTextHash;
+      storage.files.set(".site-state.json", JSON.stringify(old));
+    };
+    const st = (g: string) => stateAndBanner(g, false, new Date("2026-10-28T12:00:00Z"), bcSettings(), site, []).state;
+    const offStore = memoryStorage();
+    await writeSiteState(offStore as SiteStorage, st("false"), site);
+    strip(offStore);
+    expect(await chromeChanges(offStore as SiteStorage, st("false"), site)).toMatchObject({ all: false, sections: [] });
+    const onStore = memoryStorage();
+    await writeSiteState(onStore as SiteStorage, st("true"), site);
+    strip(onStore);
+    expect(await chromeChanges(onStore as SiteStorage, st("true"), site)).toMatchObject({ all: true });
+    await writeSiteState(onStore as SiteStorage, st("true"), site);
+    expect(await chromeChanges(onStore as SiteStorage, st("true"), site)).toMatchObject({ all: false, sections: [] });
+  });
+
   it("a marker written before identityHash existed queues one rebuild-all, and the next turn none", async () => {
     const storage = await marked();
     const old = JSON.parse(storage.files.get(".site-state.json") as string);

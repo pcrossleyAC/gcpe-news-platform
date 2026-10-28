@@ -3,19 +3,34 @@
  * banner prefix and noindex) is @gcpe/config's isTestSite.
  */
 
-const BC_TIME_ZONE = "America/Vancouver";
-/** His Majesty King Charles III's birth date, for the banner's age-in-years (BC time). */
-const CHARLES_BORN = { year: 1948, month: 11, day: 14 };
+import { BLUE_BRIDGE_AGE_TOKEN } from "@gcpe/site-settings";
 
-/** His Majesty's age in whole years on `now`, in BC time. */
-function ageInBcYears(now: Date): number {
+const BC_TIME_ZONE = "America/Vancouver";
+let warnedBadBirthDate = false;
+
+/** `YYYY-MM-DD` as a real calendar date, or null. */
+function parseBirthDate(birthDate: string): { year: number; month: number; day: number } | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthDate);
+  if (!m) return null;
+  const [year, month, day] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const d = new Date(Date.UTC(year, month - 1, day));
+  return d.getUTCFullYear() === year && d.getUTCMonth() === month - 1 && d.getUTCDate() === day ? { year, month, day } : null;
+}
+
+/**
+ * Whole years since `birthDate` (`YYYY-MM-DD`) on `now`, by the BC calendar date. A 29 February
+ * birthday counts from 1 March in a non-leap year. NaN when the date is unparseable.
+ */
+export function ageInBcYears(now: Date, birthDate: string): number {
+  const born = parseBirthDate(birthDate);
+  if (!born) return Number.NaN;
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: BC_TIME_ZONE, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
   const get = (type: string) => Number(parts.find((p) => p.type === type)!.value);
   const year = get("year");
   const month = get("month");
   const day = get("day");
-  let age = year - CHARLES_BORN.year;
-  if (month < CHARLES_BORN.month || (month === CHARLES_BORN.month && day < CHARLES_BORN.day)) age--;
+  let age = year - born.year;
+  if (month < born.month || (month === born.month && day < born.day)) age--;
   return age;
 }
 
@@ -34,12 +49,24 @@ export function isGranvilleOn(granville: string | null): boolean {
 
 /**
  * The Project Blue Bridge banner text, or `null` when `granville` isn't ON (per
- * {@link isGranvilleOn} — covers null/empty/"false"/anything but "true"). On a test site the
- * text is prefixed `TEST — ` (constraints.md) so staff previewing a non-production site never
- * mistake it for the real thing.
+ * {@link isGranvilleOn}). `text.message` with every {@link BLUE_BRIDGE_AGE_TOKEN} replaced by the
+ * age at `text.birthDate`; a message without the token is used as written. An unparseable birth
+ * date (validation stops it; this is the backstop) leaves the token out and logs once per
+ * process. On a test site the text is prefixed `TEST — ` so staff previewing a non-production
+ * site never mistake it for the real thing.
  */
-export function blueBridgeBanner(granville: string | null, now: Date, test: boolean): string | null {
+export function blueBridgeBanner(granville: string | null, now: Date, test: boolean, text: { message: string; birthDate: string }): string | null {
   if (!isGranvilleOn(granville)) return null;
-  const text = `ALERT: His Majesty King Charles III, King of Canada, has passed away at the age of ${ageInBcYears(now)}`;
-  return test ? `TEST — ${text}` : text;
+  let age = "";
+  if (text.message.includes(BLUE_BRIDGE_AGE_TOKEN)) {
+    const years = ageInBcYears(now, text.birthDate);
+    if (Number.isNaN(years)) {
+      if (!warnedBadBirthDate) {
+        warnedBadBirthDate = true;
+        console.warn("Blue Bridge birth date is not a YYYY-MM-DD date; the age is left out of the banner.");
+      }
+    } else age = String(years);
+  }
+  const message = text.message.split(BLUE_BRIDGE_AGE_TOKEN).join(age);
+  return test ? `TEST — ${message}` : message;
 }

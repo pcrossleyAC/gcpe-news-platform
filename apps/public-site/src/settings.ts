@@ -83,6 +83,10 @@ export function liveJson(home: Pick<HomeDto, "liveWebcastM3uPlaylist">): string 
 
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
+/** The Blue Bridge message and birth date as one hash, "" while the switch is off: an edit then
+ * reaches no page, and a marker from before this hash existed (read as "") still matches. */
+export const blueBridgeTextHash = (on: boolean, settings: SiteSettings): string => (on ? hash(settings.siteIdentity.blueBridge) : "");
+
 /** The settings' part of the site-state marker (rebuild.ts): one hash per way a section reaches
  * the site. The footer's includes the copyright year, so the year rolls over each January. */
 export function settingsHashes(settings: SiteSettings, timeZone: string, now: Date) {
