@@ -18,7 +18,7 @@ const BY_KIND: Record<string, ReturnType<typeof rec>[]> = {
   tag: [rec("tag", "budget", "Budget", 7)],
 };
 type Call = { url: string; method: string; body: any };
-function stub(roles: string[], onPut?: () => Response) {
+function stub(roles: string[], onPut?: () => Response | Promise<Response>) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
@@ -124,6 +124,7 @@ describe("CategoriesScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Order must be a whole number.");
     expect(order).toHaveAttribute("aria-invalid", "true");
     expect(order).toHaveFocus();
+    expect(order).toHaveAccessibleDescription("Order must be a whole number.");
     expect(puts(calls)).toEqual([]);
   });
 
@@ -162,12 +163,14 @@ describe("CategoriesScreen", () => {
     const keyField = within(form).getByRole("textbox", { name: "Key" });
     expect(keyField).toHaveAttribute("aria-invalid", "true");
     expect(keyField).toHaveFocus();
+    expect(keyField).toHaveAccessibleDescription("That key is already used. To bring a retired one back, tick Active on its row.");
   });
 
   it.each([
     [{ error: "key-format" }, 400, "Keys use lowercase letters, numbers and hyphens (at most 100)."],
+    [{ error: "key-taken" }, 409, "That key is already used. To bring a retired one back, tick Active on its row."],
     [{ error: "name-required" }, 400, "Name is required."],
-    [{ error: "name-too-long" }, 400, "Name is too long. Use at most 100 characters."],
+    [{ error: "name-too-long" }, 400, "Name is too long (at most 100 characters)."],
     [{ error: "boom" }, 500, "Couldn't save. Try again."],
   ])("a row save answering %j explains it", async (body, status, text) => {
     stub(["Core.Admin"], () => jsonResponse(status, body));
@@ -187,6 +190,38 @@ describe("CategoriesScreen", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Name is required.");
     expect(name).toHaveAttribute("aria-invalid", "true");
     expect(name).toHaveFocus();
+    expect(name).toHaveAccessibleDescription("Name is required.");
     expect(puts(calls)).toEqual([]);
+  });
+
+  it("Enter pressed twice while an Add is in flight sends one request", async () => {
+    let release!: (r: Response) => void;
+    const calls = stub(["Core.Admin"], () => new Promise<Response>((r) => (release = r)));
+    renderIt();
+    const user = userEvent.setup();
+    const form = await screen.findByRole("form", { name: "Add a sector" });
+    await user.type(within(form).getByRole("textbox", { name: "Name" }), "Health");
+    await user.keyboard("{Enter}{Enter}");
+    await waitFor(() => expect(puts(calls)).toHaveLength(1));
+    release(jsonResponse(200, {}));
+    await screen.findByRole("status");
+    expect(puts(calls)).toHaveLength(1);
+  });
+
+  it("a save finishing after Show was switched leaves the new kind's table alone", async () => {
+    let release!: (r: Response) => void;
+    stub(["Core.Admin"], () => new Promise<Response>((r) => (release = r)));
+    renderIt();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Save education" }));
+    await waitFor(() => expect(release).toBeDefined());
+    await user.click(screen.getByRole("radio", { name: "Tags" }));
+    expect(await screen.findByRole("table", { name: "Tags" })).toBeInTheDocument();
+    release(jsonResponse(200, {}));
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.getByRole("table", { name: "Tags" })).toBeInTheDocument();
+    expect(screen.getByRole("cell", { name: "budget" })).toBeInTheDocument();
+    expect(screen.queryByRole("cell", { name: "education" })).toBeNull();
+    expect(screen.queryByText("education saved.")).toBeNull();
   });
 });

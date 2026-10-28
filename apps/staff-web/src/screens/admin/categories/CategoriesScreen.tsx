@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { AlertDialog, Form, Modal, Radio, RadioGroup, TextField } from "@bcgov/design-system-react-components";
 import type { TermRecord } from "@gcpe/events/catalogue";
 import { apiFetch, ApiError } from "../../../api/client";
@@ -22,7 +22,7 @@ function explain(err: unknown): { field: "key" | "name" | "form"; text: string }
   if (err instanceof ApiError) {
     if (err.status === 400 && err.message === "key-format") return { field: "key", text: KEY_FORMAT };
     if (err.status === 400 && err.message === "name-required") return { field: "name", text: NAME_REQUIRED };
-    if (err.status === 400 && err.message === "name-too-long") return { field: "name", text: "Name is too long. Use at most 100 characters." };
+    if (err.status === 400 && err.message === "name-too-long") return { field: "name", text: "Name is too long (at most 100 characters)." };
     if (err.status === 409) return { field: "key", text: "That key is already used. To bring a retired one back, tick Active on its row." };
   }
   return { field: "form", text: "Couldn't save. Try again." };
@@ -59,6 +59,14 @@ function CategoriesEditor(): React.JSX.Element {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const labels = KINDS.find((k) => k.kind === kind)!;
+  const kindRef = useRef(kind);
+  kindRef.current = kind;
+  // A save that finishes after the user switched Show must not reload (or announce on) the other kind's table.
+  const afterSave = (savedKind: Kind, text: string) => {
+    if (savedKind !== kindRef.current) return;
+    setMessage(text);
+    reload(savedKind);
+  };
 
   // Only the latest load may land: a slow earlier load (or another kind's) must not put back stale rows.
   const latest = useRef(0);
@@ -112,10 +120,7 @@ function CategoriesEditor(): React.JSX.Element {
               <TermRow
                 key={`${kind}/${r.key}`}
                 record={r}
-                onSaved={(text) => {
-                  setMessage(text);
-                  reload(kind);
-                }}
+                onSaved={(text) => afterSave(r.kind as Kind, text)}
               />
             ))}
           </tbody>
@@ -127,10 +132,7 @@ function CategoriesEditor(): React.JSX.Element {
         singular={labels.singular}
         nextOrder={Math.max(0, ...(rows ?? []).map((r) => r.sortOrder)) + 1}
         ready={rows !== null}
-        onAdded={(text) => {
-          setMessage(text);
-          reload(kind);
-        }}
+        onAdded={(text) => afterSave(kind, text)}
       />
     </div>
   );
@@ -141,11 +143,11 @@ function TermRow({ record, onSaved }: { record: TermRecord; onSaved(text: string
   const [order, setOrder] = useState(String(record.sortOrder));
   const [active, setActive] = useState(record.isActive);
   const [confirmRetire, setConfirmRetire] = useState(false);
-  const [error, setError] = useState<{ field: "order" | "name" | "form"; text: string } | null>(null);
+  const [error, setError] = useState<{ field: "order" | "name" | "key" | "form"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const nameCell = useRef<HTMLTableCellElement>(null);
   const orderRef = useRef<HTMLInputElement>(null);
-  const errorId = `term-error-${record.kind}-${record.key}`;
+  const errorId = `term-error-${useId()}`;
 
   // Checked before the retire dialog opens, so a typing mistake never surfaces behind it.
   // `Number("")` is 0, so an emptied Order field is caught as empty, not saved as 0.
@@ -175,7 +177,7 @@ function TermRow({ record, onSaved }: { record: TermRecord; onSaved(text: string
       onSaved(`${record.key} saved.`);
     } catch (err) {
       const e = explain(err);
-      show({ field: e.field === "key" ? "form" : e.field, text: e.text });
+      show(e);
     } finally {
       setBusy(false);
     }
@@ -269,6 +271,8 @@ function AddForm({ kind, singular, nextOrder, ready, onAdded }: { kind: Kind; si
   const [keyEdited, setKeyEdited] = useState(false);
   const [error, setError] = useState<{ field: "key" | "name" | "form"; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const addErrorId = `category-add-error-${useId()}`;
+  const inFlight = useRef(false);
   const formEl = useRef<HTMLFormElement | null>(null);
 
   const fail = (e: NonNullable<typeof error>) => {
@@ -278,9 +282,11 @@ function AddForm({ kind, singular, nextOrder, ready, onAdded }: { kind: Kind; si
 
   const onSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (inFlight.current) return;
     formEl.current = e.currentTarget;
     if (!name.trim()) return fail({ field: "name", text: NAME_REQUIRED });
     if (!key.trim()) return fail({ field: "key", text: KEY_FORMAT });
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     const newKey = key.trim();
@@ -303,6 +309,7 @@ function AddForm({ kind, singular, nextOrder, ready, onAdded }: { kind: Kind; si
     } catch (err) {
       fail(explain(err));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
@@ -316,7 +323,7 @@ function AddForm({ kind, singular, nextOrder, ready, onAdded }: { kind: Kind; si
           name="name"
           value={name}
           isInvalid={error?.field === "name"}
-          aria-describedby={error?.field === "name" ? "category-add-error" : undefined}
+          aria-describedby={error?.field === "name" ? addErrorId : undefined}
           onChange={(v) => {
             setName(v);
             if (!keyEdited) setKey(slugify(v));
@@ -327,7 +334,7 @@ function AddForm({ kind, singular, nextOrder, ready, onAdded }: { kind: Kind; si
           name="key"
           value={key}
           isInvalid={error?.field === "key"}
-          aria-describedby={error?.field === "key" ? "category-add-error" : undefined}
+          aria-describedby={error?.field === "key" ? addErrorId : undefined}
           onChange={(v) => {
             setKey(v);
             setKeyEdited(true);
@@ -338,7 +345,7 @@ function AddForm({ kind, singular, nextOrder, ready, onAdded }: { kind: Kind; si
         </Button>
       </Form>
       {error && (
-        <p role="alert" id="category-add-error">
+        <p role="alert" id={addErrorId}>
           {error.text}
         </p>
       )}
