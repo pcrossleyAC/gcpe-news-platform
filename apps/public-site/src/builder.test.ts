@@ -84,6 +84,45 @@ describe("site builder", () => {
     expect(html(storage, "sitemaps/pages.xml")).not.toMatch(/\.xml<|atom|feed/);
   });
 
+  it("factsheets listing includes a factsheet that is the home top post, newest first, no duplicates", async () => {
+    const posts = new Map([
+      ["F1", post({ key: "F1", kind: "factsheets", publishDate: "2026-10-01T10:00:00-07:00" })],
+      ["F2", post({ key: "F2", kind: "factsheets", publishDate: "2026-10-02T10:00:00-07:00" })],
+      ["F3", post({ key: "F3", kind: "factsheets", publishDate: "2026-10-04T10:00:00-07:00" })],
+      ["R1", post({ key: "R1", kind: "releases", publishDate: "2026-10-03T10:00:00-07:00" })],
+    ]);
+    const { storage, api, builder } = setup(posts);
+    api.home = async () => ({ granville: null, topPostKey: "F1", featurePostKey: "F3" });
+    // The real API's latest list leaves out the home top post; the feature one is repeated to prove de-duplication.
+    const latestOfKind = api.latestOfKind;
+    api.latestOfKind = async (k, n) => (await latestOfKind(k, n)).filter((p) => p.key !== "F1");
+    await builder.rebuild(["kind:factsheets", "kind:releases"], { settings: bcSettings() });
+    const page = html(storage, "factsheets/index.html");
+    const order = [...page.matchAll(/href="\/releases\/(\w+)\/"/g)].map((m) => m[1]).filter((k, i, a) => a.indexOf(k) === i);
+    expect(order).toEqual(["F3", "F2", "F1"]);
+    expect(page.match(/<div class="article/g)).toHaveLength(3);
+    expect(page).not.toContain("/releases/R1/");
+    expect(html(storage, "releases/index.html")).toContain("/releases/R1/");
+    expect(html(storage, "releases/index.html")).not.toContain("/releases/F1/");
+    expect(page).toContain("<h1 class=\"listing-title\">Factsheets &amp; Opinion Editorials</h1>");
+  });
+
+  it("a kind listing renders deterministically: twice writes the same bytes, one latestOfKind fetch per render", async () => {
+    const { storage, api, builder } = setup(new Map([["S1", post({ key: "S1", kind: "stories" })]]));
+    await builder.rebuild(["kind:stories"], { settings: bcSettings() });
+    const first = html(storage, "stories/index.html");
+    await builder.rebuild(["kind:stories"], { settings: bcSettings() });
+    expect(html(storage, "stories/index.html")).toBe(first);
+    expect(api.calls.filter((c) => c === "latestOfKind:stories")).toHaveLength(2);
+  });
+
+  it("aggregatePageIds and sitemap:pages include the four kind listings", async () => {
+    const { storage, builder } = setup(new Map());
+    expect(await builder.aggregatePageIds()).toEqual(expect.arrayContaining(["kind:releases", "kind:stories", "kind:factsheets", "kind:updates"]));
+    await builder.rebuild(["sitemap:pages"], {});
+    for (const k of ["releases", "stories", "factsheets", "updates"]) expect(html(storage, "sitemaps/pages.xml")).toContain(`https://news.example/${k}/<`);
+  });
+
   it("aggregatePageIds includes kind-feeds", async () => {
     const { builder } = setup(new Map());
     expect(await builder.aggregatePageIds()).toContain("kind-feeds");

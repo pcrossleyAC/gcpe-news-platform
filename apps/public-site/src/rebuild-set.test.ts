@@ -39,6 +39,19 @@ describe("dependentPages (spec §6.2's post row)", () => {
     expect(dependentPages(m("2026-10"), null)).toContain("kind-feeds");
   });
 
+  it("a factsheet post queues kind:factsheets; a post moving from stories to releases queues both", () => {
+    expect(dependentPages(null, { ...m("2026-10"), kind: "factsheets" })).toContain("kind:factsheets");
+    expect(dependentPages(null, { ...m("2026-10"), kind: "factsheets" })).not.toContain("kind:stories");
+    const moved = dependentPages({ ...m("2026-10"), kind: "stories" }, { ...m("2026-10"), kind: "releases" });
+    expect(moved).toEqual(expect.arrayContaining(["kind:stories", "kind:releases"]));
+    expect(moved).not.toContain("kind:updates");
+  });
+
+  it("a kind with no listing (advisories) or an unknown kind queues no kind page", () => {
+    expect(dependentPages(null, { ...m("2026-10"), kind: "advisories" }).some((id) => id.startsWith("kind:"))).toBe(false);
+    expect(dependentPages(null, m("2026-10")).some((id) => id.startsWith("kind:"))).toBe(false);
+  });
+
   it("nothing before and nothing after: nothing", () => {
     expect(dependentPages(null, null)).toEqual([]);
   });

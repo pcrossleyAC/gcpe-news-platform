@@ -1,5 +1,5 @@
 import type { PostDto } from "./dto";
-import { categoryPageId, CATEGORY_KINDS, MONTH, type CategoryKind } from "./site-paths";
+import { categoryPageId, CATEGORY_KINDS, isListingKind, MONTH, type CategoryKind } from "./site-paths";
 
 /** What a post contributes to list pages: its BC month and day and its category tokens ("ministries:health"). */
 export interface Membership {
@@ -7,6 +7,8 @@ export interface Membership {
   /** The BC calendar day (`YYYY-MM-DD`), which decides the post's government term. */
   day: string;
   categories: string[];
+  /** The post kind; a listing kind (`releases`, …) also puts the post on that kind's listing page. */
+  kind?: string;
 }
 
 /** The term a BC day falls in (the latest start on or before it), or null before every term. */
@@ -22,7 +24,7 @@ const KEYS_FIELD: Record<CategoryKind, "ministryKeys" | "sectorKeys" | "themeKey
 };
 
 /** null when the publish date has no usable month (the post then lists nowhere by month). */
-export function membershipOf(post: Pick<PostDto, "publishDate" | "ministryKeys" | "sectorKeys" | "themeKeys" | "tagKeys">): Membership | null {
+export function membershipOf(post: Pick<PostDto, "publishDate" | "ministryKeys" | "sectorKeys" | "themeKeys" | "tagKeys"> & { kind?: string }): Membership | null {
   const month = post.publishDate.slice(0, 7);
   const day = post.publishDate.slice(0, 10);
   if (!MONTH.test(month) || !DAY.test(day)) return null;
@@ -33,7 +35,7 @@ export function membershipOf(post: Pick<PostDto, "publishDate" | "ministryKeys" 
       if (id) categories.add(id.slice("category:".length));
     }
   }
-  return { month, day, categories: [...categories].sort() };
+  return { month, day, categories: [...categories].sort(), ...(post.kind ? { kind: post.kind } : {}) };
 }
 
 /**
@@ -51,6 +53,7 @@ export function dependentPages(before: Membership | null, after: Membership | nu
     if (!m) continue;
     ids.add(`archive:${m.month}`);
     ids.add(`sitemap:${m.month}`);
+    if (m.kind && isListingKind(m.kind)) ids.add(`kind:${m.kind}`);
     for (const c of m.categories) ids.add(`category:${c}`);
     if (!termOf) continue;
     ids.add("archive-terms");

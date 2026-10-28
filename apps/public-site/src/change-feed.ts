@@ -5,12 +5,15 @@ import { readCursor, saveCursor } from "./cursor";
 import type { PostIndex } from "./post-index";
 import { enqueuePages, PRIORITY } from "./queue";
 import { rebuildAllItems } from "./rebuild-all";
-import { categoryPageId, POST_KEY, type CategoryKind } from "./site-paths";
+import { categoryPageId, LISTING_KINDS, POST_KEY, type CategoryKind } from "./site-paths";
 
 export type ChangeKind = "post.upserted" | "post.unpublished" | "home" | "slides" | "resource_links" | "ministry" | "sector" | "theme" | "tag" | "site_settings" | "government_terms";
 export interface ChangeRow { id: number; kind: ChangeKind; key: string | null }
 export type ChangesPage = { resync: false; changes: ChangeRow[]; next: number } | { resync: true; next: number };
 export interface ChangesClient { read(after: number, limit: number): Promise<ChangesPage> }
+
+/** Every per-kind listing page (they show the home top post and the Resources box). */
+const kindPages = (priority: number) => LISTING_KINDS.map((k) => ({ pageId: `kind:${k}`, priority }));
 
 export const CATEGORY_CHANGE: Record<"ministry" | "sector" | "theme" | "tag", CategoryKind> = { ministry: "ministries", sector: "sectors", theme: "themes", tag: "tags" };
 
@@ -75,12 +78,12 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       return c.key && POST_KEY.test(c.key) ? [{ pageId: `post:${c.key}`, priority: postPriority }] : [];
     // A home settings change may switch the webcast on or off: /live/ reads the same settings.
     case "home":
-      return [{ pageId: "home", priority: live }, { pageId: "live", priority: live }];
+      return [{ pageId: "home", priority: live }, { pageId: "live", priority: live }, ...kindPages(live)];
     case "slides":
       return [{ pageId: "home", priority: live }];
     // /connect/ has the same Resources box as home.
     case "resource_links":
-      return [{ pageId: "home", priority: live }, { pageId: "connect", priority: live }];
+      return [{ pageId: "home", priority: live }, { pageId: "connect", priority: live }, ...kindPages(live)];
     case "ministry":
     case "sector":
     case "theme":

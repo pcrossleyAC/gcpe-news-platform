@@ -33,6 +33,13 @@ describe("enqueueRebuildAll", () => {
     expect(at(PRIORITY.bulkAggregate)).toContain("category:ministries:health");
   });
 
+  it("a connect settings change queues connect, home and the four kind listings", async () => {
+    const builder = createSiteBuilder({ newsApi: fakeNewsApi(), storage: memoryStorage(), index: postIndex(tdb.db), site, assetsDir: null });
+    await enqueueChromeChanges(tdb.db, builder, { all: false, sections: ["connect"] });
+    const ids = (await nextBatch(tdb.db, 1000, [])).map((i) => i.pageId);
+    expect(ids).toEqual(expect.arrayContaining(["connect", "home", "kind:releases", "kind:stories", "kind:factsheets", "kind:updates"]));
+  });
+
   it("a labels edit queues every aggregate page and no post", async () => {
     const storage = memoryStorage();
     const api = fakeNewsApi();

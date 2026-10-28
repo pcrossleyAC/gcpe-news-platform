@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { GOVERNMENT_TERM_SLUG } from "@gcpe/config";
+import { LISTING_KINDS, type ListingKind } from "@gcpe/site-settings";
 import { basePath, type SiteInfo } from "./render";
 
 /** A post key as NRMS and the News API produce it. 200 matches RELATED_MAX_KEY_CHARS; news.gov has
@@ -18,6 +19,10 @@ export const CATEGORY_KEY = /^[a-z0-9-]{1,100}$/;
 export const TERM_SLUG = GOVERNMENT_TERM_SLUG;
 /** A BC calendar month. */
 export const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** The per-kind listing pages (`/releases/`, `/stories/`, `/factsheets/`, `/updates/`); the one definition is the settings'. */
+export { LISTING_KINDS, type ListingKind };
+export const isListingKind = (s: string): s is ListingKind => (LISTING_KINDS as readonly string[]).includes(s);
 
 export const CATEGORY_KINDS = ["ministries", "sectors", "themes", "tags"] as const;
 export type CategoryKind = (typeof CATEGORY_KINDS)[number];
@@ -47,7 +52,9 @@ export type PageId =
   /** Not a page: the successor-redirect table the stack's middleware reads (new-government §4). */
   | { type: "legacy-redirects" }
   /** The per-kind feeds (`feeds/<kind>.xml` and `.atom.xml`), one page so one render fetches each kind once. */
-  | { type: "kind-feeds" };
+  | { type: "kind-feeds" }
+  /** A per-kind listing (H5): `/<kind>/`, id `kind:<kind>`. */
+  | { type: "kind"; kind: ListingKind };
 
 const SINGLE: Record<string, PageId> = {
   home: { type: "home" },
@@ -73,6 +80,7 @@ export function parsePageId(id: string): PageId | null {
   const [head] = parts;
   if (head === "post" && parts.length === 2 && POST_KEY.test(parts[1]!)) return { type: "post", key: parts[1]! };
   if (head === "category" && parts.length === 3 && isCategoryKind(parts[1]!) && CATEGORY_KEY.test(parts[2]!)) return { type: "category", kind: parts[1] as CategoryKind, key: parts[2]! };
+  if (head === "kind" && parts.length === 2 && isListingKind(parts[1]!)) return { type: "kind", kind: parts[1] };
   if (head === "archive" && parts.length === 2 && MONTH.test(parts[1]!)) return { type: "archive-month", month: parts[1]! };
   if (head === "sitemap" && parts.length === 2 && MONTH.test(parts[1]!)) return { type: "sitemap-month", month: parts[1]! };
   if (head === "archive-term" && parts.length === 2 && TERM_SLUG.test(parts[1]!)) return { type: "archive-term", slug: parts[1]! };
@@ -83,6 +91,7 @@ export function formatPageId(p: PageId): string {
   switch (p.type) {
     case "post": return `post:${p.key}`;
     case "category": return `category:${p.kind}:${p.key}`;
+    case "kind": return `kind:${p.kind}`;
     case "archive-month": return `archive:${p.month}`;
     case "sitemap-month": return `sitemap:${p.month}`;
     case "sitemap-pages": return "sitemap:pages";
@@ -153,6 +162,7 @@ export function pageFiles(p: PageId): string[] {
     case "archive-terms": return ["archive/terms/index.html"];
     case "archive-term": return [`archive/terms/${p.slug}/index.html`];
     case "legacy-redirects": return [MINISTRY_SUCCESSORS_FILE];
+    case "kind": return [`${p.kind}/index.html`];
     case "kind-feeds": return FEED_POST_KINDS.flatMap((k) => [kindFeedFile(k, "rss"), kindFeedFile(k, "atom")]);
   }
 }
@@ -179,6 +189,7 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "archive-terms": return `${base}/archive/terms/`;
     case "archive-term": return `${base}/archive/terms/${p.slug}/`;
     case "legacy-redirects": return `${base}/${MINISTRY_SUCCESSORS_FILE}`;
+    case "kind": return `${base}/${p.kind}/`;
     case "kind-feeds": return `${base}/`;
   }
 }

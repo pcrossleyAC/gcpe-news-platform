@@ -94,6 +94,23 @@ describe("pageFiles: the biography page (H2)", () => {
   });
 });
 
+describe("kind listings", () => {
+  it("parsePageId('kind:factsheets') round-trips; 'kind:advisories' and 'kind:x' are null", () => {
+    const p = parsePageId("kind:factsheets")!;
+    expect(p).toEqual({ type: "kind", kind: "factsheets" });
+    expect(formatPageId(p)).toBe("kind:factsheets");
+    expect(parsePageId("kind:advisories")).toBeNull();
+    expect(parsePageId("kind:x")).toBeNull();
+    expect(parsePageId("kind:")).toBeNull();
+    expect(parsePageId("kind:constructor")).toBeNull();
+    expect(parsePageId("kind:stories:x")).toBeNull();
+  });
+  it("files and url", () => {
+    expect(pageFiles({ type: "kind", kind: "stories" })).toEqual(["stories/index.html"]);
+    expect(pageUrl(site, { type: "kind", kind: "updates" })).toBe("/site/updates/");
+  });
+});
+
 describe("kind feeds", () => {
   it("pageFiles(kind-feeds) is the eight feeds/* files; parsePageId('kind-feeds') round-trips", () => {
     const p = parsePageId("kind-feeds")!;

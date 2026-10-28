@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { SUBSCRIBE_PAGES } from "../apps/public-site/src/subscribe-pages";
 import * as env from "../apps/stack/src/env";
-import { STACK_OWNED_PREFIXES } from "../apps/stack/src/stack";
+import { SITE_PASS_THROUGH, STACK_OWNED_PREFIXES } from "../apps/stack/src/stack";
 import { buildFixtureSite } from "../scripts/fixture-site";
 
 // News API is mounted at the stack root (app.use(newsApi.app)), so its own top-level routes are
@@ -55,8 +55,13 @@ describe("STACK_OWNED_PREFIXES", () => {
       for (const p of SUBSCRIBE_PAGES) names.add(top(p.path));
       expect(names).toContain("/releases"); // sanity: the build wrote pages
       expect(names).toContain("/subscribe");
-      const owned = STACK_OWNED_PREFIXES.map(top);
+      // "/updates" is owned by News API's hub (POST /updates/negotiate) yet is also the site's Updates
+      // listing (H5, ruling P3-R4): SITE_PASS_THROUGH leaves it out, so a GET/HEAD there is the site's page
+      // (apps/stack's legacy-urls.test.ts pins that the POST still reaches News API).
+      expect(names).toContain("/updates");
+      const owned = SITE_PASS_THROUGH.map(top);
       expect([...names].filter((n) => owned.includes(n))).toEqual([]);
+      expect(STACK_OWNED_PREFIXES.map(top).filter((n) => names.has(n))).toEqual(["/updates"]);
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

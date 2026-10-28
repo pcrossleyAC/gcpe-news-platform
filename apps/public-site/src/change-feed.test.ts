@@ -12,15 +12,18 @@ import { nextBatch, PRIORITY } from "./queue";
 import { syncSite } from "./sync";
 import { CATEGORY_CHANGE, ChangeFeedError, changesClient, pagesForChange, syncChanges, type ChangeRow, type ChangesClient, type ChangesPage } from "./change-feed";
 
+const KIND_ITEMS = ["releases", "stories", "factsheets", "updates"].map((k) => `kind:${k}@1`);
+const KIND_PAGES = ["releases", "stories", "factsheets", "updates"].map((k) => ({ pageId: `kind:${k}`, priority: 1 }));
+
 describe("pagesForChange", () => {
   it.each([
     // /connect/'s RSS Feeds list names every active ministry, sector and tag, not themes.
     [{ id: 13, kind: "theme", key: "housing" }, [{ pageId: "category:themes:housing", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 1, kind: "post.upserted", key: "K1" }, [{ pageId: "post:K1", priority: 0 }]],
     [{ id: 2, kind: "post.unpublished", key: "K1" }, [{ pageId: "post:K1", priority: 0 }]],
-    [{ id: 3, kind: "home", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "live", priority: 1 }]],
+    [{ id: 3, kind: "home", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "live", priority: 1 }, ...KIND_PAGES]],
     [{ id: 4, kind: "slides", key: null }, [{ pageId: "home", priority: 1 }]],
-    [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }]],
+    [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }, ...KIND_PAGES]],
     // A ministry change can start or stop a successor redirect, so it also queues legacy-redirects,
     // one priority lower, so a new successor's page is written before anything 301s to it.
     [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "contacts", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "sitemap:pages", priority: 1 }]],
@@ -232,7 +235,7 @@ describe("syncChanges", () => {
       { resync: false, changes: [], next: 5 },
     ]);
     const result = await syncChanges({ db, client, builder, index });
-    expect(await items()).toEqual(["post:K9@0", "home@1", "live@1"]);
+    expect(await items()).toEqual(["post:K9@0", "home@1", "live@1", ...KIND_ITEMS]);
     expect(await readCursor(db)).toBe(5);
     expect(result).toEqual({ changes: 2, resynced: false });
   });
@@ -349,7 +352,7 @@ describe("syncChanges", () => {
     await syncChanges({ db, client, builder, index });
     expect(await readCursor(db)).toBe(5);
     const queued = await items();
-    expect(queued).toEqual(["home@1", "live@1"]);
+    expect(queued).toEqual(["home@1", "live@1", ...KIND_ITEMS]);
   });
 
   // `kind` is validated only as a non-empty string (changeRowSchema), so a value such as
@@ -365,7 +368,7 @@ describe("syncChanges", () => {
     await syncChanges({ db, client, builder, index });
     expect(await readCursor(db)).toBe(5);
     const queued = await items();
-    expect(queued).toEqual(["home@1", "live@1"]);
+    expect(queued).toEqual(["home@1", "live@1", ...KIND_ITEMS]);
     expect(queued.some((pageId) => pageId.includes("undefined"))).toBe(false);
   });
 

@@ -12,13 +12,14 @@ import { renderLivePage } from "./pages/live";
 import { renderPrivacyPage } from "./pages/privacy";
 import { LATEST_COUNT } from "./pages/format";
 import { renderHomePage } from "./pages/home";
+import { renderKindListing } from "./pages/listing";
 import { hasBiography, renderBiographyPage } from "./pages/minister";
 import { renderReleasePage } from "./pages/release";
 import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
-import { atomUrl, biographyUrl, categoryFiles, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
+import { atomUrl, biographyUrl, categoryFiles, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, LISTING_KINDS, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type ListingKind, type PageId } from "./site-paths";
 import { liveJson, liveStreamUrl, themeDefaults } from "./settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
@@ -44,6 +45,8 @@ export interface RunCache {
   /** Each lead ministry's latest posts (lower-cased key), the release page's related-band
    * fallback: fetched at most once per run, and only by a post with no related posts. */
   ministryLatest?: Map<string, Promise<PostDto[]>>;
+  /** The home top and feature posts (the News API's latest lists leave them out), fetched once per run: every kind listing and feed adds back the ones of its kind. */
+  homeFeatured?: Promise<{ top: PostDto | null; feature: PostDto | null }>;
 }
 
 /** How many of a ministry's latest posts the related band's fallback fetches: three to show, plus
@@ -142,6 +145,17 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     const pick = (k: string | null) => (k ? (found.find((p) => p.key.toLowerCase() === k.toLowerCase()) ?? null) : null);
     return { top: pick(top), feature: pick(feature) };
   };
+
+  /**
+   * A kind's newest posts: the News API's latest-of-kind list plus the home top and feature posts
+   * when they are of that kind (its latest lists leave them out), newest first, no duplicates. The
+   * one merge behind both the kind listings and the kind feeds.
+   */
+  async function kindPosts(run: RunCache, kind: ListingKind): Promise<PostDto[]> {
+    run.homeFeatured ??= newsApi.home().then((home) => featured(home.topPostKey, home.featurePostKey));
+    const [f, latest] = await Promise.all([run.homeFeatured, newsApi.latestOfKind(kind, LATEST_COUNT)]);
+    return sortNewest([...[f.top, f.feature].filter((x) => x?.kind === kind), ...latest]);
+  }
 
   /**
    * Home's News by Sector: the active sectors by name, each with its newest post (legacy TopSectors).
@@ -360,18 +374,24 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         }
         case "kind-feeds": {
-          // The News API's latest list leaves out the home top and feature posts, so those are
-          // added back when they are of the kind. Six calls (home, the featured posts, one per
-          // kind), all made before any file is written: a failed fetch leaves every feed as it was.
-          // The channel link is the home page: a kind has no page of its own.
-          const home = await newsApi.home();
-          const [f, latest] = await Promise.all([featured(home.topPostKey, home.featurePostKey), Promise.all(FEED_POST_KINDS.map((kind) => newsApi.latestOfKind(kind, LATEST_COUNT)))]);
+          // Each kind's posts come from kindPosts (the home top and feature posts added back when
+          // they are of the kind). Home, the featured posts and one list per kind, all fetched
+          // before any file is written: a failed fetch leaves every feed as it was.
+          // The channel link is the home page.
+          const all = await Promise.all(FEED_POST_KINDS.map((kind) => kindPosts(run, kind)));
           for (const [i, kind] of FEED_POST_KINDS.entries()) {
-            const posts = sortNewest([...[f.top, f.feature].filter((x) => x?.kind === kind), ...latest[i]!]);
+            const posts = all[i]!;
             const rss = { title: `${site.name}: ${kind}`, pagePath: pageUrl(site, p), feedPath: kindFeedUrl(site, kind, "rss"), description: `The latest ${kind} from ${site.name}` };
             await storage.write(kindFeedFile(kind, "rss"), renderRssFeed(rss, posts, site));
             await storage.write(kindFeedFile(kind, "atom"), renderAtomFeed({ ...rss, feedPath: kindFeedUrl(site, kind, "atom") }, posts, site));
           }
+          return [];
+        }
+        case "kind": {
+          // Everything is fetched before the write: a failed fetch leaves the page as it was.
+          const [posts, links] = await Promise.all([kindPosts(run, p.kind), newsApi.resourceLinks()]);
+          const settings = opts.settings ?? themeDefaults(site.theme);
+          await storage.write(pageFiles(p)[0]!, renderKindListing(p.kind, settings.navigation.listingTitles[p.kind], posts, links, site, opts));
           return [];
         }
         case "ministries":
@@ -421,7 +441,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         }
         case "sitemap-pages": {
           // Not /search/: robots.txt disallows it, and Search Console flags sitemap URLs blocked by robots.
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" }), pageUrl(site, { type: "live" })];
+          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" }), pageUrl(site, { type: "live" }), ...LISTING_KINDS.map((kind) => pageUrl(site, { type: "kind", kind }))];
           for (const id of await categoryIds(run)) {
             const page = parsePageId(id)!;
             paths.push(pageUrl(site, page));
@@ -495,7 +515,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     async aggregatePageIds() {
       const run: RunCache = {};
       // sitemap:pages after the category pages: it lists the biography pages they write.
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", "kind-feeds", ...(await categoryIds(run)), "sitemap:pages"];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", "kind-feeds", ...LISTING_KINDS.map((k) => `kind:${k}`), ...(await categoryIds(run)), "sitemap:pages"];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;

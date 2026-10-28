@@ -44,6 +44,8 @@ export const FIXTURE_PAGES = [
   "/sectors/economy/",
   "/themes/housing/",
   "/tags/covid-19/",
+  "/factsheets/",
+  "/stories/",
   "/archive/",
   "/archive/2026/10/",
   "/archive/terms/",
@@ -113,6 +115,8 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
         sectorKeys: ["economy"],
         themeKeys: ["housing"],
         tagKeys: ["covid-19"],
+        // A few of the other kinds, so /factsheets/ and /stories/ have cards to show (and hide behind Load More).
+        kind: i >= 13 && i <= 18 ? "factsheets" : i >= 19 && i <= 22 ? "stories" : "releases",
         hasTranslations: i % 3 === 0,
         hasMediaAssets: i % 4 === 0,
         // No Flickr assetUrl: its thumbnail would make site:quality fetch live.staticflickr.com, so

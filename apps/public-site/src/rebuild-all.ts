@@ -1,6 +1,7 @@
 import type { Db } from "@gcpe/db-kit";
 import type { SiteBuilder } from "./builder";
 import { enqueuePages, PRIORITY } from "./queue";
+import { LISTING_KINDS } from "./site-paths";
 import type { SectionPages } from "./rebuild";
 
 /** Rendered on the same run as the trigger, so a layout or Blue Bridge change shows on home at once. */
@@ -37,7 +38,7 @@ export async function enqueueChromeChanges(db: Db, builder: SiteBuilder, changes
   for (const section of changes.sections) {
     // Home's Connect With Us icons come from the connect settings too; "contacts" is its own page id.
     // A labels edit reaches the aggregate pages (home, listings, ministry pages), never a post.
-    const ids = section === "labels" ? await builder.aggregatePageIds() : section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home"] : section === "releaseShare" || section === "releaseLicence" ? [] : [section];
+    const ids = section === "labels" ? await builder.aggregatePageIds() : section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home", ...LISTING_KINDS.map((k) => `kind:${k}`)] : section === "releaseShare" || section === "releaseLicence" ? [] : [section];
     items.push(...ids.map((pageId) => ({ pageId, priority: section === "labels" ? PRIORITY.bulkAggregate : PRIORITY.liveAggregate })));
   }
   // Every release page bakes in the ministryPages labels (Media Contacts, More from this
