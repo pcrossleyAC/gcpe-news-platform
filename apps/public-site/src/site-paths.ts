@@ -127,10 +127,11 @@ export const FEED_POST_KINDS = ["releases", "stories", "factsheets", "updates"] 
 export type FeedPostKind = (typeof FEED_POST_KINDS)[number];
 export const kindFeedFile = (kind: FeedPostKind, format: "rss" | "atom"): string => `feeds/${kind}${format === "atom" ? ".atom" : ""}.xml`;
 
-/** A category page's files by role. The biography page exists only for a ministry. */
-export function categoryFiles(p: { kind: CategoryKind; key: string }): { page: string; feed: string; atom: string; bio: string | null } {
+/** A category page's files by role. The biography and factsheets pages exist only for a ministry. */
+export function categoryFiles(p: { kind: CategoryKind; key: string }): { page: string; feed: string; atom: string; bio: string | null; factsheets: string | null } {
   const dir = `${p.kind}/${p.key}`;
-  return { page: `${dir}/index.html`, feed: `${dir}/feed.xml`, atom: `${dir}/atom.xml`, bio: p.kind === "ministries" ? `${dir}/biography/index.html` : null };
+  const ministry = p.kind === "ministries";
+  return { page: `${dir}/index.html`, feed: `${dir}/feed.xml`, atom: `${dir}/atom.xml`, bio: ministry ? `${dir}/biography/index.html` : null, factsheets: ministry ? `${dir}/factsheets/index.html` : null };
 }
 
 /** Relative output files for a page. Only ever called with a parsed (validated) PageId. */
@@ -142,10 +143,10 @@ export function pageFiles(p: PageId): string[] {
     case "ministries": return ["ministries/index.html"];
     // A ministry's third file is its minister's biography page (H2): written only while the
     // minister has a bio, and removed with the rest when the ministry goes.
-    // Order: page, RSS, Atom, then the biography (last; the builder reads the roles through categoryFiles).
+    // Order: page, RSS, Atom, the biography, then the factsheets page (the builder reads the roles through categoryFiles).
     case "category": {
       const f = categoryFiles(p);
-      return [f.page, f.feed, f.atom, ...(f.bio ? [f.bio] : [])];
+      return [f.page, f.feed, f.atom, ...(f.bio ? [f.bio] : []), ...(f.factsheets ? [f.factsheets] : [])];
     }
     case "archive": return ["archive/index.html"];
     case "archive-month": return [`archive/${p.month.slice(0, 4)}/${p.month.slice(5)}/index.html`];
@@ -206,6 +207,8 @@ export function atomUrl(site: Pick<SiteInfo, "baseUrl">, p: { type: "home" } | {
 export const kindFeedUrl = (site: Pick<SiteInfo, "baseUrl">, kind: FeedPostKind, format: "rss" | "atom"): string => `${basePath(site)}/${kindFeedFile(kind, format)}`;
 
 /** A ministry's minister biography page (the third file of its category page). */
+/** A ministry's factsheets page (H5). */
+export const factsheetsUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}/ministries/${encodeURIComponent(key.toLowerCase())}/factsheets/`;
 export const biographyUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}/ministries/${encodeURIComponent(key.toLowerCase())}/biography/`;
 
 export const absoluteUrl = (site: Pick<SiteInfo, "baseUrl">, path: string) => new URL(site.baseUrl).origin + path;

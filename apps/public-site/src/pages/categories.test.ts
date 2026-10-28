@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { bcSettings, category, contact, ministry, post, site } from "../../test/fixtures";
-import { renderCategoryPage, renderMinistriesPage, renderMinistryPage, type MinistryPageContext } from "./categories";
+import { renderCategoryPage, renderMinistriesPage, renderMinistryFactsheetsPage, renderMinistryPage, type MinistryPageContext } from "./categories";
 import type { MinisterDto, MinistryProfileDto } from "../dto";
 
 const emptyPosts = { top: null, feature: null, latest: [] };
@@ -177,6 +177,7 @@ describe("renderMinistryPage", () => {
     expect(regionHeadings(doc)).toEqual(["Media Contacts", "Meet the Team", "More from this Ministry", "Featured Topics", "Featured Services", "Minister of State for Child Care"]);
     const more = [...regions(doc)!.querySelectorAll(":scope > .resource-links")][2]!;
     expect([...more.querySelectorAll("a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Factsheets", "/ministries/health/factsheets/"],
       ["Ministry Website", "https://gov.example/health"],
       ["Ministry Photos", "https://flickr.com/health"],
       ["Ministry Videos", "https://youtube.com/health"],
@@ -306,5 +307,59 @@ describe("renderCategoryPage", () => {
     const html = renderCategoryPage("sectors", category({ name: "A & <B>" }), emptyPosts, site, {});
     expect(html).toContain("A &amp; &lt;B&gt;");
     expect(html).not.toContain("A & <B>");
+  });
+});
+
+describe("renderMinistryFactsheetsPage (H5)", () => {
+  const minister: MinisterDto = { headline: "Hon. Alex Example", summary: "Minister of Health.", details: "<p>Bio</p>", photo: null };
+  const noCtx: MinistryPageContext = { profile: null, children: [] };
+  const facts = (n: number) => Array.from({ length: n }, (_, i) => post({ key: `F${i + 1}`, kind: "factsheets" }));
+
+  it("one h1 (the ministry name), a Factsheets heading, cards, the minister card in the side column, Search News with type and ministry", () => {
+    const doc = expectAccessibleStructure(renderMinistryFactsheetsPage(ministry(), minister, facts(5), site, { settings: bcSettings() }, noCtx));
+    expect(doc.title).toContain("Factsheets: Health");
+    const h1s = doc.querySelectorAll("h1");
+    expect(h1s).toHaveLength(1);
+    expect(h1s[0]!.className).toBe("ministry-name-mobile");
+    expect(h1s[0]!.textContent).toBe("Health");
+    const listing = doc.querySelector("main .pt-2.ministry-listing.fact-sheets > .home-layout")!;
+    expect(listing).not.toBeNull();
+    const heading = listing.querySelector(".home-body h2.listing-title")!;
+    expect(heading.textContent).toBe("Factsheets");
+    expect(listing.querySelector(".top-article, .feature-article")).toBeNull();
+    const cards = [...listing.querySelectorAll("#regular-articles > .article")];
+    expect(cards).toHaveLength(5);
+    expect(cards.map((c) => c.classList.contains("hidden-article"))).toEqual([false, false, false, true, true]);
+    expect(listing.querySelector("button.load-more")?.textContent).toBe("Load More");
+    expect(listing.querySelector("section.home-features .resource-links.minister h2")?.textContent).toBe("Hon. Alex Example");
+    expect(listing.querySelector(".news-control a.read-more")?.getAttribute("href")).toBe("/search/?type=factsheets&ministry=health");
+    expect(listing.querySelector(".news-control a.read-more")?.textContent).toBe(bcSettings().navigation.labels.searchNews);
+    expect(doc.querySelector('link[rel="canonical"]')?.getAttribute("href")).toContain("/ministries/health/factsheets/");
+    expect(doc.querySelector('link[rel="alternate"]')?.getAttribute("href")).toContain("/ministries/health/feed.xml");
+    expect(doc.querySelector(".collapsible-regions")).not.toBeNull();
+  });
+
+  it("no factsheets: an empty message, no Load More, the page still renders", () => {
+    const doc = expectAccessibleStructure(renderMinistryFactsheetsPage(ministry(), null, [], site, {}, noCtx));
+    expect(doc.querySelector(".listing-empty")?.textContent).toBe("Nothing has been published yet.");
+    expect(doc.querySelector("button.load-more")).toBeNull();
+    expect(doc.querySelector("h2.listing-title")?.textContent).toBe("Factsheets");
+  });
+
+  it("escapes the ministry name in the heading, title and Search News link", () => {
+    const html = renderMinistryFactsheetsPage(ministry({ name: "A & <B>", key: "a&b" }), null, [], site, {}, noCtx);
+    expect(html).toContain("A &amp; &lt;B&gt;");
+    expect(html).not.toContain("<B>");
+    expect(html).toContain("ministry=a%26b");
+  });
+
+  it("More from this Ministry starts with Factsheets, then the ministry's website, on both ministry pages", () => {
+    for (const html of [renderMinistryPage(ministry(), null, emptyPosts, site, {}, noCtx), renderMinistryFactsheetsPage(ministry(), null, [], site, {}, noCtx)]) {
+      const doc = expectAccessibleStructure(html);
+      const box = [...doc.querySelectorAll(".collapsible-regions > .resource-links")].find((b) => b.querySelector("h2")?.textContent === "More from this Ministry")!;
+      const links = [...box.querySelectorAll("a")];
+      expect(links[0]!.textContent).toBe("Factsheets");
+      expect(links[0]!.getAttribute("href")).toBe("/ministries/health/factsheets/");
+    }
   });
 });

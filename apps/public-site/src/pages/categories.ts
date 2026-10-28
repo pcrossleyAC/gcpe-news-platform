@@ -1,7 +1,7 @@
 import type { CategoryDto, MinisterDto, MinistryDto, MinistryProfileDto, PostDto } from "../dto";
 import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "../render";
 import { commContact, contactValue } from "./comm-contact";
-import { categoryPageId, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
+import { categoryPageId, factsheetsUrl, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
 import { displayDate, postListItem } from "./format";
 import type { MinistryPageLabels } from "@gcpe/site-settings";
 import { themeDefaults } from "../settings";
@@ -70,7 +70,7 @@ export interface MinistryPageContext {
  * Empty groups are left out.
  */
 function collapsibleRegions(site: Pick<SiteInfo, "baseUrl">, m: MinistryDto, labels: MinistryPageLabels, ctx: MinistryPageContext): string {
-  const [more, topics, services] = ministryLinkGroups(m, labels);
+  const [more, topics, services] = ministryLinkGroups(site, m, labels);
   const moreHeading = m.key.toLowerCase() === PREMIER_KEY ? "More from the Premier" : more!.heading;
   const boxes = [
     mediaContacts(labels.mediaContacts, m),
@@ -117,16 +117,62 @@ export function renderMinistryPage(m: MinistryDto, minister: MinisterDto | null,
   const top = posts.top ? `<div class="top-article">\n${postCard(site, posts.top, { eager: true })}\n</div>\n` : "";
   const feature = posts.feature ? `<div class="feature-article">\n${postCard(site, posts.feature)}\n</div>\n` : "";
   const { cards, loadMore } = latestCards(site, posts.latest, { loadMoreLabel: settings.navigation.labels.loadMoreNews });
+  return ministryListing(m, minister, site, opts, ctx, {
+    title: m.name,
+    url: pageUrl(site, { type: "category", kind: "ministries", key }),
+    listingClass: "",
+    intro: top + feature,
+    cards,
+    loadMore,
+    empty: "",
+    searchHref: `${base}/search/?ministry=${encodeURIComponent(key)}`,
+  });
+}
+
+/**
+ * A ministry's factsheets page (legacy `/ministries/<key>/factsheets`, H5): the ministry page's
+ * skeleton and side column, with a "Factsheets" heading under the ministry name, no top or feature
+ * article, the ministry's factsheets as cards (newest first; the builder's merge), Load More, and
+ * Search News filtered to factsheets of this ministry. Its feed is the ministry's feed (legacy's).
+ */
+export function renderMinistryFactsheetsPage(m: MinistryDto, minister: MinisterDto | null, posts: PostDto[], site: SiteInfo, opts: PageOptions, ctx: MinistryPageContext): string {
+  const key = m.key.toLowerCase();
+  const base = basePath(site);
+  const { cards, loadMore } = latestCards(site, posts, { loadMoreLabel: "Load More" });
+  return ministryListing(m, minister, site, opts, ctx, {
+    title: `Factsheets: ${m.name}`,
+    url: factsheetsUrl(site, key),
+    listingClass: " fact-sheets",
+    intro: `<h2 class="listing-title">Factsheets</h2>\n`,
+    cards,
+    loadMore,
+    empty: posts.length === 0 ? `<p class="listing-empty">Nothing has been published yet.</p>\n` : "",
+    searchHref: `${base}/search/?type=factsheets&ministry=${encodeURIComponent(key)}`,
+  });
+}
+
+/** The skeleton both ministry pages share: the ministry name as the one h1, the news column, then the side column. */
+function ministryListing(
+  m: MinistryDto,
+  minister: MinisterDto | null,
+  site: SiteInfo,
+  opts: PageOptions,
+  ctx: MinistryPageContext,
+  v: { title: string; url: string; listingClass: string; intro: string; cards: string; loadMore: string; empty: string; searchHref: string },
+): string {
+  const key = m.key.toLowerCase();
+  const base = basePath(site);
+  const settings = opts.settings ?? themeDefaults(site.theme);
   const body = `<h1 class="ministry-name-mobile">${e(m.name)}</h1>
-<div class="pt-2 ministry-listing">
+<div class="pt-2 ministry-listing${v.listingClass}">
 <div class="home-layout">
 <div class="home-body" id="main-content-release">
-${top}${feature}<div class="other-articles">
+${v.intro}<div class="other-articles">
 <div id="regular-articles" class="regular-articles">
-${cards}
+${v.cards}
 </div>
-<div class="news-control">
-${loadMore}<a href="${e(base)}/search/?ministry=${e(encodeURIComponent(key))}" class="read-more">${e(settings.navigation.labels.searchNews)}</a>
+${v.empty}<div class="news-control">
+${v.loadMore}<a href="${e(v.searchHref)}" class="read-more">${e(settings.navigation.labels.searchNews)}</a>
 <div class="clear"></div>
 </div>
 <p><a href="${e(base)}/archive/">Browse the archive by month</a></p>
@@ -136,7 +182,7 @@ ${ministrySidebar(site, m, minister, ctx.profile, collapsibleRegions(site, m, se
 </div>
 </div>`;
 
-  return renderPage(m.name, site, pageUrl(site, { type: "category", kind: "ministries", key }), body, {
+  return renderPage(v.title, site, v.url, body, {
     ...opts,
     feed: { href: feedUrl(site, { type: "category", kind: "ministries", key }), title: `${site.name}: ${m.name}` },
   });

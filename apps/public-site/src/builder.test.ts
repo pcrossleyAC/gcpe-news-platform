@@ -305,6 +305,51 @@ describe("site builder", () => {
     for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) expect(storage.files.has(f), f).toBe(false);
   });
 
+  it("a ministry's factsheets page: its factsheets (and a factsheet top post) newest first, an empty message when none, vanished ministry removes it, sitemap lists every ministry's", async () => {
+    const { storage, api, builder } = setup(new Map([
+      ["F1", post({ key: "F1", kind: "factsheets", ministryKeys: ["Health"], publishDate: "2026-10-01T10:00:00-07:00" })],
+      ["F2", post({ key: "F2", kind: "factsheets", ministryKeys: ["Health"], publishDate: "2026-10-03T10:00:00-07:00" })],
+      ["R1", post({ key: "R1", kind: "releases", ministryKeys: ["Health"], publishDate: "2026-10-02T10:00:00-07:00" })],
+      ["F3", post({ key: "F3", kind: "factsheets", ministryKeys: ["Health"], publishDate: "2026-10-04T10:00:00-07:00" })],
+    ]));
+    // F3 is the ministry's top post: the News API's latest list leaves it out.
+    const ministry = api.ministry;
+    api.ministry = async (k) => { const m = await ministry(k); return m && k.toLowerCase() === "health" ? { ...m, topPostKey: "F3" } : m; };
+    const latest = api.latest;
+    api.latest = async (kind, key, n, o) => (await latest(kind, key, n, o)).filter((p) => p.key !== "F3");
+    await builder.renderPage("category:ministries:health", {});
+    const page = html(storage, "ministries/health/factsheets/index.html");
+    expect([...page.matchAll(/href="\/releases\/(\w+)\/"/g)].map((x) => x[1]).filter((k, i, a) => a.indexOf(k) === i).slice(0, 3)).toEqual(["F3", "F2", "F1"]);
+    expect(page).not.toContain("/releases/R1/");
+    expect(page).toMatch(/<title>Factsheets: health \|/);
+    expect(api.calls).toContain("latest:ministries:health:factsheets");
+    // No factsheets: the page is still written, with the empty message.
+    await builder.renderPage("category:ministries:finance", {});
+    expect(html(storage, "ministries/finance/factsheets/index.html")).toContain("Nothing has been published yet.");
+    await builder.renderPage("sitemap:pages", {});
+    for (const k of ["health", "finance"]) expect(html(storage, "sitemaps/pages.xml")).toContain(`<loc>https://news.example/ministries/${k}/factsheets/</loc>`);
+    // A vanished ministry loses the page and its folder.
+    const removeEmptyDir = vi.spyOn(storage, "removeEmptyDir");
+    await storage.write("ministries/gone/factsheets/index.html", "x");
+    await builder.renderPage("category:ministries:gone", {});
+    expect(storage.files.has("ministries/gone/factsheets/index.html")).toBe(false);
+    expect(removeEmptyDir).toHaveBeenCalledWith("ministries/gone/factsheets");
+  });
+
+  it("a ministry render starts its factsheets fetch alongside the others, not after them", async () => {
+    const { api, builder } = setup(new Map());
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    const started: (string | undefined)[] = [];
+    const latest = api.latest;
+    api.latest = async (kind, key, n, o) => { started.push(o?.postKind ?? "all"); await gate; return latest(kind, key, n, o); };
+    const run = builder.renderPage("category:ministries:health", {});
+    await new Promise((r) => setTimeout(r, 20));
+    expect(started.sort()).toEqual(["all", "factsheets"]);
+    release();
+    await run;
+  });
+
   it("renders each childKey's ministry and minister; a null child ministry is skipped", async () => {
     const { storage, api, builder } = setup(new Map());
     const ministries = { health: "Health", finance: "Minister of State for Finance" } as Record<string, string>;

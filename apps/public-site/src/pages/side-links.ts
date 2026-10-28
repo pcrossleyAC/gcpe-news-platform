@@ -2,6 +2,7 @@ import type { MinistryPageLabels } from "@gcpe/site-settings";
 import type { MinistryDto } from "../dto";
 import { e, safeHref, type SiteInfo } from "../render";
 import { settingsHref } from "../settings";
+import { factsheetsUrl } from "../site-paths";
 
 export interface SideLink {
   text: string;
@@ -29,14 +30,15 @@ export function resourceLinks(site: Pick<SiteInfo, "baseUrl">, heading: string, 
   return items.length ? `<div class="resource-links">\n<h2>${e(heading)}</h2>\n<ul>\n${items.join("\n")}\n</ul>\n</div>` : "";
 }
 
-/** A ministry's More from this Ministry (website, photos, videos — legacy MoreFromThis less
- * Factsheets, which wait for H5), Featured Topics and Featured Services (legacy PopularTopics and
+/** A ministry's More from this Ministry (Factsheets, website, photos, videos — legacy MoreFromThis;
+ * "Factsheets" is legacy's own hardcoded text, not a setting), Featured Topics and Featured Services (legacy PopularTopics and
  * Resources), headed with the settings labels. */
-export function ministryLinkGroups(m: MinistryDto, labels: MinistryPageLabels): SideLinkGroup[] {
+export function ministryLinkGroups(site: Pick<SiteInfo, "baseUrl">, m: MinistryDto, labels: MinistryPageLabels): SideLinkGroup[] {
   return [
     {
       heading: labels.moreFromMinistry,
       links: [
+        { text: "Factsheets", url: factsheetsUrl(site, m.key) },
         { text: labels.ministryWebsite, url: m.ministryUrl },
         { text: labels.ministryPhotos, url: m.flickrUri },
         { text: labels.ministryVideos, url: m.youtubeUri },

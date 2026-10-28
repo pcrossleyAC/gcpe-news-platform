@@ -40,7 +40,10 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     getPost: async (key) => { calls.push(`getPost:${key}`); return posts.get(key) ?? null; },
     latestHome: async (n) => published().slice(0, n),
     latestOfKind: async (postKind, n) => { calls.push(`latestOfKind:${postKind}`); return published().filter((p) => p.kind === postKind).slice(0, n); },
-    latest: async (kind, key, n) => inCat(({ ministries: "ministryKeys", sectors: "sectorKeys", themes: "themeKeys", tags: "tagKeys" } as const)[kind], key).slice(0, n),
+    latest: async (kind, key, n, o) => {
+      calls.push(`latest:${kind}:${key}${o?.postKind ? `:${o.postKind}` : ""}`);
+      return inCat(({ ministries: "ministryKeys", sectors: "sectorKeys", themes: "themeKeys", tags: "tagKeys" } as const)[kind], key).filter((p) => !o?.postKind || p.kind === o.postKind).slice(0, n);
+    },
     home: async () => ({ granville: null, topPostKey: null, featurePostKey: null }),
     postsByKeys: async (keys) => keys.map((k) => posts.get(k)).filter((p): p is PostDto => !!p),
     ministries: async () => [ministry({ key: "health", name: "Health" }), ministry({ key: "finance", name: "Finance" })],

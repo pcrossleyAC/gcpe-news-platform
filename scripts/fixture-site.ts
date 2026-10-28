@@ -40,6 +40,7 @@ export const FIXTURE_PAGES = [
   "/ministries/",
   "/ministries/health/",
   "/ministries/health/biography/",
+  "/ministries/health/factsheets/",
   "/ministries/office-of-the-premier/",
   "/sectors/economy/",
   "/themes/housing/",

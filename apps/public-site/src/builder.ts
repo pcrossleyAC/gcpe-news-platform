@@ -5,7 +5,7 @@ import { renderAtomFeed, renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
 import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex } from "./pages/archive";
-import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./pages/categories";
+import { renderCategoryPage, renderMinistriesPage, renderMinistryFactsheetsPage, renderMinistryPage } from "./pages/categories";
 import { renderConnectPage } from "./pages/connect";
 import { renderContactsPage } from "./pages/contacts";
 import { renderLivePage } from "./pages/live";
@@ -19,7 +19,7 @@ import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
-import { atomUrl, biographyUrl, categoryFiles, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, LISTING_KINDS, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type ListingKind, type PageId } from "./site-paths";
+import { atomUrl, biographyUrl, categoryFiles, factsheetsUrl, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, LISTING_KINDS, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type ListingKind, type PageId } from "./site-paths";
 import { liveJson, liveStreamUrl, themeDefaults } from "./settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
@@ -259,16 +259,16 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return dependents(before ? membershipOfEntry(before) : null, membershipOf(post));
   }
 
-  /** Removes a ministry's biography page and its then-empty folder. */
-  const removeBio = async (bio: string) => {
-    await storage.remove(bio);
-    await storage.removeEmptyDir(bio.slice(0, bio.lastIndexOf("/")));
+  /** Removes a ministry's sub-page (biography, factsheets) and its then-empty folder. */
+  const removeSubPage = async (file: string) => {
+    await storage.remove(file);
+    await storage.removeEmptyDir(file.slice(0, file.lastIndexOf("/")));
   };
 
   /** Returns `sitemap:pages` when the biography page appeared or went (it lists the bio pages on disk). */
   async function renderCategory(kind: CategoryKind, key: string, opts: PageOptions, run: RunCache): Promise<string[]> {
     const p: PageId = { type: "category", kind, key };
-    const { page, feed, atom, bio } = categoryFiles({ kind, key });
+    const { page, feed, atom, bio, factsheets } = categoryFiles({ kind, key });
     const feedRef = { href: feedUrl(site, p), title: "" };
     const feedChannel = (description: string) => ({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description });
     const writeFeeds = async (description: string, posts: PostDto[]) => {
@@ -281,10 +281,18 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       const m = await newsApi.ministry(key);
       if (!m) {
         await removeAll(p);
-        await removeBio(bio!);
+        await removeSubPage(bio!);
+        await removeSubPage(factsheets!);
         return bioChanged(false);
       }
-      const [minister, latest, f, all] = await Promise.all([newsApi.minister(key), newsApi.latest(kind, key, LATEST_COUNT), featured(m.topPostKey, m.featurePostKey), profiles(run)]);
+      // The factsheets fetch runs with the others, not after them.
+      const [minister, latest, factsheetPosts, f, all] = await Promise.all([
+        newsApi.minister(key),
+        newsApi.latest(kind, key, LATEST_COUNT),
+        newsApi.latest(kind, key, LATEST_COUNT, { postKind: "factsheets" }),
+        featured(m.topPostKey, m.featurePostKey),
+        profiles(run),
+      ]);
       const profileOf = (k: string) => all.find((x) => x.key.toLowerCase() === k.toLowerCase()) ?? null;
       const profile = profileOf(key);
       // The ministries of state under this one (legacy MinisterOfState): a child that no longer
@@ -301,11 +309,15 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       feedRef.title = `${m.name}: latest news`;
       await storage.write(page, renderMinistryPage(m, minister, { ...f, latest }, site, { ...opts, feed: feedRef }, { profile, children }));
       await writeFeeds(`News from ${m.name}`, sortNewest([f.top, f.feature, ...latest]));
+      // The factsheets page (H5) is always written: the ministry's top and feature posts when they are
+      // factsheets (the latest list leaves them out), then its factsheets; empty is an empty message.
+      const ministryFactsheets = sortNewest([...[f.top, f.feature].filter((x) => x?.kind === "factsheets"), ...factsheetPosts]);
+      await storage.write(factsheets!, renderMinistryFactsheetsPage(m, minister, ministryFactsheets, site, opts, { profile, children }));
       // The biography page (H2) exists only while the minister has a bio: one cleared in the Hub
       // loses its page on this render instead of lingering.
       const withBio = !!minister && hasBiography(minister);
       if (withBio) await storage.write(bio!, renderBiographyPage(m, minister, profile, site, opts));
-      else await removeBio(bio!);
+      else await removeSubPage(bio!);
       return bioChanged(withBio);
     }
     const c = await newsApi.category(kind, key);
@@ -445,6 +457,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           for (const id of await categoryIds(run)) {
             const page = parsePageId(id)!;
             paths.push(pageUrl(site, page));
+            // Every ministry has a factsheets page (written on every render, empty or not).
+            if (page.type === "category" && page.kind === "ministries") paths.push(factsheetsUrl(site, page.key));
             // A minister's biography page, while it is on disk (renderCategory re-queues this page
             // whenever one appears or goes).
             const bio = page.type === "category" ? categoryFiles(page).bio : null;

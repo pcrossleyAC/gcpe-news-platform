@@ -265,17 +265,20 @@ describe("release page", () => {
     expect(texts(side, ":scope > .resource-links > h2")).toEqual(["Translations", "Share", "News Release", "Press", "Around <Health>", "Topics", "Services"]);
     const more = [...side.querySelectorAll(":scope > .resource-links")].find((b) => b.querySelector("h2")?.textContent === "Around <Health>")!;
     expect([...more.querySelectorAll("li a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Factsheets", "/ministries/health/factsheets/"],
       ["Home site", "https://gov.example/health"],
       ["Ministry Photos", "https://flickr.example/health"],
       ["Ministry Videos", "https://youtube.example/health"],
     ]);
-    expect(side.textContent).not.toContain("Factsheets");
+    // Factsheets (H5) leads the group: the page the link goes to now exists (reverses C239).
+    expect(side.textContent).toContain("Factsheets");
     expect([...side.querySelectorAll("a")].find((a) => a.textContent === "Find a clinic")?.getAttribute("href")).toBe("/services/");
     expect([...side.querySelectorAll("a")].find((a) => a.textContent === "Clinic <topics>")?.getAttribute("href")).toBe("https://gov.example/topic");
 
     const unknown = dom({ ministryKeys: ["nope"], leadMinistryKey: "nope" }, noMinistry);
     expect(texts(unknown, ".story-features h2")).not.toContain("More from this Ministry");
     expect(unknown.querySelector("p.story-ministry")).toBeNull();
+    expect(texts(unknown, "a")).not.toContain("Factsheets");
   });
 
   it("an inactive lead ministry with no successor (abolished) is named without a link", () => {

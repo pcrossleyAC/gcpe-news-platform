@@ -119,7 +119,7 @@ export async function checkReleaseStates(browser: import("@playwright/test").Bro
  */
 export async function checkLayoutOrder(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
   const failures: string[] = [];
-  for (const path of ["/", "/ministries/health/", "/ministries/health/biography/"]) {
+  for (const path of ["/", "/ministries/health/", "/ministries/health/biography/", "/ministries/health/factsheets/"]) {
     for (const width of [390, 1280]) {
       const context = await browser.newContext({ viewport: { width, height: 900 } });
       const page = await context.newPage();

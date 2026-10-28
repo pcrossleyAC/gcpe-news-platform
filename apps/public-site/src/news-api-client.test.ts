@@ -87,6 +87,13 @@ describe("newsApiClient", () => {
     expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Posts/Latest/ministries/gone?api-version=1.0&count=20");
   });
 
+  it("latest: a postKind option is appended before the count", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json([]));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    await c.latest("ministries", "health", 20, { postKind: "factsheets" });
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Posts/Latest/ministries/health?api-version=1.0&postKind=factsheets&count=20");
+  });
+
   it("latest: a known category is fetched by kind and key, count included", async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json([{ key: "K1" }]));
     const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
