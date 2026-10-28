@@ -40,6 +40,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/organizations", label: "Organizations", show: canEditOrgProfile },
   { to: "/government-terms", label: "Government terms", show: isCoreAdmin },
   { to: "/categories", label: "Sectors, themes and tags", show: isCoreAdmin },
+  { to: "/release-page-titles", label: "Release page titles", show: isCoreAdmin },
   { to: "/media-list-names", label: "Media list names", show: (s) => s.has("Core.Admin") },
   { to: "/error-log", label: "Error log", show: (s) => s.has("Core.Admin") },
 ];

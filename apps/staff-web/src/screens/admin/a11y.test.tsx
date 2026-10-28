@@ -15,6 +15,8 @@ import { OrganizationsScreen } from "./organizations/OrganizationsScreen";
 import { OrganizationEditForm } from "./organizations/OrganizationEditForm";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { CategoriesScreen } from "./categories/CategoriesScreen";
+import { PageTitlesScreen } from "./page-titles/PageTitlesScreen";
+import { PageTypesFixture, PAGE_IMAGES } from "./page-titles/fixtures";
 import { GovernmentTermsScreen } from "./government-terms/GovernmentTermsScreen";
 import { ACCESS_USERS, ORGS } from "./calendar-access/fixtures";
 import type { UserView } from "./users/UsersScreen";
@@ -85,6 +87,22 @@ describe("accessibility — Users, Media list names and error log", () => {
     );
     const { container } = render(withAuth(<CategoriesScreen />));
     await screen.findByRole("cell", { name: "health" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("PageTitlesScreen", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/nrms/api/page-types") return jsonResponse(200, PageTypesFixture);
+        if (url === "/nrms/api/page-images") return jsonResponse(200, PAGE_IMAGES);
+        return jsonResponse(200, {});
+      }),
+    );
+    const { container } = render(withAuth(<PageTitlesScreen />));
+    await screen.findByRole("table", { name: "Release page titles" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 

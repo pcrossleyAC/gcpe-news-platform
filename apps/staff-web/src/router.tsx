@@ -42,6 +42,7 @@ import { CalendarAccessScreen } from "./screens/admin/calendar-access/CalendarAc
 import { OrganizationsScreen } from "./screens/admin/organizations/OrganizationsScreen";
 import { CabinetChangeScreen } from "./screens/admin/organizations/CabinetChangeScreen";
 import { CategoriesScreen } from "./screens/admin/categories/CategoriesScreen";
+import { PageTitlesScreen } from "./screens/admin/page-titles/PageTitlesScreen";
 import { GovernmentTermsScreen } from "./screens/admin/government-terms/GovernmentTermsScreen";
 import { MediaListNamesScreen } from "./screens/admin/media-lists/MediaListNamesScreen";
 import { ErrorLogScreen } from "./screens/admin/errors/ErrorLogScreen";
@@ -164,6 +165,7 @@ export const routes: RouteObject[] = [
       { path: "organizations/cabinet-change", element: <CabinetChangeScreen /> },
       { path: "government-terms", element: <GovernmentTermsScreen /> },
       { path: "categories", element: <CategoriesScreen /> },
+      { path: "release-page-titles", element: <PageTitlesScreen /> },
       { path: "media-list-names", element: <MediaListNamesScreen /> },
       { path: "error-log", element: <ErrorLogScreen /> },
       { path: "*", element: null },
