@@ -181,7 +181,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
   - No date, type or language filters.
   - Browsing without a query is impossible (H6).
 
-**M10. Feed coverage.** Code, M.
+**M10. Feed coverage.** Code, M. **Status: addressed by plan 3** (c6667eb, b0f2f87, 2937c26): Atom beside every RSS feed, per-kind feeds, and the legacy feed URLs (`/feed`, `/feed/atom`, `/<kind>/feed`, `/ministries/<key>/feed`, top and feature) served in place with legacy content types (C265, C270). Per-item `<category>` and `<author>` are not part of this plan.
 - Legacy has [V-live]:
   - Atom (`/feed/atom`);
   - per-kind feeds (`/releases/feed`, `/factsheets/feed`);
@@ -225,7 +225,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 - Ours: `/site/sectors/` returns 404 [V-live].
 - The rubric's "page missing" would make this High. I placed it in Medium because legacy itself doesn't link these pages from nav, the home page or release pages [V-live grep].
 
-**M17. Legacy post keys over 100 characters would get no page, and links to them 404.** Code, S.
+**M17. Legacy post keys over 100 characters would get no page, and links to them 404.** Code, S. **Status: addressed by plan 3** (e95720f, 464581c): keys up to 200 characters are served at `/releases/<key>/` from a hashed folder.
 - `POST_KEY = /^[A-Za-z0-9-]{1,100}$/` (`site-paths.ts:4`) [V-src].
 - Legacy's HTML sitemap (28,440 post keys) has 3 keys of 102 characters [V-live]. Example: `canada-and-british-columbia-investments-in-local-infrastructure-help-build-community-connections-for-1`.
 - The rubric would put broken links in High. I placed this in Medium because only 3 posts are affected, and only after import.
@@ -241,7 +241,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 - Legacy maps translation labels to language names (e.g. 简体中文) [V-live `legacy/rel1.html`].
 - Ours prints the raw label and size, with no licence notice [V-src].
 
-**L4. Tag URLs differ.** Legacy's canonical tag URL is `/news-subscribe/<key>`, and `/tags/<key>` 302s there [V-live]. Ours is `/tags/<key>/`. Only matters if redirects are added later (D1).
+**L4. Tag URLs differ.** **Status: addressed by plan 3** (de7e6ec): `/news-subscribe/<key>` gets a 301 to `/tags/<key>/`, which stays canonical. Legacy's canonical tag URL is `/news-subscribe/<key>`, and `/tags/<key>` 302s there [V-live]. Ours is `/tags/<key>/`. Only matters if redirects are added later (D1).
 
 **L5. No web analytics.** Code, S. Legacy loads `/Scripts/webanalytics.js` on every page [V-live]. Ours loads none. The footer keeps legacy's footer link ids (`footerHome` etc.) but nothing reads them. Readers don't see this; the owner loses statistics.
 
