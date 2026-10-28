@@ -69,6 +69,29 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     for (const path of ["/releases", "/Stories/", "/factsheets?x=1"]) await expectRedirect(app, path, "/");
   });
 
+  it("once the category index pages exist: /sectors/, /themes/, /tags/ and /ministries/ serve 200; /Sectors, /sectors and /news-subscribe still reach them", async () => {
+    // Before the pages exist the fallback sends the bare forms home.
+    await expectRedirect(app, "/Sectors", "/");
+    for (const dir of ["sectors", "themes", "tags", "ministries"]) {
+      await mkdir(join(outputDir, dir), { recursive: true });
+      await writeFile(join(outputDir, dir, "index.html"), `<h1>${dir}</h1>`);
+    }
+    for (const dir of ["sectors", "themes", "tags", "ministries"]) {
+      const res = await request(app).get(`/${dir}/`);
+      expect({ dir, status: res.status, body: res.text }).toEqual({ dir, status: 200, body: `<h1>${dir}</h1>` });
+    }
+    // A legacy-cased form ends on the page (the hop's exact Location depends on the filesystem's case sensitivity).
+    for (const [path, dir] of [["/Sectors", "sectors"], ["/Themes", "themes"], ["/TAGS", "tags"]] as const) {
+      const res = await request(app).get(path).redirects(3);
+      expect({ path, status: res.status, body: res.text }).toEqual({ path, status: 200, body: `<h1>${dir}</h1>` });
+    }
+    await expectRedirect(app, "/sectors", "/sectors/");
+    await expectRedirect(app, "/news-subscribe", "/tags/");
+    await expectRedirect(app, "/news-subscribe?x=1", "/tags/");
+    // A category page under an index is untouched.
+    expect((await request(app).get("/sectors/services/")).status).toBe(200);
+  });
+
   it("/sectors, /themes, /tags (fallback) → 301 /; /news-subscribe → /tags/ when it exists, else /", async () => {
     for (const path of ["/sectors", "/themes/", "/Tags", "/news-subscribe"]) await expectRedirect(app, path, "/");
     await mkdir(join(outputDir, "tags"), { recursive: true });

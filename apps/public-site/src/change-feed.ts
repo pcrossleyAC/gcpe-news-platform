@@ -5,7 +5,7 @@ import { readCursor, saveCursor } from "./cursor";
 import type { PostIndex } from "./post-index";
 import { enqueuePages, PRIORITY } from "./queue";
 import { rebuildAllItems } from "./rebuild-all";
-import { categoryPageId, LISTING_KINDS, POST_KEY, type CategoryKind } from "./site-paths";
+import { categoryPageId, CATEGORY_INDEX_IDS, LISTING_KINDS, POST_KEY, type CategoryKind } from "./site-paths";
 
 export type ChangeKind = "post.upserted" | "post.unpublished" | "home" | "slides" | "resource_links" | "ministry" | "sector" | "theme" | "tag" | "site_settings" | "government_terms";
 export interface ChangeRow { id: number; kind: ChangeKind; key: string | null }
@@ -14,6 +14,9 @@ export interface ChangesClient { read(after: number, limit: number): Promise<Cha
 
 /** Every per-kind listing page (they show the home top post and the Resources box). */
 const kindPages = (priority: number) => LISTING_KINDS.map((k) => ({ pageId: `kind:${k}`, priority }));
+
+/** The four category indexes at bulk priority: each render fetches every category's latest posts. */
+const indexPages = () => CATEGORY_INDEX_IDS.map((pageId) => ({ pageId, priority: PRIORITY.bulkAggregate }));
 
 export const CATEGORY_CHANGE: Record<"ministry" | "sector" | "theme" | "tag", CategoryKind> = { ministry: "ministries", sector: "sectors", theme: "themes", tag: "tags" };
 
@@ -83,7 +86,7 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       return [{ pageId: "home", priority: live }];
     // /connect/ has the same Resources box as home.
     case "resource_links":
-      return [{ pageId: "home", priority: live }, { pageId: "connect", priority: live }, ...kindPages(live)];
+      return [{ pageId: "home", priority: live }, { pageId: "connect", priority: live }, ...kindPages(live), ...indexPages()];
     case "ministry":
     case "sector":
     case "theme":
@@ -105,6 +108,9 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
         // Home's News by Sector box names each active sector.
         ...(kind === "sectors" ? [{ pageId: "home", priority: live }] : []),
         ...(kind === "sectors" || kind === "tags" ? [{ pageId: "connect", priority: live }] : []),
+        // The kind's index lists this category (a ministry's is `ministries`, queued above); bulk, as a
+        // rename should not queue a whole kind's worth of fetches ahead of the pages being watched.
+        ...(kind === "ministries" ? [] : [{ pageId: `index:${kind}`, priority: PRIORITY.bulkAggregate }]),
         { pageId: "sitemap:pages", priority: live },
       ];
     }

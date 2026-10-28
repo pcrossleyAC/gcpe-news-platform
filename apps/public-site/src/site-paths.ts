@@ -28,10 +28,20 @@ export const CATEGORY_KINDS = ["ministries", "sectors", "themes", "tags"] as con
 export type CategoryKind = (typeof CATEGORY_KINDS)[number];
 export const isCategoryKind = (s: string): s is CategoryKind => (CATEGORY_KINDS as readonly string[]).includes(s);
 
+/** The category kinds whose index page has the id `index:<kind>`; the ministries index keeps the id `ministries`. */
+export const INDEX_KINDS = ["sectors", "themes", "tags"] as const;
+export type IndexKind = (typeof INDEX_KINDS)[number];
+const isIndexKind = (s: string): s is IndexKind => (INDEX_KINDS as readonly string[]).includes(s);
+
+/** The four category index pages' ids: each render fetches the latest posts of every category of its kind. */
+export const CATEGORY_INDEX_IDS = ["ministries", ...INDEX_KINDS.map((k) => `index:${k}`)] as const;
+
 export type PageId =
   | { type: "home" }
   | { type: "post"; key: string }
   | { type: "ministries" }
+  /** `/sectors/`, `/themes/` and `/tags/` (M16): each category's latest posts, id `index:<kind>`. */
+  | { type: "category-index"; kind: IndexKind }
   | { type: "category"; kind: CategoryKind; key: string }
   | { type: "archive" }
   | { type: "archive-month"; month: string }
@@ -80,6 +90,7 @@ export function parsePageId(id: string): PageId | null {
   const [head] = parts;
   if (head === "post" && parts.length === 2 && POST_KEY.test(parts[1]!)) return { type: "post", key: parts[1]! };
   if (head === "category" && parts.length === 3 && isCategoryKind(parts[1]!) && CATEGORY_KEY.test(parts[2]!)) return { type: "category", kind: parts[1] as CategoryKind, key: parts[2]! };
+  if (head === "index" && parts.length === 2 && isIndexKind(parts[1]!)) return { type: "category-index", kind: parts[1] };
   if (head === "kind" && parts.length === 2 && isListingKind(parts[1]!)) return { type: "kind", kind: parts[1] };
   if (head === "archive" && parts.length === 2 && MONTH.test(parts[1]!)) return { type: "archive-month", month: parts[1]! };
   if (head === "sitemap" && parts.length === 2 && MONTH.test(parts[1]!)) return { type: "sitemap-month", month: parts[1]! };
@@ -92,6 +103,7 @@ export function formatPageId(p: PageId): string {
     case "post": return `post:${p.key}`;
     case "category": return `category:${p.kind}:${p.key}`;
     case "kind": return `kind:${p.kind}`;
+    case "category-index": return `index:${p.kind}`;
     case "archive-month": return `archive:${p.month}`;
     case "sitemap-month": return `sitemap:${p.month}`;
     case "sitemap-pages": return "sitemap:pages";
@@ -141,6 +153,7 @@ export function pageFiles(p: PageId): string[] {
     // A long key's directory also holds the sidecar naming the key; it goes with the page.
     case "post": return [postPath(p.key), postKeyFile(p.key)].filter((f): f is string => f !== null);
     case "ministries": return ["ministries/index.html"];
+    case "category-index": return [`${p.kind}/index.html`];
     // A ministry's third file is its minister's biography page (H2): written only while the
     // minister has a bio, and removed with the rest when the ministry goes.
     // Order: page, RSS, Atom, the biography, then the factsheets page (the builder reads the roles through categoryFiles).
@@ -175,6 +188,7 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "home": return `${base}/`;
     case "post": return `${base}/releases/${encodeURIComponent(p.key)}/`;
     case "ministries": return `${base}/ministries/`;
+    case "category-index": return `${base}/${p.kind}/`;
     case "category": return `${base}/${p.kind}/${p.key}/`;
     case "archive": return `${base}/archive/`;
     case "archive-month": return `${base}/archive/${p.month.slice(0, 4)}/${p.month.slice(5)}/`;

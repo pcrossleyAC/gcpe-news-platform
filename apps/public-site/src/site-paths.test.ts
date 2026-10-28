@@ -180,3 +180,19 @@ describe("the ministry factsheets page (H5)", () => {
     expect(factsheetsUrl({ baseUrl: "https://news.example" }, "health")).toBe("/ministries/health/factsheets/");
   });
 });
+
+describe("category indexes (M8, M16)", () => {
+  it("index:<kind> round-trips; the ministries index keeps the id 'ministries'; index:ministries and index:x are null", () => {
+    for (const kind of ["sectors", "themes", "tags"] as const) {
+      const p = parsePageId(`index:${kind}`)!;
+      expect(p).toEqual({ type: "category-index", kind });
+      expect(formatPageId(p)).toBe(`index:${kind}`);
+      expect(pageFiles(p)).toEqual([`${kind}/index.html`]);
+      expect(pageUrl({ baseUrl: "https://news.example/base" }, p)).toBe(`/base/${kind}/`);
+    }
+    expect(parsePageId("ministries")).toEqual({ type: "ministries" });
+    expect(parsePageId("index:ministries")).toBeNull();
+    expect(parsePageId("index:x")).toBeNull();
+    expect(parsePageId("index:sectors:extra")).toBeNull();
+  });
+});

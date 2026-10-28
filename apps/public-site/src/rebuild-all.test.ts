@@ -53,6 +53,13 @@ describe("enqueueRebuildAll", () => {
     expect(batch.some((i) => i.pageId.startsWith("category:ministries:"))).toBe(false);
   });
 
+  it("a connect settings change queues the four category indexes at bulk priority", async () => {
+    const builder = createSiteBuilder({ newsApi: fakeNewsApi(), storage: memoryStorage(), index: postIndex(tdb.db), site, assetsDir: null });
+    await enqueueChromeChanges(tdb.db, builder, { all: false, sections: ["connect"] });
+    const batch = await nextBatch(tdb.db, 1000, []);
+    for (const id of ["ministries", "index:sectors", "index:themes", "index:tags"]) expect(batch.find((i) => i.pageId === id)?.priority, id).toBe(PRIORITY.bulkAggregate);
+  });
+
   it("a labels edit queues every aggregate page and no post", async () => {
     const storage = memoryStorage();
     const api = fakeNewsApi();

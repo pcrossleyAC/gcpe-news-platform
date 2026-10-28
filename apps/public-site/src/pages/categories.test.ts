@@ -1,43 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { bcSettings, category, contact, ministry, post, site } from "../../test/fixtures";
-import { renderCategoryPage, renderMinistriesPage, renderMinistryFactsheetsPage, renderMinistryPage, type MinistryPageContext } from "./categories";
+import { renderCategoryPage, renderMinistryFactsheetsPage, renderMinistryPage, type MinistryPageContext } from "./categories";
 import type { MinisterDto, MinistryProfileDto } from "../dto";
 
 const emptyPosts = { top: null, feature: null, latest: [] };
-
-describe("renderMinistriesPage", () => {
-  it("is accessible, with h1 'Ministries'", () => {
-    const doc = expectAccessibleStructure(renderMinistriesPage([], site, {}));
-    expect(doc.querySelector("h1")?.textContent).toBe("Ministries");
-  });
-
-  it("lists only active ministries, in the API's order, each linking to /ministries/<key>/ with its minister's name", () => {
-    const ministries = [
-      ministry({ key: "health", name: "Health", ministerName: "Minister Alex Example" }),
-      ministry({ key: "education", name: "Education", isActive: false }),
-      ministry({ key: "finance", name: "Finance", ministerName: "Minister Jordan Example" }),
-    ];
-    const doc = expectAccessibleStructure(renderMinistriesPage(ministries, site, {}));
-    const links = [...doc.querySelectorAll("main a")].filter((a) => a.getAttribute("href")?.startsWith("/ministries/"));
-    expect(links.map((a) => a.getAttribute("href"))).toEqual(["/ministries/health/", "/ministries/finance/"]);
-    expect(links[0]?.textContent).toBe("Health");
-    expect(doc.querySelector('a[href="/ministries/health/"]')?.parentElement?.textContent).toContain("Minister Alex Example");
-    expect(doc.body.textContent).not.toContain("Education");
-  });
-
-  it("leaves out a ministry whose key fails categoryPageId", () => {
-    const ministries = [ministry({ key: "../etc", name: "Hostile" })];
-    const doc = expectAccessibleStructure(renderMinistriesPage(ministries, site, {}));
-    expect(doc.body.textContent).not.toContain("Hostile");
-  });
-
-  it("escapes a ministry name", () => {
-    const html = renderMinistriesPage([ministry({ name: "A & <B>" })], site, {});
-    expect(html).toContain("A &amp; &lt;B&gt;");
-    expect(html).not.toContain("A & <B>");
-  });
-});
 
 describe("renderMinistryPage", () => {
   const minister = (over: Partial<MinisterDto> = {}): MinisterDto => ({ headline: "Hon. Alex Example", summary: "Minister of Health.", details: "<p>Alex was elected in 2020.</p>", photo: "https://files.example/files/minister.jpg", ...over });

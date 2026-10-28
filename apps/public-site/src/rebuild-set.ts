@@ -54,7 +54,12 @@ export function dependentPages(before: Membership | null, after: Membership | nu
     ids.add(`archive:${m.month}`);
     ids.add(`sitemap:${m.month}`);
     if (m.kind && isListingKind(m.kind)) ids.add(`kind:${m.kind}`);
-    for (const c of m.categories) ids.add(`category:${c}`);
+    for (const c of m.categories) {
+      ids.add(`category:${c}`);
+      // The category indexes list each category's latest posts (M8, M16).
+      const kind = c.slice(0, c.indexOf(":"));
+      ids.add(kind === "ministries" ? "ministries" : `index:${kind}`);
+    }
     if (!termOf) continue;
     ids.add("archive-terms");
     const term = termOf(m.day);

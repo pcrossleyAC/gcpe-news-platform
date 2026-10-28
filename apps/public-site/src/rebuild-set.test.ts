@@ -20,17 +20,17 @@ describe("dependentPages (spec §6.2's post row)", () => {
 
   it("a new post: home, its categories, its month's archive and sitemap, the archive index and the sitemap index", () => {
     expect(dependentPages(null, m("2026-10", "ministries:health", "tags:covid-19"))).toEqual([
-      "archive", "archive:2026-10", "category:ministries:health", "category:tags:covid-19", "home", "kind-feeds", "sitemap", "sitemap:2026-10",
+      "archive", "archive:2026-10", "category:ministries:health", "category:tags:covid-19", "home", "index:tags", "kind-feeds", "ministries", "sitemap", "sitemap:2026-10",
     ]);
   });
 
   it("an unpublished post rebuilds the same pages from the stored row", () => {
-    expect(dependentPages(m("2026-10", "ministries:health"), null)).toEqual(["archive", "archive:2026-10", "category:ministries:health", "home", "kind-feeds", "sitemap", "sitemap:2026-10"]);
+    expect(dependentPages(m("2026-10", "ministries:health"), null)).toEqual(["archive", "archive:2026-10", "category:ministries:health", "home", "kind-feeds", "ministries", "sitemap", "sitemap:2026-10"]);
   });
 
   it("a post that moves ministry and month rebuilds both old and new pages", () => {
     expect(dependentPages(m("2026-09", "ministries:health"), m("2026-10", "ministries:finance"))).toEqual([
-      "archive", "archive:2026-09", "archive:2026-10", "category:ministries:finance", "category:ministries:health", "home", "kind-feeds", "sitemap", "sitemap:2026-09", "sitemap:2026-10",
+      "archive", "archive:2026-09", "archive:2026-10", "category:ministries:finance", "category:ministries:health", "home", "kind-feeds", "ministries", "sitemap", "sitemap:2026-09", "sitemap:2026-10",
     ]);
   });
 
@@ -78,5 +78,27 @@ describe("dependentPages (spec §6.2's post row)", () => {
       expect(dependentPages(null, { month: "2021-01", day: "2021-01-05", categories: [] }, termOf)).not.toContain("archive-term:current");
       expect(dependentPages(null, { month: "2001-01", day: "2001-01-05", categories: [] }, termOf).filter((id) => id.startsWith("archive-term"))).toEqual(["archive-terms"]);
     });
+  });
+});
+
+describe("dependentPages: category indexes (M8, M16)", () => {
+  const m = (...categories: string[]) => ({ month: "2026-10", day: "2026-10-15", categories });
+  it("a post in a ministry and a sector queues ministries and index:sectors, not the other indexes", () => {
+    const ids = dependentPages(null, m("ministries:health", "sectors:economy"));
+    expect(ids).toEqual(expect.arrayContaining(["ministries", "index:sectors"]));
+    expect(ids).not.toContain("index:themes");
+    expect(ids).not.toContain("index:tags");
+  });
+  it("a tag-only post queues index:tags only", () => {
+    const ids = dependentPages(null, m("tags:covid-19"));
+    expect(ids).toContain("index:tags");
+    expect(ids).not.toContain("ministries");
+    expect(ids).not.toContain("index:sectors");
+  });
+  it("a post leaving a theme queues index:themes from the before side", () => {
+    expect(dependentPages(m("themes:housing"), m())).toContain("index:themes");
+  });
+  it("a post in no category queues no index", () => {
+    expect(dependentPages(null, m()).filter((x) => x === "ministries" || x.startsWith("index:"))).toEqual([]);
   });
 });

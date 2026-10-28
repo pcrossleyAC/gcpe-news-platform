@@ -1,7 +1,7 @@
 import type { Db } from "@gcpe/db-kit";
 import type { SiteBuilder } from "./builder";
 import { enqueuePages, PRIORITY } from "./queue";
-import { LISTING_KINDS } from "./site-paths";
+import { CATEGORY_INDEX_IDS, LISTING_KINDS } from "./site-paths";
 import type { SectionPages } from "./rebuild";
 
 /** Rendered on the same run as the trigger, so a layout or Blue Bridge change shows on home at once. */
@@ -42,7 +42,8 @@ export async function enqueueChromeChanges(db: Db, builder: SiteBuilder, changes
     items.push(...ids.map((pageId) => ({ pageId, priority: section === "labels" ? PRIORITY.bulkAggregate : PRIORITY.liveAggregate })));
   }
   // Sector, theme and tag pages carry the Connect strip: bulk, behind the pages people are watching.
-  if (changes.sections.includes("connect")) items.push(...(await builder.categoryListingPageIds()).map((pageId) => ({ pageId, priority: PRIORITY.bulkAggregate })));
+  // So do the four category indexes (heavier: every category's latest posts), bulk too.
+  if (changes.sections.includes("connect")) items.push(...[...(await builder.categoryListingPageIds()), ...CATEGORY_INDEX_IDS].map((pageId) => ({ pageId, priority: PRIORITY.bulkAggregate })));
   // Every release page bakes in the ministryPages labels (Media Contacts, More from this
   // Ministry, the side column's headings) and the connect section's Share → Instagram account
   // (releaseShare), so either change re-renders every post, at rebuild-all's bulk priority (settings

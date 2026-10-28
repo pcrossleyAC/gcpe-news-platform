@@ -5,7 +5,8 @@ import { renderAtomFeed, renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
 import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex } from "./pages/archive";
-import { renderCategoryPage, renderMinistriesPage, renderMinistryFactsheetsPage, renderMinistryPage } from "./pages/categories";
+import { renderCategoryPage, renderMinistryFactsheetsPage, renderMinistryPage } from "./pages/categories";
+import { renderCategoryIndex, SECTOR_INDEX_LATEST, type IndexGroup } from "./pages/category-index";
 import { renderConnectPage } from "./pages/connect";
 import { renderContactsPage } from "./pages/contacts";
 import { renderLivePage } from "./pages/live";
@@ -19,7 +20,7 @@ import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
-import { atomUrl, biographyUrl, categoryFiles, factsheetsUrl, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, LISTING_KINDS, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type ListingKind, type PageId } from "./site-paths";
+import { atomUrl, biographyUrl, categoryFiles, factsheetsUrl, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, LISTING_KINDS, kindFeedFile, kindFeedUrl, formatPageId, INDEX_KINDS, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type ListingKind, type PageId } from "./site-paths";
 import { liveJson, liveStreamUrl, themeDefaults } from "./settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
@@ -185,6 +186,32 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       }
     });
     return withLatest.sort((a, b) => a.name.localeCompare(b.name, "en"));
+  }
+
+  /**
+   * One index page's groups (M8, M16): the active categories (ministries in the News API's order; the
+   * others as `categories(kind)` lists them, which is by sort order), each with its newest posts.
+   * Every top and feature post comes from one `postsByKeys` call (none for sectors, which show only
+   * their latest three); `latest` runs SECTOR_FETCHES at a time. A failed fetch rejects, so the
+   * queue retries the render and the page stays as it was.
+   */
+  async function indexGroups(run: RunCache, kind: CategoryKind): Promise<IndexGroup[]> {
+    const cats: { key: string; name: string; top: string | null; feature: string | null }[] = [];
+    const add = (c: { key: string; name: string; isActive: boolean; topPostKey: string | null; featurePostKey: string | null }) => {
+      if (c.isActive && categoryPageId(kind, c.key)) cats.push({ key: c.key.toLowerCase(), name: c.name, top: c.topPostKey, feature: c.featurePostKey });
+    };
+    if (kind === "ministries") (await ministries(run)).forEach(add);
+    else (await newsApi.categories(kind)).forEach(add);
+    const featuredKeys = kind === "sectors" ? [] : [...new Set(cats.flatMap((c) => [c.top, c.feature]).filter((k): k is string => !!k))];
+    const found = featuredKeys.length ? await newsApi.postsByKeys(featuredKeys) : [];
+    const pick = (k: string | null) => (k ? (found.find((p) => p.key.toLowerCase() === k.toLowerCase()) ?? null) : null);
+    return mapLimit(cats, SECTOR_FETCHES, async (c) => {
+      const top = pick(c.top);
+      const feature = pick(c.feature);
+      const latest = await newsApi.latest(kind, c.key, kind === "sectors" ? SECTOR_INDEX_LATEST : 1);
+      // The same post in both slots shows once.
+      return { key: c.key, name: c.name, top, feature: feature && top && feature.key.toLowerCase() === top.key.toLowerCase() ? null : feature, latest };
+    });
   }
 
   async function renderPost(key: string, opts: PageOptions, run: RunCache, tx?: DbOrTx): Promise<string[]> {
@@ -414,8 +441,13 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         }
         case "ministries":
-          await storage.write(pageFiles(p)[0]!, renderMinistriesPage(await ministries(run), site, opts));
+        case "category-index": {
+          const kind = p.type === "ministries" ? "ministries" : p.kind;
+          // Everything is fetched before the write: a failed fetch leaves the page as it was.
+          const [groups, links] = await Promise.all([indexGroups(run, kind), newsApi.resourceLinks()]);
+          await storage.write(pageFiles(p)[0]!, renderCategoryIndex(kind, groups, links, site, opts));
           return [];
+        }
         case "category":
           return renderCategory(p.kind, p.key, opts, run);
         case "archive":
@@ -460,7 +492,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         }
         case "sitemap-pages": {
           // Not /search/: robots.txt disallows it, and Search Console flags sitemap URLs blocked by robots.
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" }), pageUrl(site, { type: "live" }), ...LISTING_KINDS.map((kind) => pageUrl(site, { type: "kind", kind }))];
+          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), ...INDEX_KINDS.map((kind) => pageUrl(site, { type: "category-index", kind })), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" }), pageUrl(site, { type: "live" }), ...LISTING_KINDS.map((kind) => pageUrl(site, { type: "kind", kind }))];
           for (const id of await categoryIds(run)) {
             const page = parsePageId(id)!;
             paths.push(pageUrl(site, page));
@@ -536,7 +568,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     async aggregatePageIds() {
       const run: RunCache = {};
       // sitemap:pages after the category pages: it lists the biography pages they write.
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", "kind-feeds", ...LISTING_KINDS.map((k) => `kind:${k}`), ...(await categoryIds(run)), "sitemap:pages"];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", "kind-feeds", ...INDEX_KINDS.map((k) => `index:${k}`), ...LISTING_KINDS.map((k) => `kind:${k}`), ...(await categoryIds(run)), "sitemap:pages"];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;

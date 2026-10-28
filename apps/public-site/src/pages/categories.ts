@@ -1,7 +1,7 @@
 import type { CategoryDto, MinisterDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "../dto";
 import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "../render";
 import { commContact, contactValue } from "./comm-contact";
-import { categoryPageId, factsheetsUrl, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
+import { factsheetsUrl, feedUrl, pageUrl, type CategoryKind } from "../site-paths";
 import { sortNewest } from "./format";
 import type { MinistryPageLabels } from "@gcpe/site-settings";
 import { themeDefaults } from "../settings";
@@ -55,23 +55,6 @@ function collapsibleRegions(site: Pick<SiteInfo, "baseUrl">, m: MinistryDto, lab
     ...ctx.children.map((c) => ministerCard(site, c.ministry, c.minister, c.profile, { ministryHeading: true })),
   ].filter(Boolean);
   return boxes.length ? `<div class="collapsible-regions">\n${boxes.join("\n")}\n</div>` : "";
-}
-
-export function renderMinistriesPage(ministries: MinistryDto[], site: SiteInfo, opts: PageOptions = {}): string {
-  const items = ministries
-    .filter((m) => m.isActive)
-    .map((m) => {
-      const pageId = categoryPageId("ministries", m.key);
-      if (!pageId) return "";
-      const parsed = parsePageId(pageId);
-      if (!parsed) return "";
-      const minister = m.ministerName ? ` — ${e(m.ministerName)}` : "";
-      return `<li><a href="${e(pageUrl(site, parsed))}">${e(m.name)}</a>${minister}</li>`;
-    })
-    .filter(Boolean)
-    .join("\n");
-  const body = `<h1>Ministries</h1>\n<ul class="post-list">\n${items}\n</ul>`;
-  return renderPage("Ministries", site, pageUrl(site, { type: "ministries" }), body, opts);
 }
 
 /**

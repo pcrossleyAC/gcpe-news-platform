@@ -28,7 +28,7 @@ const SLIDE_IMAGE = fileURLToPath(new URL("./fixture-assets/slide.jpg", import.m
 const CATEGORIES: CategoryDto[] = [
   { key: "economy", kind: "sectors", name: "Economy", isActive: true, topPostKey: null, featurePostKey: null },
   { key: "housing", kind: "themes", name: "Housing", isActive: true, topPostKey: null, featurePostKey: null },
-  { key: "covid-19", kind: "tags", name: "COVID-19", isActive: true, topPostKey: null, featurePostKey: null },
+  { key: "covid-19", kind: "tags", name: "COVID-19", isActive: true, topPostKey: "2026HLTH0008-000008", featurePostKey: "2026HLTH0007-000007" },
 ];
 
 const FIRST_KEY = "2026HLTH0001-000001";
@@ -38,6 +38,9 @@ export const FIXTURE_PAGES = [
   "/",
   `/releases/${FIRST_KEY}/`,
   "/ministries/",
+  "/sectors/",
+  "/themes/",
+  "/tags/",
   "/ministries/health/",
   "/ministries/health/biography/",
   "/ministries/health/factsheets/",
