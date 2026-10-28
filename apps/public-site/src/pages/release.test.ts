@@ -13,7 +13,7 @@ const health = ministry({
   topicLinks: [link({ uri: "https://gov.example/topic", key: "Clinic <topics>" })],
   serviceLinks: [link({ uri: "/services/", key: "Find a clinic" })],
 });
-const ctx: ReleaseContext = { ministryNames: new Map([["health", "Health"]]), related: [], leadMinistry: health, ministryLatest: [] };
+const ctx: ReleaseContext = { related: [], leadMinistry: health, ministryLatest: [] };
 const noMinistry: ReleaseContext = { ...ctx, leadMinistry: null };
 
 const doc = (over: Partial<PostDocument> = {}): PostDocument => ({ languageId: 4105, headline: "H", subheadline: null, detailsHtml: null, contacts: [], ...over });
@@ -104,8 +104,9 @@ describe("release page", () => {
     const fr = d.querySelector("p.story-lang.secondary.story-headline")!;
     expect(fr.getAttribute("lang")).toBe("fr");
     expect(fr.textContent).toBe("Cliniques");
-    // It is the level-1 heading while French shows (the h1 is hidden then).
-    expect([fr.getAttribute("role"), fr.getAttribute("aria-level")]).toEqual(["heading", "1"]);
+    // A plain paragraph server-side: site.js makes it the level-1 heading only while French shows
+    // (P2-R3 F3), so without script the page exposes exactly one level-1 heading.
+    expect(fr.hasAttribute("role") || fr.hasAttribute("aria-level")).toBe(false);
     expect(d.querySelector('p.story-lang.secondary.subheadline[lang="fr"]')?.textContent).toBe("Sous-titre");
     const frCopy = d.querySelector('div.story-copy.story-lang.secondary[lang="fr"] > article')!;
     expect(frCopy.innerHTML).toContain("<p>Des cliniques.</p>");
@@ -124,6 +125,12 @@ describe("release page", () => {
     const frBg = d.querySelector('.backgrounder.story-lang.secondary[lang="fr"]')!;
     expect(frBg.querySelector("h3")?.textContent).toBe("Fiche");
     expect(d.querySelectorAll(".backgrounder")).toHaveLength(2);
+
+    // A French document with a blank headline: the French-mode headline falls back to the English one (F4).
+    const blankFr = dom({ documents: [doc({ headline: "Clinics" }), doc({ languageId: 3084, headline: " ", detailsHtml: "<p>FR.</p>" })] });
+    const fallback = blankFr.querySelector("p.story-lang.secondary.story-headline")!;
+    expect(fallback.textContent).toBe("Clinics");
+    expect(fallback.hasAttribute("lang")).toBe(false);
 
     const en = dom({ documents: [doc({ headline: "Clinics" })] });
     expect(en.querySelector(".language-selector")).toBeNull();
@@ -361,8 +368,18 @@ describe("release page: share, social meta, lead media, related band", () => {
     expect(shareLinks(canonical, headline, null, "/site")).toBe(blocks[0]!.outerHTML);
   });
 
+  it("instagram share links the featured account first (legacy: governmentofbc), else the first account (P2-R5)", () => {
+    const settings = bcSettings();
+    settings.connect.instagram.featured = [{ text: "Government of BC", url: "https://www.instagram.com/governmentofbc/" }];
+    settings.connect.instagram.accounts = [{ text: "BC Honours", url: "https://www.instagram.com/bchonours" }];
+    expect(dom({}, ctx, { settings }).querySelector("a.share-instagram")?.getAttribute("href")).toBe("https://www.instagram.com/governmentofbc/");
+    // The bc tenant's own settings, unchanged.
+    expect(dom({}, ctx, { settings: bcSettings() }).querySelector("a.share-instagram")?.getAttribute("href")).toBe("https://www.instagram.com/governmentofbc/");
+  });
+
   it("instagram share only when settings.connect.instagram has an account", () => {
     const settings = bcSettings();
+    settings.connect.instagram.featured = [];
     settings.connect.instagram.accounts = [{ text: "Gov", url: "https://www.instagram.com/governmentofbc/" }, { text: "Other", url: "https://www.instagram.com/other/" }];
     const d = dom({}, ctx, { settings });
     const ig = [...d.querySelectorAll("a.share-instagram")];

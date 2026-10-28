@@ -240,7 +240,8 @@ html:not(.js) #carousel-holder .carousel-controls{display:none}
 body.lang-secondary .story-lang.primary{display:none}
 body.lang-secondary .story-lang.secondary{display:block}
 html:not(.js) .story-lang.secondary{display:block}
-html:not(.js) .language-selector, html:not(.js) .print-document{display:none}
+/* .story-lang in the selector keeps it above the html:not(.js) .story-lang.secondary rule (0,3,1). */
+html:not(.js) .language-selector.story-lang, html:not(.js) .print-document{display:none}
 /* Share (legacy ShareSocialMedia): the side column's icons at legacy's .fa-customized-sm 1.6em. */
 .story-features .resource-links.share .icon{width:1.6em;height:1.6em}
 /* The phone row (legacy .story-info): Share, then the kind/location/date, each on its own row, as

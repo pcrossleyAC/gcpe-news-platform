@@ -119,7 +119,6 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       console.error(`[public-site] related posts unavailable for post:${key} ${safeErrorLabel(err)}`);
     }
     const all = await ministries(run);
-    const ministryNames = new Map(all.map((m) => [m.key.toLowerCase(), m.name]));
     // The side column's ministry: matched case-insensitively (News API and NRMS key casing can differ).
     const leadKey = (post.leadMinistryKey ?? post.ministryKeys[0])?.toLowerCase();
     const leadMinistry = (leadKey && all.find((m) => m.key.toLowerCase() === leadKey)) || null;
@@ -134,7 +133,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         console.error(`[public-site] the ministry's latest posts are unavailable for post:${key} ${safeErrorLabel(err)}`);
       }
     }
-    await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { ministryNames, related, leadMinistry, ministryLatest }));
+    await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { related, leadMinistry, ministryLatest }));
     const entry = indexEntryOf(key, post);
     if (entry) await writeIndex.put(entry);
     else await writeIndex.remove(key);

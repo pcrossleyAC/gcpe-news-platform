@@ -15,7 +15,6 @@ const ENGLISH = 4105;
 const FRENCH = 3084;
 
 export interface ReleaseContext {
-  ministryNames: Map<string, string>;
   related: RelatedPost[];
   /** The lead ministry (`leadMinistryKey ?? ministryKeys[0]`, matched case-insensitively), or null. */
   leadMinistry: MinistryDto | null;
@@ -196,16 +195,22 @@ export function renderReleasePage(post: PostDto, site: SiteInfo, opts: PageOptio
   const path = pageUrl(site, { type: "post", key: post.key });
   const canonical = new URL(site.baseUrl).origin + path;
   const date = displayDateTime(post.publishDate);
-  const instagram = settings.connect.instagram.accounts[0];
+  // Legacy shared to governmentofbc, BC's featured account (P2-R5).
+  const instagram = settings.connect.instagram.featured[0] ?? settings.connect.instagram.accounts[0];
   const share = shareLinks(canonical, headline, instagram ? settingsHref(instagram.url, site) : null, base);
   const lead = leadMedia(post.assetUrl);
 
   const sideTranslations = translationItems(post.azureTranslations ?? [], icon("language", e(base)));
   const assetItems = post.hasMediaAssets === true ? mediaAssetItems(post.azureAssets ?? []) : [];
 
-  // While French shows (body.lang-secondary) the h1 is hidden, so the French headline stands in as
-  // the page's level-1 heading (axe page-has-heading-one); in English it is hidden and not counted.
-  const frHeadline = french && present(french.headline) ? `\n<p class="story-lang secondary story-headline" lang="fr" role="heading" aria-level="1">${e(french.headline)}</p>` : "";
+  // The headline French mode shows in place of the (then hidden) h1: the French one, or the
+  // English one when the French document has none (F4). A plain paragraph here; site.js makes it
+  // the level-1 heading only while French shows, so every mode exposes exactly one (F3).
+  const frHeadline = french
+    ? present(french.headline)
+      ? `\n<p class="story-lang secondary story-headline" lang="fr">${e(french.headline)}</p>`
+      : `\n<p class="story-lang secondary story-headline">${e(headline)}</p>`
+    : "";
   const subheadlines = [
     present(main?.subheadline) ? `<p class="story-lang primary subheadline"${mainLang}>${e(main.subheadline)}</p>` : "",
     french && present(french.subheadline) ? `<p class="story-lang secondary subheadline" lang="fr">${e(french.subheadline)}</p>` : "",
