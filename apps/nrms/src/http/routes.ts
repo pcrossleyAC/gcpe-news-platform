@@ -36,6 +36,7 @@ import { renderPdf } from "../renditions/pdf";
 import { renderText } from "../renditions/text";
 import { approve, cancel, schedule, unpublish, type WorkflowDeps } from "../releases/workflow";
 import { listCategories } from "../taxonomy";
+import { openReleasesOf } from "../succession";
 import { setFeature } from "../website/features";
 
 const featureInputSchema = z
@@ -158,6 +159,9 @@ export function apiRoutes(deps: RouteDeps): Router {
   );
 
   r.get("/categories", read, run(async (_req, res) => void res.json(await listCategories(db))));
+
+  // Succession preview (new-government spec §4): drafts that would move, and the releases that keep this lead.
+  r.get("/ministries/:key/open-releases", mediaListAdmin, run(async (req, res) => void res.json(await openReleasesOf(db, String(req.params.key)))));
 
   // The Forecast tab (spec addendum §11): releases from now on, and the activities the caller can see.
   r.get(
