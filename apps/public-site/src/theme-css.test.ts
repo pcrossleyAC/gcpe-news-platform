@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { siteThemeSchema } from "@gcpe/config";
 import { BC_SANS_FILES } from "./site-assets";
-import { DEFAULT_THEME, themeCss } from "./theme-css";
+import { DEFAULT_THEME, fadeStrength, themeCss } from "./theme-css";
 
 const overrides = readFileSync(new URL("../assets/site/overrides.css", import.meta.url), "utf8");
 
@@ -83,6 +83,16 @@ describe("themeCss", () => {
     const css = themeCss(DEFAULT_THEME, { ...DEFAULT_THEME.colors, bannerInfo: "red; } body { display: none", bannerEmergency: "#D8292F", sectionBar: "#2B5580" });
     expect(css).not.toContain("display: none");
     expect(css).toContain("--color-banner-info: #013366;");
+  });
+  it("--fade-strength: the strongest whole-percent background overlay that keeps primary links and body text at 4.6:1 or more (the Connect page's faded entry)", () => {
+    const bc = { ...DEFAULT_THEME.colors, primary: "#013366", text: "#2D2D2D", background: "#FFFFFF", bannerInfo: "#013366", bannerEmergency: "#D8292F", sectionBar: "#2B5580" };
+    // Computed for BC: 34% white over #013366 composites to #57789A (4.61:1); 35% gives #5A7A9C (4.47:1), so the link colour sets the limit.
+    expect(fadeStrength(["#013366", "#2D2D2D"], "#FFFFFF")).toBe(34);
+    expect(themeCss(DEFAULT_THEME, bc)).toContain("  --fade-strength: 34%;");
+    // A primary that only just passes 4.5:1 leaves no room to fade.
+    expect(fadeStrength(["#767676"], "#FFFFFF")).toBe(0);
+    expect(themeCss(DEFAULT_THEME)).toMatch(/ {2}--fade-strength: \d+%;/);
+    expect(overrides).toMatch(/li\.collapse-last::after\{[^}]*color-mix\(in srgb,var\(--color-background\) var\(--fade-strength\),transparent\)/);
   });
   it("the default theme passes the tenant schema's contrast check", () => {
     expect(siteThemeSchema.safeParse(DEFAULT_THEME).success).toBe(true);

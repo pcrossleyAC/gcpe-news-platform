@@ -174,6 +174,10 @@ html:not(.js) #btnCloseBannerBridge{display:none}
 /* The column's headings are one level up (legacy h3 → h2, h4 → h3): legacy's metrics, restated. */
 .resource-links h2{font-size:18px;font-weight:600;color:var(--color-text);margin-top:20px !important;padding-bottom:5px;line-height:1.2}
 .resource-links.connect h2{margin-top:0 !important}
+/* The Resources box (pages/resources.ts): every row is a link alone, so no underline, as legacy;
+ * hover and keyboard focus add one, and theme.css keeps the focus ring. */
+.resource-links.resources-box ul li>a{text-decoration:none}
+.resource-links.resources-box ul li>a:hover,.resource-links.resources-box ul li>a:focus-visible{text-decoration:underline}
 /* Legacy's .collapsible-regions h3:hover pointer was for its phone accordion; ours aren't controls. */
 .home-features .collapsible-regions .resource-links h3:hover{cursor:auto}
 .resource-links h3{font-size:14px;font-weight:600;color:var(--color-text);margin-top:15px !important;margin-bottom:2px;padding-bottom:0;line-height:1.2}
@@ -363,25 +367,32 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 .wowza-wrapper .live-stream-link,.wowza-wrapper .off-air-text{margin:.5rem 0 0;font-size:16px;line-height:1.4}
 
 /* The Connect page's sections (pages/connect.ts). Legacy's .expandable-section h3 is a bar in the
- * section-bar colour (the Hub's Theme "Section bar colour", --color-section-bar); ours is an h2 with
- * the same look and the icon (a Font Awesome glyph, as news.gov uses) inline after the text in the heading colour.
+ * section-bar colour (the Hub's Theme "Section bar colour", --color-section-bar; validated against
+ * white) with white text, as the banner's; ours is an h2 with the same look and the icon (a Font
+ * Awesome glyph, as news.gov uses) inline after the text.
  * The selectors carry .home-body so they beat legacy's ".connect .home-body h2" (36px, underlined rule). */
-.connect .home-body .expandable-section>h2{display:block;box-sizing:border-box;width:100%;background-color:var(--color-section-bar);color:var(--color-background);font-size:24px;font-weight:500;line-height:1.2;margin:15px 0 0;padding:8px 10px;border:0;border-radius:6px}
-.connect .home-body .expandable-section:first-of-type>h2{margin-top:15px}
+.connect .home-body .expandable-section>h2{display:block;box-sizing:border-box;width:100%;background-color:var(--color-section-bar);color:var(--bs-white);font-size:24px;font-weight:500;line-height:1.2;margin:15px 0 0;padding:8px 10px;border:0;border-radius:6px}
 .expandable-section .connect-icon{margin-left:4px;width:.9em;height:.9em;vertical-align:-1px}
 .expandable-section-content{padding:0 30px}
 .connect .expandable-section ul.external-links{margin-bottom:0;padding-top:12px}
 .connect .expandable-section ul.external-links li{margin:0}
-/* Legacy shows no underline on these links; hover and keyboard focus add one, with a focus ring. */
-.connect .expandable-section ul.external-links li a,.connect .home-body#main-content-release>p>a{text-decoration:none;display:inline-block}
-.connect .expandable-section ul.external-links li a:hover,.connect .expandable-section ul.external-links li a:focus-visible,.connect .home-body#main-content-release>p>a:hover,.connect .home-body#main-content-release>p>a:focus-visible{text-decoration:underline}
+/* A link alone in its row (and the policy link) has no underline, as legacy; hover and keyboard
+ * focus add one (theme.css draws the focus ring). A link with its summary beside it keeps the
+ * underline (main li a), so it is told apart from that text by more than colour (WCAG 1.4.1, P4-R16). */
+.connect .expandable-section ul.external-links li>a:only-child,.connect .home-body#main-content-release>p>a{text-decoration:none}
+.connect .expandable-section ul.external-links li>a:only-child:hover,.connect .expandable-section ul.external-links li>a:only-child:focus-visible,.connect .home-body#main-content-release>p>a:hover,.connect .home-body#main-content-release>p>a:focus-visible{text-decoration:underline}
 .connect .home-body#main-content-release>p>a{font-size:16px}
 .connect .home-body#main-content-release h1.connect-title{font-size:36px;font-weight:600;line-height:1.2;border-bottom:1px solid var(--color-border);margin:15px 0 10px;padding-bottom:10px}
-.expandable-section [hidden]{display:none!important}
-/* The second visible entry fades toward the page background while the list is collapsed (legacy's article-fade). */
-.expandable-section.collapsed li.faded{position:relative}
-.expandable-section.collapsed li.faded::after{content:"";position:absolute;inset:0;pointer-events:none;background:color-mix(in srgb,var(--color-background) 55%,transparent)}
-.expandable-section .expand-toggle{display:inline-block;margin:20px 0 10px;padding:3px 10px;font-size:14px;font-weight:600;text-transform:uppercase;color:var(--color-primary);background:var(--color-background);border:1px solid var(--color-border);border-radius:4px;cursor:pointer}
+/* A long list paints collapsed (pages/connect.ts marks it; html.js is set in the head, so before
+ * the first paint and with no layout shift): the entries after collapseAfter are hidden and the last
+ * one shown fades toward the page background (legacy's article-fade) by --fade-strength, which
+ * theme.css computes from the theme so its link and body text keep 4.6:1 or more (theme-css.ts
+ * fadeStrength; 34% for BC). Without script (no html.js) every entry shows and the Expand button is hidden. */
+html.js .expandable-section.collapsed li.collapse-extra{display:none}
+html.js .expandable-section.collapsed li.collapse-last{position:relative}
+html.js .expandable-section.collapsed li.collapse-last::after{content:"";position:absolute;inset:0;pointer-events:none;background:color-mix(in srgb,var(--color-background) var(--fade-strength),transparent)}
+.expandable-section .expand-toggle{display:none;margin:20px 0 10px;padding:3px 10px;font-size:14px;font-weight:600;text-transform:uppercase;color:var(--color-primary);background:var(--color-background);border:1px solid var(--color-border);border-radius:4px;cursor:pointer}
+html.js .expandable-section .expand-toggle{display:inline-block}
 .expandable-section .expand-toggle:hover{background:var(--color-surface)}
 .expandable-section.collapsed .expand-toggle::before,.expandable-section.expanded .expand-toggle::before{content:"";display:inline-block;margin-right:6px;vertical-align:2px;border:4px solid transparent;border-top-color:currentColor;border-bottom-width:0}
 .expandable-section.expanded .expand-toggle::before{border-top-width:0;border-bottom:4px solid currentColor}
@@ -444,7 +455,7 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 .connect.subscribe .home-body#main-content-release>p.manage-link>a{font-size:14px;font-weight:700;display:inline;text-decoration:underline}
 .connect.subscribe details.expandable-section>summary{display:block;list-style:none;cursor:pointer;margin:15px 0 0}
 .connect.subscribe details.expandable-section>summary::-webkit-details-marker{display:none}
-.connect.subscribe details.expandable-section>summary>h2{box-sizing:border-box;width:100%;background-color:var(--color-section-bar);color:var(--color-background);font-size:24px;font-weight:500;line-height:1.2;margin:0;padding:8px 10px;border:0;border-radius:6px}
+.connect.subscribe details.expandable-section>summary>h2{box-sizing:border-box;width:100%;background-color:var(--color-section-bar);color:var(--bs-white);font-size:24px;font-weight:500;line-height:1.2;margin:0;padding:8px 10px;border:0;border-radius:6px}
 .connect.subscribe details.expandable-section>summary:focus-visible{outline:2px solid var(--color-primary);outline-offset:2px}
 .connect.subscribe .expandable-section-content{padding:0 10px}
 .connect.subscribe .expandable-section-content ul.external-links{list-style:none;margin:0;padding:0}

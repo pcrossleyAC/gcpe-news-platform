@@ -708,50 +708,34 @@ describe("site.js live webcast player (/live/)", () => {
       return dom.window.document;
     };
 
-    it("shows two entries, fades the second, hides the rest with [hidden] and adds a button wired by aria-expanded/aria-controls", () => {
+    it("wires the rendered button; the page starts collapsed (the markup's state, no change at load) and nothing gets [hidden]", () => {
       const doc = connect();
       const fb = doc.getElementById("facebook")!;
       expect(fb.classList.contains("collapsed")).toBe(true);
       expect(fb.classList.contains("expanded")).toBe(false);
-      const lis = [...fb.querySelectorAll("li")];
-      expect(lis.length).toBeGreaterThan(2);
-      expect(lis.map((li) => li.hasAttribute("hidden"))).toEqual(lis.map((_, i) => i >= 2));
-      expect(lis[1]!.classList.contains("faded")).toBe(true);
-      expect(lis[0]!.classList.contains("faded")).toBe(false);
-      const btn = fb.querySelector<HTMLButtonElement>("button.link-button")!;
-      expect(btn.type).toBe("button");
-      expect(btn.textContent).toBe("Expand Facebook list");
-      expect(btn.getAttribute("aria-expanded")).toBe("false");
-      expect(btn.getAttribute("aria-controls")).toBe("facebook-list");
-      expect(doc.getElementById("facebook-list")).toBe(fb.querySelector("ul"));
-      // Sections that are not marked (<= 2, or Blogs) get no button and keep everything visible.
-      for (const id of ["threads", "bluesky", "flickr", "blogs"]) {
-        expect(doc.querySelector(`#${id} button`)).toBeNull();
-        expect(doc.querySelector(`#${id} [hidden]`)).toBeNull();
-      }
-      expect(doc.querySelector("#x button")!.textContent).toBe("Expand X list");
-      expect(doc.querySelector("#rss button")!.textContent).toBe("Expand RSS list");
+      expect(doc.querySelector("main [hidden]")).toBeNull();
+      expect(doc.querySelectorAll("button.expand-toggle")).toHaveLength(doc.querySelectorAll(".expandable-section[data-collapsible]").length);
+      expect(fb.querySelector("button.expand-toggle")!.getAttribute("aria-expanded")).toBe("false");
+      // Open sections (two or fewer, BC's Blogs) have no button and stay as rendered.
+      for (const id of ["threads", "bluesky", "flickr", "blogs"]) expect(doc.querySelector(`#${id}`)!.className).toMatch(/ expanded$/);
     });
 
-    it("the button expands (every entry visible, no fade, aria-expanded true) and collapses again, keeping focus", () => {
+    it("the button expands (aria-expanded true, Collapse label) and collapses again, keeping focus", () => {
       const doc = connect();
       const fb = doc.getElementById("facebook")!;
-      const btn = fb.querySelector<HTMLButtonElement>("button")!;
+      const btn = fb.querySelector<HTMLButtonElement>("button.expand-toggle")!;
       btn.focus();
       btn.click();
       expect(fb.classList.contains("expanded")).toBe(true);
       expect(fb.classList.contains("collapsed")).toBe(false);
-      expect(fb.querySelector("[hidden]")).toBeNull();
-      expect(fb.querySelector(".faded")).toBeNull();
       expect(btn.getAttribute("aria-expanded")).toBe("true");
       expect(btn.textContent).toBe("Collapse Facebook list");
       expect(doc.activeElement).toBe(btn);
       btn.click();
       expect(fb.classList.contains("collapsed")).toBe(true);
-      expect(fb.querySelectorAll("li[hidden]").length).toBe(fb.querySelectorAll("li").length - 2);
-      expect(fb.querySelectorAll("li.faded")).toHaveLength(1);
       expect(btn.getAttribute("aria-expanded")).toBe("false");
       expect(btn.textContent).toBe("Expand Facebook list");
+      expect(doc.querySelector("#rss button")!.textContent).toBe("Expand RSS list");
     });
 
     it("a link to /connect/#x lands on a section that is expanded", () => {
@@ -759,8 +743,22 @@ describe("site.js live webcast player (/live/)", () => {
       dom.window.eval(SITE_SCRIPT);
       const x = dom.window.document.getElementById("x")!;
       expect(x.classList.contains("expanded")).toBe(true);
-      expect(x.querySelector("[hidden]")).toBeNull();
+      expect(x.querySelector("button")!.getAttribute("aria-expanded")).toBe("true");
       expect(dom.window.document.getElementById("facebook")!.classList.contains("collapsed")).toBe(true);
+    });
+
+    it("a hash change to a collapsed section (an in-page or Connect With Us link) expands it, and leaves the others as they are", async () => {
+      const dom = new JSDOM(renderConnectPage(site, { settings: bcSettings() }, [], []), { url: "https://boxs.example/site/connect/", runScripts: "outside-only" });
+      dom.window.eval(SITE_SCRIPT);
+      const doc = dom.window.document;
+      const yt = doc.getElementById("youtube")!;
+      expect(yt.classList.contains("collapsed")).toBe(true);
+      dom.window.location.hash = "#youtube";
+      await new Promise((r) => dom.window.addEventListener("hashchange", r, { once: true }));
+      await new Promise((r) => setTimeout(r, 0));
+      expect(yt.classList.contains("expanded")).toBe(true);
+      expect(yt.querySelector("button")!.getAttribute("aria-expanded")).toBe("true");
+      expect(doc.getElementById("facebook")!.classList.contains("collapsed")).toBe(true);
     });
   });
 });
