@@ -23,7 +23,8 @@ export function flickrThumb(src: string, lazy = true): string {
 /**
  * One post as legacy `Views/Shared/PostCard.cshtml` renders it (home, ministry and category
  * lists), less its inline `<style>` and with the icons from our sprite. The Media Assets and
- * Translations links show only when the News API says so (absent flags show neither). Only a
+ * Translations links show only when the News API sets the flag AND lists at least one file (a
+ * link to a release page with nothing under it would be a dead end; absent flags show neither). Only a
  * Flickr lead gets a thumbnail: a YouTube one would be a third-party load (C209). The thumbnail
  * link repeats the headline link, so it is kept out of the tab order and the accessibility tree
  * rather than being a link with no name. "Read More" carries the headline, visually hidden.
@@ -34,10 +35,10 @@ export function postCard(site: Pick<SiteInfo, "baseUrl">, p: PostDto, o: { hidde
   const english = p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0];
   const headline = e(english?.headline || p.key);
   const links = [
-    p.hasMediaAssets === true ? `<div class="item-medialink media-assets"><a href="${href}#assets">${icon("download", base)} Media Assets</a></div>` : "",
+    p.hasMediaAssets === true && (p.azureAssets?.length ?? 0) > 0 ? `<div class="item-medialink media-assets"><a href="${href}#assets">${icon("download", base)} Media Assets</a></div>` : "",
     // The body's #translations list, shown at every width; legacy's #translationList is the side
     // column's copy, which legacy CSS hides on phones (C253). That id stays for old links.
-    p.hasTranslations === true ? `<div class="item-medialink translations"><a href="${href}#translations">${icon("language", base)} Translations</a></div>` : "",
+    p.hasTranslations === true && (p.azureTranslations?.length ?? 0) > 0 ? `<div class="item-medialink translations"><a href="${href}#translations">${icon("language", base)} Translations</a></div>` : "",
   ].join("");
   const lead = leadMedia(p.assetUrl);
   const thumb = lead?.kind === "image" ? `<div class="item-asset asset flickr"><a href="${href}" aria-hidden="true" tabindex="-1">${flickrThumb(lead.src, !o.eager)}</a></div>` : "";

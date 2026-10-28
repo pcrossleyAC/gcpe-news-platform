@@ -11,6 +11,7 @@ const card = (html: string) => {
   return f.firstElementChild!;
 };
 const FLICKR = "https://live.staticflickr.com/65535/53912345678_0a1b2c3d4e_b.jpg";
+const FILES = [{ key: "https://files.example/translations/releases/K/a.pdf", label: "a.pdf", length: 1 }];
 
 describe("postCard", () => {
   it("emits div.article > h2 > a, .item-date with time, .item-text p, a.read-more with a visually-hidden headline", () => {
@@ -31,12 +32,19 @@ describe("postCard", () => {
     expect(postCard(site, post())).not.toContain("<style");
   });
 
-  it("media-assets and translations links only when the flags are true; absent flags render neither", () => {
+  it("media-assets and translations links only when the flag is true and its list has a file; otherwise neither", () => {
     const none = card(postCard(site, post()));
     expect(none.querySelectorAll(".item-medialink")).toHaveLength(0);
-    const falsy = card(postCard(site, post({ hasMediaAssets: false, hasTranslations: null })));
+    const falsy = card(postCard(site, post({ hasMediaAssets: false, hasTranslations: null, azureAssets: FILES, azureTranslations: FILES })));
     expect(falsy.querySelectorAll(".item-medialink")).toHaveLength(0);
-    const both = card(postCard(site, post({ hasMediaAssets: true, hasTranslations: true })));
+    // Flagged in legacy, but no files listed (empty or not yet imported): no dead-end links.
+    for (const list of [[], null, undefined]) {
+      const empty = card(postCard(site, post({ hasMediaAssets: true, hasTranslations: true, azureAssets: list, azureTranslations: list })));
+      expect(empty.querySelectorAll(".item-medialink")).toHaveLength(0);
+    }
+    const onlyTr = card(postCard(site, post({ hasMediaAssets: true, hasTranslations: true, azureAssets: [], azureTranslations: FILES })));
+    expect([...onlyTr.querySelectorAll(".item-medialink")].map((d) => d.className)).toEqual(["item-medialink translations"]);
+    const both = card(postCard(site, post({ hasMediaAssets: true, hasTranslations: true, azureAssets: FILES, azureTranslations: FILES })));
     const assets = both.querySelector(".list-container > div.item-medialink.media-assets > a")!;
     expect(assets.getAttribute("href")).toBe(`${POST}#assets`);
     expect(assets.textContent).toBe(" Media Assets");
@@ -112,7 +120,7 @@ describe("postCard", () => {
   it("never yields a nameless link: every <a> has text, or is aria-hidden and out of the tab order", () => {
     const variants = [
       post(),
-      post({ assetUrl: FLICKR, hasMediaAssets: true, hasTranslations: true }),
+      post({ assetUrl: FLICKR, hasMediaAssets: true, hasTranslations: true, azureAssets: FILES, azureTranslations: FILES }),
       post({ assetUrl: "https://youtu.be/abcdef1", summary: null }),
       post({ assetUrl: "https://news.gov.bc.ca/live", summary: "a\nb" }),
       post({ documents: [] }),

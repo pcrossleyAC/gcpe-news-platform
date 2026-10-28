@@ -147,6 +147,8 @@ describe("textSearch and the search service", () => {
           leadMinistryKey: "forests",
           hasTranslations: false,
           hasMediaAssets: false,
+          hasTranslationList: false,
+          hasMediaAssetList: false,
           url: "https://news.example.test/releases/2026TT0103-001121",
         }],
       });
@@ -163,6 +165,23 @@ describe("textSearch and the search service", () => {
         ["R-BOTH", true, true],
         ["R-TR", true, false],
         ["R-NONE", false, false],
+      ]);
+    });
+
+    it("hasTranslationList / hasMediaAssetList: the flag set AND a non-empty list (the raw flags stay legacy's)", async () => {
+      const files = [{ key: "https://files.example/x.pdf", label: "x.pdf", length: 1 }];
+      await seed(
+        { ...release("L-FILLED", { body: "wildfire", publishDate: "2026-10-04T10:00:00-07:00" }), hasTranslations: true, hasMediaAssets: true, translations: files, assets: files },
+        { ...release("L-EMPTY", { body: "wildfire", publishDate: "2026-10-03T10:00:00-07:00" }), hasTranslations: true, hasMediaAssets: true, translations: [], assets: [] },
+        { ...release("L-NULL", { body: "wildfire", publishDate: "2026-10-02T10:00:00-07:00" }), hasTranslations: true, hasMediaAssets: true },
+        { ...release("L-NOFLAG", { body: "wildfire", publishDate: "2026-10-01T10:00:00-07:00" }), translations: files, assets: files },
+      );
+      const res = await service().search(q({}));
+      expect(res.results.map((r) => [r.key, r.hasTranslations, r.hasTranslationList, r.hasMediaAssets, r.hasMediaAssetList])).toEqual([
+        ["L-FILLED", true, true, true, true],
+        ["L-EMPTY", true, false, true, false],
+        ["L-NULL", true, false, true, false],
+        ["L-NOFLAG", false, false, false, false],
       ]);
     });
 
@@ -229,7 +248,7 @@ describe("textSearch and the search service", () => {
       it("is null without facets=1 and in semantic mode", async () => {
         await seed(release("R-1", { body: "wildfire", ministryKeys: ["health"] }));
         expect((await service().search(q({}))).facets).toBeNull();
-        const page = { total: 1, rows: [{ key: "R-1", kind: "releases", headline: "H", summary: null, publishDate: new Date("2026-10-01T17:00:00Z"), leadMinistryKey: null, hasTranslations: false, hasMediaAssets: false }] };
+        const page = { total: 1, rows: [{ key: "R-1", kind: "releases", headline: "H", summary: null, publishDate: new Date("2026-10-01T17:00:00Z"), leadMinistryKey: null, hasTranslations: false, hasMediaAssets: false, hasTranslationList: false, hasMediaAssetList: false }] };
         const sem = await service({ search: async () => page }).search(q({ facets: true }));
         expect(sem).toMatchObject({ mode: "semantic", facets: null });
       });
@@ -242,7 +261,7 @@ describe("textSearch and the search service", () => {
 
     it("uses the semantic branch's page when it answers, and falls back to text on null or a throw", async () => {
       await seed(release("R-TEXT", { body: "wildfire" }));
-      const page = { total: 1, rows: [{ key: "R-SEM", kind: "releases", headline: "H", summary: null, publishDate: new Date("2026-10-01T17:00:00Z"), leadMinistryKey: null, hasTranslations: false, hasMediaAssets: false }] };
+      const page = { total: 1, rows: [{ key: "R-SEM", kind: "releases", headline: "H", summary: null, publishDate: new Date("2026-10-01T17:00:00Z"), leadMinistryKey: null, hasTranslations: false, hasMediaAssets: false, hasTranslationList: false, hasMediaAssetList: false }] };
       expect((await service({ search: async () => page }).search(q({})))).toMatchObject({ mode: "semantic", results: [{ key: "R-SEM" }] });
       expect((await service({ search: async () => null }).search(q({})))).toMatchObject({ mode: "text", results: [{ key: "R-TEXT" }] });
       const lines: string[] = [];

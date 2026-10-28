@@ -12,8 +12,12 @@ export interface SearchRow {
   summary: string | null;
   publishDate: Date;
   leadMinistryKey: string | null;
+  /** Legacy's raw flags, as v1's PostDto gives them. */
   hasTranslations: boolean;
   hasMediaAssets: boolean;
+  /** The post has a non-empty translation list / media-asset list to link to (and its flag is set). */
+  hasTranslationList: boolean;
+  hasMediaAssetList: boolean;
 }
 
 export interface FacetCount<K extends string = string> {
@@ -87,6 +91,8 @@ export function searchRowColumns(defaultLanguageId: number) {
     leadMinistryKey: posts.leadMinistryKey,
     hasTranslations: posts.hasTranslations,
     hasMediaAssets: posts.hasMediaAssets,
+    hasTranslationList: sql<boolean>`(${posts.hasTranslations} AND coalesce(jsonb_array_length(${posts.translations}), 0) > 0)`,
+    hasMediaAssetList: sql<boolean>`(${posts.hasMediaAssets} AND coalesce(jsonb_array_length(${posts.assets}), 0) > 0)`,
   };
 }
 
