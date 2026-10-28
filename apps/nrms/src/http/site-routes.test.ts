@@ -80,6 +80,28 @@ describe("NRMS site HTTP API", () => {
     expect(bad.body.errors).toEqual(["Keep the action label to 40 characters or fewer, in plain text."]);
   });
 
+  it("a PUT that omits actionLabel keeps the stored label (slide by id, and pin); schema trims and caps at 40", async () => {
+    const created = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAt: future() });
+    const base = { headline: "H1", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" };
+    const saved = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, { version: created.body.version, slides: [{ ...base, actionLabel: "Read it" }] });
+    expect(saved.body.slides[0].actionLabel).toBe("Read it");
+    const again = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, { version: saved.body.version, slides: [{ ...base, id: saved.body.slides[0].id, headline: "H1b" }] });
+    expect(again.status).toBe(200);
+    expect(again.body.slides[0]).toMatchObject({ headline: "H1b", actionLabel: "Read it" });
+    const cleared = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, { version: again.body.version, slides: [{ ...base, id: saved.body.slides[0].id, actionLabel: "   " }] });
+    expect(cleared.body.slides[0].actionLabel).toBe("");
+    const tooLong = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, { version: cleared.body.version, slides: [{ ...base, actionLabel: "x".repeat(41) }] });
+    expect(tooLong.status).toBe(400);
+
+    await tdb.pool.query("INSERT INTO emergency_pins (slot) VALUES ('primary'), ('secondary')");
+    const pinBody = { version: 1, headline: "Alert", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" };
+    const pin1 = await put("/api/site/pins/primary", siteEditorCookie, { ...pinBody, actionLabel: "Get help" });
+    expect(pin1.status).toBe(200);
+    const pin2 = await put("/api/site/pins/primary", siteEditorCookie, { ...pinBody, version: pin1.body.version, headline: "Alert 2" });
+    expect(pin2.status).toBe(200);
+    expect(pin2.body.slide).toMatchObject({ headline: "Alert 2", actionLabel: "Get help" });
+  });
+
   // Fix round 1 (controller ruling): goLiveAt/goLiveAtLocal is an XOR for creating the next
   // carousel (exactly one required) — both or neither is a 400, same shape as scheduleSchema's
   // publishAt/publishAtLocal.

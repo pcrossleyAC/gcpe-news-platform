@@ -55,7 +55,8 @@ export interface SlideInput {
   headline: string;
   summary: string;
   actionUrl: string;
-  actionLabel: string;
+  /** Omitted = keep the stored label (an older Hub tab must not wipe it). */
+  actionLabel?: string | undefined;
   facebookPostUrl: string;
   justify: Justify;
 }
@@ -64,7 +65,8 @@ export interface PinInput {
   headline: string;
   summary: string;
   actionUrl: string;
-  actionLabel: string;
+  /** Omitted = keep the stored label. */
+  actionLabel?: string | undefined;
   facebookPostUrl: string;
   justify: Justify;
 }
@@ -242,7 +244,7 @@ export async function saveCarousel(
     const goLiveAt = changingGoLiveAt ? resolveGoLiveAt(input, timeZone) : undefined;
     if (goLiveAt !== undefined) await assertFutureGoLiveAt(tx, goLiveAt);
 
-    for (const s of input.slides) checkActionLabel(s.actionLabel);
+    for (const s of input.slides) checkActionLabel(s.actionLabel ?? "");
     const existingSlides = await tx.select().from(websiteSlides).where(eq(websiteSlides.carouselId, id));
     const existingIds = new Set(existingSlides.map((s) => s.id));
     const keepIds = new Set<string>();
@@ -260,10 +262,10 @@ export async function saveCarousel(
       if (s.id) {
         await tx
           .update(websiteSlides)
-          .set({ sortIndex: i, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, actionLabel: s.actionLabel.trim(), facebookPostUrl: s.facebookPostUrl, justify: s.justify, updatedAt: sql`now()` })
+          .set({ sortIndex: i, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, ...(s.actionLabel !== undefined ? { actionLabel: s.actionLabel.trim() } : {}), facebookPostUrl: s.facebookPostUrl, justify: s.justify, updatedAt: sql`now()` })
           .where(eq(websiteSlides.id, s.id));
       } else {
-        await tx.insert(websiteSlides).values({ carouselId: id, sortIndex: i, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, actionLabel: s.actionLabel.trim(), facebookPostUrl: s.facebookPostUrl, justify: s.justify });
+        await tx.insert(websiteSlides).values({ carouselId: id, sortIndex: i, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, actionLabel: (s.actionLabel ?? "").trim(), facebookPostUrl: s.facebookPostUrl, justify: s.justify });
       }
     }
 
@@ -432,14 +434,14 @@ export async function getPins(db: DbOrTx): Promise<PinView[]> {
 
 /** Saves a pin's content (not its pinned flag — see {@link setPinned}). */
 export async function savePin(db: Db, slot: PinSlot, input: { version: number } & PinInput, actor: Actor, subs: SubscriberConfig[], files: SlideImageFiles): Promise<PinView> {
-  checkActionLabel(input.actionLabel);
+  checkActionLabel(input.actionLabel ?? "");
   return db.transaction(async (tx) => {
     const [row] = await tx.select().from(emergencyPins).where(eq(emergencyPins.slot, slot)).for("update");
     if (!row) throw new SiteNotFoundError(`emergency_pins has no row for slot ${slot}`);
     if (row.version !== input.version) throw new SiteConflictError();
     const [updated] = await tx
       .update(emergencyPins)
-      .set({ headline: input.headline, summary: input.summary, actionUrl: input.actionUrl, actionLabel: input.actionLabel.trim(), facebookPostUrl: input.facebookPostUrl, justify: input.justify, version: row.version + 1, updatedAt: sql`now()` })
+      .set({ headline: input.headline, summary: input.summary, actionUrl: input.actionUrl, ...(input.actionLabel !== undefined ? { actionLabel: input.actionLabel.trim() } : {}), facebookPostUrl: input.facebookPostUrl, justify: input.justify, version: row.version + 1, updatedAt: sql`now()` })
       .where(eq(emergencyPins.slot, slot))
       .returning();
     await writeSiteLog(tx, actor, "pins", `Saved the ${slot} emergency slide`);

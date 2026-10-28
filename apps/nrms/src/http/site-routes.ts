@@ -76,6 +76,8 @@ const httpOrEmpty = z
   .trim()
   .max(255)
   .refine((s) => s === "" || /^https?:\/\/\S+$/i.test(s), "must be an absolute http:// or https:// URL, or empty");
+/** Optional: a writer that omits it (a Hub tab opened before this field shipped) keeps the stored label. */
+const actionLabelField = z.string().trim().max(40).optional();
 const justify = z.enum(["left", "right"]);
 
 const slideInputSchema = z.object({
@@ -83,7 +85,7 @@ const slideInputSchema = z.object({
   headline: z.string().max(255),
   summary: z.string().max(255),
   actionUrl: httpOrEmpty,
-  actionLabel: z.string().default(""),
+  actionLabel: actionLabelField,
   facebookPostUrl: httpOrEmpty,
   justify,
 });
@@ -118,7 +120,7 @@ const savePinSchema = z.object({
   headline: z.string().max(255),
   summary: z.string().max(255),
   actionUrl: httpOrEmpty,
-  actionLabel: z.string().default(""),
+  actionLabel: actionLabelField,
   facebookPostUrl: httpOrEmpty,
   justify,
 });
