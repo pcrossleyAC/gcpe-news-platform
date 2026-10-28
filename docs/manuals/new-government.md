@@ -9,7 +9,7 @@ For Core administrators (the **Core.Admin** role). Site editors and developers h
 | When | Who | What to do |
 |---|---|---|
 | Swearing-in date announced | Core administrator | **Government terms** > **Start new government term** > enter the date. |
-| Before swearing-in | Core administrator | **Organizations** > **Cabinet change**: stage renames, new ministries and hand-overs, then schedule them for the swearing-in time. Until Cabinet change is available, do the hand-overs and renames on the day, one at a time (see "Ministry hand-over"). |
+| Before swearing-in | Core administrator | **Organizations** > **Cabinet change**: stage renames, new ministries and hand-overs, preview them, then schedule them for the swearing-in time (see "Cabinet change"). A single hand-over can also be done on its own from **Organizations** (see "Ministry hand-over"). |
 | Swearing-in day | Nobody | The term rolls over at 00:00 Pacific. The archive pages, the "current" link and the sitemap update themselves. A scheduled cabinet change publishes, old ministry web addresses start redirecting, and subscribers move. |
 | After | Site editors | Minister photos and biographies, and the election banner (Website > Banner). Update the minister contact records in the Media Hub by hand. |
 | Never again | Corporate Search, developers | No crawler change, no code edit, no SQL. |
@@ -34,36 +34,47 @@ What happens next, with no action from you:
 
 ## 2. Ministry hand-over (successor ministry)
 
-Use this when a ministry is replaced by another (merged, split or renamed into a new one). A simple rename needs no hand-over: edit the ministry's name on **Organizations**. Its web address, subscribers and history stay.
+Use this when a ministry is replaced by another (merged, split or renamed into a new one). A simple rename needs no hand-over: edit the ministry's name on **Organizations**. Its web address, subscribers and history stay. To change several ministries at once for a new cabinet, use **Cabinet change** (Section 3) instead.
 
-1. Open **Organizations**. On the old ministry (call it A), choose **Deactivate**. A panel titled "Deactivate A" opens. For an already inactive ministry, use **Set successor...** instead.
-2. Under "Has a successor?", pick the ministry that takes over (B). You can pick more than one for a split.
-3. The panel lists what will move, each as a tick box that is on by default. Untick anything you want to leave:
-   - Send A's web pages to B (always on once a successor is set).
-   - Move N subscribers to B.
+1. Open **Organizations**. On the old ministry (call it A), choose **Deactivate**. A panel titled "Deactivate A" opens. For a ministry that is already inactive (tick **Show inactive organizations** to see it), choose **Set successor…** instead; the panel is titled "Set successor for A".
+2. In **Has a successor?** (or **Successor**), choose the ministry that takes over (B). For a split, choose **Add another successor** and pick the next one. Subscribers are added to every successor; the web pages, staff, Calendar and draft releases go to the first.
+3. Under "What moves to B", each line is a tick box, on by default. Untick anything you want to leave with A:
+   - Send A's web pages to B. Always on: this is what setting a successor does.
+   - Move N subscribers to B (and any other successors).
    - Move N staff from A to B.
-   - Move N upcoming Calendar activities and M contacts to B.
-   - Move N draft releases to B. Approved and scheduled releases do not move; they are listed with links so you can deal with them.
-   - Let B use A's abbreviation (only when B has none, or you confirm replacing it).
-   If a number cannot be loaded you see "count unavailable". That does not stop you.
-4. Choose **Deactivate and hand over**. You see "A is deactivated. Its pages now send visitors to B."
+   - Move N upcoming Calendar activities and M comm contacts to B.
+   - Move N draft releases to B. Releases that are already approved or scheduled do not move; they are listed with links so you can change their lead ministry yourself.
+   - Let B use the abbreviation HLTH (A's abbreviation). This appears when A has an abbreviation and B has none. If B has its own, first tick "Replace B's abbreviation … with HLTH".
+   While a count loads it says "counting…". If it cannot be loaded you see "count unavailable". That does not stop you.
+4. Choose **Deactivate and hand over** (or **Set successor** for an inactive ministry). While it saves, the other buttons on the page wait. You then see "A is deactivated. Its pages now send visitors to B. Moves to other services finish shortly."
+
+If you choose no successor, the button is just **Deactivate** and nothing moves.
+
+If another active ministry already uses A's abbreviation, the Hub says so by name: untick "Let B use the abbreviation …" or change that ministry's abbreviation first.
 
 Notes for staff:
 
 - The moves for subscribers, Calendar and drafts finish in the background, usually within a minute. The Hub's message does not promise they are done. If something looks unmoved after a few minutes, tell an operator (see Section 4).
-- Old web addresses under `/ministries/A` now go permanently to `/ministries/B`. If B is later replaced too, A's address goes straight to the newest ministry.
-- Undo: **Reactivate** on A stops the redirect. It does not move people back.
+- Old web addresses under `/ministries/A` now go permanently to `/ministries/B`. If B is later replaced too, A's address goes straight to the newest ministry. A ministry that is already inactive can't be chosen as a successor, so a hand-over back to A is refused.
+- Undo: **Reactivate** on A stops the redirect. It does not move people back. If B now uses A's abbreviation, reactivating A is refused until one of them gets a different abbreviation.
 - Ministry abbreviations only need to be unique among active ministries, so B can take over A's abbreviation.
 
-## 3. Cabinet change (after it is built)
+## 3. Cabinet change
 
-**Organizations** > **Cabinet change** lets you stage everything for the swearing-in and publish it at once.
+**Organizations** > **Cabinet change** lets you prepare every ministry change for a new cabinet and publish them all together, right away or at the swearing-in time. Nothing changes on the public site or for staff until it is published. One cabinet change is open at a time, and it is saved as you go, so you can come back to it later.
 
-1. Choose **Add change** for each rename, new ministry or hand-over. One draft is open at a time.
-2. Choose **Preview**. You see old and new side by side, the resulting ministry list, and the counts for each hand-over. The preview refuses a change that would clash on an abbreviation, leave a closed ministry with neither a successor nor "No successor" ticked, or create a loop.
-3. Choose **Publish now**, or **Schedule...** and pick the swearing-in time.
+1. Under "Add a change", choose one of:
+   - **Rename or change a ministry**: pick the ministry, then change its Name, Abbreviation or Minister.
+   - **Add a new ministry**: Name, and optionally Abbreviation and Minister.
+   - **Hand over a ministry**: pick the **Ministry to hand over**, then its **Successor** (a new ministry added in this change can be the successor). Choose "No successor (abolish it)" to close it with nothing moved. The "What moves to …" tick boxes are the same as in Section 2.
 
-If someone edits a ministry after you staged the change, publishing is refused and names that ministry. Reopen the draft and review it. Nothing is half-applied.
+   Choose **Add this change**. The change appears under "Changes in this cabinet change", where **Remove** takes it out again.
+2. Choose **Preview**. It runs the whole change without saving it and shows "What will change" (each ministry, now and after publishing), "What each hand-over moves", and "Ministries after this change". Any problem is listed under "Fix these before publishing", for example two active ministries ending up with the same abbreviation, a hand-over with no successor chosen, or a ministry handed over twice. When it says "No problems found", you can publish.
+3. Under **Publish**, choose **Publish now…** and then **Yes, publish now**, or choose **Schedule…**, enter the date and time under "Publish at (BC time)" (usually the swearing-in time) and choose **Schedule**. A scheduled change shows "Publishes on {date} at {time} Pacific." and publishes by itself; nobody needs to be there. Until then you can still edit it, publish it now, or choose **Don't publish at that time (keep it as a draft)**. Editing a scheduled change takes it off its schedule: preview it and schedule it again.
+
+Publishing makes every change at once: all of it or none of it. The public Ministries page updates within a few minutes, and subscribers, staff, Calendar activities and draft releases move shortly after.
+
+If someone edits one of the ministries after you added a change to it, that change is marked "Changed by someone else since you added this." Check the ministry on **Organizations**, then **Keep this change** or **Remove** it. If a scheduled publish can't go through, the change goes back to a draft and the page shows "This change wasn't published" with the reason. Nothing is half-applied. To throw the whole draft away, use **Discard this cabinet change…** under "Start over".
 
 ## 4. Operator-only notes
 
