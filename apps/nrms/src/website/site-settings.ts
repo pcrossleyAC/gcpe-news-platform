@@ -169,14 +169,22 @@ export async function discardDraft(db: DbOrTx, actor: Actor): Promise<void> {
 
 /**
  * "Keep mine on top of theirs": live (or defaults) + this screen's section, based on the live
- * revision. `setAside` = the other sections where the old draft differed from the result.
+ * revision. `setAside` = the other sections the editor had changed in their old draft (it
+ * differs from the revision it was based on, or the defaults) that the result doesn't keep —
+ * a section only the other editor changed is not "mine" and isn't reported.
  */
 export async function rebaseDraft(db: Db, actor: Actor, defaults: SiteSettings, input: SectionInput): Promise<SettingsState & { setAside: SectionKey[] }> {
   const setAside = await db.transaction(async (tx) => {
     const [live, draft] = await Promise.all([readLive(tx), readDraft(tx, actor)]);
     const document = overlay(live?.document ?? defaults, input);
     await upsertDraft(tx, actor, document, live?.info.revision ?? null);
-    return draft ? differingSections(draft.document, document).filter((k) => k !== input.section) : [];
+    if (!draft) return [];
+    const [base] = draft.baseRevision === null
+      ? []
+      : await tx.select({ document: siteSettingsRevisions.document }).from(siteSettingsRevisions).where(eq(siteSettingsRevisions.revision, draft.baseRevision));
+    const baseDocument = base?.document ?? defaults;
+    const mine = new Set(differingSections(draft.document, baseDocument));
+    return differingSections(draft.document, document).filter((k) => k !== input.section && mine.has(k));
   });
   return { ...(await getSettingsState(db, actor, defaults)), setAside };
 }

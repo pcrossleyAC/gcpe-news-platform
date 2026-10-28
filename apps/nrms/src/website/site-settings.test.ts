@@ -253,6 +253,20 @@ describe("website/site-settings", () => {
     });
   });
 
+  it("rebase does not report sections only the other editor changed as set aside", async () => {
+    await publishBanner(editor, "Live");
+    await saveDraft(tdb.db, jane, defaults, { baseRevision: 1, section: "banner", value: banner("Jane's banner") });
+    const samFooter = { ...defaults.footer, copyrightHolder: "Sam's holder" };
+    expect(await publishSettings(tdb.db, sam, defaults, subs, { baseRevision: 1, section: "footer", value: samFooter })).toEqual({ result: "published", revision: 2 });
+
+    const rebased = await rebaseDraft(tdb.db, jane, defaults, { section: "banner", value: banner("Jane's banner") });
+
+    expect(rebased.setAside).toEqual([]);
+    expect(rebased.baseRevision).toBe(2);
+    expect(rebased.document.footer.copyrightHolder).toBe("Sam's holder");
+    expect(rebased.document.banner.message).toBe("Jane's banner");
+  });
+
   it("discard removes only my draft", async () => {
     await saveDraft(tdb.db, jane, defaults, { baseRevision: null, section: "banner", value: banner("Jane") });
     await saveDraft(tdb.db, sam, defaults, { baseRevision: null, section: "banner", value: banner("Sam") });
