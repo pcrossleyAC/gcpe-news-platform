@@ -1,6 +1,6 @@
 import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import type { GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto } from "./dto";
+import type { GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "./dto";
 import { renderAtomFeed, renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
@@ -46,8 +46,26 @@ export interface RunCache {
   /** Each lead ministry's latest posts (lower-cased key), the release page's related-band
    * fallback: fetched at most once per run, and only by a post with no related posts. */
   ministryLatest?: Map<string, Promise<PostDto[]>>;
-  /** The home top and feature posts (the News API's latest lists leave them out), fetched once per run: every kind listing and feed adds back the ones of its kind. */
+  /** The home top and feature posts (the News API's latest lists leave them out), fetched once per run: every kind listing and feed adds back the ones of its kind. Forgotten if the fetch fails. */
   homeFeatured?: Promise<{ top: PostDto | null; feature: PostDto | null }>;
+  /** The Resources box's links, fetched once per run for every page that shows them. Forgotten if the fetch fails. */
+  resourceLinks?: Promise<ResourceLinkDto[]>;
+}
+
+/**
+ * `run[key]`, fetched on first use. A rejected fetch is forgotten, so a transient failure fails
+ * only the pages already waiting on it and the run's next page fetches again (the queue retries
+ * the failed ones).
+ */
+function runMemo<K extends "homeFeatured" | "resourceLinks">(run: RunCache, key: K, fetch: () => NonNullable<RunCache[K]>): NonNullable<RunCache[K]> {
+  const held = run[key];
+  if (held) return held as NonNullable<RunCache[K]>;
+  const p = fetch();
+  run[key] = p;
+  p.catch(() => {
+    if (run[key] === p) delete run[key];
+  });
+  return p;
 }
 
 /** How many of a ministry's latest posts the related band's fallback fetches: three to show, plus
@@ -85,6 +103,7 @@ export interface SiteBuilder {
 export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteStorage; index: PostIndex; site: SiteInfo; assetsDir: string | null; searchApiBase?: string }): SiteBuilder {
   const { newsApi, storage, index, site } = deps;
   const ministries = (run: RunCache) => (run.ministries ??= newsApi.ministries());
+  const resourceLinks = (run: RunCache) => runMemo(run, "resourceLinks", () => newsApi.resourceLinks());
   /** Never rejects (NG-R18): a terms outage degrades to the last applied snapshot, else none. */
   const governmentTerms = async (run: RunCache): Promise<TermsView> => {
     if (run.governmentTerms) return run.governmentTerms;
@@ -159,8 +178,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
    * one merge behind both the kind listings and the kind feeds.
    */
   async function kindPosts(run: RunCache, kind: ListingKind): Promise<PostDto[]> {
-    run.homeFeatured ??= newsApi.home().then((home) => featured(home.topPostKey, home.featurePostKey));
-    const [f, latest] = await Promise.all([run.homeFeatured, newsApi.latestOfKind(kind, LATEST_COUNT)]);
+    const homeFeatured = runMemo(run, "homeFeatured", () => newsApi.home().then((home) => featured(home.topPostKey, home.featurePostKey)));
+    const [f, latest] = await Promise.all([homeFeatured, newsApi.latestOfKind(kind, LATEST_COUNT)]);
     return sortNewest([...[f.top, f.feature].filter((x) => x?.kind === kind), ...latest]);
   }
 
@@ -353,7 +372,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     }
     const [latest, f] = await Promise.all([newsApi.latest(kind, key, LATEST_COUNT), featured(c.topPostKey, c.featurePostKey)]);
     feedRef.title = `${c.name}: latest news`;
-    const links = await newsApi.resourceLinks();
+    const links = await resourceLinks(run);
     await storage.write(page, renderCategoryPage(kind, c, { ...f, latest }, links, site, { ...opts, feed: feedRef }));
     await writeFeeds(`News about ${c.name}`, sortNewest([f.top, f.feature, ...latest]));
     return [];
@@ -372,12 +391,20 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return [{ title: site.name, href: feedUrl(site, { type: "home" }) }, ...cats];
   }
 
-  async function categoryIds(run: RunCache): Promise<string[]> {
+  /** Every ministry page id: the given ministry list's, then any the post index still holds. */
+  async function ministryIds(list: Promise<MinistryDto[]>): Promise<string[]> {
     const ids = new Set<string>();
-    for (const m of await ministries(run)) {
+    for (const m of await list) {
       const id = categoryPageId("ministries", m.key);
       if (id) ids.add(id);
     }
+    for (const token of await index.categories()) if (token.startsWith("ministries:")) ids.add(`category:${token}`);
+    return [...ids].sort();
+  }
+
+  /** Every sector, theme and tag page id: the News API's lists, then any the post index still holds. */
+  async function listingIds(): Promise<string[]> {
+    const ids = new Set<string>();
     for (const kind of CATEGORY_KINDS) {
       if (kind === "ministries") continue;
       for (const c of await newsApi.categories(kind)) {
@@ -385,8 +412,13 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         if (id) ids.add(id);
       }
     }
-    for (const token of await index.categories()) ids.add(`category:${token}`);
+    for (const token of await index.categories()) if (!token.startsWith("ministries:")) ids.add(`category:${token}`);
     return [...ids].sort();
+  }
+
+  /** Every category page id (the run's ministry list, then the sector, theme and tag ones). */
+  async function categoryIds(run: RunCache): Promise<string[]> {
+    return [...new Set([...(await ministryIds(ministries(run))), ...(await listingIds())])].sort();
   }
 
   const builder: SiteBuilder = {
@@ -401,7 +433,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return renderPost(p.key, opts, run, tx);
         case "home": {
           const home = await newsApi.home();
-          const [f, latest, slides, links, sectors] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), newsApi.resourceLinks(), sectorsWithLatest()]);
+          const [f, latest, slides, links, sectors] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), resourceLinks(run), sectorsWithLatest()]);
           const feedRef = { href: feedUrl(site, p), title: `${site.name}: latest news` };
           // The Live button's state, beside the page that polls for it (site.js); the flag only.
           await storage.write("assets/live.json", liveJson(home));
@@ -428,7 +460,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         }
         case "kind": {
           // Everything is fetched before the write: a failed fetch leaves the page as it was.
-          const [posts, links] = await Promise.all([kindPosts(run, p.kind), newsApi.resourceLinks()]);
+          const [posts, links] = await Promise.all([kindPosts(run, p.kind), resourceLinks(run)]);
           const settings = opts.settings ?? themeDefaults(site.theme);
           await storage.write(pageFiles(p)[0]!, renderKindListing(p.kind, settings.navigation.listingTitles[p.kind], posts, links, site, opts));
           return [];
@@ -437,7 +469,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         case "category-index": {
           const kind = p.type === "ministries" ? "ministries" : p.kind;
           // Everything is fetched before the write: a failed fetch leaves the page as it was.
-          const [groups, links] = await Promise.all([indexGroups(kind), newsApi.resourceLinks()]);
+          const [groups, links] = await Promise.all([indexGroups(kind), resourceLinks(run)]);
           await storage.write(pageFiles(p)[0]!, renderCategoryIndex(kind, groups, links, site, opts));
           return [];
         }
@@ -507,7 +539,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           await writeStaticPages(storage, site, opts, deps.assetsDir);
           return [];
         case "connect":
-          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts, await connectFeeds(run), await newsApi.resourceLinks()));
+          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts, await connectFeeds(run), await resourceLinks(run)));
           return [];
         case "contacts":
           await storage.write(pageFiles(p)[0]!, renderContactsPage(await ministries(run), (opts.settings ?? themeDefaults(site.theme)).contactsPage, site, opts));
@@ -569,26 +601,11 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
 
     async ministryPageIds() {
       // categoryIds' ministry half, without its sector/theme/tag list fetches.
-      const ids = new Set<string>();
-      for (const m of await newsApi.ministries()) {
-        const id = categoryPageId("ministries", m.key);
-        if (id) ids.add(id);
-      }
-      for (const token of await index.categories()) if (token.startsWith("ministries:")) ids.add(`category:${token}`);
-      return [...ids].sort();
+      return ministryIds(newsApi.ministries());
     },
 
     async categoryListingPageIds() {
-      const ids = new Set<string>();
-      for (const kind of CATEGORY_KINDS) {
-        if (kind === "ministries") continue;
-        for (const c of await newsApi.categories(kind)) {
-          const id = categoryPageId(kind, c.key);
-          if (id) ids.add(id);
-        }
-      }
-      for (const token of await index.categories()) if (!token.startsWith("ministries:")) ids.add(`category:${token}`);
-      return [...ids].sort();
+      return listingIds();
     },
 
     async termPageIds() {

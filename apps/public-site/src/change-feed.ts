@@ -99,7 +99,7 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       // ministry has that ministry's page on disk before anything 301s to it.
       // /contacts/ lists every ministry's name, minister and media contacts.
       // /connect/'s RSS Feeds list names every active ministry, sector and tag.
-      const ministryPages = kind === "ministries" ? ["ministries", "search", "contacts", "connect"] : [];
+      const ministryPages = kind === "ministries" ? ["search", "contacts", "connect"] : [];
       const redirects = kind === "ministries" ? [{ pageId: "legacy-redirects", priority: PRIORITY.bulkPost }] : [];
       return [
         { pageId: id, priority: live },
@@ -108,9 +108,10 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
         // Home's News by Sector box names each active sector.
         ...(kind === "sectors" ? [{ pageId: "home", priority: live }] : []),
         ...(kind === "sectors" || kind === "tags" ? [{ pageId: "connect", priority: live }] : []),
-        // The kind's index lists this category (a ministry's is `ministries`, queued above); bulk, as a
-        // rename should not queue a whole kind's worth of fetches ahead of the pages being watched.
-        ...(kind === "ministries" ? [] : [{ pageId: `index:${kind}`, priority: PRIORITY.bulkAggregate }]),
+        // The kind's index lists this category (a ministry's is `ministries`); bulk, like every index
+        // render, so a rename never puts one ahead of the pages being watched. The category's own
+        // pages above stay live.
+        { pageId: kind === "ministries" ? "ministries" : `index:${kind}`, priority: PRIORITY.bulkAggregate },
         { pageId: "sitemap:pages", priority: live },
       ];
     }
@@ -189,6 +190,9 @@ export async function syncChanges(
     }
     if (page.changes.length === 0) break;
     const changeItems: { pageId: string; priority: number }[] = [];
+    // Every sector, theme and tag page id: fetched once per page of changes, and only if one of
+    // them is a resource_links change.
+    let listingQueued = false;
     for (const c of page.changes) {
       const isPost = c.kind === "post.upserted" || c.kind === "post.unpublished";
       const priority = isPost && livePosts > 0 ? (livePosts--, PRIORITY.livePost) : PRIORITY.bulkPost;
@@ -204,7 +208,10 @@ export async function syncChanges(
         if (id && c.kind === "ministry") for (const key of await deps.index.withLeadMinistry(c.key)) changeItems.push({ pageId: `post:${key}`, priority: PRIORITY.bulkPost });
       }
       // Every sector, theme and tag page shows the Resources box: bulk, behind home and /connect/.
-      if (c.kind === "resource_links") for (const pageId of await deps.builder.categoryListingPageIds()) changeItems.push({ pageId, priority: PRIORITY.bulkAggregate });
+      if (c.kind === "resource_links" && !listingQueued) {
+        listingQueued = true;
+        for (const pageId of await deps.builder.categoryListingPageIds()) changeItems.push({ pageId, priority: PRIORITY.bulkAggregate });
+      }
       // Rare (an election, a corrected date or label): every term page, at live priority, so the
       // old current term closes and the new one appears together.
       if (c.kind === "government_terms") for (const pageId of await deps.builder.termPageIds()) changeItems.push({ pageId, priority: PRIORITY.liveAggregate });

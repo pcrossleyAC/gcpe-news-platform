@@ -35,9 +35,7 @@ ${loadMore}<a href="${e(base)}/search/?type=${e(kind)}" class="read-more">${e(la
 </div>
 <section class="home-features" aria-label="Connect and resources">
 ${connectStrip(settings, base)}
-<div class="collapsible-regions">${resources ? `\n${resources}` : ""}
-</div>
-</section>
+${resources ? `<div class="collapsible-regions">\n${resources}\n</div>\n` : ""}</section>
 </div>`;
   return renderPage(title, site, pageUrl(site, { type: "kind", kind }), body, { ...opts, feed: { href: kindFeedUrl(site, kind, "rss"), title: `${site.name}: ${kind}` } });
 }

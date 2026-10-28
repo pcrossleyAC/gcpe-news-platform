@@ -41,6 +41,12 @@ describe("renderKindListing", () => {
     expect(doc.querySelector("main aside")).toBeNull();
   });
 
+  it("no links: no Resources box and no empty .collapsible-regions container", () => {
+    const doc = expectAccessibleStructure(renderKindListing("stories", "Stories", posts(1), [], site, { settings: bcSettings() }));
+    expect(doc.querySelector(".resource-links:not(.connect)")).toBeNull(); // the Connect strip is a .resource-links too
+    expect(doc.querySelector(".collapsible-regions")).toBeNull();
+  });
+
   it("no posts → empty message, no Load More", () => {
     const doc = expectAccessibleStructure(renderKindListing("updates", "Updates", [], [], site, { settings: bcSettings() }));
     expect(doc.querySelector("p.listing-empty")!.textContent).toBe("Nothing has been published yet.");

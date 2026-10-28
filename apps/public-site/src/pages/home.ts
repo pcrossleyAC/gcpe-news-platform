@@ -89,7 +89,8 @@ function resourceBoxes(view: HomeView, site: SiteInfo, labels: NavigationSetting
         .map((s) => `<h3>${e(s.name)}</h3>\n<p><a href="${e(pageUrl(site, { type: "post", key: s.latest.key }))}">${e(headlineOf(s.latest))}</a></p>`)
         .join("\n")}\n</div>\n</div>`
     : "";
-  return `<div class="collapsible-regions">${resources ? `\n${resources}` : ""}${bySector ? `\n${bySector}` : ""}\n</div>`;
+  // Nothing to show: no empty container.
+  return resources || bySector ? `<div class="collapsible-regions">${resources ? `\n${resources}` : ""}${bySector ? `\n${bySector}` : ""}\n</div>` : "";
 }
 
 /**

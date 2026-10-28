@@ -304,8 +304,10 @@ describe("renderCategoryPage (Sector.cshtml look)", () => {
     expect(doc.querySelector('.collapsible-regions a[href="/contacts/"]')).not.toBeNull();
   });
 
-  it("no links: no Resources box, still a collapsible-regions container-free page", () => {
-    expect(render("tags", category({ kind: "tags" }), emptyPosts, []).querySelector(".collapsible-regions .resource-links")).toBeNull();
+  it("no links: no Resources box and no empty .collapsible-regions container", () => {
+    const doc = render("tags", category({ kind: "tags" }), emptyPosts, []);
+    expect(doc.querySelector(".resource-links:not(.connect)")).toBeNull(); // the Connect strip is a .resource-links too
+    expect(doc.querySelector(".collapsible-regions")).toBeNull();
   });
 
   it("escapes the category name and the key in the search href", () => {

@@ -176,9 +176,7 @@ ${loadMore}${search}<div class="clear"></div>
 </div>
 <p><a href="${e(base)}/archive/">Browse the archive by month</a></p>
 </div>
-<div class="collapsible-regions">${resources ? `\n${resources}` : ""}
-</div>
-</div>
+${resources ? `<div class="collapsible-regions">\n${resources}\n</div>\n` : ""}</div>
 <section class="home-features" aria-label="${e(`About ${c.name}`)}">
 <p class="ministry-title" aria-hidden="true">${e(c.name)}</p>
 ${connectStrip(settings, base)}

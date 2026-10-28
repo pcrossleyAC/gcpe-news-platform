@@ -28,7 +28,7 @@ describe("pagesForChange", () => {
     [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }, ...KIND_PAGES, ...INDEX_PAGES]],
     // A ministry change can start or stop a successor redirect, so it also queues legacy-redirects,
     // one priority lower, so a new successor's page is written before anything 301s to it.
-    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "contacts", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "contacts", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "ministries", priority: 3 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 7, kind: "tag", key: "covid-19" }, [{ pageId: "category:tags:covid-19", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "index:tags", priority: 3 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 8, kind: "post.upserted", key: "../x" }, []],
     [{ id: 9, kind: "ministry", key: null }, []],
@@ -309,6 +309,19 @@ describe("syncChanges", () => {
     for (const id of ["category:sectors:economy", "category:themes:housing", "category:tags:covid-19"]) expect(queued, id).toContain(`${id}@${PRIORITY.bulkAggregate}`);
     expect(queued.some((x) => x.startsWith("category:ministries:"))).toBe(false);
     expect(queued).toContain("home@1");
+  });
+
+  it("the sector, theme and tag page list is fetched once per page of changes, and only when a resource_links change needs it", async () => {
+    const { db, builder, index } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const listing = vi.spyOn(builder, "categoryListingPageIds");
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "resource_links", key: null }, { id: 5, kind: "home", key: null }, { id: 6, kind: "resource_links", key: null }], next: 6 },
+      { resync: false, changes: [{ id: 7, kind: "home", key: null }], next: 7 },
+      { resync: false, changes: [], next: 7 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    expect(listing).toHaveBeenCalledTimes(1);
   });
 
   it("a government_terms change queues every term page", async () => {

@@ -146,6 +146,31 @@ describe("site builder", () => {
     expect(api.calls.filter((c) => c === "latestOfKind:stories")).toHaveLength(2);
   });
 
+  it("one run fetches the resource links once, for every page that shows them (home, connect, kind listings, category pages, indexes)", async () => {
+    const { api, builder } = setup(new Map());
+    api.sectors = [{ key: "economy", kind: "sectors", name: "Economy", isActive: true, topPostKey: null, featurePostKey: null }];
+    const links = vi.spyOn(api, "resourceLinks");
+    await builder.rebuild(["home", "connect", "kind:releases", "kind:stories", "category:sectors:economy", "index:sectors", "ministries"], { settings: bcSettings() });
+    expect(links).toHaveBeenCalledTimes(1);
+  });
+
+  it("a failed resource-links or home fetch fails only the page that hit it: the next page in the run fetches again", async () => {
+    const { storage, api, builder } = setup(new Map([["S1", post({ key: "S1", kind: "stories" })]]));
+    const links = api.resourceLinks;
+    let linkFailures = 1;
+    api.resourceLinks = async () => { if (linkFailures-- > 0) throw new Error("News API 503"); return links(); };
+    const home = api.home;
+    let homeFailures = 1;
+    api.home = async () => { if (homeFailures-- > 0) throw new Error("News API 502"); return home(); };
+    const run = {};
+    // Both fetches fail on the first page; the second page succeeds only if both were forgotten.
+    await expect(builder.renderPage("kind:stories", { settings: bcSettings() }, run)).rejects.toThrow(/News API 50[23]/);
+    await builder.renderPage("kind:stories", { settings: bcSettings() }, run);
+    expect(html(storage, "stories/index.html")).toContain("/releases/S1/");
+    expect(linkFailures).toBeLessThan(0);
+    expect(homeFailures).toBeLessThan(0);
+  });
+
   it("aggregatePageIds and sitemap:pages include the four kind listings", async () => {
     const { storage, builder } = setup(new Map());
     expect(await builder.aggregatePageIds()).toEqual(expect.arrayContaining(["kind:releases", "kind:stories", "kind:factsheets", "kind:updates"]));
