@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import request from "supertest";
-import { hashPassword } from "@gcpe/auth";
+import { hashPassword, mintLocalToken } from "@gcpe/auth";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createDistributionTestDb, sampleMessageRequest } from "../test/helpers";
 import { startSmtpSink } from "../test/smtp-sink";
@@ -33,6 +33,25 @@ describe("startDistribution", () => {
       LOCAL_AUTH_SECRET: "x".repeat(32),
     };
   }
+
+  it("applies the test-site send cap to POST /messages only while MAIL_REDIRECT_TO is set", async () => {
+    const recipients = Array.from({ length: 12 }, (_, i) => ({ email: `subscriber${i}@example.com`, substitutions: {} }));
+    const token = await mintLocalToken({ secret: "x".repeat(32), subject: "nod", azp: "nod", roles: ["Distribution.Send"] });
+    const post = async (env: NodeJS.ProcessEnv, key: string) => {
+      const handle = await startDistribution(env);
+      const res = await request(handle.app)
+        .post("/api/messages")
+        .set("authorization", `Bearer ${token}`)
+        .send({ ...sampleMessageRequest, recipients, idempotencyKey: key });
+      const status = await request(handle.app).get(`/api/batches/${res.body.batchId}`).set("authorization", `Bearer ${token}`);
+      await Promise.all([...handle.closeBeforeServer, ...handle.closers].map((c) => c.close()));
+      return status.body;
+    };
+    const redirected = await post(await testEnv(), "cap-on");
+    expect(redirected).toMatchObject({ total: 12, pending: 5, failed: 7 });
+    const real = await post({ ...(await testEnv()), MAIL_REDIRECT_TO: "", MAIL_ALLOW_REAL_RECIPIENTS: "true" }, "cap-off");
+    expect(real).toMatchObject({ total: 12, pending: 12, failed: 0 });
+  });
 
   it("returns a handle whose app answers health checks", async () => {
     const handle = await startDistribution(await testEnv());
