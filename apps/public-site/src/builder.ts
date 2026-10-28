@@ -8,6 +8,7 @@ import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsInde
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./pages/categories";
 import { renderConnectPage } from "./pages/connect";
 import { renderContactsPage } from "./pages/contacts";
+import { renderPrivacyPage } from "./pages/privacy";
 import { LATEST_COUNT } from "./pages/format";
 import { renderHomePage } from "./pages/home";
 import { hasBiography, renderBiographyPage } from "./pages/minister";
@@ -376,7 +377,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         }
         case "sitemap-pages": {
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "search" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" })];
+          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "search" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" })];
           for (const id of await categoryIds(run)) {
             const page = parsePageId(id)!;
             paths.push(pageUrl(site, page));
@@ -400,6 +401,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         case "contacts":
           await storage.write(pageFiles(p)[0]!, renderContactsPage(await ministries(run), (opts.settings ?? themeDefaults(site.theme)).contactsPage, site, opts));
+          return [];
+        case "privacy":
+          await storage.write(pageFiles(p)[0]!, renderPrivacyPage((opts.settings ?? themeDefaults(site.theme)).pageText.privacy, site, opts));
           return [];
         case "legacy-redirects": {
           // Sorted, so an unchanged map writes the same bytes.
@@ -435,7 +439,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     async aggregatePageIds() {
       const run: RunCache = {};
       // sitemap:pages after the category pages: it lists the biography pages they write.
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "legacy-redirects", ...(await categoryIds(run)), "sitemap:pages"];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "legacy-redirects", ...(await categoryIds(run)), "sitemap:pages"];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;

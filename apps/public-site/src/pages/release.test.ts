@@ -206,6 +206,30 @@ describe("release page", () => {
     }
   });
 
+  it("licence line after the assets list with the settings text and link; empty text -> no line; javascript: url -> link text only", () => {
+    const withLicence = (over: Partial<ReturnType<typeof bcSettings>["pageText"]["assetLicence"]>) => {
+      const settings = bcSettings();
+      settings.pageText.assetLicence = { ...settings.pageText.assetLicence, ...over };
+      return dom({ hasMediaAssets: true }, ctx, { settings });
+    };
+    const d = withLicence({});
+    const line = d.querySelector("#assets > p.assets-licence")!;
+    expect(line.textContent).toBe("These assets are subject to the terms of the News Footage License - British Columbia.");
+    expect(line.querySelector("a")?.getAttribute("href")).toBe("https://news.gov.bc.ca/files/News_Footage_License_British_Columbia.pdf");
+    expect(d.querySelector("#assets .media-assets-container + p.assets-licence")).not.toBeNull();
+    expect(withLicence({ text: "" }).querySelector(".assets-licence")).toBeNull();
+    const bad = withLicence({ url: "javascript:alert(1)" });
+    expect(bad.querySelector(".assets-licence")?.textContent).toBe("These assets are subject to the terms of the News Footage License - British Columbia.");
+    expect(bad.querySelector(".assets-licence a")).toBeNull();
+    const esc = withLicence({ text: "<i>x</i>", linkText: "<b>y</b>" });
+    expect(esc.querySelector(".assets-licence i, .assets-licence b")).toBeNull();
+    // No assets: no licence line.
+    const settings = bcSettings();
+    expect(dom({ hasMediaAssets: false }, ctx, { settings }).querySelector(".assets-licence")).toBeNull();
+    // Empty link text: no empty link.
+    expect(withLicence({ linkText: "" }).querySelector(".assets-licence a")).toBeNull();
+  });
+
   it("translations show language names with lang/hreflang and no target=_blank; #translationList and #translations each appear once", () => {
     const html = render({ azureTranslations: [{ key: "https://files.example/t/zh.pdf", label: "Chinese(Simplified)", length: 10 }, { key: "https://files.example/t/x.pdf", label: "Other", length: 10 }] });
     const d = expectAccessibleStructure(html);

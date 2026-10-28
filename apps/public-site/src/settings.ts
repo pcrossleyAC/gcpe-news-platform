@@ -61,6 +61,11 @@ export function settingsHashes(settings: SiteSettings, timeZone: string, now: Da
     ministryPagesHash: hash(settings.ministryPages),
     // Only /contacts/ shows the Media contacts page settings.
     contactsPageHash: hash(settings.contactsPage),
+    // Only /privacy/ shows the privacy text; the 404 page (in "static") and every release (its
+    // licence line) show their own parts, so one edit reaches only the pages that show it.
+    privacyHash: hash(settings.pageText.privacy),
+    notFoundHash: hash(settings.pageText.notFound),
+    assetLicenceHash: hash(settings.pageText.assetLicence),
     // Only the one account the release page's Share → Instagram links to, so another network's
     // edit (the Connect page's business) doesn't re-render every release.
     releaseShareHash: hash(releaseInstagram(settings) ?? null),

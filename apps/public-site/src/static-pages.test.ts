@@ -51,6 +51,21 @@ describe("static pages", () => {
     expect(form.querySelector('button[type="submit"]')?.textContent).toBe("Search");
     expect(body.querySelector('a[href="/site/archive/"]')).not.toBeNull();
   });
+  it("404.html shows the settings heading as h1 and the text; the search form is still prefilled from the path", () => {
+    const settings = bcSettings();
+    settings.pageText.notFound = { heading: "Gone <fishing>", text: "Try the search & more." };
+    const html = renderNotFoundPage(site, { settings });
+    const doc = expectAccessibleStructure(html);
+    expect(doc.querySelectorAll("h1")).toHaveLength(1);
+    expect(doc.querySelector("main h1")?.textContent).toBe("Gone <fishing>");
+    expect(doc.querySelector("main .not-found > p")?.textContent).toBe("Try the search & more.");
+    expect(html).not.toContain("<fishing>");
+    expect(doc.querySelector("main form[data-prefill-from-path]")).not.toBeNull();
+    expect(doc.querySelector("title")?.textContent).toContain("Gone <fishing>");
+    // Empty strings (a stored document missing them) do not crash.
+    settings.pageText.notFound = { heading: "", text: "" };
+    expect(() => renderNotFoundPage(site, { settings })).not.toThrow();
+  });
   it("robots.txt: a test site disallows everything; production names the sitemap", () => {
     expect(renderRobots(site, true)).toBe("User-agent: *\nDisallow: /\n");
     expect(renderRobots({ ...site, baseUrl: "https://news.example/site" }, false)).toBe("User-agent: *\nAllow: /\nSitemap: https://news.example/site/sitemap.xml\n");

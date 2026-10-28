@@ -109,6 +109,54 @@ describe("settings sections: contactsPage", () => {
   });
 });
 
+describe("settings sections: pageText", () => {
+  let tdb: TestDatabase;
+  beforeAll(async () => { tdb = await createPublicSiteTestDb(); });
+  afterAll(async () => { await tdb.drop(); });
+  beforeEach(async () => { await tdb.pool.query("TRUNCATE site_posts"); await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY"); });
+
+  /** Syncs the BC settings, then an edited copy; returns the items the second sync queued. */
+  async function edit(change: (d: ReturnType<typeof bcSettings>) => void) {
+    const storage = memoryStorage();
+    const newsApi = fakeNewsApi(new Map([["K1", post({ key: "K1", hasMediaAssets: true })], ["K2", post({ key: "K2" })]]));
+    const index = postIndex(tdb.db);
+    const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: null });
+    const deps: SyncDeps = { db: tdb.db, builder, index, newsApi, storage, site, test: false, batch: 200 };
+    (newsApi as FakeNewsApi).settings = { revision: 1, document: bcSettings() };
+    await syncSite(deps);
+    expect(storage.files.get("privacy/index.html")).toContain("B.C. Government Website Privacy Statement");
+    const doc = bcSettings();
+    change(doc);
+    (newsApi as FakeNewsApi).settings = { revision: 2, document: doc };
+    const enqueue = vi.spyOn(queue, "enqueuePages");
+    try {
+      await syncSite(deps);
+      return { items: enqueue.mock.calls[0]![1] as { pageId: string; priority: number }[], storage };
+    } finally {
+      enqueue.mockRestore();
+    }
+  }
+
+  it("a privacy edit queues exactly privacy", async () => {
+    const { items, storage } = await edit((d) => { d.pageText.privacy.title = "Our privacy promise"; });
+    expect(items).toEqual([{ pageId: "privacy", priority: PRIORITY.liveAggregate }]);
+    expect(storage.files.get("privacy/index.html")).toContain("Our privacy promise");
+  });
+
+  it("a notFound edit queues exactly static", async () => {
+    const { items, storage } = await edit((d) => { d.pageText.notFound.heading = "Nothing here"; });
+    expect(items).toEqual([{ pageId: "static", priority: PRIORITY.liveAggregate }]);
+    expect(storage.files.get("404.html")).toContain("Nothing here");
+  });
+
+  it("an assetLicence edit queues every post and nothing else", async () => {
+    const { items, storage } = await edit((d) => { d.pageText.assetLicence.linkText = "Footage licence v2"; });
+    expect(items.map((i) => i.pageId).sort()).toEqual(["post:K1", "post:K2"]);
+    expect(items.every((i) => i.priority === PRIORITY.bulkPost)).toBe(true);
+    expect(storage.files.get("releases/K1/index.html")).toContain("Footage licence v2");
+  });
+});
+
 describe("kickBackgroundSync", () => {
   let tdb: TestDatabase;
   beforeAll(async () => { tdb = await createPublicSiteTestDb(); });

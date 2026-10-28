@@ -7,7 +7,7 @@ import type { SectionPages } from "./rebuild";
 const FIRST = ["static", "home", "ministries", "archive", "search", "sitemap"];
 
 /** The settings sections a release page bakes in (pages/release.ts). */
-const RELEASE_SECTIONS: ReadonlySet<SectionPages> = new Set(["releaseShare", "ministryPages"]);
+const RELEASE_SECTIONS: ReadonlySet<SectionPages> = new Set(["releaseShare", "ministryPages", "releaseLicence"]);
 
 /** spec §6.2 "templates change": every page. Network reads only; the caller enqueues. */
 export async function rebuildAllItems(builder: SiteBuilder): Promise<{ pageId: string; priority: number }[]> {
@@ -36,7 +36,7 @@ export async function enqueueChromeChanges(db: Db, builder: SiteBuilder, changes
   const items: { pageId: string; priority: number }[] = [];
   for (const section of changes.sections) {
     // Home's Connect With Us icons come from the connect settings too; "contacts" is its own page id.
-    const ids = section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home"] : section === "releaseShare" ? [] : [section];
+    const ids = section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home"] : section === "releaseShare" || section === "releaseLicence" ? [] : [section];
     items.push(...ids.map((pageId) => ({ pageId, priority: PRIORITY.liveAggregate })));
   }
   // Every release page bakes in the ministryPages labels (Media Contacts, More from this

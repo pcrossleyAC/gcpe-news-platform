@@ -317,3 +317,12 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
  * no number; ours leaves the empty div out, so the name breaks the line itself. */
 .comm-contacts .contact-name{display:block}
 @media (min-width: 768px) { .after-hours span{padding-left:200px} }
+
+/* The privacy page (pages/privacy.ts): legacy Privacy.cshtml's label h3 is a paragraph here, the title the h1. */
+.connect .page-label{font-size:calc(1.3rem + .6vw);font-weight:500;line-height:1.2;margin:0 0 .5rem;padding-top:10px;color:var(--color-text)}
+@media (min-width: 1200px) { .connect .page-label{font-size:1.75rem} }
+/* Legacy floats .home-body left (beside a column the privacy page lacks); unfloated here so the footer clears a long statement. */
+.connect>.home-body#main-content-release{float:none}
+.connect .home-body#main-content-release h1{font-size:18px;font-weight:600;line-height:1.2;margin:0 0 15px}
+/* The licence sentence after a release's Media Assets list (pages/release.ts). */
+.story-body .assets .assets-licence{font-size:14px;line-height:1.4;margin:10px 0 0}

@@ -27,6 +27,10 @@ export interface SiteRenderState {
   ministryPagesHash: string;
   /** The Media contacts page settings (/contacts/ only). */
   contactsPageHash: string;
+  /** pageText.privacy (/privacy/), pageText.notFound (404.html) and pageText.assetLicence (every release's licence line). */
+  privacyHash: string;
+  notFoundHash: string;
+  assetLicenceHash: string;
   /** The Instagram account release pages' Share list links to (settings.ts releaseInstagram). */
   releaseShareHash: string;
   /** ministry-menu.ts's hash of the header menu every page bakes in. Not one of `HASHES`: it is
@@ -35,7 +39,7 @@ export interface SiteRenderState {
 }
 
 /** The pages a settings section reaches, other than through every page's footer. */
-export type SectionPages = "static" | "connect" | "ministryPages" | "releaseShare" | "contacts";
+export type SectionPages = "static" | "connect" | "ministryPages" | "releaseShare" | "contacts" | "privacy" | "releaseLicence";
 
 /** Not served publicly: a leading dot (denied by the `/site` static mount's `dotfiles: "deny"`
  * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
@@ -64,7 +68,7 @@ interface SiteStateMarker extends SiteRenderState {
   baseUrl: string | null;
 }
 
-const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash"] as const;
+const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "notFoundHash", "assetLicenceHash"] as const;
 
 /** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`, and
  * `chromeChanges` then treats it as matching. */
@@ -107,7 +111,7 @@ export async function recordedNonEmptyMenu(storage: SiteStorage): Promise<boolea
  * `sections`: a theme or banner change reaches only the `static` page (theme.css,
  * site-banner.json), a connect change the Connect page and home, a change to the release Share
  * list's Instagram account every release page, a ministryPages change the ministry pages and every
- * release page (its labels), a contactsPage change the /contacts/ page — spec "Delivery": the cheapest correct effect per section; see
+ * release page (its labels), a contactsPage change the /contacts/ page, a privacy edit /privacy/, a notFound edit 404.html (the "static" page) and an assetLicence edit every release page — spec "Delivery": the cheapest correct effect per section; see
  * enqueueChromeChanges.
  */
 export async function chromeChanges(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<{ all: boolean; sections: SectionPages[]; adoptMenuHash?: boolean }> {
@@ -123,11 +127,13 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
   );
   if (all || !previous) return { all: true, sections: [] };
   const sections: SectionPages[] = [];
-  if (previous.themeHash !== state.themeHash || previous.bannerHash !== state.bannerHash) sections.push("static");
+  if (previous.themeHash !== state.themeHash || previous.bannerHash !== state.bannerHash || previous.notFoundHash !== state.notFoundHash) sections.push("static");
   if (previous.connectHash !== state.connectHash) sections.push("connect");
   if (previous.ministryPagesHash !== state.ministryPagesHash) sections.push("ministryPages");
   if (previous.releaseShareHash !== state.releaseShareHash) sections.push("releaseShare");
   if (previous.contactsPageHash !== state.contactsPageHash) sections.push("contacts");
+  if (previous.privacyHash !== state.privacyHash) sections.push("privacy");
+  if (previous.assetLicenceHash !== state.assetLicenceHash) sections.push("releaseLicence");
   // A marker from before the menu hash: nothing to rebuild for it, but the hash must be recorded
   // or a later menu change would still read as matching.
   return { all: false, sections, adoptMenuHash: previous.ministryMenuHash === null };

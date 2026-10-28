@@ -9,9 +9,10 @@ import { DEFAULT_THEME, themeCss } from "./theme-css";
 
 export function renderNotFoundPage(site: SiteInfo, opts: PageOptions): string {
   const base = basePath(site);
-  return renderPage("Page not found", site, `${base}/404.html`, `<div class="home-body not-found">
-<h1>Page not found</h1>
-<p>The page you asked for isn't here. It may have moved or been removed.</p>
+  const { heading, text } = (opts.settings ?? themeDefaults(site.theme)).pageText.notFound;
+  return renderPage(heading || "Page not found", site, `${base}/404.html`, `<div class="home-body not-found">
+<h1>${e(heading)}</h1>
+${text.trim() !== "" ? `<p>${e(text)}</p>\n` : ""}
 <form class="search-panel-bar" role="search" aria-label="Search for the page" action="${e(base)}/search/" method="get" data-prefill-from-path>
 <label for="not-found-q">Search for the page</label>
 <input id="not-found-q" name="q" type="search">
