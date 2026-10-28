@@ -16,9 +16,9 @@ import { chromium, type Browser, type Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { AXE_TAGS } from "../../scripts/site-quality";
 import { bestRowOffsetMismatch, regionMismatch } from "./diff";
-import { PARITY_PAGES, VIEWPORTS, parseOursOverrides } from "./pages";
+import { PARITY_PAGES, VIEWPORTS, buildOursUrl, parseOursOverrides } from "./pages";
 import { REGIONS, STRICT_MAX, type RegionName } from "./regions";
-import { STRUCTURE, structureReport, type StructureRow } from "./structure";
+import { STRUCTURE, structureFailed, structureReport, type StructureRow } from "./structure";
 
 export type RowStatus = "ok" | "mismatch" | "missing" | "skipped";
 export interface Row {
@@ -147,7 +147,7 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
         const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
         try {
           const legacyUrl = join1(args.legacy, pg.path);
-          const oursUrl = join1(args.target, overrides[pg.name] ?? pg.oursPath ?? pg.path);
+          const oursUrl = buildOursUrl(args.target, overrides[pg.name] ?? pg.oursPath ?? pg.path);
           const legacyStatus = await load(legacyPage, legacyUrl);
           const oursStatus = await load(oursPage, oursUrl);
           loads.push({ page: pg.name, width: vp.width, legacyStatus, oursStatus });
@@ -227,7 +227,7 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
     const missing = s.rows.filter((r) => r.status === "missing").map((r) => r.selector);
     const absent = s.rows.filter((r) => r.status === "legacy-absent").map((r) => r.selector);
     log(
-      `${missing.length ? "FAIL" : "ok  "} structure ${s.page.padEnd(10)} ${String(s.width).padStart(4)} ok=${count("ok")} missing=${missing.length}` +
+      `${structureFailed(s.rows) ? "FAIL" : "ok  "} structure ${s.page.padEnd(10)} ${String(s.width).padStart(4)} ok=${count("ok")} missing=${missing.length}` +
         ` legacy-absent=${absent.length}` +
         (missing.length ? ` missing: ${missing.join(" | ")}` : "") +
         (absent.length ? ` (legacy-absent: ${absent.join(" | ")})` : ""),
@@ -236,7 +236,7 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
   for (const a of axeFailures) log(`FAIL axe ${a.page} ${a.width} ${a.impact} ${a.id} (${a.nodes} nodes)`);
   for (const e of loadErrors) log(`FAIL load ${e}`);
 
-  const failed = rows.some((r) => r.fail) || structures.some((s) => s.rows.some((r) => r.status === "missing")) || axeFailures.length > 0 || loadErrors.length > 0;
+  const failed = rows.some((r) => r.fail) || structures.some((s) => structureFailed(s.rows)) || axeFailures.length > 0 || loadErrors.length > 0;
   await writeFile(
     join(args.out, "report.json"),
     JSON.stringify({ target: args.target, legacy: args.legacy, strictMax: STRICT_MAX, loads, rows, structures, axeFailures, loadErrors, failed }, null, 2),

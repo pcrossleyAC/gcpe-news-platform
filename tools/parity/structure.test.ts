@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from "vitest";
-import { PARITY_PAGES, parseOursOverrides } from "./pages";
-import { STRUCTURE, structureReport } from "./structure";
+import { PARITY_PAGES, buildOursUrl, parseOursOverrides } from "./pages";
+import { STRUCTURE, structureFailed, structureReport } from "./structure";
 
 describe("structureReport", () => {
   it("ok when both have the selector; missing when only legacy has it; legacy-absent when legacy lacks it", () => {
@@ -47,5 +47,34 @@ describe("parseOursOverrides", () => {
     expect(parseOursOverrides("release=/releases/A/,home=/x/")).toEqual({ release: "/releases/A/", home: "/x/" });
     expect(() => parseOursOverrides("nope=/x/")).toThrow(/nope/);
     expect(() => parseOursOverrides("release")).toThrow();
+  });
+});
+
+describe("parseOursOverrides path validation", () => {
+  it.each(["release=//evil.com/x", "release=@evil.com/x", "release=/../x", "release=/a/..%2f", "release=https://evil.com/", "release=/a\\b", "release=releases/A/", "release=/a b"])(
+    "rejects %s",
+    (spec) => {
+      expect(() => parseOursOverrides(spec)).toThrow(/--ours/);
+    },
+  );
+});
+
+describe("buildOursUrl", () => {
+  it("keeps the target's path prefix and origin", () => {
+    expect(buildOursUrl("https://boxs.ca/site", "/releases/A/")).toBe("https://boxs.ca/site/releases/A/");
+    expect(buildOursUrl("https://boxs.ca/site/", "/search?q=housing")).toBe("https://boxs.ca/site/search?q=housing");
+    expect(buildOursUrl("https://boxs.ca", "/")).toBe("https://boxs.ca/");
+  });
+  it("throws when the result leaves the target origin or prefix", () => {
+    expect(() => buildOursUrl("https://boxs.ca/site", "/../../x")).toThrow(/escapes/);
+    expect(() => buildOursUrl("https://boxs.ca/site", "/../x")).toThrow(/escapes/);
+  });
+});
+
+describe("structureFailed", () => {
+  it("fails only on missing; legacy-absent and ok pass", () => {
+    expect(structureFailed([{ selector: ".a", status: "ok" }, { selector: ".b", status: "legacy-absent" }])).toBe(false);
+    expect(structureFailed([{ selector: ".a", status: "ok" }, { selector: ".b", status: "missing" }])).toBe(true);
+    expect(structureFailed([])).toBe(false);
   });
 });

@@ -32,7 +32,23 @@ export function parseOursOverrides(spec: string): Record<string, string> {
     const path = i > 0 ? entry.slice(i + 1) : "";
     if (!name || !path) throw new Error(`--ours: expected name=path, got "${entry}"`);
     if (!PARITY_PAGES.some((p) => p.name === name)) throw new Error(`--ours: unknown page "${name}"`);
+    if (!/^\/(?!\/)/.test(path) || /\.\.|[@\\:]|[\u0000-\u001f\u007f\s]/.test(path)) {
+      throw new Error(`--ours: invalid path "${path}" for ${name} (must start with a single "/", no "..", "@", "\\", ":" or whitespace)`);
+    }
     out[name] = path;
   }
   return out;
+}
+
+/**
+ * Joins a site path onto the target keeping the target's own path prefix (e.g. https://boxs.ca/site),
+ * and asserts the result stays on the target's origin and under that prefix.
+ */
+export function buildOursUrl(target: string, path: string): string {
+  const base = new URL(target.replace(/\/+$/, "") + "/");
+  const url = new URL(path.replace(/^\/+/, ""), base);
+  if (url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) {
+    throw new Error(`ours URL ${url.href} escapes target ${base.href}`);
+  }
+  return url.href;
 }
