@@ -59,6 +59,9 @@ export function sanitizeBodyHtml(html: string): string {
       a: safeUrlAttribute("href", true),
       img: safeUrlAttribute("src", false),
     },
+    // An <a> with no href left (none given, or refused above) is unwrapped to its contents: no
+    // hrefless <a> reaches a page (plan 2 P6). Core's sanitizeBioHtml does the same.
+    exclusiveFilter: (frame) => (frame.tag === "a" && !frame.attribs.href ? "excludeTag" : false),
     // Removed entirely, content and all — never merely unwrapped to bare text.
     nonTextTags: ["script", "style", "textarea", "option", "noscript", "iframe", "object", "embed", "form"],
   });

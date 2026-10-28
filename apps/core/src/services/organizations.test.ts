@@ -293,8 +293,10 @@ describe("organizations service", () => {
       // Measured after sanitising: markup that sanitising removes does not count.
       const padded = para(MAX_BIO_CHARS) + `<span style="${"x".repeat(5_000)}"></span>`;
       expect(orgProfilePatchSchema.parse({ minister: { detailsHtml: padded } }).minister!.detailsHtml).toHaveLength(MAX_BIO_CHARS);
-      // The raw input is capped before sanitising.
-      expect(orgProfilePatchSchema.safeParse({ minister: { detailsHtml: " ".repeat(100_001) } }).success).toBe(false);
+      // The raw input is capped before sanitising, with its own message (the sanitised size may be far smaller).
+      expect(issues({ minister: { detailsHtml: " ".repeat(100_001) } })).toEqual([
+        { path: ["minister", "detailsHtml"], message: "This biography is too large to process (over 100,000 characters before cleaning). Paste it as plain text and format it in the editor." },
+      ]);
     });
 
     it("PATCH teamLinks replaces the list; an unsafe url is refused on teamLinks[0].url", async () => {
@@ -354,6 +356,21 @@ describe("organizations service", () => {
       // An explicit [] is the same content too; a non-empty list is a change.
       expect((await upsertOrganization(tdb.db, { ...healthOrg, teamLinks: [] }, subs)).changed).toBe(false);
       expect((await upsertOrganization(tdb.db, { ...healthOrg, teamLinks: [{ text: "a", url: "/a" }] }, subs)).changed).toBe(true);
+    });
+
+    it("an upsert that omits teamLinks on a row with a non-empty list keeps the list and is not a change (no event)", async () => {
+      const links = [{ text: "Deputy", url: "/deputy" }];
+      await upsertOrganization(tdb.db, { ...healthOrg, teamLinks: links }, subs);
+      expect(await orgEvents("health")).toHaveLength(1);
+      const again = await upsertOrganization(tdb.db, healthOrg, subs);
+      expect(again.changed).toBe(false);
+      expect(again.record.teamLinks).toEqual(links);
+      expect(await orgEvents("health")).toHaveLength(1);
+      // A real change that omits teamLinks still keeps the stored list in the row and the event.
+      const renamed = await upsertOrganization(tdb.db, { ...healthOrg, displayName: "Health renamed" }, subs);
+      expect(renamed.changed).toBe(true);
+      expect(renamed.record.teamLinks).toEqual(links);
+      expect((await orgEvents("health")).at(-1)!.data.teamLinks).toEqual(links);
     });
   });
 

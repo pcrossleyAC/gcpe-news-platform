@@ -80,4 +80,12 @@ describe("sanitizeBodyHtml", () => {
     expect(sanitizeBodyHtml('<p class="visually-hidden">x</p>')).toBe("<p>x</p>");
     expect(sanitizeBodyHtml('<span class="visually-hidden-focusable">x</span>')).toBe("<span>x</span>");
   });
+
+  it("unwraps an <a> left without an href (none, empty, unsafe, fragment) to its text, keeping inline markup", () => {
+    expect(sanitizeBodyHtml('<p><a name="x">anchor</a> <a href="javascript:alert(1)"><em>Click</em></a> <a href="https://gov.example/">kept</a></p>')).toBe(
+      '<p>anchor <em>Click</em> <a href="https://gov.example/">kept</a></p>',
+    );
+    expect(sanitizeBodyHtml("<a>bare</a>")).toBe("bare");
+  });
 });
+
