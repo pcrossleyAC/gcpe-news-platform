@@ -3,7 +3,7 @@ import type { SubscriberConfig, TermKind } from "@gcpe/events";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { isHqAbbreviation, isNonPublicAbbreviation, upsertOrganization } from "../services/organizations";
 import { upsertTerm } from "../services/terms";
-import { mapMinistry, mapTerm, type LegacyLinkRow, type LegacyMinistryRow, type LegacyMinistrySectorRow, type LegacyTermRow } from "./map";
+import { mapMinistry, mapMinistryExtras, mapTerm, mapTermExtras, type LegacyLinkRow, type LegacyMinistryRow, type LegacyMinistrySectorRow, type LegacyTermRow } from "./map";
 import { Q_MINISTRIES, Q_MINISTRY_SECTORS, Q_MINISTRY_SERVICES, Q_MINISTRY_TOPICS, Q_SECTORS, Q_SERVICES, Q_SERVICES_PRESENT, Q_TAGS, Q_THEMES } from "./queries";
 
 function groupBy<T, K>(rows: T[], key: (r: T) => K): Map<K, T[]> {
@@ -27,7 +27,7 @@ export async function importLegacyReference(db: Db, source: LegacySource, subscr
   else result.missingTables.push("dbo.Service");
   for (const [kind, q] of termQueries) {
     for (const row of await source.query<LegacyTermRow>(q)) {
-      const { changed } = await upsertTerm(db, mapTerm(kind, row), subscribers, { legacyId: norm(row.Id) });
+      const { changed } = await upsertTerm(db, mapTerm(kind, row), subscribers, { legacyId: norm(row.Id), legacyExtras: mapTermExtras(kind, row) });
       result.terms.total++;
       if (changed) result.terms.changed++;
     }
@@ -50,6 +50,7 @@ export async function importLegacyReference(db: Db, source: LegacySource, subscr
     const { changed, skippedStaffEdit } = await upsertOrganization(db, org, subscribers, {
       respectStaffEdits: true,
       legacyId: id,
+      legacyExtras: mapMinistryExtras(row),
       isHqOnCreate: isHqAbbreviation(row.Abbreviation),
       isPublicOnCreate: !isNonPublicAbbreviation(row.Abbreviation),
     });

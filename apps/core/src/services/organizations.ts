@@ -5,6 +5,7 @@ import { enqueueEvent, orgKeyFromName, orgRecordSchema, type OrgRecord, type Org
 import { isSafeUrl } from "@gcpe/site-settings";
 import { organizations, userOrganizations } from "../db/schema";
 import { CORE_SOURCE, lockAggregate, orgAggregateId, orgSuccessionAggregateId, userAggregateId } from "./aggregate";
+import { sameLegacyExtras, type LegacyExtras } from "./legacy-extras";
 import { MAX_BIO_CHARS, isBlankHtml, sanitizeBioHtml } from "./bio-html";
 import { emitUserUpserted } from "./users";
 
@@ -95,13 +96,21 @@ export async function upsertOrganization(
      * For the admin PUT route. The seed and importer leave it off: legacy data may already repeat one.
      */
     checkAbbreviation?: boolean;
+    /**
+     * Raw legacy HTML (legacy-extras.ts). Only the importer passes it. undefined keeps the stored value, so a
+     * staff edit, PUT or seed never wipes it; null clears it. A difference alone is stored silently: no event
+     * (it is not part of OrgRecord), no updatedAt, and it is refreshed even for a staff-edited organization.
+     */
+    legacyExtras?: LegacyExtras | null;
   } = {},
 ): Promise<{ record: OrgRecord; changed: boolean; skippedStaffEdit?: true }> {
   const parsed = orgInputSchema.parse(input);
   return db.transaction(async (tx) => {
     await lockAggregate(tx, orgAggregateId(parsed.key));
     const [existing] = await tx.select().from(organizations).where(eq(organizations.key, parsed.key)).for("update");
+    const extrasDiffer = opts.legacyExtras !== undefined && !sameLegacyExtras(existing?.legacyExtras, opts.legacyExtras);
     if (opts.respectStaffEdits && existing?.staffEditedAt) {
+      if (extrasDiffer) await tx.update(organizations).set({ legacyExtras: opts.legacyExtras ?? null }).where(eq(organizations.key, parsed.key));
       return { record: toOrgRecord(existing), changed: false, skippedStaffEdit: true };
     }
     const data = {
@@ -122,10 +131,14 @@ export async function upsertOrganization(
     if (existing) {
       const { updatedAt: _u, ...current } = toOrgRecord(existing);
       if (!clearSuccessors && sameContent(current, data)) {
-        if (opts.legacyId !== undefined && opts.legacyId !== existing.legacyId) {
+        const legacyIdDiffers = opts.legacyId !== undefined && opts.legacyId !== existing.legacyId;
+        if (legacyIdDiffers || extrasDiffer) {
           const [row] = await tx
             .update(organizations)
-            .set({ legacyId: opts.legacyId })
+            .set({
+              ...(legacyIdDiffers ? { legacyId: opts.legacyId } : {}),
+              ...(extrasDiffer ? { legacyExtras: opts.legacyExtras ?? null } : {}),
+            })
             .where(eq(organizations.key, data.key))
             .returning();
           return { record: toOrgRecord(row!), changed: false };
@@ -136,6 +149,7 @@ export async function upsertOrganization(
     const values = {
       ...data,
       legacyId: opts.legacyId ?? existing?.legacyId ?? null,
+      ...(opts.legacyExtras !== undefined ? { legacyExtras: opts.legacyExtras } : {}),
       updatedAt: opts.now ? opts.now() : new Date(),
       ...(opts.staffEdit ? { staffEditedAt: opts.now ? opts.now() : new Date() } : {}),
       ...(clearSuccessors ? { successorKeys: [] } : {}),

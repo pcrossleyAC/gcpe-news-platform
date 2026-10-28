@@ -1,6 +1,7 @@
 import type { TermKind } from "@gcpe/events";
 import type { OrgInput } from "../services/organizations";
 import type { TermInput } from "../services/terms";
+import { pickLegacyExtras, type LegacyExtras } from "../services/legacy-extras";
 
 export interface LegacyMinistryRow extends Record<string, unknown> {
   Id: string;
@@ -23,6 +24,12 @@ export interface LegacyMinistryRow extends Record<string, unknown> {
   FlickrUrl: string | null;
   YoutubeUrl: string | null;
   AudioUrl: string | null;
+  /** Hidden legacy HTML (see services/legacy-extras.ts). Optional: absent in rows from before the columns were selected. */
+  MiscHtml?: string | null;
+  MiscRightHtml?: string | null;
+  FacebookEmbedHtml?: string | null;
+  YoutubeEmbedHtml?: string | null;
+  AudioEmbedHtml?: string | null;
   ContactUserId: number | null;
   ContactFullName: string | null;
   ContactPhone: string | null;
@@ -58,6 +65,12 @@ export interface LegacyTermRow extends Record<string, unknown> {
   FlickrUrl?: string | null;
   YoutubeUrl?: string | null;
   AudioUrl?: string | null;
+  // dbo.Sector only (themes, tags and services have none)
+  MiscHtml?: string | null;
+  MiscRightHtml?: string | null;
+  FacebookEmbedHtml?: string | null;
+  YoutubeEmbedHtml?: string | null;
+  AudioEmbedHtml?: string | null;
 }
 
 function links(rows: LegacyLinkRow[]) {
@@ -117,4 +130,14 @@ export function mapTerm(kind: TermKind, row: LegacyTermRow): TermInput {
       audioUrl: row.AudioUrl ?? null,
     },
   };
+}
+
+/** The hidden legacy HTML of a ministry. Kept apart from OrgInput so it can never reach the org event. */
+export function mapMinistryExtras(row: LegacyMinistryRow): LegacyExtras | null {
+  return pickLegacyExtras(row);
+}
+
+/** The hidden legacy HTML of a sector; other term kinds have none. */
+export function mapTermExtras(kind: TermKind, row: LegacyTermRow): LegacyExtras | null {
+  return kind === "sector" ? pickLegacyExtras(row) : null;
 }

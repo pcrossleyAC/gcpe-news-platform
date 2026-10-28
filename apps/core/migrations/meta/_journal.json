@@ -71,6 +71,13 @@
       "when": 1793173923573,
       "tag": "0009_org_team_links",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793230926042,
+      "tag": "0010_org_legacy_extras",
+      "breakpoints": true
     }
   ]
 }
