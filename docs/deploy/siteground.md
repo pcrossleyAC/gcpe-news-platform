@@ -669,6 +669,71 @@ uploaded file back from `/files`. Its cleanup trap turns Project Blue Bridge bac
 the primary slide on the way out — on success and on failure alike — so a run that fails partway
 never leaves the banner showing or the pin up.
 
+## Site settings
+
+The public site's banner, footer, social links (the Connect page), theme colours and the section
+headings on ministry pages are one published settings document that staff edit in the Hub — no
+deploy needed. Every publish is kept in a history and can be restored. The design is in
+`docs/superpowers/specs/2026-10-27-site-settings-design.md`; this section is what an operator
+needs.
+
+**Where, and who.** Hub → Website → **Banner**, **Footer**, **Social links**, **Theme**,
+**Ministry pages** and **Settings history**. `NRMS.SiteEditor` edits; `Core.Admin` can read.
+The routes are `/nrms/api/site/settings/*` (reads: `NRMS.SiteEditor` or `Core.Admin`; writes:
+`NRMS.SiteEditor`).
+
+**Drafts, publishing, conflicts, restore.** Each editor has one draft of the whole document: Save
+draft keeps it (even with problems), Publish validates and makes it live as the next revision,
+with an optional note. If someone else published since the editor started, nothing is published
+and the draft is kept; the editor chooses to keep their section on top of the newer version or
+discard theirs. Restore on Settings history publishes an old revision again as a new one (note
+`Restored revision N`). Nothing is ever pruned.
+
+**What a publish rebuilds.** NRMS emits `site.settings.published`; the News API keeps the newest
+revision; the public site picks it up on its next sync turn, so changes show within a few minutes
+(the tick is the backstop).
+
+| Section | Effect on the public site |
+|---|---|
+| Theme | Regenerates `assets/theme.css` only; no page rebuild. |
+| Banner | Rewrites `assets/site-banner.json` only. Every page's small script fetches it, so the schedule (show from / hide after) needs no rebuild. No banner without JavaScript. Hidden while the Project Blue Bridge banner shows. |
+| Footer | Every page is rebuilt. The copyright year is part of the footer, so every January the whole site rebuilds once. |
+| Social links | Only the `/connect/` page. |
+| Ministry pages (headings) | Only the ministry pages. |
+
+Rebuilds go through the normal rebuild queue (see "The rebuild queue" under the public site), so a
+footer change reaches older pages over the following ticks, newest first.
+
+**Defaults.** Until the first publish the site uses `config/tenants/<tenant>.site-settings.json`
+when it exists, otherwise defaults built from the tenant's `site.theme`. `bc.site-settings.json`
+carries news.gov.bc.ca's footer lists and social links with the banner **off**. The file must
+validate against the settings schema; the Hub's Reset to defaults uses it too. NRMS answers the `/site/settings` routes with 503 if it has none.
+
+**Resilience.** The public site keeps the last applied settings in `.site-settings.json`, beside
+`.site-state.json`; both are dotfiles and are not served. If fetching settings from the News API
+fails, the site keeps the last applied settings (logged as "site settings unavailable"); with
+nothing applied yet it uses the defaults for that turn without recording them as applied. A
+settings failure never holds back Project Blue Bridge or deploy-driven rebuilds.
+
+**News API.** `GET /api/v2/site-settings` returns `{ revision, publishedAt, document }` for the
+newest published revision, or 404 when nothing has been published. It is public and sent with
+`Cache-Control: no-store`, like the other v2 routes.
+
+**Organizations (Hub → Organizations).** Three additions that belong with this work:
+
+- **Ministry page links.** The edit form has a "Ministry page links" group: ministry website,
+  Photos (Flickr) and Videos (YouTube) addresses, and ordered Featured Topics and Featured
+  Services lists (text and address). `NRMS.SiteEditor` and `Core.Admin` can edit them. They feed
+  the side column on the public ministry page; the column's headings come from Ministry pages
+  settings, and groups with nothing in them are left out.
+- **Abbreviation.** A Core.Admin-only field on Add ministry and the edit form: 2 to 10 capital
+  letters or digits (stored upper-case), unique across organizations. It is used in release
+  numbers (for example `2026HLTH0001`); changing it only affects releases approved afterwards.
+  A release whose lead ministry has no abbreviation cannot be approved.
+- **Not public.** A "Not public" badge sits beside every non-public organization's name, for every
+  role. Deactivating or reactivating never changes the Public flag, so after reactivating a
+  non-public ministry the status says "It isn't public: tick Public to list it on the public site."
+
 ## Importing legacy NRMS data (Phase 3e)
 
 `npm run nrms:import` reads legacy's SQL Server through `@gcpe/legacy-import` and writes NRMS's

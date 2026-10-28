@@ -648,6 +648,23 @@ audience they apply to: **All Calendar users**, **Calendar editors**, **HQ** (an
 - **Developer** — `npm run site:quality` builds a fictional, production-config copy of the public site and runs axe (zero violations allowed) and Lighthouse (accessibility ≥ 95, performance, best practices and SEO ≥ 90) on every page type. It needs Playwright's Chromium (`npx playwright install chromium`). CI runs it as the `site-quality` job.
 - **Developer** — `npm run search:spot-check` runs 20 searches over a fictional corpus in a throwaway database and lists the top 5 for each. Text mode must find every expected post. With the stand-in provider the semantic column proves only that the plumbing works; set `EMBEDDINGS_PROVIDER=azure-openai` and the Azure settings to check real relevance once Azure is available (Q70).
 
+## Site settings (2026-10-27)
+
+- **Site editor** — Hub → Website has new tabs: Banner, Footer, Social links, Theme, Ministry pages and Settings history. Each editor has one private draft. **Save draft** keeps it without changing the site; **Publish** puts it live, with an optional note for the history. Core administrators can look but not change.
+- **Site editor** — If someone else published while you were editing, nothing of yours is published and your draft is kept. You can keep your section on top of their version, or discard yours and use theirs.
+- **Site editor** — Settings history lists every publish. **Restore** brings an old one back as a new revision. Nothing is deleted.
+- **Site editor** — The banner can be Off, Information or Emergency, with an optional "show from" and "hide after" time (BC time) and an option for visitors to close it. It switches on and off by itself at those times; no publish is needed at the time. It needs JavaScript, and it is hidden while the Project Blue Bridge banner is up.
+- **Site editor** — Theme colours that are too faint to read are flagged, and the theme can't be published until they are fixed. Reset to defaults only fills in the form; nothing changes until you publish.
+- **Site editor** — Changes show on the public site within a few minutes. Colours and the banner are quickest; a footer change updates every page over the following ticks.
+- **Viewer** — The public site has a new Connect page (`/connect/`) listing the government's social accounts, and a footer and banner that staff can change. Ministry pages now have a side column: media contacts, the ministry's website, photos and videos, and its featured topics and services.
+- **Administrator** — On Organizations, each ministry's edit form has "Ministry page links" (website, Photos, Videos, Featured Topics, Featured Services). Site editors and administrators can edit these.
+- **Administrator** — Only Core administrators set a ministry's **Abbreviation** (2–10 capital letters or digits, no two ministries alike). It's used in release numbers. A release can't be approved until its lead ministry has one. Changing it affects only releases approved afterwards.
+- **Administrator** — A "Not public" badge now shows beside a non-public ministry. Deactivating and reactivating don't change Public, so tick Public after reactivating if the ministry should be listed.
+- **Operations** — Until the first publish, the site uses `config/tenants/<tenant>.site-settings.json` (the bc tenant's file carries news.gov.bc.ca's footer and social links, banner off). Edit that file and redeploy to change the starting point.
+- **Operations** — A theme or banner publish never rebuilds pages. A Connect change rebuilds the Connect page; a ministry-heading change rebuilds the ministry pages; a footer change rebuilds every page, and so does the new year each January.
+- **Operations** — If the News API can't be reached for settings, the site keeps the last settings it applied (saved in `.site-settings.json`, which isn't served) and still handles Project Blue Bridge and deploys as normal.
+- **Developer** — New public route `GET /api/v2/site-settings` on the News API (`{ revision, publishedAt, document }`, 404 before the first publish).
+
 ## Entra staff sign-in
 
 - **Editor**, **Site editor**, **Viewer** — "Sign in with Microsoft" signs you in with your government Microsoft account. You need a Core account first: if the screen says "Your account hasn't been set up", ask an administrator to create you. Signing out of the staff app doesn't sign you out of Microsoft.
