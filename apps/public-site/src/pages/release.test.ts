@@ -262,16 +262,17 @@ describe("release page", () => {
     const as = { hasMediaAssets: true, azureAssets: [{ key: "https://files.example/a/photo.jpg", label: "Photo", length: 10 }] };
 
     it("translations only: one div#assets.assets.expanded holds h2#translations and .media-assets-container > ul", () => {
-      const d = dom(tr);
+      const d = dom(tr, ctx, { settings: bcSettings() });
       expect(d.querySelectorAll("#assets")).toHaveLength(1);
       const box = d.querySelector(".story-body > div#assets.assets.expanded")!;
       expect(box.querySelector(":scope > h2#translations")?.textContent).toBe("Translations");
       expect(box.querySelectorAll(":scope > .media-assets-container > ul > li")).toHaveLength(1);
       expect(d.querySelector("div#translations")).toBeNull();
+      expect(d.querySelector(".assets-licence")).toBeNull();
     });
 
     it("media assets and translations: #assets is the media block, the translations block has no id, and #assets and #translations each appear once", () => {
-      const d = dom({ ...as, ...tr });
+      const d = dom({ ...as, ...tr }, ctx, { settings: bcSettings() });
       expect(d.querySelectorAll("#assets")).toHaveLength(1);
       expect(d.querySelectorAll("#translations")).toHaveLength(1);
       expect(d.querySelector("#assets > h2")?.textContent).toBe("Media Assets");
@@ -279,12 +280,20 @@ describe("release page", () => {
       expect(blocks).toHaveLength(2);
       expect(blocks[1]!.hasAttribute("id")).toBe(false);
       expect(blocks[1]!.querySelector(":scope > h2#translations")).not.toBeNull();
+      expect(d.querySelectorAll(".assets-licence")).toHaveLength(1);
+      expect(d.querySelector("#assets > p.assets-licence")).not.toBeNull();
     });
 
     it("media assets only: #assets is the media block and there is no #translations", () => {
       const d = dom({ ...as, azureTranslations: [] });
       expect(d.querySelector("#assets > h2")?.textContent).toBe("Media Assets");
       expect(d.querySelector("#translations")).toBeNull();
+    });
+
+    it("expectAccessibleStructure passes for all four", () => {
+      for (const over of [tr, { ...as, ...tr }, { ...as, azureTranslations: [] }, { azureTranslations: [] }]) {
+        expectAccessibleStructure(render(over));
+      }
     });
 
     it("neither: no #assets, no #translations", () => {
