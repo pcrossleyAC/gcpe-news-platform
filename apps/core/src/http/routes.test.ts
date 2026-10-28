@@ -628,7 +628,7 @@ describe("Core HTTP API", () => {
       await request(app).put("/api/cabinet-change").set(auth(admin)).send({ operations: [rename, { op: "succeed", key: "cab-a", expectedUpdatedAt: a.updatedAt, successors: [], moves }] }).expect(200);
       const invalid = await request(app).post("/api/cabinet-change/publish").set(auth(admin));
       expect(invalid.status).toBe(422);
-      expect(invalid.body).toEqual({ result: "invalid", problems: [{ op: 1, message: "Choose a successor for Cab A, or tick “No successor” to abolish it." }] });
+      expect(invalid.body).toEqual({ result: "invalid", problems: [{ op: 1, message: "Choose a successor for Cab A, or choose “No successor (abolish it)”." }] });
       await new Promise((r) => setTimeout(r, 5));
       await request(app).patch("/api/organizations/cab-a/profile").set(auth(admin)).send({ sortOrder: 5 }).expect(200);
       const stale = await request(app).post("/api/cabinet-change/publish").set(auth(admin));

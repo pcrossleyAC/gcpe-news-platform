@@ -228,7 +228,7 @@ describe("cabinet changes (new-government spec §5)", () => {
     await org("a", "Alpha", "ALPH");
     const op: CabinetOperation = { op: "succeed", key: "a", expectedUpdatedAt: await stamp("a"), successors: [], moves };
     const change = await draft([op]);
-    const problem = { op: 0, message: "Choose a successor for Alpha, or tick “No successor” to abolish it." };
+    const problem = { op: 0, message: "Choose a successor for Alpha, or choose “No successor (abolish it)”." };
     expect((await previewCabinetChange(tdb.db, change.id)).problems).toEqual([problem]);
     expect(await publishCabinetChange(tdb.db, change.id, subs)).toEqual({ result: "invalid", problems: [problem] });
     expect((await getOrganization(tdb.db, "a"))!.isActive).toBe(true);
@@ -251,7 +251,7 @@ describe("cabinet changes (new-government spec §5)", () => {
       { op: "update", key: "zzz", expectedUpdatedAt: a, patch: { displayName: "Z" } },
     ]);
     expect((await previewCabinetChange(tdb.db, change.id)).problems).toEqual([
-      { op: 0, message: "Choose a successor for Alpha or tick “No successor”, not both." },
+      { op: 0, message: "Choose a successor for Alpha or choose “No successor (abolish it)”, not both." },
       { op: 1, message: "Alpha is handed over more than once in this change." },
       { op: 1, message: "No new ministry in this change is called “nope”." },
       { op: 2, message: "The ministry “zzz” doesn't exist." },

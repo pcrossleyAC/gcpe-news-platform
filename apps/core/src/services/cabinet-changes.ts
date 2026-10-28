@@ -281,8 +281,8 @@ async function applyOperations(
     }
     if (handedOver.has(op.key)) problem(i, `${org.displayName} is handed over more than once in this change.`);
     handedOver.add(op.key);
-    if (op.noSuccessor && op.successors.length) problem(i, `Choose a successor for ${org.displayName} or tick “No successor”, not both.`);
-    if (!op.noSuccessor && !op.successors.length) problem(i, `Choose a successor for ${org.displayName}, or tick “No successor” to abolish it.`);
+    if (op.noSuccessor && op.successors.length) problem(i, `Choose a successor for ${org.displayName} or choose “No successor (abolish it)”, not both.`);
+    if (!op.noSuccessor && !op.successors.length) problem(i, `Choose a successor for ${org.displayName}, or choose “No successor (abolish it)”.`);
     for (const s of op.successors) if (s.ref !== undefined && !createdRefs.has(s.ref)) problem(i, `No new ministry in this change is called “${s.ref}”.`);
   });
 
