@@ -233,6 +233,24 @@ Run one step on its own with `-Only Core` (or `NewsApi`, `Nrms`, `Nod`, `Calenda
 importer reads and how it treats a re-run is in [siteground.md](siteground.md), "Importing legacy
 NRMS / NoD / Calendar data".
 
+**Translations and media assets.** The News API step copies posts from SQL, but legacy keeps
+their translation PDFs and media assets in Azure, which stays up. `import:files` fills in each
+legacy post's links from the public legacy API (`api.news.gov.bc.ca`); this server needs
+outbound HTTPS to it. It is not part of `Import-GcpeLegacy.ps1`: run it by hand after the News
+API step, days before cutover, then once more with `--since` after the last legacy import (the
+URL cutover runbook, section 3). From the live release:
+
+```powershell
+$env:DATABASE_URL = ((Get-Content C:\gcpe\config\gcpe.env | Where-Object { $_ -like 'NEWSAPI_DATABASE_URL=*' }) -split '=', 2)[1]
+node.exe C:\gcpe\current\tools\news-api-import-files.mjs --dry-run         # posts and hours; sends nothing
+node.exe C:\gcpe\current\tools\news-api-import-files.mjs --concurrency 2
+node.exe C:\gcpe\current\tools\news-api-import-files.mjs --since 2026-11-01
+Remove-Item Env:DATABASE_URL
+```
+
+What it reads, its options, and how it stops on a 429 are in [siteground.md](siteground.md),
+"Legacy translations and media assets". Not run on Windows from here.
+
 **Cutover only, never on Dev while legacy is live:** turning legacy's publisher off and handing
 scheduling to NRMS (`replay-to-news-api`, `release-holds`) is in siteground.md, "Cutover order".
 

@@ -144,23 +144,31 @@ async function runBuild() {
   // be run over SSH against the News API's localhost-only database without a checkout
   // (docs/deploy/siteground.md, "Seeding boxs.ca with public news.gov posts"). It finds its
   // migrations at ../migrations/news-api, which the step below lays down.
-  console.log("[build-siteground] bundling tools/news-api-import-public.mjs …");
-  await build({
-    entryPoints: [join(root, "apps/news-api/src/import/public-cli.ts")],
-    outfile: join(outDir, "tools/news-api-import-public.mjs"),
-    bundle: true,
-    platform: "node",
-    format: "esm",
-    target: "node24",
-    external: EXTERNAL,
-    banner: { js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);" },
-    minifyWhitespace: true,
-    minifySyntax: true,
-    minifyIdentifiers: false,
-    keepNames: true,
-    legalComments: "none",
-    logLevel: "warning",
-  });
+  // `import:files` (apps/news-api/src/import/files-cli.ts) likewise: the cutover step that fills
+  // legacy posts' translation and media-asset links (docs/deploy/siteground.md, "Legacy
+  // translations and media assets").
+  for (const [entry, tool] of [
+    ["apps/news-api/src/import/public-cli.ts", "tools/news-api-import-public.mjs"],
+    ["apps/news-api/src/import/files-cli.ts", "tools/news-api-import-files.mjs"],
+  ]) {
+    console.log(`[build-siteground] bundling ${tool} …`);
+    await build({
+      entryPoints: [join(root, entry)],
+      outfile: join(outDir, tool),
+      bundle: true,
+      platform: "node",
+      format: "esm",
+      target: "node24",
+      external: EXTERNAL,
+      banner: { js: "import { createRequire } from 'module'; const require = createRequire(import.meta.url);" },
+      minifyWhitespace: true,
+      minifySyntax: true,
+      minifyIdentifiers: false,
+      keepNames: true,
+      legalComments: "none",
+      logLevel: "warning",
+    });
+  }
 
   console.log("[build-siteground] copying migrations …");
   for (const app of APPS) {
