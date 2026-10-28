@@ -221,9 +221,10 @@ export function atomUrl(site: Pick<SiteInfo, "baseUrl">, p: { type: "home" } | {
 /** A per-kind feed's in-site path. */
 export const kindFeedUrl = (site: Pick<SiteInfo, "baseUrl">, kind: FeedPostKind, format: "rss" | "atom"): string => `${basePath(site)}/${kindFeedFile(kind, format)}`;
 
-/** A ministry's minister biography page (the third file of its category page). */
 /** The HTML sitemap page (`sitemap/index.html`, written with `sitemaps/pages.xml`). */
 export const sitemapHtmlUrl = (site: Pick<SiteInfo, "baseUrl">): string => `${basePath(site)}/sitemap/`;
+
+/** A ministry's minister biography page (the third file of its category page). */
 export const biographyUrl = (site: Pick<SiteInfo, "baseUrl">, key: string): string => `${basePath(site)}/ministries/${encodeURIComponent(key.toLowerCase())}/biography/`;
 
 /** A ministry's factsheets page (H5), site-relative without the base path: what a side-column

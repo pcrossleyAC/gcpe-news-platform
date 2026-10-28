@@ -1,6 +1,6 @@
 import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import type { GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "./dto";
+import type { CategoryDto, GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "./dto";
 import { renderAtomFeed, renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
@@ -52,6 +52,8 @@ export interface RunCache {
   homeFeatured?: Promise<{ top: PostDto | null; feature: PostDto | null }>;
   /** The Resources box's links, fetched once per run for every page that shows them. Forgotten if the fetch fails. */
   resourceLinks?: Promise<ResourceLinkDto[]>;
+  /** A sector, theme or tag list, fetched once per run for the sitemap's names and its category ids. Forgotten if the fetch fails. */
+  categoryLists?: Partial<Record<Exclude<CategoryKind, "ministries">, Promise<CategoryDto[]>>>;
 }
 
 /**
@@ -405,12 +407,25 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return [...ids].sort();
   }
 
+  /** `newsApi.categories(kind)`, fetched on first use in this run (a rejected fetch is forgotten, as runMemo's). */
+  function categoryList(run: RunCache, kind: Exclude<CategoryKind, "ministries">): Promise<CategoryDto[]> {
+    const lists = (run.categoryLists ??= {});
+    const held = lists[kind];
+    if (held) return held;
+    const p = newsApi.categories(kind);
+    lists[kind] = p;
+    p.catch(() => {
+      if (lists[kind] === p) delete lists[kind];
+    });
+    return p;
+  }
+
   /** Every sector, theme and tag page id: the News API's lists, then any the post index still holds. */
-  async function listingIds(): Promise<string[]> {
+  async function listingIds(run?: RunCache): Promise<string[]> {
     const ids = new Set<string>();
     for (const kind of CATEGORY_KINDS) {
       if (kind === "ministries") continue;
-      for (const c of await newsApi.categories(kind)) {
+      for (const c of await (run ? categoryList(run, kind) : newsApi.categories(kind))) {
         const id = categoryPageId(kind, c.key);
         if (id) ids.add(id);
       }
@@ -421,7 +436,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
 
   /** Every category page id (the run's ministry list, then the sector, theme and tag ones). */
   async function categoryIds(run: RunCache): Promise<string[]> {
-    return [...new Set([...(await ministryIds(ministries(run))), ...(await listingIds())])].sort();
+    return [...new Set([...(await ministryIds(ministries(run))), ...(await listingIds(run))])].sort();
   }
 
   /**
@@ -436,7 +451,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     const base = basePath(site);
     const link = (name: string, p: PageId) => ({ name, path: pageUrl(site, p) });
     // The Subscribe link is the header's (its text is a setting); the default text otherwise.
-    const subscribe = nav.headerLinks.find((l) => settingsHref(l.url, site) === `${base}/subscribe/`)?.text ?? "Subscribe";
+    // Paths compare without a trailing slash: a setting of "/subscribe" is the same link.
+    const bare = (path: string | null) => path?.replace(/\/+$/, "");
+    const subscribe = nav.headerLinks.find((l) => bare(settingsHref(l.url, site)) === bare(`${base}/subscribe/`))?.text ?? "Subscribe";
     const pages = [
       link("Home", { type: "home" }),
       link("Ministries", { type: "ministries" }),
@@ -455,7 +472,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     // Names by key; a category only the post index still holds has none, so its key stands in.
     const names = new Map<string, string>();
     for (const m of await ministries(run)) names.set(`ministries:${m.key.toLowerCase()}`, m.name);
-    for (const kind of CATEGORY_KINDS) if (kind !== "ministries") for (const c of await newsApi.categories(kind)) names.set(`${kind}:${c.key.toLowerCase()}`, c.name);
+    for (const kind of CATEGORY_KINDS) if (kind !== "ministries") for (const c of await categoryList(run, kind)) names.set(`${kind}:${c.key.toLowerCase()}`, c.name);
     const byKind: Record<CategoryKind, { name: string; entries: { name: string; path: string }[] }[]> = { ministries: [], sectors: [], themes: [], tags: [] };
     for (const id of await categoryIds(run)) {
       const page = parsePageId(id);

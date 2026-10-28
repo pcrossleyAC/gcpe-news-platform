@@ -32,6 +32,15 @@ describe("renderKindListing", () => {
     expect(alt.getAttribute("title")).toBe(`${title}: latest news`);
   });
 
+  it("the feed alternate carries the base path, and an HTML-special title is escaped in its attribute", () => {
+    const html = renderKindListing("stories", 'Tom & "Jerry" <b>', posts(1), [], { ...site, baseUrl: "https://news.example/site" }, { settings: bcSettings() });
+    const alt = expectAccessibleStructure(html).querySelector('link[rel="alternate"][type="application/rss+xml"]')!;
+    expect(alt.getAttribute("href")).toBe("/site/feeds/stories.xml");
+    expect(alt.getAttribute("title")).toBe('Tom & "Jerry" <b>: latest news');
+    expect(html).toContain('title="Tom &amp; &quot;Jerry&quot; &lt;b&gt;: latest news"');
+    expect(html).toContain('href="/site/feeds/stories.xml"');
+  });
+
   it("escapes the title", () => {
     const html = renderKindListing("stories", "A <b> & C", posts(4), [], site, { settings: bcSettings() });
     expect(html).toContain("A &lt;b&gt; &amp; C");

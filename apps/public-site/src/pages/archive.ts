@@ -3,6 +3,7 @@ import { isLegacyOnly, legacyHref } from "../government-terms";
 import type { IndexedPost } from "../post-index";
 import { icon } from "../icons";
 import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "../render";
+import { themeDefaults } from "../settings";
 import { pageUrl } from "../site-paths";
 import { displayDate, displayDateTime, monthName } from "./format";
 
@@ -40,6 +41,12 @@ export function archiveCard(site: Pick<SiteInfo, "baseUrl">, p: IndexedPost): st
 const cardList = (site: SiteInfo, posts: IndexedPost[]) =>
   `<div class="other-articles">\n<div class="regular-articles">\n${posts.map((p) => archiveCard(site, p)).join("\n")}\n</div>\n</div>`;
 
+/** The pages' closing control, as the listing pages': a Search News link (legacy's `.news-control .read-more`) to /search/ filtered by `query`. */
+function searchControl(site: SiteInfo, opts: PageOptions, query: string): string {
+  const labels = (opts.settings ?? themeDefaults(site.theme)).navigation.labels;
+  return `<div class="news-control">\n<a href="${e(`${pageUrl(site, { type: "search" })}?${query}`)}" class="read-more">${e(labels.searchNews)}</a>\n<div class="clear"></div>\n</div>`;
+}
+
 /** The archive index: every month with at least one post, grouped by year under an `h2`,
  * newest year and newest month first (months arrive already sorted — `postIndex.months()`). */
 export function renderArchiveIndex(months: { month: string; count: number }[], site: SiteInfo, opts: PageOptions = {}): string {
@@ -72,7 +79,9 @@ export function renderArchiveIndex(months: { month: string; count: number }[], s
 export function renderArchiveMonth(month: string, posts: IndexedPost[], site: SiteInfo, opts: PageOptions = {}): string {
   const list = posts.length ? cardList(site, posts) : "<p>Nothing was published this month.</p>";
   const title = `News from ${monthName(month)}`;
-  const body = `<div class="home-body archive-page" id="main-content-release">\n<h1>${e(title)}</h1>\n${list}\n<p><a href="${e(pageUrl(site, { type: "archive" }))}">All months</a></p>\n</div>`;
+  const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5)), 0)).getUTCDate();
+  const control = searchControl(site, opts, `from=${month}-01&to=${month}-${String(last).padStart(2, "0")}`);
+  const body = `<div class="home-body archive-page" id="main-content-release">\n<h1>${e(title)}</h1>\n${list}\n${control}\n<p><a href="${e(pageUrl(site, { type: "archive" }))}">All months</a></p>\n</div>`;
   return renderPage(title, site, pageUrl(site, { type: "archive-month", month }), body, opts);
 }
 
@@ -125,7 +134,9 @@ export function renderTermPage(term: GovernmentTermDto, posts: IndexedPost[], si
   const legacy = legacyHref(term);
   const note = legacy && posts.length > 0 ? `\n${legacyNote(legacy)}` : "";
   const list = posts.length ? cardList(site, posts) : `<p>Nothing has been published in this term yet.</p>`;
-  const body = `<div class="home-body archive-page" id="main-content-release">\n<h1>${e(title)}</h1>${label}${note}\n${list}\n<p><a href="${e(pageUrl(site, { type: "archive-terms" }))}">All government terms</a></p>\n</div>`;
+  // An open term has no `to`: the search page's own term links do the same, and the page never goes stale.
+  const control = searchControl(site, pageOpts, `from=${term.startDate}${term.endDate ? `&to=${term.endDate}` : ""}`);
+  const body = `<div class="home-body archive-page" id="main-content-release">\n<h1>${e(title)}</h1>${label}${note}\n${list}\n${control}\n<p><a href="${e(pageUrl(site, { type: "archive-terms" }))}">All government terms</a></p>\n</div>`;
   return renderPage(title, site, pageUrl(site, { type: "archive-term", slug: canonicalSlug ?? term.slug }), body, pageOpts);
 }
 

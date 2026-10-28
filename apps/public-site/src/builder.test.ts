@@ -512,6 +512,8 @@ describe("site builder", () => {
     await builder.renderPage("sitemap:pages", {});
     expect(html(storage, "sitemaps/pages.xml")).not.toContain("/biography/");
     expect(html(storage, "sitemaps/pages.xml")).toContain("<loc>https://news.example/ministries/health/</loc>");
+    expect(html(storage, "sitemap/index.html")).not.toContain("/biography/");
+    expect(html(storage, "sitemap/index.html")).toContain('href="/ministries/health/"');
     // A ministry with no minister never gets one; a vanished ministry loses all three files.
     await builder.renderPage("category:ministries:finance", {});
     expect(storage.files.has("ministries/finance/biography/index.html")).toBe(false);
@@ -554,6 +556,37 @@ describe("site builder", () => {
     const hrefs = [...new JSDOM(html(storage, "sitemap/index.html")).window.document.querySelectorAll("#main-content-release li > a")].map((a) => a.getAttribute("href")!);
     expect(hrefs.length).toBeGreaterThan(10);
     expect(hrefs.filter((h) => !h.startsWith("/hub/"))).toEqual([]);
+  });
+
+  it("sitemap:pages fetches each sector, theme and tag list once per run; a Themes group lists its pages", async () => {
+    const { storage, api, builder } = setup(new Map());
+    api.themes = [category({ key: "climate", name: "Climate", kind: "themes" })];
+    const fetched: string[] = [];
+    const categories = api.categories;
+    api.categories = async (kind) => { fetched.push(kind); return categories(kind); };
+    await builder.renderPage("sitemap:pages", {}, {});
+    expect(fetched.sort()).toEqual(["sectors", "tags", "themes"]);
+    const doc = new JSDOM(html(storage, "sitemap/index.html")).window.document;
+    const h2 = [...doc.querySelectorAll("#main-content-release > h2")].find((h) => h.textContent === "Themes")!;
+    expect([...h2.nextElementSibling!.querySelectorAll("li > a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([["Climate", "/themes/climate/"]]);
+  });
+
+  it("sitemap labels follow the settings: a custom Subscribe text (with or without the trailing slash) and Media Contacts heading", async () => {
+    for (const url of ["/subscribe/", "/subscribe"]) {
+      const { storage, builder } = setup(new Map());
+      const settings = bcSettings();
+      settings.navigation.headerLinks = [{ text: "Get updates", url }];
+      settings.contactsPage.heading = "Press <office>";
+      await builder.renderPage("sitemap:pages", { settings });
+      const hrefs = new Map([...new JSDOM(html(storage, "sitemap/index.html")).window.document.querySelectorAll("#main-content-release li > a")].map((a) => [a.getAttribute("href")!, a.textContent!]));
+      expect(hrefs.get("/subscribe/"), url).toBe("Get updates");
+      expect(hrefs.get("/contacts/"), url).toBe("Press <office>");
+    }
+    const { storage, builder } = setup(new Map());
+    const settings = bcSettings();
+    settings.navigation.headerLinks = [];
+    await builder.renderPage("sitemap:pages", { settings });
+    expect(html(storage, "sitemap/index.html")).toContain('<a href="/subscribe/">Subscribe</a>');
   });
 
   it("a bio page appearing re-queues sitemap:pages and both files change", async () => {

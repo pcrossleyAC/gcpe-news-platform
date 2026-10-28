@@ -116,6 +116,15 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     await expectRedirect(app, "/SiteMap/HTML/", "/sitemap/");
   });
 
+  it("under basePath '/site': /site/sitemap/html → /site/archive/ until the sitemap page exists, then /site/sitemap/", async () => {
+    const site = appFor(outputDir, "/site");
+    await expectRedirect(site, "/site/sitemap/html?count=5", "/site/archive/");
+    await mkdir(join(outputDir, "sitemap"), { recursive: true });
+    await writeFile(join(outputDir, "sitemap", "index.html"), "<h1>sitemap</h1>");
+    await expectRedirect(site, "/site/sitemap/html?count=5", "/site/sitemap/");
+    await expectRedirect(site, "/site/SiteMap/HTML/", "/site/sitemap/");
+  });
+
   it("plan 4 pages built: /factsheets → /factsheets/, /sectors → /sectors/, /news-subscribe → /tags/, /ministries/health/factsheets → its directory", async () => {
     for (const dir of ["factsheets", "sectors", "tags", "ministries/health/factsheets"]) {
       await mkdir(join(outputDir, ...dir.split("/")), { recursive: true });
