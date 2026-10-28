@@ -45,6 +45,8 @@ export interface MinistryDto {
   key: string;
   name: string;
   isActive: boolean;
+  /** The parent ministry's key; null or absent for a top-level ministry. */
+  parentMinistryKey?: string | null;
   ministerName: string | null;
   ministryUrl: string | null;
   contactUser: MinistryContactDto | null;

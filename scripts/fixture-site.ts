@@ -15,6 +15,7 @@ import type { CategoryDto, PostDto } from "../apps/public-site/src/dto";
 import type { NewsApiClient } from "../apps/public-site/src/news-api-client";
 import type { IndexedPost, PostIndex } from "../apps/public-site/src/post-index";
 import type { SiteInfo } from "../apps/public-site/src/render";
+import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
 import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
 import { post } from "../apps/public-site/test/fixtures";
@@ -83,7 +84,7 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
   const tenant = loadTenantConfig(BC_TENANT);
   const site: SiteInfo = { name: tenant.siteName, baseUrl: o.baseUrl, theme: tenant.site.theme, logo: null };
   const builder = createSiteBuilder({ newsApi, storage: fsStorage(outDir), index: memoryIndex(), site, assetsDir: null });
-  const result = await builder.buildAll({ test: o.test });
+  const result = await builder.buildAll({ test: o.test, ministryMenu: ministryMenu(await newsApi.ministries()) });
   if (result.failures > 0) throw new Error(`fixture site: ${result.failures} page(s) failed to build`);
 }
 

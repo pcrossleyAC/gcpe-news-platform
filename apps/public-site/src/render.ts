@@ -6,6 +6,7 @@ import { SITE_BANNER_SCRIPT } from "./banner-script";
 import { LEGACY_BUNDLE } from "./site-assets";
 import { DEFAULT_TIME_ZONE, settingsHref, themeDefaults, yearIn } from "./settings";
 import { DEFAULT_THEME } from "./theme-css";
+import type { MenuMinistry } from "./ministry-menu";
 
 export type { PostDocument, PostDto } from "./dto";
 
@@ -31,6 +32,8 @@ export interface PageOptions {
   /** The site settings this turn applies (settings.ts's currentSettings): footer, connect page,
    * theme colours, banner JSON, ministry page headings. Absent ⇒ derived from the site's theme. */
   settings?: SiteSettings;
+  /** The header's ministries menu (ministry-menu.ts). Null or absent: unavailable. */
+  ministryMenu?: MenuMinistry[] | null;
 }
 
 export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");

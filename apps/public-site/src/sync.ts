@@ -7,6 +7,7 @@ import { drainQueue } from "./drain";
 import type { NewsApiClient } from "./news-api-client";
 import type { PostIndex } from "./post-index";
 import { enqueuePages, PRIORITY } from "./queue";
+import { ministryMenu, type MenuMinistry } from "./ministry-menu";
 import { chromeChanges, enqueueSiteWrite, keepSettingsHashes, stateAndBanner, writeSiteState, type SiteRenderState } from "./rebuild";
 import { enqueueChromeChanges } from "./rebuild-all";
 import type { PageOptions, SiteInfo } from "./render";
@@ -32,15 +33,15 @@ export interface SyncDeps {
 }
 
 /**
- * This turn's render options and site-state: Blue Bridge from `home()` (a failure rejects), then
+ * This turn's render options and site-state: Blue Bridge from `home()` and the ministries menu (a failure of either rejects), then
  * the site settings (settings.ts's currentSettings never rejects). `fallbackDefaults`: the
  * settings fetch failed with nothing persisted, so the defaults stand in for this render only.
  * Shared by `syncSite` and `selfHeal`.
  */
-export async function turnOptions(deps: SyncDeps, granville: string | null): Promise<{ state: SiteRenderState; pageOpts: PageOptions; fallbackDefaults: boolean }> {
+export async function turnOptions(deps: SyncDeps, granville: string | null, menu: MenuMinistry[] | null): Promise<{ state: SiteRenderState; pageOpts: PageOptions; fallbackDefaults: boolean }> {
   const { settings, fallbackDefaults } = await currentSettings({ newsApi: deps.newsApi, storage: deps.storage, defaults: deps.defaultSettings ?? themeDefaults(deps.site.theme) });
-  const { state, banner } = stateAndBanner(granville, deps.test, new Date(), settings, deps.site);
-  return { state, pageOpts: { test: deps.test, banner, settings }, fallbackDefaults };
+  const { state, banner } = stateAndBanner(granville, deps.test, new Date(), settings, deps.site, menu);
+  return { state, pageOpts: { test: deps.test, banner, settings, ministryMenu: menu }, fallbackDefaults };
 }
 
 /**
@@ -55,7 +56,10 @@ export async function turnOptions(deps: SyncDeps, granville: string | null): Pro
 export async function applyChromeChanges(deps: SyncDeps, turn: { state: SiteRenderState; pageOpts: PageOptions; fallbackDefaults: boolean }, force = false): Promise<void> {
   const compared = turn.fallbackDefaults ? await keepSettingsHashes(deps.storage, turn.state) : turn.state;
   const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, compared, deps.site);
-  if (!changes.all && changes.sections.length === 0) return;
+  if (!changes.all && changes.sections.length === 0) {
+    if (changes.adoptMenuHash) await writeSiteState(deps.storage, compared, deps.site);
+    return;
+  }
   await enqueueChromeChanges(deps.db, deps.builder, changes);
   // The subscribe pages are static (not queue pages) and carry the footer, so a site-wide change
   // (footer, Blue Bridge, chrome version, base URL, and the cold start) rewrites them this turn.
@@ -136,7 +140,8 @@ export function syncSite(deps: SyncDeps, extra: { pages?: string[] } = {}): Prom
   const feedRead = deps.feed ? singleFlightFeed(deps.feed) : undefined;
   return enqueueSiteWrite(deps.storage, async () => {
     const { granville } = await deps.newsApi.home();
-    const turn = await turnOptions(deps, granville);
+    const menu = ministryMenu(await deps.newsApi.ministries());
+    const turn = await turnOptions(deps, granville, menu);
     const { pageOpts } = turn;
     if (extra.pages?.length) await enqueuePages(deps.db, extra.pages.map((pageId) => ({ pageId, priority: livePriority(pageId) })));
     await applyChromeChanges(deps, turn);

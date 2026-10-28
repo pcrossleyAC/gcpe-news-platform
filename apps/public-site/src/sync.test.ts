@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { bcSettings, post, site } from "../test/fixtures";
+import { bcSettings, ministry, post, site } from "../test/fixtures";
 import type { FakeNewsApi } from "../test/fake-news-api";
 import type { SiteSettings } from "@gcpe/site-settings";
 import type { PostDto } from "./dto";
@@ -194,6 +194,52 @@ describe("syncSite", () => {
     deps.newsApi.home = async () => ({ granville: null, topPostKey: null, featurePostKey: null });
     await expect(syncSite(deps, { pages: ["post:K1"] })).resolves.toBeDefined();
     expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true);
+  });
+
+  describe("ministries menu", () => {
+    const posts = () => new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })], ["K3", post({ key: "K3" })]]);
+    const marker = (deps: SyncDeps) => JSON.parse((deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json") as string);
+    const renameHealth = (deps: SyncDeps) => {
+      deps.newsApi.ministries = async () => [ministry({ key: "health", name: "Health and Wellness" }), ministry({ key: "finance", name: "Finance" })];
+    };
+
+    it("a ministry renamed since the marker queues one rebuild-all; the next identical turn queues nothing", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps); // cold start: marker written
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+      renameHealth(deps);
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBeGreaterThan(0);
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+    });
+
+    it("a ministries() failure rejects the turn and leaves the marker untouched", async () => {
+      const deps = setup(posts());
+      await syncSite(deps);
+      const before = (deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json");
+      deps.newsApi.ministries = async () => {
+        throw new Error("ministries down");
+      };
+      await expect(syncSite(deps, { pages: ["post:K1"] })).rejects.toThrow("ministries down");
+      expect((deps.storage as ReturnType<typeof memoryStorage>).files.get(".site-state.json")).toBe(before);
+    });
+
+    it("a marker written before ministryMenuHash existed does not queue a rebuild-all by itself", async () => {
+      const deps = setup(posts(), 1);
+      await syncSite(deps);
+      const old = marker(deps);
+      delete old.ministryMenuHash;
+      await (deps.storage as ReturnType<typeof memoryStorage>).write(".site-state.json", JSON.stringify(old));
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBe(0);
+      expect(marker(deps).ministryMenuHash).toMatch(/^[0-9a-f]{64}$/); // adopted, so a later change is seen
+      renameHealth(deps);
+      await syncSite(deps);
+      expect(await queueDepth(tdb.db)).toBeGreaterThan(0);
+    });
   });
 
   describe("site settings", () => {

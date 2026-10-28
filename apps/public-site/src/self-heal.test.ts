@@ -11,6 +11,8 @@ import { enqueuePages, PRIORITY, queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
 import { selfHeal } from "./self-heal";
 import type { SyncDeps } from "./sync";
+import type { PageOptions } from "./render";
+import * as subscribePages from "./subscribe-pages";
 
 const SUBSCRIBE_FILES = ["subscribe/index.html", "subscribe/manage/index.html", "subscribe/unsubscribe/index.html"];
 
@@ -56,6 +58,28 @@ describe("selfHeal", () => {
       for (const f of SUBSCRIBE_FILES) expect(storage.files.has(f)).toBe(true);
       expect(storage.files.has("index.html")).toBe(false); // nothing else could be rendered correctly
     } finally {
+      errSpy.mockRestore();
+    }
+  });
+
+  it("ministries() down: subscribe pages written with ministryMenu null, marker untouched, returns null", async () => {
+    const deps = setup();
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    deps.newsApi.ministries = async () => {
+      throw new Error("ministries down");
+    };
+    const opts: PageOptions[] = [];
+    const spy = vi.spyOn(subscribePages, "writeSubscribePages").mockImplementation(async (_s, _site, o) => void opts.push(o as PageOptions));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await selfHeal(deps)).toBeNull();
+      expect(opts).toHaveLength(1);
+      expect(opts[0]?.ministryMenu).toBeNull();
+      expect(storage.files.has(".site-state.json")).toBe(false);
+      expect(storage.files.has("index.html")).toBe(false);
+      expect(errSpy).toHaveBeenCalled();
+    } finally {
+      spy.mockRestore();
       errSpy.mockRestore();
     }
   });
