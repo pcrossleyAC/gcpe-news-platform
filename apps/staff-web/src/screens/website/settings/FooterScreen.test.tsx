@@ -56,6 +56,7 @@ const FOOTER: SiteSettings["footer"] = {
   connectLinks: [{ text: "Social", url: "/connect" }],
   moreInfoLinks: [{ text: "Home", url: "https://www2.gov.bc.ca/" }],
   copyrightHolder: "Province of British Columbia",
+  landAcknowledgement: "We acknowledge the territories.",
 };
 const DOC: SiteSettings = { ...BASE, footer: FOOTER };
 
@@ -125,6 +126,27 @@ describe("FooterScreen", () => {
     expect(body.value.copyrightHolder).toBe("Province of British Columbia");
   });
 
+  it("shows the land acknowledgement, prefilled, and saves an edit with the footer section", async () => {
+    const calls = stub(["NRMS.SiteEditor"], stateOf(DOC));
+    renderScreen();
+    const user = userEvent.setup();
+    const field = await screen.findByLabelText("Land acknowledgement");
+    expect(field).toHaveValue("We acknowledge the territories.");
+    expect(screen.getByText("Shown in a band above the footer on every page. Plain text. Leave it empty to hide the band.")).toBeInTheDocument();
+    await user.clear(field);
+    await user.type(field, "Changed.");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
+    expect(post.body).toEqual({ baseRevision: 4, section: "footer", value: { ...FOOTER, landAcknowledgement: "Changed." } });
+  });
+
+  it("shows a server error on the land acknowledgement", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "footer.landAcknowledgement", message: "Use plain text." }]));
+    renderScreen();
+    expect(await screen.findByText("Use plain text.")).toBeInTheDocument();
+  });
+
   it("shows server errors on the help text and copyright holder", async () => {
     stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "footer.copyrightHolder", message: "Enter who holds the copyright." }, { field: "footer.helpText", message: "Use plain text." }]));
     renderScreen();
@@ -137,6 +159,7 @@ describe("FooterScreen", () => {
     renderScreen();
     expect(await screen.findByLabelText("Help text")).toBeDisabled();
     expect(screen.getByLabelText(/Copyright holder/)).toBeDisabled();
+    expect(screen.getByLabelText("Land acknowledgement")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
     expect(screen.queryByRole("button", { name: "+ Add a link" })).toBeNull();
   });

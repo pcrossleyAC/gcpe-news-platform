@@ -101,6 +101,14 @@ function FooterFields({ canEdit }: { canEdit: boolean }): React.JSX.Element {
         isDisabled={!canEdit}
         {...errorOf("copyrightHolder")}
       />
+      <TextArea
+        label="Land acknowledgement"
+        description="Shown in a band above the footer on every page. Plain text. Leave it empty to hide the band."
+        value={value.landAcknowledgement ?? ""}
+        onChange={(landAcknowledgement) => set({ landAcknowledgement })}
+        isDisabled={!canEdit}
+        {...errorOf("landAcknowledgement")}
+      />
 
       <OtherSectionErrors errors={editor.otherErrors} />
       <ConflictPanel editor={editor as SettingsEditor<unknown>} section="footer" timeZone={timeZone} />

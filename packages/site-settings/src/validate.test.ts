@@ -37,6 +37,18 @@ describe("validateSiteSettings", () => {
     ]);
   });
 
+  it("checks the land acknowledgement: 1000 characters at most, plain text, empty allowed", () => {
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = "a".repeat(1001); })).toEqual([
+      { field: "footer.landAcknowledgement", message: "Keep the land acknowledgement to 1000 characters or fewer." },
+    ]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = "a".repeat(1000); })).toEqual([]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = "<b>hi</b>"; })).toEqual([
+      { field: "footer.landAcknowledgement", message: "Use plain text." },
+    ]);
+    expect(errorsFor((d) => { d.footer.landAcknowledgement = ""; })).toEqual([]);
+    expect(errorsFor((d) => { delete d.footer.landAcknowledgement; })).toEqual([]);
+  });
+
   it("checks the banner", () => {
     expect(errorsFor((d) => { d.banner.message = "<b>hi</b>"; })).toEqual([
       { field: "banner.message", message: "Use plain text. Add links below instead of HTML." },

@@ -3,6 +3,7 @@ import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
 import { enqueueEvent, type SubscriberConfig } from "@gcpe/events";
 import {
   differingSections,
+  fillMissingFields,
   siteSettingsSchema,
   validateSiteSettings,
   withSection,
@@ -91,7 +92,7 @@ async function upsertDraft(db: DbOrTx, actor: Actor, document: SiteSettings, bas
 export async function getSettingsState(db: DbOrTx, actor: Actor, defaults: SiteSettings): Promise<SettingsState> {
   const live = await readLive(db);
   const draft = await readDraft(db, actor);
-  const document = draft?.document ?? live?.document ?? defaults;
+  const document = fillMissingFields(draft?.document ?? live?.document ?? defaults, defaults);
   return {
     live: live?.info ?? null,
     document,

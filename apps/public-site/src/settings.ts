@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SiteTheme } from "@gcpe/config";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import { defaultSiteSettings, isSafeUrl, siteSettingsSchema, type SiteSettings } from "@gcpe/site-settings";
+import { defaultSiteSettings, fillMissingFields, isSafeUrl, siteSettingsSchema, type SiteSettings } from "@gcpe/site-settings";
 import type { NewsApiClient } from "./news-api-client";
 import { basePath, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
@@ -102,12 +102,13 @@ async function readPersisted(storage: SiteStorage): Promise<SiteSettings | null>
 export async function currentSettings(deps: { newsApi: NewsApiClient; storage: SiteStorage; defaults: SiteSettings }): Promise<{ settings: SiteSettings; fallbackDefaults: boolean }> {
   let settings: SiteSettings;
   try {
-    settings = (await deps.newsApi.siteSettings())?.document ?? deps.defaults;
+    const published = (await deps.newsApi.siteSettings())?.document;
+    settings = published ? fillMissingFields(published, deps.defaults) : deps.defaults;
   } catch (err) {
     const kept = await readPersisted(deps.storage);
     if (kept) {
       console.error(`[public-site] site settings unavailable; keeping the last applied settings ${safeErrorLabel(err)}`);
-      return { settings: kept, fallbackDefaults: false };
+      return { settings: fillMissingFields(kept, deps.defaults), fallbackDefaults: false };
     }
     console.error(`[public-site] site settings unavailable and none applied yet; using the tenant defaults ${safeErrorLabel(err)}`);
     return { settings: deps.defaults, fallbackDefaults: true };

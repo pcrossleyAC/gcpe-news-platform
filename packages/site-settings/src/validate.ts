@@ -6,6 +6,7 @@ import { isSafeUrl } from "./urls";
 const MIN_CONTRAST = 4.5;
 const BANNER_MAX = 300;
 const HELP_TEXT_MAX = 200;
+const LAND_ACK_MAX = 1000;
 const SUMMARY_MAX = 200;
 const HEADING_MAX = 60;
 const HEX = /^#[0-9A-Fa-f]{6}$/;
@@ -72,6 +73,9 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
   if (f.copyrightHolder.trim() === "") errors.push({ field: "footer.copyrightHolder", message: "Enter who holds the copyright." });
   if (f.helpText.length > HELP_TEXT_MAX) errors.push({ field: "footer.helpText", message: `Keep the help text to ${HELP_TEXT_MAX} characters or fewer.` });
   if (hasMarkup(f.helpText)) errors.push({ field: "footer.helpText", message: "Use plain text." });
+  const ack = f.landAcknowledgement ?? "";
+  if (ack.length > LAND_ACK_MAX) errors.push({ field: "footer.landAcknowledgement", message: `Keep the land acknowledgement to ${LAND_ACK_MAX} characters or fewer.` });
+  if (hasMarkup(ack)) errors.push({ field: "footer.landAcknowledgement", message: "Use plain text." });
 
   for (const { key } of NETWORKS) {
     validateLinks(`connect.${key}.featured`, doc.connect[key].featured, errors);

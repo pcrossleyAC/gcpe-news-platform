@@ -57,6 +57,20 @@ describe("website/site-settings", () => {
     return publishSettings(tdb.db, actor, defaults, subs, { baseRevision: live?.revision ?? null, section: "banner", value: banner(message), note });
   };
 
+  it("getSettingsState fills a live document's missing land acknowledgement from the tenant defaults", async () => {
+    const legacy = structuredClone(defaults);
+    delete legacy.footer.landAcknowledgement;
+    await tdb.pool.query(
+      "INSERT INTO site_settings_revisions (revision, document, published_by_id, published_by_name) VALUES (1, $1, 'u', 'Jane')",
+      [JSON.stringify(legacy)],
+    );
+    const state = await getSettingsState(tdb.db, jane, defaults);
+    expect(state.live?.revision).toBe(1);
+    expect(state.document.footer.landAcknowledgement).toBe(defaults.footer.landAcknowledgement);
+    expect(state.document.footer.landAcknowledgement).not.toBe("");
+    expect(state.errors).toEqual([]);
+  });
+
   it("with nothing stored, the state is the defaults with no live revision, draft or errors", async () => {
     const state = await getSettingsState(tdb.db, jane, defaults);
     expect(state).toEqual({ live: null, document: defaults, draft: null, baseRevision: null, errors: [] });

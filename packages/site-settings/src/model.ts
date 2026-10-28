@@ -74,6 +74,8 @@ export const siteSettingsSchema = z.object({
     connectLinks: z.array(linkSchema),
     moreInfoLinks: z.array(linkSchema),
     copyrightHolder: z.string(),
+    /** Optional so every document and event published before it existed still parses; `fillMissingFields` supplies the tenant default. */
+    landAcknowledgement: z.string().optional(),
   }),
   connect: z.object({
     facebook: networkSchema,
