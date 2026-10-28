@@ -113,9 +113,14 @@ describe("renderBodyAssets", () => {
     expect(frag(out).querySelector("a")?.getAttribute("href")).toBe('https://ok.example/?q="><script>');
   });
 
-  it("every embed survives sanitizeBodyHtml unchanged (bar its self-closing img style)", () => {
-    const body = renderBodyAssets("<p>x</p><asset>https://youtu.be/abcdef1</asset><asset>https://live.staticflickr.com/1/2_ab.jpg</asset><asset>https://soundcloud.com/a?b=1&amp;c=2</asset>", "/site");
-    expect(sanitizeBodyHtml(body).replace(/ \/>/g, ">")).toBe(body);
+  it("every embed survives sanitizeBodyHtml with its mark unchanged (bar its self-closing img style); without the mark its classes go", () => {
+    const input = "<p>x</p><asset>https://youtu.be/abcdef1</asset><asset>https://live.staticflickr.com/1/2_ab.jpg</asset><asset>https://soundcloud.com/a?b=1&amp;c=2</asset>";
+    const plain = renderBodyAssets(input, "/site");
+    const marked = renderBodyAssets(input, "/site", undefined, "m-1");
+    expect(marked).toBe(plain.replace(/ class="/g, ' data-embed="m-1" class="'));
+    expect(sanitizeBodyHtml(marked, { embedMark: "m-1" }).replace(/ \/>/g, ">")).toBe(plain);
+    expect(sanitizeBodyHtml(marked, { embedMark: "other" })).not.toContain("class=");
+    expect(sanitizeBodyHtml(marked)).not.toContain("class=");
   });
 
   it("leaves a body with no asset untouched", () => {

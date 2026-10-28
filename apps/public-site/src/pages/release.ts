@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { MinistryPageLabels } from "@gcpe/site-settings";
 import type { AssetDto, MinistryDto, PostDocument, PostDto, RelatedPost } from "../dto";
 import { icon } from "../icons";
@@ -66,8 +67,15 @@ function contactsDiffer(item: PostDocument["contacts"], main: PostDocument["cont
   return item.length > 0 && (item.length !== main.length || item.some((c) => !main.some((m) => m.details === c.details && m.title === c.title)));
 }
 
-/** A document's body: `<asset>` embeds first (a Flickr photo link named after `headline`), then the sanitiser. */
-const bodyOf = (d: PostDocument | null, base: string, headline: string) => sanitizeBodyHtml(renderBodyAssets(d?.detailsHtml ?? "", base, `Photo: ${headline}`));
+/**
+ * A document's body: `<asset>` embeds first (a Flickr photo link named after `headline`), then the
+ * sanitiser. Only the embeds keep their classes (a per-body random mark), and in-page `#name`
+ * links into the same body survive under the per-document `prefix`.
+ */
+const bodyOf = (d: PostDocument | null, base: string, headline: string, prefix: string) => {
+  const embedMark = randomUUID();
+  return sanitizeBodyHtml(renderBodyAssets(d?.detailsHtml ?? "", base, `Photo: ${headline}`, embedMark), { embedMark, fragmentPrefix: prefix });
+};
 
 /** The translation links, with each language's own name and tag (legacy `ToDefaultTranslationLanguage`). */
 function translationItems(translations: AssetDto[], withIcon: string): string[] {
@@ -247,25 +255,25 @@ ${phonePageTitle}${present(post.location) ? `<p>${e(post.location)}</p>\n` : ""}
       ]
     : [];
   const copies = [
-    `<div class="story-copy story-lang primary"${mainLang}>\n<article>\n${bodyOf(main, base, headline)}\n</article>\n</div>`,
-    french ? `<div class="story-copy story-lang secondary" lang="fr">\n<article>\n${bodyOf(french, base, present(french.headline) ? french.headline : headline)}\n</article>\n</div>` : "",
+    `<div class="story-copy story-lang primary"${mainLang}>\n<article>\n${bodyOf(main, base, headline, "body-")}\n</article>\n</div>`,
+    french ? `<div class="story-copy story-lang secondary" lang="fr">\n<article>\n${bodyOf(french, base, present(french.headline) ? french.headline : headline, "body-fr-")}\n</article>\n</div>` : "",
   ].filter(Boolean);
   const bodyContacts = contactsOf(main).length ? `<div class="comm-contacts-body-section">\n<div class="comm-contacts-body comm-contacts">\n${contactsBlock(contactsOf(main), labels.mediaContacts, 2)}\n</div>\n</div>` : "";
 
-  const backgrounder = (d: PostDocument, cls: string, lang: string) => {
+  const backgrounder = (d: PostDocument, cls: string, lang: string, n: number) => {
     const title = present(d.headline) ? d.headline : "Backgrounder";
     const contacts = contactsDiffer(contactsOf(d), contactsOf(main)) ? `\n<div class="comm-contacts">\n${contactsBlock(contactsOf(d), labels.mediaContacts, 4)}\n</div>` : "";
     return `<div class="${cls}"${lang}>
 <div class="backgrounder-header"><h3>${e(title)}</h3></div>
 <div class="backgrounder-content">
-${present(d.subheadline) ? `<p class="subheadline">${e(d.subheadline)}</p>\n` : ""}${present(d.byline) ? `<p><b>${withBreaks(d.byline.trim())}</b></p>\n` : ""}${bodyOf(d, base, title)}${contacts}
+${present(d.subheadline) ? `<p class="subheadline">${e(d.subheadline)}</p>\n` : ""}${present(d.byline) ? `<p><b>${withBreaks(d.byline.trim())}</b></p>\n` : ""}${bodyOf(d, base, title, `bg${n}-`)}${contacts}
 </div>
 </div>`;
   };
   const allBackgrounders = [
-    ...backgrounders.map((d) => backgrounder(d, "backgrounder", d.languageId === FRENCH ? ` lang="fr"` : "")),
+    ...backgrounders.map((d, i) => backgrounder(d, "backgrounder", d.languageId === FRENCH ? ` lang="fr"` : "", i + 1)),
     // With a French main document there is no toggle, so the other French documents are ordinary backgrounders.
-    ...frenchBackgrounders.map((d) => backgrounder(d, french ? "backgrounder story-lang secondary" : "backgrounder", ` lang="fr"`)),
+    ...frenchBackgrounders.map((d, i) => backgrounder(d, french ? "backgrounder story-lang secondary" : "backgrounder", ` lang="fr"`, backgrounders.length + i + 1)),
   ];
   const backgroundersHeading = allBackgrounders.length
     ? french

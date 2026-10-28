@@ -283,6 +283,24 @@ describe("release page", () => {
     expect(a.querySelector("span.visually-hidden")?.textContent).toBe("Photo: Clinics & more");
   });
 
+  it("staff text can't be hidden with span.visually-hidden; the embed's own hidden name stays; no data-embed reaches the page", () => {
+    const html = render({ documents: [doc({ detailsHtml: '<p>Seen <span class="visually-hidden">secret</span> <span data-embed="x" class="visually-hidden">guess</span></p><asset>https://live.staticflickr.com/1/2_ab.jpg</asset>' })] });
+    const d = expectAccessibleStructure(html);
+    const copy = d.querySelector(".story-copy article")!;
+    expect([...copy.querySelectorAll(".visually-hidden")].map((x) => x.closest(".asset.flickr") !== null)).toEqual([true]);
+    expect(copy.textContent).toContain("secret");
+    expect(html).not.toContain("data-embed");
+  });
+
+  it("in-page #fragment links into the same body are kept, prefixed per document so English and French never share an id", () => {
+    const body = '<p><a href="#cassidy">Cassidy Cardle</a></p><p><a name="cassidy"></a><strong>Cassidy</strong> is a nurse.</p><p><a href="#gone">gone</a></p>';
+    const d = dom({ documents: [doc({ headline: "H", detailsHtml: body }), doc({ languageId: 3084, headline: "F", detailsHtml: body }), doc({ headline: "Bg", detailsHtml: body })] });
+    const links = [...d.querySelectorAll(".story-body a[href^='#']")].map((a) => a.getAttribute("href"));
+    expect(links).toEqual(expect.arrayContaining(["#body-cassidy", "#body-fr-cassidy", "#bg1-cassidy"]));
+    for (const href of links.filter((h) => h !== "#assets" && h !== "#translations")) expect(d.querySelectorAll(href!), href!).toHaveLength(1);
+    expect(d.querySelector("a[href='#gone']")).toBeNull();
+  });
+
   it("byline: bold, with line breaks, escaped", () => {
     const d = dom({ documents: [doc({ headline: "H", byline: "Office of <the> Premier\r\nJoint statement" })] });
     expect(d.querySelector(".story-body > p.story-lang.primary.byline > b")?.innerHTML).toBe("Office of &lt;the&gt; Premier<br>Joint statement");

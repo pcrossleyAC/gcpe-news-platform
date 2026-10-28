@@ -106,6 +106,11 @@ describe("bioHtml and hasBiography", () => {
     expect(bioHtml(null)).toBe("");
   });
 
+  it("a bio keeps no class, id or in-page link (consistent with release bodies' non-embed markup)", () => {
+    expect(bioHtml('<p>Shown <span class="visually-hidden">hidden</span></p><div class="asset flickr">x</div>')).toBe("<p>Shown <span>hidden</span></p><div>x</div>");
+    expect(bioHtml('<p><a href="#a">a</a></p><p id="a">t</p>')).toBe("<p>a</p><p>t</p>");
+  });
+
   it("hasBiography is true only when the bio has text", () => {
     expect(hasBiography(null)).toBe(false);
     expect(hasBiography(minister({ details: null }))).toBe(false);

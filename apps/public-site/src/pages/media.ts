@@ -91,13 +91,16 @@ function decodeEntities(s: string): string {
  * what {@link renderMedia} renders for it (alt "", the photo link named by `photoName`, lazy), a plain link for any other absolute http(s) URL
  * (SoundCloud included — no player), or nothing for an unparseable or unsafe one. The URL is
  * entity-decoded first and checked with `isSafeUrl` after decoding. Runs before
- * `sanitizeBodyHtml`, which keeps the classes these blocks carry.
+ * `sanitizeBodyHtml`, which keeps the classes these blocks carry only where they carry
+ * `data-embed="<embedMark>"` — stamped here on every classed element of the embed, so a class
+ * staff typed into the body never survives.
  */
-export function renderBodyAssets(html: string, base: string, photoName = FLICKR_LINK_NAME): string {
+export function renderBodyAssets(html: string, base: string, photoName = FLICKR_LINK_NAME, embedMark?: string): string {
+  const stamp = (markup: string) => (embedMark === undefined ? markup : markup.replace(/ class="/g, ` data-embed="${e(embedMark)}" class="`));
   return html.replace(/<asset>([\s\S]*?)<\/asset>/gi, (_whole, raw: string) => {
     const url = decodeEntities(raw).trim();
     const media = leadMedia(url);
-    if (media) return renderMedia(media, base, "", photoName, true);
+    if (media) return stamp(renderMedia(media, base, "", photoName, true));
     if (isSafeUrl(url, { relative: false, schemes: ["http:", "https:"] })) return `<p><a href="${e(url)}">${e(url)}</a></p>`;
     return "";
   });
