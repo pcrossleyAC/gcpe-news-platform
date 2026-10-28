@@ -142,6 +142,57 @@ export async function checkLayoutOrder(browser: import("@playwright/test").Brows
   return failures;
 }
 
+type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * One header's geometry: every rendered control (the Live icon, the menu and search toggles) must
+ * sit inside the header bar and clear of the page's h1. The bar is a fixed 75px (legacy .nav-border),
+ * so a control that wraps to a second row lands on the content below it.
+ */
+export function headerRowFailures(where: string, g: { header: Box | null; h1: Box | null; controls: Record<string, Box | null> }): string[] {
+  if (!g.header) return [`${where}: the header is not rendered`];
+  const failures: string[] = [];
+  const bottom = g.header.y + g.header.height;
+  const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  for (const [name, box] of Object.entries(g.controls)) {
+    if (!box) continue;
+    if (box.y + box.height > bottom) failures.push(`${where}: ${name} ends at y=${Math.round(box.y + box.height)}, below the header bar (${Math.round(bottom)})`);
+    if (g.h1 && overlaps(box, g.h1)) failures.push(`${where}: ${name} overlaps the h1`);
+  }
+  return failures;
+}
+
+/**
+ * The phone and tablet header with the webcast on (live.json answered {"live":true}) and off, on a
+ * page with a visible h1 and on home: one row, nothing over the h1 (batch F: the words "Live Webcast"
+ * used to push the search toggle onto a second row at 390px).
+ */
+export async function checkHeaderLive(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
+  const failures: string[] = [];
+  for (const path of ["/archive/", "/"]) {
+    for (const width of [320, 390, 768]) {
+      for (const live of [true, false]) {
+        const context = await browser.newContext({ viewport: { width, height: 900 } });
+        const page = await context.newPage();
+        await page.route(/\/assets\/live\.json$/, (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ live }) }));
+        await page.goto(url + path);
+        if (live) await page.locator("a.live_button.d-lg-none.live_button_show").waitFor({ state: "attached" });
+        const box = async (sel: string) => {
+          const l = page.locator(sel).first();
+          return (await l.count()) && (await l.isVisible()) ? await l.boundingBox() : null;
+        };
+        const g = { header: await box("header#main-nav"), h1: await box("h1"), controls: { live: await box("a.live_button.d-lg-none"), menu: await box("#nav-menu-sm"), search: await box("#search-md-button") } };
+        await context.close();
+        const where = `${path} at ${width}px, live ${live ? "on" : "off"}`;
+        const found = headerRowFailures(where, g);
+        log(`header ${where}: ${found.length === 0 ? "one row, clear of the h1" : found.join("; ")}`);
+        failures.push(...found);
+      }
+    }
+  }
+  return failures;
+}
+
 export async function runSiteQuality(log: (line: string) => void = console.log): Promise<string[]> {
   const dir = await mkdtemp(join(tmpdir(), "gcpe-site-quality-"));
   const failures: string[] = [];
@@ -163,6 +214,7 @@ export async function runSiteQuality(log: (line: string) => void = console.log):
       }
       failures.push(...(await checkReleaseStates(browser, server.url, log)));
       failures.push(...(await checkLayoutOrder(browser, server.url, log)));
+      failures.push(...(await checkHeaderLive(browser, server.url, log)));
     } finally {
       await browser.close();
     }
