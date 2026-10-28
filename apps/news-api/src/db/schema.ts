@@ -147,7 +147,7 @@ export const changeFeedState = pgTable(
 
 export type MinistryDetails = Pick<
   OrgRecord,
-  "parentKey" | "url" | "displayAdditionalName" | "minister" | "contact" | "secondContact" | "weekendContactNumber" | "topicLinks" | "serviceLinks"
+  "parentKey" | "url" | "displayAdditionalName" | "minister" | "contact" | "secondContact" | "weekendContactNumber" | "topicLinks" | "serviceLinks" | "teamLinks"
 >;
 
 export const categories = pgTable(

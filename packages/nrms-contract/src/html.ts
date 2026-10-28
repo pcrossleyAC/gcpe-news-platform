@@ -8,3 +8,5 @@
 export const BODY_TAGS = ["a", "p", "ul", "ol", "li", "strong", "br", "div", "asset"] as const;
 export const BODY_ATTRIBUTES = { a: ["href"] } as const;
 export const BODY_SCHEMES = ["http", "https", "mailto"] as const;
+/** The minister biography's allow-list (plan 2, T1): the body tags without the `<asset>` embed. */
+export const BIO_TAGS = ["a", "p", "ul", "ol", "li", "strong", "br", "div"] as const;

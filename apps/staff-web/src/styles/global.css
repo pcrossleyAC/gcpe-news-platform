@@ -1304,6 +1304,31 @@ body {
 .gcpe-stack.gcpe-link-set > fieldset.gcpe-link-list {
   max-width: none;
 }
+/* The Organizations form's Meet the Team links sit directly in the form, as wide as the
+ * link lists in "Ministry page links"; each media contact is a lighter group inside "Media contacts". */
+.gcpe-org-form > fieldset.gcpe-link-list {
+  max-width: 56rem;
+}
+.gcpe-stack > .gcpe-org-bio {
+  align-self: stretch;
+  max-width: 56rem;
+}
+.gcpe-org-bio > p {
+  margin: 0;
+}
+fieldset.gcpe-org-contact {
+  margin: 0;
+  padding: 0.5rem 1rem 1rem;
+  border: 1px solid #d8d8d8;
+  border-radius: 4px;
+}
+.gcpe-org-contact > legend {
+  font-weight: 600;
+  padding: 0 0.25rem;
+}
+.gcpe-org-contact p {
+  margin: 0;
+}
 .gcpe-field--abbr > p {
   margin: 0;
 }

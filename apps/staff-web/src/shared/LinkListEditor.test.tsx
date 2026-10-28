@@ -33,6 +33,18 @@ describe("LinkListEditor", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Link 1 moved to position 2");
   });
 
+  it("a description is shown under the legend and describes the group; without one the group has no description", () => {
+    render(
+      <AnnouncerProvider>
+        <LinkListEditor legend="Team" description="Shown as Meet the Team." links={[]} onChange={() => {}} errors={[]} pathPrefix="teamLinks" reorderable withSummary={false} />
+      </AnnouncerProvider>,
+    );
+    expect(screen.getByRole("group", { name: "Team" })).toHaveAccessibleDescription("Shown as Meet the Team.");
+    cleanup();
+    render(<Harness initial={[]} />);
+    expect(screen.getByRole("group", { name: "Help links" })).not.toHaveAttribute("aria-describedby");
+  });
+
   it("editing a row keeps its id and summary", async () => {
     render(<Harness initial={[B]} />);
     const user = userEvent.setup();

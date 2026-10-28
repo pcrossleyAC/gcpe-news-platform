@@ -12,6 +12,8 @@ import { ErrorLogScreen } from "./errors/ErrorLogScreen";
 import { MediaListNamesScreen } from "./media-lists/MediaListNamesScreen";
 import { CalendarAccessScreen } from "./calendar-access/CalendarAccessScreen";
 import { OrganizationsScreen } from "./organizations/OrganizationsScreen";
+import { OrganizationEditForm } from "./organizations/OrganizationEditForm";
+import type { OrgRecord } from "@gcpe/events/catalogue";
 import { GovernmentTermsScreen } from "./government-terms/GovernmentTermsScreen";
 import { ACCESS_USERS, ORGS } from "./calendar-access/fixtures";
 import type { UserView } from "./users/UsersScreen";
@@ -126,6 +128,42 @@ describe("accessibility — Users, Media list names and error log", () => {
     const { container } = render(withAuth(<OrganizationsScreen />));
     await userEvent.setup().click(await screen.findByRole("button", { name: `Edit ${ORGS[0]!.displayName}` }));
     await screen.findByRole("form", { name: `Edit ${ORGS[0]!.displayName}` });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("OrganizationEditForm, with the biography, Meet the Team links, media contacts and their notes and errors showing", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(400, {
+          error: "invalid request",
+          issues: [
+            { code: "custom", path: ["minister", "detailsHtml"], message: "Keep the biography to 20,000 characters or fewer." },
+            { code: "custom", path: ["secondContact", "emailAddress"], message: "Enter an email address like name@gov.bc.ca." },
+            { code: "custom", path: ["weekendContactNumber"], message: "Keep phone numbers to 50 characters or fewer." },
+            { code: "custom", path: ["teamLinks", 0, "url"], message: "Must start with https:// or / (a page on this site)." },
+          ],
+        }),
+      ),
+    );
+    const org = {
+      key: "health", displayName: "Health", abbreviation: "HLTH", sortOrder: 1, isActive: true, parentKey: null, url: null, displayAdditionalName: null,
+      minister: { name: "Pat Minister", summary: null, detailsHtml: "<p>Pat grew up in Prince George.</p>", email: null, photoUrl: null, address: null },
+      contact: null,
+      secondContact: { fullName: "Sam Roe", phoneNumber: null, mobileNumber: null, emailAddress: null },
+      weekendContactNumber: null,
+      social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null },
+      topicLinks: [], serviceLinks: [], teamLinks: [{ text: "Cabinet Ministers", url: "cabinet" }],
+      sectorKeys: [], isHq: false, isPublic: true, successorKeys: [], updatedAt: "2026-10-02T16:46:05.527-07:00",
+    } as OrgRecord;
+    const { container } = render(<OrganizationEditForm org={org} orgs={[org]} isAdmin={false} onSaved={() => {}} onCancel={() => {}} />);
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText("Minister name"), "x");
+    await user.type(screen.getByLabelText("After-hours phone"), "1");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Keep phone numbers to 50 characters or fewer.");
+    expect(screen.getByText("The biography still describes the previous minister.")).toBeInTheDocument();
+    expect(screen.getByText("The public page shows the alternate only with a primary contact.")).toBeInTheDocument();
     expect(await seriousViolations(container)).toEqual([]);
   });
 

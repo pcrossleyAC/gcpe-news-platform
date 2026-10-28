@@ -5,7 +5,10 @@ import { enqueueEvent, orgKeyFromName, orgRecordSchema, type OrgRecord, type Org
 import { isSafeUrl } from "@gcpe/site-settings";
 import { organizations, userOrganizations } from "../db/schema";
 import { CORE_SOURCE, lockAggregate, orgAggregateId, orgSuccessionAggregateId, userAggregateId } from "./aggregate";
+import { MAX_BIO_CHARS, isBlankHtml, sanitizeBioHtml } from "./bio-html";
 import { emitUserUpserted } from "./users";
+
+export { MAX_BIO_CHARS };
 
 /**
  * isHq and isPublic are both optional on input: omitted keeps the stored flag (false for isHq,
@@ -55,6 +58,7 @@ export function toOrgRecord(row: Row): OrgRecord {
     social: row.social,
     topicLinks: row.topicLinks,
     serviceLinks: row.serviceLinks,
+    teamLinks: row.teamLinks,
     sectorKeys: row.sectorKeys,
     isHq: row.isHq,
     isPublic: row.isPublic,
@@ -63,8 +67,10 @@ export function toOrgRecord(row: Row): OrgRecord {
   };
 }
 
+/** teamLinks is optional on input and the column defaults to [], so an absent list and [] are the same content. */
 function sameContent(a: OrgInput, b: OrgInput): boolean {
-  return JSON.stringify(orgInputSchema.parse(a)) === JSON.stringify(orgInputSchema.parse(b));
+  const normal = (o: OrgInput) => JSON.stringify(orgInputSchema.parse({ ...o, teamLinks: o.teamLinks ?? [] }));
+  return normal(a) === normal(b);
 }
 
 export async function upsertOrganization(
@@ -166,6 +172,43 @@ const sideLinkSchema = z
 export const MAX_SIDE_LINKS = 20;
 const sideLinksSchema = z.array(sideLinkSchema).max(MAX_SIDE_LINKS, `Use ${MAX_SIDE_LINKS} links or fewer.`);
 
+const PHONE_MESSAGE = "Keep phone numbers to 50 characters or fewer.";
+const phoneOrNull = trimmedOrNull.pipe(z.string().max(50, PHONE_MESSAGE).nullable());
+
+/**
+ * A ministry media contact as free text (plan 2, T2; P8): the stored contactSchema shape, all four
+ * fields required, each trimmed with blank meaning null. Four blanks is no contact at all (null).
+ */
+const mediaContactSchema = z
+  .object({
+    fullName: trimmedOrNull,
+    phoneNumber: phoneOrNull,
+    mobileNumber: phoneOrNull,
+    emailAddress: trimmedOrNull.pipe(z.string().email("Enter an email address like name@gov.bc.ca.").nullable()),
+  })
+  .strict()
+  .transform((c) => (Object.values(c).every((v) => v === null) ? null : c));
+
+/**
+ * The minister biography (T1): sanitised to the bio allow-list (bio-html.ts); HTML with no text
+ * left (the Hub's emptied editor sends `<p></p>`) clears it to null. The raw input is capped before
+ * sanitising, the sanitised result at MAX_BIO_CHARS.
+ */
+const bioHtmlSchema = z
+  .string()
+  .max(100_000, "Keep the biography to 20,000 characters or fewer.")
+  .nullable()
+  .transform((html, ctx) => {
+    if (html === null) return null;
+    const clean = sanitizeBioHtml(html);
+    if (isBlankHtml(clean)) return null;
+    if (clean.length > MAX_BIO_CHARS) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Keep the biography to 20,000 characters or fewer." });
+      return z.NEVER;
+    }
+    return clean;
+  });
+
 /** The NRMS release-number prefix (e.g. 2026HLTH0001): trimmed, upper-cased, 2 to 10 capital letters or digits. */
 export const abbreviationSchema = z
   .string()
@@ -238,8 +281,7 @@ export const orgProfilePatchSchema = z
             .refine((u) => new URL(u).protocol === "https:", "photoUrl must be https")
             .nullable(),
         ),
-        /** Only null is accepted: the form can remove the biography but never write one (v1 has no biography editor). */
-        detailsHtml: z.null(),
+        detailsHtml: bioHtmlSchema,
       })
       .partial()
       .strict(),
@@ -251,6 +293,12 @@ export const orgProfilePatchSchema = z
     topicLinks: sideLinksSchema,
     serviceLinks: sideLinksSchema,
     social: z.object({ flickrUrl: httpsUrlOrNull, youtubeUrl: httpsUrlOrNull }).partial().strict(),
+    /** The Premier's "Meet the Team" links (T1): the side-column link rules. */
+    teamLinks: sideLinksSchema,
+    /** The ministry page's media contacts (T2), each replaced whole, and the after-hours number. */
+    contact: mediaContactSchema.nullable(),
+    secondContact: mediaContactSchema.nullable(),
+    weekendContactNumber: phoneOrNull,
   })
   .partial()
   .strict();
@@ -261,7 +309,7 @@ export const ADMIN_ONLY_PROFILE_FIELDS = ["parentKey", "isActive", "abbreviation
 
 /**
  * Staff edit of the form fields. Merges `minister` and `social` field by field onto the stored ones
- * (lists are replaced whole), refuses an abbreviation another organization holds, reuses the
+ * (lists and the two media contacts are replaced whole), refuses an abbreviation another organization holds, reuses the
  * upsert path (so org.upserted fires only on a real change) and stamps staffEditedAt when it writes.
  * Returns null when the key does not exist; throws AbbreviationTakenError. Uses the caller's
  * transaction when `tx` is given (a cabinet change).

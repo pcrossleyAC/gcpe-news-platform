@@ -20,6 +20,10 @@ export interface BodyEditorProps {
   value: string;
   onChange(html: string): void;
   readOnly: boolean;
+  /** Show "Insert asset" (an `<asset>` embed). Default true; the minister biography turns it off. */
+  allowAssets?: boolean;
+  /** Space-separated ids of the hint, note or error that describe the editing area. */
+  describedBy?: string;
 }
 
 /**
@@ -29,14 +33,21 @@ export interface BodyEditorProps {
  * client-side (pasteFilter.ts) before ProseMirror ever parses it, matching what the server
  * sanitiser would keep.
  */
-export function BodyEditor({ id, label, value, onChange, readOnly }: BodyEditorProps): React.JSX.Element {
+export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets = true, describedBy }: BodyEditorProps): React.JSX.Element {
+  const attributes = (): Record<string, string> => ({
+    id,
+    role: "textbox",
+    "aria-multiline": "true",
+    "aria-labelledby": `${id}-label`,
+    ...(describedBy ? { "aria-describedby": describedBy } : {}),
+  });
   const editor = useEditor(
     {
       extensions: bodyExtensions(AssetWithView),
       content: value,
       editable: !readOnly,
       editorProps: {
-        attributes: { id, role: "textbox", "aria-multiline": "true", "aria-labelledby": `${id}-label` },
+        attributes: attributes(),
         transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted),
       },
       onUpdate: ({ editor: e }) => onChange(e.getHTML()),
@@ -44,9 +55,19 @@ export function BodyEditor({ id, label, value, onChange, readOnly }: BodyEditorP
     [],
   );
 
+  // Not a content change, so no update event: TipTap's default would call onChange on mount with
+  // its own rewrite of `value` (<b> as <strong>, line breaks dropped), which reads as an edit.
   useEffect(() => {
-    editor?.setEditable(!readOnly);
+    editor?.setEditable(!readOnly, false);
   }, [editor, readOnly]);
+
+  // The editor is created once, so a description that comes and goes (a note, a server error)
+  // is pushed into its attributes here.
+  useEffect(() => {
+    if (!editor || editor.isDestroyed) return;
+    editor.setOptions({ editorProps: { ...editor.options.editorProps, attributes: attributes() } });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editor, describedBy]);
 
   // Resyncs when `value` changes from outside (a reload after a 409, or the session-expiry
   // restore) — never while the user is actively focused in the editor, so an external replace
@@ -95,7 +116,7 @@ export function BodyEditor({ id, label, value, onChange, readOnly }: BodyEditorP
           <ToggleButton isSelected={editor.isActive("link")} onChange={toggleLink}>
             Link
           </ToggleButton>
-          <Button onPress={insertAsset}>Insert asset</Button>
+          {allowAssets && <Button onPress={insertAsset}>Insert asset</Button>}
         </div>
       )}
       <EditorContent editor={editor} className="gcpe-body-editor__area" />

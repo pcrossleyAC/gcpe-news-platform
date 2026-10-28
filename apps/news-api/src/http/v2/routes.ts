@@ -5,7 +5,7 @@ import type { Db } from "@gcpe/db-kit";
 import { clientIpKey } from "../client-ip";
 import { changesRoutes, type ChangesRouteOptions } from "./changes";
 import { parseSearchQuery } from "../../search/query";
-import { getGovernmentTerms, getSiteSettings, listSlidesV2 } from "../../read";
+import { getGovernmentTerms, getSiteSettings, listMinistryProfiles, listSlidesV2 } from "../../read";
 import { RELATED_MAX_KEY_CHARS, type RelatedService } from "../../search/related";
 import { similarRequestSchema, type SimilarService } from "../../search/similar";
 import type { SearchService } from "../../search/service";
@@ -35,6 +35,7 @@ export function v2Routes(deps: {
   const { search, db } = deps;
   if (db) {
     r.get("/slides", async (_req, res) => void res.json({ slides: await listSlidesV2(db) }));
+    r.get("/ministries", async (_req, res) => void res.json({ ministries: await listMinistryProfiles(db) }));
     // The live site settings (public; 404 until NRMS has published a revision).
     r.get("/site-settings", async (_req, res) => {
       const stored = await getSiteSettings(db);
