@@ -72,17 +72,22 @@ export async function checkReleaseStates(browser: import("@playwright/test").Bro
   if (headings !== 1) fail(`(no script): ${headings} level-1 headings exposed, expected 1`);
   await context.close();
 
-  // Share is in the DOM twice (the side column and the phone toolbar); legacy CSS hides one per
-  // width. The hidden copy must be display:none (no boxes), not merely off screen, so assistive
-  // technology reads one Share list, not two.
+  // Share and Translations are in the DOM twice (the side column `.story-features` and the phone
+  // `.story-info`), and the side column also carries the ministry link groups; the vendored legacy
+  // CSS (assets/legacy/Content) hides one copy per width. Nothing else hides them, so this is the
+  // test that catches a CSS change (chunk 10's PurgeCSS) that would show both. The hidden copy
+  // must be display:none (no boxes), not merely off screen, so assistive technology reads one.
+  // The PostCard's Translations link targets the body's #translations, which shows at both widths.
   for (const width of [390, 1280]) {
     const sized = await browser.newContext({ viewport: { width, height: 900 } });
     const page = await sized.newPage();
     await page.goto(url + RELEASE);
-    const copies = page.locator(".resource-links.share");
-    const [total, rendered] = [await copies.count(), await copies.evaluateAll((els) => els.filter((el) => el.getClientRects().length > 0).length)];
-    log(`${RELEASE} at ${width}px: Share copies ${total}, rendered ${rendered}`);
-    if (rendered !== 1) fail(`at ${width}px: ${rendered} Share copies rendered, expected exactly 1 (the other display:none)`);
+    const rendered = (sel: string) => page.locator(sel).evaluateAll((els) => els.filter((el) => el.getClientRects().length > 0).length);
+    const counts = Object.fromEntries(
+      await Promise.all(([["Share", ".resource-links.share"], ["Translations", ".story-features .resource-links.translate, .story-info .resource-links.translate"], ["side column or phone row", ".story-features, .story-info"], ["#translations", "#translations"]] as const).map(async ([name, sel]) => [name, await rendered(sel)] as const)),
+    );
+    log(`${RELEASE} at ${width}px: rendered ${Object.entries(counts).map(([k, n]) => `${k} ${n}`).join(", ")}`);
+    for (const [name, n] of Object.entries(counts)) if (n !== 1) fail(`at ${width}px: ${n} ${name} copies rendered, expected exactly 1 (the other display:none)`);
     await sized.close();
   }
   return failures;
