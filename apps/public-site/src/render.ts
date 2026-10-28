@@ -88,18 +88,39 @@ export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
 /** The card image a page without its own shows (legacy's `default-og-image-new.jpg`, vendored). */
 export const DEFAULT_OG_IMAGE = "/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
 
+/** The longest description a page's meta carries: search engines show about 155 characters. */
+const MAX_DESCRIPTION = 300;
+
+/** A description for a meta tag: whitespace collapsed, trimmed, bounded to {@link MAX_DESCRIPTION}
+ * characters (cut at a word, "…" added); null when nothing is left. Escaping is the caller's. */
+export function pageDescription(text: string | null | undefined): string | null {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  if (!t) return null;
+  if (t.length <= MAX_DESCRIPTION) return t;
+  const cut = t.slice(0, MAX_DESCRIPTION - 1);
+  const at = cut.lastIndexOf(" ");
+  return `${(at > MAX_DESCRIPTION / 2 ? cut.slice(0, at) : cut).trimEnd()}…`;
+}
+
+/** The Site identity X account as a twitter:site value: exactly one leading "@"; null when empty. */
+export function twitterHandle(account: string): string | null {
+  const h = account.trim().replace(/^@+/, "");
+  return h ? `@${h}` : null;
+}
+
 /**
  * Every page's Open Graph and Twitter card meta (gap audit M5): og:site_name, url (the canonical),
  * type, title, description (trimmed; left out when empty), image and image:alt (a page's own image
- * only), then twitter:card summary_large_image and the twitter: title, description, image and
+ * only), then twitter:card summary_large_image, twitter:site (the Site identity handle, one
+ * leading "@"; left out when unset) and the twitter: title, description, image and
  * image:alt with the same values. A crawler fetches the image
- * on its own, so it must be absolute: anything but an absolute http(s) URL gets the default. No
- * twitter:site — the handle is tenant identity, which plan 5 T10 owns.
+ * on its own, so it must be absolute: anything but an absolute http(s) URL gets the default.
+ * `description` is the page's resolved description (see {@link pageDescription}).
  */
-function socialMeta(title: string, site: SiteInfo, canonical: string, opts: PageOptions): string {
+function socialMeta(title: string, site: SiteInfo, canonical: string, opts: PageOptions, description: string | null, twitterSite: string | null): string {
   const s = opts.social ?? {};
   const ogTitle = s.title ?? title;
-  const description = (s.description ?? opts.description)?.trim() || null;
+  description = pageDescription(s.description) ?? description;
   const ownImage = s.image && isSafeUrl(s.image, { relative: false, schemes: ["https:", "http:"] }) ? s.image : null;
   const image = ownImage ?? new URL(site.baseUrl).origin + basePath(site) + DEFAULT_OG_IMAGE;
   // Alt text describes the page's own image; the default card image carries none.
@@ -115,6 +136,7 @@ function socialMeta(title: string, site: SiteInfo, canonical: string, opts: Page
     og("image", image) +
     (imageAlt ? og("image:alt", imageAlt) : "") +
     tw("card", "summary_large_image") +
+    (twitterSite ? tw("site", twitterSite) : "") +
     tw("title", ogTitle) +
     (description ? tw("description", description) : "") +
     tw("image", image) +
@@ -152,7 +174,6 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   const theme = site.theme ?? DEFAULT_THEME;
   const robots = opts.test ? `\n<meta name="robots" content="noindex, nofollow">` : "";
   const gsc = opts.googleVerificationMeta && GOOGLE_SITE_VERIFICATION_RE.test(opts.googleVerificationMeta) ? `\n<meta name="google-site-verification" content="${e(opts.googleVerificationMeta)}">` : "";
-  const description = opts.description ? `\n<meta name="description" content="${e(opts.description)}">` : "";
   const canonical = new URL(site.baseUrl).origin + canonicalPath;
   // Defence in depth: the tenant config schema (`@gcpe/config`'s siteThemeSchema) already
   // restricts stylesheetUrl to https:/relative, but render time doesn't re-trust config-time
@@ -163,6 +184,9 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   // Legacy loads the Granville Bridge theme only while Project Blue Bridge is on.
   const bridgeCss = opts.banner ? `\n<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/granville-bridge-theme.css">` : "";
   const settings = opts.settings ?? themeDefaults(theme);
+  // One value for meta description, og:description and twitter:description: the page's own, else the site's.
+  const pageDesc = pageDescription(opts.description) ?? pageDescription(settings.siteIdentity.description);
+  const description = pageDesc ? `\n<meta name="description" content="${e(pageDesc)}">` : "";
   const page = `<body${bodyAttr}>
 <a class="skip-link" href="#main">Skip to main content</a>
 ${renderBanner(base, opts.banner)}
@@ -180,7 +204,7 @@ ${opts.trail ? `${opts.trail}\n` : ""}${renderFooter(settings, site, opts)}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)} | ${e(site.name)}</title>
-<link rel="canonical" href="${e(canonical)}">${robots}${gsc}${description}${socialMeta(title, site, canonical, opts)}
+<link rel="canonical" href="${e(canonical)}">${robots}${gsc}${description}${socialMeta(title, site, canonical, opts, pageDesc, twitterHandle(settings.siteIdentity.twitterSite))}
 <link rel="icon" href="${e(base)}/favicon.ico">
 <script>${HTML_JS_MARKER}</script>
 <link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>

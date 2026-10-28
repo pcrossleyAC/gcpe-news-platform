@@ -21,6 +21,8 @@ export interface SiteRenderState {
    * the footer (and its copyright year), so `footerHash` is chrome like Blue Bridge; the others
    * reach only some pages — see `chromeChanges`. */
   footerHash: string;
+  /** The site description and X account (siteIdentity): every page's meta description and twitter:site. */
+  identityHash: string;
   /** The header (News and Live labels, header links, search switch) and the footer column headings: every page. */
   headerHash: string;
   /** The page labels and listing titles (navigation.labels, listingTitles): the aggregate pages. */
@@ -95,7 +97,7 @@ interface SiteStateMarker extends SiteRenderState {
 export const verificationKey = (site: Pick<SiteInfo, "verification">): string =>
   site.verification?.googleFile || site.verification?.googleMeta ? `${site.verification.googleFile ?? ""}|${site.verification.googleMeta ?? ""}` : "";
 
-const HASHES = ["footerHash", "headerHash", "labelsHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "liveTextHash", "notFoundHash", "assetLicenceHash", "searchTextHash", "subscribeHash"] as const;
+const HASHES = ["footerHash", "identityHash", "headerHash", "labelsHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash", "releaseShareHash", "contactsPageHash", "privacyHash", "liveTextHash", "notFoundHash", "assetLicenceHash", "searchTextHash", "subscribeHash"] as const;
 
 /** `ministryMenuHash` as read from a marker: absent (written before this existed) is `null`, and
  * `chromeChanges` then treats it as matching. */
@@ -151,6 +153,7 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
     previous.chrome === RENDER_CHROME_VERSION &&
     previous.baseUrl === site.baseUrl &&
     previous.footerHash === state.footerHash &&
+    previous.identityHash === state.identityHash &&
     previous.headerHash === state.headerHash &&
     (previous.ministryMenuHash === null || previous.ministryMenuHash === state.ministryMenuHash)
   );

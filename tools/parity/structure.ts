@@ -26,6 +26,7 @@ const GROUPED_LISTING = [
 /** Selectors the legacy page carries that our port must also carry (queried on the whole document). */
 export const STRUCTURE: Record<string, string[]> = {
   home: [
+    'meta[name="description"]',
     ".home-features",
     ".home-body",
     ".top-article .article h2 a",
@@ -35,6 +36,7 @@ export const STRUCTURE: Record<string, string[]> = {
     "#carousel-holder .home-banner",
   ],
   release: [
+    'meta[name="twitter:site"]',
     ".story-page",
     ".story-features .resource-links.share",
     ".story-features .location-and-date",

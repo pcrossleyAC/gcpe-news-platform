@@ -474,7 +474,7 @@ describe("renderPage Open Graph and Twitter card meta", () => {
     expect(meta(doc, "name", "twitter:title")).toBe('Fish & "Chips"');
     expect(meta(doc, "name", "twitter:description")).toBe("About <fish>");
     expect(meta(doc, "name", "twitter:image")).toBe(defaultImage);
-    // The tenant's handle is plan 5 T10's; nothing is guessed here.
+    // No settings given: the neutral defaults carry no X account.
     expect(doc.querySelector('meta[name="twitter:site"]')).toBeNull();
     // Escaped in the source: no raw quote or angle bracket inside a content attribute.
     expect(html).toContain('<meta property="og:title" content="Fish &amp; &quot;Chips&quot;">');
@@ -517,5 +517,60 @@ describe("renderPage Open Graph and Twitter card meta", () => {
       expect(d.querySelector('meta[property="og:description"], meta[name="twitter:description"]')).toBeNull();
     }
     expect(meta(social({ social: { title: null } }), "property", "og:title")).toBe("Page");
+  });
+});
+
+describe("renderPage site identity: description and twitter:site", () => {
+  const at = { name: "BC Gov News", baseUrl: "https://boxs.example/site", theme: DEFAULT_THEME };
+  const withIdentity = (over: Partial<ReturnType<typeof bcSettings>["siteIdentity"]>) => {
+    const s = bcSettings();
+    s.siteIdentity = { ...s.siteIdentity, ...over };
+    return s;
+  };
+  const page = (settings: ReturnType<typeof bcSettings>, opts: Parameters<typeof renderPage>[4] = {}) => expectAccessibleStructure(renderPage("T", at, "/site/x/", "<h1>H</h1>", { ...opts, settings }));
+  const content = (doc: Document, sel: string) => doc.querySelector(sel)?.getAttribute("content") ?? null;
+  const descriptions = (doc: Document) => [content(doc, 'meta[name="description"]'), content(doc, 'meta[property="og:description"]'), content(doc, 'meta[name="twitter:description"]')];
+
+  it("a page with no description of its own carries the site description in meta description, og:description and twitter:description", () => {
+    expect(descriptions(page(withIdentity({ description: "News from the Province of BC" })))).toEqual(Array(3).fill("News from the Province of BC"));
+  });
+
+  it("a page's own description wins over the site description", () => {
+    expect(descriptions(page(withIdentity({ description: "Site" }), { description: "Own" }))).toEqual(Array(3).fill("Own"));
+    expect(descriptions(page(withIdentity({ description: "Site" }), { description: "  " }))).toEqual(Array(3).fill("Site"));
+    // A release's social summary wins for the cards; an empty one falls back to the page's description.
+    expect(descriptions(page(withIdentity({ description: "Site" }), { description: "Own", social: { description: "" } }))).toEqual(["Own", "Own", "Own"]);
+  });
+
+  it("an empty site description and no page description emit no description meta and no og:description", () => {
+    const html = renderPage("T", at, "/site/x/", "<h1>H</h1>", { settings: withIdentity({ description: "  " }) });
+    expect(html).not.toContain('name="description"');
+    expect(html).not.toContain("og:description");
+    expect(html).not.toContain("twitter:description");
+  });
+
+  it("twitter:site is '@BCGovNews' for both 'BCGovNews' and '@BCGovNews'; absent when twitterSite is ''", () => {
+    for (const handle of ["BCGovNews", "@BCGovNews"]) expect(content(page(withIdentity({ twitterSite: handle })), 'meta[name="twitter:site"]')).toBe("@BCGovNews");
+    expect(page(withIdentity({ twitterSite: "" })).querySelector('meta[name="twitter:site"]')).toBeNull();
+    // Right after twitter:card.
+    const html = renderPage("T", at, "/site/x/", "<h1>H</h1>", { settings: withIdentity({ twitterSite: "BCGovNews" }) });
+    expect(html.indexOf('name="twitter:card"')).toBeLessThan(html.indexOf('name="twitter:site"'));
+    expect(html.indexOf('name="twitter:site"')).toBeLessThan(html.indexOf('name="twitter:title"'));
+  });
+
+  it("a description holding \" < > & is escaped", () => {
+    const html = renderPage("T", at, "/site/x/", "<h1>H</h1>", { settings: withIdentity({ description: 'Say "hi" <b> & bye' }) });
+    expect(html).toContain('<meta name="description" content="Say &quot;hi&quot; &lt;b&gt; &amp; bye">');
+    expect(html).toContain('<meta property="og:description" content="Say &quot;hi&quot; &lt;b&gt; &amp; bye">');
+    expect(html).toContain('<meta name="twitter:description" content="Say &quot;hi&quot; &lt;b&gt; &amp; bye">');
+  });
+
+  it("a per-page description has its whitespace collapsed and is bounded (cut at a word, with an ellipsis)", () => {
+    const doc = page(withIdentity({}), { description: "  One\n\n two\t three  " });
+    expect(descriptions(doc)).toEqual(Array(3).fill("One two three"));
+    const long = page(withIdentity({}), { description: "word ".repeat(200) });
+    const d = content(long, 'meta[name="description"]')!;
+    expect(d.length).toBeLessThanOrEqual(300);
+    expect(d.endsWith("word…")).toBe(true);
   });
 });

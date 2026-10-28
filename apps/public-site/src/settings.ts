@@ -92,6 +92,8 @@ export function settingsHashes(settings: SiteSettings, timeZone: string, now: Da
     headerHash: hash([settings.navigation.newsLabel, settings.navigation.liveLabel, settings.navigation.headerLinks, settings.navigation.showHeaderSearch, settings.navigation.footerConnectHeading, settings.navigation.footerMoreInfoHeading]),
     // The page labels and listing titles: aggregate pages only (no post shows them).
     labelsHash: hash([settings.navigation.labels, settings.navigation.listingTitles]),
+    // The site description and X account: every page's head (meta description, twitter:site).
+    identityHash: hash([settings.siteIdentity.description, settings.siteIdentity.twitterSite]),
     themeHash: hash(settings.theme),
     bannerHash: hash(settings.banner),
     connectHash: hash(settings.connect),

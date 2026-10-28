@@ -371,3 +371,13 @@ describe("renderMinistryFactsheetsPage (H5)", () => {
     }
   });
 });
+
+describe("page descriptions of ministry and category pages", () => {
+  const desc = (html: string) => expectAccessibleStructure(html).querySelector('meta[name="description"]')?.getAttribute("content");
+  it("a ministry page's description is 'News from <name>'; a sector page's is 'News about <name>'", () => {
+    const posts = { top: null, feature: null, latest: [] };
+    expect(desc(renderMinistryPage(ministry(), null, posts, site, { settings: bcSettings() }, { profile: null, children: [] }))).toBe("News from Health");
+    expect(desc(renderMinistryFactsheetsPage(ministry(), null, [], site, { settings: bcSettings() }, { profile: null, children: [] }))).toBe("News from Health");
+    expect(desc(renderCategoryPage("sectors", category({ key: "economy", name: "Economy" }), posts, [], site, { settings: bcSettings() }))).toBe("News about Economy");
+  });
+});

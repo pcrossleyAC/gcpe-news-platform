@@ -226,3 +226,19 @@ describe("settingsHashes: header and labels", () => {
     expect(changed).toEqual(["searchTextHash"]);
   });
 });
+
+describe("settingsHashes: identityHash", () => {
+  const hashes = (mutate: (s: ReturnType<typeof bcSettings>) => void) => {
+    const s = structuredClone(bcSettings());
+    mutate(s);
+    return settingsHashes(s, "America/Vancouver", new Date("2026-06-01T00:00:00Z"));
+  };
+  const base = hashes(() => {});
+
+  it("the description and the X account move identityHash; Blue Bridge fields and other sections do not", () => {
+    expect(hashes((s) => { s.siteIdentity.description = "Other"; }).identityHash).not.toBe(base.identityHash);
+    expect(hashes((s) => { s.siteIdentity.twitterSite = "Other"; }).identityHash).not.toBe(base.identityHash);
+    expect(hashes((s) => { s.siteIdentity.blueBridge.message = "Changed {age}"; }).identityHash).toBe(base.identityHash);
+    expect(hashes((s) => { s.navigation.newsLabel = "Newsroom"; }).identityHash).toBe(base.identityHash);
+  });
+});

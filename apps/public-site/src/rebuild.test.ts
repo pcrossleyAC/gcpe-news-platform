@@ -392,3 +392,37 @@ describe("Navigation settings in the render-state marker", () => {
     expect(await chromeChanges(storage as SiteStorage, stateFor(), site)).toMatchObject({ all: true });
   });
 });
+
+describe("Site identity in the render-state marker", () => {
+  const stateFor = (mutate: (s: ReturnType<typeof bcSettings>) => void = () => {}) => {
+    const s = bcSettings();
+    mutate(s);
+    return stateAndBanner(null, false, new Date("2026-10-28T12:00:00Z"), s, site, []).state;
+  };
+  const marked = async () => {
+    const storage = memoryStorage();
+    await writeSiteState(storage as SiteStorage, stateFor(), site);
+    return storage;
+  };
+
+  it("a siteIdentity description edit queues a rebuild of every page (all); so does the X account", async () => {
+    expect(await chromeChanges(await marked() as SiteStorage, stateFor(), site)).toMatchObject({ all: false, sections: [] });
+    expect(await chromeChanges(await marked() as SiteStorage, stateFor((s) => { s.siteIdentity.description = "A new description"; }), site)).toMatchObject({ all: true });
+    expect(await chromeChanges(await marked() as SiteStorage, stateFor((s) => { s.siteIdentity.twitterSite = "Other"; }), site)).toMatchObject({ all: true });
+  });
+
+  it("a Blue Bridge text edit (not part of the identity hash) does not queue a rebuild-all", async () => {
+    const r = await chromeChanges(await marked() as SiteStorage, stateFor((s) => { s.siteIdentity.blueBridge.message = "Changed {age}"; }), site);
+    expect(r.all).toBe(false);
+  });
+
+  it("a marker written before identityHash existed queues one rebuild-all, and the next turn none", async () => {
+    const storage = await marked();
+    const old = JSON.parse(storage.files.get(".site-state.json") as string);
+    delete old.identityHash;
+    storage.files.set(".site-state.json", JSON.stringify(old));
+    expect(await chromeChanges(storage as SiteStorage, stateFor(), site)).toMatchObject({ all: true });
+    await writeSiteState(storage as SiteStorage, stateFor(), site);
+    expect(await chromeChanges(storage as SiteStorage, stateFor(), site)).toMatchObject({ all: false, sections: [] });
+  });
+});
