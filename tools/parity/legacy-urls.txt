@@ -1,0 +1,10 @@
+# Legacy news.gov.bc.ca paths for `npm run parity:urls` (one per line, # comments). Plan 3 extends this.
+/
+/ministries
+/ministries/health
+/connect
+/subscribe
+/search?q=housing
+/archive
+/site/
+/site/ministries/
