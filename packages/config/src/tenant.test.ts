@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { assertTimeZoneRules, loadTenantConfig } from "./tenant";
@@ -126,5 +126,28 @@ describe("assertTimeZoneRules", () => {
     expect(() => assertTimeZoneRules(tenant)).toThrow(
       new RegExp(`"bc".*UTC.*\\+00:00.*-07:00.*process\\.versions\\.tz=${process.versions.tz ?? "unknown"}`, "s"),
     );
+  });
+});
+
+describe("governmentTerms (NG-R17 seed)", () => {
+  const bcPath = fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url));
+
+  it("BC's committed terms are exactly migration 0017's backfill rows", () => {
+    // Re-derived from the migration's own VALUES list, so the seed and the backfill can't drift.
+    const sql = readFileSync(fileURLToPath(new URL("../../../apps/nrms/migrations/0017_government_term_dates.sql", import.meta.url)), "utf8");
+    const rows = [...sql.matchAll(/\('([^']+)',\s*'(\d{4}-\d{2}-\d{2})',\s*'([^']+)'\)/g)].map((m) => ({ slug: m[1], startDate: m[2], label: null, legacyArchiveUrl: m[3] }));
+    expect(rows).toHaveLength(9);
+    expect(loadTenantConfig(bcPath).governmentTerms).toEqual(rows);
+  });
+
+  it("is optional: the NB tenant has none", () => {
+    expect(loadTenantConfig(fileURLToPath(new URL("../../../config/tenants/nb.json", import.meta.url))).governmentTerms).toBeUndefined();
+  });
+
+  it("refuses the reserved slug, an unsafe slug, and start dates out of order", () => {
+    const term = (slug: string, startDate: string) => ({ slug, startDate });
+    for (const governmentTerms of [[term("current", "2024-11-18")], [term("../x", "2024-11-18")], [term("b", "2024-11-18"), term("a", "2020-11-26")], [term("a", "2020-11-26"), term("a", "2024-11-18")]]) {
+      expect(() => loadTenantConfig(writeTemp({ ...valid, governmentTerms })), JSON.stringify(governmentTerms)).toThrow(/governmentTerms/);
+    }
   });
 });

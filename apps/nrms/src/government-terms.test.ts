@@ -4,7 +4,9 @@ import type { GovernmentTermsPayload, SubscriberConfig } from "@gcpe/events";
 import { createNrmsTestDb, requireBcTzdata2026b } from "../test/helpers";
 import { startSiteLoop } from "./website/carousel";
 import type { SlideImageFiles } from "./website/slide-images";
-import { addDays, publicTerms, syncGovernmentTerms, termSpans } from "./government-terms";
+import { fileURLToPath } from "node:url";
+import { loadTenantConfig } from "@gcpe/config";
+import { addDays, publicTerms, seedGovernmentTerms, syncGovernmentTerms, termSpans } from "./government-terms";
 import { governmentTerms } from "./db/schema";
 
 type Row = typeof governmentTerms.$inferSelect;
@@ -187,5 +189,68 @@ describe("syncGovernmentTerms", () => {
     await tdb.pool.query("UPDATE government_terms SET label = 'Eby government' WHERE name = '2024-2028'");
     expect(await sync("2026-10-28T12:01:00Z")).toEqual({ emitted: true });
     expect((await published())[1]!.data.terms[0]!.label).toBe("Eby government");
+  });
+});
+
+describe("seedGovernmentTerms (NG-R17)", () => {
+  const TZ = "America/Vancouver";
+  const subs: SubscriberConfig[] = [{ name: "news-api", url: "http://news.invalid/events", secret: "s".repeat(40), types: ["*"] }];
+  const seed = loadTenantConfig(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url))).governmentTerms!;
+  let tdb: TestDatabase;
+  beforeAll(async () => {
+    tdb = await createNrmsTestDb();
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+  beforeEach(async () => {
+    await tdb.pool.query("TRUNCATE government_terms, government_terms_published, outbox_events, outbox_deliveries, aggregate_sequences CASCADE");
+  });
+  const run = (terms = seed) =>
+    tdb.db.transaction((tx) => seedGovernmentTerms(tx, terms, { timeZone: TZ, subscribers: subs, now: () => new Date("2026-10-28T19:00:00Z") }));
+  const events = async () =>
+    (await tdb.pool.query("SELECT envelope->'data' AS data FROM outbox_events WHERE type = 'government_terms.published' ORDER BY sequence")).rows as { data: GovernmentTermsPayload }[];
+  const rows = async () =>
+    (await tdb.pool.query("SELECT name, start_date::text AS start_date, legacy_archive_url, label, is_current, legacy_id FROM government_terms ORDER BY start_date")).rows;
+
+  it("an empty table gets BC's 9 terms, the current one flagged, and one snapshot", async () => {
+    expect(await run()).toEqual({ seeded: 9, emitted: true });
+    const r = await rows();
+    expect(r.map((x) => [x.name, x.start_date])).toEqual(seed.map((t) => [t.slug, t.startDate]));
+    expect(r.find((x) => x.name === "2024-2028")).toMatchObject({ is_current: true, legacy_archive_url: "https://archive.news.gov.bc.ca/releases/index_current.htm", label: null, legacy_id: null });
+    expect(r.filter((x) => x.is_current)).toHaveLength(1);
+    const [e, ...more] = await events();
+    expect(more).toEqual([]);
+    expect(e!.data.currentSlug).toBe("2024-2028");
+    expect(e!.data.terms.map((t) => t.slug)).toEqual([...seed].reverse().map((t) => t.slug));
+    expect(e!.data.terms.at(-1)).toEqual({ slug: "pre2001", label: null, startDate: "1994-01-01", endDate: "2001-06-04", legacyArchiveUrl: "https://archive.news.gov.bc.ca/releases/index_pre2001.htm" });
+  });
+
+  it("a table with any row is left untouched, and nothing is published", async () => {
+    await tdb.db.insert(governmentTerms).values({ name: "2024-2028", startDate: "2024-11-20", legacyArchiveUrl: "https://elsewhere.example/x" });
+    expect(await run()).toEqual({ seeded: 0, emitted: false });
+    expect(await rows()).toEqual([{ name: "2024-2028", start_date: "2024-11-20", legacy_archive_url: "https://elsewhere.example/x", label: null, is_current: false, legacy_id: null }]);
+    expect(await events()).toEqual([]);
+  });
+
+  it("re-running is a no-op", async () => {
+    await run();
+    const before = await rows();
+    expect(await run()).toEqual({ seeded: 0, emitted: false });
+    expect(await rows()).toEqual(before);
+    expect(await events()).toHaveLength(1);
+  });
+
+  it("a tenant with no terms seeds nothing", async () => {
+    expect(await run([])).toEqual({ seeded: 0, emitted: false });
+    expect(await rows()).toEqual([]);
+    expect(await events()).toEqual([]);
+  });
+
+  it("two concurrent starts seed once", async () => {
+    const results = await Promise.all([run(), run()]);
+    expect(results.map((r) => r.seeded).sort()).toEqual([0, 9]);
+    expect(await rows()).toHaveLength(9);
+    expect(await events()).toHaveLength(1);
   });
 });

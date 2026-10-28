@@ -19,7 +19,9 @@ describe("pagesForChange", () => {
     [{ id: 3, kind: "home", key: null }, [{ pageId: "home", priority: 1 }]],
     [{ id: 4, kind: "slides", key: null }, [{ pageId: "home", priority: 1 }]],
     [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }]],
-    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
+    // A ministry change can start or stop a successor redirect, so it also queues legacy-redirects,
+    // one priority lower, so a new successor's page is written before anything 301s to it.
+    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 7, kind: "tag", key: "covid-19" }, [{ pageId: "category:tags:covid-19", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 8, kind: "post.upserted", key: "../x" }, []],
     [{ id: 9, kind: "ministry", key: null }, []],
@@ -28,6 +30,8 @@ describe("pagesForChange", () => {
     [{ id: 12, kind: "sector", key: "economy" }, [{ pageId: "category:sectors:economy", priority: 1 }, { pageId: "home", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     // The next sync turn fetches the settings and decides what each changed section needs.
     [{ id: 11, kind: "site_settings", key: null }, []],
+    // Every term page is added by syncChanges, from the builder's terms.
+    [{ id: 12, kind: "government_terms", key: null }, [{ pageId: "archive-terms", priority: 1 }, { pageId: "archive-term:current", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
   ] as const)("%j", (change, expected) => {
     expect(pagesForChange(change as ChangeRow, 0)).toEqual(expected);
   });
@@ -239,6 +243,34 @@ describe("syncChanges", () => {
     const queued = await items();
     expect(queued).toContain("post:K1@2");
     expect(queued).toContain("post:K2@2");
+  });
+
+  it("a government_terms change queues every term page", async () => {
+    const { db, builder, index, newsApi } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const term = (slug: string, startDate: string, endDate: string | null) => ({ slug, label: null, startDate, endDate, legacyArchiveUrl: null });
+    newsApi.terms = { publishedAt: "2028-11-20T07:00:00.000Z", currentSlug: "2028-11-20", terms: [term("2028-11-20", "2028-11-20", null), term("2024-2028", "2024-11-18", "2028-11-19"), term("2017-2017", "2017-06-12", "2017-07-17")] };
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "government_terms", key: null }], next: 4 },
+      { resync: false, changes: [], next: 4 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    const queued = (await items()).map((x) => x.split("@")[0]);
+    expect(queued).toEqual(expect.arrayContaining(["archive-terms", "archive-term:current", "archive-term:2028-11-20", "archive-term:2024-2028", "archive-term:2017-2017", "sitemap:pages"]));
+  });
+
+  it("a change page with a terms failure still queues its post changes and advances the cursor (NG-R18)", async () => {
+    const { db, builder, index, newsApi } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    newsApi.governmentTerms = async () => { throw new Error("News API 503 for api/v2/government-terms"); };
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "post.upserted", key: "K9" }, { id: 5, kind: "government_terms", key: null }], next: 5 },
+      { resync: false, changes: [], next: 5 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    expect((await items()).map((x) => x.split("@")[0])).toEqual(expect.arrayContaining(["post:K9", "archive-terms", "archive-term:current", "sitemap:pages"]));
+    expect(await readCursor(db)).toBe(5);
   });
 
   it("a publish during a backlog renders first", async () => {

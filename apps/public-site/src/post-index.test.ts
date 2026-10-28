@@ -24,7 +24,7 @@ describe("post index", () => {
   it("put, get, replace and remove", async () => {
     const idx = postIndex(tdb.db);
     await idx.put(indexEntryOf("K1", dto({}))!);
-    expect(membershipOfEntry((await idx.get("K1"))!)).toEqual({ month: "2026-10", categories: ["ministries:health", "tags:covid-19"] });
+    expect(membershipOfEntry((await idx.get("K1"))!)).toEqual({ month: "2026-10", day: "2026-10-03", categories: ["ministries:health", "tags:covid-19"] });
     await idx.put(indexEntryOf("K1", dto({ ministryKeys: ["finance"], tagKeys: [] }))!);
     expect((await idx.get("K1"))!.categories).toEqual(["ministries:finance"]);
     await idx.remove("K1");
@@ -41,5 +41,19 @@ describe("post index", () => {
     expect((await idx.keys()).sort()).toEqual(["A", "B", "C"]);
     expect(await idx.categories()).toEqual(["ministries:health", "tags:covid-19"]);
     expect((await idx.inCategory("tags:covid-19")).sort()).toEqual(["A", "B", "C"]);
+  });
+
+  it("a day range is by BC calendar day, end exclusive, newest first; an open range runs to now", async () => {
+    const idx = postIndex(tdb.db);
+    // 23:59 Pacific on the eve and 00:00 on the day (the UTC instants are 1 minute apart).
+    await idx.put(indexEntryOf("EVE", dto({ key: "EVE", publishDate: "2028-11-19T23:59:00-08:00" }))!);
+    await idx.put(indexEntryOf("DAY", dto({ key: "DAY", publishDate: "2028-11-20T00:00:00-08:00" }))!);
+    await idx.put(indexEntryOf("LATER", dto({ key: "LATER", publishDate: "2029-01-05T10:00:00-08:00" }))!);
+    await idx.put(indexEntryOf("OLD", dto({ key: "OLD", publishDate: "2024-11-17T12:00:00-08:00" }))!);
+    expect((await idx.inDayRange("2024-11-18", "2028-11-20")).map((p) => p.key)).toEqual(["EVE"]);
+    expect((await idx.inDayRange("2028-11-20", null)).map((p) => p.key)).toEqual(["LATER", "DAY"]);
+    expect(await idx.countInDayRange("2024-11-18", "2028-11-20")).toBe(1);
+    expect(await idx.countInDayRange("2028-11-20", null)).toBe(2);
+    expect(await idx.countInDayRange("1994-01-01", "2001-06-05")).toBe(0);
   });
 });

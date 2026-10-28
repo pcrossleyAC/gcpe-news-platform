@@ -1,9 +1,13 @@
+import { GOVERNMENT_TERM_SLUG } from "@gcpe/config";
 import { basePath, type SiteInfo } from "./render";
 
 /** A post key as NRMS and the News API produce it. Also the on-disk directory name. */
 export const POST_KEY = /^[A-Za-z0-9-]{1,100}$/;
 /** A category key (ministry, sector, theme, tag) in its lowercased on-disk form. */
 export const CATEGORY_KEY = /^[a-z0-9-]{1,100}$/;
+/** A government term slug (an imported legacy name or a new term's ISO start date); `current` is the
+ * alias. The one definition is the tenant config's (F8). */
+export const TERM_SLUG = GOVERNMENT_TERM_SLUG;
 /** A BC calendar month. */
 export const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -23,7 +27,11 @@ export type PageId =
   | { type: "sitemap-month"; month: string }
   | { type: "sitemap-pages" }
   | { type: "static" }
-  | { type: "connect" };
+  | { type: "connect" }
+  | { type: "archive-terms" }
+  | { type: "archive-term"; slug: string }
+  /** Not a page: the successor-redirect table the stack's middleware reads (new-government §4). */
+  | { type: "legacy-redirects" };
 
 const SINGLE: Record<string, PageId> = {
   home: { type: "home" },
@@ -34,6 +42,8 @@ const SINGLE: Record<string, PageId> = {
   "sitemap:pages": { type: "sitemap-pages" },
   static: { type: "static" },
   connect: { type: "connect" },
+  "archive-terms": { type: "archive-terms" },
+  "legacy-redirects": { type: "legacy-redirects" },
 };
 
 /** The one gate between a page id (from an event, the change feed or the queue) and a path. */
@@ -45,6 +55,7 @@ export function parsePageId(id: string): PageId | null {
   if (head === "category" && parts.length === 3 && isCategoryKind(parts[1]!) && CATEGORY_KEY.test(parts[2]!)) return { type: "category", kind: parts[1] as CategoryKind, key: parts[2]! };
   if (head === "archive" && parts.length === 2 && MONTH.test(parts[1]!)) return { type: "archive-month", month: parts[1]! };
   if (head === "sitemap" && parts.length === 2 && MONTH.test(parts[1]!)) return { type: "sitemap-month", month: parts[1]! };
+  if (head === "archive-term" && parts.length === 2 && TERM_SLUG.test(parts[1]!)) return { type: "archive-term", slug: parts[1]! };
   return null;
 }
 
@@ -55,6 +66,7 @@ export function formatPageId(p: PageId): string {
     case "archive-month": return `archive:${p.month}`;
     case "sitemap-month": return `sitemap:${p.month}`;
     case "sitemap-pages": return "sitemap:pages";
+    case "archive-term": return `archive-term:${p.slug}`;
     default: return p.type;
   }
 }
@@ -64,6 +76,10 @@ export function categoryPageId(kind: CategoryKind, key: string): string | null {
   const lower = key.toLowerCase();
   return CATEGORY_KEY.test(lower) ? `category:${kind}:${lower}` : null;
 }
+
+/** `{ successors: { "<old>": "<new>" } }`, read by apps/stack's ministrySuccessorRedirects. Parity
+ * url-compat's per-post maps share the `legacy/` directory. */
+export const MINISTRY_SUCCESSORS_FILE = "legacy/ministry-successors.json";
 
 export const postPath = (key: string) => `releases/${key}/index.html`;
 
@@ -84,6 +100,9 @@ export function pageFiles(p: PageId): string[] {
     case "sitemap-pages": return ["sitemaps/pages.xml"];
     case "static": return ["assets/theme.css", "assets/site-banner.json", "404.html", "robots.txt"];
     case "connect": return ["connect/index.html"];
+    case "archive-terms": return ["archive/terms/index.html"];
+    case "archive-term": return [`archive/terms/${p.slug}/index.html`];
+    case "legacy-redirects": return [MINISTRY_SUCCESSORS_FILE];
   }
 }
 
@@ -103,6 +122,9 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "sitemap-pages": return `${base}/sitemaps/pages.xml`;
     case "static": return `${base}/404.html`;
     case "connect": return `${base}/connect/`;
+    case "archive-terms": return `${base}/archive/terms/`;
+    case "archive-term": return `${base}/archive/terms/${p.slug}/`;
+    case "legacy-redirects": return `${base}/${MINISTRY_SUCCESSORS_FILE}`;
   }
 }
 

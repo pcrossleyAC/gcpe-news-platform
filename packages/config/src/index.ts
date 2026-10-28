@@ -1,4 +1,4 @@
-export { assertTimeZoneRules, loadTenantConfig, searchLanguageSchema, tenantConfigSchema, type SearchLanguage, type TenantConfig } from "./tenant";
+export { assertTimeZoneRules, GOVERNMENT_TERM_SLUG, loadTenantConfig, searchLanguageSchema, tenantConfigSchema, tenantGovernmentTermsSchema, type SearchLanguage, type TenantConfig, type TenantGovernmentTerm } from "./tenant";
 export { contrastRatio, siteThemeSchema, WCAG_AA_TEXT_CONTRAST, type SiteTheme } from "./theme";
 export { calendarTenantSchema, type CalendarTenantConfig } from "./calendar";
 export { parseEnv } from "./env";
