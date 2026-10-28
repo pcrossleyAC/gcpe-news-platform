@@ -63,6 +63,21 @@ describe("the fixture site (6e exit checks)", () => {
     }
   });
 
+  // Before/after guard for the category-index batch endpoint (P4-R11): the four index pages were
+  // captured from the per-category builder (d0008cb) and must render byte-identically from the
+  // batch call. A deliberate template change updates them with `vitest -u`.
+  it("the category index pages render exactly as captured (batch-endpoint guard)", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
+    try {
+      await buildFixtureSite(dir, { baseUrl: "http://127.0.0.1:1", test: false });
+      for (const index of ["ministries", "sectors", "themes", "tags"]) {
+        await expect(await readFile(join(dir, index, "index.html"), "utf8")).toMatchFileSnapshot(`__snapshots__/category-index-${index}.html`);
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it("/contacts/ lists Health, its child Trade indented under it, and BC's bottom Premier row", async () => {
     const dir = await mkdtemp(join(tmpdir(), "fixture-site-"));
     try {

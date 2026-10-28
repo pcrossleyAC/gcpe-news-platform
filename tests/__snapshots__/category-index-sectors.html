@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>News by Sector | BC Gov News</title>
+<link rel="canonical" href="http://127.0.0.1:1/sectors/">
+<meta property="og:site_name" content="BC Gov News">
+<meta property="og:url" content="http://127.0.0.1:1/sectors/">
+<meta property="og:type" content="website">
+<meta property="og:title" content="News by Sector">
+<meta property="og:image" content="http://127.0.0.1:1/assets/legacy/Content/Images/Gov/default-og-image-new.jpg">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="News by Sector">
+<meta name="twitter:image" content="http://127.0.0.1:1/assets/legacy/Content/Images/Gov/default-og-image-new.jpg">
+<link rel="icon" href="/favicon.ico">
+<script>document.documentElement.classList.add("js")</script>
+<link rel="preload" href="/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/legacy/fonts/BCSans-Bold.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/assets/legacy/Content/legacy.bundle.css">
+<link rel="stylesheet" href="/assets/legacy/Content/print.css" media="print">
+<link rel="stylesheet" href="/assets/site/overrides.css">
+<link rel="stylesheet" href="/assets/theme.css">
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to main content</a>
+<section id="banner" aria-label="Site notices" hidden>
+<div id="site-banner" hidden data-base="" data-icons="/assets/site/icons.svg"></div>
+<script>(() => {
+  const el = document.getElementById("site-banner");
+  if (!el || document.getElementById("bridge-banner")) return;
+  const wrap = document.getElementById("banner");
+  const base = el.getAttribute("data-base") || "";
+  const sprite = el.getAttribute("data-icons") || "";
+  const safeHref = (u) => {
+    if (typeof u !== "string" || u === "" || /[\s\u0000-\u001F\u007F]/.test(u)) return null;
+    if (u.charAt(0) === "/") return u.charAt(1) === "/" || u.charAt(1) === "\\" ? null : base + u;
+    try {
+      const url = new URL(u);
+      return url.protocol === "https:" && url.hostname ? u : null;
+    } catch (e) {
+      return null;
+    }
+  };
+  const div = (cls) => {
+    const d = document.createElement("div");
+    if (cls) d.className = cls;
+    return d;
+  };
+  const icon = (id) => {
+    const NS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(NS, "svg");
+    svg.setAttribute("class", "icon");
+    svg.setAttribute("aria-hidden", "true");
+    svg.setAttribute("focusable", "false");
+    const use = document.createElementNS(NS, "use");
+    use.setAttribute("href", sprite + "#i-" + id);
+    svg.appendChild(use);
+    return svg;
+  };
+  fetch(base + "/assets/site-banner.json", { cache: "no-store" })
+    .then((res) => (res.ok ? res.json() : null))
+    .then((b) => {
+      if (!b || b.visible !== true || typeof b.message !== "string") return;
+      const now = Date.now();
+      if (b.startsAt && !(now >= Date.parse(b.startsAt))) return;
+      if (b.endsAt && !(now < Date.parse(b.endsAt))) return;
+      const emergency = b.style === "emergency";
+      const box = div("info-blue-banner container-fluid sm-g-0 site-banner-" + (emergency ? "emergency" : "info"));
+      if (emergency) box.setAttribute("role", "alert");
+      const content = div("content container-xl sm-g-0");
+      const iconBox = div();
+      iconBox.appendChild(icon(emergency ? "circle-exclamation" : "circle-info"));
+      content.appendChild(iconBox);
+      const text = div();
+      const message = document.createElement("p");
+      message.textContent = b.message;
+      text.appendChild(message);
+      const links = Array.isArray(b.links) ? b.links : [];
+      if (links.length) {
+        const list = document.createElement("ul");
+        for (const l of links) {
+          if (!l || typeof l.text !== "string") continue;
+          const item = document.createElement("li");
+          const href = safeHref(l.url);
+          if (href) {
+            const a = document.createElement("a");
+            a.setAttribute("href", href);
+            a.textContent = l.text;
+            item.appendChild(a);
+          } else {
+            item.textContent = l.text;
+          }
+          list.appendChild(item);
+        }
+        text.appendChild(list);
+      }
+      content.appendChild(text);
+      if (b.dismissible === true) {
+        const closeBox = div();
+        const close = document.createElement("button");
+        close.id = "btnCloseBanner";
+        close.setAttribute("type", "button");
+        close.setAttribute("aria-label", "Close banner");
+        close.appendChild(icon("xmark"));
+        close.addEventListener("click", () => {
+          (wrap || el).hidden = true;
+        });
+        closeBox.appendChild(close);
+        content.appendChild(closeBox);
+      }
+      box.appendChild(content);
+      // Shown first, then the finished banner inserted: an alert added to a visible page is
+      // what screen readers announce reliably (not a role switched on an existing element).
+      if (wrap) wrap.hidden = false;
+      el.hidden = false;
+      el.appendChild(box);
+      document.dispatchEvent(new Event("site-banner-shown"));
+    })
+    .catch(() => {});
+})();</script>
+</section>
+<header id="main-nav" class="container-fluid sm-g-0 header nav-border">
+<div id="main-nav-container" class="container-xl sm-g-0">
+<nav class="navbar navbar-expand-md" aria-label="Main menu">
+<a href="https://gov.bc.ca"><img id="BCGov-logo" class="d-none d-md-block" src="/assets/legacy/Content/Images/Gov/BCID_H_rgb_pos_LH_crop.svg" alt="Government of B.C."><img id="sm-BCGov-logo" class="d-md-none" src="/assets/legacy/Content/Images/Gov/BC_Mark.svg" alt="Government of B.C."></a>
+<a class="navbar-brand ps-3" href="/">BC Gov News</a>
+<div class="d-md-none banner-toggle-container" hidden><button id="banner-toggle-sm" class="btn btn-link banner-toggle-btn" type="button" aria-controls="banner" aria-expanded="false" aria-label="Site notices" data-banner-toggle><img src="/assets/legacy/Content/Images/banner-toggle.svg" alt=""></button></div>
+<button type="button" id="nav-menu-sm" class="navbar-toggler collapse-menu-icon menu-icon" aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Menu"><svg class="icon" aria-hidden="true" focusable="false"><use href="/assets/site/icons.svg#i-bars"></use></svg></button>
+<div class="search-toggle-container d-lg-none">
+<button type="button" id="search-md-button" class="input-group-text btn-primary-outline search-md menu-icon" aria-controls="smd-search-container" aria-expanded="false" aria-label="Search"><svg class="icon" aria-hidden="true" focusable="false"><use href="/assets/site/icons.svg#i-search"></use></svg></button>
+</div>
+<a href="/live/" class="btn btn-primary-blue live_button live_button_hide d-lg-none">Live Webcast</a>
+<div id="sm-nav-container" class="container-fluid">
+<div id="navbarSupportedContent" class="collapse navbar-collapse">
+<ul id="sm-nav-ul" class="navbar-nav ms-auto mb-2 me-3 mb-lg-0 gap-2">
+<li id="ministry-dropdown" class="nav-item ministry-dropdown"><a id="news-dropdown" class="nav-link" href="/ministries/" data-menu="menu">News</a></li>
+<li class="nav-item"><a class="nav-link" href="/subscribe/">Subscribe</a></li>
+<li class="nav-item-link d-none d-md-block" hidden><button id="bannerToggleLink" class="nav-link" type="button" aria-controls="banner" aria-expanded="false" aria-label="Site notices" data-banner-toggle><img src="/assets/legacy/Content/Images/banner-toggle.svg" alt=""></button></li>
+</ul>
+</div>
+<form class="d-flex search d-none d-lg-block" role="search" aria-label="Site search" action="/search/" method="get">
+<label class="visually-hidden" for="mini-site-search-input">Search news</label>
+<div class="input-group">
+<input name="q" id="mini-site-search-input" type="text" class="form-control">
+<button type="submit" class="input-group-text btn-primary-outline search-trigger" aria-label="Search"><svg class="icon" aria-hidden="true" focusable="false"><use href="/assets/site/icons.svg#i-search"></use></svg></button>
+</div>
+</form>
+</div>
+<a id="live-button" href="/live/" class="btn btn-primary-blue live_button live_button_hide d-none d-lg-block">Live Webcast</a>
+</nav>
+</div>
+<div id="smd-search-container" class="container-fluid collapse d-lg-none">
+<form class="search" role="search" aria-label="Site search" action="/search/" method="get">
+<label class="visually-hidden" for="site-search-input">Search news</label>
+<div class="input-group">
+<input name="q" id="site-search-input" type="text" class="form-control">
+<button type="submit" class="input-group-text btn-primary-outline search-trigger" aria-label="Search"><svg class="icon" aria-hidden="true" focusable="false"><use href="/assets/site/icons.svg#i-search"></use></svg></button>
+</div>
+</form>
+</div>
+<div id="menu" class="container-fluid collapse">
+<div class="menu container-xl">
+<h2 class="list-title">By Ministry</h2>
+<ul>
+<li><a href="/ministries/office-of-the-premier/">Office of the Premier</a></li>
+<li><a href="/ministries/finance/">Finance</a></li>
+<li><a href="/ministries/health/">Health</a></li>
+</ul>
+</div>
+</div>
+</header>
+<div id="main-content" class="template container-xl"><main id="main" tabindex="-1">
+<div class="news-listing">
+<div class="home-layout">
+<div class="home-body" id="main-content-release">
+<h1>News by Sector</h1>
+<div class="grouped-articles">
+<h2><a href="/sectors/economy/">Economy</a></h2>
+<div class="other-articles">
+<div class="regular-articles">
+<div class="article">
+<h2><a href="/releases/2026HLTH0012-000012/">Clinics to open across the province</a></h2>
+<div class="list-container ps-0 pb-0">
+<div class="item-date">Monday, October 12, 2026 10:00 AM</div><div class="item-medialink media-assets"><a href="/releases/2026HLTH0012-000012/#assets"><svg class="icon" aria-hidden="true" focusable="false"><use href="/assets/site/icons.svg#i-download"></use></svg> Media Assets</a></div><div class="item-medialink translations"><a href="/releases/2026HLTH0012-000012/#translations"><svg class="icon" aria-hidden="true" focusable="false"><use href="/assets/site/icons.svg#i-language"></use></svg> Translations</a></div>
+</div>
+<div class="item-content">
+<div class="item-text"><p>Clinics are opening across the province this month.</p>
+<a href="/releases/2026HLTH0012-000012/" class="read-more"><svg class="icon" aria-hidden="true" focusable="false"><use href="/assets/site/icons.svg#i-caret-right"></use></svg> Read More<span class="visually-hidden">: Clinics to open across the province</span></a>
+</div>
+</div>
+<div class="clear"></div>
+</div>
+<div class="article">
+<h2><a href="/releases/2026HLTH0011-000011/">Clinics to open across the province</a></h2>
+<div class="list-container ps-0 pb-0">
+<div class="item-date">Sunday, October 11, 2026 10:00 AM</div>
+</div>
+<div class="item-content">
+<div class="item-text"><p>Clinics are opening across the province this month.</p>
+<a href="/releases/2026HLTH0011-000011/" class="read-more"><svg class="icon" aria-hidden="true" focusable="false"><use href="/assets/site/icons.svg#i-caret-right"></use></svg> Read More<span class="visually-hidden">: Clinics to open across the province</span></a>
+</div>
+</div>
+<div class="clear"></div>
+</div>
+<div class="article">
+<h2><a href="/releases/2026HLTH0010-000010/">Clinics to open across the province</a></h2>
+<div class="list-container ps-0 pb-0">
+<div class="item-date">Saturday, October 10, 2026 10:00 AM</div>
+</div>
+<div class="item-content">
+<div class="item-text"><p>Clinics are opening across the province this month.</p>
+<a href="/releases/2026HLTH0010-000010/" class="read-more"><svg class="icon" aria-hidden="true" focusable="false"><use href="/assets/site/icons.svg#i-caret-right"></use></svg> Read More<span class="visually-hidden">: Clinics to open across the province</span></a>
+</div>
+</div>
+<div class="clear"></div>
+</div>
+</div>
+</div>
+<div class="news-control">
+<a href="/sectors/economy/" class="load-more link-button">Browse More News</a>
+<a href="/search/?sector=economy" class="read-more">Search News</a>
+<div class="clear"></div>
+</div>
+</div>
+</div>
+<section class="home-features" aria-label="Connect and resources">
+<div class="resource-links connect">
+<h2>Connect With Us</h2>
+<ul>
+<li><a id="connectFacebook" href="/connect/#facebook"><img src="/assets/legacy/Content/Images/SocialMedia/facebook-svg-logo.svg" alt="Facebook" width="22" height="22"></a></li>
+<li><a id="connectTwitter" href="/connect/#x"><img src="/assets/legacy/Content/Images/SocialMedia/twitter-X-svg-logo.svg" alt="X" width="22" height="22"></a></li>
+<li><a id="connectInstagram" href="/connect/#instagram"><img src="/assets/legacy/Content/Images/SocialMedia/Instagram_logo_2016.svg" alt="Instagram" width="22" height="22"></a></li>
+<li><a id="connectThread" href="/connect/#threads"><img src="/assets/legacy/Content/Images/SocialMedia/threads_logo.svg" alt="Threads" width="22" height="22"></a></li>
+<li><a id="connectBluesky" href="/connect/#bluesky"><img src="/assets/legacy/Content/Images/SocialMedia/bluesky-logo.svg" alt="Bluesky" width="22" height="22"></a></li>
+<li><a id="connectLinkedin" href="/connect/#linkedin"><img src="/assets/legacy/Content/Images/SocialMedia/linkedin-logo-blue.svg" alt="LinkedIn" width="22" height="22"></a></li>
+<li><a id="connectFlickr" href="/connect/#flickr"><img src="/assets/legacy/Content/Images/SocialMedia/flickr-svg-logo.svg" alt="Flickr" width="22" height="22"></a></li>
+<li><a id="connectYoutube" href="/connect/#youtube"><img src="/assets/legacy/Content/Images/SocialMedia/youtube.svg" alt="YouTube" width="22" height="22"></a></li>
+<li><a id="connectRss" href="/connect/#rss"><img src="/assets/legacy/Content/Images/SocialMedia/rss-logo.svg" alt="RSS" width="22" height="22"></a></li>
+</ul>
+<a id="connectAllSocialMedia" href="/connect/" class="read-more">View all Social Media</a>
+</div>
+<div class="resource-links">
+<h2>Resources</h2>
+<ul>
+<li><a href="/contacts/">Media Contacts</a></li>
+<li><a href="https://www2.gov.bc.ca/">BC Government</a></li>
+<li><a href="http://127.0.0.1:1/archive/">News Archive</a></li>
+</ul>
+</div>
+</section>
+</div>
+</div>
+</main></div>
+<aside id="landAcknowledgement" class="container-fluid" aria-label="Land acknowledgement"><div class="container-xl"><p>The B.C. Public Service acknowledges the territories of First Nations around B.C. and is grateful to carry out our work on these lands. We acknowledge the rights, interests, priorities, and concerns of all Indigenous Peoples - First Nations, Métis, and Inuit - respecting and acknowledging their distinct cultures, histories, rights, laws, and governments.</p></div></aside>
+<footer id="footer" class="container-fluid">
+<div class="top container-xl">
+<div class="footer-bc">
+<img id="BCGov-logo-footer" src="/assets/legacy/Content/Images/Gov/BCID_H_rgb_pos_LH_crop.svg" alt="Government of B.C.">
+<p>We can help in over 220 languages and through other accessible options. <a href="https://www2.gov.bc.ca/gov/content/home/get-help-with-government-services">Call, email or text us</a>, or <a href="https://www2.gov.bc.ca/gov/content/home/services-a-z">find a service centre</a>.</p>
+</div>
+<nav aria-label="Footer">
+<div class="footer-connect">
+<h2>Connect with Us</h2>
+<ul>
+<li><a id="footerNewsletters" href="/subscribe">Subscribe</a></li>
+<li><a id="footerRSSFeeds" href="/connect">Social media</a></li>
+</ul>
+</div>
+<div class="footer-more-info">
+<h2>More Info</h2>
+<ul class="pull-left">
+<li><a id="footerHome" href="https://gov.bc.ca">BC Gov</a></li>
+<li><a id="footerDisclaimer" href="https://www2.gov.bc.ca/gov/admin/disclaimer.page">Disclaimer</a></li>
+<li><a id="footerPrivacy" href="https://www2.gov.bc.ca/gov/content/home/privacy">Privacy</a></li>
+<li><a id="footerAccessibility" href="https://www2.gov.bc.ca/gov/admin/accessibility.page">Accessibility</a></li>
+<li><a id="footerCopyright" href="https://www2.gov.bc.ca/gov/admin/copyright.page">Copyright</a></li>
+<li><a id="footerContact" href="https://forms.gov.bc.ca/">Contact Us</a></li>
+</ul>
+</div>
+</nav>
+<hr>
+</div>
+<div class="container-xl bottom">
+<div class="copyright">© 2026 Government of British Columbia</div>
+</div>
+</footer>
+<script src="/assets/site/site.js" defer onerror="document.documentElement.classList.remove(&quot;js&quot;)"></script>
+</body>
+</html>
