@@ -47,10 +47,12 @@ describe("calendar succession", () => {
     expect((await get(otherMinistry)).contactMinistryKey).toBe("finance");
   });
 
-  it("judges upcoming by BC midnight across the autumn-2026 change: the all-day cut is UTC-7 on 2026-11-01", async () => {
-    const at = new Date("2026-11-01T20:00:00Z"); // 13:00 BC
-    const today = await act("today", { isAllDay: true, startAt: new Date("2026-11-01T07:00:00Z") }); // 00:00 UTC-7
-    const wrong = await act("an hour early", { isAllDay: true, startAt: new Date("2026-11-01T06:00:00Z") }); // Oct 31 23:00 BC
+  it("judges upcoming by BC midnight after the autumn-2026 change: the all-day cut is UTC-7 (tzdata 2026b)", async () => {
+    // From 2026-11-02 the old rule (PST, UTC-8) and BC's permanent UTC-7 disagree on midnight, so
+    // this fails on stale tzdata, which would put midnight at 08:00Z.
+    const at = new Date("2026-11-02T20:00:00Z"); // 13:00 BC
+    const today = await act("today", { isAllDay: true, startAt: new Date("2026-11-02T07:00:00Z") }); // 00:00 UTC-7
+    const wrong = await act("an hour early", { isAllDay: true, startAt: new Date("2026-11-02T06:00:00Z") }); // Nov 1 23:00 BC
     expect(await successionCounts(tdb.db, "health", at)).toEqual({ activities: 1, contacts: 0 });
     await run({ ...DATA, at: at.toISOString() });
     expect((await get(today)).contactMinistryKey).toBe("wellness");
@@ -100,6 +102,17 @@ describe("calendar succession", () => {
     expect(of(U2, "wellness")).toMatchObject({ isActive: true, rank: 1 });
   });
 
+  it("an inactive contact already on the successor doesn't count as taken: the person keeps an active contact", async () => {
+    await tdb.db.insert(commContacts).values([
+      { userId: U2, ministryKey: "health", rank: 3, sortOrder: 5 },
+      { userId: U2, ministryKey: "wellness", rank: 1, isActive: false },
+    ]);
+    expect(await run()).toEqual({ activities: 0, contacts: 1 });
+    const rows = await tdb.db.select().from(commContacts);
+    expect(rows.find((r) => r.ministryKey === "wellness")).toMatchObject({ isActive: true, rank: 3, sortOrder: 5 });
+    expect(rows.find((r) => r.ministryKey === "health")).toMatchObject({ isActive: false });
+  });
+
   it("idempotent on redelivery", async () => {
     await act("future", { startAt: new Date("2026-12-01T18:00:00Z") });
     await tdb.db.insert(commContacts).values({ userId: U1, ministryKey: "health" });
@@ -108,9 +121,14 @@ describe("calendar succession", () => {
     const changes = await tdb.db.select().from(activityChanges);
     expect(changes).toHaveLength(1);
     // Through the receiver too: the event applies, and its copy is a duplicate.
+    const later = await act("later", { startAt: new Date("2026-12-02T18:00:00Z") });
     const ev = envelope("core", "org.succeeded", DATA, "org:health");
     expect((await sendEvent(app, ev)).status).toBe(200);
     expect((await sendEvent(app, ev)).status).toBe(200);
+    expect((await sendEvent(app, envelope("core", "org.succeeded", DATA, "org:health"))).status).toBe(200);
+    expect((await get(later)).contactMinistryKey).toBe("wellness");
+    expect(await tdb.db.select().from(activityChanges).where(eq(activityChanges.activityId, later))).toHaveLength(1);
+    expect(await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, `activity:${later}`))).toHaveLength(1);
   });
 
   it("is applied through the event receiver", async () => {
@@ -143,7 +161,11 @@ describe("calendar succession", () => {
     const res = await request(app).get("/api/succession/health/preview").set("cookie", await sessionCookie(U1, ["Core.Admin"]));
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ activities: 1, contacts: 0 });
-    expect((await request(app).get("/api/succession/health/preview?at=nope").set("cookie", await sessionCookie(U1, ["Core.Admin"]))).status).toBe(400);
+    for (const bad of ["nope", "1", "2026-11-20", "2026-11-20T18:00:00"]) {
+      expect((await request(app).get(`/api/succession/health/preview?at=${bad}`).set("cookie", await sessionCookie(U1, ["Core.Admin"]))).status, bad).toBe(400);
+    }
+    const later = await request(app).get("/api/succession/health/preview?at=2026-12-02T00:00:00-07:00").set("cookie", await sessionCookie(U1, ["Core.Admin"]));
+    expect(later.body).toEqual({ activities: 0, contacts: 0 });
   });
 
   it("preview is 403 without Core.Admin", async () => {

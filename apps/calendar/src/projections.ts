@@ -66,7 +66,7 @@ const onOrgSucceeded = (deps: SuccessionDeps): EventHandler => async (tx, e) => 
 };
 
 const at = (iso: string | null) => (iso === null ? null : new Date(iso));
-export function projectionHandler(event: EventEnvelope, deps?: SuccessionDeps): EventHandler | undefined {
+export function projectionHandler(event: EventEnvelope, deps: SuccessionDeps): EventHandler | undefined {
   if (event.type === "release.status_changed") return event.source === "nrms" ? onReleaseStatusChanged : undefined;
   if (event.source !== "core") return undefined;
   switch (event.type) {
@@ -85,7 +85,7 @@ export function projectionHandler(event: EventEnvelope, deps?: SuccessionDeps): 
     case "user.upserted":
       return onUser;
     case "org.succeeded":
-      return deps ? onOrgSucceeded(deps) : undefined;
+      return onOrgSucceeded(deps);
     default:
       return undefined;
   }

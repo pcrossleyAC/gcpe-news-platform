@@ -17,7 +17,10 @@ export interface SuccessionCounts {
   activities: number;
   contacts: number;
 }
-export type SuccessionDeps = Pick<{ rules: CalendarRules; subscribers: SubscriberConfig[] }, "rules" | "subscribers">;
+export interface SuccessionDeps {
+  rules: CalendarRules;
+  subscribers: SubscriberConfig[];
+}
 
 /**
  * Upcoming, judged in BC time (new-government spec §4, N9): starts at or after `at`, or has no
@@ -79,12 +82,22 @@ export async function applySuccession(tx: Tx, e: OrgSucceeded, deps: SuccessionD
   }
 
   const contacts = await tx.select().from(commContacts).where(movableContacts(from));
-  const taken = contacts.length
-    ? new Set((await tx.select({ userId: commContacts.userId }).from(commContacts).where(and(eq(commContacts.ministryKey, to), inArray(commContacts.userId, contacts.map((c) => c.userId))))).map((r) => r.userId))
-    : new Set<string>();
+  // One row per person and ministry (unique index), so a person already on the successor keeps that
+  // row: reactivated with the moving contact's rank and order if it was inactive. The old row is retired.
+  const onSuccessor = new Map(
+    contacts.length
+      ? (await tx.select({ id: commContacts.id, userId: commContacts.userId, isActive: commContacts.isActive }).from(commContacts)
+          .where(and(eq(commContacts.ministryKey, to), inArray(commContacts.userId, contacts.map((c) => c.userId))))).map((r) => [r.userId, r] as const)
+      : [],
+  );
   for (const c of contacts) {
-    if (taken.has(c.userId)) await tx.update(commContacts).set({ isActive: false }).where(eq(commContacts.id, c.id));
-    else await tx.update(commContacts).set({ ministryKey: to }).where(eq(commContacts.id, c.id));
+    const existing = onSuccessor.get(c.userId);
+    if (!existing) {
+      await tx.update(commContacts).set({ ministryKey: to }).where(eq(commContacts.id, c.id));
+      continue;
+    }
+    if (!existing.isActive) await tx.update(commContacts).set({ isActive: true, rank: c.rank, sortOrder: c.sortOrder }).where(eq(commContacts.id, existing.id));
+    await tx.update(commContacts).set({ isActive: false }).where(eq(commContacts.id, c.id));
   }
   return { activities: moved, contacts: contacts.length };
 }
