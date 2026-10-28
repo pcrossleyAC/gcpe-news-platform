@@ -8,7 +8,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import type { SettingsState } from "./api";
-import { HEADER_LINKS_HINT, INTRO, NavigationScreen } from "./NavigationScreen";
+import { FOOTER_CONNECT_HINT, HEADER_LINKS_HINT, INTRO, LABEL_FIELDS, LABEL_HINTS, LISTING_HINTS, NavigationScreen } from "./NavigationScreen";
 
 const BASE: SiteSettings = defaultSiteSettings({
   colors: { primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D", mutedText: "#474543", surface: "#FFFFFF", background: "#FFFFFF", border: "#D8D8D8" },
@@ -93,7 +93,7 @@ describe("NavigationScreen", () => {
     expect(within(footer).getByDisplayValue("More Info")).toBeInTheDocument();
     const labels = screen.getByRole("group", { name: "Page labels" });
     expect(within(labels).getAllByRole("textbox")).toHaveLength(LABEL_KEYS.length);
-    expect(within(labels).getByLabelText("Connect With Us heading")).toHaveValue("Connect With Us");
+    expect(within(labels).getByLabelText("Home page: Connect With Us heading")).toHaveValue("Connect With Us");
     expect(within(labels).getByLabelText("Slide link label (when a slide has none)")).toBeInTheDocument();
     expect(within(labels).getByLabelText("Load more news button label")).toHaveValue("Load More News");
     const listing = screen.getByRole("group", { name: "Listing titles" });
@@ -103,13 +103,17 @@ describe("NavigationScreen", () => {
     await waitFor(() => expect(document.title).toBe("Navigation and labels — GCPE News Staff"));
   });
 
-  it("every page label has its own human label", async () => {
+  it("every page label, listing title and footer heading has its label and a hint tied to the field", async () => {
     stub(["NRMS.SiteEditor"], stateOf(DOC));
     renderScreen();
-    const labels = await screen.findByRole("group", { name: "Page labels" });
-    const names = within(labels).getAllByRole("textbox").map((t) => t.getAttribute("aria-labelledby"));
-    expect(new Set(names).size).toBe(LABEL_KEYS.length);
-    for (const t of within(labels).getAllByRole("textbox")) expect(t).toHaveAccessibleName(/\S/);
+    await screen.findByRole("group", { name: "Page labels" });
+    for (const key of LABEL_KEYS) {
+      expect(screen.getByLabelText(LABEL_FIELDS[key])).toHaveAccessibleDescription(LABEL_HINTS[key]);
+    }
+    expect(new Set(LABEL_KEYS.map((k) => LABEL_FIELDS[k])).size).toBe(LABEL_KEYS.length);
+    expect(screen.getByLabelText("Releases page title")).toHaveAccessibleDescription(LISTING_HINTS.releases);
+    expect(screen.getByLabelText("Footer: Connect with Us column heading")).toHaveAccessibleDescription(FOOTER_CONNECT_HINT);
+    expect(FOOTER_CONNECT_HINT).toMatch(/first \(left\)/);
   });
 
   it("unchecking 'Show the search box' and saving sends showHeaderSearch: false", async () => {
@@ -147,7 +151,7 @@ describe("NavigationScreen", () => {
     renderScreen();
     await screen.findByRole("group", { name: "Header" });
     expect(screen.getByLabelText("News menu label")).toBeInvalid();
-    expect(screen.getByLabelText("More Info column heading")).toBeInvalid();
+    expect(screen.getByLabelText("Footer: More Info column heading")).toBeInvalid();
     expect(screen.getByLabelText("Stories page title")).toBeInvalid();
     expect(screen.getByText("Enter some text.")).toBeInTheDocument();
   });

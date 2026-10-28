@@ -115,6 +115,7 @@ describe("LinkListEditor", () => {
     const add = screen.getByRole("button", { name: "+ Add a link" });
     expect(add).toBeDisabled();
     expect(screen.getByText("You can have at most 2 links.")).toBeInTheDocument();
+    expect(add).toHaveAccessibleDescription("You can have at most 2 links.");
   });
 
   it("with maxLinks, the add button works below the limit", () => {

@@ -46,6 +46,8 @@ const ROW_ERROR = /^\[(\d+)\](?:\.(\w+))?$/;
 export function LinkListEditor({ legend, description, links, onChange, errors, pathPrefix, reorderable, withSummary, isDisabled = false, maxLinks }: LinkListEditorProps): React.JSX.Element {
   const { announce } = useAnnouncer();
   const descriptionId = useId();
+  const limitId = useId();
+  const atLimit = maxLinks !== undefined && links.length >= maxLinks;
   const moveFocus = useMoveFocusRestore<HTMLFieldSetElement>();
   const addRef = useRef<HTMLSpanElement>(null);
   const pendingFocus = useRef<string | "add" | null>(null);
@@ -164,10 +166,10 @@ export function LinkListEditor({ legend, description, links, onChange, errors, p
       })}
       {!isDisabled && (
         <span ref={addRef}>
-          <Button variant="secondary" onPress={add} isDisabled={maxLinks !== undefined && links.length >= maxLinks}>
+          <Button variant="secondary" onPress={add} isDisabled={atLimit} aria-describedby={atLimit ? limitId : undefined}>
             + Add a link
           </Button>
-          {maxLinks !== undefined && links.length >= maxLinks && <p>{`You can have at most ${maxLinks} links.`}</p>}
+          {atLimit && <p id={limitId}>{`You can have at most ${maxLinks} ${maxLinks === 1 ? "link" : "links"}.`}</p>}
         </span>
       )}
     </fieldset>
