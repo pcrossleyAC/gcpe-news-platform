@@ -200,3 +200,38 @@ export interface ForecastPage extends ReleasePage<ForecastItem> {
   /** False when the caller has no Calendar access, so only releases are listed. */
   calendarActivities: boolean;
 }
+
+export type GovernmentTermStatus = "past" | "current" | "scheduled" | "undated";
+
+/** One government term as the Hub's admin screen sees it (`GET /api/government-terms`). */
+export interface GovernmentTermView {
+  id: string;
+  slug: string;
+  label: string | null;
+  /** BC calendar date, `YYYY-MM-DD`; null = "needs a start date". */
+  startDate: string | null;
+  /** Next dated term's start minus one day; null for the newest term and undated rows. */
+  endDate: string | null;
+  status: GovernmentTermStatus;
+  legacyArchiveUrl: string | null;
+  legacyId: string | null;
+  /** Releases stamped with this term. */
+  releaseCount: number;
+}
+
+/** `POST /api/government-terms` (all fields) and `PATCH /api/government-terms/:id` (any subset, plus `legacyArchiveUrl`). */
+export interface GovernmentTermInput {
+  startDate: string;
+  label?: string | null;
+}
+export interface GovernmentTermPatch {
+  startDate?: string;
+  label?: string | null;
+  /** `https:` URL or null. */
+  legacyArchiveUrl?: string | null;
+}
+export interface GovernmentTermList {
+  /** The BC calendar date the statuses were computed for. */
+  today: string;
+  terms: GovernmentTermView[];
+}
