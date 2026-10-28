@@ -142,6 +142,36 @@ export async function checkLayoutOrder(browser: import("@playwright/test").Brows
   return failures;
 }
 
+/**
+ * The search page (P4-R15): the results come before the filters in the DOM at every width; at
+ * 1280px the filters show on the left (legacy's 24% / 76%), at 390px they stack below the results.
+ */
+export async function checkSearchLayout(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
+  const failures: string[] = [];
+  for (const width of [390, 1280]) {
+    const context = await browser.newContext({ viewport: { width, height: 900 } });
+    const page = await context.newPage();
+    await page.goto(url + "/search/");
+    const results = await page.locator(".search > .search-results").boundingBox();
+    const filters = await page.locator(".search > .search-filters").boundingBox();
+    const domResultsFirst = await page.locator(".search").evaluate((el) => {
+      const kids = [...el.children];
+      return kids.findIndex((k) => k.classList.contains("search-results")) < kids.findIndex((k) => k.classList.contains("search-filters"));
+    });
+    await context.close();
+    if (!results || !filters) {
+      failures.push(`/search/ at ${width}px: the results or filters are not rendered`);
+      continue;
+    }
+    const visual = width < 768 ? (results.y < filters.y ? "results above filters" : "filters above results") : filters.x < results.x && Math.abs(filters.y - results.y) < 5 ? "filters left of results" : "filters not beside the results on the left";
+    log(`/search/ at ${width}px: DOM ${domResultsFirst ? "results first" : "filters first"}; ${visual}; results ${Math.round(results.width)}px, filters ${Math.round(filters.width)}px`);
+    if (!domResultsFirst) failures.push(`/search/ at ${width}px: the filters precede the results in the DOM`);
+    if (width < 768 && visual !== "results above filters") failures.push(`/search/ at ${width}px: ${visual}`);
+    if (width >= 768 && visual !== "filters left of results") failures.push(`/search/ at ${width}px: ${visual}`);
+  }
+  return failures;
+}
+
 type Box = { x: number; y: number; width: number; height: number };
 
 /**
@@ -215,6 +245,7 @@ export async function runSiteQuality(log: (line: string) => void = console.log):
       failures.push(...(await checkReleaseStates(browser, server.url, log)));
       failures.push(...(await checkLayoutOrder(browser, server.url, log)));
       failures.push(...(await checkHeaderLive(browser, server.url, log)));
+      failures.push(...(await checkSearchLayout(browser, server.url, log)));
     } finally {
       await browser.close();
     }

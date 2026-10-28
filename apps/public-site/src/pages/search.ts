@@ -64,7 +64,8 @@ export const SEARCH_SCRIPT = `(() => {
       const n = name.toLowerCase();
       if (!(n in raw) && value.trim() !== "") raw[n] = value;
     }
-    const state = { q: Array.from((raw.q || "").trim()).slice(0, 200).join(""), ministry: "", sector: "", type: "", from: "", to: "" };
+    // NUL never reaches the API or the box (the API refuses it; it shows as nothing).
+    const state = { q: Array.from((raw.q || "").replace(/\\u0000/g, "").trim()).slice(0, 200).join(""), ministry: "", sector: "", type: "", from: "", to: "" };
     const m = raw.ministry === undefined ? null : pick("ministry", raw.ministry);
     if (m) state.ministry = m.dataset.key;
     const s = raw.sector === undefined ? null : pick("sector", raw.sector);
@@ -141,7 +142,9 @@ export const SEARCH_SCRIPT = `(() => {
       if (t.getUTCMonth() !== mo - 1 || t.getUTCDate() !== d || h > 23 || +x[5] > 59) return "";
       return WEEKDAYS[t.getUTCDay()] + ", " + MONTHS[mo - 1] + " " + d + ", " + x[1] + " " + (h % 12 === 0 ? 12 : h % 12) + ":" + x[5] + " " + (h < 12 ? "AM" : "PM");
     };
-    const count = (v) => String(Math.max(0, Math.floor(Number(v)) || 0)).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
+    // A whole, finite, non-negative number from the API, else 0 (Infinity, NaN, text never show).
+    const whole = (v) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? Math.floor(n) : 0; };
+    const count = (v) => String(whole(v)).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ",");
 
     // An active filter: its group shows only the chosen entry, with a link that removes it.
     const active = {};
@@ -192,7 +195,6 @@ export const SEARCH_SCRIPT = `(() => {
       })
       .then((data) => {
         const results = data && Array.isArray(data.results) ? data.results : [];
-        const total = Math.max(0, Math.floor(Number(data && data.total)) || 0);
         const KEY = /^[A-Za-z0-9-]{1,200}$/;
         let shown = 0;
         for (const r of results) {
@@ -223,19 +225,29 @@ export const SEARCH_SCRIPT = `(() => {
           list.appendChild(card);
           shown++;
         }
-        if (shown === 0) status.textContent = "No results found.";
-        else {
-          const first = (page - 1) * PAGE_SIZE + 1;
-          status.textContent = "Showing results " + count(first) + " - " + count(first + results.length - 1) + " of " + count(total);
-        }
+        // The count is the cards shown (a result with a bad key is skipped); a total smaller than
+        // what this page shows (or not a number) is raised to it.
+        const first = (page - 1) * PAGE_SIZE + 1;
+        const total = Math.max(whole(data && data.total), shown ? first + shown - 1 : 0);
+        if (shown > 0) status.textContent = "Showing results " + count(first) + " - " + count(first + shown - 1) + " of " + count(total);
+        else if (total > 0) {
+          // A page past the end (an old link, a hand-edited ?page=): say so, and offer page 1.
+          status.textContent = "There are no results on page " + page + ". This search has " + count(total) + (total === 1 ? " result." : " results.");
+          const p = el("p");
+          const a = link(hrefOf(state, 1), "Go to the first page of results");
+          a.className = "first-page";
+          a.rel = "nofollow";
+          p.appendChild(a);
+          list.appendChild(p);
+        } else status.textContent = "No results found.";
 
         // Pages: at most five numbers around this one, then previous and next.
         const last = Math.min(MAX_PAGE, Math.ceil(total / PAGE_SIZE));
-        if (shown > 0 && last > 1) {
+        if (total > 0 && last > 1) {
           const ul = el("ul");
           const item = (child) => { const li = el("li"); li.appendChild(child); ul.appendChild(li); };
           const to = (n, text, rel) => { const a = link(hrefOf(state, n), text); a.rel = rel ? rel + " nofollow" : "nofollow"; return a; };
-          if (page > 1) item(to(page - 1, "« previous", "prev"));
+          if (page > 1) item(to(Math.min(page - 1, last), "« previous", "prev"));
           const start = Math.max(1, Math.min(page - 2, last - 4));
           for (let n = start; n <= Math.min(last, start + 4); n++) {
             if (n === page) { const b = el("b", "", String(n)); b.setAttribute("aria-current", "page"); item(b); }
@@ -253,7 +265,7 @@ export const SEARCH_SCRIPT = `(() => {
           const rows = facets[GROUPS[facet]];
           if (!Array.isArray(rows) || active[facet]) continue;
           const counts = new Map();
-          for (const row of rows) if (row) counts.set(lower(row.key !== undefined ? row.key : row.slug), Number(row.count) || 0);
+          for (const row of rows) if (row) counts.set(lower(row.key !== undefined ? row.key : row.slug), whole(row.count));
           for (const li of items(facet)) {
             const n = counts.get(li.dataset.key) || 0;
             if (n > 0) li.appendChild(el("span", "", ": " + count(n)));
@@ -287,9 +299,10 @@ export interface SearchLists {
 
 /**
  * The search page over `/api/v2/search` in news.gov's look (legacy `Default/SearchView.cshtml`):
- * the filter panel (Ministry, Sector, Content, Date with the terms, a date range and the
- * older-archive links from `pageText.searchArchiveLinks`), the "You searched for" box, the results
- * and the pages. Headings one level up (legacy h3 → h1, h5 → h2; overrides.css restates their
+ * the "You searched for" box, the results and the pages, then the filter panel (Ministry, Sector,
+ * Content, Date with the terms, a date range and the older-archive links from
+ * `pageText.searchArchiveLinks`). The results come first in the DOM so reading and focus order put
+ * them first; overrides.css floats them right at desktop so the filters show on the left, as legacy. Headings one level up (legacy h3 → h1, h5 → h2; overrides.css restates their
  * metrics). `apiBase` is `""` on the same origin (Q81's working assumption); only `SEARCH_API_URL`
  * sets it to another host. robots.txt keeps `/search/` out of crawls (plan 3).
  */
@@ -331,13 +344,6 @@ ${inner}
 <h1>Search</h1>
 </div>
 <div class="clear"></div>
-<div class="search-panel search-filters">
-${filter("ministry", "Ministry", ul(ministries))}
-${filter("sector", "Sector", ul(sectors))}
-${filter("content", "Content", ul(content))}
-${filter("date", "Date", `${dateRange}\n${ul([...terms, ...archive])}`)}
-<p class="reset-search"><a href="${e(action)}" class="link-button" rel="nofollow">Reset search</a></p>
-</div>
 <div class="home-body search-results">
 <div class="search-panel">
 <form role="search" action="${e(action)}" method="get" id="search-form" data-api-base="${e(apiBase)}" data-site-base="${e(base)}">
@@ -350,6 +356,13 @@ ${filter("date", "Date", `${dateRange}\n${ul([...terms, ...archive])}`)}
 <p id="search-alert" role="alert"></p>
 <div id="results"></div>
 <nav class="search-pagination bottom" id="search-pages" aria-label="Search pages" hidden></nav>
+</div>
+<div class="search-panel search-filters">
+${filter("ministry", "Ministry", ul(ministries))}
+${filter("sector", "Sector", ul(sectors))}
+${filter("content", "Content", ul(content))}
+${filter("date", "Date", `${dateRange}\n${ul([...terms, ...archive])}`)}
+<p class="reset-search"><a href="${e(action)}" class="link-button" rel="nofollow">Reset search</a></p>
 </div>
 <div class="clear"></div>
 </div>

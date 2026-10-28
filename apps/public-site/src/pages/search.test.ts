@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { JSDOM } from "jsdom";
 import { describe, expect, it, vi } from "vitest";
 import { expectAccessibleStructure } from "../../test/structure";
@@ -318,5 +319,53 @@ describe("search page", () => {
     const { fetchMock } = open("");
     await new Promise((r) => setTimeout(r, 20));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("the results come before the filters in the DOM (reading and focus order, WCAG 1.3.2/2.4.3); CSS floats them right at desktop, with no order rules", () => {
+    const doc = expectAccessibleStructure(page());
+    const kids = [...doc.querySelector("div.search")!.children].map((c) => c.className);
+    expect(kids.indexOf("home-body search-results")).toBeLessThan(kids.indexOf("search-panel search-filters"));
+    const overrides = readFileSync(new URL("../../assets/site/overrides.css", import.meta.url), "utf8");
+    const searchCss = overrides.slice(overrides.indexOf("/* The search page (pages/search.ts)"), overrides.indexOf("/* Archive pages")).replace(/\/\*[\s\S]*?\*\//g, "");
+    expect(searchCss).not.toMatch(/\border\s*:/);
+    expect(searchCss).toMatch(/\.search>\.search-results\{[^}]*float:right[^}]*width:76%/);
+    expect(searchCss).toMatch(/\.search>\.search-filters\{[^}]*float:left[^}]*width:24%/);
+  });
+
+  it("the count is the cards shown: a result with a bad key is skipped and not counted", async () => {
+    const results = [...Array.from({ length: 8 }, (_, i) => result({ key: `K${i + 11}` })), result({ key: "bad key!" }), result({ key: "" })];
+    const { doc, settled } = open("?q=x&page=2", { ...EMPTY, page: 2, total: 585, results });
+    await settled();
+    expect(doc.querySelectorAll("#results .article")).toHaveLength(8);
+    expect(doc.getElementById("search-status")!.textContent).toBe("Showing results 11 - 18 of 585");
+  });
+
+  it("a page past the end says so, links to page 1 and keeps the pages (previous goes to the last page)", async () => {
+    const { doc, settled } = open("?q=x&page=7", { ...EMPTY, page: 7, total: 12, results: [] });
+    await settled();
+    expect(doc.getElementById("search-status")!.textContent).toBe("There are no results on page 7. This search has 12 results.");
+    const first = doc.querySelector<HTMLAnchorElement>("#results a.first-page")!;
+    expect([first.textContent, first.getAttribute("href")]).toEqual(["Go to the first page of results", "/site/search/?q=x"]);
+    const nav = doc.getElementById("search-pages")!;
+    expect(nav.hidden).toBe(false);
+    expect([...nav.querySelectorAll("li")].map((li) => li.textContent)).toEqual(["« previous", "1", "2"]);
+    expect([...nav.querySelectorAll("a")].find((a) => a.textContent === "« previous")!.getAttribute("href")).toBe("/site/search/?q=x&page=2");
+  });
+
+  it("strips NUL characters from q before searching and showing it", async () => {
+    const { doc, settled, apiUrl } = open("?q=a%00b%00");
+    await settled();
+    expect(new URL(apiUrl()).searchParams.get("q")).toBe("ab");
+    expect(doc.querySelector<HTMLInputElement>("#q")!.value).toBe("ab");
+  });
+
+  it("a total or a facet count that isn't a finite number is never shown (Infinity, text)", async () => {
+    const facets = { ministries: [{ key: "health", count: "Infinity" }, { key: "finance", count: 2 }], sectors: [], types: [], terms: [] };
+    const { doc, settled } = open("?q=x", { ...EMPTY, total: "Infinity", results: [result()], facets });
+    await settled();
+    expect(doc.getElementById("search-status")!.textContent).toBe("Showing results 1 - 1 of 1");
+    expect(doc.querySelector<HTMLElement>('#facet-ministry li[data-key="health"]')!.hidden).toBe(true);
+    expect(doc.querySelector('#facet-ministry li[data-key="finance"]')!.textContent).toBe("Finance: 2");
+    for (const sel of ["#search-status", "#results", ".search-filters"]) expect(doc.querySelector(sel)!.textContent).not.toContain("Infinity");
   });
 });

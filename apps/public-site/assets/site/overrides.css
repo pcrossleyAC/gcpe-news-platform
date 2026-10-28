@@ -423,13 +423,17 @@ html.js .expandable-section .expand-toggle{display:inline-block}
 .search-results .search-numbers{font-size:15px;margin:15px 0}
 .search-results #search-alert:empty{display:none}
 .search-pagination ul li a,.search-pagination ul li b{min-width:24px;min-height:24px}
+/* The results (with the box) come before the filters in the DOM (P4-R15: reading and focus order
+ * match the layout at every width, no CSS order); at desktop they float right at legacy's 76%, so
+ * the filters (24%, floated left after them) show on the left, as legacy. */
+.search>.search-results{float:right;width:76%}
+.search>.search-filters{float:left;width:24%}
 /* Under 768px legacy transforms.css hides both panels until its header search button showed them;
- * ours is a link to the box (R12), so both stay shown: the results (with the box) first, the filters
- * after them, so a phone doesn't scroll past every ministry to reach the results. */
+ * ours is a link to the box (R12), so both stay shown, stacked in DOM order: the results first, so a
+ * phone doesn't scroll past every ministry to reach them. */
 @media (max-width: 768px) {
-  .search{display:flex;flex-direction:column}
-  .search>.search-results{order:1}
-  .search>.search-filters{order:2;float:none;width:100%;padding-right:0}
+  .search>.search-results{float:none;width:100%}
+  .search>.search-filters{float:none;width:100%;padding-right:0}
   .search .search-panel{display:block}
   .search-panel label{display:block;padding-right:0}
   .search-panel-bar input[type="text"]{width:calc(100% - 30px)}
