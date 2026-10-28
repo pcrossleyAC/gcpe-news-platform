@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, posix } from "node:path";
+import { join, posix, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { memoryStorage } from "../test/memory-storage";
@@ -29,10 +29,12 @@ describe("builtinAssetSources", () => {
   });
 
   it("bundle layout: public-site-assets beside the bundle wins when it exists", () => {
-    const here = pathToFileURL(join("/srv/app", "stack.js")).href;
-    const src = builtinAssetSources(here, (p) => p === join("/srv/app", BUNDLED_SITE_ASSETS));
-    expect(src.root).toBe(join("/srv/app", BUNDLED_SITE_ASSETS));
-    expect(src.fontsDir).toBe(join("/srv/app", BUNDLED_SITE_ASSETS, "legacy", "fonts"));
+    // resolve(): on Windows a root-relative path gains the current drive letter, as fileURLToPath does.
+    const dir = resolve("/srv/app");
+    const here = pathToFileURL(join(dir, "stack.js")).href;
+    const src = builtinAssetSources(here, (p) => p === join(dir, BUNDLED_SITE_ASSETS));
+    expect(src.root).toBe(join(dir, BUNDLED_SITE_ASSETS));
+    expect(src.fontsDir).toBe(join(dir, BUNDLED_SITE_ASSETS, "legacy", "fonts"));
   });
 });
 
