@@ -76,8 +76,10 @@ const httpOrEmpty = z
   .trim()
   .max(255)
   .refine((s) => s === "" || /^https?:\/\/\S+$/i.test(s), "must be an absolute http:// or https:// URL, or empty");
-/** Optional: a writer that omits it (a Hub tab opened before this field shipped) keeps the stored label. */
-const actionLabelField = z.string().trim().max(40).optional();
+/** Optional: a writer that omits it (a Hub tab opened before this field shipped) keeps the stored label.
+ * Trimmed here; the 40-character and plain-text rules stay in the store, so a too-long label gets its
+ * plain 422 message rather than a schema 400. */
+const actionLabelField = z.string().trim().optional();
 const justify = z.enum(["left", "right"]);
 
 const slideInputSchema = z.object({

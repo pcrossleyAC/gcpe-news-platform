@@ -80,7 +80,7 @@ describe("NRMS site HTTP API", () => {
     expect(bad.body.errors).toEqual(["Keep the action label to 40 characters or fewer, in plain text."]);
   });
 
-  it("a PUT that omits actionLabel keeps the stored label (slide by id, and pin); schema trims and caps at 40", async () => {
+  it("a PUT that omits actionLabel keeps the stored label (slide by id, and pin); schema trims; too long is the 422 message", async () => {
     const created = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAt: future() });
     const base = { headline: "H1", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" };
     const saved = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, { version: created.body.version, slides: [{ ...base, actionLabel: "Read it" }] });
@@ -91,7 +91,8 @@ describe("NRMS site HTTP API", () => {
     const cleared = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, { version: again.body.version, slides: [{ ...base, id: saved.body.slides[0].id, actionLabel: "   " }] });
     expect(cleared.body.slides[0].actionLabel).toBe("");
     const tooLong = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, { version: cleared.body.version, slides: [{ ...base, actionLabel: "x".repeat(41) }] });
-    expect(tooLong.status).toBe(400);
+    expect(tooLong.status).toBe(422);
+    expect(tooLong.body.errors).toEqual(["Keep the action label to 40 characters or fewer, in plain text."]);
 
     await tdb.pool.query("INSERT INTO emergency_pins (slot) VALUES ('primary'), ('secondary')");
     const pinBody = { version: 1, headline: "Alert", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" };
