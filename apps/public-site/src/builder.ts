@@ -224,6 +224,12 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         case "connect":
           await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts));
           return [];
+        case "legacy-redirects": {
+          // Sorted, so an unchanged map writes the same bytes.
+          const successors = Object.fromEntries(Object.entries(await newsApi.ministrySuccessors()).sort(([a], [b]) => (a < b ? -1 : 1)));
+          await storage.write(pageFiles(p)[0]!, `${JSON.stringify({ successors })}\n`);
+          return [];
+        }
       }
     },
 
@@ -248,7 +254,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
 
     async aggregatePageIds() {
       const run: RunCache = {};
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "sitemap:pages", "connect", ...(await categoryIds(run))];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "sitemap:pages", "connect", "legacy-redirects", ...(await categoryIds(run))];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;

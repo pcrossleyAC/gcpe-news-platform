@@ -148,7 +148,11 @@ export const changeFeedState = pgTable(
 export type MinistryDetails = Pick<
   OrgRecord,
   "parentKey" | "url" | "displayAdditionalName" | "minister" | "contact" | "secondContact" | "weekendContactNumber" | "topicLinks" | "serviceLinks"
->;
+> & {
+  /** Ordered successors (new-government N7); the first is the redirect target. Absent on a row
+   * stored before the field existed: read it as `[]`. */
+  successorKeys?: string[];
+};
 
 export const categories = pgTable(
   "categories",

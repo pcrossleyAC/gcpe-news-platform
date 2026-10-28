@@ -27,7 +27,9 @@ export type PageId =
   | { type: "static" }
   | { type: "connect" }
   | { type: "archive-terms" }
-  | { type: "archive-term"; slug: string };
+  | { type: "archive-term"; slug: string }
+  /** Not a page: the successor-redirect table the stack's middleware reads (new-government §4). */
+  | { type: "legacy-redirects" };
 
 const SINGLE: Record<string, PageId> = {
   home: { type: "home" },
@@ -39,6 +41,7 @@ const SINGLE: Record<string, PageId> = {
   static: { type: "static" },
   connect: { type: "connect" },
   "archive-terms": { type: "archive-terms" },
+  "legacy-redirects": { type: "legacy-redirects" },
 };
 
 /** The one gate between a page id (from an event, the change feed or the queue) and a path. */
@@ -72,6 +75,10 @@ export function categoryPageId(kind: CategoryKind, key: string): string | null {
   return CATEGORY_KEY.test(lower) ? `category:${kind}:${lower}` : null;
 }
 
+/** `{ successors: { "<old>": "<new>" } }`, read by apps/stack's ministrySuccessorRedirects. Parity
+ * url-compat's per-post maps share the `legacy/` directory. */
+export const MINISTRY_SUCCESSORS_FILE = "legacy/ministry-successors.json";
+
 export const postPath = (key: string) => `releases/${key}/index.html`;
 
 /** Relative output files for a page. Only ever called with a parsed (validated) PageId. */
@@ -91,6 +98,7 @@ export function pageFiles(p: PageId): string[] {
     case "connect": return ["connect/index.html"];
     case "archive-terms": return ["archive/terms/index.html"];
     case "archive-term": return [`archive/terms/${p.slug}/index.html`];
+    case "legacy-redirects": return [MINISTRY_SUCCESSORS_FILE];
   }
 }
 
@@ -112,6 +120,7 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "connect": return `${base}/connect/`;
     case "archive-terms": return `${base}/archive/terms/`;
     case "archive-term": return `${base}/archive/terms/${p.slug}/`;
+    case "legacy-redirects": return `${base}/${MINISTRY_SUCCESSORS_FILE}`;
   }
 }
 

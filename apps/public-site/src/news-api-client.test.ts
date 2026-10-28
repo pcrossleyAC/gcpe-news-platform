@@ -225,4 +225,24 @@ describe("newsApiClient", () => {
       expect(got!.terms.map((t) => t.slug)).toEqual(["2024-2028", "2020-2024"]);
     });
   });
+
+  describe("ministrySuccessors", () => {
+    it("GETs api/v2/ministry-successors and returns the map", async () => {
+      const fetchImpl = stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ successors: { a: "c", b: "c" } }) }));
+      expect(await newsApiClient("http://host/news", fetchImpl as unknown as typeof fetch).ministrySuccessors()).toEqual({ a: "c", b: "c" });
+      expect(String(fetchImpl.mock.calls[0]![0])).toBe("http://host/news/api/v2/ministry-successors");
+    });
+
+    it("drops a pair whose key or target isn't a lowercased category key, or maps to itself", async () => {
+      const body = { successors: { a: "c", "../x": "c", d: "../e", F: "c", g: "G", h: "h", i: "" } };
+      const got = await newsApiClient("http://host", stubFetch(fakeResponse({ ok: true, body: JSON.stringify(body) })) as unknown as typeof fetch).ministrySuccessors();
+      expect(got).toEqual({ a: "c" });
+    });
+
+    it("any failure (a 404, a 5xx, a malformed body) rejects, so the last file written stands", async () => {
+      await expect(newsApiClient("http://host", stubFetch(fakeResponse({ ok: false, status: 404, body: "{}" })) as unknown as typeof fetch).ministrySuccessors()).rejects.toThrow(/404/);
+      await expect(newsApiClient("http://host", stubFetch(fakeResponse({ ok: false, status: 503, body: "" })) as unknown as typeof fetch).ministrySuccessors()).rejects.toThrow(/503/);
+      await expect(newsApiClient("http://host", stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ successors: [] }) })) as unknown as typeof fetch).ministrySuccessors()).rejects.toThrow();
+    });
+  });
 });

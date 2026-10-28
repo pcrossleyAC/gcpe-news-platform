@@ -64,6 +64,7 @@ describe("pageFiles", () => {
     ["archive-terms", ["archive/terms/index.html"]],
     ["archive-term:2017-2017", ["archive/terms/2017-2017/index.html"]],
     ["archive-term:current", ["archive/terms/current/index.html"]],
+    ["legacy-redirects", ["legacy/ministry-successors.json"]],
   ])("%s", (id, files) => {
     expect(pageFiles(parsePageId(id)!)).toEqual(files);
   });
@@ -79,6 +80,7 @@ describe("urls", () => {
     expect(pageUrl(site, { type: "connect" })).toBe("/site/connect/");
     expect(pageUrl(site, { type: "archive-terms" })).toBe("/site/archive/terms/");
     expect(pageUrl(site, { type: "archive-term", slug: "2028-11-20" })).toBe("/site/archive/terms/2028-11-20/");
+    expect(pageUrl(site, { type: "legacy-redirects" })).toBe("/site/legacy/ministry-successors.json");
     expect(feedUrl(site, { type: "home" })).toBe("/site/feed.xml");
     expect(feedUrl(site, { type: "category", kind: "tags", key: "covid-19" })).toBe("/site/tags/covid-19/feed.xml");
     expect(absoluteUrl(site, "/site/x/")).toBe("https://boxs.example/site/x/");

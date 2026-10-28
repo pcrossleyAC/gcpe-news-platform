@@ -101,6 +101,18 @@ describe("site builder", () => {
     expect(html(storage, "sitemaps/pages.xml")).toContain("https://news.example/connect/");
   });
 
+  it("legacy-redirects writes legacy/ministry-successors.json from the News API, and is an aggregate page", async () => {
+    const { storage, api, builder } = setup(new Map());
+    api.successors = { b: "c", a: "c" };
+    expect(await builder.renderPage("legacy-redirects", {})).toEqual([]);
+    expect(JSON.parse(html(storage, "legacy/ministry-successors.json"))).toEqual({ successors: { a: "c", b: "c" } });
+    // A reactivation (N12) empties the map: the file is rewritten, not left stale.
+    api.successors = {};
+    await builder.renderPage("legacy-redirects", {});
+    expect(JSON.parse(html(storage, "legacy/ministry-successors.json"))).toEqual({ successors: {} });
+    expect(await builder.aggregatePageIds()).toContain("legacy-redirects");
+  });
+
   it("ministryPageIds: every ministry page, nothing else", async () => {
     const { builder } = setup(new Map([["K1", post({ key: "K1" })]]));
     expect(await builder.ministryPageIds()).toEqual(["category:ministries:finance", "category:ministries:health"]);

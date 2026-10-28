@@ -84,7 +84,9 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       const kind = CATEGORY_CHANGE[c.kind];
       const id = c.key ? categoryPageId(kind, c.key) : null;
       if (!id) return [];
-      return [{ pageId: id, priority: live }, ...(kind === "ministries" ? [{ pageId: "ministries", priority: live }, { pageId: "search", priority: live }] : []), { pageId: "sitemap:pages", priority: live }];
+      // A ministry change can start (a hand-over) or stop (a reactivation) a successor redirect.
+      const ministryPages = kind === "ministries" ? ["ministries", "search", "legacy-redirects"] : [];
+      return [{ pageId: id, priority: live }, ...ministryPages.map((pageId) => ({ pageId, priority: live })), { pageId: "sitemap:pages", priority: live }];
     }
     // Queues nothing itself: every sync turn fetches the settings and queues what each changed
     // section needs (sync.ts), so the change only has to wake the site up.

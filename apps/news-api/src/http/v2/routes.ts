@@ -5,7 +5,7 @@ import type { Db } from "@gcpe/db-kit";
 import { clientIpKey } from "../client-ip";
 import { changesRoutes, type ChangesRouteOptions } from "./changes";
 import { parseSearchQuery } from "../../search/query";
-import { getGovernmentTerms, getSiteSettings, listSlidesV2 } from "../../read";
+import { getGovernmentTerms, getSiteSettings, listSlidesV2, ministrySuccessors } from "../../read";
 import { RELATED_MAX_KEY_CHARS, type RelatedService } from "../../search/related";
 import { similarRequestSchema, type SimilarService } from "../../search/similar";
 import type { SearchService } from "../../search/service";
@@ -47,6 +47,9 @@ export function v2Routes(deps: {
       if (!stored) return void res.status(404).json({ error: "not found" });
       res.json(stored);
     });
+    // Each inactive ministry's final active successor (public; new-government spec §4): what the
+    // public site writes to legacy/ministry-successors.json for the stack's 301s.
+    r.get("/ministry-successors", async (_req, res) => void res.json({ successors: await ministrySuccessors(db) }));
   }
   if (search) {
     const limiter = deps.searchRateLimit

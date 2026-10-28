@@ -1,7 +1,7 @@
 import { siteSettingsSchema } from "@gcpe/site-settings";
 import { z } from "zod";
 import type { CategoryDto, GovernmentTermsDto, HomeDto, MinisterDto, MinistryDto, PostDto, RelatedPost, ResourceLinkDto, SiteSettingsDto, SlideDto } from "./dto";
-import { TERM_SLUG, type CategoryKind } from "./site-paths";
+import { CATEGORY_KEY, TERM_SLUG, type CategoryKind } from "./site-paths";
 
 export interface NewsApiClient {
   getPost(key: string): Promise<PostDto | null>;
@@ -26,6 +26,10 @@ export interface NewsApiClient {
   /** `GET /api/v2/government-terms`: the published terms snapshot, or null on a 404 (nothing
    * published yet). A malformed body rejects. Terms whose slug can't be a path are dropped. */
   governmentTerms(): Promise<GovernmentTermsDto | null>;
+  /** `GET /api/v2/ministry-successors`: each inactive ministry → its final active successor.
+   * Any failure, a 404 included, rejects (the last file written stands). A pair that isn't two
+   * different lowercased category keys is dropped: it becomes a redirect path. */
+  ministrySuccessors(): Promise<Record<string, string>>;
 }
 
 /** Structural check only (the document was validated when NRMS published it): enough that a
@@ -38,6 +42,8 @@ const governmentTermsBodySchema = z.object({
   currentSlug: z.string().nullable(),
   terms: z.array(z.object({ slug: z.string(), label: z.string().nullable(), startDate: isoDay, endDate: isoDay.nullable(), legacyArchiveUrl: z.string().nullable() })),
 });
+
+const ministrySuccessorsBodySchema = z.object({ successors: z.record(z.string(), z.string()) });
 
 export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch): NewsApiClient {
   // A leading slash on the second argument to `new URL` makes it absolute relative to the
@@ -100,6 +106,10 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
       // The slug becomes a directory name and a page id: anything else never reaches a path.
       const terms = body.terms.filter((t) => TERM_SLUG.test(t.slug) && t.slug !== "current");
       return { publishedAt: body.publishedAt, currentSlug: body.currentSlug, terms: terms.map((t) => ({ slug: t.slug, label: t.label, startDate: t.startDate, endDate: t.endDate, legacyArchiveUrl: t.legacyArchiveUrl })) };
+    },
+    ministrySuccessors: async () => {
+      const { successors } = ministrySuccessorsBodySchema.parse(await get("api/v2/ministry-successors"));
+      return Object.fromEntries(Object.entries(successors).filter(([from, to]) => CATEGORY_KEY.test(from) && CATEGORY_KEY.test(to) && from !== to));
     },
     postKeys: async (postKind) => (((await get(`api/Posts/Keys/home/default?${v1}&postKind=${enc(postKind)}`)) as { key: string }[] | null) ?? []).map((r) => r.key),
   };

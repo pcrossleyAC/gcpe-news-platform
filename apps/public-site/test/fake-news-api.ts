@@ -10,7 +10,7 @@ import { ministry } from "./fixtures";
  * `calls` to assert which News API calls a run actually made) instead of re-deriving responses
  * from a closed-over literal in each file.
  */
-export type FakeNewsApi = NewsApiClient & { posts: Map<string, PostDto>; calls: string[]; settings: { revision: number; document: SiteSettings } | null; terms: GovernmentTermsDto | null };
+export type FakeNewsApi = NewsApiClient & { posts: Map<string, PostDto>; calls: string[]; settings: { revision: number; document: SiteSettings } | null; terms: GovernmentTermsDto | null; successors: Record<string, string> };
 
 export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
   const calls: string[] = [];
@@ -23,6 +23,8 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     settings: null,
     /** What `governmentTerms()` answers: null is the News API's 404. */
     terms: null,
+    /** What `ministrySuccessors()` answers. */
+    successors: {},
     getPost: async (key) => { calls.push(`getPost:${key}`); return posts.get(key) ?? null; },
     latestHome: async (n) => published().slice(0, n),
     latest: async (kind, key, n) => inCat(({ ministries: "ministryKeys", sectors: "sectorKeys", themes: "themeKeys", tags: "tagKeys" } as const)[kind], key).slice(0, n),
@@ -39,6 +41,7 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
     postKeys: async (kind) => published().filter((p) => p.kind === kind).map((p) => p.key),
     siteSettings: async () => { calls.push("siteSettings"); return api.settings; },
     governmentTerms: async () => { calls.push("governmentTerms"); return api.terms; },
+    ministrySuccessors: async () => { calls.push("ministrySuccessors"); return api.successors; },
   };
   return api;
 }
