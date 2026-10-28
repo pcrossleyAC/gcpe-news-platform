@@ -1,7 +1,9 @@
 /** An absolute https URL with a host, or a path on this site. Rejects http:, javascript:, data:,
  * `//host`, `/\host`, surrounding whitespace and empty strings. */
 export function isSafeUrl(url: string): boolean {
-  if (url === "" || url !== url.trim()) return false;
+  // Browsers strip tab/newline anywhere in a URL, so "/\t/host" would resolve off-site: refuse any
+  // whitespace or control character, not just surrounding whitespace.
+  if (url === "" || /[\s\u0000-\u001F\u007F]/.test(url)) return false;
   if (url.startsWith("/")) return !url.startsWith("//") && !url.startsWith("/\\");
   try {
     const u = new URL(url);

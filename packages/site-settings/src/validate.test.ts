@@ -21,7 +21,7 @@ describe("contrastRatio", () => {
 
 describe("isSafeUrl", () => {
   it.each(["https://gov.bc.ca", "/contact"])("accepts %s", (u) => expect(isSafeUrl(u)).toBe(true));
-  it.each(["http://x.ca", "javascript:alert(1)", "data:text/html,x", "//evil.example", "/\\evil.example", " https://gov.bc.ca", "gov.bc.ca", ""])(
+  it.each(["http://x.ca", "javascript:alert(1)", "data:text/html,x", "//evil.example", "/\\evil.example", "/\t/evil.example", "/\n/evil.example", " https://gov.bc.ca", "gov.bc.ca", ""])(
     "rejects %j",
     (u) => expect(isSafeUrl(u)).toBe(false),
   );
