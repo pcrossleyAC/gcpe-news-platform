@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { siteSettingsSchema } from "@gcpe/site-settings";
 import { eventEnvelopeSchema, type EventEnvelope } from "./envelope";
 
 export const socialSchema = z.object({
@@ -293,6 +294,13 @@ export const releaseStatusChangedSchema = z
   .strict();
 export type ReleaseStatusChanged = z.infer<typeof releaseStatusChangedSchema>;
 
+/** NRMS publishes a validated site-settings revision; the News API stores and serves it. */
+export const siteSettingsPublishedSchema = z.object({
+  revision: z.number().int().positive(),
+  publishedAt: offsetDateTime,
+  document: siteSettingsSchema,
+});
+
 export const eventDataSchemas = {
   "org.upserted": orgRecordSchema,
   "org.deactivated": z.object({ key: z.string().min(1) }),
@@ -313,6 +321,7 @@ export const eventDataSchemas = {
   "media_list.deactivated": z.object({ key: z.string().min(1) }),
   "site.content.changed": siteContentChangedSchema,
   "site.rebuild_requested": siteRebuildRequestedSchema,
+  "site.settings.published": siteSettingsPublishedSchema,
   "delivery.bounced": deliveryBouncedSchema,
   "activity.created": activityEventSchema,
   "activity.updated": activityEventSchema,
