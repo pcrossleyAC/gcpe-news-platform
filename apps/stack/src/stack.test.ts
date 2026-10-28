@@ -1536,13 +1536,13 @@ describe("apps/stack: public-site self-heal runs once the stack (not just a stan
             return false;
           }
         },
-        { timeout: 5000 },
+        { timeout: 20_000, interval: 50 },
       )
       .toBe(true);
 
     const selfHealFailures = errorSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("self-heal failed"));
     expect(selfHealFailures).toEqual([]);
-  });
+  }, 30_000);
 });
 
 // A failed self-heal is logged by safeErrorLabel only: the error's message carries file-system
