@@ -1,11 +1,13 @@
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router";
-import { InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
+import { InlineAlert, NumberField, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { NETWORKS, type ConnectSettings, type FieldError, type LinkSetting, type NetworkKey } from "@gcpe/site-settings";
 import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 import { useSession } from "../../../session/SessionContext";
 import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
 import { useDocumentTitle } from "../../../shared/useDocumentTitle";
 import { canManageWebsite } from "../access";
+import { getSettingsDefaults } from "./api";
 import { ConflictPanel } from "./ConflictPanel";
 import { OtherSectionErrors } from "./OtherSectionErrors";
 import { PublishBar } from "./PublishBar";
@@ -18,6 +20,11 @@ const CONNECT_INTRO = "Both the policy link and the introduction are optional. L
 const POLICY_TEXT_HINT = "The words visitors click, shown on the Connect page. 200 characters or fewer, plain text. Needed if you enter a web address.";
 const POLICY_URL_HINT = "Where the link goes. https:// only (or a page on this site starting with /), no spaces. Needed if you enter link text.";
 const INTRO_HINT = "Shown at the top of the Connect page, above the networks. Plain text only, 300 characters or fewer.";
+
+/** A network's `collapseAfter` when neither the document nor the tenant defaults set one (the public site's). */
+const DEFAULT_COLLAPSE_AFTER = 2;
+const collapseHint = (fallback: number) =>
+  `How many of this network's links the Connect page shows before its Expand button, from 0 to 50; 0 never collapses the list. Leave it empty for the default: ${fallback === 0 ? "0 (never collapses)" : fallback}.`;
 
 const CONNECT_PAGE_FIELD = /^connect\.(policyLink|intro)(\.|$)/;
 const ACCOUNT_ROW = /^connect\.(\w+)\.accounts\[(\d+)\](.*)$/;
@@ -54,10 +61,26 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
     fromDocument: (connect) => ({ ...connect, [network]: { ...connect[network], accounts: [...connect[network].accounts].sort(byText) } }),
     toRequest: (connect) => ({
       ...connect,
-      [network]: { featured: withoutBlankLinks(connect[network].featured), accounts: withoutBlankLinks(connect[network].accounts).sort(byText) },
+      [network]: {
+        featured: withoutBlankLinks(connect[network].featured),
+        accounts: withoutBlankLinks(connect[network].accounts).sort(byText),
+        ...(connect[network].collapseAfter !== undefined ? { collapseAfter: connect[network].collapseAfter } : {}),
+      },
     }),
   });
   const { value, state, fieldErrors } = editor;
+  // What an empty field means: the tenant default for this network (fillMissingFields supplies it
+  // when the saved list has none), else the public site's 2. Shown in the hint.
+  const [defaultAfter, setDefaultAfter] = useState(DEFAULT_COLLAPSE_AFTER);
+  useEffect(() => {
+    let live = true;
+    getSettingsDefaults()
+      .then((d) => live && setDefaultAfter(d.connect[network]?.collapseAfter ?? DEFAULT_COLLAPSE_AFTER))
+      .catch(() => undefined); // the hint keeps the public site's default
+    return () => {
+      live = false;
+    };
+  }, [network]);
 
   if (editor.loadError) {
     return (
@@ -149,6 +172,18 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
       <p>{SWITCH_NOTE}</p>
 
       <h2>{name}</h2>
+      <NumberField
+        label="Entries shown before Expand"
+        description={collapseHint(defaultAfter)}
+        // Empty (NaN) shows an empty field and saves no value, so the default applies.
+        value={value[network].collapseAfter ?? Number.NaN}
+        minValue={0}
+        maxValue={50}
+        step={1}
+        onChange={(v) => set({ collapseAfter: Number.isFinite(v) ? v : undefined })}
+        isDisabled={!canEdit}
+        {...errorOf(`${network}.collapseAfter`)}
+      />
       <LinkListEditor
         legend="Featured accounts"
         links={value[network].featured}

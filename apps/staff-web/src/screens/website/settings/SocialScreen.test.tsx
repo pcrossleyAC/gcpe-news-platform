@@ -31,6 +31,8 @@ function stub(roles: string[], initial: SettingsState) {
       if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver", siteUrl: "", publicSiteUrl: "", filesBase: "", isTestSite: true });
       if (url === "/nrms/api/site/settings" && call.method === "GET") return jsonResponse(200, initial);
       if (url === "/nrms/api/site/settings/publish" && call.method === "POST") return jsonResponse(200, { revision: 5, state: initial });
+      // The tenant defaults: BC's Blogs never collapses (0); the other networks have no value (2).
+      if (url === "/nrms/api/site/settings/defaults") return jsonResponse(200, { ...BASE, connect: { ...BASE.connect, blogs: { ...BASE.connect.blogs, collapseAfter: 0 } } });
       throw new Error(`unhandled: ${call.method} ${url}`);
     }),
   );
@@ -128,6 +130,79 @@ describe("SocialScreen", () => {
     expect(body.section).toBe("connect");
     expect(body.value.bluesky.accounts.map((l) => l.text)).toEqual(["BC Parks", "Trade and Invest British Columbia"]);
     expect({ ...body.value, bluesky: undefined }).toEqual({ ...DOC.connect, bluesky: undefined });
+  });
+
+  it("each network has 'Entries shown before Expand' (empty when unset, the default in its hint, 0–50 whole numbers); publishing sends that network's collapseAfter and leaves the others", async () => {
+    const calls = stub(["NRMS.SiteEditor"], stateOf(DOC));
+    renderScreen("/?network=x");
+    const user = userEvent.setup();
+    const field = await screen.findByRole("textbox", { name: "Entries shown before Expand" });
+    expect(field).toHaveValue("");
+    await waitFor(() => expect(field).toHaveAccessibleDescription(/0 never collapses the list\. Leave it empty for the default: 2\./));
+    await user.type(field, "0");
+    await user.tab();
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
+    expect(body.value.x).toEqual({ featured: [], accounts: [{ text: "A", url: "https://x.com/a" }, { text: "b", url: "https://x.com/b" }], collapseAfter: 0 });
+    expect({ ...body.value, x: undefined }).toEqual({ ...DOC.connect, x: undefined });
+  });
+
+  it("out-of-range or fractional input is held to a whole number from 0 to 50", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC));
+    renderScreen("/?network=x");
+    const user = userEvent.setup();
+    const field = await screen.findByRole("textbox", { name: "Entries shown before Expand" });
+    await user.type(field, "75");
+    await user.tab();
+    expect(field).toHaveValue("50");
+    await user.clear(field);
+    await user.type(field, "2.6");
+    await user.tab();
+    expect(field).toHaveValue("3");
+  });
+
+  it("clearing the field means the default: the save leaves collapseAfter out (the tenant default fills it: Blogs 0), the hint names it, and the field stays empty", async () => {
+    const doc: SiteSettings = { ...DOC, connect: { ...DOC.connect, blogs: { featured: [], accounts: [{ text: "Blog", url: "https://blog.example" }], collapseAfter: 3 } } };
+    const calls = stub(["NRMS.SiteEditor"], stateOf(doc));
+    renderScreen("/?network=blogs");
+    const user = userEvent.setup();
+    const field = await screen.findByRole("textbox", { name: "Entries shown before Expand" });
+    expect(field).toHaveValue("3");
+    await waitFor(() => expect(field).toHaveAccessibleDescription(/Leave it empty for the default: 0 \(never collapses\)\./));
+    await user.clear(field);
+    await user.tab();
+    expect(field).toHaveValue("");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
+    expect("collapseAfter" in body.value.blogs).toBe(false);
+    expect(body.value.blogs.accounts).toEqual([{ text: "Blog", url: "https://blog.example" }]);
+  });
+
+  it("a stored collapseAfter is shown and kept when the network's links are edited", async () => {
+    const doc: SiteSettings = { ...DOC, connect: { ...DOC.connect, blogs: { featured: [], accounts: [{ text: "Blog", url: "https://blog.example" }], collapseAfter: 0 } } };
+    const calls = stub(["NRMS.SiteEditor"], stateOf(doc));
+    renderScreen("/?network=blogs");
+    const user = userEvent.setup();
+    expect(await screen.findByRole("textbox", { name: "Entries shown before Expand" })).toHaveValue("0");
+    const accounts = screen.getByRole("group", { name: "Other accounts" });
+    await user.click(within(accounts).getByRole("button", { name: "+ Add a link" }));
+    await user.type(within(accounts).getAllByLabelText("Link text").pop()!, "Another");
+    await user.type(within(accounts).getAllByLabelText("Web address").pop()!, "https://another.example");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
+    expect(body.value.blogs.collapseAfter).toBe(0);
+    expect(body.value.blogs.accounts.map((l) => l.text)).toEqual(["Another", "Blog"]);
+  });
+
+  it("a server error on connect.<network>.collapseAfter shows beside the field", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "connect.youtube.collapseAfter", message: "Enter a whole number from 0 to 50." }]));
+    renderScreen("/?network=youtube");
+    const field = await screen.findByRole("textbox", { name: "Entries shown before Expand" });
+    expect(field).toBeInvalid();
+    expect(field).toHaveAccessibleDescription(/Enter a whole number from 0 to 50/);
   });
 
   it("featured accounts are reorderable with a Description, ids kept", async () => {

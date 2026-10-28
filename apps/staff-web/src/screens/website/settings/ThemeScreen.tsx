@@ -30,6 +30,12 @@ const COLOR_LABEL: Record<ColorKey, string> = {
   border: "Borders",
   bannerInfo: "Information banner",
   bannerEmergency: "Emergency banner",
+  sectionBar: "Section bar colour (Connect page)",
+};
+
+/** A short hint under a colour's field, where its name alone isn't enough. */
+const COLOR_HINT: Partial<Record<ColorKey, string>> = {
+  sectionBar: "The bar behind each network heading on the Connect page (Find us on Facebook, and so on). It carries white text.",
 };
 
 /** A pair the server checks (spec "Contrast pairs"): `where` is the spec's wording for it. */
@@ -47,6 +53,8 @@ const WHITE_ON_PRIMARY: Pair = { fg: () => WHITE, bg: (c) => c.primary, where: "
 const WHITE_ON_INFO: Pair = { fg: () => WHITE, bg: (c) => c.bannerInfo, where: "behind white text" };
 const WHITE_ON_EMERGENCY: Pair = { fg: () => WHITE, bg: (c) => c.bannerEmergency, where: "behind white text" };
 
+const WHITE_ON_SECTION_BAR: Pair = { fg: () => WHITE, bg: (c) => c.sectionBar, where: "behind white text" };
+
 /** Each colour's badges: the pair(s) it belongs to, on either side. Accent, secondary text and borders aren't checked. */
 const PAIRS: Partial<Record<ColorKey, Pair[]>> = {
   text: [TEXT_ON_BACKGROUND, TEXT_ON_SURFACE],
@@ -56,6 +64,7 @@ const PAIRS: Partial<Record<ColorKey, Pair[]>> = {
   primary: [ON_HEADER, LINK_ON_BACKGROUND, WHITE_ON_PRIMARY],
   bannerInfo: [WHITE_ON_INFO],
   bannerEmergency: [WHITE_ON_EMERGENCY],
+  sectionBar: [WHITE_ON_SECTION_BAR],
 };
 
 const upper = (hex: string) => hex.trim().toUpperCase();
@@ -156,6 +165,7 @@ function ColorRow({ colorKey, colors, error, onChange, isDisabled }: ColorRowPro
     <div className="gcpe-site-theme__color">
       <TextField
         label={label}
+        description={COLOR_HINT[colorKey]}
         value={hex}
         onChange={onChange}
         isDisabled={isDisabled}
@@ -201,6 +211,7 @@ function ThemePreview({ colors }: { colors: Colors }): React.JSX.Element {
         {strip("preview-info", colors.bannerInfo, "Information banner: a notice for visitors")}
         {strip("preview-emergency", colors.bannerEmergency, "Emergency banner: an urgent notice")}
         <div style={{ background: colors.primary, color: colors.primaryText, padding: "0.75rem 1rem" }}>Site header</div>
+        {strip("preview-section-bar", colors.sectionBar, "Find us on Facebook: a Connect page section bar")}
         <div style={{ padding: "1rem" }}>
           <p>Page text on the page background.</p>
           <div style={{ background: colors.surface, border: `1px solid ${colors.border}`, padding: "0.75rem 1rem" }}>

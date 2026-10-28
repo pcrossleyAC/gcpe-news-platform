@@ -9,23 +9,53 @@ describe("archives", () => {
   it("the index groups months by year, newest first, with counts", () => {
     const doc = expectAccessibleStructure(renderArchiveIndex([{ month: "2026-10", count: 12 }, { month: "2026-09", count: 1 }, { month: "2025-12", count: 3 }], site, {}));
     expect(doc.querySelector("h1")?.textContent).toBe("News archive");
+    expect(doc.querySelector("main div.home-body.archive-page > h1")).not.toBeNull();
+    expect(doc.querySelectorAll("main .home-body > div.resource-links")).toHaveLength(2);
     expect([...doc.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(["2026", "2025"]);
     expect([...doc.querySelectorAll("main li")].map((li) => li.textContent)).toEqual(["October 2026 (12 posts)", "September 2026 (1 post)", "December 2025 (3 posts)"]);
     expect(doc.querySelector('a[href="/archive/2026/10/"]')).not.toBeNull();
+    // one block per year, its own month links inside
+    const blocks = [...doc.querySelectorAll("main div.resource-links")];
+    expect(blocks.map((b) => b.querySelector("h2")!.textContent)).toEqual(["2026", "2025"]);
+    expect(blocks[1]!.querySelectorAll("li")).toHaveLength(1);
   });
   it("an empty index says so", () => {
     expect(expectAccessibleStructure(renderArchiveIndex([], site, {})).querySelector("main p")?.textContent).toBe("Nothing has been published yet.");
   });
-  it("a month lists its posts in the given order, escaped", () => {
+  it("month page: one h1, div.article cards with item-date and read-more, no hidden cards", () => {
+    const longKey = "k".repeat(120);
     const doc = expectAccessibleStructure(renderArchiveMonth("2026-10", [
       { key: "B", kind: "releases", headline: "B <i>", summary: null, publishDate: "2026-10-05T09:00:00-07:00", month: "2026-10", categories: [] },
-      { key: "A", kind: "stories", headline: "A", summary: "S", publishDate: "2026-10-01T09:00:00-07:00", month: "2026-10", categories: [] },
+      { key: "A", kind: "stories", headline: "A", summary: "S & <b>", publishDate: "2026-10-01T15:30:00-07:00", month: "2026-10", categories: [] },
+      { key: longKey, kind: "releases", headline: "Long", summary: null, publishDate: "2026-10-01T09:00:00-07:00", month: "2026-10", categories: [] },
     ], site, {}));
+    expect(doc.querySelectorAll("h1")).toHaveLength(1);
     expect(doc.querySelector("h1")?.textContent).toBe("News from October 2026");
-    expect([...doc.querySelectorAll("main ul.post-list a")].map((a) => a.textContent)).toEqual(["B <i>", "A"]);
-    // Scoped to main: the header nav also links to /archive/ ("Archive"), which a bare
-    // a[href="/archive/"] selector would match first.
+    expect(doc.querySelector("main div.home-body#main-content-release.archive-page > h1")).not.toBeNull();
+    const cards = [...doc.querySelectorAll("main .other-articles > .regular-articles > div.article")];
+    expect(cards).toHaveLength(3);
+    expect(doc.querySelector(".hidden-article")).toBeNull();
+    expect(doc.querySelector(".load-more")).toBeNull();
+    expect(cards.map((c) => c.querySelector("h2 > a")!.textContent)).toEqual(["B <i>", "A", "Long"]);
+    expect(cards[0]!.querySelector(".list-container.ps-0.pb-0 > .item-date")!.textContent).toBe("Monday, October 5, 2026 9:00 AM");
+    expect(cards[0]!.querySelector("h2 a")!.getAttribute("href")).toBe("/releases/B/");
+    expect(cards[0]!.querySelector(".item-text p")).toBeNull();
+    expect(cards[1]!.querySelector(".item-content > .item-text > p")!.textContent).toBe("S & <b>");
+    expect(cards[1]!.querySelector(".item-date")!.textContent).toBe("Thursday, October 1, 2026 3:30 PM");
+    const more = cards[1]!.querySelector(".item-text a.read-more")!;
+    expect(more.textContent).toContain("Read More");
+    expect(more.querySelector(".visually-hidden")!.textContent).toBe(": A");
+    expect(more.getAttribute("href")).toBe("/releases/A/");
+    expect(cards[1]!.querySelector(":scope > .clear")).not.toBeNull();
+    // a key over 100 characters links to its public URL (/releases/<key>/, the same as postCard);
+    // the hashed directory (postDir) is the file layout behind that URL, not the href.
+    expect(cards[2]!.querySelector("h2 a")!.getAttribute("href")).toBe(`/releases/${longKey}/`);
+    expect(cards[2]!.querySelector("a.read-more")!.getAttribute("href")).toBe(`/releases/${longKey}/`);
+    // Scoped to main: the header nav also links to /archive/ ("Archive").
     expect(doc.querySelector('main a[href="/archive/"]')?.textContent).toBe("All months");
+  });
+  it("an empty month says so", () => {
+    expect(expectAccessibleStructure(renderArchiveMonth("2026-10", [], site, {})).querySelector("main p")?.textContent).toBe("Nothing was published this month.");
   });
   it("the index links to the archive by government term", () => {
     const doc = expectAccessibleStructure(renderArchiveIndex([{ month: "2026-10", count: 1 }], site, {}));
@@ -51,6 +81,8 @@ describe("archive by government term", () => {
     ];
     const doc = expectAccessibleStructure(renderTermsIndex(rows, site, {}));
     expect(doc.querySelector("h1")?.textContent).toBe("News archive by government term");
+    expect(doc.querySelector("main div.home-body.archive-page > h1")).not.toBeNull();
+    expect(doc.querySelector("main div.home-body > div.resource-links > ul.term-list")).not.toBeNull();
     expect(doc.title).toContain("News archive by government term");
     const items = [...doc.querySelectorAll("main ul.term-list > li")];
     expect(items.map((li) => li.querySelector("a")!.getAttribute("href"))).toEqual(["/archive/terms/2024-2028/", "/archive/terms/2020-2024/", `${LEGACY}/index_pre2001.htm`]);
@@ -64,7 +96,7 @@ describe("archive by government term", () => {
     expect(items[0]!.querySelector(`p a[href="${LEGACY}/index_current.htm"]`)).not.toBeNull();
     expect(items[1]!.querySelector("p")).toBeNull();
     expect(items[2]!.querySelector("p")).toBeNull();
-    expect([...doc.querySelectorAll("main > p")].map((p) => p.textContent)).toContain("Releases from before 2012 are on the legacy news archive (archive.news.gov.bc.ca).");
+    expect([...doc.querySelectorAll("main .home-body > p, main .resource-links > p")].map((p) => p.textContent)).toContain("Releases from before 2012 are on the legacy news archive (archive.news.gov.bc.ca).");
     expect(doc.querySelector('main a[href="https://archive.news.gov.bc.ca/"]')).not.toBeNull();
   });
 
@@ -88,24 +120,32 @@ describe("archive by government term", () => {
     expect(doc.querySelector("main p")?.textContent).toBe("No government terms have been published yet.");
   });
 
-  it("a term page: range h1, label, every post (headline and date, no summary), escaped, canonical to its slug", () => {
-    const html = renderTermPage(term("2024-2028", "2024-11-18", null, { label: "Eby & co" }), [indexed("B", "2025-02-01T09:00:00-08:00", "B <i>"), indexed("A", "2024-11-18T00:00:00-08:00")], site, {});
+  it("a term page: range h1, label, every post as an archive card, escaped, canonical to its slug", () => {
+    const html = renderTermPage(term("2024-2028", "2024-11-18", null, { label: "Eby & co", legacyArchiveUrl: `${LEGACY}/index_current.htm` }), [indexed("B", "2025-02-01T09:00:00-08:00", "B <i>"), indexed("A", "2024-11-18T00:00:00-08:00")], site, {});
     const doc = expectAccessibleStructure(html);
     expect(doc.querySelector("h1")?.textContent).toBe("News from November 18, 2024 to current date");
+    expect(doc.querySelector("main div.home-body#main-content-release.archive-page > h1")).not.toBeNull();
     expect(doc.querySelector("main")!.textContent).toContain("Eby & co");
-    const items = [...doc.querySelectorAll("main ul.post-list > li")];
-    expect(items.map((li) => li.querySelector("a")!.textContent)).toEqual(["B <i>", "A"]);
-    expect(items[0]!.querySelector("a")!.getAttribute("href")).toBe("/releases/B/");
-    expect(items[0]!.querySelector("time")!.getAttribute("datetime")).toBe("2025-02-01T09:00:00-08:00");
-    expect(items[0]!.querySelector("time")!.textContent).toBe("February 1, 2025");
-    expect(html).not.toContain("a summary");
+    const items = [...doc.querySelectorAll("main .regular-articles > div.article")];
+    expect(items.map((li) => li.querySelector("h2 a")!.textContent)).toEqual(["B <i>", "A"]);
+    expect(items[0]!.querySelector("h2 a")!.getAttribute("href")).toBe("/releases/B/");
+    expect(items[0]!.querySelector(".item-date")!.textContent).toBe("Saturday, February 1, 2025 9:00 AM");
+    expect(items[0]!.querySelector(".item-text p")!.textContent).toBe("a summary");
     expect(doc.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe("https://news.example/archive/terms/2024-2028/");
     expect(doc.querySelector('main a[href="/archive/terms/"]')?.textContent).toBe("All government terms");
   });
 
+  it("term page keeps the legacy-archive note", () => {
+    const doc = expectAccessibleStructure(renderTermPage(term("2024-2028", "2024-11-18", null, { legacyArchiveUrl: `${LEGACY}/index_current.htm` }), [indexed("A", "2024-11-18T00:00:00-08:00")], site, {}));
+    expect(doc.querySelector("main .home-body > p")?.textContent).toBe("Earlier releases from this term are on the legacy news archive.");
+    expect(doc.querySelector(`main p a[href="${LEGACY}/index_current.htm"]`)).not.toBeNull();
+    const none = expectAccessibleStructure(renderTermPage(term("t", "2024-11-18", null), [], site, {}));
+    expect(none.querySelector("main")!.textContent).not.toContain("Earlier releases");
+  });
+
   it("an empty term renders the empty copy; canonicalSlug overrides the canonical", () => {
     const doc = expectAccessibleStructure(renderTermPage(term("2028-11-20", "2028-11-20", null), [], site, { canonicalSlug: "2028-11-20" }));
-    expect(doc.querySelector("main ul.post-list")).toBeNull();
+    expect(doc.querySelector("main .article")).toBeNull();
     expect([...doc.querySelectorAll("main p")].map((p) => p.textContent)).toContain("Nothing has been published in this term yet.");
   });
 });

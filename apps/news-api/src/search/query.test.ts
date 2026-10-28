@@ -10,7 +10,7 @@ const ok = (raw: Record<string, unknown>) => {
 
 describe("parseSearchQuery", () => {
   it("trims q and defaults page to 1", () => {
-    expect(ok({ q: "  wildfire  " })).toEqual({ q: "wildfire", page: 1 });
+    expect(ok({ q: "  wildfire  " })).toEqual({ q: "wildfire", page: 1, pageSize: 20 });
   });
 
   it("counts q in code points: 200 emoji pass, 201 characters fail", () => {
@@ -27,8 +27,8 @@ describe("parseSearchQuery", () => {
   });
 
   it("q may be missing or blank when a filter is given (filter-only search); not otherwise", () => {
-    expect(ok({ ministry: "citizens-services" })).toEqual({ q: "", ministry: "citizens-services", page: 1 });
-    expect(ok({ q: "  ", sector: "economy", page: "2" })).toEqual({ q: "", sector: "economy", page: 2 });
+    expect(ok({ ministry: "citizens-services" })).toEqual({ q: "", ministry: "citizens-services", page: 1, pageSize: 20 });
+    expect(ok({ q: "  ", sector: "economy", page: "2" })).toEqual({ q: "", sector: "economy", page: 2, pageSize: 20 });
     expect(ok({ type: "stories" }).q).toBe("");
     expect(ok({ from: "2026-10-01" }).q).toBe("");
     expect(ok({ to: "2026-10-01" }).q).toBe("");
@@ -37,12 +37,32 @@ describe("parseSearchQuery", () => {
 
   it("keeps ministry, sector and type", () => {
     expect(ok({ q: "x", ministry: "Health", sector: "economy", type: "stories", page: "3" })).toEqual({
-      q: "x", ministry: "Health", sector: "economy", type: "stories", page: 3,
+      q: "x", ministry: "Health", sector: "economy", type: "stories", page: 3, pageSize: 20,
     });
+  });
+
+  it("pageSize is 10 or 20 (default 20); the page limit is 1000 / pageSize", () => {
+    expect(ok({ q: "x", pageSize: "10", page: "100" })).toMatchObject({ pageSize: 10, page: 100 });
+    expect(ok({ q: "x", pageSize: "20", page: "50" })).toMatchObject({ pageSize: 20, page: 50 });
+    expect(ok({ q: "x" }).pageSize).toBe(20);
+    const bad = parseSearchQuery({ q: "x", pageSize: "15" }, TZ);
+    expect(bad).toEqual({ ok: false, parameter: "pageSize", message: "pageSize must be 10 or 20" });
+    expect(parseSearchQuery({ q: "x", pageSize: "10", page: "101" }, TZ)).toEqual({ ok: false, parameter: "page", message: "page must be a whole number from 1 to 100" });
+    expect(parseSearchQuery({ q: "x", page: "51" }, TZ)).toEqual({ ok: false, parameter: "page", message: "page must be a whole number from 1 to 50" });
+  });
+
+  it("facets=1 asks for facets; absent means none; any other value is refused", () => {
+    expect(ok({ q: "x", facets: "1" }).facets).toBe(true);
+    expect(ok({ q: "x" }).facets).toBeUndefined();
+    expect(parseSearchQuery({ q: "x", facets: "0" }, TZ)).toMatchObject({ ok: false, parameter: "facets" });
+    expect(parseSearchQuery({ q: "x", facets: ["1", "1"] }, TZ)).toMatchObject({ ok: false, parameter: "facets" });
   });
 
   it.each([
     [{}, "q"],
+    [{ q: "x", pageSize: "" }, "pageSize"],
+    [{ q: "x", pageSize: "010" }, "pageSize"],
+    [{ q: "x", pageSize: ["10", "20"] }, "pageSize"],
     [{ q: "   " }, "q"],
     [{ q: ["a", "b"] }, "q"],
     [{ q: "x", page: "0" }, "page"],

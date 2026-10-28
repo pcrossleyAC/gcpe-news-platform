@@ -67,7 +67,8 @@ export async function applyChromeChanges(deps: SyncDeps, turn: { state: SiteRend
   await enqueueChromeChanges(deps.db, deps.builder, changes);
   // The subscribe pages are static (not queue pages) and carry the footer, so a site-wide change
   // (footer, Blue Bridge, chrome version, base URL, and the cold start) rewrites them this turn.
-  if (changes.all) await writeSubscribePages(deps.storage, deps.site, turn.pageOpts);
+  // A collectionNotice/subscribeHelp edit rewrites only them (they are not queue pages).
+  if (changes.all || changes.sections.includes("subscribe")) await writeSubscribePages(deps.storage, deps.site, turn.pageOpts);
   await writeSiteState(deps.storage, changes.all ? turn.state : compared, deps.site);
 }
 

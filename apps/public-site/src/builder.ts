@@ -495,9 +495,15 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           await storage.write(pageFiles(p)[0]!, renderTermPage(term, await index.inDayRange(term.startDate, end), site, { ...opts, canonicalSlug: term.slug }));
           return termsChangePages(run, tx ? postIndex(tx) : index);
         }
-        case "search":
-          await storage.write(pageFiles(p)[0]!, renderSearchPage(await ministries(run), site, opts, deps.searchApiBase ?? ""));
+        case "search": {
+          // The filter panel's lists: every active ministry and sector, and the public terms (an
+          // outage keeps the last applied snapshot, else none: the Date list then has only the
+          // date range and the older-archive links).
+          const [ministryList, sectors, terms] = await Promise.all([ministries(run), newsApi.categories("sectors"), governmentTerms(run)]);
+          const settings = opts.settings ?? themeDefaults(site.theme);
+          await storage.write(pageFiles(p)[0]!, renderSearchPage({ ministries: ministryList, sectors, terms: terms.dto?.terms ?? [] }, settings.pageText.searchArchiveLinks, site, opts, deps.searchApiBase ?? ""));
           return [];
+        }
         case "archive-month": {
           const posts = await index.inMonth(p.month);
           if (posts.length === 0) await removeAll(p);

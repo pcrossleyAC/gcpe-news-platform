@@ -5,8 +5,8 @@ const ok = { performance: 86, accessibility: 100, "best-practices": 100, seo: 92
 const lhr = (crawlable: number) => ({ audits: { "is-crawlable": { score: crawlable } } });
 
 describe("site-quality: robots-blocked pages", () => {
-  it("/search/ is the page robots.txt blocks on purpose", () => {
-    expect([...ROBOTS_BLOCKED]).toEqual(["/search/"]);
+  it("/search/ and the subscribe pages are what robots.txt blocks on purpose (news.gov's own Disallows)", () => {
+    expect([...ROBOTS_BLOCKED]).toEqual(["/search/", "/subscribe/", "/subscribe/manage/"]);
   });
 
   it("a blocked page skips the SEO threshold but keeps the others", () => {

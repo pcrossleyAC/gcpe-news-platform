@@ -31,6 +31,12 @@
  * 9. "Load More News" (`button.load-more[aria-controls]`): reveals every `.hidden-article` in its
  *    target, removes itself and moves focus to the first revealed card's headline link.
  *
+ * 10a. The Connect page's long lists (`.expandable-section[data-collapsible]`, pages/connect.ts) collapse as news.gov's do.
+ *     The markup already paints collapsed (overrides.css, under html.js: the first entries show, the last of them faded, and
+ *     the rendered `button.expand-toggle`); this wires the button, which swaps `collapsed`/`expanded`, `aria-expanded` and
+ *     "Expand {name} list" / "Collapse {name} list". The section whose id is the URL hash is expanded on load and on every
+ *     `hashchange`. Without script every entry shows and the button is hidden.
+ *
  * 10. The release page's Print button (`button.print-document`, pages/release.ts) calls `window.print()`.
  * 11. The release page's language buttons (`button[data-story-lang]`): "secondary" adds
  *     `body.lang-secondary` (overrides.css shows the French `.story-lang.secondary` and hides the
@@ -246,6 +252,28 @@ export const SITE_SCRIPT = String.raw`(() => {
       if (link) link.focus();
     });
   });
+
+  const connectSections = [];
+  Array.prototype.slice.call(doc.querySelectorAll(".expandable-section[data-collapsible]")).forEach((sec) => {
+    const btn = sec.querySelector("button.expand-toggle");
+    if (!btn) return;
+    const name = sec.getAttribute("data-list-name") || "";
+    const set = (collapsed) => {
+      sec.classList.toggle("collapsed", collapsed);
+      sec.classList.toggle("expanded", !collapsed);
+      btn.setAttribute("aria-expanded", collapsed ? "false" : "true");
+      btn.textContent = (collapsed ? "Expand " : "Collapse ") + name + " list";
+    };
+    btn.addEventListener("click", () => set(!sec.classList.contains("collapsed")));
+    connectSections.push({ sec: sec, set: set });
+  });
+  if (connectSections.length) {
+    const openTarget = () => connectSections.forEach((c) => {
+      if (doc.location && doc.location.hash === "#" + c.sec.id) c.set(false);
+    });
+    openTarget();
+    window.addEventListener("hashchange", openTarget);
+  }
 
   Array.prototype.slice.call(doc.querySelectorAll("button.print-document")).forEach((btn) => {
     btn.addEventListener("click", () => window.print());

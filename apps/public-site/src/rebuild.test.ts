@@ -170,6 +170,41 @@ describe("settings sections: pageText", () => {
     expect(storage.files.get("live/index.html")).toContain("Watch live");
   });
 
+  it("a pageText.searchArchiveLinks edit queues exactly search", async () => {
+    const { items, dependents, storage } = await edit((d) => { d.pageText.searchArchiveLinks[0]!.text = "Older news, 2009 to 2011"; });
+    expect(dependents).toEqual([]);
+    expect(items).toEqual([{ pageId: "search", priority: PRIORITY.liveAggregate }]);
+    expect(storage.files.get("search/index.html")).toContain("Older news, 2009 to 2011");
+  });
+
+  it("a collectionNotice or subscribeHelp edit rewrites the subscribe pages and queues nothing", async () => {
+    for (const [change, text] of [
+      [(d: ReturnType<typeof bcSettings>) => { d.pageText.collectionNotice.heading = "Collecting your details"; }, "Collecting your details"],
+      [(d: ReturnType<typeof bcSettings>) => { d.pageText.subscribeHelpHtml = "<p>Ring the helpline</p>"; }, "Ring the helpline"],
+    ] as const) {
+      const storage = memoryStorage();
+      const newsApi = fakeNewsApi(new Map([["K1", post({ key: "K1" })]]));
+      const index = postIndex(tdb.db);
+      const builder = createSiteBuilder({ newsApi, storage, index, site, assetsDir: null });
+      const deps: SyncDeps = { db: tdb.db, builder, index, newsApi, storage, site, test: false, batch: 200 };
+      (newsApi as FakeNewsApi).settings = { revision: 1, document: bcSettings() };
+      await syncSite(deps);
+      expect(storage.files.get("subscribe/index.html")).not.toContain(text);
+      const doc = bcSettings();
+      change(doc);
+      (newsApi as FakeNewsApi).settings = { revision: 2, document: doc };
+      const enqueue = vi.spyOn(queue, "enqueuePages");
+      try {
+        await syncSite(deps);
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(storage.files.get("subscribe/index.html")).toContain(text);
+        expect(storage.files.get("subscribe/manage/index.html")).toBeDefined();
+      } finally {
+        enqueue.mockRestore();
+      }
+    }
+  });
+
   it("a notFound edit queues exactly static", async () => {
     const { items, dependents, storage } = await edit((d) => { d.pageText.notFound.heading = "Nothing here"; });
     expect(dependents).toEqual([]);
@@ -289,8 +324,8 @@ describe("RENDER_CHROME_VERSION", () => {
   // 8: the archive by government term (new-government Task 6).
   // 9: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
   // 10: the news.gov release page, minister card, biography page and ministry page (parity plan 2).
-  // 16: listings, factsheets, category pages and indexes (parity plan 4, batch E).
-  it("RENDER_CHROME_VERSION is 16", () => expect(RENDER_CHROME_VERSION).toBe(16));
+  // 17: search, archive, subscribe, phone Live icon, Connect collapse (parity plan 4, batch F).
+  it("RENDER_CHROME_VERSION is 17", () => expect(RENDER_CHROME_VERSION).toBe(17));
 });
 
 describe("Search Console verification in the render-state marker", () => {

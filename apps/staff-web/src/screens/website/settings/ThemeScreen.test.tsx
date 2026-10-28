@@ -67,7 +67,7 @@ describe("ThemeScreen", () => {
     await screen.findByRole("heading", { name: "Theme colours", level: 1 });
     expect(await screen.findByLabelText("Header and buttons")).toHaveValue("#1A5A96");
     expect(screen.getByLabelText("Header and buttons colour picker")).toBeInTheDocument();
-    expect(screen.getAllByLabelText(/colour picker$/)).toHaveLength(10);
+    expect(screen.getAllByLabelText(/colour picker$/)).toHaveLength(11);
     expect(screen.getByLabelText("Information banner")).toHaveAccessibleDescription(/Too faint 2\.9:1/);
     expect(screen.getByLabelText("Header and buttons")).toHaveAccessibleDescription(/Readable 7\.\d:1/);
     await waitFor(() => expect(document.title).toBe("Theme colours — GCPE News Staff"));
@@ -149,6 +149,24 @@ describe("ThemeScreen", () => {
     await user.type(field, "#112233");
     expect(screen.getByTestId("preview-emergency")).toHaveStyle({ background: "#112233" });
     expect(screen.getByTestId("preview-info")).toHaveStyle({ background: "#8899AA" });
+  });
+
+  it("edits the Connect section-bar colour: labelled, hinted, badged, previewed and sent", async () => {
+    const calls = stub(["NRMS.SiteEditor"]);
+    renderScreen();
+    const user = userEvent.setup();
+    const field = await screen.findByLabelText("Section bar colour (Connect page)");
+    expect(field).toHaveValue("#2B5580");
+    expect(field).toHaveAccessibleDescription(/Connect page/);
+    expect(field).toHaveAccessibleDescription(/Readable/);
+    await user.clear(field);
+    await user.type(field, "#f08080");
+    expect(screen.getByTestId("preview-section-bar")).toHaveStyle({ background: "#f08080" });
+    expect(field).toHaveAccessibleDescription(/Too faint/);
+    await user.clear(field);
+    await user.type(field, "#112233");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.method !== "GET" && JSON.stringify(c.body).includes('"sectionBar":"#112233"'))).toBe(true));
   });
 
   it("Core.Admin alone sees the colours but no buttons to change them", async () => {

@@ -33,10 +33,10 @@ export const THRESHOLDS: Record<string, number> = { performance: 80, accessibili
 /**
  * Pages robots.txt disallows on purpose (news.gov's own Disallows, url-compat T3). An SEO score means
  * nothing for a page crawlers are told to skip (Lighthouse's is-crawlable fails by design, and news.gov's
- * own search page has no meta description either), so these pages skip the SEO threshold. They must still
+ * own search page has no meta description either; /subscribe is one of those Disallows, prefix and all), so these pages skip the SEO threshold. They must still
  * be blocked: a page that stops being blocked fails here and comes back under the normal gate.
  */
-export const ROBOTS_BLOCKED = new Set(["/search/"]);
+export const ROBOTS_BLOCKED = new Set(["/search/", "/subscribe/", "/subscribe/manage/"]);
 
 type Lhr = { audits: Record<string, { score: number | null } | undefined> };
 
@@ -142,6 +142,143 @@ export async function checkLayoutOrder(browser: import("@playwright/test").Brows
   return failures;
 }
 
+/**
+ * The search page (P4-R15): the results come before the filters in the DOM at every width; at
+ * 1280px the filters show on the left (legacy's 24% / 76%), at 390px they stack below the results.
+ */
+export async function checkSearchLayout(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
+  const failures: string[] = [];
+  for (const width of [390, 1280]) {
+    const context = await browser.newContext({ viewport: { width, height: 900 } });
+    const page = await context.newPage();
+    await page.goto(url + "/search/");
+    const results = await page.locator(".search > .search-results").boundingBox();
+    const filters = await page.locator(".search > .search-filters").boundingBox();
+    const domResultsFirst = await page.locator(".search").evaluate((el) => {
+      const kids = [...el.children];
+      return kids.findIndex((k) => k.classList.contains("search-results")) < kids.findIndex((k) => k.classList.contains("search-filters"));
+    });
+    await context.close();
+    if (!results || !filters) {
+      failures.push(`/search/ at ${width}px: the results or filters are not rendered`);
+      continue;
+    }
+    const visual = width < 768 ? (results.y < filters.y ? "results above filters" : "filters above results") : filters.x < results.x && Math.abs(filters.y - results.y) < 5 ? "filters left of results" : "filters not beside the results on the left";
+    log(`/search/ at ${width}px: DOM ${domResultsFirst ? "results first" : "filters first"}; ${visual}; results ${Math.round(results.width)}px, filters ${Math.round(filters.width)}px`);
+    if (!domResultsFirst) failures.push(`/search/ at ${width}px: the filters precede the results in the DOM`);
+    if (width < 768 && visual !== "results above filters") failures.push(`/search/ at ${width}px: ${visual}`);
+    if (width >= 768 && visual !== "filters left of results") failures.push(`/search/ at ${width}px: ${visual}`);
+  }
+  return failures;
+}
+
+/**
+ * The subscribe page's customize options start hidden (all news is chosen), so the per-page axe pass
+ * never sees them. A prefill link selects customize: axe that state, with every list the fixture
+ * server stubs (Emergency's empty list removes its fieldset, as live).
+ */
+export async function checkSubscribeCustomize(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
+  const page = await (await browser.newContext()).newPage();
+  await page.goto(url + "/subscribe/?ministries=health&themes=housing&tags=covid-19");
+  await page.locator('fieldset[data-category="tags"] input:checked').waitFor();
+  const fieldsets = await page.locator("#newsOnDemandCustomOptions fieldset[data-category]").evaluateAll((els) => els.filter((el) => el.getClientRects().length > 0).map((el) => `${el.getAttribute("data-category")} ${el.querySelectorAll("input").length}`));
+  const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+  log(`axe /subscribe/ (customize, prefilled): ${violations.length} violation(s); fieldsets shown: ${fieldsets.join(", ")}`);
+  const failures = violations.map((v) => `/subscribe/ (customize): ${v.id} (${v.nodes.length} node(s))`);
+  if (fieldsets.length !== 4) failures.push(`/subscribe/ (customize): ${fieldsets.length} category fieldsets shown, expected ministries, sectors, themes and tags`);
+  await page.context().close();
+  return failures;
+}
+
+/**
+ * The Connect page's long lists, with script and without: no list body clips its entries (scroll
+ * height over client height, or a shown entry ending below the body; getClientRects can't see
+ * overflow clipping). With script each marked list shows exactly its collapseAfter entries (the
+ * fixture's Instagram keeps 3, the others 2); without, every entry shows and no Expand button.
+ */
+export async function checkConnectCollapse(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
+  const failures: string[] = [];
+  for (const js of [true, false]) {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    if (!js) await context.route(/\/assets\/site\/site\.js$/, (r) => r.abort());
+    const page = await context.newPage();
+    await page.goto(url + "/connect/");
+    const sections = await page.locator(".expandable-section[data-collapsible]").evaluateAll((els) =>
+      els.map((sec) => {
+        const body = sec.querySelector(".expander-body")!;
+        const bottom = body.getBoundingClientRect().bottom;
+        const lis = [...sec.querySelectorAll("li")];
+        const shown = lis.filter((li) => getComputedStyle(li).display !== "none");
+        const clipped = shown.filter((li) => li.getBoundingClientRect().bottom > bottom + 0.5).length;
+        const button = sec.querySelector("button.expand-toggle");
+        return { id: sec.id, keep: Number(sec.getAttribute("data-collapsible")), total: lis.length, shown: shown.length, clipped, overflow: body.scrollHeight - body.clientHeight, button: !!button && button.getClientRects().length > 0 };
+      }),
+    );
+    await context.close();
+    const mode = js ? "script" : "no script";
+    log(`/connect/ (${mode}): ${sections.map((s) => `${s.id} ${s.shown}/${s.total}${s.clipped || s.overflow > 1 ? ` CLIPPED ${s.clipped} (overflow ${s.overflow}px)` : ""}`).join(", ")}`);
+    if (js && !sections.some((s) => s.keep === 3)) failures.push("/connect/: no list keeps 3 entries (the fixture's Instagram should)");
+    for (const s of sections) {
+      if (s.clipped > 0 || s.overflow > 1) failures.push(`/connect/ (${mode}) #${s.id}: ${s.clipped} shown entr(ies) clipped, body overflows by ${s.overflow}px`);
+      const want = js ? s.keep : s.total;
+      if (s.shown !== want) failures.push(`/connect/ (${mode}) #${s.id}: ${s.shown} entries shown, expected ${want}`);
+      if (s.button !== js) failures.push(`/connect/ (${mode}) #${s.id}: Expand button ${s.button ? "shown" : "not shown"}`);
+    }
+  }
+  return failures;
+}
+
+type Box = { x: number; y: number; width: number; height: number };
+
+/**
+ * One header's geometry: every rendered control (the Live icon, the menu and search toggles) must
+ * sit inside the header bar and clear of the page's h1. The bar is a fixed 75px (legacy .nav-border),
+ * so a control that wraps to a second row lands on the content below it.
+ */
+export function headerRowFailures(where: string, g: { header: Box | null; h1: Box | null; controls: Record<string, Box | null> }): string[] {
+  if (!g.header) return [`${where}: the header is not rendered`];
+  const failures: string[] = [];
+  const bottom = g.header.y + g.header.height;
+  const overlaps = (a: Box, b: Box) => a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+  for (const [name, box] of Object.entries(g.controls)) {
+    if (!box) continue;
+    if (box.y + box.height > bottom) failures.push(`${where}: ${name} ends at y=${Math.round(box.y + box.height)}, below the header bar (${Math.round(bottom)})`);
+    if (g.h1 && overlaps(box, g.h1)) failures.push(`${where}: ${name} overlaps the h1`);
+  }
+  return failures;
+}
+
+/**
+ * The phone and tablet header with the webcast on (live.json answered {"live":true}) and off, on a
+ * page with a visible h1 and on home: one row, nothing over the h1 (batch F: the words "Live Webcast"
+ * used to push the search toggle onto a second row at 390px).
+ */
+export async function checkHeaderLive(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
+  const failures: string[] = [];
+  for (const path of ["/archive/", "/"]) {
+    for (const width of [320, 390, 768]) {
+      for (const live of [true, false]) {
+        const context = await browser.newContext({ viewport: { width, height: 900 } });
+        const page = await context.newPage();
+        await page.route(/\/assets\/live\.json$/, (r) => r.fulfill({ contentType: "application/json", body: JSON.stringify({ live }) }));
+        await page.goto(url + path);
+        if (live) await page.locator("a.live_button.d-lg-none.live_button_show").waitFor({ state: "attached" });
+        const box = async (sel: string) => {
+          const l = page.locator(sel).first();
+          return (await l.count()) && (await l.isVisible()) ? await l.boundingBox() : null;
+        };
+        const g = { header: await box("header#main-nav"), h1: await box("h1"), controls: { live: await box("a.live_button.d-lg-none"), menu: await box("#nav-menu-sm"), search: await box("#search-md-button") } };
+        await context.close();
+        const where = `${path} at ${width}px, live ${live ? "on" : "off"}`;
+        const found = headerRowFailures(where, g);
+        log(`header ${where}: ${found.length === 0 ? "one row, clear of the h1" : found.join("; ")}`);
+        failures.push(...found);
+      }
+    }
+  }
+  return failures;
+}
+
 export async function runSiteQuality(log: (line: string) => void = console.log): Promise<string[]> {
   const dir = await mkdtemp(join(tmpdir(), "gcpe-site-quality-"));
   const failures: string[] = [];
@@ -163,6 +300,10 @@ export async function runSiteQuality(log: (line: string) => void = console.log):
       }
       failures.push(...(await checkReleaseStates(browser, server.url, log)));
       failures.push(...(await checkLayoutOrder(browser, server.url, log)));
+      failures.push(...(await checkHeaderLive(browser, server.url, log)));
+      failures.push(...(await checkSearchLayout(browser, server.url, log)));
+      failures.push(...(await checkSubscribeCustomize(browser, server.url, log)));
+      failures.push(...(await checkConnectCollapse(browser, server.url, log)));
     } finally {
       await browser.close();
     }

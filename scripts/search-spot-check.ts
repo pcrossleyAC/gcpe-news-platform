@@ -111,8 +111,8 @@ export async function runSpotCheck(o: { provider?: EmbeddingProvider | null; log
     let semanticHits = 0;
     let semanticReached = false;
     for (const [q, expected] of SPOT_QUERIES) {
-      const t = (await text.search({ q, page: 1 })).results.slice(0, 5).map((r) => r.key);
-      const sRes = await semantic.search({ q, page: 1 });
+      const t = (await text.search({ q, page: 1, pageSize: 20 })).results.slice(0, 5).map((r) => r.key);
+      const sRes = await semantic.search({ q, page: 1, pageSize: 20 });
       const s = sRes.results.slice(0, 5).map((r) => r.key);
       if (sRes.mode === "semantic") semanticReached = true;
       const tRank = t.indexOf(expected) + 1;

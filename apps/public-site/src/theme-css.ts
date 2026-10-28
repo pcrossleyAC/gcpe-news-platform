@@ -1,5 +1,5 @@
 import type { SiteTheme } from "@gcpe/config";
-import type { ThemeColors } from "@gcpe/site-settings";
+import { contrastRatio, type ThemeColors } from "@gcpe/site-settings";
 
 /** Used when no tenant config loaded (TENANT_CONFIG unset and the default missing). Neutral,
  * and passes the same contrast check the tenant loader applies. */
@@ -31,7 +31,7 @@ const cssString = (s: string) => `"${s.replace(/["\\;:{}<>\n\r]/g, "")}"`;
 const cssStack = (s: string) => s.replace(/[^A-Za-z0-9 ,-]/g, "");
 
 /** The site settings' default banner colours (spec "Defaults"). */
-const DEFAULT_BANNER_COLORS = { bannerInfo: "#013366", bannerEmergency: "#D8292F" };
+const DEFAULT_BANNER_COLORS = { bannerInfo: "#013366", bannerEmergency: "#D8292F", sectionBar: "#2B5580" };
 const HEX = /^#[0-9A-Fa-f]{6}$/;
 
 /** P7: the legacy stylesheets' variables, pointed at our tokens, so an admin colour edit only changes theme.css. */
@@ -42,23 +42,48 @@ const LEGACY_ALIASES =
  * spec §6.3: theme.css from site.theme, as CSS variables, plus the legacy variable aliases. Every
  * other rule lives in assets/site/overrides.css, which loads before this file; the :focus-visible
  * rule stays last so it wins over all legacy CSS (P6). The site settings' `theme.colors` (when
- * given) replace the tenant's colours and add the two banner colours. A colour that isn't
+ * given) replace the tenant's colours and add the banner and section-bar colours. A colour that isn't
  * `#RRGGBB` (a document that bypassed validation) never reaches the stylesheet: the tenant's (or
  * default banner) colour stands in for it.
  */
 export function themeCss(theme: SiteTheme, colors?: ThemeColors): string {
   const fallback: Record<string, string> = { ...theme.colors, ...DEFAULT_BANNER_COLORS };
-  const vars = Object.entries(fallback)
-    .map(([name, value]) => {
+  const resolved = Object.fromEntries(
+    Object.entries(fallback).map(([name, value]) => {
       const chosen = (colors as Record<string, string> | undefined)?.[name];
-      return `  --color-${kebab(name)}: ${chosen && HEX.test(chosen) ? chosen : value};`;
-    })
+      return [name, chosen && HEX.test(chosen) ? chosen : value];
+    }),
+  );
+  const vars = Object.entries(resolved)
+    .map(([name, value]) => `  --color-${kebab(name)}: ${value};`)
     .join("\n");
+  const fade = fadeStrength([resolved.primary!, resolved.text!], resolved.background!);
   return `:root {
 ${vars}
+  --fade-strength: ${fade}%;
   --font-family: ${cssString(theme.font.family)}, ${cssStack(theme.font.fallback)};
 }
 ${LEGACY_ALIASES}
 :focus-visible { outline: 3px solid var(--color-accent); outline-offset: 2px; }
 `;
+}
+
+/** The contrast a faded entry's text keeps against the page: WCAG's 4.5:1 plus a little for the browser's 8-bit rounding. */
+const FADE_MIN_CONTRAST = 4.6;
+
+/**
+ * `--fade-strength`: how much of the page background overlays the Connect page's faded entry
+ * (overrides.css `li.collapse-last::after`, legacy's article-fade) — the strongest whole percent,
+ * up to 60, at which every `foregrounds` colour (links in the primary colour, body text), mixed
+ * toward `background`, still contrasts with it by FADE_MIN_CONTRAST (P4-R16: accessibility over
+ * the exact legacy fade). 0 (no fade) when even the plain colours don't leave that room.
+ */
+export function fadeStrength(foregrounds: string[], background: string): number {
+  const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const hex = (c: number[]) => `#${c.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  const bg = rgb(background);
+  const keeps = (pct: number) =>
+    foregrounds.every((fg) => contrastRatio(hex(rgb(fg).map((c, i) => Math.round((pct / 100) * bg[i]! + (1 - pct / 100) * c))), background) >= FADE_MIN_CONTRAST);
+  for (let pct = 60; pct > 0; pct--) if (keeps(pct)) return pct;
+  return 0;
 }

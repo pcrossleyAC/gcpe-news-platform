@@ -1,8 +1,12 @@
 import { wallClockToInstant } from "@gcpe/config";
 import { postKindSchema, type PostKind } from "@gcpe/events";
 
-export const SEARCH_PAGE_SIZE = 20;
-export const SEARCH_MAX_PAGE = 50;
+/** The page sizes a client may ask for; news.gov's search showed 10, the API's own default is 20. */
+export const SEARCH_PAGE_SIZES = [10, 20] as const;
+export type SearchPageSize = (typeof SEARCH_PAGE_SIZES)[number];
+export const SEARCH_DEFAULT_PAGE_SIZE: SearchPageSize = 20;
+/** The deepest result a visitor can reach, whatever the page size. */
+export const SEARCH_MAX_RESULTS = 1000;
 export const SEARCH_MAX_QUERY_CHARS = 200;
 export const SEARCH_MAX_KEY_CHARS = 100;
 const MIN_YEAR = 1900;
@@ -19,6 +23,9 @@ export interface SearchQuery {
   /** The first instant of the day after `to`, in the tenant's time zone. */
   toExclusive?: Date;
   page: number;
+  pageSize: SearchPageSize;
+  /** `facets=1`: ask for facet counts (text mode only). */
+  facets?: boolean;
 }
 
 export type ParsedSearchQuery = { ok: true; query: SearchQuery } | { ok: false; parameter: string; message: string };
@@ -57,6 +64,14 @@ function dayStart(raw: Record<string, unknown>, name: string, timeZone: string, 
   return wallClockToInstant(wall, timeZone);
 }
 
+/** The first instant of `ymd` (`YYYY-MM-DD`, already validated) plus `addDays`, in `timeZone`. */
+export function localDayStart(ymd: string, timeZone: string, addDays: number): Date {
+  const [y, mo, d] = ymd.split("-").map(Number) as [number, number, number];
+  const wall = new Date(Date.UTC(y, mo - 1, d));
+  wall.setUTCDate(wall.getUTCDate() + addDays);
+  return wallClockToInstant(wall, timeZone);
+}
+
 /** Whether the query narrows by anything besides its text. */
 export function hasFilter(query: SearchQuery): boolean {
   return query.ministry !== undefined || query.sector !== undefined || query.type !== undefined || query.from !== undefined || query.toExclusive !== undefined;
@@ -69,15 +84,24 @@ export function parseSearchQuery(raw: Record<string, unknown>, timeZone: string)
     const chars = Array.from(q).length;
     if (chars > SEARCH_MAX_QUERY_CHARS) throw new Invalid("q", `q must be 1-${SEARCH_MAX_QUERY_CHARS} characters`);
 
+    const pageSizeRaw = single(raw, "pageSize");
+    const pageSize = pageSizeRaw === undefined ? SEARCH_DEFAULT_PAGE_SIZE : SEARCH_PAGE_SIZES.find((n) => String(n) === pageSizeRaw);
+    if (pageSize === undefined) throw new Invalid("pageSize", "pageSize must be 10 or 20");
+
+    const maxPage = SEARCH_MAX_RESULTS / pageSize;
     const pageRaw = single(raw, "page");
     const page = pageRaw === undefined ? 1 : /^\d{1,3}$/.test(pageRaw) ? Number(pageRaw) : NaN;
-    if (!(page >= 1 && page <= SEARCH_MAX_PAGE)) throw new Invalid("page", `page must be a whole number from 1 to ${SEARCH_MAX_PAGE}`);
+    if (!(page >= 1 && page <= maxPage)) throw new Invalid("page", `page must be a whole number from 1 to ${maxPage}`);
+
+    const facetsRaw = single(raw, "facets");
+    if (facetsRaw !== undefined && facetsRaw !== "1") throw new Invalid("facets", "facets must be 1");
 
     const typeRaw = single(raw, "type");
     const type = typeRaw === undefined ? undefined : postKindSchema.safeParse(typeRaw);
     if (type && !type.success) throw new Invalid("type", `type must be one of ${postKindSchema.options.join(", ")}`);
 
-    const query: SearchQuery = { q, page };
+    const query: SearchQuery = { q, page, pageSize };
+    if (facetsRaw !== undefined) query.facets = true;
     const ministry = key(raw, "ministry");
     const sector = key(raw, "sector");
     if (ministry !== undefined) query.ministry = ministry;

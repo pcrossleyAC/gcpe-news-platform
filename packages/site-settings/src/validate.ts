@@ -29,6 +29,8 @@ const SHORT_TEXT_MAX = 100;
 const LONG_HEADING_MAX = 200;
 const LINK_TEXT_MAX = 200;
 const INTRO_MAX = 300;
+/** A Connect list's `collapseAfter` (0 = never collapse). */
+export const COLLAPSE_AFTER_MAX = 50;
 const NOT_FOUND_TEXT_MAX = 300;
 const LICENCE_TEXT_MAX = 200;
 const LICENCE_LINK_TEXT_MAX = 100;
@@ -117,6 +119,7 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
     checkContrast("theme.colors.primary", "#FFFFFF", c.primary, "behind white text", errors);
     checkContrast("theme.colors.bannerInfo", "#FFFFFF", c.bannerInfo, "behind white text", errors);
     checkContrast("theme.colors.bannerEmergency", "#FFFFFF", c.bannerEmergency, "behind white text", errors);
+    checkContrast("theme.colors.sectionBar", "#FFFFFF", c.sectionBar, "behind white text", errors);
   }
 
   const f = doc.footer;
@@ -135,6 +138,10 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
   for (const { key } of NETWORKS) {
     validateLinks(`connect.${key}.featured`, doc.connect[key].featured, errors);
     validateLinks(`connect.${key}.accounts`, doc.connect[key].accounts, errors);
+    const after = doc.connect[key].collapseAfter;
+    if (after !== undefined && !(Number.isInteger(after) && after >= 0 && after <= COLLAPSE_AFTER_MAX)) {
+      errors.push({ field: `connect.${key}.collapseAfter`, message: `Enter a whole number from 0 to ${COLLAPSE_AFTER_MAX}.` });
+    }
   }
 
   validateConnectExtras(doc, errors);

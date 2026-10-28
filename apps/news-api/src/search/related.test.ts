@@ -65,6 +65,8 @@ describe("related posts (spec §5.4)", () => {
       summary: null,
       publishDate: "2026-10-01T10:00:00-07:00",
       leadMinistryKey: "health",
+      hasTranslations: false,
+      hasMediaAssets: false,
       url: "https://site.example.test/releases/P1",
     });
   });

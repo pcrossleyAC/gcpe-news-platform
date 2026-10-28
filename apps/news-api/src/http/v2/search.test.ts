@@ -25,7 +25,7 @@ describe("GET /api/v2/search (HTTP)", () => {
     timeZone: TZ,
     async search(query) {
       calls.push(query);
-      return { mode: "text", page: query.page, total: 0, results: [] };
+      return { mode: "text", page: query.page, pageSize: query.pageSize, total: 0, results: [], facets: null };
     },
   };
   afterEach(() => {
@@ -37,14 +37,14 @@ describe("GET /api/v2/search (HTTP)", () => {
     const res = await request(stubApp(stub)).get("/api/v2/search?q=%20wildfire%20&ministry=Health&page=2");
     expect(res.status).toBe(200);
     expect(res.headers["cache-control"]).toBe("no-store");
-    expect(res.body).toEqual({ mode: "text", page: 2, total: 0, results: [] });
-    expect(calls).toEqual([{ q: "wildfire", ministry: "Health", page: 2 }]);
+    expect(res.body).toEqual({ mode: "text", page: 2, pageSize: 20, total: 0, results: [], facets: null });
+    expect(calls).toEqual([{ q: "wildfire", ministry: "Health", page: 2, pageSize: 20 }]);
   });
 
   it("with a filter and no q, passes an empty q through (filter-only search)", async () => {
     const res = await request(stubApp(stub)).get("/api/v2/search?ministry=citizens-services");
     expect(res.status).toBe(200);
-    expect(calls).toEqual([{ q: "", ministry: "citizens-services", page: 1 }]);
+    expect(calls).toEqual([{ q: "", ministry: "citizens-services", page: 1, pageSize: 20 }]);
   });
 
   it("passes the request's own AbortSignal to the search service (the seam 6b's semantic branch uses)", async () => {
@@ -53,7 +53,7 @@ describe("GET /api/v2/search (HTTP)", () => {
       timeZone: TZ,
       async search(query, signal) {
         seen = signal;
-        return { mode: "text", page: query.page, total: 0, results: [] };
+        return { mode: "text", page: query.page, pageSize: query.pageSize, total: 0, results: [], facets: null };
       },
     };
     const res = await request(stubApp(capturing)).get("/api/v2/search?q=wildfire");
@@ -68,6 +68,9 @@ describe("GET /api/v2/search (HTTP)", () => {
     [`q=${"a".repeat(201)}${MARKER}`, "q"],
     [`q=x&page=0`, "page"],
     [`q=x&page=51`, "page"],
+    [`q=x&pageSize=15`, "pageSize"],
+    [`q=x&pageSize=10&page=101`, "page"],
+    [`q=x&facets=yes`, "facets"],
     [`q=x&page=1.5`, "page"],
     [`q=x&type=${MARKER}`, "type"],
     [`q=x&from=2026-02-30`, "from"],
@@ -202,6 +205,8 @@ describe("GET /api/v2/search with filters and no q (real Postgres)", () => {
       summary: sampleRelease.summary,
       publishDate: "2026-09-23T10:00:00-07:00",
       leadMinistryKey: "citizens-services",
+      hasTranslations: false,
+      hasMediaAssets: false,
       url: "https://news.example.test/releases/CS-22",
     });
     const p2 = await request(app).get("/api/v2/search?ministry=citizens-services&page=2");
@@ -226,6 +231,36 @@ describe("GET /api/v2/search with filters and no q (real Postgres)", () => {
     expect(type.body.results.map((r: { key: string }) => r.key)).toEqual(["CS-05"]);
     const range = await request(app).get("/api/v2/search?from=2026-09-29&to=2026-09-30");
     expect(range.body.results.map((r: { key: string }) => r.key)).toEqual(["OTHER-1"]);
+  });
+
+  it("pageSize=10 returns 10 rows and pageSize 10; page 100 is allowed at 10, page 51 is not at 20; 15 is a 400", async () => {
+    const p1 = await request(app).get("/api/v2/search?ministry=citizens-services&pageSize=10");
+    expect(p1.status).toBe(200);
+    expect(p1.body).toMatchObject({ page: 1, pageSize: 10, total: 23 });
+    expect(p1.body.results).toHaveLength(10);
+    expect(p1.body.results.map((r: { key: string }) => r.key)).toEqual(csKeysNewestFirst.slice(0, 10));
+    const p3 = await request(app).get("/api/v2/search?ministry=citizens-services&pageSize=10&page=3");
+    expect(p3.body.results.map((r: { key: string }) => r.key)).toEqual(csKeysNewestFirst.slice(20));
+    expect((await request(app).get("/api/v2/search?ministry=citizens-services&pageSize=10&page=100")).status).toBe(200);
+    expect((await request(app).get("/api/v2/search?ministry=citizens-services&pageSize=10&page=101")).status).toBe(400);
+    expect((await request(app).get("/api/v2/search?ministry=citizens-services&page=51")).status).toBe(400);
+    const bad = await request(app).get("/api/v2/search?ministry=citizens-services&pageSize=15");
+    expect(bad.status).toBe(400);
+    expect(bad.body).toEqual({ error: { code: "InvalidParameter", parameter: "pageSize", message: "pageSize must be 10 or 20" } });
+  });
+
+  it("facets=1 answers counts over the filtered set (the type filter narrows them); no facets=1, facets is null", async () => {
+    const res = await request(app).get("/api/v2/search?ministry=citizens-services&facets=1");
+    expect(res.body.facets).toEqual({
+      ministries: [{ key: "citizens-services", count: 23 }],
+      sectors: [{ key: "economy", count: 12 }],
+      types: [{ key: "releases", count: 22 }, { key: "stories", count: 1 }],
+      terms: [],
+    });
+    const typed = await request(app).get("/api/v2/search?type=stories&facets=1");
+    expect(typed.body.facets.types).toEqual([{ key: "stories", count: 1 }]);
+    expect(typed.body.facets.ministries).toEqual([{ key: "citizens-services", count: 1 }]);
+    expect((await request(app).get("/api/v2/search?ministry=citizens-services")).body.facets).toBeNull();
   });
 
   it("q is still required with no filter: 400 naming q", async () => {

@@ -38,7 +38,7 @@ export async function enqueueChromeChanges(db: Db, builder: SiteBuilder, changes
   for (const section of changes.sections) {
     // Home's Connect With Us icons come from the connect settings too; "contacts" is its own page id.
     // A labels edit reaches the aggregate pages (home, listings, ministry pages), never a post.
-    const ids = section === "labels" ? await builder.aggregatePageIds() : section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home", ...LISTING_KINDS.map((k) => `kind:${k}`)] : section === "releaseShare" || section === "releaseLicence" ? [] : [section];
+    const ids = section === "labels" ? await builder.aggregatePageIds() : section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home", ...LISTING_KINDS.map((k) => `kind:${k}`)] : section === "releaseShare" || section === "releaseLicence" || section === "subscribe" ? [] : [section];
     items.push(...ids.map((pageId) => ({ pageId, priority: section === "labels" ? PRIORITY.bulkAggregate : PRIORITY.liveAggregate })));
   }
   // Sector, theme and tag pages carry the Connect strip: bulk, behind the pages people are watching.

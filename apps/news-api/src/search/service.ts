@@ -1,10 +1,14 @@
 import type { SearchLanguage } from "@gcpe/config";
-import type { Db } from "@gcpe/db-kit";
+import type { Db, Tx } from "@gcpe/db-kit";
 import { BreakerOpenError } from "@gcpe/embeddings";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { formatOffsetDateTime } from "../time";
-import type { SearchQuery } from "./query";
-import { READ_SNAPSHOT, textSearch, type SearchPage, type SearchRow } from "./text-search";
+import { eq } from "drizzle-orm";
+import { governmentTerms } from "../db/schema";
+import { localDayStart, type SearchPageSize, type SearchQuery } from "./query";
+import { READ_SNAPSHOT, textSearch, type SearchFacets, type SearchPage, type SearchRow, type TermWindow } from "./text-search";
+
+export type { SearchFacets } from "./text-search";
 
 export type SearchMode = "text" | "semantic";
 
@@ -15,14 +19,19 @@ export interface SearchResult {
   summary: string | null;
   publishDate: string;
   leadMinistryKey: string | null;
+  hasTranslations: boolean;
+  hasMediaAssets: boolean;
   url: string;
 }
 
 export interface SearchResponse {
   mode: SearchMode;
   page: number;
+  pageSize: SearchPageSize;
   total: number;
   results: SearchResult[];
+  /** Text mode with `facets=1` only; otherwise null. */
+  facets: SearchFacets | null;
 }
 
 /** Semantic mode: the whole page, or null to fall back to text. It catches its own embed
@@ -60,8 +69,20 @@ export function searchResultMapper(publicSiteUrl: string, timeZone: string): (r:
     summary: r.summary,
     publishDate: formatOffsetDateTime(r.publishDate, timeZone),
     leadMinistryKey: r.leadMinistryKey,
+    hasTranslations: r.hasTranslations,
+    hasMediaAssets: r.hasMediaAssets,
     url: `${base}/releases/${encodeURIComponent(r.key)}`,
   });
+}
+
+/** The published government terms as publish-date windows in the tenant's zone (none before the first snapshot). */
+async function termWindows(tx: Tx, timeZone: string): Promise<TermWindow[]> {
+  const [row] = await tx.select({ document: governmentTerms.document }).from(governmentTerms).where(eq(governmentTerms.id, 1));
+  return (row?.document.terms ?? []).map((t) => ({
+    slug: t.slug,
+    from: localDayStart(t.startDate, timeZone, 0),
+    toExclusive: t.endDate ? localDayStart(t.endDate, timeZone, 1) : null,
+  }));
 }
 
 export function createSearchService(o: SearchServiceOptions): SearchService {
@@ -81,8 +102,18 @@ export function createSearchService(o: SearchServiceOptions): SearchService {
       }
       const page =
         semantic ??
-        (await o.db.transaction((tx) => textSearch(tx, query, { language: o.language, defaultLanguageId: o.defaultLanguageId }), READ_SNAPSHOT));
-      return { mode: semantic ? "semantic" : "text", page: query.page, total: page.total, results: page.rows.map(toResult) };
+        (await o.db.transaction(async (tx) => {
+          const facets = query.facets ? { terms: await termWindows(tx, o.timeZone) } : undefined;
+          return textSearch(tx, query, { language: o.language, defaultLanguageId: o.defaultLanguageId, facets });
+        }, READ_SNAPSHOT));
+      return {
+        mode: semantic ? "semantic" : "text",
+        page: query.page,
+        pageSize: query.pageSize,
+        total: page.total,
+        results: page.rows.map(toResult),
+        facets: semantic ? null : (page.facets ?? null),
+      };
     },
   };
 }

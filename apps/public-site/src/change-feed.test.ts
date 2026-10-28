@@ -34,11 +34,13 @@ describe("pagesForChange", () => {
     [{ id: 9, kind: "ministry", key: null }, []],
     [{ id: 10, kind: "sector", key: "a b" }, []],
     // The home page's News by Sector box lists each sector's latest post.
-    [{ id: 12, kind: "sector", key: "economy" }, [{ pageId: "category:sectors:economy", priority: 1 }, { pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "index:sectors", priority: 3 }, { pageId: "sitemap:pages", priority: 1 }]],
+    // /search/'s Sector filter lists every active sector.
+    [{ id: 12, kind: "sector", key: "economy" }, [{ pageId: "category:sectors:economy", priority: 1 }, { pageId: "home", priority: 1 }, { pageId: "connect", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "index:sectors", priority: 3 }, { pageId: "sitemap:pages", priority: 1 }]],
     // The next sync turn fetches the settings and decides what each changed section needs.
     [{ id: 11, kind: "site_settings", key: null }, []],
     // Every term page is added by syncChanges, from the builder's terms.
-    [{ id: 12, kind: "government_terms", key: null }, [{ pageId: "archive-terms", priority: 1 }, { pageId: "archive-term:current", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
+    // /search/'s Date filter lists every public term.
+    [{ id: 12, kind: "government_terms", key: null }, [{ pageId: "archive-terms", priority: 1 }, { pageId: "archive-term:current", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }, { pageId: "search", priority: 1 }]],
   ] as const)("%j", (change, expected) => {
     expect(pagesForChange(change as ChangeRow, 0)).toEqual(expected);
   });

@@ -1,5 +1,7 @@
 import { escapeHtml } from "@gcpe/http-kit";
 import { basePath, renderPage, type PageOptions, type SiteInfo } from "./render";
+import { sanitizeBodyHtml } from "./sanitize-body";
+import { themeDefaults } from "./settings";
 import type { SiteStorage } from "./storage";
 
 const e = (s: string) => escapeHtml(s);
@@ -48,27 +50,44 @@ const SUBSCRIBE_SCRIPT = `(() => {
     say(Array.isArray(data.issues) ? "Check the email address." : data.error || "Something went wrong.", "alert");
   };
 
+  // Resolves true once the list is in, false if it failed (after the alert); an empty list removes
+  // its fieldset (the Emergency case). Keys are compared lowercased; nothing from the caller reaches the DOM.
   function loadCategories(container, selected) {
     const category = container.dataset.category;
-    api("SubscriptionItems/" + encodeURIComponent(category))
-      .then((r) => r.json())
+    const wanted = selected && Array.isArray(selected[category]) ? selected[category].map((k) => String(k).toLowerCase()) : [];
+    return api("SubscriptionItems/" + encodeURIComponent(category))
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then((items) => {
+        if (Array.isArray(items) && items.length === 0) {
+          container.remove();
+          return;
+        }
         for (const item of items) {
           const label = document.createElement("label");
           const input = document.createElement("input");
           input.type = "checkbox";
           input.name = category + ":" + item.key;
           input.value = item.key;
-          if (selected && selected[category] && selected[category].includes(item.key)) input.checked = true;
+          if (wanted.includes(String(item.key).toLowerCase())) input.checked = true;
           label.appendChild(input);
           label.appendChild(document.createTextNode(" " + item.value));
           container.appendChild(label);
         }
+        return true;
       })
-      .catch(() => say("Couldn't load topics. Reload the page to try again.", "alert"));
+      .then((ok) => ok !== false, () => {
+        say("Couldn't load topics. Reload the page to try again.", "alert");
+        return false;
+      });
   }
 
+  // The subscribe page asks all-or-customize with radios; the manage page keeps its "All news" checkbox.
   function readForm(form) {
+    const radio = form.querySelector('input[type="radio"][name="isAllNews"]:checked');
+    const isAllNews = form.querySelector('input[type="radio"][name="isAllNews"]') ? !!radio && radio.value === "true" : form.elements.isAllNews.checked;
     const subscribedCategories = {};
     for (const input of form.querySelectorAll('fieldset[data-category] input[type="checkbox"]')) {
       if (!input.checked) continue;
@@ -77,8 +96,8 @@ const SUBSCRIBE_SCRIPT = `(() => {
     }
     return {
       emailAddress: form.elements.emailAddress.value,
-      subscribedCategories,
-      isAllNews: form.elements.isAllNews.checked,
+      subscribedCategories: form.querySelector('input[type="radio"][name="isAllNews"]') && isAllNews ? {} : subscribedCategories,
+      isAllNews,
       isAsItHappens: form.elements.isAsItHappens.checked,
       isDailyDigest: form.elements.isDailyDigest.checked,
     };
@@ -86,10 +105,61 @@ const SUBSCRIBE_SCRIPT = `(() => {
 
   if (kind === "subscribe") {
     const form = document.getElementById("subscribe-form");
-    for (const f of form.querySelectorAll("fieldset[data-category]")) loadCategories(f, null);
+    const custom = document.getElementById("newsOnDemandCustomOptions");
+    const showCustom = (on) => {
+      form.querySelector('input[name="isAllNews"][value="' + (on ? "false" : "true") + '"]').checked = true;
+      custom.hidden = !on;
+    };
+    // Set when the link asked for topics whose list couldn't load: customize can't honour it.
+    let blocked = false;
+    const BLOCKED = "Couldn't load the topics your link chose, so you can't subscribe to them yet. Reload the page to try again.";
+    const save = document.getElementById("save");
+    // The radios stay where they are (and keep focus) while the options show or hide.
+    form.addEventListener("change", (ev) => {
+      if (!ev.target || ev.target.name !== "isAllNews") return;
+      const all = ev.target.value === "true";
+      custom.hidden = all;
+      if (blocked) {
+        // All news needs no list, so Subscribe works; customize waits for a reload again.
+        save.disabled = !all;
+        say(all ? "" : BLOCKED, "alert");
+      }
+    });
+    // Query prefill: the values only choose which baked boxes to check, by exact lowercased key.
+    const wanted = {};
+    const params = new URLSearchParams(location.search);
+    for (const [param, category] of [["ministries", "ministries"], ["sectors", "sectors"], ["tags", "tags"], ["topics", "tags"], ["themes", "themes"], ["emergency", "emergency"]]) {
+      for (const raw of params.getAll(param)) {
+        for (const value of raw.split(",")) {
+          const key = value.trim().toLowerCase();
+          if (key) (wanted[category] ??= []).push(key);
+        }
+      }
+    }
+    const fieldsets = Array.from(form.querySelectorAll("fieldset[data-category]"));
+    Promise.all(fieldsets.map((f) => loadCategories(f, wanted))).then((loaded) => {
+      // A list the link asked for (?ministries=… etc.) failed: never fall back to all news without
+      // saying so. Customize stays chosen and Subscribe waits for a reload (or a switch to all news).
+      // Another list failing only warns (loadCategories).
+      if (fieldsets.some((f, i) => loaded[i] === false && wanted[f.dataset.category])) {
+        blocked = true;
+        showCustom(true);
+        save.disabled = true;
+        say(BLOCKED, "alert");
+        return;
+      }
+      if (form.querySelector('fieldset[data-category] input:checked')) showCustom(true);
+    });
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const r = await postJson("CreateNewsOnDemandEmailSubscriptionWithPreferences", readForm(form));
+      if (save.disabled) return;
+      const choice = readForm(form);
+      if (!choice.isAllNews && Object.keys(choice.subscribedCategories).length === 0) {
+        say("Choose at least one area, or select all news.", "alert");
+        form.querySelector('input[name="isAllNews"][value="false"]').focus();
+        return;
+      }
+      const r = await postJson("CreateNewsOnDemandEmailSubscriptionWithPreferences", choice);
       if (r.status === 204) say("Check your email to confirm your subscription.", "status");
       else await showError(r);
     });
@@ -161,24 +231,58 @@ const SUBSCRIBE_SCRIPT = `(() => {
 })();`;
 
 function renderSubscribePage(site: SiteInfo, opts: PageOptions): string {
-  const body = `<h1>Subscribe to BC Gov News On Demand</h1>
+  const bp = basePath(site);
+  const text = (opts.settings ?? themeDefaults(site.theme)).pageText;
+  const rich = (html: string) => sanitizeBodyHtml(html, { images: false });
+  const body = `<div class="connect subscribe mb-3">
+<div class="home-body" id="main-content-release">
+<h1 class="connect-title">Subscribe</h1>
+<p class="manage-link">If you already have a subscription to News On Demand you can <a href="${e(`${bp}/subscribe/manage/`)}">manage your account or unsubscribe</a>.</p>
 <form id="subscribe-form">
-<div><label for="email">Email address</label>
-<input type="email" id="email" name="emailAddress" required></div>
+<details class="expandable-section" id="newsOnDemand" open>
+<summary><h2>${e(site.name)} On Demand</h2></summary>
+<div class="expandable-section-content">
+<p>Get your news delivered to your mobile or desktop. Subscribe to receive your news as it happens or receive a daily news digest at 5 p.m.</p>
+<p class="fw-bold">When would you like your news delivered to your mobile or desktop?</p>
+<ul class="external-links">
+<li><label><input type="checkbox" name="isAsItHappens" checked> As soon as it's published.</label></li>
+<li><label><input type="checkbox" name="isDailyDigest"> In a daily digest after 5 p.m.</label></li>
+</ul>
+<fieldset class="audience">
+<legend>Let us know what areas of the B.C. government you're interested in.</legend>
+<div><label><input type="radio" name="isAllNews" value="true" checked> I would like to receive news from all ministries and sectors.</label></div>
+<div><label><input type="radio" name="isAllNews" value="false"> I would like to customize the news that I receive.</label></div>
+</fieldset>
+<div id="newsOnDemandCustomOptions" class="mb-3" hidden>
 ${categoryFieldsets()}
-${timingCheckboxes(true)}
-<button type="submit">Subscribe</button>
+</div>
+</div>
+</details>
+<div id="noticeOfCollection">
+<p><b>${e(text.collectionNotice.heading)}</b></p>
+${rich(text.collectionNotice.bodyHtml)}
+</div>
+<div class="email-row">
+<label for="email">What email address would you like to use for notifications?</label>
+<input type="email" id="email" name="emailAddress" required autocomplete="email">
+</div>
+<button type="submit" id="save" class="btn">Subscribe</button>
 </form>
 <p id="message" role="status"></p>
 <p id="message-alert" role="alert"></p>
+${rich(text.subscribeHelpHtml)}
+</div>
+</div>
 <script>${SUBSCRIBE_SCRIPT}</script>`;
-  return renderPage("Subscribe", site, `${basePath(site)}/subscribe/`, body, opts, ' data-page="subscribe"');
+  return renderPage("Subscribe", site, `${bp}/subscribe/`, body, opts, ' data-page="subscribe"');
 }
 
 function renderManagePage(site: SiteInfo, opts: PageOptions): string {
   const bp = basePath(site);
   const unsubscribePath = `${bp}/subscribe/unsubscribe/`;
-  const body = `<h1>Manage your subscription</h1>
+  const body = `<div class="connect subscribe">
+<div class="home-body" id="main-content-release">
+<h1 class="connect-title">Manage Subscription</h1>
 <p id="message" role="status"></p>
 <p id="message-alert" role="alert"></p>
 <form id="request-form" hidden>
@@ -194,6 +298,8 @@ ${timingCheckboxes(false)}
 <button type="submit">Save</button>
 <button type="button" id="unsubscribe-button" data-target="${e(unsubscribePath)}">Unsubscribe</button>
 </form>
+</div>
+</div>
 <script>${SUBSCRIBE_SCRIPT}</script>`;
   return renderPage("Manage your subscription", site, `${bp}/subscribe/manage/`, body, opts, ' data-page="manage"');
 }

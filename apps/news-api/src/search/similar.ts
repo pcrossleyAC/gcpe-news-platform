@@ -89,7 +89,7 @@ export function createSimilarService(o: SimilarServiceOptions): SimilarService {
           q === "" || room === 0
             ? []
             : (
-                await textSearch(tx, { q, page: 1 }, {
+                await textSearch(tx, { q, page: 1, pageSize: 20 }, {
                   language: o.language,
                   defaultLanguageId: o.defaultLanguageId,
                   excludeKeys: [...aiKeys, ...(req.excludeKey ? [req.excludeKey] : [])],

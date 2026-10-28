@@ -201,7 +201,7 @@ describe("renderHeader", () => {
 
 describe("renderHeader from Navigation settings", () => {
   const golden = JSON.parse(readFileSync(new URL("../test/golden/header-bc-defaults.json", import.meta.url), "utf8")) as Record<string, string>;
-  const PHONE_LIVE = `<a href="/site/live/" class="btn btn-primary-blue live_button live_button_hide d-lg-none">Live Webcast</a>\n`;
+  const PHONE_LIVE = new RegExp(`<a href="/site/live/" class="btn btn-primary-blue live_button live_button_hide live-icon-button d-lg-none"><svg [^]*?</svg><span class="visually-hidden">Live Webcast</span></a>\n`);
   const LIVE = `<a id="live-button" href="/site/live/" class="btn btn-primary-blue live_button live_button_hide d-none d-lg-block">Live Webcast</a>`;
   const withNav = (patch: Record<string, unknown>) => {
     const s = bcSettings();
@@ -211,7 +211,7 @@ describe("renderHeader from Navigation settings", () => {
   it("with the BC defaults the header is byte-identical to before, plus the two Live anchors", () => {
     const GOLDEN_MENU: MenuMinistry[] = [{ key: "health", name: "Health" }, { key: "finance", name: "Finance & <Co>" }]; // what the golden file was captured with
     const html = (opts: PageOptions) => renderHeader(site, { settings: bcSettings(), ...opts });
-    // The two Live anchors are the only additions: the phone one precedes #sm-nav-container, the desktop one follows it, both inside the nav.
+    // The two Live anchors are the only additions: the phone one follows the brand, the desktop one follows #sm-nav-container, both inside the nav.
     expect(html({ ministryMenu: GOLDEN_MENU }).replace(`\n${LIVE}`, "").replace(PHONE_LIVE, "")).toBe(golden.menu);
     expect(html({ ministryMenu: GOLDEN_MENU, banner: "x" }).replace(`\n${LIVE}`, "").replace(PHONE_LIVE, "")).toBe(golden.bridge);
     expect(html({}).replace(`\n${LIVE}`, "").replace(PHONE_LIVE, "")).toBe(golden.nomenu);
@@ -245,10 +245,16 @@ describe("renderHeader from Navigation settings", () => {
     expect(live.previousElementSibling?.id).toBe("sm-nav-container");
     const phone = doc.querySelector("a.live_button.d-lg-none")!;
     expect(phone.getAttribute("href")).toBe("/site/live/");
-    expect(phone.className).toBe("btn btn-primary-blue live_button live_button_hide d-lg-none");
-    expect(phone.textContent).toBe('Watch "live"');
+    expect(phone.className).toBe("btn btn-primary-blue live_button live_button_hide live-icon-button d-lg-none");
     expect(phone.id).toBe("");
-    expect(phone.nextElementSibling?.id).toBe("sm-nav-container");
+    // Legacy's phone/tablet Live button is a 40px icon (live-cast-button.svg), not the words; ours
+    // draws the same glyph in currentColor and names the link with the settings label.
+    expect(phone.textContent).toBe('Watch "live"');
+    expect(phone.querySelector("span.visually-hidden")?.textContent).toBe('Watch "live"');
+    const glyph = phone.querySelector("svg")!;
+    expect([glyph.getAttribute("aria-hidden"), glyph.getAttribute("focusable"), glyph.getAttribute("fill")]).toEqual(["true", "false", "currentColor"]);
+    // Right after the brand, so focus and reading order match where it shows (beside the brand, before the toggles).
+    expect(phone.previousElementSibling?.classList.contains("navbar-brand")).toBe(true);
   });
 
   it("showHeaderSearch false: no header search form, no phone toggle or drawer", () => {

@@ -20,7 +20,8 @@
       "background": "#FFFFFF",
       "border": "#D8D8D8",
       "bannerInfo": "#013366",
-      "bannerEmergency": "#D8292F"
+      "bannerEmergency": "#D8292F",
+      "sectionBar": "#2B5580"
     }
   },
   "footer": {
@@ -514,7 +515,8 @@
           "text": "BC Parks",
           "url": "https://engage.gov.bc.ca/bcparksblog"
         }
-      ]
+      ],
+      "collapseAfter": 0
     },
     "policyLink": {
       "text": "BC Government News Social Media policy, collection notice and hours of operation",
