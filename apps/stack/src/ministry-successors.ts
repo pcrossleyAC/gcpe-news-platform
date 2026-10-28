@@ -1,21 +1,14 @@
 import { readFile, stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { RequestHandler } from "express";
 import { CATEGORY_KEY as KEY, MINISTRY_SUCCESSORS_FILE } from "../../public-site/src/site-paths";
 
 /**
- * Successor redirects (new-government spec §4): an old ministry's URLs 301 to its successor's.
+ * Successor lookups (new-government spec §4): an old ministry's URLs go to its successor's.
  * The public site writes the table (`legacy/ministry-successors.json`, page id
  * `legacy-redirects`) from News API's `/api/v2/ministry-successors`, chains already resolved to
  * the final active ministry. Parity url-compat (plan 3 T4) composes its static rename table with
  * `resolveMinistrySuccessor`: renames first, then successors, one hop.
  */
-
-/** `/ministries/<segment>` and anything beneath it (whole segment; any case, as Express routes). */
-const PATH = /^\/ministries\/([^/]+)(\/.*)?$/i;
-
-/** The rest of the path that is the ministry's biography page itself (any case, with or without the slash). */
-const BIOGRAPHY = /^\/biography\/?$/i;
 
 type Table = ReadonlyMap<string, string>;
 const EMPTY: Table = new Map();
@@ -70,37 +63,4 @@ async function loadTable(outputDir: string): Promise<Table> {
 /** The active ministry `key`'s URLs now belong to (case-insensitive), or null. */
 export async function resolveMinistrySuccessor(outputDir: string, key: string): Promise<string | null> {
   return (await loadTable(outputDir)).get(key.toLowerCase()) ?? null;
-}
-
-/**
- * `/ministries/<old>[/<rest>][?query]` → `301 {basePath}/ministries/<new>/<rest>[?query]` for every
- * `<old>` in the table (whole segment, any case), except `<old>/biography[/]`, which goes to
- * `<new>/` (the ministry page); anything else falls through. `basePath` is the
- * prefix this handler is mounted under ("" at the root, "/site" under /site), so the Location is
- * always a root-relative path on this site. The query is carried byte for byte. GET/HEAD only;
- * no-store, so a proxy never pins a redirect that a reactivation (N12) later removes.
- * Mount before express.static: an inactive ministry's page still builds.
- */
-export function ministrySuccessorRedirects(outputDir: string, basePath: string): RequestHandler {
-  return (req, res, next) => {
-    if (req.method !== "GET" && req.method !== "HEAD") return next();
-    const m = PATH.exec(req.path);
-    if (!m) return next();
-    let segment: string;
-    try {
-      segment = decodeURIComponent(m[1]!); // express.static decodes too: /ministries/%61/ is a's page
-    } catch {
-      return next();
-    }
-    resolveMinistrySuccessor(outputDir, segment).then((to) => {
-      if (!to) return next();
-      const q = req.url.indexOf("?");
-      const query = q === -1 ? "" : req.url.slice(q);
-      res.setHeader("Cache-Control", "no-store");
-      // The old minister's bio goes to the successor's ministry page, not its bio, which may not
-      // exist (legacy's RedirectMiddleware did the same for IRS).
-      const rest = BIOGRAPHY.test(m[2] ?? "") ? "/" : (m[2] ?? "/");
-      res.redirect(301, `${basePath}/ministries/${to}${rest}${query}`);
-    }, next);
-  };
 }

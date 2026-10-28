@@ -129,7 +129,7 @@ export function mountSite(
     // The remainder of /site/… goes through the same legacy rules as the root, with Locations at
     // the root, so an old URL (/site/Releases/<k>, /site/Ministries/Justice, /site/<n>, a
     // successor's ministry) reaches its page in one hop, and only to a page that exists (the
-    // category rule checks the successor's page; ministrySuccessorRedirects did not). Feeds are
+    // category rule checks the successor's page). Feeds are
     // served in place. Anything the rules leave alone 301s to the root as it was.
     app.use("/site", legacy(""), siteAliasFiles(outputDir), siteAliasRedirect);
   }
