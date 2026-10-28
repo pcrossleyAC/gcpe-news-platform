@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { apiFetch } from "../../../api/client";
+import { useAnnouncer } from "../../../shared/Announcer";
 import { messagesOf } from "../messages";
 import { abbreviationTakenMessage, normalizeAbbreviation } from "./abbreviation";
 import { deactivateWarning } from "./OrganizationEditForm";
@@ -77,6 +78,8 @@ export interface HandOverPanelProps {
   /** Called after a successful save with the first successor's name, or null for a plain deactivation. */
   onDone: (successorName: string | null) => void;
   onCancel: () => void;
+  /** Told when a save starts and ends, so the screen can hold its other row actions meanwhile. */
+  onBusyChange?: (busy: boolean) => void;
 }
 
 /**
@@ -87,7 +90,7 @@ export interface HandOverPanelProps {
  * ministry only) it is today's deactivation. The counts come from Core, NoD, the Calendar and
  * NRMS separately; one that fails says "count unavailable" and never blocks the hand-over.
  */
-export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProps): React.JSX.Element {
+export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: HandOverPanelProps): React.JSX.Element {
   const uid = useId();
   const id = (part: string) => `${uid}-${part}`;
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -99,7 +102,7 @@ export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProp
     const body = b as CorePreview;
     return { staff: num(body.staff), abbreviation: body.abbreviation ?? null };
   });
-  const subscribers = useCount<number>(`/nod/api/subscribers/count?lists=ministries:${key}`, (b) => num((b as { count: unknown }).count));
+  const subscribers = useCount<number>(`/nod/api/subscribers/count?lists=ministries:${key}&exact=true`, (b) => num((b as { count: unknown }).count));
   const calendar = useCount<CalendarPreview>(`/calendar/api/succession/${key}/preview`, (b) => {
     const body = b as CalendarPreview;
     return { activities: num(body.activities), contacts: num(body.contacts) };
@@ -117,7 +120,19 @@ export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProp
   const [replaceAbbr, setReplaceAbbr] = useState(false);
   const [takeAbbr, setTakeAbbr] = useState(true);
   const [busy, setBusy] = useState(false);
+  // The double-submit guard: a ref, so a second click before React re-renders is still refused.
+  const inFlight = useRef(false);
   const [messages, setMessages] = useState<string[]>([]);
+  const { announce } = useAnnouncer();
+  const pickers = useRef(new Map<number, HTMLSelectElement>());
+  // The picker to focus after Add another successor (the new one) or Remove (the one before it).
+  const focusPicker = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (focusPicker.current === null) return;
+    pickers.current.get(focusPicker.current)?.focus();
+    focusPicker.current = null;
+  }, [successors]);
 
   useEffect(() => {
     headingRef.current?.focus();
@@ -138,13 +153,14 @@ export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProp
 
   const setSuccessor = (index: number, value: string) => {
     const firstChanged = index === 0 && value !== successors[0];
-    // Clearing the first successor means "no successor": the extra pickers go too.
-    const next = index === 0 && value === "" ? [""] : successors.map((k, i) => (i === index ? value : k));
+    // A new first successor (or none) starts the list again: the extra pickers are cleared.
+    const next = firstChanged ? [value] : successors.map((k, i) => (i === index ? value : k));
     setSuccessors(next);
     setMessages([]);
     if (firstChanged) {
       setReplaceAbbr(false);
       setTakeAbbr(true);
+      if (successors.length > 1) announce("The other successors were cleared. Add them again if you need them.");
     }
   };
 
@@ -152,12 +168,14 @@ export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProp
     count.state === "ok" ? ok(count.value) : `${otherwise} (${count.state === "failed" ? UNAVAILABLE : "counting…"}).`;
 
   const submit = async () => {
-    if (busy) return;
+    if (inFlight.current) return;
     if (!deactivating && !chosen.length) {
       setMessages([CHOOSE_SUCCESSOR]);
       return;
     }
+    inFlight.current = true;
     setBusy(true);
+    onBusyChange?.(true);
     setMessages([]);
     try {
       if (!chosen.length) {
@@ -178,11 +196,21 @@ export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProp
         onDone(bName);
       }
     } catch (caught) {
-      setMessages([abbreviationTakenMessage(caught) ?? messagesOf(caught)].flat());
+      setMessages(
+        abbreviationTakenMessage(caught) !== null
+          ? [takenCopy((caught as { body?: { takenBy?: string } }).body?.takenBy)]
+          : messagesOf(caught),
+      );
     } finally {
+      inFlight.current = false;
       setBusy(false);
+      onBusyChange?.(false);
     }
   };
+
+  // Core's 409 on /succeed: a third, active ministry holds A's abbreviation.
+  const takenCopy = (takenBy = "another ministry") =>
+    `${takenBy} already uses the abbreviation ${aAbbr ?? ""}. Untick "Let ${bName} use the abbreviation ${aAbbr ?? ""}." or change ${takenBy}'s abbreviation first.`;
 
   const moveBox = (name: keyof typeof moves, label: string) => (
     <div>
@@ -225,6 +253,10 @@ export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProp
             {index === 1 && <p id={id("extra-hint")}>Subscribers are added to every successor.</p>}
             <select
               id={id(`successor-${index}`)}
+              ref={(el) => {
+                if (el) pickers.current.set(index, el);
+                else pickers.current.delete(index);
+              }}
               value={value}
               aria-describedby={index === 0 ? id("successor-hint") : index === 1 ? id("extra-hint") : undefined}
               onChange={(e) => setSuccessor(index, e.target.value)}
@@ -248,7 +280,10 @@ export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProp
                 <button
                   type="button"
                   aria-label={`Remove successor ${index + 1}`}
-                  onClick={() => setSuccessors((s) => s.filter((_, i) => i !== index))}
+                  onClick={() => {
+                    focusPicker.current = index - 1;
+                    setSuccessors((s) => s.filter((_, i) => i !== index));
+                  }}
                 >
                   Remove
                 </button>
@@ -259,7 +294,13 @@ export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProp
       })}
       {chosen.length > 0 && successors.length < candidates.length && successors.every((k) => k !== "") && (
         <p>
-          <button type="button" onClick={() => setSuccessors((s) => [...s, ""])}>
+          <button
+            type="button"
+            onClick={() => {
+              focusPicker.current = successors.length;
+              setSuccessors((s) => [...s, ""]);
+            }}
+          >
             Add another successor
           </button>
         </p>
@@ -340,8 +381,11 @@ export function HandOverPanel({ org, orgs, onDone, onCancel }: HandOverPanelProp
         </p>
       ))}
       <div>
-        <button type="submit">{!deactivating ? "Set successor" : chosen.length ? "Deactivate and hand over" : "Deactivate"}</button>{" "}
-        <button type="button" onClick={onCancel}>
+        {/* aria-disabled, not disabled, while saving: focus stays on the button, so an error leaves it there. */}
+        <button type="submit" aria-disabled={busy || undefined} aria-busy={busy || undefined}>
+          {!deactivating ? "Set successor" : chosen.length ? "Deactivate and hand over" : "Deactivate"}
+        </button>{" "}
+        <button type="button" disabled={busy} onClick={onCancel}>
           Cancel
         </button>
       </div>

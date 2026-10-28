@@ -192,6 +192,12 @@ describe("GET /api/subscribers/count", () => {
     expect(forbidden.status).toBe(403);
   });
 
+  it("exact=true counts only the given list keys, leaving out '*' (all news) subscribers", async () => {
+    const res = await request(app).get("/api/subscribers/count?lists=ministries:health&exact=true").set("authorization", `Bearer ${coreAdmin}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ count: 1 });
+  });
+
   it("Core.Admin may read the count", async () => {
     const res = await request(app).get("/api/subscribers/count?lists=ministries:health").set("authorization", `Bearer ${coreAdmin}`);
     expect(res.status).toBe(200);

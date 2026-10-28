@@ -5,6 +5,7 @@ import { MemoryRouter } from "react-router";
 import axe from "axe-core";
 import type { OrgRecord } from "@gcpe/events/catalogue";
 import { jsonResponse } from "../../../../test/jsonResponse";
+import { AnnouncerProvider } from "../../../shared/Announcer";
 import { HandOverPanel } from "./HandOverPanel";
 
 const base = {
@@ -30,7 +31,8 @@ const ORGS = [HEALTH, JOBS, FINANCE, OLD];
 
 const COUNT_URLS = {
   core: "/core/api/organizations/health/succession-preview",
-  nod: "/nod/api/subscribers/count?lists=ministries:health",
+  // exact=true: only A's own subscribers, not "all news" ones who never move (review F1).
+  nod: "/nod/api/subscribers/count?lists=ministries:health&exact=true",
   calendar: "/calendar/api/succession/health/preview",
   nrms: "/nrms/api/ministries/health/open-releases",
 };
@@ -80,12 +82,15 @@ const postBody = (calls: Call[], suffix: string) => {
 function renderPanel(a: OrgRecord = HEALTH, orgs: OrgRecord[] = ORGS) {
   const onDone = vi.fn();
   const onCancel = vi.fn();
+  const onBusyChange = vi.fn();
   const view = render(
-    <MemoryRouter>
-      <HandOverPanel org={a} orgs={orgs} onDone={onDone} onCancel={onCancel} />
-    </MemoryRouter>,
+    <AnnouncerProvider>
+      <MemoryRouter>
+        <HandOverPanel org={a} orgs={orgs} onDone={onDone} onCancel={onCancel} onBusyChange={onBusyChange} />
+      </MemoryRouter>
+    </AnnouncerProvider>,
   );
-  return { ...view, onDone, onCancel };
+  return { ...view, onDone, onCancel, onBusyChange };
 }
 
 const chooseSuccessor = async (name: string, label: RegExp | string = "Has a successor?") =>
@@ -239,7 +244,9 @@ describe("HandOverPanel", () => {
     renderPanel();
     await chooseSuccessor("Jobs");
     await userEvent.setup().click(screen.getByRole("button", { name: "Deactivate and hand over" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("That abbreviation is already used by Finance.");
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      'Finance already uses the abbreviation HLTH. Untick "Let Jobs use the abbreviation HLTH." or change Finance\'s abbreviation first.',
+    );
   });
 
   it("a second successor gets the subscribers too, and is sent in order", async () => {
@@ -269,7 +276,7 @@ describe("HandOverPanel", () => {
 
   it("Set successor on an inactive ministry needs a choice and never deactivates", async () => {
     overrides["GET /core/api/organizations/old/succession-preview"] = () => jsonResponse(200, { staff: 0, abbreviation: "OLD" });
-    overrides["GET /nod/api/subscribers/count?lists=ministries:old"] = () => jsonResponse(200, { count: 0 });
+    overrides["GET /nod/api/subscribers/count?lists=ministries:old&exact=true"] = () => jsonResponse(200, { count: 0 });
     overrides["GET /calendar/api/succession/old/preview"] = () => jsonResponse(200, { activities: 0, contacts: 0 });
     overrides["GET /nrms/api/ministries/old/open-releases"] = () => jsonResponse(200, { drafts: [], notMoved: [] });
     const calls: Call[] = [];
@@ -307,5 +314,64 @@ describe("HandOverPanel", () => {
     await screen.findByRole("link", { name: /Approved one/ });
     const results = await axe.run(container, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] } });
     expect(results.violations.filter((v) => v.impact === "serious" || v.impact === "critical")).toEqual([]);
+  });
+  it("Add another successor focuses the new picker; Remove focuses the one before it", async () => {
+    stub([]);
+    renderPanel();
+    const user = userEvent.setup();
+    await chooseSuccessor("Jobs");
+    await user.click(screen.getByRole("button", { name: "Add another successor" }));
+    expect(screen.getByLabelText("Successor 2")).toHaveFocus();
+    await user.selectOptions(screen.getByLabelText("Successor 2"), "Finance");
+    await user.click(screen.getByRole("button", { name: "Remove successor 2" }));
+    expect(screen.queryByLabelText("Successor 2")).toBeNull();
+    expect(screen.getByLabelText("Has a successor?")).toHaveFocus();
+  });
+
+  it("a double click sends one request, and the button says it is busy meanwhile", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((r) => (release = r));
+    overrides["POST /core/api/organizations/health/succeed"] = () => {
+      throw new Error("replaced below");
+    };
+    const calls: Call[] = [];
+    stub(calls);
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const inner = fetchMock.getMockImplementation()! as (url: string, init?: RequestInit) => Promise<Response>;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/health/succeed")) {
+        calls.push({ url, init });
+        await pending;
+        return jsonResponse(200, { ...HEALTH, isActive: false });
+      }
+      return inner(url, init);
+    });
+    const { onDone, onBusyChange } = renderPanel();
+    const user = userEvent.setup();
+    await chooseSuccessor("Jobs");
+    const submit = screen.getByRole("button", { name: "Deactivate and hand over" });
+    await user.dblClick(submit);
+    await user.click(submit);
+    expect(submit).toHaveAttribute("aria-busy", "true");
+    expect(submit).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    expect(onBusyChange).toHaveBeenLastCalledWith(true);
+    release();
+    await waitFor(() => expect(onDone).toHaveBeenCalledTimes(1));
+    expect(calls.filter((c) => c.url.endsWith("/health/succeed"))).toHaveLength(1);
+    expect(onBusyChange).toHaveBeenLastCalledWith(false);
+  });
+
+  it("changing the first successor clears the other pickers and says so", async () => {
+    stub([]);
+    renderPanel(HEALTH, [...ORGS, org("tourism", "Tourism", null)]);
+    const user = userEvent.setup();
+    await chooseSuccessor("Jobs");
+    await user.click(screen.getByRole("button", { name: "Add another successor" }));
+    await user.selectOptions(screen.getByLabelText("Successor 2"), "Finance");
+    await chooseSuccessor("Tourism");
+    expect(screen.queryByLabelText("Successor 2")).toBeNull();
+    expect(screen.getByRole("status")).toHaveTextContent("The other successors were cleared. Add them again if you need them.");
+    expect(await screen.findByRole("checkbox", { name: "Move 120 subscribers to Tourism." })).toBeInTheDocument();
   });
 });

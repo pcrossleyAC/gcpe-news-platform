@@ -52,6 +52,8 @@ export function OrganizationsScreen(): React.JSX.Element {
   const [messages, setMessages] = useState<string[]>([]);
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The hand-over panel's save in flight: every other row action waits for it.
+  const [panelBusy, setPanelBusy] = useState(false);
   const [adding, setAdding] = useState(false);
   const [handOverKey, setHandOverKey] = useState<string | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -296,6 +298,7 @@ export function OrganizationsScreen(): React.JSX.Element {
             key={`hand-over-${handOverKey}`}
             org={orgs.find((o) => o.key === handOverKey)!}
             orgs={orgs}
+            onBusyChange={setPanelBusy}
             onCancel={() => {
               rowFocus.current = { key: handOverKey, target: "handOver" };
               setHandOverKey(null);
@@ -357,7 +360,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                       type="checkbox"
                       aria-label={`${o.displayName} is an HQ organization`}
                       checked={o.isHq}
-                      disabled={busy}
+                      disabled={busy || panelBusy}
                       onChange={(e) => void setFlag(o, "hq", e.target.checked)}
                     />
                   </td>
@@ -368,7 +371,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                       type="checkbox"
                       aria-label={`${o.displayName} is listed publicly`}
                       checked={o.isPublic}
-                      disabled={busy}
+                      disabled={busy || panelBusy}
                       onChange={(e) =>
                         void setFlag(o, "public", e.target.checked)
                       }
@@ -405,7 +408,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                             : `Set successor for ${o.displayName}`
                         }
                         aria-expanded={handOverKey === o.key}
-                        disabled={busy}
+                        disabled={busy || panelBusy}
                         onClick={() => {
                           setStatus(null);
                           setRowError(null);
@@ -422,6 +425,7 @@ export function OrganizationsScreen(): React.JSX.Element {
                       <button
                         type="button"
                         aria-label={`Reactivate ${o.displayName}`}
+                        disabled={panelBusy}
                         onClick={() => void reactivate(o)}
                       >
                         Reactivate

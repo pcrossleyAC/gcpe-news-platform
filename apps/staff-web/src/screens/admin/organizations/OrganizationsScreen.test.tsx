@@ -822,4 +822,36 @@ describe("OrganizationsScreen", () => {
     );
     expect(alert.closest("tr")).toHaveTextContent("Old Ministry");
   });
+  it("while the hand-over saves, the other row actions wait", async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((r) => (release = r));
+    failures["POST /core/api/organizations/health/deactivate"] = () => {
+      throw new Error("replaced below");
+    };
+    stub(["Core.Admin"], [], [
+      ...ORGS,
+      { ...ORGS[0], key: "old", displayName: "Old Ministry", isActive: false },
+    ]);
+    const fetchMock = globalThis.fetch as unknown as ReturnType<typeof vi.fn>;
+    const inner = fetchMock.getMockImplementation()! as (url: string, init?: RequestInit) => Promise<Response>;
+    fetchMock.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.endsWith("/health/deactivate")) {
+        await pending;
+        return new Response(null, { status: 204 });
+      }
+      return inner(url, init);
+    });
+    renderScreen();
+    await showInactive();
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Deactivate Health" }));
+    await user.click(screen.getByRole("button", { name: "Deactivate" }));
+    expect(screen.getByRole("button", { name: "Deactivate GCPE Media Relations" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Set successor for Old Ministry" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Reactivate Old Ministry" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancel" })).toBeDisabled();
+    release();
+    expect(await screen.findByRole("status")).toHaveTextContent("Health is deactivated.");
+    expect(screen.getByRole("button", { name: "Reactivate Old Ministry" })).toBeEnabled();
+  });
 });

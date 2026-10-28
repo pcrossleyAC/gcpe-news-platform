@@ -101,7 +101,8 @@ export function apiRoutes(
     run(async (req, res) => {
       const raw = typeof req.query.lists === "string" ? req.query.lists : "";
       const lists = z.array(countListKeySchema).parse(raw ? raw.split(",") : []);
-      res.json({ count: await countSubscribers(db, lists) });
+      // ?exact=true: only these exact lists, without "all news" ('*') subscribers (the Hub's hand-over).
+      res.json({ count: await countSubscribers(db, lists, { exact: req.query.exact === "true" }) });
     }),
   );
 
