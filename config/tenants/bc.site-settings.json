@@ -538,19 +538,9 @@
     "listHeading": "Contact List for Media",
     "contacts": [
       {
-        "group": "Media Relations",
-        "groupUrl": "",
-        "subgroup": "",
-        "name": "Government Communications 24-hour media line",
-        "phone": "250-883-2951",
-        "cell": "",
-        "email": "",
-        "placement": "top"
-      },
-      {
         "group": "Office of the Premier",
         "groupUrl": "/ministries/office-of-the-premier/",
-        "subgroup": "Premier David Eby",
+        "subgroup": "Premier",
         "name": "Media Line",
         "phone": "",
         "cell": "",

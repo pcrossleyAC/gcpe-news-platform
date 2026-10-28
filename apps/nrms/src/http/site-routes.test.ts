@@ -558,5 +558,7 @@ describe("NRMS site settings HTTP API", () => {
   it("answers 503 when the site settings defaults aren't configured", async () => {
     const bare = createApp({ db: tdb.db, auth: { session: { secret: SECRET } }, eventSecrets: {}, workflow: { timeZone: "America/Vancouver" }, subscribers: [] });
     expect((await request(bare).get(`${S}/`).set("cookie", siteEditor)).status).toBe(503);
+    // A revision can't be shown unfilled (a pre-plan-4 one would report every later part as changed).
+    expect((await request(bare).get(`${S}/history/1`).set("cookie", siteEditor)).status).toBe(503);
   });
 });

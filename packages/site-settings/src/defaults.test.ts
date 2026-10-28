@@ -142,20 +142,20 @@ describe("plan-4 parts (contactsPage, pageText, navigation, connect.linkedin/pol
     expect(d).toEqual(prePlan4());
   });
 
-  it("bc.site-settings.json loads (loadSiteSettingsDefaults) and validates; contactsPage.contacts has role-level rows only (P4-R2): 1 top and 1 bottom", () => {
+  it("bc.site-settings.json loads (loadSiteSettingsDefaults) and validates; contactsPage.contacts has role-level rows only (P4-R2/R3): the legacy Office of the Premier row, at the bottom", () => {
     const bcConfig = fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url));
     const loaded = loadSiteSettingsDefaults(bcConfig, bc.site.theme);
     expect(loaded).toEqual(raw);
     expect(validateSiteSettings(loaded)).toEqual([]);
     const placements = loaded.contactsPage.contacts.map((c) => c.placement);
-    expect(placements).toEqual(["top", "bottom"]);
-    // P4-R2: no named staff and no personal cell numbers in the public repo.
+    expect(placements).toEqual(["bottom"]);
+    // P4-R2: no named staff and no personal cell numbers in the public repo; P4-R3: no personal
+    // name on the Premier row either (it goes stale at the next election).
     expect(loaded.contactsPage.contacts.every((c) => c.cell === "")).toBe(true);
-    expect(JSON.stringify(loaded)).not.toMatch(/Catherine|Haroon|778-686-7925|604-312-6470/);
-    expect(loaded.contactsPage.contacts[0]).toMatchObject({ name: "Government Communications 24-hour media line", phone: "250-883-2951" });
-    expect(loaded.contactsPage.contacts[1]).toMatchObject({
-      group: "Office of the Premier", groupUrl: "/ministries/office-of-the-premier/", subgroup: "Premier David Eby", name: "Media Line", email: "Premier.Media@gov.bc.ca",
-    });
+    expect(JSON.stringify(loaded)).not.toMatch(/Catherine|Haroon|Eby|778-686-7925|604-312-6470/);
+    expect(loaded.contactsPage.contacts).toEqual([
+      { group: "Office of the Premier", groupUrl: "/ministries/office-of-the-premier/", subgroup: "Premier", name: "Media Line", phone: "", cell: "", email: "Premier.Media@gov.bc.ca", placement: "bottom" },
+    ]);
   });
 
   it("bc defaults carry the legacy text verbatim", () => {

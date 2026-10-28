@@ -14,6 +14,7 @@ const LINK_ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const NAV_LABEL_MAX = 40;
 const SHORT_TEXT_MAX = 100;
 const LONG_HEADING_MAX = 200;
+const LINK_TEXT_MAX = 200;
 const INTRO_MAX = 300;
 const NOT_FOUND_TEXT_MAX = 300;
 const LICENCE_TEXT_MAX = 200;
@@ -50,6 +51,7 @@ function validateLinks(field: string, links: LinkSetting[], errors: FieldError[]
   links.forEach((link, i) => {
     const at = `${field}[${i}]`;
     if (link.text.trim() === "") errors.push({ field: `${at}.text`, message: "Enter the link text." });
+    else checkText(`${at}.text`, link.text, { max: LINK_TEXT_MAX }, errors);
     if (!isSafeUrl(link.url)) errors.push({ field: `${at}.url`, message: UNSAFE_URL });
     if (link.summary !== undefined && (link.summary.length > SUMMARY_MAX || hasMarkup(link.summary))) {
       errors.push({ field: `${at}.summary`, message: `Use plain text, ${SUMMARY_MAX} characters or fewer.` });

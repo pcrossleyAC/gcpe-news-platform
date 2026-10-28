@@ -257,6 +257,13 @@ describe("validateSiteSettings — plan-4 parts", () => {
     expect(errorsFor((d) => { d.connect.linkedin.accounts[0]!.text = ""; })).toEqual([{ field: "connect.linkedin.accounts[0].text", message: "Enter the link text." }]);
   });
 
+  it("link text is plain text, 200 characters or fewer, in every link list", () => {
+    expect(errorsFor((d) => { d.navigation.headerLinks[0]!.text = "<b>Subscribe</b>"; })).toEqual([{ field: "navigation.headerLinks[0].text", message: "Use plain text." }]);
+    expect(errorsFor((d) => { d.pageText.searchArchiveLinks[0]!.text = "a>b"; })).toEqual([{ field: "pageText.searchArchiveLinks[0].text", message: "Use plain text." }]);
+    expect(errorsFor((d) => { d.connect.linkedin.featured[0]!.text = "a".repeat(201); })).toEqual([{ field: "connect.linkedin.featured[0].text", message: "Keep it to 200 characters or fewer." }]);
+    expect(errorsFor((d) => { d.footer.helpLinks[0]!.text = "a".repeat(200); })).toEqual([]);
+  });
+
   it("refuses contactsPage.contacts[0].email 'x@' and groupUrl 'javascript:alert(1)'; accepts '' for both", () => {
     expect(errorsFor((d) => { d.contactsPage.contacts[0]!.email = "x@"; d.contactsPage.contacts[0]!.groupUrl = "javascript:alert(1)"; })).toEqual([
       { field: "contactsPage.contacts[0].groupUrl", message: "Must start with https:// or / (a page on this site)." },
