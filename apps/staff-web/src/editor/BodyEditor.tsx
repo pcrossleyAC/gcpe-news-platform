@@ -58,7 +58,7 @@ export function BodyEditor({ id, label, value, onChange, readOnly, allowAssets =
       editable: !readOnly,
       editorProps: {
         attributes: attributes(),
-        transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted, [...(allowAssets ? BODY_TAGS : BIO_TAGS), ...(allowItalic ? ["em"] : [])]),
+        transformPastedHTML: (pasted: string) => reduceToAllowedHtml(pasted, (allowAssets ? BODY_TAGS : BIO_TAGS).filter((t) => allowItalic || t !== "em")),
       },
       onUpdate: ({ editor: e }) => onChange(e.getHTML()),
     },

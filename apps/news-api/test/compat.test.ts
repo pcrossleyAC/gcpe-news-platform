@@ -3,7 +3,7 @@ import request from "supertest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createApp } from "../src/app";
 import { loadLiveFixtures, type LiveFixture } from "../src/dev/fixtures";
-import { buildFixtureEvents } from "../src/dev/fixture-world";
+import { buildFixtureEvents, postToRelease } from "../src/dev/fixture-world";
 import { createNewsTestDb, envelope, EVENT_SECRETS, sendEvent, TZ } from "./helpers";
 import { normalize } from "./normalize";
 
@@ -77,5 +77,16 @@ describe("News API v1 compatibility with recorded live responses", () => {
     expect(ours.status).toBe(404);
     expect(ours.body).toMatchObject({ title: "Not Found", status: 404 });
     expect(ours.contentType).toBe(fx["keys-theme-unknown"]!.contentType);
+  });
+
+  it("serves a release body with <em> unchanged (v1 detailsHtml)", async () => {
+    const base = fx["post-first"]!.body as { key: string; atomId: string; documents: { details: string; detailsHtml?: string }[] };
+    const release = postToRelease({ ...base, key: "EM-ITALIC-1", atomId: "00000000-0000-4000-8000-0000000000e1" } as never);
+    const body = "<p>Under the <em>FOIPP Act</em> today</p>";
+    release.documents = release.documents.map((d, i) => (i === 0 ? { ...d, detailsHtml: body } : d));
+    await sendEvent(app, envelope("nrms", "release.published", "release:EM-ITALIC-1", release));
+    const res = await request(app).get("/api/Posts/EM-ITALIC-1?api-version=1.0");
+    expect(res.status).toBe(200);
+    expect(res.body.documents[0].detailsHtml).toBe(body);
   });
 });

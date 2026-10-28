@@ -70,6 +70,11 @@ describe("release page", () => {
     expect(phone.querySelector("div")?.textContent).toBe("Saturday, October 3, 2026 10:00 AM");
   });
 
+  it("a release body with <em> renders the italics (the body goes through the shared cleanRichHtml)", () => {
+    const d = dom({ documents: [doc({ headline: "Main", detailsHtml: "<p>Under the <em>FOIPP Act</em> today</p>" })] });
+    expect(d.querySelector(".story-body em")?.textContent).toBe("FOIPP Act");
+  });
+
   it("backgrounders: every English document after the first, in order, each with an h3; none → no Backgrounders heading", () => {
     const d = dom({
       documents: [

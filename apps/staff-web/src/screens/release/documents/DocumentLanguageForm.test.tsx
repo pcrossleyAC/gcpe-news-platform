@@ -72,6 +72,13 @@ describe("DocumentLanguageForm", () => {
     expect(screen.getByLabelText("Body")).toBeInTheDocument();
   });
 
+  it("the Body editor offers Italic (owner decision: releases may hold italics)", async () => {
+    stubFetch(() => jsonResponse(200, {}));
+    renderForm(BASE);
+    await screen.findByLabelText("Headline");
+    expect(await screen.findByRole("button", { name: "Italic" })).toBeInTheDocument();
+  });
+
   it("read-only: every field disabled, no Save button", async () => {
     stubFetch(() => jsonResponse(200, {}));
     renderForm(BASE, () => {}, true);

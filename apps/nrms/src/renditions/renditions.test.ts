@@ -4,6 +4,7 @@ import { view } from "@gcpe/nrms-contract/testing";
 import { buildRenditionModel, cpDate, mergeLocation } from "./model";
 import { renderPdf } from "./pdf";
 import { renderText } from "./text";
+import { buildEmailCopy } from "./email";
 
 const TZ = "America/Vancouver";
 const opts = { timeZone: TZ, nowMs: Date.parse("2026-10-03T19:00:00Z") };
@@ -38,6 +39,19 @@ describe("renditions", () => {
         "", "", "Connect with the Province of B.C. at: http://news.gov.bc.ca/connect",
       ].join("\r\n"),
     );
+  });
+
+  it("text, PDF and email-copy renditions of a body with <em>word</em> keep the word", async () => {
+    const v = view({ documents: [{ id: "d1", sortIndex: 0, layout: "formal", languages: [
+      { languageId: 4105, pageTitle: "News Release", headline: "Clinics open", subheadline: null, organizations: "Ministry of Health", byline: null, bodyHtml: "<p>Under the <em>FOIPP Act</em> today</p>", pageImageId: null, contacts: ["Media"] },
+    ] }] });
+    const text = renderText(v, opts);
+    expect(text).toContain("Under the FOIPP Act today");
+    const pdf = await renderPdf(v, opts);
+    expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
+    const mail = buildEmailCopy({ view: v, headline: "Clinics open", leadOrganization: "Ministry of Health", mediaListNames: [], text, pdf, to: "a@b.ca" }, opts);
+    expect(mail.html).toContain("FOIPP Act");
+    expect(mail.text).toContain("FOIPP Act");
   });
 
   it("bilingual text adds the French note and French contact heading", () => {

@@ -49,6 +49,12 @@ describe("sanitizeBodyHtml", () => {
   });
 });
 
+describe("sanitizeBodyHtml italics", () => {
+  it("keeps <em>, turns <i> into <em>, still drops <u> and <span> (their text stays)", () => {
+    expect(sanitizeBodyHtml("<p>a <em>b</em> <i>c</i> <u>d</u> <span>e</span></p>")).toBe("<p>a <em>b</em> <em>c</em> d e</p>");
+  });
+});
+
 describe("htmlToText — legacy Convert.HtmlToText", () => {
   it("paragraphs, lists, breaks, links", () => {
     expect(htmlToText("<p>One</p><p>Two<br>three</p>")).toBe("One\r\n\r\nTwo\r\nthree\r\n\r\n");

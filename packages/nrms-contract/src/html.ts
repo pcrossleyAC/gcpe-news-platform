@@ -5,8 +5,8 @@
  * client-side paste handling (Task 4) build their allow-lists from these same three constants,
  * so pasted-then-saved HTML can never diverge from what the server actually keeps.
  */
-export const BODY_TAGS = ["a", "p", "ul", "ol", "li", "strong", "br", "div", "asset"] as const;
+export const BODY_TAGS = ["a", "p", "ul", "ol", "li", "strong", "em", "br", "div", "asset"] as const;
 export const BODY_ATTRIBUTES = { a: ["href"] } as const;
 export const BODY_SCHEMES = ["http", "https", "mailto"] as const;
 /** The minister biography's allow-list (plan 2, T1): the body tags without the `<asset>` embed. */
-export const BIO_TAGS = ["a", "p", "ul", "ol", "li", "strong", "br", "div"] as const;
+export const BIO_TAGS = ["a", "p", "ul", "ol", "li", "strong", "em", "br", "div"] as const;

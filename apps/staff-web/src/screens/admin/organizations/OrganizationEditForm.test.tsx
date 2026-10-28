@@ -285,6 +285,11 @@ describe("OrganizationEditForm", () => {
   describe("minister biography", () => {
     const bio = () => screen.getByRole("textbox", { name: "Minister biography" });
 
+    it("the biography editor offers Italic", () => {
+      setup(false);
+      expect(screen.getByRole("button", { name: "Italic" })).toBeInTheDocument();
+    });
+
     it("opens with the stored biography in the editor and saves an edit as minister.detailsHtml", async () => {
       const { calls, user } = setup(false);
       const field = bio();
