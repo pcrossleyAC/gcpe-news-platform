@@ -19,7 +19,7 @@ import type { SiteInfo } from "../apps/public-site/src/render";
 import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
 import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
-import { link, post, slide } from "../apps/public-site/test/fixtures";
+import { link, ministry, post, slide } from "../apps/public-site/test/fixtures";
 
 const BC_TENANT = fileURLToPath(new URL("../config/tenants/bc.json", import.meta.url));
 const SLIDE_IMAGE = fileURLToPath(new URL("./fixture-assets/slide.jpg", import.meta.url));
@@ -97,6 +97,9 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     ...first,
     hasMediaAssets: true,
     hasTranslations: true,
+    // A YouTube lead: the page shows a link with the vendored placeholder (no third-party load),
+    // and only og:image names YouTube's thumbnail.
+    assetUrl: "https://www.youtube.com/watch?v=abc123DEF45",
     documents: [
       {
         languageId: 4105,
@@ -150,6 +153,11 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     // A top and a feature post, as news.gov's home always has.
     home: async () => ({ granville: null, topPostKey: "2026HLTH0010-000010", featurePostKey: "2026HLTH0009-000009" }),
     slides: async () => slides,
+    // Health has Flickr and YouTube links, so the release's related band shows Connect with the Ministry.
+    ministries: async () => [
+      ministry({ key: "health", name: "Health", flickrUri: "https://www.flickr.com/photos/bcgovphotos/", youtubeUri: "https://www.youtube.com/user/ProvinceofBC" }),
+      ministry({ key: "finance", name: "Finance" }),
+    ],
     resourceLinks: async () => [link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,

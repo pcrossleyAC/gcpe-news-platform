@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { expectAccessibleStructure, withoutChromeScripts } from "../../test/structure";
 import { bcSettings, link, ministry, post, site } from "../../test/fixtures";
 import type { PostDocument } from "../dto";
-import { documentsByLanguage, renderReleasePage, type ReleaseContext } from "./release";
+import { documentsByLanguage, renderReleasePage, shareLinks, type ReleaseContext } from "./release";
 
 const health = ministry({
   key: "health",
@@ -64,7 +64,7 @@ describe("release page", () => {
     expect(box.querySelector("p.location")?.textContent).toBe("VICTORIA");
     expect(box.querySelector(":scope > div")?.textContent).toBe("Saturday, October 3, 2026 10:00 AM");
     // The phone row carries the same three.
-    const phone = d.querySelector(".story-info .resource-links:not(.translate)")!;
+    const phone = d.querySelector(".story-info .mobile-toolbar > .resource-links:not(.share)")!;
     expect(phone.querySelector("h2.story-lang.primary")?.textContent).toBe("News Release");
     expect(phone.querySelector("p")?.textContent).toBe("VICTORIA");
     expect(phone.querySelector("div")?.textContent).toBe("Saturday, October 3, 2026 10:00 AM");
@@ -223,7 +223,7 @@ describe("release page", () => {
     const renamed = { ...settings, ministryPages: { ...settings.ministryPages, moreFromMinistry: "Around <Health>", ministryWebsite: "Home site", featuredTopics: "Topics", featuredServices: "Services", mediaContacts: "Press" } };
     const d = dom({ documents: [doc({ pageTitle: "News Release", contacts: [{ title: "Media", details: "Alex" }] })] }, ctx, { settings: renamed });
     const side = d.querySelector(".story-features")!;
-    expect(texts(side, ":scope > .resource-links > h2")).toEqual(["Translations", "News Release", "Press", "Around <Health>", "Topics", "Services"]);
+    expect(texts(side, ":scope > .resource-links > h2")).toEqual(["Translations", "Share", "News Release", "Press", "Around <Health>", "Topics", "Services"]);
     const more = [...side.querySelectorAll(":scope > .resource-links")].find((b) => b.querySelector("h2")?.textContent === "Around <Health>")!;
     expect([...more.querySelectorAll("li a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
       ["Home site", "https://gov.example/health"],
@@ -317,3 +317,157 @@ describe("release page", () => {
     expect(html).toContain("&quot;Release&quot;");
   });
 });
+
+describe("release page: share, social meta, lead media, related band", () => {
+  const meta = (d: Document, key: string) => d.querySelector(`meta[property="${key}"], meta[name="${key}"]`)?.getAttribute("content") ?? null;
+  const FLICKR = "https://live.staticflickr.com/65535/53912345678_0a1b2c3d4e_b.jpg";
+  const related = (n: number) => Array.from({ length: n }, (_, i) => ({ key: `2026HLTH0100-00010${i}`, headline: `Related ${i} <r>`, publishDate: `2026-09-0${i + 1}T09:00:00-07:00` }));
+  const latest = (keys: string[]) => keys.map((key, i) => post({ key, publishDate: `2026-10-0${i + 1}T10:00:00-07:00`, documents: [doc({ headline: `Latest ${key}` })] }));
+
+  it("share hrefs: headline 'Fish & \"Chips\" <é简体>' on base /site → subject percent-encoded, canonical https://news.example/site/releases/K/, no raw < or \" in any attribute", () => {
+    const headline = 'Fish & "Chips" <é简体>';
+    const html = renderReleasePage(post({ key: "K", documents: [doc({ headline })] }), { ...site, baseUrl: "https://news.example/site" }, {}, ctx);
+    const d = expectAccessibleStructure(html);
+    const canonical = "https://news.example/site/releases/K/";
+    const enc = encodeURIComponent(canonical);
+    // Once in the side column (right after Translations) and once in the phone row, first in its toolbar.
+    expect(d.querySelectorAll("div.resource-links.connect.share")).toHaveLength(2);
+    const blocks = [d.querySelector("section.story-features > div.resource-links.connect.share")!, d.querySelector(".story-info > .mobile-toolbar > div.resource-links.connect.share:first-child")!];
+    expect(blocks[0]!.previousElementSibling?.matches(".resource-links.translate")).toBe(true);
+    expect(blocks[1]).not.toBeNull();
+    for (const block of blocks) {
+      expect(block.querySelector(":scope > h2")?.textContent).toBe("Share");
+      const links = [...block.querySelectorAll(":scope > ul > li > a")];
+      expect(links.map((a) => [a.className, a.getAttribute("href"), a.getAttribute("aria-label")])).toEqual([
+        ["share-facebook", `https://www.facebook.com/sharer/sharer.php?u=${enc}`, "Share on Facebook"],
+        ["share-twitter", `https://twitter.com/intent/tweet?url=${enc}`, "Share on X"],
+        ["share-threads", `https://threads.net/intent/post?text=${enc}`, "Share on Threads"],
+        ["share-bluesky", `https://bsky.app/intent/compose?text=${enc}`, "Share on Bluesky"],
+        ["", `mailto:?subject=${encodeURIComponent(headline)}&body=${enc}`, "Share by email"],
+      ]);
+      expect(links.map((a) => a.querySelector("svg[aria-hidden=true] use")?.getAttribute("href"))).toEqual(
+        ["facebook", "square-x-twitter", "threads", "bluesky", "envelope"].map((i) => `/site/assets/site/icons.svg#i-${i}`),
+      );
+    }
+    expect(blocks[0]!.querySelector('a[href^="mailto:"]')!.getAttribute("href")).toContain("subject=Fish%20%26%20%22Chips%22%20%3C%C3%A9%E7%AE%80%E4%BD%93%3E&");
+    // No raw < or " from the headline anywhere in the source (attributes included): every copy is escaped or percent-encoded.
+    expect(html).not.toContain('"Chips"');
+    expect(html).not.toContain("<é简体>");
+    expect(html).toContain('content="Fish &amp; &quot;Chips&quot; &lt;é简体&gt;"');
+    // Plain links: no third-party script or iframe, no target.
+    expect(withoutChromeScripts(html)).not.toContain("<script");
+    expect(blocks[0]!.querySelector("[target]")).toBeNull();
+    // The share-link builder on its own.
+    expect(shareLinks(canonical, headline, null, "/site")).toBe(blocks[0]!.outerHTML);
+  });
+
+  it("instagram share only when settings.connect.instagram has an account", () => {
+    const settings = bcSettings();
+    settings.connect.instagram.accounts = [{ text: "Gov", url: "https://www.instagram.com/governmentofbc/" }, { text: "Other", url: "https://www.instagram.com/other/" }];
+    const d = dom({}, ctx, { settings });
+    const ig = [...d.querySelectorAll("a.share-instagram")];
+    expect(ig).toHaveLength(2);
+    expect(ig[0]!.getAttribute("href")).toBe("https://www.instagram.com/governmentofbc/");
+    expect(ig[0]!.getAttribute("aria-label")).toBe("BC Government on Instagram");
+    expect(ig[0]!.querySelector("use")?.getAttribute("href")).toContain("#i-instagram");
+    // After X, before Threads.
+    expect(ig[0]!.parentElement!.previousElementSibling?.querySelector("a.share-twitter")).not.toBeNull();
+    settings.connect.instagram.accounts = [];
+    expect(dom({}, ctx, { settings }).querySelector("a.share-instagram")).toBeNull();
+    expect(dom({}, ctx, {}).querySelector("a.share-instagram")).toBeNull();
+    settings.connect.instagram.accounts = [{ text: "Bad", url: "javascript:alert(1)" }];
+    expect(dom({}, ctx, { settings }).querySelector("a.share-instagram")).toBeNull();
+  });
+
+  it("og:image is the Flickr lead src; YouTube lead → img.youtube.com/vi/ID/hqdefault.jpg in og:image but no youtube host in any src", () => {
+    const flickr = dom({ assetUrl: FLICKR });
+    expect(meta(flickr, "og:image")).toBe(FLICKR);
+    expect(meta(flickr, "twitter:image")).toBe(FLICKR);
+    expect(meta(flickr, "og:type")).toBe("article");
+    expect(meta(flickr, "og:title")).toBe("Clinics to open across the province");
+    expect(meta(flickr, "og:description")).toBe("Clinics are opening across the province this month.");
+    expect(meta(flickr, "og:url")).toBe("https://news.example/releases/2026HLTH0001-000001/");
+
+    const html = render({ assetUrl: "https://www.youtube.com/watch?v=abc123DEF" });
+    const yt = expectAccessibleStructure(html);
+    expect(meta(yt, "og:image")).toBe("https://img.youtube.com/vi/abc123DEF/hqdefault.jpg");
+    expect(meta(yt, "twitter:image")).toBe("https://img.youtube.com/vi/abc123DEF/hqdefault.jpg");
+    for (const el of yt.querySelectorAll("[src], link[href]")) expect(el.getAttribute("src") ?? el.getAttribute("href")).not.toMatch(/youtube|ytimg/);
+
+    const fallback = "https://news.example/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
+    expect(meta(dom({}), "og:image")).toBe(fallback);
+    expect(meta(dom({ assetUrl: "https://news.gov.bc.ca/live" }), "og:image")).toBe(fallback);
+    expect(meta(dom({ assetUrl: "javascript:alert(1)" }), "og:image")).toBe(fallback);
+  });
+
+  it("lead media div.story-copy.primary-asset first in .story-body; live asset → link to the live webcast", () => {
+    const flickr = dom({ assetUrl: FLICKR, documents: [doc({ headline: "Clinics & more", byline: "By A" })] });
+    const first = flickr.querySelector(".story-body")!.firstElementChild!;
+    expect(first.matches("div.story-copy.primary-asset")).toBe(true);
+    const img = first.querySelector("div.asset.flickr > a > img")!;
+    expect(img.getAttribute("src")).toBe(FLICKR);
+    expect(img.getAttribute("alt")).toBe("Clinics & more");
+    expect(first.querySelector("a")?.getAttribute("href")).toBe("https://www.flickr.com/photos/bcgovphotos/53912345678/");
+
+    const yt = dom({ assetUrl: "https://youtu.be/abc123DEF" }).querySelector(".story-body > div.story-copy.primary-asset:first-child div.asset.youtube > a")!;
+    expect(yt.getAttribute("href")).toBe("https://www.youtube.com/watch?v=abc123DEF");
+    expect(yt.querySelector("img")?.getAttribute("src")).toBe("/assets/legacy/Content/Images/Gov/default-og-meta-image-1.jpg");
+
+    const live = dom({ assetUrl: "https://news.gov.bc.ca/live" }).querySelector(".story-body > div.story-copy.primary-asset:first-child a")!;
+    expect(live.getAttribute("href")).toBe("https://news.gov.bc.ca/live");
+    expect(live.textContent).toBe("Watch the live webcast");
+
+    for (const assetUrl of [undefined, null, "", "https://evil.example/x.jpg", "javascript:alert(1)"]) {
+      expect(dom({ assetUrl }).querySelector(".primary-asset"), String(assetUrl)).toBeNull();
+    }
+  });
+
+  it("trail: v2 related first (max 3); empty related → ministry latest without this post; neither → no Related Articles", () => {
+    const band = (d: Document) => d.querySelector("#main-content + section.media-container[aria-label=Related] > div.story-parts");
+    const articles = (d: Document) => [...band(d)!.querySelectorAll(".related-articles > div.related-article")].map((a) => [a.querySelector(":scope > h3 > a")?.textContent, a.querySelector(":scope > h3 > a")?.getAttribute("href"), a.querySelector(":scope > div.item-date")?.textContent]);
+    const self = "2026HLTH0001-000001";
+
+    const fromRelated = dom({}, { ...ctx, related: related(4), ministryLatest: latest(["2026HLTH0009-000009"]) });
+    expect(band(fromRelated)!.querySelector(".related-articles > h2")?.textContent).toBe("Related Articles");
+    expect(articles(fromRelated)).toEqual([
+      ["Related 0 <r>", "/releases/2026HLTH0100-000100/", "September 1, 2026"],
+      ["Related 1 <r>", "/releases/2026HLTH0100-000101/", "September 2, 2026"],
+      ["Related 2 <r>", "/releases/2026HLTH0100-000102/", "September 3, 2026"],
+    ]);
+    const image = band(fromRelated)!.querySelector(":scope > div.related-image > img")!;
+    expect(image.getAttribute("src")).toBe("/assets/legacy/Content/Images/Gov/default-og-meta-image-1.jpg");
+    expect(image.getAttribute("alt")).toBe("");
+
+    const fallback = dom({}, { ...ctx, related: [], ministryLatest: latest(["2026HLTH0002-000002", self, "2026HLTH0003-000003", "2026HLTH0004-000004", "2026HLTH0005-000005"]) });
+    expect(articles(fallback).map((a) => a[0])).toEqual(["Latest 2026HLTH0002-000002", "Latest 2026HLTH0003-000003", "Latest 2026HLTH0004-000004"]);
+    expect(articles(fallback)[0]![2]).toBe("October 1, 2026");
+
+    // Neither related nor a connect block: no band at all.
+    const none = dom({}, { ...ctx, leadMinistry: { ...health, flickrUri: null, youtubeUri: null }, related: [], ministryLatest: latest([self]) });
+    expect(none.querySelector("section.media-container")).toBeNull();
+    expect(none.body.textContent).not.toContain("Related Articles");
+    // No articles but a connect block: the band, without Related Articles.
+    const connectOnly = dom({}, { ...ctx, related: [], ministryLatest: [] });
+    expect(band(connectOnly)).not.toBeNull();
+    expect(connectOnly.querySelector(".related-articles")).toBeNull();
+    expect(connectOnly.querySelector(".connect-with-bc")).not.toBeNull();
+  });
+
+  it("Connect with the Ministry only with a safe Flickr or YouTube URI", () => {
+    const connect = (m: Partial<typeof health>) => dom({}, { ...ctx, leadMinistry: { ...health, ...m }, related: related(1) }).querySelector(".story-parts > div.connect-with-bc");
+    const both = connect({})!;
+    expect(both.querySelector(":scope > h2")?.textContent).toBe("Connect with the Ministry");
+    expect([...both.querySelectorAll(":scope > h3 > a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
+      ["Photos", "https://flickr.example/health"],
+      ["Videos", "https://youtube.example/health"],
+    ]);
+    expect(texts(both, ":scope > p")).toEqual(["View the Ministry's latest photos on Flickr.", "Watch the Ministry's latest videos on YouTube."]);
+    const photosOnly = connect({ youtubeUri: "javascript:alert(1)" })!;
+    expect(texts(photosOnly, "h3")).toEqual(["Photos"]);
+    expect(texts(photosOnly, "p")).toEqual(["View the Ministry's latest photos on Flickr."]);
+    expect(texts(connect({ flickrUri: null })!, "h3")).toEqual(["Videos"]);
+    expect(connect({ flickrUri: "javascript:alert(1)", youtubeUri: "" })).toBeNull();
+    expect(dom({}, { ...noMinistry, related: related(1) }).querySelector(".connect-with-bc")).toBeNull();
+  });
+});
+

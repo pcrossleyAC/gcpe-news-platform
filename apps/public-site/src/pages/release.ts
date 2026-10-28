@@ -1,13 +1,14 @@
 import type { MinistryPageLabels } from "@gcpe/site-settings";
 import type { AssetDto, MinistryDto, PostDocument, PostDto, RelatedPost } from "../dto";
 import { icon } from "../icons";
+import { headlineOf } from "../post-index";
 import { basePath, e, renderPage, safeHref, type PageOptions, type SiteInfo } from "../render";
 import { sanitizeBodyHtml } from "../sanitize-body";
-import { themeDefaults } from "../settings";
+import { settingsHref, themeDefaults } from "../settings";
 import { categoryPageId, pageUrl, parsePageId } from "../site-paths";
-import { bytesReadable, displayDateTime } from "./format";
+import { bytesReadable, displayDate, displayDateTime } from "./format";
 import { translationLanguage } from "./languages";
-import { renderBodyAssets } from "./media";
+import { leadMedia, renderBodyAssets, renderMedia, type LeadMedia } from "./media";
 import { ministryLinkGroups, resourceLinks } from "./side-links";
 
 const ENGLISH = 4105;
@@ -18,7 +19,8 @@ export interface ReleaseContext {
   related: RelatedPost[];
   /** The lead ministry (`leadMinistryKey ?? ministryKeys[0]`, matched case-insensitively), or null. */
   leadMinistry: MinistryDto | null;
-  /** The lead ministry's latest posts (Task 8's related band); [] until then. */
+  /** The lead ministry's latest posts: the related band's fallback when `related` is empty (the
+   * builder fetches them only then). This page's post may be among them; it is left out. */
   ministryLatest: PostDto[];
 }
 
@@ -81,6 +83,79 @@ function mediaAssetItems(assets: AssetDto[]): string[] {
   });
 }
 
+/** How many articles the related band lists (legacy's RelatedArticles). */
+const RELATED_COUNT = 3;
+
+/**
+ * Legacy `ShareSocialMedia` as plain links (plan 2 ledger P2-R1): legacy built the share URLs in
+ * page script and opened pop-ups; these are the same URLs as hrefs, with no script and no
+ * third-party load until a reader follows one. Instagram has no share intent, so, as legacy did,
+ * its link is a profile (`instagramUrl`, already gated), left out when there is none. `canonical`
+ * and `title` are percent-encoded, then escaped.
+ */
+export function shareLinks(canonical: string, title: string, instagramUrl: string | null, base: string): string {
+  const enc = encodeURIComponent(canonical);
+  const b = e(base);
+  const item = (cls: string, href: string, label: string, iconId: Parameters<typeof icon>[0]) =>
+    `<li><a${cls ? ` class="${cls}"` : ""} href="${e(href)}" aria-label="${e(label)}">${icon(iconId, b)}</a></li>`;
+  const items = [
+    item("share-facebook", `https://www.facebook.com/sharer/sharer.php?u=${enc}`, "Share on Facebook", "facebook"),
+    item("share-twitter", `https://twitter.com/intent/tweet?url=${enc}`, "Share on X", "square-x-twitter"),
+    instagramUrl ? item("share-instagram", instagramUrl, "BC Government on Instagram", "instagram") : "",
+    item("share-threads", `https://threads.net/intent/post?text=${enc}`, "Share on Threads", "threads"),
+    item("share-bluesky", `https://bsky.app/intent/compose?text=${enc}`, "Share on Bluesky", "bluesky"),
+    item("", `mailto:?subject=${encodeURIComponent(title)}&body=${enc}`, "Share by email", "envelope"),
+  ].filter(Boolean);
+  return `<div class="resource-links connect share">\n<h2>Share</h2>\n<ul>\n${items.join("\n")}\n</ul>\n</div>`;
+}
+
+/** The card image crawlers fetch for a lead: a Flickr photo itself, a YouTube video's own
+ * thumbnail (only crawlers load it, never a reader's browser: the page shows our placeholder),
+ * else none (renderPage's default). */
+function socialImage(m: LeadMedia | null): string | null {
+  if (m?.kind === "image") return m.src;
+  if (m?.kind === "youtube") return `https://img.youtube.com/vi/${m.id}/hqdefault.jpg`;
+  return null;
+}
+
+/**
+ * The band below the release (legacy PostView's AssortedMedia section), a labelled landmark with
+ * the headings one level up: Related Articles (up to three of the News API's related posts; when
+ * it has none, the lead ministry's latest other posts — a fallback that is only as fresh as this
+ * page's last render, since a ministry's new post doesn't rebuild its older releases), the
+ * default image, and Connect with the Ministry when the ministry has a safe Flickr or YouTube
+ * link. Nothing when there are neither articles nor that block.
+ */
+function relatedBand(site: SiteInfo, post: PostDto, ctx: ReleaseContext): string {
+  const base = e(basePath(site));
+  const self = post.key.toLowerCase();
+  const items = ctx.related.length
+    ? ctx.related.slice(0, RELATED_COUNT).map((r) => ({ key: r.key, headline: r.headline, publishDate: r.publishDate }))
+    : ctx.ministryLatest
+        .filter((p) => p.key.toLowerCase() !== self)
+        .slice(0, RELATED_COUNT)
+        .map((p) => ({ key: p.key, headline: headlineOf(p), publishDate: p.publishDate }));
+  const articles = items.length
+    ? `<div class="related-articles">\n<h2>Related Articles</h2>\n${items
+        .map((r) => `<div class="related-article">\n<h3><a href="${e(pageUrl(site, { type: "post", key: r.key }))}">${e(r.headline)}</a></h3>\n<div class="item-date">${e(displayDate(r.publishDate))}</div>\n</div>`)
+        .join("\n")}\n</div>`
+    : "";
+  const photos = safeHref(ctx.leadMinistry?.flickrUri);
+  const videos = safeHref(ctx.leadMinistry?.youtubeUri);
+  const connect =
+    photos || videos
+      ? `<div class="connect-with-bc">\n<h2>Connect with the Ministry</h2>\n${[
+          photos ? `<h3><a href="${e(photos)}">Photos</a></h3>\n<p>View the Ministry's latest photos on Flickr.</p>` : "",
+          videos ? `<h3><a href="${e(videos)}">Videos</a></h3>\n<p>Watch the Ministry's latest videos on YouTube.</p>` : "",
+        ]
+          .filter(Boolean)
+          .join("\n")}\n</div>`
+      : "";
+  if (!articles && !connect) return "";
+  const image = `<div class="related-image"><img src="${base}/assets/legacy/Content/Images/Gov/default-og-meta-image-1.jpg" alt=""></div>`;
+  return `<section class="media-container" aria-label="Related">\n<div class="story-parts">\n${[articles, image, connect].filter(Boolean).join("\n")}\n</div>\n</section>`;
+}
+
 /** The lead ministry's name above the headline, linked to its page while it is active. */
 function storyMinistry(site: SiteInfo, m: MinistryDto | null): string {
   if (!m) return "";
@@ -90,7 +165,7 @@ function storyMinistry(site: SiteInfo, m: MinistryDto | null): string {
   return `<p class="story-ministry">${name}</p>`;
 }
 
-function sideColumn(site: SiteInfo, post: PostDto, main: PostDocument | null, labels: MinistryPageLabels, ctx: ReleaseContext, parts: { translations: string[]; date: string; assetsShown: boolean }): string {
+function sideColumn(site: SiteInfo, post: PostDto, main: PostDocument | null, labels: MinistryPageLabels, ctx: ReleaseContext, parts: { translations: string[]; date: string; assetsShown: boolean; share: string }): string {
   const base = e(basePath(site));
   const translations = parts.translations.length ? `<div class="resource-links translate" id="translationList">\n<h2>Translations</h2>\n<ul>\n${parts.translations.join("\n")}\n</ul>\n</div>` : "";
   const assetsLink = parts.assetsShown ? `\n<div class="media-assets"><a class="assets-link" href="#assets">${icon("download", base)} Media Assets</a></div>` : "";
@@ -99,7 +174,7 @@ ${present(main?.pageTitle) ? `<h2>${e(main.pageTitle)}</h2>\n` : ""}${present(po
 </div>`;
   const contacts = main?.contacts.length ? `<div class="resource-links comm-contacts">\n${contactsBlock(main.contacts, labels.mediaContacts, 2)}\n</div>` : "";
   const ministry = ctx.leadMinistry ? ministryLinkGroups(ctx.leadMinistry, labels).map((g) => resourceLinks(site, g.heading, g.links)) : [];
-  const blocks = [translations, locationAndDate, contacts, ...ministry].filter(Boolean).join("\n");
+  const blocks = [translations, parts.share, locationAndDate, contacts, ...ministry].filter(Boolean).join("\n");
   return `<section class="story-features" id="sidebar" aria-label="About this release">\n${blocks}\n</section>`;
 }
 
@@ -116,9 +191,14 @@ export function renderReleasePage(post: PostDto, site: SiteInfo, opts: PageOptio
   const { main, backgrounders, french, frenchBackgrounders } = documentsByLanguage(post.documents);
   const headline = present(main?.headline) ? main.headline : post.key;
   const mainLang = main?.languageId === FRENCH ? ` lang="fr"` : "";
-  const labels = (opts.settings ?? themeDefaults(site.theme)).ministryPages;
+  const settings = opts.settings ?? themeDefaults(site.theme);
+  const labels = settings.ministryPages;
   const path = pageUrl(site, { type: "post", key: post.key });
+  const canonical = new URL(site.baseUrl).origin + path;
   const date = displayDateTime(post.publishDate);
+  const instagram = settings.connect.instagram.accounts[0];
+  const share = shareLinks(canonical, headline, instagram ? settingsHref(instagram.url, site) : null, base);
+  const lead = leadMedia(post.assetUrl);
 
   const sideTranslations = translationItems(post.azureTranslations ?? [], icon("language", e(base)));
   const assetItems = post.hasMediaAssets === true ? mediaAssetItems(post.azureAssets ?? []) : [];
@@ -133,8 +213,11 @@ export function renderReleasePage(post: PostDto, site: SiteInfo, opts: PageOptio
 
   const phonePageTitle = present(main?.pageTitle) ? `<h2 class="story-lang primary">${e(main.pageTitle)}</h2>\n` : "";
   const storyInfo = `<div class="story-info">
-${sideTranslations.length ? `<div class="resource-links translate">\n<h2>Translations</h2>\n<ul>\n${sideTranslations.join("\n")}\n</ul>\n</div>\n` : ""}<div class="resource-links">
+${sideTranslations.length ? `<div class="resource-links translate">\n<h2>Translations</h2>\n<ul>\n${sideTranslations.join("\n")}\n</ul>\n</div>\n` : ""}<div class="mobile-toolbar">
+${share}
+<div class="resource-links">
 ${phonePageTitle}${present(post.location) ? `<p>${e(post.location)}</p>\n` : ""}<div>${e(date)}</div>
+</div>
 </div>
 </div>`;
 
@@ -179,14 +262,15 @@ ${present(d.subheadline) ? `<p class="subheadline">${e(d.subheadline)}</p>\n` : 
   const bodyTranslations = translationItems(post.azureTranslations ?? [], "");
   const translations = bodyTranslations.length ? `<div id="translations" class="assets expanded">\n<h2>Translations</h2>\n<ul>\n${bodyTranslations.join("\n")}\n</ul>\n</div>` : "";
 
-  const storyBody = [...bylines, ...selectors, ...copies, bodyContacts, backgroundersHeading, ...allBackgrounders, assets, translations].filter(Boolean).join("\n");
+  const primaryAsset = lead ? `<div class="story-copy primary-asset">${renderMedia(lead, base, headline)}</div>` : "";
+  const storyBody = [primaryAsset, ...bylines, ...selectors, ...copies, bodyContacts, backgroundersHeading, ...allBackgrounders, assets, translations].filter(Boolean).join("\n");
 
   const header = [
     `<button type="button" class="print-document">${icon("print", e(base))} Print</button>`,
     storyMinistry(site, ctx.leadMinistry),
     `<div class="print-title">${e(site.name)}</div>`,
     `<h1 class="story-lang primary"${mainLang}>${e(headline)}</h1>${frHeadline}`,
-    `<div class="print-url">${e(new URL(site.baseUrl).origin + path)}</div>`,
+    `<div class="print-url">${e(canonical)}</div>`,
     `<div class="print-date">${e(date)}</div>`,
     ...subheadlines,
   ].filter(Boolean);
@@ -194,11 +278,17 @@ ${present(d.subheadline) ? `<p class="subheadline">${e(d.subheadline)}</p>\n` : 
   const body = `<div class="story-page pt-4">
 ${header.join("\n")}
 ${storyInfo}
-${sideColumn(site, post, main, labels, ctx, { translations: sideTranslations, date, assetsShown: assetItems.length > 0 })}
+${sideColumn(site, post, main, labels, ctx, { translations: sideTranslations, date, assetsShown: assetItems.length > 0, share })}
 <div class="story-body" id="main-content-release">
 ${storyBody}
 </div>
 </div>`;
 
-  return renderPage(headline, site, path, body, { ...opts, description: post.summary });
+  const trail = relatedBand(site, post, ctx);
+  return renderPage(headline, site, path, body, {
+    ...opts,
+    description: post.summary,
+    social: { title: headline, description: post.summary, image: socialImage(lead), type: "article" },
+    ...(trail ? { trail } : {}),
+  });
 }

@@ -150,6 +150,40 @@ describe("site builder", () => {
     expect(storage.files.has("releases/K1/index.html")).toBe(true);
   });
 
+  it("fetches the ministry's latest once per run and only when related is empty; a failure renders the page without a fallback", async () => {
+    const posts = new Map([
+      ["K1", post({ key: "K1", leadMinistryKey: "Health", ministryKeys: ["health"], publishDate: "2026-10-01T10:00:00-07:00", documents: [{ languageId: 4105, headline: "One", subheadline: null, detailsHtml: null, contacts: [] }] })],
+      ["K2", post({ key: "K2", ministryKeys: ["health"], publishDate: "2026-10-02T10:00:00-07:00", documents: [{ languageId: 4105, headline: "Two", subheadline: null, detailsHtml: null, contacts: [] }] })],
+      ["K3", post({ key: "K3", ministryKeys: ["finance"], publishDate: "2026-10-03T10:00:00-07:00" })],
+    ]);
+    const { storage, api, builder } = setup(posts);
+    const latest = vi.spyOn(api, "latest");
+    const relatedTo = new Map([["K3", [{ key: "K9", headline: "Nine", publishDate: "2026-09-09T09:00:00-07:00" }]]]);
+    api.related = async (key) => relatedTo.get(key) ?? [];
+    // One run (as rebuild and buildAll share one) rendering the three post pages.
+    const run = {};
+    for (const k of ["K1", "K2", "K3"]) await builder.renderPage(`post:${k}`, {}, run);
+    // K1 and K2 share health's fetch; K3 has v2 related, so finance's latest is never asked for.
+    expect(latest.mock.calls).toEqual([["ministries", "health", 4]]);
+    const band = (k: string) => html(storage, `releases/${k}/index.html`).split('<section class="media-container"')[1] ?? "";
+    expect(band("K1")).toContain(">Two</a>");
+    expect(band("K1")).not.toContain(">One</a>");
+    expect(band("K2")).toContain(">One</a>");
+    expect(band("K2")).not.toContain(">Two</a>");
+    expect(band("K3")).toContain(">Nine</a>");
+
+    // A failure: logged without the error's text, and the page renders with no Related Articles.
+    const failing = setup(new Map([["K1", post({ key: "K1" })]]));
+    failing.api.latest = async () => { throw new Error("News API 500 secret=abc"); };
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    await failing.builder.renderPage("post:K1", {});
+    expect(failing.storage.files.has("releases/K1/index.html")).toBe(true);
+    expect(html(failing.storage, "releases/K1/index.html")).not.toContain("Related Articles");
+    expect(log.mock.calls.some(([line]) => String(line).includes("post:K1"))).toBe(true);
+    expect(log.mock.calls.flat().join(" ")).not.toContain("secret=abc");
+    log.mockRestore();
+  });
+
   it("buildAll renders every published key, removes pages for keys no longer published, then every aggregate", async () => {
     const { storage, builder } = setup(new Map([["K1", post({ key: "K1" })], ["S1", post({ key: "S1", kind: "stories" })]]));
     await storage.write("releases/OLD/index.html", "stale");

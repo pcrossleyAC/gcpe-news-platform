@@ -42,6 +42,10 @@ export interface PageOptions {
   lead?: string;
   /** Trusted renderer HTML right after `div#main-content`. Absent or empty ⇒ nothing is emitted. */
   trail?: string;
+  /** The page's Open Graph / Twitter card values where they differ from the defaults
+   * ({@link socialMeta}): title (else the page title), description (else `description`), an
+   * absolute http(s) image (else the default card image) and the og:type (else "website"). */
+  social?: { title?: string | null; description?: string | null; image?: string | null; type?: "website" | "article" };
 }
 
 export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
@@ -74,6 +78,38 @@ export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
   return new URL(site.baseUrl).pathname.replace(/\/+$/, "");
 }
 
+/** The card image a page without its own shows (legacy's `default-og-image-new.jpg`, vendored). */
+export const DEFAULT_OG_IMAGE = "/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
+
+/**
+ * Every page's Open Graph and Twitter card meta (gap audit M5): og:site_name, url (the canonical),
+ * type, title, description (left out when empty) and image, then twitter:card summary_large_image
+ * and the twitter: title, description and image with the same values. A crawler fetches the image
+ * on its own, so it must be absolute: anything but an absolute http(s) URL gets the default. No
+ * twitter:site — the handle is tenant identity, which plan 5 T10 owns.
+ */
+function socialMeta(title: string, site: SiteInfo, canonical: string, opts: PageOptions): string {
+  const s = opts.social ?? {};
+  const ogTitle = s.title ?? title;
+  const given = s.description ?? opts.description;
+  const description = given?.trim() ? given : null;
+  const image = s.image && isSafeUrl(s.image, { relative: false, schemes: ["https:", "http:"] }) ? s.image : new URL(site.baseUrl).origin + basePath(site) + DEFAULT_OG_IMAGE;
+  const og = (k: string, v: string) => `\n<meta property="og:${k}" content="${e(v)}">`;
+  const tw = (k: string, v: string) => `\n<meta name="twitter:${k}" content="${e(v)}">`;
+  return (
+    og("site_name", site.name) +
+    og("url", canonical) +
+    og("type", s.type ?? "website") +
+    og("title", ogTitle) +
+    (description ? og("description", description) : "") +
+    og("image", image) +
+    tw("card", "summary_large_image") +
+    tw("title", ogTitle) +
+    (description ? tw("description", description) : "") +
+    tw("image", image)
+  );
+}
+
 /** The head's inline script: marks `<html>` as `.js` before any CSS applies, so stylesheets can
  * keep no-JS fallbacks under `html:not(.js)` without a flash. A constant: nothing is interpolated. */
 export const HTML_JS_MARKER = 'document.documentElement.classList.add("js")';
@@ -89,6 +125,7 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   const theme = site.theme ?? DEFAULT_THEME;
   const robots = opts.test ? `\n<meta name="robots" content="noindex, nofollow">` : "";
   const description = opts.description ? `\n<meta name="description" content="${e(opts.description)}">` : "";
+  const canonical = new URL(site.baseUrl).origin + canonicalPath;
   // Defence in depth: the tenant config schema (`@gcpe/config`'s siteThemeSchema) already
   // restricts stylesheetUrl to https:/relative, but render time doesn't re-trust config-time
   // validation for anything else that reaches an href/src — this shouldn't either.
@@ -104,7 +141,7 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)} | ${e(site.name)}</title>
-<link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}${description}
+<link rel="canonical" href="${e(canonical)}">${robots}${description}${socialMeta(title, site, canonical, opts)}
 <link rel="icon" href="${e(base)}/favicon.ico">
 <script>${HTML_JS_MARKER}</script>
 <link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>

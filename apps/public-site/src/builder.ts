@@ -25,7 +25,14 @@ export const POST_KINDS = ["releases", "stories", "factsheets", "updates", "advi
 export interface RunCache {
   ministries?: Promise<MinistryDto[]>;
   profiles?: Promise<MinistryProfileDto[]>;
+  /** Each lead ministry's latest posts (lower-cased key), the release page's related-band
+   * fallback: fetched at most once per run, and only by a post with no related posts. */
+  ministryLatest?: Map<string, Promise<PostDto[]>>;
 }
+
+/** How many of a ministry's latest posts the related band's fallback fetches: three to show, plus
+ * the release itself, which may be among them. */
+const MINISTRY_LATEST_COUNT = 4;
 
 export interface SiteBuilder {
   /**
@@ -116,7 +123,18 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     // The side column's ministry: matched case-insensitively (News API and NRMS key casing can differ).
     const leadKey = (post.leadMinistryKey ?? post.ministryKeys[0])?.toLowerCase();
     const leadMinistry = (leadKey && all.find((m) => m.key.toLowerCase() === leadKey)) || null;
-    await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { ministryNames, related, leadMinistry, ministryLatest: [] }));
+    let ministryLatest: PostDto[] = [];
+    if (related.length === 0 && leadKey) {
+      const cache = (run.ministryLatest ??= new Map());
+      let fetch = cache.get(leadKey);
+      if (!fetch) cache.set(leadKey, (fetch = newsApi.latest("ministries", leadKey, MINISTRY_LATEST_COUNT)));
+      try {
+        ministryLatest = await fetch;
+      } catch (err) {
+        console.error(`[public-site] the ministry's latest posts are unavailable for post:${key} ${safeErrorLabel(err)}`);
+      }
+    }
+    await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { ministryNames, related, leadMinistry, ministryLatest }));
     const entry = indexEntryOf(key, post);
     if (entry) await writeIndex.put(entry);
     else await writeIndex.remove(key);
