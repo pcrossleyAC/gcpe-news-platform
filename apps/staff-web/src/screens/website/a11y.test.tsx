@@ -23,6 +23,9 @@ import { LogScreen } from "./LogScreen";
 import { BannerScreen } from "./settings/BannerScreen";
 import { FooterScreen } from "./settings/FooterScreen";
 import { SocialScreen } from "./settings/SocialScreen";
+import { ThemeScreen } from "./settings/ThemeScreen";
+import { MinistryPagesScreen } from "./settings/MinistryPagesScreen";
+import { HistoryScreen } from "./settings/HistoryScreen";
 import type { SettingsState } from "./settings/api";
 import type { CarouselsResponse, LinksView, ListFilesResult, LiveFeedView, PinView } from "./types";
 
@@ -239,5 +242,42 @@ describe("accessibility — Website section screens", () => {
     await screen.findByRole("heading", { name: "Social links", level: 1 });
     await screen.findByDisplayValue("BC Gov");
     expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("ThemeScreen, with a contrast error, a faint colour and the other badges", async () => {
+    const state = settingsState(
+      (d) => ({ ...d, theme: { colors: { ...d.theme.colors, bannerInfo: "#8899AA" } } }),
+      [{ field: "theme.colors.bannerInfo", message: "Too faint to read behind white text (2.9:1, needs 4.5:1). Pick a darker shade." }],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<ThemeScreen />));
+    await screen.findByRole("heading", { name: "Theme colours", level: 1 });
+    await screen.findByDisplayValue("#8899AA");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("MinistryPagesScreen, with a field error", async () => {
+    const state = settingsState((d) => ({ ...d, ministryPages: { ...d.ministryPages, ministryVideos: "" } }), [{ field: "ministryPages.ministryVideos", message: "Enter a heading." }]);
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<MinistryPagesScreen />));
+    await screen.findByRole("heading", { name: "Ministry page headings", level: 1 });
+    await screen.findByDisplayValue("Media Contacts");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("HistoryScreen, with the restore confirmation open", async () => {
+    const info = (revision: number) => ({ revision, publishedAt: "2026-10-27T18:00:00.000Z", publishedBy: "Sam", note: revision === 1 ? "First" : null });
+    const snapshot = settingsState((d) => d, []).document;
+    stub(["NRMS.SiteEditor"], {
+      "/nrms/api/site/settings/history": { live: 2, revisions: [info(2), info(1)] },
+      "/nrms/api/site/settings/history/1": { info: info(1), document: snapshot, differing: ["banner", "theme"] },
+    });
+    render(withAuth(<HistoryScreen />));
+    await screen.findByRole("heading", { name: "Settings history", level: 1 });
+    const user = userEvent.setup();
+    await user.click(await screen.findByRole("button", { name: "Restore… revision 1" }));
+    await screen.findByRole("dialog", { name: "Restore revision 1?" });
+    // The dialog renders in a portal under body, outside the render container.
+    expect(await seriousViolationsWithModalOpen(document.body)).toEqual([]);
   });
 });

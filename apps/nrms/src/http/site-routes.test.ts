@@ -413,6 +413,17 @@ describe("NRMS site settings HTTP API", () => {
     expect((await request(app).get(`${S}/`)).status).toBe(401);
   });
 
+  it("GET /defaults returns the tenant defaults to NRMS.SiteEditor and Core.Admin, and refuses the rest", async () => {
+    await publish(siteEditor, { baseRevision: null, section: "banner", value: banner("Live now") });
+    for (const c of [siteEditor, admin]) {
+      const res = await request(app).get(`${S}/defaults`).set("cookie", c);
+      expect(res.status).toBe(200);
+      expect(res.body).toEqual(defaults);
+    }
+    for (const c of [editorOnly, viewer]) expect((await request(app).get(`${S}/defaults`).set("cookie", c)).status).toBe(403);
+    expect((await request(app).get(`${S}/defaults`)).status).toBe(401);
+  });
+
   it("NRMS.Editor gets 403 on every write; Core.Admin reads but gets 403 on publish and every other write", async () => {
     const body = { baseRevision: null, section: "banner", value: banner("x") };
     for (const c of [editorOnly, admin]) {

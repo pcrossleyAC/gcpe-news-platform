@@ -52,3 +52,28 @@ export const discardSettingsDraft = () => apiFetch<void>(`${BASE}/draft`, { meth
 
 export const rebaseSettings = (body: { section: SectionKey; value: unknown }) =>
   apiFetch<SettingsState & { setAside: SectionKey[] }>(`${BASE}/rebase`, { method: "POST", body });
+
+/** The tenant's own defaults (what "Reset to defaults" puts back). */
+export const getSettingsDefaults = () => apiFetch<SiteSettings>(`${BASE}/defaults`);
+
+export interface HistoryList {
+  /** The live revision number, or null before anything is published. */
+  live: number | null;
+  /** Newest first. */
+  revisions: LiveInfo[];
+}
+
+export const getHistory = () => apiFetch<HistoryList>(`${BASE}/history`);
+
+export interface RevisionDetail {
+  info: LiveInfo;
+  document: SiteSettings;
+  /** Sections where this revision differs from what is live now. */
+  differing: SectionKey[];
+}
+
+export const getRevision = (revision: number) => apiFetch<RevisionDetail>(`${BASE}/history/${revision}`);
+
+/** Throws an ApiError: 409 with a {@link PublishConflict} body, 404 when the revision is gone, 422 when it no longer validates. */
+export const restoreRevision = (body: { revision: number; baseRevision: number | null }) =>
+  apiFetch<{ revision: number }>(`${BASE}/restore`, { method: "POST", body });

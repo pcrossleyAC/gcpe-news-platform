@@ -423,6 +423,8 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
       : void res.status(409).json({ error: "published", code: "published", live: result.live, differing: result.differing });
 
   r.get("/site/settings", settingsRead, needDefaults, run(async (req, res) => void res.json(await getSettingsState(db, actorOf(req), defaults()))));
+  // The tenant's own defaults, for the Hub's "Reset to defaults" buttons (the state above only carries them while nothing is saved).
+  r.get("/site/settings/defaults", settingsRead, needDefaults, run(async (_req, res) => void res.json(defaults())));
   r.put(
     "/site/settings/draft",
     edit,
