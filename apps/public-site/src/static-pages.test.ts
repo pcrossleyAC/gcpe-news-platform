@@ -5,10 +5,19 @@ import { describe, expect, it } from "vitest";
 import { expectAccessibleStructure } from "../test/structure";
 import { memoryStorage } from "../test/memory-storage";
 import { logoFor, renderNotFoundPage, renderRobots, writeStaticPages } from "./static-pages";
+import { writeBuiltinAssets } from "./site-assets";
+import type { SiteStorage } from "./storage";
 import { DEFAULT_THEME } from "./theme-css";
 import { bcSettings } from "../test/fixtures";
 
 const site = { name: "BC Gov News", baseUrl: "https://news.example", theme: DEFAULT_THEME };
+
+/** The folder's files other than the built-in assets writeStaticPages also writes (site-assets.test.ts covers those). */
+async function tenantKeys(storage: ReturnType<typeof memoryStorage>): Promise<string[]> {
+  const builtin = memoryStorage();
+  await writeBuiltinAssets(builtin as SiteStorage);
+  return [...storage.files.keys()].filter((k) => !builtin.files.has(k)).sort();
+}
 
 describe("static pages", () => {
   it("404 is an accessible page with a way home", () => {
@@ -28,7 +37,7 @@ describe("static pages", () => {
     await writeFile(join(dir, "assets", ".hidden"), "x");
     const storage = memoryStorage();
     await writeStaticPages(storage, site, { test: true }, dir);
-    expect([...storage.files.keys()].sort()).toEqual(["404.html", "assets/img/a.png", "assets/logo.svg", "assets/site-banner.json", "assets/theme.css", "robots.txt"]);
+    expect(await tenantKeys(storage)).toEqual(["404.html", "assets/img/a.png", "assets/logo.svg", "assets/site-banner.json", "assets/theme.css", "robots.txt"]);
     expect(storage.files.get("assets/img/a.png")).toBeInstanceOf(Uint8Array);
   });
   it("skips every file inside a hidden directory, not just a dotfile's own name", async () => {
@@ -38,7 +47,7 @@ describe("static pages", () => {
     await writeFile(join(dir, "assets", "logo.svg"), "<svg/>");
     const storage = memoryStorage();
     await writeStaticPages(storage, site, {}, dir);
-    expect([...storage.files.keys()].sort()).toEqual(["404.html", "assets/logo.svg", "assets/site-banner.json", "assets/theme.css", "robots.txt"]);
+    expect(await tenantKeys(storage)).toEqual(["404.html", "assets/logo.svg", "assets/site-banner.json", "assets/theme.css", "robots.txt"]);
   });
   it("a missing assets folder is not an error", async () => {
     const storage = memoryStorage();

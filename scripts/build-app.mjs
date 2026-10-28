@@ -3,6 +3,7 @@
 import { build } from "esbuild";
 import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { copyPublicSiteAssets } from "./lib/public-site-assets.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const appDir = resolve(root, process.argv[2] ?? ".");
@@ -31,4 +32,5 @@ if (["calendar", "stack"].includes(appDir.split("/").pop())) {
   const { buildReportWorker } = await import("./build-report-worker.mjs");
   await buildReportWorker(join(appDir, "dist"), { external: [...deps] });
 }
+if (["public-site", "stack"].includes(appDir.split("/").pop())) copyPublicSiteAssets(join(appDir, "dist"));
 console.log(`built ${appDir}/dist/main.js`);

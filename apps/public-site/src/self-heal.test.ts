@@ -60,6 +60,23 @@ describe("selfHeal", () => {
     }
   });
 
+  it("writes the builtin assets even when the News API is down", async () => {
+    const deps = setup();
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    deps.newsApi.home = async () => {
+      throw new Error("News API down");
+    };
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await selfHeal(deps);
+      expect(storage.files.has("favicon.ico")).toBe(true);
+      expect(storage.files.has("assets/legacy/Content/site.css")).toBe(true);
+      expect(storage.files.has("assets/legacy/fonts/BCSans-Regular.woff2")).toBe(true);
+    } finally {
+      errSpy.mockRestore();
+    }
+  });
+
   it("the current marker and index.html present: drains whatever is queued, and returns null when nothing was rendered", async () => {
     const posts = new Map([["K1", post({ key: "K1" })]]);
     const deps = setup(posts);

@@ -4,6 +4,7 @@ import { join, relative, sep } from "node:path";
 import type { SiteTheme } from "@gcpe/config";
 import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "./render";
 import { bannerJson, themeDefaults } from "./settings";
+import { writeBuiltinAssets } from "./site-assets";
 import type { SiteStorage } from "./storage";
 import { DEFAULT_THEME, themeCss } from "./theme-css";
 
@@ -46,6 +47,7 @@ async function assetFiles(assetsDir: string): Promise<string[]> {
  * page's inline script), the tenant's asset files, 404.html and robots.txt — cheap, so written on
  * every build, and the only page a theme or banner change rebuilds. */
 export async function writeStaticPages(storage: SiteStorage, site: SiteInfo, opts: PageOptions, assetsDir: string | null): Promise<void> {
+  await writeBuiltinAssets(storage);
   if (assetsDir) {
     for (const rel of await assetFiles(assetsDir)) await storage.write(rel, new Uint8Array(await readFile(join(assetsDir, rel))));
   }

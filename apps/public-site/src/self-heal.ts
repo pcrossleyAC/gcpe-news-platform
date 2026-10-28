@@ -1,6 +1,7 @@
 import { drainQueue } from "./drain";
 import { enqueueSiteWrite, tryHome } from "./rebuild";
 import { applyChromeChanges, turnOptions, type SyncDeps } from "./sync";
+import { writeBuiltinAssets } from "./site-assets";
 import { writeSubscribePages } from "./subscribe-pages";
 
 /**
@@ -23,6 +24,9 @@ export function selfHeal(deps: SyncDeps): Promise<{ rebuilt: number } | null> {
   const { newsApi, storage, site } = deps;
 
   return enqueueSiteWrite(storage, async () => {
+    // First, and independent of the News API: the vendored CSS, logos, BC Sans, favicon and icon sprite every page links.
+    await writeBuiltinAssets(storage);
+
     const home = await tryHome(newsApi);
     const turn = await turnOptions(deps, home?.granville ?? null);
     const { pageOpts } = turn;

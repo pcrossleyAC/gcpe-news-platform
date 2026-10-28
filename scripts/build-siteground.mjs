@@ -14,6 +14,7 @@ import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { build } from "esbuild";
 import { buildReportWorker } from "./build-report-worker.mjs";
+import { copyPublicSiteAssets } from "./lib/public-site-assets.mjs";
 import { runBuild as runStaffWebBuild } from "./build-staff-web.mjs";
 
 const root = resolve(import.meta.dirname, "..");
@@ -151,6 +152,10 @@ async function runBuild() {
 
   console.log("[build-siteground] copying config …");
   cpSync(join(root, "config"), join(outDir, "config"), { recursive: true });
+
+  // The public site's vendored CSS, logos, BC Sans and icon sprite, beside stack.js (site-assets.ts reads them from there).
+  console.log("[build-siteground] copying public-site assets …");
+  copyPublicSiteAssets(outDir);
 
   // Task 1 (staff-web): the staff app, built fresh (never reusing a stale apps/staff-web/dist
   // from an earlier, unrelated build) and copied to dist/siteground/hub — the relative path

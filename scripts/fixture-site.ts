@@ -93,6 +93,10 @@ const TYPES: Record<string, string> = {
   ".txt": "text/plain; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
   ".svg": "image/svg+xml",
+  ".woff2": "font/woff2",
+  ".ico": "image/x-icon",
+  ".png": "image/png",
+  ".json": "application/json",
 };
 
 /** A static server for the built site: "/x/" serves "x/index.html", a missing file 404.html. */
