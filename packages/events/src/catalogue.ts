@@ -49,6 +49,9 @@ export const orgRecordSchema = z.object({
   // and GCPE Media Relations are not (Q54); the Office of the Premier is HQ but public, so this
   // is its own flag. Defaulted so an envelope stored before the flag existed stays public.
   isPublic: z.boolean().default(true),
+  // Ordered successor ministries (new-government spec §4, N7): the first is the redirect target.
+  // Empty for an active ministry. Defaulted so an envelope stored before the field existed parses.
+  successorKeys: z.array(z.string()).default([]),
   updatedAt: z.string().datetime({ offset: true }),
 });
 export type OrgRecord = z.infer<typeof orgRecordSchema>;
@@ -324,9 +327,26 @@ export const governmentTermsPublishedSchema = z.object({
 });
 export type GovernmentTermsPayload = z.infer<typeof governmentTermsPublishedSchema>;
 
+/**
+ * Core hands ministry `key` over to `successorKeys` (new-government spec §4). NoD, Calendar and
+ * NRMS each move their own rows still keyed to `key`, idempotently, per the flags. Staff moves are
+ * Core's own and travel as user.upserted, so there is no moveStaff here.
+ */
+export const orgSucceededSchema = z.object({
+  key: z.string().min(1),
+  successorKeys: z.array(z.string().min(1)).min(1),
+  moveSubscribers: z.boolean(),
+  moveCalendar: z.boolean(),
+  moveDrafts: z.boolean(),
+  takeAbbreviation: z.boolean(),
+  at: offsetDateTime,
+});
+export type OrgSucceeded = z.infer<typeof orgSucceededSchema>;
+
 export const eventDataSchemas = {
   "org.upserted": orgRecordSchema,
   "org.deactivated": z.object({ key: z.string().min(1) }),
+  "org.succeeded": orgSucceededSchema,
   "user.upserted": userRecordSchema,
   "sector.upserted": termRecordSchema,
   "sector.deactivated": termDeactivated,

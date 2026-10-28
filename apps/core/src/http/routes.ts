@@ -4,7 +4,25 @@ import type { Db } from "@gcpe/db-kit";
 import { CORE_ADMIN_DIRECTORY_ROLE, requireAnyRole, requireRole } from "@gcpe/auth";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import { EventTooLargeError, orgKeyFromName, termKindSchema, type SubscriberConfig, type TermKind } from "@gcpe/events";
-import { ADMIN_ONLY_PROFILE_FIELDS, AbbreviationTakenError, createOrganization, deactivateOrganization, orgCreateSchema, getOrganization, listOrganizations, orgInputSchema, orgProfilePatchSchema, patchOrganizationProfile, setOrganizationHq, setOrganizationPublic, upsertOrganization } from "../services/organizations";
+import {
+  ADMIN_ONLY_PROFILE_FIELDS,
+  AbbreviationTakenError,
+  createOrganization,
+  deactivateOrganization,
+  orgCreateSchema,
+  getOrganization,
+  listOrganizations,
+  orgInputSchema,
+  orgProfilePatchSchema,
+  patchOrganizationProfile,
+  setOrganizationHq,
+  setOrganizationPublic,
+  SuccessionError,
+  succeedOrganization,
+  successionInputSchema,
+  successionPreview,
+  upsertOrganization,
+} from "../services/organizations";
 import { republishAll } from "../services/republish";
 import { deactivateTerm, getTerm, listTerms, termInputSchema, upsertTerm } from "../services/terms";
 import { adminEmails } from "../services/users";
@@ -23,6 +41,7 @@ function parseKind(req: Request<{ kind: string }>, res: Response): TermKind | nu
 function handleError(res: Response, e: unknown) {
   if (e instanceof ZodError) return void res.status(400).json({ error: "invalid request", issues: e.issues });
   if (e instanceof AbbreviationTakenError) return void res.status(409).json({ error: "abbreviation-taken", takenBy: e.takenBy });
+  if (e instanceof SuccessionError) return void res.status(422).json({ error: e.message });
   if (e instanceof EventTooLargeError) return void res.status(413).json({ error: "record too large to publish" });
   // Only the label: a failed query's message carries its bound parameters, which can be an email.
   console.error("[core] request failed", safeErrorLabel(e));
@@ -109,6 +128,24 @@ export function apiRoutes(db: Db, subscribers: SubscriberConfig[]): express.Rout
     admin,
     safe<{ key: string }>(async (req, res) => {
       (await deactivateOrganization(db, req.params.key, subscribers)) ? res.status(204).end() : res.status(404).json({ error: "not found" });
+    }),
+  );
+  // New-government spec §4: hand a ministry over to its successors. The preview is Core's part of
+  // the Hub's counts; NoD, the Calendar and NRMS each answer for their own.
+  r.get(
+    "/organizations/:key/succession-preview",
+    admin,
+    safe<{ key: string }>(async (req, res) => {
+      if (!(await getOrganization(db, req.params.key))) return void res.status(404).json({ error: "not found" });
+      res.json(await successionPreview(db, req.params.key));
+    }),
+  );
+  r.post(
+    "/organizations/:key/succeed",
+    admin,
+    safe<{ key: string }>(async (req, res) => {
+      const record = await succeedOrganization(db, req.params.key, successionInputSchema.parse(req.body), subscribers);
+      record ? res.json(record) : res.status(404).json({ error: "not found" });
     }),
   );
 

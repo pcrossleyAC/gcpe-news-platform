@@ -300,19 +300,19 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
         name: "nrms",
         url: "self:/nrms/events",
         secret: expect.any(String),
-        types: ["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+        types: ["org.upserted", "org.deactivated", "org.succeeded", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
       },
       {
         name: "nod",
         url: "self:/nod/events",
         secret: expect.any(String),
-        types: ["org.upserted", "org.deactivated", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+        types: ["org.upserted", "org.deactivated", "org.succeeded", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
       },
       {
         name: "calendar",
         url: "self:/calendar/events",
         secret: expect.any(String),
-        types: ["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
+        types: ["org.upserted", "org.deactivated", "org.succeeded", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"],
       },
     ]);
     expect(nrms.map((s: { name: string; types: string[] }) => [s.name, s.types])).toEqual([
@@ -419,7 +419,7 @@ describe("Core → NRMS taxonomy route", () => {
     const coreSubs = JSON.parse(wiring.CORE.EVENT_SUBSCRIBERS!) as { name: string; url: string; types: string[] }[];
     const toNrms = coreSubs.find((s) => s.name === "nrms")!;
     expect(toNrms.url).toBe("self:/nrms/events");
-    expect(toNrms.types).toEqual(["org.upserted", "org.deactivated", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"]);
+    expect(toNrms.types).toEqual(["org.upserted", "org.deactivated", "org.succeeded", "user.upserted", "sector.upserted", "sector.deactivated", "theme.upserted", "theme.deactivated", "tag.upserted", "tag.deactivated"]);
     // The full topology: the Calendar's pair secret is there too (dropped when the Calendar isn't configured).
     expect(Object.keys(JSON.parse(wiring.NRMS.EVENT_SECRETS!))).toEqual(["core", "calendar"]);
   });
@@ -622,7 +622,7 @@ describe("Calendar routing", () => {
   it("routes Core's user, organization and term events to the Calendar, by explicit type, when the Calendar is configured", () => {
     const calendar = coreSubscribers({ CALENDAR_DATABASE_URL: "postgres://x/cal" }).find((s) => s.name === "calendar");
     expect(calendar?.types.sort()).toEqual(
-      ["org.deactivated", "org.upserted", "sector.deactivated", "sector.upserted", "tag.deactivated", "tag.upserted", "theme.deactivated", "theme.upserted", "user.upserted"],
+      ["org.deactivated", "org.succeeded", "org.upserted", "sector.deactivated", "sector.upserted", "tag.deactivated", "tag.upserted", "theme.deactivated", "theme.upserted", "user.upserted"],
     );
     expect(envFor({ CALENDAR_DATABASE_URL: "postgres://x/cal", STACK_EVENT_SECRET: SECRET }, "CALENDAR").EVENT_SECRETS).toBeDefined();
   });
@@ -665,6 +665,22 @@ describe("Calendar routing", () => {
 
   it("strips the CALENDAR_ prefix", () => {
     expect(envFor({ CALENDAR_DATABASE_URL: "postgres://x/cal" }, "CALENDAR").DATABASE_URL).toBe("postgres://x/cal");
+  });
+});
+
+// New-government spec §4: Core's org.succeeded drives NoD's, the Calendar's and NRMS's own moves.
+// The News API reads successorKeys off org.upserted and needs nothing more.
+describe("Core org.succeeded route", () => {
+  const SECRET = "x".repeat(40);
+  const env = { CALENDAR_DATABASE_URL: "postgres://x/cal", STACK_EVENT_SECRET: SECRET };
+
+  it("org.succeeded routes to nrms, nod and calendar only", () => {
+    const coreSubs = JSON.parse(envFor(env, "CORE").EVENT_SUBSCRIBERS!) as SubscriberConfig[];
+    expect(subscribersFor("org.succeeded", coreSubs).map((s) => s.name).sort()).toEqual(["calendar", "nod", "nrms"]);
+    expect(newsApiEventTypesFromCore()).not.toContain("org.succeeded");
+    // Without the Calendar, the other two still get it.
+    const noCalendar = JSON.parse(envFor({ STACK_EVENT_SECRET: SECRET }, "CORE").EVENT_SUBSCRIBERS!) as SubscriberConfig[];
+    expect(subscribersFor("org.succeeded", noCalendar).map((s) => s.name).sort()).toEqual(["nod", "nrms"]);
   });
 });
 

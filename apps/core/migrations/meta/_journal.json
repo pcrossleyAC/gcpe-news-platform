@@ -43,6 +43,13 @@
       "when": 1793123333950,
       "tag": "0005_org_staff_edited_at",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793163181965,
+      "tag": "0006_org_successors",
+      "breakpoints": true
     }
   ]
 }

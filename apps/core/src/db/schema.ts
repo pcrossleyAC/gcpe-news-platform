@@ -29,6 +29,8 @@ export const organizations = pgTable("organizations", {
   isHq: boolean("is_hq").notNull().default(false),
   /** Listed on public surfaces (Q54). False for GCPE Headquarters and GCPE Media Relations. */
   isPublic: boolean("is_public").notNull().default(true),
+  /** Ordered successor ministries, set by a hand-over (new-government spec §4); the first is the redirect target. Cleared on reactivation. */
+  successorKeys: text("successor_keys").array().notNull().default(sql`'{}'::text[]`),
   legacyId: uuid("legacy_id"),
   /** Set when staff edit the organization from the Hub; the seed and importer leave such rows alone. Not part of OrgRecord. */
   staffEditedAt: timestamp("staff_edited_at", { withTimezone: true }),

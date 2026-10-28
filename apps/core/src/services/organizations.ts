@@ -1,19 +1,23 @@
-import { and, asc, eq, max, ne, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, max, ne, sql } from "drizzle-orm";
 import { z } from "zod";
-import type { Db, Tx } from "@gcpe/db-kit";
-import { enqueueEvent, orgKeyFromName, orgRecordSchema, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
+import type { Db, DbOrTx, Tx } from "@gcpe/db-kit";
+import { enqueueEvent, orgKeyFromName, orgRecordSchema, type OrgRecord, type OrgSucceeded, type SubscriberConfig } from "@gcpe/events";
 import { isSafeUrl } from "@gcpe/site-settings";
-import { organizations } from "../db/schema";
-import { CORE_SOURCE, lockAggregate, orgAggregateId } from "./aggregate";
+import { organizations, userOrganizations } from "../db/schema";
+import { CORE_SOURCE, lockAggregate, orgAggregateId, userAggregateId } from "./aggregate";
+import { emitUserUpserted } from "./users";
 
 /**
  * isHq and isPublic are both optional on input: omitted keeps the stored flag (false for isHq,
  * true for isPublic, on a new organization). The BC seed and the legacy importer send either
  * flag only when they create the organization, so a re-seed or re-import never changes a flag
  * Core.Admin has set, in either direction (C124).
+ *
+ * successorKeys is not input at all: only a hand-over (succeedOrganization) sets it and only
+ * reactivation clears it, so a re-seed, re-import or PUT can neither set nor wipe it.
  */
 export const orgInputSchema = orgRecordSchema
-  .omit({ updatedAt: true, isHq: true, isPublic: true })
+  .omit({ updatedAt: true, isHq: true, isPublic: true, successorKeys: true })
   .extend({ isHq: z.boolean().optional(), isPublic: z.boolean().optional() });
 export type OrgInput = z.infer<typeof orgInputSchema>;
 
@@ -54,6 +58,7 @@ export function toOrgRecord(row: Row): OrgRecord {
     sectorKeys: row.sectorKeys,
     isHq: row.isHq,
     isPublic: row.isPublic,
+    successorKeys: row.successorKeys,
     updatedAt: row.updatedAt.toISOString(),
   };
 }
@@ -90,9 +95,11 @@ export async function upsertOrganization(
       isHq: parsed.isHq ?? (existing ? existing.isHq : (opts.isHqOnCreate ?? false)),
       isPublic: parsed.isPublic ?? (existing ? existing.isPublic : (opts.isPublicOnCreate ?? true)),
     };
+    // An active ministry has no successors: reactivating one, by any path, stops its redirect (N12).
+    const clearSuccessors = data.isActive && (existing?.successorKeys.length ?? 0) > 0;
     if (existing) {
       const { updatedAt: _u, ...current } = toOrgRecord(existing);
-      if (sameContent(current, data)) {
+      if (!clearSuccessors && sameContent(current, data)) {
         if (opts.legacyId !== undefined && opts.legacyId !== existing.legacyId) {
           const [row] = await tx
             .update(organizations)
@@ -104,7 +111,13 @@ export async function upsertOrganization(
         return { record: toOrgRecord(existing), changed: false };
       }
     }
-    const values = { ...data, legacyId: opts.legacyId ?? existing?.legacyId ?? null, updatedAt: new Date(), ...(opts.staffEdit ? { staffEditedAt: new Date() } : {}) };
+    const values = {
+      ...data,
+      legacyId: opts.legacyId ?? existing?.legacyId ?? null,
+      updatedAt: new Date(),
+      ...(opts.staffEdit ? { staffEditedAt: new Date() } : {}),
+      ...(clearSuccessors ? { successorKeys: [] } : {}),
+    };
     const [row] = await tx
       .insert(organizations)
       .values(values)
@@ -156,7 +169,8 @@ export class AbbreviationTakenError extends Error {
 }
 
 /**
- * Refuses an abbreviation another organization holds. There is no unique index: the legacy importer
+ * Refuses an abbreviation another active organization holds (N11: an inactive ministry's abbreviation
+ * is free, so a successor can take it). There is no unique index: the legacy importer
  * and seed write abbreviations as news.gov has them, so existing data may already repeat one. Instead,
  * every Hub write of an abbreviation takes one shared lock first, so two concurrent claims serialise
  * and the second sees the first. Callers hold their own org lock already (always taken before this one).
@@ -166,7 +180,7 @@ async function assertAbbreviationFree(tx: Tx, abbreviation: string, key: string)
   const [other] = await tx
     .select({ displayName: organizations.displayName })
     .from(organizations)
-    .where(and(sql`upper(trim(${organizations.abbreviation})) = ${abbreviation}`, ne(organizations.key, key)))
+    .where(and(sql`upper(trim(${organizations.abbreviation})) = ${abbreviation}`, ne(organizations.key, key), eq(organizations.isActive, true)))
     .orderBy(asc(organizations.sortOrder), asc(organizations.key))
     .limit(1);
   if (other) throw new AbbreviationTakenError(other.displayName);
@@ -231,6 +245,10 @@ export async function patchOrganizationProfile(
     const { minister, social, ...rest } = parsed;
     if (rest.abbreviation !== undefined && rest.abbreviation !== current.abbreviation?.trim().toUpperCase()) {
       await assertAbbreviationFree(tx, rest.abbreviation, key);
+    } else if (rest.isActive === true && !existing.isActive && current.abbreviation?.trim()) {
+      // Reactivating: a successor may have taken this abbreviation meanwhile (N11), and two active
+      // holders would issue the same release numbers.
+      await assertAbbreviationFree(tx, current.abbreviation.trim().toUpperCase(), key);
     }
     const merged: OrgInput = { ...current, ...rest, minister: { ...current.minister, ...minister }, social: { ...current.social, ...social } };
     // tx is a Db-compatible handle; upsertOrganization opens a nested transaction (savepoint) on it and re-takes the same lock.
@@ -350,4 +368,157 @@ export async function listOrganizations(db: Db): Promise<OrgRecord[]> {
 export async function getOrganization(db: Db, key: string): Promise<OrgRecord | null> {
   const [row] = await db.select().from(organizations).where(eq(organizations.key, key));
   return row ? toOrgRecord(row) : null;
+}
+
+/** What a hand-over moves (new-government spec §4). Each flag is a checkbox in the Hub, on by default (N8). */
+export const successionInputSchema = z
+  .object({
+    successorKeys: z.array(z.string().trim().min(1)).min(1),
+    moveSubscribers: z.boolean(),
+    moveStaff: z.boolean(),
+    moveCalendar: z.boolean(),
+    moveDrafts: z.boolean(),
+    takeAbbreviation: z.boolean(),
+  })
+  .strict();
+export type SuccessionInput = z.infer<typeof successionInputSchema>;
+
+/** A hand-over Core refuses. The route answers 422 with the message, which is Hub copy. */
+export class SuccessionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "SuccessionError";
+  }
+}
+
+/**
+ * Hands ministry `key` (A) over to `input.successorKeys` in one transaction (the caller's, when `tx`
+ * is given): A becomes inactive with those successors (in order, duplicates dropped); with moveStaff,
+ * A's user_organizations rows move to the first successor (B), skipping users already on B; with
+ * takeAbbreviation, B gets A's abbreviation (free once A is inactive, N11). Emits org.upserted for A
+ * (when it changed), org.deactivated (when A was active), org.upserted for B (when it changed),
+ * org.succeeded, then user.upserted per moved user. NoD, the Calendar and NRMS do their own moves
+ * from org.succeeded, so it is emitted even when nothing changed in Core (a re-sent hand-over).
+ *
+ * Returns null when A does not exist. Throws SuccessionError (a missing or inactive successor, A
+ * itself, or a successor whose chain leads back to A) and AbbreviationTakenError (another active
+ * ministry holds A's abbreviation), in both cases before anything is written.
+ */
+export async function succeedOrganization(
+  db: Db,
+  key: string,
+  input: SuccessionInput,
+  subscribers: SubscriberConfig[],
+  tx?: Tx,
+): Promise<OrgRecord | null> {
+  const run = async (tx: Tx): Promise<OrgRecord | null> => {
+    const successorKeys = [...new Set(input.successorKeys)];
+    // Every organization lock in key order, so two hand-overs touching the same ministries can't
+    // deadlock (A→B against B→A). Every Core write of an organization takes its lock, so the rows
+    // are read without FOR UPDATE (see the user locks below). The abbreviation lock comes last.
+    for (const k of [...new Set([key, ...successorKeys])].sort()) await lockAggregate(tx, orgAggregateId(k));
+    const [a] = await tx.select().from(organizations).where(eq(organizations.key, key));
+    if (!a) return null;
+    if (successorKeys.includes(key)) throw new SuccessionError("A ministry can't succeed itself.");
+    const found = successorKeys.length
+      ? await tx.select().from(organizations).where(inArray(organizations.key, successorKeys))
+      : [];
+    const byKey = new Map(found.map((o) => [o.key, o]));
+    if (!successorKeys.length || successorKeys.some((k) => !byKey.get(k)?.isActive)) throw new SuccessionError("Choose an active ministry as successor.");
+    await assertNoLoop(tx, a, successorKeys.map((k) => byKey.get(k)!));
+
+    // The users' locks before any organization row is locked or written: setCalendarAccess takes a
+    // user's lock and then shares the rows of that user's ministries, so the other order could deadlock.
+    const b = byKey.get(successorKeys[0]!)!;
+    const movers = input.moveStaff ? await staffOf(tx, a.id) : [];
+    for (const id of movers) await lockAggregate(tx, userAggregateId(id));
+
+    const now = new Date();
+    const changedA = a.isActive || JSON.stringify(a.successorKeys) !== JSON.stringify(successorKeys);
+    let recordA = toOrgRecord(a);
+    if (changedA) {
+      const [row] = await tx
+        .update(organizations)
+        .set({ isActive: false, successorKeys, updatedAt: now, staffEditedAt: now })
+        .where(eq(organizations.id, a.id))
+        .returning();
+      recordA = toOrgRecord(row!);
+    }
+
+    // A is inactive now, so its own abbreviation no longer counts against B.
+    const abbreviation = a.abbreviation?.trim().toUpperCase() || null;
+    const takeAbbreviation = input.takeAbbreviation && abbreviation !== null;
+    let recordB: OrgRecord | null = null;
+    if (takeAbbreviation && b.abbreviation?.trim().toUpperCase() !== abbreviation) {
+      await assertAbbreviationFree(tx, abbreviation, b.key);
+      const [row] = await tx
+        .update(organizations)
+        .set({ abbreviation, updatedAt: now, staffEditedAt: now })
+        .where(eq(organizations.id, b.id))
+        .returning();
+      recordB = toOrgRecord(row!);
+    }
+
+    if (movers.length) {
+      await tx.insert(userOrganizations).values(movers.map((userId) => ({ userId, organizationId: b.id }))).onConflictDoNothing();
+      await tx.delete(userOrganizations).where(and(eq(userOrganizations.organizationId, a.id), inArray(userOrganizations.userId, movers)));
+    }
+
+    const event = (type: string, aggregateKey: string, data: unknown) =>
+      enqueueEvent(tx, { type, source: CORE_SOURCE, aggregateId: orgAggregateId(aggregateKey), data }, subscribers);
+    if (changedA) await event("org.upserted", key, recordA);
+    if (a.isActive) await event("org.deactivated", key, { key });
+    if (recordB) await event("org.upserted", b.key, recordB);
+    const succeeded: OrgSucceeded = {
+      key,
+      successorKeys,
+      moveSubscribers: input.moveSubscribers,
+      moveCalendar: input.moveCalendar,
+      moveDrafts: input.moveDrafts,
+      takeAbbreviation,
+      at: now.toISOString(),
+    };
+    await event("org.succeeded", key, succeeded);
+    for (const id of movers) await emitUserUpserted(tx, id, subscribers);
+    return recordA;
+  };
+  return tx ? run(tx) : db.transaction(run);
+}
+
+/** The ids of the users who belong to an organization, sorted (the order their locks are taken and their events emitted). */
+async function staffOf(tx: Tx, organizationId: string): Promise<string[]> {
+  const rows = await tx
+    .select({ userId: userOrganizations.userId })
+    .from(userOrganizations)
+    .where(eq(userOrganizations.organizationId, organizationId))
+    .orderBy(asc(userOrganizations.userId));
+  return rows.map((r) => r.userId);
+}
+
+/**
+ * Refuses a successor whose own chain of successors (every branch, through inactive ministries)
+ * already reaches A: the redirects would loop.
+ */
+async function assertNoLoop(tx: Tx, a: Row, successors: Row[]): Promise<void> {
+  const rows = await tx.select({ key: organizations.key, successorKeys: organizations.successorKeys }).from(organizations);
+  const next = new Map(rows.map((r) => [r.key, r.successorKeys]));
+  for (const s of successors) {
+    const seen = new Set<string>();
+    const queue = [s.key];
+    while (queue.length) {
+      const k = queue.shift()!;
+      if (k === a.key) throw new SuccessionError(`${s.displayName} already leads back to ${a.displayName}; that would loop.`);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      queue.push(...(next.get(k) ?? []));
+    }
+  }
+}
+
+/** What a hand-over of `key` would move in Core: its staff count and the abbreviation a successor may take. Zero and null for an unknown key. */
+export async function successionPreview(db: DbOrTx, key: string): Promise<{ staff: number; abbreviation: string | null }> {
+  const [org] = await db.select({ id: organizations.id, abbreviation: organizations.abbreviation }).from(organizations).where(eq(organizations.key, key));
+  if (!org) return { staff: 0, abbreviation: null };
+  const [row] = await db.select({ n: count() }).from(userOrganizations).where(eq(userOrganizations.organizationId, org.id));
+  return { staff: row?.n ?? 0, abbreviation: org.abbreviation?.trim().toUpperCase() || null };
 }

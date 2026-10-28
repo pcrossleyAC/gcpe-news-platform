@@ -6,7 +6,7 @@ import { hashPassword, localLoginRouter } from "@gcpe/auth";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import { MAX_EVENT_BYTES } from "@gcpe/events";
 import { eq } from "drizzle-orm";
-import { organizations } from "../db/schema";
+import { organizations, userOrganizations, users } from "../db/schema";
 import { createApp } from "../app";
 import * as organizationsService from "../services/organizations";
 import * as republishService from "../services/republish";
@@ -470,6 +470,76 @@ describe("Core HTTP API", () => {
       await seed("forests-invalid");
       expect((await patch(siteEditor, { minister: { photoUrl: "http://x/y.jpg" } }, "forests-invalid")).status).toBe(400);
       expect((await patch(siteEditor, { minister: { email: "nope" } }, "forests-invalid")).status).toBe(400);
+    });
+  });
+
+  describe("ministry succession routes", () => {
+    // Own keys: this file shares one database.
+    const put = (key: string, displayName: string, abbreviation: string | null) =>
+      request(app).put(`/api/organizations/${key}`).set(auth(admin)).send({ ...healthOrg, key, displayName, abbreviation }).expect(200);
+    const succeed = (token: string, key: string, body: unknown) => request(app).post(`/api/organizations/${key}/succeed`).set(auth(token)).send(body as object);
+    const flags = { moveSubscribers: true, moveStaff: true, moveCalendar: true, moveDrafts: true, takeAbbreviation: true };
+
+    it("POST /succeed hands over and answers the record; GET /succession-preview counts first", async () => {
+      await put("succ-a", "Succ A", "SUCCA");
+      await put("succ-b", "Succ B", null);
+      const [u] = await tdb.db.insert(users).values({ email: "succ-staff@example.test", displayName: "Succ Staff" }).returning({ id: users.id });
+      const [a] = await tdb.db.select({ id: organizations.id }).from(organizations).where(eq(organizations.key, "succ-a"));
+      await tdb.db.insert(userOrganizations).values({ userId: u!.id, organizationId: a!.id });
+      const preview = await request(app).get("/api/organizations/succ-a/succession-preview").set(auth(admin));
+      expect(preview.status).toBe(200);
+      expect(preview.body).toEqual({ staff: 1, abbreviation: "SUCCA" });
+      const res = await succeed(admin, "succ-a", { successorKeys: ["succ-b"], ...flags });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ key: "succ-a", isActive: false, successorKeys: ["succ-b"] });
+      expect((await request(app).get("/api/organizations/succ-b").set(auth(reader))).body.abbreviation).toBe("SUCCA");
+      expect((await request(app).get("/api/organizations/succ-a/succession-preview").set(auth(admin))).body).toEqual({ staff: 0, abbreviation: "SUCCA" });
+    });
+
+    it("404 for an unknown ministry, on both routes", async () => {
+      await put("succ-404", "Succ 404", null);
+      expect((await succeed(admin, "nope", { successorKeys: ["succ-404"], ...flags })).status).toBe(404);
+      expect((await request(app).get("/api/organizations/nope/succession-preview").set(auth(admin))).status).toBe(404);
+    });
+
+    it("422 with the copy for a refused hand-over; 400 for a malformed body", async () => {
+      await put("succ-c", "Succ C", null);
+      await put("succ-d", "Succ D", null);
+      await tdb.db.update(organizations).set({ successorKeys: ["succ-c"] }).where(eq(organizations.key, "succ-d"));
+      const loop = await succeed(admin, "succ-c", { successorKeys: ["succ-d"], ...flags });
+      expect(loop.status).toBe(422);
+      expect(loop.body).toEqual({ error: "Succ D already leads back to Succ C; that would loop." });
+      const self = await succeed(admin, "succ-c", { successorKeys: ["succ-c"], ...flags });
+      expect(self.status).toBe(422);
+      expect(self.body).toEqual({ error: "A ministry can't succeed itself." });
+      expect((await succeed(admin, "succ-c", { successorKeys: [], ...flags })).status).toBe(400);
+      expect((await succeed(admin, "succ-c", { successorKeys: ["succ-d"] })).status).toBe(400);
+    });
+
+    it("409 abbreviation-taken when another active ministry already holds A's abbreviation", async () => {
+      await put("succ-e", "Succ E", "SUCCDUP");
+      await put("succ-f", "Succ F", null);
+      await put("succ-g", "Succ G", "SUCCDUP");
+      const res = await succeed(admin, "succ-e", { successorKeys: ["succ-f"], ...flags });
+      expect(res.status).toBe(409);
+      expect(res.body).toEqual({ error: "abbreviation-taken", takenBy: "Succ G" });
+    });
+
+    it("403 for NRMS.SiteEditor", async () => {
+      await put("succ-h", "Succ H", null);
+      await put("succ-i", "Succ I", null);
+      expect((await succeed(siteEditor, "succ-h", { successorKeys: ["succ-i"], ...flags })).status).toBe(403);
+      expect((await request(app).get("/api/organizations/succ-h/succession-preview").set(auth(siteEditor))).status).toBe(403);
+      expect((await request(app).get("/api/organizations/succ-h").set(auth(reader))).body.isActive).toBe(true);
+    });
+
+    it("reactivating through PATCH clears successorKeys", async () => {
+      await put("succ-j", "Succ J", null);
+      await put("succ-k", "Succ K", null);
+      await succeed(admin, "succ-j", { successorKeys: ["succ-k"], ...flags }).expect(200);
+      const res = await request(app).patch("/api/organizations/succ-j/profile").set(auth(admin)).send({ isActive: true });
+      expect(res.status).toBe(200);
+      expect(res.body).toMatchObject({ isActive: true, successorKeys: [] });
     });
   });
 });
