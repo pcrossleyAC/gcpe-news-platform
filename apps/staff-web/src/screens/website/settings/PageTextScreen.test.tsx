@@ -3,6 +3,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { defaultSiteSettings, type SiteSettings } from "@gcpe/site-settings";
+import { caretToEnd } from "../../../../test/editorCaret";
 import { jsonResponse } from "../../../../test/jsonResponse";
 import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
@@ -108,7 +109,10 @@ describe("PageTextScreen", () => {
     const user = userEvent.setup();
     const field = await screen.findByRole("textbox", { name: "Statement" });
     await user.click(field);
-    await user.type(field, " more");
+    // Through the editor, not user-event's DOM caret move, which ProseMirror's post-focus timer
+    // can put back on a slow runner (test/editorCaret.ts).
+    caretToEnd(field);
+    await user.type(field, " more", { skipClick: true });
     await user.click(screen.getByRole("button", { name: "Publish" }));
     await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
     const post = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!;
