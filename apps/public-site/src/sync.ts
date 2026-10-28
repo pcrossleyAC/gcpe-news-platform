@@ -10,6 +10,7 @@ import { enqueuePages, PRIORITY } from "./queue";
 import { chromeChanges, enqueueSiteWrite, keepSettingsHashes, stateAndBanner, writeSiteState, type SiteRenderState } from "./rebuild";
 import { enqueueChromeChanges } from "./rebuild-all";
 import type { PageOptions, SiteInfo } from "./render";
+import { writeSubscribePages } from "./subscribe-pages";
 import { currentSettings, themeDefaults } from "./settings";
 import type { SiteStorage } from "./storage";
 
@@ -51,11 +52,14 @@ export async function turnOptions(deps: SyncDeps, granville: string | null): Pro
  * page is then rendered with the defaults, so the marker records the defaults' hashes — the first
  * successful fetch then sees the difference and rebuilds back to the published settings.
  */
-export async function applyChromeChanges(deps: SyncDeps, turn: { state: SiteRenderState; fallbackDefaults: boolean }, force = false): Promise<void> {
+export async function applyChromeChanges(deps: SyncDeps, turn: { state: SiteRenderState; pageOpts: PageOptions; fallbackDefaults: boolean }, force = false): Promise<void> {
   const compared = turn.fallbackDefaults ? await keepSettingsHashes(deps.storage, turn.state) : turn.state;
   const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, compared, deps.site);
   if (!changes.all && changes.sections.length === 0) return;
   await enqueueChromeChanges(deps.db, deps.builder, changes);
+  // The subscribe pages are static (not queue pages) and carry the footer, so a site-wide change
+  // (footer, Blue Bridge, chrome version, base URL, and the cold start) rewrites them this turn.
+  if (changes.all) await writeSubscribePages(deps.storage, deps.site, turn.pageOpts);
   await writeSiteState(deps.storage, changes.all ? turn.state : compared, deps.site);
 }
 

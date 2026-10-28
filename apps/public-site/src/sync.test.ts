@@ -388,6 +388,22 @@ describe("syncSite", () => {
       expect(html(deps, "releases/K2/index.html")).toContain("New Holder");
     });
 
+    it("a footer change rewrites subscribe/index.html (and the other subscribe pages) on the same turn", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(withHolder("Old Holder"));
+      await syncSite(deps);
+      await (deps.storage as ReturnType<typeof memoryStorage>).write("subscribe/index.html", "stale");
+      api(deps).settings = published(withHolder("New Holder"), 2);
+      await syncSite(deps);
+      for (const p of ["subscribe/index.html", "subscribe/manage/index.html", "subscribe/unsubscribe/index.html"]) expect(html(deps, p)).toContain("New Holder");
+    });
+
+    it("the cold-start defaults (no marker) write the subscribe pages with the defaults' footer", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      await syncSite(deps);
+      expect(html(deps, "subscribe/index.html")).toContain("Tenant Default Holder");
+    });
+
     it("the copyright year rolling over (tenant time zone) queues every page", async () => {
       const deps = setup(new Map([["K1", post({ key: "K1" })]]));
       vi.useFakeTimers({ now: new Date("2027-01-01T06:30:00Z"), toFake: ["Date"] }); // 2026-12-31 23:30 in Vancouver (UTC-7 year-round from 2026-11-01)
