@@ -25,6 +25,7 @@ import { FooterScreen } from "./settings/FooterScreen";
 import { SocialScreen } from "./settings/SocialScreen";
 import { ThemeScreen } from "./settings/ThemeScreen";
 import { MinistryPagesScreen } from "./settings/MinistryPagesScreen";
+import { MediaContactsScreen } from "./settings/MediaContactsScreen";
 import { HistoryScreen } from "./settings/HistoryScreen";
 import type { SettingsState } from "./settings/api";
 import type { CarouselsResponse, LinksView, ListFilesResult, LiveFeedView, PinView } from "./types";
@@ -242,6 +243,31 @@ describe("accessibility — Website section screens", () => {
     await screen.findByRole("heading", { name: "Footer links", level: 1 });
     await screen.findByDisplayValue(ack);
     expect(await screen.findAllByText("Use plain text.")).not.toHaveLength(0);
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("MediaContactsScreen, with contact rows and field errors", async () => {
+    const state = settingsState(
+      (d) => ({
+        ...d,
+        contactsPage: {
+          ...d.contactsPage,
+          introHtml: "<p>Call <b>250-555-0100</b>.</p>",
+          contacts: [
+            { group: "Office of the Premier", groupUrl: "/ministries/office-of-the-premier/", subgroup: "", name: "Media Line", phone: "250 555 0100", cell: "", email: "bad", placement: "bottom" },
+            { group: "Other", groupUrl: "", subgroup: "", name: "Desk", phone: "", cell: "", email: "", placement: "top" },
+          ],
+        },
+      }),
+      [
+        { field: "contactsPage.contacts[0].email", message: "Enter an email address like name@gov.bc.ca." },
+        { field: "contactsPage.introHtml", message: "Too long." },
+      ],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<MediaContactsScreen />));
+    await screen.findByRole("heading", { name: "Media contacts page", level: 1 });
+    await screen.findByDisplayValue("Media Line");
     expect(await seriousViolations(container)).toEqual([]);
   });
 

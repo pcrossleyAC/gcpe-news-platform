@@ -18,6 +18,7 @@ const SECTIONS: { to: string; label: string; manageOnly: boolean }[] = [
   { to: "social", label: "Social links", manageOnly: true },
   { to: "theme", label: "Theme", manageOnly: true },
   { to: "ministry-pages", label: "Ministry pages", manageOnly: true },
+  { to: "media-contacts", label: "Media contacts page", manageOnly: true },
   { to: "settings-history", label: "Settings history", manageOnly: true },
 ];
 

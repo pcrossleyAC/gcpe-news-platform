@@ -47,7 +47,7 @@ describe("WebsiteScreen", () => {
     renderWithRole("NRMS.SiteEditor");
     await screen.findByRole("link", { name: "Carousel" });
     const labels = screen.getAllByRole("link").map((l) => l.textContent);
-    expect(labels.slice(labels.indexOf("Social links"))).toEqual(["Social links", "Theme", "Ministry pages", "Settings history"]);
+    expect(labels.slice(labels.indexOf("Social links"))).toEqual(["Social links", "Theme", "Ministry pages", "Media contacts page", "Settings history"]);
     expect(screen.getByRole("link", { name: "Settings history" })).toHaveAttribute("href", "/website/settings-history");
     expect(screen.getByRole("link", { name: "Ministry pages" })).toHaveAttribute("href", "/website/ministry-pages");
   });

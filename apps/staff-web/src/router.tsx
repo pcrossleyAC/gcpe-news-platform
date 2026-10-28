@@ -18,6 +18,7 @@ import { FilesScreen } from "./screens/website/FilesScreen";
 import { FeaturedScreen } from "./screens/website/FeaturedScreen";
 import { LogScreen } from "./screens/website/LogScreen";
 import { BannerScreen } from "./screens/website/settings/BannerScreen";
+import { MediaContactsScreen } from "./screens/website/settings/MediaContactsScreen";
 import { FooterScreen } from "./screens/website/settings/FooterScreen";
 import { SocialScreen } from "./screens/website/settings/SocialScreen";
 import { ThemeScreen } from "./screens/website/settings/ThemeScreen";
@@ -111,6 +112,7 @@ export const routes: RouteObject[] = [
           { path: "social", element: <SocialScreen /> },
           { path: "theme", element: <ThemeScreen /> },
           { path: "ministry-pages", element: <MinistryPagesScreen /> },
+          { path: "media-contacts", element: <MediaContactsScreen /> },
           { path: "settings-history", element: <SettingsHistoryScreen /> },
         ],
       },
