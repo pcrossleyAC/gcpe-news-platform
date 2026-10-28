@@ -456,6 +456,10 @@ describe("NRMS HTTP API", () => {
       expect(stranded.body.error).toBe("This is the only English page title for Advisory. Add another first.");
       expect((await del("/api/page-types/4105/No%20Such%20Title", admin)).status).toBe(404);
       expect((await put("/api/page-types/4105/No%20Such%20Title", admin, body)).status).toBe(404);
+      expect((await post("/api/page-types", admin, { ...body, pageTitle: "Lang", languageId: 1234 })).status).toBe(400);
+      expect((await post("/api/page-types", admin, { ...body, pageTitle: "x".repeat(51) })).status).toBe(400);
+      const fifty = await post("/api/page-types", admin, { ...body, pageTitle: "y".repeat(50) });
+      expect(fifty.status).toBe(201);
       expect((await del("/api/page-types/abc/x", admin)).status).toBe(404);
       expect((await post("/api/page-types", admin, { ...body, pageTitle: "<b>x</b>" })).status).toBe(400);
       expect((await post("/api/page-types", admin, { ...body, pageTitle: "Bad Pic", pageImageId: "00000000-0000-4000-8000-000000000001" })).status).toBe(400);

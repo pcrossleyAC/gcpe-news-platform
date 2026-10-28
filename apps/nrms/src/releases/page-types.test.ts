@@ -73,6 +73,14 @@ describe("page types (write rules)", () => {
     expect(await listPageTypes(tdb.db)).toContainEqual(expect.objectContaining({ pageTitle: "Factsheet", languageId: 4105, releaseType: "factsheet" }));
   });
 
+  it("renaming onto an existing title in the same language, or moving to French onto an existing French title, is a conflict and stores nothing", async () => {
+    await tdb.pool.query("INSERT INTO page_types (page_title, language_id, release_type, sort_order) VALUES ('Story', 3084, 'story', 1)");
+    const before = await listPageTypes(tdb.db);
+    await expect(updatePageType(tdb.db, { pageTitle: "Information Bulletin", languageId: 4105 }, { ...base, pageTitle: "news release", releaseType: "release" })).rejects.toBeInstanceOf(PageTypeConflictError);
+    await expect(updatePageType(tdb.db, { pageTitle: "Story", languageId: 4105 }, { ...base, pageTitle: "story", releaseType: "story", languageId: 3084 })).rejects.toBeInstanceOf(PageTypeConflictError);
+    expect(await listPageTypes(tdb.db)).toEqual(before);
+  });
+
   it("an unrelated edit is not blocked by a creatable type that already has no English title", async () => {
     await tdb.pool.query("DELETE FROM page_types WHERE release_type = 'advisory'");
     await expect(updatePageType(tdb.db, { pageTitle: "News Release", languageId: 4105 }, { ...base, pageTitle: "News Release 2", releaseType: "release" })).resolves.toBeTruthy();

@@ -35,6 +35,7 @@ const COLUMNS = {
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 /** Serialises writers: the table is a few dozen rows, and the checks below read before they write. */
+// The legacy importer (import/reference.ts) upserts without this lock and never deletes, so the primary key is its only guard; acceptable because imports run at cutover, not during admin edits.
 const lock = (tx: Tx) => tx.execute(sql`LOCK TABLE page_types IN SHARE ROW EXCLUSIVE MODE`);
 
 async function find(tx: Tx, key: PageTypeKey) {
