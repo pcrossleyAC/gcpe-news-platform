@@ -626,5 +626,13 @@
       "factsheets": "Factsheets & Opinion Editorials",
       "updates": "Updates"
     }
+  },
+  "siteIdentity": {
+    "description": "News from the Province of BC",
+    "twitterSite": "@BCGovNews",
+    "blueBridge": {
+      "message": "ALERT: His Majesty King Charles III, King of Canada, has passed away at the age of {age}.",
+      "birthDate": "1948-11-14"
+    }
   }
 }

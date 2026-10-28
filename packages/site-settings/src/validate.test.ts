@@ -54,6 +54,58 @@ describe("validateSiteSettings", () => {
     expect(errorsFor((d) => { d.footer.landAcknowledgement = `  ${"a".repeat(1001)}  `; })).toHaveLength(1);
   });
 
+  describe("siteIdentity", () => {
+    const msg = (m: string) => errorsFor((d) => { d.siteIdentity.blueBridge.message = m; });
+    const PLACEHOLDER = { field: "siteIdentity.blueBridge.message", message: "The only placeholder is {age}." };
+
+    it("refuses '{name}' and '{AGE}' in blueBridge.message with 'The only placeholder is {age}.'; accepts '{age}' twice", () => {
+      expect(msg("Hello {name}.")).toEqual([PLACEHOLDER]);
+      expect(msg("Aged {AGE}.")).toEqual([PLACEHOLDER]);
+      expect(msg("Aged {age} or {age}.")).toEqual([]);
+      expect(msg("No placeholder, no date.")).toEqual([]);
+    });
+
+    it("requires and bounds the message, plain text", () => {
+      expect(msg("  ")).toEqual([{ field: "siteIdentity.blueBridge.message", message: "Enter text for this field." }]);
+      expect(msg("<b>x</b>")).toEqual([{ field: "siteIdentity.blueBridge.message", message: "Use plain text." }]);
+      expect(msg("a".repeat(301))).toEqual([{ field: "siteIdentity.blueBridge.message", message: "Keep it to 300 characters or fewer." }]);
+      expect(msg("a".repeat(300))).toEqual([]);
+    });
+
+    const date = (v: string, m = "Aged {age}.") => errorsFor((d) => { d.siteIdentity.blueBridge.message = m; d.siteIdentity.blueBridge.birthDate = v; });
+    const DATE_ERR = [{ field: "siteIdentity.blueBridge.birthDate", message: "Enter a date like 1948-11-14." }];
+
+    it("refuses birthDate '1948-02-30', '14/11/1948' and tomorrow; accepts '' when the message has no {age}", () => {
+      expect(date("1948-02-30")).toEqual(DATE_ERR);
+      expect(date("14/11/1948")).toEqual(DATE_ERR);
+      expect(date("")).toEqual(DATE_ERR);
+      const t = new Date(Date.now() + 36 * 3600_000).toISOString().slice(0, 10);
+      expect(date(t)).toEqual(DATE_ERR);
+      expect(date("1948-11-14")).toEqual([]);
+      expect(date("", "No placeholder.")).toEqual([]);
+    });
+
+    const x = (v: string) => errorsFor((d) => { d.siteIdentity.twitterSite = v; });
+    it("refuses twitterSite '@BC Gov News' and a 16-character handle; accepts 'BCGovNews' and '@BCGovNews'", () => {
+      const ERR = [{ field: "siteIdentity.twitterSite", message: "Enter an X account like @BCGovNews." }];
+      expect(x("@BC Gov News")).toEqual(ERR);
+      expect(x("a".repeat(16))).toEqual(ERR);
+      expect(x('@a"><script>')).toEqual(ERR);
+      expect(x("BCGovNews")).toEqual([]);
+      expect(x("@BCGovNews")).toEqual([]);
+      expect(x("a".repeat(15))).toEqual([]);
+      expect(x("")).toEqual([]);
+    });
+
+    it("refuses markup in description and a 301-character description; allows empty", () => {
+      const d = (v: string) => errorsFor((s) => { s.siteIdentity.description = v; });
+      expect(d('x"><script>')).toEqual([{ field: "siteIdentity.description", message: "Use plain text." }]);
+      expect(d("a".repeat(301))).toEqual([{ field: "siteIdentity.description", message: "Keep it to 300 characters or fewer." }]);
+      expect(d("a".repeat(300))).toEqual([]);
+      expect(d("")).toEqual([]);
+    });
+  });
+
   it("checks the banner", () => {
     expect(errorsFor((d) => { d.banner.message = "<b>hi</b>"; })).toEqual([
       { field: "banner.message", message: "Use plain text. Add links below instead of HTML." },

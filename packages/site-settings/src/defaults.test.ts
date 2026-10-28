@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { bcSettings, prePlan4Settings } from "./fixtures";
+import { bcSettings, prePlan4Settings, prePlan5Settings } from "./fixtures";
 import {
   connectDisplayOrder, defaultSiteSettings, DEFAULT_NAVIGATION, fillMissingFields, siteSettingsSchema, storedSiteSettingsSchema, validateSiteSettings,
 } from "./index";
@@ -249,5 +249,48 @@ describe("plan-4 parts (contactsPage, pageText, navigation, connect.linkedin/pol
     expect(loaded.contactsPage.heading).toBe("Media contacts");
     expect(loaded.connect.linkedin).toEqual({ featured: [], accounts: [] });
     expect(loaded.footer).toEqual(raw.footer);
+  });
+});
+
+describe("siteIdentity (parity plan 5)", () => {
+  const raw = bcSettings();
+  const neutral = defaultSiteSettings(bc.site.theme);
+
+  it("neutral defaults: empty description and X account; today's Blue Bridge text", () => {
+    expect(neutral.siteIdentity).toEqual({
+      description: "",
+      twitterSite: "",
+      blueBridge: {
+        message: "ALERT: His Majesty King Charles III, King of Canada, has passed away at the age of {age}.",
+        birthDate: "1948-11-14",
+      },
+    });
+  });
+
+  it("bc.site-settings.json loads and validates; siteIdentity.description is 'News from the Province of BC'", () => {
+    const loaded = defaultSiteSettings(bc.site.theme, JSON.parse(JSON.stringify(raw)));
+    expect(validateSiteSettings(loaded)).toEqual([]);
+    expect(loaded.siteIdentity.description).toBe("News from the Province of BC");
+    expect(loaded.siteIdentity.twitterSite).toBe("@BCGovNews");
+    expect(loaded.siteIdentity.blueBridge).toEqual(neutral.siteIdentity.blueBridge);
+  });
+
+  it("a document without siteIdentity parses as stored (schemaVersion stays 1) but not as complete", () => {
+    const json = JSON.parse(JSON.stringify(prePlan5Settings()));
+    expect("siteIdentity" in json).toBe(false);
+    expect(storedSiteSettingsSchema.parse(json)).toEqual(prePlan5Settings());
+    expect(siteSettingsSchema.safeParse(json).success).toBe(false);
+    expect(prePlan5Settings().schemaVersion).toBe(1);
+  });
+
+  it("fillMissingFields fills siteIdentity from the defaults and keeps a stored value, including '' for description and twitterSite", () => {
+    const filled = fillMissingFields(prePlan5Settings(), raw);
+    expect(filled).toEqual(raw);
+    expect(filled.siteIdentity).not.toBe(raw.siteIdentity);
+    expect(siteSettingsSchema.parse(filled)).toEqual(raw);
+
+    const own = prePlan5Settings();
+    own.siteIdentity = { description: "", twitterSite: "", blueBridge: { message: "Notice.", birthDate: "" } };
+    expect(fillMissingFields(own, raw).siteIdentity).toEqual(own.siteIdentity);
   });
 });

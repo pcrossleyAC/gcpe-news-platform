@@ -1,5 +1,5 @@
 import { storedSiteSettingsSchema } from "./model";
-import type { ContactsPageSettings, MinistryPageLabels, NavigationSettings, PageTextSettings, SiteSettings, StoredSiteSettings, ThemeColors } from "./model";
+import type { ContactsPageSettings, MinistryPageLabels, NavigationSettings, PageTextSettings, SiteIdentitySettings, SiteSettings, StoredSiteSettings, ThemeColors } from "./model";
 import { validateSiteSettings } from "./validate";
 
 export const DEFAULT_MINISTRY_PAGES: MinistryPageLabels = {
@@ -48,6 +48,16 @@ const neutralPageText = (): PageTextSettings => ({
   searchArchiveLinks: [],
 });
 
+/** Today's Blue Bridge notice (the same for every tenant), with legacy's full stop. */
+const neutralSiteIdentity = (): SiteIdentitySettings => ({
+  description: "",
+  twitterSite: "",
+  blueBridge: {
+    message: "ALERT: His Majesty King Charles III, King of Canada, has passed away at the age of {age}.",
+    birthDate: "1948-11-14",
+  },
+});
+
 const emptyNetwork = () => ({ featured: [], accounts: [] });
 
 /** The defaults derived from a tenant theme alone (no tenant settings file). */
@@ -81,6 +91,7 @@ function neutralDefaults(tenantTheme: Parameters<typeof defaultSiteSettings>[0])
     contactsPage: neutralContactsPage(),
     pageText: neutralPageText(),
     navigation: structuredClone(DEFAULT_NAVIGATION),
+    siteIdentity: neutralSiteIdentity(),
   };
 }
 
@@ -110,7 +121,7 @@ export function defaultSiteSettings(
  * explicit value, including "", is the editor's choice and is kept. Each part is filled whole:
  * `footer.landAcknowledgement`, `connect.linkedin`, `connect.policyLink`, `connect.intro`, each
  * network's `collapseAfter` (only when the defaults set one), and
- * the `contactsPage`, `pageText` and `navigation` sections. The single place a later optional
+ * the `contactsPage`, `pageText`, `navigation` and `siteIdentity` sections. The single place a later optional
  * part gets its default.
  */
 export function fillMissingFields(doc: StoredSiteSettings, defaults: SiteSettings): SiteSettings {
@@ -142,5 +153,6 @@ export function fillMissingFields(doc: StoredSiteSettings, defaults: SiteSetting
     contactsPage: fill(doc.contactsPage, defaults.contactsPage),
     pageText: fill(doc.pageText, defaults.pageText),
     navigation: fill(doc.navigation, defaults.navigation),
+    siteIdentity: fill(doc.siteIdentity, defaults.siteIdentity),
   };
 }

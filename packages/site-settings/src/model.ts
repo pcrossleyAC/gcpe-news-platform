@@ -14,7 +14,7 @@ export const NETWORKS = [
 
 export type NetworkKey = (typeof NETWORKS)[number]["key"];
 
-export const SECTION_KEYS = ["banner", "theme", "footer", "connect", "ministryPages", "contactsPage", "pageText", "navigation"] as const;
+export const SECTION_KEYS = ["banner", "theme", "footer", "connect", "ministryPages", "contactsPage", "pageText", "navigation", "siteIdentity"] as const;
 export type SectionKey = (typeof SECTION_KEYS)[number];
 
 export const SECTION_LABEL: Record<SectionKey, string> = {
@@ -26,6 +26,7 @@ export const SECTION_LABEL: Record<SectionKey, string> = {
   contactsPage: "Media contacts page",
   pageText: "Page text",
   navigation: "Navigation and labels",
+  siteIdentity: "Site identity",
 };
 
 /** Structural shapes only; the rules (and their messages) live in `validateSiteSettings`. */
@@ -119,6 +120,15 @@ const navigationSchema = z.object({
   listingTitles: stringFields(LISTING_KINDS),
 });
 
+/** The `{age}` placeholder in `siteIdentity.blueBridge.message`: replaced by the age at the birth date. */
+export const BLUE_BRIDGE_AGE_TOKEN = "{age}";
+
+const siteIdentitySchema = z.object({
+  description: z.string(),
+  twitterSite: z.string(),
+  blueBridge: z.object({ message: z.string(), birthDate: z.string() }),
+});
+
 const policyLinkSchema = z.object({ text: z.string(), url: z.string() });
 
 /** One network list per `NETWORKS` key, in `NETWORKS` order; `linkedin` (added later) is optional
@@ -183,6 +193,7 @@ export const siteSettingsSchema = z.object({
   contactsPage: contactsPageSchema,
   pageText: pageTextSchema,
   navigation: navigationSchema,
+  siteIdentity: siteIdentitySchema,
 });
 
 /**
@@ -200,6 +211,8 @@ export const storedSiteSettingsSchema = z.object({
   contactsPage: contactsPageSchema.optional(),
   pageText: pageTextSchema.optional(),
   navigation: navigationSchema.optional(),
+  /** Optional: a document published before parity plan 5 lacks it (`fillMissingFields`). */
+  siteIdentity: siteIdentitySchema.optional(),
 });
 
 export type SiteSettings = z.infer<typeof siteSettingsSchema>;
@@ -214,6 +227,7 @@ export type DirectoryContact = z.infer<typeof directoryContactSchema>;
 export type ContactsPageSettings = SiteSettings["contactsPage"];
 export type PageTextSettings = SiteSettings["pageText"];
 export type NavigationSettings = SiteSettings["navigation"];
+export type SiteIdentitySettings = SiteSettings["siteIdentity"];
 export type LabelKey = (typeof LABEL_KEYS)[number];
 export type ListingKind = (typeof LISTING_KINDS)[number];
 

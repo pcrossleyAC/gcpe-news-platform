@@ -6,9 +6,9 @@ describe("sections", () => {
   it("labels", () => {
     expect(SECTION_LABEL).toEqual({
       banner: "Banner", theme: "Theme", footer: "Footer", connect: "Social links", ministryPages: "Ministry pages",
-      contactsPage: "Media contacts page", pageText: "Page text", navigation: "Navigation and labels",
+      contactsPage: "Media contacts page", pageText: "Page text", navigation: "Navigation and labels", siteIdentity: "Site identity",
     });
-    expect(SECTION_KEYS.slice(-3)).toEqual(["contactsPage", "pageText", "navigation"]);
+    expect(SECTION_KEYS.slice(-4)).toEqual(["contactsPage", "pageText", "navigation", "siteIdentity"]);
   });
   it("NETWORKS puts linkedin after bluesky; policyLink and intro are not networks", () => {
     expect(NETWORKS.map((n) => n.key)).toEqual(["facebook", "x", "instagram", "threads", "bluesky", "linkedin", "flickr", "youtube", "blogs"]);
@@ -26,6 +26,15 @@ describe("sections", () => {
     const c = structuredClone(a);
     c.connect.intro = "Hi.";
     expect(differingSections(a, c)).toEqual(["connect"]);
+  });
+  it("differingSections reports a siteIdentity edit", () => {
+    const a = bcSettings();
+    const b = structuredClone(a);
+    b.siteIdentity.blueBridge.message = "Another message.";
+    expect(differingSections(a, b)).toEqual(["siteIdentity"]);
+    const c = structuredClone(a);
+    c.siteIdentity.twitterSite = "";
+    expect(differingSections(a, c)).toEqual(["siteIdentity"]);
   });
   it("differingSections reports exactly the changed sections", () => {
     const a = bcSettings();

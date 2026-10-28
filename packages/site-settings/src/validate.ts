@@ -1,5 +1,5 @@
 import { contrastRatio } from "./contrast";
-import { LABEL_KEYS, LISTING_KINDS, NETWORKS, MINISTRY_PAGE_LABEL_KEYS, THEME_COLOR_KEYS } from "./model";
+import { BLUE_BRIDGE_AGE_TOKEN, LABEL_KEYS, LISTING_KINDS, NETWORKS, MINISTRY_PAGE_LABEL_KEYS, THEME_COLOR_KEYS } from "./model";
 import type { FieldError, LinkSetting, SiteSettings } from "./model";
 import { isSafeUrl } from "./urls";
 
@@ -40,6 +40,9 @@ const PHONE_MAX = 50;
 const HEADER_LINKS_MAX = 4;
 const CONTACTS_MAX = 30;
 const ARCHIVE_LINKS_MAX = 10;
+const IDENTITY_TEXT_MAX = 300;
+const X_HANDLE = /^@?[A-Za-z0-9_]{1,15}$/;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const EMAIL = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const UNSAFE_URL = "Must start with https:// or / (a page on this site).";
 const hasMarkup = (s: string) => s.includes("<") || s.includes(">");
@@ -157,6 +160,7 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
   validateContactsPage(doc.contactsPage, errors);
   validatePageText(doc.pageText, errors);
   validateNavigation(doc.navigation, errors);
+  validateSiteIdentity(doc.siteIdentity, errors);
 
   return errors;
 }
@@ -221,4 +225,28 @@ function validateNavigation(n: SiteSettings["navigation"], errors: FieldError[])
   for (const kind of LISTING_KINDS) checkText(`navigation.listingTitles.${kind}`, n.listingTitles[kind], { max: HEADING_MAX, required: true }, errors);
   checkListSize("navigation.headerLinks", n.headerLinks, HEADER_LINKS_MAX, errors);
   validateLinks("navigation.headerLinks", n.headerLinks, errors);
+}
+
+/** A real calendar date `YYYY-MM-DD` that is not after today (UTC). */
+function isPastIsoDate(v: string): boolean {
+  if (!ISO_DATE.test(v)) return false;
+  const t = Date.parse(`${v}T00:00:00Z`);
+  return !Number.isNaN(t) && new Date(t).toISOString().slice(0, 10) === v && v <= new Date().toISOString().slice(0, 10);
+}
+
+/** The text lands in meta tags and attributes, so it is plain text (no `<` or `>`). */
+function validateSiteIdentity(s: SiteSettings["siteIdentity"], errors: FieldError[]): void {
+  checkText("siteIdentity.description", s.description, { max: IDENTITY_TEXT_MAX }, errors);
+  if (s.twitterSite !== "" && !X_HANDLE.test(s.twitterSite)) {
+    errors.push({ field: "siteIdentity.twitterSite", message: "Enter an X account like @BCGovNews." });
+  }
+  const bb = s.blueBridge;
+  const before = errors.length;
+  checkText("siteIdentity.blueBridge.message", bb.message, { max: IDENTITY_TEXT_MAX, required: true }, errors);
+  if (errors.length === before && bb.message.match(/\{[^}]*\}?/g)?.some((p) => p !== BLUE_BRIDGE_AGE_TOKEN)) {
+    errors.push({ field: "siteIdentity.blueBridge.message", message: "The only placeholder is {age}." });
+  }
+  if (bb.message.includes(BLUE_BRIDGE_AGE_TOKEN) && !isPastIsoDate(bb.birthDate)) {
+    errors.push({ field: "siteIdentity.blueBridge.birthDate", message: "Enter a date like 1948-11-14." });
+  }
 }

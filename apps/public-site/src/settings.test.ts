@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { bcSettings, prePlan4Settings } from "../../../packages/site-settings/src/fixtures";
+import { bcSettings, prePlan4Settings, prePlan5Settings } from "../../../packages/site-settings/src/fixtures";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
 import { fillMissingFields, storedSiteSettingsSchema } from "@gcpe/site-settings";
@@ -77,6 +77,16 @@ describe("currentSettings with a document published before plan 4", () => {
     expect(fallbackDefaults).toBe(false);
     expect(settings).toEqual(defaults);
     expect(JSON.parse(storage.files.get(SITE_SETTINGS_PATH) as string)).toEqual(defaults);
+  });
+
+  it("a document published before plan 5 (no siteIdentity) parses and reads back filled", async () => {
+    const newsApi = fakeNewsApi();
+    newsApi.settings = { revision: 8, document: prePlan5Settings() };
+    const storage = memoryStorage();
+    const { settings, fallbackDefaults } = await currentSettings({ newsApi, storage, defaults });
+    expect(fallbackDefaults).toBe(false);
+    expect(settings.siteIdentity).toEqual(defaults.siteIdentity);
+    expect(JSON.parse(storage.files.get(SITE_SETTINGS_PATH) as string).siteIdentity).toEqual(defaults.siteIdentity);
   });
 
   it("a pageText missing notFound, assetLicence or privacy entirely is refused, so the last applied settings stand", async () => {
