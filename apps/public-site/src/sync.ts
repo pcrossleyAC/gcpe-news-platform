@@ -125,8 +125,12 @@ function singleFlightFeed(feed: () => Promise<unknown>): Promise<unknown> {
 
 /**
  * One serialised turn (per SiteStorage, like every other site write): queue the caller's pages,
- * decide the chrome and the site settings (a home() failure rejects the turn; a settings failure
- * keeps the last applied), read the change feed, render a batch.
+ * decide the chrome and the site settings (a home() failure rejects the turn), read the change
+ * feed, render a batch. The settings are the published document, else the tenant defaults when
+ * nothing is published (404); either sets and moves the marker's hashes, and a footer change
+ * (every page) also rewrites the static subscribe pages this turn. A settings fetch failure
+ * keeps the last applied document (or, with none yet, uses the defaults for this render only —
+ * see applyChromeChanges).
  */
 export function syncSite(deps: SyncDeps, extra: { pages?: string[] } = {}): Promise<SyncResult> {
   const feedRead = deps.feed ? singleFlightFeed(deps.feed) : undefined;

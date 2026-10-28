@@ -1,5 +1,6 @@
 /** An absolute https URL with a host, or a path on this site. Rejects http:, javascript:, data:,
- * `//host`, `/\host`, surrounding whitespace and empty strings. */
+ * `//host`, `/\host`, empty strings and any whitespace or control character anywhere in the
+ * URL (browsers strip tab/newline, so "/\t/host" would resolve off-site). */
 export function isSafeUrl(url: string): boolean {
   // Browsers strip tab/newline anywhere in a URL, so "/\t/host" would resolve off-site: refuse any
   // whitespace or control character, not just surrounding whitespace.

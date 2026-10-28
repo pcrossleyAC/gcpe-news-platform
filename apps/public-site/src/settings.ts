@@ -90,9 +90,14 @@ async function readPersisted(storage: SiteStorage): Promise<SiteSettings | null>
  *   the rebuilds follow it, since rebuilding from the last published document is correct (and in
  *   steady state its hashes equal the marker's), and the footer hash still takes this year;
  * - failed with nothing persisted: the tenant defaults (logged) with `fallbackDefaults: true` —
- *   the caller must keep the marker's settings hashes (rebuild.ts's keepSettingsHashes) so the
- *   defaults never count as applied, while Blue Bridge, test, chrome and base URL changes still
- *   rebuild the site.
+ *   a stand-in for this render only. The caller compares with the marker's own settings hashes
+ *   (rebuild.ts's keepSettingsHashes), so the stand-in queues no settings rebuild by itself and
+ *   Blue Bridge, test, chrome and base URL changes still rebuild the site; if a rebuild-all is
+ *   queued anyway, the marker records the defaults' hashes (every page now shows them) and the
+ *   first successful fetch rebuilds back to the published settings (sync.ts's
+ *   applyChromeChanges).
+ * Unlike that stand-in, the defaults of a 404 (first bullet) are real settings: they set and
+ * move the hashes, so a cold start with nothing published writes the marker with them.
  */
 export async function currentSettings(deps: { newsApi: NewsApiClient; storage: SiteStorage; defaults: SiteSettings }): Promise<{ settings: SiteSettings; fallbackDefaults: boolean }> {
   let settings: SiteSettings;

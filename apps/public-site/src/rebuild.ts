@@ -99,9 +99,14 @@ export async function chromeChanges(storage: SiteStorage, state: SiteRenderState
 
 /**
  * `state` with the previous marker's settings hashes, when there is a marker: for a turn whose
- * settings fetch failed with nothing persisted, so its stand-in defaults never move them (and
- * never queue a settings rebuild) while the rest of the chrome is still compared and recorded.
- * No marker (a first-ever start): `state` as is.
+ * settings fetch failed with nothing persisted (`fallbackDefaults`), so the stand-in defaults
+ * are not compared and never queue a settings rebuild by themselves, while the rest of the
+ * chrome is still compared. This only shapes the *comparison*: when a rebuild-all is queued
+ * anyway, applyChromeChanges records the turn's own state (the defaults' hashes), because every
+ * page was then rendered with the defaults. No marker (a first-ever start): `state` as is.
+ *
+ * A *fetched* default (the News API answered 404: nothing published yet) is not this case: it
+ * is the settings, so its hashes are compared and recorded like a published document's.
  */
 export async function keepSettingsHashes(storage: SiteStorage, state: SiteRenderState): Promise<SiteRenderState> {
   const previous = await readSiteState(storage);
