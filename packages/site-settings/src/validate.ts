@@ -21,7 +21,8 @@ const RESERVED_LINK_IDS: ReadonlySet<string> = new Set([
   "mini-site-search-input", "site-search-input", "main-nav", "main-nav-container", "BCGov-logo", "sm-BCGov-logo",
   "banner-toggle-sm", "nav-menu-sm", "sm-nav-container", "navbarSupportedContent", "sm-nav-ul", "bannerToggleLink",
   "main", "main-content", "banner", "site-banner", "bridge-banner", "btnCloseBannerBridge", "landAcknowledgement",
-  "footer", "BCGov-logo-footer", "carousel-holder",
+  "footer", "BCGov-logo-footer", "carousel-holder", "btnCloseBanner", "not-found-q", "main-content-release", "live-consent",
+  "emergency-heading",
 ]);
 const NAV_LABEL_MAX = 40;
 const SHORT_TEXT_MAX = 100;

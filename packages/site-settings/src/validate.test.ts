@@ -132,7 +132,7 @@ describe("validateSiteSettings", () => {
     ]);
   });
 
-  it.each(["live-button", "news-dropdown", "menu", "sm-nav-ul", "footer", "live-status"])("refuses the header link id %j that the site itself uses", (id) => {
+  it.each(["live-button", "news-dropdown", "menu", "sm-nav-ul", "footer", "live-status", "btnCloseBanner", "not-found-q", "main-content-release", "live-consent"])("refuses the header link id %j that the site itself uses", (id) => {
     expect(errorsFor((d) => { d.navigation.headerLinks = [{ id, text: "Hi", url: "/x/" }]; })).toEqual([
       { field: "navigation.headerLinks[0].id", message: `The id "${id}" is used by the site itself. Choose a different link id.` },
     ]);
