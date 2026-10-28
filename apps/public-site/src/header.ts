@@ -15,7 +15,9 @@ const LOGO_ALT = "Government of B.C.";
  * Without JavaScript "News" is a plain link to the ministries page; `site.js` (site-script.ts)
  * turns it into the `#menu` toggle, and only when `#menu` exists, which needs a non-empty
  * `ministryMenu`. overrides.css shows the collapsed phone nav and search drawer under
- * `html:not(.js)`, so Subscribe and search stay reachable with no script.
+ * `html:not(.js)`, so Subscribe and search stay reachable with no script. On the search page
+ * (`pageSearchInput`) the phone search control is a plain link to the page's own box, so it works
+ * with no script too.
  */
 export function renderHeader(site: SiteInfo, opts: PageOptions): string {
   const base = e(basePath(site));
@@ -41,14 +43,21 @@ ${menu.map((m) => `<li><a href="${base}/ministries/${e(encodeURIComponent(m.key)
 </div>
 </div>`
     : "";
-  // The search page has its own form, so the header's search (both forms and the drawer toggle) is left off there, as legacy does.
-  const search = !opts.hideHeaderSearch;
+  // The search page has its own form, so the header's search forms and drawer are left off there,
+  // as legacy does. Legacy still shows the phone toggle there (R12): ours keeps it, in the same
+  // slot with the same look, as a link to the page's own box; site.js focuses that box on click.
+  const pageSearch = opts.pageSearchInput;
+  const search = !pageSearch;
+  const toggleIcon = icon("search", base);
   const searchToggle = search
     ? `<div class="search-toggle-container d-lg-none">
-<button type="button" id="search-md-button" class="input-group-text btn-primary-outline search-md menu-icon" aria-controls="smd-search-container" aria-expanded="false" aria-label="Search">${icon("search", base)}</button>
+<button type="button" id="search-md-button" class="input-group-text btn-primary-outline search-md menu-icon" aria-controls="smd-search-container" aria-expanded="false" aria-label="Search">${toggleIcon}</button>
 </div>
 `
-    : "";
+    : `<div class="search-toggle-container d-lg-none page-search">
+<a id="search-md-button" class="input-group-text btn-primary-outline search-md menu-icon" href="#${e(pageSearch)}" aria-label="Search" data-page-search>${toggleIcon}</a>
+</div>
+`;
   const desktopSearch = search ? `${searchForm("d-flex search d-none d-lg-block", "mini-site-search-input")}
 ` : "";
   const searchDrawer = search

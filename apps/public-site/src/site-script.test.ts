@@ -154,11 +154,31 @@ describe("site.js", () => {
     expect(doc.activeElement).toBe(news);
   });
 
-  it("on the search page (no header search) the remaining toggles still work", () => {
-    const { doc } = page({ ministryMenu: MENU, hideHeaderSearch: true });
-    expect(doc.getElementById("search-md-button")).toBeNull();
+  it("on the search page the phone search control focuses (and scrolls to) the page's own box instead of opening a panel", () => {
+    const { dom, doc } = page({ ministryMenu: MENU, pageSearchInput: "q" }, (d) => {
+      d.getElementById("main")!.insertAdjacentHTML("beforeend", '<form role="search"><label for="q">Search for</label><input type="search" id="q" name="q"></form>');
+    });
+    const q = doc.getElementById("q") as HTMLInputElement;
+    const scrolled: unknown[] = [];
+    q.scrollIntoView = (arg?: unknown) => void scrolled.push(arg);
+    const link = doc.getElementById("search-md-button")!;
+    expect(link.tagName).toBe("A");
+    const click = new dom.window.MouseEvent("click", { bubbles: true, cancelable: true });
+    link.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(true);
+    expect(doc.activeElement).toBe(q);
+    expect(scrolled).toEqual([{ block: "center" }]);
+    expect(doc.querySelector(".show")).toBeNull();
+    // The remaining toggles still work.
     doc.getElementById("news-dropdown")!.click();
     expect(doc.getElementById("menu")!.classList.contains("show")).toBe(true);
+  });
+
+  it("a page-search link whose target is missing is left to the browser (no throw, default not prevented)", () => {
+    const { dom, doc } = page({ ministryMenu: MENU, pageSearchInput: "nope" });
+    const click = new dom.window.MouseEvent("click", { bubbles: true, cancelable: true });
+    doc.getElementById("search-md-button")!.dispatchEvent(click);
+    expect(click.defaultPrevented).toBe(false);
   });
 
   it("Escape closes a mouse-opened panel when focus stayed on the page (Safari, macOS Firefox: a click doesn't focus a button)", () => {

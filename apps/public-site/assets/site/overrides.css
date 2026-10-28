@@ -88,10 +88,11 @@ body.menu-open { overflow: hidden; }
   body:has(#navbarSupportedContent.show) { overflow: hidden; }
 }
 /* No JavaScript (or site.js failed to load, render.ts's onerror): the phone nav and the search
- * drawer show in the page flow, News stays a link, and the toggles that can't work are hidden. */
+ * drawer show in the page flow, News stays a link, and the toggles that can't work are hidden.
+ * The search page's phone search control (.page-search) is a link to the page's box, so it stays. */
 html:not(.js) #navbarSupportedContent, html:not(.js) #smd-search-container { display: block; }
 html:not(.js) .nav-border { height: auto; }
-html:not(.js) #nav-menu-sm, html:not(.js) .search-toggle-container { display: none !important; }
+html:not(.js) #nav-menu-sm, html:not(.js) .search-toggle-container:not(.page-search) { display: none !important; }
 @media (max-width: 767px) {
   html:not(.js) #main-nav .navbar { flex-wrap: wrap; }
   html:not(.js) #sm-nav-container { position: static; height: auto; width: 100% !important; }

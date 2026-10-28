@@ -110,5 +110,5 @@ ${options}
 <ol id="results" aria-labelledby="results-heading"></ol>
 <div id="pages"></div>
 <script>${SEARCH_SCRIPT}</script>`;
-  return renderPage("Search news", site, `${base}/search/`, body, { ...opts, hideHeaderSearch: true });
+  return renderPage("Search news", site, `${base}/search/`, body, { ...opts, pageSearchInput: "q" });
 }
