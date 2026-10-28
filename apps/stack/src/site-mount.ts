@@ -60,7 +60,9 @@ export function mountSite(app: express.Express, opts: { outputDir: string; baseP
   // today (everything after noStoreByDefault is no-store anyway; the one new case is
   // express.static's directory redirect under /hub/assets). A route that ever wants a
   // cacheable redirect cannot get one behind this (it overwrites Cache-Control on any 3xx at
-  // writeHead); it must be mounted before mountSite in stack.ts.
+  // writeHead); it must be mounted before mountSite in stack.ts. Running on every request also
+  // means one fs.stat per request that isn't a site file (/api, /hub, /stack/tick…) before it
+  // falls through: negligible next to the apps' own work, so not worth a prefix skip-list here.
   const root = express.Router();
   root.use(...staticSite(outputDir));
   app.use(root);

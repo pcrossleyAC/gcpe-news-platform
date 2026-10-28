@@ -160,7 +160,8 @@ const linkList = (links: LinkSetting[], site: SiteInfo) => links.map((l) => `<li
  * change rebuilds every page): legacy `_Layout`'s skeleton (look-and-feel §1) with the §5
  * deviations — the band is an `aside` landmark with no inline style, the footer is `footer#footer`
  * (no `role=navigation`), its headings are `h2` (overrides.css restates legacy's `#footer h4`),
- * the link columns sit in one labelled `nav` (`display:contents`, so legacy's flex row holds) and
+ * the link columns sit in one labelled `nav` (a flex box of its own that reproduces legacy's flat
+ * `.top` row; overrides.css) and
  * the lists carry no `role=menu`. One logo, the bridge file while Blue Bridge is on, instead of
  * legacy's two toggled by class. An empty or whitespace-only acknowledgement shows no band.
  */

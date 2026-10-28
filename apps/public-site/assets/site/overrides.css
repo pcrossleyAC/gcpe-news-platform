@@ -15,7 +15,7 @@
 @font-face { font-family: "BCSans"; font-style: normal; font-weight: 300; font-display: swap; src: url("../legacy/fonts/BCSans-Light.woff2") format("woff2"); }
 @font-face { font-family: "BCSans"; font-style: italic; font-weight: 300; font-display: swap; src: url("../legacy/fonts/BCSans-LightItalic.woff2") format("woff2"); }
 
-/* Moved from themeCss: today's chrome, until Tasks 6-9 and plan 2 replace it. */
+/* Moved from themeCss: base element rules the page bodies still rely on, until plan 2 replaces them. */
 *, *::before, *::after { box-sizing: border-box; }
 html { font-family: var(--font-family); color: var(--color-text); background: var(--color-background); line-height: 1.5; }
 body { margin: 0; }
@@ -42,7 +42,7 @@ img { max-width: 100%; height: auto; }
 /* Folded in from legacy components.css (its only rule); its light-grey literal becomes the border token. */
 .nav-link:hover, .nav-link:focus { background-color: var(--color-border); border-radius: 4px; }
 
-/* The Font Awesome icon sprite (assets/legacy/lib/icons.svg). */
+/* The Font Awesome icon sprite (assets/site/icons.svg). */
 .icon{width:1em;height:1em;fill:currentColor;vertical-align:-0.125em}
 
 /* look-and-feel §5 #12: long URLs in story copy wrap instead of overflowing on a phone. */
