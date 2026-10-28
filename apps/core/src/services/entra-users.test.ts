@@ -104,9 +104,19 @@ describe("Entra identities on Core users", () => {
 
       const pA = matchEntraUser(tdb.db, "oid-row-race", "race-row-a@example.test");
       const pB = matchEntraUser(tdb.db, "oid-row-race", "race-row-b@example.test");
-      // Give both calls time to pass their outer, unlocked check and block on the row lock each
-      // held client is holding, before either client commits and opens the window.
-      await new Promise((resolve) => setTimeout(resolve, 100));
+      // Wait until both calls are genuinely blocked on the row locks the held clients own (so both
+      // have already passed their outer, unlocked "oid not yet linked" check), by polling
+      // pg_stat_activity. A fixed sleep here let a slow runner commit row a before row b's call had
+      // even started, so b then found the oid already linked and returned ok.
+      let blocked = 0;
+      for (let i = 0; i < 1000 && blocked < 2; i++) {
+        const w = await tdb.pool.query(
+          "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND pid <> pg_backend_pid() AND wait_event_type = 'Lock' AND wait_event IN ('transactionid', 'tuple')",
+        );
+        blocked = w.rows[0].n;
+        if (blocked < 2) await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+      expect(blocked).toBe(2);
 
       await clientA.query("COMMIT");
       expect(await pA).toEqual({ ok: true, user: { id: a.id, name: a.displayName, email: "race-row-a@example.test", roles: [] } });
