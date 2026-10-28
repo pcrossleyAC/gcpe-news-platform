@@ -194,6 +194,13 @@ but no Hub form sets it (Add ministry stores none). The Add ministry and edit fo
 **Abbreviation** field, Core.Admin only: 2–10 capital letters or digits (stored upper-case),
 unique across organizations; changing it affects only releases approved afterwards.
 
+## Not-public hint on Organizations (added by the user, 2026-10-27, QA feedback)
+
+Deactivate and Reactivate never change an organization's Public flag, so a ministry that was
+made non-public stays hidden after reactivation. The Organizations screen says so: after a
+reactivation of a non-public ministry the status adds "It isn't public: tick Public to list it
+on the public site.", and every non-public row shows "Not public" beside its name.
+
 ## Hub screens (Website section, manage roles)
 
 Tabs added after the existing ones: **Banner**, **Footer**, **Social links**, **Theme**,
