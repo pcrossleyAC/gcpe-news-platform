@@ -108,6 +108,8 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
         // Home's News by Sector box names each active sector.
         ...(kind === "sectors" ? [{ pageId: "home", priority: live }] : []),
         ...(kind === "sectors" || kind === "tags" ? [{ pageId: "connect", priority: live }] : []),
+        // /search/'s Sector filter lists every active sector.
+        ...(kind === "sectors" ? [{ pageId: "search", priority: live }] : []),
         // The kind's index lists this category (a ministry's is `ministries`); bulk, like every index
         // render, so a rename never puts one ahead of the pages being watched. The category's own
         // pages above stay live.
@@ -122,7 +124,8 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
     // A term started, or a term's dates, label or legacy link changed (new-government spec §3).
     // Every term page is added by `syncChanges`, from the builder's terms.
     case "government_terms":
-      return [{ pageId: "archive-terms", priority: live }, { pageId: "archive-term:current", priority: live }, { pageId: "sitemap:pages", priority: live }];
+      // /search/'s Date filter lists every public term.
+      return [{ pageId: "archive-terms", priority: live }, { pageId: "archive-term:current", priority: live }, { pageId: "sitemap:pages", priority: live }, { pageId: "search", priority: live }];
     default:
       return [];
   }

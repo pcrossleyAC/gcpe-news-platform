@@ -197,4 +197,10 @@ describe("settingsHashes: header and labels", () => {
       expect(h.headerHash).toBe(base.headerHash);
     }
   });
+
+  it("an older-archive link edit moves searchTextHash only", () => {
+    const h = hashes((s) => { s.pageText.searchArchiveLinks[0]!.text = "Older news"; });
+    const changed = Object.keys(base).filter((k) => h[k as keyof typeof h] !== base[k as keyof typeof base]);
+    expect(changed).toEqual(["searchTextHash"]);
+  });
 });

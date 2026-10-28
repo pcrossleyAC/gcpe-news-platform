@@ -170,6 +170,13 @@ describe("settings sections: pageText", () => {
     expect(storage.files.get("live/index.html")).toContain("Watch live");
   });
 
+  it("a pageText.searchArchiveLinks edit queues exactly search", async () => {
+    const { items, dependents, storage } = await edit((d) => { d.pageText.searchArchiveLinks[0]!.text = "Older news, 2009 to 2011"; });
+    expect(dependents).toEqual([]);
+    expect(items).toEqual([{ pageId: "search", priority: PRIORITY.liveAggregate }]);
+    expect(storage.files.get("search/index.html")).toContain("Older news, 2009 to 2011");
+  });
+
   it("a notFound edit queues exactly static", async () => {
     const { items, dependents, storage } = await edit((d) => { d.pageText.notFound.heading = "Nothing here"; });
     expect(dependents).toEqual([]);

@@ -104,6 +104,8 @@ export function settingsHashes(settings: SiteSettings, timeZone: string, now: Da
     liveTextHash: hash(settings.pageText.live),
     notFoundHash: hash(settings.pageText.notFound),
     assetLicenceHash: hash(settings.pageText.assetLicence),
+    // Only /search/ shows the older-archive links (its Date filter).
+    searchTextHash: hash(settings.pageText.searchArchiveLinks),
     // Only the one account the release page's Share → Instagram links to, so another network's
     // edit (the Connect page's business) doesn't re-render every release.
     releaseShareHash: hash(releaseInstagram(settings) ?? null),

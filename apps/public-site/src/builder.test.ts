@@ -4,7 +4,8 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { bcSettings, ministry, post, site } from "../test/fixtures";
+import { expectAccessibleStructure } from "../test/structure";
+import { bcSettings, category, ministry, post, site } from "../test/fixtures";
 import { createSiteBuilder, SECTOR_FETCHES } from "./builder";
 import type { GovernmentTermDto, GovernmentTermsDto, PostDto } from "./dto";
 import { drainQueue } from "./drain";
@@ -725,6 +726,20 @@ describe("site builder", () => {
     expect(html(storage, "sitemaps/pages.xml")).toContain("https://news.example/live/");
   });
 
+  it("search: the filter panel bakes the active ministries and sectors, the public terms and the settings' older-archive links", async () => {
+    const { storage, api, builder } = setup(new Map());
+    api.sectors = [category({ key: "Economy", name: "Economy" }), category({ key: "gone", name: "Gone", isActive: false })];
+    api.terms = { publishedAt: "2028-11-20T07:00:00.000Z", currentSlug: "2024-2028", terms: [{ slug: "2024-2028", label: null, startDate: "2024-11-18", endDate: null, legacyArchiveUrl: null }] };
+    await builder.rebuild(["search"], { settings: bcSettings() });
+    const page = html(storage, "search/index.html");
+    const doc = expectAccessibleStructure(page);
+    const keys = (facet: string) => [...doc.querySelectorAll(`#facet-${facet} li[data-key]`)].map((li) => li.getAttribute("data-key"));
+    expect(keys("ministry")).toEqual(["health", "finance"]);
+    expect(keys("sector")).toEqual(["economy"]);
+    expect(keys("date")).toEqual(["2024-2028"]);
+    expect([...doc.querySelectorAll("#facet-date li:not([data-key]) a")].map((a) => a.getAttribute("href"))).toEqual(bcSettings().pageText.searchArchiveLinks.map((l) => l.url));
+  });
+
   it("live: renders live/index.html and assets/live.json from the home settings; an https playlist plays, none or http is off air; the flag file never holds the URL", async () => {
     const { storage, api, builder } = setup(new Map());
     await builder.rebuild(["live"], { settings: bcSettings() });
@@ -811,7 +826,6 @@ describe("site builder", () => {
   it("every generated HTML page passes the structure check", async () => {
     const { storage, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
     await builder.buildAll({ test: true });
-    const { expectAccessibleStructure } = await import("../test/structure");
     for (const [path, content] of storage.files) {
       if (path.endsWith(".html")) {
         expectAccessibleStructure(String(content));

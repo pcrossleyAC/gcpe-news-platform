@@ -472,7 +472,7 @@ describe("syncSite", () => {
         error.mockRestore();
       }
       const after = JSON.parse(await readFile(join(dir, ".site-state.json"), "utf8"));
-      const settingsHashes = (m: Record<string, unknown>) => ({ footerHash: m.footerHash, headerHash: m.headerHash, labelsHash: m.labelsHash, themeHash: m.themeHash, bannerHash: m.bannerHash, connectHash: m.connectHash, ministryPagesHash: m.ministryPagesHash, releaseShareHash: m.releaseShareHash, contactsPageHash: m.contactsPageHash, privacyHash: m.privacyHash, liveTextHash: m.liveTextHash, notFoundHash: m.notFoundHash, assetLicenceHash: m.assetLicenceHash });
+      const settingsHashes = (m: Record<string, unknown>) => ({ footerHash: m.footerHash, headerHash: m.headerHash, labelsHash: m.labelsHash, themeHash: m.themeHash, bannerHash: m.bannerHash, connectHash: m.connectHash, ministryPagesHash: m.ministryPagesHash, releaseShareHash: m.releaseShareHash, contactsPageHash: m.contactsPageHash, privacyHash: m.privacyHash, liveTextHash: m.liveTextHash, notFoundHash: m.notFoundHash, assetLicenceHash: m.assetLicenceHash, searchTextHash: m.searchTextHash });
       return { dir, before, after, settingsHashes, rendered: restarted.rendered, page: await readFile(join(dir, "releases/K1/index.html"), "utf8") };
     };
 

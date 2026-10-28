@@ -364,3 +364,36 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
 .resource-links.connect ul li{padding-bottom:8px}
 /* Legacy's #connect-content is a flex row of two columns; ours holds one .home-layout. */
 #connect-content>.home-layout{flex:1 1 auto;min-width:0}
+
+/* The search page (pages/search.ts): legacy Default/SearchView.cshtml, headings one level up. The
+ * title is the h1 (legacy: .search-body h3), each filter's heading an h2 (legacy: .search-filter h5,
+ * a white-on-link-colour bar); legacy's metrics, restated. The filters are always open (legacy
+ * showed them with an inline display:block). */
+.search-body h1{font-size:36px;font-weight:600;line-height:1.2;border-bottom:1px solid var(--color-border);margin-top:35px;padding-bottom:10px;margin-bottom:30px}
+.search-filters .search-filter h2{font-size:18px;font-weight:500;line-height:1.2;background-color:var(--color-primary);color:var(--color-primary-text);padding:10px;margin:0;background-image:url(../legacy/Content/Images/chevron-up-search.png);background-repeat:no-repeat;background-position:center right 12px}
+.search-filters .search-filter .search-filter-content{display:block}
+/* Legacy's facet rows were 13px high; WCAG 2.5.8 wants 24px targets (the count stays on the link's line). */
+.search-filters .search-filter .search-filter-content ul li{line-height:24px;padding:2px 5px}
+.search-filters .remove-filter{font-size:13px}
+.search-filters .date-range fieldset{border:0;padding:0;margin:0 0 10px}
+.search-filters .date-range legend{font-size:13px;font-weight:600;margin:0 0 4px}
+.search-filters .date-range label{display:block;font-size:13px;margin:4px 0 2px}
+.search-filters .date-range input{width:100%;min-height:32px;border:1px solid var(--color-border)}
+.search-filters .date-range button{margin-top:8px}
+.search-filters .reset-search{margin:0 0 10px}
+/* Legacy's search box was a text input with a clickable div; ours is a submit button, same icon. */
+.search-results .search-panel-bar .search-trigger{display:block;border:0;padding:0;background-color:transparent;min-width:25px}
+.search-results .search-numbers{font-size:15px;margin:15px 0}
+.search-results #search-alert:empty{display:none}
+.search-pagination ul li a,.search-pagination ul li b{min-width:24px;min-height:24px}
+/* Under 768px legacy transforms.css hides both panels until its header search button showed them;
+ * ours is a link to the box (R12), so both stay shown: the results (with the box) first, the filters
+ * after them, so a phone doesn't scroll past every ministry to reach the results. */
+@media (max-width: 768px) {
+  .search{display:flex;flex-direction:column}
+  .search>.search-results{order:1}
+  .search>.search-filters{order:2;float:none;width:100%;padding-right:0}
+  .search .search-panel{display:block}
+  .search-panel label{display:block;padding-right:0}
+  .search-panel-bar input[type="text"]{width:calc(100% - 30px)}
+}
