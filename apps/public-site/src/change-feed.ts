@@ -7,7 +7,7 @@ import { enqueuePages, PRIORITY } from "./queue";
 import { rebuildAllItems } from "./rebuild-all";
 import { categoryPageId, POST_KEY, type CategoryKind } from "./site-paths";
 
-export type ChangeKind = "post.upserted" | "post.unpublished" | "home" | "slides" | "resource_links" | "ministry" | "sector" | "theme" | "tag" | "site_settings";
+export type ChangeKind = "post.upserted" | "post.unpublished" | "home" | "slides" | "resource_links" | "ministry" | "sector" | "theme" | "tag" | "site_settings" | "government_terms";
 export interface ChangeRow { id: number; kind: ChangeKind; key: string | null }
 export type ChangesPage = { resync: false; changes: ChangeRow[]; next: number } | { resync: true; next: number };
 export interface ChangesClient { read(after: number, limit: number): Promise<ChangesPage> }
@@ -90,6 +90,10 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
     // section needs (sync.ts), so the change only has to wake the site up.
     case "site_settings":
       return [];
+    // A term started, or a term's dates, label or legacy link changed (new-government spec §3).
+    // Every term page is added by `syncChanges`, from the builder's terms.
+    case "government_terms":
+      return [{ pageId: "archive-terms", priority: live }, { pageId: "archive-term:current", priority: live }, { pageId: "sitemap:pages", priority: live }];
     default:
       return [];
   }
@@ -166,6 +170,9 @@ export async function syncChanges(
         const id = categoryPageId(kind, c.key);
         if (id) for (const key of await deps.index.inCategory(id.slice("category:".length))) changeItems.push({ pageId: `post:${key}`, priority: PRIORITY.bulkPost });
       }
+      // Rare (an election, a corrected date or label): every term page, at live priority, so the
+      // old current term closes and the new one appears together.
+      if (c.kind === "government_terms") for (const pageId of await deps.builder.termPageIds()) changeItems.push({ pageId, priority: PRIORITY.liveAggregate });
     }
     await deps.db.transaction(async (tx) => {
       await enqueuePages(tx, changeItems);

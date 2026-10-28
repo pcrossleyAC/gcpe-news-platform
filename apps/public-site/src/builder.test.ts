@@ -5,7 +5,7 @@ import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
 import { bcSettings, post, site } from "../test/fixtures";
 import { createSiteBuilder } from "./builder";
-import type { PostDto } from "./dto";
+import type { GovernmentTermDto, GovernmentTermsDto, PostDto } from "./dto";
 import { postIndex } from "./post-index";
 
 describe("site builder", () => {
@@ -136,5 +136,113 @@ describe("site builder", () => {
         expect(String(content), path).toContain('<meta name="robots" content="noindex, nofollow">');
       }
     }
+  });
+
+  describe("archive by government term", () => {
+    const LEGACY = "https://archive.news.gov.bc.ca/releases";
+    const t = (slug: string, startDate: string, endDate: string | null, legacyArchiveUrl: string | null = null): GovernmentTermDto => ({ slug, label: null, startDate, endDate, legacyArchiveUrl });
+    const snapshot = (...terms: GovernmentTermDto[]): GovernmentTermsDto => ({ publishedAt: "2028-11-20T07:00:00.000Z", currentSlug: terms[0]!.slug, terms });
+    const hrefs = (s: ReturnType<typeof memoryStorage>, path: string) => [...html(s, path).matchAll(/<main[\s\S]*<\/main>/g)].flatMap((m) => [...m[0].matchAll(/href="([^"]+)"/g)].map((x) => x[1]!));
+
+    it("places boundary posts by BC day", async () => {
+      const posts = new Map([
+        ["EVE", post({ key: "EVE", publishDate: "2028-11-19T23:59:00-08:00" })],
+        ["DAY", post({ key: "DAY", publishDate: "2028-11-20T00:00:00-08:00" })],
+      ]);
+      const { storage, api, builder } = setup(posts);
+      api.terms = snapshot(t("2028-11-20", "2028-11-20", null), t("2024-2028", "2024-11-18", "2028-11-19"));
+      await builder.rebuild(["post:EVE", "post:DAY"], {});
+      const old = html(storage, "archive/terms/2024-2028/index.html");
+      const now = html(storage, "archive/terms/2028-11-20/index.html");
+      expect(old).toContain("/releases/EVE/");
+      expect(old).not.toContain("/releases/DAY/");
+      expect(now).toContain("/releases/DAY/");
+      expect(now).not.toContain("/releases/EVE/");
+      expect(html(storage, "archive/terms/current/index.html")).toContain("/releases/DAY/");
+      expect(html(storage, "archive/terms/index.html")).toContain("(1 post)");
+    });
+
+    it("a short term lists only its weeks", async () => {
+      const posts = new Map([
+        ["IN", post({ key: "IN", publishDate: "2017-07-17T16:00:00-07:00" })],
+        ["OUT", post({ key: "OUT", publishDate: "2017-07-18T09:00:00-07:00" })],
+        ["BEFORE", post({ key: "BEFORE", publishDate: "2017-06-11T09:00:00-07:00" })],
+      ]);
+      const { storage, api, builder } = setup(posts);
+      api.terms = snapshot(t("2017-2021", "2017-07-18", null), t("2017-2017", "2017-06-12", "2017-07-17"), t("2013-2017", "2013-06-10", "2017-06-11"));
+      await builder.rebuild(["post:IN", "post:OUT", "post:BEFORE"], {});
+      const page = html(storage, "archive/terms/2017-2017/index.html");
+      expect(page).toContain("June 12, 2017 to July 17, 2017");
+      expect(page).toContain("/releases/IN/");
+      expect(page).not.toContain("/releases/OUT/");
+      expect(page).not.toContain("/releases/BEFORE/");
+    });
+
+    it("empty current term renders the empty copy and the current alias canonicalises to the slug", async () => {
+      const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1", publishDate: "2026-10-03T10:00:00-07:00" })]]));
+      api.terms = snapshot(t("2028-11-20", "2028-11-20", null), t("2024-2028", "2024-11-18", "2028-11-19"));
+      await builder.buildAll({});
+      for (const f of ["archive/terms/2028-11-20/index.html", "archive/terms/current/index.html"]) {
+        expect(html(storage, f), f).toContain("Nothing has been published in this term yet.");
+        expect(html(storage, f)).toContain("<h1>News from November 20, 2028 to current date</h1>");
+        expect(/<link rel="canonical" href="([^"]+)"/.exec(html(storage, f))![1]).toMatch(/\/archive\/terms\/2028-11-20\/$/);
+      }
+      expect(html(storage, "archive/terms/2024-2028/index.html")).toContain("/releases/K1/");
+    });
+
+    it("adding a term links it from the index with no other change", async () => {
+      const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
+      api.terms = snapshot(t("2024-2028", "2024-11-18", null), t("2020-2024", "2020-11-26", "2024-11-17"));
+      await builder.buildAll({});
+      const before = hrefs(storage, "archive/terms/index.html");
+      api.terms = snapshot(t("2028-11-20", "2028-11-20", null), t("2024-2028", "2024-11-18", "2028-11-19"), t("2020-2024", "2020-11-26", "2024-11-17"));
+      await builder.rebuild(await builder.termPageIds(), {});
+      const after = hrefs(storage, "archive/terms/index.html");
+      expect(after.filter((h) => !before.includes(h))).toEqual(["/archive/terms/2028-11-20/"]);
+      expect(before.filter((h) => !after.includes(h))).toEqual([]);
+      expect(storage.files.has("archive/terms/2028-11-20/index.html")).toBe(true);
+      // The crawler path: entry point → term page → every post in range.
+      expect(html(storage, "archive/terms/2024-2028/index.html")).toContain("/releases/K1/");
+    });
+
+    it("legacy-only terms link out and get no page", async () => {
+      const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
+      api.terms = snapshot(t("2024-2028", "2024-11-18", null, `${LEGACY}/index_current.htm`), t("pre2001", "1994-01-01", "2001-06-04", `${LEGACY}/index_pre2001.htm`));
+      await storage.write("archive/terms/pre2001/index.html", "stale");
+      await builder.buildAll({});
+      expect(hrefs(storage, "archive/terms/index.html")).toContain(`${LEGACY}/index_pre2001.htm`);
+      expect(hrefs(storage, "archive/terms/index.html")).not.toContain("/archive/terms/pre2001/");
+      expect(storage.files.has("archive/terms/pre2001/index.html")).toBe(false);
+      expect(html(storage, "sitemaps/pages.xml")).not.toContain("/archive/terms/pre2001/");
+    });
+
+    it("sitemap pages list /archive/terms/ and each term page", async () => {
+      const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
+      api.terms = snapshot(t("2028-11-20", "2028-11-20", null), t("2024-2028", "2024-11-18", "2028-11-19"));
+      await builder.buildAll({});
+      const xml = html(storage, "sitemaps/pages.xml");
+      for (const path of ["/archive/terms/", "/archive/terms/2028-11-20/", "/archive/terms/2024-2028/"]) expect(xml).toContain(`<loc>https://news.example${path}</loc>`);
+      expect(xml).not.toContain("/archive/terms/current/");
+    });
+
+    it("a post change queues its term page, the current alias and the index", async () => {
+      const { api, builder } = setup(new Map([["K1", post({ key: "K1", publishDate: "2024-12-01T10:00:00-08:00" })]]));
+      api.terms = snapshot(t("2024-11-18", "2024-11-18", null), t("2020-2024", "2020-11-26", "2024-11-17"));
+      expect(await builder.renderPage("post:K1", {})).toEqual(expect.arrayContaining(["archive-term:2024-11-18", "archive-term:current", "archive-terms"]));
+    });
+
+    it("no terms published yet: the index says so and no term page is written", async () => {
+      const { storage, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
+      await builder.buildAll({});
+      expect(html(storage, "archive/terms/index.html")).toContain("No government terms have been published yet.");
+      expect([...storage.files.keys()].filter((f) => f.startsWith("archive/terms/") && f !== "archive/terms/index.html")).toEqual([]);
+      expect(await builder.termPageIds()).toEqual(["archive-terms", "archive-term:current"]);
+    });
+
+    it("termPageIds: the index, the alias and every public term", async () => {
+      const { api, builder } = setup(new Map());
+      api.terms = snapshot(t("2024-2028", "2024-11-18", null), t("pre2001", "1994-01-01", "2001-06-04", `${LEGACY}/x.htm`));
+      expect(await builder.termPageIds()).toEqual(["archive-terms", "archive-term:current", "archive-term:2024-2028", "archive-term:pre2001"]);
+    });
   });
 });

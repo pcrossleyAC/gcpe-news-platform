@@ -26,6 +26,8 @@ describe("pagesForChange", () => {
     [{ id: 10, kind: "sector", key: "a b" }, []],
     // The next sync turn fetches the settings and decides what each changed section needs.
     [{ id: 11, kind: "site_settings", key: null }, []],
+    // Every term page is added by syncChanges, from the builder's terms.
+    [{ id: 12, kind: "government_terms", key: null }, [{ pageId: "archive-terms", priority: 1 }, { pageId: "archive-term:current", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
   ] as const)("%j", (change, expected) => {
     expect(pagesForChange(change as ChangeRow, 0)).toEqual(expected);
   });
@@ -228,6 +230,20 @@ describe("syncChanges", () => {
     const queued = await items();
     expect(queued).toContain("post:K1@2");
     expect(queued).toContain("post:K2@2");
+  });
+
+  it("a government_terms change queues every term page", async () => {
+    const { db, builder, index, newsApi } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    const term = (slug: string, startDate: string, endDate: string | null) => ({ slug, label: null, startDate, endDate, legacyArchiveUrl: null });
+    newsApi.terms = { publishedAt: "2028-11-20T07:00:00.000Z", currentSlug: "2028-11-20", terms: [term("2028-11-20", "2028-11-20", null), term("2024-2028", "2024-11-18", "2028-11-19"), term("2017-2017", "2017-06-12", "2017-07-17")] };
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "government_terms", key: null }], next: 4 },
+      { resync: false, changes: [], next: 4 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    const queued = (await items()).map((x) => x.split("@")[0]);
+    expect(queued).toEqual(expect.arrayContaining(["archive-terms", "archive-term:current", "archive-term:2028-11-20", "archive-term:2024-2028", "archive-term:2017-2017", "sitemap:pages"]));
   });
 
   it("a publish during a backlog renders first", async () => {

@@ -107,3 +107,20 @@ export interface SiteSettingsDto {
   revision: number;
   document: SiteSettings;
 }
+
+/** One public government term (`GET /api/v2/government-terms`). Newest first in the payload; the newest has no end date. */
+export interface GovernmentTermDto {
+  slug: string;
+  label: string | null;
+  /** BC calendar date, `YYYY-MM-DD`. */
+  startDate: string;
+  endDate: string | null;
+  legacyArchiveUrl: string | null;
+}
+
+/** `GET /api/v2/government-terms`: NRMS's published snapshot (past and current terms only). */
+export interface GovernmentTermsDto {
+  publishedAt: string;
+  currentSlug: string | null;
+  terms: GovernmentTermDto[];
+}

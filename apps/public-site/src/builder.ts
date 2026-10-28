@@ -1,9 +1,10 @@
 import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import type { MinistryDto, PostDto } from "./dto";
+import type { GovernmentTermsDto, MinistryDto, PostDto } from "./dto";
 import { renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
-import { renderArchiveIndex, renderArchiveMonth } from "./pages/archive";
+import { isLegacyOnly, termEndExclusive, termOfDay } from "./government-terms";
+import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex } from "./pages/archive";
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./pages/categories";
 import { renderConnectPage } from "./pages/connect";
 import { LATEST_COUNT } from "./pages/format";
@@ -24,6 +25,8 @@ export const POST_KINDS = ["releases", "stories", "factsheets", "updates", "advi
 /** Per-run memo, so a run rendering many pages fetches the ministry list once. */
 export interface RunCache {
   ministries?: Promise<MinistryDto[]>;
+  /** The News API's government-terms snapshot (null before the first one is published). */
+  governmentTerms?: Promise<GovernmentTermsDto | null>;
 }
 
 export interface SiteBuilder {
@@ -46,11 +49,21 @@ export interface SiteBuilder {
   aggregatePageIds(): Promise<string[]>;
   /** Every ministry page id — what a `ministryPages` settings change rebuilds. */
   ministryPageIds(): Promise<string[]>;
+  /** The terms index, the `current` alias and every public term's page — what a
+   * `government_terms` change rebuilds (new-government spec §3). */
+  termPageIds(): Promise<string[]>;
 }
 
 export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteStorage; index: PostIndex; site: SiteInfo; assetsDir: string | null; searchApiBase?: string }): SiteBuilder {
   const { newsApi, storage, index, site } = deps;
   const ministries = (run: RunCache) => (run.ministries ??= newsApi.ministries());
+  const governmentTerms = (run: RunCache) => (run.governmentTerms ??= newsApi.governmentTerms());
+  /** Each public term (newest first) with its post count on this site. */
+  const termRows = async (run: RunCache) => {
+    const rows = [];
+    for (const term of (await governmentTerms(run))?.terms ?? []) rows.push({ term, count: await index.countInDayRange(term.startDate, termEndExclusive(term)) });
+    return rows;
+  };
   const removeAll = async (p: PageId) => {
     for (const f of pageFiles(p)) await storage.remove(f);
   };
@@ -68,10 +81,11 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     const writeIndex = tx ? postIndex(tx) : index;
     const before = await index.get(key);
     const post = await newsApi.getPost(key);
+    const termOf = termOfDay(await governmentTerms(run));
     if (!post) {
       await removeAll(p);
       await writeIndex.remove(key);
-      return dependentPages(before ? membershipOfEntry(before) : null, null);
+      return dependentPages(before ? membershipOfEntry(before) : null, null, termOf);
     }
     // The output path always uses the requested key; a News API key that differs other than by
     // case (e.g. "..") is skipped, never trusted.
@@ -90,7 +104,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     const entry = indexEntryOf(key, post);
     if (entry) await writeIndex.put(entry);
     else await writeIndex.remove(key);
-    return dependentPages(before ? membershipOfEntry(before) : null, membershipOf(post));
+    return dependentPages(before ? membershipOfEntry(before) : null, membershipOf(post), termOf);
   }
 
   async function renderCategory(kind: CategoryKind, key: string, opts: PageOptions): Promise<void> {
@@ -158,6 +172,22 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         case "archive":
           await storage.write(pageFiles(p)[0]!, renderArchiveIndex(await index.months(), site, opts));
           return [];
+        case "archive-terms":
+          await storage.write(pageFiles(p)[0]!, renderTermsIndex(await termRows(run), site, opts));
+          return [];
+        case "archive-term": {
+          // `current` is a static duplicate of the current term's page, canonical to the slug page (N6).
+          const dto = await governmentTerms(run);
+          const slug = p.slug === "current" ? dto?.currentSlug : p.slug;
+          const term = dto?.terms.find((t) => t.slug === slug);
+          const end = term ? termEndExclusive(term) : null;
+          if (!term || isLegacyOnly(term, await index.countInDayRange(term.startDate, end))) {
+            await removeAll(p);
+            return [];
+          }
+          await storage.write(pageFiles(p)[0]!, renderTermPage(term, await index.inDayRange(term.startDate, end), site, { ...opts, canonicalSlug: term.slug }));
+          return [];
+        }
         case "search":
           await storage.write(pageFiles(p)[0]!, renderSearchPage(await ministries(run), site, opts, deps.searchApiBase ?? ""));
           return [];
@@ -182,6 +212,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "search" }), pageUrl(site, { type: "connect" })];
           for (const id of await categoryIds(run)) paths.push(pageUrl(site, parsePageId(id)!));
           for (const m of await index.months()) paths.push(pageUrl(site, { type: "archive-month", month: m.month }));
+          // The archive by term: the entry point and every term page (not the `current` duplicate).
+          paths.push(pageUrl(site, { type: "archive-terms" }));
+          for (const { term, count } of await termRows(run)) if (!isLegacyOnly(term, count)) paths.push(pageUrl(site, { type: "archive-term", slug: term.slug }));
           await storage.write(pageFiles(p)[0]!, renderUrlSet(paths.map((path) => ({ path })), site));
           return [];
         }
@@ -217,6 +250,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       const run: RunCache = {};
       const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "sitemap:pages", "connect", ...(await categoryIds(run))];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
+      ids.push(...(await builder.termPageIds()));
       return ids;
     },
 
@@ -229,6 +263,11 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       }
       for (const token of await index.categories()) if (token.startsWith("ministries:")) ids.add(`category:${token}`);
       return [...ids].sort();
+    },
+
+    async termPageIds() {
+      const dto = await newsApi.governmentTerms();
+      return ["archive-terms", "archive-term:current", ...(dto?.terms ?? []).map((t) => formatPageId({ type: "archive-term", slug: t.slug }))];
     },
 
     async buildAll(opts) {

@@ -1,7 +1,7 @@
 import { siteSettingsSchema } from "@gcpe/site-settings";
 import { z } from "zod";
-import type { CategoryDto, HomeDto, MinisterDto, MinistryDto, PostDto, RelatedPost, ResourceLinkDto, SiteSettingsDto, SlideDto } from "./dto";
-import type { CategoryKind } from "./site-paths";
+import type { CategoryDto, GovernmentTermsDto, HomeDto, MinisterDto, MinistryDto, PostDto, RelatedPost, ResourceLinkDto, SiteSettingsDto, SlideDto } from "./dto";
+import { TERM_SLUG, type CategoryKind } from "./site-paths";
 
 export interface NewsApiClient {
   getPost(key: string): Promise<PostDto | null>;
@@ -23,11 +23,21 @@ export interface NewsApiClient {
   /** `GET /api/v2/site-settings`: the published revision and document, or null on a 404 (nothing
    * published yet). A malformed document rejects, like a network failure. */
   siteSettings(): Promise<SiteSettingsDto | null>;
+  /** `GET /api/v2/government-terms`: the published terms snapshot, or null on a 404 (nothing
+   * published yet). A malformed body rejects. Terms whose slug can't be a path are dropped. */
+  governmentTerms(): Promise<GovernmentTermsDto | null>;
 }
 
 /** Structural check only (the document was validated when NRMS published it): enough that a
  * render can rely on every section's shape. */
 const siteSettingsBodySchema = z.object({ revision: z.number().int(), document: siteSettingsSchema });
+
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const governmentTermsBodySchema = z.object({
+  publishedAt: z.string(),
+  currentSlug: z.string().nullable(),
+  terms: z.array(z.object({ slug: z.string(), label: z.string().nullable(), startDate: isoDay, endDate: isoDay.nullable(), legacyArchiveUrl: z.string().nullable() })),
+});
 
 export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch): NewsApiClient {
   // A leading slash on the second argument to `new URL` makes it absolute relative to the
@@ -81,6 +91,15 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
       if (!res.ok) throw new Error(`News API ${res.status} for api/v2/site-settings`);
       const { revision, document } = siteSettingsBodySchema.parse(JSON.parse(await res.text()));
       return { revision, document };
+    },
+    governmentTerms: async () => {
+      const res = await fetchImpl(new URL("api/v2/government-terms", base), { signal: AbortSignal.timeout(10_000) });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`News API ${res.status} for api/v2/government-terms`);
+      const body = governmentTermsBodySchema.parse(JSON.parse(await res.text()));
+      // The slug becomes a directory name and a page id: anything else never reaches a path.
+      const terms = body.terms.filter((t) => TERM_SLUG.test(t.slug) && t.slug !== "current");
+      return { publishedAt: body.publishedAt, currentSlug: body.currentSlug, terms: terms.map((t) => ({ slug: t.slug, label: t.label, startDate: t.startDate, endDate: t.endDate, legacyArchiveUrl: t.legacyArchiveUrl })) };
     },
     postKeys: async (postKind) => (((await get(`api/Posts/Keys/home/default?${v1}&postKind=${enc(postKind)}`)) as { key: string }[] | null) ?? []).map((r) => r.key),
   };
