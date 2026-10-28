@@ -158,27 +158,29 @@ describe("renderMinistryPage side column", () => {
     expect(doc.querySelector("aside")).toBeNull();
   });
 
-  it("drops javascript: and http: links and escapes link text", () => {
+  it("keeps http: and https: links, resolves site-relative ones under the base path, drops javascript:/data: and escapes text", () => {
     const html = renderMinistryPage(
       ministry({
-        ministryUrl: "http://gov.example/insecure",
+        ministryUrl: "http://gov.bc.ca/health",
         flickrUri: "javascript:alert(1)",
-        youtubeUri: "https://youtube.com/ok",
-        topicLinks: [{ key: "<b>Bad</b>", uri: "javascript:alert(2)" }, { key: "A & <B>", uri: "https://gov.example/ok" }],
-        serviceLinks: [{ key: "Insecure", uri: "http://gov.example/x" }],
+        youtubeUri: "data:text/html,x",
+        topicLinks: [{ key: "<b>Bad</b>", uri: "javascript:alert(2)" }, { key: "A & <B>", uri: "http://gov.example/ok" }, { key: "Local", uri: "/subscribe" }],
+        serviceLinks: [{ key: "Evil", uri: "data:text/html,y" }],
       }),
       null,
       emptyPosts,
-      site,
+      { ...site, baseUrl: "https://boxs.example/site" },
       { settings },
     );
     expect(html).not.toContain("javascript:");
-    expect(html).not.toContain("http://gov.example");
+    expect(html).not.toContain("data:text");
     expect(html).not.toContain("<b>Bad");
     expect(html).not.toContain("Featured Services");
     expect(html).not.toContain("Ministry Photos");
-    expect(html).toContain("A &amp; &lt;B&gt;");
-    expect(html).toContain('href="https://youtube.com/ok"');
+    expect(html).not.toContain("Ministry Videos");
+    expect(html).toContain('href="http://gov.bc.ca/health"');
+    expect(html).toContain('href="http://gov.example/ok">A &amp; &lt;B&gt;');
+    expect(html).toContain('href="/site/subscribe">Local');
   });
 });
 

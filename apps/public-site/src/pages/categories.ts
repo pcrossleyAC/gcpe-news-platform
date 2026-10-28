@@ -1,5 +1,5 @@
 import type { CategoryDto, MinisterDto, MinistryDto, PostDto } from "../dto";
-import { basePath, e, renderPage, safeSrc, type PageOptions, type SiteInfo } from "../render";
+import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
 import { categoryPageId, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
 import { displayDate, postListItem } from "./format";
 import type { MinistryPageLabels } from "@gcpe/site-settings";
@@ -67,11 +67,12 @@ function mediaContactsSection(heading: string, contactUser: unknown, secondConta
   return items ? `<section>\n<h2>${e(heading)}</h2>\n<ul>\n${items}\n</ul>\n</section>` : "";
 }
 
-/** A side-column link list; links whose URL fails the settings' safe-URL rule (https or
- * site-relative; no http: or javascript:) are dropped, and a list with none left renders nothing. */
+/** A side-column link list; links whose URL is not safe (absolute http/https, or site-relative;
+ * no javascript:/data:) are dropped, and a list with none left renders nothing. */
 function sideLinks(site: Pick<SiteInfo, "baseUrl">, heading: string, links: { text: string; url: string | null | undefined }[]): string {
   const items = links.flatMap((l) => {
-    const href = l.url ? settingsHref(l.url, site) : null;
+    // "/..." resolves under the base path (settings rule); absolute http/https via safeHref, as the old link did.
+    const href = l.url?.startsWith("/") ? settingsHref(l.url, site) : safeHref(l.url);
     return href ? [`<li><a href="${e(href)}">${e(l.text)}</a></li>`] : [];
   });
   return items.length ? `<section>\n<h2>${e(heading)}</h2>\n<ul>\n${items.join("\n")}\n</ul>\n</section>` : "";
