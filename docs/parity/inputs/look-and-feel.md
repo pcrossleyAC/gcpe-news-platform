@@ -564,3 +564,24 @@ Suggested verification harness (all chunks): a Playwright script that loads the 
   - Lighthouse performance was 84–86, against the 80 gate (C212).
 - Run again against https://boxs.ca once plan 1 is deployed (ruling R2). That deploy will also exercise the real News API search, which the fixture's search page doesn't call.
 
+
+### Final-review fix round (R12, R13)
+- **The one failure is fixed (R12, F-P1-1).** `/search/` keeps the phone search control in legacy's slot with legacy's look. It is a link to the page's own search box (`#q`): site.js scrolls the box into view and focuses it instead of opening an empty panel, and with no JavaScript it is a plain jump to the box (C225).
+  - Re-run of `npm run parity -- --target http://127.0.0.1:4321 --pages search` against the same kind of local stack (fixture site, live's info banner, real `mountSite`/`rootSiteNotFound`, a stub `/api/v2/search` answering no results so the page settles):
+
+    | page | width | banner | header | landAck | footer | main (report only) |
+    |---|---|---|---|---|---|---|
+    | search | 1280 | 0.0011 | 0.0004 | 0.0072 | 0.0036 | 0.7812 |
+    | search | 390 | 0.0023 | **0.0062** (was 0.0382) | 0.0045 | 0.0043 | 0.8846 |
+
+  - The remaining 0.0062 is the same icon-glyph difference as the hamburger's (home 390 header: 0.0052).
+- **The stack compresses text itself (R13):** brotli, else gzip, for HTML, CSS, JS, JSON, SVG and XML (`apps/stack/src/compress.ts`). The performance gate's assumption of compressed text (C212) now holds on every host, including the Windows/IIS package.
+- `npm run site:quality` at the fix-round head: PASS. axe found 0 violations on all 11 pages; Lighthouse performance was 84–85.
+
+### Pending: the gate against boxs.ca (after the plan 1 deploy; the controller runs it)
+Not run yet. The local runs above stand in until then.
+- `npm run parity -- --target https://boxs.ca/site --pages home,ministry,sector,release,search,subscribe,connect`
+- `npm run parity:urls -- --base https://boxs.ca/site`
+- Before running, make sure the `release` page's key (`2026HLTH0085-001117`, `tools/parity/pages.ts`) exists on boxs.ca.
+- Also confirm compression went out once: `curl -sI -H 'Accept-Encoding: br' https://boxs.ca/assets/legacy/Content/legacy.bundle.css` should show a single `content-encoding: br` and `vary: Accept-Encoding`.
+- Record the result here as "Plan 1 result (boxs.ca)".
