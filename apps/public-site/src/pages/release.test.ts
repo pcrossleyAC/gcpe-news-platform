@@ -257,6 +257,17 @@ describe("release page", () => {
     expect(none.querySelector("#translationList, #translations, .translate")).toBeNull();
   });
 
+  it("an imported translation (absolute news.gov files-host URL with encoded parentheses) renders as a link in the Translations list", () => {
+    const url = "https://bcgovnews-etg7c8etapa6btfr.z03.azurefd.net/translations/releases/2026HLTH0085-001117/RSVVaccine2026_Chinese%28simplified%29.pdf";
+    const d = expectAccessibleStructure(render({ hasTranslations: true, azureTranslations: [{ key: url, label: "Chinese(Simplified)", length: 100 }] }));
+    const link = d.querySelector("#translationList ul > li > a")!;
+    expect(d.querySelector("#translationList h2")?.textContent).toBe("Translations");
+    expect(link.getAttribute("href")).toBe(url);
+    expect(link.textContent).toBe("简体中文");
+    // A relative key (what the importer used to store) is dropped, not linked.
+    expect(dom({ azureTranslations: [{ key: "releases/2026HLTH0085-001117/x.pdf", label: "Chinese(Simplified)", length: 1 }] }).querySelector("#translationList a")).toBeNull();
+  });
+
   it("side column from the lead ministry: More from this Ministry, Featured Topics, Featured Services with settings labels; unknown ministry → none", () => {
     const settings = bcSettings();
     const renamed = { ...settings, ministryPages: { ...settings.ministryPages, moreFromMinistry: "Around <Health>", ministryWebsite: "Home site", featuredTopics: "Topics", featuredServices: "Services", mediaContacts: "Press" } };
