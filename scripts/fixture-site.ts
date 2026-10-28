@@ -264,6 +264,9 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
   // BC's tenant settings, as the live site shows them before anything is published: the footer
   // links and the land acknowledgement band, so axe and Lighthouse check them too.
   const settings = loadSiteSettingsDefaults(BC_TENANT, tenant.site.theme);
+  // One list that keeps three entries before Expand (the rest keep BC's defaults: 2, Blogs never), so
+  // site:quality's Connect check covers a collapseAfter other than 2.
+  settings.connect.instagram = { ...settings.connect.instagram, collapseAfter: 3 };
   const builder = createSiteBuilder({ newsApi, storage: fsStorage(outDir), index: memoryIndex(), site, assetsDir: null });
   const pageOpts = { test: o.test, settings, ministryMenu: ministryMenu(await newsApi.ministries()) };
   const result = await builder.buildAll(pageOpts);

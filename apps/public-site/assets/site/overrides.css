@@ -388,6 +388,10 @@ html:not(.js) div.language-selector.story-lang, html:not(.js) .print-document{di
  * one shown fades toward the page background (legacy's article-fade) by --fade-strength, which
  * theme.css computes from the theme so its link and body text keep 4.6:1 or more (theme-css.ts
  * fadeStrength; 34% for BC). Without script (no html.js) every entry shows and the Expand button is hidden. */
+/* Legacy site.css clips a .collapsed body to 100px with overflow:hidden, with or without script: that
+ * hid entries from no-script visitors (still focusable) and clipped a faded entry past the second. The
+ * entries above do the collapsing here, so the body always fits its visible entries. */
+.expandable-section.collapsed .expander-body{height:auto;overflow:visible}
 html.js .expandable-section.collapsed li.collapse-extra{display:none}
 html.js .expandable-section.collapsed li.collapse-last{position:relative}
 html.js .expandable-section.collapsed li.collapse-last::after{content:"";position:absolute;inset:0;pointer-events:none;background:color-mix(in srgb,var(--color-background) var(--fade-strength),transparent)}

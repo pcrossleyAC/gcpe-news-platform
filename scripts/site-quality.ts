@@ -190,6 +190,44 @@ export async function checkSubscribeCustomize(browser: import("@playwright/test"
   return failures;
 }
 
+/**
+ * The Connect page's long lists, with script and without: no list body clips its entries (scroll
+ * height over client height, or a shown entry ending below the body; getClientRects can't see
+ * overflow clipping). With script each marked list shows exactly its collapseAfter entries (the
+ * fixture's Instagram keeps 3, the others 2); without, every entry shows and no Expand button.
+ */
+export async function checkConnectCollapse(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
+  const failures: string[] = [];
+  for (const js of [true, false]) {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    if (!js) await context.route(/\/assets\/site\/site\.js$/, (r) => r.abort());
+    const page = await context.newPage();
+    await page.goto(url + "/connect/");
+    const sections = await page.locator(".expandable-section[data-collapsible]").evaluateAll((els) =>
+      els.map((sec) => {
+        const body = sec.querySelector(".expander-body")!;
+        const bottom = body.getBoundingClientRect().bottom;
+        const lis = [...sec.querySelectorAll("li")];
+        const shown = lis.filter((li) => getComputedStyle(li).display !== "none");
+        const clipped = shown.filter((li) => li.getBoundingClientRect().bottom > bottom + 0.5).length;
+        const button = sec.querySelector("button.expand-toggle");
+        return { id: sec.id, keep: Number(sec.getAttribute("data-collapsible")), total: lis.length, shown: shown.length, clipped, overflow: body.scrollHeight - body.clientHeight, button: !!button && button.getClientRects().length > 0 };
+      }),
+    );
+    await context.close();
+    const mode = js ? "script" : "no script";
+    log(`/connect/ (${mode}): ${sections.map((s) => `${s.id} ${s.shown}/${s.total}${s.clipped || s.overflow > 1 ? ` CLIPPED ${s.clipped} (overflow ${s.overflow}px)` : ""}`).join(", ")}`);
+    if (js && !sections.some((s) => s.keep === 3)) failures.push("/connect/: no list keeps 3 entries (the fixture's Instagram should)");
+    for (const s of sections) {
+      if (s.clipped > 0 || s.overflow > 1) failures.push(`/connect/ (${mode}) #${s.id}: ${s.clipped} shown entr(ies) clipped, body overflows by ${s.overflow}px`);
+      const want = js ? s.keep : s.total;
+      if (s.shown !== want) failures.push(`/connect/ (${mode}) #${s.id}: ${s.shown} entries shown, expected ${want}`);
+      if (s.button !== js) failures.push(`/connect/ (${mode}) #${s.id}: Expand button ${s.button ? "shown" : "not shown"}`);
+    }
+  }
+  return failures;
+}
+
 type Box = { x: number; y: number; width: number; height: number };
 
 /**
@@ -265,6 +303,7 @@ export async function runSiteQuality(log: (line: string) => void = console.log):
       failures.push(...(await checkHeaderLive(browser, server.url, log)));
       failures.push(...(await checkSearchLayout(browser, server.url, log)));
       failures.push(...(await checkSubscribeCustomize(browser, server.url, log)));
+      failures.push(...(await checkConnectCollapse(browser, server.url, log)));
     } finally {
       await browser.close();
     }
