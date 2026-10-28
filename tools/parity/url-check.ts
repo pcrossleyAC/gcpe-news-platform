@@ -17,14 +17,36 @@ export interface UrlResult {
 const isRedirect = (s: number) => s >= 300 && s < 400;
 const is2xx = (s: number) => s >= 200 && s < 300;
 
-export async function checkUrls(base: string, paths: string[], fetchImpl: typeof fetch = fetch): Promise<UrlResult[]> {
+/**
+ * Checks each path in turn. A network error or a request slower than `timeoutMs` is recorded on
+ * that path (status 0) and the rest of the list still runs.
+ */
+export async function checkUrls(
+  base: string,
+  paths: string[],
+  fetchImpl: typeof fetch = fetch,
+  timeoutMs = 20_000,
+): Promise<UrlResult[]> {
   const baseUrl = new URL(base);
-  const get = (url: string) => fetchImpl(url, { redirect: "manual" });
+  const get = (url: string) => fetchImpl(url, { redirect: "manual", signal: AbortSignal.timeout(timeoutMs) });
   const results: UrlResult[] = [];
   for (const path of paths) {
+    const result: UrlResult = { path, status: 0, location: null, ok: false };
+    try {
+      await checkOne(path, result);
+    } catch (e) {
+      result.ok = false;
+      result.reason = `fetch failed: ${e instanceof Error ? e.message : String(e)}`;
+    }
+    results.push(result);
+  }
+  return results;
+
+  async function checkOne(path: string, result: UrlResult): Promise<void> {
     const first = await get(new URL(path, baseUrl).href);
     const location = first.headers.get("location");
-    const result: UrlResult = { path, status: first.status, location, ok: false };
+    result.status = first.status;
+    result.location = location;
     if (is2xx(first.status)) {
       result.ok = true;
     } else if (isRedirect(first.status)) {
@@ -45,9 +67,7 @@ export async function checkUrls(base: string, paths: string[], fetchImpl: typeof
     } else {
       result.reason = `status ${first.status}`;
     }
-    results.push(result);
   }
-  return results;
 }
 
 /** fetch wrapper that spaces requests to news.gov.bc.ca at least 1 s apart. */

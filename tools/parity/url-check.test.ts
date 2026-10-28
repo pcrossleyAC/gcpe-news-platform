@@ -68,4 +68,27 @@ describe("checkUrls", () => {
     expect(r?.ok).toBe(true);
     expect(seen[1]).toBe("https://x.test/x?q=a%20b");
   });
+
+  it("a redirect without a Location fails with its reason", async () => {
+    const f = fakeFetch({ "https://x.test/a": { status: 302 } });
+    const [r] = await checkUrls("https://x.test", ["/a"], f);
+    expect(r).toMatchObject({ status: 302, location: null, ok: false, reason: "redirect without Location" });
+  });
+
+  it("a network error on one path is recorded and the rest of the list still runs", async () => {
+    const f = fakeFetch({ "https://x.test/b": { status: 200 } }); // /a is unknown, so it throws
+    const results = await checkUrls("https://x.test", ["/a", "/b"], f);
+    expect(results).toHaveLength(2);
+    expect(results[0]).toMatchObject({ path: "/a", status: 0, ok: false });
+    expect(results[0]?.reason).toMatch(/^fetch failed: /);
+    expect(results[1]).toMatchObject({ path: "/b", ok: true });
+  });
+
+  it("aborts a path that hangs past the timeout", async () => {
+    const hang = ((_: unknown, init?: RequestInit) =>
+      new Promise((_r, reject) => init?.signal?.addEventListener("abort", () => reject(init.signal?.reason)))) as typeof fetch;
+    const [r] = await checkUrls("https://x.test", ["/slow"], hang, 50);
+    expect(r).toMatchObject({ ok: false, status: 0 });
+    expect(r?.reason).toMatch(/^fetch failed: /);
+  });
 });

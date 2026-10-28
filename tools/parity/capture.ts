@@ -12,7 +12,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { chromium, type Browser, type Page } from "@playwright/test";
 import { PNG } from "pngjs";
 import { AXE_TAGS } from "../../scripts/site-quality";
-import { regionMismatch } from "./diff";
+import { bestRowOffsetMismatch, regionMismatch } from "./diff";
 import { PARITY_PAGES, VIEWPORTS } from "./pages";
 import { REGIONS, STRICT_MAX, type RegionName } from "./regions";
 
@@ -25,6 +25,12 @@ export interface Row {
   ratio: number | null;
   strict: boolean;
   fail: boolean;
+}
+export interface Load {
+  page: string;
+  width: number;
+  legacyStatus: number | null;
+  oursStatus: number | null;
 }
 export interface AxeFailure {
   page: string;
@@ -39,6 +45,12 @@ export function classify(region: RegionName, legacy: boolean, ours: boolean, rat
   if (region === "banner" && (!legacy || !ours)) return "skipped";
   if (!legacy || !ours) return "missing";
   return ratio !== null && ratio > STRICT_MAX ? "mismatch" : "ok";
+}
+
+/** A navigation's final HTTP status as a load error, or null when it is 2xx. */
+export function navigationError(status: number | null): string | null {
+  if (status === null) return "no response";
+  return status >= 200 && status < 300 ? null : `HTTP ${status}`;
 }
 
 function parseArgs(argv: string[]) {
@@ -64,10 +76,12 @@ async function throttle(url: string): Promise<void> {
   lastLegacyHit = Date.now();
 }
 
-async function load(page: Page, url: string): Promise<void> {
+/** Navigates and returns the final HTTP status (null when Playwright reports no response). */
+async function load(page: Page, url: string): Promise<number | null> {
   await throttle(url);
-  await page.goto(url, { waitUntil: "networkidle" });
+  const response = await page.goto(url, { waitUntil: "networkidle" });
   await page.evaluate(() => document.fonts.ready);
+  return response?.status() ?? null;
 }
 
 async function shot(page: Page, selector: string): Promise<Buffer | null> {
@@ -101,6 +115,7 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
   const rows: Row[] = [];
   const axeFailures: AxeFailure[] = [];
   const loadErrors: string[] = [];
+  const loads: Load[] = [];
   let browser: Browser | undefined;
   try {
     browser = await chromium.launch();
@@ -110,42 +125,67 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
         const legacyPage = await ctx.newPage();
         const oursPage = await ctx.newPage();
         const tag = `${pg.name}-${vp.width}`;
+        const msg = (e: unknown) => (e instanceof Error ? e.message : String(e));
         try {
-          await load(legacyPage, join1(args.legacy, pg.path));
-          await load(oursPage, join1(args.target, pg.oursPath ?? pg.path));
+          const legacyUrl = join1(args.legacy, pg.path);
+          const oursUrl = join1(args.target, pg.oursPath ?? pg.path);
+          const legacyStatus = await load(legacyPage, legacyUrl);
+          const oursStatus = await load(oursPage, oursUrl);
+          loads.push({ page: pg.name, width: vp.width, legacyStatus, oursStatus });
+          // A 404/500 page that carries the same chrome would otherwise pass the strict diffs.
+          const bad = [
+            [legacyUrl, navigationError(legacyStatus)],
+            [oursUrl, navigationError(oursStatus)],
+          ].filter(([, err]) => err !== null);
+          if (bad.length > 0) {
+            for (const [url, err] of bad) loadErrors.push(`${tag}: ${err} for ${url}`);
+            await ctx.close();
+            continue;
+          }
         } catch (e) {
-          loadErrors.push(`${tag}: ${e instanceof Error ? e.message : String(e)}`);
+          loadErrors.push(`${tag}: ${msg(e)}`);
           await ctx.close();
           continue;
         }
-        for (const name of regionNames) {
-          const { selector, strict } = REGIONS[name];
-          const [l, o] = [await shot(legacyPage, selector), await shot(oursPage, selector)];
-          if (l) await writeFile(join(args.out, `${tag}-${name}-legacy.png`), l);
-          if (o) await writeFile(join(args.out, `${tag}-${name}-ours.png`), o);
-          let ratio: number | null = null;
-          if (l && o) {
-            const r = regionMismatch(PNG.sync.read(l), PNG.sync.read(o));
-            ratio = r.ratio;
-            await writeFile(join(args.out, `${tag}-${name}-diff.png`), PNG.sync.write(r.diff));
+        // Any throw below (screenshot, axe, a write) is recorded for this page/viewport and the run
+        // moves on, so report.json is always written with the rows gathered so far.
+        try {
+          for (const name of regionNames) {
+            const { selector, strict } = REGIONS[name];
+            const [l, o] = [await shot(legacyPage, selector), await shot(oursPage, selector)];
+            if (l) await writeFile(join(args.out, `${tag}-${name}-legacy.png`), l);
+            if (o) await writeFile(join(args.out, `${tag}-${name}-ours.png`), o);
+            let ratio: number | null = null;
+            if (l && o) {
+              // Strict regions forgive a one-row sub-pixel crop offset (bestRowOffsetMismatch).
+              const [lp, op] = [PNG.sync.read(l), PNG.sync.read(o)];
+              const r = strict ? bestRowOffsetMismatch(lp, op) : regionMismatch(lp, op);
+              ratio = r.ratio;
+              await writeFile(join(args.out, `${tag}-${name}-diff.png`), PNG.sync.write(r.diff));
+            }
+            const status = classify(name, !!l, !!o, ratio);
+            // Non-strict regions report a ratio but never fail; strict ones fail on missing/mismatch.
+            const fail = strict && (status === "missing" || status === "mismatch");
+            rows.push({ page: pg.name, width: vp.width, region: name, status, ratio, strict, fail });
           }
-          const status = classify(name, !!l, !!o, ratio);
-          // Non-strict regions report a ratio but never fail; strict ones fail on missing/mismatch.
-          const fail = strict && (status === "missing" || status === "mismatch");
-          rows.push({ page: pg.name, width: vp.width, region: name, status, ratio, strict, fail });
-        }
-        // Full-page shots, named per the harness contract.
-        await legacyPage.screenshot({ path: join(args.out, `${tag}-legacy.png`), fullPage: true });
-        await oursPage.screenshot({ path: join(args.out, `${tag}-ours.png`), fullPage: true });
-        const { violations } = await new AxeBuilder({ page: oursPage }).withTags(AXE_TAGS).analyze();
-        for (const v of violations) {
-          if (v.impact === "serious" || v.impact === "critical") {
-            axeFailures.push({ page: pg.name, width: vp.width, id: v.id, impact: v.impact, nodes: v.nodes.length });
+          // Full-page shots, named per the harness contract.
+          await legacyPage.screenshot({ path: join(args.out, `${tag}-legacy.png`), fullPage: true });
+          await oursPage.screenshot({ path: join(args.out, `${tag}-ours.png`), fullPage: true });
+          const { violations } = await new AxeBuilder({ page: oursPage }).withTags(AXE_TAGS).analyze();
+          for (const v of violations) {
+            if (v.impact === "serious" || v.impact === "critical") {
+              axeFailures.push({ page: pg.name, width: vp.width, id: v.id, impact: v.impact, nodes: v.nodes.length });
+            }
           }
+        } catch (e) {
+          loadErrors.push(`${tag}: capture failed: ${msg(e)}`);
+        } finally {
+          await ctx.close().catch(() => undefined);
         }
-        await ctx.close();
       }
     }
+  } catch (e) {
+    loadErrors.push(`run: ${e instanceof Error ? e.message : String(e)}`);
   } finally {
     await browser?.close();
   }
@@ -163,7 +203,7 @@ export async function runParity(argv: string[], log: (l: string) => void = conso
   const failed = rows.some((r) => r.fail) || axeFailures.length > 0 || loadErrors.length > 0;
   await writeFile(
     join(args.out, "report.json"),
-    JSON.stringify({ target: args.target, legacy: args.legacy, strictMax: STRICT_MAX, rows, axeFailures, loadErrors, failed }, null, 2),
+    JSON.stringify({ target: args.target, legacy: args.legacy, strictMax: STRICT_MAX, loads, rows, axeFailures, loadErrors, failed }, null, 2),
   );
   log(`parity: ${failed ? "FAILED" : "passed"}; report at ${join(args.out, "report.json")}`);
   return failed ? 1 : 0;
