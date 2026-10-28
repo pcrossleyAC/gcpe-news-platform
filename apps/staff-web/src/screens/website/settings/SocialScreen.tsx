@@ -1,0 +1,119 @@
+import { Link, useSearchParams } from "react-router";
+import { InlineAlert } from "@bcgov/design-system-react-components";
+import { NETWORKS, type ConnectSettings, type LinkSetting, type NetworkKey } from "@gcpe/site-settings";
+import { useTenantTimeZone } from "../../../format/tenantTimeZone";
+import { useSession } from "../../../session/SessionContext";
+import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
+import { useDocumentTitle } from "../../../shared/useDocumentTitle";
+import { canManageWebsite } from "../access";
+import { ConflictPanel } from "./ConflictPanel";
+import { OtherSectionErrors } from "./OtherSectionErrors";
+import { PublishBar } from "./PublishBar";
+import { useSettingsEditor, type SettingsEditor } from "./useSettingsEditor";
+
+const TITLE = "Social links";
+const SWITCH_NOTE = "Save a draft before switching networks; unsaved edits on this tab are lost when you switch.";
+
+const byText = (a: LinkSetting, b: LinkSetting) => a.text.localeCompare(b.text, undefined, { sensitivity: "accent" });
+const count = (n: ConnectSettings[NetworkKey]) => withoutBlankLinks(n.featured).length + withoutBlankLinks(n.accounts).length;
+
+/**
+ * `/hub/website/social?network=<key>` (spec "Hub screens", Social links): one tab per network,
+ * each with its featured accounts (reorderable, with a Description) and its other accounts
+ * (shown sorted by name). Reads need NRMS.SiteEditor or Core.Admin; writes NRMS.SiteEditor.
+ */
+export function SocialScreen(): React.JSX.Element {
+  const session = useSession();
+  const [params] = useSearchParams();
+  useDocumentTitle(TITLE);
+  const requested = params.get("network");
+  const network = (NETWORKS.find((n) => n.key === requested) ?? NETWORKS[0]).key;
+  if (!canManageWebsite(session)) {
+    return (
+      <div className="gcpe-site-social">
+        <h1>{TITLE}</h1>
+        <p>You don&rsquo;t have permission to view the social links.</p>
+      </div>
+    );
+  }
+  // Keyed by network: switching tabs reloads from the server, so edits to the old tab are lost, as the note says.
+  return <SocialFields key={network} network={network} canEdit={session.has("NRMS.SiteEditor")} />;
+}
+
+function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: boolean }): React.JSX.Element {
+  const timeZone = useTenantTimeZone();
+  // The form holds the whole `connect` value, so a save sends every network with only this one's edits.
+  const editor = useSettingsEditor<"connect">("connect", {
+    fromDocument: (connect) => ({ ...connect, [network]: { ...connect[network], accounts: [...connect[network].accounts].sort(byText) } }),
+    toRequest: (connect) => ({
+      ...connect,
+      [network]: { featured: withoutBlankLinks(connect[network].featured), accounts: withoutBlankLinks(connect[network].accounts).sort(byText) },
+    }),
+  });
+  const { value, state, fieldErrors } = editor;
+
+  if (editor.loadError) {
+    return (
+      <div className="gcpe-site-social">
+        <h1>{TITLE}</h1>
+        <InlineAlert variant="danger" role="alert" description={editor.loadError} />
+      </div>
+    );
+  }
+  if (!value || !state) {
+    return (
+      <div className="gcpe-site-social">
+        <h1>{TITLE}</h1>
+        <p>Loading…</p>
+      </div>
+    );
+  }
+
+  const set = (patch: Partial<ConnectSettings[NetworkKey]>) => editor.setValue((v) => ({ ...v, [network]: { ...v[network], ...patch } }));
+  const name = NETWORKS.find((n) => n.key === network)!.name;
+
+  return (
+    <div className="gcpe-site-social">
+      <h1>{TITLE}</h1>
+
+      <nav aria-label="Networks">
+        <ul>
+          {NETWORKS.map((n) => (
+            <li key={n.key}>
+              <Link to={`?network=${n.key}`} aria-current={n.key === network ? "page" : undefined}>
+                {`${n.name} ${count(value[n.key])}`}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
+      <p>{SWITCH_NOTE}</p>
+
+      <h2>{name}</h2>
+      <LinkListEditor
+        legend="Featured accounts"
+        links={value[network].featured}
+        onChange={(featured) => set({ featured })}
+        errors={fieldErrors}
+        pathPrefix={`connect.${network}.featured`}
+        reorderable
+        withSummary
+        isDisabled={!canEdit}
+      />
+      <LinkListEditor
+        legend="Other accounts"
+        links={value[network].accounts}
+        onChange={(accounts) => set({ accounts })}
+        errors={fieldErrors}
+        pathPrefix={`connect.${network}.accounts`}
+        reorderable={false}
+        withSummary={false}
+        isDisabled={!canEdit}
+      />
+
+      <OtherSectionErrors errors={editor.otherErrors} />
+      <ConflictPanel editor={editor as SettingsEditor<unknown>} section="connect" timeZone={timeZone} />
+      <PublishBar editor={editor as SettingsEditor<unknown>} canEdit={canEdit} timeZone={timeZone} />
+    </div>
+  );
+}

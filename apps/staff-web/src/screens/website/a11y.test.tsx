@@ -8,7 +8,7 @@ import { cleanup, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import axe from "axe-core";
-import { defaultSiteSettings } from "@gcpe/site-settings";
+import { defaultSiteSettings, type SiteSettings } from "@gcpe/site-settings";
 import { jsonResponse } from "../../../test/jsonResponse";
 import { SessionProvider } from "../../session/SessionContext";
 import { RequireAuth } from "../../session/RequireAuth";
@@ -21,6 +21,8 @@ import { FilesScreen } from "./FilesScreen";
 import { FeaturedScreen } from "./FeaturedScreen";
 import { LogScreen } from "./LogScreen";
 import { BannerScreen } from "./settings/BannerScreen";
+import { FooterScreen } from "./settings/FooterScreen";
+import { SocialScreen } from "./settings/SocialScreen";
 import type { SettingsState } from "./settings/api";
 import type { CarouselsResponse, LinksView, ListFilesResult, LiveFeedView, PinView } from "./types";
 
@@ -199,6 +201,43 @@ describe("accessibility — Website section screens", () => {
     const { container } = render(withAuth(<BannerScreen />));
     await screen.findByRole("heading", { name: "Site banner", level: 1 });
     await screen.findByDisplayValue("More");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+  const settingsState = (mutate: (d: SiteSettings) => SiteSettings, errors: SettingsState["errors"]): SettingsState => {
+    const base = defaultSiteSettings({
+      colors: { primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D", mutedText: "#474543", surface: "#FFFFFF", background: "#FFFFFF", border: "#D8D8D8" },
+      footerLinks: [],
+    });
+    return {
+      live: { revision: 3, publishedAt: "2026-10-27T18:00:00.000Z", publishedBy: "Sam", note: null },
+      document: mutate(base),
+      draft: { baseRevision: 3, updatedAt: "2026-10-27T18:05:00.000Z" },
+      baseRevision: 3,
+      errors,
+    };
+  };
+
+  it("FooterScreen, with link rows and field errors", async () => {
+    const state = settingsState(
+      (d) => ({ ...d, footer: { ...d.footer, helpLinks: [{ id: "contact", text: "Contact Us", url: "/contact" }], copyrightHolder: "" } }),
+      [{ field: "footer.copyrightHolder", message: "Enter who holds the copyright." }, { field: "footer.helpLinks[0].url", message: "Must start with https:// or / (a page on this site)." }],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<FooterScreen />));
+    await screen.findByRole("heading", { name: "Footer links", level: 1 });
+    await screen.findByDisplayValue("Contact Us");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("SocialScreen, with featured and account rows and a row error", async () => {
+    const state = settingsState(
+      (d) => ({ ...d, connect: { ...d.connect, facebook: { featured: [{ id: "fb", text: "BC Gov", url: "https://facebook.com/bcgov", summary: "<b>x</b>" }], accounts: [{ text: "Other", url: "https://facebook.com/o" }] } } }),
+      [{ field: "connect.facebook.featured[0].summary", message: "Use plain text, 200 characters or fewer." }],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<SocialScreen />));
+    await screen.findByRole("heading", { name: "Social links", level: 1 });
+    await screen.findByDisplayValue("BC Gov");
     expect(await seriousViolations(container)).toEqual([]);
   });
 });

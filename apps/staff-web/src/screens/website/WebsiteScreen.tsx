@@ -14,6 +14,8 @@ const SECTIONS: { to: string; label: string; manageOnly: boolean }[] = [
   { to: "log", label: "Website log", manageOnly: false },
   // Site settings (spec "Hub screens"): added after the existing tabs.
   { to: "banner", label: "Banner", manageOnly: true },
+  { to: "footer", label: "Footer", manageOnly: true },
+  { to: "social", label: "Social links", manageOnly: true },
 ];
 
 /**

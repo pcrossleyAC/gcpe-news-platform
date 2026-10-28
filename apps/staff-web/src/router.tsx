@@ -18,6 +18,8 @@ import { FilesScreen } from "./screens/website/FilesScreen";
 import { FeaturedScreen } from "./screens/website/FeaturedScreen";
 import { LogScreen } from "./screens/website/LogScreen";
 import { BannerScreen } from "./screens/website/settings/BannerScreen";
+import { FooterScreen } from "./screens/website/settings/FooterScreen";
+import { SocialScreen } from "./screens/website/settings/SocialScreen";
 import { CalendarSection } from "./screens/calendar/CalendarSection";
 import { ActivityListScreen } from "./screens/calendar/list/ActivityListScreen";
 import { ActivityRoute } from "./screens/calendar/activity/ActivityScreen";
@@ -100,6 +102,8 @@ export const routes: RouteObject[] = [
           { path: "featured", element: <FeaturedScreen /> },
           { path: "log", element: <LogScreen /> },
           { path: "banner", element: <BannerScreen /> },
+          { path: "footer", element: <FooterScreen /> },
+          { path: "social", element: <SocialScreen /> },
         ],
       },
       {
