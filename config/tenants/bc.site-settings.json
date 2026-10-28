@@ -42,7 +42,7 @@
         "id": "footerNewsletters"
       },
       {
-        "text": "Social and RSS",
+        "text": "Social media",
         "url": "/connect",
         "id": "footerRSSFeeds"
       }
@@ -75,7 +75,7 @@
       },
       {
         "text": "Contact Us",
-        "url": "/contact",
+        "url": "https://forms.gov.bc.ca/",
         "id": "footerContact"
       }
     ],
