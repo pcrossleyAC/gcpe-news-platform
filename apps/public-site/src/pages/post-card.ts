@@ -59,3 +59,16 @@ export function postCard(site: Pick<SiteInfo, "baseUrl">, p: PostDto, o: { hidde
 <div class="clear"></div>
 </div>`;
 }
+
+/** Legacy shows the first three latest posts (home and ministry pages); the rest wait behind
+ * "Load More News", which site.js wires to reveal them (without script, CSS shows them all). */
+export const VISIBLE_LATEST = 3;
+
+/** The latest posts as PostCards, those past {@link VISIBLE_LATEST} hidden, and the Load More
+ * button (empty when nothing is hidden) that reveals `#regular-articles`' hidden cards. */
+export function latestCards(site: Pick<SiteInfo, "baseUrl">, latest: PostDto[]): { cards: string; loadMore: string } {
+  return {
+    cards: latest.map((p, i) => postCard(site, p, { hidden: i >= VISIBLE_LATEST })).join("\n"),
+    loadMore: latest.length > VISIBLE_LATEST ? `<button type="button" class="load-more link-button" aria-controls="regular-articles">Load More News</button>\n` : "",
+  };
+}

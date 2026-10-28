@@ -67,6 +67,7 @@ describe("renderMinistryPage", () => {
     expect(card.querySelector("a.read-more")?.getAttribute("href")).toBe("/ministries/health/biography/");
     expect(card.querySelector(".minister-email a")?.getAttribute("href")).toBe("mailto:HLTH.Minister@gov.example");
     const body = listing.querySelector(":scope > .home-body#main-content-release")!;
+    expect([...listing.children].map((c) => c.className)).toEqual(["home-body", "home-features"]);
     expect(body.querySelector(".top-article > .article a[href='/releases/T1/']")).not.toBeNull();
     expect(body.querySelector(".feature-article > .article a[href='/releases/F1/']")).not.toBeNull();
     const cards = [...body.querySelectorAll(".other-articles > #regular-articles.regular-articles > .article")];
@@ -121,6 +122,13 @@ describe("renderMinistryPage", () => {
     expect(nameOnly).toContain("Media Contacts");
     expect(nameOnly).not.toContain("Direct:");
     expect(nameOnly).not.toContain("mailto:");
+  });
+
+  it("a contact email the safe-URL check refuses as a mailto: is shown as text, not linked (as the minister email)", () => {
+    const html = renderMinistryPage(ministry({ contactUser: contact({ fullName: "Alex", emailAddress: "alex example@gov.example" }) }), null, emptyPosts, site, {}, noCtx);
+    const box = regions(expectAccessibleStructure(html))!.querySelector(":scope > .resource-links")!;
+    expect(box.querySelector("a[href^='mailto:']")).toBeNull();
+    expect(box.textContent).toContain("alex example@gov.example");
   });
 
   it("escapes every contact value, including inside the mailto link", () => {

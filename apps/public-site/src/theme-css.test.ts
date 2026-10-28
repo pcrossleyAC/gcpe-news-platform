@@ -152,3 +152,12 @@ describe("overrides.css no-JS language rules", () => {
   });
 });
 
+describe("overrides.css home-layout order", () => {
+  it("the column (after the news in the DOM) is moved left on a desktop with order:-1 and back to DOM order on a phone; no order:2", () => {
+    expect(overrides).toMatch(/\.home-layout>\.home-features\{[^}]*order:-1[^}]*\}/);
+    const phone = /@media \(max-width: 768px\) \{([\s\S]*?)\n\}/.exec(overrides.slice(overrides.indexOf(".home-layout{display:flex}")))![1]!;
+    expect(phone).toMatch(/\.home-layout>\.home-features\{[^}]*order:0[^}]*\}/);
+    expect(overrides).not.toMatch(/home-features\{[^}]*order:2/);
+  });
+});
+

@@ -54,7 +54,7 @@ describe("the fixture site (6e exit checks)", () => {
       const premier = await readFile(join(dir, "ministries/office-of-the-premier/index.html"), "utf8");
       expect(premier).toContain("<h2>Meet the Team</h2>");
       expect(premier).toContain("<h2>More from the Premier</h2>");
-      expect(premier).toContain('class="article');
+      expect(premier).toContain('<div class="top-article">');
     } finally {
       await rm(dir, { recursive: true, force: true });
     }

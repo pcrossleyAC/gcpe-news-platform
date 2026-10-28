@@ -88,6 +88,36 @@ export async function checkReleaseStates(browser: import("@playwright/test").Bro
   return failures;
 }
 
+/**
+ * Home, ministry and bio pages: the news column comes first in the DOM, so on a phone (390px),
+ * where the side column stacks below it, reading and focus order match what is seen; on a desktop
+ * (1280px) CSS order puts the side column on the left, as legacy shows it.
+ */
+export async function checkLayoutOrder(browser: import("@playwright/test").Browser, url: string, log: (line: string) => void): Promise<string[]> {
+  const failures: string[] = [];
+  for (const path of ["/", "/ministries/health/", "/ministries/health/biography/"]) {
+    for (const width of [390, 1280]) {
+      const context = await browser.newContext({ viewport: { width, height: 900 } });
+      const page = await context.newPage();
+      await page.goto(url + path);
+      const body = await page.locator(".home-layout > .home-body").boundingBox();
+      const side = await page.locator(".home-layout > .home-features").boundingBox();
+      const domBodyFirst = await page.locator(".home-layout").evaluate((el) => el.firstElementChild?.classList.contains("home-body") === true);
+      await context.close();
+      if (!body || !side) {
+        failures.push(`${path} at ${width}px: the news or side column is not rendered`);
+        continue;
+      }
+      const visual = width < 768 ? (body.y < side.y ? "news above column" : "column above news") : side.x < body.x ? "column left of news" : "column right of news";
+      log(`${path} at ${width}px: DOM ${domBodyFirst ? "news first" : "column first"}; ${visual}`);
+      if (!domBodyFirst) failures.push(`${path} at ${width}px: the side column precedes the news in the DOM`);
+      if (width < 768 && visual !== "news above column") failures.push(`${path} at ${width}px: ${visual}, so reading order differs from what is seen`);
+      if (width >= 768 && visual !== "column left of news") failures.push(`${path} at ${width}px: ${visual}, expected the legacy left column`);
+    }
+  }
+  return failures;
+}
+
 export async function runSiteQuality(log: (line: string) => void = console.log): Promise<string[]> {
   const dir = await mkdtemp(join(tmpdir(), "gcpe-site-quality-"));
   const failures: string[] = [];
@@ -108,6 +138,7 @@ export async function runSiteQuality(log: (line: string) => void = console.log):
         if (violations.length > 0) failures.push(`${path}: ${violations.length} axe violation(s)`);
       }
       failures.push(...(await checkReleaseStates(browser, server.url, log)));
+      failures.push(...(await checkLayoutOrder(browser, server.url, log)));
     } finally {
       await browser.close();
     }

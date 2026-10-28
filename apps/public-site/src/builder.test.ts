@@ -154,10 +154,15 @@ describe("site builder", () => {
     api.ministry = async (key) => (ministries[key.toLowerCase()] ? ministry({ key: key.toLowerCase(), name: ministries[key.toLowerCase()] }) : null);
     api.minister = async (key) => ({ headline: key.toLowerCase() === "finance" ? "Hon. Sam State" : "Hon. Alex Example", summary: null, details: "<p>Bio.</p>", photo: null });
     api.ministryProfiles = async () => [
-      { key: "Health", ministerEmail: null, teamLinks: [], childKeys: ["Finance", "gone"] },
+      { key: "Health", ministerEmail: null, teamLinks: [], childKeys: ["Finance", "gone", "bad/key", "x?y", ""] },
       { key: "finance", ministerEmail: "fin@gov.example", teamLinks: [], childKeys: [] },
     ];
+    const asked: string[] = [];
+    const ministryOf = api.ministry;
+    api.ministry = async (key) => (asked.push(key), ministryOf(key));
     await builder.renderPage("category:ministries:health", {});
+    // A child key that can't be a category page id is never fetched or linked.
+    expect(asked.filter((k) => k !== "health")).toEqual(["Finance", "gone"]);
     const page = html(storage, "ministries/health/index.html");
     expect(page).toContain('<h2><a href="/ministries/finance/">Minister of State for Finance</a></h2>');
     expect(page).toContain("<h3>Hon. Sam State</h3>");

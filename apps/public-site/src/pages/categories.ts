@@ -1,12 +1,12 @@
 import type { CategoryDto, MinisterDto, MinistryContactDto, MinistryDto, MinistryProfileDto, PostDto } from "../dto";
-import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "../render";
+import { basePath, e, renderPage, safeHref, type PageOptions, type SiteInfo } from "../render";
 import { categoryPageId, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
 import { displayDate, postListItem } from "./format";
 import type { MinistryPageLabels } from "@gcpe/site-settings";
 import { themeDefaults } from "../settings";
 import { ministryLinkGroups, resourceLinks } from "./side-links";
 import { ministerCard, ministrySidebar, PREMIER_KEY } from "./minister";
-import { postCard } from "./post-card";
+import { latestCards, postCard } from "./post-card";
 
 interface CategoryPosts {
   top: PostDto | null;
@@ -60,10 +60,16 @@ function contactBlock(c: MinistryContactDto | null | undefined): string {
   return [
     name !== undefined ? `<span class="contact-name">${e(name)}</span>` : "",
     numbers.length ? `<div>${numbers.join("<br>")}</div>` : "",
-    email !== undefined ? `<a href="mailto:${e(email)}">${e(email)}</a><br>` : "",
+    email !== undefined ? `${mailtoLink(email)}<br>` : "",
   ]
     .filter(Boolean)
     .join("\n");
+}
+
+/** A contact email as a mailto link when safeHref accepts it (as the minister card's email), else as text. */
+function mailtoLink(email: string): string {
+  const href = safeHref(`mailto:${email}`);
+  return href ? `<a href="${e(href)}">${e(email)}</a>` : e(email);
 }
 
 /** Legacy (Views/Shared/Ministry.cshtml) "Media Contacts": only when the first contact exists; the
@@ -84,8 +90,6 @@ export interface MinistryPageContext {
   children: { ministry: MinistryDto; minister: MinisterDto | null; profile: MinistryProfileDto | null }[];
 }
 
-/** Legacy shows the first three latest posts; the rest wait behind "Load More News". */
-const VISIBLE_LATEST = 3;
 
 /**
  * Legacy Ministry.cshtml's `div.collapsible-regions`, in its order: Media Contacts, Meet the Team
@@ -130,8 +134,9 @@ export function renderMinistriesPage(ministries: MinistryDto[], site: SiteInfo, 
  * one h1 (legacy's h2.ministry-name-mobile, shown only on a phone; visually hidden on wider screens),
  * the column a labelled section (not an <aside> inside <main>), and its headings one level up. The
  * collapsible regions sit in the column after the minister card, as on the home page: legacy hid
- * them on a desktop and cloned them into the column with JavaScript; ours render once, and CSS
- * moves the whole column below the news on a phone. "Load More News" reveals the cards already on
+ * them on a desktop and cloned them into the column with JavaScript; ours render once. The column
+ * follows the news in the DOM (below it on a phone, in reading order); CSS order puts it on the
+ * left on a desktop. "Load More News" reveals the cards already on
  * the page (site.js).
  */
 export function renderMinistryPage(m: MinistryDto, minister: MinisterDto | null, posts: CategoryPosts, site: SiteInfo, opts: PageOptions, ctx: MinistryPageContext): string {
@@ -140,16 +145,14 @@ export function renderMinistryPage(m: MinistryDto, minister: MinisterDto | null,
   const settings = opts.settings ?? themeDefaults(site.theme);
   const top = posts.top ? `<div class="top-article">\n${postCard(site, posts.top, { eager: true })}\n</div>\n` : "";
   const feature = posts.feature ? `<div class="feature-article">\n${postCard(site, posts.feature)}\n</div>\n` : "";
-  const cards = posts.latest.map((p, i) => postCard(site, p, { hidden: i >= VISIBLE_LATEST }));
-  const loadMore = posts.latest.length > VISIBLE_LATEST ? `<button type="button" class="load-more link-button" aria-controls="regular-articles">Load More News</button>\n` : "";
+  const { cards, loadMore } = latestCards(site, posts.latest);
   const body = `<h1 class="ministry-name-mobile">${e(m.name)}</h1>
 <div class="pt-2 ministry-listing">
 <div class="home-layout">
-${ministrySidebar(site, m, minister, ctx.profile, collapsibleRegions(site, m, settings.ministryPages, ctx))}
 <div class="home-body" id="main-content-release">
 ${top}${feature}<div class="other-articles">
 <div id="regular-articles" class="regular-articles">
-${cards.join("\n")}
+${cards}
 </div>
 <div class="news-control">
 ${loadMore}<a href="${e(base)}/search/?ministry=${e(encodeURIComponent(key))}" class="read-more">Search News</a>
@@ -158,6 +161,7 @@ ${loadMore}<a href="${e(base)}/search/?ministry=${e(encodeURIComponent(key))}" c
 <p><a href="${e(base)}/archive/">Browse the archive by month</a></p>
 </div>
 </div>
+${ministrySidebar(site, m, minister, ctx.profile, collapsibleRegions(site, m, settings.ministryPages, ctx))}
 </div>
 </div>`;
 

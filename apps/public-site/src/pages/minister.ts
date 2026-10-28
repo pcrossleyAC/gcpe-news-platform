@@ -49,7 +49,8 @@ export function hasBiography(minister: MinisterDto | null): boolean {
 /** The minister's name on the card and bio page: the headline, else the ministry's minister name, else the ministry. */
 const ministerName = (m: MinistryDto, minister: MinisterDto) => minister.headline?.trim() || m.ministerName?.trim() || m.name;
 
-const ministryHref = (site: Pick<SiteInfo, "baseUrl">, m: MinistryDto) => pageUrl(site, { type: "category", kind: "ministries", key: m.key.toLowerCase() });
+/** The ministry's page; the key is URL-encoded, as News API data (the builder also skips a child whose key can't be a page id). */
+const ministryHref = (site: Pick<SiteInfo, "baseUrl">, m: MinistryDto) => pageUrl(site, { type: "category", kind: "ministries", key: encodeURIComponent(m.key.toLowerCase()) });
 
 /**
  * Legacy `Minister.cshtml` as `div.resource-links.minister`: photo, name, summary, "Read Bio" (only
@@ -105,7 +106,6 @@ export function renderBiographyPage(m: MinistryDto, minister: MinisterDto, profi
   const allNews = m.key.toLowerCase() === PREMIER_KEY ? "All News From The Premier" : "All News From This Ministry";
   const body = `<div class="ministry-listing">
 <div class="home-layout">
-${ministrySidebar(site, m, minister, profile, extra)}
 <div class="home-body">
 <div class="biography-details" id="main-content-release">
 <h1>${e(name)}</h1>${picture}
@@ -116,6 +116,7 @@ ${bioHtml(minister.details)}
 <div class="clear"></div>
 </div>
 </div>
+${ministrySidebar(site, m, minister, profile, extra)}
 </div>
 </div>`;
   return renderPage(name, site, biographyUrl(site, m.key), body, {

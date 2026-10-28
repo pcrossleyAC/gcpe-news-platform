@@ -1,7 +1,7 @@
 import { JSDOM } from "jsdom";
 import { describe, expect, it } from "vitest";
 import { post } from "../../test/fixtures";
-import { postCard } from "./post-card";
+import { latestCards, postCard, VISIBLE_LATEST } from "./post-card";
 
 const site = { baseUrl: "https://boxs.example/site" };
 const POST = "/site/releases/2026HLTH0001-000001/";
@@ -129,4 +129,16 @@ describe("postCard", () => {
       }
     }
   });
+
+  it("latestCards: the first VISIBLE_LATEST cards shown, the rest .hidden-article, and Load More only when some are hidden", () => {
+    expect(VISIBLE_LATEST).toBe(3);
+    const posts = Array.from({ length: 5 }, (_, i) => post({ key: `K${i}` }));
+    const many = latestCards(site, posts);
+    const f = JSDOM.fragment(many.cards);
+    expect([...f.querySelectorAll("div.article")].map((a) => a.classList.contains("hidden-article"))).toEqual([false, false, false, true, true]);
+    expect(many.loadMore).toBe('<button type="button" class="load-more link-button" aria-controls="regular-articles">Load More News</button>\n');
+    expect(latestCards(site, posts.slice(0, 3)).loadMore).toBe("");
+    expect(latestCards(site, [])).toEqual({ cards: "", loadMore: "" });
+  });
 });
+

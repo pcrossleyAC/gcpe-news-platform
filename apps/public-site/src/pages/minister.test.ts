@@ -61,6 +61,12 @@ describe("ministerCard", () => {
     expect(card.querySelector("img")!.getAttribute("alt")).toBe('A "<b>" & B');
   });
 
+  it("a ministry key is URL-encoded in the card's ministry link", () => {
+    const odd = ministry({ key: "a?b#c", name: "Odd" });
+    const card = frag(ministerCard(site, odd, minister(), null, { ministryHeading: true }));
+    expect(card.querySelector("h2 a")?.getAttribute("href")).toBe("/ministries/a%3Fb%23c/");
+  });
+
   it("blank minister headline and no biography → no card", () => {
     expect(ministerCard(site, health, minister({ headline: "  ", details: null }), profile())).toBe("");
     expect(ministerCard(site, health, minister({ headline: null, details: "<p></p>" }), profile())).toBe("");
@@ -125,6 +131,7 @@ describe("renderBiographyPage", () => {
     expect(layout).not.toBeNull();
     const side = layout.querySelector(":scope > section.home-features")!;
     expect(side.getAttribute("aria-label")).toBe("About Health");
+    expect([...layout.children].map((c) => c.className)).toEqual(["home-body", "home-features"]);
     expect(side.querySelector(".resource-links.minister")).not.toBeNull();
     expect(texts(side, ".resource-links:not(.minister) > h2")).toEqual(["Featured Topics", "Featured Services"]);
     const details = layout.querySelector(":scope > div.home-body > div.biography-details#main-content-release")!;

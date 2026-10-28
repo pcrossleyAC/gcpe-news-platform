@@ -251,7 +251,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       // exists is skipped; a failed fetch rejects the render, as the parent's own fetches do.
       const children = (
         await Promise.all(
-          (profile?.childKeys ?? []).map(async (k) => {
+          // Only keys that can be a ministry page id (lower-cased, CATEGORY_KEY): anything else would be a broken link.
+          (profile?.childKeys ?? []).flatMap((k) => (categoryPageId("ministries", k) ? [k] : [])).map(async (k) => {
             const [child, childMinister] = await Promise.all([newsApi.ministry(k), newsApi.minister(k)]);
             return child ? { ministry: child, minister: childMinister, profile: profileOf(k) } : null;
           }),

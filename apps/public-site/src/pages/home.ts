@@ -4,7 +4,7 @@ import { icon } from "../icons";
 import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
 import { themeDefaults } from "../settings";
 import { feedUrl, pageUrl } from "../site-paths";
-import { postCard } from "./post-card";
+import { latestCards, postCard } from "./post-card";
 
 export interface HomeView {
   top: PostDto | null;
@@ -16,8 +16,6 @@ export interface HomeView {
   sectors: { key: string; name: string; latest: PostDto | null }[];
 }
 
-/** Legacy HomeView shows the first three latest posts; the rest wait behind "Load More News". */
-const VISIBLE_LATEST = 3;
 
 const ENGLISH = 4105;
 const headlineOf = (p: PostDto) => (p.documents.find((d) => d.languageId === ENGLISH) ?? p.documents[0])?.headline || p.key;
@@ -127,8 +125,9 @@ function resourceBoxes(view: HomeView, site: SiteInfo): string {
 /**
  * Legacy HomeView.cshtml with the plan-1 accessibility deviations: one visually hidden h1, the
  * side column a labelled section (not an <aside> inside <main>), its headings one level up, and
- * Resources/News by Sector rendered once inside it (CSS moves the column below the news on a
- * phone, in place of legacy's JS clone). "Load More News" is a button revealing the cards
+ * Resources/News by Sector rendered once inside it (in place of legacy's JS clone). The column
+ * follows the news in the DOM, so on a phone it stacks below the news in reading order; CSS order
+ * puts it on the left on a desktop. "Load More News" is a button revealing the cards
  * already on the page (site.js); without JavaScript they all show and the button is hidden.
  */
 export function renderHomePage(view: HomeView, site: SiteInfo, opts: PageOptions = {}): string {
@@ -140,18 +139,13 @@ export function renderHomePage(view: HomeView, site: SiteInfo, opts: PageOptions
     : "";
   const top = view.top ? `<div class="top-article">\n${postCard(site, view.top, { eager: true })}\n</div>\n` : "";
   const feature = view.feature ? `<div class="feature-article">\n${postCard(site, view.feature)}\n</div>\n` : "";
-  const cards = view.latest.map((p, i) => postCard(site, p, { hidden: i >= VISIBLE_LATEST }));
-  const loadMore = view.latest.length > VISIBLE_LATEST ? `<button type="button" class="load-more link-button" aria-controls="regular-articles">Load More News</button>\n` : "";
+  const { cards, loadMore } = latestCards(site, view.latest);
   const body = `<h1 class="visually-hidden">Latest news</h1>
 <div class="home-layout">
-<section class="home-features" aria-label="Connect and resources">
-${connectBox(settings.connect, base)}
-${resourceBoxes(view, site)}
-</section>
 <div class="home-body" id="main-content-release">
 ${emergency}${top}<div class="other-articles">
 ${feature}<div id="regular-articles" class="regular-articles">
-${cards.join("\n")}
+${cards}
 </div>
 <div class="news-control">
 ${loadMore}<a href="${e(base)}/search/" class="read-more">Search News</a>
@@ -159,6 +153,10 @@ ${loadMore}<a href="${e(base)}/search/" class="read-more">Search News</a>
 </div>
 </div>
 </div>
+<section class="home-features" aria-label="Connect and resources">
+${connectBox(settings.connect, base)}
+${resourceBoxes(view, site)}
+</section>
 </div>`;
   return renderPage("Home", site, `${base}/`, body, {
     ...opts,
