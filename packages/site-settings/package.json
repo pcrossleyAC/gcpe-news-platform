@@ -3,8 +3,13 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "exports": { ".": "./src/index.ts", "./node": "./src/node.ts" },
+  "exports": { ".": "./src/index.ts", "./node": "./src/node.ts", "./rich-html": "./src/rich-html.ts" },
   "dependencies": {
+    "@gcpe/http-kit": "0.0.0",
+    "sanitize-html": "^2.18.0",
     "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@types/sanitize-html": "^2.16.2"
   }
 }

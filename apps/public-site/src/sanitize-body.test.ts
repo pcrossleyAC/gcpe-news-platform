@@ -111,3 +111,11 @@ describe("sanitizeBodyHtml", () => {
   });
 });
 
+
+describe("sanitizeBodyHtml { images: false } (settings rich text)", () => {
+  it("drops every <img> and keeps the rest", () => {
+    const html = '<p>Hi <img src="https://gov.example/a.png" alt="A"><a href="https://gov.example/">link</a></p>';
+    expect(sanitizeBodyHtml(html, { images: false })).toBe('<p>Hi <a href="https://gov.example/">link</a></p>');
+    expect(sanitizeBodyHtml(html)).toContain("<img");
+  });
+});

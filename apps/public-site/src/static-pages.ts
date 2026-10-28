@@ -10,9 +10,11 @@ import { DEFAULT_THEME, themeCss } from "./theme-css";
 
 export function renderNotFoundPage(site: SiteInfo, opts: PageOptions): string {
   const base = basePath(site);
-  return renderPage("Page not found", site, `${base}/404.html`, `<div class="home-body not-found">
-<h1>Page not found</h1>
-<p>The page you asked for isn't here. It may have moved or been removed.</p>
+  const { heading, text } = (opts.settings ?? themeDefaults(site.theme)).pageText.notFound;
+  // An empty heading would leave the page's one h1 blank: both it and the title fall back.
+  const title = heading.trim() || "Page not found";
+  return renderPage(title, site, `${base}/404.html`, `<div class="home-body not-found">
+<h1>${e(title)}</h1>${text.trim() !== "" ? `\n<p>${e(text)}</p>` : ""}
 <form class="search-panel-bar" role="search" aria-label="Search for the page" action="${e(base)}/search/" method="get" data-prefill-from-path>
 <label for="not-found-q">Search for the page</label>
 <input id="not-found-q" name="q" type="search">

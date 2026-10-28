@@ -154,6 +154,18 @@ describe("FooterScreen", () => {
     expect(screen.getByText("Use plain text.")).toBeInTheDocument();
   });
 
+  it("a list-size error and a row error with no field name show on their list", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [
+      { field: "footer.helpLinks", message: "Keep the list to 10 or fewer." },
+      { field: "footer.connectLinks[0]", message: "This link is listed twice." },
+    ]));
+    renderScreen();
+    const help = await screen.findByRole("group", { name: "Help links" });
+    expect(await within(help).findByRole("alert")).toHaveTextContent("Keep the list to 10 or fewer.");
+    const connect = screen.getByRole("group", { name: "Connect with Us links" });
+    expect(within(within(connect).getByRole("group", { name: "Link 1" })).getByText("This link is listed twice.")).toBeInTheDocument();
+  });
+
   it("Core.Admin alone sees disabled inputs and no write buttons", async () => {
     stub(["Core.Admin"], stateOf(DOC));
     renderScreen();

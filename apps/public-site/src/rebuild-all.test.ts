@@ -28,6 +28,7 @@ describe("enqueueRebuildAll", () => {
     expect(at(PRIORITY.bulkPost)).toEqual(["post:NEW", "post:OLD"]);
     expect(at(PRIORITY.bulkAggregate)).toContain("sitemap:pages");
     expect(at(PRIORITY.bulkAggregate)).toContain("connect");
+    expect(at(PRIORITY.bulkAggregate)).toContain("privacy");
     expect(at(PRIORITY.bulkAggregate)).toContain("category:ministries:health");
   });
 });

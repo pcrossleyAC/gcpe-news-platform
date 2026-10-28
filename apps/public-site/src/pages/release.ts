@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { MinistryPageLabels } from "@gcpe/site-settings";
+import type { MinistryPageLabels, PageTextSettings } from "@gcpe/site-settings";
 import type { AssetDto, MinistryDto, PostDocument, PostDto, RelatedPost } from "../dto";
 import { icon } from "../icons";
 import { headlineOf } from "../post-index";
@@ -194,6 +194,15 @@ ${present(main?.pageTitle) ? `<h2>${e(main.pageTitle)}</h2>\n` : ""}${present(po
   return `<section class="story-features" id="sidebar" aria-label="About this release">\n${blocks}\n</section>`;
 }
 
+/** The licence sentence after the Media Assets list (L3), from pageText.assetLicence: plain text,
+ * escaped; the link only for a safe URL (else its text alone) and only when it has text. */
+function licenceLine(l: PageTextSettings["assetLicence"], site: SiteInfo): string {
+  if (l.text.trim() === "") return "";
+  const href = l.linkText.trim() !== "" ? settingsHref(l.url.trim(), site) : null;
+  const link = l.linkText.trim() === "" ? "" : href ? ` <a href="${e(href)}">${e(l.linkText)}</a>` : ` ${e(l.linkText)}`;
+  return `\n<p class="assets-licence">${e(l.text)}${link}.</p>`;
+}
+
 /**
  * The release page, in legacy PostView's skeleton (look-and-feel §2.2) with the plan's
  * accessibility deviations: one h1 (the headline; legacy's lead-ministry h3 becomes
@@ -281,7 +290,7 @@ ${present(d.subheadline) ? `<p class="subheadline">${e(d.subheadline)}</p>\n` : 
       : `<h2>Backgrounders</h2>`
     : "";
 
-  const assets = assetItems.length ? `<div id="assets" class="assets expanded">\n<h2>Media Assets</h2>\n<div class="media-assets-container">\n<ul>\n${assetItems.join("\n")}\n</ul>\n</div>\n</div>` : "";
+  const assets = assetItems.length ? `<div id="assets" class="assets expanded">\n<h2>Media Assets</h2>\n<div class="media-assets-container">\n<ul>\n${assetItems.join("\n")}\n</ul>\n</div>${licenceLine(settings.pageText.assetLicence, site)}\n</div>` : "";
   const bodyTranslations = translationItems(post.azureTranslations ?? [], "");
   const translations = bodyTranslations.length ? `<div id="translations" class="assets expanded">\n<h2>Translations</h2>\n<ul>\n${bodyTranslations.join("\n")}\n</ul>\n</div>` : "";
 

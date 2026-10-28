@@ -18,6 +18,7 @@ describe("parsePageId", () => {
     ["sitemap:pages", { type: "sitemap-pages" }],
     ["static", { type: "static" }],
     ["connect", { type: "connect" }],
+    ["privacy", { type: "privacy" }],
     ["archive-terms", { type: "archive-terms" }],
     ["archive-term:2024-11-18", { type: "archive-term", slug: "2024-11-18" }],
     ["archive-term:2017-2017", { type: "archive-term", slug: "2017-2017" }],
@@ -62,12 +63,23 @@ describe("pageFiles", () => {
     ["sitemap:pages", ["sitemaps/pages.xml"]],
     ["static", ["assets/theme.css", "assets/site-banner.json", "404.html", "robots.txt"]],
     ["connect", ["connect/index.html"]],
+    ["privacy", ["privacy/index.html"]],
     ["archive-terms", ["archive/terms/index.html"]],
     ["archive-term:2017-2017", ["archive/terms/2017-2017/index.html"]],
     ["archive-term:current", ["archive/terms/current/index.html"]],
     ["legacy-redirects", ["legacy/ministry-successors.json"]],
   ])("%s", (id, files) => {
     expect(pageFiles(parsePageId(id)!)).toEqual(files);
+  });
+});
+
+describe("contacts (H3)", () => {
+  it("parsePageId('contacts') round-trips; pageFiles is contacts/index.html", () => {
+    const p = parsePageId("contacts")!;
+    expect(p).toEqual({ type: "contacts" });
+    expect(formatPageId(p)).toBe("contacts");
+    expect(pageFiles(p)).toEqual(["contacts/index.html"]);
+    expect(pageUrl(site, p)).toBe("/site/contacts/");
   });
 });
 

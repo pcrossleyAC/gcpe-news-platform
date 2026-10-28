@@ -406,11 +406,12 @@ describe("site builder", () => {
     const r = await builder.buildAll({});
     expect(r).toEqual({ posts: 3, failures: 0 });
     expect(storage.files.has("releases/OLD/index.html")).toBe(false);
-    for (const f of ["releases/K1/index.html", "releases/S1/index.html", "index.html", "ministries/index.html", "ministries/health/index.html", "ministries/finance/index.html", "archive/index.html", "search/index.html", "sitemap.xml", "sitemaps/pages.xml", "assets/theme.css", "assets/site-banner.json", "connect/index.html", "robots.txt", "404.html"]) {
+    for (const f of ["releases/K1/index.html", "releases/S1/index.html", "index.html", "ministries/index.html", "ministries/health/index.html", "ministries/finance/index.html", "archive/index.html", "search/index.html", "sitemap.xml", "sitemaps/pages.xml", "assets/theme.css", "assets/site-banner.json", "connect/index.html", "privacy/index.html", "robots.txt", "404.html"]) {
       expect(storage.files.has(f), f).toBe(true);
     }
     expect(html(storage, "sitemaps/pages.xml")).not.toContain("/search/");
     expect(html(storage, "sitemaps/pages.xml")).toContain("https://news.example/connect/");
+    expect(html(storage, "sitemaps/pages.xml")).toContain("https://news.example/privacy/");
   });
 
   it("legacy-redirects writes legacy/ministry-successors.json from the News API, and is an aggregate page", async () => {

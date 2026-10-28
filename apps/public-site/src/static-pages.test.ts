@@ -51,6 +51,25 @@ describe("static pages", () => {
     expect(form.querySelector('button[type="submit"]')?.textContent).toBe("Search");
     expect(body.querySelector('a[href="/site/archive/"]')).not.toBeNull();
   });
+  it("404.html shows the settings heading as h1 and the text; the search form is still prefilled from the path", () => {
+    const settings = bcSettings();
+    settings.pageText.notFound = { heading: "Gone <fishing>", text: "Try the search & more." };
+    const html = renderNotFoundPage(site, { settings });
+    const doc = expectAccessibleStructure(html);
+    expect(doc.querySelectorAll("h1")).toHaveLength(1);
+    expect(doc.querySelector("main h1")?.textContent).toBe("Gone <fishing>");
+    expect(doc.querySelector("main .not-found > p")?.textContent).toBe("Try the search & more.");
+    expect(html).not.toContain("<fishing>");
+    expect(doc.querySelector("main form[data-prefill-from-path]")).not.toBeNull();
+    expect(doc.querySelector("title")?.textContent).toContain("Gone <fishing>");
+    // Empty strings do not crash, leave no blank h1 and no empty line where the text was.
+    settings.pageText.notFound = { heading: " ", text: "" };
+    const empty = renderNotFoundPage(site, { settings });
+    const emptyDoc = expectAccessibleStructure(empty);
+    expect(emptyDoc.querySelector("main h1")?.textContent).toBe("Page not found");
+    expect(emptyDoc.querySelector("title")?.textContent).toContain("Page not found");
+    expect(empty).toContain('<h1>Page not found</h1>\n<form class="search-panel-bar"');
+  });
   it("renderRobots (not test) is exactly the legacy Disallows without /assets, plus our Sitemap line", () => {
     expect(renderRobots({ ...site, baseUrl: "https://news.gov.bc.ca" }, false)).toBe(
       "User-agent: *\nDisallow: /error\nDisallow: /files\nDisallow: /search\nDisallow: /Search\nDisallow: /SEARCH\nDisallow: /subscribe\nSitemap: https://news.gov.bc.ca/sitemap.xml\n",

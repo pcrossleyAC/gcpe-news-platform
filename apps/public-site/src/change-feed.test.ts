@@ -21,7 +21,7 @@ describe("pagesForChange", () => {
     [{ id: 5, kind: "resource_links", key: null }, [{ pageId: "home", priority: 1 }]],
     // A ministry change can start or stop a successor redirect, so it also queues legacy-redirects,
     // one priority lower, so a new successor's page is written before anything 301s to it.
-    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "sitemap:pages", priority: 1 }]],
+    [{ id: 6, kind: "ministry", key: "Health" }, [{ pageId: "category:ministries:health", priority: 1 }, { pageId: "ministries", priority: 1 }, { pageId: "search", priority: 1 }, { pageId: "contacts", priority: 1 }, { pageId: "legacy-redirects", priority: 2 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 7, kind: "tag", key: "covid-19" }, [{ pageId: "category:tags:covid-19", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     [{ id: 8, kind: "post.upserted", key: "../x" }, []],
     [{ id: 9, kind: "ministry", key: null }, []],
@@ -34,6 +34,11 @@ describe("pagesForChange", () => {
     [{ id: 12, kind: "government_terms", key: null }, [{ pageId: "archive-terms", priority: 1 }, { pageId: "archive-term:current", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
   ] as const)("%j", (change, expected) => {
     expect(pagesForChange(change as ChangeRow, 0)).toEqual(expected);
+  });
+
+  it("a ministry change queues contacts", () => {
+    expect(pagesForChange({ id: 1, kind: "ministry", key: "Health" }, 0)).toContainEqual({ pageId: "contacts", priority: 1 });
+    expect(pagesForChange({ id: 2, kind: "sector", key: "economy" }, 0).map((p) => p.pageId)).not.toContain("contacts");
   });
 
   it("a sector change queues home as well as the sector page", () => {
