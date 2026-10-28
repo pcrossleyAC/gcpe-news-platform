@@ -50,13 +50,17 @@ const SUBSCRIBE_SCRIPT = `(() => {
     say(Array.isArray(data.issues) ? "Check the email address." : data.error || "Something went wrong.", "alert");
   };
 
-  // Resolves once the list is in (or has failed); an empty list removes its fieldset (the
-  // Emergency case). Keys are compared lowercased; nothing from the caller reaches the DOM.
-  function loadCategories(container, selected) {
+  // Resolves true once the list is in, false if it failed (after the alert, unless quiet); an empty
+  // list removes its fieldset (the Emergency case). Keys are compared lowercased; nothing from the
+  // caller reaches the DOM.
+  function loadCategories(container, selected, quiet) {
     const category = container.dataset.category;
     const wanted = selected && Array.isArray(selected[category]) ? selected[category].map((k) => String(k).toLowerCase()) : [];
     return api("SubscriptionItems/" + encodeURIComponent(category))
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error(String(r.status));
+        return r.json();
+      })
       .then((items) => {
         if (Array.isArray(items) && items.length === 0) {
           container.remove();
@@ -73,8 +77,12 @@ const SUBSCRIBE_SCRIPT = `(() => {
           label.appendChild(document.createTextNode(" " + item.value));
           container.appendChild(label);
         }
+        return true;
       })
-      .catch(() => say("Couldn't load topics. Reload the page to try again.", "alert"));
+      .then((ok) => ok !== false, () => {
+        if (!quiet) say("Couldn't load topics. Reload the page to try again.", "alert");
+        return false;
+      });
   }
 
   // The subscribe page asks all-or-customize with radios; the manage page keeps its "All news" checkbox.
@@ -118,12 +126,29 @@ const SUBSCRIBE_SCRIPT = `(() => {
         }
       }
     }
-    Promise.all(Array.from(form.querySelectorAll("fieldset[data-category]"), (f) => loadCategories(f, wanted))).then(() => {
+    const prefilled = Object.keys(wanted).length > 0;
+    const save = document.getElementById("save");
+    Promise.all(Array.from(form.querySelectorAll("fieldset[data-category]"), (f) => loadCategories(f, wanted, prefilled))).then((loaded) => {
+      if (prefilled && loaded.includes(false)) {
+        // The link asked for particular topics and some couldn't be shown: never fall back to all
+        // news without saying so. Customize stays chosen and Subscribe waits for a reload.
+        showCustom(true);
+        save.disabled = true;
+        say("Couldn't load the topics your link chose, so you can't subscribe to them yet. Reload the page to try again.", "alert");
+        return;
+      }
       if (form.querySelector('fieldset[data-category] input:checked')) showCustom(true);
     });
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
-      const r = await postJson("CreateNewsOnDemandEmailSubscriptionWithPreferences", readForm(form));
+      if (save.disabled) return;
+      const choice = readForm(form);
+      if (!choice.isAllNews && Object.keys(choice.subscribedCategories).length === 0) {
+        say("Choose at least one area, or select all news.", "alert");
+        form.querySelector('input[name="isAllNews"][value="false"]').focus();
+        return;
+      }
+      const r = await postJson("CreateNewsOnDemandEmailSubscriptionWithPreferences", choice);
       if (r.status === 204) say("Check your email to confirm your subscription.", "status");
       else await showError(r);
     });

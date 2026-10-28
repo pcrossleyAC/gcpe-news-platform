@@ -113,7 +113,7 @@ describe("news.gov subscribe page", () => {
   });
 
   /** Runs the page's own script against stubbed API lists. */
-  async function run(search: string, items: Record<string, { key: string; value: string }[]>) {
+  async function run(search: string, items: Record<string, { key: string; value: string }[]>, failing: string[] = []) {
     const html = render("subscribe/index.html", { settings: bcSettings() });
     const dom = new JSDOM(html, { url: `https://boxs.example/site/subscribe/${search}`, runScripts: "outside-only" });
     const w = dom.window as unknown as { fetch: unknown; eval(s: string): void };
@@ -124,6 +124,7 @@ describe("news.gov subscribe page", () => {
         return new Response(null, { status: 204 });
       }
       const cat = decodeURIComponent(String(url).split("SubscriptionItems/")[1]!.split("?")[0]!);
+      if (failing.includes(cat)) return cat === "sectors" ? new Response("oops", { status: 503 }) : Promise.reject(new TypeError("network"));
       return new Response(JSON.stringify(items[cat] ?? []), { status: 200 });
     };
     const script = [...dom.window.document.querySelectorAll("script")].map((s) => s.textContent!).find((t) => t.includes("/api/Subscribe/"))!;
@@ -183,5 +184,58 @@ describe("news.gov subscribe page", () => {
     all.checked = true;
     all.dispatchEvent(new win.Event("change", { bubbles: true }));
     expect(custom.hasAttribute("hidden")).toBe(true);
+  });
+
+  const submit = async (doc: Document, win: Window) => {
+    doc.getElementById("subscribe-form")!.dispatchEvent(new win.Event("submit", { cancelable: true }));
+    for (let i = 0; i < 10; i++) await new Promise((r) => setTimeout(r, 0));
+  };
+
+  it("customize with nothing checked: no POST, the alert says why and focus goes to the customize radio; checking one then posts", async () => {
+    const { doc, posted, win } = await run("", ITEMS);
+    const customize = doc.querySelector<HTMLInputElement>('input[name="isAllNews"][value="false"]')!;
+    customize.checked = true;
+    customize.dispatchEvent(new win.Event("change", { bubbles: true }));
+    doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
+    doc.querySelector<HTMLButtonElement>("#save")!.focus();
+    await submit(doc, win as unknown as Window);
+    expect(posted).toEqual([]);
+    expect(doc.getElementById("message-alert")!.getAttribute("role")).toBe("alert");
+    expect(doc.getElementById("message-alert")!.textContent).toBe("Choose at least one area, or select all news.");
+    expect(doc.activeElement).toBe(customize);
+    doc.querySelector<HTMLInputElement>('input[name="sectors:economy"]')!.checked = true;
+    await submit(doc, win as unknown as Window);
+    expect(posted).toEqual([{ emailAddress: "a@b.test", subscribedCategories: { sectors: ["economy"] }, isAllNews: false, isAsItHappens: true, isDailyDigest: false }]);
+    expect(doc.getElementById("message-alert")!.textContent).toBe("");
+  });
+
+  it("all news with nothing checked still posts (the check is only for customize)", async () => {
+    const { doc, posted, win } = await run("", ITEMS);
+    doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
+    await submit(doc, win as unknown as Window);
+    expect(posted).toEqual([{ emailAddress: "a@b.test", subscribedCategories: {}, isAllNews: true, isAsItHappens: true, isDailyDigest: false }]);
+  });
+
+  it("a prefill link whose lists fail to load stays on customize with Subscribe disabled and says why (never silently all news)", async () => {
+    for (const failing of [["ministries"], ["sectors"]]) {
+      const { doc, posted, win } = await run("?ministries=health", ITEMS, failing);
+      expect(doc.querySelector<HTMLInputElement>('input[name="isAllNews"][value="false"]')!.checked).toBe(true);
+      expect(doc.getElementById("newsOnDemandCustomOptions")!.hasAttribute("hidden")).toBe(false);
+      const save = doc.querySelector<HTMLButtonElement>("#save")!;
+      expect(save.disabled).toBe(true);
+      expect(doc.getElementById("message-alert")!.textContent).toBe("Couldn't load the topics your link chose, so you can't subscribe to them yet. Reload the page to try again.");
+      doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
+      await submit(doc, win as unknown as Window);
+      expect(posted).toEqual([]);
+    }
+  });
+
+  it("without a prefill a failed list only warns: all news stays selected and Subscribe works", async () => {
+    const { doc, posted, win } = await run("", ITEMS, ["ministries"]);
+    expect(doc.getElementById("message-alert")!.textContent).toBe("Couldn't load topics. Reload the page to try again.");
+    expect(doc.querySelector<HTMLButtonElement>("#save")!.disabled).toBe(false);
+    doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
+    await submit(doc, win as unknown as Window);
+    expect(posted).toHaveLength(1);
   });
 });
