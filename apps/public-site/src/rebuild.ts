@@ -37,10 +37,11 @@ export const SITE_STATE_PATH = ".site-state.json";
  * Bump whenever every page's baked-in chrome changes (links, header, page types, ...), so the
  * next startup/event rebuilds every page already on disk. 3: the full site (theme, every page
  * type, archives, feeds, sitemaps; spec §6). 4: the site settings' footer and banner placeholder.
- * 5: ministry Media Contacts and filter-only search links (PR #46). Bump for body render changes
+ * 5: ministry Media Contacts and filter-only search links (PR #46). 6: the legacy <head> (favicon,
+ * html.js marker, vendored legacy CSS, overrides.css) and the theme's legacy variable aliases. Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 5;
+export const RENDER_CHROME_VERSION = 6;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must

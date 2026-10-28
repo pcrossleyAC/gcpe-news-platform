@@ -81,7 +81,7 @@ describe("renderPage chrome", () => {
     const doc = expectAccessibleStructure(html);
     expect(doc.querySelector("a.skip-link")?.textContent).toBe("Skip to main content");
     expect(doc.querySelector("main")?.getAttribute("tabindex")).toBe("-1");
-    expect(doc.querySelector('link[rel="stylesheet"]')?.getAttribute("href")).toBe("/site/assets/theme.css");
+    expect([...doc.querySelectorAll('link[rel="stylesheet"]')].at(-1)?.getAttribute("href")).toBe("/site/assets/theme.css");
   });
 
   it("nav links carry the base path", () => {
@@ -117,7 +117,7 @@ describe("renderPage chrome", () => {
       const font = { ...themed, theme: { ...themed.theme, font: { ...themed.theme.font, stylesheetUrl: bad } } };
       const html = renderPage("T", font, "/site/", "<h1>H</h1>");
       expect(html).not.toContain('rel="stylesheet" href="' + bad);
-      expect(html.match(/<link rel="stylesheet"/g)?.length).toBe(1); // only theme.css — no font link
+      expect(html).not.toContain(bad); // no font link
     }
   });
 
@@ -125,6 +125,54 @@ describe("renderPage chrome", () => {
     const html = renderPage("T", themed, "/site/", "<h1>H</h1>", { feed: { href: "/site/feed.xml", title: "Latest <news>" }, description: "A & B" });
     expect(html).toContain('<link rel="alternate" type="application/rss+xml" title="Latest &lt;news&gt;" href="/site/feed.xml">');
     expect(html).toContain('<meta name="description" content="A &amp; B">');
+  });
+
+  const LEGACY_ORDER = [
+    "/site/assets/legacy/lib/bootstrap5/css/bootstrap.min.css",
+    "/site/assets/legacy/Content/site.css",
+    "/site/assets/legacy/Content/custom.css",
+    "/site/assets/legacy/Content/transforms.css",
+    "/site/assets/legacy/Content/accessibility-styles.css",
+    "/site/assets/legacy/Content/print.css",
+    "/site/assets/site/overrides.css",
+    "/site/assets/theme.css",
+  ];
+  const sheets = (html: string) => [...expectAccessibleStructure(html).querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute("href"));
+
+  it("head links the legacy CSS in legacy order, then overrides.css, then theme.css last", () => {
+    const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
+    expect(sheets(html)).toEqual(LEGACY_ORDER);
+    const at = LEGACY_ORDER.map((href) => html.indexOf(`href="${href}"`));
+    for (let i = 1; i < at.length; i++) expect(at[i]!).toBeGreaterThan(at[i - 1]!);
+    expect(at[0]!).toBeGreaterThan(html.indexOf('<link rel="canonical"'));
+    // The configured font link and the feed alternate still come after theme.css.
+    const font = { ...themed, theme: { ...themed.theme, font: { ...themed.theme.font, stylesheetUrl: "https://fonts.example/a.css" } } };
+    const withExtras = renderPage("T", font, "/site/", "<h1>H</h1>", { feed: { href: "/site/feed.xml", title: "F" } });
+    expect(withExtras.indexOf("fonts.example/a.css")).toBeGreaterThan(withExtras.indexOf("/site/assets/theme.css"));
+    expect(withExtras.indexOf('rel="alternate"')).toBeGreaterThan(withExtras.indexOf("fonts.example/a.css"));
+  });
+
+  it("print.css is media=print; granville-bridge-theme.css only with a Blue Bridge banner", () => {
+    const doc = expectAccessibleStructure(renderPage("T", themed, "/site/", "<h1>H</h1>"));
+    expect(doc.querySelector('link[href="/site/assets/legacy/Content/print.css"]')?.getAttribute("media")).toBe("print");
+    expect(doc.querySelectorAll("link[media]")).toHaveLength(1);
+    expect(doc.querySelector('link[href*="granville-bridge-theme.css"]')).toBeNull();
+    expect(renderPage("T", themed, "/site/", "<h1>H</h1>", { banner: null })).not.toContain("granville-bridge-theme.css");
+    const bridged = renderPage("T", themed, "/site/", "<h1>H</h1>", { banner: "Project Blue Bridge" });
+    const order = [...expectAccessibleStructure(bridged).querySelectorAll('link[rel="stylesheet"]')].map((l) => l.getAttribute("href"));
+    expect(order).toEqual([...LEGACY_ORDER.slice(0, 6), "/site/assets/legacy/Content/granville-bridge-theme.css", ...LEGACY_ORDER.slice(6)]);
+  });
+
+  it("favicon and the html.js marker script are in the head, before any stylesheet", () => {
+    const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
+    const head = html.slice(0, html.indexOf("</head>"));
+    const icon = head.indexOf('<link rel="icon" href="/site/favicon.ico">');
+    const js = head.indexOf('<script>document.documentElement.classList.add("js")</script>');
+    expect(icon).toBeGreaterThan(head.indexOf('<link rel="canonical"'));
+    expect(js).toBeGreaterThan(icon);
+    expect(head.indexOf('rel="stylesheet"')).toBeGreaterThan(js);
+    // At the root mount the base path is empty.
+    expect(renderPage("T", { ...themed, baseUrl: "https://boxs.example" }, "/", "<h1>H</h1>")).toContain('<link rel="icon" href="/favicon.ico">');
   });
 
   it("keeps the test noindex and the banner, and the skip link stays first", () => {

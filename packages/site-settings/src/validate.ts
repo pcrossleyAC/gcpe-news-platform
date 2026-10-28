@@ -59,6 +59,8 @@ export function validateSiteSettings(doc: SiteSettings): FieldError[] {
     checkContrast("theme.colors.text", c.text, c.background, "on the page background", errors);
     checkContrast("theme.colors.surface", c.text, c.surface, "on panels", errors);
     checkContrast("theme.colors.primaryText", c.primaryText, c.primary, "on the header", errors);
+    // P7: --theme-link aliases --color-primary, so the primary colour is also every link's colour.
+    checkContrast("theme.colors.primary", c.primary, c.background, "as link text", errors);
     checkContrast("theme.colors.bannerInfo", "#FFFFFF", c.bannerInfo, "behind white text", errors);
     checkContrast("theme.colors.bannerEmergency", "#FFFFFF", c.bannerEmergency, "behind white text", errors);
   }

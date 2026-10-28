@@ -62,6 +62,10 @@ export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
 }
 
 /** Every page's chrome (spec §6.3): skip link, header with brand and nav, main, footer. */
+/** The head's inline script: marks `<html>` as `.js` before any CSS applies, so stylesheets can
+ * keep no-JS fallbacks under `html:not(.js)` without a flash. A constant: nothing is interpolated. */
+export const HTML_JS_MARKER = 'document.documentElement.classList.add("js")';
+
 export function renderPage(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}, bodyAttr = ""): string {
   const base = basePath(site);
   const theme = site.theme ?? DEFAULT_THEME;
@@ -73,6 +77,8 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   const fontHref = theme.font.stylesheetUrl && isSafeUrl(theme.font.stylesheetUrl, { schemes: ["https:"] }) ? theme.font.stylesheetUrl : null;
   const font = fontHref ? `\n<link rel="stylesheet" href="${e(fontHref)}">` : "";
   const feed = opts.feed ? `\n<link rel="alternate" type="application/rss+xml" title="${e(opts.feed.title)}" href="${e(opts.feed.href)}">` : "";
+  // Legacy loads the Granville Bridge theme only while Project Blue Bridge is on.
+  const bridgeCss = opts.banner ? `\n<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/granville-bridge-theme.css">` : "";
   const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
   const brand = site.logo
     ? `<img class="logo" src="${e(site.logo.src)}" alt="${e(site.logo.alt)}"><span class="wordmark">${e(site.name)}</span>`
@@ -85,6 +91,15 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>${e(title)} | ${e(site.name)}</title>
 <link rel="canonical" href="${e(new URL(site.baseUrl).origin + canonicalPath)}">${robots}${description}
+<link rel="icon" href="${e(base)}/favicon.ico">
+<script>${HTML_JS_MARKER}</script>
+<link rel="stylesheet" href="${e(base)}/assets/legacy/lib/bootstrap5/css/bootstrap.min.css">
+<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/site.css">
+<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/custom.css">
+<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/transforms.css">
+<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/accessibility-styles.css">
+<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/print.css" media="print">${bridgeCss}
+<link rel="stylesheet" href="${e(base)}/assets/site/overrides.css">
 <link rel="stylesheet" href="${e(base)}/assets/theme.css">${font}${feed}
 </head>
 <body${bodyAttr}>

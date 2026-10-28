@@ -1,11 +1,13 @@
 import { JSDOM } from "jsdom";
 import { expect } from "vitest";
 import { SITE_BANNER_SCRIPT } from "../src/banner-script";
+import { HTML_JS_MARKER } from "../src/render";
 
-/** A page without the site banner's inline script (banner-script.ts, on every page), for a test
- * asserting that the page's *own* content carries no script — exactly that constant is removed,
- * nothing else. */
-export const withoutBannerScript = (html: string): string => html.replace(`<script>${SITE_BANNER_SCRIPT}</script>`, "");
+/** A page without the chrome's two inline scripts (the head's html.js marker and the site
+ * banner's script, banner-script.ts; both on every page), for a test asserting that the page's
+ * *own* content carries no script — exactly those constants are removed, nothing else. */
+export const withoutBannerScript = (html: string): string =>
+  html.replace(`<script>${HTML_JS_MARKER}</script>`, "").replace(`<script>${SITE_BANNER_SCRIPT}</script>`, "");
 
 /**
  * The structural half of WCAG 2.2 AA that a static check can prove (spec §6.3): language,

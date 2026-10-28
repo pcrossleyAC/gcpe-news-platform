@@ -1,6 +1,7 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { bcSettings } from "./fixtures";
-import { bannerVisibleAt, contrastRatio, isSafeUrl, validateSiteSettings } from "./index";
+import { bannerVisibleAt, contrastRatio, defaultSiteSettings, isSafeUrl, validateSiteSettings } from "./index";
 import type { SiteSettings } from "./index";
 
 const base = (): SiteSettings => structuredClone(bcSettings());
@@ -72,6 +73,22 @@ describe("validateSiteSettings", () => {
     expect(errorsFor((d) => { d.theme.colors.primaryText = "#555555"; })).toEqual([
       { field: "theme.colors.primaryText", message: expect.stringContaining("on the header") },
     ]);
+  });
+
+  it("a primary too pale to read as link text on the background is refused", () => {
+    expect(errorsFor((d) => { d.theme.colors.primary = "#8FB3E8"; d.theme.colors.primaryText = "#000000"; })).toEqual([
+      { field: "theme.colors.primary", message: "Too faint to read as link text (2.1:1, needs 4.5:1). Pick a darker shade." },
+    ]);
+  });
+
+  it("the bc and nb tenant defaults still validate", () => {
+    for (const t of ["bc", "nb"]) {
+      const tenant = JSON.parse(readFileSync(new URL(`../../../config/tenants/${t}.json`, import.meta.url), "utf8")) as {
+        site: { theme: Parameters<typeof defaultSiteSettings>[0] };
+      };
+      expect(validateSiteSettings(defaultSiteSettings(tenant.site.theme))).toEqual([]);
+    }
+    expect(validateSiteSettings(bcSettings())).toEqual([]);
   });
 
   it.each(["013366", "#013", "#01336G", "red"])("rejects the malformed colour %j and skips contrast", (c) => {
