@@ -152,7 +152,11 @@ export function syncSite(deps: SyncDeps, extra: { pages?: string[] } = {}): Prom
     const turn = await turnOptions(deps, granville, menu);
     const { pageOpts } = turn;
     // selfHeal wrote the subscribe pages without the menu (ministries() was down); now it is back.
-    if (degradedSubscribe.delete(deps.storage)) await writeSubscribePages(deps.storage, deps.site, pageOpts);
+    // Unmarked only once the write succeeds, so a failed write is retried by the next good turn.
+    if (degradedSubscribe.has(deps.storage)) {
+      await writeSubscribePages(deps.storage, deps.site, pageOpts);
+      degradedSubscribe.delete(deps.storage);
+    }
     if (extra.pages?.length) await enqueuePages(deps.db, extra.pages.map((pageId) => ({ pageId, priority: livePriority(pageId) })));
     await applyChromeChanges(deps, turn);
     if (feedRead) {

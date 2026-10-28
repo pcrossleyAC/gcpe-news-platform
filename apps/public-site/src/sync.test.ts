@@ -298,6 +298,25 @@ describe("syncSite", () => {
       expect(rewritten[0]).toEqual(expect.arrayContaining([{ key: "health", name: "Health" }]));
     });
 
+    it("a failed rewrite of the degraded subscribe pages keeps them marked, so the next good turn retries", async () => {
+      const deps = setup(posts());
+      await syncSite(deps);
+      degradedSubscribe.add(deps.storage);
+      let calls = 0;
+      const spy = vi.spyOn(subscribePages, "writeSubscribePages").mockImplementation(async () => {
+        if (++calls === 1) throw new Error("disk full");
+      });
+      try {
+        await expect(syncSite(deps)).rejects.toThrow("disk full");
+        expect(degradedSubscribe.has(deps.storage)).toBe(true);
+        await syncSite(deps);
+        expect(calls).toBe(2);
+        expect(degradedSubscribe.has(deps.storage)).toBe(false);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it("a ministries() failure rejects the turn and leaves the marker untouched", async () => {
       const deps = setup(posts());
       await syncSite(deps);
