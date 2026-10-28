@@ -1,0 +1,684 @@
+﻿﻿@font-face {
+    font-family: "BCSans";
+    font-style: italic;
+    font-weight: normal;
+    src: url("../fonts/BCSans-Italic.woff2") format("woff2"), url("../fonts/BCSans-Italic.woff") format("woff"), url("../fonts/BCSans-Italic.otf") format("opentype"), url("../fonts/BCSans-Italic.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "BCSans";
+    font-style: normal;
+    font-weight: 700;
+    src: url("../fonts/BCSans-Bold.woff2") format("woff2"), url("../fonts/BCSans-Bold.woff") format("woff"), url("../fonts/BCSans-Bold.otf") format("opentype"), url("../fonts/BCSans-Bold.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "BCSans";
+    font-style: italic;
+    font-weight: 700;
+    src: url("../fonts/BCSans-BoldItalic.woff2") format("woff2"), url("../fonts/BCSans-BoldItalic.woff") format("woff"), url("../fonts/BCSans-BoldItalic.otf") format("opentype"), url("../fonts/BCSans-BoldItalic.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "BCSans";
+    font-style: italic;
+    font-weight: 300;
+    src: url("../fonts/BCSans-LightItalic.woff2") format("woff2"), url("../fonts/BCSans-LightItalic.woff") format("woff"), url("../fonts/BCSans-LightItalic.otf") format("opentype"), url("../fonts/BCSans-LightItalic.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "BCSans";
+    font-style: normal;
+    font-weight: 300;
+    src: url("../fonts/BCSans-Light.woff2") format("woff2"), url("../fonts/BCSans-Light.woff") format("woff"), url("../fonts/BCSans-Light.otf") format("opentype"), url("../fonts/BCSans-Light.ttf") format("truetype");
+}
+
+@font-face {
+    font-family: "BCSans";
+    font-style: normal;
+    font-weight: normal;
+    src: url("../fonts/BCSans-Regular.woff2") format("woff2"), url("../fonts/BCSans-Regular.otf") format("opentype"), url("../fonts/BCSans-Regular.woff") format("woff"), url("../fonts/BCSans-Regular.ttf") format("truetype");
+}
+
+:root {
+    --primary-blue: #013366;
+    --white: #ffffff;
+    --info-blue: #013366;
+    --info-green: #42814A;
+    --warning-yello: #F8BB47;
+    --alert-red: #CE3E39;
+    --dark: #2D2D2D;
+    
+}
+
+body {
+    font-family: "BCSans", "Noto Sans", Verdana, Arial, sans-serif;
+    background-color: #fff;
+    color: var(--theme-text, #2D2D2D);
+    font-size: 13px;
+    /*overflow-y: scroll;*/
+    overflow-x: hidden;
+    width: 100%;
+}
+
+.header .navbar-brand {
+    color: var(--theme-text, #2D2D2D);
+    font-size: 18px;
+    font-weight: 700;
+    border-left: 2px solid var(--primary-blue);
+}
+
+#site-banner a {
+    color: #fff;
+    text-decoration: underline;
+}
+
+#BCGov-logo, #BCGov-logo-bridge {
+    width: 164px;
+}
+
+.skip-link{
+
+}
+
+.info-blue-banner {
+    background-color: var(--primary-blue);
+    /*background-color: rgb(45, 45, 45);*/
+    width: 100%;
+    font-size: 16px;
+    color: #fff;
+}
+
+.info-blue-banner .content, .info-black-banner .content {
+    padding: 20px;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
+    flex-wrap: nowrap;
+}
+
+.info-blue-banner a:hover{
+    cursor: pointer;
+}
+
+.search input {
+    border-right: none;
+}
+
+.search button {
+    border-left: none;
+    background-color: transparent;
+}
+
+#navbarSupportedContent .navbar-nav li a {
+    color: var(--theme-text, #2D2D2D) !important;
+}
+
+#navbarSupportedContent .navbar-nav li {
+    padding-left: 8px;
+    padding-right: 8px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+}
+
+#navbarSupportedContent .navbar-nav li:focus,
+#navbarSupportedContent .navbar-nav li:hover,
+#navbarSupportedContent .navbar-nav li:active,
+#ministry-dropdown:active, #ministry-dropdown.active
+{
+    background-color: #D7D7D7;
+    border-radius: 4px;
+}
+
+#nav-menu-sm.active,
+#search-md-button.active {
+    background-color: #D7D7D7;
+}
+
+.nav-link:hover,
+.nav-link:visited,
+.nav-link:focus {
+    background-color: transparent !important;
+}
+
+#sm-nav-container {
+    margin-right: 0;
+    padding-right: 0;
+}
+
+#site-search-input:focus {
+    -webkit-box-shadow: none !important;
+    -moz-box-shadow: none !important;
+    box-shadow: none !important;
+    border: 1px solid #395CCF;
+    border-right: none;
+}
+
+#site-search-input:focus + .search-trigger {
+    -webkit-box-shadow: none !important;
+    -moz-box-shadow: none !important;
+    box-shadow: none !important;
+    border-right: none;
+    border: 1px solid #395CCF;
+}
+
+.search-trigger:hover{
+    cursor: pointer;
+}
+
+
+.search button, .search span {
+    border-left: none;
+    background-color: transparent
+}
+
+#landAcknowledgement {
+    background-color: #313132;
+    color: white;
+    margin-bottom: 0;
+    border-top: 4px solid rgb(252, 186, 25);
+    border-bottom: 4px solid rgb(252, 186, 25);
+    padding-top: 30px;
+    padding-bottom: 20px;
+}
+
+#footer {
+    background-color: var(--theme-footer-background, #FFF);
+    color: var(--theme-text, #2D2D2D);
+    padding-top: 40px;
+    font-size: 16px;
+}
+
+#footer .top{
+    display:flex;
+    flex-direction:row;
+    align-items: stretch;
+    justify-content: flex-end;
+    gap: 10px 50px;
+    flex-wrap: wrap;
+}
+
+#footer .bottom {
+    display: flex;
+    -webkit-box-pack: justify;
+    justify-content: flex-start;
+    margin-bottom: 30px;
+    margin-top: 30px;
+    padding-top: 30px;
+    border-top: 1px solid rgb(1, 51, 102);
+}
+
+.footer-bc a{
+    text-decoration: underline;
+    color: var(--theme-text, #2D2D2D);
+}
+
+#BCGov-logo-footer, #BCGov-logo-footer-bridge {
+    width: 164px;
+    margin-bottom: 10px;
+}
+
+#footer h4 {
+  font-size: 16px;
+  padding-right: 20px;
+  margin-top: 22px;
+  margin-bottom: 10px;
+  font-weight: 600;
+}
+
+#footer ul{
+    list-style-type: none;
+    padding-left:0;
+}
+
+#footer ul li{
+    margin-bottom:8px;
+}
+
+.ministry-listing {
+    display:flex;
+}
+
+@media only screen and (min-width: 1024px) {
+    
+    #navbarSupportedContent .navbar-nav li a {
+        font-size: 1rem;
+    }
+
+    #navbarSupportedContent ul li a {
+        white-space: nowrap;
+    }
+
+    .nav-item-link {
+        padding-right: 0px !important;
+    }
+
+    .live_button_show {
+        margin-left: 10px;
+    }
+
+    .footer-bc {
+        flex:2;
+    }
+
+    .footer-connect, .footer-more-info {
+        flex: 1;
+    }
+    
+}
+
+
+@media (min-width: 768px) and (max-width: 1023px) {
+    #navbarSupportedContent .navbar-nav li a {
+        font-size: 0.9rem;
+    }
+
+    #main-nav-contaier {
+        --bs-gutter-x: 0.5rem;
+        text-wrap: nowrap
+    }
+
+    .menu ul {
+        columns: 2;
+        -webkit-columns: 2;
+        -moz-columns: 2;
+    }
+
+    .nav-item-link {
+        padding-right: 0px !important;
+    }
+
+    .footer-bc {
+        flex: 0 0 100%;
+    }
+
+    .footer-connect, .footer-more-info {
+        flex: 1;
+    }
+}
+
+.btn-primary-blue {
+    background-color: var(--primary-blue) !important;
+    color: var(--white);
+}
+
+.btn-bridge-black {
+    background-color: #252423 !important;
+    color: var(--white);
+}
+
+#news-dropdown:hover{
+    cursor: pointer;
+}
+
+#menu {
+    z-index: 100;
+    width: 100vw !important;
+    left: 0;
+    /*position: absolute;*/
+    transform: translateX(0px);
+    background-color: #fff;
+    width: 100vw !important;
+    position: relative;
+    top: -10px;
+    height: calc(100vh - 130px) !important;
+    min-height: calc(100vh - 130px) !important; /* Keep consistent */
+    overflow-y: auto;
+    box-sizing: border-box; /* ADDED: Includes padding and border in the element's total width and height */
+}
+
+#main-nav {
+    --bs-gutter-x: 0;
+}
+
+.menu {
+    flex-direction: row;
+    flex-wrap: nowrap;
+    justify-content: flex-start;
+    gap: 10px 30px;
+    font-size: 16px;
+    padding: 25px 20px 20px 0px;
+    color: var(--theme-text, #2D2D2D);
+}
+
+.menu ul li {
+    padding-top: 10px;
+}
+
+.list-title {
+    font-weight: 600;
+    font-size: 18px;
+    padding-left: 20px;
+}
+
+.menu ul li a {
+    display: block;
+    padding: 5px 0 5px 5px;
+    color: var(--theme-text, #2D2D2D);
+}
+
+.menu ul li a:hover {
+    text-decoration: none;
+}
+
+.menu ul li a:hover {
+    color: rgb(41, 41, 41);
+    text-decoration: underline;
+    border-radius: 4px;
+}
+
+#bannerToggleLink:hover,
+#search-md-button:hover,
+#search-md-button image:hover {
+    cursor: pointer;
+}
+
+#navbarSupportedContent .navbar-nav .nav-item-link:focus,
+#navbarSupportedContent .navbar-nav .nav-item-link:hover,
+#navbarSupportedContent .navbar-nav .nav-item-link:active {
+    background-color: transparent;
+}
+
+#search-md-button {
+    padding: 0;
+    display: block;
+}
+
+.menu-icon {
+    height: 40px;
+    width: 40px;
+    text-align: center;
+}
+
+@media only screen and (min-width: 1024px) {
+    .menu ul {
+        columns: 2;
+        -webkit-columns: 2;
+        -moz-columns: 2;
+    }
+    .d-lg-block {
+        display: block !important;
+    }
+}
+.menu ul li {
+    float: left;
+    width: 90%;
+}
+
+@media only screen and (max-width: 1023px) {
+    .menu ul li a {
+        padding: 3px 0 3px 3px;
+    }
+    .live_button_show {
+        padding: 0 !important;
+        margin-bottom: 10px;
+        margin-left: 5px;
+    }
+    
+}
+
+.nav-border {
+    border-bottom: 1px solid rgb(217, 217, 217);
+    height:75px;
+}
+
+.navbar-toggler, #search-md-button {
+    border-color: var(--theme-text, #2D2D2D);
+}
+
+.banner-toggle-container {
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    order: 1; /* This will place it first in the flex order */
+}
+
+.banner-toggle-btn {
+    padding: 8px 4px !important;
+    display: flex;
+    align-items: center;
+    margin-right: 4px;
+    height: 40px;
+    width:40px;
+    border: none;
+}
+
+.banner-toggle-btn img {
+    width: 24px;
+    height: 24px;
+}
+
+.navbar-toggler {
+    margin-left: 0;
+    padding: 8px;
+    order: 2; /* This will place it second in the flex order */
+}
+
+.search-toggle-container {
+    order: 3; /* This will place it third in the flex order */
+}
+
+.live_button_show {
+    color: #ffffff;
+    white-space: nowrap;
+}
+
+.live_button_hide {
+    display: none !important;
+    padding: 0 !important;
+    margin-bottom: 10px;
+}
+
+.search-md {
+    padding: 0;
+}
+
+.search-md-block {
+    padding-bottom: 10px;
+}
+
+#smd-search-container {
+    z-index: 200;
+    padding-left: 0;
+    padding-right: 0;
+    /*width: 100vw !important;*/
+    height: auto;
+    left: 0;
+    height: max-content;
+    position: absolute;
+    transform: translateX(0px);
+    background-color: #fff;
+    padding-left: 30px;
+    padding-right: 35px;
+    padding-top: 10px;
+    padding-bottom: 10px;
+    position: relative;
+    width: 100vw !important;
+    top: -10px;
+}
+
+#smd-search-container input, #smd-search-container button {
+    border:none;
+    background-color: #FFF;
+}
+
+#navbarSupportedContent {
+    background-color: #FFF;
+    padding-left: 0;
+    padding-right: 0;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+@media only screen and (max-width: 767px) {
+    .info-blue-banner {
+        --bs-gutter-x: 0;
+        padding-right: 10px;
+    }
+
+    .banner-toggle-container {
+        margin-left: auto;
+        margin-right: 0;
+        order: 1;
+    }
+
+    .banner-toggle-btn {
+        margin-right: 4px;
+    }
+
+    .navbar-toggler {
+        order: 2;
+    }
+
+    .search-toggle-container {
+        order: 3;
+        height: 40px;
+        width: 40px;
+    }
+
+    #sm-nav-container {
+        padding-left: 0 !important;
+        padding-right: 0;
+        width: 100vw !important;
+        --bs-gutter-x: 0;
+        position: absolute;
+        top: 73px;
+        height: 100vh;
+        /*z-index: 100;*/
+    }
+
+    #main-nav {
+        padding-left: 0 !important;
+        --bs-gutter-x: 0.5rem;
+    }
+
+    #main-nav-contaier {
+        padding-left: 0 !important;
+        --bs-gutter-x: 0.5rem;
+    }
+
+    #menu {
+        top: -6px;
+    }
+
+    #smd-search-container {
+        top: -6px;
+    }
+
+    .collapse-menu-icon {
+        padding: 0;
+        margin-left: 0;
+    }
+
+    #search-md-button {
+        margin-left: 5px;
+        display: block;
+    }
+
+    .live_button_show {
+        margin-left: 5px;
+        margin-bottom: 0;
+    }
+
+    .navbar-toggler:focus {
+        box-shadow: none;
+    }
+
+    #navbarSupportedContent {
+        margin-top: 2px;
+        padding-left: 10px;
+        padding-top: 20px;
+        font-size: 1rem;
+        font-weight: 600;
+        min-height: 100vh !important;
+    }
+
+    #navbarSupportedContent ul li a {
+        padding-left: 10px;
+    }
+
+    #sm-icon-dropdown {
+        float: right;
+        padding-right: 20px;
+    }
+
+    #sm-menu .menu {
+        padding-top: 10px;
+        font-weight: 400;
+    }
+
+    #sm-menu .menu ul {
+        padding-left: 5px;
+    }
+
+    .list-title {
+        font-size: 16px;
+        padding-left: 0;
+        padding-bottom: 10px;
+    }
+
+    #sm-BCGov-logo, #sm-BCGov-logo-bridge {
+        width: 70px;
+        padding: 10px 10px 10px 10px;
+    }
+
+    .footer-bc {
+        flex: 0 0 100%;
+    }
+
+    .footer-connect, .footer-more-info {
+        flex: 1;
+    }
+
+    #footer{
+        position: relative;
+    }
+
+    #end-cap {
+        display: block;
+        height: 50px;
+    }
+
+    #footer .top {
+        gap: 10px 5px;
+    }
+
+    #footer h4 {
+        padding-right: 10px;
+        white-space: normal;
+    }
+}
+
+@media only screen and (max-width: 479px) {
+    #main-nav-contaier .navbar-brand {
+        margin-right: 0;
+        padding-left: 0.7rem !important;
+    }
+
+    #main-nav-contaier .navbar {
+        justify-content: flex-start;
+    }
+
+    .menu ul li a {
+        white-space: normal;
+    }
+}
+@media only screen and (max-width: 479px){
+    #footer * {
+        font-size: 14px;
+    }
+}
+
+@media only screen and (max-width: 350px){
+    .header .navbar-brand {
+        font-weight: 600;
+        font-size: 16px;
+    }
+
+    #main-nav {
+        --bs-gutter-x: none !important;
+    }
+}
+
+
+

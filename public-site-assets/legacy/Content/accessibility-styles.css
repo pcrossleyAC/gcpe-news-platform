@@ -1,0 +1,80 @@
+﻿.skip-link {
+    position: absolute;
+    top: -1000px;
+    left: -1000px;
+    height: 1px;
+    width: 1px;
+    text-align: left;
+    overflow: hidden;
+}
+
+    .skip-link:focus {
+        left: 0;
+        top: 0;
+        width: auto;
+        height: auto;
+        overflow: visible;
+    }
+
+.access {
+    display: inline;
+    height: 0;
+    width: 0;
+    z-index: 600;
+    position: absolute;
+    font-size: 1.2rem;
+    margin-bottom: 30px;
+}
+
+    .access ul {
+        padding-left: 10px;
+        list-style: none;
+    }
+    .access li, .access li::after focus{
+        border: none;
+    }
+    .access li a, .access a {
+        margin: 0px 0px 0px -1000px;
+        width: auto;
+        padding: 5px;
+        top: 3px;
+        overflow: hidden;
+    }
+
+        .access li a:focus, .access a:focus {
+            margin-left: 320px;
+            width: auto;
+            height: auto;
+            display: inline-block;
+            white-space: nowrap;
+            background-color: #fff;
+            color: #000;
+            border: 2px solid #395CCF;
+        }
+
+.story-features .fa.fa-facebook-square {
+    color: #3b5998;
+}
+.story-features .fa.fa-twitter {
+    color: #55acee;
+}
+
+.segment .fa {
+    color: #ffffff;
+}
+
+.segment .fa-brands.fa-square-x-twitter {
+    color: #ffffff;
+}
+
+.segment .fa.fa-envelope {
+    color: #ffffff;
+}
+
+.story-features .fa-customized-sm, .segment .fa-customized-sm{
+    font-size: 1.6em;
+}
+
+.search-panel-trigger:hover{
+    cursor:pointer;
+}

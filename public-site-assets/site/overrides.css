@@ -1,0 +1,148 @@
+/*
+ * Our own CSS on top of the vendored legacy stylesheets (plan 1, P3): loaded after every legacy
+ * file and before theme.css. Token colours only (var(--color-*) from theme.css, or Bootstrap's
+ * fixed --bs-white where the settings validator pins white text). theme.css's :focus-visible
+ * rule loads after this file and stays the last word on focus outlines.
+ */
+
+/* BC Sans: the same six faces legacy declares, re-declared (later wins) with font-display: swap so
+ * text paints in the fallback font instead of staying invisible while the woff2 loads. woff2 only,
+ * as every browser we support reads it. The head preloads Regular from this same URL. */
+@font-face { font-family: "BCSans"; font-style: normal; font-weight: normal; font-display: swap; src: url("../legacy/fonts/BCSans-Regular.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: italic; font-weight: normal; font-display: swap; src: url("../legacy/fonts/BCSans-Italic.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: normal; font-weight: 700; font-display: swap; src: url("../legacy/fonts/BCSans-Bold.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: italic; font-weight: 700; font-display: swap; src: url("../legacy/fonts/BCSans-BoldItalic.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: normal; font-weight: 300; font-display: swap; src: url("../legacy/fonts/BCSans-Light.woff2") format("woff2"); }
+@font-face { font-family: "BCSans"; font-style: italic; font-weight: 300; font-display: swap; src: url("../legacy/fonts/BCSans-LightItalic.woff2") format("woff2"); }
+
+/* Moved from themeCss: base element rules the page bodies still rely on, until plan 2 replaces them. */
+*, *::before, *::after { box-sizing: border-box; }
+html { font-family: var(--font-family); color: var(--color-text); background: var(--color-background); line-height: 1.5; }
+body { margin: 0; }
+a { color: var(--color-primary); }
+.skip-link { position: absolute; left: -9999px; top: 0; background: var(--color-primary); color: var(--color-primary-text); padding: 0.5rem 1rem; z-index: 10; }
+.skip-link:focus { left: 0.5rem; }
+main { max-width: 70rem; margin: 0 auto; padding: 1rem; }
+main:focus { outline: none; }
+.muted, time { color: var(--color-muted-text); }
+.card { background: var(--color-surface); border: 1px solid var(--color-border); padding: 1rem; margin: 0 0 1rem; }
+.post-list { list-style: none; padding: 0; }
+.post-list li { border-bottom: 1px solid var(--color-border); padding: 0.75rem 0; }
+.connect-list { list-style: none; padding: 0; }
+.connect-list li { border-bottom: 1px solid var(--color-border); padding: 0.5rem 0; }
+.connect-list p { margin: 0.25rem 0 0; color: var(--color-muted-text); }
+.ministry-layout { display: grid; gap: 1rem; }
+.ministry-layout aside h2 { font-size: 1.125rem; }
+@media (min-width: 48rem) {
+  .ministry-layout { grid-template-columns: 18rem minmax(0, 1fr); gap: 2rem; align-items: start; }
+}
+figure { margin: 1rem 0; }
+img { max-width: 100%; height: auto; }
+
+/* Folded in from legacy components.css (its only rule); its light-grey literal becomes the border token. */
+.nav-link:hover, .nav-link:focus { background-color: var(--color-border); border-radius: 4px; }
+
+/* The Font Awesome icon sprite (assets/site/icons.svg). */
+.icon{width:1em;height:1em;fill:currentColor;vertical-align:-0.125em}
+
+/* look-and-feel §5 #12: long URLs in story copy wrap instead of overflowing on a phone. */
+.story-copy a, main a{overflow-wrap:anywhere}
+
+/* Legacy CSS drops the underline, and primary-coloured links in body-coloured text are barely
+ * apart (1.1:1 for BC): a link inside a sentence or a list line with other text must be told apart
+ * by more than colour (axe link-in-text-block, WCAG 1.4.1). */
+main p a, main li a { text-decoration: underline; }
+
+/* The header (render.ts's renderHeader, header.ts): legacy custom.css styles it; these rules cover
+ * where our markup differs from legacy's (look-and-feel §5). */
+/* Legacy spells the container id "main-nav-contaier"; ours is spelled right, so its rules are restated. */
+@media (min-width: 768px) and (max-width: 1023px) { #main-nav-container { --bs-gutter-x: 0.5rem; text-wrap: nowrap; } }
+@media (max-width: 767px) { #main-nav-container { padding-left: 0 !important; --bs-gutter-x: 0.5rem; } }
+@media (max-width: 479px) {
+  #main-nav-container .navbar-brand { margin-right: 0; padding-left: 0.7rem !important; }
+  #main-nav-container .navbar { justify-content: flex-start; }
+}
+/* Legacy's nav also had id="main-nav" (a duplicate) and an inline padding-right. */
+#main-nav .navbar { padding-right: 8px; }
+@media (max-width: 767px) {
+  #main-nav .navbar { padding-left: 0 !important; }
+  /* Legacy's phone (i) toggle pushes the toggles right; while it is hidden the hamburger does. */
+  .banner-toggle-container[hidden] + #nav-menu-sm { margin-left: auto; }
+}
+/* "News" becomes a button (site.js): the link rules, for a button too. */
+#navbarSupportedContent .navbar-nav li > button.nav-link { color: var(--color-text); background: none; border: 0; }
+@media (min-width: 1024px) { #navbarSupportedContent .navbar-nav li > button.nav-link { font-size: 1rem; white-space: nowrap; } }
+@media (min-width: 768px) and (max-width: 1023px) { #navbarSupportedContent .navbar-nav li > button.nav-link { font-size: 0.9rem; } }
+#news-dropdown .icon { margin-left: 0.65em; }
+/* Our generic img{max-width:100%} would shrink the logos inside their shrink-to-fit link. */
+#BCGov-logo, #sm-BCGov-logo { max-width: none; }
+.navbar-toggler .icon, #search-md-button .icon { width: 1.25em; height: 1.25em; }
+/* The menu heading is an h2 (legacy: a div) and its items lose legacy's .list-unstyled. */
+#menu .list-title { margin: 0; line-height: inherit; }
+#menu ul li { list-style: none; }
+body.menu-open { overflow: hidden; }
+/* The open phone drawer sits above #main-content (z-index 5) and locks the page's scroll, as
+ * legacy's jQuery did by setting these inline. */
+@media (max-width: 767px) {
+  #sm-nav-container:has(> #navbarSupportedContent.show) { z-index: 100; }
+  body:has(#navbarSupportedContent.show) { overflow: hidden; }
+}
+/* No JavaScript (or site.js failed to load, render.ts's onerror): the phone nav and the search
+ * drawer show in the page flow, News stays a link, and the toggles that can't work are hidden.
+ * The search page's phone search control (.page-search) is a link to the page's box, so it stays. */
+html:not(.js) #navbarSupportedContent, html:not(.js) #smd-search-container { display: block; }
+html:not(.js) .nav-border { height: auto; }
+html:not(.js) #nav-menu-sm, html:not(.js) .search-toggle-container:not(.page-search) { display: none !important; }
+@media (max-width: 767px) {
+  html:not(.js) #main-nav .navbar { flex-wrap: wrap; }
+  html:not(.js) #sm-nav-container { position: static; height: auto; width: 100% !important; }
+  html:not(.js) #navbarSupportedContent { min-height: 0 !important; padding-top: 0; }
+  html:not(.js) #smd-search-container { top: 0; }
+  html:not(.js) #smd-search-container .input-group { border: 1px solid var(--color-border); }
+}
+
+/* The land acknowledgement band and the footer (render.ts's renderFooter): legacy custom.css styles
+ * them; these rules cover where our markup differs from legacy's (look-and-feel §5). */
+/* Legacy set these inline on the band's <p>; its yellow rules become the accent token. */
+#landAcknowledgement p{font-size:14px;font-weight:500}
+#landAcknowledgement{border-color:var(--color-accent)}
+/* The footer headings are h2 (legacy: h4): legacy's #footer h4 metrics, restated. */
+#footer h2{font-size:16px;padding-right:20px;margin-top:22px;margin-bottom:10px;font-weight:600;line-height:1.2}
+@media (max-width: 767px) { #footer h2 { padding-right: 10px; white-space: normal; } }
+/* The link columns sit in one labelled nav, which keeps its own box (a box-less "contents" display made older
+ * Safari drop the landmark) and reproduces legacy's flat .top row: legacy shares the row's free
+ * space as .footer-bc 2 : .footer-connect 1 : .footer-more-info 1 with a column gap between each.
+ * The nav takes the columns' share (2) plus, as its basis, the one gap that now sits inside it
+ * (50px, custom.css's #footer .top column gap where the three share a row, >=1024px); below that
+ * .footer-bc is 100% wide and the nav fills its own row. Inside, the same gap (inherited) and
+ * legacy's flex:1 columns. */
+#footer .top > nav{display:flex;flex-wrap:wrap;gap:inherit;flex:2 1 50px}
+
+/* The banners (render.ts's #banner, banner-script.ts): legacy custom.css styles .info-blue-banner and
+ * granville-bridge-theme.css (linked only while Blue Bridge is on) .info-black-banner; these rules
+ * cover where our markup differs. The site banner's colour comes from its class, not the JSON. */
+.site-banner-info{background:var(--color-banner-info);color:var(--bs-white)}
+.site-banner-emergency{background:var(--color-banner-emergency);color:var(--bs-white)}
+/* Legacy set align-content:center inline on the icon and close cells. */
+#banner .content > div:has(> .icon), #banner .content > div:has(> button){align-content:center}
+#banner .content .icon{width:1.25em;height:1.25em}
+/* Message then links on one run of text, as legacy's bare text and inline <a>s were. */
+#banner .content p, #banner .content ul, #banner .content li{display:inline;margin:0;padding:0}
+#banner .content li{margin-left:.25em}
+#banner .content a{color:inherit;font-weight:700}
+#btnCloseBanner, #btnCloseBannerBridge{background:none;border:0;padding:0;line-height:1;cursor:pointer}
+#banner :focus-visible{outline-color:var(--bs-white)}
+/* Without site.js nothing could close Blue Bridge's banner (the site banner's script closes its own). */
+html:not(.js) #btnCloseBannerBridge{display:none}
+/* The (i) toggles (header.ts) stay hidden until site.js shows them; Bootstrap's display utilities
+ * would otherwise override [hidden]. */
+.banner-toggle-container[hidden], #sm-nav-ul > li[hidden]{display:none !important}
+#bannerToggleLink{width:40px}
+#bannerToggleLink img{width:24px;height:24px}
+
+/* The 404 page (static-pages.ts): a labelled search box under the message; works with no script. height:auto overrides a legacy form height (25px) that left the controls overlapping the links below. */
+.not-found{padding:32px 0}
+.not-found .search-panel-bar{display:grid;height:auto;grid-template-columns:minmax(0,1fr) auto;gap:8px;align-items:center;margin:16px 0 24px}
+.not-found .search-panel-bar label{grid-column:1/-1;font-weight:600}
+.not-found .search-panel-bar input{min-width:0;min-height:44px;padding:8px 12px;border:1px solid var(--color-border)}
+.not-found .search-panel-bar button{min-height:44px;min-width:44px;padding:8px 16px;cursor:pointer}
