@@ -69,10 +69,12 @@ export async function searchRowsByKeys(db: DbOrTx, keys: string[], defaultLangua
   return keys.map((k) => byKey.get(k)).filter((r): r is SearchRow => r !== undefined);
 }
 
-/** Spec §5.4 text mode: websearch_to_tsquery against search_vector, ts_rank_cd, then newest first. */
+/** Spec §5.4 text mode: websearch_to_tsquery against search_vector, ts_rank_cd, then newest first.
+ * An empty `q` (a filter-only search) matches every post the filters allow, newest first. */
 export async function textSearch(db: DbOrTx, query: SearchQuery, opts: TextSearchOptions): Promise<SearchPage> {
-  const tsquery = sql`websearch_to_tsquery(${opts.language}::regconfig, ${query.q})`;
-  const conds = [...searchFilters(query), sql`${posts.searchVector} @@ ${tsquery}`];
+  const tsquery = query.q === "" ? null : sql`websearch_to_tsquery(${opts.language}::regconfig, ${query.q})`;
+  const conds = [...searchFilters(query)];
+  if (tsquery) conds.push(sql`${posts.searchVector} @@ ${tsquery}`);
   const excluded = (opts.excludeKeys ?? []).map((k) => k.toLowerCase());
   if (excluded.length > 0) conds.push(sql`lower(${posts.key}) NOT IN (${sql.join(excluded.map((k) => sql`${k}`), sql`, `)})`);
   const where = and(...conds);
@@ -84,7 +86,7 @@ export async function textSearch(db: DbOrTx, query: SearchQuery, opts: TextSearc
     .select(searchRowColumns(opts.defaultLanguageId))
     .from(posts)
     .where(where)
-    .orderBy(sql`ts_rank_cd(${posts.searchVector}, ${tsquery}) desc`, desc(posts.publishDate), KEY_DESC)
+    .orderBy(...(tsquery ? [sql`ts_rank_cd(${posts.searchVector}, ${tsquery}) desc`] : []), desc(posts.publishDate), KEY_DESC)
     .limit(window.limit)
     .offset(window.offset);
   return { total, rows };
