@@ -91,6 +91,17 @@ export interface CategoryDto {
   featurePostKey: string | null;
 }
 
+/** One category of `GET /api/v2/categories/{kind}/latest` (P4-R11): the active categories in the
+ * News API's order, each with its top and feature posts (null when unset or unpublished) and its
+ * newest posts with those two left out, as v1's Latest answers them. */
+export interface CategoryLatestDto {
+  key: string;
+  name: string;
+  topPost: PostDto | null;
+  featurePost: PostDto | null;
+  latest: PostDto[];
+}
+
 export interface SlideDto {
   key: string;
   headline: string | null;

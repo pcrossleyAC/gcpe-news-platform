@@ -2,6 +2,9 @@ import express from "express";
 import { rateLimit } from "express-rate-limit";
 import { NEWS_API_SIMILAR_ROLE, requireAnyRole, requireBearer, type BearerOptions } from "@gcpe/auth";
 import type { Db } from "@gcpe/db-kit";
+import { categoryKindSchema } from "@gcpe/events";
+import { toPostDto } from "../../dto";
+import { latestPerCategory, MAX_LATEST_PER_CATEGORY } from "../../posts";
 import { clientIpKey } from "../client-ip";
 import { changesRoutes, type ChangesRouteOptions } from "./changes";
 import { parseSearchQuery } from "../../search/query";
@@ -26,6 +29,8 @@ export function v2Routes(deps: {
   /** GET /api/v2/slides (addendum §6.4; public, no bearer needed). Absent (some tests): that
    * path answers v2's 404. */
   db?: Db;
+  /** Formats v1-shaped post DTOs (GET /api/v2/categories/{kind}/latest). Default: UTC. */
+  timeZone?: string;
 }): express.Router {
   const r = express.Router();
   r.use((_req, res, next) => {
@@ -51,6 +56,29 @@ export function v2Routes(deps: {
     // Each inactive ministry's final active successor (public; new-government spec §4): what the
     // public site writes to legacy/ministry-successors.json for the stack's 301s.
     r.get("/ministry-successors", async (_req, res) => void res.json({ successors: await ministrySuccessors(db) }));
+    // A category index page's data in one call (P4-R11): every active category of a kind, in v1's
+    // order, with its top and feature posts and its newest `count` (1–3) posts, the posts exactly
+    // as v1's /api/Posts and /api/Posts/Latest answer them. Public, like those.
+    r.get("/categories/:kind/latest", async (req, res) => {
+      const kind = categoryKindSchema.safeParse(req.params.kind.toLowerCase());
+      if (!kind.success) return void res.status(404).json({ error: "not found" });
+      const raw = typeof req.query.count === "string" ? req.query.count : "";
+      const count = /^\d$/.test(raw) ? Number(raw) : 0;
+      if (count < 1 || count > MAX_LATEST_PER_CATEGORY) {
+        return void res.status(400).json({ error: { code: "InvalidParameter", parameter: "count", message: `count must be an integer from 1 to ${MAX_LATEST_PER_CATEGORY}` } });
+      }
+      const tz = deps.timeZone ?? "UTC";
+      const groups = await latestPerCategory(db, kind.data, count);
+      res.json({
+        categories: groups.map((g) => ({
+          key: g.category.key,
+          name: g.category.name,
+          topPost: g.topPost && toPostDto(g.topPost, tz),
+          featurePost: g.featurePost && toPostDto(g.featurePost, tz),
+          latest: g.latest.map((p) => toPostDto(p, tz)),
+        })),
+      });
+    });
   }
   if (search) {
     const limiter = deps.searchRateLimit

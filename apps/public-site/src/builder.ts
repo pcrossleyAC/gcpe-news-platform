@@ -189,28 +189,21 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
   }
 
   /**
-   * One index page's groups (M8, M16): the active categories (ministries in the News API's order; the
-   * others as `categories(kind)` lists them, which is by sort order), each with its newest posts.
-   * Every top and feature post comes from one `postsByKeys` call (none for sectors, which show only
-   * their latest three); `latest` runs SECTOR_FETCHES at a time. A failed fetch rejects, so the
-   * queue retries the render and the page stays as it was.
+   * One index page's groups (M8, M16) from one `categoryLatest` call (P4-R11), whatever the number
+   * of categories: the active categories in the News API's order (sort order, then key), each with
+   * its newest posts (three for a sector, else one) and, except for sectors, its top and feature
+   * posts. A key that can't be a page is left out. A failed call rejects, so the queue retries the
+   * render and the page stays as it was.
    */
-  async function indexGroups(run: RunCache, kind: CategoryKind): Promise<IndexGroup[]> {
-    const cats: { key: string; name: string; top: string | null; feature: string | null }[] = [];
-    const add = (c: { key: string; name: string; isActive: boolean; topPostKey: string | null; featurePostKey: string | null }) => {
-      if (c.isActive && categoryPageId(kind, c.key)) cats.push({ key: c.key.toLowerCase(), name: c.name, top: c.topPostKey, feature: c.featurePostKey });
-    };
-    if (kind === "ministries") (await ministries(run)).forEach(add);
-    else (await newsApi.categories(kind)).forEach(add);
-    const featuredKeys = kind === "sectors" ? [] : [...new Set(cats.flatMap((c) => [c.top, c.feature]).filter((k): k is string => !!k))];
-    const found = featuredKeys.length ? await newsApi.postsByKeys(featuredKeys) : [];
-    const pick = (k: string | null) => (k ? (found.find((p) => p.key.toLowerCase() === k.toLowerCase()) ?? null) : null);
-    return mapLimit(cats, SECTOR_FETCHES, async (c) => {
-      const top = pick(c.top);
-      const feature = pick(c.feature);
-      const latest = await newsApi.latest(kind, c.key, kind === "sectors" ? SECTOR_INDEX_LATEST : 1);
+  async function indexGroups(kind: CategoryKind): Promise<IndexGroup[]> {
+    const groups = await newsApi.categoryLatest(kind, kind === "sectors" ? SECTOR_INDEX_LATEST : 1);
+    return groups.flatMap((g) => {
+      if (!categoryPageId(kind, g.key)) return [];
+      // Sectors show only their latest posts.
+      const top = kind === "sectors" ? null : g.topPost;
+      const feature = kind === "sectors" ? null : g.featurePost;
       // The same post in both slots shows once.
-      return { key: c.key, name: c.name, top, feature: feature && top && feature.key.toLowerCase() === top.key.toLowerCase() ? null : feature, latest };
+      return [{ key: g.key.toLowerCase(), name: g.name, top, feature: feature && top && feature.key.toLowerCase() === top.key.toLowerCase() ? null : feature, latest: g.latest }];
     });
   }
 
@@ -444,7 +437,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         case "category-index": {
           const kind = p.type === "ministries" ? "ministries" : p.kind;
           // Everything is fetched before the write: a failed fetch leaves the page as it was.
-          const [groups, links] = await Promise.all([indexGroups(run, kind), newsApi.resourceLinks()]);
+          const [groups, links] = await Promise.all([indexGroups(kind), newsApi.resourceLinks()]);
           await storage.write(pageFiles(p)[0]!, renderCategoryIndex(kind, groups, links, site, opts));
           return [];
         }

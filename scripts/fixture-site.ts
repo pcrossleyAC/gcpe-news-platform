@@ -19,7 +19,7 @@ import type { IndexedPost, PostIndex } from "../apps/public-site/src/post-index"
 import type { SiteInfo } from "../apps/public-site/src/render";
 import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
-import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
+import { composeCategoryLatest, fakeNewsApi } from "../apps/public-site/test/fake-news-api";
 import { contact, link, ministry, post, slide } from "../apps/public-site/test/fixtures";
 
 const BC_TENANT = fileURLToPath(new URL("../config/tenants/bc.json", import.meta.url));
@@ -253,6 +253,7 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     ],
     resourceLinks: async () => [link({ uri: "/contacts/", key: "Media Contacts" }), link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
+    categoryLatest: (kind, n) => composeCategoryLatest(newsApi, posts)(kind, n),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
     governmentTerms: async () => termsSnapshot(tenant.governmentTerms ?? []),
   };

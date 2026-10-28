@@ -265,6 +265,23 @@ describe("newsApiClient", () => {
     });
   });
 
+  describe("categoryLatest", () => {
+    const body = { categories: [{ key: "health", name: "Health", topPost: { key: "T1", headline: "x" }, featurePost: null, latest: [{ key: "L1" }] }] };
+    it("GETs api/v2/categories/{kind}/latest?count=n and returns its categories", async () => {
+      const fetchImpl = stubFetch(fakeResponse({ ok: true, body: JSON.stringify(body) }));
+      expect(await newsApiClient("http://host/news", fetchImpl as unknown as typeof fetch).categoryLatest("sectors", 3)).toEqual(body.categories);
+      expect(String(fetchImpl.mock.calls[0]![0])).toBe("http://host/news/api/v2/categories/sectors/latest?count=3");
+    });
+
+    it("any failure (a 404 from an older News API, a 5xx, a malformed or empty body) rejects, so the page stays as it was", async () => {
+      const client = (r: Response) => newsApiClient("http://host", stubFetch(r) as unknown as typeof fetch);
+      await expect(client(fakeResponse({ ok: false, status: 404, body: "{}" })).categoryLatest("tags", 1)).rejects.toThrow(/404/);
+      await expect(client(fakeResponse({ ok: false, status: 503, body: "" })).categoryLatest("tags", 1)).rejects.toThrow(/503/);
+      await expect(client(fakeResponse({ ok: true, body: JSON.stringify({ categories: [{ key: "a" }] }) })).categoryLatest("tags", 1)).rejects.toThrow();
+      await expect(client(fakeResponse({ ok: true, body: "" })).categoryLatest("tags", 1)).rejects.toThrow();
+    });
+  });
+
   describe("ministrySuccessors", () => {
     it("GETs api/v2/ministry-successors and returns the map", async () => {
       const fetchImpl = stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ successors: { a: "c", b: "c" } }) }));

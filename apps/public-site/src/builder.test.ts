@@ -200,13 +200,14 @@ describe("site builder", () => {
       expect(html(storage, "sectors/index.html")).not.toContain("retired");
     });
 
-    it("tags index: heading News by Topic; top and feature from one postsByKeys call; no Search News", async () => {
+    it("tags index: heading News by Topic; top and feature from the one categoryLatest call; no Search News", async () => {
       const posts = new Map([["T1", dayPost("T1", 1, { tagKeys: ["covid-19"] })], ["F1", dayPost("F1", 2, { tagKeys: ["covid-19"] })], ["T2", dayPost("T2", 3, { tagKeys: ["wildfires"] })]]);
       const { storage, api, builder } = setup(posts);
       api.tags = [cat("tags", "covid-19", { topPostKey: "T1", featurePostKey: "F1" }), cat("tags", "wildfires", { topPostKey: "T2" })];
       const byKeys = vi.spyOn(api, "postsByKeys");
       await builder.rebuild(["index:tags"], { settings: bcSettings() });
-      expect(byKeys).toHaveBeenCalledTimes(1);
+      expect(byKeys).not.toHaveBeenCalled();
+      expect(api.calls).toEqual(["categoryLatest:tags:1"]);
       const doc = new JSDOM(html(storage, "tags/index.html")).window.document;
       expect(doc.querySelector("h1")!.textContent).toBe("News by Topic");
       expect(doc.querySelector(".top-article a[href='/releases/T1/']")).not.toBeNull();
@@ -214,43 +215,51 @@ describe("site builder", () => {
       expect(doc.querySelector(".news-control a.read-more")).toBeNull();
     });
 
-    it("News API calls per render: one latest per category, one postsByKeys (none for sectors), one categories list; concurrency <= SECTOR_FETCHES", async () => {
-      const { api, builder, storage } = setup(new Map());
-      api.themes = Array.from({ length: 20 }, (_, i) => cat("themes", `t${i}`));
+    it("News API calls per render (P4-R11): one categoryLatest call and the resource links, whatever the number of categories", async () => {
+      const { api, storage } = setup(new Map());
+      api.themes = Array.from({ length: 20 }, (_, i) => cat("themes", `t${i}`, { topPostKey: i % 2 ? "X" : null }));
       api.sectors = Array.from({ length: 7 }, (_, i) => cat("sectors", `s${i}`));
-      let live = 0;
-      let peak = 0;
-      const latest = api.latest;
-      api.latest = async (...args) => {
-        live++;
-        peak = Math.max(peak, live);
-        await new Promise((r) => setTimeout(r, 2));
-        try { return await latest(...args); } finally { live--; }
-      };
-      const byKeys = vi.spyOn(api, "postsByKeys");
-      await builder.renderPage("index:themes", {});
-      expect(api.calls.filter((c) => c.startsWith("latest:themes:"))).toHaveLength(20);
-      expect(byKeys).not.toHaveBeenCalled(); // no top or feature keys on any theme, so no call
-      expect(peak).toBeGreaterThan(1);
-      expect(peak).toBeLessThanOrEqual(SECTOR_FETCHES);
-      api.calls.length = 0;
-      await builder.renderPage("index:sectors", {});
-      expect(api.calls.filter((c) => c.startsWith("latest:sectors:"))).toHaveLength(7);
-      expect(byKeys).not.toHaveBeenCalled();
-      expect(storage.files.has("sectors/index.html")).toBe(true);
+      api.tags = Array.from({ length: 300 }, (_, i) => cat("tags", `g${i}`));
+      // Every method call on the client, whatever it is.
+      const counted: string[] = [];
+      const counting = new Proxy(api, {
+        get: (target, prop) => {
+          const v = Reflect.get(target, prop);
+          return typeof v === "function" ? (...args: unknown[]) => (counted.push(String(prop)), v(...args)) : v;
+        },
+      });
+      const b = createSiteBuilder({ newsApi: counting, storage, index: postIndex(tdb.db), site, assetsDir: null });
+      for (const [id, kind, n] of [["ministries", "ministries", 1], ["index:sectors", "sectors", 3], ["index:themes", "themes", 1], ["index:tags", "tags", 1]] as const) {
+        counted.length = 0;
+        api.calls.length = 0;
+        await b.renderPage(id, {}, {});
+        expect(counted.sort(), id).toEqual(["categoryLatest", "resourceLinks"]);
+        expect(api.calls, id).toEqual([`categoryLatest:${kind}:${n}`]);
+      }
+      expect(storage.files.has("tags/index.html")).toBe(true);
     });
 
-    it("one failed latest fetch rejects the render and leaves the page as it was", async () => {
+    it("a failed categoryLatest call rejects the render and leaves the page as it was", async () => {
       const { api, builder, storage } = setup(new Map());
       api.tags = [cat("tags", "a"), cat("tags", "b")];
       await builder.renderPage("index:tags", {});
       const before = html(storage, "tags/index.html");
       api.tags = [cat("tags", "a", { name: "Changed" }), cat("tags", "b")];
-      const latest = api.latest;
-      api.latest = async (kind, key, ...rest) => { if (key === "b") throw new Error("News API 500"); return latest(kind, key, ...rest); };
+      api.categoryLatest = async () => { throw new Error("News API 500"); };
       vi.spyOn(console, "error").mockImplementation(() => undefined);
       await expect(builder.renderPage("index:tags", {})).rejects.toThrow("News API 500");
       expect(html(storage, "tags/index.html")).toBe(before);
+    });
+
+    it("a key that can't be a page is left out; the same post as top and feature shows once", async () => {
+      const posts = new Map([["T1", dayPost("T1", 1, { tagKeys: ["a"] })]]);
+      const { api, builder, storage } = setup(posts);
+      api.tags = [cat("tags", "a", { topPostKey: "T1", featurePostKey: "T1" }), cat("tags", "../evil")];
+      await builder.renderPage("index:tags", {});
+      const doc = new JSDOM(html(storage, "tags/index.html")).window.document;
+      expect([...doc.querySelectorAll(".grouped-articles")].map((g) => g.querySelector("h2 a")!.getAttribute("href"))).toEqual(["/tags/a/"]);
+      expect(doc.querySelector(".top-article a[href='/releases/T1/']")).not.toBeNull();
+      expect(doc.querySelector(".feature-article")).toBeNull();
     });
 
     it("aggregatePageIds and sitemap:pages include the three new indexes", async () => {

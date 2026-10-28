@@ -59,7 +59,7 @@ export function createApp(deps: AppDeps): express.Express {
   );
   if (deps.hubRouter) app.use(deps.hubRouter);
 
-  app.use("/api/v2", v2Routes({ search: deps.search, searchRateLimit: deps.searchRateLimit, changes: deps.changes, related: deps.related, similar: deps.similar, db: deps.db }));
+  app.use("/api/v2", v2Routes({ search: deps.search, searchRateLimit: deps.searchRateLimit, changes: deps.changes, related: deps.related, similar: deps.similar, db: deps.db, timeZone: deps.timeZone }));
 
   const api = express.Router();
   api.use((_req, res, next) => {
