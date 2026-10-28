@@ -27,7 +27,8 @@ function close(section: string, raw: unknown): ReadonlyMap<string, string> {
   }
   const closed = new Map<string, string>();
   for (const [key, first] of edges) {
-    // Follow single-segment keys only: a two-segment key is a path, never a value.
+    // Follow single-segment keys only: a two-segment key is a path, never a value. The loop ends on a
+    // value that is not a key, so every closed value is final (and `a → a` is caught as a cycle).
     const seen = new Set([key]);
     let value = first;
     while (edges.has(value)) {
@@ -35,10 +36,8 @@ function close(section: string, raw: unknown): ReadonlyMap<string, string> {
       seen.add(value);
       value = edges.get(value)!;
     }
-    if (value === key) throw new Error(`renames: cycle in ${section} at "${key}"`);
     closed.set(key, value);
   }
-  for (const [key, value] of closed) if (closed.has(value)) throw new Error(`renames: ${section} "${key}" → "${value}" is itself a key`);
   return closed;
 }
 
@@ -71,7 +70,8 @@ export interface ResolvedCategory {
  * 1. a two-segment rename `a/b` → its value (consumed 2);
  * 2. `a` has a page → `a`; no page and `a` is renamed → the value (moved);
  * 3. nested: `b` is not reserved and has a page → `b` (consumed 2, moved);
- * then the successor table maps that key (moved), and the final key must have a page.
+ * then the successor table maps that key (moved). The final key must have a page; if it has none,
+ * the key before it (the successor's source, or a two-segment rename's first segment) is used if it does.
  * `news-subscribe` is `tags`; sectors use only the sectors rename map.
  */
 export async function resolveCategory(outputDir: string, cat: CategoryKind, segments: string[]): Promise<ResolvedCategory | null> {
@@ -87,9 +87,13 @@ export async function resolveCategory(outputDir: string, cat: CategoryKind, segm
   if (cat !== "ministries") return (await hasPage(a)) ? { key: a, consumed: 1, moved: false } : null;
 
   let found: ResolvedCategory | null = null;
+  // Where to fall back when the renamed / successor key has no page: the keys before it, nearest first.
+  const earlier: ResolvedCategory[] = [];
   const pair = b !== undefined && CATEGORY_KEY.test(b) ? RENAMES.ministries.get(`${a}/${b}`) : undefined;
-  if (pair !== undefined) found = { key: pair, consumed: 2, moved: true };
-  else if (await hasPage(a)) found = { key: a, consumed: 1, moved: false };
+  if (pair !== undefined) {
+    found = { key: pair, consumed: 2, moved: true };
+    earlier.push({ key: a, consumed: 1, moved: true });
+  } else if (await hasPage(a)) found = { key: a, consumed: 1, moved: false };
   else if (RENAMES.ministries.has(a)) found = { key: RENAMES.ministries.get(a)!, consumed: 1, moved: true };
   else if (b !== undefined && CATEGORY_KEY.test(b) && !RESERVED.has(b) && (await hasPage(b))) found = { key: b, consumed: 2, moved: true };
   if (found === null) {
@@ -97,6 +101,10 @@ export async function resolveCategory(outputDir: string, cat: CategoryKind, segm
     found = { key: a, consumed: 1, moved: false };
   }
   const successor = await resolveMinistrySuccessor(outputDir, found.key);
-  if (successor !== null) found = { ...found, key: successor, moved: true };
-  return (await hasPage(found.key)) ? found : null;
+  const chosen = successor !== null ? { ...found, key: successor, moved: true } : found;
+  // The final key has no page (a rename or successor to a page that is not built): use the nearest earlier key that has one.
+  for (const candidate of successor !== null ? [chosen, found, ...earlier] : [chosen, ...earlier]) {
+    if (await hasPage(candidate.key)) return candidate;
+  }
+  return null;
 }

@@ -79,7 +79,8 @@ export function mountSite(
 ): void {
   const { outputDir, basePath, lookupReference } = opts;
   const passThrough = opts.passThrough ?? [];
-  // Old news.gov.bc.ca URLs (parity plan 3) run first in each site chain, before express.static (a fallback rule checks the disk itself, so a real page still wins).
+  // Old news.gov.bc.ca URLs (parity plan 3) run first in each site chain, before express.static
+  // (a fallback rule checks the disk itself, so a real page still wins).
   const legacy = (base: string) => legacyUrls({ outputDir, basePath: base, passThrough, lookupReference });
   if (basePath !== "") {
     // Unchanged from before the root mount: an unknown page under the prefix is the site's 404.
@@ -87,6 +88,7 @@ export function mountSite(
     app.use(basePath, legacy(basePath), ...staticSite(outputDir), siteNotFound(outputDir));
   } else {
     // /site/ministries/<old>/… goes straight to the successor (one hop), the rest to the root.
+    // A renamed ministry (url-compat T4) takes two hops here: /site/… → /… → the new key.
     app.use("/site", ministrySuccessorRedirects(outputDir, ""), siteAliasRedirect);
   }
   // This root mount runs on every request (ahead of /files, /hub and every app), so its

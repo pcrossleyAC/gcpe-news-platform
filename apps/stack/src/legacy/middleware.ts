@@ -5,10 +5,9 @@ import { DEFAULT_OG_IMAGE } from "../../../public-site/src/render";
 import { feedRule, fixedRule, type FeedAction } from "./rules";
 import { parseRequestTarget, type RequestTarget } from "./safe-path";
 import { siteNotFound } from "../site-not-found";
-import { POST_KEY, postDir, SHORT_POST_KEY_MAX } from "../../../public-site/src/site-paths";
 import { exactPagePath, pagePath, resolvePostKey } from "./site-files";
 import { resolveCategory } from "./ministry-renames";
-import { categoryFiles, isCategoryKind, type CategoryKind } from "../../../public-site/src/site-paths";
+import { categoryFiles, isCategoryKind, POST_KEY, postDir, SHORT_POST_KEY_MAX, type CategoryKind } from "../../../public-site/src/site-paths";
 
 export interface LegacyUrlOptions {
   outputDir: string;

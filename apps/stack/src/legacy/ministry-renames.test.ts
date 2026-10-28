@@ -1,6 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import committed from "./ministry-renames.json";
-import { loadRenames } from "./ministry-renames";
+import { loadRenames, resolveCategory } from "./ministry-renames";
 
 describe("loadRenames", () => {
   it("closes chains: international-trade → jobs-and-economic-growth; forests-lands-and-natural-resource-operations → forests; advanced-education → post-secondary-education-and-future-skills", () => {
@@ -33,5 +36,48 @@ describe("loadRenames", () => {
     expect(ministries.size).toBe(Object.keys(committed.ministries).length);
     expect(ministries.get("justice")).toBe("attorney-general");
     expect(sectors.size).toBe(1);
+  });
+});
+
+describe("resolveCategory fallbacks when the moved-to key has no page", () => {
+  let dir: string;
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), "gcpe-renames-"));
+  });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+  const put = async (rel: string, body: string) => {
+    await mkdir(dirname(join(dir, rel)), { recursive: true });
+    await writeFile(join(dir, rel), body);
+  };
+
+  it("a two-segment rename whose value has no page falls back to the first segment's page", async () => {
+    await put("ministries/jobs-economic-recovery-and-innovation/index.html", "x");
+    expect(await resolveCategory(dir, "ministries", ["jobs-economic-recovery-and-innovation", "trade"])).toEqual({ key: "jobs-economic-recovery-and-innovation", consumed: 1, moved: true });
+  });
+
+  it("...and with the rename value's page built, the rename wins as before", async () => {
+    await put("ministries/jobs-economic-recovery-and-innovation/index.html", "x");
+    await put("ministries/jobs-and-economic-growth/index.html", "x");
+    expect(await resolveCategory(dir, "ministries", ["jobs-economic-recovery-and-innovation", "trade"])).toEqual({ key: "jobs-and-economic-growth", consumed: 2, moved: true });
+  });
+
+  it("a successor with no page falls back to the key it replaces when that has a page", async () => {
+    await put("ministries/old-min/index.html", "x");
+    await put("legacy/ministry-successors.json", JSON.stringify({ successors: { "old-min": "ghost" } }));
+    expect(await resolveCategory(dir, "ministries", ["old-min"])).toEqual({ key: "old-min", consumed: 1, moved: false });
+  });
+
+  it("...and with the successor's page built, the successor wins as before", async () => {
+    await put("ministries/old-min/index.html", "x");
+    await put("ministries/ghost/index.html", "x");
+    await put("legacy/ministry-successors.json", JSON.stringify({ successors: { "old-min": "ghost" } }));
+    expect(await resolveCategory(dir, "ministries", ["old-min"])).toEqual({ key: "ghost", consumed: 1, moved: true });
+  });
+
+  it("with no page anywhere along the way it is still null", async () => {
+    expect(await resolveCategory(dir, "ministries", ["international-trade"])).toBeNull();
+    expect(await resolveCategory(dir, "ministries", ["jobs-economic-recovery-and-innovation", "trade"])).toBeNull();
   });
 });
