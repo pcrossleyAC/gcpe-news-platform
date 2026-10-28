@@ -1,5 +1,5 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, posix } from "node:path";
+import { join, posix } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { memoryStorage } from "../test/memory-storage";
@@ -112,9 +112,21 @@ describe("writeBuiltinAssets", () => {
   it("the vendored tree on disk holds exactly the 34 files the brief lists plus NOTICE.md", () => {
     const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
     expect(walk(join(ASSETS, "legacy")).length).toBe(35);
-    expect(dirname(join(ASSETS, "legacy", "NOTICE.md"))).toBeTruthy();
     expect(readFileSync(join(ASSETS, "legacy", "NOTICE.md"), "utf8")).toContain("3fdf3e6b6faa92172ba60f8bd2951bce96dbe2de");
     // The SiteGround build refuses an artifact that names the build machine's home directory.
     expect(readFileSync(join(ASSETS, "legacy", "NOTICE.md"), "utf8")).not.toMatch(/\/Users\/|\/home\/|[A-Za-z]:\\Users/);
+
+    // The non-legacy assets shipped beside them are named with their licences too.
+    const notice = readFileSync(join(ASSETS, "legacy", "NOTICE.md"), "utf8");
+    expect(notice).toMatch(/BC Sans[^\n]*@bcgov\/bc-sans[^\n]*SIL Open Font License[^\n]*LICENSE_OFL\.txt/);
+    expect(notice).toMatch(/Font Awesome Free[^\n]*CC BY 4\.0[^\n]*assets\/site\/icons\.svg/);
+  });
+
+  it("render.ts takes LEGACY_BUNDLE from the pure legacy-bundle module, not the Node I/O module", () => {
+    const render = readFileSync(new URL("./render.ts", import.meta.url), "utf8");
+    expect(render).not.toMatch(/from "\.\/site-assets"/);
+    expect(render).toMatch(/import \{ LEGACY_BUNDLE \} from "\.\/legacy-bundle";/);
+    const pure = readFileSync(new URL("./legacy-bundle.ts", import.meta.url), "utf8");
+    expect(pure).not.toMatch(/from "node:/);
   });
 });

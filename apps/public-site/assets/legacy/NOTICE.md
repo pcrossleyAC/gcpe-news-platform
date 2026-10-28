@@ -8,6 +8,9 @@ Do not edit them; our own changes belong in `assets/site/overrides.css`.
 - Commit: `3fdf3e6b6faa92172ba60f8bd2951bce96dbe2de`
 - Source root: `Gov.News.WebApp/wwwroot/` (`lib/bootstrap5/css/bootstrap.min.css`, `Content/*.css`, `Content/Images/**` and `favicon.ico` keep their relative paths; the logo and `Gov/` images come from `Content/Images/Gov/`).
 - The BC logo SVGs under `Content/Images/Gov/` are committed by owner decision (Q76, 2026-10-28).
+- Two non-legacy assets ship beside these files under their own licences:
+  - BC Sans (`fonts/BCSans-*.woff2`), copied from the `@bcgov/bc-sans` 2.1.2 npm package by `writeBuiltinAssets` and the build scripts, is under the SIL Open Font License 1.1; its text ships beside the fonts as `fonts/LICENSE_OFL.txt`.
+  - The icon sprite: Font Awesome Free 6.7.2 icons (CC BY 4.0, https://fontawesome.com/license/free), with the attribution comment inside the file, in `assets/site/icons.svg`.
 - `Content/legacy.bundle.css` is not in this folder: `writeBuiltinAssets` (apps/public-site/src/site-assets.ts) generates it in the output folder on every start and build. It is `lib/bootstrap5/css/bootstrap.min.css`, `Content/site.css`, `Content/custom.css`, `Content/transforms.css` and `Content/accessibility-styles.css`, byte-for-byte in that order, each followed by a newline, with one leading UTF-8 BOM dropped from each (the one a browser strips from a separate file). It sits in `Content/` so every relative `url()` resolves as it does in the separate files. The files listed below are unchanged.
 
 | File | sha256 |

@@ -4,9 +4,8 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { copyPublicSiteAssets } from "../scripts/lib/public-site-assets.mjs";
-import { BC_SANS_FILES, builtinAssetSources } from "../apps/public-site/src/site-assets";
+import { BC_SANS_FILES, builtinAssetSources, writeBuiltinAssets } from "../apps/public-site/src/site-assets";
 import { memoryStorage } from "../apps/public-site/test/memory-storage";
-import { writeBuiltinAssets } from "../apps/public-site/src/site-assets";
 
 describe("copyPublicSiteAssets", () => {
   let dir: string;

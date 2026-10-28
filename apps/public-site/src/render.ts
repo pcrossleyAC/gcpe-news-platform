@@ -3,7 +3,7 @@ import { escapeHtml, isSafeUrl } from "@gcpe/http-kit";
 import type { LinkSetting, SiteSettings } from "@gcpe/site-settings";
 import { SITE_BANNER_SCRIPT } from "./banner-script";
 // bootstrap, site, custom, transforms and accessibility-styles, in legacy order, as one file.
-import { LEGACY_BUNDLE } from "./site-assets";
+import { LEGACY_BUNDLE } from "./legacy-bundle";
 import { DEFAULT_TIME_ZONE, settingsHref, themeDefaults, yearIn } from "./settings";
 import { DEFAULT_THEME } from "./theme-css";
 import type { MenuMinistry } from "./ministry-menu";

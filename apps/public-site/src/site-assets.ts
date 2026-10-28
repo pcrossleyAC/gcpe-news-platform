@@ -21,22 +21,9 @@ export const BC_SANS_FILES = [
 ];
 const FONT_LICENSE = "LICENSE_OFL.txt";
 
-/**
- * The legacy stylesheets every page blocks rendering on, in legacy order, concatenated into one
- * generated file so a page makes one request instead of five. The sources stay unmodified (P3).
- * The bundle sits in Content/ beside site.css so the relative url()s in site.css and
- * custom.css ("../fonts/…") and transforms.css ("Images/…") resolve exactly as before;
- * bootstrap.min.css has only data: urls. print.css (media=print) and granville-bridge-theme.css
- * (Blue Bridge only) stay separate.
- */
-export const LEGACY_BUNDLE = "legacy/Content/legacy.bundle.css";
-export const LEGACY_BUNDLE_SOURCES = [
-  "legacy/lib/bootstrap5/css/bootstrap.min.css",
-  "legacy/Content/site.css",
-  "legacy/Content/custom.css",
-  "legacy/Content/transforms.css",
-  "legacy/Content/accessibility-styles.css",
-] as const;
+import { LEGACY_BUNDLE, LEGACY_BUNDLE_SOURCES } from "./legacy-bundle";
+
+export { LEGACY_BUNDLE, LEGACY_BUNDLE_SOURCES };
 
 /** Each source byte-for-byte, newline-terminated, minus one leading UTF-8 BOM — the one a browser
  * strips when it decodes a stylesheet on its own. Mid-bundle it would not be stripped: it would
@@ -88,10 +75,12 @@ async function filesUnder(dir: string): Promise<string[]> {
  */
 export async function writeBuiltinAssets(storage: SiteStorage, sources: BuiltinAssetSources = builtinAssetSources()): Promise<void> {
   const { root, fontsDir } = sources;
+  // Only the five bundle sources are kept in memory; every other file is written and dropped.
+  const bundleSources = new Set<string>(LEGACY_BUNDLE_SOURCES);
   const read = new Map<string, Buffer>();
   for (const rel of await filesUnder(root)) {
     const buf = await readFile(join(root, rel));
-    read.set(rel, buf);
+    if (bundleSources.has(rel)) read.set(rel, buf);
     const bytes = new Uint8Array(buf);
     await storage.write(`assets/${rel}`, bytes);
     if (rel === "legacy/favicon.ico") await storage.write("favicon.ico", bytes);
