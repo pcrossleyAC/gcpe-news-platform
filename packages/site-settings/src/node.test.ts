@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -44,7 +45,7 @@ describe("loadSiteSettingsDefaults", () => {
   });
 
   it("loads the real bc tenant file", () => {
-    const bc = new URL("../../../config/tenants/bc.json", import.meta.url).pathname;
+    const bc = fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url));
     expect(loadSiteSettingsDefaults(bc, theme)).toEqual(bcSettings());
   });
 });
