@@ -507,5 +507,21 @@ describe("projections", () => {
       expect(await settingsChanges()).toHaveLength(2);
       expect((await stored())[0]!.revision).toBe(2);
     });
+
+    it("warns, naming both revisions, when an incoming revision is not newer than the stored one", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      try {
+        await apply(published(5));
+        expect(warn).not.toHaveBeenCalled();
+        await apply(published(2));
+        await apply(published(5));
+        const lines = warn.mock.calls.map((c) => String(c[0]));
+        expect(lines).toHaveLength(2);
+        expect(lines[0]).toMatch(/revision 2.*revision 5/);
+        expect(lines[1]).toMatch(/revision 5.*revision 5/);
+      } finally {
+        warn.mockRestore();
+      }
+    });
   });
 });

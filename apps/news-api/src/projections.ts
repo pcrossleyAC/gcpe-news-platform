@@ -280,7 +280,14 @@ export async function applySiteSettings(tx: Tx, p: SiteSettingsPublished): Promi
     .values(values)
     .onConflictDoUpdate({ target: siteSettings.id, set: values, setWhere: sql`${siteSettings.revision} < ${p.revision}` })
     .returning({ revision: siteSettings.revision });
-  if (applied.length > 0) await recordChanges(tx, [{ kind: "site_settings", key: null }]);
+  if (applied.length > 0) {
+    await recordChanges(tx, [{ kind: "site_settings", key: null }]);
+    return;
+  }
+  // Ignored: an older or repeated event is normal; but a revision *below* what is stored for long
+  // can also mean NRMS's database was reset, so say so (never a behaviour change).
+  const [current] = await tx.select({ revision: siteSettings.revision }).from(siteSettings).where(eq(siteSettings.id, 1));
+  console.warn(`[news-api] ignored site settings revision ${p.revision}: revision ${current?.revision ?? "?"} is already stored (a reset NRMS database would look like this)`);
 }
 
 export async function applySiteContent(tx: Tx, c: SiteContentChanged, slideImages?: SlideImageFetcher): Promise<void> {
