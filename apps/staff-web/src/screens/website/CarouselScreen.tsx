@@ -26,12 +26,13 @@ interface SlideForm {
   headline: string;
   summary: string;
   actionUrl: string;
+  actionLabel: string;
   facebookPostUrl: string;
   justify: "left" | "right";
 }
 
 function toForm(slides: SlideView[]): SlideForm[] {
-  return slides.map((s) => ({ clientKey: s.id, id: s.id, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, facebookPostUrl: s.facebookPostUrl, justify: s.justify }));
+  return slides.map((s) => ({ clientKey: s.id, id: s.id, headline: s.headline, summary: s.summary, actionUrl: s.actionUrl, actionLabel: s.actionLabel, facebookPostUrl: s.facebookPostUrl, justify: s.justify }));
 }
 
 interface SlideEditorProps {
@@ -140,6 +141,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
           <TextField label={`Slide ${index + 1} headline`} value={slide.headline} onChange={(v) => update(index, { headline: v })} isDisabled={!canEdit} />
           <TextField label={`Slide ${index + 1} summary`} value={slide.summary} onChange={(v) => update(index, { summary: v })} isDisabled={!canEdit} />
           <TextField label={`Slide ${index + 1} action URL`} value={slide.actionUrl} onChange={(v) => update(index, { actionUrl: v })} isDisabled={!canEdit} />
+          <TextField label={`Slide ${index + 1} action label`} description="The link text. Leave empty for the default set in Navigation and labels." value={slide.actionLabel} onChange={(v) => update(index, { actionLabel: v })} isDisabled={!canEdit} />
           <TextField label={`Slide ${index + 1} Facebook post URL`} value={slide.facebookPostUrl} onChange={(v) => update(index, { facebookPostUrl: v })} isDisabled={!canEdit} />
           <label>
             Slide {index + 1} justify
@@ -207,7 +209,7 @@ function SlideEditor({ carousel, canEdit, allowGoLiveEdit, timeZone, onSaved }: 
       {canEdit && (
         <Button
           variant="secondary"
-          onPress={() => setSlides((s) => [...s, { clientKey: `new-${nextClientKey.current++}`, headline: "", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" }])}
+          onPress={() => setSlides((s) => [...s, { clientKey: `new-${nextClientKey.current++}`, headline: "", summary: "", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left" }])}
           isPending={section.saving}
         >
           Add slide

@@ -68,17 +68,17 @@ function stub(roles: string[], routes: Record<string, unknown>) {
 }
 
 const CAROUSELS: CarouselsResponse = {
-  live: { id: "c1", state: "live", goLiveAt: null, wentLiveAt: "2026-01-01T00:00:00.000Z", version: 1, slides: [{ id: "s1", headline: "H", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
+  live: { id: "c1", state: "live", goLiveAt: null, wentLiveAt: "2026-01-01T00:00:00.000Z", version: 1, slides: [{ id: "s1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
   next: null,
   past: [],
 };
 const CAROUSELS_WITH_NEXT: CarouselsResponse = {
   ...CAROUSELS,
-  next: { id: "n1", state: "next", goLiveAt: "2027-01-01T12:00:00.000Z", wentLiveAt: null, version: 1, slides: [{ id: "ns1", headline: "H", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
+  next: { id: "n1", state: "next", goLiveAt: "2027-01-01T12:00:00.000Z", wentLiveAt: null, version: 1, slides: [{ id: "ns1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null }] },
 };
 const PINS: PinView[] = [
-  { slot: "primary", pinned: false, version: 1, slide: { id: "p1", headline: "H", summary: "S", actionUrl: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } },
-  { slot: "secondary", pinned: true, version: 1, slide: { id: "p2", headline: "H2", summary: "S2", actionUrl: "", facebookPostUrl: "", justify: "right", hasImage: false, imageUrl: null } },
+  { slot: "primary", pinned: false, version: 1, slide: { id: "p1", headline: "H", summary: "S", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "left", hasImage: false, imageUrl: null } },
+  { slot: "secondary", pinned: true, version: 1, slide: { id: "p2", headline: "H2", summary: "S2", actionUrl: "", actionLabel: "", facebookPostUrl: "", justify: "right", hasImage: false, imageUrl: null } },
 ];
 const LIVE_FEED: LiveFeedView = { enabled: false, manifestUrl: "", m3uUrl: "", version: 1 };
 const LINKS: LinksView = { version: 1, links: [{ id: "l1", text: "First", url: "https://a.invalid" }] };

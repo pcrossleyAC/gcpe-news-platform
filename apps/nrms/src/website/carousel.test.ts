@@ -37,6 +37,7 @@ const slide = (headline: string, over: Partial<SlideInput> = {}): SlideInput => 
   headline,
   summary: "",
   actionUrl: "",
+  actionLabel: "",
   facebookPostUrl: "",
   justify: "left",
   ...over,
@@ -78,7 +79,7 @@ describe("home-page carousel", () => {
       "SELECT envelope FROM outbox_events WHERE type = 'site.content.changed' ORDER BY created_at DESC, sequence DESC LIMIT 1",
     );
     return r.rows[0]?.envelope as {
-      data: { entity: string; slides?: { headline: string | null; imageBase64: string | null; imageUrl: string | null; imageKey: string | null; imageSha256: string | null }[] };
+      data: { entity: string; slides?: { headline: string | null; actionLabel?: string | null; imageBase64: string | null; imageUrl: string | null; imageKey: string | null; imageSha256: string | null }[] };
     } | undefined;
   };
   const lastLog = async () => {
@@ -267,6 +268,38 @@ describe("home-page carousel", () => {
 
     const ev = await lastSlidesEvent();
     expect(ev!.data.slides!.map((s) => s.headline)).toEqual(["P1", "S1", "Next1"]);
+  });
+
+  it("saves a slide's actionLabel (trimmed) and emits it; '' emits null", async () => {
+    await seedLiveCarousel([slide("A", { actionLabel: "  Read the update  " }), slide("B")]);
+    const { live } = await getCarousels(tdb.db);
+    expect(live!.slides.map((s) => s.actionLabel)).toEqual(["Read the update", ""]);
+    const ev = await lastSlidesEvent();
+    expect(ev!.data.slides!.map((s) => s.actionLabel)).toEqual(["Read the update", null]);
+  });
+
+  it("refuses a 41-character or '<b>' action label on a slide and on a pin, and changes nothing", async () => {
+    await seedLiveCarousel([slide("A")]);
+    const live = (await getCarousels(tdb.db)).live!;
+    for (const actionLabel of ["x".repeat(41), "<b>Bold</b>", "a > b"]) {
+      await expect(saveCarousel(tdb.db, live.id, { version: live.version, slides: [slide("A", { actionLabel })] }, editor, subs, TZ, files)).rejects.toThrow(
+        new SiteRuleError(["Keep the action label to 40 characters or fewer, in plain text."]),
+      );
+      await expect(savePin(tdb.db, "primary", { version: 1, ...slide("P", { actionLabel }) }, editor, subs, files)).rejects.toThrow(SiteRuleError);
+    }
+    const ok = await saveCarousel(tdb.db, live.id, { version: live.version, slides: [slide("A", { actionLabel: "x".repeat(40) })] }, editor, subs, TZ, files);
+    expect(ok.slides[0]!.actionLabel).toBe("x".repeat(40));
+    expect((await getPins(tdb.db))[0]!.version).toBe(1);
+  });
+
+  it("pins carry actionLabel the same way", async () => {
+    const saved = await savePin(tdb.db, "primary", { version: 1, ...slide("Alert", { actionLabel: " Get help " }) }, editor, subs, files);
+    expect(saved.slide.actionLabel).toBe("Get help");
+    await setPinned(tdb.db, "primary", { version: 2, pinned: true }, editor, subs, files);
+    await savePin(tdb.db, "secondary", { version: 1, ...slide("Second") }, editor, subs, files);
+    await setPinned(tdb.db, "secondary", { version: 2, pinned: true }, editor, subs, files);
+    const ev = await lastSlidesEvent();
+    expect(ev!.data.slides!.map((s) => [s.headline, s.actionLabel])).toEqual([["Alert", "Get help"], ["Second", null]]);
   });
 
   it("8. setPinned true without a headline → SiteRuleError; with one → slides event includes the pin", async () => {

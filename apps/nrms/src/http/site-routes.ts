@@ -83,6 +83,7 @@ const slideInputSchema = z.object({
   headline: z.string().max(255),
   summary: z.string().max(255),
   actionUrl: httpOrEmpty,
+  actionLabel: z.string().default(""),
   facebookPostUrl: httpOrEmpty,
   justify,
 });
@@ -117,6 +118,7 @@ const savePinSchema = z.object({
   headline: z.string().max(255),
   summary: z.string().max(255),
   actionUrl: httpOrEmpty,
+  actionLabel: z.string().default(""),
   facebookPostUrl: httpOrEmpty,
   justify,
 });

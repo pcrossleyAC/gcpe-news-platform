@@ -92,6 +92,17 @@ describe("website/events", () => {
     ]);
   });
 
+  it("emits actionLabel for a slide and a pin, and null when it is empty", async () => {
+    await tdb.db.insert(emergencyPins).values({ slot: "primary", pinned: true, headline: "Pin", actionLabel: "Get help" });
+    const [carousel] = await tdb.db.insert(carousels).values({ state: "live" }).returning();
+    await tdb.db.insert(slides).values([
+      { carouselId: carousel!.id, sortIndex: 0, headline: "One", actionLabel: "Read more" },
+      { carouselId: carousel!.id, sortIndex: 1, headline: "Two" },
+    ]);
+    const snap = await tdb.db.transaction((tx) => slidesSnapshot(tx, files));
+    expect(snap.slides.map((s) => [s.headline, s.actionLabel])).toEqual([["Pin", "Get help"], ["One", "Read more"], ["Two", null]]);
+  });
+
   it("slidesSnapshot returns only the pinned slides when there is no live carousel", async () => {
     await tdb.db.insert(emergencyPins).values([
       { slot: "primary", pinned: true, headline: "Primary pin" },

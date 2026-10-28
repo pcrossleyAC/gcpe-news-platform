@@ -61,6 +61,25 @@ describe("NRMS site HTTP API", () => {
     expect(saved.body.slides[0]).toMatchObject({ headline: "H1", hasImage: false, imageUrl: null });
   });
 
+  it("saving a slide and a pin round-trips actionLabel; an older writer that omits it is accepted; a bad label is a 422", async () => {
+    const created = await post("/api/site/carousels/next", siteEditorCookie, { goLiveAt: future() });
+    const saved = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, {
+      version: created.body.version,
+      slides: [
+        { headline: "H1", summary: "", actionUrl: "", actionLabel: " Read it ", facebookPostUrl: "", justify: "left" },
+        { headline: "H2", summary: "", actionUrl: "", facebookPostUrl: "", justify: "left" },
+      ],
+    });
+    expect(saved.status).toBe(200);
+    expect(saved.body.slides.map((s: { actionLabel: string }) => s.actionLabel)).toEqual(["Read it", ""]);
+    const bad = await put(`/api/site/carousels/${created.body.id}`, siteEditorCookie, {
+      version: saved.body.version,
+      slides: [{ headline: "H1", summary: "", actionUrl: "", actionLabel: "<b>x</b>", facebookPostUrl: "", justify: "left" }],
+    });
+    expect(bad.status).toBe(422);
+    expect(bad.body.errors).toEqual(["Keep the action label to 40 characters or fewer, in plain text."]);
+  });
+
   // Fix round 1 (controller ruling): goLiveAt/goLiveAtLocal is an XOR for creating the next
   // carousel (exactly one required) — both or neither is a 400, same shape as scheduleSchema's
   // publishAt/publishAtLocal.

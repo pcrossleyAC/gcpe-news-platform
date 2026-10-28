@@ -14,6 +14,7 @@ export interface SlideView {
   headline: string;
   summary: string;
   actionUrl: string;
+  actionLabel: string;
   facebookPostUrl: string;
   justify: Justify;
   hasImage: boolean;
