@@ -117,6 +117,30 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return { top: pick(top), feature: pick(feature) };
   };
 
+  /**
+   * Home's News by Sector: the active sectors by name, each with its newest post (legacy TopSectors).
+   * A side box, so it never fails the home render: a sector whose fetch fails is left out (logged),
+   * and so is the whole box when the sector list can't be read. At most SECTOR_FETCHES run at once.
+   */
+  async function sectorsWithLatest(): Promise<{ key: string; name: string; latest: PostDto | null }[]> {
+    let active: Awaited<ReturnType<NewsApiClient["categories"]>>;
+    try {
+      active = (await newsApi.categories("sectors")).filter((c) => c.isActive);
+    } catch (err) {
+      console.error(`[public-site] home: News by Sector left out, the sector list is unavailable ${safeErrorLabel(err)}`);
+      return [];
+    }
+    const withLatest = await mapLimit(active, SECTOR_FETCHES, async (c) => {
+      try {
+        return { key: c.key, name: c.name, latest: (await newsApi.latest("sectors", c.key, 1))[0] ?? null };
+      } catch (err) {
+        console.error(`[public-site] home: News by Sector leaves out sector:${c.key} this render ${safeErrorLabel(err)}`);
+        return { key: c.key, name: c.name, latest: null };
+      }
+    });
+    return withLatest.sort((a, b) => a.name.localeCompare(b.name, "en"));
+  }
+
   async function renderPost(key: string, opts: PageOptions, run: RunCache, tx?: DbOrTx): Promise<string[]> {
     const p: PageId = { type: "post", key };
     // The write below goes through `tx` when the caller gave one (M1), so a transaction that
@@ -223,9 +247,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return renderPost(p.key, opts, run, tx);
         case "home": {
           const home = await newsApi.home();
-          const [f, latest, slides, links] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), newsApi.resourceLinks()]);
+          const [f, latest, slides, links, sectors] = await Promise.all([featured(home.topPostKey, home.featurePostKey), newsApi.latestHome(LATEST_COUNT), newsApi.slides(), newsApi.resourceLinks(), sectorsWithLatest()]);
           const feedRef = { href: feedUrl(site, p), title: `${site.name}: latest news` };
-          await storage.write("index.html", renderHomePage({ ...f, latest, slides, links }, site, { ...opts, feed: feedRef }));
+          await storage.write("index.html", renderHomePage({ ...f, latest, slides, links, sectors }, site, { ...opts, feed: feedRef }));
           await storage.write("feed.xml", renderRssFeed({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `The latest news from ${site.name}` }, sortNewest([f.top, f.feature, ...latest]), site));
           return [];
         }
@@ -362,6 +386,23 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     },
   };
   return builder;
+}
+
+/** How many sector `latest` fetches one home render runs at once. */
+export const SECTOR_FETCHES = 6;
+
+/** `items.map(fn)` with at most `limit` calls in flight, results in input order. */
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      out[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return out;
 }
 
 function sortNewest(posts: (PostDto | null)[]): PostDto[] {

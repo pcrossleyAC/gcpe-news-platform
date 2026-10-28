@@ -1,5 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { join, posix, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { join, posix, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { memoryStorage } from "../test/memory-storage";
@@ -111,9 +112,9 @@ describe("writeBuiltinAssets", () => {
     expect(dead).toEqual([]);
   });
 
-  it("the vendored tree on disk holds exactly the 34 files the brief lists plus NOTICE.md", () => {
+  it("the vendored tree on disk holds exactly the 45 files the briefs list plus NOTICE.md", () => {
     const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
-    expect(walk(join(ASSETS, "legacy")).length).toBe(35);
+    expect(walk(join(ASSETS, "legacy")).length).toBe(46);
     expect(readFileSync(join(ASSETS, "legacy", "NOTICE.md"), "utf8")).toContain("3fdf3e6b6faa92172ba60f8bd2951bce96dbe2de");
     // The SiteGround build refuses an artifact that names the build machine's home directory.
     expect(readFileSync(join(ASSETS, "legacy", "NOTICE.md"), "utf8")).not.toMatch(/\/Users\/|\/home\/|[A-Za-z]:\\Users/);
@@ -122,6 +123,19 @@ describe("writeBuiltinAssets", () => {
     const notice = readFileSync(join(ASSETS, "legacy", "NOTICE.md"), "utf8");
     expect(notice).toMatch(/BC Sans[^\n]*@bcgov\/bc-sans[^\n]*SIL Open Font License[^\n]*LICENSE_OFL\.txt/);
     expect(notice).toMatch(/Font Awesome Free[^\n]*CC BY 4\.0[^\n]*assets\/site\/icons\.svg/);
+  });
+
+  it("NOTICE.md lists every vendored file on disk with its sha256, and nothing else", () => {
+    const root = join(ASSETS, "legacy");
+    const walk = (d: string): string[] => readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(join(d, e.name)) : [join(d, e.name)]));
+    const onDisk = walk(root)
+      .map((f) => relative(root, f).split(sep).join("/"))
+      .filter((f) => f !== "NOTICE.md")
+      .sort();
+    const notice = readFileSync(join(root, "NOTICE.md"), "utf8");
+    const listed = new Map([...notice.matchAll(/^\| `([^`]+)` \| ([0-9a-f]{64}) \|$/gm)].map((m) => [m[1]!, m[2]!]));
+    expect([...listed.keys()].sort()).toEqual(onDisk);
+    for (const f of onDisk) expect(createHash("sha256").update(readFileSync(join(root, f))).digest("hex"), f).toBe(listed.get(f));
   });
 
   it("render.ts takes LEGACY_BUNDLE from the pure legacy-bundle module, not the Node I/O module", () => {

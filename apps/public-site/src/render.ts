@@ -37,6 +37,11 @@ export interface PageOptions {
   /** The id of the page's own search input (the search page). The header's search forms and phone
    * drawer are left off, and its phone search control becomes a link to that input (R12). */
   pageSearchInput?: string;
+  /** Trusted renderer HTML (a `<section aria-label>` band) between the header and
+   * `div#main-content`. Absent or empty ⇒ nothing is emitted. */
+  lead?: string;
+  /** Trusted renderer HTML right after `div#main-content`. Absent or empty ⇒ nothing is emitted. */
+  trail?: string;
 }
 
 export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
@@ -103,6 +108,7 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <link rel="icon" href="${e(base)}/favicon.ico">
 <script>${HTML_JS_MARKER}</script>
 <link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Regular.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="${e(base)}/assets/legacy/fonts/BCSans-Bold.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="${e(base)}/assets/${LEGACY_BUNDLE}">
 <link rel="stylesheet" href="${e(base)}/assets/legacy/Content/print.css" media="print">${bridgeCss}
 <link rel="stylesheet" href="${e(base)}/assets/site/overrides.css">
@@ -112,10 +118,10 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <a class="skip-link" href="#main">Skip to main content</a>
 ${renderBanner(base, opts.banner)}
 ${renderHeader(site, opts)}
-<div id="main-content" class="template container-xl"><main id="main" tabindex="-1">
+${opts.lead ? `${opts.lead}\n` : ""}<div id="main-content" class="template container-xl"><main id="main" tabindex="-1">
 ${body}
 </main></div>
-${renderFooter(settings, site, opts)}
+${opts.trail ? `${opts.trail}\n` : ""}${renderFooter(settings, site, opts)}
 <script src="${e(base)}/assets/site/site.js" defer onerror="${e(SITE_SCRIPT_ONERROR)}"></script>
 </body>
 </html>

@@ -13,6 +13,32 @@ export function displayDate(publishDate: string): string {
   return `${MONTHS[Number(m[2]) - 1]} ${Number(m[3])}, ${m[1]}`;
 }
 
+const WEEKDAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/**
+ * "Tuesday, September 22, 2026 11:45 AM" (legacy `FormatDateLong` on a DateTimeOffset, en-CA:
+ * `dddd, MMMM d, yyyy h:mm tt`) from the News API's BC-local ISO string. The wall clock is read
+ * as written — the News API already converted it to America/Vancouver from the tz database — so
+ * there is no time-zone maths and no hard-coded offset here. The weekday is the calendar date's,
+ * via `Date.UTC`. A string without a date and time is returned as is.
+ */
+export function displayDateTime(publishDate: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(publishDate);
+  if (!m) return publishDate;
+  const [y, mo, d, h, min] = [Number(m[1]), Number(m[2]), Number(m[3]), Number(m[4]), m[5]!];
+  if (mo < 1 || mo > 12 || d < 1 || d > 31 || h > 23) return publishDate;
+  const weekday = WEEKDAYS[new Date(Date.UTC(y, mo - 1, d)).getUTCDay()];
+  const hour12 = h % 12 === 0 ? 12 : h % 12;
+  return `${weekday}, ${MONTHS[mo - 1]} ${d}, ${m[1]} ${hour12}:${min} ${h < 12 ? "AM" : "PM"}`;
+}
+
+/** A file size as legacy `ToBytesReadable` writes it: under 1 KB is "1 KB", and everything
+ * else is whole kilobytes with thousands separators — megabytes too ("4,883 KB"). */
+export function bytesReadable(n: number): string {
+  if (n < 1024) return "1 KB";
+  return `${Math.round(n / 1024).toLocaleString("en-CA")} KB`;
+}
+
 export const monthName = (month: string) => `${MONTHS[Number(month.slice(5)) - 1]} ${month.slice(0, 4)}`;
 
 export function postListItem(site: Pick<SiteInfo, "baseUrl">, p: { key: string; headline: string; publishDate: string; summary?: string | null }): string {

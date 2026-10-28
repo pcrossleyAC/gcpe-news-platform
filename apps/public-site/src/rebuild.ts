@@ -44,10 +44,11 @@ export const SITE_STATE_PATH = ".site-state.json";
  * 5: ministry Media Contacts and filter-only search links (PR #46). 6: the legacy <head> (favicon,
  * html.js marker, vendored legacy CSS, overrides.css) and the theme's legacy variable aliases. 7: the
  * news.gov header (BC logo, News ministry menu, Subscribe, search, phone drawer) and site.js. 8: the
- * archive by government term (/archive/terms/, its link from /archive/, sitemap entries). Bump for body render changes
+ * archive by government term (/archive/terms/, its link from /archive/, sitemap entries). 9: the
+ * news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector) and the BC Sans Bold preload. Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 8;
+export const RENDER_CHROME_VERSION = 9;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
@@ -98,7 +99,7 @@ export async function recordedNonEmptyMenu(storage: SiteStorage): Promise<boolea
  * What differs from the marker the last build left. `all`: the chrome every page bakes in (Blue
  * Bridge, the test flag, the chrome version, the base URL, the footer, the ministries menu) — every page. Otherwise
  * `sections`: a theme or banner change reaches only the `static` page (theme.css,
- * site-banner.json), a connect change only the Connect page, a ministryPages change only the
+ * site-banner.json), a connect change only the Connect page and home, a ministryPages change only the
  * ministry pages (spec "Delivery": the cheapest correct effect per section).
  */
 export async function chromeChanges(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<{ all: boolean; sections: SectionPages[]; adoptMenuHash?: boolean }> {

@@ -3,7 +3,7 @@
  * site's real builder from in-memory posts, with BC's theme and no database (an in-memory post
  * index). Used by scripts/site-quality.ts (axe and Lighthouse) and tests/fixture-site.test.ts.
  */
-import { readFile, stat } from "node:fs/promises";
+import { copyFile, mkdir, readFile, stat } from "node:fs/promises";
 import { createServer } from "node:http";
 import { gzipSync } from "node:zlib";
 import type { AddressInfo } from "node:net";
@@ -12,7 +12,7 @@ import { fileURLToPath } from "node:url";
 import { loadTenantConfig } from "@gcpe/config";
 import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { createSiteBuilder } from "../apps/public-site/src/builder";
-import type { CategoryDto, GovernmentTermsDto, PostDto } from "../apps/public-site/src/dto";
+import type { CategoryDto, GovernmentTermsDto, PostDto, SlideDto } from "../apps/public-site/src/dto";
 import { addDays } from "../apps/public-site/src/government-terms";
 import type { NewsApiClient } from "../apps/public-site/src/news-api-client";
 import type { IndexedPost, PostIndex } from "../apps/public-site/src/post-index";
@@ -20,9 +20,10 @@ import type { SiteInfo } from "../apps/public-site/src/render";
 import { ministryMenu } from "../apps/public-site/src/ministry-menu";
 import { fsStorage } from "../apps/public-site/src/storage";
 import { fakeNewsApi } from "../apps/public-site/test/fake-news-api";
-import { post } from "../apps/public-site/test/fixtures";
+import { link, post, slide } from "../apps/public-site/test/fixtures";
 
 const BC_TENANT = fileURLToPath(new URL("../config/tenants/bc.json", import.meta.url));
+const SLIDE_IMAGE = fileURLToPath(new URL("./fixture-assets/slide.jpg", import.meta.url));
 
 const CATEGORIES: CategoryDto[] = [
   { key: "economy", kind: "sectors", name: "Economy", isActive: true, topPostKey: null, featurePostKey: null },
@@ -97,12 +98,38 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     const day = String(((i - 1) % 28) + 1).padStart(2, "0");
     posts.set(
       key,
-      post({ key, publishDate: `2026-${i <= 12 ? "10" : "09"}-${day}T10:00:00-07:00`, ministryKeys: [ministry], leadMinistryKey: ministry, sectorKeys: ["economy"], themeKeys: ["housing"], tagKeys: ["covid-19"] }),
+      post({
+        key,
+        publishDate: `2026-${i <= 12 ? "10" : "09"}-${day}T10:00:00-07:00`,
+        ministryKeys: [ministry],
+        leadMinistryKey: ministry,
+        sectorKeys: ["economy"],
+        themeKeys: ["housing"],
+        tagKeys: ["covid-19"],
+        hasTranslations: i % 3 === 0,
+        hasMediaAssets: i % 4 === 0,
+        // No Flickr assetUrl: its thumbnail would make site:quality fetch live.staticflickr.com, so
+        // the gate would depend on a third party. post-card.test.ts pins the thumbnail markup.
+      }),
     );
   }
+  // Home's carousel band: two slides with images and the second right-justified. The image is a
+  // local file (no network in CI): scripts/fixture-assets/slide.jpg, legacy's default-og-image-new.jpg
+  // (Apache-2.0) resized to 1280px at JPEG quality 45, 64 KB — the weight an optimised slide should have.
+  await mkdir(join(outDir, "fixture"), { recursive: true });
+  await copyFile(SLIDE_IMAGE, join(outDir, "fixture", "slide.jpg"));
+  const image = `${o.baseUrl}/fixture/slide.jpg`;
+  const slides: SlideDto[] = [
+    slide({ key: "slide-1", headline: "Clinics opening across the province", actionUri: `${o.baseUrl}/releases/${FIRST_KEY}/`, actionLabel: "Read the release", imageUrl: image, sortIndex: 0 }),
+    slide({ key: "slide-2", headline: "Have your say on housing", summary: "Share your views before the end of the month.", actionUri: `${o.baseUrl}/themes/housing/`, actionLabel: null, imageUrl: image, sortIndex: 1, justify: "right" }),
+  ];
   const tenant = loadTenantConfig(BC_TENANT);
   const newsApi: NewsApiClient = {
     ...fakeNewsApi(posts),
+    // A top and a feature post, as news.gov's home always has.
+    home: async () => ({ granville: null, topPostKey: "2026HLTH0010-000010", featurePostKey: "2026HLTH0009-000009" }),
+    slides: async () => slides,
+    resourceLinks: async () => [link({ uri: "https://www2.gov.bc.ca/", key: "BC Government" }), link({ uri: `${o.baseUrl}/archive/`, key: "News Archive" })],
     categories: async (kind) => CATEGORIES.filter((c) => c.kind === kind),
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
     governmentTerms: async () => termsSnapshot(tenant.governmentTerms ?? []),
@@ -126,6 +153,7 @@ const TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
   ".ico": "image/x-icon",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
   ".json": "application/json",
 };
 

@@ -70,4 +70,14 @@ describe("sanitizeBodyHtml", () => {
   it("strips an attribute not in the allow-list, such as class or id, from an otherwise-allowed tag", () => {
     expect(sanitizeBodyHtml('<p class="x" id="y">Hi</p>')).toBe("<p>Hi</p>");
   });
+
+  it("sanitizeBodyHtml keeps div.asset/flickr/youtube and span.visually-hidden classes, drops any other class", () => {
+    expect(sanitizeBodyHtml('<div class="asset flickr"><a href="https://x.example/">x</a></div>')).toBe('<div class="asset flickr"><a href="https://x.example/">x</a></div>');
+    expect(sanitizeBodyHtml('<div class="asset youtube"><span class="visually-hidden">: t</span></div>')).toBe('<div class="asset youtube"><span class="visually-hidden">: t</span></div>');
+    expect(sanitizeBodyHtml('<div class="asset evil row">x</div>')).toBe('<div class="asset">x</div>');
+    expect(sanitizeBodyHtml('<div class="d-none">x</div>')).toBe("<div>x</div>");
+    expect(sanitizeBodyHtml('<span class="asset">x</span>')).toBe("<span>x</span>");
+    expect(sanitizeBodyHtml('<p class="visually-hidden">x</p>')).toBe("<p>x</p>");
+    expect(sanitizeBodyHtml('<span class="visually-hidden-focusable">x</span>')).toBe("<span>x</span>");
+  });
 });

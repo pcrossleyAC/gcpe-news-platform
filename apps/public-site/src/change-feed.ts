@@ -89,7 +89,14 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       // ministry has that ministry's page on disk before anything 301s to it.
       const ministryPages = kind === "ministries" ? ["ministries", "search"] : [];
       const redirects = kind === "ministries" ? [{ pageId: "legacy-redirects", priority: PRIORITY.bulkPost }] : [];
-      return [{ pageId: id, priority: live }, ...ministryPages.map((pageId) => ({ pageId, priority: live })), ...redirects, { pageId: "sitemap:pages", priority: live }];
+      return [
+        { pageId: id, priority: live },
+        ...ministryPages.map((pageId) => ({ pageId, priority: live })),
+        ...redirects,
+        // Home's News by Sector box names each active sector.
+        ...(kind === "sectors" ? [{ pageId: "home", priority: live }] : []),
+        { pageId: "sitemap:pages", priority: live },
+      ];
     }
     // Queues nothing itself: every sync turn fetches the settings and queues what each changed
     // section needs (sync.ts), so the change only has to wake the site up.

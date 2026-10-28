@@ -32,7 +32,8 @@ export async function enqueueChromeChanges(db: Db, builder: SiteBuilder, changes
   }
   const items: { pageId: string; priority: number }[] = [];
   for (const section of changes.sections) {
-    const ids = section === "ministryPages" ? await builder.ministryPageIds() : [section];
+    // Home's Connect With Us icons come from the connect settings too.
+    const ids = section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home"] : [section];
     items.push(...ids.map((pageId) => ({ pageId, priority: PRIORITY.liveAggregate })));
   }
   if (items.length) await enqueuePages(db, items);

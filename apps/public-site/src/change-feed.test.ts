@@ -26,12 +26,23 @@ describe("pagesForChange", () => {
     [{ id: 8, kind: "post.upserted", key: "../x" }, []],
     [{ id: 9, kind: "ministry", key: null }, []],
     [{ id: 10, kind: "sector", key: "a b" }, []],
+    // The home page's News by Sector box lists each sector's latest post.
+    [{ id: 12, kind: "sector", key: "economy" }, [{ pageId: "category:sectors:economy", priority: 1 }, { pageId: "home", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
     // The next sync turn fetches the settings and decides what each changed section needs.
     [{ id: 11, kind: "site_settings", key: null }, []],
     // Every term page is added by syncChanges, from the builder's terms.
     [{ id: 12, kind: "government_terms", key: null }, [{ pageId: "archive-terms", priority: 1 }, { pageId: "archive-term:current", priority: 1 }, { pageId: "sitemap:pages", priority: 1 }]],
   ] as const)("%j", (change, expected) => {
     expect(pagesForChange(change as ChangeRow, 0)).toEqual(expected);
+  });
+
+  it("a sector change queues home as well as the sector page", () => {
+    const ids = pagesForChange({ id: 1, kind: "sector", key: "Economy" }, 0).map((p) => p.pageId);
+    expect(ids).toContain("category:sectors:economy");
+    expect(ids).toContain("home");
+    // Only a sector reaches home: theme and tag pages are not on it.
+    expect(pagesForChange({ id: 2, kind: "theme", key: "housing" }, 0).map((p) => p.pageId)).not.toContain("home");
+    expect(pagesForChange({ id: 3, kind: "ministry", key: "health" }, 0).map((p) => p.pageId)).not.toContain("home");
   });
 
   it("a post change takes the priority it's given", () => {
