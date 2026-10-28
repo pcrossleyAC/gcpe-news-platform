@@ -16,6 +16,7 @@ export const DESCRIPTION_HINT = "Search engines and link previews show this for 
 export const TWITTER_HINT = "Shown in link previews, for example @BCGovNews. Leave empty for none.";
 export const BANNER_MESSAGE_HINT = "Shown on every page while Project Blue Bridge is on. {age} is replaced by the age in years on the day it shows.";
 export const BIRTH_DATE_HINT = "Used for {age}.";
+export const READ_ONLY_NOTE = "Only a Site Editor can change these settings.";
 export const OPERATOR_NOTE = "The site name and the BC logo are set by the operator, not here.";
 
 /**
@@ -69,7 +70,8 @@ function SiteIdentityFields({ canEdit }: { canEdit: boolean }): React.JSX.Elemen
   }
 
   const errorOf = (field: string) => {
-    const message = fieldErrors.find((e) => e.field === `siteIdentity.${field}`)?.message;
+    const all = fieldErrors.filter((e) => e.field === `siteIdentity.${field}`).map((e) => e.message);
+    const message = all.length > 0 ? all.join(" ") : undefined;
     return { errorMessage: message, isInvalid: message !== undefined };
   };
   const set = (patch: Partial<SiteIdentitySettings>) => editor.setValue((v) => ({ ...v, ...patch }));
@@ -78,6 +80,7 @@ function SiteIdentityFields({ canEdit }: { canEdit: boolean }): React.JSX.Elemen
   return (
     <div className="gcpe-site-identity" ref={root}>
       <h1>{TITLE}</h1>
+      {!canEdit && <p>{READ_ONLY_NOTE}</p>}
       <p>{OPERATOR_NOTE}</p>
 
       <TextArea label="Site description" description={DESCRIPTION_HINT} value={value.description} onChange={(description) => set({ description })} isDisabled={!canEdit} {...errorOf("description")} />

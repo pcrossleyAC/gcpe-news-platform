@@ -8,7 +8,7 @@ import { SessionProvider } from "../../../session/SessionContext";
 import { RequireAuth } from "../../../session/RequireAuth";
 import { AnnouncerProvider } from "../../../shared/Announcer";
 import type { SettingsState } from "./api";
-import { BANNER_MESSAGE_HINT, BIRTH_DATE_HINT, DESCRIPTION_HINT, OPERATOR_NOTE, SiteIdentityScreen, TWITTER_HINT } from "./SiteIdentityScreen";
+import { BANNER_MESSAGE_HINT, BIRTH_DATE_HINT, DESCRIPTION_HINT, OPERATOR_NOTE, READ_ONLY_NOTE, SiteIdentityScreen, TWITTER_HINT } from "./SiteIdentityScreen";
 
 const BASE: SiteSettings = defaultSiteSettings({
   colors: { primary: "#013366", primaryText: "#FFFFFF", accent: "#FCBA19", text: "#2D2D2D", mutedText: "#474543", surface: "#FFFFFF", background: "#FFFFFF", border: "#D8D8D8" },
@@ -119,6 +119,18 @@ describe("SiteIdentityScreen", () => {
     expect(within(bridge).getByLabelText("Birth date")).toBeValid();
   });
 
+  it("a field with two server errors shows both", async () => {
+    stub(
+      ["NRMS.SiteEditor"],
+      stateOf(DOC, [
+        { field: "siteIdentity.blueBridge.message", message: "Use plain text." },
+        { field: "siteIdentity.blueBridge.message", message: "The only placeholder is {age}." },
+      ]),
+    );
+    renderScreen();
+    expect(await screen.findByLabelText("Banner message")).toHaveAccessibleDescription(`${BANNER_MESSAGE_HINT} Use plain text. The only placeholder is {age}.`);
+  });
+
   it("every field shows its own server message, tied to the field", async () => {
     stub(
       ["NRMS.SiteEditor"],
@@ -154,6 +166,14 @@ describe("SiteIdentityScreen", () => {
     expect(screen.getByLabelText("Banner message")).toBeDisabled();
     expect(screen.getByLabelText("Birth date")).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Publish" })).toBeNull();
+    expect(screen.getByText(READ_ONLY_NOTE)).toBeInTheDocument();
+  });
+
+  it("a Site Editor does not see the read-only line", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC));
+    renderScreen();
+    await screen.findByLabelText("Site description");
+    expect(screen.queryByText(READ_ONLY_NOTE)).toBeNull();
   });
 
   it("other roles are told they cannot view it", async () => {
