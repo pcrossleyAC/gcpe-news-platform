@@ -1,7 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { eq } from "drizzle-orm";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { outboxEvents, type SubscriberConfig } from "@gcpe/events";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
+import { terms } from "../db/schema";
 import { upsertOrganization } from "./organizations";
 import { republishAll } from "./republish";
 import { checkTermWrite, deactivateTerm, getTerm, listTerms, NEW_TERM_KEY, TermRuleError, upsertTerm, type TermInput } from "./terms";
@@ -123,5 +125,21 @@ describe("terms service", () => {
     it("NEW_TERM_KEY means the same as the public site's CATEGORY_KEY", () => {
       expect(NEW_TERM_KEY.source).toBe("^[a-z0-9-]{1,100}$");
     });
+  });
+
+  it("a staff edit (upsertTerm without legacyExtras) keeps a sector's legacy extras", async () => {
+    const other = await createCoreTestDb();
+    try {
+      const extras = { miscHtml: "<p>misc</p>", audioEmbedHtml: "<audio></audio>" };
+      await upsertTerm(other.db, economy, subs, { legacyExtras: extras });
+      const read = async () => (await other.db.select().from(terms).where(eq(terms.key, "economy")))[0]!.legacyExtras;
+      expect(await read()).toEqual(extras);
+      await upsertTerm(other.db, { ...economy, displayName: "Economy (staff)" }, subs);
+      expect((await getTerm(other.db, "sector", "economy"))!.displayName).toBe("Economy (staff)");
+      expect(await read()).toEqual(extras);
+      expect(JSON.stringify(await getTerm(other.db, "sector", "economy"))).not.toMatch(/legacyExtras|miscHtml/);
+    } finally {
+      await other.drop();
+    }
   });
 });

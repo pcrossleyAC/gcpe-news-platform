@@ -55,7 +55,11 @@ export async function upsertTerm(
   db: Db,
   input: TermInput,
   subscribers: SubscriberConfig[],
-  opts: { legacyId?: string; /** Raw legacy HTML (sectors only). undefined keeps the stored value; a difference alone is stored with no event. */ legacyExtras?: LegacyExtras | null } = {},
+  opts: {
+    legacyId?: string;
+    /** Raw legacy HTML (sectors only). undefined keeps the stored value; a difference alone is stored with no event. */
+    legacyExtras?: LegacyExtras | null;
+  } = {},
 ): Promise<{ record: TermRecord; changed: boolean }> {
   const data = termInputSchema.parse(input);
   return db.transaction(async (tx) => {
