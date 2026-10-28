@@ -6,6 +6,7 @@ import { expectAccessibleStructure } from "../test/structure";
 import { memoryStorage } from "../test/memory-storage";
 import { logoFor, renderNotFoundPage, renderRobots, writeStaticPages } from "./static-pages";
 import { DEFAULT_THEME } from "./theme-css";
+import { bcSettings } from "../test/fixtures";
 
 const site = { name: "BC Gov News", baseUrl: "https://news.example", theme: DEFAULT_THEME };
 
@@ -27,7 +28,7 @@ describe("static pages", () => {
     await writeFile(join(dir, "assets", ".hidden"), "x");
     const storage = memoryStorage();
     await writeStaticPages(storage, site, { test: true }, dir);
-    expect([...storage.files.keys()].sort()).toEqual(["404.html", "assets/img/a.png", "assets/logo.svg", "assets/theme.css", "robots.txt"]);
+    expect([...storage.files.keys()].sort()).toEqual(["404.html", "assets/img/a.png", "assets/logo.svg", "assets/site-banner.json", "assets/theme.css", "robots.txt"]);
     expect(storage.files.get("assets/img/a.png")).toBeInstanceOf(Uint8Array);
   });
   it("skips every file inside a hidden directory, not just a dotfile's own name", async () => {
@@ -37,12 +38,37 @@ describe("static pages", () => {
     await writeFile(join(dir, "assets", "logo.svg"), "<svg/>");
     const storage = memoryStorage();
     await writeStaticPages(storage, site, {}, dir);
-    expect([...storage.files.keys()].sort()).toEqual(["404.html", "assets/logo.svg", "assets/theme.css", "robots.txt"]);
+    expect([...storage.files.keys()].sort()).toEqual(["404.html", "assets/logo.svg", "assets/site-banner.json", "assets/theme.css", "robots.txt"]);
   });
   it("a missing assets folder is not an error", async () => {
     const storage = memoryStorage();
     await writeStaticPages(storage, site, {}, "/nonexistent/folder");
     expect(storage.files.has("assets/theme.css")).toBe(true);
+  });
+  it("theme.css carries the settings colours and the banner variables", async () => {
+    const storage = memoryStorage();
+    const settings = bcSettings();
+    settings.theme.colors = { ...settings.theme.colors, primary: "#123456", bannerEmergency: "#A12B2B" };
+    await writeStaticPages(storage, site, { settings }, null);
+    const css = storage.files.get("assets/theme.css") as string;
+    expect(css).toContain("--color-primary: #123456;");
+    expect(css).toContain("--color-banner-info: #013366;");
+    expect(css).toContain("--color-banner-emergency: #A12B2B;");
+  });
+  it("assets/site-banner.json is the banner the inline script reads", async () => {
+    const storage = memoryStorage();
+    const settings = bcSettings();
+    settings.banner = { enabled: true, style: "emergency", message: "Evacuation order", links: [{ text: "Details", url: "/alerts" }], dismissible: false, startsAt: "2026-11-02T09:00:00-08:00", endsAt: null };
+    await writeStaticPages(storage, site, { settings }, null);
+    expect(JSON.parse(storage.files.get("assets/site-banner.json") as string)).toEqual({
+      visible: true,
+      style: "emergency",
+      message: "Evacuation order",
+      links: [{ text: "Details", url: "/alerts" }],
+      dismissible: false,
+      startsAt: "2026-11-02T09:00:00-08:00",
+      endsAt: null,
+    });
   });
   it("logoFor: the logo only when the file exists under the assets folder", async () => {
     const dir = await mkdtemp(join(tmpdir(), "site-assets-"));

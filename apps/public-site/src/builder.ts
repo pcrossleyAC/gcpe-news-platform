@@ -5,6 +5,7 @@ import { renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { renderArchiveIndex, renderArchiveMonth } from "./pages/archive";
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./pages/categories";
+import { renderConnectPage } from "./pages/connect";
 import { LATEST_COUNT } from "./pages/format";
 import { renderHomePage } from "./pages/home";
 import { renderReleasePage } from "./pages/release";
@@ -41,8 +42,10 @@ export interface SiteBuilder {
   buildAll(opts: PageOptions): Promise<{ posts: number; failures: number }>;
   /** Every key with a page today or due one: the News API's published keys, the index and the disk. */
   allPostKeys(): Promise<string[]>;
-  /** Every non-post page id the site has (home, indexes, categories, months, sitemaps, static). */
+  /** Every non-post page id the site has (home, indexes, categories, months, sitemaps, static, connect). */
   aggregatePageIds(): Promise<string[]>;
+  /** Every ministry page id — what a `ministryPages` settings change rebuilds. */
+  ministryPageIds(): Promise<string[]>;
 }
 
 export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteStorage; index: PostIndex; site: SiteInfo; assetsDir: string | null; searchApiBase?: string }): SiteBuilder {
@@ -176,7 +179,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         }
         case "sitemap-pages": {
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "search" })];
+          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "search" }), pageUrl(site, { type: "connect" })];
           for (const id of await categoryIds(run)) paths.push(pageUrl(site, parsePageId(id)!));
           for (const m of await index.months()) paths.push(pageUrl(site, { type: "archive-month", month: m.month }));
           await storage.write(pageFiles(p)[0]!, renderUrlSet(paths.map((path) => ({ path })), site));
@@ -184,6 +187,9 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         }
         case "static":
           await writeStaticPages(storage, site, opts, deps.assetsDir);
+          return [];
+        case "connect":
+          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts));
           return [];
       }
     },
@@ -209,9 +215,20 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
 
     async aggregatePageIds() {
       const run: RunCache = {};
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "sitemap:pages", ...(await categoryIds(run))];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "sitemap:pages", "connect", ...(await categoryIds(run))];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       return ids;
+    },
+
+    async ministryPageIds() {
+      // categoryIds' ministry half, without its sector/theme/tag list fetches.
+      const ids = new Set<string>();
+      for (const m of await newsApi.ministries()) {
+        const id = categoryPageId("ministries", m.key);
+        if (id) ids.add(id);
+      }
+      for (const token of await index.categories()) if (token.startsWith("ministries:")) ids.add(`category:${token}`);
+      return [...ids].sort();
     },
 
     async buildAll(opts) {

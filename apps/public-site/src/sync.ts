@@ -1,14 +1,16 @@
 import type { Db } from "@gcpe/db-kit";
 import type { EventHandler } from "@gcpe/events";
 import { safeErrorLabel } from "@gcpe/http-kit";
+import type { SiteSettings } from "@gcpe/site-settings";
 import type { SiteBuilder } from "./builder";
 import { drainQueue } from "./drain";
 import type { NewsApiClient } from "./news-api-client";
 import type { PostIndex } from "./post-index";
 import { enqueuePages, PRIORITY } from "./queue";
-import { chromeChanged, enqueueSiteWrite, stateAndBanner, writeSiteState } from "./rebuild";
-import { enqueueRebuildAll } from "./rebuild-all";
+import { chromeChanges, enqueueSiteWrite, stateAndBanner, writeSiteState, type SiteRenderState } from "./rebuild";
+import { enqueueChromeChanges } from "./rebuild-all";
 import type { PageOptions, SiteInfo } from "./render";
+import { currentSettings, themeDefaults } from "./settings";
 import type { SiteStorage } from "./storage";
 
 export interface SyncDeps {
@@ -23,6 +25,28 @@ export interface SyncDeps {
   batch: number;
   /** Reads the change feed into the queue (change-feed.ts); absent in tests that don't need it. */
   feed?: () => Promise<unknown>;
+  /** The tenant's site settings defaults (`loadSiteSettingsDefaults`, start.ts): what the site
+   * shows while nothing is published. Absent ⇒ derived from `site.theme`. */
+  defaultSettings?: SiteSettings;
+}
+
+/**
+ * This turn's render options and site-state: Blue Bridge from `home()` (a failure rejects), then
+ * the site settings (settings.ts's currentSettings never rejects). Shared by `syncSite` and
+ * `selfHeal`.
+ */
+export async function turnOptions(deps: SyncDeps, granville: string | null): Promise<{ state: SiteRenderState; pageOpts: PageOptions }> {
+  const settings = await currentSettings({ newsApi: deps.newsApi, storage: deps.storage, defaults: deps.defaultSettings ?? themeDefaults(deps.site.theme) });
+  const { state, banner } = stateAndBanner(granville, deps.test, new Date(), settings, deps.site);
+  return { state, pageOpts: { test: deps.test, banner, settings } };
+}
+
+/** Queues what the chrome or the settings changed since the marker, then moves the marker. */
+export async function applyChromeChanges(deps: SyncDeps, state: SiteRenderState, force = false): Promise<void> {
+  const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, state, deps.site);
+  if (!changes.all && changes.sections.length === 0) return;
+  await enqueueChromeChanges(deps.db, deps.builder, changes);
+  await writeSiteState(deps.storage, state, deps.site);
 }
 
 export interface SyncResult {
@@ -87,19 +111,16 @@ function singleFlightFeed(feed: () => Promise<unknown>): Promise<unknown> {
 
 /**
  * One serialised turn (per SiteStorage, like every other site write): queue the caller's pages,
- * decide the chrome (a home() failure rejects the turn), read the change feed, render a batch.
+ * decide the chrome and the site settings (a home() failure rejects the turn; a settings failure
+ * keeps the last applied), read the change feed, render a batch.
  */
 export function syncSite(deps: SyncDeps, extra: { pages?: string[] } = {}): Promise<SyncResult> {
   const feedRead = deps.feed ? singleFlightFeed(deps.feed) : undefined;
   return enqueueSiteWrite(deps.storage, async () => {
     const { granville } = await deps.newsApi.home();
-    const { state, banner } = stateAndBanner(granville, deps.test, new Date());
-    const pageOpts: PageOptions = { test: deps.test, banner };
+    const { state, pageOpts } = await turnOptions(deps, granville);
     if (extra.pages?.length) await enqueuePages(deps.db, extra.pages.map((pageId) => ({ pageId, priority: livePriority(pageId) })));
-    if (await chromeChanged(deps.storage, state, deps.site)) {
-      await enqueueRebuildAll(deps.db, deps.builder);
-      await writeSiteState(deps.storage, state, deps.site);
-    }
+    await applyChromeChanges(deps, state);
     if (feedRead) {
       try {
         await feedRead;

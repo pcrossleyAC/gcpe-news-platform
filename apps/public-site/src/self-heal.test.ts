@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { post, site } from "../test/fixtures";
+import { bcSettings, post, site } from "../test/fixtures";
 import type { PostDto } from "./dto";
 import { createSiteBuilder } from "./builder";
 import { postIndex } from "./post-index";
@@ -87,5 +87,30 @@ describe("selfHeal", () => {
     expect(drained!.rebuilt).toBeGreaterThan(0); // the post, then its dependents, all drained this run
     expect(await queueDepth(tdb.db)).toBe(0);
     expect(JSON.parse(storage.files.get(".site-state.json") as string).chrome).toBe(RENDER_CHROME_VERSION);
+  });
+
+  it("renders with the published site settings, the subscribe pages included", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    const document = bcSettings();
+    document.footer.copyrightHolder = "Published Holder";
+    (deps.newsApi as ReturnType<typeof fakeNewsApi>).settings = { revision: 1, document };
+    await selfHeal(deps);
+    expect(storage.files.get("index.html")).toContain("Published Holder");
+    for (const f of SUBSCRIBE_FILES) expect(storage.files.get(f)).toContain("Published Holder");
+  });
+
+  it("a settings section changed since the marker queues only its pages", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    const newsApi = deps.newsApi as ReturnType<typeof fakeNewsApi>;
+    newsApi.settings = { revision: 1, document: bcSettings() };
+    await selfHeal(deps);
+    const document = bcSettings();
+    document.connect.blogs.accounts = [{ text: "A New Blog", url: "https://blog.example" }];
+    newsApi.settings = { revision: 2, document };
+    const before = newsApi.calls.filter((c) => c === "getPost:K1").length;
+    await selfHeal(deps);
+    expect(newsApi.calls.filter((c) => c === "getPost:K1").length).toBe(before); // no full rebuild
+    expect((deps.storage as ReturnType<typeof memoryStorage>).files.get("connect/index.html")).toContain("A New Blog");
   });
 });

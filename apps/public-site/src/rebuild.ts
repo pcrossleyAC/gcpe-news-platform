@@ -1,5 +1,7 @@
+import type { SiteSettings } from "@gcpe/site-settings";
 import type { NewsApiClient } from "./news-api-client";
 import type { SiteInfo } from "./render";
+import { DEFAULT_TIME_ZONE, settingsHashes } from "./settings";
 import { blueBridgeBanner, isGranvilleOn } from "./site-env";
 import type { SiteStorage } from "./storage";
 
@@ -14,7 +16,18 @@ import type { SiteStorage } from "./storage";
 export interface SiteRenderState {
   granvilleOn: boolean;
   test: boolean;
+  /** The site settings, one hash per section (settings.ts's settingsHashes). Every page bakes in
+   * the footer (and its copyright year), so `footerHash` is chrome like Blue Bridge; the others
+   * reach only some pages — see `chromeChanges`. */
+  footerHash: string;
+  themeHash: string;
+  bannerHash: string;
+  connectHash: string;
+  ministryPagesHash: string;
 }
+
+/** The pages a settings section reaches, other than through every page's footer. */
+export type SectionPages = "static" | "connect" | "ministryPages";
 
 /** Not served publicly: a leading dot (denied by the `/site` static mount's `dotfiles: "deny"`
  * — see apps/stack/src/stack.ts) and never referenced by any rendered page. */
@@ -23,9 +36,9 @@ export const SITE_STATE_PATH = ".site-state.json";
 /**
  * Bump whenever every page's baked-in chrome changes (links, header, page types, ...), so the
  * next startup/event rebuilds every page already on disk. 3: the full site (theme, every page
- * type, archives, feeds, sitemaps; spec §6).
+ * type, archives, feeds, sitemaps; spec §6). 4: the site settings' footer and banner placeholder.
  */
-export const RENDER_CHROME_VERSION = 3;
+export const RENDER_CHROME_VERSION = 4;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
@@ -35,15 +48,20 @@ interface SiteStateMarker extends SiteRenderState {
   baseUrl: string | null;
 }
 
+const HASHES = ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash"] as const;
+
 async function readSiteState(storage: SiteStorage): Promise<SiteStateMarker | null> {
   const raw = await storage.read(SITE_STATE_PATH);
   if (raw === null) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<SiteStateMarker>;
     if (typeof parsed.granvilleOn === "boolean" && typeof parsed.test === "boolean") {
+      // A marker written before the site settings has no hashes: "" never matches a real one.
+      const hashes = Object.fromEntries(HASHES.map((k) => [k, typeof parsed[k] === "string" ? parsed[k] : ""])) as Pick<SiteRenderState, (typeof HASHES)[number]>;
       return {
         granvilleOn: parsed.granvilleOn,
         test: parsed.test,
+        ...hashes,
         chrome: typeof parsed.chrome === "number" ? parsed.chrome : 1,
         baseUrl: typeof parsed.baseUrl === "string" ? parsed.baseUrl : null,
       };
@@ -54,21 +72,43 @@ async function readSiteState(storage: SiteStorage): Promise<SiteStateMarker | nu
   return null;
 }
 
-/** True when the chrome every page bakes in differs from the marker the last full build left. */
-export async function chromeChanged(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<boolean> {
+/**
+ * What differs from the marker the last build left. `all`: the chrome every page bakes in (Blue
+ * Bridge, the test flag, the chrome version, the base URL, the footer) — every page. Otherwise
+ * `sections`: a theme or banner change reaches only the `static` page (theme.css,
+ * site-banner.json), a connect change only the Connect page, a ministryPages change only the
+ * ministry pages (spec "Delivery": the cheapest correct effect per section).
+ */
+export async function chromeChanges(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<{ all: boolean; sections: SectionPages[] }> {
   const previous = await readSiteState(storage);
-  return !(previous && previous.granvilleOn === state.granvilleOn && previous.test === state.test && previous.chrome === RENDER_CHROME_VERSION && previous.baseUrl === site.baseUrl);
+  const all = !(
+    previous &&
+    previous.granvilleOn === state.granvilleOn &&
+    previous.test === state.test &&
+    previous.chrome === RENDER_CHROME_VERSION &&
+    previous.baseUrl === site.baseUrl &&
+    previous.footerHash === state.footerHash
+  );
+  if (all || !previous) return { all: true, sections: [] };
+  const sections: SectionPages[] = [];
+  if (previous.themeHash !== state.themeHash || previous.bannerHash !== state.bannerHash) sections.push("static");
+  if (previous.connectHash !== state.connectHash) sections.push("connect");
+  if (previous.ministryPagesHash !== state.ministryPagesHash) sections.push("ministryPages");
+  return { all: false, sections };
 }
 
 export async function writeSiteState(storage: SiteStorage, state: SiteRenderState, site: SiteInfo): Promise<void> {
-  const marker: SiteStateMarker = { granvilleOn: state.granvilleOn, test: state.test, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl };
+  const marker: SiteStateMarker = { ...state, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl };
   await storage.write(SITE_STATE_PATH, JSON.stringify(marker));
 }
 
-/** `granville` and `test` together, as both the render state (for the marker) and the banner
- * text (for this render, with today's age). */
-export function stateAndBanner(granville: string | null, test: boolean, now: Date): { state: SiteRenderState; banner: string | null } {
-  return { state: { granvilleOn: isGranvilleOn(granville), test }, banner: blueBridgeBanner(granville, now, test) };
+/** `granville`, `test` and the site settings together, as both the render state (for the
+ * marker) and the banner text (for this render, with today's age). */
+export function stateAndBanner(granville: string | null, test: boolean, now: Date, settings: SiteSettings, site: Pick<SiteInfo, "timeZone">): { state: SiteRenderState; banner: string | null } {
+  return {
+    state: { granvilleOn: isGranvilleOn(granville), test, ...settingsHashes(settings, site.timeZone ?? DEFAULT_TIME_ZONE, now) },
+    banner: blueBridgeBanner(granville, now, test),
+  };
 }
 
 /**

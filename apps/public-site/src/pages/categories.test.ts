@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectAccessibleStructure } from "../../test/structure";
+import { expectAccessibleStructure, withoutBannerScript } from "../../test/structure";
 import { category, ministry, post, site } from "../../test/fixtures";
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./categories";
 
@@ -56,7 +56,7 @@ describe("renderMinistryPage", () => {
 
   it("sanitises the minister's details (C209)", () => {
     const minister = { headline: "H", summary: null, details: '<p>Safe.</p><script>alert(1)</script><a href="javascript:alert(1)">Click</a>', photo: null };
-    const html = renderMinistryPage(ministry({}), minister, emptyPosts, site, {});
+    const html = withoutBannerScript(renderMinistryPage(ministry({}), minister, emptyPosts, site, {}));
     expect(html).toContain("<p>Safe.</p>");
     expect(html).not.toContain("<script");
     expect(html).not.toContain("javascript:");

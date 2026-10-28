@@ -1,4 +1,4 @@
-import { mkdtemp } from "node:fs/promises";
+import { copyFile, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -68,6 +68,15 @@ describe("startPublicSite", () => {
     delete env.LOCAL_ADMIN_PASSWORD_HASH;
     delete env.LOCAL_AUTH_SECRET;
     await expect(startPublicSite(env)).rejects.toThrow(/NEWS_API_TOKEN_URL/);
+  });
+
+  // Like NRMS: the tenant's <tenant>.site-settings.json beside its config is loaded (and
+  // validated) at startup, so a broken defaults file fails fast instead of on the first render.
+  it("loads the tenant's site settings defaults at startup, refusing an invalid file", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "public-site-tenant-"));
+    await copyFile(new URL("../../../config/tenants/bc.json", import.meta.url), join(dir, "bc.json"));
+    await writeFile(join(dir, "bc.site-settings.json"), JSON.stringify({ schemaVersion: 1 }));
+    await expect(startPublicSite({ ...(await testEnv()), TENANT_CONFIG: join(dir, "bc.json") })).rejects.toThrow(/"banner"/);
   });
 
   it("starts with local admin configured", async () => {

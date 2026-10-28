@@ -3,9 +3,11 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { post, site } from "../test/fixtures";
+import { bcSettings, post, site } from "../test/fixtures";
+import type { FakeNewsApi } from "../test/fake-news-api";
+import type { SiteSettings } from "@gcpe/site-settings";
 import type { PostDto } from "./dto";
-import { createSiteBuilder } from "./builder";
+import { createSiteBuilder, type SiteBuilder } from "./builder";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
@@ -66,15 +68,15 @@ describe("syncSite", () => {
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
 
     await syncSite(deps); // no marker yet: a full build, Blue Bridge off
-    expect(storage.files.get("index.html")).not.toContain("blue-bridge-banner");
+    expect(storage.files.get("index.html")).not.toContain('class="blue-bridge-banner"');
 
     deps.newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
     await syncSite(deps);
 
     const releasePages = [...storage.files.entries()].filter(([path]) => /^releases\/.+\/index\.html$/.test(path));
     expect(releasePages.length).toBeGreaterThan(0);
-    for (const [, content] of releasePages) expect(content as string).toContain("blue-bridge-banner");
-    expect(storage.files.get("index.html")).toContain("blue-bridge-banner");
+    for (const [, content] of releasePages) expect(content as string).toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("index.html")).toContain('class="blue-bridge-banner"');
   });
 
   it("calls deps.feed, if given, before draining (events become a doorbell)", async () => {
@@ -151,9 +153,9 @@ describe("syncSite", () => {
 
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
     expect(order).toEqual(["start-home-1(ON, gated)", "end-home-1(ON)"]);
-    expect(storage.files.get("releases/K1/index.html")).not.toContain("blue-bridge-banner");
-    expect(storage.files.get("index.html")).not.toContain("blue-bridge-banner");
-    expect(JSON.parse(storage.files.get(".site-state.json") as string)).toEqual({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
+    expect(storage.files.get("releases/K1/index.html")).not.toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("index.html")).not.toContain('class="blue-bridge-banner"');
+    expect(JSON.parse(storage.files.get(".site-state.json") as string)).toMatchObject({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
   });
 
   it("a rejected turn doesn't wedge the queue — a concurrently-enqueued later turn still runs", async () => {
@@ -187,5 +189,162 @@ describe("syncSite", () => {
     deps.newsApi.home = async () => ({ granville: null, topPostKey: null, featurePostKey: null });
     await expect(syncSite(deps, { pages: ["post:K1"] })).resolves.toBeDefined();
     expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true);
+  });
+
+  describe("site settings", () => {
+    const published = (doc: SiteSettings, revision = 1) => ({ revision, document: doc });
+    const withHolder = (holder: string): SiteSettings => {
+      const doc = bcSettings();
+      doc.footer.copyrightHolder = holder;
+      return doc;
+    };
+    /** syncSite with a builder that records which pages this turn rendered. */
+    const recording = (deps: SyncDeps) => {
+      const rendered: string[] = [];
+      const builder: SiteBuilder = { ...deps.builder, renderPage: (id, opts, run, tx) => (rendered.push(id), deps.builder.renderPage(id, opts, run, tx)) };
+      return { deps: { ...deps, builder }, rendered };
+    };
+    const api = (deps: SyncDeps) => deps.newsApi as FakeNewsApi;
+    const html = (deps: SyncDeps, path: string) => (deps.storage as ReturnType<typeof memoryStorage>).files.get(path) as string;
+
+    it("each turn fetches the settings; a 404 renders the tenant defaults", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      await syncSite(deps);
+      await syncSite(deps);
+      expect(api(deps).calls.filter((c) => c === "siteSettings")).toHaveLength(2);
+      expect(html(deps, "index.html")).toContain("Tenant Default Holder");
+      expect(html(deps, "releases/K1/index.html")).toContain("Tenant Default Holder");
+    });
+
+    it("the published document is applied to every page", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      api(deps).settings = published(withHolder("Published Holder"));
+      await syncSite(deps);
+      expect(html(deps, "index.html")).toContain("Published Holder");
+      expect(html(deps, "releases/K1/index.html")).toContain("Published Holder");
+    });
+
+    it("a fetch error keeps the last applied settings (logged), never the defaults, and queues no rebuild", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      api(deps).settings = published(withHolder("Published Holder"));
+      await syncSite(deps);
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        deps.newsApi.siteSettings = async () => {
+          throw new Error("News API 503 for api/v2/site-settings");
+        };
+        const r = recording(deps);
+        await syncSite(r.deps, { pages: ["post:K1"] });
+        expect(r.rendered[0]).toBe("post:K1");
+        expect(r.rendered).not.toContain("static"); // no rebuild queued
+        expect(html(deps, "releases/K1/index.html")).toContain("Published Holder");
+        expect(html(deps, "releases/K1/index.html")).not.toContain("Tenant Default Holder");
+        expect(error.mock.calls.map((c) => String(c[0]))).toContainEqual(expect.stringContaining("keeping the last applied"));
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("a fetch error before any successful fetch uses the tenant defaults (logged) rather than failing the turn", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      deps.newsApi.siteSettings = async () => {
+        throw new Error("News API 503 for api/v2/site-settings");
+      };
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await expect(syncSite(deps)).resolves.toBeDefined();
+        expect(html(deps, "index.html")).toContain("Tenant Default Holder");
+        expect(error.mock.calls.map((c) => String(c[0]))).toContainEqual(expect.stringContaining("tenant defaults"));
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("a footer change queues every page", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })]]));
+      await syncSite(deps);
+      api(deps).settings = published(withHolder("New Holder"));
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual(expect.arrayContaining(["static", "home", "connect", "post:K1", "post:K2", "category:ministries:health"]));
+      expect(html(deps, "releases/K2/index.html")).toContain("New Holder");
+    });
+
+    it("the copyright year rolling over (tenant time zone) queues every page", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      vi.useFakeTimers({ now: new Date("2027-01-01T06:30:00Z"), toFake: ["Date"] }); // 2026-12-31 23:30 in Vancouver (UTC-7 year-round from 2026-11-01)
+      try {
+        await syncSite(deps);
+        expect(html(deps, "releases/K1/index.html")).toContain("© 2026");
+        vi.setSystemTime(new Date("2027-01-01T07:30:00Z")); // 2027-01-01 00:30 in Vancouver
+        const r = recording(deps);
+        await syncSite(r.deps);
+        expect(r.rendered).toContain("post:K1");
+        expect(html(deps, "releases/K1/index.html")).toContain("© 2027");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a theme-only change rebuilds only the static page (theme.css)", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      const doc = bcSettings();
+      doc.theme.colors.primary = "#123456";
+      api(deps).settings = published(doc, 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual(["static"]);
+      expect(html(deps, "assets/theme.css")).toContain("--color-primary: #123456;");
+    });
+
+    it("a banner-only change rewrites only the static page (site-banner.json)", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      const doc = bcSettings();
+      doc.banner = { ...doc.banner, enabled: true, message: "Offices closed" };
+      api(deps).settings = published(doc, 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual(["static"]);
+      expect(JSON.parse(html(deps, "assets/site-banner.json"))).toMatchObject({ visible: true, message: "Offices closed" });
+    });
+
+    it("a connect-only change rebuilds only the Connect page", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      const doc = bcSettings();
+      doc.connect.threads.accounts = [{ text: "@NewThreads", url: "https://threads.net/@new" }];
+      api(deps).settings = published(doc, 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual(["connect"]);
+      expect(html(deps, "connect/index.html")).toContain("@NewThreads");
+    });
+
+    it("a ministryPages-only change rebuilds only the ministry pages", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      const doc = bcSettings();
+      doc.ministryPages.featuredTopics = "Topics";
+      api(deps).settings = published(doc, 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered.sort()).toEqual(["category:ministries:finance", "category:ministries:health"]);
+    });
+
+    it("unchanged settings queue nothing", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      api(deps).settings = published(bcSettings(), 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual([]);
+    });
   });
 });

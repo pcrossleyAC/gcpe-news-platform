@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { post, site } from "../test/fixtures";
+import { bcSettings, post, site } from "../test/fixtures";
 import { createSiteBuilder } from "./builder";
 import type { PostDto } from "./dto";
 import { postIndex } from "./post-index";
@@ -94,10 +94,24 @@ describe("site builder", () => {
     const r = await builder.buildAll({});
     expect(r).toEqual({ posts: 3, failures: 0 });
     expect(storage.files.has("releases/OLD/index.html")).toBe(false);
-    for (const f of ["releases/K1/index.html", "releases/S1/index.html", "index.html", "ministries/index.html", "ministries/health/index.html", "ministries/finance/index.html", "archive/index.html", "search/index.html", "sitemap.xml", "sitemaps/pages.xml", "assets/theme.css", "robots.txt", "404.html"]) {
+    for (const f of ["releases/K1/index.html", "releases/S1/index.html", "index.html", "ministries/index.html", "ministries/health/index.html", "ministries/finance/index.html", "archive/index.html", "search/index.html", "sitemap.xml", "sitemaps/pages.xml", "assets/theme.css", "assets/site-banner.json", "connect/index.html", "robots.txt", "404.html"]) {
       expect(storage.files.has(f), f).toBe(true);
     }
     expect(html(storage, "sitemaps/pages.xml")).toContain("/search/");
+    expect(html(storage, "sitemaps/pages.xml")).toContain("https://news.example/connect/");
+  });
+
+  it("ministryPageIds: every ministry page, nothing else", async () => {
+    const { builder } = setup(new Map([["K1", post({ key: "K1" })]]));
+    expect(await builder.ministryPageIds()).toEqual(["category:ministries:finance", "category:ministries:health"]);
+  });
+
+  it("the connect page renders the settings it's given", async () => {
+    const { storage, builder } = setup(new Map());
+    const settings = bcSettings();
+    settings.connect.blogs.featured = [{ text: "The Newest Blog", url: "https://news.example/blog" }];
+    await builder.renderPage("connect", { settings });
+    expect(html(storage, "connect/index.html")).toContain("The Newest Blog");
   });
 
   it("every generated HTML page passes the structure check", async () => {

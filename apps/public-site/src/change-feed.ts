@@ -7,7 +7,7 @@ import { enqueuePages, PRIORITY } from "./queue";
 import { rebuildAllItems } from "./rebuild-all";
 import { categoryPageId, POST_KEY, type CategoryKind } from "./site-paths";
 
-export type ChangeKind = "post.upserted" | "post.unpublished" | "home" | "slides" | "resource_links" | "ministry" | "sector" | "theme" | "tag";
+export type ChangeKind = "post.upserted" | "post.unpublished" | "home" | "slides" | "resource_links" | "ministry" | "sector" | "theme" | "tag" | "site_settings";
 export interface ChangeRow { id: number; kind: ChangeKind; key: string | null }
 export type ChangesPage = { resync: false; changes: ChangeRow[]; next: number } | { resync: true; next: number };
 export interface ChangesClient { read(after: number, limit: number): Promise<ChangesPage> }
@@ -86,6 +86,10 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       if (!id) return [];
       return [{ pageId: id, priority: live }, ...(kind === "ministries" ? [{ pageId: "ministries", priority: live }, { pageId: "search", priority: live }] : []), { pageId: "sitemap:pages", priority: live }];
     }
+    // Queues nothing itself: every sync turn fetches the settings and queues what each changed
+    // section needs (sync.ts), so the change only has to wake the site up.
+    case "site_settings":
+      return [];
     default:
       return [];
   }

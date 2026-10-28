@@ -22,7 +22,8 @@ export type PageId =
   | { type: "sitemap" }
   | { type: "sitemap-month"; month: string }
   | { type: "sitemap-pages" }
-  | { type: "static" };
+  | { type: "static" }
+  | { type: "connect" };
 
 const SINGLE: Record<string, PageId> = {
   home: { type: "home" },
@@ -32,6 +33,7 @@ const SINGLE: Record<string, PageId> = {
   sitemap: { type: "sitemap" },
   "sitemap:pages": { type: "sitemap-pages" },
   static: { type: "static" },
+  connect: { type: "connect" },
 };
 
 /** The one gate between a page id (from an event, the change feed or the queue) and a path. */
@@ -78,7 +80,8 @@ export function pageFiles(p: PageId): string[] {
     case "sitemap": return ["sitemap.xml"];
     case "sitemap-month": return [`sitemaps/${p.month}.xml`];
     case "sitemap-pages": return ["sitemaps/pages.xml"];
-    case "static": return ["assets/theme.css", "404.html", "robots.txt"];
+    case "static": return ["assets/theme.css", "assets/site-banner.json", "404.html", "robots.txt"];
+    case "connect": return ["connect/index.html"];
   }
 }
 
@@ -97,6 +100,7 @@ export function pageUrl(site: Pick<SiteInfo, "baseUrl">, p: PageId): string {
     case "sitemap-month": return `${base}/sitemaps/${p.month}.xml`;
     case "sitemap-pages": return `${base}/sitemaps/pages.xml`;
     case "static": return `${base}/404.html`;
+    case "connect": return `${base}/connect/`;
   }
 }
 

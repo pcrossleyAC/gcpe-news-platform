@@ -1,4 +1,5 @@
 import type { SiteTheme } from "@gcpe/config";
+import type { ThemeColors } from "@gcpe/site-settings";
 
 /** Used when no tenant config loaded (TENANT_CONFIG unset and the default missing). Neutral,
  * and passes the same contrast check the tenant loader applies. */
@@ -29,10 +30,23 @@ const cssString = (s: string) => `"${s.replace(/["\\;:{}<>\n\r]/g, "")}"`;
  * font-family value as one name joined by spaces. */
 const cssStack = (s: string) => s.replace(/[^A-Za-z0-9 ,-]/g, "");
 
-/** spec §6.3: theme.css from site.theme, as CSS variables; every rule below uses only them. */
-export function themeCss(theme: SiteTheme): string {
-  const vars = Object.entries(theme.colors)
-    .map(([name, value]) => `  --color-${kebab(name)}: ${value};`)
+/** The site settings' default banner colours (spec "Defaults"). */
+const DEFAULT_BANNER_COLORS = { bannerInfo: "#013366", bannerEmergency: "#D8292F" };
+const HEX = /^#[0-9A-Fa-f]{6}$/;
+
+/**
+ * spec §6.3: theme.css from site.theme, as CSS variables; every rule below uses only them. The
+ * site settings' `theme.colors` (when given) replace the tenant's colours and add the two banner
+ * colours. A colour that isn't `#RRGGBB` (a document that bypassed validation) never reaches the
+ * stylesheet: the tenant's (or default banner) colour stands in for it.
+ */
+export function themeCss(theme: SiteTheme, colors?: ThemeColors): string {
+  const fallback: Record<string, string> = { ...theme.colors, ...DEFAULT_BANNER_COLORS };
+  const vars = Object.entries(fallback)
+    .map(([name, value]) => {
+      const chosen = (colors as Record<string, string> | undefined)?.[name];
+      return `  --color-${kebab(name)}: ${chosen && HEX.test(chosen) ? chosen : value};`;
+    })
     .join("\n");
   return `:root {
 ${vars}
@@ -51,6 +65,13 @@ a { color: var(--color-primary); }
 .site-header .logo { height: 3rem; width: auto; }
 .site-header nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 1rem; }
 .blue-bridge-banner { background: var(--color-text); color: var(--color-background); padding: 0.75rem 1rem; font-weight: 700; }
+.site-banner { background: var(--color-banner-info); color: white; padding: 0.75rem 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
+.site-banner-emergency { background: var(--color-banner-emergency); }
+.site-banner p, .site-banner ul { margin: 0; }
+.site-banner ul { list-style: none; padding: 0; display: flex; flex-wrap: wrap; gap: 1rem; }
+.site-banner a { color: inherit; font-weight: 700; }
+.site-banner button { margin-left: auto; background: transparent; color: inherit; border: 2px solid currentColor; padding: 0.25rem 0.75rem; font: inherit; cursor: pointer; }
+.site-banner :focus-visible { outline-color: white; }
 main { max-width: 70rem; margin: 0 auto; padding: 1rem; }
 main:focus { outline: none; }
 .muted, time { color: var(--color-muted-text); }
@@ -59,6 +80,12 @@ main:focus { outline: none; }
 .post-list li { border-bottom: 1px solid var(--color-border); padding: 0.75rem 0; }
 .site-footer { border-top: 4px solid var(--color-accent); background: var(--color-surface); padding: 1rem; }
 .site-footer ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 1rem; }
+.site-footer h2 { font-size: 1.125rem; margin: 1rem 0 0.5rem; }
+.site-footer .footer-columns { display: flex; flex-wrap: wrap; gap: 0 3rem; }
+.site-footer .copyright { margin: 1rem 0 0; color: var(--color-muted-text); }
+.connect-list { list-style: none; padding: 0; }
+.connect-list li { border-bottom: 1px solid var(--color-border); padding: 0.5rem 0; }
+.connect-list p { margin: 0.25rem 0 0; color: var(--color-muted-text); }
 figure { margin: 1rem 0; }
 img { max-width: 100%; height: auto; }
 `;

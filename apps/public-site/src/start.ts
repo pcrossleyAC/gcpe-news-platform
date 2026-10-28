@@ -4,6 +4,7 @@ import { serviceTokenProvider } from "@gcpe/auth";
 import { assertTimeZoneRules, isTestSite, parseEnv } from "@gcpe/config";
 import type { Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
+import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 import { createApp } from "./app";
 import { createSiteBuilder } from "./builder";
 import { changesClient, syncChanges } from "./change-feed";
@@ -77,7 +78,11 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   const newsApi = newsApiClient(parsed.NEWS_API_URL);
   const storage = fsStorage(parsed.OUTPUT_DIR);
   const theme = tenantConfig?.site.theme ?? DEFAULT_THEME;
-  const site: SiteInfo = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL, theme };
+  const site: SiteInfo = { name: parsed.SITE_NAME, baseUrl: parsed.PUBLIC_SITE_URL, theme, timeZone: tenantConfig?.timeZone };
+  // What the site shows before any settings are published (and if the first fetch fails): the
+  // tenant's <tenant>.site-settings.json, else derived from its theme — as NRMS loads them.
+  // Throws on an invalid file, so a bad deploy fails here rather than on the first render.
+  const defaultSettings = tenantConfig ? loadSiteSettingsDefaults(tenantConfigPath, tenantConfig.site.theme) : undefined;
   site.logo = logoFor(theme, parsed.SITE_ASSETS_DIR, site);
   // Plan 3d task 4: the TEST banner prefix and noindex meta — decided once, from this process's
   // own env view (the stack's envFor shares NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION/SITE_ENVIRONMENT
@@ -90,7 +95,7 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   // configured — a misconfigured deployment fails fast rather than on the first tick.
   const getToken = serviceTokenProvider(newsApiTokenOptions(parsed, env));
   const changeFeed = changesClient({ baseUrl: parsed.NEWS_API_URL, getToken });
-  const syncDeps: SyncDeps = { db, builder, index, newsApi, storage, site, test, batch: parsed.SITE_REBUILD_BATCH, feed: () => syncChanges({ db, client: changeFeed, builder, index }) };
+  const syncDeps: SyncDeps = { db, builder, index, newsApi, storage, site, test, batch: parsed.SITE_REBUILD_BATCH, feed: () => syncChanges({ db, client: changeFeed, builder, index }), defaultSettings };
   const handler = createRebuildHandler(syncDeps);
 
   // I1: the drain and feed sync run outside the receiver's transaction, kicked (not awaited —

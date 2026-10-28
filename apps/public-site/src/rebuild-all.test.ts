@@ -27,6 +27,7 @@ describe("enqueueRebuildAll", () => {
     expect(at(PRIORITY.liveAggregate)).toEqual(["static", "home", "ministries", "archive", "search", "sitemap"]);
     expect(at(PRIORITY.bulkPost)).toEqual(["post:NEW", "post:OLD"]);
     expect(at(PRIORITY.bulkAggregate)).toContain("sitemap:pages");
+    expect(at(PRIORITY.bulkAggregate)).toContain("connect");
     expect(at(PRIORITY.bulkAggregate)).toContain("category:ministries:health");
   });
 });
