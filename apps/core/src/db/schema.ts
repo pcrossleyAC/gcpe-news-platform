@@ -144,6 +144,13 @@ export const cabinetChanges = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }),
     /** Why the last scheduled publish failed; cleared when it is saved, scheduled or published again. */
     error: text("error"),
+    /**
+     * Deadlocks or serialization failures the scheduler has hit publishing it at the current
+     * scheduled time. One earns a retry on the next tick; a second sends it back to draft. Stored,
+     * not in memory, so the bound holds on SiteGround, where each tick may be a fresh process.
+     * Reset whenever it is saved or scheduled.
+     */
+    transientFailures: integer("transient_failures").notNull().default(0),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

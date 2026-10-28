@@ -139,7 +139,7 @@ export async function saveCabinetChangeDraft(db: Db, operations: unknown, create
     if (open) {
       const [row] = await tx
         .update(cabinetChanges)
-        .set({ operations: parsed, status: "draft", scheduledFor: null, error: null, updatedAt: new Date() })
+        .set({ operations: parsed, status: "draft", scheduledFor: null, error: null, transientFailures: 0, updatedAt: new Date() })
         .where(eq(cabinetChanges.id, open.id))
         .returning();
       return toRecord(row!);
@@ -489,7 +489,7 @@ export async function scheduleCabinetChange(db: Db, id: string, at: Date, now?: 
     if (problems.length) return { result: "invalid", problems };
     const [updated] = await tx
       .update(cabinetChanges)
-      .set({ status: "scheduled", scheduledFor: at, error: null, updatedAt: new Date() })
+      .set({ status: "scheduled", scheduledFor: at, error: null, transientFailures: 0, updatedAt: new Date() })
       .where(eq(cabinetChanges.id, id))
       .returning();
     return { result: "scheduled", change: toRecord(updated!) };
@@ -535,13 +535,6 @@ function sqlStateOf(e: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * Scheduled changes whose last attempt hit a deadlock or serialization failure, by id and scheduled
- * time. They stay scheduled for one more try on the next tick; a second failure returns them to draft.
- * In memory: a restart grants another try, which is harmless.
- */
-const transientRetries = new Set<string>();
-
 const GENERIC_SCHEDULED_ERROR = "Not published at the scheduled time: something went wrong while publishing. Review the change and schedule it again.";
 
 /**
@@ -554,35 +547,41 @@ const GENERIC_SCHEDULED_ERROR = "Not published at the scheduled time: something 
  */
 export async function publishDueCabinetChanges(db: Db, subscribers: SubscriberConfig[], now?: TestClock): Promise<{ published: number; failed: number }> {
   const due = await db
-    .select({ id: cabinetChanges.id, scheduledFor: cabinetChanges.scheduledFor })
+    .select({ id: cabinetChanges.id, scheduledFor: cabinetChanges.scheduledFor, transientFailures: cabinetChanges.transientFailures })
     .from(cabinetChanges)
     .where(and(eq(cabinetChanges.status, "scheduled"), sql`${cabinetChanges.scheduledFor} <= ${sqlNow(now)}`))
     .orderBy(asc(cabinetChanges.scheduledFor));
   let published = 0;
   let failed = 0;
-  for (const { id, scheduledFor } of due) {
-    const retryKey = `${id}@${scheduledFor!.toISOString()}`;
+  for (const { id, scheduledFor, transientFailures } of due) {
+    // This attempt is still for the time the worker saw: a save or reschedule meanwhile wins.
+    const unchanged = and(eq(cabinetChanges.id, id), eq(cabinetChanges.status, "scheduled"), eq(cabinetChanges.scheduledFor, scheduledFor!));
     let error: string;
     let reason: string;
     try {
       const result = await publish(db, id, subscribers, { now, onlyIfDue: true });
       if (result.result === "published") published++;
-      if (result.result !== "stale" && result.result !== "invalid") {
-        if (result.result !== "not-due") transientRetries.delete(retryKey);
-        continue;
-      }
-      transientRetries.delete(retryKey);
+      if (result.result !== "stale" && result.result !== "invalid") continue;
       reason = result.result;
       error = `Not published at the scheduled time: ${result.result === "stale" ? staleMessage(result.displayName) : result.problems.map((p) => p.message).join(" ")}`;
     } catch (e) {
       const state = sqlStateOf(e);
-      if (state && TRANSIENT_SQLSTATES.has(state) && !transientRetries.has(retryKey)) {
-        // Nothing was written (one transaction): leave it scheduled and try once more next tick.
-        transientRetries.add(retryKey);
-        console.warn("[core] scheduled cabinet change hit a transient database error; retrying next tick", { id, sqlState: state });
-        continue;
+      if (state && TRANSIENT_SQLSTATES.has(state) && transientFailures === 0) {
+        // Nothing was written (one transaction): leave it scheduled, note the failure on the row,
+        // and try once more next tick. The note is stored so the bound holds across processes.
+        const noted = await db.transaction(async (tx) => {
+          await lockAggregate(tx, CABINET_CHANGE_LOCK);
+          return tx
+            .update(cabinetChanges)
+            .set({ transientFailures: 1 })
+            .where(and(unchanged, eq(cabinetChanges.transientFailures, 0)))
+            .returning({ id: cabinetChanges.id });
+        });
+        if (noted.length) {
+          console.warn("[core] scheduled cabinet change hit a transient database error; retrying next tick", { id, sqlState: state });
+          continue;
+        }
       }
-      transientRetries.delete(retryKey);
       console.error("[core] scheduled cabinet change failed", { id }, safeErrorLabel(e));
       reason = "error";
       error = GENERIC_SCHEDULED_ERROR;
@@ -591,8 +590,8 @@ export async function publishDueCabinetChanges(db: Db, subscribers: SubscriberCo
       await lockAggregate(tx, CABINET_CHANGE_LOCK);
       return tx
         .update(cabinetChanges)
-        .set({ status: "draft", scheduledFor: null, error, updatedAt: new Date() })
-        .where(and(eq(cabinetChanges.id, id), eq(cabinetChanges.status, "scheduled"), eq(cabinetChanges.scheduledFor, scheduledFor!)))
+        .set({ status: "draft", scheduledFor: null, error, transientFailures: 0, updatedAt: new Date() })
+        .where(unchanged)
         .returning({ id: cabinetChanges.id });
     });
     if (rows.length) {

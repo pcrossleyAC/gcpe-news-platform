@@ -1,0 +1,1 @@
+ALTER TABLE "cabinet_changes" ADD COLUMN "transient_failures" integer DEFAULT 0 NOT NULL;

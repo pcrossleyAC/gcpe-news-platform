@@ -343,6 +343,7 @@ describe("cabinet changes (new-government spec §5)", () => {
       await scheduleCabinetChange(tdb.db, change.id, at, () => new Date(at.getTime() - 60_000));
       return change;
     };
+    const failures = async () => (await tdb.db.select({ n: cabinetChanges.transientFailures }).from(cabinetChanges).where(eq(cabinetChanges.status, "scheduled")))[0]?.n;
     afterEach(stopFailing);
 
     it("is retried once on the next tick, and publishes if that succeeds", async () => {
@@ -351,6 +352,8 @@ describe("cabinet changes (new-government spec §5)", () => {
       expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
       expect(await getOpenCabinetChange(tdb.db)).toMatchObject({ status: "scheduled", error: null });
       expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha");
+      // Noted on the row, not in this process: a fresh process (SiteGround's next tick) still retries only once.
+      expect(await failures()).toBe(1);
       await stopFailing();
       expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 1, failed: 0 });
       expect((await getOrganization(tdb.db, "a"))!.displayName).toBe("Alpha Renamed");
@@ -362,6 +365,23 @@ describe("cabinet changes (new-government spec §5)", () => {
       expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
       expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 1 });
       expect(await getOpenCabinetChange(tdb.db)).toMatchObject({ status: "draft", scheduledFor: null, error: expect.stringContaining("Not published at the scheduled time") });
+    });
+
+    it("the retry is per scheduled time: rescheduling (or saving) earns a fresh one", async () => {
+      const change = await scheduled();
+      await failWith("40P01");
+      expect(await publishDueCabinetChanges(tdb.db, subs, after)).toEqual({ published: 0, failed: 0 });
+      expect(await failures()).toBe(1);
+      const later = new Date(at.getTime() + 3_600_000);
+      // Scheduling dry-runs the change, so the injected failure is paused for it.
+      await stopFailing();
+      expect((await scheduleCabinetChange(tdb.db, change.id, later, after)).result).toBe("scheduled");
+      expect(await failures()).toBe(0);
+      await failWith("40P01");
+      const afterLater = () => new Date(later.getTime() + 1_000);
+      expect(await publishDueCabinetChanges(tdb.db, subs, afterLater)).toEqual({ published: 0, failed: 0 });
+      expect(await publishDueCabinetChanges(tdb.db, subs, afterLater)).toEqual({ published: 0, failed: 1 });
+      expect(await tdb.db.select({ n: cabinetChanges.transientFailures }).from(cabinetChanges)).toEqual([{ n: 0 }]);
     });
 
     it("any other database error goes back to draft at once", async () => {
