@@ -77,8 +77,10 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
     case "home":
       return [{ pageId: "home", priority: live }, { pageId: "live", priority: live }];
     case "slides":
-    case "resource_links":
       return [{ pageId: "home", priority: live }];
+    // /connect/ has the same Resources box as home.
+    case "resource_links":
+      return [{ pageId: "home", priority: live }, { pageId: "connect", priority: live }];
     case "ministry":
     case "sector":
     case "theme":
@@ -90,7 +92,8 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
       // The table goes one priority lower than the category pages, so a hand-over to a brand-new
       // ministry has that ministry's page on disk before anything 301s to it.
       // /contacts/ lists every ministry's name, minister and media contacts.
-      const ministryPages = kind === "ministries" ? ["ministries", "search", "contacts"] : [];
+      // /connect/'s RSS Feeds list names every active ministry, sector and tag.
+      const ministryPages = kind === "ministries" ? ["ministries", "search", "contacts", "connect"] : [];
       const redirects = kind === "ministries" ? [{ pageId: "legacy-redirects", priority: PRIORITY.bulkPost }] : [];
       return [
         { pageId: id, priority: live },
@@ -98,6 +101,7 @@ export function pagesForChange(c: ChangeRow, postPriority: number): { pageId: st
         ...redirects,
         // Home's News by Sector box names each active sector.
         ...(kind === "sectors" ? [{ pageId: "home", priority: live }] : []),
+        ...(kind === "sectors" || kind === "tags" ? [{ pageId: "connect", priority: live }] : []),
         { pageId: "sitemap:pages", priority: live },
       ];
     }

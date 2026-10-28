@@ -1565,12 +1565,13 @@ describe("apps/stack: a failed public-site self-heal logs only a safe label", ()
 
   it("logs the error code, never the message", async () => {
     const failures = () => errorSpy.mock.calls.filter((args: unknown[]) => String(args[0]).includes("self-heal failed"));
-    await expect.poll(() => failures().length, { timeout: 5000 }).toBe(1);
+    // Generous: the self-heal runs after the whole stack starts, which takes far longer on a slow Windows runner.
+    await expect.poll(() => failures().length, { timeout: 20_000, interval: 50 }).toBe(1);
     const logged = failures()[0]!.map(String).join(" ");
     // Renaming a file over a directory is EISDIR on POSIX and EPERM on Windows.
     expect(logged).toMatch(/\b(EISDIR|EPERM)\b/);
     expect(logged).not.toContain(instance.outputDir);
-  });
+  }, 30_000);
 });
 
 // Production shape: the fake's public base is the site's https origin, while NRMS signs the
@@ -1628,12 +1629,13 @@ describe("apps/stack: /hub hosting", () => {
     unbuilt = await setupStack({ fetchAdminToken: false, staffWebDir: unbuiltDir });
   });
 
+  // Closing two stacks can pass 30 s on a slow Windows runner.
   afterAll(async () => {
     await built.close();
     await unbuilt.close();
     await rm(hubRoot, { recursive: true, force: true });
     // unbuiltDir was already removed in beforeAll (it must not exist); nothing left to clean up.
-  });
+  }, 90_000);
 
   it("GET /hub/ and a deep link both serve index.html with no-store", async () => {
     for (const path of ["/hub", "/hub/", "/hub/releases/abc"]) {

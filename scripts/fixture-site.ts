@@ -49,6 +49,7 @@ export const FIXTURE_PAGES = [
   "/archive/terms/",
   "/archive/terms/2024-2028/",
   "/search/",
+  "/connect/",
   "/contacts/",
   "/privacy/",
   "/live/",

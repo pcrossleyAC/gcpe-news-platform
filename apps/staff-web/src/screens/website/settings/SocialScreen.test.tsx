@@ -173,6 +173,91 @@ describe("SocialScreen", () => {
     expect(screen.getByText(/Facebook: Must start with https/)).toBeInTheDocument();
   });
 
+  it("shows the LinkedIn network with Government of BC featured", async () => {
+    const doc: SiteSettings = {
+      ...DOC,
+      connect: { ...DOC.connect, linkedin: { featured: [{ id: "li1", text: "Government of BC", url: "https://www.linkedin.com/company/governmentofbc", summary: "Official page" }], accounts: [] } },
+    };
+    stub(["NRMS.SiteEditor"], stateOf(doc));
+    renderScreen("/?network=linkedin");
+    const featured = await screen.findByRole("group", { name: "Featured accounts" });
+    expect(within(featured).getByDisplayValue("Government of BC")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "LinkedIn", level: 2 })).toBeInTheDocument();
+    expect(within(screen.getByRole("navigation", { name: "Networks" })).getByRole("link", { name: "LinkedIn 1" })).toHaveAttribute("aria-current", "page");
+  });
+
+  it("edits the policy link and intro and sends them in the connect section", async () => {
+    const calls = stub(["NRMS.SiteEditor"], stateOf(DOC));
+    renderScreen();
+    const user = userEvent.setup();
+    const box = await screen.findByRole("group", { name: "Connect page" });
+    await user.type(within(box).getByLabelText("Policy link text"), "Social media policy");
+    await user.type(within(box).getByLabelText("Policy link URL"), "https://www2.gov.bc.ca/policy");
+    await user.type(within(box).getByLabelText("Introduction"), "Follow the Province.");
+    await user.click(screen.getByRole("button", { name: "Publish" }));
+    await waitFor(() => expect(calls.some((c) => c.url === "/nrms/api/site/settings/publish")).toBe(true));
+    const body = calls.find((c) => c.url === "/nrms/api/site/settings/publish")!.body as { section: string; value: SiteSettings["connect"] };
+    expect(body.section).toBe("connect");
+    expect(body.value.policyLink).toEqual({ text: "Social media policy", url: "https://www2.gov.bc.ca/policy" });
+    expect(body.value.intro).toBe("Follow the Province.");
+  });
+
+  it("hints where each Connect field appears and what the URL may start with", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC));
+    renderScreen();
+    const box = await screen.findByRole("group", { name: "Connect page" });
+    expect(within(box).getByLabelText("Policy link URL")).toHaveAccessibleDescription(/https:\/\/ only \(or a page on this site starting with \/\), no spaces/);
+    expect(within(box).getByLabelText("Policy link text")).toHaveAccessibleDescription(/200 characters or fewer, plain text/);
+    expect(within(box).getByLabelText("Introduction")).toHaveAccessibleDescription(/top of the Connect page/);
+  });
+
+  it("a server error on connect.policyLink.url shows beside Policy link URL", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "connect.policyLink.url", message: "Must start with https:// or / (a page on this site)." }]));
+    renderScreen();
+    const box = await screen.findByRole("group", { name: "Connect page" });
+    const url = within(box).getByLabelText("Policy link URL");
+    expect(url).toBeInvalid();
+    expect(url).toHaveAccessibleDescription(/Must start with https:\/\//);
+        expect(within(box).queryByText("Other parts of the draft have problems that block publishing:")).toBeNull();
+    expect(screen.queryByText("Other parts of the draft have problems that block publishing:")).toBeNull();
+  });
+
+  it("the pair rule: link text without a URL errors on Policy link URL, a URL without text errors on Policy link text", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "connect.policyLink.url", message: "Must start with https:// or / (a page on this site)." }]));
+    renderScreen();
+    const box = await screen.findByRole("group", { name: "Connect page" });
+    expect(within(box).getByLabelText("Policy link URL")).toBeInvalid();
+    expect(within(box).getByLabelText("Policy link text")).toBeValid();
+    cleanup();
+    vi.unstubAllGlobals();
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "connect.policyLink.text", message: "Enter the link text." }]));
+    renderScreen();
+    const box2 = await screen.findByRole("group", { name: "Connect page" });
+    const text = within(box2).getByLabelText("Policy link text");
+    expect(text).toBeInvalid();
+    expect(text).toHaveAccessibleDescription(/Enter the link text\./);
+    expect(within(box2).getByLabelText("Policy link URL")).toBeValid();
+  });
+
+  it("an intro error shows beside Introduction and the hint stays in its description", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "connect.intro", message: "Use plain text." }]));
+    renderScreen();
+    const box = await screen.findByRole("group", { name: "Connect page" });
+    const intro = within(box).getByLabelText("Introduction");
+    expect(intro).toBeInvalid();
+    expect(intro).toHaveAccessibleDescription(/Use plain text\./);
+    expect(intro).toHaveAccessibleDescription(/top of the Connect page/);
+  });
+
+  it("a too-long policy link text error keeps the hint in the description", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "connect.policyLink.text", message: "Use 200 characters or fewer." }]));
+    renderScreen();
+    const box = await screen.findByRole("group", { name: "Connect page" });
+    const text = within(box).getByLabelText("Policy link text");
+    expect(text).toHaveAccessibleDescription(/Use 200 characters or fewer\./);
+    expect(text).toHaveAccessibleDescription(/200 characters or fewer, plain text/);
+  });
+
   it("Core.Admin alone sees disabled inputs and no write buttons", async () => {
     stub(["Core.Admin"], stateOf(DOC));
     renderScreen();
