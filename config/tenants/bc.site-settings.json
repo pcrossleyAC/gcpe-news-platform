@@ -1,0 +1,502 @@
+{
+  "schemaVersion": 1,
+  "banner": {
+    "enabled": false,
+    "style": "info",
+    "message": "",
+    "links": [],
+    "dismissible": true,
+    "startsAt": null,
+    "endsAt": null
+  },
+  "theme": {
+    "colors": {
+      "primary": "#013366",
+      "primaryText": "#FFFFFF",
+      "accent": "#FCBA19",
+      "text": "#2D2D2D",
+      "mutedText": "#474543",
+      "surface": "#F2F2F2",
+      "background": "#FFFFFF",
+      "border": "#D8D8D8",
+      "bannerInfo": "#013366",
+      "bannerEmergency": "#D8292F"
+    }
+  },
+  "footer": {
+    "helpText": "We can help in over 220 languages and through other accessible options.",
+    "helpLinks": [
+      {
+        "text": "Call, email or text us",
+        "url": "https://www2.gov.bc.ca/gov/content/home/get-help-with-government-services"
+      },
+      {
+        "text": "find a service centre",
+        "url": "https://www2.gov.bc.ca/gov/content/home/services-a-z"
+      }
+    ],
+    "connectLinks": [
+      {
+        "text": "Subscribe",
+        "url": "/subscribe",
+        "id": "footerNewsletters"
+      },
+      {
+        "text": "Social and RSS",
+        "url": "/connect",
+        "id": "footerRSSFeeds"
+      }
+    ],
+    "moreInfoLinks": [
+      {
+        "text": "BC Gov",
+        "url": "https://gov.bc.ca",
+        "id": "footerHome"
+      },
+      {
+        "text": "Disclaimer",
+        "url": "https://www2.gov.bc.ca/gov/admin/disclaimer.page",
+        "id": "footerDisclaimer"
+      },
+      {
+        "text": "Privacy",
+        "url": "https://www2.gov.bc.ca/gov/content/home/privacy",
+        "id": "footerPrivacy"
+      },
+      {
+        "text": "Accessibility",
+        "url": "https://www2.gov.bc.ca/gov/admin/accessibility.page",
+        "id": "footerAccessibility"
+      },
+      {
+        "text": "Copyright",
+        "url": "https://www2.gov.bc.ca/gov/admin/copyright.page",
+        "id": "footerCopyright"
+      },
+      {
+        "text": "Contact Us",
+        "url": "/contact",
+        "id": "footerContact"
+      }
+    ],
+    "copyrightHolder": "Government of British Columbia"
+  },
+  "connect": {
+    "facebook": {
+      "featured": [
+        {
+          "text": "Government of British Columbia",
+          "url": "https://www.facebook.com/BCProvincialGovernment",
+          "summary": "Join us for BC news, information and updates"
+        },
+        {
+          "text": "Government of British Columbia Chinese (卑詩省政府中文官方帳號)",
+          "url": "https://www.facebook.com/GovernmentOfBCChinese"
+        }
+      ],
+      "accounts": [
+        {
+          "text": "BC BizPaL",
+          "url": "https://www.facebook.com/BizPaLBC"
+        },
+        {
+          "text": "BC Honours",
+          "url": "https://www.facebook.com/bchonours"
+        },
+        {
+          "text": "Innovate BC",
+          "url": "https://www.facebook.com/innovatebc"
+        },
+        {
+          "text": "BC Parks",
+          "url": "https://www.facebook.com/YourBCParks"
+        },
+        {
+          "text": "BC Wildfire Service",
+          "url": "https://www.facebook.com/BCForestFireInfo"
+        },
+        {
+          "text": "Columbia River Treaty Review",
+          "url": "https://www.facebook.com/ColumbiaRiverTreaty"
+        },
+        {
+          "text": "Conservation Officer Service",
+          "url": "https://www.facebook.com/ConservationOfficerService"
+        },
+        {
+          "text": "QuitNowBC",
+          "url": "https://www.facebook.com/QuitNowBC"
+        },
+        {
+          "text": "Rec Sites and Trails BC",
+          "url": "https://www.facebook.com/BCRecSitesandTrails"
+        },
+        {
+          "text": "Residential Tenancy Branch",
+          "url": "https://www.facebook.com/people/Residential-Tenancy-Branch-Province-of-BC/100088142227724/"
+        },
+        {
+          "text": "Super, Natural British Columbia",
+          "url": "https://www.facebook.com/SuperNaturalBC"
+        },
+        {
+          "text": "WorkBC",
+          "url": "https://www.facebook.com/WorkBC"
+        },
+        {
+          "text": "BC Housing",
+          "url": "https://www.facebook.com/bchousing.org/"
+        },
+        {
+          "text": "PreparedBC",
+          "url": "https://www.facebook.com/PreparedBC/"
+        },
+        {
+          "text": "BC Fire Safety",
+          "url": "https://www.facebook.com/BCFireSafety"
+        },
+        {
+          "text": "AgriService BC",
+          "url": "https://www.facebook.com/AgriServiceBC"
+        },
+        {
+          "text": "Road Safety BC",
+          "url": "https://www.facebook.com/RoadSafetyBC"
+        },
+        {
+          "text": "HealthyBC",
+          "url": "https://www.facebook.com/HealthyBritishColumbia"
+        },
+        {
+          "text": "Buy BC",
+          "url": "https://www.facebook.com/EatDrinkBuyBC"
+        },
+        {
+          "text": "Emergency Info BC",
+          "url": "https://www.facebook.com/EmergencyInfoBC"
+        },
+        {
+          "text": "DriveBC",
+          "url": "https://www.facebook.com/www.DriveBC.ca"
+        }
+      ]
+    },
+    "x": {
+      "featured": [
+        {
+          "text": "@BCGovNews",
+          "url": "https://x.com/BCGovNews",
+          "summary": "Read daily news tweets from the Government of British Columbia"
+        }
+      ],
+      "accounts": [
+        {
+          "text": "@ComplianceBC",
+          "url": "https://x.com/ComplianceBC",
+          "summary": "Environmental compliance in BC: changes, enforcement and education"
+        },
+        {
+          "text": "@BCGovFireInfo",
+          "url": "https://x.com/bcgovfireinfo",
+          "summary": "Find updates on significant wildfires around the province"
+        },
+        {
+          "text": "@BC_Housing",
+          "url": "https://x.com/BC_Housing",
+          "summary": "Learn about housing solutions and the latest projects in BC"
+        },
+        {
+          "text": "@Innovate_BC",
+          "url": "https://x.com/innovate_bc",
+          "summary": "Info on developing entrepreneurial talent and commercializing technology in BC"
+        },
+        {
+          "text": "@BCTradeInvest",
+          "url": "https://x.com/BCTradeInvest",
+          "summary": "Find expertise to help your business grow internationally"
+        },
+        {
+          "text": "@CRTreaty",
+          "url": "https://x.com/CRTreaty",
+          "summary": "Join the discussion on the Columbia River Treaty Review"
+        },
+        {
+          "text": "@DriveBC",
+          "url": "https://x.com/DriveBC",
+          "summary": "Get developing road closure & weather information in BC"
+        },
+        {
+          "text": "@EmergencyInfoBC",
+          "url": "https://x.com/emergencyinfobc",
+          "summary": "Receive current and verified updates, safety instructions, and links to official sources during emergencies in B.C."
+        },
+        {
+          "text": "@PreparedBC",
+          "url": "https://x.com/PreparedBC",
+          "summary": "Ready for a disaster? Get preparedness tips & recovery info here."
+        },
+        {
+          "text": "@govTogetherBC",
+          "url": "https://x.com/govTogetherBC",
+          "summary": "Find consultation and engagement opportunities in BC"
+        },
+        {
+          "text": "@QuitNowBC",
+          "url": "https://x.com/quitnowbc",
+          "summary": "Want to quit smoking? We can help!"
+        },
+        {
+          "text": "@RoadSafetyBC",
+          "url": "https://x.com/RoadSafetyBC",
+          "summary": "Get information on road safety and driver behaviour"
+        },
+        {
+          "text": "@WorkBC",
+          "url": "https://x.com/WorkBC",
+          "summary": "Explore career paths and get tips for finding jobs in British Columbia"
+        },
+        {
+          "text": "@BCSheriffs",
+          "url": "https://x.com/BCSheriffs",
+          "summary": "Learn about the diverse responsibilities and activities of the BC Sheriff Service"
+        },
+        {
+          "text": "@CreativeBCs",
+          "url": "https://x.com/creativebcs",
+          "summary": "Find information on BC's film, TV, music, interactive & digital media, books & magazines"
+        },
+        {
+          "text": "@BC_EAO",
+          "url": "https://x.com/bc_eao",
+          "summary": "Get project updates and environmental assessment information"
+        },
+        {
+          "text": "@BC_FireSafety",
+          "url": "https://x.com/BC_FireSafety",
+          "summary": "Learn about fire prevention, life safety and what’s happening in the BC fire service"
+        },
+        {
+          "text": "@TenancyBC",
+          "url": "https://x.com/TenancyBc",
+          "summary": "Information, education and dispute resolution services for landlords and tenants in BC"
+        },
+        {
+          "text": "@_BCCOS",
+          "url": "https://x.com/_BCCOS",
+          "summary": "Conservation Officer Service"
+        },
+        {
+          "text": "@SpillsInfoBC",
+          "url": "https://x.com/SpillsInfoBC",
+          "summary": "B.C. Spill Response"
+        },
+        {
+          "text": "@BCProsecution",
+          "url": "https://x.com/BCProsecution",
+          "summary": "BC Prosecution Service"
+        },
+        {
+          "text": "@EatDrinkBuyBC",
+          "url": "https://x.com/EatDrinkBuyBC",
+          "summary": "Buy BC helps you choose fresh-tasting food and beverage products that are grown, raised and made right here in BC"
+        }
+      ]
+    },
+    "instagram": {
+      "featured": [
+        {
+          "text": "Government of BC",
+          "url": "https://www.instagram.com/governmentofbc/"
+        }
+      ],
+      "accounts": [
+        {
+          "text": "BC Honours",
+          "url": "https://www.instagram.com/bchonours"
+        },
+        {
+          "text": "BC Housing",
+          "url": "https://www.instagram.com/bchousing/"
+        },
+        {
+          "text": "BC Parks",
+          "url": "https://www.instagram.com/yourbcparks/"
+        },
+        {
+          "text": "Creative BC",
+          "url": "https://www.instagram.com/creativebcs/"
+        },
+        {
+          "text": "Super, Natural British Columbia",
+          "url": "https://www.instagram.com/supernaturalbc/"
+        },
+        {
+          "text": "Innovate BC",
+          "url": "https://www.instagram.com/innovate_bc/"
+        },
+        {
+          "text": "Prepared BC",
+          "url": "https://www.instagram.com/prepared_bc/"
+        },
+        {
+          "text": "Road Safety BC",
+          "url": "https://www.instagram.com/roadsafetybc/"
+        },
+        {
+          "text": "HealthyBC",
+          "url": "https://www.instagram.com/hellohealthybc/"
+        },
+        {
+          "text": "Buy BC",
+          "url": "https://www.instagram.com/EatDrinkBuyBC/"
+        },
+        {
+          "text": "BC Public Service",
+          "url": "https://www.instagram.com/bcpublicservice/"
+        },
+        {
+          "text": "BC Wildfire Service",
+          "url": "https://www.instagram.com/bcgovfireinfo/"
+        },
+        {
+          "text": "WorkBC",
+          "url": "https://www.instagram.com/workbc.ca/"
+        }
+      ]
+    },
+    "threads": {
+      "featured": [
+        {
+          "text": "Government of BC",
+          "url": "https://www.threads.net/@governmentofbc"
+        }
+      ],
+      "accounts": [
+        {
+          "text": "Prepared BC",
+          "url": "https://www.threads.com/@prepared_bc"
+        }
+      ]
+    },
+    "bluesky": {
+      "featured": [
+        {
+          "text": "Government of BC",
+          "url": "https://governmentofbc.bsky.social",
+          "summary": "Read news from the Government of British Columbia"
+        }
+      ],
+      "accounts": [
+        {
+          "text": "Trade and Invest British Columbia",
+          "url": "https://bsky.app/profile/tradeandinvestbc.bsky.social"
+        }
+      ]
+    },
+    "flickr": {
+      "featured": [
+        {
+          "text": "Province of BC",
+          "url": "https://www.flickr.com/photos/bcgovphotos",
+          "summary": "View and share the latest photos from the Government of British Columbia"
+        }
+      ],
+      "accounts": [
+        {
+          "text": "BC Ministry of Transportation & Transit's photostream",
+          "url": "https://www.flickr.com/photos/tranbc/"
+        }
+      ]
+    },
+    "youtube": {
+      "featured": [
+        {
+          "text": "Province of BC",
+          "url": "https://www.youtube.com/ProvinceofBC",
+          "summary": "Subscribe to get the latest videos from the Government of British Columbia"
+        }
+      ],
+      "accounts": [
+        {
+          "text": "BC Housing",
+          "url": "https://www.youtube.com/bchousing1"
+        },
+        {
+          "text": "BC Digital Trust",
+          "url": "https://www.youtube.com/@BCDigitalTrust"
+        },
+        {
+          "text": "BC Public Service",
+          "url": "https://www.youtube.com/BCPublicService"
+        },
+        {
+          "text": "BC Trade & Invest",
+          "url": "https://www.youtube.com/user/BCTradeInvest"
+        },
+        {
+          "text": "BC Wildfire Service",
+          "url": "https://www.youtube.com/@BCWildfireService"
+        },
+        {
+          "text": "BC Ministry of Transportation and Transit",
+          "url": "https://www.youtube.com/MinistryofTranBC"
+        },
+        {
+          "text": "Career Trek BC",
+          "url": "https://www.youtube.com/CareerTrekBC"
+        },
+        {
+          "text": "PreparedBC",
+          "url": "https://www.youtube.com/EmergencyInfoBC"
+        },
+        {
+          "text": "QuitNowBC",
+          "url": "https://www.youtube.com/user/QuitNowBC"
+        },
+        {
+          "text": "Super, Natural British Columbia",
+          "url": "https://www.youtube.com/user/TourismBC"
+        },
+        {
+          "text": "WorkBC",
+          "url": "https://www.youtube.com/workbc"
+        },
+        {
+          "text": "BC Parks",
+          "url": "https://www.youtube.com/playlist?list=PL98F546CAAFA58723"
+        }
+      ]
+    },
+    "blogs": {
+      "featured": [
+        {
+          "text": "GovTogetherBC",
+          "url": "https://engage.gov.bc.ca/govtogetherbc/"
+        }
+      ],
+      "accounts": [
+        {
+          "text": "BC Trade and Invest",
+          "url": "https://www.britishcolumbia.ca/about-trade-and-invest-bc/news-stories/"
+        },
+        {
+          "text": "WorkBC",
+          "url": "https://www.workbc.ca/quick-reads"
+        },
+        {
+          "text": "BC Parks",
+          "url": "https://engage.gov.bc.ca/bcparksblog"
+        }
+      ]
+    }
+  },
+  "ministryPages": {
+    "moreFromMinistry": "More from this Ministry",
+    "ministryWebsite": "Ministry Website",
+    "ministryPhotos": "Ministry Photos",
+    "ministryVideos": "Ministry Videos",
+    "featuredTopics": "Featured Topics",
+    "featuredServices": "Featured Services",
+    "mediaContacts": "Media Contacts"
+  }
+}
