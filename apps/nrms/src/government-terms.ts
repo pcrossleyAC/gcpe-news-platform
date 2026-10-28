@@ -175,6 +175,18 @@ function asDuplicate(e: unknown): never {
   throw e;
 }
 
+/**
+ * Spec N1: a post belongs to the term its BC publish day falls in. After a start date appears or
+ * moves, re-stamp already-stamped (published) releases from `fromDay` on. Never nulls a stamp.
+ */
+async function restamp(tx: Tx, fromDay: string, timeZone: string): Promise<void> {
+  await tx.execute(sql`
+    UPDATE news_releases r SET term_id = COALESCE(
+      (SELECT t.id FROM government_terms t WHERE t.start_date <= (r.publish_at AT TIME ZONE ${timeZone})::date ORDER BY t.start_date DESC LIMIT 1),
+      r.term_id)
+    WHERE r.term_id IS NOT NULL AND (r.publish_at AT TIME ZONE ${timeZone})::date >= ${fromDay}::date`);
+}
+
 export async function createGovernmentTerm(tx: Tx, input: { startDate: string; label?: string | null }, opts: TermWriteOpts): Promise<GovernmentTermView> {
   await lock(tx);
   const { today } = await bcClock(tx, opts);
@@ -188,6 +200,7 @@ export async function createGovernmentTerm(tx: Tx, input: { startDate: string; l
   } catch (e) {
     asDuplicate(e);
   }
+  await restamp(tx, input.startDate, opts.timeZone);
   await syncGovernmentTerms(tx, opts);
   return viewOf(tx, id, today);
 }
@@ -216,6 +229,10 @@ export async function updateGovernmentTerm(
       const parts = [lo !== null && `after ${formatLongDate(lo)}`, hi !== null && `before ${formatLongDate(hi)}`].filter(Boolean);
       throw new GovernmentTermConflictError(`Must be ${parts.join(" and ")}.`);
     }
+    const started = termSpans(rows, today).find((s) => s.id === id)?.status;
+    if ((started === "current" || started === "past") && patch.startDate > today) {
+      throw new GovernmentTermConflictError("A term that has started can't be moved to a date after today.");
+    }
     if (others.includes(patch.startDate)) throw new GovernmentTermConflictError(DUPLICATE);
     set.startDate = patch.startDate;
     // A Hub-created term's slug follows its date until it starts; imported terms keep their legacy name.
@@ -229,6 +246,7 @@ export async function updateGovernmentTerm(
       asDuplicate(e);
     }
   }
+  if (typeof set.startDate === "string") await restamp(tx, row.startDate !== null && row.startDate < set.startDate ? row.startDate : set.startDate, opts.timeZone);
   await syncGovernmentTerms(tx, opts);
   return viewOf(tx, id, today);
 }
@@ -240,6 +258,8 @@ export async function deleteGovernmentTerm(tx: Tx, id: string, opts: TermWriteOp
   const span = termSpans(rows, today).find((s) => s.id === id);
   if (!span) throw new GovernmentTermNotFoundError();
   if (span.status !== "scheduled") throw new GovernmentTermConflictError("Only a term that hasn't started can be deleted.");
+  const [{ n }] = (await tx.select({ n: count() }).from(newsReleases).where(eq(newsReleases.termId, id))) as [{ n: number }];
+  if (n > 0) throw new GovernmentTermConflictError("A term with releases can't be deleted.");
   await tx.delete(governmentTerms).where(eq(governmentTerms.id, id));
   await syncGovernmentTerms(tx, opts);
 }

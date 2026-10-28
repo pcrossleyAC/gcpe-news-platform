@@ -159,13 +159,60 @@ describe("NRMS government-term admin API", () => {
       await holder.query("SELECT pg_advisory_xact_lock($1, $2)", [...GOVERNMENT_TERMS_LOCK]);
       let done = false;
       const pending = post({ startDate: "2028-11-20" }).then((r) => ((done = true), r));
-      await new Promise((r) => setTimeout(r, 400));
+      // Deterministic: wait until Postgres reports a backend blocked on this advisory lock.
+      for (let i = 0; i < 200; i++) {
+        const w = await tdb.pool.query("SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND classid = $1 AND objid = $2", [...GOVERNMENT_TERMS_LOCK]);
+        if (w.rowCount) break;
+        await new Promise((r) => setTimeout(r, 10));
+      }
       expect(done).toBe(false);
       await holder.query("COMMIT");
       expect((await pending).status).toBe(201);
     } finally {
       holder.release();
     }
+  });
+
+  it("refuses to move a started term's start after today", async () => {
+    const res = await patch(await idOf("2024-2028"), { startDate: "2027-01-01" });
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "A term that has started can't be moved to a date after today." });
+    expect((await patch(await idOf("2024-2028"), { startDate: "2025-01-01" })).status).toBe(200);
+  });
+
+  it("refuses to delete a scheduled term that has releases (409, not a 500)", async () => {
+    const created = await post({ startDate: "2028-11-20" });
+    const rel = await createScheduledRelease(tdb.db);
+    await tdb.pool.query("UPDATE news_releases SET term_id = $1 WHERE id = $2", [created.body.id, rel.id]);
+    const res = await del(created.body.id);
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: "A term with releases can't be deleted." });
+  });
+
+  it("a backdated create re-stamps releases published on or after its start", async () => {
+    const rel = await createScheduledRelease(tdb.db);
+    // Published 2026-12-10 noon Pacific, stamped with the 2024-2028 term.
+    await tdb.pool.query("UPDATE news_releases SET term_id = $1, publish_at = '2026-12-10T20:00:00Z' WHERE id = $2", [await idOf("2024-2028"), rel.id]);
+    const old = await createScheduledRelease(tdb.db, { headline: "Older" });
+    await tdb.pool.query("UPDATE news_releases SET term_id = $1, publish_at = '2026-12-01T20:00:00Z' WHERE id = $2", [await idOf("2024-2028"), old.id]);
+    const res = await post({ startDate: "2026-12-05" });
+    expect(res.status).toBe(201);
+    const stamp = async (id: string) => (await tdb.pool.query("SELECT term_id FROM news_releases WHERE id = $1", [id])).rows[0].term_id as string;
+    expect(await stamp(rel.id)).toBe(res.body.id);
+    expect(await stamp(old.id)).toBe(await idOf("2024-2028"));
+    expect((await get()).body.terms.find((t: { id: string }) => t.id === res.body.id).releaseCount).toBe(1);
+  });
+
+  it("a scheduled term edited to start today takes its new date as slug", async () => {
+    const created = await post({ startDate: "2028-11-20" });
+    const res = await patch(created.body.id, { startDate: TODAY });
+    expect(res.body).toMatchObject({ slug: TODAY, status: "current" });
+    expect((await published()).at(-1)!.data.currentSlug).toBe(TODAY);
+  });
+
+  it("a write without the x-gcpe-request header is refused", async () => {
+    expect((await request(app).post("/api/government-terms").set("cookie", admin).send({ startDate: "2030-01-01" })).status).toBe(403);
+    expect((await request(app).delete(`/api/government-terms/${await idOf("2024-2028")}`).set("cookie", admin)).status).toBe(403);
   });
 
   it("403 for NRMS.SiteEditor, 401 without a token", async () => {
