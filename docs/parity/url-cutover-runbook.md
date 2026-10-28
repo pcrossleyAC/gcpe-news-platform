@@ -68,7 +68,7 @@ Do these in order. Stop if a step fails; the rehearsal at the end is the check.
 1. Stop legacy NoD sending, so no new manage links are made on the old system.
 2. Run the final import: `npm run nod:import`. It copies the manage links still unexpired, so the last day's emails keep working (C266). Links older than the production timeout are not revived; they land on "request a new link".
 3. Set `PUBLIC_SITE_URL` to the origin (`https://news.gov.bc.ca`, no path). The site then builds with no `/site` prefix.
-4. Set `SITE_GOOGLE_VERIFICATION_FILE` and `SITE_GOOGLE_SITE_VERIFICATION`. Changing them queues no rebuild by itself; check `/google790b0529c8dcfaff.html` and the page's meta tag after the next render.
+4. Set `SITE_GOOGLE_VERIFICATION_FILE` and `SITE_GOOGLE_SITE_VERIFICATION`. The next start notices the change and rebuilds only the static pages (which write the verification file) and home (which carries the meta tag), not the whole site. Then check `/google790b0529c8dcfaff.html` and the home page's `google-site-verification` meta tag.
 5. Switch DNS.
 6. Run the rehearsal against the live name, using the generated list as well:
    ```
