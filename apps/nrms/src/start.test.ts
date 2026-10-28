@@ -48,6 +48,27 @@ describe("startNrms", () => {
     expect((await tdb.pool.query("SELECT count(*)::int AS n FROM outbox_events WHERE type = 'government_terms.published'")).rows[0].n).toBe(1);
   });
 
+  it("a failed seed is logged and NRMS still starts (F9)", async () => {
+    const env = await testEnv();
+    const tdb = dbs.at(-1)!;
+    // Stand-in for any seed failure: a trigger refusing inserts into government_terms. Migrations
+    // run first in startNrms, so create the table's trigger on a migrated database.
+    const first = await startNrms(env);
+    await Promise.all(first.closers.map((c) => c.close()));
+    await tdb.pool.query("TRUNCATE government_terms CASCADE");
+    await tdb.pool.query(`CREATE FUNCTION refuse() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'nope'; END $$`);
+    await tdb.pool.query("CREATE TRIGGER refuse BEFORE INSERT ON government_terms FOR EACH ROW EXECUTE FUNCTION refuse()");
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const handle = await startNrms(env);
+      expect((await request(handle.app).get("/health/ready")).status).toBe(200);
+      expect(error.mock.calls.some(([m]) => String(m).includes("SEEDING GOVERNMENT TERMS FAILED"))).toBe(true);
+      await Promise.all(handle.closers.map((c) => c.close()));
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("has no closeBeforeServer closers (NRMS has nothing that must close before the http server)", async () => {
     const handle = await startNrms(await testEnv());
     expect(handle.closeBeforeServer).toEqual([]);

@@ -266,7 +266,11 @@ describe("importReference — government terms seeded before the import (NG-R17)
 
   it("adopts a seeded term with the same name instead of failing on the name", async () => {
     await tdb.db.insert(governmentTerms).values({ name: "2017-2021", startDate: "2017-07-18", legacyArchiveUrl: "https://archive.example/2017-2021.htm" });
-    const result = await importReference(tdb.db, source(), new ImportReport());
+    const report = new ImportReport();
+    const result = await importReference(tdb.db, source(), report);
+    expect(report.toJSON().tables.government_terms).toEqual({ legacy: 4, imported: 4, skipped: 0, adopted: 1 });
+    expect(report.toJSON().balanced).toBe(true);
+    expect(report.toText()).toContain("government_terms: legacy=4 imported=4 skipped=0 adopted=1");
     const rows = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.name, "2017-2021"));
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ legacyId: "55555555-5555-5555-5555-555555555555", startDate: "2017-07-18", legacyArchiveUrl: "https://archive.example/2017-2021.htm" });

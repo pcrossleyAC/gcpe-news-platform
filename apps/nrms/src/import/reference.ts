@@ -225,7 +225,7 @@ async function importTerms(tx: Tx, rows: LegacyCollectionRow[], report: ImportRe
     const legacyId = row.Id.toLowerCase();
     // NG-R17: NRMS may have seeded this term from the tenant config before the import ran (same
     // name, no legacy id). Adopt that row (dates and URLs kept) rather than fail on the name.
-    await tx
+    const adopted = await tx
       .update(governmentTerms)
       .set({ legacyId })
       .where(
@@ -235,7 +235,9 @@ async function importTerms(tx: Tx, rows: LegacyCollectionRow[], report: ImportRe
           // A row already imported under this legacy id wins (the upsert below renames it).
           sql`NOT EXISTS (SELECT 1 FROM government_terms g WHERE g.legacy_id = ${legacyId})`,
         ),
-      );
+      )
+      .returning({ id: governmentTerms.id });
+    if (adopted.length > 0) report.adopt("government_terms");
     await tx
       .insert(governmentTerms)
       .values({ name: row.Name, legacyId })

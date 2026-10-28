@@ -1,11 +1,13 @@
+import { GOVERNMENT_TERM_SLUG } from "@gcpe/config";
 import { basePath, type SiteInfo } from "./render";
 
 /** A post key as NRMS and the News API produce it. Also the on-disk directory name. */
 export const POST_KEY = /^[A-Za-z0-9-]{1,100}$/;
 /** A category key (ministry, sector, theme, tag) in its lowercased on-disk form. */
 export const CATEGORY_KEY = /^[a-z0-9-]{1,100}$/;
-/** A government term slug (an imported legacy name or a new term's ISO start date); `current` is the alias. */
-export const TERM_SLUG = /^[a-z0-9-]{1,40}$/;
+/** A government term slug (an imported legacy name or a new term's ISO start date); `current` is the
+ * alias. The one definition is the tenant config's (F8). */
+export const TERM_SLUG = GOVERNMENT_TERM_SLUG;
 /** A BC calendar month. */
 export const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 

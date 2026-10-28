@@ -3,7 +3,7 @@ import { z } from "zod";
 import express from "express";
 import { authFromEnv, NEWS_API_SIMILAR_ROLE, serviceTokenProvider, type LocalAuthConfig, type ServiceTokenOptions } from "@gcpe/auth";
 import { assertTimeZoneRules, eventSecretsSchema, isTestSite, loadTenantConfig, parseEnv } from "@gcpe/config";
-import type { Closer } from "@gcpe/http-kit";
+import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
 import { createDb, runMigrations } from "@gcpe/db-kit";
 import { dispatchOnce, parseSubscribers, startDispatcher } from "@gcpe/events";
 import { localStore } from "@gcpe/storage";
@@ -312,8 +312,13 @@ export async function startNrms(env: NodeJS.ProcessEnv): Promise<AppHandle> {
   if (backfilled) console.log(`[nrms] published ${backfilled} slide image files`);
   const subscribers = parseSubscribers(parsed.EVENT_SUBSCRIBERS);
   // NG-R17: an install with no government terms (data not from the legacy DB) gets the tenant's.
-  const seededTerms = await db.transaction((tx) => seedGovernmentTerms(tx, tenant.governmentTerms ?? [], { timeZone: tenant.timeZone, subscribers }));
-  if (seededTerms.seeded) console.log(`[nrms] seeded ${seededTerms.seeded} government terms from the tenant config`);
+  // A failure here must not keep NRMS (and the Hub) down: it is logged, and the next start retries.
+  try {
+    const seededTerms = await db.transaction((tx) => seedGovernmentTerms(tx, tenant.governmentTerms ?? [], { timeZone: tenant.timeZone, subscribers }));
+    if (seededTerms.seeded) console.log(`[nrms] seeded ${seededTerms.seeded} government terms from the tenant config`);
+  } catch (err) {
+    console.error(`[nrms] SEEDING GOVERNMENT TERMS FAILED; starting without them (the next start retries) ${safeErrorLabel(err)}`);
+  }
 
   const escapeHtml = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
   const blueBridgeNotify = buildBlueBridgeNotify(core, distribution);

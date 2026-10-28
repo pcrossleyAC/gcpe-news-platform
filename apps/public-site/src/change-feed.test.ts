@@ -247,6 +247,20 @@ describe("syncChanges", () => {
     expect(queued).toEqual(expect.arrayContaining(["archive-terms", "archive-term:current", "archive-term:2028-11-20", "archive-term:2024-2028", "archive-term:2017-2017", "sitemap:pages"]));
   });
 
+  it("a change page with a terms failure still queues its post changes and advances the cursor (NG-R18)", async () => {
+    const { db, builder, index, newsApi } = setup();
+    await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");
+    newsApi.governmentTerms = async () => { throw new Error("News API 503 for api/v2/government-terms"); };
+    vi.spyOn(console, "error").mockImplementationOnce(() => {});
+    const client = scriptedClient([
+      { resync: false, changes: [{ id: 4, kind: "post.upserted", key: "K9" }, { id: 5, kind: "government_terms", key: null }], next: 5 },
+      { resync: false, changes: [], next: 5 },
+    ]);
+    await syncChanges({ db, client, builder, index });
+    expect((await items()).map((x) => x.split("@")[0])).toEqual(expect.arrayContaining(["post:K9", "archive-terms", "archive-term:current", "sitemap:pages"]));
+    expect(await readCursor(db)).toBe(5);
+  });
+
   it("a publish during a backlog renders first", async () => {
     const { db, builder, index, newsApi, storage } = setup();
     await tdb.pool.query("INSERT INTO site_state (id, change_cursor) VALUES (1, 3)");

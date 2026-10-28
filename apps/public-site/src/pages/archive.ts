@@ -65,7 +65,7 @@ export function renderTermsIndex(rows: { term: GovernmentTermDto; count: number 
   } else {
     const items = rows.map(({ term, count }) => {
       const range = termRangeLabel(term.startDate, term.endDate);
-      const label = term.label ? ` ${e(term.label)}` : "";
+      const label = term.label ? `, ${e(term.label)}` : "";
       const legacy = legacyHref(term);
       if (isLegacyOnly(term, count)) return `<li><a href="${e(legacy)}">${e(range)} (legacy news archive)</a>${label}</li>`;
       const note = legacy && count > 0 ? `\n${legacyNote(legacy)}` : "";

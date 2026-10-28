@@ -6,7 +6,10 @@ import { memoryStorage } from "../test/memory-storage";
 import { bcSettings, post, site } from "../test/fixtures";
 import { createSiteBuilder } from "./builder";
 import type { GovernmentTermDto, GovernmentTermsDto, PostDto } from "./dto";
+import { drainQueue } from "./drain";
 import { postIndex } from "./post-index";
+import { enqueuePages } from "./queue";
+import { rebuildAllItems } from "./rebuild-all";
 
 describe("site builder", () => {
   let tdb: TestDatabase;
@@ -249,6 +252,99 @@ describe("site builder", () => {
       expect(html(storage, "archive/terms/index.html")).toContain("No government terms have been published yet.");
       expect([...storage.files.keys()].filter((f) => f.startsWith("archive/terms/") && f !== "archive/terms/index.html")).toEqual([]);
       expect(await builder.termPageIds()).toEqual(["archive-terms", "archive-term:current"]);
+    });
+
+    it("a legacy term's first post (or its last leaving) queues the pages sitemap; a current-term post doesn't (F4)", async () => {
+      const posts = new Map([["OLD", post({ key: "OLD", publishDate: "2021-03-01T10:00:00-08:00" })], ["NEW", post({ key: "NEW", publishDate: "2025-03-01T10:00:00-08:00" })]]);
+      const { api, builder } = setup(posts);
+      api.terms = snapshot(t("2024-2028", "2024-11-18", null, `${LEGACY}/index_current.htm`), t("2020-2024", "2020-11-26", "2024-11-17", `${LEGACY}/index_2020-2024.htm`));
+      expect(await builder.renderPage("post:OLD", {})).toContain("sitemap:pages");
+      expect(await builder.renderPage("post:NEW", {})).not.toContain("sitemap:pages");
+      posts.delete("OLD");
+      expect(await builder.renderPage("post:OLD", {})).toContain("sitemap:pages");
+    });
+
+    it("a term that has left the payload is rendered once more, which removes its page (F5)", async () => {
+      const { storage, api, builder } = setup(new Map());
+      api.terms = snapshot(t("2024-2028", "2024-11-18", null));
+      await storage.write("archive/terms/2028-11-20/index.html", "stale");
+      const ids = await builder.termPageIds();
+      expect(ids).toContain("archive-term:2028-11-20");
+      await builder.rebuild(ids, {});
+      expect(storage.files.has("archive/terms/2028-11-20/index.html")).toBe(false);
+      expect(storage.files.has("archive/terms/2024-2028/index.html")).toBe(true);
+    });
+
+    describe("a terms outage (NG-R18)", () => {
+      const terms = snapshot(t("2024-2028", "2024-11-18", null), t("2020-2024", "2020-11-26", "2024-11-17"));
+      const failing = (api: ReturnType<typeof setup>["api"], times = Infinity) => {
+        let left = times;
+        const real = api.governmentTerms;
+        api.governmentTerms = async () => {
+          if (left-- > 0) throw new Error("News API 503 for api/v2/government-terms");
+          return real();
+        };
+      };
+      beforeEach(async () => { await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY"); });
+
+      it("terms 5xx during a drain: every post page is still written; the alias and index are queued", async () => {
+        const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })]]));
+        failing(api);
+        const error = vi.spyOn(console, "error").mockImplementation(() => {});
+        try {
+          await enqueuePages(tdb.db, [{ pageId: "post:K1", priority: 0 }, { pageId: "post:K2", priority: 0 }]);
+          await drainQueue({ db: tdb.db, builder }, { budget: 50, pageOpts: {} });
+          expect(storage.files.has("releases/K1/index.html")).toBe(true);
+          expect(storage.files.has("releases/K2/index.html")).toBe(true);
+          expect(html(storage, "archive/2026/10/index.html")).toContain("/releases/K2/");
+          // Logged once for the outage, not once per caller.
+          expect(error.mock.calls.filter(([m]) => String(m).includes("government terms unavailable"))).toHaveLength(1);
+        } finally {
+          error.mockRestore();
+        }
+        expect(await builder.renderPage("post:K1", {})).toEqual(expect.arrayContaining(["archive-terms", "archive-term:current"]));
+      });
+
+      it("a failed fetch is not kept for the run; the recovery queues every term page", async () => {
+        const { api, builder } = setup(new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })]]));
+        api.terms = terms;
+        failing(api, 1);
+        vi.spyOn(console, "error").mockImplementationOnce(() => {});
+        const run = {};
+        expect(await builder.renderPage("post:K1", {}, run)).not.toContain("archive-term:2024-2028");
+        const after = await builder.renderPage("post:K2", {}, run);
+        expect(after).toEqual(expect.arrayContaining(["archive-terms", "archive-term:current", "archive-term:2024-2028", "archive-term:2020-2024", "sitemap:pages"]));
+      });
+
+      it("keeps the last applied terms: term pages render from them and aren't deleted", async () => {
+        const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
+        api.terms = terms;
+        await builder.buildAll({});
+        expect(storage.files.has(".government-terms.json")).toBe(true);
+        failing(api);
+        vi.spyOn(console, "error").mockImplementationOnce(() => {});
+        await storage.write("archive/terms/2024-2028/index.html", "old");
+        await builder.rebuild(["archive-term:2024-2028", "archive-term:current", "archive-terms"], {});
+        expect(html(storage, "archive/terms/2024-2028/index.html")).toContain("/releases/K1/");
+        expect(await builder.termPageIds()).toEqual(expect.arrayContaining(["archive-term:2024-2028", "archive-term:2020-2024"]));
+      });
+
+      it("with nothing applied yet, a term page render fails (retried) rather than replacing a page", async () => {
+        const { storage, api, builder } = setup(new Map());
+        failing(api);
+        vi.spyOn(console, "error").mockImplementationOnce(() => {});
+        await storage.write("archive/terms/index.html", "good");
+        await expect(builder.renderPage("archive-terms", {})).rejects.toThrow(/unavailable/);
+        expect(html(storage, "archive/terms/index.html")).toBe("good");
+      });
+
+      it("rebuild-all with a terms failure still enqueues every non-term page", async () => {
+        const { api, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
+        failing(api);
+        vi.spyOn(console, "error").mockImplementationOnce(() => {});
+        const ids = (await rebuildAllItems(builder)).map((i) => i.pageId);
+        expect(ids).toEqual(expect.arrayContaining(["post:K1", "home", "archive", "sitemap", "sitemap:pages", "category:ministries:health", "legacy-redirects", "archive-terms", "archive-term:current"]));
+      });
     });
 
     it("termPageIds: the index, the alias and every public term", async () => {
