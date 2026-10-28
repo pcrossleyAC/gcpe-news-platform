@@ -16,7 +16,8 @@
  *    banner has shown — Blue Bridge's `#bridge-banner` at load, or the site banner's
  *    `site-banner-shown` event (banner-script.ts) — then shown with `aria-expanded` tracking whether
  *    `#banner` is visible. `#btnCloseBanner`/`#btnCloseBannerBridge` hide `#banner` (and collapse
- *    the toggles); a toggle hides or re-shows it. The dismissal isn't remembered, as on news.gov.
+ *    the toggles) and move focus to the visible toggle; a toggle hides or re-shows it. A site banner
+ *    closed before this script ran still counts as shown. The dismissal isn't remembered, as on news.gov.
  * 6. The 404 prefill: a form with `data-prefill-from-path` (static-pages.ts's 404 page, served for any
  *    unknown path) gets its empty `#not-found-q` set to `pathWords(location.pathname, base)` — the
  *    missing URL's words — with `.value` only. No script, no prefill: the box is just empty.
@@ -133,9 +134,11 @@ export const SITE_SCRIPT = String.raw`(() => {
     });
   };
   if (banner) {
-    // A banner already showing at start: Blue Bridge's, or a site banner whose fetch beat this script.
+    // A banner shown before this script ran: Blue Bridge's, or a site banner whose fetch beat it —
+    // even one its own close button already hid again (a non-empty #site-banner was shown), so the
+    // (i) toggle still appears, collapsed.
     const siteBanner = doc.getElementById("site-banner");
-    if (!banner.hidden && (doc.getElementById("bridge-banner") || (siteBanner && !siteBanner.hidden))) syncBanner();
+    if (doc.getElementById("bridge-banner") || (siteBanner && (!siteBanner.hidden || siteBanner.firstElementChild))) syncBanner();
     doc.addEventListener("site-banner-shown", syncBanner);
     // Delegated: the site banner's close button is built after this script may have run.
     doc.addEventListener("click", (ev) => {
@@ -144,6 +147,10 @@ export const SITE_SCRIPT = String.raw`(() => {
       if (!close) return;
       banner.hidden = true;
       syncBanner();
+      // The focused close button just vanished with #banner: hand focus to the (i) toggle that
+      // brings it back — the one the CSS shows at this width (offsetParent is null when hidden).
+      const shown = bannerToggles.filter((b) => b.offsetParent !== null)[0];
+      if (shown) shown.focus();
     });
     bannerToggles.forEach((b) =>
       b.addEventListener("click", () => {

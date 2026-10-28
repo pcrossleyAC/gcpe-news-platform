@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { MenuMinistry } from "./ministry-menu";
 import { renderPage, type PageOptions } from "./render";
 import { renderNotFoundPage } from "./static-pages";
+import { SITE_BANNER_SCRIPT } from "./banner-script";
 import { pathWords, SITE_SCRIPT } from "./site-script";
 
 const MENU: MenuMinistry[] = [
@@ -263,6 +264,72 @@ describe("site.js", () => {
       toggles(doc)[0]!.click();
       expect(banner.hidden).toBe(false);
       expect(doc.getElementById("bridge-banner")).not.toBeNull();
+    });
+
+    /** jsdom lays nothing out (offsetParent is always null): mark which toggle the CSS shows. */
+    const showOnly = (doc: Document, which: 0 | 1) =>
+      Object.defineProperty(toggles(doc)[which]!, "offsetParent", { get: () => doc.body, configurable: true });
+
+    it("closing a banner moves focus to the visible (i) toggle, not to <body>", () => {
+      for (const which of [0, 1] as const) {
+        const { doc } = page();
+        showOnly(doc, which);
+        const close = showSiteBanner(doc);
+        close.focus();
+        close.click();
+        expect(doc.activeElement).toBe(toggles(doc)[which]);
+      }
+      const bb = page({ ministryMenu: MENU, banner: "Blue Bridge" });
+      showOnly(bb.doc, 0);
+      const closeBridge = bb.doc.getElementById("btnCloseBannerBridge")!;
+      closeBridge.focus();
+      closeBridge.click();
+      expect(bb.doc.activeElement).toBe(toggles(bb.doc)[0]);
+    });
+
+    it("a site banner closed before site.js ran still gets its (i) toggle, collapsed", () => {
+      const { doc } = page({ ministryMenu: MENU }, (d) => {
+        // banner-script.ts showed it, then its own close button hid #banner before site.js ran.
+        const el = d.getElementById("site-banner")!;
+        el.hidden = false;
+        el.appendChild(d.createElement("div"));
+        d.getElementById("banner")!.hidden = true;
+      });
+      expect(state(doc)).toEqual([
+        [false, "false"],
+        [false, "false"],
+      ]);
+      toggles(doc)[0]!.click();
+      expect(doc.getElementById("banner")!.hidden).toBe(false);
+    });
+
+    it("the real banner script and site.js together: fetch, show, close through both listeners, re-show", async () => {
+      const html = renderPage("T", site, "/site/", "<h1>H</h1>", { ministryMenu: MENU });
+      const dom = new JSDOM(html, { url: "https://boxs.example/site/", runScripts: "outside-only" });
+      const doc = dom.window.document;
+      const json = { visible: true, style: "info", message: "Offices closed", links: [], dismissible: true };
+      dom.window.fetch = (async () => new Response(JSON.stringify(json), { status: 200 })) as unknown as typeof fetch;
+      // Page order: the inline banner script, then the deferred site.js.
+      dom.window.eval(SITE_BANNER_SCRIPT);
+      dom.window.eval(SITE_SCRIPT);
+      showOnly(doc, 0);
+      await new Promise((r) => setTimeout(r, 10));
+      const banner = doc.getElementById("banner")!;
+      expect(banner.hidden).toBe(false);
+      expect(doc.getElementById("site-banner")!.textContent).toContain("Offices closed");
+      expect(state(doc)).toEqual([
+        [false, "true"],
+        [false, "true"],
+      ]);
+      const close = doc.getElementById("btnCloseBanner")!;
+      close.focus();
+      close.click();
+      expect(banner.hidden).toBe(true);
+      expect(state(doc).map(([, x]) => x)).toEqual(["false", "false"]);
+      expect(doc.activeElement).toBe(toggles(doc)[0]);
+      toggles(doc)[0]!.click();
+      expect(banner.hidden).toBe(false);
+      expect(state(doc).map(([, x]) => x)).toEqual(["true", "true"]);
     });
 
     it("dismissal is not persisted", () => {
