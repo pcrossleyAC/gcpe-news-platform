@@ -37,6 +37,7 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     app = appFor(outputDir);
   });
   afterEach(async () => {
+    vi.restoreAllMocks();
     await rm(outputDir, { recursive: true, force: true });
   });
 
@@ -80,6 +81,10 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
       const res = await request(app).get(`/${dir}/`);
       expect({ dir, status: res.status, body: res.text }).toEqual({ dir, status: 200, body: `<h1>${dir}</h1>` });
     }
+    // The root listing read by the /Sectors request above is reused for up to LISTING_MIN_REREAD_MS, so on a
+    // case-sensitive filesystem a new index reaches legacy-cased forms only after that window: step past it.
+    const later = Date.now() + LISTING_MIN_REREAD_MS + 1;
+    vi.spyOn(Date, "now").mockReturnValue(later);
     // A legacy-cased form ends on the page (the hop's exact Location depends on the filesystem's case sensitivity).
     for (const [path, dir] of [["/Sectors", "sectors"], ["/Themes", "themes"], ["/TAGS", "tags"]] as const) {
       const res = await request(app).get(path).redirects(3);
