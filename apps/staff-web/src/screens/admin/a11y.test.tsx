@@ -14,6 +14,7 @@ import { CalendarAccessScreen } from "./calendar-access/CalendarAccessScreen";
 import { OrganizationsScreen } from "./organizations/OrganizationsScreen";
 import { OrganizationEditForm } from "./organizations/OrganizationEditForm";
 import type { OrgRecord } from "@gcpe/events/catalogue";
+import { CategoriesScreen } from "./categories/CategoriesScreen";
 import { GovernmentTermsScreen } from "./government-terms/GovernmentTermsScreen";
 import { ACCESS_USERS, ORGS } from "./calendar-access/fixtures";
 import type { UserView } from "./users/UsersScreen";
@@ -68,6 +69,22 @@ describe("accessibility — Users, Media list names and error log", () => {
     );
     const { container } = render(withAuth(<MediaListNamesScreen />));
     await screen.findByRole("cell", { name: "regional" });
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("CategoriesScreen", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/core/api/terms/sector")
+          return jsonResponse(200, [{ kind: "sector", key: "health", displayName: "Health", sortOrder: 1, isActive: true, social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null }, updatedAt: "2026-10-01T00:00:00.000Z" }]);
+        return jsonResponse(200, {});
+      }),
+    );
+    const { container } = render(withAuth(<CategoriesScreen />));
+    await screen.findByRole("cell", { name: "health" });
     expect(await seriousViolations(container)).toEqual([]);
   });
 
