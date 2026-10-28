@@ -42,7 +42,7 @@ describe("postCard", () => {
     expect(assets.textContent).toBe(" Media Assets");
     expect(assets.querySelector("use")?.getAttribute("href")).toBe("/site/assets/site/icons.svg#i-download");
     const tr = both.querySelector(".list-container > div.item-medialink.translations > a")!;
-    expect(tr.getAttribute("href")).toBe(`${POST}#translationList`);
+    expect(tr.getAttribute("href")).toBe(`${POST}#translations`); // the body list, which phones show (C253)
     expect(tr.textContent).toBe(" Translations");
     expect(tr.querySelector("use")?.getAttribute("href")).toBe("/site/assets/site/icons.svg#i-language");
     const [first] = both.querySelectorAll(".list-container > div");

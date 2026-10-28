@@ -35,7 +35,9 @@ export function postCard(site: Pick<SiteInfo, "baseUrl">, p: PostDto, o: { hidde
   const headline = e(english?.headline || p.key);
   const links = [
     p.hasMediaAssets === true ? `<div class="item-medialink media-assets"><a href="${href}#assets">${icon("download", base)} Media Assets</a></div>` : "",
-    p.hasTranslations === true ? `<div class="item-medialink translations"><a href="${href}#translationList">${icon("language", base)} Translations</a></div>` : "",
+    // The body's #translations list, shown at every width; legacy's #translationList is the side
+    // column's copy, which legacy CSS hides on phones (C253). That id stays for old links.
+    p.hasTranslations === true ? `<div class="item-medialink translations"><a href="${href}#translations">${icon("language", base)} Translations</a></div>` : "",
   ].join("");
   const lead = leadMedia(p.assetUrl);
   const thumb = lead?.kind === "image" ? `<div class="item-asset asset flickr"><a href="${href}" aria-hidden="true" tabindex="-1">${flickrThumb(lead.src, !o.eager)}</a></div>` : "";

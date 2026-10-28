@@ -57,6 +57,10 @@ function contactsBlock(contacts: PostDocument["contacts"], heading: string, leve
   return `<h${level}>${e(heading)}</h${level}>\n${items.join("\n")}`;
 }
 
+/** A document's contacts, [] when absent: one malformed stored document omits its contacts
+ * rather than failing the page's render. */
+const contactsOf = (d: PostDocument | null | undefined): PostDocument["contacts"] => d?.contacts ?? [];
+
 /** Legacy's rule: a backgrounder shows its contacts only when they differ from the main document's. */
 function contactsDiffer(item: PostDocument["contacts"], main: PostDocument["contacts"]): boolean {
   return item.length > 0 && (item.length !== main.length || item.some((c) => !main.some((m) => m.details === c.details && m.title === c.title)));
@@ -176,7 +180,7 @@ function sideColumn(site: SiteInfo, post: PostDto, main: PostDocument | null, la
   const locationAndDate = `<div class="resource-links location-and-date">
 ${present(main?.pageTitle) ? `<h2>${e(main.pageTitle)}</h2>\n` : ""}${present(post.location) ? `<p class="location">${e(post.location)}</p>\n` : ""}<div>${e(parts.date)}</div>${assetsLink}
 </div>`;
-  const contacts = main?.contacts.length ? `<div class="resource-links comm-contacts">\n${contactsBlock(main.contacts, labels.mediaContacts, 2)}\n</div>` : "";
+  const contacts = contactsOf(main).length ? `<div class="resource-links comm-contacts">\n${contactsBlock(contactsOf(main), labels.mediaContacts, 2)}\n</div>` : "";
   const ministry = ctx.leadMinistry ? ministryLinkGroups(ctx.leadMinistry, labels).map((g) => resourceLinks(site, g.heading, g.links)) : [];
   const blocks = [translations, parts.share, locationAndDate, contacts, ...ministry].filter(Boolean).join("\n");
   return `<section class="story-features" id="sidebar" aria-label="About this release">\n${blocks}\n</section>`;
@@ -246,11 +250,11 @@ ${phonePageTitle}${present(post.location) ? `<p>${e(post.location)}</p>\n` : ""}
     `<div class="story-copy story-lang primary"${mainLang}>\n<article>\n${bodyOf(main, base, headline)}\n</article>\n</div>`,
     french ? `<div class="story-copy story-lang secondary" lang="fr">\n<article>\n${bodyOf(french, base, present(french.headline) ? french.headline : headline)}\n</article>\n</div>` : "",
   ].filter(Boolean);
-  const bodyContacts = main?.contacts.length ? `<div class="comm-contacts-body-section">\n<div class="comm-contacts-body comm-contacts">\n${contactsBlock(main.contacts, labels.mediaContacts, 2)}\n</div>\n</div>` : "";
+  const bodyContacts = contactsOf(main).length ? `<div class="comm-contacts-body-section">\n<div class="comm-contacts-body comm-contacts">\n${contactsBlock(contactsOf(main), labels.mediaContacts, 2)}\n</div>\n</div>` : "";
 
   const backgrounder = (d: PostDocument, cls: string, lang: string) => {
     const title = present(d.headline) ? d.headline : "Backgrounder";
-    const contacts = contactsDiffer(d.contacts, main?.contacts ?? []) ? `\n<div class="comm-contacts">\n${contactsBlock(d.contacts, labels.mediaContacts, 4)}\n</div>` : "";
+    const contacts = contactsDiffer(contactsOf(d), contactsOf(main)) ? `\n<div class="comm-contacts">\n${contactsBlock(contactsOf(d), labels.mediaContacts, 4)}\n</div>` : "";
     return `<div class="${cls}"${lang}>
 <div class="backgrounder-header"><h3>${e(title)}</h3></div>
 <div class="backgrounder-content">

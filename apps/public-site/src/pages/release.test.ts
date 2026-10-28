@@ -178,6 +178,14 @@ describe("release page", () => {
     expect(phone.querySelectorAll("[id]")).toHaveLength(0);
   });
 
+  it("a stored document without a contacts array renders without contacts instead of failing", () => {
+    const malformed = { ...doc({ headline: "Main" }), contacts: undefined } as unknown as PostDocument;
+    const bg = { ...doc({ headline: "Background" }), contacts: null } as unknown as PostDocument;
+    const d = dom({ documents: [malformed, bg] });
+    expect(d.querySelector(".comm-contacts")).toBeNull();
+    expect(texts(d, ".backgrounder-header h3")).toEqual(["Background"]);
+  });
+
   it("Media Assets list: label, Download (n KB) with download attribute; only when hasMediaAssets", () => {
     const d = dom({ hasMediaAssets: true });
     const assets = d.querySelector(".story-body > div#assets.assets.expanded")!;
