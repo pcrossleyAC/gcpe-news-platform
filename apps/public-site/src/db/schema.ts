@@ -19,9 +19,15 @@ export const sitePosts = pgTable(
     publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
     month: text("month").notNull(),
     categories: text("categories").array().notNull(),
+    /** The lower-cased key of the ministry the release page's side column, related band and
+     * story-ministry line show (post-index.ts leadMinistryOf). Not always one of `categories`
+     * (legacy has releases whose lead is not among their ministries), so a ministry change finds
+     * the release pages it reaches by this column too (change-feed.ts). Null: no ministry, or a
+     * row written before this column (every post is re-rendered by the chrome-10 rebuild-all). */
+    leadMinistry: text("lead_ministry"),
     indexedAt: timestamp("indexed_at", { withTimezone: true }).notNull().default(sql`now()`),
   },
-  (t) => [index("site_posts_month_idx").on(t.month, t.publishedAt), index("site_posts_categories_idx").using("gin", t.categories)],
+  (t) => [index("site_posts_month_idx").on(t.month, t.publishedAt), index("site_posts_categories_idx").using("gin", t.categories), index("site_posts_lead_ministry_idx").on(t.leadMinistry)],
 );
 
 /**

@@ -6,6 +6,9 @@ import type { SectionPages } from "./rebuild";
 /** Rendered on the same run as the trigger, so a layout or Blue Bridge change shows on home at once. */
 const FIRST = ["static", "home", "ministries", "archive", "search", "sitemap"];
 
+/** The settings sections a release page bakes in (pages/release.ts). */
+const RELEASE_SECTIONS: ReadonlySet<SectionPages> = new Set(["releaseShare", "ministryPages"]);
+
 /** spec §6.2 "templates change": every page. Network reads only; the caller enqueues. */
 export async function rebuildAllItems(builder: SiteBuilder): Promise<{ pageId: string; priority: number }[]> {
   const keys = await builder.allPostKeys();
@@ -33,8 +36,13 @@ export async function enqueueChromeChanges(db: Db, builder: SiteBuilder, changes
   const items: { pageId: string; priority: number }[] = [];
   for (const section of changes.sections) {
     // Home's Connect With Us icons come from the connect settings too.
-    const ids = section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home"] : [section];
+    const ids = section === "ministryPages" ? await builder.ministryPageIds() : section === "connect" ? ["connect", "home"] : section === "releaseShare" ? [] : [section];
     items.push(...ids.map((pageId) => ({ pageId, priority: PRIORITY.liveAggregate })));
   }
+  // Every release page bakes in the ministryPages labels (Media Contacts, More from this
+  // Ministry, the side column's headings) and the connect section's Share → Instagram account
+  // (releaseShare), so either change re-renders every post, at rebuild-all's bulk priority (settings
+  // changes are rare; the queue drains them in batches behind live work).
+  if (changes.sections.some((s) => RELEASE_SECTIONS.has(s))) items.push(...(await builder.allPostKeys()).map((k) => ({ pageId: `post:${k}`, priority: PRIORITY.bulkPost })));
   if (items.length) await enqueuePages(db, items);
 }

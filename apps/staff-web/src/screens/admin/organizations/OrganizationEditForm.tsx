@@ -66,8 +66,9 @@ export const TEAM_LINKS_DESCRIPTION =
 
 /**
  * The biography as the PATCH sends it: editor HTML with no text (the emptied editor's `<p></p>`,
- * an empty list, a lone `&nbsp;`) is null, which removes the biography page. Mirrors Core's
- * isBlankHtml, which turns the same HTML into null on its side.
+ * an empty list, a lone `&nbsp;`) is null, which removes the biography page. Matches Core, which
+ * stores null for the same HTML: its sanitiser decodes `&nbsp;` to U+00A0 and isBlankHtml's `\s`
+ * counts that as blank (pinned in apps/core/src/services/organizations.test.ts).
  */
 export function bioToPatch(html: string): string | null {
   const text = html.replace(/<[^>]*>/g, "").replace(/&nbsp;|\u00a0/g, " ");
@@ -186,11 +187,14 @@ export function OrganizationEditForm({
   const photo = minister.photoUrl.trim();
   const photoPreview = photo.startsWith("https://") ? photo : null;
   const bioPatch = bioToPatch(bio);
-  const bioChanged = bioPatch !== initial.bio;
+  // Compared with the stored value normalised the same way, so a stored biography with no text
+  // (`<p>&nbsp;</p>`) is not cleared to null by an unrelated save.
+  const initialBioPatch = bioToPatch(initial.bio ?? "");
+  const bioChanged = bioPatch !== initialBioPatch;
   const ministerNameChanged =
     minister.name.trim() !== (org.minister.name ?? "");
   // The stored biography is kept while the minister is renamed: it now describes someone else.
-  const bioOutdated = initial.bio !== null && !bioChanged && ministerNameChanged;
+  const bioOutdated = initialBioPatch !== null && !bioChanged && ministerNameChanged;
   const alternateOnly =
     contactBlank(contacts.contact) && !contactBlank(contacts.secondContact);
   const parents = orgs.filter(

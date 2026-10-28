@@ -6,6 +6,7 @@ import { renderNotFoundPage } from "./static-pages";
 import { SITE_BANNER_SCRIPT } from "./banner-script";
 import { pathWords, SITE_SCRIPT } from "./site-script";
 import { renderHomePage } from "./pages/home";
+import { renderReleasePage } from "./pages/release";
 import { post, slide } from "../test/fixtures";
 
 const MENU: MenuMinistry[] = [
@@ -453,5 +454,36 @@ describe("site.js", () => {
     expect(doc.activeElement?.textContent).toBe("Latest 4");
     // The Search News link stays.
     expect(doc.querySelector(".news-control a.read-more")).not.toBeNull();
+  });
+
+  it("Print calls window.print; the language buttons toggle body.lang-secondary and the French headline's heading role, never html[lang]", () => {
+    const html = renderReleasePage(post(), site, { ministryMenu: MENU }, { related: [], leadMinistry: null, ministryLatest: [] });
+    const dom = new JSDOM(html, { url: "https://boxs.example/site/releases/2026HLTH0001-000001/", runScripts: "outside-only" });
+    let printed = 0;
+    dom.window.print = () => void printed++;
+    dom.window.eval(SITE_SCRIPT);
+    const doc = dom.window.document;
+    doc.querySelector<HTMLButtonElement>("button.print-document")!.click();
+    expect(printed).toBe(1);
+
+    const toFrench = doc.querySelector<HTMLButtonElement>('button[data-story-lang="secondary"]')!;
+    const toEnglish = doc.querySelector<HTMLButtonElement>('button[data-story-lang="primary"]')!;
+    expect(doc.body.classList.contains("lang-secondary")).toBe(false);
+    const frHeadline = doc.querySelector(".story-headline")!;
+    expect(frHeadline.hasAttribute("role")).toBe(false);
+    toFrench.focus();
+    toFrench.click();
+    expect(doc.body.classList.contains("lang-secondary")).toBe(true);
+    // P2-R3: <html lang> stays "en"; the French content carries its own lang="fr".
+    expect(doc.documentElement.lang).toBe("en");
+    // While French shows (the h1 is hidden) the French headline is the level-1 heading.
+    expect([frHeadline.getAttribute("role"), frHeadline.getAttribute("aria-level")]).toEqual(["heading", "1"]);
+    // The pressed button's line is now hidden: focus moves to the way back.
+    expect(doc.activeElement).toBe(toEnglish);
+    toEnglish.click();
+    expect(doc.body.classList.contains("lang-secondary")).toBe(false);
+    expect(doc.documentElement.lang).toBe("en");
+    expect(frHeadline.hasAttribute("role") || frHeadline.hasAttribute("aria-level")).toBe(false);
+    expect(doc.activeElement).toBe(toFrench);
   });
 });

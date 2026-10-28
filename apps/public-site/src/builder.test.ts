@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { bcSettings, post, site } from "../test/fixtures";
+import { bcSettings, ministry, post, site } from "../test/fixtures";
 import { createSiteBuilder, SECTOR_FETCHES } from "./builder";
 import type { GovernmentTermDto, GovernmentTermsDto, PostDto } from "./dto";
 import { drainQueue } from "./drain";
@@ -125,6 +125,101 @@ describe("site builder", () => {
     expect(storage.files.has("tags/gone/feed.xml")).toBe(false);
   });
 
+  it("a full build lists a biography page written in the same build in sitemaps/pages.xml", async () => {
+    const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1", ministryKeys: ["Health"] })]]));
+    api.minister = async (key) => (key.toLowerCase() === "health" ? { headline: "Hon. Alex Example", summary: "s", details: "<p>Bio.</p>", photo: null } : null);
+    await builder.buildAll({});
+    expect(storage.files.has("ministries/health/biography/index.html")).toBe(true);
+    expect(html(storage, "sitemaps/pages.xml")).toContain("<loc>https://news.example/ministries/health/biography/</loc>");
+  });
+
+  it("writes ministries/<key>/biography/index.html when the minister has details; clearing details removes the file and its folder on the next render", async () => {
+    const { storage, api, builder } = setup(new Map());
+    const removeEmptyDir = vi.spyOn(storage, "removeEmptyDir");
+    const minister = { headline: "Hon. Alex Example", summary: "Minister of Health.", details: "<p>Alex was elected in 2020.</p>", photo: null };
+    api.minister = async (key) => (key.toLowerCase() === "health" ? minister : null);
+    api.ministryProfiles = async () => [{ key: "Health", ministerEmail: "hlth@gov.example", teamLinks: [], childKeys: [] }];
+    // The bio page appearing re-queues sitemaps/pages.xml, which lists it; an unchanged render doesn't.
+    expect(await builder.renderPage("category:ministries:health", {})).toEqual(["sitemap:pages"]);
+    expect(await builder.renderPage("category:ministries:health", {})).toEqual([]);
+    await builder.renderPage("sitemap:pages", {});
+    expect(html(storage, "sitemaps/pages.xml")).toContain("<loc>https://news.example/ministries/health/biography/</loc>");
+    expect(html(storage, "sitemaps/pages.xml")).not.toContain("/ministries/finance/biography/");
+    const bio = html(storage, "ministries/health/biography/index.html");
+    expect(bio).toContain("<h1>Hon. Alex Example</h1>");
+    expect(bio).toContain("Alex was elected in 2020.");
+    expect(bio).toContain('href="mailto:hlth@gov.example"');
+    // Cleared in the Hub: the stale bio page goes on the next render, the ministry page stays.
+    minister.details = null as unknown as string;
+    expect(await builder.renderPage("category:ministries:health", {})).toEqual(["sitemap:pages"]);
+    expect(storage.files.has("ministries/health/biography/index.html")).toBe(false);
+    expect(removeEmptyDir).toHaveBeenCalledWith("ministries/health/biography");
+    expect(storage.files.has("ministries/health/index.html")).toBe(true);
+    await builder.renderPage("sitemap:pages", {});
+    expect(html(storage, "sitemaps/pages.xml")).not.toContain("/biography/");
+    expect(html(storage, "sitemaps/pages.xml")).toContain("<loc>https://news.example/ministries/health/</loc>");
+    // A ministry with no minister never gets one; a vanished ministry loses all three files.
+    await builder.renderPage("category:ministries:finance", {});
+    expect(storage.files.has("ministries/finance/biography/index.html")).toBe(false);
+    for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) await storage.write(f, "x");
+    await builder.renderPage("category:ministries:gone", {});
+    for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) expect(storage.files.has(f), f).toBe(false);
+  });
+
+  it("renders each childKey's ministry and minister; a null child ministry is skipped", async () => {
+    const { storage, api, builder } = setup(new Map());
+    const ministries = { health: "Health", finance: "Minister of State for Finance" } as Record<string, string>;
+    api.ministry = async (key) => (ministries[key.toLowerCase()] ? ministry({ key: key.toLowerCase(), name: ministries[key.toLowerCase()] }) : null);
+    api.minister = async (key) => ({ headline: key.toLowerCase() === "finance" ? "Hon. Sam State" : "Hon. Alex Example", summary: null, details: "<p>Bio.</p>", photo: null });
+    api.ministryProfiles = async () => [
+      { key: "Health", ministerEmail: null, teamLinks: [], childKeys: ["Finance", "gone", "bad/key", "x?y", ""] },
+      { key: "finance", ministerEmail: "fin@gov.example", teamLinks: [], childKeys: [] },
+    ];
+    const asked: string[] = [];
+    const ministryOf = api.ministry;
+    api.ministry = async (key) => (asked.push(key), ministryOf(key));
+    await builder.renderPage("category:ministries:health", {});
+    // A child key that can't be a category page id is never fetched or linked.
+    expect(asked.filter((k) => k !== "health")).toEqual(["Finance", "gone"]);
+    const page = html(storage, "ministries/health/index.html");
+    expect(page).toContain('<h2><a href="/ministries/finance/">Minister of State for Finance</a></h2>');
+    expect(page).toContain("<h3>Hon. Sam State</h3>");
+    expect(page).toContain('href="/ministries/finance/biography/"');
+    expect(page).toContain('href="mailto:fin@gov.example"');
+    expect(page.match(/resource-links minister/g)).toHaveLength(2); // Health's own card and the one child; "gone" is skipped
+  });
+
+  it("a child ministry fetch failure rejects the page render", async () => {
+    const { storage, api, builder } = setup(new Map());
+    const original = api.ministry;
+    api.ministry = async (key) => (key.toLowerCase() === "finance" ? Promise.reject(new Error("down")) : original(key));
+    api.ministryProfiles = async () => [{ key: "health", ministerEmail: null, teamLinks: [], childKeys: ["finance"] }];
+    await expect(builder.renderPage("category:ministries:health", {})).rejects.toThrow("down");
+    expect(storage.files.has("ministries/health/index.html")).toBe(false);
+  });
+
+  it("profile fetch failure: renders the pages without the Contact email (profiles(run) failure is logged, not thrown)", async () => {
+    const { storage, api, builder } = setup(new Map());
+    api.minister = async () => ({ headline: "Hon. Alex Example", summary: null, details: "Bio text", photo: null });
+    api.ministryProfiles = async () => { throw Object.assign(new Error("secret detail"), { code: "ECONNREFUSED" }); };
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await builder.rebuild(["category:ministries:health", "category:ministries:finance"], {});
+      expect(storage.files.has("ministries/health/index.html")).toBe(true);
+      const bio = html(storage, "ministries/health/biography/index.html");
+      expect(bio).toContain("<h1>Hon. Alex Example</h1>");
+      expect(bio).not.toContain("minister-email");
+      expect(bio).not.toContain("mailto:");
+      // Logged once for the run (the result is memoised), with the error's safe label.
+      const logged = error.mock.calls.map((c) => String(c[0])).filter((m) => m.includes("ministry profiles"));
+      expect(logged).toHaveLength(1);
+      expect(logged[0]).toContain("ECONNREFUSED");
+      expect(logged[0]).not.toContain("secret detail");
+    } finally {
+      error.mockRestore();
+    }
+  });
+
   it("skips (and never writes for) an invalid page id", async () => {
     const { storage, builder } = setup(new Map());
     await builder.rebuild(["post:../../etc", "category:ministries:../x", "bogus"], {});
@@ -137,11 +232,88 @@ describe("site builder", () => {
     expect(storage.files.has("releases/K1/index.html")).toBe(false);
   });
 
+  it("the release page's lead ministry is found case-insensitively by leadMinistryKey, else the first ministryKey", async () => {
+    const { storage, builder } = setup(new Map([["K1", post({ key: "K1", leadMinistryKey: "HEALTH", ministryKeys: ["finance"] })], ["K2", post({ key: "K2", leadMinistryKey: null, ministryKeys: ["Finance"] })], ["K3", post({ key: "K3", leadMinistryKey: "nope" })]]));
+    await builder.rebuild(["post:K1", "post:K2", "post:K3"], {});
+    expect(html(storage, "releases/K1/index.html")).toContain('<p class="story-ministry"><a href="/ministries/health/">Health</a></p>');
+    expect(html(storage, "releases/K1/index.html")).toContain("More from this Ministry");
+    expect(html(storage, "releases/K2/index.html")).toContain('<p class="story-ministry"><a href="/ministries/finance/">Finance</a></p>');
+    expect(html(storage, "releases/K3/index.html")).not.toContain("story-ministry");
+  });
+
+  it("a failing ministry latest-posts fetch (the related band's fallback) is logged once per ministry per run", async () => {
+    const posts = new Map([["K1", post({ key: "K1", leadMinistryKey: "health" })], ["K2", post({ key: "K2", leadMinistryKey: "health" })], ["K3", post({ key: "K3", leadMinistryKey: "health" })]]);
+    const { storage, api, builder } = setup(posts);
+    const latest = api.latest;
+    // Only the band's fallback fetch (3 to show + the release itself) fails; the ministry and home pages' own lists still load.
+    api.latest = async (kind, key, n) => { if (n === 4) throw new Error("News API 500"); return latest(kind, key, n); };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await builder.rebuild(["post:K1", "post:K2", "post:K3"], {});
+    expect(storage.files.has("releases/K3/index.html")).toBe(true);
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes("latest posts"))).toHaveLength(1);
+    errors.mockRestore();
+  });
+
+  it("an inactive lead ministry is linked only when a successor resolves; successors are fetched once per run, only for an inactive lead", async () => {
+    const posts = new Map([["K1", post({ key: "K1", leadMinistryKey: "old-health" })], ["K2", post({ key: "K2", leadMinistryKey: "gone" })], ["K3", post({ key: "K3", leadMinistryKey: "health" })]]);
+    const { storage, api, builder } = setup(posts);
+    api.ministries = async () => [ministry({ key: "health", name: "Health" }), ministry({ key: "old-health", name: "Old Health", isActive: false }), ministry({ key: "gone", name: "Gone", isActive: false })];
+    api.successors = { "old-health": "health" };
+    await builder.rebuild(["post:K1", "post:K2", "post:K3"], {});
+    expect(html(storage, "releases/K1/index.html")).toContain('<p class="story-ministry"><a href="/ministries/old-health/">Old Health</a></p>');
+    expect(html(storage, "releases/K2/index.html")).toContain('<p class="story-ministry">Gone</p>');
+    expect(api.calls.filter((c) => c === "ministrySuccessors")).toHaveLength(1);
+
+    // A successors outage leaves the inactive ministry unlinked; the page still renders.
+    const { storage: s2, api: api2, builder: b2 } = setup(new Map([["K1", post({ key: "K1", leadMinistryKey: "old-health" })]]));
+    api2.ministries = api.ministries;
+    api2.ministrySuccessors = async () => { throw new Error("News API 500"); };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    await b2.rebuild(["post:K1"], {});
+    expect(html(s2, "releases/K1/index.html")).toContain('<p class="story-ministry">Old Health</p>');
+    expect(errors.mock.calls.filter((c) => String(c[0]).includes("successors"))).toHaveLength(1);
+    errors.mockRestore();
+  });
+
   it("a related-posts failure doesn't block the release page", async () => {
     const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
     api.related = async () => { throw new Error("News API 500"); };
     await builder.rebuild(["post:K1"], {});
     expect(storage.files.has("releases/K1/index.html")).toBe(true);
+  });
+
+  it("fetches the ministry's latest once per run and only when related is empty; a failure renders the page without a fallback", async () => {
+    const posts = new Map([
+      ["K1", post({ key: "K1", leadMinistryKey: "Health", ministryKeys: ["health"], publishDate: "2026-10-01T10:00:00-07:00", documents: [{ languageId: 4105, headline: "One", subheadline: null, detailsHtml: null, contacts: [] }] })],
+      ["K2", post({ key: "K2", ministryKeys: ["health"], publishDate: "2026-10-02T10:00:00-07:00", documents: [{ languageId: 4105, headline: "Two", subheadline: null, detailsHtml: null, contacts: [] }] })],
+      ["K3", post({ key: "K3", ministryKeys: ["finance"], publishDate: "2026-10-03T10:00:00-07:00" })],
+    ]);
+    const { storage, api, builder } = setup(posts);
+    const latest = vi.spyOn(api, "latest");
+    const relatedTo = new Map([["K3", [{ key: "K9", headline: "Nine", publishDate: "2026-09-09T09:00:00-07:00" }]]]);
+    api.related = async (key) => relatedTo.get(key) ?? [];
+    // One run (as rebuild and buildAll share one) rendering the three post pages.
+    const run = {};
+    for (const k of ["K1", "K2", "K3"]) await builder.renderPage(`post:${k}`, {}, run);
+    // K1 and K2 share health's fetch; K3 has v2 related, so finance's latest is never asked for.
+    expect(latest.mock.calls).toEqual([["ministries", "health", 4]]);
+    const band = (k: string) => html(storage, `releases/${k}/index.html`).split('<section class="media-container"')[1] ?? "";
+    expect(band("K1")).toContain(">Two</a>");
+    expect(band("K1")).not.toContain(">One</a>");
+    expect(band("K2")).toContain(">One</a>");
+    expect(band("K2")).not.toContain(">Two</a>");
+    expect(band("K3")).toContain(">Nine</a>");
+
+    // A failure: logged without the error's text, and the page renders with no Related Articles.
+    const failing = setup(new Map([["K1", post({ key: "K1" })]]));
+    failing.api.latest = async () => { throw new Error("News API 500 secret=abc"); };
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    await failing.builder.renderPage("post:K1", {});
+    expect(failing.storage.files.has("releases/K1/index.html")).toBe(true);
+    expect(html(failing.storage, "releases/K1/index.html")).not.toContain("Related Articles");
+    expect(log.mock.calls.some(([line]) => String(line).includes("post:K1"))).toBe(true);
+    expect(log.mock.calls.flat().join(" ")).not.toContain("secret=abc");
+    log.mockRestore();
   });
 
   it("buildAll renders every published key, removes pages for keys no longer published, then every aggregate", async () => {

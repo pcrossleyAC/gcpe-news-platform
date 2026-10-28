@@ -86,7 +86,9 @@ export const Asset = Node.create<Record<string, never>, AssetAttrs>({
  * every other extension, and the schema it produces, stays identical to what this test suite
  * (and the Node round-trip test) exercises.
  */
-export function bodyExtensions(assetExtension: AnyExtension = Asset): AnyExtension[] {
+/** `assetExtension` null leaves the `<asset>` node out (the minister biography): an `<asset>` then
+ * parses as its URL text, which is what Core's bio sanitiser stores. */
+export function bodyExtensions(assetExtension: AnyExtension | null = Asset): AnyExtension[] {
   return [
     DocumentExt,
     TextExt,
@@ -105,6 +107,6 @@ export function bodyExtensions(assetExtension: AnyExtension = Asset): AnyExtensi
     }),
     History,
     Div,
-    assetExtension,
+    ...(assetExtension ? [assetExtension] : []),
   ];
 }

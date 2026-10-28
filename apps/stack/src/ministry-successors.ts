@@ -14,6 +14,9 @@ import { CATEGORY_KEY as KEY, MINISTRY_SUCCESSORS_FILE } from "../../public-site
 /** `/ministries/<segment>` and anything beneath it (whole segment; any case, as Express routes). */
 const PATH = /^\/ministries\/([^/]+)(\/.*)?$/i;
 
+/** The rest of the path that is the ministry's biography page itself (any case, with or without the slash). */
+const BIOGRAPHY = /^\/biography\/?$/i;
+
 type Table = ReadonlyMap<string, string>;
 const EMPTY: Table = new Map();
 /** Per output dir: the table and the file's mtime+size it was read at. */
@@ -71,7 +74,8 @@ export async function resolveMinistrySuccessor(outputDir: string, key: string): 
 
 /**
  * `/ministries/<old>[/<rest>][?query]` → `301 {basePath}/ministries/<new>/<rest>[?query]` for every
- * `<old>` in the table (whole segment, any case); anything else falls through. `basePath` is the
+ * `<old>` in the table (whole segment, any case), except `<old>/biography[/]`, which goes to
+ * `<new>/` (the ministry page); anything else falls through. `basePath` is the
  * prefix this handler is mounted under ("" at the root, "/site" under /site), so the Location is
  * always a root-relative path on this site. The query is carried byte for byte. GET/HEAD only;
  * no-store, so a proxy never pins a redirect that a reactivation (N12) later removes.
@@ -93,7 +97,10 @@ export function ministrySuccessorRedirects(outputDir: string, basePath: string):
       const q = req.url.indexOf("?");
       const query = q === -1 ? "" : req.url.slice(q);
       res.setHeader("Cache-Control", "no-store");
-      res.redirect(301, `${basePath}/ministries/${to}${m[2] ?? "/"}${query}`);
+      // The old minister's bio goes to the successor's ministry page, not its bio, which may not
+      // exist (legacy's RedirectMiddleware did the same for IRS).
+      const rest = BIOGRAPHY.test(m[2] ?? "") ? "/" : (m[2] ?? "/");
+      res.redirect(301, `${basePath}/ministries/${to}${rest}${query}`);
     }, next);
   };
 }
