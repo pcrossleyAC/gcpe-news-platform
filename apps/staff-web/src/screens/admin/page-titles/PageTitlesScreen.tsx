@@ -373,7 +373,7 @@ function TitleRow({
         {error && <ErrorAlert id={errorId} text={error.text} wrapperRef={alertEl} />}
       </td>
       <td>
-        <Button variant="secondary" isDisabled={busy} onPress={() => setConfirmDelete(true)}>
+        <Button variant="secondary" isPending={busy} onPress={() => setConfirmDelete(true)}>
           <span>
             Delete <span className="gcpe-visually-hidden">{name}</span>
           </span>
