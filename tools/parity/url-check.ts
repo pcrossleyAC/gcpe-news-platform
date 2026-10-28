@@ -127,27 +127,39 @@ export function formatSummary(results: UrlResult[]): string[] {
   return [...lines, `${pass}/${results.length} passed`];
 }
 
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
+export interface MainDeps {
+  readList: (path: string) => Promise<string>;
+  fetchImpl: typeof fetch;
+  log: (line: string) => void;
+}
+
+/** Runs the check and returns the process exit code (1 when any URL fails). */
+export async function main(
+  args: string[],
+  deps: MainDeps = { readList: (p) => readFile(p, "utf8"), fetchImpl: throttledFetch(), log: console.log },
+): Promise<number> {
   const opt = (name: string, dflt: string) => {
     const i = args.indexOf(`--${name}`);
     return i >= 0 && args[i + 1] ? args[i + 1]! : dflt;
   };
   const base = opt("base", "https://news.gov.bc.ca");
   const list = opt("list", "tools/parity/legacy-urls.txt");
-  const entries = parseList(await readFile(list, "utf8"));
-  const results = await checkUrls(base, entries, throttledFetch());
+  const entries = parseList(await deps.readList(list));
+  const results = await checkUrls(base, entries, deps.fetchImpl);
   for (const r of results) {
-    console.log(`${r.ok ? "ok  " : "FAIL"} ${r.status} ${r.path}${r.location ? ` -> ${r.location}` : ""}${r.reason ? ` (${r.reason})` : ""}`);
+    deps.log(`${r.ok ? "ok  " : "FAIL"} ${r.status} ${r.path}${r.location ? ` -> ${r.location}` : ""}${r.reason ? ` (${r.reason})` : ""}`);
   }
-  const failed = results.filter((r) => !r.ok).length;
-  for (const line of formatSummary(results)) console.log(line);
-  if (failed > 0) process.exitCode = 1;
+  for (const line of formatSummary(results)) deps.log(line);
+  return results.some((r) => !r.ok) ? 1 : 0;
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  main().catch((e: unknown) => {
-    console.error("url-check: failed to run", e);
-    process.exitCode = 1;
-  });
+  main(process.argv.slice(2))
+    .then((code) => {
+      process.exitCode = code;
+    })
+    .catch((e: unknown) => {
+      console.error("url-check: failed to run", e);
+      process.exitCode = 1;
+    });
 }

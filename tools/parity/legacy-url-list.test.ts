@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLegacyUrlList } from "./legacy-url-list";
+import { buildLegacyUrlList, extractPaths } from "./legacy-url-list";
 
 const HOME = `<a href="/ministries/health">H</a><a href="https://news.gov.bc.ca/ministries/health">dup</a>
 <a href="/sectors/economy">E</a><a href="/tags/housing">T</a>
@@ -43,5 +43,41 @@ describe("buildLegacyUrlList", () => {
     await buildLegacyUrlList(fetcher(seen), { posts: 150 });
     expect(seen).toEqual(["/", "/connect", "/sitemap/html?count=150"]);
     expect(seen.length).toBeLessThanOrEqual(4);
+  });
+});
+
+describe("extractPaths", () => {
+  it("decodes named and numeric entities before parsing, keeping the search query", () => {
+    const html = `<a href="/search?q=a&amp;b=1">1</a><a href="/search?q=x&#38;y=2">2</a><a href="&#x2F;ministries&#x2F;health">3</a><a href="/ministries/it&#39;s">4</a>`;
+    expect(extractPaths(html)).toEqual(["/search?q=a", "/search?q=x", "/ministries/health", "/ministries/it's"]);
+  });
+
+  it("drops protocol-relative other hosts, data: URLs and lookalike hosts", () => {
+    const html = `<a href="//evil.example/a">1</a><a href="data:text/html,x">2</a><a href="https://news.gov.bc.ca.evil.example/a">3</a>
+<a href="https://evilnews.gov.bc.ca/a">4</a><a href="//news.gov.bc.ca/ok">5</a><a href="https://news.gov.bc.ca@evil.example/a">6</a>`;
+    expect(extractPaths(html)).toEqual(["/ok"]);
+  });
+
+  it("strips queries except q on /search", () => {
+    const html = `<a href="/search?q=housing&amp;page=2">1</a><a href="/Search?Ministry=Health">2</a><a href="/releases/x?utm=1">3</a>`;
+    expect(extractPaths(html)).toEqual(["/search?q=housing", "/Search", "/releases/x"]);
+  });
+});
+
+describe("buildLegacyUrlList sections", () => {
+  it("routes homepage /releases/<key> hrefs to posts, not nav", async () => {
+    const out = await buildLegacyUrlList(async (p) => (p === "/" ? `<a href="/releases/2026AA0009-000009">r</a><a href="/subscribe">s</a>` : p === "/connect" ? "" : ""), { posts: 5 });
+    const at = (name: string) => out.indexOf(`# section: ${name}`);
+    const idx = out.indexOf("/releases/2026AA0009-000009");
+    expect(idx).toBeGreaterThan(at("posts"));
+    expect(idx).toBeLessThan(at("post-variants"));
+    expect(out.slice(at("nav"), at("feeds"))).not.toContain("/releases/2026AA0009-000009");
+  });
+
+  it("adds variants for only the first 10 posts", async () => {
+    const links = Array.from({ length: 15 }, (_, i) => `<a href="/releases/2026AA${String(i).padStart(4, "0")}-000001">p</a>`).join("");
+    const out = await buildLegacyUrlList(async (p) => (p.startsWith("/sitemap") ? links : ""), { posts: 15 });
+    const variants = out.slice(out.indexOf("# section: post-variants") + 1);
+    expect(variants).toHaveLength(20);
   });
 });

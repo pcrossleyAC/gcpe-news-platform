@@ -1,5 +1,7 @@
 # Generated 2026-10-28 from live news.gov.bc.ca by tools/parity/legacy-url-list.ts (do not edit by hand).
-# Sources: GET / (nav, ministries, sectors, tags), GET /connect (feeds), GET /sitemap/html?count=150 (latest posts).
+# Sources: GET / (nav, ministries; latest-release links go to posts), GET /connect (feeds), GET /sitemap/html?count=150 (latest posts).
+# Note: as of 2026-10-28 the homepage links no /sectors/<k> or /tags/<k> pages; sectors appear only as /sectors/<k>/feed on /connect,
+# and no /tags/ link appears on any of the three fetched pages, so this list has no /sectors/<k> or /tags/<k> page rows.
 # section: nav
 /
 /feed
@@ -31,21 +33,6 @@
 /ministries/water-land-and-resource-stewardship
 /subscribe
 /connect
-/releases/2026WLRS0034-001107
-/releases/2026HLTH0085-001117
-/releases/2026PSSG0072-001129
-/releases/2026TT0105-001130
-/releases/2026PSSG0071-001124
-/releases/2026TT0104-001125
-/releases/2026HLTH0086-001123
-/releases/2026TT0103-001121
-/releases/2026AG0068-001112
-/releases/2026MCM0031-001120
-/releases/2026INF0055-001104
-/releases/2026ECS0056-001118
-/releases/2026TT0102-001115
-/releases/2026TT0101-001113
-/releases/2026ECS0055-001114
 /search
 /contacts
 /factsheets
@@ -92,11 +79,26 @@
 /ministries/transportation-and-transit/feed
 /ministries/water-land-and-resource-stewardship/feed
 # section: posts
+/releases/2026PSSG0072-001129
+/releases/2026TT0105-001130
+/releases/2026PSSG0071-001124
+/releases/2026TT0104-001125
+/releases/2026HLTH0086-001123
+/releases/2026TT0103-001121
+/releases/2026AG0068-001112
+/releases/2026HLTH0085-001117
+/releases/2026MCM0031-001120
+/releases/2026INF0055-001104
+/releases/2026ECS0056-001118
+/releases/2026TT0102-001115
+/releases/2026TT0101-001113
+/releases/2026ECS0055-001114
 /releases/2026TT0100-001109
 /releases/2026ENV0038-001110
 /releases/2026JEG0065-001111
 /releases/2026INF0056-001108
 /releases/2026HLTH0084-001106
+/releases/2026WLRS0034-001107
 /releases/2026AG0067-001105
 /releases/2026SDPR0042-001087
 /releases/2026INF0034-001103

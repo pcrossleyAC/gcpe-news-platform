@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checkUrls, formatSummary, parseList } from "./url-check";
+import { checkUrls, formatSummary, main, parseList } from "./url-check";
 
 type Reply = { status: number; location?: string };
 function fakeFetch(map: Record<string, Reply>, seen: string[] = []): typeof fetch {
@@ -120,5 +120,30 @@ describe("sections", () => {
     );
     expect(results.map((r) => r.section)).toEqual(["feeds", "feeds", "posts"]);
     expect(formatSummary(results)).toEqual(["feeds: 1/2 passed", "posts: 1/1 passed", "2/3 passed"]);
+  });
+});
+
+describe("main", () => {
+  const list = "# section: a\n/ok\n/bad\n";
+  const f = () => fakeFetch({ "https://x.test/ok": { status: 200 }, "https://x.test/bad": { status: 500 } });
+
+  it("returns exit code 1 when any URL fails, and prints per-section counts", async () => {
+    const lines: string[] = [];
+    const code = await main(["--base", "https://x.test", "--list", "l.txt"], {
+      readList: async (p) => (p === "l.txt" ? list : ""),
+      fetchImpl: f(),
+      log: (l) => lines.push(l),
+    });
+    expect(code).toBe(1);
+    expect(lines).toContain("a: 1/2 passed");
+  });
+
+  it("returns 0 when everything passes", async () => {
+    const code = await main(["--base", "https://x.test"], {
+      readList: async () => "/ok\n",
+      fetchImpl: f(),
+      log: () => {},
+    });
+    expect(code).toBe(0);
   });
 });

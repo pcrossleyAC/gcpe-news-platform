@@ -11,11 +11,22 @@ const ORIGIN = "https://news.gov.bc.ca";
 const HOST = "news.gov.bc.ca";
 const ASSET = /\.(?:css|js|mjs|map|png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot)(?:\?|$)/i;
 
-/** Path (+ query) of every same-host href in `html`, in document order; other hosts and non-http schemes are dropped. */
+const NAMED: Record<string, string> = { amp: "&", quot: '"', lt: "<", gt: ">", apos: "'" };
+
+/** Decodes numeric (&#NN; &#xHH;) and the common named entities in one pass (so &amp;#38; stays "&#38;"). */
+export function decodeEntities(s: string): string {
+  return s.replace(/&(?:#(\d+)|#[xX]([0-9a-fA-F]+)|(amp|quot|lt|gt|apos));/g, (whole, dec, hex, name) => {
+    if (name) return NAMED[name]!;
+    const cp = dec !== undefined ? Number(dec) : parseInt(hex, 16);
+    return cp > 0 && cp <= 0x10ffff ? String.fromCodePoint(cp) : whole;
+  });
+}
+
+/** Path (+ allowlisted query) of every same-host href in `html`, in document order; other hosts and non-http schemes are dropped. */
 export function extractPaths(html: string): string[] {
   const out: string[] = [];
   for (const m of html.matchAll(/href\s*=\s*"([^"]*)"/gi)) {
-    const raw = m[1]!.replace(/&amp;/g, "&").trim();
+    const raw = decodeEntities(m[1]!).trim();
     if (raw === "" || raw.startsWith("#")) continue;
     let url: URL;
     try {
@@ -25,7 +36,9 @@ export function extractPaths(html: string): string[] {
     }
     if (url.protocol !== "https:" && url.protocol !== "http:") continue;
     if (url.host !== HOST) continue;
-    out.push(url.pathname + url.search);
+    // Only /search keeps its `q`; every other query is dropped.
+    const q = url.pathname.toLowerCase() === "/search" ? url.searchParams.get("q") : null;
+    out.push(url.pathname + (q ? `?q=${encodeURIComponent(q)}` : ""));
   }
   return out;
 }
@@ -46,11 +59,12 @@ export async function buildLegacyUrlList(
   };
 
   const home = extractPaths(await fetchText("/"));
-  const nav = home.filter((p) => p !== "/" && !ASSET.test(p));
+  const isPost = (p: string) => /^\/releases\/[^/?]+$/.test(p);
+  const nav = home.filter((p) => p !== "/" && !ASSET.test(p) && !isPost(p));
   const feeds = extractPaths(await fetchText("/connect")).filter((p) => /\/feed(?:\/|\?|$)/.test(p));
   const sitemap = extractPaths(await fetchText(`/sitemap/html?count=${opts.posts}`));
-  const posts = sitemap.filter((p) => /^\/releases\/[^/?]+$/.test(p));
-  const variants = [...new Set(posts)].slice(0, 10).flatMap((p) => {
+  const posts = [...new Set([...sitemap.filter(isPost), ...home.filter(isPost)])];
+  const variants = posts.slice(0, 10).flatMap((p) => {
     const key = p.slice("/releases/".length);
     return [`/stories/${key}`, `/releases/${key.toLowerCase()}`];
   });
@@ -60,6 +74,15 @@ export async function buildLegacyUrlList(
     ...section("feeds", feeds),
     ...section("posts", posts),
     ...section("post-variants", variants),
+  ];
+}
+
+export function snapshotHeader(date: string, posts: number): string[] {
+  return [
+    `# Generated ${date} from live news.gov.bc.ca by tools/parity/legacy-url-list.ts (do not edit by hand).`,
+    `# Sources: GET / (nav, ministries; latest-release links go to posts), GET /connect (feeds), GET /sitemap/html?count=${posts} (latest posts).`,
+    `# Note: as of ${date} the homepage links no /sectors/<k> or /tags/<k> pages; sectors appear only as /sectors/<k>/feed on /connect,`,
+    `# and no /tags/ link appears on any of the three fetched pages, so this list has no /sectors/<k> or /tags/<k> page rows.`,
   ];
 }
 
@@ -76,8 +99,7 @@ async function main(): Promise<void> {
   };
   const lines = await buildLegacyUrlList(fetchText, { posts });
   const date = new Date().toISOString().slice(0, 10);
-  console.log(`# Generated ${date} from live news.gov.bc.ca by tools/parity/legacy-url-list.ts (do not edit by hand).`);
-  console.log(`# Sources: GET / (nav, ministries, sectors, tags), GET /connect (feeds), GET /sitemap/html?count=${posts} (latest posts).`);
+  for (const h of snapshotHeader(date, posts)) console.log(h);
   console.log(lines.join("\n"));
 }
 
