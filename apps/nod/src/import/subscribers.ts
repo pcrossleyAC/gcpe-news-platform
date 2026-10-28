@@ -43,6 +43,8 @@ export interface SubscriberStageContext {
   lists: ListMapping;
   /** The database clock when the run began. */
   runAt: Date;
+  /** Filled in by the stage: each legacy record that lost its address's pick → the record that won it. */
+  winnerOf?: Map<string, string>;
 }
 
 /** What became of an unsubscribe from a duplicate legacy record of the address (see
@@ -491,7 +493,8 @@ export async function importSubscribers(db: Db, source: LegacySource, ctx: Subsc
     report.skip("Subscriber", reason, guid);
     for (const lg of listGuidsOf.get(guid) ?? []) report.skip("SubscriberList", "subscriber not imported", `${guid}/${lg}`);
   };
-  const { winners, duplicates, invalid } = pickWinners(legacy);
+  const { winners, duplicates, invalid, winnerOf } = pickWinners(legacy);
+  for (const [loser, winner] of winnerOf) ctx.winnerOf?.set(loser, winner);
   for (const g of duplicates) skipWithLists(g, "duplicate address: another legacy record with it was imported");
   for (const g of invalid) skipWithLists(g, "invalid email address");
 

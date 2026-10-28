@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { withAdvisoryLock, type Db } from "@gcpe/db-kit";
 import type { LegacySource } from "@gcpe/legacy-import";
 import { importArticles, importDigestCutoff } from "./articles";
+import { importManageLinks } from "./links";
 import { importLists } from "./lists";
 import { Q_UNCONFIRMED_SIGNUPS } from "./queries";
 import { NodImportReport } from "./report";
@@ -52,7 +53,7 @@ export interface RunNodImportOptions {
   log?: (message: string) => void;
 }
 
-/** lists → subscribers → recent sends → digest cutoff. Each stage consumes only what earlier
+/** lists → subscribers → manage links → recent sends → digest cutoff. Each stage consumes only what earlier
  * ones produced. A failure carries the partial report. */
 export async function runNodImport(db: Db, nrms: Db, source: LegacySource, opts: RunNodImportOptions): Promise<NodImportReport> {
   const report = new NodImportReport();
@@ -65,8 +66,12 @@ export async function runNodImport(db: Db, nrms: Db, source: LegacySource, opts:
       const lists = await importLists(db, source, report);
       log("[nod:import] lists mapped");
       stage = "subscribers";
-      const subscribers = await importSubscribers(db, source, { report, timeZone: opts.timeZone, lists, runAt });
+      const winnerOf = new Map<string, string>();
+      const subscribers = await importSubscribers(db, source, { report, timeZone: opts.timeZone, lists, runAt, winnerOf });
       log(`[nod:import] subscribers: ${subscribers.size} in NoD from legacy`);
+      stage = "links";
+      await importManageLinks(db, source, { report, timeZone: opts.timeZone, runAt, winnerOf });
+      log("[nod:import] live manage links copied");
       stage = "articles";
       await importArticles(db, nrms, source, { report, lists, subscribers, sinceDays: opts.sinceDays, publicSiteUrl: opts.publicSiteUrl });
       log("[nod:import] recent sends imported");

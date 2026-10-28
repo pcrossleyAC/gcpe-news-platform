@@ -7,6 +7,7 @@
   "scripts": {
     "parity": "tsx tools/parity/capture.ts",
     "parity:urls": "tsx tools/parity/url-check.ts",
+    "parity:urls:list": "tsx tools/parity/legacy-url-list.ts",
     "check": "tsc -p tsconfig.json && tsc -p apps/staff-web/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",

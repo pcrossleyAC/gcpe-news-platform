@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
 import type { DbOrTx } from "@gcpe/db-kit";
 import { subscriberLinks, type LinkOrigin, type LinkPurpose, type SubscriberPrefs } from "../db/schema";
+import { legacyLinkGuid, legacyTokenHash } from "./legacy-token";
 import { hashToken, newLinkToken } from "./tokens";
 
 export const LINK_TTL_MS = 24 * 3_600_000;
@@ -28,11 +29,18 @@ export async function createLink(
 }
 
 export async function findLink(db: DbOrTx, token: string): Promise<LinkRow | null> {
-  if (!/^[A-Za-z0-9_-]{43}$/.test(token)) return null;
+  let tokenHash: string;
+  if (/^[A-Za-z0-9_-]{43}$/.test(token)) tokenHash = hashToken(token);
+  else {
+    // An imported legacy link: its UrlTokenEncoded or bare LinkGuid (legacy-token.ts).
+    const guid = legacyLinkGuid(token);
+    if (!guid) return null;
+    tokenHash = legacyTokenHash(guid);
+  }
   const [row] = await db
     .select({ link: subscriberLinks, expired: sql<boolean>`${subscriberLinks.expiresAt} <= now()` })
     .from(subscriberLinks)
-    .where(eq(subscriberLinks.tokenHash, hashToken(token)));
+    .where(eq(subscriberLinks.tokenHash, tokenHash));
   return row ? { ...row.link, expired: row.expired } : null;
 }
 

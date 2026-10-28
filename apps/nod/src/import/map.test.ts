@@ -63,7 +63,7 @@ describe("subscribers", () => {
   });
 
   it("one record per address: active over disabled over deleted, then the newest; invalid addresses out", () => {
-    const { winners, duplicates, invalid } = pickWinners([
+    const { winners, duplicates, invalid, winnerOf } = pickWinners([
       row({ SubscriberGuid: "B1", EmailAddress: " Pat@Example.TEST ", IsDeleted: true, RegisteredDateTime: new Date("2025-01-01T00:00:00Z") }),
       row({ SubscriberGuid: "B2", EmailAddress: "pat@example.test", IsEnabled: false }),
       row({ SubscriberGuid: "B3", EmailAddress: "pat@example.test", RegisteredDateTime: new Date("2015-01-01T00:00:00Z") }),
@@ -73,6 +73,7 @@ describe("subscribers", () => {
     expect(winners.map((w) => w.SubscriberGuid)).toEqual(["B4"]);
     expect(duplicates.sort()).toEqual(["b1", "b2", "b3"]);
     expect(invalid).toEqual(["b5"]);
+    expect(Object.fromEntries(winnerOf)).toEqual({ b1: "b4", b2: "b4", b3: "b4" });
   });
 
   it("maps a self subscriber: lowercased address, BC wall clock to an instant, timing as is", () => {
