@@ -4,6 +4,9 @@
 // all WITHOUT opening an app's database (the one exception, the Calendar's read-only time-zone
 // probe, is a warning field and is tested at the end). This is deliberately a separate, DB-free
 // test file from stack.test.ts: every case here must run instantly with no Postgres fixture.
+import { copyFileSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it, vi } from "vitest";
 import { checkStack } from "./stack";
@@ -251,5 +254,17 @@ describe("checkStack", () => {
     env.NEWSAPI_EMBEDDINGS_PROVIDER = "stand-in";
     const result = await checkStack(env);
     expect(result.apps["news-api"]?.ok).toBe(true);
+  });
+
+  it("fails the public site when the tenant's site-settings defaults file is invalid", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "gcpe-check-tenant-"));
+    const config = join(dir, "bc.json");
+    copyFileSync(fileURLToPath(new URL("../../../config/tenants/bc.json", import.meta.url)), config);
+    writeFileSync(join(dir, "bc.site-settings.json"), JSON.stringify({ footer: { moreInfoLinks: [{ id: "x", text: "Bad", url: "javascript:alert(1)" }] } }));
+    const result = await checkStack({ ...baseEnv(), TENANT_CONFIG: config });
+    expect(result.ok).toBe(false);
+    expect(result.apps["public-site"]?.ok).toBe(false);
+    expect(result.apps["public-site"]?.error).toMatch(/SITE_\*/);
+    expect(result.apps.core?.ok).toBe(true);
   });
 });

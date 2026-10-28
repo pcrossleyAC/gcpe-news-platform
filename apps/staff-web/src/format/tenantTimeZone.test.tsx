@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
-import { useTenantTimeZone } from "./tenantTimeZone";
+import { useTenantTimeZone, useTenantTimeZoneStatus } from "./tenantTimeZone";
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
@@ -37,5 +37,20 @@ describe("useTenantTimeZone", () => {
     // Never resolves to an empty/invalid value — always some real IANA zone (Intl would throw
     // immediately for an invalid one, so the component rendering at all here proves this).
     await waitFor(() => expect(screen.getByText(/^time zone: .+/)).toBeInTheDocument());
+  });
+
+  it("useTenantTimeZoneStatus is unresolved until the config answers, and resolved (on the fallback) when it fails", async () => {
+    function StatusProbe(): React.JSX.Element {
+      const { timeZone, resolved } = useTenantTimeZoneStatus();
+      return <p>{resolved ? `resolved: ${timeZone}` : "unresolved"}</p>;
+    }
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, { timeZone: "America/Moncton" })));
+    render(<StatusProbe />);
+    expect(screen.getByText("unresolved")).toBeInTheDocument();
+    await screen.findByText("resolved: America/Moncton");
+    cleanup();
+    vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(500, { error: "boom" })));
+    render(<StatusProbe />);
+    await screen.findByText("resolved: America/Vancouver");
   });
 });

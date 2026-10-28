@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import type { SiteSettings } from "@gcpe/site-settings";
 import type { CategoryDto, MinistryDto, PostDto, ResourceLinkDto, SlideDto } from "../src/dto";
 import type { SiteInfo } from "../src/render";
 import { DEFAULT_THEME } from "../src/theme-css";
@@ -44,6 +46,10 @@ export function ministry(over: Partial<MinistryDto> = {}): MinistryDto {
     contactUser: null,
     secondContactUser: null,
     weekendContactNumber: null,
+    topicLinks: [],
+    serviceLinks: [],
+    flickrUri: null,
+    youtubeUri: null,
     topPostKey: null,
     featurePostKey: null,
     ...over,
@@ -82,4 +88,9 @@ export function link(over: Partial<ResourceLinkDto> = {}): ResourceLinkDto {
     key: "Resource guide",
     ...over,
   };
+}
+
+/** The bc tenant's site settings file (config/tenants/bc.site-settings.json): a full, valid document. */
+export function bcSettings(): SiteSettings {
+  return JSON.parse(readFileSync(new URL("../../../config/tenants/bc.site-settings.json", import.meta.url), "utf8")) as SiteSettings;
 }

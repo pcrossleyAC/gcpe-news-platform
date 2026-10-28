@@ -13,17 +13,28 @@ interface ConfigResponse {
 /** Fetches `GET /nrms/api/config` (Task 1) once per mount and returns its `timeZone` — the
  * zone every staff screen must format dates in (constraints.md). */
 export function useTenantTimeZone(): string {
-  const [timeZone, setTimeZone] = useState(FALLBACK_TIME_ZONE);
+  return useTenantTimeZoneStatus().timeZone;
+}
+
+/**
+ * {@link useTenantTimeZone} plus whether the zone is settled: `resolved` is false until
+ * `/nrms/api/config` has answered (or failed, leaving the fallback). A screen that converts
+ * stored instants to wall-clock for editing must wait for it — converting with the fallback and
+ * sending the result back would shift the times on a tenant in another zone.
+ */
+export function useTenantTimeZoneStatus(): { timeZone: string; resolved: boolean } {
+  const [status, setStatus] = useState({ timeZone: FALLBACK_TIME_ZONE, resolved: false });
 
   useEffect(() => {
     let active = true;
     apiFetch<ConfigResponse>("/nrms/api/config").then(
       (config) => {
-        if (active) setTimeZone(config.timeZone);
+        if (active) setStatus({ timeZone: config.timeZone, resolved: true });
       },
       () => {
         // Keep the fallback — a screen with a slightly-wrong-if-ever-different zone beats one
         // that can't format dates at all.
+        if (active) setStatus((s) => ({ ...s, resolved: true }));
       },
     );
     return () => {
@@ -31,5 +42,5 @@ export function useTenantTimeZone(): string {
     };
   }, []);
 
-  return timeZone;
+  return status;
 }

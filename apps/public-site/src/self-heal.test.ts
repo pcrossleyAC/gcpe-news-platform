@@ -3,7 +3,7 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { post, site } from "../test/fixtures";
+import { bcSettings, post, site } from "../test/fixtures";
 import type { PostDto } from "./dto";
 import { createSiteBuilder } from "./builder";
 import { postIndex } from "./post-index";
@@ -87,5 +87,89 @@ describe("selfHeal", () => {
     expect(drained!.rebuilt).toBeGreaterThan(0); // the post, then its dependents, all drained this run
     expect(await queueDepth(tdb.db)).toBe(0);
     expect(JSON.parse(storage.files.get(".site-state.json") as string).chrome).toBe(RENDER_CHROME_VERSION);
+  });
+
+  it("renders with the published site settings, the subscribe pages included", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    const document = bcSettings();
+    document.footer.copyrightHolder = "Published Holder";
+    (deps.newsApi as ReturnType<typeof fakeNewsApi>).settings = { revision: 1, document };
+    await selfHeal(deps);
+    expect(storage.files.get("index.html")).toContain("Published Holder");
+    for (const f of SUBSCRIBE_FILES) expect(storage.files.get(f)).toContain("Published Holder");
+  });
+
+  it("a settings section changed since the marker queues only its pages", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    const newsApi = deps.newsApi as ReturnType<typeof fakeNewsApi>;
+    newsApi.settings = { revision: 1, document: bcSettings() };
+    await selfHeal(deps);
+    const document = bcSettings();
+    document.connect.blogs.accounts = [{ text: "A New Blog", url: "https://blog.example" }];
+    newsApi.settings = { revision: 2, document };
+    const before = newsApi.calls.filter((c) => c === "getPost:K1").length;
+    await selfHeal(deps);
+    expect(newsApi.calls.filter((c) => c === "getPost:K1").length).toBe(before); // no full rebuild
+    expect((deps.storage as ReturnType<typeof memoryStorage>).files.get("connect/index.html")).toContain("A New Blog");
+  });
+
+  it("a News API outage after a restart: the subscribe pages keep the persisted published footer, and nothing moves the marker", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    const document = bcSettings();
+    document.footer.copyrightHolder = "Published Holder";
+    (deps.newsApi as ReturnType<typeof fakeNewsApi>).settings = { revision: 1, document };
+    await selfHeal(deps);
+    const marker = storage.files.get(".site-state.json");
+
+    // A new process over the same folder (a fresh storage object, the same files).
+    const restarted = { ...deps, storage: { ...storage } as typeof storage, newsApi: fakeNewsApi() };
+    restarted.newsApi.home = async () => {
+      throw new Error("News API down");
+    };
+    restarted.newsApi.siteSettings = async () => {
+      throw new Error("News API down");
+    };
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await selfHeal(restarted)).toBeNull();
+    } finally {
+      errSpy.mockRestore();
+    }
+    for (const f of SUBSCRIBE_FILES) {
+      expect(storage.files.get(f)).toContain("Published Holder");
+      expect(storage.files.get(f)).not.toMatch(/© \d{4} Government of British Columbia/);
+    }
+    expect(storage.files.get(".site-state.json")).toBe(marker);
+  });
+
+  it("a settings fetch failure after a restart doesn't delay Blue Bridge: rebuild-all with the persisted document, settings hashes unchanged", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    const document = bcSettings();
+    document.footer.copyrightHolder = "Published Holder";
+    (deps.newsApi as ReturnType<typeof fakeNewsApi>).settings = { revision: 1, document };
+    await selfHeal(deps);
+    const before = JSON.parse(storage.files.get(".site-state.json") as string);
+    expect(before.granvilleOn).toBe(false);
+
+    const restarted = { ...deps, storage: { ...storage } as typeof storage, newsApi: fakeNewsApi(new Map([["K1", post({ key: "K1" })]])) };
+    restarted.newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
+    restarted.newsApi.siteSettings = async () => {
+      throw new Error("News API 503 for api/v2/site-settings");
+    };
+    restarted.builder = createSiteBuilder({ newsApi: restarted.newsApi, storage: restarted.storage, index: deps.index, site, assetsDir: null });
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await selfHeal(restarted)).not.toBeNull();
+    } finally {
+      errSpy.mockRestore();
+    }
+    const after = JSON.parse(storage.files.get(".site-state.json") as string);
+    expect(after.granvilleOn).toBe(true);
+    for (const k of ["footerHash", "themeHash", "bannerHash", "connectHash", "ministryPagesHash"]) expect(after[k]).toBe(before[k]);
+    expect(storage.files.get("releases/K1/index.html")).toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("releases/K1/index.html")).toContain("Published Holder");
   });
 });

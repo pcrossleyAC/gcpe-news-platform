@@ -1,3 +1,4 @@
+import { bcSettings } from "../../site-settings/src/fixtures";
 import { describe, expect, it } from "vitest";
 import { parseEvent, termEventType, type MediaListRecord, type OrgRecord } from "./index";
 
@@ -136,5 +137,15 @@ describe("site.content.changed 'slides' — content-addressed image fields", () 
   it("rejects a malformed imageSha256", () => {
     const bad = { ...slide, imageSha256: "XYZ" };
     expect(() => parseEvent(envelope("site.content.changed", { entity: "slides", slides: [bad] }))).toThrow();
+  });
+});
+
+describe("site.settings.published", () => {
+  const data = { revision: 1, publishedAt: "2026-10-27T12:00:00Z", document: bcSettings() };
+  it("accepts a bc-defaults document at revision 1", () => {
+    expect(parseEvent(envelope("site.settings.published", data)).data).toMatchObject({ revision: 1 });
+  });
+  it("rejects revision 0", () => {
+    expect(() => parseEvent(envelope("site.settings.published", { ...data, revision: 0 }))).toThrow();
   });
 });

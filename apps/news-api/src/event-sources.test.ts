@@ -29,4 +29,11 @@ describe("SOURCE_EVENT_TYPES", () => {
       if (source !== "distribution") expect(allows("delivery.bounced")).toBe(false);
     }
   });
+
+  it("site.settings.published is owned by nrms alone", () => {
+    expect(SOURCE_EVENT_TYPES.nrms!("site.settings.published")).toBe(true);
+    for (const [source, allows] of Object.entries(SOURCE_EVENT_TYPES)) {
+      if (source !== "nrms") expect(allows("site.settings.published"), source).toBe(false);
+    }
+  });
 });

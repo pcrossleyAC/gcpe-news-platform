@@ -17,6 +17,7 @@ describe("parsePageId", () => {
     ["sitemap:2026-01", { type: "sitemap-month", month: "2026-01" }],
     ["sitemap:pages", { type: "sitemap-pages" }],
     ["static", { type: "static" }],
+    ["connect", { type: "connect" }],
   ])("%s", (id, expected) => {
     expect(parsePageId(id)).toEqual(expected);
     expect(formatPageId(parsePageId(id)!)).toBe(id);
@@ -52,7 +53,8 @@ describe("pageFiles", () => {
     ["sitemap", ["sitemap.xml"]],
     ["sitemap:2026-10", ["sitemaps/2026-10.xml"]],
     ["sitemap:pages", ["sitemaps/pages.xml"]],
-    ["static", ["assets/theme.css", "404.html", "robots.txt"]],
+    ["static", ["assets/theme.css", "assets/site-banner.json", "404.html", "robots.txt"]],
+    ["connect", ["connect/index.html"]],
   ])("%s", (id, files) => {
     expect(pageFiles(parsePageId(id)!)).toEqual(files);
   });
@@ -65,6 +67,7 @@ describe("urls", () => {
     expect(pageUrl(site, { type: "category", kind: "themes", key: "health" })).toBe("/site/themes/health/");
     expect(pageUrl(site, { type: "archive-month", month: "2026-10" })).toBe("/site/archive/2026/10/");
     expect(pageUrl(site, { type: "search" })).toBe("/site/search/");
+    expect(pageUrl(site, { type: "connect" })).toBe("/site/connect/");
     expect(feedUrl(site, { type: "home" })).toBe("/site/feed.xml");
     expect(feedUrl(site, { type: "category", kind: "tags", key: "covid-19" })).toBe("/site/tags/covid-19/feed.xml");
     expect(absoluteUrl(site, "/site/x/")).toBe("https://boxs.example/site/x/");

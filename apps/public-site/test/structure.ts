@@ -1,5 +1,11 @@
 import { JSDOM } from "jsdom";
 import { expect } from "vitest";
+import { SITE_BANNER_SCRIPT } from "../src/banner-script";
+
+/** A page without the site banner's inline script (banner-script.ts, on every page), for a test
+ * asserting that the page's *own* content carries no script — exactly that constant is removed,
+ * nothing else. */
+export const withoutBannerScript = (html: string): string => html.replace(`<script>${SITE_BANNER_SCRIPT}</script>`, "");
 
 /**
  * The structural half of WCAG 2.2 AA that a static check can prove (spec §6.3): language,

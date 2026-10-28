@@ -1,7 +1,7 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
 import type { CategoryKind } from "@gcpe/events";
-import { categories, categoryFeatures, home, resourceLinks, slides, type CategoryRow, type FeatureRow } from "./db/schema";
+import { categories, categoryFeatures, home, resourceLinks, siteSettings, slides, type CategoryRow, type FeatureRow } from "./db/schema";
 import { toCategoryDto, toHomeDto, toMinisterDto, toMinistryDto, toResourceLinkDto, toSlideDto } from "./dto";
 
 const lowerEq = (col: typeof categories.key, value: string) => sql`lower(${col}) = lower(${value})`;
@@ -112,4 +112,10 @@ export async function getSlide(db: Db, id: string, tz: string) {
 
 export async function listResourceLinks(db: Db, tz: string) {
   return (await db.select().from(resourceLinks).orderBy(asc(resourceLinks.sortIndex))).map((l) => toResourceLinkDto(l, tz));
+}
+
+/** The stored site settings, or null before the first published revision. */
+export async function getSiteSettings(db: Db) {
+  const [row] = await db.select().from(siteSettings).where(eq(siteSettings.id, 1));
+  return row ? { revision: row.revision, publishedAt: row.publishedAt.toISOString(), document: row.document } : null;
 }

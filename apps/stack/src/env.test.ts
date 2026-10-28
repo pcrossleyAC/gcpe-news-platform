@@ -316,7 +316,7 @@ describe("internalEventEnv / STACK_EVENT_SECRET", () => {
       },
     ]);
     expect(nrms.map((s: { name: string; types: string[] }) => [s.name, s.types])).toEqual([
-      ["news-api", ["release.published", "release.updated", "release.unpublished", "site.content.changed"]],
+      ["news-api", ["release.published", "release.updated", "release.unpublished", "site.content.changed", "site.settings.published"]],
       ["nod", ["release.published", "release.updated", "release.unpublished", "media_list.created", "media_list.updated", "media_list.deactivated"]],
       ["calendar", ["release.status_changed"]],
     ]);
@@ -686,7 +686,7 @@ describe("NRMS → Calendar release.status_changed route", () => {
     expect(routes.filter((r) => r.types.includes("*"))).toEqual([]);
     const toNewsApi = routes.filter((r) => r.to === "NEWSAPI").flatMap((r) => r.types);
     expect(toNewsApi.filter((t) => t === "release.status_changed" || t.startsWith("activity."))).toEqual([]);
-    expect(nrmsSubs().find((s) => s.name === "news-api")!.types).toEqual(["release.published", "release.updated", "release.unpublished", "site.content.changed"]);
+    expect(nrmsSubs().find((s) => s.name === "news-api")!.types).toEqual(["release.published", "release.updated", "release.unpublished", "site.content.changed", "site.settings.published"]);
   });
 
   it("names every NRMS type the News API handles, and only those, even if it grew a handler for release.status_changed", () => {

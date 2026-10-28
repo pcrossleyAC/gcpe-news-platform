@@ -13,6 +13,7 @@ import { createFakeFlickr } from "@gcpe/flickr-fake";
 import { createFakeMediaHub } from "@gcpe/media-hub-fake";
 import { createFakeOidc } from "@gcpe/oidc-fake";
 import { safeErrorLabel, type Closer } from "@gcpe/http-kit";
+import { loadSiteSettingsDefaults } from "@gcpe/site-settings/node";
 
 import { calendarEnvSchema, startCalendar, type AppHandle as CalendarHandle } from "../../calendar/src/start";
 import { signInSettingsFromEnv } from "../../core/src/entra/config";
@@ -748,6 +749,15 @@ export async function checkStack(env: NodeJS.ProcessEnv): Promise<StackCheckResu
     if (c.prefix === "CORE") {
       try {
         signInSettingsFromEnv(view);
+      } catch (e) {
+        errors.push(e instanceof Error ? e.message : String(e));
+      }
+    }
+    // The tenant's site-settings defaults, loaded exactly as startPublicSite loads them (it throws
+    // on an invalid file) — so a bad file fails --check rather than only the boot.
+    if (c.label === "public-site") {
+      try {
+        loadSiteSettingsDefaults(stackEnv.TENANT_CONFIG, tenant.site.theme);
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
       }

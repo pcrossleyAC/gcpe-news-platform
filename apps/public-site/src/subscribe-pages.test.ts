@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { expectAccessibleStructure } from "../test/structure";
+import { expectAccessibleStructure, withoutBannerScript } from "../test/structure";
 import { SUBSCRIBE_PAGES, writeSubscribePages } from "./subscribe-pages";
 
 const site = { name: "BC Gov News", baseUrl: "https://boxs.ca/site" };
@@ -35,7 +35,7 @@ describe("subscribe test pages", () => {
       const html = page.render(site, {});
       expect(html).toContain('<p id="message" role="status"></p>');
       expect(html).toContain('<p id="message-alert" role="alert"></p>');
-      expect(html).not.toContain("setAttribute(\"role\"");
+      expect(withoutBannerScript(html)).not.toContain("setAttribute(\"role\"");
     }
   });
   it("the manage page shows the request box immediately and never queries Confirm when there is no token", () => {

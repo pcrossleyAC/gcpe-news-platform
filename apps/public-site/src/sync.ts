@@ -1,14 +1,17 @@
 import type { Db } from "@gcpe/db-kit";
 import type { EventHandler } from "@gcpe/events";
 import { safeErrorLabel } from "@gcpe/http-kit";
+import type { SiteSettings } from "@gcpe/site-settings";
 import type { SiteBuilder } from "./builder";
 import { drainQueue } from "./drain";
 import type { NewsApiClient } from "./news-api-client";
 import type { PostIndex } from "./post-index";
 import { enqueuePages, PRIORITY } from "./queue";
-import { chromeChanged, enqueueSiteWrite, stateAndBanner, writeSiteState } from "./rebuild";
-import { enqueueRebuildAll } from "./rebuild-all";
+import { chromeChanges, enqueueSiteWrite, keepSettingsHashes, stateAndBanner, writeSiteState, type SiteRenderState } from "./rebuild";
+import { enqueueChromeChanges } from "./rebuild-all";
 import type { PageOptions, SiteInfo } from "./render";
+import { writeSubscribePages } from "./subscribe-pages";
+import { currentSettings, themeDefaults } from "./settings";
 import type { SiteStorage } from "./storage";
 
 export interface SyncDeps {
@@ -23,6 +26,41 @@ export interface SyncDeps {
   batch: number;
   /** Reads the change feed into the queue (change-feed.ts); absent in tests that don't need it. */
   feed?: () => Promise<unknown>;
+  /** The tenant's site settings defaults (`loadSiteSettingsDefaults`, start.ts): what the site
+   * shows while nothing is published. Absent ⇒ derived from `site.theme`. */
+  defaultSettings?: SiteSettings;
+}
+
+/**
+ * This turn's render options and site-state: Blue Bridge from `home()` (a failure rejects), then
+ * the site settings (settings.ts's currentSettings never rejects). `fallbackDefaults`: the
+ * settings fetch failed with nothing persisted, so the defaults stand in for this render only.
+ * Shared by `syncSite` and `selfHeal`.
+ */
+export async function turnOptions(deps: SyncDeps, granville: string | null): Promise<{ state: SiteRenderState; pageOpts: PageOptions; fallbackDefaults: boolean }> {
+  const { settings, fallbackDefaults } = await currentSettings({ newsApi: deps.newsApi, storage: deps.storage, defaults: deps.defaultSettings ?? themeDefaults(deps.site.theme) });
+  const { state, banner } = stateAndBanner(granville, deps.test, new Date(), settings, deps.site);
+  return { state, pageOpts: { test: deps.test, banner, settings }, fallbackDefaults };
+}
+
+/**
+ * Queues what the chrome or the settings changed since the marker, then moves the marker. A
+ * settings fetch failure never delays a site-wide change (Blue Bridge, test, chrome version, base
+ * URL): with a persisted document the turn proceeds normally. With only the stand-in defaults
+ * (`fallbackDefaults`), the comparison uses the marker's own settings hashes, so the defaults
+ * never queue a settings rebuild by themselves; but when a rebuild-all is queued anyway, every
+ * page is then rendered with the defaults, so the marker records the defaults' hashes — the first
+ * successful fetch then sees the difference and rebuilds back to the published settings.
+ */
+export async function applyChromeChanges(deps: SyncDeps, turn: { state: SiteRenderState; pageOpts: PageOptions; fallbackDefaults: boolean }, force = false): Promise<void> {
+  const compared = turn.fallbackDefaults ? await keepSettingsHashes(deps.storage, turn.state) : turn.state;
+  const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, compared, deps.site);
+  if (!changes.all && changes.sections.length === 0) return;
+  await enqueueChromeChanges(deps.db, deps.builder, changes);
+  // The subscribe pages are static (not queue pages) and carry the footer, so a site-wide change
+  // (footer, Blue Bridge, chrome version, base URL, and the cold start) rewrites them this turn.
+  if (changes.all) await writeSubscribePages(deps.storage, deps.site, turn.pageOpts);
+  await writeSiteState(deps.storage, changes.all ? turn.state : compared, deps.site);
 }
 
 export interface SyncResult {
@@ -87,19 +125,21 @@ function singleFlightFeed(feed: () => Promise<unknown>): Promise<unknown> {
 
 /**
  * One serialised turn (per SiteStorage, like every other site write): queue the caller's pages,
- * decide the chrome (a home() failure rejects the turn), read the change feed, render a batch.
+ * decide the chrome and the site settings (a home() failure rejects the turn), read the change
+ * feed, render a batch. The settings are the published document, else the tenant defaults when
+ * nothing is published (404); either sets and moves the marker's hashes, and a footer change
+ * (every page) also rewrites the static subscribe pages this turn. A settings fetch failure
+ * keeps the last applied document (or, with none yet, uses the defaults for this render only —
+ * see applyChromeChanges).
  */
 export function syncSite(deps: SyncDeps, extra: { pages?: string[] } = {}): Promise<SyncResult> {
   const feedRead = deps.feed ? singleFlightFeed(deps.feed) : undefined;
   return enqueueSiteWrite(deps.storage, async () => {
     const { granville } = await deps.newsApi.home();
-    const { state, banner } = stateAndBanner(granville, deps.test, new Date());
-    const pageOpts: PageOptions = { test: deps.test, banner };
+    const turn = await turnOptions(deps, granville);
+    const { pageOpts } = turn;
     if (extra.pages?.length) await enqueuePages(deps.db, extra.pages.map((pageId) => ({ pageId, priority: livePriority(pageId) })));
-    if (await chromeChanged(deps.storage, state, deps.site)) {
-      await enqueueRebuildAll(deps.db, deps.builder);
-      await writeSiteState(deps.storage, state, deps.site);
-    }
+    await applyChromeChanges(deps, turn);
     if (feedRead) {
       try {
         await feedRead;

@@ -1,7 +1,9 @@
 import express, { Router, type NextFunction, type Request, type Response } from "express";
 import { and, desc, eq } from "drizzle-orm";
 import { z } from "zod";
+import { wallClockToInstant } from "@gcpe/config";
 import { localDateTime } from "@gcpe/nrms-contract";
+import { SECTION_KEYS, type SiteSettings } from "@gcpe/site-settings";
 import type { Db } from "@gcpe/db-kit";
 import { actorOf, requireAnyRole, requireRole } from "@gcpe/auth";
 import type { SubscriberConfig } from "@gcpe/events";
@@ -27,6 +29,18 @@ import { deleteFile, listFiles, uploadFile, MAX_SITE_FILE_BYTES } from "../websi
 import { featuredWhere } from "../website/features";
 import { getLinks, saveLinks } from "../website/links";
 import { getBlueBridge, getLiveFeed, saveLiveFeed, setBlueBridge, type LiveFeedDefaults } from "../website/settings";
+import { parseLocalDateTime } from "../releases/workflow";
+import {
+  discardDraft,
+  getRevision,
+  getSettingsState,
+  listHistory,
+  publishSettings,
+  rebaseDraft,
+  restoreRevision,
+  saveDraft,
+  type PublishResult,
+} from "../website/site-settings";
 import { fileNameHeader } from "./file-name";
 import { run, UUID, type Params } from "./routes";
 
@@ -36,6 +50,8 @@ export interface SiteRouteDeps {
   timeZone: string;
   /** Live Feed URLs to show when none is configured (env `LIVE_WEBCAST_*_URL_DEFAULT`). */
   liveFeedDefaults: LiveFeedDefaults;
+  /** What site settings show before anything is published; unset → the /site/settings routes answer 503. */
+  siteSettingsDefaults?: SiteSettings;
   /** Where general files go; unset → the file upload/delete routes answer 503. */
   store?: ObjectStore;
   /** Where carousel and emergency pin images go, content-addressed (spec addendum §6.4). */
@@ -52,7 +68,7 @@ export const BLUE_BRIDGE_WARNING = "Do not click OK unless you have approval fro
 /** Slide/pin images, same 2 MiB cap as the brief (constraints.md §6.1). */
 export const MAX_SITE_IMAGE_BYTES = 2 * 1024 * 1024;
 const SLOT = /^(primary|secondary)$/;
-const AREAS: readonly SiteLogArea[] = ["carousel", "pins", "live-feed", "blue-bridge", "links", "files", "features"];
+const AREAS: readonly SiteLogArea[] = ["carousel", "pins", "live-feed", "blue-bridge", "links", "files", "features", "settings"];
 
 const dateish = z.string().refine((s) => !Number.isNaN(Date.parse(s)), "must be a valid date/time");
 const httpOrEmpty = z
@@ -144,6 +160,32 @@ const uploadFileQuerySchema = z
   .strict();
 const siteFileName = z.string().min(1).max(1000);
 
+const sectionKey = z.enum(SECTION_KEYS);
+const baseRevision = z.number().int().positive().nullable();
+const sectionBody = z.object({ section: sectionKey, value: z.unknown() });
+const draftBody = sectionBody.extend({ baseRevision });
+const publishBody = draftBody.extend({ note: z.string().max(500).optional() });
+const restoreBody = z.object({ revision: z.number().int().positive(), baseRevision });
+const REVISION = /^[1-9]\d{0,8}$/;
+
+/**
+ * The Hub sends the banner's schedule as BC wall-clock times (`startsAtLocal`/`endsAtLocal`, a
+ * `localDateTime` or null); the document stores instants. Convert with the tenant's tzdata (as
+ * the carousel's `goLiveAtLocal` does); a local key wins over an instant of the same name.
+ * A malformed local time is a ZodError (400).
+ */
+function bannerWithInstants(value: unknown, timeZone: string): unknown {
+  if (typeof value !== "object" || value === null) return value;
+  const { startsAtLocal, endsAtLocal, ...rest } = value as Record<string, unknown>;
+  const out: Record<string, unknown> = rest;
+  for (const [key, local] of [["startsAt", startsAtLocal], ["endsAt", endsAtLocal]] as const) {
+    if (local === undefined) continue;
+    const parsed = localDateTime.nullable().parse(local);
+    out[key] = parsed === null ? null : wallClockToInstant(parseLocalDateTime(parsed), timeZone).toISOString();
+  }
+  return out;
+}
+
 const bytesOf = (req: Request): Buffer => (Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0));
 const notFound = (res: Response) => void res.status(404).json({ error: "not found" });
 
@@ -169,10 +211,12 @@ const query =
  * own `run`/`UUID` are defined.)
  */
 export function siteRoutes(deps: SiteRouteDeps): Router {
-  const { db, subscribers, timeZone, liveFeedDefaults, siteUrl, notify, slideFiles } = deps;
+  const { db, subscribers, timeZone, liveFeedDefaults, siteUrl, notify, slideFiles, siteSettingsDefaults } = deps;
   const r = Router();
   const read = requireAnyRole("NRMS.Viewer", "NRMS.Editor", "NRMS.SiteEditor", "Core.Admin");
   const edit = requireRole("NRMS.SiteEditor");
+  // Spec: read = NRMS.SiteEditor or Core.Admin (not the broader `read`); write = NRMS.SiteEditor.
+  const settingsRead = requireAnyRole("NRMS.SiteEditor", "Core.Admin");
   const blueBridgeAdmin = requireRole("Core.Admin");
   const json = express.json({ limit: "64kb" });
   const rawImage = express.raw({ type: () => true, limit: MAX_SITE_IMAGE_BYTES });
@@ -181,6 +225,7 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     deps.store ? next() : void res.status(503).json({ error: "File storage isn't configured." });
 
   r.param("id", (_req, res, next, value: string) => (UUID.test(value) ? next() : notFound(res)));
+  r.param("revision", (_req, res, next, value: string) => (REVISION.test(value) ? next() : notFound(res)));
   r.param("slot", (_req, res, next, value: string) => (SLOT.test(value) ? next() : notFound(res)));
 
   r.get("/site/carousels", read, run(async (_req, res) => void res.json(await getCarousels(db))));
@@ -360,6 +405,93 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
     run(async (req: Request<Params>, res) => {
       await deleteFile(db, deps.store!, req.params.id, actorOf(req));
       res.status(204).end();
+    }),
+  );
+
+  // ---- Site settings (site-settings plan, Task 4; spec "Storage and publishing — NRMS") ----
+  const needDefaults = (_req: Request, res: Response, next: NextFunction) =>
+    siteSettingsDefaults ? next() : void res.status(503).json({ error: "Site settings defaults aren't configured." });
+  const defaults = () => siteSettingsDefaults!;
+  const sectionInput = (b: { section: z.infer<typeof sectionKey>; value?: unknown }) => ({
+    section: b.section,
+    value: b.section === "banner" ? bannerWithInstants(b.value, timeZone) : b.value,
+  });
+  /** Invalid ⇒ 422 `{ errors: ["field: message"], fieldErrors }`; stale base ⇒ 409 `{ error: "published", code: "published", live, differing }`. */
+  const notPublished = (res: Response, result: Exclude<PublishResult, { result: "published" }>) =>
+    result.result === "invalid"
+      ? void res.status(422).json({ errors: result.errors.map((e) => `${e.field}: ${e.message}`), fieldErrors: result.errors })
+      : void res.status(409).json({ error: "published", code: "published", live: result.live, differing: result.differing });
+
+  r.get("/site/settings", settingsRead, needDefaults, run(async (req, res) => void res.json(await getSettingsState(db, actorOf(req), defaults()))));
+  // The tenant's own defaults, for the Hub's "Reset to defaults" buttons (the state above only carries them while nothing is saved).
+  r.get("/site/settings/defaults", settingsRead, needDefaults, run(async (_req, res) => void res.json(defaults())));
+  r.put(
+    "/site/settings/draft",
+    edit,
+    needDefaults,
+    json,
+    run(async (req, res) => {
+      const b = draftBody.parse(req.body);
+      res.json(await saveDraft(db, actorOf(req), defaults(), { ...sectionInput(b), baseRevision: b.baseRevision }));
+    }),
+  );
+  r.post(
+    "/site/settings/publish",
+    edit,
+    needDefaults,
+    json,
+    run(async (req, res) => {
+      const b = publishBody.parse(req.body);
+      const actor = actorOf(req);
+      const result = await publishSettings(db, actor, defaults(), subscribers, { ...sectionInput(b), baseRevision: b.baseRevision, note: b.note });
+      if (result.result !== "published") return notPublished(res, result);
+      res.json({ revision: result.revision, state: await getSettingsState(db, actor, defaults()) });
+    }),
+  );
+  r.delete(
+    "/site/settings/draft",
+    edit,
+    needDefaults,
+    run(async (req, res) => {
+      await discardDraft(db, actorOf(req));
+      res.status(204).end();
+    }),
+  );
+  r.post(
+    "/site/settings/rebase",
+    edit,
+    needDefaults,
+    json,
+    run(async (req, res) => void res.json(await rebaseDraft(db, actorOf(req), defaults(), sectionInput(sectionBody.parse(req.body))))),
+  );
+  r.get(
+    "/site/settings/history",
+    settingsRead,
+    run(async (_req, res) => {
+      const revisions = await listHistory(db);
+      res.json({ live: revisions[0]?.revision ?? null, revisions });
+    }),
+  );
+  r.get(
+    "/site/settings/history/:revision",
+    settingsRead,
+    run(async (req: Request<Params>, res) => {
+      const found = await getRevision(db, Number(req.params.revision));
+      if (!found) return notFound(res);
+      res.json(found);
+    }),
+  );
+  r.post(
+    "/site/settings/restore",
+    edit,
+    needDefaults,
+    json,
+    run(async (req, res) => {
+      const b = restoreBody.parse(req.body);
+      const result = await restoreRevision(db, actorOf(req), defaults(), subscribers, b);
+      if (result.result === "not-found") return notFound(res);
+      if (result.result !== "published") return notPublished(res, result);
+      res.json({ revision: result.revision });
     }),
   );
 

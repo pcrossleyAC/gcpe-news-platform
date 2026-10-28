@@ -1,3 +1,5 @@
+import type { SiteSettings } from "@gcpe/site-settings";
+
 export interface PostDocument {
   languageId: number;
   headline: string | null;
@@ -43,6 +45,11 @@ export interface MinistryDto {
   contactUser: unknown;
   secondContactUser: unknown;
   weekendContactNumber: string | null;
+  /** Featured links; the News API's ResourceLink is `{ key: text, uri: url, timestamp }`. */
+  topicLinks: ResourceLinkDto[];
+  serviceLinks: ResourceLinkDto[];
+  flickrUri: string | null;
+  youtubeUri: string | null;
   topPostKey: string | null;
   featurePostKey: string | null;
 }
@@ -86,4 +93,10 @@ export interface RelatedPost {
   key: string;
   headline: string;
   publishDate: string;
+}
+
+/** `GET /api/v2/site-settings` (the News API's newest published revision), less `publishedAt`. */
+export interface SiteSettingsDto {
+  revision: number;
+  document: SiteSettings;
 }

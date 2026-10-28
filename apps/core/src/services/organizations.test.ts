@@ -4,12 +4,16 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { outboxEvents, type OrgRecord, type SubscriberConfig } from "@gcpe/events";
 import { createCoreTestDb, healthOrg } from "../../test/helpers";
 import {
+  AbbreviationTakenError,
   HQ_ABBREVIATIONS,
+  createOrganization,
   deactivateOrganization,
   getOrganization,
   isHqAbbreviation,
   isNonPublicAbbreviation,
   listOrganizations,
+  orgProfilePatchSchema,
+  patchOrganizationProfile,
   setOrganizationHq,
   setOrganizationPublic,
   upsertOrganization,
@@ -195,6 +199,117 @@ describe("organizations service", () => {
       expect(isNonPublicAbbreviation("GCPEMEDIA")).toBe(true);
       expect(isNonPublicAbbreviation("PREM")).toBe(false);
       expect(isNonPublicAbbreviation(null)).toBe(false);
+    });
+  });
+
+  describe("ministry page links (side column)", () => {
+    const orgEvents = async (key: string) =>
+      (await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, `org:${key}`))).map((e) => e.envelope as { type: string; data: OrgRecord });
+
+    it("PATCH topicLinks replaces the list in order, stamps staffEditedAt and emits org.upserted carrying it", async () => {
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      const links = [
+        { text: "Mental health", url: "https://www2.gov.bc.ca/mental-health" },
+        { text: "Contact us", url: "/contact" },
+      ];
+      const record = await patchOrganizationProfile(tdb.db, "health", orgProfilePatchSchema.parse({ topicLinks: links }), subs);
+      expect(record!.topicLinks).toEqual(links);
+      const events = await orgEvents("health");
+      expect(events).toHaveLength(2);
+      expect(events[1]!.data.topicLinks).toEqual(links);
+      const { rows } = await tdb.pool.query("SELECT staff_edited_at FROM organizations WHERE key = 'health'");
+      expect(rows[0].staff_edited_at).toBeInstanceOf(Date);
+    });
+
+    it("trims link text and addresses", async () => {
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      const record = await patchOrganizationProfile(tdb.db, "health", orgProfilePatchSchema.parse({ serviceLinks: [{ text: " Apply ", url: " https://x.gov.bc.ca/a " }] }), subs);
+      expect(record!.serviceLinks).toEqual([{ text: "Apply", url: "https://x.gov.bc.ca/a" }]);
+    });
+
+    it("social.flickrUrl merges without clearing twitterUsername or audioUrl", async () => {
+      await upsertOrganization(tdb.db, { ...healthOrg, social: { twitterUsername: "BCGovNews", flickrUrl: null, youtubeUrl: null, audioUrl: "https://audio.example/a" } }, subs);
+      const record = await patchOrganizationProfile(tdb.db, "health", orgProfilePatchSchema.parse({ social: { flickrUrl: "https://www.flickr.com/photos/bcgovphotos" } }), subs);
+      expect(record!.social).toEqual({ twitterUsername: "BCGovNews", flickrUrl: "https://www.flickr.com/photos/bcgovphotos", youtubeUrl: null, audioUrl: "https://audio.example/a" });
+    });
+
+    it("the website, photos and videos addresses must be absolute https; blank clears", () => {
+      expect(orgProfilePatchSchema.safeParse({ url: "http://gov.bc.ca/health" }).success).toBe(false);
+      expect(orgProfilePatchSchema.safeParse({ url: "/health" }).success).toBe(false);
+      expect(orgProfilePatchSchema.safeParse({ social: { youtubeUrl: "javascript:alert(1)" } }).success).toBe(false);
+      expect(orgProfilePatchSchema.safeParse({ social: { twitterUsername: "x" } }).success).toBe(false);
+      expect(orgProfilePatchSchema.parse({ url: " https://gov.bc.ca/health ", social: { flickrUrl: "  " } })).toEqual({ url: "https://gov.bc.ca/health", social: { flickrUrl: null } });
+    });
+
+    it("links follow the safe-URL rule, need text, and number at most 20 per list", () => {
+      const bad = orgProfilePatchSchema.safeParse({ topicLinks: [{ text: "ok", url: "https://a.ca" }, { text: "x", url: "http://x.ca" }] });
+      expect(bad.success).toBe(false);
+      expect(bad.error!.issues).toEqual([expect.objectContaining({ path: ["topicLinks", 1, "url"], message: "Must start with https:// or / (a page on this site)." })]);
+      const blank = orgProfilePatchSchema.safeParse({ serviceLinks: [{ text: "  ", url: "/a" }] });
+      expect(blank.error!.issues).toEqual([expect.objectContaining({ path: ["serviceLinks", 0, "text"], message: "Enter the link text." })]);
+      const many = Array.from({ length: 21 }, (_, i) => ({ text: `L${i}`, url: `/p${i}` }));
+      expect(orgProfilePatchSchema.safeParse({ topicLinks: many }).success).toBe(false);
+      expect(orgProfilePatchSchema.safeParse({ topicLinks: many.slice(0, 20) }).success).toBe(true);
+    });
+  });
+
+  describe("abbreviation", () => {
+    const MESSAGE = "Use 2 to 10 capital letters or digits, e.g. HLTH.";
+
+    it("is trimmed and upper-cased; 1 character, 11 characters or punctuation is refused with the message", () => {
+      expect(orgProfilePatchSchema.parse({ abbreviation: " hlth " })).toEqual({ abbreviation: "HLTH" });
+      for (const bad of ["H", "HEALTH-1", "ABCDEFGHIJK", "", "HL TH"]) {
+        const r = orgProfilePatchSchema.safeParse({ abbreviation: bad });
+        expect(r.success, bad).toBe(false);
+        expect(r.error!.issues[0]!.message).toBe(MESSAGE);
+      }
+    });
+
+    it("PATCH stores it upper-case and emits org.upserted with it", async () => {
+      await upsertOrganization(tdb.db, { ...healthOrg, abbreviation: null }, subs);
+      const record = await patchOrganizationProfile(tdb.db, "health", orgProfilePatchSchema.parse({ abbreviation: "hlth" }), subs);
+      expect(record!.abbreviation).toBe("HLTH");
+      const [, ev] = await tdb.db.select().from(outboxEvents).where(eq(outboxEvents.aggregateId, "org:health"));
+      expect((ev!.envelope as { data: OrgRecord }).data.abbreviation).toBe("HLTH");
+    });
+
+    it("another organization's abbreviation, in any case, is refused naming that organization", async () => {
+      await upsertOrganization(tdb.db, { ...healthOrg, key: "finance", displayName: "Finance", abbreviation: "fin" }, subs);
+      await upsertOrganization(tdb.db, { ...healthOrg, abbreviation: "HLTH" }, subs);
+      const err = await patchOrganizationProfile(tdb.db, "health", orgProfilePatchSchema.parse({ abbreviation: "FIN" }), subs).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(AbbreviationTakenError);
+      expect((err as AbbreviationTakenError).takenBy).toBe("Finance");
+      expect((await getOrganization(tdb.db, "health"))!.abbreviation).toBe("HLTH");
+    });
+
+    it("re-sending the organization's own abbreviation is not a conflict", async () => {
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      const record = await patchOrganizationProfile(tdb.db, "health", orgProfilePatchSchema.parse({ abbreviation: "hlth" }), subs);
+      expect(record!.abbreviation).toBe("HLTH");
+    });
+
+    it("two organizations claiming one abbreviation at once: exactly one wins", async () => {
+      await upsertOrganization(tdb.db, { ...healthOrg, key: "a", displayName: "A", abbreviation: null }, subs);
+      await upsertOrganization(tdb.db, { ...healthOrg, key: "b", displayName: "B", abbreviation: null }, subs);
+      const results = await Promise.allSettled([
+        patchOrganizationProfile(tdb.db, "a", { abbreviation: "SAME" }, subs),
+        patchOrganizationProfile(tdb.db, "b", { abbreviation: "SAME" }, subs),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect((results.find((r) => r.status === "rejected") as PromiseRejectedResult).reason).toBeInstanceOf(AbbreviationTakenError);
+      const { rows } = await tdb.pool.query("SELECT count(*)::int AS n FROM organizations WHERE abbreviation = 'SAME'");
+      expect(rows[0].n).toBe(1);
+    });
+
+    it("create stores a given abbreviation upper-case, null when omitted, and refuses a taken one", async () => {
+      const created = await createOrganization(tdb.db, { displayName: "Mining", abbreviation: "MCM" }, subs);
+      expect("record" in created && created.record.abbreviation).toBe("MCM");
+      const none = await createOrganization(tdb.db, { displayName: "Energy" }, subs);
+      expect("record" in none && none.record.abbreviation).toBeNull();
+      const err = await createOrganization(tdb.db, { displayName: "Mines Again", abbreviation: "mcm" }, subs).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(AbbreviationTakenError);
+      expect((err as AbbreviationTakenError).takenBy).toBe("Mining");
+      expect(await getOrganization(tdb.db, "mines-again")).toBeNull();
     });
   });
 });

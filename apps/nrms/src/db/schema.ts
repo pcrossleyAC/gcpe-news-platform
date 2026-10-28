@@ -17,6 +17,7 @@ import {
 import type { CalendarRole } from "@gcpe/auth";
 import type { ReleaseRecord } from "@gcpe/events";
 import type { Layout, ReleaseStatus, ReleaseType } from "@gcpe/nrms-contract";
+import type { SiteSettings } from "@gcpe/site-settings";
 
 export * from "@gcpe/events/tables";
 
@@ -463,7 +464,7 @@ export const siteFiles = pgTable("site_files", {
   createdBy: text("created_by").notNull(),
 });
 
-export type SiteLogArea = "carousel" | "pins" | "live-feed" | "blue-bridge" | "links" | "files" | "features";
+export type SiteLogArea = "carousel" | "pins" | "live-feed" | "blue-bridge" | "links" | "files" | "features" | "settings";
 
 export const siteLog = pgTable(
   "site_log",
@@ -477,9 +478,31 @@ export const siteLog = pgTable(
   },
   (t) => [
     index("site_log_at_idx").on(t.at.desc()),
-    check("site_log_area_check", sql`${t.area} IN ('carousel','pins','live-feed','blue-bridge','links','files','features')`),
+    check("site_log_area_check", sql`${t.area} IN ('carousel','pins','live-feed','blue-bridge','links','files','features','settings')`),
   ],
 );
+
+/**
+ * Site settings (banner, theme, footer, Connect links, ministry-page headings): every published
+ * revision, newest = live, never pruned. The revision number is the publish concurrency token.
+ */
+export const siteSettingsRevisions = pgTable("site_settings_revisions", {
+  revision: integer("revision").primaryKey(),
+  document: jsonb("document").$type<SiteSettings>().notNull(),
+  publishedAt: tz("published_at").notNull().defaultNow(),
+  publishedById: text("published_by_id").notNull(),
+  publishedByName: text("published_by_name").notNull(),
+  note: text("note"),
+});
+
+/** One unpublished site-settings draft per editor (Core user id), with the revision it started from. */
+export const siteSettingsDrafts = pgTable("site_settings_drafts", {
+  editorId: text("editor_id").primaryKey(),
+  document: jsonb("document").$type<SiteSettings>().notNull(),
+  /** Null = nothing was live when the draft was started. */
+  baseRevision: integer("base_revision"),
+  updatedAt: tz("updated_at").notNull().defaultNow(),
+});
 
 const keyList = (name: string) => text(name).array().notNull().default(sql`'{}'::text[]`);
 

@@ -33,6 +33,26 @@ describe("themeCss", () => {
     // hostile fallback is left in to open an unterminated string.
     expect(css.match(/"/g)).toHaveLength(2);
   });
+  it("site settings colours replace the tenant's, and add the banner variables", () => {
+    const colors = { ...DEFAULT_THEME.colors, primary: "#013366", bannerInfo: "#123456", bannerEmergency: "#A12B2B" };
+    const css = themeCss(DEFAULT_THEME, colors);
+    expect(css).toContain("--color-primary: #013366;");
+    expect(css).not.toContain(`--color-primary: ${DEFAULT_THEME.colors.primary};`);
+    expect(css).toContain("--color-banner-info: #123456;");
+    expect(css).toContain("--color-banner-emergency: #A12B2B;");
+    expect(css).toMatch(/\.site-banner\s*\{[^}]*background: var\(--color-banner-info\)/);
+    expect(css).toMatch(/\.site-banner-emergency\s*\{[^}]*background: var\(--color-banner-emergency\)/);
+  });
+  it("without settings colours, the banner variables use the default banner colours", () => {
+    const css = themeCss(DEFAULT_THEME);
+    expect(css).toContain("--color-banner-info: #013366;");
+    expect(css).toContain("--color-banner-emergency: #D8292F;");
+  });
+  it("a colour that isn't #RRGGBB never reaches the stylesheet (an unvalidated document)", () => {
+    const css = themeCss(DEFAULT_THEME, { ...DEFAULT_THEME.colors, bannerInfo: "red; } body { display: none", bannerEmergency: "#D8292F" });
+    expect(css).not.toContain("display: none");
+    expect(css).toContain("--color-banner-info: #013366;");
+  });
   it("the default theme passes the tenant schema's contrast check", () => {
     expect(siteThemeSchema.safeParse(DEFAULT_THEME).success).toBe(true);
   });

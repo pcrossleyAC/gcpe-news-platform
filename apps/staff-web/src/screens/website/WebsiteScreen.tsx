@@ -12,6 +12,13 @@ const SECTIONS: { to: string; label: string; manageOnly: boolean }[] = [
   { to: "files", label: "Files", manageOnly: true },
   { to: "featured", label: "What's featured where", manageOnly: false },
   { to: "log", label: "Website log", manageOnly: false },
+  // Site settings (spec "Hub screens"): added after the existing tabs.
+  { to: "banner", label: "Banner", manageOnly: true },
+  { to: "footer", label: "Footer", manageOnly: true },
+  { to: "social", label: "Social links", manageOnly: true },
+  { to: "theme", label: "Theme", manageOnly: true },
+  { to: "ministry-pages", label: "Ministry pages", manageOnly: true },
+  { to: "settings-history", label: "Settings history", manageOnly: true },
 ];
 
 /**

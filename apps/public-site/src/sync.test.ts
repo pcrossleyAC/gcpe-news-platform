@@ -3,9 +3,16 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
 import { memoryStorage } from "../test/memory-storage";
-import { post, site } from "../test/fixtures";
+import { bcSettings, post, site } from "../test/fixtures";
+import type { FakeNewsApi } from "../test/fake-news-api";
+import type { SiteSettings } from "@gcpe/site-settings";
 import type { PostDto } from "./dto";
-import { createSiteBuilder } from "./builder";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createSiteBuilder, type SiteBuilder } from "./builder";
+import { fsStorage } from "./storage";
+import { settingsHashes } from "./settings";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
@@ -66,15 +73,15 @@ describe("syncSite", () => {
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
 
     await syncSite(deps); // no marker yet: a full build, Blue Bridge off
-    expect(storage.files.get("index.html")).not.toContain("blue-bridge-banner");
+    expect(storage.files.get("index.html")).not.toContain('class="blue-bridge-banner"');
 
     deps.newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
     await syncSite(deps);
 
     const releasePages = [...storage.files.entries()].filter(([path]) => /^releases\/.+\/index\.html$/.test(path));
     expect(releasePages.length).toBeGreaterThan(0);
-    for (const [, content] of releasePages) expect(content as string).toContain("blue-bridge-banner");
-    expect(storage.files.get("index.html")).toContain("blue-bridge-banner");
+    for (const [, content] of releasePages) expect(content as string).toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("index.html")).toContain('class="blue-bridge-banner"');
   });
 
   it("calls deps.feed, if given, before draining (events become a doorbell)", async () => {
@@ -151,9 +158,9 @@ describe("syncSite", () => {
 
     const storage = deps.storage as ReturnType<typeof memoryStorage>;
     expect(order).toEqual(["start-home-1(ON, gated)", "end-home-1(ON)"]);
-    expect(storage.files.get("releases/K1/index.html")).not.toContain("blue-bridge-banner");
-    expect(storage.files.get("index.html")).not.toContain("blue-bridge-banner");
-    expect(JSON.parse(storage.files.get(".site-state.json") as string)).toEqual({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
+    expect(storage.files.get("releases/K1/index.html")).not.toContain('class="blue-bridge-banner"');
+    expect(storage.files.get("index.html")).not.toContain('class="blue-bridge-banner"');
+    expect(JSON.parse(storage.files.get(".site-state.json") as string)).toMatchObject({ granvilleOn: false, test: false, chrome: RENDER_CHROME_VERSION, baseUrl: site.baseUrl });
   });
 
   it("a rejected turn doesn't wedge the queue — a concurrently-enqueued later turn still runs", async () => {
@@ -187,5 +194,291 @@ describe("syncSite", () => {
     deps.newsApi.home = async () => ({ granville: null, topPostKey: null, featurePostKey: null });
     await expect(syncSite(deps, { pages: ["post:K1"] })).resolves.toBeDefined();
     expect((deps.storage as ReturnType<typeof memoryStorage>).files.has("index.html")).toBe(true);
+  });
+
+  describe("site settings", () => {
+    const published = (doc: SiteSettings, revision = 1) => ({ revision, document: doc });
+    const withHolder = (holder: string): SiteSettings => {
+      const doc = bcSettings();
+      doc.footer.copyrightHolder = holder;
+      return doc;
+    };
+    /** syncSite with a builder that records which pages this turn rendered. */
+    const recording = (deps: SyncDeps) => {
+      const rendered: string[] = [];
+      const builder: SiteBuilder = { ...deps.builder, renderPage: (id, opts, run, tx) => (rendered.push(id), deps.builder.renderPage(id, opts, run, tx)) };
+      return { deps: { ...deps, builder }, rendered };
+    };
+    const api = (deps: SyncDeps) => deps.newsApi as FakeNewsApi;
+    const html = (deps: SyncDeps, path: string) => (deps.storage as ReturnType<typeof memoryStorage>).files.get(path) as string;
+
+    it("each turn fetches the settings; a 404 renders the tenant defaults", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      await syncSite(deps);
+      await syncSite(deps);
+      expect(api(deps).calls.filter((c) => c === "siteSettings")).toHaveLength(2);
+      expect(html(deps, "index.html")).toContain("Tenant Default Holder");
+      expect(html(deps, "releases/K1/index.html")).toContain("Tenant Default Holder");
+    });
+
+    it("the published document is applied to every page", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      api(deps).settings = published(withHolder("Published Holder"));
+      await syncSite(deps);
+      expect(html(deps, "index.html")).toContain("Published Holder");
+      expect(html(deps, "releases/K1/index.html")).toContain("Published Holder");
+    });
+
+    it("a fetch error keeps the last applied settings (logged), never the defaults, and queues no rebuild", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      api(deps).settings = published(withHolder("Published Holder"));
+      await syncSite(deps);
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        deps.newsApi.siteSettings = async () => {
+          throw new Error("News API 503 for api/v2/site-settings");
+        };
+        const r = recording(deps);
+        await syncSite(r.deps, { pages: ["post:K1"] });
+        expect(r.rendered[0]).toBe("post:K1");
+        expect(r.rendered).not.toContain("static"); // no rebuild queued
+        expect(html(deps, "releases/K1/index.html")).toContain("Published Holder");
+        expect(html(deps, "releases/K1/index.html")).not.toContain("Tenant Default Holder");
+        expect(error.mock.calls.map((c) => String(c[0]))).toContainEqual(expect.stringContaining("keeping the last applied"));
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("across a restart: a fetch error keeps the persisted published settings — no rebuild queued, marker and site-banner.json unchanged, the published footer rendered", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "public-site-settings-restart-"));
+      const posts = new Map([["K1", post({ key: "K1" })]]);
+      const first = { ...setup(posts), storage: fsStorage(dir), defaultSettings: withHolder("Tenant Default Holder") };
+      first.builder = createSiteBuilder({ newsApi: first.newsApi, storage: first.storage, index: first.index, site, assetsDir: null });
+      const document = withHolder("Published Holder");
+      document.banner = { ...document.banner, enabled: true, message: "Offices closed" };
+      api(first).settings = published(document);
+      await syncSite(first); // the full build under the published revision
+      const marker = await readFile(join(dir, ".site-state.json"), "utf8");
+      const bannerFile = await readFile(join(dir, "assets/site-banner.json"), "utf8");
+      expect(JSON.parse(bannerFile)).toMatchObject({ visible: true, message: "Offices closed" });
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+
+      // A new process: a fresh storage instance over the same folder (so nothing in memory), and
+      // a News API whose home() works but whose settings fetch fails.
+      const storage = fsStorage(dir);
+      const newsApi = fakeNewsApi(posts);
+      newsApi.siteSettings = async () => {
+        throw new Error("News API 503 for api/v2/site-settings");
+      };
+      const builder = createSiteBuilder({ newsApi, storage, index: first.index, site, assetsDir: null });
+      const restarted = recording({ ...first, storage, newsApi, builder });
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await syncSite(restarted.deps, { pages: ["post:K1"] });
+      } finally {
+        error.mockRestore();
+      }
+      expect(restarted.rendered[0]).toBe("post:K1");
+      expect(restarted.rendered).not.toContain("static"); // no rebuild-all, no section rebuild
+      expect(await queueDepth(tdb.db)).toBe(0);
+      expect(await readFile(join(dir, ".site-state.json"), "utf8")).toBe(marker);
+      expect(await readFile(join(dir, "assets/site-banner.json"), "utf8")).toBe(bannerFile);
+      const page = await readFile(join(dir, "releases/K1/index.html"), "utf8");
+      expect(page).toContain("Published Holder");
+      expect(page).not.toContain("Tenant Default Holder");
+    });
+
+    /** A first process builds the site under a published revision (Blue Bridge off) in a real
+     * folder; then a "restarted" process over the same folder whose home() reports Blue Bridge
+     * ON and whose settings fetch fails. */
+    const restartWithBlueBridge = async (opts: { deletePersisted: boolean }) => {
+      const dir = await mkdtemp(join(tmpdir(), "public-site-settings-bb-"));
+      const posts = new Map([["K1", post({ key: "K1" })]]);
+      const first = { ...setup(posts), storage: fsStorage(dir), defaultSettings: withHolder("Tenant Default Holder") };
+      first.builder = createSiteBuilder({ newsApi: first.newsApi, storage: first.storage, index: first.index, site, assetsDir: null });
+      api(first).settings = published(withHolder("Published Holder"));
+      await syncSite(first);
+      const before = JSON.parse(await readFile(join(dir, ".site-state.json"), "utf8"));
+      expect(before.granvilleOn).toBe(false);
+      if (opts.deletePersisted) await rm(join(dir, ".site-settings.json"));
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+
+      const storage = fsStorage(dir);
+      const newsApi = fakeNewsApi(posts);
+      newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
+      newsApi.siteSettings = async () => {
+        throw new Error("News API 503 for api/v2/site-settings");
+      };
+      const builder = createSiteBuilder({ newsApi, storage, index: first.index, site, assetsDir: null });
+      const restarted = recording({ ...first, storage, newsApi, builder });
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await syncSite(restarted.deps);
+      } finally {
+        error.mockRestore();
+      }
+      const after = JSON.parse(await readFile(join(dir, ".site-state.json"), "utf8"));
+      const settingsHashes = (m: Record<string, unknown>) => ({ footerHash: m.footerHash, themeHash: m.themeHash, bannerHash: m.bannerHash, connectHash: m.connectHash, ministryPagesHash: m.ministryPagesHash });
+      return { dir, before, after, settingsHashes, rendered: restarted.rendered, page: await readFile(join(dir, "releases/K1/index.html"), "utf8") };
+    };
+
+    it("a settings fetch failure doesn't delay Blue Bridge: with a persisted document, rebuild-all is queued and the marker records it, settings hashes unchanged", async () => {
+      const r = await restartWithBlueBridge({ deletePersisted: false });
+      expect(r.rendered).toEqual(expect.arrayContaining(["static", "home", "post:K1"]));
+      expect(r.after.granvilleOn).toBe(true);
+      expect(r.settingsHashes(r.after)).toEqual(r.settingsHashes(r.before));
+      expect(r.page).toContain('class="blue-bridge-banner"');
+      expect(r.page).toContain("Published Holder");
+    });
+
+    it("with nothing persisted (but a marker), Blue Bridge still rebuilds every page — with the defaults, so the marker records the defaults' hashes", async () => {
+      const r = await restartWithBlueBridge({ deletePersisted: true });
+      expect(r.rendered).toEqual(expect.arrayContaining(["static", "home", "post:K1"]));
+      expect(r.after.granvilleOn).toBe(true);
+      const defaults = settingsHashes(withHolder("Tenant Default Holder"), "America/Vancouver", new Date());
+      expect(r.settingsHashes(r.after)).toEqual(defaults);
+      expect(r.settingsHashes(r.after)).not.toEqual(r.settingsHashes(r.before));
+      expect(r.page).toContain('class="blue-bridge-banner"');
+      expect(r.page).toContain("Tenant Default Holder"); // nothing else exists to render with
+    });
+
+    it("after that, the first successful fetch rebuilds back to the published settings and records their hashes", async () => {
+      const r = await restartWithBlueBridge({ deletePersisted: true });
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+      const posts = new Map([["K1", post({ key: "K1" })]]);
+      const storage = fsStorage(r.dir);
+      const newsApi = fakeNewsApi(posts);
+      newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
+      const document = withHolder("Published Holder");
+      newsApi.settings = published(document);
+      const builder = createSiteBuilder({ newsApi, storage, index: postIndex(tdb.db), site, assetsDir: null });
+      const recovered = recording({ ...setup(posts), storage, newsApi, builder });
+      await syncSite(recovered.deps);
+      expect(recovered.rendered).toEqual(expect.arrayContaining(["static", "home", "post:K1"])); // footer ⇒ every page; theme/banner via static
+      const marker = JSON.parse(await readFile(join(r.dir, ".site-state.json"), "utf8"));
+      expect(r.settingsHashes(marker)).toEqual(settingsHashes(document, "America/Vancouver", new Date()));
+      expect(r.settingsHashes(marker)).toEqual(r.settingsHashes(r.before));
+      expect(await readFile(join(r.dir, "releases/K1/index.html"), "utf8")).toContain("Published Holder");
+      expect(await readFile(join(r.dir, "assets/theme.css"), "utf8")).toContain(`--color-primary: ${document.theme.colors.primary};`);
+    });
+
+    it("a fetch error before any successful fetch uses the tenant defaults (logged) rather than failing the turn", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      deps.newsApi.siteSettings = async () => {
+        throw new Error("News API 503 for api/v2/site-settings");
+      };
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await expect(syncSite(deps)).resolves.toBeDefined();
+        expect(html(deps, "index.html")).toContain("Tenant Default Holder");
+        expect(error.mock.calls.map((c) => String(c[0]))).toContainEqual(expect.stringContaining("tenant defaults"));
+      } finally {
+        error.mockRestore();
+      }
+    });
+
+    it("a footer change queues every page", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })], ["K2", post({ key: "K2" })]]));
+      await syncSite(deps);
+      api(deps).settings = published(withHolder("New Holder"));
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual(expect.arrayContaining(["static", "home", "connect", "post:K1", "post:K2", "category:ministries:health"]));
+      expect(html(deps, "releases/K2/index.html")).toContain("New Holder");
+    });
+
+    it("a footer change rewrites subscribe/index.html (and the other subscribe pages) on the same turn", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(withHolder("Old Holder"));
+      await syncSite(deps);
+      await (deps.storage as ReturnType<typeof memoryStorage>).write("subscribe/index.html", "stale");
+      api(deps).settings = published(withHolder("New Holder"), 2);
+      await syncSite(deps);
+      for (const p of ["subscribe/index.html", "subscribe/manage/index.html", "subscribe/unsubscribe/index.html"]) expect(html(deps, p)).toContain("New Holder");
+    });
+
+    it("the cold-start defaults (no marker) write the subscribe pages with the defaults' footer", async () => {
+      const deps = { ...setup(new Map([["K1", post({ key: "K1" })]])), defaultSettings: withHolder("Tenant Default Holder") };
+      await syncSite(deps);
+      expect(html(deps, "subscribe/index.html")).toContain("Tenant Default Holder");
+    });
+
+    it("the copyright year rolling over (tenant time zone) queues every page", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      vi.useFakeTimers({ now: new Date("2027-01-01T06:30:00Z"), toFake: ["Date"] }); // 2026-12-31 23:30 in Vancouver (UTC-7 year-round from 2026-11-01)
+      try {
+        await syncSite(deps);
+        expect(html(deps, "releases/K1/index.html")).toContain("© 2026");
+        vi.setSystemTime(new Date("2027-01-01T07:30:00Z")); // 2027-01-01 00:30 in Vancouver
+        const r = recording(deps);
+        await syncSite(r.deps);
+        expect(r.rendered).toContain("post:K1");
+        expect(html(deps, "releases/K1/index.html")).toContain("© 2027");
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it("a theme-only change rebuilds only the static page (theme.css)", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      const doc = bcSettings();
+      doc.theme.colors.primary = "#123456";
+      api(deps).settings = published(doc, 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual(["static"]);
+      expect(html(deps, "assets/theme.css")).toContain("--color-primary: #123456;");
+    });
+
+    it("a banner-only change rewrites only the static page (site-banner.json)", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      const doc = bcSettings();
+      doc.banner = { ...doc.banner, enabled: true, message: "Offices closed" };
+      api(deps).settings = published(doc, 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual(["static"]);
+      expect(JSON.parse(html(deps, "assets/site-banner.json"))).toMatchObject({ visible: true, message: "Offices closed" });
+    });
+
+    it("a connect-only change rebuilds only the Connect page", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      const doc = bcSettings();
+      doc.connect.threads.accounts = [{ text: "@NewThreads", url: "https://threads.net/@new" }];
+      api(deps).settings = published(doc, 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual(["connect"]);
+      expect(html(deps, "connect/index.html")).toContain("@NewThreads");
+    });
+
+    it("a ministryPages-only change rebuilds only the ministry pages", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      const doc = bcSettings();
+      doc.ministryPages.featuredTopics = "Topics";
+      api(deps).settings = published(doc, 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered.sort()).toEqual(["category:ministries:finance", "category:ministries:health"]);
+    });
+
+    it("unchanged settings queue nothing", async () => {
+      const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+      api(deps).settings = published(bcSettings());
+      await syncSite(deps);
+      api(deps).settings = published(bcSettings(), 2);
+      const r = recording(deps);
+      await syncSite(r.deps);
+      expect(r.rendered).toEqual([]);
+    });
   });
 });

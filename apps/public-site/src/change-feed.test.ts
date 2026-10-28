@@ -24,6 +24,8 @@ describe("pagesForChange", () => {
     [{ id: 8, kind: "post.upserted", key: "../x" }, []],
     [{ id: 9, kind: "ministry", key: null }, []],
     [{ id: 10, kind: "sector", key: "a b" }, []],
+    // The next sync turn fetches the settings and decides what each changed section needs.
+    [{ id: 11, kind: "site_settings", key: null }, []],
   ] as const)("%j", (change, expected) => {
     expect(pagesForChange(change as ChangeRow, 0)).toEqual(expected);
   });

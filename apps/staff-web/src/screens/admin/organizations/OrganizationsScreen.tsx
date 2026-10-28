@@ -20,6 +20,8 @@ import { canEditOrgProfile, isCoreAdmin } from "./access";
  * dedicated route. The HQ and Public columns are hidden, not disabled, for SiteEditors.
  * Inactive organizations are hidden until "Show inactive organizations" is ticked, and then
  * listed after every active one, so the list leads with the ministries staff actually edit.
+ * Every role sees a "Not public" note beside a non-public organization's name (SiteEditors
+ * have no Public column to tell them).
  */
 export function OrganizationsScreen(): React.JSX.Element {
   const session = useSession();
@@ -175,13 +177,18 @@ export function OrganizationsScreen(): React.JSX.Element {
     setRowError(null);
     setStatus(null);
     try {
-      await apiFetch(
+      const updated = await apiFetch<OrgRecord>(
         `/core/api/organizations/${encodeURIComponent(o.key)}/profile`,
         { method: "PATCH", body: { isActive: true } },
       );
       rowFocus.current = { key: o.key, target: "edit" };
       closeFormFor(o.key);
-      setStatus(`${o.displayName} is active again.`);
+      // Reactivating never changes the Public flag, so a ministry made non-public stays hidden.
+      setStatus(
+        updated.isPublic
+          ? `${o.displayName} is active again.`
+          : `${o.displayName} is active again. It isn't public: tick Public to list it on the public site.`,
+      );
       reload();
     } catch (caught) {
       setRowError({ key: o.key, messages: messagesOf(caught) });
@@ -311,7 +318,15 @@ export function OrganizationsScreen(): React.JSX.Element {
           <tbody>
             {rows.map((o) => (
               <tr key={o.key}>
-                <td>{o.displayName}</td>
+                <td>
+                  {o.displayName}
+                  {!o.isPublic && (
+                    <>
+                      {" "}
+                      <span className="gcpe-badge">Not public</span>
+                    </>
+                  )}
+                </td>
                 <td>{o.abbreviation ?? ""}</td>
                 <td>{o.minister.name ?? ""}</td>
                 <td>{o.isActive ? "Yes" : "No"}</td>

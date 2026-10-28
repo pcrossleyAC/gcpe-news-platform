@@ -3,6 +3,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import type { SiteTheme } from "@gcpe/config";
 import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "./render";
+import { bannerJson, themeDefaults } from "./settings";
 import type { SiteStorage } from "./storage";
 import { DEFAULT_THEME, themeCss } from "./theme-css";
 
@@ -41,12 +42,17 @@ async function assetFiles(assetsDir: string): Promise<string[]> {
   return out.sort();
 }
 
-/** theme.css, the tenant's asset files, 404.html and robots.txt — cheap, so written on every build. */
+/** theme.css (the settings' colours), site-banner.json (the settings' banner, read by every
+ * page's inline script), the tenant's asset files, 404.html and robots.txt — cheap, so written on
+ * every build, and the only page a theme or banner change rebuilds. */
 export async function writeStaticPages(storage: SiteStorage, site: SiteInfo, opts: PageOptions, assetsDir: string | null): Promise<void> {
   if (assetsDir) {
     for (const rel of await assetFiles(assetsDir)) await storage.write(rel, new Uint8Array(await readFile(join(assetsDir, rel))));
   }
-  await storage.write("assets/theme.css", themeCss(site.theme ?? DEFAULT_THEME));
+  const theme = site.theme ?? DEFAULT_THEME;
+  const settings = opts.settings ?? themeDefaults(theme);
+  await storage.write("assets/theme.css", themeCss(theme, settings.theme.colors));
+  await storage.write("assets/site-banner.json", bannerJson(settings));
   await storage.write("404.html", renderNotFoundPage(site, opts));
   await storage.write("robots.txt", renderRobots(site, opts.test === true));
 }

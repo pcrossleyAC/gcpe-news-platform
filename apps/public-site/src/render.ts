@@ -1,5 +1,8 @@
 import type { SiteTheme } from "@gcpe/config";
 import { escapeHtml, isSafeUrl } from "@gcpe/http-kit";
+import type { LinkSetting, SiteSettings } from "@gcpe/site-settings";
+import { SITE_BANNER_SCRIPT } from "./banner-script";
+import { DEFAULT_TIME_ZONE, settingsHref, themeDefaults, yearIn } from "./settings";
 import { DEFAULT_THEME } from "./theme-css";
 
 export type { PostDocument, PostDto } from "./dto";
@@ -11,6 +14,8 @@ export interface SiteInfo {
   theme?: SiteTheme;
   /** Set by start.ts only when the logo file exists under SITE_ASSETS_DIR (static-pages.ts's logoFor). */
   logo?: { src: string; alt: string } | null;
+  /** The tenant's IANA time zone (the footer's copyright year); DEFAULT_TIME_ZONE when absent. */
+  timeZone?: string;
 }
 
 export interface PageOptions {
@@ -21,6 +26,9 @@ export interface PageOptions {
   description?: string | null;
   /** The page's RSS feed, linked as an alternate. */
   feed?: { href: string; title: string } | null;
+  /** The site settings this turn applies (settings.ts's currentSettings): footer, connect page,
+   * theme colours, banner JSON, ministry page headings. Absent ⇒ derived from the site's theme. */
+  settings?: SiteSettings;
 }
 
 export const e = (s: string | null | undefined): string => escapeHtml(s ?? "");
@@ -69,12 +77,7 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   const brand = site.logo
     ? `<img class="logo" src="${e(site.logo.src)}" alt="${e(site.logo.alt)}"><span class="wordmark">${e(site.name)}</span>`
     : `<span class="wordmark">${e(site.name)}</span>`;
-  const footerLinks = theme.footerLinks
-    .map((l) => {
-      const href = safeHref(l.url);
-      return href ? `<li><a href="${e(href)}">${e(l.label)}</a></li>` : `<li>${e(l.label)}</li>`;
-    })
-    .join("\n");
+  const settings = opts.settings ?? themeDefaults(theme);
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -86,6 +89,8 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 </head>
 <body${bodyAttr}>
 <a class="skip-link" href="#main">Skip to main content</a>${banner}
+<div id="site-banner" hidden data-base="${e(base)}"></div>
+<script>${SITE_BANNER_SCRIPT}</script>
 <header class="site-header">
 <a class="brand" href="${e(base)}/">${brand}</a>
 <nav aria-label="Site">
@@ -100,13 +105,35 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <main id="main" tabindex="-1">
 ${body}
 </main>
-<footer class="site-footer">
-<ul>
-${footerLinks}
-</ul>
-<p class="muted">${e(site.name)}</p>
-</footer>
+${renderFooter(settings, site)}
 </body>
 </html>
 `;
+}
+
+/** A settings link: an anchor (with its analytics id) when the URL is safe, else its text. */
+export function settingsLink(l: LinkSetting, site: Pick<SiteInfo, "baseUrl">): string {
+  const href = settingsHref(l.url, site);
+  const id = l.id ? ` id="${e(l.id)}"` : "";
+  return href ? `<a${id} href="${e(href)}">${e(l.text)}</a>` : e(l.text);
+}
+
+/** The links in news.gov's help sentence: all but the last two followed by ",", the
+ * second-last by ", or", the last by "." */
+function helpSentence(links: LinkSetting[], site: SiteInfo): string {
+  return links.map((l, i) => settingsLink(l, site) + (i === links.length - 1 ? "." : i === links.length - 2 ? ", or" : ",")).join(" ");
+}
+
+const linkList = (links: LinkSetting[], site: SiteInfo) => links.map((l) => `<li>${settingsLink(l, site)}</li>`).join("\n");
+
+/** Every page's footer, from the site settings (spec "Delivery": a change rebuilds every page). */
+function renderFooter(settings: SiteSettings, site: SiteInfo): string {
+  const f = settings.footer;
+  const help = [f.helpText ? e(f.helpText) : "", helpSentence(f.helpLinks, site)].filter(Boolean).join(" ");
+  const column = (cls: string, heading: string, links: LinkSetting[]) => (links.length ? `<div class="${cls}">\n<h2>${heading}</h2>\n<ul>\n${linkList(links, site)}\n</ul>\n</div>` : "");
+  const columns = [column("footer-connect", "Connect with Us", f.connectLinks), column("footer-more-info", "More Info", f.moreInfoLinks)].filter(Boolean).join("\n");
+  const year = yearIn(site.timeZone ?? DEFAULT_TIME_ZONE, new Date());
+  return `<footer class="site-footer">
+${help ? `<p class="footer-help">${help}</p>\n` : ""}${columns ? `<div class="footer-columns">\n${columns}\n</div>\n` : ""}<p class="copyright">© ${e(year)} ${e(f.copyrightHolder)}</p>
+</footer>`;
 }

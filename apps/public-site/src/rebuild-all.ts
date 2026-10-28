@@ -1,6 +1,7 @@
 import type { Db } from "@gcpe/db-kit";
 import type { SiteBuilder } from "./builder";
 import { enqueuePages, PRIORITY } from "./queue";
+import type { SectionPages } from "./rebuild";
 
 /** Rendered on the same run as the trigger, so a layout or Blue Bridge change shows on home at once. */
 const FIRST = ["static", "home", "ministries", "archive", "search", "sitemap"];
@@ -20,4 +21,19 @@ export async function enqueueRebuildAll(db: Db, builder: SiteBuilder): Promise<{
   const items = await rebuildAllItems(builder);
   await enqueuePages(db, items);
   return { pages: items.length };
+}
+
+/** Queues what `chromeChanges` (rebuild.ts) found: every page, or only the pages the changed
+ * settings sections reach. */
+export async function enqueueChromeChanges(db: Db, builder: SiteBuilder, changes: { all: boolean; sections: SectionPages[] }): Promise<void> {
+  if (changes.all) {
+    await enqueueRebuildAll(db, builder);
+    return;
+  }
+  const items: { pageId: string; priority: number }[] = [];
+  for (const section of changes.sections) {
+    const ids = section === "ministryPages" ? await builder.ministryPageIds() : [section];
+    items.push(...ids.map((pageId) => ({ pageId, priority: PRIORITY.liveAggregate })));
+  }
+  if (items.length) await enqueuePages(db, items);
 }

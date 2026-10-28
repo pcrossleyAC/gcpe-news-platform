@@ -1,3 +1,4 @@
+import type { SiteSettings } from "@gcpe/site-settings";
 import type { PostDto } from "../src/dto";
 import type { NewsApiClient } from "../src/news-api-client";
 import { ministry } from "./fixtures";
@@ -9,13 +10,17 @@ import { ministry } from "./fixtures";
  * `calls` to assert which News API calls a run actually made) instead of re-deriving responses
  * from a closed-over literal in each file.
  */
-export function fakeNewsApi(posts = new Map<string, PostDto>()): NewsApiClient & { posts: Map<string, PostDto>; calls: string[] } {
+export type FakeNewsApi = NewsApiClient & { posts: Map<string, PostDto>; calls: string[]; settings: { revision: number; document: SiteSettings } | null };
+
+export function fakeNewsApi(posts = new Map<string, PostDto>()): FakeNewsApi {
   const calls: string[] = [];
   const published = () => [...posts.values()].sort((a, b) => b.publishDate.localeCompare(a.publishDate));
   const inCat = (field: "ministryKeys" | "sectorKeys" | "themeKeys" | "tagKeys", key: string) => published().filter((p) => (p[field] ?? []).some((k) => k.toLowerCase() === key.toLowerCase()));
-  return {
+  const api: FakeNewsApi = {
     posts,
     calls,
+    /** What `siteSettings()` answers: null is the News API's 404 (nothing published yet). */
+    settings: null,
     getPost: async (key) => { calls.push(`getPost:${key}`); return posts.get(key) ?? null; },
     latestHome: async (n) => published().slice(0, n),
     latest: async (kind, key, n) => inCat(({ ministries: "ministryKeys", sectors: "sectorKeys", themes: "themeKeys", tags: "tagKeys" } as const)[kind], key).slice(0, n),
@@ -30,5 +35,7 @@ export function fakeNewsApi(posts = new Map<string, PostDto>()): NewsApiClient &
     resourceLinks: async () => [],
     related: async () => [],
     postKeys: async (kind) => published().filter((p) => p.kind === kind).map((p) => p.key),
+    siteSettings: async () => { calls.push("siteSettings"); return api.settings; },
   };
+  return api;
 }

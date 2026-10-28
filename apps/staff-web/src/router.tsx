@@ -17,6 +17,12 @@ import { LinksScreen } from "./screens/website/LinksScreen";
 import { FilesScreen } from "./screens/website/FilesScreen";
 import { FeaturedScreen } from "./screens/website/FeaturedScreen";
 import { LogScreen } from "./screens/website/LogScreen";
+import { BannerScreen } from "./screens/website/settings/BannerScreen";
+import { FooterScreen } from "./screens/website/settings/FooterScreen";
+import { SocialScreen } from "./screens/website/settings/SocialScreen";
+import { ThemeScreen } from "./screens/website/settings/ThemeScreen";
+import { MinistryPagesScreen } from "./screens/website/settings/MinistryPagesScreen";
+import { HistoryScreen as SettingsHistoryScreen } from "./screens/website/settings/HistoryScreen";
 import { CalendarSection } from "./screens/calendar/CalendarSection";
 import { ActivityListScreen } from "./screens/calendar/list/ActivityListScreen";
 import { ActivityRoute } from "./screens/calendar/activity/ActivityScreen";
@@ -98,6 +104,12 @@ export const routes: RouteObject[] = [
           { path: "files", element: <FilesScreen /> },
           { path: "featured", element: <FeaturedScreen /> },
           { path: "log", element: <LogScreen /> },
+          { path: "banner", element: <BannerScreen /> },
+          { path: "footer", element: <FooterScreen /> },
+          { path: "social", element: <SocialScreen /> },
+          { path: "theme", element: <ThemeScreen /> },
+          { path: "ministry-pages", element: <MinistryPagesScreen /> },
+          { path: "settings-history", element: <SettingsHistoryScreen /> },
         ],
       },
       {

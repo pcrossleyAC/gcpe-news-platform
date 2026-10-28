@@ -22,6 +22,10 @@ const ORGS = [
     isHq: false,
     isPublic: true,
     minister: { name: "Josie Osborne" },
+    url: null,
+    social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null },
+    topicLinks: [],
+    serviceLinks: [],
   },
   {
     key: "gcpe-media-relations",
@@ -31,6 +35,10 @@ const ORGS = [
     isHq: true,
     isPublic: false,
     minister: { name: null },
+    url: null,
+    social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null },
+    topicLinks: [],
+    serviceLinks: [],
   },
 ];
 
@@ -78,7 +86,9 @@ function stub(
         orgs = (orgs as typeof ORGS).map((o) =>
           o.key === "old" ? { ...o, isActive: true } : o,
         );
-        return jsonResponse(200, { ...ORGS[0], key: "old", isActive: true });
+        return jsonResponse(200, {
+          ...(orgs as typeof ORGS).find((o) => o.key === "old"),
+        });
       }
       if (
         url === "/core/api/organizations/health/profile" &&
@@ -473,7 +483,12 @@ describe("OrganizationsScreen", () => {
       screen
         .getAllByRole("row")
         .slice(1)
-        .map((r) => within(r).getAllByRole("cell")[0]!.textContent);
+        // The name cell's text, without the "Not public" note (its own test is below).
+        .map((r) =>
+          within(r)
+            .getAllByRole("cell")[0]!
+            .textContent!.replace(/\s*Not public$/, ""),
+        );
 
     it("are hidden by default, with a count on the toggle", async () => {
       stub(["Core.Admin"], [], WITH_INACTIVE);
@@ -573,6 +588,61 @@ describe("OrganizationsScreen", () => {
     expect(
       screen.getByRole("button", { name: "Edit Old Ministry" }),
     ).toHaveFocus();
+  });
+
+  describe("not-public hint", () => {
+    const OLD_HIDDEN = {
+      ...ORGS[0],
+      key: "old",
+      displayName: "Old Ministry",
+      isActive: false,
+      isPublic: false,
+    };
+
+    it("reactivating a non-public ministry says it isn't public", async () => {
+      stub(["Core.Admin"], [], [OLD_HIDDEN]);
+      renderScreen();
+      await showInactive();
+      await userEvent
+        .setup()
+        .click(
+          await screen.findByRole("button", {
+            name: "Reactivate Old Ministry",
+          }),
+        );
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        /^Old Ministry is active again\. It isn't public: tick Public to list it on the public site\.$/,
+      );
+    });
+
+    it("reactivating a public ministry keeps the plain status", async () => {
+      stub(["Core.Admin"], [], [{ ...OLD_HIDDEN, isPublic: true }]);
+      renderScreen();
+      await showInactive();
+      await userEvent
+        .setup()
+        .click(
+          await screen.findByRole("button", {
+            name: "Reactivate Old Ministry",
+          }),
+        );
+      expect(await screen.findByRole("status")).toHaveTextContent(
+        /^Old Ministry is active again\.$/,
+      );
+    });
+
+    for (const role of ["NRMS.SiteEditor", "Core.Admin"]) {
+      it(`a non-public row shows "Not public" beside its name to ${role}`, async () => {
+        stub([role], []);
+        renderScreen();
+        const media = (
+          await screen.findByText("GCPE Media Relations")
+        ).closest("td")!;
+        expect(media).toHaveTextContent(/^GCPE Media Relations\s*Not public$/);
+        const health = screen.getByText("Health").closest("td")!;
+        expect(health).not.toHaveTextContent("Not public");
+      });
+    }
   });
 
   it("Deactivate 404 keeps the prompt open with the error inside it", async () => {

@@ -2,6 +2,8 @@ import type { CategoryDto, MinisterDto, MinistryDto, PostDto } from "../dto";
 import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
 import { categoryPageId, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
 import { displayDate, postListItem } from "./format";
+import type { MinistryPageLabels } from "@gcpe/site-settings";
+import { settingsHref, themeDefaults } from "../settings";
 import { sanitizeBodyHtml } from "../sanitize-body";
 
 interface CategoryPosts {
@@ -60,9 +62,36 @@ function contactItem(u: unknown): string {
   return lines.length ? `<li>${lines.map(e).join("<br>")}</li>` : "";
 }
 
-function mediaContactsSection(contactUser: unknown, secondContactUser: unknown): string {
+function mediaContactsSection(heading: string, contactUser: unknown, secondContactUser: unknown): string {
   const items = [contactItem(contactUser), contactItem(secondContactUser)].filter(Boolean).join("\n");
-  return items ? `<section>\n<h2>Media contacts</h2>\n<ul>\n${items}\n</ul>\n</section>` : "";
+  return items ? `<section>\n<h2>${e(heading)}</h2>\n<ul>\n${items}\n</ul>\n</section>` : "";
+}
+
+/** A side-column link list; links whose URL is not safe (absolute http/https, or site-relative;
+ * no javascript:/data:) are dropped, and a list with none left renders nothing. */
+function sideLinks(site: Pick<SiteInfo, "baseUrl">, heading: string, links: { text: string; url: string | null | undefined }[]): string {
+  const items = links.flatMap((l) => {
+    // "/..." resolves under the base path (settings rule); absolute http/https via safeHref, as the old link did.
+    const href = l.url?.startsWith("/") ? settingsHref(l.url, site) : safeHref(l.url);
+    return href ? [`<li><a href="${e(href)}">${e(l.text)}</a></li>`] : [];
+  });
+  return items.length ? `<section>\n<h2>${e(heading)}</h2>\n<ul>\n${items.join("\n")}\n</ul>\n</section>` : "";
+}
+
+/** The ministry page's side column: Media Contacts, More from this Ministry, Featured Topics,
+ * Featured Services (left column on wide screens, after the heading on narrow); empty groups omitted, and no `<aside>` when all are. */
+function ministrySideColumn(site: Pick<SiteInfo, "baseUrl">, m: MinistryDto, labels: MinistryPageLabels): string {
+  const sections = [
+    mediaContactsSection(labels.mediaContacts, m.contactUser, m.secondContactUser),
+    sideLinks(site, labels.moreFromMinistry, [
+      { text: labels.ministryWebsite, url: m.ministryUrl },
+      { text: labels.ministryPhotos, url: m.flickrUri },
+      { text: labels.ministryVideos, url: m.youtubeUri },
+    ]),
+    sideLinks(site, labels.featuredTopics, (m.topicLinks ?? []).map((l) => ({ text: l.key, url: l.uri }))),
+    sideLinks(site, labels.featuredServices, (m.serviceLinks ?? []).map((l) => ({ text: l.key, url: l.uri }))),
+  ].filter(Boolean);
+  return sections.length ? `<aside aria-label="${e(`About ${m.name}`)}">\n${sections.join("\n")}\n</aside>` : "";
 }
 
 export function renderMinistriesPage(ministries: MinistryDto[], site: SiteInfo, opts: PageOptions = {}): string {
@@ -88,15 +117,14 @@ export function renderMinistryPage(m: MinistryDto, minister: MinisterDto | null,
   const ministerSection = minister
     ? `<section>\n<h2>Minister</h2>\n${photoSrc ? `<img src="${e(photoSrc)}" alt="${e(m.ministerName)}">` : ""}${minister.summary ? `<p>${e(minister.summary)}</p>` : ""}${sanitizeBodyHtml(minister.details ?? "")}\n</section>`
     : "";
-  const ministryHref = safeHref(m.ministryUrl);
-  const ministryUrl = ministryHref ? `<p><a href="${e(ministryHref)}">Ministry website</a></p>` : "";
-
-  const body = `<h1>${e(m.name)}</h1>
-${ministerSection}
-${ministryUrl}
+  const settings = opts.settings ?? themeDefaults(site.theme);
+  const aside = ministrySideColumn(site, m, settings.ministryPages);
+  const content = `${ministerSection}
 ${postsSections(site, posts)}
-${mediaContactsSection(m.contactUser, m.secondContactUser)}
 ${moreLinks(site, "ministries", key, m.name)}`;
+  const body = aside
+    ? `<h1>${e(m.name)}</h1>\n<div class="ministry-layout">\n${aside}\n<div class="ministry-content">\n${content}\n</div>\n</div>`
+    : `<h1>${e(m.name)}</h1>\n${content}`;
 
   return renderPage(m.name, site, pageUrl(site, { type: "category", kind: "ministries", key }), body, {
     ...opts,

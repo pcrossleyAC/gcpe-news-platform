@@ -1,7 +1,16 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { apiFetch } from "../../../api/client";
-import { messagesOf } from "../messages";
+import type { LinkSetting } from "@gcpe/site-settings";
+import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
+import { FIX_BELOW, fieldErrorsOf, messagesOf } from "../messages";
 import type { OrgRecord } from "@gcpe/events/catalogue";
+import {
+  AbbreviationField,
+  abbreviationTakenMessage,
+  normalizeAbbreviation,
+} from "./abbreviation";
+
+export { ABBREVIATION_HINT } from "./abbreviation";
 
 /** Shown after a successful save. The rebuild latency is unmeasured, so no time is promised. */
 export const SAVED_MESSAGE =
@@ -20,11 +29,31 @@ export interface OrganizationEditFormProps {
 }
 
 type MinisterField = "name" | "summary" | "email" | "photoUrl";
+type AddressField = "url" | "flickrUrl" | "youtubeUrl";
+type ListField = "topicLinks" | "serviceLinks";
+type FieldError = { field: string; message: string };
+
+/** The ministry page addresses, with the path Core reports their errors under. */
+const ADDRESSES: { field: AddressField; path: string; label: string }[] = [
+  { field: "url", path: "url", label: "Ministry website" },
+  { field: "flickrUrl", path: "social.flickrUrl", label: "Photos (Flickr) address" },
+  { field: "youtubeUrl", path: "social.youtubeUrl", label: "Videos (YouTube) address" },
+];
+const LISTS: { field: ListField; legend: string }[] = [
+  { field: "topicLinks", legend: "Featured Topics" },
+  { field: "serviceLinks", legend: "Featured Services" },
+];
+/** Fields whose server messages are shown beside them rather than at the top of the form. */
+const INLINE_FIELD = /^(abbreviation|url|social\.(flickrUrl|youtubeUrl)|(topicLinks|serviceLinks)\[\d+\]\.\w+)$/;
+
+const plainLinks = (links: { text: string; url: string }[]) =>
+  links.map(({ text, url }) => ({ text, url }));
 
 /**
  * Edits one organization's public-facing profile (`PATCH .../profile`). Only the fields the user
- * changed are sent, so everything the form doesn't show (details, address, contacts, links...)
- * is untouched on the server. The server trims and turns "" into null.
+ * changed are sent (a changed link list is sent whole, minus rows left blank), so everything the
+ * form doesn't show (details, address, contacts...) is untouched on the server. The server trims
+ * and turns "" into null. Core.Admin also sees Parent ministry, Active and Abbreviation.
  */
 export function OrganizationEditForm({
   org,
@@ -48,9 +77,25 @@ export function OrganizationEditForm({
   const [initial] = useState({
     parentKey: org.parentKey ?? "",
     isActive: org.isActive,
+    abbreviation: normalizeAbbreviation(org.abbreviation ?? ""),
+    addresses: {
+      url: org.url ?? "",
+      flickrUrl: org.social.flickrUrl ?? "",
+      youtubeUrl: org.social.youtubeUrl ?? "",
+    } satisfies Record<AddressField, string>,
+    topicLinks: plainLinks(org.topicLinks),
+    serviceLinks: plainLinks(org.serviceLinks),
   });
   const [parentKey, setParentKey] = useState(initial.parentKey);
   const [isActive, setIsActive] = useState(initial.isActive);
+  const [abbreviation, setAbbreviation] = useState(org.abbreviation ?? "");
+  const [addresses, setAddresses] = useState(initial.addresses);
+  const [lists, setLists] = useState<Record<ListField, LinkSetting[]>>({
+    topicLinks: initial.topicLinks,
+    serviceLinks: initial.serviceLinks,
+  });
+  // Server messages shown beside their fields; link rows by their index on screen.
+  const [fieldErrors, setFieldErrors] = useState<FieldError[]>([]);
   const [removeBio, setRemoveBio] = useState(false);
   // The address the preview last failed to load, so a typo shows a message instead of a broken image.
   const [failedPhoto, setFailedPhoto] = useState<string | null>(null);
@@ -76,6 +121,15 @@ export function OrganizationEditForm({
     (o) => o.key !== org.key && (o.isActive || o.key === org.parentKey),
   );
 
+  // Each list as it would be sent (blank rows dropped), with the on-screen index of every sent row
+  // so the server's `topicLinks[i]` errors land on the row the user sees.
+  const sendable = (field: ListField) => {
+    const kept = lists[field].flatMap((link, i) =>
+      withoutBlankLinks([link]).length ? [i] : [],
+    );
+    return { links: plainLinks(kept.map((i) => lists[field][i]!)), kept };
+  };
+
   const buildPatch = (): Record<string, unknown> => {
     const body: Record<string, unknown> = {};
     if (displayName.trim() !== org.displayName)
@@ -89,17 +143,59 @@ export function OrganizationEditForm({
     }
     if (hasBio && removeBio) m.detailsHtml = null;
     if (Object.keys(m).length > 0) body.minister = m;
+    if (addresses.url.trim() !== initial.addresses.url)
+      body.url = addresses.url.trim();
+    const social: Record<string, string> = {};
+    for (const f of ["flickrUrl", "youtubeUrl"] as const) {
+      if (addresses[f].trim() !== initial.addresses[f])
+        social[f] = addresses[f].trim();
+    }
+    if (Object.keys(social).length > 0) body.social = social;
+    for (const { field } of LISTS) {
+      const { links } = sendable(field);
+      if (JSON.stringify(links) !== JSON.stringify(initial[field]))
+        body[field] = links;
+    }
     if (isAdmin) {
       if (parentKey !== initial.parentKey) body.parentKey = parentKey || null;
       if (isActive !== initial.isActive) body.isActive = isActive;
+      if (normalizeAbbreviation(abbreviation) !== initial.abbreviation)
+        body.abbreviation = normalizeAbbreviation(abbreviation);
     }
     return body;
   };
+
+  /** Splits a failed save's messages: beside their fields where the form has one, else at the top. */
+  const showErrors = (caught: unknown) => {
+    const taken = abbreviationTakenMessage(caught);
+    const issues: FieldError[] =
+      taken !== null
+        ? [{ field: "abbreviation", message: taken }]
+        : fieldErrorsOf(caught);
+    const inline = issues
+      .filter((e) => INLINE_FIELD.test(e.field))
+      .map((e) => {
+        const row = /^(topicLinks|serviceLinks)\[(\d+)\](.*)$/.exec(e.field);
+        if (!row) return e;
+        const shown = sendable(row[1] as ListField).kept[Number(row[2])];
+        return { ...e, field: `${row[1]}[${shown ?? row[2]}]${row[3]}` };
+      });
+    const rest = issues.filter((e) => !INLINE_FIELD.test(e.field));
+    setFieldErrors(inline);
+    setMessages(
+      inline.length === 0
+        ? messagesOf(caught)
+        : [FIX_BELOW, ...rest.map((e) => e.message)],
+    );
+  };
+  const errorFor = (path: string) =>
+    fieldErrors.find((e) => e.field === path)?.message;
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
     if (nameBlank || sortInvalid || busy) return;
     setMessages([]);
+    setFieldErrors([]);
     setStatus(null);
     const body = buildPatch();
     if (Object.keys(body).length === 0) {
@@ -115,7 +211,7 @@ export function OrganizationEditForm({
       setStatus(SAVED_MESSAGE);
       onSaved(updated);
     } catch (caught) {
-      setMessages(messagesOf(caught));
+      showErrors(caught);
     } finally {
       setBusy(false);
     }
@@ -273,8 +369,51 @@ export function OrganizationEditForm({
         </div>
       </div>
 
+      <fieldset className="gcpe-stack gcpe-link-set">
+        <legend>Ministry page links</legend>
+        {ADDRESSES.map(({ field, path, label }) => {
+          const error = errorFor(path);
+          return (
+            <div key={field} className="gcpe-field gcpe-field--wide">
+              <label htmlFor={id(field)}>{label}</label>
+              <input
+                id={id(field)}
+                type="url"
+                value={addresses[field]}
+                onChange={(e) =>
+                  setAddresses((a) => ({ ...a, [field]: e.target.value }))
+                }
+                aria-invalid={error !== undefined}
+                aria-describedby={
+                  error !== undefined ? id(`${field}-err`) : undefined
+                }
+              />
+              {error !== undefined && <p id={id(`${field}-err`)}>{error}</p>}
+            </div>
+          );
+        })}
+        {LISTS.map(({ field, legend }) => (
+          <LinkListEditor
+            key={field}
+            legend={legend}
+            links={lists[field]}
+            onChange={(links) => setLists((l) => ({ ...l, [field]: links }))}
+            errors={fieldErrors}
+            pathPrefix={field}
+            reorderable
+            withSummary={false}
+          />
+        ))}
+      </fieldset>
+
       {isAdmin && (
         <>
+          <AbbreviationField
+            id={id("abbr")}
+            value={abbreviation}
+            onChange={setAbbreviation}
+            error={errorFor("abbreviation")}
+          />
           <div>
             <label htmlFor={id("parent")}>Parent ministry</label>
             <select

@@ -1,7 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { renderPage, safeHref, safeSrc } from "./render";
 import { expectAccessibleStructure } from "../test/structure";
 import { DEFAULT_THEME } from "./theme-css";
+import { SITE_BANNER_SCRIPT } from "./banner-script";
+import { bcSettings } from "../test/fixtures";
 
 describe("safeHref", () => {
   it("allows an absolute http or https URL", () => {
@@ -87,17 +89,10 @@ describe("renderPage chrome", () => {
     expect([...doc.querySelectorAll("nav a")].map((a) => a.getAttribute("href"))).toEqual(["/site/", "/site/ministries/", "/site/archive/", "/site/search/"]);
   });
 
-  it("escapes footer labels and URLs", () => {
+  it("with no settings given, the footer's More Info list comes from the tenant theme's footerLinks (escaped)", () => {
     const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
     expect(html).toContain('Privacy &amp; &quot;you&quot;');
     expect(html).toContain('href="https://example.test/privacy?a=1&amp;b=2"');
-  });
-
-  it("gates footer links through safeHref, rendering an unsafe scheme as plain text, defence in depth against a tenant config that bypassed the scheme check", () => {
-    const hostile = { ...themed, theme: { ...themed.theme, footerLinks: [{ label: "Click me", url: "javascript:alert(1)" }] } };
-    const html = renderPage("T", hostile, "/site/", "<h1>H</h1>");
-    expect(html).not.toContain("javascript:");
-    expect(html).toContain("<li>Click me</li>");
   });
 
   it("shows the logo when one is set, the wordmark otherwise", () => {
@@ -137,5 +132,94 @@ describe("renderPage chrome", () => {
     const doc = expectAccessibleStructure(html);
     expect(doc.querySelector('meta[name="robots"]')?.getAttribute("content")).toBe("noindex, nofollow");
     expect(doc.querySelector('[role="alert"]')?.textContent).toBe("TEST — ALERT");
+  });
+});
+
+describe("renderPage footer from site settings", () => {
+  const site = { name: "BC Gov News", baseUrl: "https://boxs.example/site", theme: DEFAULT_THEME, timeZone: "America/Vancouver" };
+  const settings = bcSettings();
+  const footer = (html: string) => expectAccessibleStructure(html).querySelector("footer")!;
+
+  it("the help sentence: help text, then the links with the comma rule", () => {
+    const f = footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings }));
+    expect(f.querySelector(".footer-help")?.textContent?.replace(/\s+/g, " ").trim()).toBe(
+      "We can help in over 220 languages and through other accessible options. Call, email or text us, or find a service centre.",
+    );
+    expect([...f.querySelectorAll(".footer-help a")].map((a) => a.getAttribute("href"))).toEqual([
+      "https://www2.gov.bc.ca/gov/content/home/get-help-with-government-services",
+      "https://www2.gov.bc.ca/gov/content/home/services-a-z",
+    ]);
+  });
+
+  it("the comma rule with three links and with one", () => {
+    const three = { ...settings, footer: { ...settings.footer, helpText: "Help.", helpLinks: [{ text: "A", url: "/a" }, { text: "B", url: "/b" }, { text: "C", url: "/c" }] } };
+    expect(footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: three })).querySelector(".footer-help")?.textContent?.replace(/\s+/g, " ").trim()).toBe("Help. A, B, or C.");
+    const one = { ...settings, footer: { ...settings.footer, helpText: "Help.", helpLinks: [{ text: "A", url: "/a" }] } };
+    expect(footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: one })).querySelector(".footer-help")?.textContent?.replace(/\s+/g, " ").trim()).toBe("Help. A.");
+  });
+
+  it("Connect with Us and More Info lists carry their ids; / links get the base path", () => {
+    const f = footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings }));
+    const lists = [...f.querySelectorAll("h2")].map((h) => h.textContent);
+    expect(lists).toEqual(["Connect with Us", "More Info"]);
+    const subscribe = f.querySelector("#footerNewsletters")!;
+    expect(subscribe.textContent).toBe("Subscribe");
+    expect(subscribe.getAttribute("href")).toBe("/site/subscribe");
+    expect(f.querySelector("#footerRSSFeeds")?.getAttribute("href")).toBe("/site/connect");
+    expect([...f.querySelectorAll(".footer-more-info a")].map((a) => a.id)).toEqual(["footerHome", "footerDisclaimer", "footerPrivacy", "footerAccessibility", "footerCopyright", "footerContact"]);
+    expect(f.querySelector("#footerHome")?.getAttribute("href")).toBe("https://gov.bc.ca");
+  });
+
+  it("© {year} {holder}, the year in the tenant time zone", () => {
+    vi.useFakeTimers({ now: new Date("2027-01-01T06:30:00Z"), toFake: ["Date"] }); // 2026-12-31 23:30 in Vancouver (UTC-7 year-round from 2026-11-01)
+    try {
+      expect(footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings })).querySelector(".copyright")?.textContent).toBe("© 2026 Government of British Columbia");
+      expect(footer(renderPage("T", { ...site, timeZone: "UTC" }, "/site/", "<h1>H</h1>", { settings })).querySelector(".copyright")?.textContent).toBe("© 2027 Government of British Columbia");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("an unvalidated document: markup is escaped, a javascript: or http URL is text without a link, a hostile id is escaped", () => {
+    const hostile = {
+      ...settings,
+      footer: {
+        helpText: "<b>Help</b>",
+        helpLinks: [{ text: "<i>Call</i>", url: "javascript:alert(1)" }],
+        connectLinks: [{ text: "Sub", url: "/subscribe", id: 'x" onclick="alert(1)' }],
+        moreInfoLinks: [{ text: "Insecure", url: "http://gov.bc.ca" }, { text: "Off-site", url: "//evil.example" }],
+        copyrightHolder: "<script>alert(1)</script>",
+      },
+    };
+    const html = renderPage("T", site, "/site/", "<h1>H</h1>", { settings: hostile });
+    const f = footer(html);
+    expect(f.querySelector("b, i, script")).toBeNull();
+    expect(html).not.toContain("javascript:");
+    expect(html).not.toContain("evil.example");
+    expect(html).not.toContain('href="http://gov.bc.ca"');
+    expect(f.querySelector(".footer-help")?.textContent).toContain("<b>Help</b>");
+    expect(f.querySelector(".footer-help a")).toBeNull();
+    expect(f.querySelector(".footer-help")?.textContent).toContain("<i>Call</i>.");
+    expect(f.querySelector(".footer-connect a")?.id).toBe('x" onclick="alert(1)');
+    expect(f.querySelector(".footer-connect a")?.getAttribute("onclick")).toBeNull();
+    expect([...f.querySelectorAll(".footer-more-info li")].map((li) => [li.textContent, li.querySelector("a")])).toEqual([["Insecure", null], ["Off-site", null]]);
+    expect(f.querySelector(".copyright")?.textContent).toContain("<script>alert(1)</script>");
+  });
+});
+
+describe("renderPage site banner placeholder", () => {
+  const site = { name: "BC Gov News", baseUrl: "https://boxs.example/site", theme: DEFAULT_THEME };
+
+  it("every page has the hidden placeholder with the base path, and the inline script after it", () => {
+    const html = renderPage("T", site, "/site/", "<h1>H</h1>", { settings: bcSettings() });
+    expect(html).toContain('<div id="site-banner" hidden data-base="/site"></div>');
+    expect(html).toContain(`<script>${SITE_BANNER_SCRIPT}</script>`);
+    expect(html.indexOf('id="site-banner"')).toBeLessThan(html.indexOf(SITE_BANNER_SCRIPT));
+    expectAccessibleStructure(html);
+  });
+
+  it("the placeholder follows the Blue Bridge banner, so the script can see it", () => {
+    const html = renderPage("T", site, "/site/", "<h1>H</h1>", { banner: "Blue Bridge" });
+    expect(html.indexOf("blue-bridge-banner")).toBeLessThan(html.indexOf('id="site-banner"'));
   });
 });

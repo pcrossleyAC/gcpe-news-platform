@@ -1,4 +1,6 @@
-import type { CategoryDto, HomeDto, MinisterDto, MinistryDto, PostDto, RelatedPost, ResourceLinkDto, SlideDto } from "./dto";
+import { siteSettingsSchema } from "@gcpe/site-settings";
+import { z } from "zod";
+import type { CategoryDto, HomeDto, MinisterDto, MinistryDto, PostDto, RelatedPost, ResourceLinkDto, SiteSettingsDto, SlideDto } from "./dto";
 import type { CategoryKind } from "./site-paths";
 
 export interface NewsApiClient {
@@ -18,7 +20,14 @@ export interface NewsApiClient {
   resourceLinks(): Promise<ResourceLinkDto[]>;
   related(key: string): Promise<RelatedPost[]>;
   postKeys(postKind: string): Promise<string[]>;
+  /** `GET /api/v2/site-settings`: the published revision and document, or null on a 404 (nothing
+   * published yet). A malformed document rejects, like a network failure. */
+  siteSettings(): Promise<SiteSettingsDto | null>;
 }
+
+/** Structural check only (the document was validated when NRMS published it): enough that a
+ * render can rely on every section's shape. */
+const siteSettingsBodySchema = z.object({ revision: z.number().int(), document: siteSettingsSchema });
 
 export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch): NewsApiClient {
   // A leading slash on the second argument to `new URL` makes it absolute relative to the
@@ -63,6 +72,15 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
     related: async (key) => {
       const body = (await getOr404(`api/v2/posts/${enc(key)}/related`)) as { results: { key: string; headline: string; publishDate: string }[] } | null;
       return (body?.results ?? []).map((r) => ({ key: r.key, headline: r.headline, publishDate: r.publishDate }));
+    },
+    siteSettings: async () => {
+      // Only a real 404 means "nothing published" (⇒ the tenant defaults); an empty or
+      // unparseable 200 is a failure like any other, so the last applied settings stand.
+      const res = await fetchImpl(new URL("api/v2/site-settings", base), { signal: AbortSignal.timeout(10_000) });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`News API ${res.status} for api/v2/site-settings`);
+      const { revision, document } = siteSettingsBodySchema.parse(JSON.parse(await res.text()));
+      return { revision, document };
     },
     postKeys: async (postKind) => (((await get(`api/Posts/Keys/home/default?${v1}&postKind=${enc(postKind)}`)) as { key: string }[] | null) ?? []).map((r) => r.key),
   };
