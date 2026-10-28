@@ -858,6 +858,7 @@ describe("site builder", () => {
     const doc = new JSDOM(html(storage, "connect/index.html")).window.document;
     expect([...doc.querySelectorAll("div#rss li a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
       ["BC Gov News", "/feed.xml"],
+      ["Factsheets & Opinion Editorials", "/feeds/factsheets.xml"],
       ["COVID-19", "/tags/covid-19/feed.xml"],
       ["Economy", "/sectors/economy/feed.xml"],
       ["Finance", "/ministries/finance/feed.xml"],
@@ -873,7 +874,7 @@ describe("site builder", () => {
     const builder = createSiteBuilder({ newsApi: api, storage, index: postIndex(tdb.db), site: { ...site, baseUrl: "https://x.example/site" }, assetsDir: null });
     await builder.renderPage("connect", {});
     const doc = new JSDOM(String(storage.files.get("connect/index.html"))).window.document;
-    expect([...doc.querySelectorAll("div#rss li a")].map((a) => a.getAttribute("href"))).toEqual(["/site/feed.xml", "/site/ministries/health/feed.xml"]);
+    expect([...doc.querySelectorAll("div#rss li a")].map((a) => a.getAttribute("href"))).toEqual(["/site/feed.xml", "/site/feeds/factsheets.xml", "/site/ministries/health/feed.xml"]);
   });
 
   it("every generated HTML page passes the structure check", async () => {

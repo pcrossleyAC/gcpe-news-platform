@@ -107,9 +107,24 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
     expect((await request(app).get("/tags/")).status).toBe(200);
   });
 
-  it("/sitemap/html → 301 /archive/", async () => {
+  it("/sitemap/html → 301 /archive/ until sitemap/index.html exists, then /sitemap/; the query is dropped either way", async () => {
     await expectRedirect(app, "/sitemap/html?count=5", "/archive/");
     await expectRedirect(app, "/SiteMap/HTML/", "/archive/");
+    await mkdir(join(outputDir, "sitemap"), { recursive: true });
+    await writeFile(join(outputDir, "sitemap", "index.html"), "<h1>sitemap</h1>");
+    await expectRedirect(app, "/sitemap/html?count=5", "/sitemap/");
+    await expectRedirect(app, "/SiteMap/HTML/", "/sitemap/");
+  });
+
+  it("plan 4 pages built: /factsheets → /factsheets/, /sectors → /sectors/, /news-subscribe → /tags/, /ministries/health/factsheets → its directory", async () => {
+    for (const dir of ["factsheets", "sectors", "tags", "ministries/health/factsheets"]) {
+      await mkdir(join(outputDir, ...dir.split("/")), { recursive: true });
+      await writeFile(join(outputDir, ...dir.split("/"), "index.html"), `<h1>${dir}</h1>`);
+    }
+    await expectRedirect(app, "/factsheets", "/factsheets/");
+    await expectRedirect(app, "/sectors", "/sectors/");
+    await expectRedirect(app, "/news-subscribe", "/tags/");
+    await expectRedirect(app, "/ministries/health/factsheets", "/ministries/health/factsheets/");
   });
 
   it("/contact → 301 https://forms.gov.bc.ca/ (no basePath), query dropped", async () => {

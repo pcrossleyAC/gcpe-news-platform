@@ -23,6 +23,7 @@ import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import { basePath, type PageOptions, type SiteInfo } from "./render";
 import { atomUrl, biographyUrl, categoryFiles, factsheetsUrl, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, LISTING_KINDS, kindFeedFile, kindFeedUrl, formatPageId, INDEX_KINDS, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, sitemapHtmlUrl, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type ListingKind, type PageId } from "./site-paths";
 import { liveJson, liveStreamUrl, settingsHref, themeDefaults } from "./settings";
+import type { SiteSettings } from "@gcpe/site-settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
 import type { SiteStorage } from "./storage";
@@ -380,7 +381,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
   }
 
   /** /connect/'s RSS Feeds: the site feed, then every active ministry, sector and tag (not themes) by name. */
-  async function connectFeeds(run: RunCache): Promise<{ title: string; href: string }[]> {
+  async function connectFeeds(run: RunCache, settings: SiteSettings): Promise<{ title: string; href: string }[]> {
     const cats: { title: string; href: string }[] = [];
     // A key that isn't a safe page key has no page, so no feed either.
     const add = (kind: CategoryKind, name: string, key: string) => {
@@ -389,7 +390,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     for (const m of await ministries(run)) if (m.isActive) add("ministries", m.name, m.key);
     for (const kind of ["sectors", "tags"] as const) for (const c of await newsApi.categories(kind)) if (c.isActive) add(kind, c.name, c.key);
     cats.sort((a, b) => a.title.localeCompare(b.title, "en"));
-    return [{ title: site.name, href: feedUrl(site, { type: "home" }) }, ...cats];
+    // Legacy order: the site feed, then the factsheets kind feed, then the categories.
+    return [{ title: site.name, href: feedUrl(site, { type: "home" }) }, { title: settings.navigation.listingTitles.factsheets, href: kindFeedUrl(site, "factsheets", "rss") }, ...cats];
   }
 
   /** Every ministry page id: the given ministry list's, then any the post index still holds. */
@@ -598,7 +600,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           await writeStaticPages(storage, site, opts, deps.assetsDir);
           return [];
         case "connect":
-          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts, await connectFeeds(run), await resourceLinks(run)));
+          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts, await connectFeeds(run, opts.settings ?? themeDefaults(site.theme)), await resourceLinks(run)));
           return [];
         case "contacts":
           await storage.write(pageFiles(p)[0]!, renderContactsPage(await ministries(run), (opts.settings ?? themeDefaults(site.theme)).contactsPage, site, opts));

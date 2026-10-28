@@ -25,6 +25,13 @@ describe("renderKindListing", () => {
     expect(doc.querySelector(".listing-empty")).toBeNull();
   });
 
+  it("factsheets listing links feeds/factsheets.xml as its alternate, titled '{title}: latest news'", () => {
+    const doc = expectAccessibleStructure(renderKindListing("factsheets", title, posts(2), [], site, { settings: bcSettings() }));
+    const alt = doc.querySelector('link[rel="alternate"][type="application/rss+xml"]')!;
+    expect(alt.getAttribute("href")).toBe("/feeds/factsheets.xml");
+    expect(alt.getAttribute("title")).toBe(`${title}: latest news`);
+  });
+
   it("escapes the title", () => {
     const html = renderKindListing("stories", "A <b> & C", posts(4), [], site, { settings: bcSettings() });
     expect(html).toContain("A &lt;b&gt; &amp; C");
