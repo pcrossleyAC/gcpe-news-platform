@@ -16,7 +16,7 @@ export interface LegacyUrlOptions {
   basePath: string;
   /** Path prefixes the site leaves alone (`SITE_PASS_THROUGH` in stack.ts), passed through before any filesystem call. */
   passThrough: readonly string[];
-  /** NEWS-n reference → post key (plan 3 Task 6). Unused until then. */
+  /** NEWS-n reference → published post key, or null (News API's postKeyByReference). Absent: the reference rule is off. */
   lookupReference?: (reference: string) => Promise<string | null>;
 }
 
@@ -38,10 +38,15 @@ export interface LegacyUrlOptions {
  * 3. the category rule (T4/L4, `categoryRule`): `/(ministries|sectors|themes|tags|news-subscribe)/<key>…`
  *    and `/office-of-the-premier…`, through `resolveCategory` (renames, nested keys, successors),
  *    which runs only on a parsed target;
- * 4. the case rule: a path with uppercase that is not a page in exactly that case, whose
+ * 4. the reference rule (T5): a bare `/<n>` is news.gov's short link to `NEWS-<n>`; 301 to
+ *    the post's page when the lookup finds a published post whose page exists. It sits before
+ *    the case rule and the fallbacks, and no other rule claims a bare `/<digits>` (a fixed rule
+ *    or category needs a word, the post rule a kind prefix). One DB lookup per request, served
+ *    by `posts_reference_lower_idx`; a throwing lookup is logged once per message, then next();
+ * 5. the case rule: a path with uppercase that is not a page in exactly that case, whose
  *    lowercase is one (`caseRule`) — before the fallback rules, so `/Releases` reaches a built
  *    `/releases/` in one hop, also on case-sensitive Linux;
- * 5. a *fallback* `fixedRule`, which fires only when the request path is not itself a page on
+ * 6. a *fallback* `fixedRule`, which fires only when the request path is not itself a page on
  *    disk, so a page the site later builds (plan 4's /releases/ …) wins with no change here.
  * Filesystem errors go to `next(err)`.
  */
@@ -50,6 +55,7 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
   // Express matches mount paths case-insensitively (/API/x reaches /api), so this does too.
   const prefixes = opts.passThrough.map((p) => p.toLowerCase());
   const notFound = siteNotFound(outputDir);
+  const lookupFailures = new Set<string>();
   return (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     const target = parseRequestTarget(req.url);
@@ -70,7 +76,8 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
     const post = POST_PATH.exec(target.path);
     // Nothing can match a lowercase path but a fixed rule: no filesystem call for it.
     const category = categoryPath(target.path);
-    if (!action && !post && !category && !/[A-Z]/.test(target.path)) return next();
+    const reference = opts.lookupReference ? REFERENCE_PATH.exec(target.path) : null;
+    if (!action && !post && !category && !reference && !/[A-Z]/.test(target.path)) return next();
 
     const redirect = (status: 301 | 302, to: string) => {
       res.setHeader("Cache-Control", "no-store");
@@ -124,6 +131,12 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
         if (handled) return;
       }
 
+      if (reference && !action) {
+        const to = await referenceRule(Number(reference[1]));
+        if (to !== null) return redirect(301, `${to}${target.query}`);
+        return next();
+      }
+
       const lower = await caseRule(outputDir, target);
       if (lower !== null) return redirect(301, lower);
 
@@ -131,6 +144,30 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
       return next();
     })().catch(next);
   };
+
+  /**
+   * The reference rule (url-compat T5): `/<n>` → the Location (without basePath, query not
+   * included) of `NEWS-<n>`'s page, or null (no such published post, a key that is not a
+   * `POST_KEY`, no page on disk, or the lookup threw). The page is found through `postDir` /
+   * `pagePath`, so a long key's hashed directory counts. `n` is a number, so "007" asks for NEWS-7.
+   */
+  async function referenceRule(n: number): Promise<string | null> {
+    let key: string | null;
+    try {
+      key = await opts.lookupReference!(`NEWS-${n}`);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      if (!lookupFailures.has(message)) {
+        lookupFailures.add(message);
+        console.error(`[stack] reference lookup failed: ${message}`);
+      }
+      return null;
+    }
+    if (key === null || !POST_KEY.test(key)) return null;
+    const page = key.length > SHORT_POST_KEY_MAX ? `/${postDir(key)}/` : `/releases/${key}/`;
+    if ((await pagePath(outputDir, page)) === null) return null;
+    return `/releases/${key}/`;
+  }
 
   /** A `fixedRule` redirect: the first candidate that is a page (or the unconditional "!" one). */
   async function fixedRedirect(action: RedirectAction, target: RequestTarget, res: Response, next: () => void) {
@@ -252,6 +289,9 @@ function categoryTargets(cat: CategoryKind, key: string, rest: string[], moved: 
 }
 
 type RedirectAction = Extract<NonNullable<ReturnType<typeof fixedRule>>, { do: "redirect" }>;
+
+/** news.gov's short link: `/<n>` (1 to 9 digits), one optional trailing slash. */
+const REFERENCE_PATH = /^\/(\d{1,9})\/?$/;
 
 /** `/<kind>/<key>` with an optional `/image`, one optional trailing slash, any case. */
 const POST_PATH = /^\/(?:releases|stories|factsheets|updates)\/([^/]+)(\/image)?\/?$/i;

@@ -8,6 +8,7 @@ export const LONG_POST_KEY = "canada-and-british-columbia-investments-in-local-i
 /** The pages (directories holding index.html) every legacy-URL test can rely on. */
 export const LEGACY_FIXTURE_PAGES = [
   "releases/2026TT0105-001130/",
+  "releases/2026TT0103-001121/",
   "releases/_long/106422386aca9cfd948a818d5a9a92f5/",
   "archive/",
   "archive/2026/10/",

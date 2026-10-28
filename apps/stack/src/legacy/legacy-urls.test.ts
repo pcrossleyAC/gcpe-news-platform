@@ -643,3 +643,73 @@ describe("legacyUrls: ministries, categories, the Premier and nested keys (T4, L
     for (const path of ["/ministries/justice%5Cx", "/ministries/%2e%2e/justice", "/ministries/ju%00stice"]) expect(await status(path), path).toBe(404);
   });
 });
+
+describe("legacyUrls: NEWS-n short links (url-compat T5)", () => {
+  let outputDir: string;
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+  });
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(outputDir, { recursive: true, force: true });
+  });
+  const KEYS: Record<string, string> = { "NEWS-34336": "2026TT0103-001121", "NEWS-7": "no-such-page-on-disk", "NEWS-8": "bad key!" };
+  const lookup = async (r: string) => KEYS[r] ?? null;
+  function appWith(lookupReference?: (r: string) => Promise<string | null>) {
+    const app = express();
+    mountSite(app, { outputDir, basePath: "", passThrough: ["/api", "/hub"], lookupReference });
+    app.use(rootSiteNotFound(outputDir, ["/api", "/hub"]));
+    app.use((req, res) => void res.status(404).json({ fellThrough: true }));
+    return app;
+  }
+
+  it("/34336 → 301 /releases/2026TT0103-001121/", async () => {
+    await expectRedirect(appWith(lookup), "/34336", "/releases/2026TT0103-001121/");
+    await expectRedirect(appWith(lookup), "/34336?utm=x", "/releases/2026TT0103-001121/?utm=x");
+  });
+
+  it("/34336/ → same", async () => {
+    await expectRedirect(appWith(lookup), "/34336/", "/releases/2026TT0103-001121/");
+  });
+
+  it("/99999 → 404", async () => {
+    expect((await request(appWith(lookup)).get("/99999")).status).toBe(404);
+  });
+
+  it("a reference whose key has no page, or is not a valid key, → 404", async () => {
+    expect((await request(appWith(lookup)).get("/7")).status).toBe(404);
+    expect((await request(appWith(lookup)).get("/8")).status).toBe(404);
+  });
+
+  it("a long key resolves through its hashed dir", async () => {
+    await expectRedirect(appWith(async () => LONG_POST_KEY), "/34336", `/releases/${LONG_POST_KEY}/`);
+  });
+
+  it("a throwing lookup → 404, logged once across two requests", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const app = appWith(async () => {
+      throw new Error("db down");
+    });
+    expect((await request(app).get("/34336")).status).toBe(404);
+    expect((await request(app).get("/34336")).status).toBe(404);
+    expect(err.mock.calls.filter((c) => String(c[0]).includes("[stack] reference lookup failed: db down"))).toHaveLength(1);
+  });
+
+  it("/2026 with no reference → 404 (no clash with archive paths, which live under /archive/)", async () => {
+    expect((await request(appWith(async () => null)).get("/2026")).status).toBe(404);
+    await expectRedirect(appWith(lookup), "/archive/2026/10", "/archive/2026/10/");
+  });
+
+  it("without lookupReference the rule is off", async () => {
+    expect((await request(appWith()).get("/34336")).status).toBe(404);
+  });
+
+  it("a nine-digit n is looked up; ten digits and non-numbers are not", async () => {
+    const seen: string[] = [];
+    const app = appWith(async (r) => (seen.push(r), null));
+    await request(app).get("/123456789");
+    await request(app).get("/1234567890");
+    await request(app).get("/12ab");
+    expect(seen).toEqual(["NEWS-123456789"]);
+  });
+});

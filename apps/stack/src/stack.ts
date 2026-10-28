@@ -380,7 +380,7 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // it), the site is served under that prefix too, with siteNotFound for its unknown pages;
   // once it is the bare origin, /site/<rest>?<query> 301s to /<rest>?<query> (site-mount.ts).
   // Old news.gov.bc.ca URLs (parity plan 3) are answered inside it, never under a SITE_PASS_THROUGH prefix.
-  mountSite(app, { outputDir, basePath: siteBasePath(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl), passThrough: SITE_PASS_THROUGH });
+  mountSite(app, { outputDir, basePath: siteBasePath(siteEnv.PUBLIC_SITE_URL ?? tenant.publicSiteBaseUrl), passThrough: SITE_PASS_THROUGH, lookupReference: (r) => newsApi.postKeyByReference(r) });
 
   // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
   // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.
