@@ -27,42 +27,42 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 
 | Legacy URL pattern | Ours | Status | Notes |
 |---|---|---|---|
-| `/` | `/site/` | gap (elements) | Page exists [V-live]. Home cards (M8 for home), carousel, Connect With Us and Resources done in plan 2 (d6591b1). Still missing: M13, L13. Carousel: C205, C236. |
+| `/` | `/site/` | gap (elements) | Page exists [V-live]. Home cards (M8 for home), carousel, Connect With Us and Resources done in plan 2 (d6591b1). M13 (navigation) addressed by plan 4 (81364e0, 7426dd5). Still missing: L13. Carousel: C205, C236. |
 | `/releases/<key>` | `/site/releases/<key>/` | addressed (plan 2) | Page rebuilt: M3–M7 done (1868215, 6269b24); remaining differences are C234-C256. The `/releases/<key>/image` endpoint (M5) is not built; `og:image` is the release image or the default. |
 | `/factsheets/<slug>`, `/stories/<slug>`, `/updates/<slug>` | `/site/releases/<slug>/` | already decided C206 | One path for every kind. |
-| `/releases`, `/factsheets`, `/stories`, `/updates` (listings) | missing | **gap H5** | Legacy 200 [V-live]; not in `pageFiles` [V-src]. |
+| `/releases`, `/factsheets`, `/stories`, `/updates` (listings) | `/site/releases/`, `/site/factsheets/`, `/site/stories/`, `/site/updates/` | **H5 addressed by plan 4** (78c2e57) | Built per kind from the navigation settings' titles (C283). |
 | `/{kind}/more-news`, `/{kind}/archive[/y[/m]]`, `/{kind}/morearticles` | `/site/archive/…` | already decided C202 | Legacy redirects these to `/Search` or uses AJAX "Load More News". |
-| `/{kind}/feed[/atom]` | missing | gap M10 | e.g. `/factsheets/feed` is advertised on legacy `/connect`. |
+| `/{kind}/feed[/atom]` | `/site/feeds/<kind>.xml`, `.atom.xml` | **M10 addressed by plan 3** (c6667eb, b0f2f87, 2937c26) | Legacy `/<kind>/feed` URLs are served in place with legacy content types. |
 | `/releases/<key>/image` | missing | gap M5 | og:image endpoint; legacy 200 image/jpeg [V-live]. |
-| `/ministries` | `/site/ministries/` | gap (elements) M8 | Legacy shows each ministry's latest 3 posts; ours lists names only [V-live]. Not changed by plan 2. |
+| `/ministries` | `/site/ministries/` | **M8 index addressed by plan 4** (d0008cb, 837f7a7) | Each ministry's latest posts, from one batch call (C292). |
 | `/ministries/<key>` | `/site/ministries/<key>/` | addressed (plan 2) | M1 (media contacts render) and M2 (minister card) done in efa17ea and 3881b34; Premier Meet the Team and ministers of state in efa17ea (M15). |
 | `/ministries/<key>/biography`, `/office-of-the-premier/biography` | missing | **H2 addressed in plan 2** (3881b34) for `/ministries/<key>/biography/` | Served from the plan-2 build; boxs.ca still 404s until batch C deploys. Legacy `/office-of-the-premier/biography` and `/ministries/<parent>/<key>/biography` still need plan 3 (url-compat). |
 | `/ministries/<parent>/<key>[…]` (ministers of state) | missing | partly addressed (M15) | Minister-of-state cards on the parent page (efa17ea). The nested `/ministries/<parent>/<key>` path is not served; plan 3. |
-| `/ministries/<key>/<kind>` (e.g. `/factsheets`) | missing | **gap H5** | Legacy 200 [V-live]. |
-| `/{category}/<key>/feed` | `/site/{category}/<key>/feed.xml` | parity (path differs, D1/C202) | RSS only. No Atom, no `<category>` element. |
-| `/{category}/<key>/top|feature` feeds, `/top/feed`, `/feature/feed` | missing | gap M10 | Legacy `/top/feed` 200 [V-live]. |
+| `/ministries/<key>/<kind>` (e.g. `/factsheets`) | `/site/ministries/<key>/factsheets/` only | **H5 addressed by plan 4** (ed1f2c3) | Other `/<cat>/<key>/<kind>` paths go to the category page (C284). |
+| `/{category}/<key>/feed` | `/site/{category}/<key>/feed.xml` | parity (path differs, D1/C202); M10 addressed by plan 3 | Atom added beside RSS (c6667eb, b0f2f87). No `<category>` element (not in scope). |
+| `/{category}/<key>/top\|feature` feeds, `/top/feed`, `/feature/feed` | served in place at the legacy URLs | **M10 addressed by plan 3** (c6667eb, b0f2f87, 2937c26) | Legacy `/top/feed` and `/feature/feed` are served in place. |
 | `/office-of-the-premier[/…]` | `/site/ministries/office-of-the-premier/` | addressed (M15, plan 2) | Different path (D1). Premier card, "Meet the Team" links and "More from the Premier" (efa17ea). |
 | `/office-of-the-premier/speeches[…]` | — | n/a | Legacy itself returns 404 [V-live]. |
-| `/sectors`, `/themes` (index) | missing | gap M16 | Legacy 200 [V-live]; ours 404 [V-live]. |
-| `/tags` → 302 `/news-subscribe` ("Topics" index) | missing | gap M16 | [V-live] |
+| `/sectors`, `/themes` (index) | `/site/sectors/`, `/site/themes/` | **M16 addressed by plan 4** (d0008cb, 837f7a7) | C292. |
+| `/tags` → 302 `/news-subscribe` ("Topics" index) | `/site/tags/` | **M16 addressed by plan 4** (d0008cb, 837f7a7) | C292. |
 | `/sectors/<key>`, `/themes/<key>` | `/site/sectors/<key>/`, `/site/themes/<key>/` | parity (structure) | Posts list correctly when data exists (`/site/sectors/services/`) [V-live]. |
-| `/tags/<key>` → 302 `/news-subscribe/<key>` | `/site/tags/<key>/` | gap L4 (URL only) | |
+| `/tags/<key>` → 302 `/news-subscribe/<key>` | `/site/tags/<key>/` | **L4 addressed by plan 3** (de7e6ec) | `/news-subscribe/<key>` gets a 301 to `/tags/<key>/`, which stays canonical. |
 | `/archive`, `/archive/<y>/<m>` | `/site/archive/`, `/site/archive/<y>/<m>/` | already decided C202 | Legacy redirects to `/Search?daterange=…` [V-live]. |
 | `/more-news` | — | already decided C202 | Legacy redirects to `/Search`. |
-| `/search` (`/Search?q=…&ministry=&sector=&city=&content=&language=&date…`) | `/site/search/` | gap M9, **H6** | |
-| `/feed`, `/feed/atom` | `/site/feed.xml` | gap M10 | RSS only. Path differs (D1). |
+| `/search` (`/Search?q=…&ministry=&sector=&city=&content=&language=&date…`) | `/site/search/` | **M9 addressed by plan 4** (a88a53b, 455354e, 5a8a559); H6 not marked in this audit | Language and City are not built (C285). |
+| `/feed`, `/feed/atom` | `/site/feed.xml`, `/site/atom.xml` | **M10 addressed by plan 3** | Legacy `/feed` and `/feed/atom` are served in place. Path differs (D1). |
 | `/embed[…]` | — | n/a | Legacy 410 [V-live]. |
-| `/connect` | `/site/connect/` | parity, gap M12 | 200 since today's deploy [V-live]. |
-| `/subscribe`, `/subscribe/manage` (and Save/Renew POSTs) | `/site/subscribe/`, `/site/subscribe/manage/`, `/site/subscribe/unsubscribe/` | gap M14 | |
-| `/live` (+ `/api/live/playlist`) | missing | **gap H4** | Legacy 200 [V-live]. |
-| `/contacts` | missing | **gap H3** | Ours links out to news.gov.bc.ca/contacts [V-live]. |
+| `/connect` | `/site/connect/` | **M12 addressed by plan 4** (6febcda, 3fe99ee) | LinkedIn, the RSS list and the policy link (C273, C287). |
+| `/subscribe`, `/subscribe/manage` (and Save/Renew POSTs) | `/site/subscribe/`, `/site/subscribe/manage/`, `/site/subscribe/unsubscribe/` | **M14 addressed by plan 4** (bb0ea79, cbe5040) | C288-C290. |
+| `/live` (+ `/api/live/playlist`) | `/site/live/` | **H4 addressed by plan 4** (7426dd5, 59526ac) | Consent-first playback; the production stream's https and CORS are owner question 1. |
+| `/contacts` | `/site/contacts/` | **H3 addressed by plan 4** (3966eaf) | From the Media contacts settings and the ministries' contacts (C276, C277). |
 | `/contact` | 302 to forms.gov.bc.ca | parity | Footer links forms.gov.bc.ca directly [V-live]. |
-| `/privacy` | missing | gap L1 | |
-| `/sitemap/html` | missing; `/site/sitemap.xml` added | gap L2 | Legacy has no `/sitemap.xml` (404) [V-live]. |
+| `/privacy` | `/site/privacy/` | **L1 addressed by plan 4** (5598052) | From Page text settings, without Reset Preferences (C279, C280). |
+| `/sitemap/html` | `/site/sitemap/` (+ `/site/sitemap.xml`) | **L2 addressed by plan 4** (91629ee, 62a9ebe) | Pages, categories and months, not every post (C275). Legacy has no `/sitemap.xml` (404) [V-live]. |
 | `/robots.txt` | `/site/robots.txt` | parity | Test site uses `Disallow: /` (C39). |
 | `/<digits>` (NEWS- reference permalink) → redirect | missing | not verified | `/1123` returned 404 on legacy; I don't know the reference format. |
 | `/newsletters[/…]` | — | n/a | Legacy 302 to `/` (retired) [V-live]. |
-| `/files/*`, `/assets/*`, `/assets/license` | `/files/<key>` (NRMS storage) | gap L3 (license) | `/assets/license` 302 to a PDF [V-live]. |
+| `/files/*`, `/assets/*`, `/assets/license` | `/files/<key>` (NRMS storage) | gap L3 (licence line addressed by plan 4, 5598052) | `/assets/license` 302 to a PDF [V-live]; our licence text and link are Page text settings (C281). |
 | `/CarouselImage/<id>`, `/SiteStatus`, `/api/live/granville`, `{controller}/MoreArticles` | — | n/a (internal) | Covered by C204, C202 and the Blue Bridge switch. |
 | `/error` | — | n/a | Legacy 500 [V-live]. |
 | Unknown path (404) | JSON `{"error":"not found"}` | **gap H1** | Legacy shows a styled 404 page [V-live]. |
