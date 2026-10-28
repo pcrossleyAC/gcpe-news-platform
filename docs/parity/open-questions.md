@@ -104,6 +104,8 @@ Status key: **Open** (no answer yet) · **Answered**.
 | Q-P5-4 | When a release page title is renamed on `/release-page-titles`, should existing releases be rewritten too? | Legacy copies the title into each release, as we do (C296). | No: a published release's title is edited on that release. | 2026-10-28 |
 | Q-P5-5 | Should the headings legacy hardcodes (release section headings, home "Top story", "Featured" and "More news", subscribe legends, Connect network names) become editable? | They are structural and legacy keeps them in code too (C304); making them settings adds screens and fields nobody asked for. | No: they stay in code. | 2026-10-28 |
 | Q-P5-6 | Who may edit release page titles: Core.Admin or NRMS.SiteEditor? | A title decides what editors can pick for every new release (C296). | Core.Admin. | 2026-10-28 |
+| Q-P5-7 | Should the RSS cutoff date (legacy appsetting `RssFeedCutoffDate`) stay operator config? | It changes feed history for every subscriber (admin-editability §2). | Yes: operator config, not a Hub setting. | 2026-10-28 |
+| Q-P5-8 | Should the minister's Twitter, Audio, `MiscHtml` and embed columns, which legacy hid from editors and news.gov never rendered, stay uncarried? | Nothing shows them today (admin-editability §1.4). | Not carried. | 2026-10-28 |
 
 ## Answered
 

@@ -94,7 +94,7 @@ Plan 5 closed the older statuses *data, no screen*, *missing*, *hardcoded* and *
 | Ad-hoc extra contacts (e.g. commented "Child Care Media Contacts") | Hardcoded `Ministry.cshtml:97-111` [V] | Developer | Directory rows in the `contactsPage` setting, with a group heading and placement (C276; bff716e) [V] | `/website/media-contacts` (811e3c5) | **editable** as directory rows (C276) |
 | Office of the Premier "Meet the Team" links; "More from the Premier" heading | Hardcoded `MoreFromThis.cshtml` (3 www2 links) [V] | Developer | None (M15) | None | **editable** (plan 2): `/organizations` "Meet the Team" links (c40f181, be63b8f), rendered by efa17ea |
 | Ministers of state card ("Meet the Team") | Derived from `ParentId` [V] | Calendar Admin | Built: the ministry page shows the ministers of state from Core `parentKey` (plan 2, M15; efa17ea) [V] | `/organizations` (parent: Core.Admin) | **editable** (the row was stale) |
-| Minister's Twitter, Audio, `MiscHtml`, embed HTML | Hidden columns [V] | Database only | Core `social.twitterUsername/audioUrl`; no embeds [V] | None | **developer-owned by decision**: dropped; never rendered, hidden from legacy editors too (§1 framing fact 2; C152) |
+| Minister's Twitter, Audio, `MiscHtml`, embed HTML | Hidden columns [V] | Database only | Core `social.twitterUsername/audioUrl`; no embeds [V] | None | **developer-owned by decision**: not rendered on news.gov; not carried. Proposed, owner to confirm (Q-P5-8) |
 
 ### 1.5 Categories (sectors, themes, tags)
 
@@ -155,7 +155,7 @@ Plan 5 closed the older statuses *data, no screen*, *missing*, *hardcoded* and *
 | Value / block | Legacy source | Legacy edit today | Platform source | Hub edit today | Status |
 |---|---|---|---|---|---|
 | Feed channel title/description ("BC Gov News: latest news", "News from <ministry>") | Code | Developer | Derived from `siteName` and category names (`builder.ts:106-149`) [V] | Names editable (orgs, terms) | **derived** from `siteName` and category names (C301, C295) |
-| RSS cutoff date | appsetting `RssFeedCutoffDate` [V] | Operator | n/a | — | **operator-owned (P15)** |
+| RSS cutoff date | appsetting `RssFeedCutoffDate` [V] | Operator | n/a | — | **operator-owned (P15)**: proposed, owner to confirm (§2; Q-P5-7) |
 | Sitemaps, robots.txt | Code | Developer | Generated; test sites `Disallow: /` (C39) [V] | — | **operator-owned (P15)**: follows the environment (§2, C39) |
 | Web analytics (Snowplow collector `spt.apps.gov.bc.ca`, `appId`) | Hardcoded `wwwroot/Scripts/webanalytics.js` [V] | Developer | None (L5) | None | **operator-owned (P13, P15)**, not built (L5): spec §7 owner question |
 | Footer link analytics ids (`footerHome` …) | Hardcoded ids | Developer | Settings `LinkSetting.id` [V] | `/website/footer` | **editable** |
@@ -174,6 +174,7 @@ Plan 5 closed the older statuses *data, no screen*, *missing*, *hardcoded* and *
 | Logo file | Committed SVGs (`apps/public-site/assets/legacy/Content/Images/Gov/`; Q76 answered 2026-10-28) [V] | Brand asset; SVG upload is an XSS vector. A P3 option is in §3 T10. |
 | Live webcast URL defaults | env `LIVE_WEBCAST_*_URL_DEFAULT` [V] | Only a fallback. The real values are editable at `/website/live-feed`. |
 | Site name | `bc.json` `siteName` / `SITE_NAME` [V] | Rare rebrand. It changes feed titles for every subscriber. Keep in config unless the owner wants it in settings (T10). |
+| RSS cutoff date | appsetting `RssFeedCutoffDate` (legacy) [V] | Operator config: it changes feed history for every subscriber. **Proposed, owner to confirm** (Q-P5-7). |
 | Generic UI microcopy: skip link, form labels, error and status messages, pagination, "No results." | Code | Accessibility and behavioural text tied to code paths, and tested. Making it editable risks breaking a11y wording with no business need. |
 | Generated lists (RSS list, sitemaps, feed descriptions) | Code | Derived from editable data (category names), so editing the source edits them. |
 
