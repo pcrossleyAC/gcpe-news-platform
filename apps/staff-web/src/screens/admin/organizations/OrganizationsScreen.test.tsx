@@ -284,7 +284,7 @@ describe("OrganizationsScreen", () => {
       ),
     ).toBeInTheDocument();
     expect(calls.some((c) => c.url.endsWith("/deactivate"))).toBe(false);
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await user.click(screen.getByRole("button", { name: "Deactivate" }));
     await waitFor(() =>
       expect(
         calls.some(
@@ -308,7 +308,7 @@ describe("OrganizationsScreen", () => {
       await screen.findByRole("button", { name: "Deactivate Health" }),
     );
     await user.click(screen.getByRole("button", { name: "Cancel" }));
-    expect(screen.queryByRole("button", { name: "Confirm" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Deactivate Health" })).toBeNull();
     expect(calls.some((c) => c.url.endsWith("/deactivate"))).toBe(false);
   });
 
@@ -351,7 +351,7 @@ describe("OrganizationsScreen", () => {
       screen.getByRole("form", { name: "Edit Health" }),
     ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Deactivate Health" }));
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await user.click(screen.getByRole("button", { name: "Deactivate" }));
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Health is deactivated.",
     );
@@ -399,7 +399,7 @@ describe("OrganizationsScreen", () => {
       await screen.findByRole("button", { name: "Edit GCPE Media Relations" }),
     );
     await user.click(screen.getByRole("button", { name: "Deactivate Health" }));
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await user.click(screen.getByRole("button", { name: "Deactivate" }));
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Health is deactivated.",
     );
@@ -429,6 +429,7 @@ describe("OrganizationsScreen", () => {
     expect(screen.queryByRole("button", { name: "Add ministry" })).toBeNull();
     expect(screen.queryByRole("button", { name: /Deactivate/ })).toBeNull();
     expect(screen.queryByRole("button", { name: /Reactivate/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Set successor/ })).toBeNull();
   });
 
   it("moves focus into the Deactivate prompt, and back to Deactivate on Cancel", async () => {
@@ -438,9 +439,14 @@ describe("OrganizationsScreen", () => {
     await user.click(
       await screen.findByRole("button", { name: "Deactivate Health" }),
     );
-    const group = screen.getByRole("group", { name: "Deactivate Health" });
-    expect(group).toHaveFocus();
-    expect(group).toHaveAccessibleDescription(/subscribers are not moved/);
+    expect(
+      screen.getByRole("heading", { name: "Deactivate Health" }),
+    ).toHaveFocus();
+    expect(
+      within(screen.getByRole("form", { name: "Deactivate Health" })).getByText(
+        /subscribers are not moved/,
+      ),
+    ).toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: "Cancel" }));
     expect(
       screen.getByRole("button", { name: "Deactivate Health" }),
@@ -467,7 +473,7 @@ describe("OrganizationsScreen", () => {
     await user.click(
       await screen.findByRole("button", { name: "Deactivate Health" }),
     );
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
+    await user.click(screen.getByRole("button", { name: "Deactivate" }));
     await screen.findByText(/Health is deactivated\./);
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Edit Health" })).toHaveFocus(),
@@ -531,7 +537,7 @@ describe("OrganizationsScreen", () => {
       await user.click(
         await screen.findByRole("button", { name: "Deactivate Health" }),
       );
-      await user.click(screen.getByRole("button", { name: "Confirm" }));
+      await user.click(screen.getByRole("button", { name: "Deactivate" }));
       expect(await screen.findByRole("status")).toHaveTextContent(
         "Health is deactivated. Inactive organizations are hidden: tick Show inactive organizations to see it.",
       );
@@ -654,11 +660,11 @@ describe("OrganizationsScreen", () => {
     await user.click(
       await screen.findByRole("button", { name: "Deactivate Health" }),
     );
-    await user.click(screen.getByRole("button", { name: "Confirm" }));
-    const group = screen.getByRole("group", { name: "Deactivate Health" });
-    const alert = await within(group).findByRole("alert");
+    await user.click(screen.getByRole("button", { name: "Deactivate" }));
+    const form = screen.getByRole("form", { name: "Deactivate Health" });
+    const alert = await within(form).findByRole("alert");
     expect(alert).toHaveTextContent(/not found/i);
-    expect(screen.getByRole("button", { name: "Confirm" })).toHaveFocus();
+    expect(screen.getByRole("button", { name: "Deactivate" })).toHaveFocus();
   });
 
   it("Reactivate network error shows an alert in the row and keeps focus on the button", async () => {
@@ -715,5 +721,105 @@ describe("OrganizationsScreen", () => {
     expect(
       screen.getByRole("button", { name: "Create ministry" }),
     ).toHaveFocus();
+  });
+  it("Deactivate opens the hand-over panel; handing over posts succeed and says where pages go", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    failures["POST /core/api/organizations/health/succeed"] = () =>
+      jsonResponse(200, { ...ORGS[0], isActive: false, successorKeys: ["gcpe-media-relations"] });
+    stub(["Core.Admin"], calls);
+    renderScreen();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Deactivate Health" }),
+    );
+    const form = screen.getByRole("form", { name: "Deactivate Health" });
+    await user.selectOptions(
+      within(form).getByLabelText("Has a successor?"),
+      "GCPE Media Relations",
+    );
+    // The test stub answers no count URL: every count is unavailable, and the hand-over still goes.
+    expect(
+      await within(form).findByRole("checkbox", { name: /subscribers.*count unavailable/ }),
+    ).toBeChecked();
+    await user.click(
+      within(form).getByRole("button", { name: "Deactivate and hand over" }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Health is deactivated. Its pages now send visitors to GCPE Media Relations. Moves to other services finish shortly.",
+    );
+    expect(calls.some((c) => c.url.endsWith("/deactivate"))).toBe(false);
+    expect(
+      JSON.parse(
+        calls.find((c) => c.url.endsWith("/health/succeed"))!.init!.body as string,
+      ),
+    ).toMatchObject({ successorKeys: ["gcpe-media-relations"] });
+    expect(screen.queryByRole("form", { name: "Deactivate Health" })).toBeNull();
+  });
+
+  it("an inactive row gets Set successor…, which opens the panel without deactivating", async () => {
+    const calls: { url: string; init?: RequestInit }[] = [];
+    failures["POST /core/api/organizations/old/succeed"] = () =>
+      jsonResponse(200, { ...ORGS[0], key: "old", displayName: "Old Ministry", isActive: false });
+    stub(["Core.Admin"], calls, [
+      ...ORGS,
+      { ...ORGS[0], key: "old", displayName: "Old Ministry", isActive: false },
+    ]);
+    renderScreen();
+    await showInactive();
+    const user = userEvent.setup();
+    const open = await screen.findByRole("button", {
+      name: "Set successor for Old Ministry",
+    });
+    expect(open).toHaveTextContent("Set successor…");
+    await user.click(open);
+    const form = screen.getByRole("form", { name: "Set successor for Old Ministry" });
+    await user.selectOptions(within(form).getByLabelText("Successor"), "Health");
+    await user.click(within(form).getByRole("button", { name: "Set successor" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Old Ministry is deactivated. Its pages now send visitors to Health.",
+    );
+    expect(calls.some((c) => c.url.endsWith("/old/succeed"))).toBe(true);
+    expect(calls.some((c) => c.url.endsWith("/deactivate"))).toBe(false);
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Edit Old Ministry" })).toHaveFocus(),
+    );
+  });
+
+  it("Cancel on Set successor returns focus to its button", async () => {
+    stub(["Core.Admin"], [], [
+      ...ORGS,
+      { ...ORGS[0], key: "old", displayName: "Old Ministry", isActive: false },
+    ]);
+    renderScreen();
+    await showInactive();
+    const user = userEvent.setup();
+    await user.click(
+      await screen.findByRole("button", { name: "Set successor for Old Ministry" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(
+      screen.getByRole("button", { name: "Set successor for Old Ministry" }),
+    ).toHaveFocus();
+  });
+
+  it("Reactivate 409 says another active ministry holds the abbreviation", async () => {
+    failures["PATCH /core/api/organizations/old/profile"] = () =>
+      jsonResponse(409, { error: "abbreviation-taken", takenBy: "Health" });
+    stub(["Core.Admin"], [], [
+      ORGS[0],
+      { ...ORGS[0], key: "old", displayName: "Old Ministry", abbreviation: "HLTH", isActive: false },
+    ]);
+    renderScreen();
+    await showInactive();
+    await userEvent
+      .setup()
+      .click(
+        await screen.findByRole("button", { name: "Reactivate Old Ministry" }),
+      );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(
+      "Old Ministry can't be reactivated while Health uses its abbreviation HLTH. Give one of them a different abbreviation first.",
+    );
+    expect(alert.closest("tr")).toHaveTextContent("Old Ministry");
   });
 });
