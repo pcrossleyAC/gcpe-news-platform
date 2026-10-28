@@ -6,7 +6,7 @@
  *   npx tsx scripts/archive-coverage-check.ts --news-api <url> <index.htm path or URL>...
  *
  * Prints `checked N, missing M`, lists the missing keys, and exits 1 if M > 0 (2 on a fetch
- * failure: a page that could not be read is never counted as "nothing missing"). Every fetch
+ * failure, a timeout of 30 seconds, or an index that lists no keys: a page that could not be read is never counted as "nothing missing"). Every fetch
  * runs at most once a second.
  */
 import { readFile } from "node:fs/promises";
@@ -48,6 +48,7 @@ function throttled(minGapMs: number): () => Promise<void> {
   };
 }
 
+const FETCH_TIMEOUT_MS = 30_000;
 const UA = "gcpe-archive-coverage-check/1.0";
 
 export async function runCli(argv: string[], log: (line: string) => void = console.log): Promise<number> {
@@ -67,7 +68,7 @@ export async function runCli(argv: string[], log: (line: string) => void = conso
   const wait = throttled(1000);
   const get = async (url: string): Promise<Response> => {
     await wait();
-    const res = await fetch(url, { headers: { "user-agent": UA } });
+    const res = await fetch(url, { headers: { "user-agent": UA }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!res.ok) throw new Error(`${url} answered ${res.status}`);
     return res;
   };
@@ -76,8 +77,11 @@ export async function runCli(argv: string[], log: (line: string) => void = conso
     const seen = new Set<string>();
     for (const src of sources) {
       const html = /^https?:\/\//i.test(src) ? await (await get(src)).text() : await readFile(src, "utf8");
-      for (const k of extractKeys(html)) if (!seen.has(k.toLowerCase())) (seen.add(k.toLowerCase()), keys.push(k));
+      const found = extractKeys(html);
+      if (found.length === 0) throw new Error(`${src} lists no release keys (wrong file, an error page, or a changed link format?)`);
+      for (const k of found) if (!seen.has(k.toLowerCase())) (seen.add(k.toLowerCase()), keys.push(k));
     }
+    if (keys.length === 0) throw new Error("no release keys found in any source");
     const missing = await missingKeys(keys, async (batch) => {
       const url = `${base}/api/Posts?api-version=1.0&postKeys=${batch.map(encodeURIComponent).join(",")}`;
       return (await (await get(url)).json()) as { key: string }[];

@@ -11,7 +11,7 @@ For Core administrators (the **Core.Admin** role). Site editors and developers h
 | Swearing-in date announced | Core administrator | **Government terms** > **Start new government term** > enter the date. |
 | Before swearing-in | Core administrator | **Organizations** > **Cabinet change**: stage renames, new ministries and hand-overs, then schedule them for the swearing-in time. Until Cabinet change is available, do the hand-overs and renames on the day, one at a time (see "Ministry hand-over"). |
 | Swearing-in day | Nobody | The term rolls over at 00:00 Pacific. The archive pages, the "current" link and the sitemap update themselves. A scheduled cabinet change publishes, old ministry web addresses start redirecting, and subscribers move. |
-| After | Site editors | Minister photos and biographies, and the election banner (Website > site settings). Update the minister contact records in the Media Hub by hand. |
+| After | Site editors | Minister photos and biographies, and the election banner (Website > Banner). Update the minister contact records in the Media Hub by hand. |
 | Never again | Corporate Search, developers | No crawler change, no code edit, no SQL. |
 
 ## 1. Start a new government term
@@ -30,7 +30,7 @@ What happens next, with no action from you:
 - Dates are never typed twice. A term runs until the day before the next one starts, so terms never overlap.
 - The public archive at `/archive/terms/` gets a page for the new term, and `/archive/terms/current/` points at it. This happens at midnight Pacific on the start date, even if nothing is published that day. A brand-new term shows "Nothing has been published in this term yet." until the first release.
 
-**Changing your mind.** In the table, **Edit** changes a term's date or name. **Delete** appears only on a scheduled term that has no releases. A term that has started cannot be deleted.
+**Changing your mind or fixing a wrong date.** In the table, **Edit** changes a term's start date, name and old-archive web address. If you change the start date of a term that has already started, the Hub asks you to confirm first, because releases move between terms. After you save, the archive pages and the "current" link rebuild on their own. No SQL is needed. **Delete** appears only on a scheduled term that has no releases. A term that has started cannot be deleted.
 
 ## 2. Ministry hand-over (successor ministry)
 
@@ -102,11 +102,7 @@ It prints `checked N, missing M` and the missing keys, and exits 1 if any are mi
    ```js
    new Date('2028-11-20T06:59:00Z').toLocaleString('en-CA', { timeZone: 'America/Vancouver' })
    ```
-   Both must show the same Pacific date and time. The date should be 2028-11-19. The clock time depends on the time-zone rules the host knows: 22:59 under ordinary winter time (UTC-8), 23:59 if the host's tzdata has British Columbia on permanent daylight time (UTC-7); on 2026-10-27 the developer's machine and its Postgres both gave 23:59. Why it matters: the database decides each release's term from its Pacific publish day and the app decides what the archive shows, so if the two disagree about Pacific time, a release published near midnight on a term's start date could be listed under the wrong term. If they differ, update the time-zone data (tzdata) on the older host before the election.
+   Compare the values, not the layout (the two print differently): both must be the same Pacific date and clock time. The date should be 2028-11-19. The clock time depends on the time-zone rules the host knows: 22:59 under ordinary winter time (UTC-8), 23:59 if the host's tzdata has British Columbia on permanent daylight time (UTC-7); on 2026-10-27 the developer's machine and its Postgres both gave 23:59. Why it matters: the database decides each release's term from its Pacific publish day and the app decides what the archive shows, so if the two disagree about Pacific time, a release published near midnight on a term's start date could be listed under the wrong term. If they differ, update the time-zone data (tzdata) on the older host before the election.
 3. **Stuck moves.** If a hand-over's subscribers, Calendar activities or drafts have not moved after a few minutes, look for dead-lettered `org.succeeded` events (the Calendar dead-letters screen shows them). The moves are safe to run again.
-
-### Resolving a wrong start date
-
-Edit the term in the Hub. The archive pages and the "current" link rebuild on their own. No SQL is needed.
 
 Decisions behind all of this are recorded in `docs/parity/changes-from-legacy.md` (C11 and the "new government" rows) and `docs/parity/open-questions.md` (Q-NG1 to Q-NG7).

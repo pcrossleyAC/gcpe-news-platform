@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { extractKeys, missingKeys } from "../scripts/archive-coverage-check";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { extractKeys, missingKeys, runCli } from "../scripts/archive-coverage-check";
 
 const FIXTURE = `<!DOCTYPE html><html><body>
 <a href="https://archive.news.gov.bc.ca/releases/news_releases_2020-2024/2026WLRS0042-000965.htm">x</a>
@@ -25,5 +28,51 @@ describe("archive coverage check", () => {
     const missing = await missingKeys(keys, async (batch) => (sizes.push(batch.length), []));
     expect(sizes).toEqual([100, 100, 50]);
     expect(missing).toHaveLength(250);
+  });
+
+  describe("runCli", () => {
+    afterEach(() => vi.unstubAllGlobals());
+    async function indexFile(html: string): Promise<string> {
+      const f = join(await mkdtemp(join(tmpdir(), "cov-")), "index.htm");
+      await writeFile(f, html);
+      return f;
+    }
+    const run = async (args: string[]) => {
+      const lines: string[] = [];
+      return { code: await runCli(args, (l) => lines.push(l)), out: lines.join("\n") };
+    };
+
+    it("exits 0 when the API has every key, and 1 when one is missing", async () => {
+      const f = await indexFile(FIXTURE);
+      vi.stubGlobal("fetch", async () => new Response(JSON.stringify([{ key: "2026wlrs0042-000965" }, { key: "some-slug-style-key" }])));
+      expect((await run(["--news-api", "http://api", f])).code).toBe(0);
+      vi.stubGlobal("fetch", async () => new Response(JSON.stringify([{ key: "2026wlrs0042-000965" }])));
+      const r = await run(["--news-api", "http://api", f]);
+      expect(r.code).toBe(1);
+      expect(r.out).toContain("checked 2, missing 1");
+    });
+
+    it("exits 2, not 0, when the API answers 500", async () => {
+      const f = await indexFile(FIXTURE);
+      vi.stubGlobal("fetch", async () => new Response("boom", { status: 500 }));
+      expect((await run(["--news-api", "http://api", f])).code).toBe(2);
+    });
+
+    it("exits 2 when a request fails or times out", async () => {
+      const f = await indexFile(FIXTURE);
+      vi.stubGlobal("fetch", async () => {
+        throw new DOMException("timed out", "TimeoutError");
+      });
+      expect((await run(["--news-api", "http://api", f])).code).toBe(2);
+    });
+
+    it("exits 2 when an index lists no keys, even with other good sources", async () => {
+      const good = await indexFile(FIXTURE);
+      const empty = await indexFile("<html><body>Not Found</body></html>");
+      vi.stubGlobal("fetch", async () => new Response("[]"));
+      const r = await run(["--news-api", "http://api", good, empty]);
+      expect(r.code).toBe(2);
+      expect(r.out).toContain("lists no release keys");
+    });
   });
 });
