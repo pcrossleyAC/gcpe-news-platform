@@ -44,6 +44,8 @@ export interface HomeDto {
   granville: string | null;
   topPostKey: string | null;
   featurePostKey: string | null;
+  /** The live webcast's playlist URL (home settings); only an https URL counts (settings.ts's liveStreamUrl). */
+  liveWebcastM3uPlaylist?: string | null;
 }
 
 /** A ministry media contact as the News API's v1 Ministries endpoints carry it: Core's own

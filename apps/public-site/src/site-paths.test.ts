@@ -50,7 +50,7 @@ describe("categoryPageId", () => {
 
 describe("pageFiles", () => {
   it.each([
-    ["home", ["index.html", "feed.xml"]],
+    ["home", ["index.html", "feed.xml", "assets/live.json"]],
     ["post:K1", ["releases/K1/index.html"]],
     ["ministries", ["ministries/index.html"]],
     ["category:sectors:economy", ["sectors/economy/index.html", "sectors/economy/feed.xml"]],

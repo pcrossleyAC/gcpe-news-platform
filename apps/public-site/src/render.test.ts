@@ -86,7 +86,7 @@ describe("renderPage chrome", () => {
 
   it("the header's links carry the base path", () => {
     const doc = expectAccessibleStructure(renderPage("T", themed, "/site/", "<h1>H</h1>"));
-    expect([...doc.querySelectorAll("header nav a")].map((a) => a.getAttribute("href"))).toEqual(["https://gov.bc.ca", "/site/", "/site/ministries/", "/site/subscribe/"]);
+    expect([...doc.querySelectorAll("header nav a")].map((a) => a.getAttribute("href"))).toEqual(["https://gov.bc.ca", "/site/", "/site/ministries/", "/site/subscribe/", "/site/live/"]);
   });
 
   it("one skip link, one main#main inside div#main-content.template.container-xl, no h1 in the chrome", () => {
@@ -280,6 +280,15 @@ describe("renderPage footer from site settings", () => {
     expect(f.querySelector("#footerRSSFeeds")?.getAttribute("href")).toBe("/site/connect");
     expect([...f.querySelectorAll(".footer-more-info a")].map((a) => a.id)).toEqual(["footerHome", "footerDisclaimer", "footerPrivacy", "footerAccessibility", "footerCopyright", "footerContact"]);
     expect(f.querySelector("#footerHome")?.getAttribute("href")).toBe("https://gov.bc.ca");
+  });
+
+  it("footer column headings come from navigation; a blank heading renders no heading element", () => {
+    const nav = (patch: Record<string, unknown>) => ({ ...settings, navigation: { ...settings.navigation, ...patch } });
+    const f = footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: nav({ footerConnectHeading: "Reach <us>", footerMoreInfoHeading: "Elsewhere" }) }));
+    expect([...f.querySelectorAll("h2")].map((h) => h.textContent)).toEqual(["Reach <us>", "Elsewhere"]);
+    const blank = footer(renderPage("T", site, "/site/", "<h1>H</h1>", { settings: nav({ footerConnectHeading: "", footerMoreInfoHeading: "  " }) }));
+    expect(blank.querySelectorAll("h2")).toHaveLength(0);
+    expect(blank.querySelectorAll(".footer-connect li, .footer-more-info li").length).toBeGreaterThan(0);
   });
 
   it("© {year} {holder}, the year in the tenant time zone", () => {

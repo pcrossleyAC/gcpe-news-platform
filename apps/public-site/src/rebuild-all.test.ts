@@ -7,7 +7,7 @@ import { post, site } from "../test/fixtures";
 import { createSiteBuilder } from "./builder";
 import { postIndex } from "./post-index";
 import { nextBatch, PRIORITY } from "./queue";
-import { enqueueRebuildAll } from "./rebuild-all";
+import { enqueueChromeChanges, enqueueRebuildAll } from "./rebuild-all";
 
 describe("enqueueRebuildAll", () => {
   let tdb: TestDatabase;
@@ -30,5 +30,16 @@ describe("enqueueRebuildAll", () => {
     expect(at(PRIORITY.bulkAggregate)).toContain("connect");
     expect(at(PRIORITY.bulkAggregate)).toContain("privacy");
     expect(at(PRIORITY.bulkAggregate)).toContain("category:ministries:health");
+  });
+
+  it("a labels edit queues every aggregate page and no post", async () => {
+    const storage = memoryStorage();
+    const api = fakeNewsApi();
+    const builder = createSiteBuilder({ newsApi: api, storage, index: postIndex(tdb.db), site, assetsDir: null });
+    api.posts.set("K1", post({ key: "K1" }));
+    await enqueueChromeChanges(tdb.db, builder, { all: false, sections: ["labels"] });
+    const ids = (await nextBatch(tdb.db, 1000, [])).map((i) => i.pageId);
+    expect(ids).toEqual(expect.arrayContaining(["static", "home", "ministries", "category:ministries:health", "sitemap:pages"]));
+    expect(ids.some((id) => id.startsWith("post:"))).toBe(false);
   });
 });

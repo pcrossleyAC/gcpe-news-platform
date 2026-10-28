@@ -92,7 +92,7 @@ export const postPath = (key: string) => `releases/${key}/index.html`;
 /** Relative output files for a page. Only ever called with a parsed (validated) PageId. */
 export function pageFiles(p: PageId): string[] {
   switch (p.type) {
-    case "home": return ["index.html", "feed.xml"];
+    case "home": return ["index.html", "feed.xml", "assets/live.json"];
     case "post": return [postPath(p.key)];
     case "ministries": return ["ministries/index.html"];
     // A ministry's third file is its minister's biography page (H2): written only while the

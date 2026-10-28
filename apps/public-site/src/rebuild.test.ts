@@ -310,3 +310,42 @@ describe("Search Console verification in the render-state marker", () => {
     expect(await chromeChanges(storage as SiteStorage, state(), site)).toMatchObject({ all: false, sections: [] });
   });
 });
+
+describe("Navigation settings in the render-state marker", () => {
+  const stateFor = (mutate: (s: ReturnType<typeof bcSettings>) => void = () => {}) => {
+    const s = bcSettings();
+    mutate(s);
+    return stateAndBanner(null, false, new Date("2026-10-28T12:00:00Z"), s, site, []).state;
+  };
+  const marked = async () => {
+    const storage = memoryStorage();
+    await writeSiteState(storage as SiteStorage, stateFor(), site);
+    return storage as SiteStorage;
+  };
+
+  it("a headerLinks edit is a rebuild-all (so are the News, Live and footer-heading labels and the search switch)", async () => {
+    expect(await chromeChanges(await marked(), stateFor(), site)).toMatchObject({ all: false, sections: [] });
+    for (const m of [
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.headerLinks.push({ text: "Extra", url: "/extra/" }); },
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.newsLabel = "Newsroom"; },
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.liveLabel = "Webcast"; },
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.showHeaderSearch = false; },
+      (s: ReturnType<typeof bcSettings>) => { s.navigation.footerMoreInfoHeading = "Other"; },
+    ]) expect(await chromeChanges(await marked(), stateFor(m), site)).toMatchObject({ all: true });
+  });
+
+  it("a labels or listing-title edit is the labels section, not a rebuild-all", async () => {
+    expect(await chromeChanges(await marked(), stateFor((s) => { s.navigation.labels.searchNews = "Find"; }), site)).toMatchObject({ all: false, sections: ["labels"] });
+    expect(await chromeChanges(await marked(), stateFor((s) => { s.navigation.listingTitles.stories = "Features"; }), site)).toMatchObject({ all: false, sections: ["labels"] });
+  });
+
+  it("a marker written before headerHash and labelsHash existed reads as changed", async () => {
+    const storage = memoryStorage();
+    await writeSiteState(storage as SiteStorage, stateFor(), site);
+    const old = JSON.parse(storage.files.get(".site-state.json") as string);
+    delete old.headerHash;
+    delete old.labelsHash;
+    storage.files.set(".site-state.json", JSON.stringify(old));
+    expect(await chromeChanges(storage as SiteStorage, stateFor(), site)).toMatchObject({ all: true });
+  });
+});

@@ -68,9 +68,9 @@ export const VISIBLE_LATEST = 3;
 
 /** The latest posts as PostCards, those past {@link VISIBLE_LATEST} hidden, and the Load More
  * button (empty when nothing is hidden) that reveals `#regular-articles`' hidden cards. */
-export function latestCards(site: Pick<SiteInfo, "baseUrl">, latest: PostDto[]): { cards: string; loadMore: string } {
+export function latestCards(site: Pick<SiteInfo, "baseUrl">, latest: PostDto[], o: { loadMoreLabel?: string } = {}): { cards: string; loadMore: string } {
   return {
     cards: latest.map((p, i) => postCard(site, p, { hidden: i >= VISIBLE_LATEST })).join("\n"),
-    loadMore: latest.length > VISIBLE_LATEST ? `<button type="button" class="load-more link-button" aria-controls="regular-articles">Load More News</button>\n` : "",
+    loadMore: latest.length > VISIBLE_LATEST ? `<button type="button" class="load-more link-button" aria-controls="regular-articles">${e(o.loadMoreLabel ?? "Load More News")}</button>\n` : "",
   };
 }

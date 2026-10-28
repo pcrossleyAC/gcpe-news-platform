@@ -139,6 +139,7 @@ describe("postCard", () => {
     expect(many.loadMore).toBe('<button type="button" class="load-more link-button" aria-controls="regular-articles">Load More News</button>\n');
     expect(latestCards(site, posts.slice(0, 3)).loadMore).toBe("");
     expect(latestCards(site, [])).toEqual({ cards: "", loadMore: "" });
+    expect(latestCards(site, posts, { loadMoreLabel: "More <b>" }).loadMore).toContain(">More &lt;b&gt;</button>");
   });
 });
 

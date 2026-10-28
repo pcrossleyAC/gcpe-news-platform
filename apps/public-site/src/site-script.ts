@@ -39,6 +39,12 @@
  *     (P2-R3): the French content carries its own `lang="fr"`. The pressed button's own line is
  *     hidden by the switch, so focus moves to the button that switches back.
  *
+ * 12. The Live Webcast button (`#live-button`, header.ts), present on every page but only polled
+ *     when it exists: on load and every 60 s, `GET {base}/assets/live.json` (no-store; the base is the
+ *     button's own `{base}/live/` href minus its tail). `{"live":true}` swaps `live_button_hide` for
+ *     `live_button_show`; anything else, or any failure, leaves (or puts) it hidden. Errors are
+ *     swallowed: a dead file must not spam every visitor's console.
+ *
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
  */
@@ -82,7 +88,7 @@ export const SITE_SCRIPT = String.raw`(() => {
     btn.className = "nav-link";
     btn.setAttribute("aria-expanded", "false");
     btn.setAttribute("aria-controls", "menu");
-    btn.textContent = "News";
+    btn.textContent = news.textContent;
     // The sprite URL is the one the header's other icons already use.
     const any = doc.querySelector("header use");
     const sprite = ((any && any.getAttribute("href")) || "").replace(/#.*$/, "");
@@ -254,6 +260,26 @@ export const SITE_SCRIPT = String.raw`(() => {
       if (back) back.focus();
     });
   });
+
+  const live = doc.getElementById("live-button");
+  if (live) {
+    let liveUrl = "/assets/live.json";
+    try { liveUrl = new URL(live.href, location.href).pathname.replace(/\/live\/$/, "") + liveUrl; } catch (_) {}
+    const poll = () => {
+      try {
+        fetch(liveUrl, { cache: "no-store" })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((j) => {
+            const on = !!j && j.live === true;
+            live.classList.toggle("live_button_show", on);
+            live.classList.toggle("live_button_hide", !on);
+          })
+          .catch(() => {});
+      } catch (_) {}
+    };
+    poll();
+    setInterval(poll, 60000);
+  }
 
   const prefill = doc.querySelector("form[data-prefill-from-path] #not-found-q");
   if (prefill && !prefill.value) {

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import type { SiteTheme } from "@gcpe/config";
-import { safeErrorLabel } from "@gcpe/http-kit";
+import { isSafeUrl as isSafeAbsoluteUrl, safeErrorLabel } from "@gcpe/http-kit";
 import { defaultSiteSettings, fillMissingFields, isSafeUrl, storedSiteSettingsSchema, type SiteSettings, type StoredSiteSettings } from "@gcpe/site-settings";
+import type { HomeDto } from "./dto";
 import type { NewsApiClient } from "./news-api-client";
 import { basePath, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
@@ -48,6 +49,27 @@ export function bannerJson(settings: SiteSettings): string {
   return JSON.stringify({ visible: b.enabled, style: b.style, message: b.message, links: b.links, dismissible: b.dismissible, startsAt: b.startsAt, endsAt: b.endsAt });
 }
 
+let warnedLiveUrl = false;
+
+/** The News API home settings' live webcast playlist, only when it is an absolute https URL (the
+ * /live/ page plays it); anything else (http:, a path, javascript:) is null with one log per
+ * process, and the site shows "off air". Absent or blank: null, silently. */
+export function liveStreamUrl(home: Pick<HomeDto, "liveWebcastM3uPlaylist">): string | null {
+  const u = home.liveWebcastM3uPlaylist;
+  if (typeof u !== "string" || u.trim() === "") return null;
+  if (isSafeAbsoluteUrl(u, { relative: false, schemes: ["https:"] })) return u;
+  if (!warnedLiveUrl) {
+    warnedLiveUrl = true;
+    console.error("[public-site] live webcast URL is not https; shown as off air");
+  }
+  return null;
+}
+
+/** What `assets/live.json` holds: the flag only, never the stream URL (site.js polls it). */
+export function liveJson(home: Pick<HomeDto, "liveWebcastM3uPlaylist">): string {
+  return JSON.stringify({ live: liveStreamUrl(home) !== null });
+}
+
 const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 
 /** The settings' part of the site-state marker (rebuild.ts): one hash per way a section reaches
@@ -55,6 +77,10 @@ const hash = (value: unknown) => createHash("sha256").update(JSON.stringify(valu
 export function settingsHashes(settings: SiteSettings, timeZone: string, now: Date) {
   return {
     footerHash: hash([settings.footer, yearIn(timeZone, now)]),
+    // Every page's header and footer column headings (renderHeader, renderFooter): chrome like the footer.
+    headerHash: hash([settings.navigation.newsLabel, settings.navigation.liveLabel, settings.navigation.headerLinks, settings.navigation.showHeaderSearch, settings.navigation.footerConnectHeading, settings.navigation.footerMoreInfoHeading]),
+    // The page labels and listing titles: aggregate pages only (no post shows them).
+    labelsHash: hash([settings.navigation.labels, settings.navigation.listingTitles]),
     themeHash: hash(settings.theme),
     bannerHash: hash(settings.banner),
     connectHash: hash(settings.connect),

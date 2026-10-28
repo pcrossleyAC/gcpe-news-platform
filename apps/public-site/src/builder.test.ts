@@ -89,6 +89,21 @@ describe("site builder", () => {
     error.mockRestore();
   });
 
+  it("every home render writes assets/live.json with only the flag: true for an https playlist, false for none or an unsafe one", async () => {
+    const { storage, api, builder } = setup(new Map());
+    await builder.rebuild(["home"], {});
+    expect(html(storage, "assets/live.json")).toBe('{"live":false}');
+    api.home = async () => ({ granville: null, topPostKey: null, featurePostKey: null, liveWebcastM3uPlaylist: "https://stream.example/secret/live.m3u8" });
+    await builder.rebuild(["home"], {});
+    expect(html(storage, "assets/live.json")).toBe('{"live":true}');
+    expect(html(storage, "index.html")).not.toContain("stream.example");
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    api.home = async () => ({ granville: null, topPostKey: null, featurePostKey: null, liveWebcastM3uPlaylist: "http://stream.example/live.m3u8" });
+    await builder.rebuild(["home"], {});
+    err.mockRestore();
+    expect(html(storage, "assets/live.json")).toBe('{"live":false}');
+  });
+
   it("an update that moves a post to another ministry takes it off the old ministry page", async () => {
     const posts = new Map([["K1", post({ key: "K1", ministryKeys: ["health"] })]]);
     const { storage, builder } = setup(posts);

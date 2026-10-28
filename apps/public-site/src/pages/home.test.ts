@@ -273,4 +273,37 @@ describe("home page", () => {
     // Other pages never carry it, even with the site's verification set.
     expect(renderNotFoundPage({ ...site, verification: { googleFile: null, googleMeta: token } }, {})).not.toContain("google-site-verification");
   });
+  it("every home label comes from navigation.labels; a slide without actionLabel uses labels.slideActionLabel", () => {
+    const settings = bcSettings();
+    settings.navigation.labels = {
+      ...settings.navigation.labels,
+      connectWithUs: "CW <u>",
+      viewAllSocialMedia: "VASM",
+      resources: "RES",
+      newsBySector: "NBS",
+      emergencyInformation: "EMER",
+      highlights: "HIGH",
+      latestNews: "LATEST",
+      loadMoreNews: "MORE",
+      searchNews: "SRCH",
+      slideActionLabel: "Go <now>",
+    };
+    const slides = [
+      slide({ key: "H1", headline: "Highlight", actionUri: "/archive/", actionLabel: null }),
+      slide({ key: "H2", headline: "Two", actionUri: "/archive/", actionLabel: "Own label" }),
+      slide({ key: "E1", headline: "Flood", emergency: true, actionUri: "/archive/", actionLabel: null }),
+    ];
+    const html = renderHomePage({ ...emptyView, latest: latest(5), slides, links: [link({})], sectors: [{ key: "s", name: "S", latest: post({ key: "SL" }) }] }, site, { settings });
+    const doc = parse(html);
+    expect(doc.querySelector("h1.visually-hidden")?.textContent).toBe("LATEST");
+    expect(doc.querySelector("#carousel-holder")?.getAttribute("aria-label")).toBe("HIGH");
+    const h2 = [...doc.querySelectorAll("h2")].map((h) => h.textContent);
+    expect(h2).toEqual(expect.arrayContaining(["EMER", "CW <u>", "RES", "NBS"]));
+    expect(h2).not.toEqual(expect.arrayContaining(["Resources"]));
+    expect(doc.querySelector("button.load-more")?.textContent).toBe("MORE");
+    expect([...doc.querySelectorAll(".connect a.read-more, .news-control a.read-more")].map((a) => a.textContent)).toEqual(["SRCH", "VASM"]);
+    const actions = [...doc.querySelectorAll("#carousel-holder a.read-more, #emergency-heading ~ .article a.read-more")].map((a) => a.textContent?.trim());
+    expect(actions).toEqual(["Go <now>: Highlight", "Own label: Two", "Go <now>: Flood"]);
+    expect(html).not.toContain("Go <now>");
+  });
 });

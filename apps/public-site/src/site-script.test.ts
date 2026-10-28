@@ -1,5 +1,5 @@
 import { JSDOM } from "jsdom";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { MenuMinistry } from "./ministry-menu";
 import { renderPage, type PageOptions } from "./render";
 import { renderNotFoundPage } from "./static-pages";
@@ -7,7 +7,7 @@ import { SITE_BANNER_SCRIPT } from "./banner-script";
 import { pathWords, SITE_SCRIPT } from "./site-script";
 import { renderHomePage } from "./pages/home";
 import { renderReleasePage } from "./pages/release";
-import { post, slide } from "../test/fixtures";
+import { bcSettings, post, slide } from "../test/fixtures";
 
 const MENU: MenuMinistry[] = [
   { key: "office-of-the-premier", name: "Office of the Premier" },
@@ -485,5 +485,63 @@ describe("site.js", () => {
     expect(doc.documentElement.lang).toBe("en");
     expect(frHeadline.hasAttribute("role") || frHeadline.hasAttribute("aria-level")).toBe(false);
     expect(doc.activeElement).toBe(toFrench);
+  });
+});
+
+describe("site.js live webcast button", () => {
+  /** A page with SITE_SCRIPT run, `fetch` answered by `answer` and setInterval captured (not run). */
+  function livePage(answer: () => Promise<Response>, body = "<h1>H</h1>") {
+    const dom = new JSDOM(renderPage("T", site, "/site/", body, { ministryMenu: MENU }), { url: "https://boxs.example/site/", runScripts: "outside-only" });
+    const fetchMock = vi.fn(answer);
+    const timers: { fn: () => void; ms: number }[] = [];
+    dom.window.fetch = fetchMock as unknown as typeof fetch;
+    dom.window.setInterval = ((fn: () => void, ms: number) => timers.push({ fn, ms })) as unknown as typeof setInterval;
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    dom.window.eval(SITE_SCRIPT);
+    return { dom, doc: dom.window.document, fetchMock, timers, errors, button: dom.window.document.getElementById("live-button") };
+  }
+  const json = (body: unknown, status = 200) => async () => new Response(JSON.stringify(body), { status });
+  const settle = () => new Promise((r) => setTimeout(r, 0));
+
+  it("live.json {live:true} shows #live-button; {live:false}, a 404 and a network error leave it hidden; it polls every 60 s", async () => {
+    const on = livePage(json({ live: true }));
+    expect(on.fetchMock).toHaveBeenCalledWith("/site/assets/live.json", { cache: "no-store" });
+    await settle();
+    expect(on.button!.classList.contains("live_button_show")).toBe(true);
+    expect(on.button!.classList.contains("live_button_hide")).toBe(false);
+    expect(on.timers.map((t) => t.ms)).toEqual([60000]);
+    // The next poll hides it again when the stream has ended.
+    on.fetchMock.mockImplementation(json({ live: false }));
+    on.timers[0]!.fn();
+    await settle();
+    expect(on.fetchMock).toHaveBeenCalledTimes(2);
+    expect(on.button!.classList.contains("live_button_hide")).toBe(true);
+    expect(on.button!.classList.contains("live_button_show")).toBe(false);
+
+    for (const answer of [json({ live: false }), json({}, 404), json({ live: "true" }), async () => { throw new Error("offline"); }, async () => new Response("not json")]) {
+      const p = livePage(answer);
+      await settle();
+      expect(p.button!.classList.contains("live_button_hide")).toBe(true);
+      expect(p.button!.classList.contains("live_button_show")).toBe(false);
+      expect(p.errors).not.toHaveBeenCalled(); // errors are swallowed silently
+    }
+  });
+
+  it("does not poll on a page without #live-button", async () => {
+    const dom = new JSDOM("<!doctype html><body><h1>x</h1></body>", { url: "https://boxs.example/site/", runScripts: "outside-only" });
+    const fetchMock = vi.fn();
+    const setIntervalMock = vi.fn();
+    dom.window.fetch = fetchMock as unknown as typeof fetch;
+    dom.window.setInterval = setIntervalMock as unknown as typeof setInterval;
+    dom.window.eval(SITE_SCRIPT);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(setIntervalMock).not.toHaveBeenCalled();
+  });
+
+  it("the News button keeps the settings label", () => {
+    const dom = new JSDOM(renderPage("T", site, "/site/", "<h1>H</h1>", { ministryMenu: MENU, settings: { ...bcSettings(), navigation: { ...bcSettings().navigation, newsLabel: "Newsroom" } } }), { url: "https://boxs.example/site/", runScripts: "outside-only" });
+    dom.window.eval(SITE_SCRIPT);
+    expect(dom.window.document.getElementById("news-dropdown")!.textContent).toBe("Newsroom");
   });
 });
