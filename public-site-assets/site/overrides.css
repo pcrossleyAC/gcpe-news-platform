@@ -454,6 +454,12 @@ html.js .expandable-section .expand-toggle{display:inline-block}
 .archive-page .resource-links ul.term-list li p{margin:6px 0 0;font-size:14px}
 .archive-page .resource-links ul li a{text-decoration:none;display:inline-block;min-height:24px}
 .archive-page .resource-links ul li a:hover,.archive-page .resource-links ul li a:focus-visible{text-decoration:underline}
+/* The HTML sitemap (pages/sitemap-html.ts): the same list look, with the lists directly under the page's h2s. */
+.archive-page>h2{font-size:24px;font-weight:600;color:var(--color-text);margin:20px 0 6px}
+.archive-page>ul{list-style:none;padding:0;margin:0;font-weight:400;color:var(--color-text)}
+.archive-page>ul li{padding:4px 0;color:var(--color-text);font-size:16px}
+.archive-page>ul li a{text-decoration:none;display:inline-block;min-height:24px}
+.archive-page>ul li a:hover,.archive-page>ul li a:focus-visible{text-decoration:underline}
 .archive-page .other-articles{float:none;width:100%}
 .archive-page .regular-articles .article:first-child{margin-top:0}
 
