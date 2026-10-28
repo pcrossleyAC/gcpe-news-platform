@@ -78,7 +78,7 @@ describe("home page", () => {
     const connect = doc.querySelector(".home-features > .resource-links.connect")!;
     expect(connect.querySelector("h2")?.textContent).toBe("Connect With Us");
     const lists = [...connect.querySelectorAll(":scope > ul")];
-    expect(lists).toHaveLength(2);
+    expect(lists).toHaveLength(1);
     const items = (ul: Element) =>
       [...ul.querySelectorAll("li > a")].map((a) => {
         const img = a.querySelector("img")!;
@@ -87,17 +87,18 @@ describe("home page", () => {
     expect(items(lists[0]!)).toEqual([
       ["/site/connect/#facebook", "/site/assets/legacy/Content/Images/SocialMedia/facebook-svg-logo.svg", "Facebook", "22", "22"],
       ["/site/connect/#bluesky", "/site/assets/legacy/Content/Images/SocialMedia/bluesky-logo.svg", "Bluesky", "22", "22"],
+      ["/site/connect/#youtube", "/site/assets/legacy/Content/Images/SocialMedia/youtube.svg", "YouTube", "22", "22"],
+      ["/site/connect/#rss", "/site/assets/legacy/Content/Images/SocialMedia/rss-logo.svg", "RSS", "22", "22"],
     ]);
-    expect(items(lists[1]!)).toEqual([["/site/connect/#youtube", "/site/assets/legacy/Content/Images/SocialMedia/youtube.svg", "YouTube", "22", "22"]]);
     const all = connect.querySelector(":scope > a.read-more")!;
     expect(all.getAttribute("href")).toBe("/site/connect/");
     expect(all.textContent).toBe("View all Social Media");
 
-    // Every network at BC's real settings: seven icons, in legacy order.
+    // Every network at BC's real settings: eight icons plus RSS, in legacy order (LinkedIn now included).
     const full = parse(renderHomePage(emptyView, site, { settings: bcSettings() }));
-    expect([...full.querySelectorAll(".resource-links.connect img")].map((i) => i.getAttribute("alt"))).toEqual(["Facebook", "X", "Instagram", "Threads", "Bluesky", "Flickr", "YouTube"]);
-    // A list with no network in it is left out.
-    expect(parse(renderHomePage(emptyView, site, { settings: withAccounts("x") })).querySelectorAll(".resource-links.connect ul")).toHaveLength(1);
+    expect([...full.querySelectorAll(".resource-links.connect img")].map((i) => i.getAttribute("alt"))).toEqual(["Facebook", "X", "Instagram", "Threads", "Bluesky", "LinkedIn", "Flickr", "YouTube", "RSS"]);
+    // With no accounts at all, RSS is still there.
+    expect([...parse(renderHomePage(emptyView, site, { settings: withAccounts() })).querySelectorAll(".resource-links.connect img")].map((i) => i.getAttribute("alt"))).toEqual(["RSS"]);
   });
 
   it("a '/contacts/' resource link gets the base path; an https link is unchanged", () => {

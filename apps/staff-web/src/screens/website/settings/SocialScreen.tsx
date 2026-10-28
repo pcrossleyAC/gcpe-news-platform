@@ -1,5 +1,5 @@
 import { Link, useSearchParams } from "react-router";
-import { InlineAlert } from "@bcgov/design-system-react-components";
+import { InlineAlert, TextArea, TextField } from "@bcgov/design-system-react-components";
 import { NETWORKS, type ConnectSettings, type FieldError, type LinkSetting, type NetworkKey } from "@gcpe/site-settings";
 import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 import { useSession } from "../../../session/SessionContext";
@@ -14,6 +14,12 @@ import { useSettingsEditor, type SettingsEditor } from "./useSettingsEditor";
 const TITLE = "Social links";
 const SWITCH_NOTE = "Save a draft before switching networks; unsaved edits on this tab are lost when you switch.";
 
+const CONNECT_INTRO = "Both the policy link and the introduction are optional. Leave a field empty to leave it off the Connect page.";
+const POLICY_TEXT_HINT = "The words visitors click, shown on the Connect page. 200 characters or fewer, plain text. Needed if you enter a web address.";
+const POLICY_URL_HINT = "Where the link goes. https:// only (or a page on this site starting with /), no spaces. Needed if you enter link text.";
+const INTRO_HINT = "Shown at the top of the Connect page, above the networks. Plain text only, 300 characters or fewer.";
+
+const CONNECT_PAGE_FIELD = /^connect\.(policyLink|intro)(\.|$)/;
 const ACCOUNT_ROW = /^connect\.(\w+)\.accounts\[(\d+)\](.*)$/;
 const byText = (a: LinkSetting, b: LinkSetting) => a.text.localeCompare(b.text, undefined, { sensitivity: "accent" });
 const count = (n: ConnectSettings[NetworkKey]) => withoutBlankLinks(n.featured).length + withoutBlankLinks(n.accounts).length;
@@ -75,6 +81,12 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
   const stored = state.document.connect[network].accounts;
   const order = stored.map((_, i) => i).sort((a, b) => byText(stored[a]!, stored[b]!)); // order[displayed] = stored
   const accountsAligned = value[network].accounts.length === stored.length;
+  const connectMessage = (field: string) => fieldErrors.find((e) => e.field === `connect.${field}`)?.message;
+  const errorOf = (field: string) => {
+    const m = connectMessage(field);
+    return { errorMessage: m, isInvalid: m !== undefined };
+  };
+  const setConnect = (patch: Partial<Pick<ConnectSettings, "policyLink" | "intro">>) => editor.setValue((v) => ({ ...v, ...patch }));
   const shownErrors: FieldError[] = fieldErrors
     .filter((e) => e.field.startsWith(`connect.${network}.`))
     .map((e) => {
@@ -83,7 +95,7 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
     });
   // Problems on the other networks block publishing too, but their rows aren't on this tab.
   const elsewhere: FieldError[] = fieldErrors
-    .filter((e) => !e.field.startsWith(`connect.${network}.`))
+    .filter((e) => !e.field.startsWith(`connect.${network}.`) && !CONNECT_PAGE_FIELD.test(e.field))
     .map((e) => {
       const other = NETWORKS.find((n) => e.field.startsWith(`connect.${n.key}.`));
       return other ? { ...e, message: `${other.name}: ${e.message}` } : e;
@@ -93,6 +105,35 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
   return (
     <div className="gcpe-site-social">
       <h1>{TITLE}</h1>
+
+      <fieldset>
+        <legend>Connect page</legend>
+        <p>{CONNECT_INTRO}</p>
+        <TextField
+          label="Policy link text"
+          description={POLICY_TEXT_HINT}
+          value={value.policyLink.text}
+          onChange={(text) => setConnect({ policyLink: { ...value.policyLink, text } })}
+          isDisabled={!canEdit}
+          {...errorOf("policyLink.text")}
+        />
+        <TextField
+          label="Policy link URL"
+          description={POLICY_URL_HINT}
+          value={value.policyLink.url}
+          onChange={(url) => setConnect({ policyLink: { ...value.policyLink, url } })}
+          isDisabled={!canEdit}
+          {...errorOf("policyLink.url")}
+        />
+        <TextArea
+          label="Introduction"
+          description={INTRO_HINT}
+          value={value.intro}
+          onChange={(intro) => setConnect({ intro })}
+          isDisabled={!canEdit}
+          {...errorOf("intro")}
+        />
+      </fieldset>
 
       <nav aria-label="Networks" className="gcpe-section-tabs">
         <ul>
