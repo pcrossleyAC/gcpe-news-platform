@@ -70,4 +70,10 @@ describe("enqueueRebuildAll", () => {
     expect(ids).toEqual(expect.arrayContaining(["static", "home", "ministries", "category:ministries:health", "sitemap:pages"]));
     expect(ids.some((id) => id.startsWith("post:"))).toBe(false);
   });
+
+  it("a contactsPage edit queues /contacts/ and the sitemap pages (the HTML sitemap names the page by its heading)", async () => {
+    const builder = createSiteBuilder({ newsApi: fakeNewsApi(), storage: memoryStorage(), index: postIndex(tdb.db), site, assetsDir: null });
+    await enqueueChromeChanges(tdb.db, builder, { all: false, sections: ["contacts"] });
+    expect((await nextBatch(tdb.db, 1000, [])).map((i) => i.pageId).sort()).toEqual(["contacts", "sitemap:pages"]);
+  });
 });

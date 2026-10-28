@@ -4,15 +4,12 @@
 /ministries/health
 /connect
 /subscribe
-/contacts
-/privacy
 /search?q=housing
 /archive
 # section: fixed rules
 /more-news
 /releases/archive
 /archive/2026
-/sitemap/html
 /contact
 /newsletters
 /Content/Images/Gov/default-og-image-new.jpg
@@ -35,7 +32,6 @@
 /office-of-the-premier/biography
 /ministries/office-of-the-premier
 /ministries/health/more-news
-/ministries/health/factsheets
 # section: references
 /34336
 # section: feeds
@@ -47,3 +43,16 @@
 /ministries/health/feed
 /ministries/health/feed/atom
 /ministries/health/factsheets/feed/atom
+# section: plan 4 pages
+/contacts
+/privacy
+/live
+/releases
+/stories
+/factsheets
+/updates
+/sectors
+/themes
+/news-subscribe
+/ministries/health/factsheets
+/sitemap/html

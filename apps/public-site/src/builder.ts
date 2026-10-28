@@ -1,27 +1,29 @@
 import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import type { GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "./dto";
+import type { CategoryDto, GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto, ResourceLinkDto } from "./dto";
 import { renderAtomFeed, renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
-import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex } from "./pages/archive";
+import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex, termRangeLabel } from "./pages/archive";
 import { renderCategoryPage, renderMinistryFactsheetsPage, renderMinistryPage } from "./pages/categories";
 import { renderCategoryIndex, SECTOR_INDEX_LATEST, type IndexGroup } from "./pages/category-index";
 import { renderConnectPage } from "./pages/connect";
 import { renderContactsPage } from "./pages/contacts";
 import { renderLivePage } from "./pages/live";
 import { renderPrivacyPage } from "./pages/privacy";
-import { LATEST_COUNT, sortNewest } from "./pages/format";
+import { LATEST_COUNT, monthName, sortNewest } from "./pages/format";
 import { renderHomePage } from "./pages/home";
 import { renderKindListing } from "./pages/listing";
 import { hasBiography, renderBiographyPage } from "./pages/minister";
 import { renderReleasePage } from "./pages/release";
 import { renderSearchPage } from "./pages/search";
+import { renderHtmlSitemap, type SitemapGroup } from "./pages/sitemap-html";
 import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
-import type { PageOptions, SiteInfo } from "./render";
-import { atomUrl, biographyUrl, categoryFiles, factsheetsUrl, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, LISTING_KINDS, kindFeedFile, kindFeedUrl, formatPageId, INDEX_KINDS, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type ListingKind, type PageId } from "./site-paths";
-import { liveJson, liveStreamUrl, themeDefaults } from "./settings";
+import { basePath, type PageOptions, type SiteInfo } from "./render";
+import { atomUrl, biographyUrl, categoryFiles, factsheetsUrl, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, LISTING_KINDS, kindFeedFile, kindFeedUrl, formatPageId, INDEX_KINDS, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, sitemapHtmlUrl, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type ListingKind, type PageId } from "./site-paths";
+import { liveJson, liveStreamUrl, settingsHref, themeDefaults } from "./settings";
+import type { SiteSettings } from "@gcpe/site-settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
 import type { SiteStorage } from "./storage";
@@ -50,6 +52,8 @@ export interface RunCache {
   homeFeatured?: Promise<{ top: PostDto | null; feature: PostDto | null }>;
   /** The Resources box's links, fetched once per run for every page that shows them. Forgotten if the fetch fails. */
   resourceLinks?: Promise<ResourceLinkDto[]>;
+  /** A sector, theme or tag list, fetched once per run for the sitemap's names and its category ids. Forgotten if the fetch fails. */
+  categoryLists?: Partial<Record<Exclude<CategoryKind, "ministries">, Promise<CategoryDto[]>>>;
 }
 
 /**
@@ -379,7 +383,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
   }
 
   /** /connect/'s RSS Feeds: the site feed, then every active ministry, sector and tag (not themes) by name. */
-  async function connectFeeds(run: RunCache): Promise<{ title: string; href: string }[]> {
+  async function connectFeeds(run: RunCache, settings: SiteSettings): Promise<{ title: string; href: string }[]> {
     const cats: { title: string; href: string }[] = [];
     // A key that isn't a safe page key has no page, so no feed either.
     const add = (kind: CategoryKind, name: string, key: string) => {
@@ -388,7 +392,8 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     for (const m of await ministries(run)) if (m.isActive) add("ministries", m.name, m.key);
     for (const kind of ["sectors", "tags"] as const) for (const c of await newsApi.categories(kind)) if (c.isActive) add(kind, c.name, c.key);
     cats.sort((a, b) => a.title.localeCompare(b.title, "en"));
-    return [{ title: site.name, href: feedUrl(site, { type: "home" }) }, ...cats];
+    // Legacy order: the site feed, then the factsheets kind feed, then the categories.
+    return [{ title: site.name, href: feedUrl(site, { type: "home" }) }, { title: settings.navigation.listingTitles.factsheets, href: kindFeedUrl(site, "factsheets", "rss") }, ...cats];
   }
 
   /** Every ministry page id: the given ministry list's, then any the post index still holds. */
@@ -402,12 +407,25 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     return [...ids].sort();
   }
 
+  /** `newsApi.categories(kind)`, fetched on first use in this run (a rejected fetch is forgotten, as runMemo's). */
+  function categoryList(run: RunCache, kind: Exclude<CategoryKind, "ministries">): Promise<CategoryDto[]> {
+    const lists = (run.categoryLists ??= {});
+    const held = lists[kind];
+    if (held) return held;
+    const p = newsApi.categories(kind);
+    lists[kind] = p;
+    p.catch(() => {
+      if (lists[kind] === p) delete lists[kind];
+    });
+    return p;
+  }
+
   /** Every sector, theme and tag page id: the News API's lists, then any the post index still holds. */
-  async function listingIds(): Promise<string[]> {
+  async function listingIds(run?: RunCache): Promise<string[]> {
     const ids = new Set<string>();
     for (const kind of CATEGORY_KINDS) {
       if (kind === "ministries") continue;
-      for (const c of await newsApi.categories(kind)) {
+      for (const c of await (run ? categoryList(run, kind) : newsApi.categories(kind))) {
         const id = categoryPageId(kind, c.key);
         if (id) ids.add(id);
       }
@@ -418,7 +436,70 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
 
   /** Every category page id (the run's ministry list, then the sector, theme and tag ones). */
   async function categoryIds(run: RunCache): Promise<string[]> {
-    return [...new Set([...(await ministryIds(ministries(run))), ...(await listingIds())])].sort();
+    return [...new Set([...(await ministryIds(ministries(run))), ...(await listingIds(run))])].sort();
+  }
+
+  /**
+   * The sitemap's groups (L2), built once per `sitemap:pages` render: the XML urlset takes their
+   * paths, the HTML page their names too. A minister's biography is listed while its page is on
+   * disk: the signal the XML sitemap already used, which renderCategory re-queues this page on
+   * (it writes and removes that page, and a stat is how this render sees its result).
+   */
+  async function sitemapGroups(run: RunCache, opts: PageOptions): Promise<SitemapGroup[]> {
+    const settings = opts.settings ?? themeDefaults(site.theme);
+    const nav = settings.navigation;
+    const base = basePath(site);
+    const link = (name: string, p: PageId) => ({ name, path: pageUrl(site, p) });
+    // The Subscribe link is the header's (its text is a setting); the default text otherwise.
+    // Paths compare without a trailing slash: a setting of "/subscribe" is the same link.
+    const bare = (path: string | null) => path?.replace(/\/+$/, "");
+    const subscribe = nav.headerLinks.find((l) => bare(settingsHref(l.url, site)) === bare(`${base}/subscribe/`))?.text ?? "Subscribe";
+    const pages = [
+      link("Home", { type: "home" }),
+      link("Ministries", { type: "ministries" }),
+      link("Sectors", { type: "category-index", kind: "sectors" }),
+      link("Themes", { type: "category-index", kind: "themes" }),
+      link("Topics", { type: "category-index", kind: "tags" }),
+      ...LISTING_KINDS.map((kind) => link(nav.listingTitles[kind], { type: "kind", kind })),
+      link(settings.contactsPage.heading, { type: "contacts" }),
+      link(nav.liveLabel, { type: "live" }),
+      link("Connect", { type: "connect" }),
+      { name: subscribe, path: `${base}/subscribe/` },
+      link("Search", { type: "search" }),
+      link("Privacy", { type: "privacy" }),
+      link("Archive", { type: "archive" }),
+    ];
+    // Names by key; a category only the post index still holds has none, so its key stands in.
+    const names = new Map<string, string>();
+    for (const m of await ministries(run)) names.set(`ministries:${m.key.toLowerCase()}`, m.name);
+    for (const kind of CATEGORY_KINDS) if (kind !== "ministries") for (const c of await categoryList(run, kind)) names.set(`${kind}:${c.key.toLowerCase()}`, c.name);
+    const byKind: Record<CategoryKind, { name: string; entries: { name: string; path: string }[] }[]> = { ministries: [], sectors: [], themes: [], tags: [] };
+    for (const id of await categoryIds(run)) {
+      const page = parsePageId(id);
+      if (!page || page.type !== "category") continue;
+      const name = names.get(`${page.kind}:${page.key}`) ?? page.key;
+      const entries = [{ name, path: pageUrl(site, page) }];
+      if (page.kind === "ministries") {
+        // Every ministry has a factsheets page (written on every render, empty or not).
+        const bio = categoryFiles(page).bio;
+        if (bio && (await storage.exists(bio))) entries.push({ name: `${name}: Biography`, path: biographyUrl(site, page.key) });
+        entries.push({ name: `${name}: Factsheets`, path: factsheetsUrl(site, page.key) });
+      }
+      byKind[page.kind].push({ name, entries });
+    }
+    const category = (heading: string, kind: CategoryKind) => ({
+      heading,
+      entries: byKind[kind].sort((a, b) => a.name.localeCompare(b.name, "en")).flatMap((c) => c.entries),
+    });
+    // The months newest first (the index's order), then the terms: the entry point and every term page (not the `current` duplicate).
+    const archive = [
+      link("Archive by government term", { type: "archive-terms" }),
+      ...(await index.months()).map((m) => link(monthName(m.month), { type: "archive-month", month: m.month })),
+    ];
+    for (const { term, count } of await termRows(await requireTerms(run))) {
+      if (!isLegacyOnly(term, count)) archive.push(link(term.label ? `${termRangeLabel(term.startDate, term.endDate)}, ${term.label}` : termRangeLabel(term.startDate, term.endDate), { type: "archive-term", slug: term.slug }));
+    }
+    return [{ heading: "Pages", entries: pages }, category("Ministries", "ministries"), category("Sectors", "sectors"), category("Themes", "themes"), category("Topics", "tags"), { heading: "Archive", entries: archive }];
   }
 
   const builder: SiteBuilder = {
@@ -522,30 +603,21 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           return [];
         }
         case "sitemap-pages": {
-          // Not /search/: robots.txt disallows it, and Search Console flags sitemap URLs blocked by robots.
-          const paths = [pageUrl(site, { type: "home" }), pageUrl(site, { type: "ministries" }), ...INDEX_KINDS.map((kind) => pageUrl(site, { type: "category-index", kind })), pageUrl(site, { type: "archive" }), pageUrl(site, { type: "connect" }), pageUrl(site, { type: "contacts" }), pageUrl(site, { type: "privacy" }), pageUrl(site, { type: "live" }), ...LISTING_KINDS.map((kind) => pageUrl(site, { type: "kind", kind }))];
-          for (const id of await categoryIds(run)) {
-            const page = parsePageId(id)!;
-            paths.push(pageUrl(site, page));
-            // Every ministry has a factsheets page (written on every render, empty or not).
-            if (page.type === "category" && page.kind === "ministries") paths.push(factsheetsUrl(site, page.key));
-            // A minister's biography page, while it is on disk (renderCategory re-queues this page
-            // whenever one appears or goes).
-            const bio = page.type === "category" ? categoryFiles(page).bio : null;
-            if (page.type === "category" && page.kind === "ministries" && bio && (await storage.exists(bio))) paths.push(biographyUrl(site, page.key));
-          }
-          for (const m of await index.months()) paths.push(pageUrl(site, { type: "archive-month", month: m.month }));
-          // The archive by term: the entry point and every term page (not the `current` duplicate).
-          paths.push(pageUrl(site, { type: "archive-terms" }));
-          for (const { term, count } of await termRows(await requireTerms(run))) if (!isLegacyOnly(term, count)) paths.push(pageUrl(site, { type: "archive-term", slug: term.slug }));
-          await storage.write(pageFiles(p)[0]!, renderUrlSet(paths.map((path) => ({ path })), site));
+          const groups = await sitemapGroups(run, opts);
+          // Search and Subscribe are in the HTML sitemap for people, not the XML: robots.txt
+          // disallows them, and Search Console flags sitemap URLs blocked by robots. The XML adds
+          // /sitemap/ itself, so crawlers find it.
+          const blocked = new Set([pageUrl(site, { type: "search" }), `${basePath(site)}/subscribe/`]);
+          const paths = [...groups.flatMap((g) => g.entries.map((x) => x.path)).filter((x) => !blocked.has(x)), sitemapHtmlUrl(site)];
+          await storage.write("sitemaps/pages.xml", renderUrlSet(paths.map((path) => ({ path })), site));
+          await storage.write("sitemap/index.html", renderHtmlSitemap(groups, site, opts));
           return [];
         }
         case "static":
           await writeStaticPages(storage, site, opts, deps.assetsDir);
           return [];
         case "connect":
-          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts, await connectFeeds(run), await resourceLinks(run)));
+          await storage.write(pageFiles(p)[0]!, renderConnectPage(site, opts, await connectFeeds(run, opts.settings ?? themeDefaults(site.theme)), await resourceLinks(run)));
           return [];
         case "contacts":
           await storage.write(pageFiles(p)[0]!, renderContactsPage(await ministries(run), (opts.settings ?? themeDefaults(site.theme)).contactsPage, site, opts));
