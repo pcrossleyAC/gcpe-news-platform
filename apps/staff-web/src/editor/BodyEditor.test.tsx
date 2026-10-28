@@ -172,6 +172,17 @@ describe("BodyEditor", () => {
     expect(bodyExtensions(null, { italic: true }).some((e) => e.name === "italic")).toBe(true);
   });
 
+  it("without allowItalic, a pasted <i>/<em> stores no <em> and keeps the text", async () => {
+    const onChange = vi.fn();
+    render(<BodyEditor id="body" label="Body" value="<p></p>" onChange={onChange} readOnly={false} />);
+    const field = await screen.findByRole("textbox", { name: "Body" });
+    pasteHtml(field, "<p><i>a</i> <em>b</em></p>");
+    await waitFor(() => expect(onChange).toHaveBeenCalled());
+    const last = onChange.mock.calls.at(-1)![0] as string;
+    expect(last).not.toContain("<em>");
+    expect(last).toContain("a b");
+  });
+
   it.each([
     ["Italic", "<p>a <em>b</em> c</p>"],
     ["Bold", "<p>a <strong>b</strong> c</p>"],
