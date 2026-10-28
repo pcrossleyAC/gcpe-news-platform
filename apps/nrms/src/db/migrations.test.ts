@@ -220,6 +220,23 @@ describe("government term dates backfill", () => {
     expect(new Set(legacyNames.map((n) => by.get(n)!.start_date)).size).toBe(9);
   });
 
+  it("a second run of the backfill changes nothing, and keeps a date staff have since edited", async () => {
+    const snapshot = async () => (await tdb.pool.query(`SELECT id, name, start_date::text AS s, legacy_archive_url AS u FROM government_terms ORDER BY id`)).rows;
+    await tdb.pool.query(`UPDATE government_terms SET start_date = '2017-07-19' WHERE name = '2017-2021'`);
+    const before = await snapshot();
+    const sqlText = await readFile(join(nrmsMigrations, "0017_government_term_dates.sql"), "utf8");
+    const backfill = sqlText.split("--> statement-breakpoint").find((part) => part.includes("UPDATE \"government_terms\""))!;
+    await tdb.pool.query(backfill);
+    expect(await snapshot()).toEqual(before);
+    await tdb.pool.query(`UPDATE government_terms SET start_date = '2017-07-18' WHERE name = '2017-2021'`);
+  });
+
+  it("refuses a second term on the same start date, but allows several undated terms", async () => {
+    await expect(tdb.pool.query(`INSERT INTO government_terms (name, start_date) VALUES ('dupe', '2024-11-18')`)).rejects.toMatchObject({ code: "23505" });
+    await tdb.pool.query(`INSERT INTO government_terms (name) VALUES ('undated-a'), ('undated-b')`);
+    await tdb.pool.query(`DELETE FROM government_terms WHERE name IN ('undated-a', 'undated-b')`);
+  });
+
   it("keeps the single-row published table to one row", async () => {
     await tdb.pool.query(`INSERT INTO government_terms_published (hash, published_at) VALUES ('h', now())`);
     await expect(tdb.pool.query(`INSERT INTO government_terms_published (id, hash, published_at) VALUES (2, 'h', now())`)).rejects.toThrow();

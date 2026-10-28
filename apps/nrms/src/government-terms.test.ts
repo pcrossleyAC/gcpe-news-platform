@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import type { GovernmentTermsPayload, SubscriberConfig } from "@gcpe/events";
-import { createNrmsTestDb } from "../test/helpers";
+import { createNrmsTestDb, requireBcTzdata2026b } from "../test/helpers";
 import { startSiteLoop } from "./website/carousel";
 import type { SlideImageFiles } from "./website/slide-images";
 import { addDays, publicTerms, syncGovernmentTerms, termSpans } from "./government-terms";
@@ -111,6 +111,7 @@ describe("syncGovernmentTerms", () => {
   const currentNames = async () => (await tdb.pool.query("SELECT name FROM government_terms WHERE is_current ORDER BY name")).rows.map((r: { name: string }) => r.name);
 
   it("tick emits once when a scheduled term starts", async () => {
+    await requireBcTzdata2026b(tdb.pool);
     // BC is on permanent UTC-7 from 2026-11-01 (tzdata 2026b), so 06:59Z is 23:59 BC on the eve
     // of the swearing-in. The first call is the first publish; the second is a no-op.
     expect(await sync("2028-11-20T06:59:00Z")).toEqual({ emitted: true });
@@ -131,6 +132,15 @@ describe("syncGovernmentTerms", () => {
     ]);
     expect(await currentNames()).toEqual(["2028-11-20"]);
     expect(await sync("2028-11-20T09:00:00Z")).toEqual({ emitted: false });
+  });
+
+  it("two concurrent rollovers (site loop and stack tick) publish exactly one snapshot", async () => {
+    // Flag already right, so no row lock on government_terms serialises them: only the advisory lock does.
+    await tdb.pool.query("UPDATE government_terms SET is_current = true WHERE name = '2024-2028'");
+    const results = await Promise.all([sync("2026-12-15T20:00:00Z"), sync("2026-12-15T20:00:00Z")]);
+    expect(results.map((r) => r.emitted).sort()).toEqual([false, true]);
+    expect(await published()).toHaveLength(1);
+    expect(await currentNames()).toEqual(["2024-2028"]);
   });
 
   it("scheduled terms are not in the payload", async () => {

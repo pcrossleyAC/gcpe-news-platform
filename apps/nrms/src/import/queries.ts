@@ -89,7 +89,7 @@ SELECT PageTitle, LanguageId, ReleaseType, SortOrder, PageLayout, PageImageId FR
 export const Q_MEDIA_LISTS = `-- name: mediaLists
 SELECT Id, [Key], DisplayName, SortOrder, IsActive FROM dbo.MediaDistributionList`;
 
-/** NewsReleaseCollection has no NRMS table of its own — its Name feeds newestTerm() to resolve a release's government term. */
+/** Each NewsReleaseCollection becomes a government_terms row (upserted by legacy id); a release's CollectionId resolves its term through it. */
 export const Q_COLLECTIONS = `-- name: collections
 SELECT Id, Name FROM dbo.NewsReleaseCollection`;
 

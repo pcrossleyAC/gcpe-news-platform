@@ -85,10 +85,11 @@ export function statusText(v: Pick<ReleaseView, "status" | "type" | "reference" 
 const isBlankHtml = (html: string) => html.replace(/<[^>]*>/g, "").replace(/&nbsp;| /g, " ").trim() === "";
 
 export function approveProblems(v: ReleaseView, inactiveMinistries: readonly string[] = []): string[] {
-  if (v.type === "advisory") return [];
+  // Before the advisory exemption: an advisory with a lead still prints that ministry's abbreviation.
   if (v.leadMinistryKey && inactiveMinistries.includes(v.leadMinistryKey)) {
     return ["This ministry is no longer active. Change the lead ministry to its successor before approving."];
   }
+  if (v.type === "advisory") return [];
   if (v.ministries.length === 0) return ["Choose at least one ministry."];
   if (!v.leadMinistryKey && v.ministries.length > 1) return ["Choose the lead ministry."];
   return [];

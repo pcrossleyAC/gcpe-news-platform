@@ -364,7 +364,7 @@ export async function switchCarousels(db: Db, subs: SubscriberConfig[], files: S
 /**
  * Runs {@link switchCarousels} and then {@link syncGovernmentTerms} (each in its own transaction)
  * every `intervalMs` (default 60 s) for a standalone NRMS (outside the stack's own tick runner,
- * which instead drives these through the `nrms.site` and `nrms.governmentTerms` workers).
+ * which instead drives these through the `nrms.site` and `nrms.government-terms` workers).
  * Same shape as `startFlickrJobs`/`startPublisher`: unref'd timer, overlap-guarded, errors
  * logged rather than thrown (a failing step never stops the other), returns an async stopper.
  */

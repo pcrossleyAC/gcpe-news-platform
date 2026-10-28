@@ -10,7 +10,6 @@ import {
   mapDocumentLanguage,
   mapRelease,
   mapReleaseLanguage,
-  newestTerm,
   releaseTypeFromLegacy,
   statusFromLegacy,
   type LegacyContactRow,
@@ -212,16 +211,6 @@ describe("mapContact", () => {
     const row: LegacyContactRow = { DocumentId: "doc-1", LanguageId: 4105, SortIndex: 0, Information: "Ministry of Health\r\nMedia Relations\r\n250-555-0100" };
     const c = mapContact(row, "document-uuid");
     expect(c).toEqual({ documentId: "document-uuid", languageId: 4105, sortIndex: 0, information: "Ministry of Health\r\nMedia Relations\r\n250-555-0100" });
-  });
-});
-
-describe("newestTerm", () => {
-  it("picks the collection whose name's last 4-digit year is highest", () => {
-    expect(newestTerm(["2009-2013", "2017-2021", "2013-2017", "2017-2017"])).toBe("2017-2021");
-  });
-
-  it("sorts a name without a year last", () => {
-    expect(newestTerm(["No Year", "2017-2021"])).toBe("2017-2021");
   });
 });
 

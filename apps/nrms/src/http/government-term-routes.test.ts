@@ -160,11 +160,13 @@ describe("NRMS government-term admin API", () => {
       let done = false;
       const pending = post({ startDate: "2028-11-20" }).then((r) => ((done = true), r));
       // Deterministic: wait until Postgres reports a backend blocked on this advisory lock.
-      for (let i = 0; i < 200; i++) {
+      let waiterSeen = false;
+      for (let i = 0; i < 200 && !waiterSeen; i++) {
         const w = await tdb.pool.query("SELECT 1 FROM pg_locks WHERE locktype = 'advisory' AND NOT granted AND classid = $1 AND objid = $2", [...GOVERNMENT_TERMS_LOCK]);
-        if (w.rowCount) break;
-        await new Promise((r) => setTimeout(r, 10));
+        if (w.rowCount) waiterSeen = true;
+        else await new Promise((r) => setTimeout(r, 10));
       }
+      expect(waiterSeen).toBe(true);
       expect(done).toBe(false);
       await holder.query("COMMIT");
       expect((await pending).status).toBe(201);
@@ -201,6 +203,22 @@ describe("NRMS government-term admin API", () => {
     expect(await stamp(rel.id)).toBe(res.body.id);
     expect(await stamp(old.id)).toBe(await idOf("2024-2028"));
     expect((await get()).body.terms.find((t: { id: string }) => t.id === res.body.id).releaseCount).toBe(1);
+  });
+
+  it("moving a start date later re-stamps the releases it uncovers, and rewrites no other row", async () => {
+    const stampAt = async (publishAt: string, term: string) => {
+      const rel = await createScheduledRelease(tdb.db, { headline: publishAt });
+      await tdb.pool.query("UPDATE news_releases SET term_id = $1, publish_at = $2 WHERE id = $3", [await idOf(term), publishAt, rel.id]);
+      return rel.id;
+    };
+    const uncovered = await stampAt("2025-01-10T20:00:00Z", "2024-2028");
+    const kept = await stampAt("2025-03-01T20:00:00Z", "2024-2028");
+    const row = async (id: string) => (await tdb.pool.query("SELECT term_id, xmin::text AS xmin FROM news_releases WHERE id = $1", [id])).rows[0] as { term_id: string; xmin: string };
+    const keptBefore = await row(kept);
+    expect((await patch(await idOf("2024-2028"), { startDate: "2025-02-01" })).status).toBe(200);
+    expect((await row(uncovered)).term_id).toBe(await idOf("2020-2024"));
+    // Unchanged stamps are not rewritten (xmin is the writing transaction).
+    expect(await row(kept)).toEqual(keptBefore);
   });
 
   it("a scheduled term edited to start today takes its new date as slug", async () => {

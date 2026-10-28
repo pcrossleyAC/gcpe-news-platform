@@ -180,11 +180,15 @@ function asDuplicate(e: unknown): never {
  * moves, re-stamp already-stamped (published) releases from `fromDay` on. Never nulls a stamp.
  */
 async function restamp(tx: Tx, fromDay: string, timeZone: string): Promise<void> {
+  // Only rows whose term actually changes are written: an old start date can cover most of the archive.
   await tx.execute(sql`
-    UPDATE news_releases r SET term_id = COALESCE(
-      (SELECT t.id FROM government_terms t WHERE t.start_date <= (r.publish_at AT TIME ZONE ${timeZone})::date ORDER BY t.start_date DESC LIMIT 1),
-      r.term_id)
-    WHERE r.term_id IS NOT NULL AND (r.publish_at AT TIME ZONE ${timeZone})::date >= ${fromDay}::date`);
+    WITH target AS (
+      SELECT r.id, (SELECT t.id FROM government_terms t WHERE t.start_date <= (r.publish_at AT TIME ZONE ${timeZone})::date ORDER BY t.start_date DESC LIMIT 1) AS term_id
+      FROM news_releases r
+      WHERE r.term_id IS NOT NULL AND (r.publish_at AT TIME ZONE ${timeZone})::date >= ${fromDay}::date)
+    UPDATE news_releases r SET term_id = target.term_id
+    FROM target
+    WHERE r.id = target.id AND target.term_id IS NOT NULL AND r.term_id IS DISTINCT FROM target.term_id`);
 }
 
 export async function createGovernmentTerm(tx: Tx, input: { startDate: string; label?: string | null }, opts: TermWriteOpts): Promise<GovernmentTermView> {

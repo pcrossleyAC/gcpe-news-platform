@@ -92,6 +92,17 @@ describe("NRMS org.succeeded", () => {
     expect((await approveAs("wellness")).n).toBe(5);
   });
 
+  it("an abbreviation with stray spaces (legacy Core import) numbers under the trimmed one", async () => {
+    const year = await dbYear();
+    await approveAs("health");
+    await tdb.pool.query("UPDATE organizations SET abbreviation = 'WELL' WHERE key = 'wellness'");
+    await tdb.pool.query("UPDATE organizations SET is_active = false WHERE key = 'health'");
+    await tdb.db.insert(organizations).values({ key: "spaced", displayName: "Spaced", abbreviation: " hlth ", sortOrder: 4 });
+    const next = await approveAs("spaced");
+    expect(next.n).toBe(2);
+    expect(next.key).toMatch(new RegExp(`^${year}HLTH0002-`));
+  });
+
   it("an abbreviation freed and taken again never restarts at 0001 within the year", async () => {
     await approveAs("health");
     await approveAs("health");
