@@ -216,8 +216,8 @@ describe("news.gov subscribe page", () => {
     expect(posted).toEqual([{ emailAddress: "a@b.test", subscribedCategories: {}, isAllNews: true, isAsItHappens: true, isDailyDigest: false }]);
   });
 
-  it("a prefill link whose lists fail to load stays on customize with Subscribe disabled and says why (never silently all news)", async () => {
-    for (const failing of [["ministries"], ["sectors"]]) {
+  it("a prefill link whose asked-for list fails stays on customize with Subscribe disabled and says why (never silently all news); choosing all news re-enables it", async () => {
+    for (const failing of [["ministries"], ["ministries", "sectors"]]) {
       const { doc, posted, win } = await run("?ministries=health", ITEMS, failing);
       expect(doc.querySelector<HTMLInputElement>('input[name="isAllNews"][value="false"]')!.checked).toBe(true);
       expect(doc.getElementById("newsOnDemandCustomOptions")!.hasAttribute("hidden")).toBe(false);
@@ -227,7 +227,31 @@ describe("news.gov subscribe page", () => {
       doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
       await submit(doc, win);
       expect(posted).toEqual([]);
+      // All news needs no list: Subscribe works again; back to customize, it waits again.
+      const all = doc.querySelector<HTMLInputElement>('input[name="isAllNews"][value="true"]')!;
+      all.checked = true;
+      all.dispatchEvent(new win.Event("change", { bubbles: true }));
+      expect(save.disabled).toBe(false);
+      expect(doc.getElementById("message-alert")!.textContent).toBe("");
+      await submit(doc, win);
+      expect(posted).toEqual([{ emailAddress: "a@b.test", subscribedCategories: {}, isAllNews: true, isAsItHappens: true, isDailyDigest: false }]);
+      const customize = doc.querySelector<HTMLInputElement>('input[name="isAllNews"][value="false"]')!;
+      customize.checked = true;
+      customize.dispatchEvent(new win.Event("change", { bubbles: true }));
+      expect(save.disabled).toBe(true);
+      expect(doc.getElementById("message-alert")!.textContent).toContain("Couldn't load the topics your link chose");
     }
+  });
+
+  it("a prefill link whose asked-for lists load but another list fails only warns: the asked-for boxes are checked and Subscribe works", async () => {
+    const { doc, posted, win } = await run("?ministries=health", ITEMS, ["sectors"]);
+    expect(doc.querySelector<HTMLInputElement>('input[name="ministries:health"]')!.checked).toBe(true);
+    expect(doc.querySelector<HTMLInputElement>('input[name="isAllNews"][value="false"]')!.checked).toBe(true);
+    expect(doc.querySelector<HTMLButtonElement>("#save")!.disabled).toBe(false);
+    expect(doc.getElementById("message-alert")!.textContent).toBe("Couldn't load topics. Reload the page to try again.");
+    doc.querySelector<HTMLInputElement>("#email")!.value = "a@b.test";
+    await submit(doc, win);
+    expect(posted).toEqual([{ emailAddress: "a@b.test", subscribedCategories: { ministries: ["health"] }, isAllNews: false, isAsItHappens: true, isDailyDigest: false }]);
   });
 
   it("without a prefill a failed list only warns: all news stays selected and Subscribe works", async () => {

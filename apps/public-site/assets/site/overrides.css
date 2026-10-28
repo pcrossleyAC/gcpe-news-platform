@@ -76,10 +76,11 @@ main p a, main li a { text-decoration: underline; }
  * visually hidden), right after the brand, so the phone header keeps one row while a webcast is on. */
 .live-icon-button { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; margin: 0 0 0 5px; padding: 0 !important; flex: none; }
 .live-icon-button .live-glyph { width: 16px; height: 16px; }
-/* At 320px (WCAG reflow width) logo, brand, Live, menu and search need 9px more than the row has. */
+/* At 320px (WCAG reflow width) logo, brand, Live, menu and search need 9px more than the row has;
+ * only while the Live button shows, so the off-air header is unchanged. */
 @media (max-width: 359px) {
-  #main-nav-container .navbar-brand { padding-left: 0.5rem !important; }
-  #main-nav .navbar { padding-right: 4px; }
+  #main-nav:has(.live-icon-button.live_button_show) .navbar-brand { padding-left: 0.5rem !important; }
+  #main-nav:has(.live-icon-button.live_button_show) .navbar { padding-right: 4px; }
   .live-icon-button { margin-left: 3px; }
 }
 /* The menu heading is an h2 (legacy: a div) and its items lose legacy's .list-unstyled. */

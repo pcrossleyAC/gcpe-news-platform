@@ -50,10 +50,9 @@ const SUBSCRIBE_SCRIPT = `(() => {
     say(Array.isArray(data.issues) ? "Check the email address." : data.error || "Something went wrong.", "alert");
   };
 
-  // Resolves true once the list is in, false if it failed (after the alert, unless quiet); an empty
-  // list removes its fieldset (the Emergency case). Keys are compared lowercased; nothing from the
-  // caller reaches the DOM.
-  function loadCategories(container, selected, quiet) {
+  // Resolves true once the list is in, false if it failed (after the alert); an empty list removes
+  // its fieldset (the Emergency case). Keys are compared lowercased; nothing from the caller reaches the DOM.
+  function loadCategories(container, selected) {
     const category = container.dataset.category;
     const wanted = selected && Array.isArray(selected[category]) ? selected[category].map((k) => String(k).toLowerCase()) : [];
     return api("SubscriptionItems/" + encodeURIComponent(category))
@@ -80,7 +79,7 @@ const SUBSCRIBE_SCRIPT = `(() => {
         return true;
       })
       .then((ok) => ok !== false, () => {
-        if (!quiet) say("Couldn't load topics. Reload the page to try again.", "alert");
+        say("Couldn't load topics. Reload the page to try again.", "alert");
         return false;
       });
   }
@@ -111,9 +110,20 @@ const SUBSCRIBE_SCRIPT = `(() => {
       form.querySelector('input[name="isAllNews"][value="' + (on ? "false" : "true") + '"]').checked = true;
       custom.hidden = !on;
     };
+    // Set when the link asked for topics whose list couldn't load: customize can't honour it.
+    let blocked = false;
+    const BLOCKED = "Couldn't load the topics your link chose, so you can't subscribe to them yet. Reload the page to try again.";
+    const save = document.getElementById("save");
     // The radios stay where they are (and keep focus) while the options show or hide.
     form.addEventListener("change", (ev) => {
-      if (ev.target && ev.target.name === "isAllNews") custom.hidden = ev.target.value === "true";
+      if (!ev.target || ev.target.name !== "isAllNews") return;
+      const all = ev.target.value === "true";
+      custom.hidden = all;
+      if (blocked) {
+        // All news needs no list, so Subscribe works; customize waits for a reload again.
+        save.disabled = !all;
+        say(all ? "" : BLOCKED, "alert");
+      }
     });
     // Query prefill: the values only choose which baked boxes to check, by exact lowercased key.
     const wanted = {};
@@ -126,15 +136,16 @@ const SUBSCRIBE_SCRIPT = `(() => {
         }
       }
     }
-    const prefilled = Object.keys(wanted).length > 0;
-    const save = document.getElementById("save");
-    Promise.all(Array.from(form.querySelectorAll("fieldset[data-category]"), (f) => loadCategories(f, wanted, prefilled))).then((loaded) => {
-      if (prefilled && loaded.includes(false)) {
-        // The link asked for particular topics and some couldn't be shown: never fall back to all
-        // news without saying so. Customize stays chosen and Subscribe waits for a reload.
+    const fieldsets = Array.from(form.querySelectorAll("fieldset[data-category]"));
+    Promise.all(fieldsets.map((f) => loadCategories(f, wanted))).then((loaded) => {
+      // A list the link asked for (?ministries=… etc.) failed: never fall back to all news without
+      // saying so. Customize stays chosen and Subscribe waits for a reload (or a switch to all news).
+      // Another list failing only warns (loadCategories).
+      if (fieldsets.some((f, i) => loaded[i] === false && wanted[f.dataset.category])) {
+        blocked = true;
         showCustom(true);
         save.disabled = true;
-        say("Couldn't load the topics your link chose, so you can't subscribe to them yet. Reload the page to try again.", "alert");
+        say(BLOCKED, "alert");
         return;
       }
       if (form.querySelector('fieldset[data-category] input:checked')) showCustom(true);
