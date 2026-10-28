@@ -32,6 +32,7 @@ import { ensureWritableDir, resolveDataDir } from "./data-dir";
 import { checkCalendarDbTimeZone, pgOffsetOf, type DbTimeZoneStatus } from "./db-time-zone";
 import { INTERNAL_ORIGIN, installInternalFetch } from "./internal-fetch";
 import { installErrorCapture, type ErrorEntry } from "./errors";
+import { siteNotFound } from "./site-not-found";
 import {
   assertPrivateDir,
   calendarConfigured,
@@ -342,7 +343,14 @@ export async function startStack(env: NodeJS.ProcessEnv): Promise<StackHandle> {
   // observable behaviour (both fall through, with the default fallthrough: true, to the
   // same eventual 404), but says explicitly that a dotfile is refused on purpose, not by
   // accident of the default.
-  app.use("/site", noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny" }));
+  // siteNotFound: anything under /site the static mount didn't serve (GET/HEAD) is the site's own
+  // 404.html with a 404 status, not News API's root JSON catch-all further down.
+  app.use(
+    "/site",
+    noStoreOnRedirect,
+    express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny" }),
+    siteNotFound(outputDir),
+  );
 
   // Phase 3c: uploaded release files (translations, media assets) from NRMS's STORAGE_DIR
   // (<DATA_DIR>/storage, which survives a redeploy), publicly downloadable at /files/<key>.

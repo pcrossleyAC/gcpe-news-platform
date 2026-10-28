@@ -26,6 +26,15 @@ describe("parseSearchQuery", () => {
     expect(ok({ q: "x", from: "2027-01-15" }).from?.toISOString()).toBe("2027-01-15T07:00:00.000Z");
   });
 
+  it("q may be missing or blank when a filter is given (filter-only search); not otherwise", () => {
+    expect(ok({ ministry: "citizens-services" })).toEqual({ q: "", ministry: "citizens-services", page: 1 });
+    expect(ok({ q: "  ", sector: "economy", page: "2" })).toEqual({ q: "", sector: "economy", page: 2 });
+    expect(ok({ type: "stories" }).q).toBe("");
+    expect(ok({ from: "2026-10-01" }).q).toBe("");
+    expect(ok({ to: "2026-10-01" }).q).toBe("");
+    expect(parseSearchQuery({ page: "2" }, TZ)).toMatchObject({ ok: false, parameter: "q" });
+  });
+
   it("keeps ministry, sector and type", () => {
     expect(ok({ q: "x", ministry: "Health", sector: "economy", type: "stories", page: "3" })).toEqual({
       q: "x", ministry: "Health", sector: "economy", type: "stories", page: 3,

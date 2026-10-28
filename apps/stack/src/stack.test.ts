@@ -411,6 +411,23 @@ describe("apps/stack", () => {
     expect(await res.text()).not.toContain("granvilleOn");
   });
 
+  // boxs.ca: /site/no-such-page-xyz/ answered News API's root catch-all `{"error":"not found"}`.
+  it("an unknown /site/ URL answers 404 with the site's 404.html; API paths keep their JSON 404", async () => {
+    const { fsStorage } = await import("../../public-site/src/storage");
+    await fsStorage(instance.outputDir).write("404.html", "<h1>probe not found page</h1>");
+    const res = await fetch(`${instance.stackUrl}/site/no-such-page-xyz/`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).toMatch(/^text\/html/);
+    expect(await res.text()).toBe("<h1>probe not found page</h1>");
+    // News API's own routes (and its root catch-all) are untouched.
+    const api = await fetch(`${instance.stackUrl}/api/v2/no-such-page-xyz`);
+    expect(api.status).toBe(404);
+    expect(await api.json()).toEqual({ error: "not found" });
+    const root = await fetch(`${instance.stackUrl}/no-such-page-xyz/`);
+    expect(root.status).toBe(404);
+    expect(await root.json()).toEqual({ error: "not found" });
+  });
+
   it("/files/<key> serves an uploaded file from <DATA_DIR>/storage publicly; .meta, listings and missing keys are not served", async () => {
     const { localStore } = await import("@gcpe/storage");
     const store = localStore(join(instance.dataDir, "storage"));

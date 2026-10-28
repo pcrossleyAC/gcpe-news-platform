@@ -9,6 +9,7 @@ const MIN_YEAR = 1900;
 const MAX_YEAR = 2199;
 
 export interface SearchQuery {
+  /** The search text; "" is a filter-only search (parseSearchQuery allows it only with a filter). */
   q: string;
   ministry?: string;
   sector?: string;
@@ -56,12 +57,17 @@ function dayStart(raw: Record<string, unknown>, name: string, timeZone: string, 
   return wallClockToInstant(wall, timeZone);
 }
 
+/** Whether the query narrows by anything besides its text. */
+export function hasFilter(query: SearchQuery): boolean {
+  return query.ministry !== undefined || query.sector !== undefined || query.type !== undefined || query.from !== undefined || query.toExclusive !== undefined;
+}
+
 /** Validates `GET /api/v2/search`'s query (spec §5.4). Messages state the rule, never the value. */
 export function parseSearchQuery(raw: Record<string, unknown>, timeZone: string): ParsedSearchQuery {
   try {
     const q = single(raw, "q")?.trim() ?? "";
     const chars = Array.from(q).length;
-    if (chars < 1 || chars > SEARCH_MAX_QUERY_CHARS) throw new Invalid("q", `q must be 1-${SEARCH_MAX_QUERY_CHARS} characters`);
+    if (chars > SEARCH_MAX_QUERY_CHARS) throw new Invalid("q", `q must be 1-${SEARCH_MAX_QUERY_CHARS} characters`);
 
     const pageRaw = single(raw, "page");
     const page = pageRaw === undefined ? 1 : /^\d{1,3}$/.test(pageRaw) ? Number(pageRaw) : NaN;
@@ -82,6 +88,9 @@ export function parseSearchQuery(raw: Record<string, unknown>, timeZone: string)
     if (from && toExclusive && toExclusive <= from) throw new Invalid("to", "to must not be before from");
     if (from) query.from = from;
     if (toExclusive) query.toExclusive = toExclusive;
+    // No text is a filter-only search (newest first, as legacy's Azure Search query without a
+    // `search` term was) — but only with a filter; on its own it would list every post.
+    if (chars < 1 && !hasFilter(query)) throw new Invalid("q", `q must be 1-${SEARCH_MAX_QUERY_CHARS} characters unless ministry, sector, type, from or to is given`);
     return { ok: true, query };
   } catch (e) {
     if (e instanceof Invalid) return { ok: false, parameter: e.parameter, message: e.message };

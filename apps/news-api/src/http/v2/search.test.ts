@@ -41,6 +41,12 @@ describe("GET /api/v2/search (HTTP)", () => {
     expect(calls).toEqual([{ q: "wildfire", ministry: "Health", page: 2 }]);
   });
 
+  it("with a filter and no q, passes an empty q through (filter-only search)", async () => {
+    const res = await request(stubApp(stub)).get("/api/v2/search?ministry=citizens-services");
+    expect(res.status).toBe(200);
+    expect(calls).toEqual([{ q: "", ministry: "citizens-services", page: 1 }]);
+  });
+
   it("passes the request's own AbortSignal to the search service (the seam 6b's semantic branch uses)", async () => {
     let seen: unknown;
     const capturing: SearchService = {
@@ -148,5 +154,91 @@ describe("GET /api/v2/search through createApp (real Postgres)", () => {
     expect(Object.keys(post.body)).not.toContain("searchText");
     expect(Object.keys(post.body)).not.toContain("searchVector");
     expect(post.headers["cache-control"]).toBe("no-cache");
+  });
+});
+
+// The public site's "Search <ministry> news" link is /search/?ministry=<key> with no text.
+// Legacy (NewsroomController.Search) sends Azure Search no `search` term then, so it lists the
+// filter's posts, newest first ($orderby publishDateTime desc); q is optional once a filter is set.
+describe("GET /api/v2/search with filters and no q (real Postgres)", () => {
+  let tdb: TestDatabase;
+  let app: ReturnType<typeof createApp>;
+  // 23 citizens-services posts a day apart (CS-00 oldest … CS-22 newest), one stories-kind
+  // among them, and one other ministry's post that must never appear.
+  const day = (i: number) => `2026-09-${String(i + 1).padStart(2, "0")}T10:00:00-07:00`;
+  beforeAll(async () => {
+    tdb = await createNewsTestDb();
+    const search = createSearchService({ db: tdb.db, timeZone: TZ, language: "english", defaultLanguageId: 4105, publicSiteUrl: "https://news.example.test" });
+    app = createApp({ db: tdb.db, timeZone: TZ, eventSecrets: EVENT_SECRETS, search });
+    const records = [
+      ...Array.from({ length: 23 }, (_, i) => ({
+        ...sampleRelease,
+        key: `CS-${String(i).padStart(2, "0")}`,
+        kind: i === 5 ? ("stories" as const) : ("releases" as const),
+        publishDate: day(i),
+        leadMinistryKey: "citizens-services",
+        ministryKeys: ["citizens-services"],
+        sectorKeys: i % 2 === 0 ? ["economy"] : [],
+      })),
+      { ...sampleRelease, key: "OTHER-1", publishDate: day(29), leadMinistryKey: "finance", ministryKeys: ["finance"], sectorKeys: [] },
+    ];
+    for (const r of records) await sendEvent(app, envelope("nrms", "release.published", r.key, r));
+  });
+  afterAll(async () => {
+    await tdb.drop();
+  });
+
+  const csKeysNewestFirst = Array.from({ length: 23 }, (_, i) => `CS-${String(22 - i).padStart(2, "0")}`);
+
+  it("a ministry filter alone lists that ministry's posts newest first, 20 a page, same total on each page", async () => {
+    const p1 = await request(app).get("/api/v2/search?ministry=citizens-services");
+    expect(p1.status).toBe(200);
+    expect(p1.body).toMatchObject({ mode: "text", page: 1, total: 23 });
+    expect(p1.body.results.map((r: { key: string }) => r.key)).toEqual(csKeysNewestFirst.slice(0, 20));
+    expect(p1.body.results[0]).toEqual({
+      key: "CS-22",
+      kind: "releases",
+      headline: expect.any(String),
+      summary: sampleRelease.summary,
+      publishDate: "2026-09-23T10:00:00-07:00",
+      leadMinistryKey: "citizens-services",
+      url: "https://news.example.test/releases/CS-22",
+    });
+    const p2 = await request(app).get("/api/v2/search?ministry=citizens-services&page=2");
+    expect(p2.body).toMatchObject({ mode: "text", page: 2, total: 23 });
+    expect(p2.body.results.map((r: { key: string }) => r.key)).toEqual(csKeysNewestFirst.slice(20));
+  });
+
+  it("an empty or blank q with a filter is the same filter-only search", async () => {
+    for (const qs of ["q=&ministry=Citizens-Services", "q=%20%20&ministry=citizens-services"]) {
+      const res = await request(app).get(`/api/v2/search?${qs}`);
+      expect(res.status).toBe(200);
+      expect(res.body.total).toBe(23);
+      expect(res.body.results[0].key).toBe("CS-22");
+    }
+  });
+
+  it("every other filter counts too: sector, type, from/to", async () => {
+    const sector = await request(app).get("/api/v2/search?sector=economy");
+    expect(sector.body.total).toBe(12);
+    expect(sector.body.results[0].key).toBe("CS-22");
+    const type = await request(app).get("/api/v2/search?type=stories");
+    expect(type.body.results.map((r: { key: string }) => r.key)).toEqual(["CS-05"]);
+    const range = await request(app).get("/api/v2/search?from=2026-09-29&to=2026-09-30");
+    expect(range.body.results.map((r: { key: string }) => r.key)).toEqual(["OTHER-1"]);
+  });
+
+  it("q is still required with no filter: 400 naming q", async () => {
+    for (const qs of ["", "q=", "q=%20", "page=2"]) {
+      const res = await request(app).get(`/api/v2/search?${qs}`);
+      expect(res.status).toBe(400);
+      expect(res.body).toEqual({ error: { code: "InvalidParameter", parameter: "q", message: expect.any(String) } });
+    }
+  });
+
+  it("text plus a filter still ranks by text and filters", async () => {
+    const res = await request(app).get("/api/v2/search?q=highway&ministry=finance");
+    expect(res.status).toBe(200);
+    expect(res.body.results.map((r: { key: string }) => r.key)).toEqual(["OTHER-1"]);
   });
 });

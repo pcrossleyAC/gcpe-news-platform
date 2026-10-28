@@ -4,7 +4,8 @@ import { categoryPageId } from "../site-paths";
 
 /**
  * One inline script (no third-party assets): reads `q`/`ministry`/`sector`/`page` from the
- * current URL, calls `/api/v2/search` and renders the results — every element built with
+ * current URL, calls `/api/v2/search` and renders the results (text optional when a ministry or
+ * sector is given: a filter-only search, headed "Latest <ministry> news") — every element built with
  * `document.createElement`/`textContent`, never `innerHTML`, so a hostile headline from the API
  * can never become markup. Result links are built from the key the same way `pageUrl` builds a
  * release link; the API's own `url` is never used (Q81: same origin by default).
@@ -29,12 +30,18 @@ export const SEARCH_SCRIPT = `(() => {
     const pages = document.getElementById("pages");
     const siteBase = form.dataset.siteBase;
     const apiBase = form.dataset.apiBase || location.origin;
+    const select = document.getElementById("ministry");
     document.getElementById("q").value = q;
-    document.getElementById("ministry").value = ministry;
-    if (!q) return;
+    select.value = ministry;
+    // No text but a ministry or sector (the ministry page's "Search <ministry> news" link) is a
+    // filter-only search: the API lists that filter's posts, newest first, as legacy did.
+    if (!q && !ministry && !sector) return;
+    const chosen = ministry ? Array.from(select.options).find((o) => o.value !== "" && o.value === ministry.toLowerCase()) : undefined;
+    heading.textContent = q ? "Results" : chosen ? "Latest " + chosen.textContent + " news" : "Latest news";
     const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
     const date = (s) => { const m = /^(\\d{4})-(\\d{2})-(\\d{2})/.exec(s || ""); return m ? MONTHS[+m[2] - 1] + " " + (+m[3]) + ", " + m[1] : ""; };
-    const query = new URLSearchParams({ q });
+    const query = new URLSearchParams();
+    if (q) query.set("q", q);
     if (ministry) query.set("ministry", ministry);
     if (sector) query.set("sector", sector);
     query.set("page", String(page));
@@ -90,7 +97,7 @@ export function renderSearchPage(ministries: MinistryDto[], site: SiteInfo, opts
     .join("\n");
   const body = `<h1>Search news</h1>
 <form role="search" action="${e(base)}/search/" method="get" id="search-form" data-api-base="${e(apiBase)}" data-site-base="${e(base)}">
-<p><label for="q">Search for</label><br><input type="search" id="q" name="q" maxlength="200" required></p>
+<p><label for="q">Search for</label><br><input type="search" id="q" name="q" maxlength="200"></p>
 <p><label for="ministry">Ministry</label><br><select id="ministry" name="ministry"><option value="">All ministries</option>
 ${options}
 </select></p>

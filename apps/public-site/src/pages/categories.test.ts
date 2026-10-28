@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { expectAccessibleStructure, withoutBannerScript } from "../../test/structure";
-import { bcSettings, category, ministry, post, site } from "../../test/fixtures";
+import { bcSettings, category, contact, ministry, post, site } from "../../test/fixtures";
 import { renderCategoryPage, renderMinistriesPage, renderMinistryPage } from "./categories";
 
 const emptyPosts = { top: null, feature: null, latest: [] };
@@ -91,22 +91,73 @@ describe("renderMinistryPage", () => {
     expect(html).toContain('href="/ministries/health/feed.xml"');
   });
 
-  it("shows media contacts (name, title, phone, email) escaped, and leaves the section out when there are none", () => {
-    const withContacts = renderMinistryPage(
-      ministry({ contactUser: { name: "Alex <Example>", title: "Comms", phone: "250-555-0100", email: "alex@example.test" }, secondContactUser: null }),
-      null,
-      emptyPosts,
-      site,
-      {},
+  // boxs.ca: the v1 Ministries list carries contacts as Core's contact record
+  // ({fullName, phoneNumber, mobileNumber, emailAddress}); a {name,title,phone,email} reader
+  // rendered nothing. Legacy (Views/Shared/Ministry.cshtml + CommContact.cshtml): name, then
+  // "Direct: <phone>", "Cell: <mobile>", a mailto link; "Alternate:" before the second contact;
+  // "After hours: <number>" last; the whole section only when the first contact exists.
+  it("shows media contacts as legacy does: name, Direct:, Cell:, mailto email, Alternate:, After hours:", () => {
+    const doc = expectAccessibleStructure(
+      renderMinistryPage(
+        ministry({
+          contactUser: contact({ fullName: "Alex <Example>", phoneNumber: "250-555-0100", mobileNumber: "250-555-0101", emailAddress: "alex@example.test" }),
+          secondContactUser: contact({ fullName: "Jordan Example", phoneNumber: "250-555-0200", mobileNumber: null, emailAddress: "jordan@example.test" }),
+          weekendContactNumber: "250-555-0199",
+        }),
+        null,
+        emptyPosts,
+        site,
+        {},
+      ),
     );
-    expect(withContacts).toContain("Media Contacts");
-    expect(withContacts).toContain("Alex &lt;Example&gt;");
-    expect(withContacts).toContain("Comms");
-    expect(withContacts).toContain("250-555-0100");
-    expect(withContacts).toContain("alex@example.test");
+    const section = [...doc.querySelectorAll("aside section")].find((s) => s.querySelector("h2")?.textContent === "Media Contacts");
+    expect(section).toBeDefined();
+    const items = [...section!.querySelectorAll("li")];
+    expect(items).toHaveLength(2);
+    expect(items[0]!.querySelector(".contact-name")?.textContent).toBe("Alex <Example>");
+    expect(items[0]!.textContent).toContain("Direct: 250-555-0100");
+    expect(items[0]!.textContent).toContain("Cell: 250-555-0101");
+    expect(items[0]!.querySelector("a")?.getAttribute("href")).toBe("mailto:alex@example.test");
+    expect(items[0]!.querySelector("a")?.textContent).toBe("alex@example.test");
+    expect(items[1]!.textContent).toMatch(/^\s*Alternate:/);
+    expect(items[1]!.querySelector(".contact-name")?.textContent).toBe("Jordan Example");
+    expect(items[1]!.textContent).toContain("Direct: 250-555-0200");
+    expect(items[1]!.textContent).not.toContain("Cell:");
+    expect(items[1]!.querySelector("a")?.getAttribute("href")).toBe("mailto:jordan@example.test");
+    expect(section!.textContent).toContain("After hours: 250-555-0199");
+    const order = section!.textContent!;
+    expect(order.indexOf("Alex")).toBeLessThan(order.indexOf("Alternate:"));
+    expect(order.indexOf("Alternate:")).toBeLessThan(order.indexOf("After hours:"));
+  });
 
-    const without = renderMinistryPage(ministry({ contactUser: null, secondContactUser: null }), null, emptyPosts, site, {});
+  it("escapes every contact value, including inside the mailto link", () => {
+    const html = withoutBannerScript(
+      renderMinistryPage(
+        ministry({ contactUser: contact({ fullName: "A <b>", phoneNumber: "<i>1</i>", mobileNumber: null, emailAddress: 'x"><script>alert(1)</script>@example.test' }), weekendContactNumber: "<u>9</u>" }),
+        null,
+        emptyPosts,
+        site,
+        {},
+      ),
+    );
+    expect(html).toContain("A &lt;b&gt;");
+    expect(html).toContain("Direct: &lt;i&gt;1&lt;/i&gt;");
+    expect(html).toContain('href="mailto:x&quot;&gt;&lt;script&gt;alert(1)&lt;/script&gt;@example.test"');
+    expect(html).toContain("After hours: &lt;u&gt;9&lt;/u&gt;");
+    expect(html).not.toContain("<script>alert");
+  });
+
+  it("a contact with only some fields shows just those; no first contact means no section (legacy)", () => {
+    const nameOnly = renderMinistryPage(ministry({ contactUser: contact({ fullName: "Alex Example" }) }), null, emptyPosts, site, {});
+    expect(nameOnly).toContain("Media Contacts");
+    expect(nameOnly).toContain("Alex Example");
+    expect(nameOnly).not.toContain("Direct:");
+    expect(nameOnly).not.toContain("mailto:");
+
+    const without = renderMinistryPage(ministry({ contactUser: null, secondContactUser: contact({ fullName: "Jordan Example" }), weekendContactNumber: "250-555-0199" }), null, emptyPosts, site, {});
     expect(without).not.toContain("Media Contacts");
+    const allNull = renderMinistryPage(ministry({ contactUser: contact({}) }), null, emptyPosts, site, {});
+    expect(allNull).not.toContain("Media Contacts");
   });
 });
 
@@ -117,7 +168,7 @@ describe("renderMinistryPage side column", () => {
       ministryUrl: "https://gov.example/health",
       flickrUri: "https://flickr.com/health",
       youtubeUri: "https://youtube.com/health",
-      contactUser: { name: "Alex Example", title: "Comms", phone: "250-555-0100", email: "alex@example.test" },
+      contactUser: contact({ fullName: "Alex Example", phoneNumber: "250-555-0100", emailAddress: "alex@example.test" }),
       topicLinks: [{ key: "Wait times", uri: "https://gov.example/wait" }],
       serviceLinks: [{ key: "Find a doctor", uri: "https://gov.example/doctor" }],
     });

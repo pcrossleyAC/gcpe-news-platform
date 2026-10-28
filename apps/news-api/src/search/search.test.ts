@@ -159,6 +159,18 @@ describe("textSearch and the search service", () => {
       expect(lines).toEqual(["[news-api] search semantic branch failed Error"]);
     });
 
+    it("a filter-only search (empty q) never asks the semantic branch and lists newest first", async () => {
+      await seed(
+        release("R-OLD", { ministryKeys: ["health"], publishDate: "2026-10-01T10:00:00-07:00" }),
+        release("R-NEW", { ministryKeys: ["health"], publishDate: "2026-10-03T10:00:00-07:00" }),
+        release("R-OTHER", { ministryKeys: ["finance"], publishDate: "2026-10-04T10:00:00-07:00" }),
+      );
+      let asked = 0;
+      const res = await service({ search: async () => { asked++; return null; } }).search(q({ q: "", ministry: "health" }));
+      expect(asked).toBe(0);
+      expect(res).toMatchObject({ mode: "text", page: 1, total: 2, results: [{ key: "R-NEW" }, { key: "R-OLD" }] });
+    });
+
     it("passes the caller's AbortSignal through to the semantic branch (the seam 6b's guarded embedder uses)", async () => {
       const controller = new AbortController();
       let seen: AbortSignal | undefined;
