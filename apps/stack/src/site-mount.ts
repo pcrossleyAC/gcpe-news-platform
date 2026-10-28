@@ -55,14 +55,12 @@ export function mountSite(
 ): void {
   const { outputDir, basePath, lookupReference } = opts;
   const passThrough = opts.passThrough ?? [];
-  // Old news.gov.bc.ca URLs (parity plan 3) run first in each site chain: before the successor
-  // redirects (their rules never match /ministries/…; plan 3 Task 5 folds the successors in) and
-  // before express.static (a fallback rule checks the disk itself, so a real page still wins).
+  // Old news.gov.bc.ca URLs (parity plan 3) run first in each site chain, before express.static (a fallback rule checks the disk itself, so a real page still wins).
   const legacy = (base: string) => legacyUrls({ outputDir, basePath: base, passThrough, lookupReference });
   if (basePath !== "") {
     // Unchanged from before the root mount: an unknown page under the prefix is the site's 404.
-    // Successor redirects first: an old ministry's page is still on disk (new-government §4).
-    app.use(basePath, legacy(basePath), ministrySuccessorRedirects(outputDir, basePath), ...staticSite(outputDir), siteNotFound(outputDir));
+    // Successors are part of legacyUrls' category rule (an old ministry's page is still on disk, new-government §4).
+    app.use(basePath, legacy(basePath), ...staticSite(outputDir), siteNotFound(outputDir));
   } else {
     // /site/ministries/<old>/… goes straight to the successor (one hop), the rest to the root.
     app.use("/site", ministrySuccessorRedirects(outputDir, ""), siteAliasRedirect);
@@ -76,7 +74,7 @@ export function mountSite(
   // means one fs.stat per request that isn't a site file (/api, /hub, /stack/tick…) before it
   // falls through: negligible next to the apps' own work, so not worth a prefix skip-list here.
   const root = express.Router();
-  root.use(legacy(""), ministrySuccessorRedirects(outputDir, ""), ...staticSite(outputDir));
+  root.use(legacy(""), ...staticSite(outputDir));
   app.use(root);
 }
 

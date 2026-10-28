@@ -517,3 +517,129 @@ describe("legacyUrls: post keys over 100 characters (url-compat T3, M17)", () =>
     }
   });
 });
+
+describe("legacyUrls: ministries, categories, the Premier and nested keys (T4, L4)", () => {
+  let outputDir: string;
+  let app: express.Express;
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+    app = appFor(outputDir);
+  });
+  afterEach(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+  const status = async (path: string) => (await request(app).get(path).redirects(0)).status;
+
+  it("/ministries/justice → 301 /ministries/attorney-general/", async () => {
+    await expectRedirect(app, "/ministries/justice", "/ministries/attorney-general/");
+    await expectRedirect(app, "/Ministries/JUSTICE/", "/ministries/attorney-general/");
+    await expectRedirect(appFor(outputDir, "/site"), "/site/ministries/justice", "/site/ministries/attorney-general/");
+  });
+
+  it("/ministries/justice/biography → 301 /ministries/attorney-general/", async () => {
+    await expectRedirect(app, "/ministries/justice/biography", "/ministries/attorney-general/");
+    await expectRedirect(app, "/ministries/justice/Biography/?x=1", "/ministries/attorney-general/?x=1");
+  });
+
+  it("/ministries/environmental-assessment-office is not caught by the 'environment' rename (segment-exact) → 404", async () => {
+    expect(await status("/ministries/environmental-assessment-office")).toBe(404);
+    expect(await status("/ministries/environmental-assessment-office/")).toBe(404);
+  });
+
+  it("/ministries/environment → 404, no redirect (the chain ends at a key with no page; live 404 too)", async () => {
+    const res = await request(app).get("/ministries/environment").redirects(0);
+    expect({ status: res.status, location: res.headers.location }).toEqual({ status: 404, location: undefined });
+  });
+
+  it("/ministries/transportation-and-infrastructure/infrastructure → 301 /ministries/transportation-and-transit/ (rename then successor, one hop)", async () => {
+    await expectRedirect(app, "/ministries/transportation-and-infrastructure/infrastructure", "/ministries/transportation-and-transit/");
+    // A single segment with no page and no rename still takes the successor table.
+    await expectRedirect(app, "/ministries/transportation-and-infrastructure", "/ministries/transportation-and-transit/");
+  });
+
+  it("/ministries/jobs-economic-recovery-and-innovation/trade?x=1 → 301 /ministries/jobs-and-economic-growth/?x=1", async () => {
+    await expectRedirect(app, "/ministries/jobs-economic-recovery-and-innovation/trade?x=1", "/ministries/jobs-and-economic-growth/?x=1");
+    await expectRedirect(app, "/ministries/international-trade", "/ministries/jobs-and-economic-growth/");
+    await expectRedirect(app, "/ministries/education-and-child-care/child-care", "/ministries/education-and-child-care/");
+  });
+
+  it("nested: /ministries/<parent>/attorney-general → 301 /ministries/attorney-general/; its /biography → the ministry page (nested is a move)", async () => {
+    // Spec order (brief Interfaces): a parent with a page, or a rename, is resolved at step 2 and the
+    // child is "rest"; step 3 (nested) is for a parent that is neither. The brief's test row used
+    // /ministries/health/attorney-general; see the next assertion for what that gives.
+    await expectRedirect(app, "/ministries/old-parent/attorney-general", "/ministries/attorney-general/");
+    await expectRedirect(app, "/ministries/old-parent/attorney-general/?x=1", "/ministries/attorney-general/?x=1");
+    // A nested path is "moved": the bio rule answers the ministry page, never a biography page.
+    await expectRedirect(app, "/ministries/old-parent/attorney-general/biography", "/ministries/attorney-general/");
+    // A nested key with a page keeps its own sub-pages.
+    await expectRedirect(app, "/ministries/old-parent/office-of-the-premier/biography", "/ministries/office-of-the-premier/");
+    // A reserved word is never a nested key; the unknown parent is a 404.
+    expect(await status("/ministries/old-parent/releases")).toBe(404);
+    expect(await status("/ministries/old-parent/nope")).toBe(404);
+    // A parent that has a page is that ministry; an unknown child goes to its page.
+    await expectRedirect(app, "/ministries/health/attorney-general", "/ministries/health/");
+  });
+
+  it("/office-of-the-premier → 301 /ministries/office-of-the-premier/; /office-of-the-premier/biography → 301 /ministries/office-of-the-premier/biography/; /ministries/office-of-the-premier/ → 200", async () => {
+    await expectRedirect(app, "/office-of-the-premier", "/ministries/office-of-the-premier/");
+    await expectRedirect(app, "/office-of-the-premier/", "/ministries/office-of-the-premier/");
+    await expectRedirect(app, "/office-of-the-premier/biography", "/ministries/office-of-the-premier/biography/");
+    await expectRedirect(app, "/Office-Of-The-Premier/Biography/?x=1", "/ministries/office-of-the-premier/biography/?x=1");
+    await expectRedirect(app, "/ministries/office-of-the-premier", "/ministries/office-of-the-premier/");
+    const ok = await request(app).get("/ministries/office-of-the-premier/").redirects(0);
+    expect({ status: ok.status, body: ok.text }).toEqual({ status: 200, body: "<h1>ministries/office-of-the-premier/</h1>" });
+    expect(await status("/ministries/office-of-the-premier/biography/")).toBe(200);
+    await expectRedirect(appFor(outputDir, "/site"), "/site/office-of-the-premier", "/site/ministries/office-of-the-premier/");
+  });
+
+  it("a missing biography page falls back to the ministry page", async () => {
+    await expectRedirect(app, "/ministries/attorney-general/biography", "/ministries/attorney-general/");
+    await expectRedirect(app, "/ministries/health/biography", "/ministries/health/biography/");
+  });
+
+  it("/ministries/health/factsheets → 301 /ministries/health/ until ministries/health/factsheets/index.html exists, then 301 /ministries/health/factsheets/", async () => {
+    await expectRedirect(app, "/ministries/health/factsheets", "/ministries/health/");
+    await expectRedirect(app, "/ministries/health/Factsheets/?page=2", "/ministries/health/?page=2");
+    await mkdir(join(outputDir, "ministries", "health", "factsheets"), { recursive: true });
+    await writeFile(join(outputDir, "ministries", "health", "factsheets", "index.html"), "<h1>fs</h1>");
+    await expectRedirect(app, "/ministries/health/factsheets", "/ministries/health/factsheets/");
+    expect(await status("/ministries/health/factsheets/")).toBe(200);
+    await expectRedirect(app, "/ministries/justice/factsheets", "/ministries/attorney-general/");
+  });
+
+  it("/ministries/health/more-news?page=2 → 301 /ministries/health/ (query dropped)", async () => {
+    await expectRedirect(app, "/ministries/health/more-news?page=2", "/ministries/health/");
+    await expectRedirect(app, "/ministries/health/releases/archive/2019?page=2", "/ministries/health/");
+    await expectRedirect(app, "/ministries/justice/morearticles", "/ministries/attorney-general/");
+  });
+
+  it("/news-subscribe/x → 301 /tags/x/; /sectors/families/ → 301 /sectors/services/", async () => {
+    await expectRedirect(app, "/news-subscribe/x", "/tags/x/");
+    await expectRedirect(app, "/News-Subscribe/X/?a=1", "/tags/x/?a=1");
+    await expectRedirect(app, "/sectors/families/", "/sectors/services/");
+    expect(await status("/tags/x/")).toBe(200);
+    // No page: the site 404 (no redirect to a missing page).
+    expect(await status("/tags/nope/")).toBe(404);
+    expect(await status("/news-subscribe/nope")).toBe(404);
+    expect(await status("/sectors/nope/")).toBe(404);
+  });
+
+  it("/ministries/health/ → 200 (no redirect)", async () => {
+    const res = await request(app).get("/ministries/health/").redirects(0);
+    expect({ status: res.status, location: res.headers.location }).toEqual({ status: 200, location: undefined });
+    // Its own files and feeds are left to static / Task 8.
+    expect(await status("/ministries/health/biography/")).toBe(200);
+    expect(await status("/ministries/health/feed.xml")).toBe(404);
+  });
+
+  it("an old ministry's page still on disk redirects to its successor (the plan-2 successor behaviour, now via legacyUrls)", async () => {
+    await mkdir(join(outputDir, "ministries", "transportation-and-infrastructure"), { recursive: true });
+    await writeFile(join(outputDir, "ministries", "transportation-and-infrastructure", "index.html"), "<h1>old</h1>");
+    await expectRedirect(app, "/ministries/transportation-and-infrastructure/", "/ministries/transportation-and-transit/");
+    await expectRedirect(app, "/ministries/transportation-and-infrastructure/biography", "/ministries/transportation-and-transit/");
+  });
+
+  it("an unparseable or unsafe category path is the site 404, never a redirect", async () => {
+    for (const path of ["/ministries/justice%5Cx", "/ministries/%2e%2e/justice", "/ministries/ju%00stice"]) expect(await status(path), path).toBe(404);
+  });
+});

@@ -7,6 +7,8 @@ import { parseRequestTarget, type RequestTarget } from "./safe-path";
 import { siteNotFound } from "../site-not-found";
 import { POST_KEY, postDir, SHORT_POST_KEY_MAX } from "../../../public-site/src/site-paths";
 import { exactPagePath, pagePath, resolvePostKey } from "./site-files";
+import { resolveCategory } from "./ministry-renames";
+import { isCategoryKind, type CategoryKind } from "../../../public-site/src/site-paths";
 
 export interface LegacyUrlOptions {
   outputDir: string;
@@ -33,10 +35,13 @@ export interface LegacyUrlOptions {
  * 1. a `fixedRule` that is not a fallback;
  * 2. the post rule: `/(releases|stories|factsheets|updates)/<key>[/image][/]`, any case
  *    (`postRule`);
- * 3. the case rule: a path with uppercase that is not a page in exactly that case, whose
+ * 3. the category rule (T4/L4, `categoryRule`): `/(ministries|sectors|themes|tags|news-subscribe)/<key>…`
+ *    and `/office-of-the-premier…`, through `resolveCategory` (renames, nested keys, successors),
+ *    which runs only on a parsed target;
+ * 4. the case rule: a path with uppercase that is not a page in exactly that case, whose
  *    lowercase is one (`caseRule`) — before the fallback rules, so `/Releases` reaches a built
  *    `/releases/` in one hop, also on case-sensitive Linux;
- * 4. a *fallback* `fixedRule`, which fires only when the request path is not itself a page on
+ * 5. a *fallback* `fixedRule`, which fires only when the request path is not itself a page on
  *    disk, so a page the site later builds (plan 4's /releases/ …) wins with no change here.
  * Filesystem errors go to `next(err)`.
  */
@@ -64,7 +69,8 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
     const action = fixedRule(target.path, target.query);
     const post = POST_PATH.exec(target.path);
     // Nothing can match a lowercase path but a fixed rule: no filesystem call for it.
-    if (!action && !post && !/[A-Z]/.test(target.path)) return next();
+    const category = categoryPath(target.path);
+    if (!action && !post && !category && !/[A-Z]/.test(target.path)) return next();
 
     const redirect = (status: 301 | 302, to: string) => {
       res.setHeader("Cache-Control", "no-store");
@@ -113,6 +119,11 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
         return redirect(done.status, done.to);
       }
 
+      if (category) {
+        const handled = await categoryRule(category, target, res, next);
+        if (handled) return;
+      }
+
       const lower = await caseRule(outputDir, target);
       if (lower !== null) return redirect(301, lower);
 
@@ -132,13 +143,30 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
       to = await pagePath(outputDir, candidate);
       if (to !== null) break;
     }
-    if (to === null) return next();
+    // The request already is the target (same path, and the query is kept or empty): static serves it.
+    if (to === null || (to === target.path && (action.query === "keep" || target.query === ""))) return next();
     const absolute = action.absolute === true;
     const location = `${absolute ? "" : basePath}${to}${action.query === "keep" ? target.query : ""}`;
     // Root-relative, or the rule's own absolute https URL; never protocol-relative.
     if (absolute ? !location.startsWith("https://") : (!location.startsWith("/") || location.startsWith("//") || location.startsWith("/\\"))) return next();
     res.setHeader("Cache-Control", "no-store");
     res.redirect(action.status ?? 301, location);
+  }
+
+  /**
+   * The category rule (url-compat T4, L4). Resolves the category key (renames, nested, successor),
+   * then maps the rest of the path (see `categoryTargets`). Returns true when it answered
+   * (a redirect, or `next()` because the request already is the target), false to let the
+   * remaining rules run (no such category page; feeds and embeds, which are not this task's).
+   */
+  async function categoryRule(c: CategoryPath, target: RequestTarget, res: Response, next: () => void): Promise<boolean> {
+    const resolved = await resolveCategory(outputDir, c.cat, c.segments.slice(0, 2));
+    if (resolved === null) return false;
+    const rest = c.segments.slice(resolved.consumed).map((s) => s.toLowerCase());
+    const mapped = categoryTargets(c.cat, resolved.key, rest, resolved.moved);
+    if (mapped === null) return false;
+    await fixedRedirect({ do: "redirect", to: mapped.to, query: mapped.drop ? "drop" : "keep" }, target, res, next);
+    return true;
   }
 
   /**
@@ -177,6 +205,50 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
     if (target.path.toLowerCase() === `/releases/${key.toLowerCase()}/`) return "serve";
     return { status: 301, to: `/releases/${key}/${target.query}` };
   }
+}
+
+interface CategoryPath {
+  cat: CategoryKind;
+  /** The segments after the category word (original case), none empty. */
+  segments: string[];
+}
+
+const KINDS = new Set(["releases", "stories", "factsheets", "updates"]);
+/** `feed`, `feed.xml`, `feed.atom`… : a feed segment (Task 8's), not a page. */
+const isFeed = (segment: string) => /^feed(\.[a-z]+)?$/.test(segment);
+const ARCHIVE_WORDS = new Set(["more-news", "morearticles", "archive"]);
+
+/**
+ * `/(ministries|sectors|themes|tags|news-subscribe)/<key>[/…]` or `/office-of-the-premier[/…]`
+ * (read as `/ministries/office-of-the-premier[/…]`), any case, one optional trailing slash and
+ * no empty segment; else null. `news-subscribe` is `tags`.
+ */
+function categoryPath(path: string): CategoryPath | null {
+  const parts = path.slice(1).split("/");
+  if (parts[parts.length - 1] === "") parts.pop();
+  if (parts.length === 0 || parts.some((p) => p === "")) return null;
+  const head = parts[0]!.toLowerCase();
+  if (head === "office-of-the-premier") return { cat: "ministries", segments: parts };
+  const cat = head === "news-subscribe" ? "tags" : head;
+  if (!isCategoryKind(cat) || parts.length < 2) return null;
+  return { cat, segments: parts.slice(1) };
+}
+
+/**
+ * Where `rest` (the lowercased segments after the consumed key) goes: candidate targets in
+ * `fixedRedirect`'s form (the first that is a page, or the "!" one) and whether the query is
+ * dropped; null for feeds and embeds, which this rule leaves alone (Task 8; embed falls through).
+ * `moved`: the request named another key's page, so its biography is not this key's.
+ */
+function categoryTargets(cat: CategoryKind, key: string, rest: string[], moved: boolean): { to: string[]; drop: boolean } | null {
+  const home = `/${cat}/${key}/`;
+  const [first, second] = rest;
+  if (first === undefined) return { to: [`${home}!`], drop: false };
+  if (isFeed(first) || first === "embed" || (KINDS.has(first) && second !== undefined && isFeed(second))) return null;
+  if (ARCHIVE_WORDS.has(first) || (KINDS.has(first) && second !== undefined && ARCHIVE_WORDS.has(second))) return { to: [`${home}!`], drop: true };
+  if (first === "biography" && rest.length === 1 && cat === "ministries") return { to: moved ? [`${home}!`] : [`${home}biography/`, `${home}!`], drop: false };
+  if (KINDS.has(first) && rest.length === 1) return { to: [`${home}${first}/`, `${home}!`], drop: false };
+  return { to: [`/${cat}/${key}/${rest.join("/")}`, `${home}!`], drop: false };
 }
 
 type RedirectAction = Extract<NonNullable<ReturnType<typeof fixedRule>>, { do: "redirect" }>;

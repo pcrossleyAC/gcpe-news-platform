@@ -30,3 +30,11 @@
 /Ministries/Health
 # section: long keys
 /releases/canada-and-british-columbia-investments-in-local-infrastructure-help-build-community-connections-for-1
+# section: ministries
+/ministries/justice
+/ministries/jobs-economic-development-and-innovation
+/office-of-the-premier
+/office-of-the-premier/biography
+/ministries/office-of-the-premier
+/ministries/health/more-news
+/ministries/health/factsheets
