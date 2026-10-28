@@ -164,19 +164,42 @@ describe("lists from Core events", () => {
       expect((await historyOf(a.id)).filter((r) => r.action === "list-moved")).toHaveLength(1);
     });
 
-    it("a second delivery moves nothing and adds no history", async () => {
+    it("a second delivery (the same event, or a redelivery under a new id) moves nothing and adds no history", async () => {
       const a = await addSubscriber(tdb.db, { email: "twice@example.test", lists: ["ministries:old4"] });
-      await tdb.db.transaction(async (tx) => { expect(await moveMinistrySubscribers(tx, "old4", ["new4"], "t")).toBe(1); });
-      await tdb.db.transaction(async (tx) => { expect(await moveMinistrySubscribers(tx, "old4", ["new4"], "t")).toBe(0); });
+      const e = succeeded("old4", ["new4"]);
+      expect((await sendEvent(app, e)).status).toBe(200);
+      expect(await keysOf(a.id)).toEqual(["ministries:new4"]);
+      expect((await sendEvent(app, e)).status).toBe(200);
+      expect((await sendEvent(app, succeeded("old4", ["new4"]))).status).toBe(200);
       expect(await keysOf(a.id)).toEqual(["ministries:new4"]);
       expect((await historyOf(a.id)).filter((r) => r.action === "list-moved")).toHaveLength(1);
+      // The helper itself reports the no-op.
+      await tdb.db.transaction(async (tx) => { expect(await moveMinistrySubscribers(tx, "old4", ["new4"], "t")).toBe(0); });
     });
 
-    it("moveSubscribers false is a no-op", async () => {
+    it("moveSubscribers false is a no-op; the same hand-over with it on then moves", async () => {
       const a = await addSubscriber(tdb.db, { email: "stay@example.test", lists: ["ministries:old5"] });
       expect((await sendEvent(app, succeeded("old5", ["new5"], false))).status).toBe(200);
       expect(await keysOf(a.id)).toEqual(["ministries:old5"]);
       expect((await historyOf(a.id)).filter((r) => r.action === "list-moved")).toHaveLength(0);
+      expect((await sendEvent(app, succeeded("old5", ["new5"]))).status).toBe(200);
+      expect(await keysOf(a.id)).toEqual(["ministries:new5"]);
+    });
+
+    it("a successor equal to the ministry itself is ignored", async () => {
+      const a = await addSubscriber(tdb.db, { email: "self@example.test", lists: ["ministries:old6"] });
+      await sendEvent(app, succeeded("old6", ["old6"]));
+      expect(await keysOf(a.id)).toEqual(["ministries:old6"]);
+      expect((await historyOf(a.id)).filter((r) => r.action === "list-moved")).toHaveLength(0);
+      await sendEvent(app, succeeded("old6", ["old6", "new6"]));
+      expect(await keysOf(a.id)).toEqual(["ministries:new6"]);
+      expect((await historyOf(a.id)).filter((r) => r.action === "list-moved").map((r) => r.detail)).toEqual(["ministries:old6 → ministries:new6"]);
+    });
+
+    it("matches keys case-insensitively", async () => {
+      const a = await addSubscriber(tdb.db, { email: "case@example.test", lists: ["ministries:old7"] });
+      await sendEvent(app, succeeded("Old7", ["NEW7", "new7"]));
+      expect(await keysOf(a.id)).toEqual(["ministries:new7"]);
     });
   });
 });
