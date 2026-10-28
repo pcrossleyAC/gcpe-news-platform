@@ -176,9 +176,10 @@ describe("mountSite with successor redirects", () => {
 
   it("base '/site': both /site/ministries/a/ and /ministries/a/ redirect, each keeping its own prefix", async () => {
     const app = appFor("/site");
-    const prefixed = await request(app).get("/site/ministries/a/feed.xml?x=1").redirects(0);
+    // (Feeds are Task 8's: legacyUrls' category rule leaves /feed… alone, so this uses a listing path.)
+    const prefixed = await request(app).get("/site/ministries/a/releases?x=1").redirects(0);
     expect(prefixed.status).toBe(301);
-    expect(prefixed.headers.location).toBe("/site/ministries/c/feed.xml?x=1");
+    expect(prefixed.headers.location).toBe("/site/ministries/c/?x=1");
     const root = await request(app).get("/ministries/a/").redirects(0);
     expect(root.status).toBe(301);
     expect(root.headers.location).toBe("/ministries/c/");

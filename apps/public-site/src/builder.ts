@@ -1,7 +1,7 @@
 import type { DbOrTx } from "@gcpe/db-kit";
 import { safeErrorLabel } from "@gcpe/http-kit";
 import type { GovernmentTermDto, MinistryDto, MinistryProfileDto, PostDto } from "./dto";
-import { renderRssFeed } from "./feeds";
+import { renderAtomFeed, renderRssFeed } from "./feeds";
 import type { NewsApiClient } from "./news-api-client";
 import { currentTerms, isCurrentTerm, isLegacyOnly, legacyHref, termEndExclusive, termOfDay, termsHash, type TermsView } from "./government-terms";
 import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex } from "./pages/archive";
@@ -18,7 +18,7 @@ import { renderSearchPage } from "./pages/search";
 import { indexEntryOf, leadMinistryOf, membershipOfEntry, postIndex, type PostIndex } from "./post-index";
 import { dependentPages, membershipOf, type Membership } from "./rebuild-set";
 import type { PageOptions, SiteInfo } from "./render";
-import { biographyUrl, categoryPageId, CATEGORY_KINDS, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
+import { atomUrl, biographyUrl, categoryFiles, categoryPageId, CATEGORY_KINDS, FEED_POST_KINDS, feedUrl, kindFeedFile, kindFeedUrl, formatPageId, LONG_POST_DIR, LONG_POST_KEY_FILE, pageFiles, pageUrl, parsePageId, postDir, postKeyFile, POST_KEY, SHORT_POST_KEY_MAX, TERM_SLUG, type CategoryKind, type PageId } from "./site-paths";
 import { liveJson, liveStreamUrl, themeDefaults } from "./settings";
 import { renderSitemapIndex, renderUrlSet } from "./sitemaps";
 import { writeStaticPages } from "./static-pages";
@@ -234,6 +234,10 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       }
       ministryLatest = await fetch;
     }
+    // A long key's directory name is a hash: record the key beside the page so allPostKeys can list
+    // it. The sidecar goes first so a failed page write never leaves a page allPostKeys can't see.
+    const keyFile = postKeyFile(key);
+    if (keyFile) await storage.write(keyFile, `${key}\n`);
     await storage.write(pageFiles(p)[0]!, renderReleasePage(post, site, opts, { related, leadMinistry, leadMinistrySuccessor, ministryLatest }));
     const entry = indexEntryOf(key, post);
     if (entry) await writeIndex.put(entry);
@@ -250,8 +254,13 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
   /** Returns `sitemap:pages` when the biography page appeared or went (it lists the bio pages on disk). */
   async function renderCategory(kind: CategoryKind, key: string, opts: PageOptions, run: RunCache): Promise<string[]> {
     const p: PageId = { type: "category", kind, key };
-    const [page, feed, bio] = pageFiles(p) as [string, string, string | undefined];
+    const { page, feed, atom, bio } = categoryFiles({ kind, key });
     const feedRef = { href: feedUrl(site, p), title: "" };
+    const feedChannel = (description: string) => ({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description });
+    const writeFeeds = async (description: string, posts: PostDto[]) => {
+      await storage.write(feed, renderRssFeed(feedChannel(description), posts, site));
+      await storage.write(atom, renderAtomFeed({ ...feedChannel(description), feedPath: atomUrl(site, p) }, posts, site));
+    };
     if (kind === "ministries") {
       const hadBio = await storage.exists(bio!);
       const bioChanged = (has: boolean) => (has === hadBio ? [] : ["sitemap:pages"]);
@@ -277,7 +286,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       ).filter((c) => c !== null);
       feedRef.title = `${m.name}: latest news`;
       await storage.write(page, renderMinistryPage(m, minister, { ...f, latest }, site, { ...opts, feed: feedRef }, { profile, children }));
-      await storage.write(feed, renderRssFeed({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `News from ${m.name}` }, sortNewest([f.top, f.feature, ...latest]), site));
+      await writeFeeds(`News from ${m.name}`, sortNewest([f.top, f.feature, ...latest]));
       // The biography page (H2) exists only while the minister has a bio: one cleared in the Hub
       // loses its page on this render instead of lingering.
       const withBio = !!minister && hasBiography(minister);
@@ -293,7 +302,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
     const [latest, f] = await Promise.all([newsApi.latest(kind, key, LATEST_COUNT), featured(c.topPostKey, c.featurePostKey)]);
     feedRef.title = `${c.name}: latest news`;
     await storage.write(page, renderCategoryPage(kind, c, { ...f, latest }, site, { ...opts, feed: feedRef }));
-    await storage.write(feed, renderRssFeed({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `News about ${c.name}` }, sortNewest([f.top, f.feature, ...latest]), site));
+    await writeFeeds(`News about ${c.name}`, sortNewest([f.top, f.feature, ...latest]));
     return [];
   }
 
@@ -331,7 +340,25 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
           // The Live button's state, beside the page that polls for it (site.js); the flag only.
           await storage.write("assets/live.json", liveJson(home));
           await storage.write("index.html", renderHomePage({ ...f, latest, slides, links, sectors }, site, { ...opts, feed: feedRef }));
-          await storage.write("feed.xml", renderRssFeed({ title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `The latest news from ${site.name}` }, sortNewest([f.top, f.feature, ...latest]), site));
+          const homePosts = sortNewest([f.top, f.feature, ...latest]);
+          const homeChannel = { title: feedRef.title, pagePath: pageUrl(site, p), feedPath: feedRef.href, description: `The latest news from ${site.name}` };
+          await storage.write("feed.xml", renderRssFeed(homeChannel, homePosts, site));
+          await storage.write("atom.xml", renderAtomFeed({ ...homeChannel, feedPath: atomUrl(site, p) }, homePosts, site));
+          return [];
+        }
+        case "kind-feeds": {
+          // The News API's latest list leaves out the home top and feature posts, so those are
+          // added back when they are of the kind. Six calls (home, the featured posts, one per
+          // kind), all made before any file is written: a failed fetch leaves every feed as it was.
+          // The channel link is the home page: a kind has no page of its own.
+          const home = await newsApi.home();
+          const [f, latest] = await Promise.all([featured(home.topPostKey, home.featurePostKey), Promise.all(FEED_POST_KINDS.map((kind) => newsApi.latestOfKind(kind, LATEST_COUNT)))]);
+          for (const [i, kind] of FEED_POST_KINDS.entries()) {
+            const posts = sortNewest([...[f.top, f.feature].filter((x) => x?.kind === kind), ...latest[i]!]);
+            const rss = { title: `${site.name}: ${kind}`, pagePath: pageUrl(site, p), feedPath: kindFeedUrl(site, kind, "rss"), description: `The latest ${kind} from ${site.name}` };
+            await storage.write(kindFeedFile(kind, "rss"), renderRssFeed(rss, posts, site));
+            await storage.write(kindFeedFile(kind, "atom"), renderAtomFeed({ ...rss, feedPath: kindFeedUrl(site, kind, "atom") }, posts, site));
+          }
           return [];
         }
         case "ministries":
@@ -387,7 +414,7 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
             paths.push(pageUrl(site, page));
             // A minister's biography page, while it is on disk (renderCategory re-queues this page
             // whenever one appears or goes).
-            const bio = pageFiles(page)[2];
+            const bio = page.type === "category" ? categoryFiles(page).bio : null;
             if (page.type === "category" && page.kind === "ministries" && bio && (await storage.exists(bio))) paths.push(biographyUrl(site, page.key));
           }
           for (const m of await index.months()) paths.push(pageUrl(site, { type: "archive-month", month: m.month }));
@@ -443,13 +470,19 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
       for (const kind of POST_KINDS) for (const k of await newsApi.postKeys(kind)) if (POST_KEY.test(k)) keys.add(k);
       for (const k of await index.keys()) keys.add(k);
       for (const k of await storage.listDirs("releases")) if (POST_KEY.test(k)) keys.add(k);
+      // Keys over 100 characters sit in hashed directories; the sidecar names the key. Trusted only
+      // when it is a long key whose own hash is that directory.
+      for (const h of await storage.listDirs(LONG_POST_DIR)) {
+        const k = (await storage.read(`${LONG_POST_DIR}/${h}/${LONG_POST_KEY_FILE}`))?.trim();
+        if (k && k.length > SHORT_POST_KEY_MAX && POST_KEY.test(k) && postDir(k) === `${LONG_POST_DIR}/${h}`) keys.add(k);
+      }
       return [...keys];
     },
 
     async aggregatePageIds() {
       const run: RunCache = {};
       // sitemap:pages after the category pages: it lists the biography pages they write.
-      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", ...(await categoryIds(run)), "sitemap:pages"];
+      const ids = ["static", "home", "ministries", "archive", "search", "sitemap", "connect", "contacts", "privacy", "live", "legacy-redirects", "kind-feeds", ...(await categoryIds(run)), "sitemap:pages"];
       for (const m of await index.months()) ids.push(formatPageId({ type: "archive-month", month: m.month }), formatPageId({ type: "sitemap-month", month: m.month }));
       ids.push(...(await builder.termPageIds()));
       return ids;

@@ -101,6 +101,13 @@ describe("newsApiClient", () => {
     expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Posts/Latest/home/default?api-version=1.0&count=20");
   });
 
+  it("latestOfKind: the home latest list filtered by post kind", async () => {
+    const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json([{ key: "K1" }]));
+    const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);
+    expect(await c.latestOfKind("factsheets", 20)).toEqual([{ key: "K1" }]);
+    expect(fetchImpl.mock.calls[0]![0].toString()).toBe("http://api.example/api/Posts/Latest/home/default?api-version=1.0&postKind=factsheets&count=20");
+  });
+
   it("postsByKeys: fetches by a comma-joined, encoded key list; an empty list skips the call", async () => {
     const fetchImpl = vi.fn(async (_url: string | URL | Request) => Response.json([{ key: "K1" }, { key: "K2" }]));
     const c = newsApiClient("http://api.example", fetchImpl as unknown as typeof fetch);

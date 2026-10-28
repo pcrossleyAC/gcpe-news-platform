@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import pg from "pg";
 import request from "supertest";
 import { hashPassword } from "@gcpe/auth";
 import { closeServer, createShutdown } from "@gcpe/http-kit";
@@ -39,6 +40,29 @@ describe("startNewsApi", () => {
     expect((await request(handle.app).get("/health/live")).status).toBe(200);
     expect((await request(handle.app).get("/health/ready")).status).toBe(200);
     await Promise.all([...handle.closeBeforeServer, ...handle.closers].map((c) => c.close()));
+  });
+
+  it("postKeyByReference('news-34336') finds the published post; an unpublished one → null", async () => {
+    const env = await testEnv();
+    const handle = await startNewsApi(env, { hub: false });
+    const pool = new pg.Pool({ connectionString: env.DATABASE_URL });
+    try {
+      const insert = (key: string, reference: string, published: boolean) =>
+        pool.query(
+          `INSERT INTO posts (key, kind, reference, publish_date, has_media_assets, has_translations, is_news_on_demand, documents,
+             ministry_keys, sector_keys, tag_keys, theme_keys, index_keys, is_published, timestamp)
+           VALUES ($1, 'releases', $2, now(), false, false, false, '[]'::jsonb, '{}', '{}', '{}', '{}', '{}', $3, now())`,
+          [key, reference, published],
+        );
+      await insert("2026TT0103-001121", "NEWS-34336", true);
+      await insert("2026TT0103-009999", "NEWS-40000", false);
+      expect(await handle.postKeyByReference("news-34336")).toBe("2026TT0103-001121");
+      expect(await handle.postKeyByReference("NEWS-40000")).toBeNull();
+      expect(await handle.postKeyByReference("NEWS-1")).toBeNull();
+    } finally {
+      await pool.end();
+      await Promise.all([...handle.closeBeforeServer, ...handle.closers].map((c) => c.close()));
+    }
   });
 
   it("refuses to start when the tenant's search.language differs from posts.search_vector's", async () => {

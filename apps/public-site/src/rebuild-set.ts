@@ -46,7 +46,7 @@ export function membershipOf(post: Pick<PostDto, "publishDate" | "ministryKeys" 
  */
 export function dependentPages(before: Membership | null, after: Membership | null, termOf?: TermOf): string[] {
   if (!before && !after) return [];
-  const ids = new Set<string>(["home", "archive", "sitemap"]);
+  const ids = new Set<string>(["home", "archive", "sitemap", "kind-feeds"]);
   for (const m of [before, after]) {
     if (!m) continue;
     ids.add(`archive:${m.month}`);

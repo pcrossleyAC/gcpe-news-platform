@@ -6,6 +6,8 @@ import { CATEGORY_KEY, TERM_SLUG, type CategoryKind } from "./site-paths";
 export interface NewsApiClient {
   getPost(key: string): Promise<PostDto | null>;
   latestHome(count: number): Promise<PostDto[]>;
+  /** The latest posts of one post kind (`releases`, `stories`, ...), home-wide. */
+  latestOfKind(postKind: string, count: number): Promise<PostDto[]>;
   latest(kind: CategoryKind, key: string, count: number): Promise<PostDto[]>;
   /** The home settings News API already projects (plan 3d tasks 1–3) — used here for
    * Project Blue Bridge's `granville` (plan 3d task 4) and the home page's top/feature posts. */
@@ -82,6 +84,7 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
   return {
     getPost: async (key) => (await get(`api/Posts/${enc(key)}?${v1}`)) as PostDto | null,
     latestHome: async (count) => ((await get(`api/Posts/Latest/home/default?${v1}&count=${count}`)) as PostDto[] | null) ?? [],
+    latestOfKind: async (postKind, count) => ((await get(`api/Posts/Latest/home/default?${v1}&postKind=${enc(postKind)}&count=${count}`)) as PostDto[] | null) ?? [],
     latest: async (kind, key, count) => ((await getOr404(`api/Posts/Latest/${LATEST_PATH[kind]}/${enc(key)}?${v1}&count=${count}`)) as PostDto[] | null) ?? [],
     home: async () => (await get(`api/Home?${v1}`)) as HomeDto,
     postsByKeys: async (keys) => (keys.length ? (((await get(`api/Posts?${v1}&postKeys=${enc(keys.join(","))}`)) as PostDto[] | null) ?? []) : []),

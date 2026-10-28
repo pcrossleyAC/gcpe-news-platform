@@ -36,6 +36,58 @@ describe("site builder", () => {
     expect(html(storage, "sitemaps/2026-10.xml")).toContain("https://news.example/releases/K1/");
   });
 
+  it("a ministry render writes ministries/<k>/atom.xml", async () => {
+    const { storage, builder } = setup(new Map([["K1", post({ key: "K1", ministryKeys: ["Health"] })]]));
+    await builder.rebuild(["home", "category:ministries:health", "category:tags:covid-19"], {});
+    for (const f of ["atom.xml", "ministries/health/atom.xml", "tags/covid-19/atom.xml"]) expect(storage.files.has(f), f).toBe(true);
+    expect(html(storage, "ministries/health/atom.xml")).toContain("<id>https://news.example/releases/K1/</id>");
+    expect(html(storage, "ministries/health/atom.xml")).toContain("https://news.example/ministries/health/atom.xml");
+  });
+
+  it("the factsheets feed holds only factsheets and includes a factsheet that is the home top post", async () => {
+    const posts = new Map([
+      ["F1", post({ key: "F1", kind: "factsheets", publishDate: "2026-10-01T10:00:00-07:00" })],
+      ["F2", post({ key: "F2", kind: "factsheets", publishDate: "2026-10-02T10:00:00-07:00" })],
+      ["R1", post({ key: "R1", kind: "releases", publishDate: "2026-10-03T10:00:00-07:00" })],
+    ]);
+    const { storage, api, builder } = setup(posts);
+    api.home = async () => ({ granville: null, topPostKey: "F1", featurePostKey: null });
+    // The real API's latest list leaves out the home top post.
+    const latestOfKind = api.latestOfKind;
+    api.latestOfKind = async (k, n) => (await latestOfKind(k, n)).filter((p) => p.key !== "F1");
+    await builder.rebuild(["kind-feeds"], {});
+    for (const f of ["feeds/releases.xml", "feeds/releases.atom.xml", "feeds/stories.xml", "feeds/updates.atom.xml"]) expect(storage.files.has(f), f).toBe(true);
+    for (const f of ["feeds/factsheets.xml", "feeds/factsheets.atom.xml"]) {
+      expect(html(storage, f), f).toContain("/releases/F1/");
+      expect(html(storage, f), f).toContain("/releases/F2/");
+      expect(html(storage, f), f).not.toContain("/releases/R1/");
+    }
+    expect(html(storage, "feeds/releases.xml")).not.toContain("/releases/F1/");
+    expect(html(storage, "feeds/factsheets.atom.xml")).toContain("https://news.example/feeds/factsheets.atom.xml");
+  });
+
+  it("kind-feeds is all-or-nothing: one kind's failed fetch writes no feed file", async () => {
+    const { storage, api, builder } = setup(new Map([["R1", post({ key: "R1", kind: "releases" })]]));
+    const latestOfKind = api.latestOfKind;
+    api.latestOfKind = async (k, n) => {
+      if (k === "updates") throw new Error("api down");
+      return latestOfKind(k, n);
+    };
+    await expect(builder.rebuild(["kind-feeds"], {})).rejects.toThrow();
+    expect([...storage.files.keys()].filter((f) => f.startsWith("feeds/"))).toEqual([]);
+  });
+
+  it("the sitemap pages list no feed files", async () => {
+    const { storage, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
+    await builder.rebuild(["home", "kind-feeds", "category:ministries:health", "sitemap:pages"], {});
+    expect(html(storage, "sitemaps/pages.xml")).not.toMatch(/\.xml<|atom|feed/);
+  });
+
+  it("aggregatePageIds includes kind-feeds", async () => {
+    const { builder } = setup(new Map());
+    expect(await builder.aggregatePageIds()).toContain("kind-feeds");
+  });
+
   it("home: News by Sector lists the active sectors by name, each with its latest post; a sector with none is left out", async () => {
     const posts = new Map([
       ["K1", post({ key: "K1", sectorKeys: ["economy"], documents: [{ languageId: 4105, headline: "Economy headline", subheadline: null, detailsHtml: null, contacts: [] }] })],
@@ -131,13 +183,45 @@ describe("site builder", () => {
     expect(html(storage, "sitemap.xml")).not.toContain("2026-10.xml");
   });
 
+  it("renders a post with a 102-char key to the hashed dir, and allPostKeys still lists it", async () => {
+    const key = "canada-and-british-columbia-investments-in-local-infrastructure-help-build-community-connections-for-1";
+    const posts = new Map([[key, post({ key })], ["K2", post({ key: "K2", publishDate: "2026-09-01T10:00:00-07:00" })]]);
+    const { storage, builder } = setup(posts);
+    await builder.rebuild([`post:${key}`, "post:K2"], {});
+    const dir = "releases/_long/106422386aca9cfd948a818d5a9a92f5";
+    expect(storage.files.has(`${dir}/index.html`)).toBe(true);
+    expect(storage.files.has(`releases/${key}/index.html`)).toBe(false);
+    expect(html(storage, "sitemaps/2026-10.xml")).toContain(`/releases/${key}/`);
+    // Listed from disk alone (no News API, no index): the key is recovered from the sidecar.
+    const bare = createSiteBuilder({ newsApi: fakeNewsApi(new Map()), storage, index: postIndex(tdb.db), site, assetsDir: null });
+    await tdb.pool.query("TRUNCATE site_posts");
+    expect((await bare.allPostKeys()).sort()).toEqual([key, "K2"].sort());
+    // Unpublishing removes the page and the sidecar, so the key is no longer listed.
+    posts.delete(key);
+    await builder.rebuild([`post:${key}`], {});
+    expect([...storage.files.keys()].filter((f) => f.startsWith("releases/_long/"))).toEqual([]);
+    expect(await bare.allPostKeys()).toEqual(["K2"]);
+  });
+
+  it("allPostKeys ignores a forged sidecar: wrong hash dir, or a key of 100 characters or fewer", async () => {
+    const { storage, builder } = setup(new Map());
+    const long = "x".repeat(101);
+    await storage.write("releases/_long/00000000000000000000000000000000/.key", `${long}\n`);
+    await storage.write("releases/_long/11111111111111111111111111111111/.key", "K1\n");
+    const names = [...storage.files.keys()].filter((f) => f.startsWith("releases/_long/"));
+    expect(names).toHaveLength(2);
+    expect(await builder.allPostKeys()).toEqual([]);
+  });
+
   it("a category the News API no longer has loses its page and feed", async () => {
     const { storage, builder } = setup(new Map());
     await storage.write("tags/gone/index.html", "x");
     await storage.write("tags/gone/feed.xml", "x");
+    await storage.write("tags/gone/atom.xml", "x");
     await builder.rebuild(["category:tags:gone"], {});
     expect(storage.files.has("tags/gone/index.html")).toBe(false);
     expect(storage.files.has("tags/gone/feed.xml")).toBe(false);
+    expect(storage.files.has("tags/gone/atom.xml")).toBe(false);
   });
 
   it("a full build lists a biography page written in the same build in sitemaps/pages.xml", async () => {
