@@ -23,13 +23,15 @@ function staticSite(outputDir: string) {
 /**
  * `/site/<rest>?<query>` → `301 /<rest>?<query>`, once the site lives at the origin: links in
  * emails already sent, bookmarks and search results keep working in one hop. The query is
- * carried byte-for-byte (taken from `originalUrl`, never re-encoded). GET/HEAD only; anything
+ * carried byte-for-byte (taken from the mount's `req.url`, never re-encoded). GET/HEAD only; anything
  * else falls through. no-store, so a proxy never pins the redirect.
  */
 export function siteAliasRedirect(req: Request, res: Response, next: NextFunction): void {
   if (req.method !== "GET" && req.method !== "HEAD") return next();
-  // Mounted at "/site", so originalUrl starts with "/site" (any case) on a segment boundary.
-  let rest = req.originalUrl.slice("/site".length);
+  // Mounted at "/site", so req.url is already the remainder ("/x?q", or "/" for "/site"), raw
+  // bytes, never re-encoded. For an absolute-form request line Express keeps the scheme and host
+  // in front of it ("http://h/x?q"); drop them so the Location is still a path on this site.
+  let rest = req.url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, "");
   // "/site//evil.example" or "/site/\evil.example" must never become a protocol-relative
   // Location that leaves the site: collapse any run of leading slashes/backslashes to one "/".
   rest = rest.replace(/^[/\\]+/, "/");
@@ -53,6 +55,12 @@ export function mountSite(app: express.Express, opts: { outputDir: string; baseP
   } else {
     app.use("/site", siteAliasRedirect);
   }
+  // This root mount runs on every request (ahead of /files, /hub and every app), so its
+  // noStoreOnRedirect makes ANY 3xx in the stack no-store, not only the site's own. Harmless
+  // today (everything after noStoreByDefault is no-store anyway; the one new case is
+  // express.static's directory redirect under /hub/assets). A route that ever wants a
+  // cacheable redirect cannot get one behind this (it overwrites Cache-Control on any 3xx at
+  // writeHead); it must be mounted before mountSite in stack.ts.
   const root = express.Router();
   root.use(...staticSite(outputDir));
   app.use(root);

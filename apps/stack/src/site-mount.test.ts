@@ -85,6 +85,32 @@ describe("mountSite / siteAliasRedirect / rootSiteNotFound", () => {
     expect((await request(app).get("/site//evil.example/x").redirects(0)).headers.location).toBe("/evil.example/x");
   });
 
+  // Review T2 minor 1: an absolute-form request line (proxies may send one) used to give a
+  // Location built from originalUrl's length ("/evil.example/site/x"); it is the remainder now.
+  it("base '' — an absolute-form request line redirects to the path remainder, query intact", async () => {
+    const server = appFor(outputDir, "").listen(0);
+    try {
+      const { port } = server.address() as import("node:net").AddressInfo;
+      const raw = async (target: string) => {
+        const { connect } = await import("node:net");
+        return new Promise<string>((resolve, reject) => {
+          const sock = connect(port, "127.0.0.1", () => sock.end(`GET ${target} HTTP/1.1\r\nHost: evil.example\r\nConnection: close\r\n\r\n`));
+          let out = "";
+          sock.on("data", (d) => (out += d.toString()));
+          sock.on("end", () => resolve(out));
+          sock.on("error", reject);
+        });
+      };
+      const loc = (res: string) => /\r\nLocation: ([^\r]*)/i.exec(res)?.[1];
+      expect(loc(await raw("http://evil.example/site/x?q=a%2Bb"))).toBe("/x?q=a%2Bb");
+      expect(loc(await raw("https://evil.example/site//x"))).toBe("/x");
+      expect(loc(await raw("http://evil.example/site"))).toBe("/");
+      expect(loc(await raw("/site/x?q=1"))).toBe("/x?q=1");
+    } finally {
+      server.close();
+    }
+  });
+
   it("base '' — POST /site/x falls through (next)", async () => {
     const app = appFor(outputDir, "");
     const res = await request(app).post("/site/x").redirects(0);
