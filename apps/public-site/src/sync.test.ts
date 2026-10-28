@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createSiteBuilder, type SiteBuilder } from "./builder";
 import { fsStorage } from "./storage";
+import { settingsHashes } from "./settings";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
@@ -331,13 +332,35 @@ describe("syncSite", () => {
       expect(r.page).toContain("Published Holder");
     });
 
-    it("with nothing persisted (but a marker), Blue Bridge still rebuilds every page; the defaults never move the marker's settings hashes", async () => {
+    it("with nothing persisted (but a marker), Blue Bridge still rebuilds every page — with the defaults, so the marker records the defaults' hashes", async () => {
       const r = await restartWithBlueBridge({ deletePersisted: true });
       expect(r.rendered).toEqual(expect.arrayContaining(["static", "home", "post:K1"]));
       expect(r.after.granvilleOn).toBe(true);
-      expect(r.settingsHashes(r.after)).toEqual(r.settingsHashes(r.before));
+      const defaults = settingsHashes(withHolder("Tenant Default Holder"), "America/Vancouver", new Date());
+      expect(r.settingsHashes(r.after)).toEqual(defaults);
+      expect(r.settingsHashes(r.after)).not.toEqual(r.settingsHashes(r.before));
       expect(r.page).toContain('class="blue-bridge-banner"');
       expect(r.page).toContain("Tenant Default Holder"); // nothing else exists to render with
+    });
+
+    it("after that, the first successful fetch rebuilds back to the published settings and records their hashes", async () => {
+      const r = await restartWithBlueBridge({ deletePersisted: true });
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+      const posts = new Map([["K1", post({ key: "K1" })]]);
+      const storage = fsStorage(r.dir);
+      const newsApi = fakeNewsApi(posts);
+      newsApi.home = async () => ({ granville: "true", topPostKey: null, featurePostKey: null });
+      const document = withHolder("Published Holder");
+      newsApi.settings = published(document);
+      const builder = createSiteBuilder({ newsApi, storage, index: postIndex(tdb.db), site, assetsDir: null });
+      const recovered = recording({ ...setup(posts), storage, newsApi, builder });
+      await syncSite(recovered.deps);
+      expect(recovered.rendered).toEqual(expect.arrayContaining(["static", "home", "post:K1"])); // footer ⇒ every page; theme/banner via static
+      const marker = JSON.parse(await readFile(join(r.dir, ".site-state.json"), "utf8"));
+      expect(r.settingsHashes(marker)).toEqual(settingsHashes(document, "America/Vancouver", new Date()));
+      expect(r.settingsHashes(marker)).toEqual(r.settingsHashes(r.before));
+      expect(await readFile(join(r.dir, "releases/K1/index.html"), "utf8")).toContain("Published Holder");
+      expect(await readFile(join(r.dir, "assets/theme.css"), "utf8")).toContain(`--color-primary: ${document.theme.colors.primary};`);
     });
 
     it("a fetch error before any successful fetch uses the tenant defaults (logged) rather than failing the turn", async () => {

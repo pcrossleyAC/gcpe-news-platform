@@ -45,16 +45,18 @@ export async function turnOptions(deps: SyncDeps, granville: string | null): Pro
 /**
  * Queues what the chrome or the settings changed since the marker, then moves the marker. A
  * settings fetch failure never delays a site-wide change (Blue Bridge, test, chrome version, base
- * URL): with a persisted document the turn proceeds normally; with only the stand-in defaults
- * (`fallbackDefaults`), the marker's settings hashes are kept, so the defaults neither queue a
- * settings rebuild nor get recorded as applied — everything else is compared and recorded.
+ * URL): with a persisted document the turn proceeds normally. With only the stand-in defaults
+ * (`fallbackDefaults`), the comparison uses the marker's own settings hashes, so the defaults
+ * never queue a settings rebuild by themselves; but when a rebuild-all is queued anyway, every
+ * page is then rendered with the defaults, so the marker records the defaults' hashes — the first
+ * successful fetch then sees the difference and rebuilds back to the published settings.
  */
 export async function applyChromeChanges(deps: SyncDeps, turn: { state: SiteRenderState; fallbackDefaults: boolean }, force = false): Promise<void> {
-  const state = turn.fallbackDefaults ? await keepSettingsHashes(deps.storage, turn.state) : turn.state;
-  const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, state, deps.site);
+  const compared = turn.fallbackDefaults ? await keepSettingsHashes(deps.storage, turn.state) : turn.state;
+  const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, compared, deps.site);
   if (!changes.all && changes.sections.length === 0) return;
   await enqueueChromeChanges(deps.db, deps.builder, changes);
-  await writeSiteState(deps.storage, state, deps.site);
+  await writeSiteState(deps.storage, changes.all ? turn.state : compared, deps.site);
 }
 
 export interface SyncResult {
