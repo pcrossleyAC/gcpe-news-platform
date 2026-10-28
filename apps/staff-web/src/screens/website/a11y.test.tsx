@@ -27,6 +27,7 @@ import { ThemeScreen } from "./settings/ThemeScreen";
 import { MinistryPagesScreen } from "./settings/MinistryPagesScreen";
 import { MediaContactsScreen } from "./settings/MediaContactsScreen";
 import { PageTextScreen } from "./settings/PageTextScreen";
+import { NavigationScreen } from "./settings/NavigationScreen";
 import { HistoryScreen } from "./settings/HistoryScreen";
 import type { SettingsState } from "./settings/api";
 import type { CarouselsResponse, LinksView, ListFilesResult, LiveFeedView, PinView } from "./types";
@@ -293,6 +294,25 @@ describe("accessibility — Website section screens", () => {
     const { container } = render(withAuth(<PageTextScreen />));
     await screen.findByRole("heading", { name: "Page text", level: 1 });
     await screen.findByDisplayValue("2015");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("NavigationScreen, with header links at the limit, a row error and field errors", async () => {
+    const state = settingsState(
+      (d) => ({
+        ...d,
+        navigation: { ...d.navigation, headerLinks: [1, 2, 3, 4].map((n) => ({ text: `Link ${n}`, url: `/l${n}/` })) },
+      }),
+      [
+        { field: "navigation.labels.loadMoreNews", message: "Enter some text." },
+        { field: "navigation.headerLinks[0].url", message: "Must start with https:// or / (a page on this site)." },
+        { field: "navigation.headerLinks", message: "Keep the list to 4 or fewer." },
+      ],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<NavigationScreen />));
+    await screen.findByRole("heading", { name: "Navigation and labels", level: 1 });
+    await screen.findByDisplayValue("Link 4");
     expect(await seriousViolations(container)).toEqual([]);
   });
 

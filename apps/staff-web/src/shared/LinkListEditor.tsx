@@ -27,6 +27,8 @@ export interface LinkListEditorProps {
   /** Show each link's Description (optional) — `summary`. */
   withSummary: boolean;
   isDisabled?: boolean;
+  /** The most links the list may hold: "+ Add a link" is disabled at the limit, with a hint saying so. */
+  maxLinks?: number;
 }
 
 type Shown = "text" | "url" | "summary";
@@ -41,7 +43,7 @@ const ROW_ERROR = /^\[(\d+)\](?:\.(\w+))?$/;
  * button, an announcement); adding a row focuses its Link text, removing one focuses the next
  * row (or "+ Add a link").
  */
-export function LinkListEditor({ legend, description, links, onChange, errors, pathPrefix, reorderable, withSummary, isDisabled = false }: LinkListEditorProps): React.JSX.Element {
+export function LinkListEditor({ legend, description, links, onChange, errors, pathPrefix, reorderable, withSummary, isDisabled = false, maxLinks }: LinkListEditorProps): React.JSX.Element {
   const { announce } = useAnnouncer();
   const descriptionId = useId();
   const moveFocus = useMoveFocusRestore<HTMLFieldSetElement>();
@@ -162,9 +164,10 @@ export function LinkListEditor({ legend, description, links, onChange, errors, p
       })}
       {!isDisabled && (
         <span ref={addRef}>
-          <Button variant="secondary" onPress={add}>
+          <Button variant="secondary" onPress={add} isDisabled={maxLinks !== undefined && links.length >= maxLinks}>
             + Add a link
           </Button>
+          {maxLinks !== undefined && links.length >= maxLinks && <p>{`You can have at most ${maxLinks} links.`}</p>}
         </span>
       )}
     </fieldset>

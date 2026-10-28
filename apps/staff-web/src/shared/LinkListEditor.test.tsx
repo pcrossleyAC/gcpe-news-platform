@@ -105,4 +105,24 @@ describe("LinkListEditor", () => {
   it("withoutBlankLinks drops only completely blank rows", () => {
     expect(withoutBlankLinks([{ text: " ", url: "", summary: "" }, { text: "", url: "/x" }, A])).toEqual([{ text: "", url: "/x" }, A]);
   });
+
+  it("with maxLinks, the add button is disabled at the limit and a hint says why", async () => {
+    render(
+      <AnnouncerProvider>
+        <LinkListEditor legend="Few" links={[A, B]} onChange={() => {}} errors={[]} pathPrefix="x" reorderable withSummary={false} maxLinks={2} />
+      </AnnouncerProvider>,
+    );
+    const add = screen.getByRole("button", { name: "+ Add a link" });
+    expect(add).toBeDisabled();
+    expect(screen.getByText("You can have at most 2 links.")).toBeInTheDocument();
+  });
+
+  it("with maxLinks, the add button works below the limit", () => {
+    render(
+      <AnnouncerProvider>
+        <LinkListEditor legend="Few" links={[A]} onChange={() => {}} errors={[]} pathPrefix="x" reorderable withSummary={false} maxLinks={2} />
+      </AnnouncerProvider>,
+    );
+    expect(screen.getByRole("button", { name: "+ Add a link" })).toBeEnabled();
+  });
 });
