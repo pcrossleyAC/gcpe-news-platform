@@ -1,6 +1,6 @@
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { Db } from "@gcpe/db-kit";
-import type { CategoryKind } from "@gcpe/events";
+import type { CategoryKind, GovernmentTermsPayload } from "@gcpe/events";
 import { categories, categoryFeatures, governmentTerms, home, resourceLinks, siteSettings, slides, type CategoryRow, type FeatureRow } from "./db/schema";
 import { toCategoryDto, toHomeDto, toMinisterDto, toMinistryDto, toResourceLinkDto, toSlideDto } from "./dto";
 
@@ -120,8 +120,17 @@ export async function getSiteSettings(db: Db) {
   return row ? { revision: row.revision, publishedAt: row.publishedAt.toISOString(), document: row.document } : null;
 }
 
-/** The stored government-terms snapshot, or null before the first one is published. */
-export async function getGovernmentTerms(db: Db) {
+/**
+ * The stored government-terms snapshot, or null before the first one is published. Projects the
+ * public fields explicitly rather than trusting what was stored (defence in depth).
+ */
+export async function getGovernmentTerms(db: Db): Promise<GovernmentTermsPayload | null> {
   const [row] = await db.select().from(governmentTerms).where(eq(governmentTerms.id, 1));
-  return row ? row.document : null;
+  if (!row) return null;
+  const d = row.document;
+  return {
+    publishedAt: d.publishedAt,
+    currentSlug: d.currentSlug,
+    terms: d.terms.map((t) => ({ slug: t.slug, label: t.label, startDate: t.startDate, endDate: t.endDate, legacyArchiveUrl: t.legacyArchiveUrl })),
+  };
 }

@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
-import type { OrgRecord, ReleaseRecord } from "@gcpe/events";
-import type { GovernmentTermsPayload } from "@gcpe/events";
+import type { GovernmentTermsPayload, OrgRecord, ReleaseRecord } from "@gcpe/events";
 import type { SiteSettings } from "@gcpe/site-settings";
 
 export * from "@gcpe/events/tables";

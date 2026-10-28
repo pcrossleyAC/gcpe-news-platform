@@ -303,7 +303,13 @@ export async function applyGovernmentTerms(tx: Tx, p: GovernmentTermsPayload): P
     .values(values)
     .onConflictDoUpdate({ target: governmentTerms.id, set: values, setWhere: sql`${governmentTerms.publishedAt} < ${publishedAt.toISOString()}::timestamptz` })
     .returning({ id: governmentTerms.id });
-  if (applied.length > 0) await recordChanges(tx, [{ kind: "government_terms", key: null }]);
+  if (applied.length > 0) {
+    await recordChanges(tx, [{ kind: "government_terms", key: null }]);
+    return;
+  }
+  // Ignored: a late or repeated event is normal; a stream of these can also mean NRMS's clock or database went back.
+  const [current] = await tx.select({ publishedAt: governmentTerms.publishedAt }).from(governmentTerms).where(eq(governmentTerms.id, 1));
+  console.warn(`[news-api] ignored government terms snapshot published ${p.publishedAt}: ${current?.publishedAt.toISOString() ?? "?"} is already stored (only a newer snapshot applies)`);
 }
 
 export async function applySiteContent(tx: Tx, c: SiteContentChanged, slideImages?: SlideImageFetcher): Promise<void> {
