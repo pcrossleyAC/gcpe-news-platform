@@ -1512,6 +1512,19 @@ SELECT max(id) FROM changes;                       -- on the News API's database
 
 The News API limits `/api/v2/search` to 60 requests a minute per client IP (Q74, Phase 6b). A visitor who hits it sees "Too many searches. Wait a minute and try again." in the page's alert region, same as a 400 ("Enter between 1 and 200 characters to search.") or any other failure ("Search isn't available right now. You can browse the archive instead.").
 
+### Robots and Google Search Console verification
+
+`robots.txt` on a live site is the legacy news.gov.bc.ca Disallows (`/error`, `/files`, `/search`, `/Search`, `/SEARCH`, `/subscribe`) plus the `Sitemap:` line; `/assets` is deliberately not disallowed, so crawlers can fetch the CSS and JS. On a test site (`SITE_ENVIRONMENT=test`, boxs.ca) it stays `Disallow: /` and every page carries `noindex`.
+
+Two optional, operator-owned variables (the stack prefixes them with `SITE_`) prove ownership to Google Search Console. Both values are public; empty or unset means none. A value that doesn't match its format stops the site from starting, so nothing unchecked reaches a file path or the page `<head>`.
+
+| Variable | Format | Effect |
+|---|---|---|
+| `SITE_GOOGLE_VERIFICATION_FILE` | `google` + 16 lowercase hex digits + `.html` | Writes that file at the site root, containing `google-site-verification: <file name>`. |
+| `SITE_GOOGLE_SITE_VERIFICATION` | 20 to 100 letters, digits, `-` or `_` | Adds `<meta name="google-site-verification" content="…">` to the home page `<head>` only. |
+
+`npm run siteground:env` sets both for boxs.ca (the real values belong to news.gov.bc.ca, so they prove nothing for boxs.ca; they let the rehearsal exercise the path). At cutover, set the values Search Console issues for the live domain. Clearing `SITE_GOOGLE_VERIFICATION_FILE` stops writing the file but does not delete one already written: remove it from `site-output/` by hand. Adding or changing the meta changes the home `<head>`, so it ships with a `RENDER_CHROME_VERSION` bump.
+
 ### Carousel images
 
 A slide or pin image lives at `<NRMS STORAGE_DIR>/slides/<sha256>.<png|jpg>` (content-addressed: the same image uploaded twice shares one file) and is served publicly at `/files/slides/…`, same as any other uploaded file. On start, NRMS writes a file for any stored slide or pin image that has none yet (the backfill for images stored before this change, or recovery after a lost file) and logs `[nrms] published <n> slide image files` when it writes any.

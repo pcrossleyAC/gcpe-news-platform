@@ -179,5 +179,5 @@ describe("RENDER_CHROME_VERSION", () => {
   // 8: the archive by government term (new-government Task 6).
   // 9: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
   // 10: the news.gov release page, minister card, biography page and ministry page (parity plan 2).
-  it("RENDER_CHROME_VERSION is 10", () => expect(RENDER_CHROME_VERSION).toBe(10));
+  it("RENDER_CHROME_VERSION is 11", () => expect(RENDER_CHROME_VERSION).toBe(11));
 });

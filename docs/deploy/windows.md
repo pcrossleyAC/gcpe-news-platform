@@ -343,6 +343,7 @@ Until these are set, the stack uses built-in fakes and says so in its log. Add e
 | Emergency alerts feed | `NOD_EMERGENCY_FEED_URL=https://www.emergencyinfobc.gov.bc.ca/category/alerts/feed/?hide_expired=true` | Must be the final URL, no redirect. |
 | Flickr (NRMS) | `NRMS_FLICKR_API_KEY`, `NRMS_FLICKR_API_SECRET`, `NRMS_FLICKR_ACCESS_TOKEN`, `NRMS_FLICKR_ACCESS_SECRET`, `NRMS_FLICKR_ALERT_EMAILS` | siteground.md, "Flickr". |
 | Semantic search | `NEWSAPI_EMBEDDINGS_PROVIDER=azure-openai`, `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY`, `AZURE_OPENAI_EMBEDDING_DEPLOYMENT`, and `"semanticSearch": true` in `config\tenants\bc.json` | pgvector is already on. `/stack/health` then says `"newsApiSearch": "semantic"`. Never turn on `staffAi` before the privacy impact assessment approves it. |
+| Google Search Console (public site) | `SITE_GOOGLE_VERIFICATION_FILE`, `SITE_GOOGLE_SITE_VERIFICATION` | Optional; not set by the generator because a Windows install is a test site (noindex, `robots.txt` is `Disallow: /`). For a live host see siteground.md, "Robots and Google Search Console verification" (formats are checked at startup). |
 | Real mail | remove `DIST_MAIL_REDIRECT_TO` | Only when this server should email real people. |
 
 ## Step 10 — Running it

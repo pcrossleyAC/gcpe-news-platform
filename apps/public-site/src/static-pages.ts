@@ -5,6 +5,7 @@ import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "./rend
 import { bannerJson, themeDefaults } from "./settings";
 import { writeBuiltinAssets } from "./site-assets";
 import type { SiteStorage } from "./storage";
+import { GOOGLE_VERIFICATION_FILE_RE } from "./verification";
 import { DEFAULT_THEME, themeCss } from "./theme-css";
 
 export function renderNotFoundPage(site: SiteInfo, opts: PageOptions): string {
@@ -21,10 +22,13 @@ export function renderNotFoundPage(site: SiteInfo, opts: PageOptions): string {
 </div>`, opts);
 }
 
+const LEGACY_DISALLOWS = ["/error", "/files", "/search", "/Search", "/SEARCH", "/subscribe"];
+
 /** spec §6.1: test sites keep Disallow: / (constraints.md's test-site rule). */
 export function renderRobots(site: SiteInfo, test: boolean): string {
   if (test) return "User-agent: *\nDisallow: /\n";
-  return `User-agent: *\nAllow: /\nSitemap: ${new URL(site.baseUrl).origin}${basePath(site)}/sitemap.xml\n`;
+  // Legacy robots.txt's Disallows, less /assets (our CSS and JS live there; crawlers must render pages).
+  return `User-agent: *\n${LEGACY_DISALLOWS.map((p) => `Disallow: ${p}\n`).join("")}Sitemap: ${new URL(site.baseUrl).origin}${basePath(site)}/sitemap.xml\n`;
 }
 
 /** Every file under `<assetsDir>/assets`, as paths relative to assetsDir; any path segment
@@ -57,4 +61,6 @@ export async function writeStaticPages(storage: SiteStorage, site: SiteInfo, opt
   await storage.write("assets/site-banner.json", bannerJson(settings));
   await storage.write("404.html", renderNotFoundPage(site, opts));
   await storage.write("robots.txt", renderRobots(site, opts.test === true));
+  const gsc = site.verification?.googleFile;
+  if (gsc && GOOGLE_VERIFICATION_FILE_RE.test(gsc)) await storage.write(gsc, `google-site-verification: ${gsc}\n`);
 }

@@ -125,6 +125,8 @@ export function buildWindowsEnvLines(input: WindowsEnvInput, adminPasswordHash: 
     "SITE_NEWS_API_URL=self:/",
     "SITE_OUTPUT_DIR=./site-output",
     envLine("SITE_PUBLIC_SITE_URL", origin),
+    // SITE_GOOGLE_VERIFICATION_FILE / SITE_GOOGLE_SITE_VERIFICATION (Search Console, optional) are
+    // deliberately not set here: this is a test deployment (noindex). docs/deploy/windows.md, Step 9.
     "NOD_DISTRIBUTION_URL=self:/distribution",
     envLine("NOD_PUBLIC_SITE_URL", origin),
     "",

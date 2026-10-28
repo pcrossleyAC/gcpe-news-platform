@@ -18,3 +18,6 @@
 /subscribe/save
 /Content/Images/Gov/default-og-image-new.jpg
 /search?q=housing&resultspagenum=2
+# section: robots and verification
+/robots.txt
+/google790b0529c8dcfaff.html

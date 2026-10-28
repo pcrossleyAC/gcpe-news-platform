@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { authFromEnv, NEWS_API_CHANGES_ROLE, type LocalAuthConfig, type ServiceTokenOptions } from "@gcpe/auth";
 import { eventSecretsSchema, loadTenantConfig, type TenantConfig } from "@gcpe/config";
+import { GOOGLE_SITE_VERIFICATION_RE, GOOGLE_VERIFICATION_FILE_RE } from "./verification";
 
 /** An optional setting where "" (an emptied SiteGround field) means unset — NRMS's own
  * `optionalSetting` (apps/nrms/src/start.ts), duplicated rather than imported: apps never
@@ -78,6 +79,11 @@ export function publicSiteEnvSchema(tenantConfig: TenantConfig | undefined) {
      * emptied SiteGround field, e.g. clearing a once-set value) is treated as unset, like every
      * other optional setting in this file. */
     SEARCH_API_URL: optionalSetting.pipe(z.string().url().optional()),
+    /** Google Search Console verification (url-compat §1d): the HTML file's name, written to the
+     * site root. Token-shaped so it can never be a path. "" is unset. */
+    GOOGLE_VERIFICATION_FILE: optionalSetting.pipe(z.string().regex(GOOGLE_VERIFICATION_FILE_RE, "must look like google<16 hex>.html").optional()),
+    /** The verification meta tag's content (home page head). Token-shaped so it can never carry markup. "" is unset. */
+    GOOGLE_SITE_VERIFICATION: optionalSetting.pipe(z.string().regex(GOOGLE_SITE_VERIFICATION_RE, "must be 20-100 letters, digits, - or _").optional()),
   });
 }
 

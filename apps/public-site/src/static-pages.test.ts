@@ -51,9 +51,26 @@ describe("static pages", () => {
     expect(form.querySelector('button[type="submit"]')?.textContent).toBe("Search");
     expect(body.querySelector('a[href="/site/archive/"]')).not.toBeNull();
   });
-  it("robots.txt: a test site disallows everything; production names the sitemap", () => {
+  it("renderRobots (not test) is exactly the legacy Disallows without /assets, plus our Sitemap line", () => {
+    expect(renderRobots({ ...site, baseUrl: "https://news.gov.bc.ca" }, false)).toBe(
+      "User-agent: *\nDisallow: /error\nDisallow: /files\nDisallow: /search\nDisallow: /Search\nDisallow: /SEARCH\nDisallow: /subscribe\nSitemap: https://news.gov.bc.ca/sitemap.xml\n",
+    );
+    expect(renderRobots({ ...site, baseUrl: "https://news.example/site" }, false)).toContain("Sitemap: https://news.example/site/sitemap.xml\n");
+    expect(renderRobots(site, false)).not.toContain("/assets");
+  });
+  it("renderRobots (test) is still Disallow: /", () => {
     expect(renderRobots(site, true)).toBe("User-agent: *\nDisallow: /\n");
-    expect(renderRobots({ ...site, baseUrl: "https://news.example/site" }, false)).toBe("User-agent: *\nAllow: /\nSitemap: https://news.example/site/sitemap.xml\n");
+  });
+  it("writeStaticPages writes google790b0529c8dcfaff.html containing 'google-site-verification: google790b0529c8dcfaff.html' when set, and nothing when unset", async () => {
+    const f = "google790b0529c8dcfaff.html";
+    const set = memoryStorage();
+    await writeStaticPages(set as SiteStorage, { ...site, verification: { googleFile: f, googleMeta: null } }, { settings: bcSettings() }, null);
+    expect(set.files.get(f)).toContain(`google-site-verification: ${f}`);
+    for (const v of [undefined, { googleFile: null, googleMeta: null }, { googleFile: "../x.html", googleMeta: null }]) {
+      const unset = memoryStorage();
+      await writeStaticPages(unset as SiteStorage, { ...site, verification: v }, { settings: bcSettings() }, null);
+      expect(await tenantKeys(unset)).toEqual(["404.html", "assets/site-banner.json", "assets/theme.css", "robots.txt"]);
+    }
   });
   it("writes theme.css, 404.html, robots.txt and copies the assets folder", async () => {
     const dir = await mkdtemp(join(tmpdir(), "site-assets-"));
