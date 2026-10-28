@@ -22,6 +22,7 @@ import { createSearchService, type SearchMode } from "./search/service";
 import { QueryVectorCache } from "./search/vector-cache";
 import { createUpdatesHub } from "./updates/hub";
 import { listenForUpdates } from "./updates/notify";
+import { getPostByReference } from "./posts";
 
 export interface AppHandle {
   app: express.Express;
@@ -38,6 +39,12 @@ export interface AppHandle {
    * itself uses. The hub's ping timer and the LISTEN connection are not loops of this kind
    * — there is no "run once" for them. */
   workers: Record<string, () => Promise<unknown>>;
+  /**
+   * The key of the published post whose NEWS-n reference is `reference` (case-insensitive), or
+   * null. The public site's /<n> short links (url-compat T5) use it; served by
+   * posts_reference_lower_idx.
+   */
+  postKeyByReference(reference: string): Promise<string | null>;
   /** Starts the interval loops exactly as main.ts does today. */
   startLoops(): void;
   /** Wires the SignalR hub's WebSocket upgrade handling to the http server. Present only
@@ -226,6 +233,7 @@ export async function startNewsApi(env: NodeJS.ProcessEnv, opts: { hub?: boolean
     tenantId: tenant.tenantId,
     timeZone: tenant.timeZone,
     searchMode,
+    postKeyByReference: async (reference) => (await getPostByReference(db, reference))?.key ?? null,
     workers: {
       dispatch: () => dispatchOnce({ db, subscribers }),
       changesPrune: () => pruneChanges(db),

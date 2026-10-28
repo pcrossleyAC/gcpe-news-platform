@@ -23,7 +23,7 @@ export const similarRequestSchema = z
     text: z.string().refine((s) => codePoints(s) <= SIMILAR_MAX_TEXT_CHARS && noNul(s)),
     terms: z.string().refine((s) => codePoints(s) <= SIMILAR_MAX_TERMS_CHARS && noNul(s)),
     mode: z.enum(["ai", "text"]),
-    excludeKey: z.string().min(1).max(100).refine(noNul).optional(),
+    excludeKey: z.string().min(1).max(200).refine(noNul).optional(),
   })
   .strict();
 export type SimilarRequest = z.infer<typeof similarRequestSchema>;

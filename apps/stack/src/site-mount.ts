@@ -15,11 +15,35 @@ export function siteBasePath(publicSiteUrl: string): string {
   return new URL(publicSiteUrl).pathname.replace(/\/+$/, "");
 }
 
+const RSS_TYPE = "application/rss+xml; charset=utf-8";
+const ATOM_TYPE = "application/atom+xml; charset=utf-8";
+
+/**
+ * The legacy feed content types for every feed file the site writes: `feed.xml` / `atom.xml` at
+ * the root and in each category directory, and `feeds/<kind>.xml` / `.atom.xml`. express.static
+ * would send `application/xml`; subscribers' readers (and the legacy URLs served in place) expect
+ * RSS and Atom types. `send` keeps a Content-Type set here. Other .xml files are left alone.
+ */
+export function feedContentType(filePath: string): string | null {
+  const parts = filePath.split(/[\\/]/);
+  const name = parts[parts.length - 1]!;
+  if (name === "feed.xml") return RSS_TYPE;
+  if (name === "atom.xml") return ATOM_TYPE;
+  if (parts[parts.length - 2] === "feeds") {
+    if (name.endsWith(".atom.xml")) return ATOM_TYPE;
+    if (name.endsWith(".xml")) return RSS_TYPE;
+  }
+  return null;
+}
+
 function staticSite(outputDir: string) {
   // dotfiles: "deny" keeps the render-state marker (.site-state.json) and anything else
   // dot-prefixed unservable; noStoreOnRedirect gives express.static's own trailing-slash
   // 301 a no-store so the SiteGround proxy never caches it.
-  return [noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny" })];
+  return [noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny", setHeaders: (res, filePath) => {
+    const type = feedContentType(filePath);
+    if (type !== null) res.setHeader("Content-Type", type);
+  } })];
 }
 
 /**
@@ -55,16 +79,16 @@ export function mountSite(
 ): void {
   const { outputDir, basePath, lookupReference } = opts;
   const passThrough = opts.passThrough ?? [];
-  // Old news.gov.bc.ca URLs (parity plan 3) run first in each site chain: before the successor
-  // redirects (their rules never match /ministries/…; plan 3 Task 5 folds the successors in) and
-  // before express.static (a fallback rule checks the disk itself, so a real page still wins).
+  // Old news.gov.bc.ca URLs (parity plan 3) run first in each site chain, before express.static
+  // (a fallback rule checks the disk itself, so a real page still wins).
   const legacy = (base: string) => legacyUrls({ outputDir, basePath: base, passThrough, lookupReference });
   if (basePath !== "") {
     // Unchanged from before the root mount: an unknown page under the prefix is the site's 404.
-    // Successor redirects first: an old ministry's page is still on disk (new-government §4).
-    app.use(basePath, legacy(basePath), ministrySuccessorRedirects(outputDir, basePath), ...staticSite(outputDir), siteNotFound(outputDir));
+    // Successors are part of legacyUrls' category rule (an old ministry's page is still on disk, new-government §4).
+    app.use(basePath, legacy(basePath), ...staticSite(outputDir), siteNotFound(outputDir));
   } else {
     // /site/ministries/<old>/… goes straight to the successor (one hop), the rest to the root.
+    // A renamed ministry (url-compat T4) takes two hops here: /site/… → /… → the new key.
     app.use("/site", ministrySuccessorRedirects(outputDir, ""), siteAliasRedirect);
   }
   // This root mount runs on every request (ahead of /files, /hub and every app), so its
@@ -76,7 +100,7 @@ export function mountSite(
   // means one fs.stat per request that isn't a site file (/api, /hub, /stack/tick…) before it
   // falls through: negligible next to the apps' own work, so not worth a prefix skip-list here.
   const root = express.Router();
-  root.use(legacy(""), ministrySuccessorRedirects(outputDir, ""), ...staticSite(outputDir));
+  root.use(legacy(""), ...staticSite(outputDir));
   app.use(root);
 }
 

@@ -1,8 +1,10 @@
 import type { PostDto } from "./dto";
 import { headlineOf } from "./post-index";
 import { ex, type SiteInfo } from "./render";
-import { absoluteUrl, pageUrl } from "./site-paths";
 import { LATEST_COUNT } from "./pages/format";
+import { absoluteUrl, pageUrl } from "./site-paths";
+
+export { FEED_POST_KINDS, kindFeedFile } from "./site-paths";
 
 /** The latest `LATEST_COUNT` posts as an RSS 2.0 feed (spec §6.1). Every piece of text and every
  * URL is gated through `ex()`, which escapes `&`/`<`/`>`/quotes and strips XML-illegal control
@@ -26,5 +28,38 @@ export function renderRssFeed(channel: { title: string; pagePath: string; feedPa
 ${items.join("\n")}
 </channel>
 </rss>
+`;
+}
+
+const EPOCH = "1970-01-01T00:00:00Z";
+/** An ISO-8601 UTC instant without milliseconds, or null for an unparseable date. */
+const instant = (iso: string): string | null => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString().replace(/\.\d{3}Z$/, "Z");
+};
+
+/** The latest `LATEST_COUNT` posts as an Atom 1.0 feed, beside the RSS one. Same `ex()` gate as
+ * `renderRssFeed`. Feed `updated` is the newest item's publish instant (not the build time, so an
+ * unchanged feed is byte-identical), or the epoch with no items. */
+export function renderAtomFeed(channel: { title: string; pagePath: string; feedPath: string; description: string }, posts: PostDto[], site: SiteInfo): string {
+  const items = posts.slice(0, LATEST_COUNT);
+  const entries = items.map((p) => {
+    const link = absoluteUrl(site, pageUrl(site, { type: "post", key: p.key }));
+    const summary = p.summary ? `\n<summary>${ex(p.summary)}</summary>` : "";
+    return `<entry>\n<title>${ex(headlineOf(p))}</title>\n<id>${ex(link)}</id>\n<link href="${ex(link)}"/>\n<updated>${instant(p.publishDate) ?? EPOCH}</updated>${summary}\n</entry>`;
+  });
+  const newest = items.map((p) => instant(p.publishDate)).filter((x): x is string => x !== null).sort().at(-1) ?? EPOCH;
+  const feedUrl = absoluteUrl(site, channel.feedPath);
+  return `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+<title>${ex(channel.title)}</title>
+<subtitle>${ex(channel.description)}</subtitle>
+<id>${ex(feedUrl)}</id>
+<updated>${newest}</updated>
+<link rel="self" type="application/atom+xml" href="${ex(feedUrl)}"/>
+<link rel="alternate" type="text/html" href="${ex(absoluteUrl(site, channel.pagePath))}"/>
+<author><name>${ex(site.name)}</name></author>
+${entries.join("\n")}
+</feed>
 `;
 }

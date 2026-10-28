@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { absoluteUrl, biographyUrl, categoryPageId, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId } from "./site-paths";
+import { absoluteUrl, biographyUrl, categoryPageId, feedUrl, formatPageId, kindFeedFile, pageFiles, pageUrl, parsePageId, POST_KEY, postDir, postPath } from "./site-paths";
 
 const site = { name: "N", baseUrl: "https://boxs.example/site" };
 
@@ -30,7 +30,7 @@ describe("parsePageId", () => {
   });
 
   it.each([
-    "", "post:", "post:..", "post:a/b", "post:a.b", "post:../etc", `post:${"a".repeat(101)}`, "post:a:b",
+    "", "post:", "post:..", "post:a/b", "post:a.b", "post:../etc", `post:${"a".repeat(201)}`, "post:a:b",
     "category:ministries:Health", "category:ministries:../../etc", "category:ministries:a/b", "category:people:x", "category:ministries", "category:ministries:x:y",
     "archive:2026-13", "archive:2026-00", "archive:26-10", "archive:2026-10:x", "sitemap:2026-1", "nope", "home:x",
     "archive-term:../x", "archive-term:", "archive-term:A", "archive-term:a/b", "archive-term:a.b", `archive-term:${"a".repeat(41)}`, "archive-term:a:b", "archive-terms:x",
@@ -50,11 +50,11 @@ describe("categoryPageId", () => {
 
 describe("pageFiles", () => {
   it.each([
-    ["home", ["index.html", "feed.xml"]],
+    ["home", ["index.html", "feed.xml", "atom.xml"]],
     ["post:K1", ["releases/K1/index.html"]],
     ["ministries", ["ministries/index.html"]],
-    ["category:sectors:economy", ["sectors/economy/index.html", "sectors/economy/feed.xml"]],
-    ["category:ministries:health", ["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/biography/index.html"]],
+    ["category:sectors:economy", ["sectors/economy/index.html", "sectors/economy/feed.xml", "sectors/economy/atom.xml"]],
+    ["category:ministries:health", ["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/atom.xml", "ministries/health/biography/index.html"]],
     ["archive", ["archive/index.html"]],
     ["archive:2026-10", ["archive/2026/10/index.html"]],
     ["search", ["search/index.html"]],
@@ -85,10 +85,22 @@ describe("contacts (H3)", () => {
 
 describe("pageFiles: the biography page (H2)", () => {
   it("a ministries category page owns index.html, feed.xml and biography/index.html; a sector page still owns two files", () => {
-    expect(pageFiles({ type: "category", kind: "ministries", key: "health" })).toEqual(["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/biography/index.html"]);
-    expect(pageFiles({ type: "category", kind: "sectors", key: "economy" })).toHaveLength(2);
+    expect(pageFiles({ type: "category", kind: "ministries", key: "health" })).toEqual(["ministries/health/index.html", "ministries/health/feed.xml", "ministries/health/atom.xml", "ministries/health/biography/index.html"]);
+    expect(pageFiles({ type: "category", kind: "sectors", key: "economy" })).toHaveLength(3);
     expect(biographyUrl(site, "Citizens-Services")).toBe("/site/ministries/citizens-services/biography/");
     expect(biographyUrl({ baseUrl: "https://news.example" }, "health")).toBe("/ministries/health/biography/");
+  });
+});
+
+describe("kind feeds", () => {
+  it("pageFiles(kind-feeds) is the eight feeds/* files; parsePageId('kind-feeds') round-trips", () => {
+    const p = parsePageId("kind-feeds")!;
+    expect(formatPageId(p)).toBe("kind-feeds");
+    expect(pageFiles(p)).toEqual([
+      "feeds/releases.xml", "feeds/releases.atom.xml", "feeds/stories.xml", "feeds/stories.atom.xml",
+      "feeds/factsheets.xml", "feeds/factsheets.atom.xml", "feeds/updates.xml", "feeds/updates.atom.xml",
+    ]);
+    expect(kindFeedFile("stories", "atom")).toBe("feeds/stories.atom.xml");
   });
 });
 
@@ -106,5 +118,30 @@ describe("urls", () => {
     expect(feedUrl(site, { type: "home" })).toBe("/site/feed.xml");
     expect(feedUrl(site, { type: "category", kind: "tags", key: "covid-19" })).toBe("/site/tags/covid-19/feed.xml");
     expect(absoluteUrl(site, "/site/x/")).toBe("https://boxs.example/site/x/");
+  });
+});
+
+describe("long post keys (url-compat T3, M17)", () => {
+  const M17 = "canada-and-british-columbia-investments-in-local-infrastructure-help-build-community-connections-for-1";
+  it("postPath of the 102-char M17 key is releases/_long/106422386aca9cfd948a818d5a9a92f5/index.html", () => {
+    expect(M17).toHaveLength(102);
+    expect(postPath(M17)).toBe("releases/_long/106422386aca9cfd948a818d5a9a92f5/index.html");
+    expect(postDir(M17.toUpperCase())).toBe("releases/_long/106422386aca9cfd948a818d5a9a92f5");
+  });
+  it("a 100-char key keeps releases/<key>/index.html", () => {
+    const k = "a".repeat(100);
+    expect(postPath(k)).toBe(`releases/${k}/index.html`);
+    expect(postDir("K1")).toBe("releases/K1");
+  });
+  it("POST_KEY accepts 200 chars, rejects 201, '../x', 'a/b' and '_long'", () => {
+    expect(POST_KEY.test("a".repeat(200))).toBe(true);
+    for (const bad of ["a".repeat(201), "../x", "a/b", "_long", ""]) expect(POST_KEY.test(bad), bad).toBe(false);
+  });
+  it("pageUrl of the long key is /releases/<key>/", () => {
+    expect(pageUrl(site, { type: "post", key: M17 })).toBe(`/site/releases/${M17}/`);
+  });
+  it("a long key's files are the page and its .key sidecar; a short key's only the page", () => {
+    expect(pageFiles({ type: "post", key: M17 })).toEqual([postPath(M17), "releases/_long/106422386aca9cfd948a818d5a9a92f5/.key"]);
+    expect(pageFiles({ type: "post", key: "K1" })).toEqual(["releases/K1/index.html"]);
   });
 });

@@ -161,3 +161,41 @@ Priority: T0, T1, T2, T4, T7, T9 are cutover-blocking; T3, T5 next; T6, T8 by tr
 - I did not read the emailer templates (legacy News API / Admin, outside the web app repo), so what exact URLs sent emails carry is [I] from the web app's controller contract.
 - Whether the platform's post DTO carries a kind, a NEWS reference, an image, and a `RedirectUri` was not checked [A]; T5/T6 depend on it.
 - Verified count of live requests: 40 (limit 40), all HEAD except the two GETs noted.
+
+## Rename table vs live (2026-10-28)
+
+`tools/parity/ministry-renames-live.ts`: HEAD `https://news.gov.bc.ca/ministries/<key>` for each of the 29 one-segment keys, 1 request/s, once. Live answers one edge per hop (a 302 with an absolute Location); the table is the closure of those edges. Result: every live 302 Location equals the table's direct edge (or the next step of the same chain, which the closure follows), so no edge changed and no test row was added (P16). Live 404 keys are kept in the table (code-derived edges): ours redirects only when the final page exists, so they cost nothing.
+
+| key | live status | live Location | table (closed value) |
+|---|---|---|---|
+| justice | 302 | /ministries/attorney-general | attorney-general |
+| technology-innovation-and-citizens-services | 302 | /ministries/citizens-services | citizens-services |
+| labour-citizens-services-and-open-government | 404 | - | citizens-services |
+| energy-and-mines | 302 | /ministries/energy-mines-and-petroleum-resources | energy-mines-and-petroleum-resources |
+| natural-gas-development | 404 | - | energy-mines-and-petroleum-resources |
+| environment | 302 | /ministries/environment-and-climate-change-strategy | environment-and-climate-change-strategy |
+| forests-lands-and-natural-resource-operations | 302 | /ministries/forests-lands-natural-resource-operations-and-rural-development | forests |
+| forests-lands-natural-resource-operations-and-rural-development | 302 | /ministries/forests | forests |
+| land-water-and-resource-stewardship | 302 | /ministries/water-land-and-resource-stewardship | water-land-and-resource-stewardship |
+| aboriginal-relations-and-reconciliation | 302 | /ministries/indigenous-relations-and-reconciliation | indigenous-relations-and-reconciliation |
+| jobs-tourism-and-skills-training | 302 | /ministries/jobs-trade-and-technology | jobs-trade-and-technology |
+| international-trade | 302 | /ministries/trade | jobs-and-economic-growth |
+| trade | 302 | /ministries/jobs-and-economic-growth | jobs-and-economic-growth |
+| social-development-and-social-innovation | 302 | /ministries/social-development-and-poverty-reduction | social-development-and-poverty-reduction |
+| social-development-social-innovation | 404 | - | social-development-and-poverty-reduction |
+| social-development-social-and-social-innovation | 404 | - | social-development-and-poverty-reduction |
+| community-sport-and-cultural-development | 302 | /ministries/tourism-arts-and-culture | tourism-arts-and-culture |
+| education | 302 | /ministries/education-and-child-care | education-and-child-care |
+| child-care | 302 | /ministries/education-and-child-care | education-and-child-care |
+| agriculture-food-and-fisheries | 302 | /ministries/agriculture-and-food | agriculture-and-food |
+| jobs-economic-recovery-and-innovation | 302 | /ministries/jobs-economic-development-and-innovation | jobs-and-economic-growth |
+| jobs-economic-development-and-innovation | 302 | /ministries/jobs-and-economic-growth | jobs-and-economic-growth |
+| infrastructure-and-transit | 302 | /ministries/transportation-and-infrastructure | transportation-and-infrastructure |
+| workforce-development | 302 | /ministries/post-secondary-education-and-future-skills | post-secondary-education-and-future-skills |
+| advanced-education | 404 | - | post-secondary-education-and-future-skills |
+| advanced-education-and-skills-training | 404 | - | post-secondary-education-and-future-skills |
+| municipal-affairs | 302 | /ministries/housing-and-municipal-affairs | housing-and-municipal-affairs |
+| mental-health-and-addictions | 302 | /ministries/health | health |
+| intergovernmental-relations-secretariat-1 | 404 | - | intergovernmental-relations-secretariat |
+
+Live 404 (edge kept, from the legacy code): labour-citizens-services-and-open-government, natural-gas-development, social-development-social-innovation, social-development-social-and-social-innovation, advanced-education, advanced-education-and-skills-training, intergovernmental-relations-secretariat-1. Two-segment keys were not probed (the brief checks one-segment keys only).

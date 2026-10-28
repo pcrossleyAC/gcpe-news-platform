@@ -282,8 +282,8 @@ describe("RENDER_CHROME_VERSION", () => {
   // 8: the archive by government term (new-government Task 6).
   // 9: the news.gov home page (carousel band, PostCards, Load More, Connect With Us, News by Sector).
   // 10: the news.gov release page, minister card, biography page and ministry page (parity plan 2).
-  // 12: /contacts/, /privacy/, in-site Resources links and the italic preload (parity plan 4, batch B).
-  it("RENDER_CHROME_VERSION is 12", () => expect(RENDER_CHROME_VERSION).toBe(12));
+  // 13: atom.xml, per-kind feeds and long post keys (parity plan 3, batches B+C).
+  it("RENDER_CHROME_VERSION is 13", () => expect(RENDER_CHROME_VERSION).toBe(13));
 });
 
 describe("Search Console verification in the render-state marker", () => {

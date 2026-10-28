@@ -7,7 +7,7 @@ import express from "express";
 import request from "supertest";
 import { mountSite, rootSiteNotFound } from "../site-mount";
 import { SITE_PASS_THROUGH } from "../stack";
-import { createLegacySiteFixture } from "./fixture";
+import { createLegacySiteFixture, LONG_POST_KEY } from "./fixture";
 import { legacyUrls } from "./middleware";
 import { LISTING_MIN_REREAD_MS } from "./site-files";
 
@@ -464,5 +464,437 @@ describe("legacyUrls: unsafe request targets never reach the static mount", () =
     });
     const res = await request(app).get("/api/x%5Cy");
     expect({ status: res.status, reached }).toEqual({ status: 200, reached: 1 });
+  });
+});
+
+describe("legacyUrls: post keys over 100 characters (url-compat T3, M17)", () => {
+  let outputDir: string;
+  let app: express.Express;
+  const LONG = LONG_POST_KEY;
+  const HASHED = "<h1>releases/_long/106422386aca9cfd948a818d5a9a92f5/</h1>";
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+    app = appFor(outputDir);
+  });
+  afterEach(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+
+  it("GET /releases/<102-char key>/ → 200 serving the hashed page", async () => {
+    expect(LONG).toHaveLength(102);
+    const res = await request(app).get(`/releases/${LONG}/?x=1`).redirects(0);
+    expect({ status: res.status, body: res.text }).toEqual({ status: 200, body: HASHED });
+    const under = await request(appFor(outputDir, "/site")).get(`/site/releases/${LONG}/`).redirects(0);
+    expect({ status: under.status, body: under.text }).toEqual({ status: 200, body: HASHED });
+  });
+
+  it("/RELEASES/<KEY UPPERCASED>/ → 200 (same dir)", async () => {
+    const res = await request(app).get(`/RELEASES/${LONG.toUpperCase()}/`).redirects(0);
+    expect({ status: res.status, body: res.text }).toEqual({ status: 200, body: HASHED });
+  });
+
+  it("/releases/<key> → 301 /releases/<key>/", async () => {
+    await expectRedirect(app, `/releases/${LONG}`, `/releases/${LONG}/`);
+    await expectRedirect(app, `/Releases/${LONG.toUpperCase()}?a=b`, `/releases/${LONG.toUpperCase()}/?a=b`);
+  });
+
+  it("/stories/<key> → 301 /releases/<key>/", async () => {
+    await expectRedirect(app, `/stories/${LONG}`, `/releases/${LONG}/`);
+    await expectRedirect(app, `/factsheets/${LONG}/`, `/releases/${LONG}/`);
+  });
+
+  it("an unknown 150-char key → 404", async () => {
+    for (const path of [`/releases/${"x".repeat(150)}/`, `/stories/${"x".repeat(150)}`, `/releases/${"x".repeat(201)}/`]) {
+      const res = await request(app).get(path).redirects(0);
+      expect({ path: path.length, status: res.status, location: res.headers.location, body: res.text }).toEqual({ path: path.length, status: 404, location: undefined, body: "<h1>site 404</h1>" });
+    }
+  });
+
+  it("a key with unsafe characters never reaches the hashed dir", async () => {
+    for (const path of [`/releases/${LONG}%5C..%5C/`, `/releases/${LONG}.x/`, `/releases/${LONG}%00/`]) {
+      const res = await request(app).get(path).redirects(0);
+      expect({ path, status: res.status, location: res.headers.location }).toEqual({ path, status: 404, location: undefined });
+    }
+  });
+});
+
+describe("legacyUrls: ministries, categories, the Premier and nested keys (T4, L4)", () => {
+  let outputDir: string;
+  let app: express.Express;
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+    app = appFor(outputDir);
+  });
+  afterEach(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+  const status = async (path: string) => (await request(app).get(path).redirects(0)).status;
+
+  it("/ministries/justice → 301 /ministries/attorney-general/", async () => {
+    await expectRedirect(app, "/ministries/justice", "/ministries/attorney-general/");
+    await expectRedirect(app, "/Ministries/JUSTICE/", "/ministries/attorney-general/");
+    await expectRedirect(appFor(outputDir, "/site"), "/site/ministries/justice", "/site/ministries/attorney-general/");
+  });
+
+  it("/ministries/justice/biography → 301 /ministries/attorney-general/", async () => {
+    await expectRedirect(app, "/ministries/justice/biography", "/ministries/attorney-general/");
+    await expectRedirect(app, "/ministries/justice/Biography/?x=1", "/ministries/attorney-general/?x=1");
+  });
+
+  it("/ministries/environmental-assessment-office is not caught by the 'environment' rename (segment-exact) → 404", async () => {
+    expect(await status("/ministries/environmental-assessment-office")).toBe(404);
+    expect(await status("/ministries/environmental-assessment-office/")).toBe(404);
+  });
+
+  it("/ministries/environment → 404, no redirect (the chain ends at a key with no page; live 404 too)", async () => {
+    const res = await request(app).get("/ministries/environment").redirects(0);
+    expect({ status: res.status, location: res.headers.location }).toEqual({ status: 404, location: undefined });
+  });
+
+  it("/ministries/transportation-and-infrastructure/infrastructure → 301 /ministries/transportation-and-transit/ (rename then successor, one hop)", async () => {
+    await expectRedirect(app, "/ministries/transportation-and-infrastructure/infrastructure", "/ministries/transportation-and-transit/");
+    // A single segment with no page and no rename still takes the successor table.
+    await expectRedirect(app, "/ministries/transportation-and-infrastructure", "/ministries/transportation-and-transit/");
+  });
+
+  it("/ministries/jobs-economic-recovery-and-innovation/trade?x=1 → 301 /ministries/jobs-and-economic-growth/?x=1", async () => {
+    await expectRedirect(app, "/ministries/jobs-economic-recovery-and-innovation/trade?x=1", "/ministries/jobs-and-economic-growth/?x=1");
+    await expectRedirect(app, "/ministries/international-trade", "/ministries/jobs-and-economic-growth/");
+    await expectRedirect(app, "/ministries/education-and-child-care/child-care", "/ministries/education-and-child-care/");
+  });
+
+  it("nested: /ministries/<parent>/attorney-general → 301 /ministries/attorney-general/; its /biography → the ministry page (nested is a move)", async () => {
+    // Spec order (brief Interfaces): a parent with a page, or a rename, is resolved at step 2 and the
+    // child is "rest"; step 3 (nested) is for a parent that is neither. The brief's test row used
+    // /ministries/health/attorney-general; see the next assertion for what that gives.
+    await expectRedirect(app, "/ministries/old-parent/attorney-general", "/ministries/attorney-general/");
+    await expectRedirect(app, "/ministries/old-parent/attorney-general/?x=1", "/ministries/attorney-general/?x=1");
+    // A nested path is "moved": the bio rule answers the ministry page, never a biography page.
+    await expectRedirect(app, "/ministries/old-parent/attorney-general/biography", "/ministries/attorney-general/");
+    // A nested key with a page keeps its own sub-pages.
+    await expectRedirect(app, "/ministries/old-parent/office-of-the-premier/biography", "/ministries/office-of-the-premier/");
+    // A reserved word is never a nested key; the unknown parent is a 404.
+    expect(await status("/ministries/old-parent/releases")).toBe(404);
+    expect(await status("/ministries/old-parent/nope")).toBe(404);
+    // A parent that has a page is that ministry; an unknown child goes to its page.
+    await expectRedirect(app, "/ministries/health/attorney-general", "/ministries/health/");
+  });
+
+  it("/office-of-the-premier → 301 /ministries/office-of-the-premier/; /office-of-the-premier/biography → 301 /ministries/office-of-the-premier/biography/; /ministries/office-of-the-premier/ → 200", async () => {
+    await expectRedirect(app, "/office-of-the-premier", "/ministries/office-of-the-premier/");
+    await expectRedirect(app, "/office-of-the-premier/", "/ministries/office-of-the-premier/");
+    await expectRedirect(app, "/office-of-the-premier/biography", "/ministries/office-of-the-premier/biography/");
+    await expectRedirect(app, "/Office-Of-The-Premier/Biography/?x=1", "/ministries/office-of-the-premier/biography/?x=1");
+    await expectRedirect(app, "/ministries/office-of-the-premier", "/ministries/office-of-the-premier/");
+    const ok = await request(app).get("/ministries/office-of-the-premier/").redirects(0);
+    expect({ status: ok.status, body: ok.text }).toEqual({ status: 200, body: "<h1>ministries/office-of-the-premier/</h1>" });
+    expect(await status("/ministries/office-of-the-premier/biography/")).toBe(200);
+    await expectRedirect(appFor(outputDir, "/site"), "/site/office-of-the-premier", "/site/ministries/office-of-the-premier/");
+  });
+
+  it("a missing biography page falls back to the ministry page", async () => {
+    await expectRedirect(app, "/ministries/attorney-general/biography", "/ministries/attorney-general/");
+    await expectRedirect(app, "/ministries/health/biography", "/ministries/health/biography/");
+  });
+
+  it("/ministries/health/factsheets → 301 /ministries/health/ until ministries/health/factsheets/index.html exists, then 301 /ministries/health/factsheets/", async () => {
+    await expectRedirect(app, "/ministries/health/factsheets", "/ministries/health/");
+    await expectRedirect(app, "/ministries/health/Factsheets/?page=2", "/ministries/health/?page=2");
+    await mkdir(join(outputDir, "ministries", "health", "factsheets"), { recursive: true });
+    await writeFile(join(outputDir, "ministries", "health", "factsheets", "index.html"), "<h1>fs</h1>");
+    await expectRedirect(app, "/ministries/health/factsheets", "/ministries/health/factsheets/");
+    expect(await status("/ministries/health/factsheets/")).toBe(200);
+    await expectRedirect(app, "/ministries/justice/factsheets", "/ministries/attorney-general/");
+  });
+
+  it("/ministries/health/more-news?page=2 → 301 /ministries/health/ (query dropped)", async () => {
+    await expectRedirect(app, "/ministries/health/more-news?page=2", "/ministries/health/");
+    await expectRedirect(app, "/ministries/health/releases/archive/2019?page=2", "/ministries/health/");
+    await expectRedirect(app, "/ministries/justice/morearticles", "/ministries/attorney-general/");
+  });
+
+  it("/news-subscribe/x → 301 /tags/x/; /sectors/families/ → 301 /sectors/services/", async () => {
+    await expectRedirect(app, "/news-subscribe/x", "/tags/x/");
+    await expectRedirect(app, "/News-Subscribe/X/?a=1", "/tags/x/?a=1");
+    await expectRedirect(app, "/sectors/families/", "/sectors/services/");
+    expect(await status("/tags/x/")).toBe(200);
+    // No page: the site 404 (no redirect to a missing page).
+    expect(await status("/tags/nope/")).toBe(404);
+    expect(await status("/news-subscribe/nope")).toBe(404);
+    expect(await status("/sectors/nope/")).toBe(404);
+  });
+
+  it("/ministries/health/ → 200 (no redirect)", async () => {
+    const res = await request(app).get("/ministries/health/").redirects(0);
+    expect({ status: res.status, location: res.headers.location }).toEqual({ status: 200, location: undefined });
+    expect(await status("/ministries/health/biography/")).toBe(200);
+    // Its feed files are served in place (describe "legacy feed URLs" below).
+    expect(await status("/ministries/health/feed.xml")).toBe(200);
+  });
+
+  it("an old ministry's page still on disk redirects to its successor (the plan-2 successor behaviour, now via legacyUrls)", async () => {
+    await mkdir(join(outputDir, "ministries", "transportation-and-infrastructure"), { recursive: true });
+    await writeFile(join(outputDir, "ministries", "transportation-and-infrastructure", "index.html"), "<h1>old</h1>");
+    await expectRedirect(app, "/ministries/transportation-and-infrastructure/", "/ministries/transportation-and-transit/");
+    await expectRedirect(app, "/ministries/transportation-and-infrastructure/biography", "/ministries/transportation-and-transit/");
+  });
+
+  it("an unparseable or unsafe category path is the site 404, never a redirect", async () => {
+    for (const path of ["/ministries/justice%5Cx", "/ministries/%2e%2e/justice", "/ministries/ju%00stice"]) expect(await status(path), path).toBe(404);
+  });
+});
+
+describe("legacyUrls: NEWS-n short links (url-compat T5)", () => {
+  let outputDir: string;
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+  });
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await rm(outputDir, { recursive: true, force: true });
+  });
+  const KEYS: Record<string, string> = { "NEWS-34336": "2026TT0103-001121", "NEWS-7": "no-such-page-on-disk", "NEWS-8": "bad key!" };
+  const lookup = async (r: string) => KEYS[r] ?? null;
+  function appWith(lookupReference?: (r: string) => Promise<string | null>) {
+    const app = express();
+    mountSite(app, { outputDir, basePath: "", passThrough: ["/api", "/hub"], lookupReference });
+    app.use(rootSiteNotFound(outputDir, ["/api", "/hub"]));
+    app.use((req, res) => void res.status(404).json({ fellThrough: true }));
+    return app;
+  }
+
+  it("/34336 → 301 /releases/2026TT0103-001121/", async () => {
+    await expectRedirect(appWith(lookup), "/34336", "/releases/2026TT0103-001121/");
+    await expectRedirect(appWith(lookup), "/34336?utm=x", "/releases/2026TT0103-001121/?utm=x");
+  });
+
+  it("/34336/ → same", async () => {
+    await expectRedirect(appWith(lookup), "/34336/", "/releases/2026TT0103-001121/");
+  });
+
+  it("/99999 → 404", async () => {
+    expect((await request(appWith(lookup)).get("/99999")).status).toBe(404);
+  });
+
+  it("a reference whose key has no page, or is not a valid key, → 404", async () => {
+    expect((await request(appWith(lookup)).get("/7")).status).toBe(404);
+    expect((await request(appWith(lookup)).get("/8")).status).toBe(404);
+  });
+
+  it("a long key resolves through its hashed dir", async () => {
+    await expectRedirect(appWith(async () => LONG_POST_KEY), "/34336", `/releases/${LONG_POST_KEY}/`);
+  });
+
+  it("a throwing lookup → 404, logged once across two requests", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    const app = appWith(async () => {
+      throw new Error("db down");
+    });
+    expect((await request(app).get("/34336")).status).toBe(404);
+    expect((await request(app).get("/34336")).status).toBe(404);
+    expect(err.mock.calls.filter((c) => String(c[0]).includes("[stack] reference lookup failed: db down"))).toHaveLength(1);
+  });
+
+  it("a failure after a successful lookup is logged again (a second outage is not silent)", async () => {
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    let down = true;
+    const app = appWith(async () => {
+      if (down) throw new Error("db down");
+      return "2026TT0103-001121";
+    });
+    const logged = () => err.mock.calls.filter((c) => String(c[0]).includes("[stack] reference lookup failed: db down")).length;
+    await request(app).get("/34336");
+    await request(app).get("/34336");
+    expect(logged()).toBe(1);
+    down = false;
+    expect((await request(app).get("/34336").redirects(0)).status).toBe(301);
+    down = true;
+    await request(app).get("/34336");
+    expect(logged()).toBe(2);
+  });
+
+  it("/2026 with no reference → 404 (no clash with archive paths, which live under /archive/)", async () => {
+    expect((await request(appWith(async () => null)).get("/2026")).status).toBe(404);
+    await expectRedirect(appWith(lookup), "/archive/2026/10", "/archive/2026/10/");
+  });
+
+  it("without lookupReference the rule is off", async () => {
+    expect((await request(appWith()).get("/34336")).status).toBe(404);
+  });
+
+  it("a nine-digit n is looked up; ten digits and non-numbers are not", async () => {
+    const seen: string[] = [];
+    const app = appWith(async (r) => (seen.push(r), null));
+    await request(app).get("/123456789");
+    await request(app).get("/1234567890");
+    await request(app).get("/12ab");
+    expect(seen).toEqual(["NEWS-123456789"]);
+  });
+});
+
+const RSS = "application/rss+xml; charset=utf-8";
+const ATOM = "application/atom+xml; charset=utf-8";
+
+describe("legacyUrls: legacy feed URLs served in place (url-compat T6)", () => {
+  let outputDir: string;
+  let app: express.Express;
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+    app = appFor(outputDir);
+  });
+  afterEach(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+  const get = (path: string) => request(app).get(path).redirects(0);
+  /** Asserts a 200 in place: the content type, no Location, and a body naming `file`. */
+  async function expectFeed(path: string, type: string, file: string) {
+    const res = await get(path);
+    expect({ path, status: res.status, type: res.headers["content-type"], location: res.headers.location }).toEqual({ path, status: 200, type, location: undefined });
+    expect(res.text, path).toContain(`>${file}<`);
+    return res;
+  }
+  const ROOT_FEED = '<?xml version="1.0"?><rss version="2.0"><channel/></rss>';
+
+  it("/feed → 200 application/rss+xml, body = feed.xml", async () => {
+    const res = await get("/feed");
+    expect({ status: res.status, type: res.headers["content-type"], body: res.text }).toEqual({ status: 200, type: RSS, body: ROOT_FEED });
+    expect((await get("/FEED/")).text).toBe(ROOT_FEED);
+    expect((await get("/rss.xml")).text).toBe(ROOT_FEED);
+  });
+
+  it("/feed/rss → 200 (legacy answered 500)", async () => {
+    const res = await get("/feed/rss");
+    expect({ status: res.status, type: res.headers["content-type"], body: res.text }).toEqual({ status: 200, type: RSS, body: ROOT_FEED });
+  });
+
+  it("/feed/atom → 200 application/atom+xml", async () => {
+    await expectFeed("/feed/atom", ATOM, "atom.xml");
+  });
+
+  it("/factsheets/feed and /factsheets/feed/atom → 200 from feeds/", async () => {
+    await expectFeed("/factsheets/feed", RSS, "feeds/factsheets.xml");
+    await expectFeed("/Factsheets/Feed/rss", RSS, "feeds/factsheets.xml");
+    await expectFeed("/factsheets/feed/atom", ATOM, "feeds/factsheets.atom.xml");
+    await expectFeed("/releases/feed", RSS, "feeds/releases.xml");
+  });
+
+  it("/ministries/health/releases/feed → 200 serving ministries/health/feed.xml", async () => {
+    await expectFeed("/ministries/health/releases/feed", RSS, "ministries/health/feed.xml");
+    await expectFeed("/ministries/health/feed", RSS, "ministries/health/feed.xml");
+    await expectFeed("/ministries/health/feed/atom", ATOM, "ministries/health/atom.xml");
+    await expectFeed("/Ministries/Health/Factsheets/Feed/Atom/", ATOM, "ministries/health/atom.xml");
+  });
+
+  it("/ministries/justice/feed/atom → 200 serving ministries/attorney-general/atom.xml, no redirect", async () => {
+    await expectFeed("/ministries/justice/feed/atom", ATOM, "ministries/attorney-general/atom.xml");
+    await expectFeed("/ministries/justice/feed", RSS, "ministries/attorney-general/feed.xml");
+    await expectFeed("/ministries/old-parent/attorney-general/stories/feed", RSS, "ministries/attorney-general/feed.xml");
+  });
+
+  it("/office-of-the-premier/feed → 200 if ministries/office-of-the-premier/feed.xml exists", async () => {
+    expect((await get("/office-of-the-premier/feed")).status).toBe(404);
+    await writeFile(join(outputDir, "ministries", "office-of-the-premier", "feed.xml"), "<rss>premier</rss>");
+    const res = await get("/office-of-the-premier/feed");
+    expect({ status: res.status, type: res.headers["content-type"], body: res.text }).toEqual({ status: 200, type: RSS, body: "<rss>premier</rss>" });
+    expect((await get("/office-of-the-premier/releases/feed/rss")).text).toBe("<rss>premier</rss>");
+  });
+
+  it("/top/feed and /feature/<any>[/rss|/atom] → feed.xml / atom.xml", async () => {
+    expect((await get("/top/feed")).text).toBe(ROOT_FEED);
+    expect((await get("/feature/anything/rss")).text).toBe(ROOT_FEED);
+    expect((await get("/Top/Anything")).headers["content-type"]).toBe(RSS);
+    await expectFeed("/top/anything/atom", ATOM, "atom.xml");
+  });
+
+  it("/feed?newsOnDemand=1 → 200", async () => {
+    const res = await get("/feed?newsOnDemand=1");
+    expect({ status: res.status, type: res.headers["content-type"] }).toEqual({ status: 200, type: RSS });
+  });
+
+  it("HEAD /feed → 200 with the RSS content type", async () => {
+    for (const [path, type] of [["/feed", RSS], ["/feed/atom", ATOM], ["/ministries/justice/feed/atom", ATOM], ["/feed.xml", RSS], ["/atom.xml", ATOM]] as const) {
+      const res = await request(app).head(path).redirects(0);
+      expect({ path, status: res.status, type: res.headers["content-type"], text: res.text }).toEqual({ path, status: 200, type, text: undefined });
+    }
+  });
+
+  it("/ministries/nope/feed → 404", async () => {
+    for (const path of ["/ministries/nope/feed", "/ministries/nope/feed/atom", "/tags/nope/feed", "/updates/feed"]) {
+      expect((await get(path)).status, path).toBe(404);
+    }
+  });
+
+  it("a direct feed.xml / atom.xml of a category that resolves to nothing is the site 404, not an orphan file", async () => {
+    await mkdir(join(outputDir, "tags", "orphan"), { recursive: true });
+    await writeFile(join(outputDir, "tags", "orphan", "feed.xml"), "<rss>ORPHAN</rss>");
+    await writeFile(join(outputDir, "tags", "orphan", "atom.xml"), "<feed>ORPHAN</feed>");
+    for (const path of ["/tags/orphan/feed.xml", "/tags/orphan/atom.xml", "/tags/Orphan/feed.xml"]) {
+      const res = await get(path);
+      expect({ path, status: res.status, text: res.text.includes("ORPHAN") }).toEqual({ path, status: 404, text: false });
+    }
+  });
+
+  it("sitemap.xml and sitemaps/*.xml stay application/xml (the feed content types are not applied to them)", async () => {
+    await writeFile(join(outputDir, "sitemap.xml"), "<sitemapindex/>");
+    await mkdir(join(outputDir, "sitemaps"), { recursive: true });
+    await writeFile(join(outputDir, "sitemaps", "2026-10.xml"), "<urlset/>");
+    for (const path of ["/sitemap.xml", "/sitemaps/2026-10.xml"]) {
+      const res = await get(path);
+      expect({ path, status: res.status, type: res.headers["content-type"] }).toEqual({ path, status: 200, type: expect.stringMatching(/^application\/xml/) });
+    }
+  });
+
+  it("a feed path is the base-path-mounted site's too (/site/feed)", async () => {
+    const res = await request(appFor(outputDir, "/site")).get("/site/ministries/justice/feed/atom").redirects(0);
+    expect({ status: res.status, type: res.headers["content-type"] }).toEqual({ status: 200, type: ATOM });
+  });
+
+  // ---- carried findings (Task 5 review) ----
+
+  it("/ministries/health/atom.xml and /releases/embed are not swallowed by the category rule", async () => {
+    await expectFeed("/ministries/health/atom.xml", ATOM, "ministries/health/atom.xml");
+    const embed = await get("/ministries/health/releases/embed");
+    expect({ status: embed.status, location: embed.headers.location }).toEqual({ status: 404, location: undefined });
+    expect((await get("/ministries/health/embed")).status).toBe(404);
+  });
+
+  it("/ministries/health/top/releases is not a feed: it is a sub-path of the category, 301 to its page", async () => {
+    await expectRedirect(app, "/ministries/health/top/releases", "/ministries/health/");
+  });
+
+  it("an old ministry's feed.xml / atom.xml serve the successor's file, not the stale one", async () => {
+    await mkdir(join(outputDir, "ministries", "transportation-and-infrastructure"), { recursive: true });
+    await writeFile(join(outputDir, "ministries", "transportation-and-infrastructure", "feed.xml"), "<rss>STALE</rss>");
+    await writeFile(join(outputDir, "ministries", "transportation-and-infrastructure", "atom.xml"), "<feed>STALE</feed>");
+    await mkdir(join(outputDir, "ministries", "transportation-and-transit"), { recursive: true });
+    await writeFile(join(outputDir, "ministries", "transportation-and-transit", "feed.xml"), "<rss>SUCCESSOR</rss>");
+    await writeFile(join(outputDir, "ministries", "transportation-and-transit", "atom.xml"), "<feed>SUCCESSOR</feed>");
+    for (const [path, type, body] of [
+      ["/ministries/transportation-and-infrastructure/feed.xml", RSS, "<rss>SUCCESSOR</rss>"],
+      ["/ministries/transportation-and-infrastructure/atom.xml", ATOM, "<feed>SUCCESSOR</feed>"],
+      ["/ministries/transportation-and-infrastructure/feed", RSS, "<rss>SUCCESSOR</rss>"],
+      ["/ministries/justice/feed.xml", RSS, '<?xml version="1.0"?><feed>ministries/attorney-general/feed.xml</feed>'],
+    ] as const) {
+      const res = await get(path);
+      expect({ path, status: res.status, type: res.headers["content-type"], body: res.text }).toEqual({ path, status: 200, type, body });
+    }
+    // A moved key whose successor has no feed file is a 404, never the stale file.
+    await rm(join(outputDir, "ministries", "transportation-and-transit", "feed.xml"));
+    expect((await get("/ministries/transportation-and-infrastructure/feed.xml")).status).toBe(404);
+  });
+
+  it("direct requests for feed files carry the legacy content types", async () => {
+    for (const [path, type] of [
+      ["/feed.xml", RSS],
+      ["/atom.xml", ATOM],
+      ["/feeds/releases.xml", RSS],
+      ["/feeds/releases.atom.xml", ATOM],
+      ["/feeds/factsheets.xml", RSS],
+      ["/ministries/health/feed.xml", RSS],
+      ["/ministries/health/atom.xml", ATOM],
+    ] as const) {
+      const res = await get(path);
+      expect({ path, status: res.status, type: res.headers["content-type"] }).toEqual({ path, status: 200, type });
+    }
   });
 });
