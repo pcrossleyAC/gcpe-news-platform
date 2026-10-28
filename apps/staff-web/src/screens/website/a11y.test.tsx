@@ -26,6 +26,7 @@ import { SocialScreen } from "./settings/SocialScreen";
 import { ThemeScreen } from "./settings/ThemeScreen";
 import { MinistryPagesScreen } from "./settings/MinistryPagesScreen";
 import { MediaContactsScreen } from "./settings/MediaContactsScreen";
+import { PageTextScreen } from "./settings/PageTextScreen";
 import { HistoryScreen } from "./settings/HistoryScreen";
 import type { SettingsState } from "./settings/api";
 import type { CarouselsResponse, LinksView, ListFilesResult, LiveFeedView, PinView } from "./types";
@@ -268,6 +269,30 @@ describe("accessibility — Website section screens", () => {
     const { container } = render(withAuth(<MediaContactsScreen />));
     await screen.findByRole("heading", { name: "Media contacts page", level: 1 });
     await screen.findByDisplayValue("Media Line");
+    expect(await seriousViolations(container)).toEqual([]);
+  });
+
+  it("PageTextScreen, with rich fields, an archive link row and field errors", async () => {
+    const state = settingsState(
+      (d) => ({
+        ...d,
+        pageText: {
+          ...d.pageText,
+          privacy: { ...d.pageText.privacy, bodyHtml: "<p>Statement</p>" },
+          collectionNotice: { ...d.pageText.collectionNotice, bodyHtml: "<p>Notice</p>" },
+          searchArchiveLinks: [{ text: "2015", url: "http://x.invalid" }],
+        },
+      }),
+      [
+        { field: "pageText.assetLicence.url", message: "Must start with https:// or / (a page on this site)." },
+        { field: "pageText.privacy.bodyHtml", message: "Too long." },
+        { field: "pageText.searchArchiveLinks[0].url", message: "Must start with https:// or / (a page on this site)." },
+      ],
+    );
+    stub(["NRMS.SiteEditor"], { "/nrms/api/site/settings": state });
+    const { container } = render(withAuth(<PageTextScreen />));
+    await screen.findByRole("heading", { name: "Page text", level: 1 });
+    await screen.findByDisplayValue("2015");
     expect(await seriousViolations(container)).toEqual([]);
   });
 
