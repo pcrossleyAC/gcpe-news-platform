@@ -1,10 +1,10 @@
 import type { PostDto } from "./dto";
 import { headlineOf } from "./post-index";
 import { ex, type SiteInfo } from "./render";
+import { LATEST_COUNT } from "./pages/format";
 import { absoluteUrl, pageUrl } from "./site-paths";
 
 export { FEED_POST_KINDS, kindFeedFile } from "./site-paths";
-import { LATEST_COUNT } from "./pages/format";
 
 /** The latest `LATEST_COUNT` posts as an RSS 2.0 feed (spec §6.1). Every piece of text and every
  * URL is gated through `ex()`, which escapes `&`/`<`/`>`/quotes and strips XML-illegal control

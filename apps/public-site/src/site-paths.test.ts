@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { kindFeedFile, absoluteUrl, biographyUrl, categoryPageId, feedUrl, formatPageId, pageFiles, pageUrl, parsePageId, POST_KEY, postDir, postPath } from "./site-paths";
+import { absoluteUrl, biographyUrl, categoryPageId, feedUrl, formatPageId, kindFeedFile, pageFiles, pageUrl, parsePageId, POST_KEY, postDir, postPath } from "./site-paths";
 
 const site = { name: "N", baseUrl: "https://boxs.example/site" };
 

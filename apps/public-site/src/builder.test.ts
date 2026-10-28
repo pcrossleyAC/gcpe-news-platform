@@ -66,6 +66,17 @@ describe("site builder", () => {
     expect(html(storage, "feeds/factsheets.atom.xml")).toContain("https://news.example/feeds/factsheets.atom.xml");
   });
 
+  it("kind-feeds is all-or-nothing: one kind's failed fetch writes no feed file", async () => {
+    const { storage, api, builder } = setup(new Map([["R1", post({ key: "R1", kind: "releases" })]]));
+    const latestOfKind = api.latestOfKind;
+    api.latestOfKind = async (k, n) => {
+      if (k === "updates") throw new Error("api down");
+      return latestOfKind(k, n);
+    };
+    await expect(builder.rebuild(["kind-feeds"], {})).rejects.toThrow();
+    expect([...storage.files.keys()].filter((f) => f.startsWith("feeds/"))).toEqual([]);
+  });
+
   it("the sitemap pages list no feed files", async () => {
     const { storage, builder } = setup(new Map([["K1", post({ key: "K1" })]]));
     await builder.rebuild(["home", "kind-feeds", "category:ministries:health", "sitemap:pages"], {});
@@ -191,9 +202,11 @@ describe("site builder", () => {
     const { storage, builder } = setup(new Map());
     await storage.write("tags/gone/index.html", "x");
     await storage.write("tags/gone/feed.xml", "x");
+    await storage.write("tags/gone/atom.xml", "x");
     await builder.rebuild(["category:tags:gone"], {});
     expect(storage.files.has("tags/gone/index.html")).toBe(false);
     expect(storage.files.has("tags/gone/feed.xml")).toBe(false);
+    expect(storage.files.has("tags/gone/atom.xml")).toBe(false);
   });
 
   it("a full build lists a biography page written in the same build in sitemaps/pages.xml", async () => {

@@ -342,11 +342,13 @@ export function createSiteBuilder(deps: { newsApi: NewsApiClient; storage: SiteS
         }
         case "kind-feeds": {
           // The News API's latest list leaves out the home top and feature posts, so those are
-          // added back when they are of the kind. Four fetches, one per kind.
+          // added back when they are of the kind. Six calls (home, the featured posts, one per
+          // kind), all made before any file is written: a failed fetch leaves every feed as it was.
+          // The channel link is the home page: a kind has no page of its own.
           const home = await newsApi.home();
-          const f = await featured(home.topPostKey, home.featurePostKey);
-          for (const kind of FEED_POST_KINDS) {
-            const posts = sortNewest([...[f.top, f.feature].filter((x) => x?.kind === kind), ...(await newsApi.latestOfKind(kind, LATEST_COUNT))]);
+          const [f, latest] = await Promise.all([featured(home.topPostKey, home.featurePostKey), Promise.all(FEED_POST_KINDS.map((kind) => newsApi.latestOfKind(kind, LATEST_COUNT)))]);
+          for (const [i, kind] of FEED_POST_KINDS.entries()) {
+            const posts = sortNewest([...[f.top, f.feature].filter((x) => x?.kind === kind), ...latest[i]!]);
             const rss = { title: `${site.name}: ${kind}`, pagePath: pageUrl(site, p), feedPath: kindFeedUrl(site, kind, "rss"), description: `The latest ${kind} from ${site.name}` };
             await storage.write(kindFeedFile(kind, "rss"), renderRssFeed(rss, posts, site));
             await storage.write(kindFeedFile(kind, "atom"), renderAtomFeed({ ...rss, feedPath: kindFeedUrl(site, kind, "atom") }, posts, site));
