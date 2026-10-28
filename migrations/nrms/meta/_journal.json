@@ -134,6 +134,13 @@
       "when": 1793162147282,
       "tag": "0018_counters_by_abbreviation",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793201567018,
+      "tag": "0019_slide_action_label",
+      "breakpoints": true
     }
   ]
 }
