@@ -17,6 +17,15 @@ function hostOf(stream: string): string {
 const rich = (html: string): string => sanitizeBodyHtml(html, { images: false });
 
 /**
+ * Replaces every `{host}` with the already-escaped host. split/join, not `replace(str, str)`, so `$&`,
+ * `` $` `` and `$'` in the host stay literal (the stream-URL gate refuses such hosts today; this pins the
+ * substitution on its own).
+ */
+export function fillHost(html: string, escapedHost: string): string {
+  return html.split("{host}").join(escapedHost);
+}
+
+/**
  * `/live/` (H4): legacy Live view + the web-cast component. `stream` is the home settings' https
  * playlist URL (settings.ts liveStreamUrl) or null for off air; anything that is not https is off air
  * here too (the one check lives in liveStreamUrl), and the URL only ever goes in `data-stream` and the stream link.
@@ -41,7 +50,7 @@ ${image}
 <div class="off-air-text">${rich(t.offAirHtml)}</div>
 </div>`;
   } else {
-    const consent = rich(t.consentHtml).split("{host}").join(e(hostOf(stream)));
+    const consent = fillHost(rich(t.consentHtml), e(hostOf(stream)));
     player = `<div class="wowza-wrapper asset wowza video" data-stream="${e(stream)}">
 <div class="placeholder-container">
 ${image}

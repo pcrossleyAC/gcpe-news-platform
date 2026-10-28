@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { expectAccessibleStructure } from "../../test/structure";
 import { bcSettings, site } from "../../test/fixtures";
-import { renderLivePage } from "./live";
+import { fillHost, renderLivePage } from "./live";
 
 const STREAM = "https://stream.example.gov.bc.ca/live/playlist.m3u8";
 const text = (over: Partial<ReturnType<typeof bcSettings>["pageText"]["live"]> = {}) => ({ ...bcSettings().pageText.live, ...over });
@@ -57,6 +57,13 @@ describe("live page (/live/)", () => {
       expect(html, host).not.toMatch(/onmouseover|\$&|\$`/);
       expect(html, host).not.toContain("data-stream");
     }
+  });
+
+  it("fillHost: replacement patterns in the host stay literal and every {host} is replaced", () => {
+    for (const host of ["a$&b", "a$`b", "a$'b", "$$", "$1"]) {
+      expect(fillHost("<p>{host}|<a href=\"https://{host}/\">x</a></p>", host)).toBe(`<p>${host}|<a href="https://${host}/">x</a></p>`);
+    }
+    expect(fillHost("no placeholder", "h")).toBe("no placeholder");
   });
 
   it("a userinfo URL or a host with markup characters is off air", () => {
