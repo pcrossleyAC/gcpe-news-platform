@@ -71,10 +71,11 @@ export const SITE_STATE_PATH = ".site-state.json";
  * footer headings and page labels from Navigation settings, the Live Webcast buttons and /live/ (parity plan 4,
  * batch C). 15: the news.gov Connect page and the shared Connect With Us strip with LinkedIn and RSS
  * (parity plan 4, batch D). 16: per-kind listings, ministry factsheets, sector/theme/tag pages in the news.gov
- * look and the category indexes (parity plan 4, batch E). Bump for body render changes
+ * look and the category indexes (parity plan 4, batch E). 17: search, archive and subscribe in the news.gov look,
+ * the phone Live icon in the header, the Connect collapse (parity plan 4, batch F). Bump for body render changes
  * too: pages already on disk keep their old HTML until something rebuilds them.
  */
-export const RENDER_CHROME_VERSION = 16;
+export const RENDER_CHROME_VERSION = 17;
 
 /** What the marker file holds: the render state plus what else every page bakes in — the
  * chrome version and the base URL (links carry its path, so a PUBLIC_SITE_URL change must
