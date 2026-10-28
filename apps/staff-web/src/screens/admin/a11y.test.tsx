@@ -191,13 +191,13 @@ describe("accessibility — Users, Media list names and error log", () => {
     );
     const { container } = render(withAuth(<GovernmentTermsScreen />));
     const user = userEvent.setup();
-    await user.click(await screen.findByRole("button", { name: "Delete 2028-onward" }));
-    await user.click(screen.getByRole("button", { name: "Edit 2024-onward" }));
+    await user.click(await screen.findByRole("button", { name: "Edit 2024-onward" }));
     const date = await screen.findByLabelText("Start date");
     await user.clear(date);
     await user.type(date, "2024-11-19");
     await user.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByRole("group", { name: "Confirm the new start date" });
+    await user.click(screen.getByRole("button", { name: "Delete 2028-onward" }));
     await screen.findByRole("group", { name: "Delete 2028-onward" });
     expect(await seriousViolations(container)).toEqual([]);
   });
