@@ -1,6 +1,6 @@
 import { Link, useSearchParams } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
-import { NETWORKS, type ConnectSettings, type LinkSetting, type NetworkKey } from "@gcpe/site-settings";
+import { NETWORKS, type ConnectSettings, type FieldError, type LinkSetting, type NetworkKey } from "@gcpe/site-settings";
 import { useTenantTimeZone } from "../../../format/tenantTimeZone";
 import { useSession } from "../../../session/SessionContext";
 import { LinkListEditor, withoutBlankLinks } from "../../../shared/LinkListEditor";
@@ -14,6 +14,7 @@ import { useSettingsEditor, type SettingsEditor } from "./useSettingsEditor";
 const TITLE = "Social links";
 const SWITCH_NOTE = "Save a draft before switching networks; unsaved edits on this tab are lost when you switch.";
 
+const ACCOUNT_ROW = /^connect\.(\w+)\.accounts\[(\d+)\](.*)$/;
 const byText = (a: LinkSetting, b: LinkSetting) => a.text.localeCompare(b.text, undefined, { sensitivity: "accent" });
 const count = (n: ConnectSettings[NetworkKey]) => withoutBlankLinks(n.featured).length + withoutBlankLinks(n.accounts).length;
 
@@ -70,6 +71,23 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
   }
 
   const set = (patch: Partial<ConnectSettings[NetworkKey]>) => editor.setValue((v) => ({ ...v, [network]: { ...v[network], ...patch } }));
+  // Server errors index the STORED accounts; this screen shows them sorted, so move each error to its displayed row.
+  const stored = state.document.connect[network].accounts;
+  const order = stored.map((_, i) => i).sort((a, b) => byText(stored[a]!, stored[b]!)); // order[displayed] = stored
+  const accountsAligned = value[network].accounts.length === stored.length;
+  const shownErrors: FieldError[] = fieldErrors
+    .filter((e) => e.field.startsWith(`connect.${network}.`))
+    .map((e) => {
+      const m = accountsAligned ? ACCOUNT_ROW.exec(e.field) : null;
+      return m && m[1] === network ? { ...e, field: `connect.${network}.accounts[${order.indexOf(Number(m[2]))}]${m[3]}` } : e;
+    });
+  // Problems on the other networks block publishing too, but their rows aren't on this tab.
+  const elsewhere: FieldError[] = fieldErrors
+    .filter((e) => !e.field.startsWith(`connect.${network}.`))
+    .map((e) => {
+      const other = NETWORKS.find((n) => e.field.startsWith(`connect.${n.key}.`));
+      return other ? { ...e, message: `${other.name}: ${e.message}` } : e;
+    });
   const name = NETWORKS.find((n) => n.key === network)!.name;
 
   return (
@@ -94,7 +112,7 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
         legend="Featured accounts"
         links={value[network].featured}
         onChange={(featured) => set({ featured })}
-        errors={fieldErrors}
+        errors={shownErrors}
         pathPrefix={`connect.${network}.featured`}
         reorderable
         withSummary
@@ -104,14 +122,14 @@ function SocialFields({ network, canEdit }: { network: NetworkKey; canEdit: bool
         legend="Other accounts"
         links={value[network].accounts}
         onChange={(accounts) => set({ accounts })}
-        errors={fieldErrors}
+        errors={shownErrors}
         pathPrefix={`connect.${network}.accounts`}
         reorderable={false}
         withSummary={false}
         isDisabled={!canEdit}
       />
 
-      <OtherSectionErrors errors={editor.otherErrors} />
+      <OtherSectionErrors errors={[...elsewhere, ...editor.otherErrors]} />
       <ConflictPanel editor={editor as SettingsEditor<unknown>} section="connect" timeZone={timeZone} />
       <PublishBar editor={editor as SettingsEditor<unknown>} canEdit={canEdit} timeZone={timeZone} />
     </div>

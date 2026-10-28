@@ -154,6 +154,25 @@ describe("SocialScreen", () => {
     expect(within(featured).getByText("Use plain text, 200 characters or fewer.")).toBeInTheDocument();
   });
 
+  it("puts a server error on the displayed row of the stored account it names (accounts are shown sorted)", async () => {
+    // Stored order is b, A: the error names stored index 0 ("b"), which is displayed second.
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "connect.x.accounts[0].url", message: "Must start with https:// or / (a page on this site)." }]));
+    renderScreen("/?network=x");
+    const accounts = await screen.findByRole("group", { name: "Other accounts" });
+    const rowB = within(accounts).getByDisplayValue("b").closest("fieldset")!;
+    const rowA = within(accounts).getByDisplayValue("A").closest("fieldset")!;
+    expect(within(rowB).getByText("Must start with https:// or / (a page on this site).")).toBeInTheDocument();
+    expect(within(rowA).queryByText("Must start with https:// or / (a page on this site).")).toBeNull();
+  });
+
+  it("lists errors on other networks under 'Other parts of the draft', naming the network", async () => {
+    stub(["NRMS.SiteEditor"], stateOf(DOC, [{ field: "connect.facebook.featured[0].url", message: "Must start with https:// or / (a page on this site)." }]));
+    renderScreen("/?network=x");
+    await screen.findByRole("group", { name: "Other accounts" });
+    expect(screen.getByText("Other parts of the draft have problems that block publishing:")).toBeInTheDocument();
+    expect(screen.getByText(/Facebook: Must start with https/)).toBeInTheDocument();
+  });
+
   it("Core.Admin alone sees disabled inputs and no write buttons", async () => {
     stub(["Core.Admin"], stateOf(DOC));
     renderScreen();
