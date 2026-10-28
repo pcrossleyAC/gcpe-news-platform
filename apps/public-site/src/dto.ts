@@ -1,3 +1,4 @@
+import type { OrgRecord } from "@gcpe/events";
 import type { SiteSettings } from "@gcpe/site-settings";
 
 export interface PostDocument {
@@ -36,14 +37,18 @@ export interface HomeDto {
   featurePostKey: string | null;
 }
 
+/** A ministry media contact as the News API's v1 Ministries endpoints carry it: Core's own
+ * contact record (packages/events contactSchema), passed through unchanged by toMinistryDto. */
+export type MinistryContactDto = NonNullable<OrgRecord["contact"]>;
+
 export interface MinistryDto {
   key: string;
   name: string;
   isActive: boolean;
   ministerName: string | null;
   ministryUrl: string | null;
-  contactUser: unknown;
-  secondContactUser: unknown;
+  contactUser: MinistryContactDto | null;
+  secondContactUser: MinistryContactDto | null;
   weekendContactNumber: string | null;
   /** Featured links; the News API's ResourceLink is `{ key: text, uri: url, timestamp }`. */
   topicLinks: ResourceLinkDto[];

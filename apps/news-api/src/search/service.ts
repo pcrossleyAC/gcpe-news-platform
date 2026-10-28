@@ -71,7 +71,8 @@ export function createSearchService(o: SearchServiceOptions): SearchService {
     timeZone: o.timeZone,
     async search(query, signal) {
       let semantic: SearchPage | null = null;
-      if (o.semantic) {
+      // A filter-only search (no text) has nothing to embed: straight to text mode's date order.
+      if (o.semantic && query.q !== "") {
         try {
           semantic = await o.semantic.search(query, signal);
         } catch (e) {

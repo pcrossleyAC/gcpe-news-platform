@@ -1,4 +1,4 @@
-import type { CategoryDto, MinisterDto, MinistryDto, PostDto } from "../dto";
+import type { CategoryDto, MinisterDto, MinistryContactDto, MinistryDto, PostDto } from "../dto";
 import { basePath, e, renderPage, safeHref, safeSrc, type PageOptions, type SiteInfo } from "../render";
 import { categoryPageId, feedUrl, pageUrl, parsePageId, type CategoryKind } from "../site-paths";
 import { displayDate, postListItem } from "./format";
@@ -40,31 +40,38 @@ function moreLinks(site: SiteInfo, kind: CategoryKind, key: string, name: string
   return `<p><a href="${e(basePath(site))}/archive/">Browse the archive by month</a>${search}.</p>`;
 }
 
-interface ContactFields {
-  name?: string;
-  title?: string;
-  phone?: string;
-  email?: string;
+/** Only non-empty strings are ever read from a contact (it comes over the wire), each escaped. */
+function contactValue(v: unknown): string | undefined {
+  return typeof v === "string" && v.trim() ? v.trim() : undefined;
 }
 
-/** `contactUser`/`secondContactUser` are untyped objects from Core's org record — only their
- * known string fields are ever read, each escaped before display. */
-function contactFields(u: unknown): ContactFields {
-  if (!u || typeof u !== "object") return {};
-  const o = u as Record<string, unknown>;
-  const pick = (k: string): string | undefined => (typeof o[k] === "string" && o[k] ? (o[k] as string) : undefined);
-  return { name: pick("name"), title: pick("title"), phone: pick("phone"), email: pick("email") };
+/** One contact, as legacy's CommContact partial renders it: name, "Direct: <phone>",
+ * "Cell: <mobile>", then the email as a mailto link. Empty when the contact has no field at all. */
+function contactItem(c: MinistryContactDto | null | undefined, prefix = ""): string {
+  if (!c || typeof c !== "object") return "";
+  const name = contactValue(c.fullName);
+  const phone = contactValue(c.phoneNumber);
+  const mobile = contactValue(c.mobileNumber);
+  const email = contactValue(c.emailAddress);
+  const lines = [
+    name !== undefined ? `<span class="contact-name">${e(name)}</span>` : "",
+    phone !== undefined ? `Direct: ${e(phone)}` : "",
+    mobile !== undefined ? `Cell: ${e(mobile)}` : "",
+    email !== undefined ? `<a href="mailto:${e(email)}">${e(email)}</a>` : "",
+  ].filter(Boolean);
+  return lines.length ? `<li>${prefix}${lines.join("<br>")}</li>` : "";
 }
 
-function contactItem(u: unknown): string {
-  const f = contactFields(u);
-  const lines = [f.name, f.title, f.phone, f.email].filter((v): v is string => v !== undefined);
-  return lines.length ? `<li>${lines.map(e).join("<br>")}</li>` : "";
-}
-
-function mediaContactsSection(heading: string, contactUser: unknown, secondContactUser: unknown): string {
-  const items = [contactItem(contactUser), contactItem(secondContactUser)].filter(Boolean).join("\n");
-  return items ? `<section>\n<h2>${e(heading)}</h2>\n<ul>\n${items}\n</ul>\n</section>` : "";
+/** Legacy (Views/Shared/Ministry.cshtml): shown only when the first contact exists; the second
+ * is labelled "Alternate:", and the after-hours number comes last. */
+function mediaContactsSection(heading: string, m: Pick<MinistryDto, "contactUser" | "secondContactUser" | "weekendContactNumber">): string {
+  const first = contactItem(m.contactUser);
+  if (!first) return "";
+  const second = contactItem(m.secondContactUser, "<span>Alternate:</span><br>");
+  const afterHours = contactValue(m.weekendContactNumber);
+  const items = [first, second].filter(Boolean).join("\n");
+  const after = afterHours !== undefined ? `\n<p>After hours: ${e(afterHours)}</p>` : "";
+  return `<section>\n<h2>${e(heading)}</h2>\n<ul class="media-contacts">\n${items}\n</ul>${after}\n</section>`;
 }
 
 /** A side-column link list; links whose URL is not safe (absolute http/https, or site-relative;
@@ -82,7 +89,7 @@ function sideLinks(site: Pick<SiteInfo, "baseUrl">, heading: string, links: { te
  * Featured Services (left column on wide screens, after the heading on narrow); empty groups omitted, and no `<aside>` when all are. */
 function ministrySideColumn(site: Pick<SiteInfo, "baseUrl">, m: MinistryDto, labels: MinistryPageLabels): string {
   const sections = [
-    mediaContactsSection(labels.mediaContacts, m.contactUser, m.secondContactUser),
+    mediaContactsSection(labels.mediaContacts, m),
     sideLinks(site, labels.moreFromMinistry, [
       { text: labels.ministryWebsite, url: m.ministryUrl },
       { text: labels.ministryPhotos, url: m.flickrUri },
