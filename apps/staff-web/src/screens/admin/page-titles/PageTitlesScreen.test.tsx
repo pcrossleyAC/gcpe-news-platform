@@ -9,7 +9,7 @@ import { GONE_IMAGE, PageTypesFixture, PAGE_IMAGES } from "./fixtures";
 import { PageTitlesScreen } from "./PageTitlesScreen";
 
 type Call = { url: string; method: string; body: any };
-function stub(roles: string[], handlers: { write?: (c: Call) => Response } = {}) {
+function stub(roles: string[], handlers: { write?: (c: Call) => Response; list?: () => unknown } = {}) {
   const calls: Call[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     const method = init?.method ?? "GET";
@@ -17,7 +17,7 @@ function stub(roles: string[], handlers: { write?: (c: Call) => Response } = {})
     calls.push(call);
     if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "u", name: "Pat", email: "pat@x.invalid", roles }, expiresAt: new Date().toISOString() });
     if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
-    if (url === "/nrms/api/page-types" && method === "GET") return jsonResponse(200, PageTypesFixture);
+    if (url === "/nrms/api/page-types" && method === "GET") return jsonResponse(200, handlers.list?.() ?? PageTypesFixture);
     if (url === "/nrms/api/page-images") return jsonResponse(200, PAGE_IMAGES);
     if (url.startsWith("/nrms/api/page-types")) {
       if (method === "DELETE") return handlers.write?.(call) ?? new Response(null, { status: 204 });
@@ -255,19 +255,48 @@ describe("PageTitlesScreen", () => {
     expect(field).toHaveAccessibleDescription("A page title with that name already exists in that language.");
   });
 
-  it("a 404 says the title no longer exists and reloads; a 403 says you lack permission", async () => {
+  it("a 404 explains in the status line once the reload has removed the row; a 403 says you lack permission", async () => {
     let status = 404;
-    const calls = stub(["Core.Admin"], { write: () => jsonResponse(status, { error: "not found" }) });
+    let gone = false;
+    const calls = stub(["Core.Admin"], {
+      write: () => ((gone = status === 404), jsonResponse(status, { error: "not found" })),
+      list: () => (gone ? PageTypesFixture.filter((r) => r.pageTitle !== "Story") : undefined),
+    });
     renderIt();
     const user = userEvent.setup();
     const saveStory = await screen.findByRole("button", { name: "Save Story" });
     const before = listLoads(calls);
     await user.click(saveStory);
-    expect(await screen.findByRole("alert")).toHaveTextContent("That page title no longer exists.");
     await waitFor(() => expect(listLoads(calls)).toBe(before + 1));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Page title for Story" })).toBeNull());
+    expect(await screen.findByRole("status")).toHaveTextContent("That page title no longer exists.");
     status = 403;
-    await user.click(screen.getByRole("button", { name: "Save Story" }));
+    await user.click(screen.getByRole("button", { name: "Save News Release" }));
     await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("You don't have permission to change page titles."));
+  });
+
+  it("a row title typed with surrounding spaces is sent trimmed in the PUT body", async () => {
+    const calls = stub(["Core.Admin"]);
+    renderIt();
+    const user = userEvent.setup();
+    const field = await screen.findByRole("textbox", { name: "Page title for News Release" });
+    await user.clear(field);
+    await user.type(field, "   Spaced Out   ");
+    await user.click(screen.getByRole("button", { name: "Save News Release" }));
+    await waitFor(() => expect(writes(calls)).toHaveLength(1));
+    expect(writes(calls)[0]!.body.pageTitle).toBe("Spaced Out");
+  });
+
+  it("saving a row in an unsupported language is refused before any request, with a described, focused Language field", async () => {
+    const calls = stub(["Core.Admin"], { list: () => [...PageTypesFixture, { releaseType: "update", pageTitle: "Actualité", languageId: 1033, sortOrder: 1, layout: "formal", pageImageId: null }] });
+    renderIt();
+    const user = userEvent.setup();
+    const lang = await screen.findByRole("combobox", { name: "Language for Actualité" });
+    expect(within(lang).getByRole("option", { name: "Other language (1033)" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Save Actualité" }));
+    await waitFor(() => expect(lang).toHaveFocus());
+    expect(lang).toHaveAccessibleDescription("Choose English or French.");
+    expect(writes(calls)).toHaveLength(0);
   });
 
   it("a row whose page image is no longer active keeps it as a selectable option", async () => {

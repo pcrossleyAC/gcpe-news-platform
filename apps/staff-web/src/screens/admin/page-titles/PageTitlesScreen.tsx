@@ -19,7 +19,7 @@ const LAYOUT_LABEL: Record<Layout, string> = { formal: "Formal", informal: "Info
 type PageType = { pageTitle: string; languageId: number; releaseType: ReleaseType; sortOrder: number; layout: Layout; pageImageId: string | null };
 type PageImage = { id: string; name: string };
 type Fields = { pageTitle: string; languageId: number; sortOrder: string; layout: Layout; pageImageId: string };
-type Problem = { field: "title" | "order" | "form"; text: string; stale?: boolean };
+type Problem = { field: "title" | "language" | "order" | "form"; text: string; stale?: boolean };
 
 /** The server's own 409/400 wording is shown as is; a schema rejection ("invalid request") gets a plain-language line.
  * `stale` means the row was changed or removed elsewhere, so the list should be reloaded. */
@@ -40,6 +40,7 @@ function check(f: Fields): Problem | null {
   const title = f.pageTitle.trim();
   if (!title) return { field: "title", text: TITLE_REQUIRED };
   if (/[<>]/.test(title)) return { field: "title", text: TITLE_PLAIN };
+  if (!LANGUAGES.some((l) => l.id === f.languageId)) return { field: "language", text: "Choose English or French." };
   const n = Number(f.sortOrder);
   if (f.sortOrder.trim() === "" || !Number.isInteger(n) || n < 0 || n > 9999) return { field: "order", text: ORDER_RANGE };
   return null;
@@ -99,6 +100,8 @@ function PageTitlesEditor(): React.JSX.Element {
         if (seq !== latest.current) return;
         setRows(r);
         setLoadError(null);
+        if (pendingMessage.current) setMessage(pendingMessage.current);
+        pendingMessage.current = null;
       },
       () => {
         if (seq === latest.current) setLoadError("Couldn't load the page titles.");
@@ -121,9 +124,14 @@ function PageTitlesEditor(): React.JSX.Element {
     setFocus((f) => ({ key, nonce: f.nonce + 1 }));
     reload();
   };
-  const failed = (stale: boolean) => {
+  // A title that vanished is explained in the status line once the reload has removed its row; the row's own alert would go with it.
+  const pendingMessage = useRef<string | null>(null);
+  const failed = (stale: boolean, text?: string) => {
     setMessage(null);
-    if (stale) reload();
+    if (stale) {
+      pendingMessage.current = text ?? null;
+      reload();
+    }
   };
   const nextOrder = (t: ReleaseType) => Math.max(0, ...(rows ?? []).filter((r) => r.releaseType === t).map((r) => r.sortOrder)) + 1;
 
@@ -233,7 +241,7 @@ function TitleRow({
   images: PageImage[];
   focusNonce: number;
   onSaved(text: string, focusKey: string): void;
-  onFailed(stale: boolean): void;
+  onFailed(stale: boolean, text?: string): void;
   onDeleted(text: string): void;
 }): React.JSX.Element {
   const [f, setF] = useState<Fields>({
@@ -261,6 +269,7 @@ function TitleRow({
     setError(e);
     if (e.field === "title") rowEl.current?.querySelector<HTMLInputElement>("input[type=text]")?.focus();
     else if (e.field === "order") rowEl.current?.querySelector<HTMLInputElement>("input[type=number]")?.focus();
+    else if (e.field === "language") rowEl.current?.querySelector<HTMLSelectElement>("select")?.focus();
   };
   // Once the delete dialog has unmounted, focus goes to the row's alert so the failure is read out in place.
   useEffect(() => {
@@ -279,7 +288,8 @@ function TitleRow({
     } catch (err) {
       const problem = explain(err);
       setConfirmDelete(false);
-      onFailed(problem.stale === true);
+      onFailed(problem.stale === true, problem.text);
+      if (problem.stale) return;
       if (inDialog) {
         focusAlert.current = true;
         setError(problem);
@@ -325,7 +335,12 @@ function TitleRow({
         />
       </td>
       <td>
-        <select aria-label={`Language for ${name}`} value={f.languageId} onChange={(e) => set({ languageId: Number(e.target.value) })}>
+        <select
+          aria-label={`Language for ${name}`}
+          value={f.languageId}
+          aria-invalid={error?.field === "language" || undefined}
+          aria-describedby={described("language")}
+          onChange={(e) => set({ languageId: Number(e.target.value) })}>
           <LanguageOptions current={f.languageId} />
         </select>
       </td>
@@ -396,7 +411,7 @@ function AddForm({
   ready: boolean;
   nextOrder(t: ReleaseType): number;
   onAdded(text: string, focusKey: string): void;
-  onFailed(stale: boolean): void;
+  onFailed(stale: boolean, text?: string): void;
 }): React.JSX.Element {
   const [type, setType] = useState<ReleaseType>("release");
   const [f, setF] = useState<Fields>({ pageTitle: "", languageId: LANG_EN, sortOrder: "", layout: "formal", pageImageId: "" });
