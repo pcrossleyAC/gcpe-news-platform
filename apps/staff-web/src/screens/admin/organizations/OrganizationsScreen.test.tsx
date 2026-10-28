@@ -203,6 +203,7 @@ describe("OrganizationsScreen", () => {
     expect(screen.queryByRole("checkbox")).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "HQ" })).toBeNull();
     expect(screen.queryByRole("columnheader", { name: "Public" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Cabinet change" })).toBeNull();
   });
 
   it("Core.Admin sees the HQ and Public columns plus Minister and Edit", async () => {
@@ -217,6 +218,9 @@ describe("OrganizationsScreen", () => {
     expect(
       screen.getByRole("columnheader", { name: "HQ" }),
     ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "Cabinet change" }),
+    ).toHaveAttribute("href", "/organizations/cabinet-change");
   });
 
   it("NRMS.Editor still gets the no-permission message", async () => {

@@ -8,7 +8,7 @@ import { abbreviationTakenMessage, normalizeAbbreviation } from "./abbreviation"
 import { deactivateWarning } from "./OrganizationEditForm";
 
 /** One service's count: still loading, loaded, or failed (shown as "count unavailable", never 0). */
-type Count<T> = { state: "loading" } | { state: "ok"; value: T } | { state: "failed" };
+export type Count<T> = { state: "loading" } | { state: "ok"; value: T } | { state: "failed" };
 
 interface CorePreview {
   staff: number;
@@ -71,6 +71,123 @@ function num(value: unknown): number {
   return value;
 }
 
+/** What a hand-over moves besides the web pages (Core's `/succeed` flags, the abbreviation aside). */
+export interface HandOverMoves {
+  subscribers: boolean;
+  staff: boolean;
+  calendar: boolean;
+  drafts: boolean;
+}
+/** Every move on: the hand-over's default. */
+export const ALL_MOVES: HandOverMoves = { subscribers: true, staff: true, calendar: true, drafts: true };
+
+/** What Core, NoD, the Calendar and NRMS would move if a ministry were handed over, each loaded separately. */
+export interface HandOverCounts {
+  core: Count<CorePreview>;
+  subscribers: Count<number>;
+  calendar: Count<CalendarPreview>;
+  releases: Count<OpenReleases>;
+}
+
+/** Loads the four services' counts for handing ministry `orgKey` over. Used by the panel and by a cabinet change's hand-over. */
+export function useHandOverCounts(orgKey: string): HandOverCounts {
+  const key = encodeURIComponent(orgKey);
+  const core = useCount<CorePreview>(`/core/api/organizations/${key}/succession-preview`, (b) => {
+    const body = b as CorePreview;
+    return { staff: num(body.staff), abbreviation: body.abbreviation ?? null };
+  });
+  const subscribers = useCount<number>(`/nod/api/subscribers/count?lists=ministries:${key}&exact=true`, (b) => num((b as { count: unknown }).count));
+  const calendar = useCount<CalendarPreview>(`/calendar/api/succession/${key}/preview`, (b) => {
+    const body = b as CalendarPreview;
+    return { activities: num(body.activities), contacts: num(body.contacts) };
+  });
+  const releases = useCount<OpenReleases>(`/nrms/api/ministries/${key}/open-releases`, (b) => {
+    const body = b as OpenReleases;
+    if (!Array.isArray(body.drafts) || !Array.isArray(body.notMoved)) throw new Error("bad shape");
+    return body;
+  });
+  return { core, subscribers, calendar, releases };
+}
+
+const countText = <T,>(count: Count<T>, ok: (value: T) => string, otherwise: string) =>
+  count.state === "ok" ? ok(count.value) : `${otherwise} (${count.state === "failed" ? UNAVAILABLE : "counting…"}).`;
+
+/**
+ * The hand-over's checkboxes: the always-on web pages line, then one box per service, each
+ * labelled with its count (or "count unavailable"), and the releases that stay behind. The
+ * abbreviation lines stay with the caller, which knows the successor's abbreviation.
+ */
+export function HandOverMoveBoxes({
+  idPrefix,
+  orgName,
+  firstName,
+  allNames,
+  counts,
+  moves,
+  onChange,
+}: {
+  idPrefix: string;
+  /** The ministry handed over (A). */
+  orgName: string;
+  /** The first successor (B): the pages, staff, Calendar and drafts go there. */
+  firstName: string;
+  /** Every successor, comma-separated: subscribers go to all of them. */
+  allNames: string;
+  counts: HandOverCounts;
+  moves: HandOverMoves;
+  onChange: (moves: HandOverMoves) => void;
+}): React.JSX.Element {
+  const id = (part: string) => `${idPrefix}-${part}`;
+  const { core, subscribers, calendar, releases } = counts;
+  const moveBox = (name: keyof HandOverMoves, label: string) => (
+    <div>
+      <input id={id(name)} type="checkbox" checked={moves[name]} onChange={(e) => onChange({ ...moves, [name]: e.target.checked })} />{" "}
+      <label htmlFor={id(name)}>{label}</label>
+    </div>
+  );
+  return (
+    <>
+      <div>
+        <input id={id("pages")} type="checkbox" checked disabled aria-describedby={id("pages-hint")} />{" "}
+        <label htmlFor={id("pages")}>{`Send ${orgName}'s web pages to ${firstName}`}</label>
+        <p id={id("pages-hint")}>Always on: this is what setting a successor does.</p>
+      </div>
+      {moveBox(
+        "subscribers",
+        countText(subscribers, (n) => `Move ${plural(n, "subscriber", "subscribers")} to ${allNames}.`, `Move subscribers to ${allNames}`),
+      )}
+      {moveBox("staff", countText(core, (c) => `Move ${c.staff} staff from ${orgName} to ${firstName}.`, `Move staff from ${orgName} to ${firstName}`))}
+      {moveBox(
+        "calendar",
+        countText(
+          calendar,
+          (c) =>
+            `Move ${plural(c.activities, "upcoming Calendar activity", "upcoming Calendar activities")} and ${plural(c.contacts, "comm contact", "comm contacts")} to ${firstName}.`,
+          `Move upcoming Calendar activities and comm contacts to ${firstName}`,
+        ),
+      )}
+      {moveBox(
+        "drafts",
+        countText(releases, (r) => `Move ${plural(r.drafts.length, "draft release", "draft releases")} to ${firstName}.`, `Move draft releases to ${firstName}`),
+      )}
+      {releases.state === "ok" && releases.value.notMoved.length > 0 && (
+        <div>
+          <p id={id("not-moved")}>
+            These releases are already approved or scheduled, so they stay with {orgName}. Open one to change its lead ministry:
+          </p>
+          <ul aria-labelledby={id("not-moved")}>
+            {releases.value.notMoved.map((r) => (
+              <li key={r.id}>
+                <Link to={`/releases/${r.id}`}>{r.headline || r.key || "(untitled)"}</Link> ({STATUS_LABELS[r.status] ?? r.status})
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </>
+  );
+}
+
 export interface HandOverPanelProps {
   /** The ministry being handed over (A). Active: the panel deactivates it; inactive: it only sets successors. */
   org: OrgRecord;
@@ -97,26 +214,12 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
   const deactivating = org.isActive;
   const title = deactivating ? `Deactivate ${org.displayName}` : `Set successor for ${org.displayName}`;
   const key = encodeURIComponent(org.key);
-
-  const core = useCount<CorePreview>(`/core/api/organizations/${key}/succession-preview`, (b) => {
-    const body = b as CorePreview;
-    return { staff: num(body.staff), abbreviation: body.abbreviation ?? null };
-  });
-  const subscribers = useCount<number>(`/nod/api/subscribers/count?lists=ministries:${key}&exact=true`, (b) => num((b as { count: unknown }).count));
-  const calendar = useCount<CalendarPreview>(`/calendar/api/succession/${key}/preview`, (b) => {
-    const body = b as CalendarPreview;
-    return { activities: num(body.activities), contacts: num(body.contacts) };
-  });
-  const releases = useCount<OpenReleases>(`/nrms/api/ministries/${key}/open-releases`, (b) => {
-    const body = b as OpenReleases;
-    if (!Array.isArray(body.drafts) || !Array.isArray(body.notMoved)) throw new Error("bad shape");
-    return body;
-  });
+  const counts = useHandOverCounts(org.key);
 
   // Ordered successors; "" is an unchosen picker. The first gets staff, Calendar, drafts and the
   // abbreviation; every one gets the subscribers.
   const [successors, setSuccessors] = useState<string[]>([""]);
-  const [moves, setMoves] = useState({ subscribers: true, staff: true, calendar: true, drafts: true });
+  const [moves, setMoves] = useState<HandOverMoves>(ALL_MOVES);
   const [replaceAbbr, setReplaceAbbr] = useState(false);
   const [takeAbbr, setTakeAbbr] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -164,9 +267,6 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
     }
   };
 
-  const countText = <T,>(count: Count<T>, ok: (value: T) => string, otherwise: string) =>
-    count.state === "ok" ? ok(count.value) : `${otherwise} (${count.state === "failed" ? UNAVAILABLE : "counting…"}).`;
-
   const submit = async () => {
     if (inFlight.current) return;
     if (!deactivating && !chosen.length) {
@@ -211,18 +311,6 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
   // Core's 409 on /succeed: a third, active ministry holds A's abbreviation.
   const takenCopy = (takenBy = "another ministry") =>
     `${takenBy} already uses the abbreviation ${aAbbr ?? ""}. Untick "Let ${bName} use the abbreviation ${aAbbr ?? ""}." or change ${takenBy}'s abbreviation first.`;
-
-  const moveBox = (name: keyof typeof moves, label: string) => (
-    <div>
-      <input
-        id={id(name)}
-        type="checkbox"
-        checked={moves[name]}
-        onChange={(e) => setMoves((m) => ({ ...m, [name]: e.target.checked }))}
-      />{" "}
-      <label htmlFor={id(name)}>{label}</label>
-    </div>
-  );
 
   return (
     <form
@@ -311,47 +399,7 @@ export function HandOverPanel({ org, orgs, onDone, onCancel, onBusyChange }: Han
       {b && (
         <fieldset>
           <legend>What moves to {bName}</legend>
-          <div>
-            <input id={id("pages")} type="checkbox" checked disabled aria-describedby={id("pages-hint")} />{" "}
-            <label htmlFor={id("pages")}>{`Send ${org.displayName}'s web pages to ${bName}`}</label>
-            <p id={id("pages-hint")}>Always on: this is what setting a successor does.</p>
-          </div>
-          {moveBox(
-            "subscribers",
-            countText(subscribers, (n) => `Move ${plural(n, "subscriber", "subscribers")} to ${allNames}.`, `Move subscribers to ${allNames}`),
-          )}
-          {moveBox(
-            "staff",
-            countText(core, (c) => `Move ${c.staff} staff from ${org.displayName} to ${bName}.`, `Move staff from ${org.displayName} to ${bName}`),
-          )}
-          {moveBox(
-            "calendar",
-            countText(
-              calendar,
-              (c) =>
-                `Move ${plural(c.activities, "upcoming Calendar activity", "upcoming Calendar activities")} and ${plural(c.contacts, "comm contact", "comm contacts")} to ${bName}.`,
-              `Move upcoming Calendar activities and comm contacts to ${bName}`,
-            ),
-          )}
-          {moveBox(
-            "drafts",
-            countText(releases, (r) => `Move ${plural(r.drafts.length, "draft release", "draft releases")} to ${bName}.`, `Move draft releases to ${bName}`),
-          )}
-          {releases.state === "ok" && releases.value.notMoved.length > 0 && (
-            <div>
-              <p id={id("not-moved")}>
-                These releases are already approved or scheduled, so they stay with {org.displayName}. Open one to change its
-                lead ministry:
-              </p>
-              <ul aria-labelledby={id("not-moved")}>
-                {releases.value.notMoved.map((r) => (
-                  <li key={r.id}>
-                    <Link to={`/releases/${r.id}`}>{r.headline || r.key || "(untitled)"}</Link> ({STATUS_LABELS[r.status] ?? r.status})
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
+          <HandOverMoveBoxes idPrefix={uid} orgName={org.displayName} firstName={bName} allNames={allNames} counts={counts} moves={moves} onChange={setMoves} />
           {abbrRelevant && bAbbr !== null && (
             <div>
               <input

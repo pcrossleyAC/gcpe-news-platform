@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TestDatabase } from "@gcpe/db-kit";
 import { createPublicSiteTestDb } from "../test/helpers";
 import { fakeNewsApi } from "../test/fake-news-api";
@@ -104,6 +104,18 @@ describe("site builder", () => {
   it("ministryPageIds: every ministry page, nothing else", async () => {
     const { builder } = setup(new Map([["K1", post({ key: "K1" })]]));
     expect(await builder.ministryPageIds()).toEqual(["category:ministries:finance", "category:ministries:health"]);
+  });
+
+  // New-government spec §5: a published cabinet change emits one org event per ministry it touches,
+  // and each queues the ministries index plus that ministry's page. One drain rebuilds /ministries/ once.
+  it("25 org changes in one drain render ministries once", async () => {
+    const { storage, builder } = setup(new Map());
+    const render = vi.spyOn(builder, "renderPage");
+    const ids = Array.from({ length: 25 }, (_, i) => [`category:ministries:ministry-${i}`, "ministries"]).flat();
+    await builder.rebuild(ids, {});
+    expect(render.mock.calls.filter(([id]) => id === "ministries")).toHaveLength(1);
+    expect(render.mock.calls.filter(([id]) => id.startsWith("category:ministries:"))).toHaveLength(25);
+    expect(storage.files.has("ministries/index.html")).toBe(true);
   });
 
   it("the connect page renders the settings it's given", async () => {

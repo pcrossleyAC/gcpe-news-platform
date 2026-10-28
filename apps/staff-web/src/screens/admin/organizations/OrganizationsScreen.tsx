@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { Link } from "react-router";
 import { InlineAlert } from "@bcgov/design-system-react-components";
 import { apiFetch } from "../../../api/client";
 import { useSession } from "../../../session/SessionContext";
@@ -224,6 +225,12 @@ export function OrganizationsScreen(): React.JSX.Element {
           <p>
             Organizations that aren&rsquo;t public are left out of the public
             ministry list and the subscribe page.
+          </p>
+          <p>
+            New cabinet?{" "}
+            <Link to="/organizations/cabinet-change">Cabinet change</Link> lets
+            you prepare renames, new ministries and hand-overs together, then
+            publish them all at once or at the swearing-in time.
           </p>
         </>
       )}
