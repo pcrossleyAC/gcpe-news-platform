@@ -116,9 +116,10 @@ export async function createBatch(
   req: MessageRequest,
   internalDomains: string[],
   /** Test-site guard (env.ts's MAIL_REDIRECT_SEND_CAP): given only while mail is redirected.
-   * One batch is one send; only its first `sendCap` messages, in the order the sender would
-   * send them (priority, highest first; request order within a priority), are queued as
-   * pending — the rest are stored `failed` with {@link SEND_CAP_SKIPPED_REASON}. Omitted (real
+   * The cap is per batch (one POST /messages call): a caller may create several batches for
+   * one release. Only `sendCap` messages are kept, highest priority first and then request
+   * order within a priority (not necessarily the sender's own order); they are queued as
+   * pending, the rest are stored `failed` with {@link SEND_CAP_SKIPPED_REASON}. Omitted (real
    * recipients allowed): every message is queued, exactly as before. */
   sendCap?: number,
 ): Promise<{ batchId: string; created: boolean }> {

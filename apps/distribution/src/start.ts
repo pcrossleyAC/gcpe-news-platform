@@ -65,7 +65,7 @@ export async function startDistribution(env: NodeJS.ProcessEnv): Promise<AppHand
   // The non-prod mail redirect safety rule: distributionEnvSchema already refuses to boot
   // without one of these, so exactly one of the two logs below always fires.
   if (parsed.MAIL_REDIRECT_TO.length > 0) {
-    console.log(`[distribution] mail redirect ON → ${parsed.MAIL_REDIRECT_TO.join(", ")} (at most ${parsed.MAIL_REDIRECT_SEND_CAP} messages per send)`);
+    console.log(`[distribution] mail redirect ON → ${parsed.MAIL_REDIRECT_TO.join(", ")} (at most ${parsed.MAIL_REDIRECT_SEND_CAP} messages per batch)`);
   } else {
     console.warn("[distribution] WARNING: delivering to real recipients");
   }

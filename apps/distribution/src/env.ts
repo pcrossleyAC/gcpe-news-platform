@@ -63,8 +63,8 @@ export const distributionEnvSchema = z
     MAIL_FROM: z.string().min(1),
     MAIL_REDIRECT_TO: emailList,
     MAIL_ALLOW_REAL_RECIPIENTS: boolEnv("false"),
-    // Test-site guard: while MAIL_REDIRECT_TO is non-empty, the most messages any one send
-    // (one POST /messages batch) may queue; the rest are recorded as skipped (messages.ts's
+    // Test-site guard: while MAIL_REDIRECT_TO is non-empty, the most messages any one
+    // batch (one POST /messages call) may queue; the rest are recorded as skipped (messages.ts's
     // SEND_CAP_SKIPPED_REASON). Ignored entirely when mail isn't redirected. Minimum 1 — no
     // "unlimited" value, so a typo can't switch the guard off.
     MAIL_REDIRECT_SEND_CAP: z.coerce.number().int().positive().default(5),
