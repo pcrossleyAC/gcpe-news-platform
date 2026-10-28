@@ -7,6 +7,10 @@ export interface PostDocument {
   subheadline: string | null;
   detailsHtml: string | null;
   contacts: { title: string | null; details: string | null }[];
+  /** v1 `Post.documents[].pageTitle`; optional, so an older News API's answer still fits. */
+  pageTitle?: string | null;
+  /** v1 `Post.documents[].byline`. */
+  byline?: string | null;
 }
 export interface AssetDto {
   /** An absolute file URL (NRMS's PUBLIC_FILES_BASE + /files/…). */
@@ -29,6 +33,11 @@ export interface PostDto {
   documents: PostDocument[];
   azureAssets?: AssetDto[] | null;
   azureTranslations?: AssetDto[] | null;
+  /** v1 flags for PostCard's Media Assets and Translations links; absent ⇒ neither shows. */
+  hasMediaAssets?: boolean | null;
+  hasTranslations?: boolean | null;
+  /** v1 lead media URL (a Flickr photo, a YouTube video, the live webcast): pages/media.ts's leadMedia. */
+  assetUrl?: string | null;
 }
 
 export interface HomeDto {
@@ -89,6 +98,8 @@ export interface SlideDto {
   /** The slide's content-addressed image URL, or null when it has none. */
   imageUrl: string | null;
   sortIndex: number;
+  /** v2 slide text alignment; optional, so an older News API's answer still fits. */
+  justify?: string | null;
 }
 
 /** `GET /api/v2/ministries`: minister email, Meet the Team links and active child ministries. */

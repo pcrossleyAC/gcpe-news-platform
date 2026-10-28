@@ -101,6 +101,28 @@ describe("renderPage chrome", () => {
     expect(doc.querySelector("header")?.nextElementSibling?.id).toBe("main-content");
   });
 
+  it("lead renders between header#main-nav and #main-content; trail right after #main-content; absent → page unchanged", () => {
+    const lead = '<section class="lead-band" aria-label="Highlights"><p>Lead</p></section>';
+    const trail = '<section class="trail-band" aria-label="Related"><p>Trail</p></section>';
+    const plain = renderPage("T", themed, "/site/", "<h1>H</h1>");
+    const html = renderPage("T", themed, "/site/", "<h1>H</h1>", { lead, trail });
+    const doc = expectAccessibleStructure(html);
+    const header = doc.querySelector("header")!;
+    expect(header.id).toBe("main-nav");
+    expect(header.nextElementSibling?.outerHTML).toBe(lead);
+    expect(doc.querySelector("section.lead-band")?.nextElementSibling?.id).toBe("main-content");
+    expect(doc.querySelector("#main-content")?.nextElementSibling?.outerHTML).toBe(trail);
+    expect(doc.querySelector("main section")).toBeNull();
+    // Trusted renderer HTML: emitted as given, not escaped.
+    expect(html).toContain(`</header>\n${lead}\n<div id="main-content"`);
+    expect(html).toContain(`</main></div>\n${trail}\n`);
+    // Absent (or empty) means nothing at all is emitted: the page is byte-identical to one without the options.
+    expect(renderPage("T", themed, "/site/", "<h1>H</h1>", { lead: undefined, trail: undefined })).toBe(plain);
+    expect(renderPage("T", themed, "/site/", "<h1>H</h1>", { lead: "", trail: "" })).toBe(plain);
+    expect(plain).toContain('</header>\n<div id="main-content"');
+    expect(plain).toMatch(/<\/main><\/div>\n(<aside|<footer)/);
+  });
+
   it("site.js is loaded deferred with the base path", () => {
     const at = (baseUrl: string) => expectAccessibleStructure(renderPage("T", { ...themed, baseUrl }, "/", "<h1>H</h1>")).querySelectorAll("script[src]");
     const scripts = at("https://boxs.example/site");

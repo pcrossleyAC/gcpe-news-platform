@@ -47,6 +47,11 @@ export function sanitizeBodyHtml(html: string): string {
       th: ["colspan", "rowspan"],
       td: ["colspan", "rowspan"],
     },
+    // Only the classes renderBodyAssets (pages/media.ts) puts on its embeds; every other class goes.
+    allowedClasses: {
+      div: ["asset", "flickr", "youtube"],
+      span: ["visually-hidden"],
+    },
     allowedSchemes: ["http", "https", "mailto"],
     allowedSchemesAppliedToAttributes: ["href", "src"],
     allowProtocolRelative: false,

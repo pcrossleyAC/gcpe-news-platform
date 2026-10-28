@@ -102,6 +102,7 @@ const TYPES: Record<string, string> = {
   ".woff2": "font/woff2",
   ".ico": "image/x-icon",
   ".png": "image/png",
+  ".jpg": "image/jpeg",
   ".json": "application/json",
 };
 
