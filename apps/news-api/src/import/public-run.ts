@@ -84,10 +84,11 @@ async function existingPost(db: DbOrTx, key: string, tracked: boolean): Promise<
 
 export type PlannedAction = "create" | "update" | "unchanged" | "skip-existing" | "skip-event-owned";
 
-function decide(existing: Existing | undefined, r: ReleaseRecord): PlannedAction {
+function decide(existing: Existing | undefined, r: ReleaseRecord, refresh = false): PlannedAction {
   if (!existing) return "create";
   if (!existing.ours) return "skip-existing";
   if (existing.origin === "event") return "skip-event-owned";
+  if (refresh) return "update";
   return existing.timestamp.getTime() === parseOffsetDateTime(r.timestamp).getTime() ? "unchanged" : "update";
 }
 
@@ -104,22 +105,22 @@ function count(result: PublicImportResult, action: PlannedAction, key: string): 
 }
 
 /** What `importPublicPosts` would do, read-only (for `--dry-run` with a database). */
-export async function planPublicImport(db: Db, records: ReleaseRecord[]): Promise<PublicImportResult> {
+export async function planPublicImport(db: Db, records: ReleaseRecord[], opts: { refresh?: boolean } = {}): Promise<PublicImportResult> {
   const result = emptyResult();
   const tracked = await hasTrackingTable(db);
-  for (const r of records) count(result, decide(await existingPost(db, r.key, tracked), r), r.key);
+  for (const r of records) count(result, decide(await existingPost(db, r.key, tracked), r, opts.refresh), r.key);
   result.unknownCategoryKeys = await findUnknownCategoryKeys(db, records);
   return result;
 }
 
-export async function importPublicPosts(db: Db, records: ReleaseRecord[], opts: { log?: (msg: string) => void } = {}): Promise<PublicImportResult> {
+export async function importPublicPosts(db: Db, records: ReleaseRecord[], opts: { log?: (msg: string) => void; refresh?: boolean } = {}): Promise<PublicImportResult> {
   const log = opts.log ?? (() => {});
   if (!(await hasTrackingTable(db))) throw new Error("public_import_posts does not exist: apply the News API migrations first (start the News API, or run without --dry-run from a checkout)");
   const result = emptyResult();
   for (const r of records) {
     const action = await db.transaction(async (tx) => {
       await lockPostKey(tx, r.key);
-      const planned = decide(await existingPost(tx, r.key, true), r);
+      const planned = decide(await existingPost(tx, r.key, true), r, opts.refresh);
       if (planned !== "create" && planned !== "update") return planned;
       // The record already carries indexKeys' inputs as given: unknown category keys are kept.
       const { skippedEventOwned } = await applyRelease(tx, r, { notify: false, origin: "legacy" });
@@ -192,9 +193,9 @@ export async function runPublicImport(
     if (!deps.db) throw new Error("--remove needs the database, even with --dry-run");
     return o.dryRun ? { mode: "remove-dry-run", remove: await planPublicRemove(deps.db) } : { mode: "remove", remove: await removePublicPosts(deps.db) };
   }
-  const { records, ...rest } = await fetchPublicSlice(deps.client, { perKind: o.perKind, perCategory: o.perCategory, keys: o.keys, maxRequests: o.maxRequests, log });
+  const { records, ...rest } = await fetchPublicSlice(deps.client, { perKind: o.perKind, perCategory: o.perCategory, keys: o.keys, maxRequests: o.maxRequests, filesBase: o.filesBase, log });
   const report: PublicImportReport = { mode: o.dryRun ? "dry-run" : "import", fetch: { ...rest, posts: records.map((r) => ({ key: r.key, kind: r.kind })) } };
   log(`[import:public] fetched ${records.length} unique post(s) in ${rest.requests} request(s)`);
-  if (deps.db) report.write = o.dryRun ? await planPublicImport(deps.db, records) : await importPublicPosts(deps.db, records, { log });
+  if (deps.db) report.write = o.dryRun ? await planPublicImport(deps.db, records, { refresh: o.refresh }) : await importPublicPosts(deps.db, records, { log, refresh: o.refresh });
   return report;
 }

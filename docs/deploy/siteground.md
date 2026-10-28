@@ -801,22 +801,29 @@ migrations beside it). Paste the value of `NEWSAPI_DATABASE_URL` from Site Tools
 
 ```sh
 ssh boxs
-APP="$(ls -dt ~/www/boxs.ca/public_html/.nodeapp/*/ | head -1)"   # the newest deploy
+TOOL=~/www/boxs.ca/public_html/.nodeapp/latest/app_source/tools/news-api-import-public.mjs   # `latest` is the live release
 read -rs -p 'NEWSAPI_DATABASE_URL: ' DATABASE_URL && export DATABASE_URL && echo
-/usr/local/bin/node-24 "$APP/tools/news-api-import-public.mjs" --dry-run   # fetch, compare with the database, write nothing
-/usr/local/bin/node-24 "$APP/tools/news-api-import-public.mjs"             # import the slice
+/usr/local/bin/node-24 "$TOOL" --dry-run   # fetch, compare with the database, write nothing
+/usr/local/bin/node-24 "$TOOL"             # import the slice
 ```
 
 Options: `--per-kind <n>` (default 20), `--per-category <n>` (default 3; `0` skips categories),
-`--keys k1,k2,...`, `--from <base>`, `--max-requests <n>`, `--dry-run`. A re-run refreshes only
-posts the source has changed since (by `timestamp`); the rest are reported `unchanged`. The
+`--keys k1,k2,...`, `--from <base>`, `--max-requests <n>`, `--files-base <url>`, `--refresh`,
+`--dry-run`. A plain re-run refreshes only posts the source has changed since (by `timestamp`); the
+rest are reported `unchanged`. `--refresh` rewrites every post this tool created even when the
+timestamp is unchanged (still never one it didn't create) — use it after upgrading the tool, e.g.
+`/usr/local/bin/node-24 "$TOOL" --refresh`. The source lists translations and media assets with
+relative keys; the tool makes them absolute under `--files-base` (default
+`https://bcgovnews-etg7c8etapa6btfr.z03.azurefd.net`) as `<base>/translations/<key>` and
+`<base>/assets/<key>`, path segments percent-encoded; an already-absolute `https` key is kept and
+anything else invalidates that post (reported under `invalid`, not written). The
 report is JSON on stdout; exit code `1` on any failure, including a 429.
 
 **Removing the slice:**
 
 ```sh
-/usr/local/bin/node-24 "$APP/tools/news-api-import-public.mjs" --remove --dry-run   # list what would go
-/usr/local/bin/node-24 "$APP/tools/news-api-import-public.mjs" --remove
+/usr/local/bin/node-24 "$TOOL" --remove --dry-run   # list what would go
+/usr/local/bin/node-24 "$TOOL" --remove
 ```
 
 This deletes every post the tool created, in one transaction with a `post.unpublished` change row
