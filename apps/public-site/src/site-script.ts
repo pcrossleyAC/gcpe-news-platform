@@ -25,11 +25,27 @@
  * DOM is built with createElementNS/textContent only. Exported as a string so a test can evaluate it
  * in jsdom against a renderPage() document (site-script.test.ts). It must never contain `</script>`.
  */
+// The base is stripped only on a segment boundary ("/sitemap-old" under "/site" keeps "sitemap").
+// At most 100 UTF-16 units, cut between words; a single over-long first word is cut between code
+// points (for...of), so no surrogate pair is ever split.
 const PATH_WORDS_SRC = String.raw`const pathWords = (pathname, base) => {
   let p = pathname;
-  if (base && p.indexOf(base) === 0) p = p.slice(base.length);
+  if (base && p.indexOf(base) === 0 && (p.length === base.length || p.charAt(base.length) === "/")) p = p.slice(base.length);
   try { p = decodeURIComponent(p); } catch (_) {}
-  return p.split(/[\/\-_.+\s]+/).filter((t) => t && !/^(index|html|htm|aspx)$/i.test(t)).join(" ").slice(0, 100);
+  const words = p.split(/[\/\-_.+\s]+/).filter((t) => t && !/^(index|html|htm|aspx)$/i.test(t));
+  let out = "";
+  for (const w of words) {
+    const next = out ? out + " " + w : w;
+    if (next.length > 100) break;
+    out = next;
+  }
+  if (!out && words.length) {
+    for (const ch of words[0]) {
+      if (out.length + ch.length > 100) break;
+      out += ch;
+    }
+  }
+  return out;
 };`;
 
 /** The 404 search prefill's words, evaluated from the same source SITE_SCRIPT embeds (so tests cover the shipped code). */

@@ -352,7 +352,23 @@ describe("site.js", () => {
   });
   it("pathWords survives malformed percent-encoding and caps at 100 chars", () => {
     expect(pathWords("/50%-off/%E0%A4%A", "")).toBe("50% off %E0%A4%A");
-    expect(pathWords("/" + "word-".repeat(60), "")).toHaveLength(100);
+    // Capped on a word boundary: twenty whole "word"s (99 chars), never a cut-off "wo".
+    expect(pathWords("/" + "word-".repeat(60), "")).toBe(Array(20).fill("word").join(" "));
+  });
+  it("pathWords strips the base only on a segment boundary: '/sitemap-old' under '/site' keeps 'sitemap'", () => {
+    expect(pathWords("/sitemap-old", "/site")).toBe("sitemap old");
+    expect(pathWords("/site", "/site")).toBe("");
+    expect(pathWords("/site/x", "/site")).toBe("x");
+  });
+  it("pathWords never leaves a lone surrogate: an over-long single word is cut on a code point", () => {
+    const emoji = "\u{1F600}"; // two UTF-16 units
+    const out = pathWords("/" + "a" + emoji.repeat(80), "");
+    expect(out.length).toBeLessThanOrEqual(100);
+    expect(out.length).toBe(99); // "a" + 49 emoji; a 50th would need units 100-101
+    expect(out).toBe("a" + emoji.repeat(49));
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(out)).toBe(false);
+    // A short word after a long one isn't dropped mid-way: words are kept whole or not at all.
+    expect(pathWords("/" + "x".repeat(95) + "-abcdef", "")).toBe("x".repeat(95));
   });
   it("site.js fills #not-found-q from location.pathname on a 404 page; leaves other pages' inputs alone", () => {
     const html = renderNotFoundPage(site, {});
@@ -364,8 +380,10 @@ describe("site.js", () => {
     };
     expect(run("https://boxs.example/site/releases/no-such-housing-plan/").value).toBe("releases no such housing plan");
     expect(run("https://boxs.example/site/releases/x/", (d) => ((d.getElementById("not-found-q") as HTMLInputElement).value = "typed")).value).toBe("typed");
-    expect(run("https://boxs.example/site/<img src=x onerror=alert(1)>").value).toBe("<img src=x onerror=alert(1)>");
-    // Markup in the path lands as inert value text.
+    // Markup in the path lands as inert value text: no element is created from it.
+    const xss = run("https://boxs.example/site/<img src=x onerror=alert(1)>");
+    expect(xss.value).toBe("<img src=x onerror=alert(1)>");
+    expect(xss.ownerDocument.querySelector("img[src='x'], img[onerror]")).toBeNull();
     // A form without the marker, or any other page's input, is untouched.
     const { doc } = page({ ministryMenu: MENU }, (d) => {
       d.querySelector("main")!.insertAdjacentHTML("beforeend", '<form><input id="not-found-q"></form>');
