@@ -25,6 +25,19 @@ describe("cleanSettingsHtml", () => {
     expect(cleanSettingsHtml(html)).toBe("<p>Kept text</p>x");
   });
 
+  it("never keeps raw text holding a comment, CDATA, doctype or processing instruction (parsers disagree on those)", () => {
+    for (const html of [
+      "<p>x</p><![CDATA[><img src=x onerror=alert(1)>]]>",
+      "<p>x</p><!--><img src=x onerror=alert(1)>-->",
+      "<!DOCTYPE html><p>x</p>",
+      "<p>x</p><?x <img src=x onerror=alert(1)> ?>",
+    ]) {
+      const out = cleanSettingsHtml(html);
+      expect(out).toBe(cleanRichHtml(html, { images: false }));
+      expect(out).not.toMatch(/<[!?]|onerror|<img/);
+    }
+  });
+
   it("is idempotent", () => {
     const once = cleanSettingsHtml(NASTY);
     expect(cleanSettingsHtml(once)).toBe(once);

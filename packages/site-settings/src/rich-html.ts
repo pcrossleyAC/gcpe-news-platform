@@ -148,7 +148,10 @@ function reserialised(html: string): string {
 export function cleanSettingsHtml(html: string): string {
   if (html === "") return html;
   const cleaned = cleanRichHtml(html, { images: false });
-  return cleaned === reserialised(html) ? html : cleaned;
+  // Raw text is kept only when it holds no markup declaration (comment, CDATA, doctype, processing
+  // instruction): htmlparser2 and browsers disagree on those, so "nothing removed" by our parser
+  // would not mean "nothing live" in a browser (<![CDATA[><img onerror>]]> is a live img there).
+  return !/<[!?]/.test(html) && cleaned === reserialised(html) ? html : cleaned;
 }
 
 /**
