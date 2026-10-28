@@ -6,6 +6,7 @@ import { subscribers } from "../db/schema";
 import { addSubscriber } from "../subscribers";
 import { claimLink, createLink, expireSessionLinks, findLink, linksSentLastHour, markLinkUsed } from "./links";
 import { requestManageLink, type JourneyDeps } from "./journeys";
+import { legacyTokenHash } from "./legacy-token";
 import { hashToken } from "./tokens";
 
 describe("links", () => {
@@ -27,6 +28,21 @@ describe("links", () => {
     const { id, token } = await createLink(tdb.db, { purpose: "manage", email: "old@example.test", subscriberId: null, pending: null });
     await tdb.db.execute(sql`UPDATE subscriber_links SET expires_at = now() - interval '1 second' WHERE id = ${id}`);
     expect((await findLink(tdb.db, token))?.expired).toBe(true);
+  });
+
+  it("findLink resolves a seeded legacy row by either encoding, and reports expired when expires_at <= now()", async () => {
+    const guid = "00112233-4455-6677-8899-aabbccddeeff";
+    const { rows } = await tdb.db.execute<{ id: string }>(sql`
+      INSERT INTO subscriber_links (token_hash, purpose, email, expires_at)
+      VALUES (${legacyTokenHash(guid)}, 'manage', 'legacy@example.test', now() + interval '1 hour') RETURNING id`);
+    const id = rows[0]!.id;
+    expect((await findLink(tdb.db, "MyIRAFVEd2aImaq7zN3u_w2"))?.id).toBe(id);
+    expect((await findLink(tdb.db, guid.toUpperCase()))?.id).toBe(id);
+    expect((await findLink(tdb.db, guid))?.expired).toBe(false);
+    expect(await findLink(tdb.db, "AAAAAAAAAAAAAAAAAAAAAA2")).toBeNull();
+    expect(await findLink(tdb.db, "11112233-4455-6677-8899-aabbccddeeff")).toBeNull();
+    await tdb.db.execute(sql`UPDATE subscriber_links SET expires_at = now() WHERE id = ${id}`);
+    expect((await findLink(tdb.db, "MyIRAFVEd2aImaq7zN3u_w2"))?.expired).toBe(true);
   });
 
   it("counts links created for an address in the last hour, case-insensitively", async () => {

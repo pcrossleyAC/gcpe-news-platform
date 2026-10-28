@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ALL_QUERIES, MAX_SINCE_DAYS, qArticles, qSubscriberArticles } from "./queries";
+import { ALL_QUERIES, Q_LIVE_MANAGE_LINKS, MAX_SINCE_DAYS, qArticles, qSubscriberArticles } from "./queries";
 
 describe("legacy NoD queries", () => {
   it("every query names itself on its first line (the fake source is keyed by it)", () => {
@@ -21,5 +21,16 @@ describe("legacy NoD queries", () => {
   it("an article id must be a GUID before it reaches SQL text", () => {
     expect(qSubscriberArticles("C0000000-0000-4000-8000-000000000001")).toContain("'c0000000-0000-4000-8000-000000000001'");
     expect(() => qSubscriberArticles("x'; DROP TABLE Subscriber; --")).toThrow(RangeError);
+  });
+
+  it("the live manage links query is registered and reads only link, subscriber and expiry", () => {
+    expect(ALL_QUERIES).toContain(Q_LIVE_MANAGE_LINKS);
+    expect(Q_LIVE_MANAGE_LINKS.split("\n")[0]).toBe("-- name: liveManageLinks");
+    expect(Q_LIVE_MANAGE_LINKS).toContain("SELECT LinkGuid, SubscriberGuid, ExpiryDate FROM dbo.SubscriberLink");
+  });
+
+  it("the live links query only coarsely pre-filters expiry (a day of slack); the exact cut is the importer's, in the tenant zone", () => {
+    expect(Q_LIVE_MANAGE_LINKS).toContain("ExpiryDate > DATEADD(day, -1, GETDATE())");
+    expect(Q_LIVE_MANAGE_LINKS).not.toMatch(/ExpiryDate > GETDATE\(\)/);
   });
 });

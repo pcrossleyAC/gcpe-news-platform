@@ -153,6 +153,25 @@ Common test harness: a table-driven test `legacy-urls.test.ts` in `apps/stack/sr
 
 Priority: T0, T1, T2, T4, T7, T9 are cutover-blocking; T3, T5 next; T6, T8 by traffic evidence.
 
+## Status (2026-10-28, plan 3)
+
+Built on `feat/parity-3`. Batch A is live as PR #56, batches B and C as PR #58, and batches D and E are on the branch, waiting to deploy. The gate results are in `docs/parity/url-cutover-runbook.md`.
+
+| Task | State | Commits |
+|---|---|---|
+| T1 Redirect middleware, robots, Search Console | Done | dcda081, 3acf797, 9de49e7 (unsafe targets are the site 404); robots and verification: 52994d4, 8dd5e2e |
+| T2 Case-insensitive resolver | Done | 3c19083, d025535 |
+| T3 Long keys (over 100 characters) | Done | e95720f, 464581c |
+| T4 Ministry rename table and nested keys | Done | de7e6ec, 119bb01 |
+| T5 NEWS-n references | Done | baeddc5, 5c3590b |
+| T6 Feeds | Feeds done: Atom, per-kind, legacy feed URLs. Pages stay in plan 4 (`/contacts`, `/privacy` shipped there; `/live` pending). `/embed` is 404 and `/image` is a 302 (C261, C260). | c6667eb, b0f2f87, c6cc0fb, 2937c26 |
+| T7 Subscription token compatibility | Done: legacy tokens accepted; unexpired links imported | fe91b58, fca2b85 |
+| T8 Other hosts | Not built (needs DNS decision) | none |
+| T9 Evidence gathering | Open: owner supplies it (runbook section 2) | none |
+| T10 Rehearsal script | Done | 7d7dd67 |
+
+The decision records are C257-C272 in `changes-from-legacy.md`.
+
 ## 5. Risk / what I did not check
 
 - Not probed (budget of 40 requests): `/office-of-the-premier/speeches`, `/news-subscribe/x`, `/sectors/{k}`, `/themes/{k}`, `/embed`, `/top/...`, `/contact`, `/contacts`, `/privacy`, `/live`, `/assets/...`, `/CarouselImage/...`, nested ministry URLs, `www.`/`newsroom.`/`enewsletters.` hosts. Their handling above is [V from code] or [I].

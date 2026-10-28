@@ -31,6 +31,13 @@ export const FIXTURE_GUIDS = {
   nrmsRelease: "D0000000-0000-4000-8000-000000000001",
 } as const;
 const G = FIXTURE_GUIDS;
+/** SubscriberLink.LinkGuid values of the live manage links (batch D). */
+export const LINK_GUIDS = {
+  active: "00112233-4455-6677-8899-aabbccddeeff",
+  ended: "00112233-4455-6677-8899-aabbccddee01",
+  unknown: "00112233-4455-6677-8899-aabbccddee02",
+  expired: "00112233-4455-6677-8899-aabbccddee03",
+} as const;
 
 const list = (ListGuid: string, CategoryKey: string, ListKey: string, ListName: string, deleted = false) => ({ ListGuid, CategoryKey, ListKey, ListName, ListDeleted: deleted, CategoryDeleted: false });
 const subscriber = (SubscriberGuid: string, EmailAddress: string, o: { self?: boolean; enabled?: boolean; deleted?: boolean; imm?: boolean; dig?: boolean; registered?: string } = {}) => ({
@@ -88,6 +95,12 @@ export function legacyNodTables(): Record<string, Record<string, unknown>[]> {
     mediaListLeaves: [
       { SubscriberGuid: G.subLeftMedia, ListGuid: G.listVictoria, LeftAt: wall("2026-04-01T09:00:00") },
       { SubscriberGuid: G.subMedia, ListGuid: G.listVictoria, LeftAt: wall("2025-01-01T09:00:00") },
+    ],
+    liveManageLinks: [
+      { LinkGuid: LINK_GUIDS.active, SubscriberGuid: G.subActive, ExpiryDate: wall("2099-01-01T09:00:00") },
+      { LinkGuid: LINK_GUIDS.ended, SubscriberGuid: G.subDeleted, ExpiryDate: wall("2099-01-01T09:00:00") },
+      { LinkGuid: LINK_GUIDS.unknown, SubscriberGuid: "B0000000-0000-4000-8000-0000000000FF", ExpiryDate: wall("2099-01-01T09:00:00") },
+      { LinkGuid: LINK_GUIDS.expired, SubscriberGuid: G.subDigest, ExpiryDate: wall("2020-01-01T09:00:00") },
     ],
     unconfirmedSignups: [{ Signups: 26 }],
     digestEnd: [{ ConfigValue: "2026-10-06T00:02:41.8472105+00:00" }],

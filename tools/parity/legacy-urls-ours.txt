@@ -1,0 +1,9 @@
+# Rows that test OUR behaviour, not live news.gov: live news.gov does not answer 2xx/3xx for them, so they
+# are not in legacy-urls.txt. /site/ and /site/ministries/ exercise our /site alias; /subscribe/save is ours;
+# /Ministries/Health is a legacy 500 that we 301. Run only against boxs.ca, never against news.gov:
+#   npm run parity:urls -- --base https://boxs.ca/site --list tools/parity/legacy-urls-ours.txt
+# section: ours
+/site/
+/site/ministries/
+/subscribe/save
+/Ministries/Health
