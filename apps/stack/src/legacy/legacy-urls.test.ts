@@ -8,6 +8,7 @@ import request from "supertest";
 import { mountSite, rootSiteNotFound } from "../site-mount";
 import { SITE_PASS_THROUGH } from "../stack";
 import { createLegacySiteFixture } from "./fixture";
+import { legacyUrls } from "./middleware";
 import { LISTING_MIN_REREAD_MS } from "./site-files";
 
 // Mirrors stack.ts (and site-mount.test.ts): mountSite, rootSiteNotFound just before News API,
@@ -418,5 +419,50 @@ describe("legacyUrls: posts by key and case-insensitive paths (url-compat T2)", 
       const res = await request(app).get(path).redirects(0);
       expect({ path, status: res.status, location: res.headers.location }).toEqual({ path, status: 404, location: undefined });
     }
+  });
+});
+
+describe("legacyUrls: unsafe request targets never reach the static mount", () => {
+  let outputDir: string;
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+  });
+  afterEach(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+
+  // On Windows a decoded "\" is a path separator, so express.static would walk
+  // /Ministries/Health\..\.. to a directory and 301 it. Pinned on every platform by asserting
+  // the handler itself answers 404 and nothing downstream (the static mount) is ever reached.
+  it.each([
+    "/Ministries/Health%5C..%5C..",
+    "/ministries/health%5Cindex.html",
+    "/releases/2026TT0105-001130%5C..%5C..%5Carchive",
+    "/Releases/..%2F..%2Fetc%2Fpasswd",
+    "/archive/%2e%2e/%2e%2e/x",
+    "/ministries/health%00",
+    "/ministries%2Fhealth",
+  ])("%s → 404 from legacyUrls, downstream never called", async (path) => {
+    for (const basePath of ["", "/site"]) {
+      let downstream = 0;
+      const app = express();
+      app.use(basePath, legacyUrls({ outputDir, basePath, passThrough: ["/api", "/hub"] }), (_req, res) => {
+        downstream += 1;
+        res.status(200).send("served");
+      });
+      const res = await request(app).get(`${basePath}${path}`).redirects(0);
+      expect({ basePath, path, status: res.status, location: res.headers.location, downstream }).toEqual({ basePath, path, status: 404, location: undefined, downstream: 0 });
+    }
+  });
+
+  it("an unsafe target under a pass-through prefix still reaches its own app", async () => {
+    let reached = 0;
+    const app = express();
+    app.use(legacyUrls({ outputDir, basePath: "", passThrough: ["/api", "/hub"] }), (_req, res) => {
+      reached += 1;
+      res.status(200).send("api");
+    });
+    const res = await request(app).get("/api/x%5Cy");
+    expect({ status: res.status, reached }).toEqual({ status: 200, reached: 1 });
   });
 });

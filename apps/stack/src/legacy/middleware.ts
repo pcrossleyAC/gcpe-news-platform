@@ -4,6 +4,7 @@ import type { RequestHandler, Response } from "express";
 import { DEFAULT_OG_IMAGE } from "../../../public-site/src/render";
 import { fixedRule } from "./rules";
 import { parseRequestTarget, type RequestTarget } from "./safe-path";
+import { siteNotFound } from "../site-not-found";
 import { exactPagePath, pagePath, resolvePostKey } from "./site-files";
 
 export interface LegacyUrlOptions {
@@ -24,7 +25,8 @@ export interface LegacyUrlOptions {
  * - rewrites `req.url` so the static mount serves a file in place (the legacy OG image); or
  * - falls through (`next()`) to the static mount and the site 404.
  *
- * Order: method (GET/HEAD), then `parseRequestTarget` (anything unsafe falls through), then
+ * Order: method (GET/HEAD), then `parseRequestTarget` (anything unsafe is the site's 404, never
+ * handed to the static mount, unless it is under a pass-through prefix), then
  * `passThrough` on the decoded path — all pure, so a pass-through prefix never costs a
  * filesystem call. Then, first match wins:
  * 1. a `fixedRule` that is not a fallback;
@@ -41,10 +43,20 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
   const { outputDir, basePath } = opts;
   // Express matches mount paths case-insensitively (/API/x reaches /api), so this does too.
   const prefixes = opts.passThrough.map((p) => p.toLowerCase());
+  const notFound = siteNotFound(outputDir);
   return (req, res, next) => {
     if (req.method !== "GET" && req.method !== "HEAD") return next();
     const target = parseRequestTarget(req.url);
-    if (!target) return next();
+    if (!target) {
+      // Unsafe (a decoded backslash, "/", NUL or control character in a segment, "." / "..",
+      // malformed encoding, "//"). Never hand it to the static mount: on Windows a decoded
+      // backslash is a path separator, so express.static would walk /Ministries/Health%5C..%5C..
+      // to a directory and 301 it. A stack-owned prefix (matched on the raw path, as Express
+      // mounts do) still goes to its own app; everything else is the site's 404, on every platform.
+      const raw = req.url.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?#]*/i, "").split("?")[0]!.toLowerCase();
+      if (prefixes.some((p) => raw === p || raw.startsWith(`${p}/`))) return next();
+      return notFound(req, res, next);
+    }
     // On the decoded path, the same one the rules match (/%75pdates/x is /updates/x to them).
     const lower = target.path.toLowerCase();
     if (prefixes.some((p) => lower === p || lower.startsWith(`${p}/`))) return next();
