@@ -231,52 +231,27 @@ describe("importReference — government terms", () => {
     await tdb.drop();
   });
 
-  it("exactly one term is current: the one with the highest year in its name", async () => {
-    const report = new ImportReport();
-    await importReference(tdb.db, source(), report);
-    const current = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
-    expect(current).toHaveLength(1);
-    expect(current[0]!.name).toBe("2017-2021");
-    expect(report.toJSON().tables.government_terms).toEqual({ legacy: 4, imported: 4, skipped: 0 });
-  });
-
-  it("re-running keeps exactly one current term", async () => {
-    const report = new ImportReport();
-    await importReference(tdb.db, source(), report);
-    const current = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
-    expect(current).toHaveLength(1);
-    expect(current[0]!.name).toBe("2017-2021");
-    expect(report.toJSON().tables.government_terms).toEqual({ legacy: 4, imported: 4, skipped: 0 });
-  });
-});
-
-describe("importReference — clearing a current term with no legacy id", () => {
-  let tdb: TestDatabase;
-  beforeAll(async () => {
-    tdb = await createNrmsTestDb();
-  });
-  afterAll(async () => {
-    await tdb.drop();
-  });
-
-  it("clears it (legacy is the source of truth at cutover) but warns, naming the term", async () => {
+  it("importer leaves is_current alone", async () => {
     await tdb.db.insert(governmentTerms).values({ name: "Manually Set Current", isCurrent: true });
-
     const report = new ImportReport();
     await importReference(tdb.db, source(), report);
-
-    const [manual] = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.name, "Manually Set Current"));
-    expect(manual!.isCurrent).toBe(false);
-
     const current = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
-    expect(current).toHaveLength(1);
-    expect(current[0]!.name).toBe("2017-2021");
+    expect(current.map((r) => r.name)).toEqual(["Manually Set Current"]);
+    const imported = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.name, "2017-2021"));
+    expect(imported[0]!.isCurrent).toBe(false);
+    expect(report.toJSON().tables.government_terms).toEqual({ legacy: 4, imported: 4, skipped: 0 });
+    expect(report.toJSON().warnings).toEqual([]);
+  });
 
-    expect(report.toJSON().warnings).toContainEqual({
-      legacyId: "no-legacy-id",
-      key: "Manually Set Current",
-      problems: ["Cleared is_current on a government term with no legacy id (legacy is the source of truth at cutover)"],
-    });
+  it("re-running imports the same rows and still leaves is_current and start dates alone", async () => {
+    await tdb.db.update(governmentTerms).set({ startDate: "2017-07-18" }).where(eq(governmentTerms.name, "2017-2021"));
+    const report = new ImportReport();
+    await importReference(tdb.db, source(), report);
+    const current = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
+    expect(current.map((r) => r.name)).toEqual(["Manually Set Current"]);
+    const [t] = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.name, "2017-2021"));
+    expect(t!.startDate).toBe("2017-07-18");
+    expect(report.toJSON().tables.government_terms).toEqual({ legacy: 4, imported: 4, skipped: 0 });
   });
 });
 
@@ -304,7 +279,6 @@ describe("importReference — concurrent imports", () => {
     }
 
     const current = await tdb.db.select().from(governmentTerms).where(eq(governmentTerms.isCurrent, true));
-    expect(current).toHaveLength(1);
-    expect(current[0]!.name).toBe("2017-2021");
+    expect(current).toHaveLength(0);
   });
 });

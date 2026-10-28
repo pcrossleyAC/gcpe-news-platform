@@ -27,24 +27,6 @@ export function layoutFromLegacy(value: number): Layout {
   throw new Error(`Unknown legacy PageLayout ${value}`);
 }
 
-/**
- * The collection (NewsReleaseCollection.Name) whose name's last 4-digit year is the highest —
- * e.g. `'2017-2021'` beats `'2013-2017'`. Ties are broken by name; a name with no 4-digit year
- * at all sorts last (never preferred over a dated name).
- */
-export function newestTerm(names: string[]): string {
-  const yearOf = (name: string): number => {
-    const years = name.match(/\d{4}/g);
-    return years ? Math.max(...years.map(Number)) : -Infinity;
-  };
-  const [first] = [...names].sort((a, b) => {
-    const byYear = yearOf(b) - yearOf(a);
-    return byYear !== 0 ? byYear : a.localeCompare(b);
-  });
-  if (first === undefined) throw new Error("newestTerm requires at least one name");
-  return first;
-}
-
 // --- Status map (Global Constraints / spec §8), checked in this order. ---
 export interface LegacyStatusRow {
   IsActive: boolean;
@@ -93,7 +75,7 @@ export interface LegacyReleaseRow extends Record<string, unknown> {
 }
 
 export interface MapReleaseContext {
-  /** Resolved from NewsRelease.CollectionId → NewsReleaseCollection.Name → newestTerm() → government_terms, by the caller. */
+  /** Resolved by the caller from NewsRelease.CollectionId → the government_terms row imported from that collection (matched by legacy id). */
   governmentTermId: string | null;
   /** The tenant's time zone (e.g. "America/Vancouver") — C1: `ReleaseDateTime` is a legacy
    * `DATETIME` (no offset), set by legacy as server-local wall-clock time and decoded by

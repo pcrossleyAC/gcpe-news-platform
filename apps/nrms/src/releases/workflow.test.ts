@@ -37,8 +37,13 @@ describe("workflow", () => {
     expect(a.reference).toMatch(/^NEWS-\d{5}$/);
     expect(a.key).toMatch(new RegExp(`^${year}HLTH\\d{4}-\\d{6}$`));
     await expect(approve(db(), v.id, a.version, editor, deps)).rejects.toEqual(new ReleaseStateError("This has already been approved."));
+  });
+
+  it("approval leaves term_id null (the publisher stamps it at first publish)", async () => {
+    const v = await createRelease(db(), { ...sampleCreate, headline: "Term stamp later" }, editor);
+    await approve(db(), v.id, v.version, editor, deps);
     const term = await tdb.db.execute<{ term_id: string | null }>(sql`SELECT term_id FROM news_releases WHERE id = ${v.id}`);
-    expect(term.rows[0]!.term_id).not.toBeNull();
+    expect(term.rows[0]!.term_id).toBeNull();
   });
 
   it("stories keep their slug key; advisories without a ministry use ADVIS", async () => {

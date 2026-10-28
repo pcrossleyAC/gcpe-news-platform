@@ -128,13 +128,14 @@ describe("number counters seeded from copied releases", () => {
     const b = await approve(tdb.db, adv.id, adv.version, editor, { timeZone: TZ });
     expect([b.reference, b.key]).toEqual(["NEWS-00005", `${year}ADVIS0003-000009`]);
 
-    const seed = await readFile(join(nrmsMigrations, "0008_seed_counters.sql"), "utf8");
+    const seed = await readFile(join(nrmsMigrations, "0018_counters_by_abbreviation.sql"), "utf8");
     for (const stmt of seed.split("--> statement-breakpoint")) await tdb.pool.query(stmt);
     const q = async (text: string) => (await tdb.pool.query(text)).rows;
-    expect(await q(`SELECT scope, year, ministry, last_value FROM number_counters ORDER BY scope, year, ministry`)).toEqual([
-      { scope: "ministry", year: 2019, ministry: "health", last_value: 42 },
+    // Counters are per printed abbreviation; the key-keyed rows 0008 seeded for an org the projection did not yet know are harmless leftovers.
+    expect(await q(`SELECT scope, year, ministry, last_value FROM number_counters WHERE ministry = upper(ministry) ORDER BY scope, year, ministry`)).toEqual([
+      { scope: "ministry", year: 2019, ministry: "HLTH", last_value: 42 },
       { scope: "ministry", year, ministry: "", last_value: 3 },
-      { scope: "ministry", year, ministry: "health", last_value: 5 },
+      { scope: "ministry", year, ministry: "HLTH", last_value: 5 },
       { scope: "news", year: 0, ministry: "", last_value: 5 },
       { scope: "year", year: 2019, ministry: "", last_value: 99 },
       { scope: "year", year, ministry: "", last_value: 9 },
@@ -182,5 +183,125 @@ describe("default page types: does not touch an already-imported table", () => {
     await runMigrations(tdb.db, nrmsMigrations);
     const rows = await listPageTypes(tdb.db);
     expect(rows).toEqual([{ pageTitle: "Legacy Title", languageId: 4105, releaseType: "release", sortOrder: 1, layout: "formal", pageImageId: null }]);
+  });
+});
+
+describe("government term dates backfill", () => {
+  let tdb: TestDatabase;
+  let partial: string;
+  const legacyNames = ["pre2001", "2001-2005", "2005-2009", "2009-2013", "2013-2017", "2017-2017", "2017-2021", "2020-2024", "2024-2028"];
+  beforeAll(async () => {
+    partial = await partialMigrations("0016_site_settings");
+    tdb = await createTestDatabase({ migrationsFolder: partial });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+    await rm(partial, { recursive: true, force: true });
+  });
+
+  it("backfills legacy start dates", async () => {
+    for (const name of [...legacyNames, "Custom Term"]) {
+      await tdb.pool.query(`INSERT INTO government_terms (name, is_current) VALUES ($1, $2)`, [name, name === "2024-2028"]);
+    }
+    await runMigrations(tdb.db, nrmsMigrations);
+    const rows = (await tdb.pool.query(`SELECT name, start_date::text AS start_date, legacy_archive_url, is_current FROM government_terms ORDER BY name`)).rows as {
+      name: string; start_date: string | null; legacy_archive_url: string | null; is_current: boolean;
+    }[];
+    const by = new Map(rows.map((r) => [r.name, r]));
+    expect(by.get("2017-2021")!.start_date).toBe("2017-07-18");
+    expect(by.get("pre2001")!.start_date).toBe("1994-01-01");
+    expect(by.get("2020-2024")!.start_date).toBe("2020-11-26");
+    expect(by.get("2024-2028")!.start_date).toBe("2024-11-18");
+    expect(by.get("2024-2028")!.legacy_archive_url).toBe("https://archive.news.gov.bc.ca/releases/index_current.htm");
+    expect(by.get("2017-2021")!.legacy_archive_url).toBe("https://archive.news.gov.bc.ca/releases/index_2017-2021.htm");
+    expect(by.get("2024-2028")!.is_current).toBe(true);
+    // A term the backfill does not know is left undated.
+    expect(by.get("Custom Term")).toMatchObject({ start_date: null, legacy_archive_url: null });
+    expect(new Set(legacyNames.map((n) => by.get(n)!.start_date)).size).toBe(9);
+  });
+
+  it("a second run of the backfill changes nothing, and keeps a date staff have since edited", async () => {
+    const snapshot = async () => (await tdb.pool.query(`SELECT id, name, start_date::text AS s, legacy_archive_url AS u FROM government_terms ORDER BY id`)).rows;
+    await tdb.pool.query(`UPDATE government_terms SET start_date = '2017-07-19' WHERE name = '2017-2021'`);
+    const before = await snapshot();
+    const sqlText = await readFile(join(nrmsMigrations, "0017_government_term_dates.sql"), "utf8");
+    const backfill = sqlText.split("--> statement-breakpoint").find((part) => part.includes("UPDATE \"government_terms\""))!;
+    await tdb.pool.query(backfill);
+    expect(await snapshot()).toEqual(before);
+    await tdb.pool.query(`UPDATE government_terms SET start_date = '2017-07-18' WHERE name = '2017-2021'`);
+  });
+
+  it("refuses a second term on the same start date, but allows several undated terms", async () => {
+    await expect(tdb.pool.query(`INSERT INTO government_terms (name, start_date) VALUES ('dupe', '2024-11-18')`)).rejects.toMatchObject({ code: "23505" });
+    await tdb.pool.query(`INSERT INTO government_terms (name) VALUES ('undated-a'), ('undated-b')`);
+    await tdb.pool.query(`DELETE FROM government_terms WHERE name IN ('undated-a', 'undated-b')`);
+  });
+
+  it("keeps the single-row published table to one row", async () => {
+    await tdb.pool.query(`INSERT INTO government_terms_published (hash, published_at) VALUES ('h', now())`);
+    await expect(tdb.pool.query(`INSERT INTO government_terms_published (id, hash, published_at) VALUES (2, 'h', now())`)).rejects.toThrow();
+  });
+});
+
+describe("0018 counters by abbreviation", () => {
+  let tdb: TestDatabase;
+  let partial: string;
+  beforeAll(async () => {
+    partial = await partialMigrations("0017_government_term_dates");
+    tdb = await createTestDatabase({ migrationsFolder: partial });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+    await rm(partial, { recursive: true, force: true });
+  });
+
+  it("merges per-ministry counters into per-abbreviation ones (GREATEST), idempotently", async () => {
+    await tdb.pool.query(`INSERT INTO organizations (key, display_name, abbreviation, sort_order, is_active) VALUES
+      ('health', 'Health', 'HLTH', 1, false), ('wellness', 'Wellness', 'hlth', 2, true), ('finance', 'Finance', 'FIN', 3, true)`);
+    await tdb.pool.query(`INSERT INTO number_counters (scope, year, ministry, last_value) VALUES
+      ('ministry', 2028, 'health', 41), ('ministry', 2028, 'wellness', 7), ('ministry', 2027, 'health', 9), ('ministry', 2028, 'finance', 3),
+      ('ministry', 2028, '', 5), ('year', 2028, '', 100)`);
+    await runMigrations(tdb.db, nrmsMigrations);
+    const rows = async () => (await tdb.pool.query("SELECT scope, year, ministry, last_value FROM number_counters ORDER BY scope, year, ministry")).rows;
+    const expected = [
+      { scope: "ministry", year: 2027, ministry: "HLTH", last_value: 9 },
+      { scope: "ministry", year: 2028, ministry: "", last_value: 5 },
+      { scope: "ministry", year: 2028, ministry: "FIN", last_value: 3 },
+      { scope: "ministry", year: 2028, ministry: "HLTH", last_value: 41 },
+      { scope: "year", year: 2028, ministry: "", last_value: 100 },
+    ];
+    expect(await rows()).toEqual(expected);
+    // Re-running the SQL (a second deploy of the same data) changes nothing.
+    const sqlText = await readFile(join(nrmsMigrations, "0018_counters_by_abbreviation.sql"), "utf8");
+    for (const part of sqlText.split("--> statement-breakpoint")) await tdb.pool.query(part);
+    expect(await rows()).toEqual(expected);
+  });
+});
+
+describe("0018 when an organization's key is another's abbreviation", () => {
+  let tdb: TestDatabase;
+  let partial: string;
+  beforeAll(async () => {
+    partial = await partialMigrations("0017_government_term_dates");
+    tdb = await createTestDatabase({ migrationsFolder: partial });
+  });
+  afterAll(async () => {
+    await tdb.drop();
+    await rm(partial, { recursive: true, force: true });
+  });
+
+  it("keeps the merged abbreviation row instead of deleting it as a key-keyed leftover", async () => {
+    // Org '123' counts under XYZ; org 'other' prints '123', so after the merge the row '123' is
+    // other's abbreviation counter (GREATEST of both), and must survive the clean-up.
+    await tdb.pool.query(`INSERT INTO organizations (key, display_name, abbreviation, sort_order, is_active) VALUES
+      ('123', 'Numbered', 'XYZ', 1, true), ('other', 'Other', '123', 2, true)`);
+    await tdb.pool.query(`INSERT INTO number_counters (scope, year, ministry, last_value) VALUES
+      ('ministry', 2028, '123', 12), ('ministry', 2028, 'other', 4)`);
+    await runMigrations(tdb.db, nrmsMigrations);
+    const { rows } = await tdb.pool.query("SELECT ministry, last_value FROM number_counters WHERE scope = 'ministry' ORDER BY ministry");
+    expect(rows).toEqual([
+      { ministry: "123", last_value: 12 },
+      { ministry: "XYZ", last_value: 12 },
+    ]);
   });
 });

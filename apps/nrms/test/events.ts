@@ -47,7 +47,7 @@ export function orgRecord(key: string, over: Partial<OrgRecord> = {}): OrgRecord
     key, displayName: key, abbreviation: key.toUpperCase().slice(0, 6), sortOrder: 0, isActive: true, parentKey: null, url: null, displayAdditionalName: null,
     minister: { name: null, summary: null, detailsHtml: null, email: null, photoUrl: null, address: null },
     contact: null, secondContact: null, weekendContactNumber: null, social: { twitterUsername: null, flickrUrl: null, youtubeUrl: null, audioUrl: null },
-    topicLinks: [], serviceLinks: [], sectorKeys: [], isHq: false, isPublic: true, updatedAt: "2026-10-08T17:00:00Z",
+    topicLinks: [], serviceLinks: [], sectorKeys: [], isHq: false, isPublic: true, successorKeys: [], updatedAt: "2026-10-08T17:00:00Z",
     ...over,
   };
 }

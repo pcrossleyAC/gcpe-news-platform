@@ -124,6 +124,7 @@ describe("GET /api/subscribers/count", () => {
   let editor: string;
   let reader: string;
   let subscriberCountService: string;
+  let coreAdmin: string;
 
   beforeAll(async () => {
     tdb = await createNodTestDb();
@@ -142,6 +143,7 @@ describe("GET /api/subscribers/count", () => {
     // Fix round 1: NRMS's own service token for this endpoint carries only this dedicated
     // role (apps/nrms/src/start.ts's nodServiceTokenOptions) — never NRMS.Editor.
     subscriberCountService = await sign(["NoD.SubscriberCount"]);
+    coreAdmin = await sign(["Core.Admin"]);
     app = createApp({
       db: tdb.db,
       auth: { issuer, audience, keys },
@@ -188,6 +190,18 @@ describe("GET /api/subscribers/count", () => {
   it("403s a token with none of NoD.Admin, NRMS.Editor or NoD.SubscriberCount", async () => {
     const forbidden = await request(app).get("/api/subscribers/count?lists=ministries:health").set("authorization", `Bearer ${reader}`);
     expect(forbidden.status).toBe(403);
+  });
+
+  it("exact=true counts only the given list keys, leaving out '*' (all news) subscribers", async () => {
+    const res = await request(app).get("/api/subscribers/count?lists=ministries:health&exact=true").set("authorization", `Bearer ${coreAdmin}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ count: 1 });
+  });
+
+  it("Core.Admin may read the count", async () => {
+    const res = await request(app).get("/api/subscribers/count?lists=ministries:health").set("authorization", `Bearer ${coreAdmin}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ count: 2 });
   });
 
   it("accepts a token with only the dedicated NoD.SubscriberCount service role", async () => {

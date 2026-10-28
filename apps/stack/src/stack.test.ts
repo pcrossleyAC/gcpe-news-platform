@@ -690,8 +690,10 @@ describe("apps/stack", () => {
       expect(Object.keys(body.ran)).toEqual([
         "nrms.flickr",
         "nrms.site",
+        "nrms.government-terms",
         "nrms.publish",
         "nrms.dispatch",
+        "core.cabinet-changes",
         "core.dispatch",
         "calendar.dispatch",
         "calendar.lock-sweep",
@@ -710,7 +712,7 @@ describe("apps/stack", () => {
         "distribution.bounces",
         "distribution.dispatch",
       ]);
-      expect(Object.values(body.ran)).toEqual(["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"]);
+      expect(Object.values(body.ran)).toEqual(Array(23).fill("ok"));
       expect(body.ms).toBeGreaterThanOrEqual(0);
     });
 

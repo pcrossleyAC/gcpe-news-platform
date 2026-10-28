@@ -1,6 +1,6 @@
 import { bcSettings } from "../../site-settings/src/fixtures";
 import { describe, expect, it } from "vitest";
-import { parseEvent, termEventType, type MediaListRecord, type OrgRecord } from "./index";
+import { parseEvent, termEventType, type MediaListRecord, type OrgRecord, type OrgSucceeded } from "./index";
 
 const org: OrgRecord = {
   key: "health",
@@ -21,6 +21,7 @@ const org: OrgRecord = {
   sectorKeys: ["health"],
   isHq: false,
   isPublic: true,
+  successorKeys: [],
   updatedAt: "2026-10-02T16:46:05.527-07:00",
 };
 
@@ -147,5 +148,43 @@ describe("site.settings.published", () => {
   });
   it("rejects revision 0", () => {
     expect(() => parseEvent(envelope("site.settings.published", { ...data, revision: 0 }))).toThrow();
+  });
+});
+
+describe("government_terms.published", () => {
+  const data = {
+    publishedAt: "2028-11-20T08:00:00.000Z",
+    currentSlug: "2028-11-20",
+    terms: [
+      { slug: "2028-11-20", label: null, startDate: "2028-11-20", endDate: null, legacyArchiveUrl: null },
+      { slug: "2024-2028", label: "41st Parliament", startDate: "2024-11-18", endDate: "2028-11-19", legacyArchiveUrl: "https://archive.news.gov.bc.ca/index_current.htm" },
+    ],
+  };
+  it("round-trips a sample payload", () => {
+    expect(parseEvent(envelope("government_terms.published", data)).data).toEqual(data);
+  });
+  it("accepts no current term", () => {
+    expect(parseEvent(envelope("government_terms.published", { ...data, currentSlug: null, terms: [] })).data).toMatchObject({ currentSlug: null });
+  });
+  it("rejects a startDate that is not a bare ISO date", () => {
+    expect(() => parseEvent(envelope("government_terms.published", { ...data, terms: [{ ...data.terms[0]!, startDate: "2028-11-20T00:00" }] }))).toThrow();
+  });
+});
+
+describe("org succession (new-government spec §4)", () => {
+  it("OrgRecord parses without successorKeys (old envelope) as no successors", () => {
+    const { successorKeys: _s, ...old } = org;
+    expect((parseEvent(envelope("org.upserted", old)).data as OrgRecord).successorKeys).toEqual([]);
+    expect((parseEvent(envelope("org.upserted", { ...org, isActive: false, successorKeys: ["b", "c"] })).data as OrgRecord).successorKeys).toEqual(["b", "c"]);
+  });
+
+  it("org.succeeded carries the hand-over flags and needs at least one successor", () => {
+    const data: OrgSucceeded = { key: "health", successorKeys: ["wellness"], moveSubscribers: true, moveCalendar: false, moveDrafts: true, takeAbbreviation: true, at: "2028-11-20T17:00:00.000Z" };
+    expect(parseEvent(envelope("org.succeeded", data)).data).toEqual(data);
+    expect(() => parseEvent(envelope("org.succeeded", { ...data, successorKeys: [] }))).toThrow();
+    expect(() => parseEvent(envelope("org.succeeded", { ...data, successorKeys: [""] }))).toThrow();
+    const { moveDrafts: _d, ...missing } = data;
+    expect(() => parseEvent(envelope("org.succeeded", missing))).toThrow();
+    expect(() => parseEvent(envelope("org.succeeded", { ...data, at: "2028-11-20" }))).toThrow();
   });
 });

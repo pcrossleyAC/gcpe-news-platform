@@ -187,6 +187,26 @@ describe("router (basename /hub)", () => {
     expect(router.state.location.pathname).toBe("/hub/calendar-access");
   });
 
+  it("organizations/cabinet-change is the Cabinet change screen", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/core/auth/session") return jsonResponse(200, { user: { id: "1", name: "Pat", email: "pat@x.invalid", roles: ["Core.Admin"] }, expiresAt: new Date().toISOString() });
+        if (url === "/nrms/api/config") return jsonResponse(200, { timeZone: "America/Vancouver" });
+        if (url === "/core/api/organizations") return jsonResponse(200, []);
+        if (url === "/core/api/cabinet-change") return jsonResponse(404, { error: "no open cabinet change" });
+        return jsonResponse(200, {});
+      }),
+    );
+    const router = createMemoryRouter(routes, { basename: "/hub", initialEntries: ["/hub/organizations/cabinet-change"] });
+    render(
+      <SessionProvider>
+        <RouterProvider router={router} />
+      </SessionProvider>,
+    );
+    expect(await screen.findByRole("heading", { level: 1, name: "Cabinet change" })).toBeInTheDocument();
+  });
+
   it("a Viewer sees no Add a subscriber link", async () => {
     vi.stubGlobal(
       "fetch",

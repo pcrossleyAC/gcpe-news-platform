@@ -45,6 +45,11 @@ describe("approveProblems / publishProblems", () => {
     expect(approveProblems(view({ leadMinistryKey: null, ministries: ["health", "finance"] }))).toEqual(["Choose the lead ministry."]);
     expect(approveProblems(view({ type: "advisory", leadMinistryKey: null, ministries: [] }))).toEqual([]);
   });
+  it("an advisory led by an inactive (succeeded) ministry is refused like any other release", () => {
+    expect(approveProblems(view({ type: "advisory", leadMinistryKey: "health", ministries: ["health"] }), ["health"])).toEqual([
+      "This ministry is no longer active. Change the lead ministry to its successor before approving.",
+    ]);
+  });
   it("lists everything that blocks publishing", () => {
     expect(publishProblems(view({ publishAt: "2026-10-04T12:00:00Z" }))).toEqual([]);
     const bad = view({

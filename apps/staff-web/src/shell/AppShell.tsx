@@ -7,7 +7,7 @@ import { useFocusH1OnRouteChange } from "../shared/useFocusH1OnRouteChange";
 import { canReadWebsite } from "../screens/website/access";
 import { canReadSubscribers } from "../screens/subscribers/access";
 import { canManageCalendarAccess } from "../screens/admin/calendar-access/calendar-roles";
-import { canEditOrgProfile } from "../screens/admin/organizations/access";
+import { canEditOrgProfile, isCoreAdmin } from "../screens/admin/organizations/access";
 import { hasCalendarRole } from "../screens/calendar/access";
 
 interface NavItem {
@@ -27,7 +27,7 @@ const hasAnyReadRole = (s: SessionValue) => s.has("NRMS.Viewer") || s.has("NRMS.
  * Subscribers is visible to any NoD role (canReadSubscribers) — an NRMS-only user never sees
  * it, and vice versa. Calendar is visible to any Calendar role (hasCalendarRole). Calendar
  * access is visible to Core.Admin, Calendar.Administrator and Calendar.SysAdmin; Organizations
- * to Core.Admin and NRMS.SiteEditor (canEditOrgProfile).
+ * to Core.Admin and NRMS.SiteEditor (canEditOrgProfile); Government terms to Core.Admin.
  */
 const NAV_ITEMS: NavItem[] = [
   { to: "/releases", label: "Releases", show: hasAnyReadRole },
@@ -38,6 +38,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: "/users", label: "Users", show: (s) => s.has("Core.Admin") },
   { to: "/calendar-access", label: "Calendar access", show: canManageCalendarAccess },
   { to: "/organizations", label: "Organizations", show: canEditOrgProfile },
+  { to: "/government-terms", label: "Government terms", show: isCoreAdmin },
   { to: "/media-list-names", label: "Media list names", show: (s) => s.has("Core.Admin") },
   { to: "/error-log", label: "Error log", show: (s) => s.has("Core.Admin") },
 ];

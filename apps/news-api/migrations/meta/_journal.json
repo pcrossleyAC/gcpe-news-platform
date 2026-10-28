@@ -71,6 +71,13 @@
       "when": 1793150802737,
       "tag": "0009_site_settings",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1793162742665,
+      "tag": "0010_government_terms",
+      "breakpoints": true
     }
   ]
 }

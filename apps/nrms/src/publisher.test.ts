@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import { sql } from "drizzle-orm";
 import { dbClock, type Db, type TestDatabase } from "@gcpe/db-kit";
 import type { SubscriberConfig } from "@gcpe/events";
-import { createNrmsTestDb, createScheduledRelease, editor } from "../test/helpers";
+import { createNrmsTestDb, createScheduledRelease, editor, requireBcTzdata2026b } from "../test/helpers";
 import { ReleaseRuleError, ReleaseStateError } from "./releases/errors";
 import { deleteRelease, saveCategories } from "./releases/service";
 import { loadView } from "./releases/store";
@@ -83,6 +83,56 @@ describe("publisher", () => {
     expect(evs.map((e) => e.type)).toEqual(["release.published", "release.updated"]);
     expect(evs[1]!.envelope.data).toMatchObject({ notify: true, publishDate: due.publishAt, sectorKeys: ["education"] });
     expect((await logs(due.id)).at(-1)!.text).toBe("Republished to BC Gov News and News On Demand");
+  });
+
+  it("stamps the term by BC day at first publish", async () => {
+    await requireBcTzdata2026b(tdb.pool);
+    await tdb.pool.query("TRUNCATE government_terms CASCADE");
+    const r = await tdb.pool.query("INSERT INTO government_terms (name, start_date) VALUES ('2020-2024', '2020-11-26'), ('2024-2028', '2024-11-18'), ('2028-11-20', '2028-11-20') RETURNING id, name");
+    const termId = Object.fromEntries(r.rows.map((x: { id: string; name: string }) => [x.name, x.id]));
+    const termOf = async (id: string) => (await tdb.pool.query("SELECT term_id FROM news_releases WHERE id = $1", [id])).rows[0].term_id as string | null;
+    // 23:59 BC on the eve of the swearing-in, and 00:00 BC on the day. BC is on permanent UTC-7
+    // from 2026-11-01 (tzdata 2026b), so those are 06:59Z and 07:00Z, not the old PST 07:59/08:00.
+    const eve = await createScheduledRelease(tdb.db, {}, new Date("2028-11-20T06:59:00Z"));
+    const day = await createScheduledRelease(tdb.db, {}, new Date("2028-11-20T07:00:00Z"));
+    // Under the old PST rule (November 2024 was UTC-8): 07:59Z is 23:59 on the 17th, 08:00Z is midnight.
+    const pstEve = await createScheduledRelease(tdb.db, {}, new Date("2024-11-18T07:59:00Z"));
+    const pstDay = await createScheduledRelease(tdb.db, {}, new Date("2024-11-18T08:00:00Z"));
+    expect(await termOf(eve.id)).toBeNull();
+    const later = () => new Date("2028-11-21T12:00:00Z");
+    await publishDue({ db: tdb.db, subscribers: subs, timeZone: "America/Vancouver", now: later });
+    expect(await termOf(eve.id)).toBe(termId["2024-2028"]);
+    expect(await termOf(day.id)).toBe(termId["2028-11-20"]);
+    expect(await termOf(pstEve.id)).toBe(termId["2020-2024"]);
+    expect(await termOf(pstDay.id)).toBe(termId["2024-2028"]);
+
+    // A correction republish does not re-stamp, even if the term rows change underneath.
+    await tdb.pool.query("UPDATE news_releases SET term_id = NULL WHERE id = $1", [eve.id]);
+    const live = (await loadView(tdb.db, eve.id))!;
+    await saveCategories(tdb.db, eve.id, { version: live.version, leadMinistryKey: "health", ministries: ["health"], sectors: ["education"], themes: [], tags: [] }, editor);
+    expect((await publishDue({ db: tdb.db, subscribers: subs, timeZone: "America/Vancouver", now: later })).updated).toEqual([eve.key]);
+    expect(await termOf(eve.id)).toBeNull();
+  });
+
+  it("an imported published release with no legacy release date keeps its imported term on its first correction", async () => {
+    await tdb.pool.query("TRUNCATE government_terms CASCADE");
+    const r = await tdb.pool.query("INSERT INTO government_terms (name, start_date) VALUES ('2020-2024', '2020-11-26'), ('2024-2028', '2024-11-18') RETURNING id, name");
+    const termId = Object.fromEntries(r.rows.map((x: { id: string; name: string }) => [x.name, x.id]));
+    const termOf = async (id: string) => (await tdb.pool.query("SELECT term_id FROM news_releases WHERE id = $1", [id])).rows[0].term_id as string | null;
+    const due = await createScheduledRelease(tdb.db);
+    await publishDue({ db: tdb.db, subscribers: subs, timeZone: "America/Vancouver" });
+    // As the importer leaves it: live, legacy id, CollectionId term, but ReleaseDateTime was null.
+    await tdb.pool.query("UPDATE news_releases SET released_at = NULL, legacy_id = gen_random_uuid(), term_id = $2 WHERE id = $1", [due.id, termId["2020-2024"]]);
+    const live = (await loadView(tdb.db, due.id))!;
+    await saveCategories(tdb.db, due.id, { version: live.version, leadMinistryKey: "health", ministries: ["health"], sectors: ["education"], themes: [], tags: [] }, editor);
+    await publishDue({ db: tdb.db, subscribers: subs, timeZone: "America/Vancouver" });
+    expect(await termOf(due.id)).toBe(termId["2020-2024"]);
+
+    // A native release still gets its term from the BC day at first publish.
+    const native = await createScheduledRelease(tdb.db);
+    await tdb.pool.query("UPDATE news_releases SET term_id = $2 WHERE id = $1", [native.id, termId["2020-2024"]]);
+    await publishDue({ db: tdb.db, subscribers: subs, timeZone: "America/Vancouver" });
+    expect(await termOf(native.id)).toBe(termId["2024-2028"]);
   });
 
   it("unpublish completes as release.unpublished and returns the release to approved", async () => {

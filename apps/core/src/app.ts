@@ -37,6 +37,8 @@ function requireCurrentSessionIdentity(db: Db, localConfigured: boolean): Reques
 export function createApp(deps: {
   db: Db;
   subscribers: SubscriberConfig[];
+  /** The tenant's IANA time zone (a cabinet change's BC schedule time). Defaults to America/Vancouver. */
+  timeZone?: string;
   auth: BearerOptions;
   loginRouter?: Router | null;
   session?: { secret: string; secure: boolean; local: LocalAuthConfig | null; entra?: EntraClient | null; userPasswordsAllowed?: boolean; entraRatePerMinute?: number };
@@ -53,7 +55,7 @@ export function createApp(deps: {
     requireBearer(deps.auth),
     requireCurrentSessionIdentity(deps.db, deps.session?.local != null),
     express.json({ limit: MAX_EVENT_BYTES }),
-    apiRoutes(deps.db, deps.subscribers),
+    apiRoutes(deps.db, deps.subscribers, { timeZone: deps.timeZone }),
   );
   // Body-parser failures (malformed JSON 400, oversized 413) and anything a route lets
   // escape stay JSON instead of finalhandler's default HTML.
