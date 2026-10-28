@@ -112,12 +112,10 @@ export function feedRule(path: string): FeedAction | null {
   }
   if (rest[rest.length - 1] !== "feed") return null;
   rest.pop();
-  if (rest.length > 0 && KIND_SEGMENTS.has(rest[rest.length - 1]!)) rest.pop();
+  if (rest.length > 0 && FEED_KINDS.has(rest[rest.length - 1]!)) rest.pop();
   if (rest.length < 1 || rest.length > (premier ? 1 : 2)) return null;
   return { kind: "category", cat, segments: rest, fmt, direct: false };
 }
-
-const KIND_SEGMENTS = FEED_KINDS;
 
 /** The raw `name=value` pairs of a query ("" or "?…"), split on "&", bytes untouched. */
 const params = (query: string) => (query.length > 1 ? query.slice(1).split("&") : []);

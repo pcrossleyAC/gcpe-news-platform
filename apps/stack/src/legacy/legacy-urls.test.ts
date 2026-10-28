@@ -824,6 +824,26 @@ describe("legacyUrls: legacy feed URLs served in place (url-compat T6)", () => {
     }
   });
 
+  it("a direct feed.xml / atom.xml of a category that resolves to nothing is the site 404, not an orphan file", async () => {
+    await mkdir(join(outputDir, "tags", "orphan"), { recursive: true });
+    await writeFile(join(outputDir, "tags", "orphan", "feed.xml"), "<rss>ORPHAN</rss>");
+    await writeFile(join(outputDir, "tags", "orphan", "atom.xml"), "<feed>ORPHAN</feed>");
+    for (const path of ["/tags/orphan/feed.xml", "/tags/orphan/atom.xml", "/tags/Orphan/feed.xml"]) {
+      const res = await get(path);
+      expect({ path, status: res.status, text: res.text.includes("ORPHAN") }).toEqual({ path, status: 404, text: false });
+    }
+  });
+
+  it("sitemap.xml and sitemaps/*.xml stay application/xml (the feed content types are not applied to them)", async () => {
+    await writeFile(join(outputDir, "sitemap.xml"), "<sitemapindex/>");
+    await mkdir(join(outputDir, "sitemaps"), { recursive: true });
+    await writeFile(join(outputDir, "sitemaps", "2026-10.xml"), "<urlset/>");
+    for (const path of ["/sitemap.xml", "/sitemaps/2026-10.xml"]) {
+      const res = await get(path);
+      expect({ path, status: res.status, type: res.headers["content-type"] }).toEqual({ path, status: 200, type: expect.stringMatching(/^application\/xml/) });
+    }
+  });
+
   it("a feed path is the base-path-mounted site's too (/site/feed)", async () => {
     const res = await request(appFor(outputDir, "/site")).get("/site/ministries/justice/feed/atom").redirects(0);
     expect({ status: res.status, type: res.headers["content-type"] }).toEqual({ status: 200, type: ATOM });

@@ -31,22 +31,26 @@ export interface LegacyUrlOptions {
  * handed to the static mount, unless it is under a pass-through prefix), then
  * `passThrough` on the decoded path — all pure, so a pass-through prefix never costs a
  * filesystem call. Then, first match wins:
- * 1. a `fixedRule` that is not a fallback;
- * 2. the post rule: `/(releases|stories|factsheets|updates)/<key>[/image][/]`, any case
+ * 1. a `fixedRule` that serves a file in place (the legacy OG image);
+ * 2. the feed rule (T6, `feedRule`): `/feed`, `/<kind>/feed`, `/<cat>/<key>/feed…` and the like,
+ *    served in place with the RSS / Atom type, before the post and category rules (`/releases/feed`
+ *    is not the post "feed");
+ * 3. a `fixedRule` redirect that is not a fallback;
+ * 4. the post rule: `/(releases|stories|factsheets|updates)/<key>[/image][/]`, any case
  *    (`postRule`);
- * 3. the category rule (T4/L4, `categoryRule`): `/(ministries|sectors|themes|tags|news-subscribe)/<key>…`
+ * 5. the category rule (T4/L4, `categoryRule`): `/(ministries|sectors|themes|tags|news-subscribe)/<key>…`
  *    and `/office-of-the-premier…`, through `resolveCategory` (renames, nested keys, successors),
  *    which runs only on a parsed target;
- * 4. the reference rule (T5): a bare `/<n>` is news.gov's short link to `NEWS-<n>`; 301 to
+ * 6. the reference rule (T5): a bare `/<n>` is news.gov's short link to `NEWS-<n>`; 301 to
  *    the post's page when the lookup finds a published post whose page exists. It sits before
  *    the case rule and the fallbacks, and no other rule claims a bare `/<digits>` (a fixed rule
  *    or category needs a word, the post rule a kind prefix). One DB lookup per request, served
  *    by `posts_reference_lower_idx`; a throwing lookup is logged once per message until a lookup
  *    succeeds again, then next();
- * 5. the case rule: a path with uppercase that is not a page in exactly that case, whose
+ * 7. the case rule: a path with uppercase that is not a page in exactly that case, whose
  *    lowercase is one (`caseRule`) — before the fallback rules, so `/Releases` reaches a built
  *    `/releases/` in one hop, also on case-sensitive Linux;
- * 6. a *fallback* `fixedRule`, which fires only when the request path is not itself a page on
+ * 8. a *fallback* `fixedRule`, which fires only when the request path is not itself a page on
  *    disk, so a page the site later builds (plan 4's /releases/ …) wins with no change here.
  * Filesystem errors go to `next(err)`.
  */
@@ -188,7 +192,9 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
     if (feed.kind === "file") file = feed.file;
     else {
       const resolved = await resolveCategory(outputDir, feed.cat, feed.segments);
-      if (resolved === null) return next();
+      // No such category: a direct request for its feed.xml / atom.xml must not reach static, which
+      // would serve an orphaned stale file (a removed category's feed not yet cleaned up).
+      if (resolved === null) return feed.direct ? notFound(req, res, next) : next();
       moved = resolved.moved;
       const files = categoryFiles({ kind: feed.cat, key: resolved.key });
       file = feed.fmt === "atom" ? files.atom : files.feed;
