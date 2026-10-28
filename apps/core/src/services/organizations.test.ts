@@ -340,7 +340,9 @@ describe("organizations service", () => {
      */
     async function outbox(): Promise<{ type: string; aggregateId: string; data: Record<string, unknown> }[]> {
       const { rows } = await tdb.pool.query<{ type: string; aggregate_id: string; envelope: { data: Record<string, unknown> } }>(
-        "SELECT type, aggregate_id, envelope FROM outbox_events ORDER BY aggregate_id, sequence",
+        // org-succession:* last, then a byte-order (C collation) aggregate sort: the default collation
+        // orders "org-succession:a" vs "org:a" differently on CI (C locale) and locally (en_US).
+        "SELECT type, aggregate_id, envelope FROM outbox_events ORDER BY aggregate_id LIKE 'org-succession:%', aggregate_id COLLATE \"C\", sequence",
       );
       return rows.map((r) => ({ type: r.type, aggregateId: r.aggregate_id, data: r.envelope.data }));
     }
@@ -371,8 +373,8 @@ describe("organizations service", () => {
         "org.upserted org:a",
         "org.deactivated org:a",
         "org.upserted org:b",
-        "org.succeeded org-succession:a",
         ...[onlyA, both].sort().map((id) => `user.upserted user:${id}`),
+        "org.succeeded org-succession:a",
       ]);
       expect(events[0]!.data).toMatchObject({ key: "a", isActive: false, successorKeys: ["b"] });
       expect(events[2]!.data).toMatchObject({ key: "b", abbreviation: "ALPH", successorKeys: [] });
