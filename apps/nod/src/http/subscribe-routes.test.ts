@@ -6,6 +6,8 @@ import type { TestDatabase } from "@gcpe/db-kit";
 import { createNodTestDb } from "../../test/helpers";
 import { createApp } from "../app";
 import type { JourneyDeps } from "../subscribe/journeys";
+import { addSubscriber } from "../subscribers";
+import { legacyTokenHash } from "../subscribe/legacy-token";
 import * as journeysModule from "../subscribe/journeys";
 
 const issuer = "https://login.microsoftonline.com/t/v2.0";
@@ -81,6 +83,35 @@ describe("NoD Subscribe API HTTP routes", () => {
     expect(updated.status).toBe(204);
 
     expect((await request(app).get(`/api/Subscribe/UnsubscribeSubscriber/${token}`).set(auth)).body).toBe(true);
+  });
+
+  it("GET /ConfirmUpdateCreateSubscription/MyIRAFVEd2aImaq7zN3u_w2 returns the subscriber's info for a seeded live legacy link; an unknown legacy token → the same 'invalid' answer as an unknown 43-char token", async () => {
+    const auth = { authorization: `Bearer ${svc}` };
+    const { id } = await addSubscriber(tdb.db, { email: "legacy-link@example.test", lists: "all" });
+    await tdb.db.execute(sql`
+      INSERT INTO subscriber_links (token_hash, purpose, subscriber_id, email, expires_at)
+      VALUES (${legacyTokenHash("00112233-4455-6677-8899-aabbccddeeff")}, 'manage', ${id}, 'legacy-link@example.test', now() + interval '1 hour')`);
+    const ok = await request(app).get("/api/Subscribe/ConfirmUpdateCreateSubscription/MyIRAFVEd2aImaq7zN3u_w2").set(auth);
+    expect(ok.status).toBe(200);
+    expect(ok.body).toMatchObject({ emailAddress: "legacy-link@example.test" });
+
+    const unknown43 = await request(app).get(`/api/Subscribe/ConfirmUpdateCreateSubscription/${"A".repeat(43)}`).set(auth);
+    for (const t of ["AAAAAAAAAAAAAAAAAAAAAA2", "11112233-4455-6677-8899-aabbccddeeff", "MyIRAFVEd2aImaq7zN3u_w1", "!!!"]) {
+      const r = await request(app).get(`/api/Subscribe/ConfirmUpdateCreateSubscription/${encodeURIComponent(t)}`).set(auth);
+      expect([r.status, r.body]).toEqual([unknown43.status, unknown43.body]);
+    }
+  });
+
+  it("GET /UnsubscribeSubscriber/<bare guid> ends the subscription for a seeded legacy link", async () => {
+    const auth = { authorization: `Bearer ${svc}` };
+    const guid = "aabbccdd-1122-3344-5566-778899001122";
+    const { id } = await addSubscriber(tdb.db, { email: "legacy-unsub@example.test", lists: "all" });
+    await tdb.db.execute(sql`
+      INSERT INTO subscriber_links (token_hash, purpose, subscriber_id, email, expires_at)
+      VALUES (${legacyTokenHash(guid)}, 'manage', ${id}, 'legacy-unsub@example.test', now() + interval '1 hour')`);
+    expect((await request(app).get(`/api/Subscribe/UnsubscribeSubscriber/${guid.toUpperCase()}`).set(auth)).body).toBe(true);
+    const [row] = (await tdb.db.execute<{ status: string }>(sql`SELECT status FROM subscribers WHERE id = ${id}`)).rows;
+    expect(row).toMatchObject({ status: "deleted" });
   });
 
   it("Update keeps a held list that's no longer offered, even when it was the subscriber's only one", async () => {
