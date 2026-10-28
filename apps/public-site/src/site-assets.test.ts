@@ -4,6 +4,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { describe, expect, it } from "vitest";
 import { memoryStorage } from "../test/memory-storage";
 import { BC_SANS_FILES, builtinAssetSources, BUNDLED_SITE_ASSETS, LEGACY_BUNDLE, LEGACY_BUNDLE_SOURCES, writeBuiltinAssets } from "./site-assets";
+import { SITE_SCRIPT } from "./site-script";
 
 const BOM = Buffer.from([0xef, 0xbb, 0xbf]);
 const ASSETS = fileURLToPath(new URL("../assets/", import.meta.url));
@@ -52,6 +53,7 @@ describe("writeBuiltinAssets", () => {
     expect(has("assets/legacy/LICENSE")).toBe(true);
     expect(has("assets/legacy/NOTICE.md")).toBe(true);
     expect(has("assets/site/icons.svg")).toBe(true);
+    expect(storage.files.get("assets/site/site.js")).toBe(SITE_SCRIPT);
   });
 
   it("writes legacy.bundle.css beside the Content CSS: the five render-blocking files in legacy order, byte-for-byte bar a leading BOM", async () => {

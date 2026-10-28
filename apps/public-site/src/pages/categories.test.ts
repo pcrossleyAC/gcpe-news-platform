@@ -51,7 +51,7 @@ describe("renderMinistryPage", () => {
     expect(html).toContain("Alex &lt;leads&gt; the ministry.");
     expect(html).toContain("<p>Served since 2020.</p>");
     expect(doc.querySelectorAll("h1")).toHaveLength(1); // the demoted body h1 doesn't create a second one
-    expect(doc.querySelector("img")?.getAttribute("alt")).toBe("Minister Alex Example");
+    expect(doc.querySelector("main img")?.getAttribute("alt")).toBe("Minister Alex Example");
   });
 
   it("sanitises the minister's details (C209)", () => {
@@ -81,7 +81,7 @@ describe("renderMinistryPage", () => {
     const html = renderMinistryPage(ministry({ ministryUrl: "javascript:alert(1)" }), minister, emptyPosts, site, {});
     expect(html).not.toContain('href="javascript:');
     expect(html).not.toContain('src="javascript:');
-    expect(html).not.toContain("<img");
+    expect(html.slice(html.indexOf("<main"))).not.toContain("<img"); // the header's BC logos aside
     expect(html).not.toContain("Ministry Website");
     expect(html).not.toContain("<aside");
   });

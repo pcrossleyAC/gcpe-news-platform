@@ -1,7 +1,6 @@
 import { existsSync } from "node:fs";
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
-import type { SiteTheme } from "@gcpe/config";
 import { basePath, e, renderPage, type PageOptions, type SiteInfo } from "./render";
 import { bannerJson, themeDefaults } from "./settings";
 import { writeBuiltinAssets } from "./site-assets";
@@ -19,12 +18,6 @@ export function renderNotFoundPage(site: SiteInfo, opts: PageOptions): string {
 export function renderRobots(site: SiteInfo, test: boolean): string {
   if (test) return "User-agent: *\nDisallow: /\n";
   return `User-agent: *\nAllow: /\nSitemap: ${new URL(site.baseUrl).origin}${basePath(site)}/sitemap.xml\n`;
-}
-
-/** The logo is shown only once its file exists under SITE_ASSETS_DIR (Q76). */
-export function logoFor(theme: SiteTheme, assetsDir: string | null, site: Pick<SiteInfo, "baseUrl">): { src: string; alt: string } | null {
-  if (!assetsDir || !existsSync(join(assetsDir, theme.logo.path))) return null;
-  return { src: `${basePath(site)}/${theme.logo.path}`, alt: theme.logo.alt };
 }
 
 /** Every file under `<assetsDir>/assets`, as paths relative to assetsDir; any path segment

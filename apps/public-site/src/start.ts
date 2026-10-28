@@ -14,7 +14,6 @@ import { newsApiClient } from "./news-api-client";
 import { postIndex } from "./post-index";
 import type { SiteInfo } from "./render";
 import { selfHeal } from "./self-heal";
-import { logoFor } from "./static-pages";
 import { fsStorage } from "./storage";
 import { createRebuildHandler, kickBackgroundSync, syncSite, type SyncDeps } from "./sync";
 import { DEFAULT_THEME } from "./theme-css";
@@ -83,7 +82,6 @@ export async function startPublicSite(env: NodeJS.ProcessEnv): Promise<AppHandle
   // tenant's <tenant>.site-settings.json, else derived from its theme — as NRMS loads them.
   // Throws on an invalid file, so a bad deploy fails here rather than on the first render.
   const defaultSettings = tenantConfig ? loadSiteSettingsDefaults(tenantConfigPath, tenantConfig.site.theme) : undefined;
-  site.logo = logoFor(theme, parsed.SITE_ASSETS_DIR, site);
   // Plan 3d task 4: the TEST banner prefix and noindex meta — decided once, from this process's
   // own env view (the stack's envFor shares NODE_ENV/LOCAL_ADMIN_ALLOW_IN_PRODUCTION/SITE_ENVIRONMENT
   // into it the same way for every app).

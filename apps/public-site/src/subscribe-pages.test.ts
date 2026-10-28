@@ -10,7 +10,7 @@ describe("subscribe test pages", () => {
     await writeSubscribePages({ write: async (p: string, c: string) => void files.set(p, c) } as never, site, { test: true });
     expect([...files.keys()].sort()).toEqual(["subscribe/index.html", "subscribe/manage/index.html", "subscribe/unsubscribe/index.html"]);
     for (const html of files.values()) {
-      expect(html).toContain('<a class="brand" href="/site/">');
+      expect(html).toContain('<a class="navbar-brand ps-3" href="/site/">');
       expect(html).toContain('<meta name="robots" content="noindex, nofollow">');
       expect(html).toContain("/api/Subscribe/");
       expect(html).toContain("api-version=1.0");

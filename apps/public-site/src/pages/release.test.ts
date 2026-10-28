@@ -85,7 +85,7 @@ describe("release page", () => {
     );
     expect(html).toContain("<p>Safe.</p>");
     expect(withoutBannerScript(html)).not.toContain("<script");
-    expect(html).not.toContain("onerror");
+    expect(withoutBannerScript(html)).not.toContain("onerror");
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain("<iframe");
     expect(html).not.toContain("<style");

@@ -82,7 +82,7 @@ export async function buildFixtureSite(outDir: string, o: { baseUrl: string; tes
     category: async (kind, key) => CATEGORIES.find((c) => c.kind === kind && c.key === key) ?? null,
   };
   const tenant = loadTenantConfig(BC_TENANT);
-  const site: SiteInfo = { name: tenant.siteName, baseUrl: o.baseUrl, theme: tenant.site.theme, logo: null };
+  const site: SiteInfo = { name: tenant.siteName, baseUrl: o.baseUrl, theme: tenant.site.theme };
   const builder = createSiteBuilder({ newsApi, storage: fsStorage(outDir), index: memoryIndex(), site, assetsDir: null });
   const result = await builder.buildAll({ test: o.test, ministryMenu: ministryMenu(await newsApi.ministries()) });
   if (result.failures > 0) throw new Error(`fixture site: ${result.failures} page(s) failed to build`);

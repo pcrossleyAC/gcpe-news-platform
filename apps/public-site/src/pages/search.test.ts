@@ -10,7 +10,7 @@ describe("search page", () => {
   it("is accessible: a labelled search form, one h1, live regions, a noscript fallback", () => {
     const doc = expectAccessibleStructure(page());
     expect(doc.querySelector("h1")?.textContent).toBe("Search news");
-    const form = doc.querySelector('form[role="search"]')!;
+    const form = doc.querySelector('main form[role="search"]')!; // the header has its own two
     expect(form.getAttribute("action")).toBe("/site/search/");
     expect(form.querySelector('label[for="q"]')?.textContent).toBe("Search for");
     expect(form.querySelector("#q")?.getAttribute("maxlength")).toBe("200");

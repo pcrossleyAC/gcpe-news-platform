@@ -22,11 +22,6 @@ body { margin: 0; }
 a { color: var(--color-primary); }
 .skip-link { position: absolute; left: -9999px; top: 0; background: var(--color-primary); color: var(--color-primary-text); padding: 0.5rem 1rem; z-index: 10; }
 .skip-link:focus { left: 0.5rem; }
-.site-header { background: var(--color-primary); color: var(--color-primary-text); padding: 0.75rem 1rem; display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; justify-content: space-between; }
-.site-header a { color: var(--color-primary-text); }
-.site-header .brand { display: inline-flex; gap: 0.75rem; align-items: center; text-decoration: none; font-weight: 700; }
-.site-header .logo { height: 3rem; width: auto; }
-.site-header nav ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 1rem; }
 .blue-bridge-banner { background: var(--color-text); color: var(--color-background); padding: 0.75rem 1rem; font-weight: 700; }
 .site-banner { background: var(--color-banner-info); color: var(--bs-white); padding: 0.75rem 1rem; display: flex; flex-wrap: wrap; gap: 0.5rem 1rem; align-items: center; }
 .site-banner-emergency { background: var(--color-banner-emergency); }
@@ -70,3 +65,50 @@ img { max-width: 100%; height: auto; }
  * apart (1.1:1 for BC): a link inside a sentence or a list line with other text must be told apart
  * by more than colour (axe link-in-text-block, WCAG 1.4.1). */
 main p a, main li a { text-decoration: underline; }
+
+/* The header (render.ts's renderHeader, header.ts): legacy custom.css styles it; these rules cover
+ * where our markup differs from legacy's (look-and-feel §5). */
+/* Legacy spells the container id "main-nav-contaier"; ours is spelled right, so its rules are restated. */
+@media (min-width: 768px) and (max-width: 1023px) { #main-nav-container { --bs-gutter-x: 0.5rem; text-wrap: nowrap; } }
+@media (max-width: 767px) { #main-nav-container { padding-left: 0 !important; --bs-gutter-x: 0.5rem; } }
+@media (max-width: 479px) {
+  #main-nav-container .navbar-brand { margin-right: 0; padding-left: 0.7rem !important; }
+  #main-nav-container .navbar { justify-content: flex-start; }
+}
+/* Legacy's nav also had id="main-nav" (a duplicate) and an inline padding-right. */
+#main-nav .navbar { padding-right: 8px; }
+@media (max-width: 767px) {
+  #main-nav .navbar { padding-left: 0 !important; }
+  /* Legacy's phone banner-toggle pushed the toggles right; it is not rendered (Task 9). */
+  #nav-menu-sm { margin-left: auto; }
+}
+/* "News" becomes a button (site.js): the link rules, for a button too. */
+#navbarSupportedContent .navbar-nav li > button.nav-link { color: var(--color-text); background: none; border: 0; }
+@media (min-width: 1024px) { #navbarSupportedContent .navbar-nav li > button.nav-link { font-size: 1rem; white-space: nowrap; } }
+@media (min-width: 768px) and (max-width: 1023px) { #navbarSupportedContent .navbar-nav li > button.nav-link { font-size: 0.9rem; } }
+#news-dropdown .icon { margin-left: 0.65em; }
+/* Our generic img{max-width:100%} would shrink the logos inside their shrink-to-fit link. */
+#BCGov-logo, #sm-BCGov-logo { max-width: none; }
+.navbar-toggler .icon, #search-md-button .icon { width: 1.25em; height: 1.25em; }
+/* The menu heading is an h2 (legacy: a div) and its items lose legacy's .list-unstyled. */
+#menu .list-title { margin: 0; line-height: inherit; }
+#menu ul li { list-style: none; }
+body.menu-open { overflow: hidden; }
+/* The open phone drawer sits above #main-content (z-index 5) and locks the page's scroll, as
+ * legacy's jQuery did by setting these inline. */
+@media (max-width: 767px) {
+  #sm-nav-container:has(> #navbarSupportedContent.show) { z-index: 100; }
+  body:has(#navbarSupportedContent.show) { overflow: hidden; }
+}
+/* No JavaScript (or site.js failed to load, render.ts's onerror): the phone nav and the search
+ * drawer show in the page flow, News stays a link, and the toggles that can't work are hidden. */
+html:not(.js) #navbarSupportedContent, html:not(.js) #smd-search-container { display: block; }
+html:not(.js) .nav-border { height: auto; }
+html:not(.js) #nav-menu-sm, html:not(.js) .search-toggle-container { display: none !important; }
+@media (max-width: 767px) {
+  html:not(.js) #main-nav .navbar { flex-wrap: wrap; }
+  html:not(.js) #sm-nav-container { position: static; height: auto; width: 100% !important; }
+  html:not(.js) #navbarSupportedContent { min-height: 0 !important; padding-top: 0; }
+  html:not(.js) #smd-search-container { top: 0; }
+  html:not(.js) #smd-search-container .input-group { border: 1px solid var(--color-border); }
+}

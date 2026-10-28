@@ -84,23 +84,41 @@ describe("renderPage chrome", () => {
     expect([...doc.querySelectorAll('link[rel="stylesheet"]')].at(-1)?.getAttribute("href")).toBe("/site/assets/theme.css");
   });
 
-  it("nav links carry the base path", () => {
+  it("the header's links carry the base path", () => {
     const doc = expectAccessibleStructure(renderPage("T", themed, "/site/", "<h1>H</h1>"));
-    expect([...doc.querySelectorAll("nav a")].map((a) => a.getAttribute("href"))).toEqual(["/site/", "/site/ministries/", "/site/archive/", "/site/search/"]);
+    expect([...doc.querySelectorAll("header nav a")].map((a) => a.getAttribute("href"))).toEqual(["https://gov.bc.ca", "/site/", "/site/ministries/", "/site/subscribe/"]);
+  });
+
+  it("one skip link, one main#main inside div#main-content.template.container-xl, no h1 in the chrome", () => {
+    const doc = expectAccessibleStructure(renderPage("T", themed, "/site/", "<h1>H</h1>", { ministryMenu: [{ key: "health", name: "Health" }] }));
+    expect(doc.querySelectorAll("a.skip-link")).toHaveLength(1);
+    expect(doc.querySelector("a.skip-link")?.getAttribute("href")).toBe("#main");
+    expect(doc.querySelectorAll("main")).toHaveLength(1);
+    const main = doc.querySelector("div#main-content.template.container-xl > main#main")!;
+    expect(main.getAttribute("tabindex")).toBe("-1");
+    expect(main.querySelector("h1")?.textContent).toBe("H");
+    expect(doc.querySelector("header h1, footer h1")).toBeNull();
+    expect(doc.querySelector("header")?.nextElementSibling?.id).toBe("main-content");
+  });
+
+  it("site.js is loaded deferred with the base path", () => {
+    const at = (baseUrl: string) => expectAccessibleStructure(renderPage("T", { ...themed, baseUrl }, "/", "<h1>H</h1>")).querySelectorAll("script[src]");
+    const scripts = at("https://boxs.example/site");
+    expect(scripts).toHaveLength(1);
+    expect(scripts[0]!.getAttribute("src")).toBe("/site/assets/site/site.js");
+    expect(scripts[0]!.hasAttribute("defer")).toBe(true);
+    expect(at("https://boxs.example")[0]!.getAttribute("src")).toBe("/assets/site/site.js");
+    // Review Focus 5: if site.js can't load, the html.js marker comes off so the no-JS fallbacks apply.
+    expect(scripts[0]!.getAttribute("onerror")).toBe('document.documentElement.classList.remove("js")');
+    const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
+    expect(html.indexOf('src="/site/assets/site/site.js"')).toBeGreaterThan(html.indexOf("</footer>"));
+    expect(html.indexOf('src="/site/assets/site/site.js"')).toBeLessThan(html.indexOf("</body>"));
   });
 
   it("with no settings given, the footer's More Info list comes from the tenant theme's footerLinks (escaped)", () => {
     const html = renderPage("T", themed, "/site/", "<h1>H</h1>");
     expect(html).toContain('Privacy &amp; &quot;you&quot;');
     expect(html).toContain('href="https://example.test/privacy?a=1&amp;b=2"');
-  });
-
-  it("shows the logo when one is set, the wordmark otherwise", () => {
-    const withLogo = expectAccessibleStructure(renderPage("T", { ...themed, logo: { src: "/site/assets/logo.svg", alt: "Example <Gov>" } }, "/site/", "<h1>H</h1>"));
-    expect(withLogo.querySelector("header img")?.getAttribute("alt")).toBe("Example <Gov>");
-    const without = expectAccessibleStructure(renderPage("T", themed, "/site/", "<h1>H</h1>"));
-    expect(without.querySelector("header img")).toBeNull();
-    expect(without.querySelector("header .wordmark")?.textContent).toBe("BC Gov News");
   });
 
   it("links the font stylesheet only when configured", () => {

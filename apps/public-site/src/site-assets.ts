@@ -4,6 +4,7 @@ import { readdir, readFile } from "node:fs/promises";
 import * as nodeModule from "node:module";
 import { dirname, join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { SITE_SCRIPT } from "./site-script";
 import type { SiteStorage } from "./storage";
 
 /** The folder scripts/lib/public-site-assets.mjs copies apps/public-site/assets into, beside a bundle (stack.js, main.js). */
@@ -82,7 +83,7 @@ async function filesUnder(dir: string): Promise<string[]> {
 
 /**
  * Writes the vendored legacy CSS and images, the BC logos, BC Sans and the icon sprite into the
- * output folder's assets/, the generated legacy CSS bundle beside them, and favicon.ico at its root. Idempotent and cheap, so it runs on every
+ * output folder's assets/, the generated legacy CSS bundle beside them, assets/site/site.js (SITE_SCRIPT), and favicon.ico at its root. Idempotent and cheap, so it runs on every
  * start (self-heal.ts) and every static-pages build, whatever else the folder holds.
  */
 export async function writeBuiltinAssets(storage: SiteStorage, sources: BuiltinAssetSources = builtinAssetSources()): Promise<void> {
@@ -103,6 +104,7 @@ export async function writeBuiltinAssets(storage: SiteStorage, sources: BuiltinA
       return buf;
     }),
   );
+  await storage.write("assets/site/site.js", SITE_SCRIPT);
   for (const f of BC_SANS_FILES) await storage.write(`assets/legacy/fonts/${f}`, new Uint8Array(await readFile(join(fontsDir, f))));
   const license = [join(fontsDir, FONT_LICENSE), join(fontsDir, "..", FONT_LICENSE)].find((p) => existsSync(p));
   if (!license) throw new Error(`${FONT_LICENSE} not found beside ${fontsDir}`);

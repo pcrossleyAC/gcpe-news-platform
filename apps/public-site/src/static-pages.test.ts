@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { expectAccessibleStructure } from "../test/structure";
 import { memoryStorage } from "../test/memory-storage";
-import { logoFor, renderNotFoundPage, renderRobots, writeStaticPages } from "./static-pages";
+import { renderNotFoundPage, renderRobots, writeStaticPages } from "./static-pages";
 import { writeBuiltinAssets } from "./site-assets";
 import type { SiteStorage } from "./storage";
 import { DEFAULT_THEME } from "./theme-css";
@@ -78,14 +78,5 @@ describe("static pages", () => {
       startsAt: "2026-11-02T09:00:00-08:00",
       endsAt: null,
     });
-  });
-  it("logoFor: the logo only when the file exists under the assets folder", async () => {
-    const dir = await mkdtemp(join(tmpdir(), "site-assets-"));
-    const theme = { ...DEFAULT_THEME, logo: { path: "assets/logo.svg", alt: "Example" } };
-    expect(logoFor(theme, dir, { baseUrl: "https://x.example/site" })).toBeNull();
-    await mkdir(join(dir, "assets"));
-    await writeFile(join(dir, "assets", "logo.svg"), "<svg/>");
-    expect(logoFor(theme, dir, { baseUrl: "https://x.example/site" })).toEqual({ src: "/site/assets/logo.svg", alt: "Example" });
-    expect(logoFor(theme, null, { baseUrl: "https://x.example/site" })).toBeNull();
   });
 });

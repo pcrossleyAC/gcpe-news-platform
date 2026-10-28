@@ -7,6 +7,7 @@ import { LEGACY_BUNDLE } from "./site-assets";
 import { DEFAULT_TIME_ZONE, settingsHref, themeDefaults, yearIn } from "./settings";
 import { DEFAULT_THEME } from "./theme-css";
 import type { MenuMinistry } from "./ministry-menu";
+import { renderHeader } from "./header";
 
 export type { PostDocument, PostDto } from "./dto";
 
@@ -15,8 +16,6 @@ export interface SiteInfo {
   baseUrl: string;
   /** Tenant `site.theme`; DEFAULT_THEME when absent. */
   theme?: SiteTheme;
-  /** Set by start.ts only when the logo file exists under SITE_ASSETS_DIR (static-pages.ts's logoFor). */
-  logo?: { src: string; alt: string } | null;
   /** The tenant's IANA time zone (the footer's copyright year); DEFAULT_TIME_ZONE when absent. */
   timeZone?: string;
 }
@@ -70,6 +69,11 @@ export function basePath(site: Pick<SiteInfo, "baseUrl">): string {
  * keep no-JS fallbacks under `html:not(.js)` without a flash. A constant: nothing is interpolated. */
 export const HTML_JS_MARKER = 'document.documentElement.classList.add("js")';
 
+/** site.js's `onerror`: if the script can't load, the page drops the html.js marker so the
+ * `html:not(.js)` fallbacks in overrides.css apply (the phone nav and search drawer show, News
+ * stays a link). A constant: nothing is interpolated. */
+export const SITE_SCRIPT_ONERROR = 'document.documentElement.classList.remove("js")';
+
 /** Every page's chrome (spec §6.3): skip link, header with brand and nav, main, footer. */
 export function renderPage(title: string, site: SiteInfo, canonicalPath: string, body: string, opts: PageOptions = {}, bodyAttr = ""): string {
   const base = basePath(site);
@@ -85,9 +89,6 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
   // Legacy loads the Granville Bridge theme only while Project Blue Bridge is on.
   const bridgeCss = opts.banner ? `\n<link rel="stylesheet" href="${e(base)}/assets/legacy/Content/granville-bridge-theme.css">` : "";
   const banner = opts.banner ? `\n<div class="blue-bridge-banner" role="alert">${e(opts.banner)}</div>` : "";
-  const brand = site.logo
-    ? `<img class="logo" src="${e(site.logo.src)}" alt="${e(site.logo.alt)}"><span class="wordmark">${e(site.name)}</span>`
-    : `<span class="wordmark">${e(site.name)}</span>`;
   const settings = opts.settings ?? themeDefaults(theme);
   return `<!doctype html>
 <html lang="en">
@@ -108,21 +109,12 @@ export function renderPage(title: string, site: SiteInfo, canonicalPath: string,
 <a class="skip-link" href="#main">Skip to main content</a>${banner}
 <div id="site-banner" hidden data-base="${e(base)}"></div>
 <script>${SITE_BANNER_SCRIPT}</script>
-<header class="site-header">
-<a class="brand" href="${e(base)}/">${brand}</a>
-<nav aria-label="Site">
-<ul>
-<li><a href="${e(base)}/">Home</a></li>
-<li><a href="${e(base)}/ministries/">Ministries</a></li>
-<li><a href="${e(base)}/archive/">Archive</a></li>
-<li><a href="${e(base)}/search/">Search</a></li>
-</ul>
-</nav>
-</header>
-<main id="main" tabindex="-1">
+${renderHeader(site, opts)}
+<div id="main-content" class="template container-xl"><main id="main" tabindex="-1">
 ${body}
-</main>
+</main></div>
 ${renderFooter(settings, site)}
+<script src="${e(base)}/assets/site/site.js" defer onerror="${e(SITE_SCRIPT_ONERROR)}"></script>
 </body>
 </html>
 `;
