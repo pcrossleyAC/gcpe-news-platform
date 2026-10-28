@@ -28,7 +28,7 @@ boxs.ca holds only about 10 test posts, all from October 2026 [V-live: `/site/ar
 | Legacy URL pattern | Ours | Status | Notes |
 |---|---|---|---|
 | `/` | `/site/` | gap (elements) | Page exists [V-live]. Home cards (M8 for home), carousel, Connect With Us and Resources done in plan 2 (d6591b1). Still missing: M13, L13. Carousel: C205, C236. |
-| `/releases/<key>` | `/site/releases/<key>/` | addressed (plan 2) | Page rebuilt: M3–M7 done (1868215, 6269b24); remaining differences are C234-C252. The `/releases/<key>/image` endpoint (M5) is not built; `og:image` is the release image or the default. |
+| `/releases/<key>` | `/site/releases/<key>/` | addressed (plan 2) | Page rebuilt: M3–M7 done (1868215, 6269b24); remaining differences are C234-C256. The `/releases/<key>/image` endpoint (M5) is not built; `og:image` is the release image or the default. |
 | `/factsheets/<slug>`, `/stories/<slug>`, `/updates/<slug>` | `/site/releases/<slug>/` | already decided C206 | One path for every kind. |
 | `/releases`, `/factsheets`, `/stories`, `/updates` (listings) | missing | **gap H5** | Legacy 200 [V-live]; not in `pageFiles` [V-src]. |
 | `/{kind}/more-news`, `/{kind}/archive[/y[/m]]`, `/{kind}/morearticles` | `/site/archive/…` | already decided C202 | Legacy redirects these to `/Search` or uses AJAX "Load More News". |
