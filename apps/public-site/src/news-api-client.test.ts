@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { newsApiClient } from "./news-api-client";
 import { bcSettings } from "../test/fixtures";
+import { prePlan4Settings } from "../../../packages/site-settings/src/fixtures";
 
 function fakeResponse(opts: { ok: boolean; status?: number; body: string }): Response {
   return {
@@ -202,6 +203,12 @@ describe("newsApiClient", () => {
       const client = newsApiClient("http://host/news", fetchImpl as unknown as typeof fetch);
       expect(await client.siteSettings()).toEqual({ revision: 3, document });
       expect(String(fetchImpl.mock.calls[0]![0])).toBe("http://host/news/api/v2/site-settings");
+    });
+
+    it("a published document without the plan-4 parts parses (unfilled; currentSettings fills it)", async () => {
+      const document = prePlan4Settings();
+      const fetchImpl = stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ revision: 2, publishedAt: "2026-10-27T17:00:00.000Z", document }) }));
+      expect(await newsApiClient("http://host", fetchImpl as unknown as typeof fetch).siteSettings()).toEqual({ revision: 2, document });
     });
 
     it("a 404 (nothing published yet) is null", async () => {

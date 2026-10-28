@@ -265,6 +265,15 @@ describe("organizations service", () => {
     const patch = (body: unknown) => patchOrganizationProfile(tdb.db, "health", orgProfilePatchSchema.parse(body), subs);
     const issues = (body: unknown) => orgProfilePatchSchema.safeParse(body).error?.issues.map((i) => ({ path: i.path, message: i.message }));
 
+    it("PATCH displayAdditionalName trims and stores; '' stores null; 101 characters is refused on displayAdditionalName", async () => {
+      await upsertOrganization(tdb.db, healthOrg, subs);
+      expect((await patch({ displayAdditionalName: "  (Child Care) " }))!.displayAdditionalName).toBe("(Child Care)");
+      expect((await getOrganization(tdb.db, "health"))!.displayAdditionalName).toBe("(Child Care)");
+      expect((await patch({ displayAdditionalName: "" }))!.displayAdditionalName).toBeNull();
+      expect(issues({ displayAdditionalName: "x".repeat(100) })).toBeUndefined();
+      expect(issues({ displayAdditionalName: "x".repeat(101) })).toEqual([{ path: ["displayAdditionalName"], message: "Keep it to 100 characters or fewer." }]);
+    });
+
     it("PATCH minister.detailsHtml stores the sanitised HTML and emits one org.upserted", async () => {
       await upsertOrganization(tdb.db, healthOrg, subs);
       const record = await patch({ minister: { detailsHtml: ' <p onclick="x()">Pat <b>Doe</b></p><script>alert(1)</script><p></p> ' } });

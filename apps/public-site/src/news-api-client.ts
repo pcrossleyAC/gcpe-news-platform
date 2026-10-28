@@ -1,4 +1,4 @@
-import { siteSettingsSchema } from "@gcpe/site-settings";
+import { storedSiteSettingsSchema } from "@gcpe/site-settings";
 import { z } from "zod";
 import type { CategoryDto, GovernmentTermsDto, HomeDto, MinisterDto, MinistryDto, MinistryProfileDto, PostDto, RelatedPost, ResourceLinkDto, SiteSettingsDto, SlideDto } from "./dto";
 import { CATEGORY_KEY, TERM_SLUG, type CategoryKind } from "./site-paths";
@@ -34,9 +34,10 @@ export interface NewsApiClient {
   ministrySuccessors(): Promise<Record<string, string>>;
 }
 
-/** Structural check only (the document was validated when NRMS published it): enough that a
- * render can rely on every section's shape. */
-const siteSettingsBodySchema = z.object({ revision: z.number().int(), document: siteSettingsSchema });
+/** Structural check only (the document was validated when NRMS published it): a stored document,
+ * so one published before a later part existed still parses; `currentSettings` fills the missing
+ * parts from the tenant defaults before any render sees it. */
+const siteSettingsBodySchema = z.object({ revision: z.number().int(), document: storedSiteSettingsSchema });
 
 const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const governmentTermsBodySchema = z.object({

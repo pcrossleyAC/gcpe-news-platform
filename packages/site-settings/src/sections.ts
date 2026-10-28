@@ -1,5 +1,5 @@
 import { SECTION_KEYS } from "./model";
-import type { BannerSettings, LinkSetting, SectionKey, SiteSettings } from "./model";
+import type { BannerSettings, LinkSetting, SectionKey, SiteSettings, StoredSiteSettings } from "./model";
 
 /** Banner visibility at instant `now`: enabled and inside the (optional) schedule window. */
 export function bannerVisibleAt(b: BannerSettings, now: Date): boolean {
@@ -22,8 +22,10 @@ function canonical(v: unknown): string {
   return JSON.stringify(v) ?? "null";
 }
 
-/** The sections whose JSON differs between two documents, in section order. */
-export function differingSections(a: SiteSettings, b: SiteSettings): SectionKey[] {
+/** The sections whose JSON differs between two documents, in section order. Stored documents are
+ * compared as they are (a part one lacks differs from any value); fill both first
+ * (`fillMissingFields`) to compare them as the site shows them. */
+export function differingSections(a: StoredSiteSettings, b: StoredSiteSettings): SectionKey[] {
   return SECTION_KEYS.filter((k) => canonical(a[k]) !== canonical(b[k]));
 }
 

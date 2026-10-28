@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { siteSettingsSchema } from "@gcpe/site-settings";
+import { storedSiteSettingsSchema } from "@gcpe/site-settings";
 import { eventEnvelopeSchema, type EventEnvelope } from "./envelope";
 
 export const socialSchema = z.object({
@@ -300,11 +300,13 @@ export const releaseStatusChangedSchema = z
   .strict();
 export type ReleaseStatusChanged = z.infer<typeof releaseStatusChangedSchema>;
 
-/** NRMS publishes a validated site-settings revision; the News API stores and serves it. */
+/** NRMS publishes a validated site-settings revision; the News API stores and serves it. The
+ * document is a stored one (`storedSiteSettingsSchema`): an event recorded before a later part
+ * existed still parses, and its reader fills that part from the tenant defaults. */
 export const siteSettingsPublishedSchema = z.object({
   revision: z.number().int().positive(),
   publishedAt: offsetDateTime,
-  document: siteSettingsSchema,
+  document: storedSiteSettingsSchema,
 });
 export type SiteSettingsPublished = z.infer<typeof siteSettingsPublishedSchema>;
 

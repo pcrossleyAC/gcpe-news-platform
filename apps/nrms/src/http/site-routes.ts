@@ -475,9 +475,11 @@ export function siteRoutes(deps: SiteRouteDeps): Router {
   r.get(
     "/site/settings/history/:revision",
     settingsRead,
+    needDefaults,
     run(async (req: Request<Params>, res) => {
-      // Without tenant defaults (not configured) the raw documents are compared.
-      const found = await getRevision(db, Number(req.params.revision), siteSettingsDefaults ?? undefined);
+      // Filled from the tenant defaults and compared filled, so a revision from before a later
+      // part existed shows that part as the site does and doesn't report it as changed.
+      const found = await getRevision(db, Number(req.params.revision), defaults());
       if (!found) return notFound(res);
       res.json(found);
     }),

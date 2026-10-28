@@ -87,7 +87,7 @@ describe("SocialScreen", () => {
     await screen.findByRole("heading", { name: "Social links", level: 1 });
     const nav = await screen.findByRole("navigation", { name: "Networks" });
     const labels = within(nav).getAllByRole("link").map((a) => a.textContent);
-    expect(labels).toEqual(["Facebook 1", "X 2", "Instagram 0", "Threads 0", "Bluesky 1", "Flickr 0", "YouTube 0", "Blogs 0"]);
+    expect(labels).toEqual(["Facebook 1", "X 2", "Instagram 0", "Threads 0", "Bluesky 1", "LinkedIn 0", "Flickr 0", "YouTube 0", "Blogs 0"]);
     expect(within(nav).getByRole("link", { name: "Facebook 1" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByDisplayValue("BC Gov")).toBeInTheDocument();
     expect(screen.getByDisplayValue("Main page")).toBeInTheDocument();

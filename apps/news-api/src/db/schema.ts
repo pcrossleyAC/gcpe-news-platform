@@ -1,7 +1,7 @@
 import { sql } from "drizzle-orm";
 import { bigint, bigserial, boolean, check, customType, index, integer, jsonb, pgTable, primaryKey, real, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import type { GovernmentTermsPayload, OrgRecord, ReleaseRecord } from "@gcpe/events";
-import type { SiteSettings } from "@gcpe/site-settings";
+import type { StoredSiteSettings } from "@gcpe/site-settings";
 
 export * from "@gcpe/events/tables";
 
@@ -220,7 +220,7 @@ export const siteSettings = pgTable(
     id: integer("id").primaryKey().default(1),
     revision: integer("revision").notNull(),
     publishedAt: timestamp("published_at", { withTimezone: true }).notNull(),
-    document: jsonb("document").$type<SiteSettings>().notNull(),
+    document: jsonb("document").$type<StoredSiteSettings>().notNull(),
   },
   (t) => [check("site_settings_single_row", sql`${t.id} = 1`)],
 );
