@@ -5,6 +5,8 @@
  * (Gov.News.WebApp at 3fdf3e6), url-compat §T1, gap-audit M16/H5.
  */
 
+import { FEED_POST_KINDS, isCategoryKind, kindFeedFile, type CategoryKind, type FeedPostKind } from "../../../public-site/src/site-paths";
+
 export type LegacyAction =
   | {
       do: "redirect";
@@ -54,6 +56,68 @@ const PATH_RULES: ReadonlyArray<readonly [RegExp, (m: RegExpExecArray) => Legacy
   [/^\/rss\/.+$/, () => redirect(["/connect/!"], "drop")],
   [/^\/content\/images\/gov\/default-og-image-new\.jpg$|^\/areas\/newsroom\/images\/social\/default-og-meta-image\.jpg$/, () => ({ do: "serve", file: LEGACY_OG_IMAGE, type: "image/jpeg" })],
 ];
+
+export type FeedFormat = "rss" | "atom";
+
+/** What a legacy feed URL asks for (url-compat T6); every one is served in place by the middleware. */
+export type FeedAction =
+  | { kind: "file"; file: string; fmt: FeedFormat }
+  /** A category's feed: the key is resolved (renames, successors) before the file is chosen. */
+  | { kind: "category"; cat: CategoryKind; segments: string[]; fmt: FeedFormat; direct: boolean };
+
+const FEED_KINDS = new Set<string>(FEED_POST_KINDS);
+
+/**
+ * The feed a decoded request `path` asks for, or null. Compared lowercased with one trailing slash
+ * stripped; whole segments; the query never matters. Pure: the middleware does every filesystem check.
+ * - `/feed`, `/feed/rss`, `/rss.xml`, `/(top|feature)/<any>[/rss]` → feed.xml; `/feed/atom`,
+ *   `/(top|feature)/<any>/atom` → atom.xml;
+ * - `/<kind>/feed[/rss|/atom]` → `kindFeedFile`;
+ * - `/<cat>/<a>[/<b>][/<kind>]/feed[/rss|/atom]` and `/office-of-the-premier[/<kind>]/feed[/…]`
+ *   → the category's feed (the kind is ignored: a category has one feed);
+ * - `/<cat>/<key>/feed.xml` and `atom.xml` (`direct`): the files themselves, so a key that moved
+ *   (renamed, or replaced by a successor) is answered with the current key's file, not a stale one.
+ */
+export function feedRule(path: string): FeedAction | null {
+  let p = path.toLowerCase();
+  if (p.length > 1 && p.endsWith("/")) p = p.slice(0, -1);
+  if (p === "/feed" || p === "/feed/rss" || p === "/rss.xml") return { kind: "file", file: "feed.xml", fmt: "rss" };
+  if (p === "/feed/atom") return { kind: "file", file: "atom.xml", fmt: "atom" };
+  const top = /^\/(?:top|feature)\/[^/]+(?:\/(rss|atom))?$/.exec(p);
+  if (top) return top[1] === "atom" ? { kind: "file", file: "atom.xml", fmt: "atom" } : { kind: "file", file: "feed.xml", fmt: "rss" };
+
+  const parts = p.slice(1).split("/");
+  const head = parts[0]!;
+  if (FEED_KINDS.has(head) && parts[1] === "feed" && parts.length <= 3) {
+    const fmt = parts[2];
+    if (fmt === undefined || fmt === "rss" || fmt === "atom") return { kind: "file", file: kindFeedFile(head as FeedPostKind, fmt === "atom" ? "atom" : "rss"), fmt: fmt === "atom" ? "atom" : "rss" };
+    return null;
+  }
+
+  const premier = head === "office-of-the-premier";
+  const catWord = head === "news-subscribe" ? "tags" : head;
+  if (!premier && !isCategoryKind(catWord)) return null;
+  const cat: CategoryKind = premier ? "ministries" : (catWord as CategoryKind);
+  const rest = premier ? parts : parts.slice(1);
+
+  if (!premier && rest.length === 2 && (rest[1] === "feed.xml" || rest[1] === "atom.xml")) {
+    return { kind: "category", cat, segments: [rest[0]!], fmt: rest[1] === "atom.xml" ? "atom" : "rss", direct: true };
+  }
+
+  let fmt: FeedFormat = "rss";
+  const last = rest[rest.length - 1];
+  if ((last === "rss" || last === "atom") && rest[rest.length - 2] === "feed") {
+    fmt = last;
+    rest.pop();
+  }
+  if (rest[rest.length - 1] !== "feed") return null;
+  rest.pop();
+  if (rest.length > 0 && KIND_SEGMENTS.has(rest[rest.length - 1]!)) rest.pop();
+  if (rest.length < 1 || rest.length > (premier ? 1 : 2)) return null;
+  return { kind: "category", cat, segments: rest, fmt, direct: false };
+}
+
+const KIND_SEGMENTS = FEED_KINDS;
 
 /** The raw `name=value` pairs of a query ("" or "?…"), split on "&", bytes untouched. */
 const params = (query: string) => (query.length > 1 ? query.slice(1).split("&") : []);

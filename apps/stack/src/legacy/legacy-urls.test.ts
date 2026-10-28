@@ -627,9 +627,9 @@ describe("legacyUrls: ministries, categories, the Premier and nested keys (T4, L
   it("/ministries/health/ → 200 (no redirect)", async () => {
     const res = await request(app).get("/ministries/health/").redirects(0);
     expect({ status: res.status, location: res.headers.location }).toEqual({ status: 200, location: undefined });
-    // Its own files and feeds are left to static / Task 8.
     expect(await status("/ministries/health/biography/")).toBe(200);
-    expect(await status("/ministries/health/feed.xml")).toBe(404);
+    // Its feed files are served in place (describe "legacy feed URLs" below).
+    expect(await status("/ministries/health/feed.xml")).toBe(200);
   });
 
   it("an old ministry's page still on disk redirects to its successor (the plan-2 successor behaviour, now via legacyUrls)", async () => {
@@ -711,5 +711,152 @@ describe("legacyUrls: NEWS-n short links (url-compat T5)", () => {
     await request(app).get("/1234567890");
     await request(app).get("/12ab");
     expect(seen).toEqual(["NEWS-123456789"]);
+  });
+});
+
+const RSS = "application/rss+xml; charset=utf-8";
+const ATOM = "application/atom+xml; charset=utf-8";
+
+describe("legacyUrls: legacy feed URLs served in place (url-compat T6)", () => {
+  let outputDir: string;
+  let app: express.Express;
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+    app = appFor(outputDir);
+  });
+  afterEach(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+  const get = (path: string) => request(app).get(path).redirects(0);
+  /** Asserts a 200 in place: the content type, no Location, and a body naming `file`. */
+  async function expectFeed(path: string, type: string, file: string) {
+    const res = await get(path);
+    expect({ path, status: res.status, type: res.headers["content-type"], location: res.headers.location }).toEqual({ path, status: 200, type, location: undefined });
+    expect(res.text, path).toContain(`>${file}<`);
+    return res;
+  }
+  const ROOT_FEED = '<?xml version="1.0"?><rss version="2.0"><channel/></rss>';
+
+  it("/feed → 200 application/rss+xml, body = feed.xml", async () => {
+    const res = await get("/feed");
+    expect({ status: res.status, type: res.headers["content-type"], body: res.text }).toEqual({ status: 200, type: RSS, body: ROOT_FEED });
+    expect((await get("/FEED/")).text).toBe(ROOT_FEED);
+    expect((await get("/rss.xml")).text).toBe(ROOT_FEED);
+  });
+
+  it("/feed/rss → 200 (legacy answered 500)", async () => {
+    const res = await get("/feed/rss");
+    expect({ status: res.status, type: res.headers["content-type"], body: res.text }).toEqual({ status: 200, type: RSS, body: ROOT_FEED });
+  });
+
+  it("/feed/atom → 200 application/atom+xml", async () => {
+    await expectFeed("/feed/atom", ATOM, "atom.xml");
+  });
+
+  it("/factsheets/feed and /factsheets/feed/atom → 200 from feeds/", async () => {
+    await expectFeed("/factsheets/feed", RSS, "feeds/factsheets.xml");
+    await expectFeed("/Factsheets/Feed/rss", RSS, "feeds/factsheets.xml");
+    await expectFeed("/factsheets/feed/atom", ATOM, "feeds/factsheets.atom.xml");
+    await expectFeed("/releases/feed", RSS, "feeds/releases.xml");
+  });
+
+  it("/ministries/health/releases/feed → 200 serving ministries/health/feed.xml", async () => {
+    await expectFeed("/ministries/health/releases/feed", RSS, "ministries/health/feed.xml");
+    await expectFeed("/ministries/health/feed", RSS, "ministries/health/feed.xml");
+    await expectFeed("/ministries/health/feed/atom", ATOM, "ministries/health/atom.xml");
+    await expectFeed("/Ministries/Health/Factsheets/Feed/Atom/", ATOM, "ministries/health/atom.xml");
+  });
+
+  it("/ministries/justice/feed/atom → 200 serving ministries/attorney-general/atom.xml, no redirect", async () => {
+    await expectFeed("/ministries/justice/feed/atom", ATOM, "ministries/attorney-general/atom.xml");
+    await expectFeed("/ministries/justice/feed", RSS, "ministries/attorney-general/feed.xml");
+    await expectFeed("/ministries/old-parent/attorney-general/stories/feed", RSS, "ministries/attorney-general/feed.xml");
+  });
+
+  it("/office-of-the-premier/feed → 200 if ministries/office-of-the-premier/feed.xml exists", async () => {
+    expect((await get("/office-of-the-premier/feed")).status).toBe(404);
+    await writeFile(join(outputDir, "ministries", "office-of-the-premier", "feed.xml"), "<rss>premier</rss>");
+    const res = await get("/office-of-the-premier/feed");
+    expect({ status: res.status, type: res.headers["content-type"], body: res.text }).toEqual({ status: 200, type: RSS, body: "<rss>premier</rss>" });
+    expect((await get("/office-of-the-premier/releases/feed/rss")).text).toBe("<rss>premier</rss>");
+  });
+
+  it("/top/feed and /feature/<any>[/rss|/atom] → feed.xml / atom.xml", async () => {
+    expect((await get("/top/feed")).text).toBe(ROOT_FEED);
+    expect((await get("/feature/anything/rss")).text).toBe(ROOT_FEED);
+    expect((await get("/Top/Anything")).headers["content-type"]).toBe(RSS);
+    await expectFeed("/top/anything/atom", ATOM, "atom.xml");
+  });
+
+  it("/feed?newsOnDemand=1 → 200", async () => {
+    const res = await get("/feed?newsOnDemand=1");
+    expect({ status: res.status, type: res.headers["content-type"] }).toEqual({ status: 200, type: RSS });
+  });
+
+  it("HEAD /feed → 200 with the RSS content type", async () => {
+    for (const [path, type] of [["/feed", RSS], ["/feed/atom", ATOM], ["/ministries/justice/feed/atom", ATOM], ["/feed.xml", RSS], ["/atom.xml", ATOM]] as const) {
+      const res = await request(app).head(path).redirects(0);
+      expect({ path, status: res.status, type: res.headers["content-type"], text: res.text }).toEqual({ path, status: 200, type, text: undefined });
+    }
+  });
+
+  it("/ministries/nope/feed → 404", async () => {
+    for (const path of ["/ministries/nope/feed", "/ministries/nope/feed/atom", "/tags/nope/feed", "/updates/feed"]) {
+      expect((await get(path)).status, path).toBe(404);
+    }
+  });
+
+  it("a feed path is the base-path-mounted site's too (/site/feed)", async () => {
+    const res = await request(appFor(outputDir, "/site")).get("/site/ministries/justice/feed/atom").redirects(0);
+    expect({ status: res.status, type: res.headers["content-type"] }).toEqual({ status: 200, type: ATOM });
+  });
+
+  // ---- carried findings (Task 5 review) ----
+
+  it("/ministries/health/atom.xml and /releases/embed are not swallowed by the category rule", async () => {
+    await expectFeed("/ministries/health/atom.xml", ATOM, "ministries/health/atom.xml");
+    const embed = await get("/ministries/health/releases/embed");
+    expect({ status: embed.status, location: embed.headers.location }).toEqual({ status: 404, location: undefined });
+    expect((await get("/ministries/health/embed")).status).toBe(404);
+  });
+
+  it("/ministries/health/top/releases is not a feed: it is a sub-path of the category, 301 to its page", async () => {
+    await expectRedirect(app, "/ministries/health/top/releases", "/ministries/health/");
+  });
+
+  it("an old ministry's feed.xml / atom.xml serve the successor's file, not the stale one", async () => {
+    await mkdir(join(outputDir, "ministries", "transportation-and-infrastructure"), { recursive: true });
+    await writeFile(join(outputDir, "ministries", "transportation-and-infrastructure", "feed.xml"), "<rss>STALE</rss>");
+    await writeFile(join(outputDir, "ministries", "transportation-and-infrastructure", "atom.xml"), "<feed>STALE</feed>");
+    await mkdir(join(outputDir, "ministries", "transportation-and-transit"), { recursive: true });
+    await writeFile(join(outputDir, "ministries", "transportation-and-transit", "feed.xml"), "<rss>SUCCESSOR</rss>");
+    await writeFile(join(outputDir, "ministries", "transportation-and-transit", "atom.xml"), "<feed>SUCCESSOR</feed>");
+    for (const [path, type, body] of [
+      ["/ministries/transportation-and-infrastructure/feed.xml", RSS, "<rss>SUCCESSOR</rss>"],
+      ["/ministries/transportation-and-infrastructure/atom.xml", ATOM, "<feed>SUCCESSOR</feed>"],
+      ["/ministries/transportation-and-infrastructure/feed", RSS, "<rss>SUCCESSOR</rss>"],
+      ["/ministries/justice/feed.xml", RSS, '<?xml version="1.0"?><feed>ministries/attorney-general/feed.xml</feed>'],
+    ] as const) {
+      const res = await get(path);
+      expect({ path, status: res.status, type: res.headers["content-type"], body: res.text }).toEqual({ path, status: 200, type, body });
+    }
+    // A moved key whose successor has no feed file is a 404, never the stale file.
+    await rm(join(outputDir, "ministries", "transportation-and-transit", "feed.xml"));
+    expect((await get("/ministries/transportation-and-infrastructure/feed.xml")).status).toBe(404);
+  });
+
+  it("direct requests for feed files carry the legacy content types", async () => {
+    for (const [path, type] of [
+      ["/feed.xml", RSS],
+      ["/atom.xml", ATOM],
+      ["/feeds/releases.xml", RSS],
+      ["/feeds/releases.atom.xml", ATOM],
+      ["/feeds/factsheets.xml", RSS],
+      ["/ministries/health/feed.xml", RSS],
+      ["/ministries/health/atom.xml", ATOM],
+    ] as const) {
+      const res = await get(path);
+      expect({ path, status: res.status, type: res.headers["content-type"] }).toEqual({ path, status: 200, type });
+    }
   });
 });

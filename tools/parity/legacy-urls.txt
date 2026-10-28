@@ -40,3 +40,12 @@
 /ministries/health/factsheets
 # section: references
 /34336
+# section: feeds
+/feed
+/feed/atom
+/releases/feed
+/factsheets/feed
+/top/feed
+/ministries/health/feed
+/ministries/health/feed/atom
+/ministries/health/factsheets/feed/atom

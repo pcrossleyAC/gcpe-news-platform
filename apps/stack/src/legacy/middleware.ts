@@ -1,14 +1,14 @@
 import { stat } from "node:fs/promises";
 import { join } from "node:path";
-import type { RequestHandler, Response } from "express";
+import type { NextFunction, Request, RequestHandler, Response } from "express";
 import { DEFAULT_OG_IMAGE } from "../../../public-site/src/render";
-import { fixedRule } from "./rules";
+import { feedRule, fixedRule, type FeedAction } from "./rules";
 import { parseRequestTarget, type RequestTarget } from "./safe-path";
 import { siteNotFound } from "../site-not-found";
 import { POST_KEY, postDir, SHORT_POST_KEY_MAX } from "../../../public-site/src/site-paths";
 import { exactPagePath, pagePath, resolvePostKey } from "./site-files";
 import { resolveCategory } from "./ministry-renames";
-import { isCategoryKind, type CategoryKind } from "../../../public-site/src/site-paths";
+import { categoryFiles, isCategoryKind, type CategoryKind } from "../../../public-site/src/site-paths";
 
 export interface LegacyUrlOptions {
   outputDir: string;
@@ -73,11 +73,12 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
     const lower = target.path.toLowerCase();
     if (prefixes.some((p) => lower === p || lower.startsWith(`${p}/`))) return next();
     const action = fixedRule(target.path, target.query);
+    const feed = feedRule(target.path);
     const post = POST_PATH.exec(target.path);
     // Nothing can match a lowercase path but a fixed rule: no filesystem call for it.
     const category = categoryPath(target.path);
     const reference = opts.lookupReference ? REFERENCE_PATH.exec(target.path) : null;
-    if (!action && !post && !category && !reference && !/[A-Z]/.test(target.path)) return next();
+    if (!action && !feed && !post && !category && !reference && !/[A-Z]/.test(target.path)) return next();
 
     const redirect = (status: 301 | 302, to: string) => {
       res.setHeader("Cache-Control", "no-store");
@@ -98,6 +99,9 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
         req.url = `/${action.file}${target.query}`;
         return next();
       }
+
+      // Feeds first: before the post rule (/releases/feed is not the post "feed") and the category rule.
+      if (feed) return serveFeed(feed, req, next, res);
 
       if (action && !action.fallback) return fixedRedirect(action, target, res, next);
 
@@ -167,6 +171,35 @@ export function legacyUrls(opts: LegacyUrlOptions): RequestHandler {
     const page = key.length > SHORT_POST_KEY_MAX ? `/${postDir(key)}/` : `/releases/${key}/`;
     if ((await pagePath(outputDir, page)) === null) return null;
     return `/releases/${key}/`;
+  }
+
+  /**
+   * A legacy feed URL, served in place: rewrite `req.url` to the feed file and let static send it
+   * (its `setHeaders` sets the RSS / Atom content type; ETag, caching and HEAD behave as for any file).
+   * A category's key goes through `resolveCategory`, so a renamed or replaced ministry gets the
+   * current key's file. No file: `next()` (the site 404) — and for a direct request for a moved key's
+   * feed.xml / atom.xml the 404 is answered here, because static would serve the stale file.
+   */
+  async function serveFeed(feed: FeedAction, req: Request, next: NextFunction, res: Response): Promise<void> {
+    let file: string;
+    let moved = false;
+    if (feed.kind === "file") file = feed.file;
+    else {
+      const resolved = await resolveCategory(outputDir, feed.cat, feed.segments);
+      if (resolved === null) return next();
+      moved = resolved.moved;
+      const files = categoryFiles({ kind: feed.cat, key: resolved.key });
+      file = feed.fmt === "atom" ? files.atom : files.feed;
+    }
+    let isFile = false;
+    try {
+      isFile = (await stat(join(outputDir, ...file.split("/")))).isFile();
+    } catch {
+      // Missing or unreadable: the site 404.
+    }
+    if (!isFile) return feed.kind === "category" && feed.direct && moved ? notFound(req, res, next) : next();
+    req.url = `/${file}`;
+    return next();
   }
 
   /** A `fixedRule` redirect: the first candidate that is a page (or the unconditional "!" one). */
@@ -251,8 +284,8 @@ interface CategoryPath {
 }
 
 const KINDS = new Set(["releases", "stories", "factsheets", "updates"]);
-/** `feed`, `feed.xml`, `feed.atom`… : a feed segment (Task 8's), not a page. */
-const isFeed = (segment: string) => /^feed(\.[a-z]+)?$/.test(segment);
+/** `feed`, `feed.xml`, `feed.atom`…, `atom.xml`: a feed segment (served by `feedRule`), not a page. */
+const isFeed = (segment: string) => /^(?:feed(?:\.[a-z]+)?|atom\.xml)$/.test(segment);
 const ARCHIVE_WORDS = new Set(["more-news", "morearticles", "archive"]);
 
 /**
@@ -274,14 +307,14 @@ function categoryPath(path: string): CategoryPath | null {
 /**
  * Where `rest` (the lowercased segments after the consumed key) goes: candidate targets in
  * `fixedRedirect`'s form (the first that is a page, or the "!" one) and whether the query is
- * dropped; null for feeds and embeds, which this rule leaves alone (Task 8; embed falls through).
+ * dropped; null for feeds and embeds, which this rule leaves alone (`feedRule` serves feeds; embed pages do not exist, so they fall through to the site 404). `top` and `feature` are not feeds below a category: they redirect to its page.
  * `moved`: the request named another key's page, so its biography is not this key's.
  */
 function categoryTargets(cat: CategoryKind, key: string, rest: string[], moved: boolean): { to: string[]; drop: boolean } | null {
   const home = `/${cat}/${key}/`;
   const [first, second] = rest;
   if (first === undefined) return { to: [`${home}!`], drop: false };
-  if (isFeed(first) || first === "embed" || (KINDS.has(first) && second !== undefined && isFeed(second))) return null;
+  if (isFeed(first) || first === "embed" || (KINDS.has(first) && second !== undefined && (isFeed(second) || second === "embed"))) return null;
   if (ARCHIVE_WORDS.has(first) || (KINDS.has(first) && second !== undefined && ARCHIVE_WORDS.has(second))) return { to: [`${home}!`], drop: true };
   if (first === "biography" && rest.length === 1 && cat === "ministries") return { to: moved ? [`${home}!`] : [`${home}biography/`, `${home}!`], drop: false };
   if (KINDS.has(first) && rest.length === 1) return { to: [`${home}${first}/`, `${home}!`], drop: false };

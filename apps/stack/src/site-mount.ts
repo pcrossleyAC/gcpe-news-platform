@@ -15,11 +15,35 @@ export function siteBasePath(publicSiteUrl: string): string {
   return new URL(publicSiteUrl).pathname.replace(/\/+$/, "");
 }
 
+const RSS_TYPE = "application/rss+xml; charset=utf-8";
+const ATOM_TYPE = "application/atom+xml; charset=utf-8";
+
+/**
+ * The legacy feed content types for every feed file the site writes: `feed.xml` / `atom.xml` at
+ * the root and in each category directory, and `feeds/<kind>.xml` / `.atom.xml`. express.static
+ * would send `application/xml`; subscribers' readers (and the legacy URLs served in place) expect
+ * RSS and Atom types. `send` keeps a Content-Type set here. Other .xml files are left alone.
+ */
+export function feedContentType(filePath: string): string | null {
+  const parts = filePath.split(/[\\/]/);
+  const name = parts[parts.length - 1]!;
+  if (name === "feed.xml") return RSS_TYPE;
+  if (name === "atom.xml") return ATOM_TYPE;
+  if (parts[parts.length - 2] === "feeds") {
+    if (name.endsWith(".atom.xml")) return ATOM_TYPE;
+    if (name.endsWith(".xml")) return RSS_TYPE;
+  }
+  return null;
+}
+
 function staticSite(outputDir: string) {
   // dotfiles: "deny" keeps the render-state marker (.site-state.json) and anything else
   // dot-prefixed unservable; noStoreOnRedirect gives express.static's own trailing-slash
   // 301 a no-store so the SiteGround proxy never caches it.
-  return [noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny" })];
+  return [noStoreOnRedirect, express.static(outputDir, { index: "index.html", maxAge: SITE_MAX_AGE_MS, dotfiles: "deny", setHeaders: (res, filePath) => {
+    const type = feedContentType(filePath);
+    if (type !== null) res.setHeader("Content-Type", type);
+  } })];
 }
 
 /**
