@@ -113,4 +113,34 @@ describe("selfHeal", () => {
     expect(newsApi.calls.filter((c) => c === "getPost:K1").length).toBe(before); // no full rebuild
     expect((deps.storage as ReturnType<typeof memoryStorage>).files.get("connect/index.html")).toContain("A New Blog");
   });
+
+  it("a News API outage after a restart: the subscribe pages keep the persisted published footer, and nothing moves the marker", async () => {
+    const deps = setup(new Map([["K1", post({ key: "K1" })]]));
+    const storage = deps.storage as ReturnType<typeof memoryStorage>;
+    const document = bcSettings();
+    document.footer.copyrightHolder = "Published Holder";
+    (deps.newsApi as ReturnType<typeof fakeNewsApi>).settings = { revision: 1, document };
+    await selfHeal(deps);
+    const marker = storage.files.get(".site-state.json");
+
+    // A new process over the same folder (a fresh storage object, the same files).
+    const restarted = { ...deps, storage: { ...storage } as typeof storage, newsApi: fakeNewsApi() };
+    restarted.newsApi.home = async () => {
+      throw new Error("News API down");
+    };
+    restarted.newsApi.siteSettings = async () => {
+      throw new Error("News API down");
+    };
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      expect(await selfHeal(restarted)).toBeNull();
+    } finally {
+      errSpy.mockRestore();
+    }
+    for (const f of SUBSCRIBE_FILES) {
+      expect(storage.files.get(f)).toContain("Published Holder");
+      expect(storage.files.get(f)).not.toMatch(/© \d{4} Government of British Columbia/);
+    }
+    expect(storage.files.get(".site-state.json")).toBe(marker);
+  });
 });

@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SiteTheme } from "@gcpe/config";
 import { safeErrorLabel } from "@gcpe/http-kit";
-import { defaultSiteSettings, isSafeUrl, type SiteSettings } from "@gcpe/site-settings";
+import { defaultSiteSettings, isSafeUrl, siteSettingsSchema, type SiteSettings } from "@gcpe/site-settings";
 import type { NewsApiClient } from "./news-api-client";
 import { basePath, type SiteInfo } from "./render";
 import type { SiteStorage } from "./storage";
@@ -62,29 +62,53 @@ export function settingsHashes(settings: SiteSettings, timeZone: string, now: Da
   };
 }
 
-/** The last settings fetched, per output folder (one `SiteStorage` per process, like
- * `enqueueSiteWrite`'s queue) — what a failed fetch keeps using. */
-const lastApplied = new WeakMap<SiteStorage, SiteSettings>();
+/** The last applied settings document, beside the site-state marker (rebuild.ts's
+ * SITE_STATE_PATH) and, like it, not served: a leading dot (the `/site` mount's `dotfiles:
+ * "deny"`), never linked. It survives a restart, which the host does every minute or so. */
+export const SITE_SETTINGS_PATH = ".site-settings.json";
+
+/** What this process last wrote to SITE_SETTINGS_PATH, per output folder, so an unchanged
+ * document isn't rewritten every turn. */
+const persisted = new WeakMap<SiteStorage, string>();
+
+async function readPersisted(storage: SiteStorage): Promise<SiteSettings | null> {
+  const raw = await storage.read(SITE_SETTINGS_PATH);
+  if (raw === null) return null;
+  try {
+    return siteSettingsSchema.parse(JSON.parse(raw));
+  } catch {
+    return null; // malformed/foreign content: treated as nothing persisted
+  }
+}
 
 /**
- * This turn's settings (spec "Delivery"): the published document; a 404 (nothing published yet)
- * ⇒ the tenant defaults; a failed or malformed fetch ⇒ the last applied settings, logged, never
- * the defaults — except before any fetch has succeeded in this process, when the defaults are
- * all there is (also logged) rather than failing the turn.
+ * This turn's settings (spec "Delivery"):
+ * - fetched: the published document, or the tenant defaults on a 404 (nothing published yet) —
+ *   authoritative, and persisted as the last applied;
+ * - the fetch failed (an error, a timeout, a malformed or empty answer): the last applied
+ *   document from SITE_SETTINGS_PATH, logged, with `frozen: true` — the caller must then neither
+ *   move the site-state marker nor queue rebuilds from it, so an outage across a restart never
+ *   rebuilds the site with the defaults;
+ * - failed with nothing ever applied in this output folder: the tenant defaults (logged), as
+ *   authoritative — there is no published state on disk to protect.
  */
-export async function currentSettings(deps: { newsApi: NewsApiClient; storage: SiteStorage; defaults: SiteSettings }): Promise<SiteSettings> {
+export async function currentSettings(deps: { newsApi: NewsApiClient; storage: SiteStorage; defaults: SiteSettings }): Promise<{ settings: SiteSettings; frozen: boolean }> {
+  let settings: SiteSettings;
   try {
-    const published = await deps.newsApi.siteSettings();
-    const settings = published?.document ?? deps.defaults;
-    lastApplied.set(deps.storage, settings);
-    return settings;
+    settings = (await deps.newsApi.siteSettings())?.document ?? deps.defaults;
   } catch (err) {
-    const kept = lastApplied.get(deps.storage);
+    const kept = await readPersisted(deps.storage);
     if (kept) {
       console.error(`[public-site] site settings unavailable; keeping the last applied settings ${safeErrorLabel(err)}`);
-      return kept;
+      return { settings: kept, frozen: true };
     }
-    console.error(`[public-site] site settings unavailable and none fetched yet; using the tenant defaults ${safeErrorLabel(err)}`);
-    return deps.defaults;
+    console.error(`[public-site] site settings unavailable and none applied yet; using the tenant defaults ${safeErrorLabel(err)}`);
+    return { settings: deps.defaults, frozen: false };
   }
+  const json = JSON.stringify(settings);
+  if (persisted.get(deps.storage) !== json) {
+    await deps.storage.write(SITE_SETTINGS_PATH, json);
+    persisted.set(deps.storage, json);
+  }
+  return { settings, frozen: false };
 }

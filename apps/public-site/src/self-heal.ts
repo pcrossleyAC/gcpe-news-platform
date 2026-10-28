@@ -24,14 +24,15 @@ export function selfHeal(deps: SyncDeps): Promise<{ rebuilt: number } | null> {
 
   return enqueueSiteWrite(storage, async () => {
     const home = await tryHome(newsApi);
-    const { state, pageOpts } = await turnOptions(deps, home?.granville ?? null);
+    const turn = await turnOptions(deps, home?.granville ?? null);
+    const { pageOpts } = turn;
 
     // Cheap and stateless, so rewritten on every start regardless of what follows.
     await writeSubscribePages(storage, site, home ? pageOpts : { ...pageOpts, banner: null });
 
     if (!home) return null; // News API unreachable: nothing more can be rendered correctly now
 
-    await applyChromeChanges(deps, state, !(await storage.exists("index.html")));
+    await applyChromeChanges(deps, turn, !(await storage.exists("index.html")));
 
     const r = await drainQueue({ db: deps.db, builder: deps.builder }, { budget: deps.batch, pageOpts });
     return r.rendered > 0 ? { rebuilt: r.rendered } : null;

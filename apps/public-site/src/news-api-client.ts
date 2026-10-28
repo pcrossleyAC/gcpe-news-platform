@@ -74,9 +74,12 @@ export function newsApiClient(baseUrl: string, fetchImpl: typeof fetch = fetch):
       return (body?.results ?? []).map((r) => ({ key: r.key, headline: r.headline, publishDate: r.publishDate }));
     },
     siteSettings: async () => {
-      const body = await getOr404("api/v2/site-settings");
-      if (body === null) return null;
-      const { revision, document } = siteSettingsBodySchema.parse(body);
+      // Only a real 404 means "nothing published" (⇒ the tenant defaults); an empty or
+      // unparseable 200 is a failure like any other, so the last applied settings stand.
+      const res = await fetchImpl(new URL("api/v2/site-settings", base), { signal: AbortSignal.timeout(10_000) });
+      if (res.status === 404) return null;
+      if (!res.ok) throw new Error(`News API ${res.status} for api/v2/site-settings`);
+      const { revision, document } = siteSettingsBodySchema.parse(JSON.parse(await res.text()));
       return { revision, document };
     },
     postKeys: async (postKind) => (((await get(`api/Posts/Keys/home/default?${v1}&postKind=${enc(postKind)}`)) as { key: string }[] | null) ?? []).map((r) => r.key),

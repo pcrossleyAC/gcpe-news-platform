@@ -7,7 +7,11 @@ import { bcSettings, post, site } from "../test/fixtures";
 import type { FakeNewsApi } from "../test/fake-news-api";
 import type { SiteSettings } from "@gcpe/site-settings";
 import type { PostDto } from "./dto";
+import { mkdtemp, readFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createSiteBuilder, type SiteBuilder } from "./builder";
+import { fsStorage } from "./storage";
 import { postIndex } from "./post-index";
 import { queueDepth } from "./queue";
 import { RENDER_CHROME_VERSION } from "./rebuild";
@@ -243,6 +247,45 @@ describe("syncSite", () => {
       } finally {
         error.mockRestore();
       }
+    });
+
+    it("across a restart: a fetch error keeps the persisted published settings — no rebuild queued, marker and site-banner.json unchanged, the published footer rendered", async () => {
+      const dir = await mkdtemp(join(tmpdir(), "public-site-settings-restart-"));
+      const posts = new Map([["K1", post({ key: "K1" })]]);
+      const first = { ...setup(posts), storage: fsStorage(dir), defaultSettings: withHolder("Tenant Default Holder") };
+      first.builder = createSiteBuilder({ newsApi: first.newsApi, storage: first.storage, index: first.index, site, assetsDir: null });
+      const document = withHolder("Published Holder");
+      document.banner = { ...document.banner, enabled: true, message: "Offices closed" };
+      api(first).settings = published(document);
+      await syncSite(first); // the full build under the published revision
+      const marker = await readFile(join(dir, ".site-state.json"), "utf8");
+      const bannerFile = await readFile(join(dir, "assets/site-banner.json"), "utf8");
+      expect(JSON.parse(bannerFile)).toMatchObject({ visible: true, message: "Offices closed" });
+      await tdb.pool.query("TRUNCATE rebuild_queue RESTART IDENTITY");
+
+      // A new process: a fresh storage instance over the same folder (so nothing in memory), and
+      // a News API whose home() works but whose settings fetch fails.
+      const storage = fsStorage(dir);
+      const newsApi = fakeNewsApi(posts);
+      newsApi.siteSettings = async () => {
+        throw new Error("News API 503 for api/v2/site-settings");
+      };
+      const builder = createSiteBuilder({ newsApi, storage, index: first.index, site, assetsDir: null });
+      const restarted = recording({ ...first, storage, newsApi, builder });
+      const error = vi.spyOn(console, "error").mockImplementation(() => {});
+      try {
+        await syncSite(restarted.deps, { pages: ["post:K1"] });
+      } finally {
+        error.mockRestore();
+      }
+      expect(restarted.rendered[0]).toBe("post:K1");
+      expect(restarted.rendered).not.toContain("static"); // no rebuild-all, no section rebuild
+      expect(await queueDepth(tdb.db)).toBe(0);
+      expect(await readFile(join(dir, ".site-state.json"), "utf8")).toBe(marker);
+      expect(await readFile(join(dir, "assets/site-banner.json"), "utf8")).toBe(bannerFile);
+      const page = await readFile(join(dir, "releases/K1/index.html"), "utf8");
+      expect(page).toContain("Published Holder");
+      expect(page).not.toContain("Tenant Default Holder");
     });
 
     it("a fetch error before any successful fetch uses the tenant defaults (logged) rather than failing the turn", async () => {

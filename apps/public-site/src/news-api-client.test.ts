@@ -191,6 +191,11 @@ describe("newsApiClient", () => {
       expect(await newsApiClient("http://host", fetchImpl as unknown as typeof fetch).siteSettings()).toBeNull();
     });
 
+    it("an empty 200 is a failure (rejects), not \"nothing published\"", async () => {
+      const empty = stubFetch(fakeResponse({ ok: true, body: "" }));
+      await expect(newsApiClient("http://host", empty as unknown as typeof fetch).siteSettings()).rejects.toThrow();
+    });
+
     it("a 5xx or a malformed document rejects", async () => {
       await expect(newsApiClient("http://host", stubFetch(fakeResponse({ ok: false, status: 503, body: "" })) as unknown as typeof fetch).siteSettings()).rejects.toThrow(/503/);
       const malformed = stubFetch(fakeResponse({ ok: true, body: JSON.stringify({ revision: 1, publishedAt: "x", document: { footer: {} } }) }));

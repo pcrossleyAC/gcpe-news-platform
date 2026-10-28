@@ -32,21 +32,28 @@ export interface SyncDeps {
 
 /**
  * This turn's render options and site-state: Blue Bridge from `home()` (a failure rejects), then
- * the site settings (settings.ts's currentSettings never rejects). Shared by `syncSite` and
- * `selfHeal`.
+ * the site settings (settings.ts's currentSettings never rejects). `frozen`: the settings fetch
+ * failed and the last applied document stands in — `applyChromeChanges` then leaves the marker
+ * and the queue alone. Shared by `syncSite` and `selfHeal`.
  */
-export async function turnOptions(deps: SyncDeps, granville: string | null): Promise<{ state: SiteRenderState; pageOpts: PageOptions }> {
-  const settings = await currentSettings({ newsApi: deps.newsApi, storage: deps.storage, defaults: deps.defaultSettings ?? themeDefaults(deps.site.theme) });
+export async function turnOptions(deps: SyncDeps, granville: string | null): Promise<{ state: SiteRenderState; pageOpts: PageOptions; frozen: boolean }> {
+  const { settings, frozen } = await currentSettings({ newsApi: deps.newsApi, storage: deps.storage, defaults: deps.defaultSettings ?? themeDefaults(deps.site.theme) });
   const { state, banner } = stateAndBanner(granville, deps.test, new Date(), settings, deps.site);
-  return { state, pageOpts: { test: deps.test, banner, settings } };
+  return { state, pageOpts: { test: deps.test, banner, settings }, frozen };
 }
 
-/** Queues what the chrome or the settings changed since the marker, then moves the marker. */
-export async function applyChromeChanges(deps: SyncDeps, state: SiteRenderState, force = false): Promise<void> {
-  const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, state, deps.site);
+/**
+ * Queues what the chrome or the settings changed since the marker, then moves the marker. Not
+ * while the settings are frozen (a failed fetch): the marker records what was last applied, and
+ * a turn that couldn't read the settings mustn't move it or rebuild from a stand-in — a Blue
+ * Bridge or year change waits for the next turn whose fetch succeeds.
+ */
+export async function applyChromeChanges(deps: SyncDeps, turn: { state: SiteRenderState; frozen: boolean }, force = false): Promise<void> {
+  if (turn.frozen) return;
+  const changes = force ? { all: true, sections: [] } : await chromeChanges(deps.storage, turn.state, deps.site);
   if (!changes.all && changes.sections.length === 0) return;
   await enqueueChromeChanges(deps.db, deps.builder, changes);
-  await writeSiteState(deps.storage, state, deps.site);
+  await writeSiteState(deps.storage, turn.state, deps.site);
 }
 
 export interface SyncResult {
@@ -118,9 +125,10 @@ export function syncSite(deps: SyncDeps, extra: { pages?: string[] } = {}): Prom
   const feedRead = deps.feed ? singleFlightFeed(deps.feed) : undefined;
   return enqueueSiteWrite(deps.storage, async () => {
     const { granville } = await deps.newsApi.home();
-    const { state, pageOpts } = await turnOptions(deps, granville);
+    const turn = await turnOptions(deps, granville);
+    const { pageOpts } = turn;
     if (extra.pages?.length) await enqueuePages(deps.db, extra.pages.map((pageId) => ({ pageId, priority: livePriority(pageId) })));
-    await applyChromeChanges(deps, state);
+    await applyChromeChanges(deps, turn);
     if (feedRead) {
       try {
         await feedRead;
