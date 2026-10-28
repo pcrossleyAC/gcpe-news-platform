@@ -1,4 +1,4 @@
-import { mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdir, rm, utimes, writeFile } from "node:fs/promises";
 import type { AddressInfo } from "node:net";
 import { connect } from "node:net";
 import { join } from "node:path";
@@ -293,6 +293,125 @@ describe("legacyUrls (fixed rules) through mountSite", () => {
   it("a real page is never shadowed: /archive/, /subscribe/, /connect/ and a release keep answering 200", async () => {
     for (const path of ["/", "/archive/", "/archive/2026/10/", "/subscribe/", "/subscribe/manage/?token=x", "/connect/", "/releases/2026TT0105-001130/", "/feed.xml"]) {
       expect({ path, status: (await request(app).get(path).redirects(0)).status }).toEqual({ path, status: 200 });
+    }
+  });
+});
+
+describe("legacyUrls: posts by key and case-insensitive paths (url-compat T2)", () => {
+  let outputDir: string;
+  let app: express.Express;
+  beforeEach(async () => {
+    outputDir = await createLegacySiteFixture();
+    app = appFor(outputDir);
+  });
+  afterEach(async () => {
+    await rm(outputDir, { recursive: true, force: true });
+  });
+
+  /** Asserts the Location answers 200 (one hop). */
+  async function expectOneHop(a: express.Express, path: string, location: string) {
+    await expectRedirect(a, path, location);
+    expect({ location, status: (await request(a).get(location).redirects(0)).status }).toEqual({ location, status: 200 });
+  }
+
+  it("/Releases/2026tt0105-001130 → 301 /releases/2026TT0105-001130/", async () => {
+    await expectOneHop(app, "/Releases/2026tt0105-001130", "/releases/2026TT0105-001130/");
+    await expectOneHop(app, "/RELEASES/2026tt0105-001130/?x=A%2Bb", "/releases/2026TT0105-001130/?x=A%2Bb");
+    // HEAD answers the same.
+    const head = await request(app).head("/Releases/2026tt0105-001130").redirects(0);
+    expect({ status: head.status, location: head.headers.location }).toEqual({ status: 301, location: "/releases/2026TT0105-001130/" });
+  });
+
+  it("/stories/2026TT0105-001130, /factsheets/…/ and /UPDATES/… → 301 /releases/2026TT0105-001130/ (one hop: the target answers 200)", async () => {
+    await expectOneHop(app, "/stories/2026TT0105-001130", "/releases/2026TT0105-001130/");
+    await expectOneHop(app, "/factsheets/2026tt0105-001130/", "/releases/2026TT0105-001130/");
+    await expectOneHop(app, "/UPDATES/2026TT0105-001130?utm=1", "/releases/2026TT0105-001130/?utm=1");
+    await expectOneHop(app, "/releases/2026TT0105-001130", "/releases/2026TT0105-001130/");
+    // Through the stack's own pass-through list, /updates/<key> reaches the rule too.
+    const stackLike = express();
+    mountSite(stackLike, { outputDir, basePath: "", passThrough: SITE_PASS_THROUGH });
+    await expectRedirect(stackLike, "/updates/2026TT0105-001130", "/releases/2026TT0105-001130/");
+  });
+
+  it("/releases/2026TT0105-001130/ → 200, no redirect", async () => {
+    const res = await request(app).get("/releases/2026TT0105-001130/").redirects(0);
+    expect(res.status).toBe(200);
+    expect(res.text).toBe("<h1>releases/2026TT0105-001130/</h1>");
+  });
+
+  it("/releases/NOPE-1 and /stories/NOPE-1 → 404 with the site 404 body", async () => {
+    for (const path of ["/releases/NOPE-1", "/stories/NOPE-1", "/Stories/NOPE-1/image", "/releases/_long", "/releases/a.b"]) {
+      const res = await request(app).get(path).redirects(0);
+      expect({ path, status: res.status, location: res.headers.location, body: res.text }).toEqual({ path, status: 404, location: undefined, body: "<h1>site 404</h1>" });
+    }
+  });
+
+  it("/releases/2026TT0105-001130/image → 302 /assets/legacy/Content/Images/Gov/default-og-image-new.jpg", async () => {
+    const og = "/assets/legacy/Content/Images/Gov/default-og-image-new.jpg";
+    await expectRedirect(app, "/releases/2026TT0105-001130/image", og, 302);
+    await expectRedirect(app, "/Stories/2026tt0105-001130/Image?w=1", og, 302);
+    expect((await request(app).get(og).redirects(0)).status).toBe(200);
+    await expectRedirect(appFor(outputDir, "/site"), "/site/factsheets/2026TT0105-001130/image", `/site${og}`, 302);
+  });
+
+  it("/Search?q=Wild%20Fire → 301 /search/?q=Wild%20Fire", async () => {
+    await expectOneHop(app, "/Search?q=Wild%20Fire", "/search/?q=Wild%20Fire");
+    await expectOneHop(app, "/SEARCH/?q=Wild%20Fire", "/search/?q=Wild%20Fire");
+  });
+
+  it("/Ministries/Health → 301 /ministries/health/", async () => {
+    await expectOneHop(app, "/Ministries/Health", "/ministries/health/");
+    await expectOneHop(app, "/Ministries/Health/", "/ministries/health/");
+    await expectOneHop(app, "/Archive/2026/10", "/archive/2026/10/");
+    // No lowercase page: no redirect, the site 404.
+    const res = await request(app).get("/Ministries/Nope").redirects(0);
+    expect({ status: res.status, location: res.headers.location }).toEqual({ status: 404, location: undefined });
+  });
+
+  it("/assets/legacy/Content/Images/Gov/BC_Mark.svg → 200 (exact case exists, never lowercased)", async () => {
+    const res = await request(app).get("/assets/legacy/Content/Images/Gov/BC_Mark.svg").redirects(0);
+    expect(res.status).toBe(200);
+    expect(res.headers.location).toBeUndefined();
+    // A lowercase twin on disk (case-sensitive FS) or not: the exact-case file still wins.
+    expect((await request(app).get("/assets/legacy/Content/Images/Gov/default-og-image-new.jpg").redirects(0)).status).toBe(200);
+  });
+
+  it("/Subscribe/Manage?token=MyIRAFVEd2aImaq7zN3u_w2 → 301 /subscribe/manage/?token=MyIRAFVEd2aImaq7zN3u_w2", async () => {
+    await expectOneHop(app, "/Subscribe/Manage?token=MyIRAFVEd2aImaq7zN3u_w2", "/subscribe/manage/?token=MyIRAFVEd2aImaq7zN3u_w2");
+  });
+
+  it("a fallback rule yields to the case rule: /Releases → / until releases/index.html exists, then 301 /releases/ in one hop", async () => {
+    await expectRedirect(app, "/Releases", "/");
+    await writeFile(join(outputDir, "releases", "index.html"), "<h1>releases</h1>");
+    await expectOneHop(app, "/Releases", "/releases/");
+    await expectOneHop(app, "/Releases/", "/releases/");
+  });
+
+  it("a post directory created after the first request resolves on the next one; one whose index.html was removed no longer redirects", async () => {
+    expect((await request(app).get("/stories/2026TT0106-000001").redirects(0)).status).toBe(404);
+    await mkdir(join(outputDir, "releases", "2026TT0106-000001"), { recursive: true });
+    await writeFile(join(outputDir, "releases", "2026TT0106-000001", "index.html"), "<h1>new</h1>");
+    const later = new Date(Date.now() + 60_000);
+    await utimes(join(outputDir, "releases"), later, later);
+    await expectOneHop(app, "/stories/2026tt0106-000001", "/releases/2026TT0106-000001/");
+
+    await rm(join(outputDir, "releases", "2026TT0105-001130", "index.html"));
+    for (const path of ["/stories/2026TT0105-001130", "/Releases/2026tt0105-001130", "/releases/2026TT0105-001130/image"]) {
+      const res = await request(app).get(path).redirects(0);
+      expect({ path, status: res.status, location: res.headers.location }).toEqual({ path, status: 404, location: undefined });
+    }
+  });
+
+  it("under basePath '/site': /site/Stories/2026TT0105-001130 → 301 /site/releases/2026TT0105-001130/", async () => {
+    const site = appFor(outputDir, "/site");
+    await expectOneHop(site, "/site/Stories/2026TT0105-001130", "/site/releases/2026TT0105-001130/");
+    await expectOneHop(site, "/site/Ministries/Health?x=1", "/site/ministries/health/?x=1");
+  });
+
+  it("escape attempts with mixed case never leave the site or OUTPUT_DIR", async () => {
+    for (const path of ["//evil.example/Releases/2026TT0105-001130", "/Releases/..%2F..%2Fetc%2Fpasswd", "/Releases/%2E%2E/%2E%2E/etc/passwd", "/%2F%2Fevil.example/Ministries", "/Ministries/Health%5C..%5C..", "/Releases/2026TT0105-001130%00"]) {
+      const res = await request(app).get(path).redirects(0);
+      expect({ path, status: res.status, location: res.headers.location }).toEqual({ path, status: 404, location: undefined });
     }
   });
 });

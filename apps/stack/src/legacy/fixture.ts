@@ -32,6 +32,8 @@ export async function createLegacySiteFixture(): Promise<string> {
   await put("feed.xml", '<?xml version="1.0"?><rss version="2.0"><channel/></rss>');
   for (const page of LEGACY_FIXTURE_PAGES) await put(`${page}index.html`, `<h1>${page}</h1>`);
   await put("assets/legacy/Content/Images/Gov/default-og-image-new.jpg", "JPEGDATA");
+  // Our own mixed-case asset names (Review Focus 2): served as they are, never lowercased.
+  await put("assets/legacy/Content/Images/Gov/BC_Mark.svg", "<svg/>");
   await put(".site-state.json", '{"granvilleOn":true}');
   return outputDir;
 }

@@ -21,3 +21,10 @@
 # section: robots and verification
 /robots.txt
 /google790b0529c8dcfaff.html
+# section: posts and case
+/releases/2026TT0105-001130
+/Releases/2026tt0105-001130
+/stories/2026TT0105-001130
+/releases/2026TT0105-001130/image
+/Search?q=housing
+/Ministries/Health
