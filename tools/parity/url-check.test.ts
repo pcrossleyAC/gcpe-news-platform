@@ -146,4 +146,17 @@ describe("main", () => {
     });
     expect(code).toBe(0);
   });
+
+  it("an all-comment list has no rows: prints 0/0 passed and exits 0, fetching nothing", async () => {
+    const lines: string[] = [];
+    let fetched = 0;
+    const code = await main(["--base", "https://x.test"], {
+      readList: async () => "# section: a\n# a comment\n\n",
+      fetchImpl: (async () => { fetched++; return new Response(null, { status: 200 }); }) as typeof fetch,
+      log: (l) => lines.push(l),
+    });
+    expect(code).toBe(0);
+    expect(lines).toEqual(["0/0 passed"]);
+    expect(fetched).toBe(0);
+  });
 });

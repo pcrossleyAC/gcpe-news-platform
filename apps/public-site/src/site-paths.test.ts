@@ -61,7 +61,7 @@ describe("pageFiles", () => {
     ["search", ["search/index.html"]],
     ["sitemap", ["sitemap.xml"]],
     ["sitemap:2026-10", ["sitemaps/2026-10.xml"]],
-    ["sitemap:pages", ["sitemaps/pages.xml"]],
+    ["sitemap:pages", ["sitemaps/pages.xml", "sitemap/index.html"]],
     ["static", ["assets/theme.css", "assets/site-banner.json", "404.html", "robots.txt"]],
     ["connect", ["connect/index.html"]],
     ["privacy", ["privacy/index.html"]],

@@ -628,3 +628,77 @@ The premier `main` ratio (0.59 and 0.71) is the largest. The cause was not inves
 - `npm run site:quality` needs no change (fixture-based).
 - Record the result here as "Plan 2 result (boxs.ca)". Any strict region over 0.03 or `missing` structure selector becomes a named fix task before plan 3; the threshold is not raised without the owner.
 - Plan 3 inherits the url-compat rows for `/office-of-the-premier/biography` and `/ministries/{parent}/{key}/biography`.
+
+## Plan 4 result (2026-10-28, parity plan 4 Task 24; HEAD 62a9ebe plus this commit)
+
+**Verdict: the build is complete and awaiting the gate.** All 23 build tasks are on `feat/parity-4`, each reviewed. The boxs.ca numbers are not in yet: the controller runs the gate after the batch G deploy and fills in "Gate results" below. Nothing under "What was built" has been measured against live news.gov by this document; the figures quoted are what the implementers and the controller recorded in the SDD ledger (`.superpowers/sdd/2026-10-28-parity-4-remaining-pages/progress.md`).
+
+### What was built (page, gap, commit)
+
+| page | gap | commits |
+|---|---|---|
+| `/contacts/` Media Contacts directory | H3 | 3966eaf (settings 226ddf6, Hub screen 811e3c5) |
+| `/privacy/`, 404 text, licence line | L1, L3 | 5598052 (Hub screen 6300244) |
+| Header, labels, Live Webcast button | M13 | 7426dd5, 77a8a77, be9a534 (Hub screen 81364e0) |
+| `/live/` | H4 | 59526ac, 93ca627 |
+| `/connect/`, shared Connect With Us strip | M12, L6 | 3fe99ee, 1a0d963, 0237725, c386cc6, 0e6bdb0 (Hub fields 6febcda) |
+| `/releases/`, `/stories/`, `/factsheets/`, `/updates/` | H5 | 78c2e57 |
+| `/ministries/<key>/factsheets/` | H5 | ed1f2c3 |
+| `/sectors/<key>/`, `/themes/<key>/`, `/tags/<key>/` | M8 | e7c10d2 |
+| `/ministries/`, `/sectors/`, `/themes/`, `/tags/` | M8, M16 | d0008cb, 837f7a7 |
+| `/search/` | M9, P11 | a88a53b, 455354e, 5a8a559 |
+| Archive pages | spec §4 B | 6f15fce |
+| `/subscribe/`, `/subscribe/manage/` | M14 | bb0ea79, cbe5040 |
+| `/sitemap/` | L2 | 91629ee, 62a9ebe |
+
+Plan 4 pages added to the harness (5602279): `contacts, live, privacy, factsheets, stories, ministry-factsheets, ministries, sectors, themes, topics, sector, search, subscribe, connect, archive`, with `search` taking `--ours search=/search/?q=<word>`.
+
+### What differs from legacy on purpose
+
+Rows C273-C294 in `changes-from-legacy.md` hold the reasons. The visible ones:
+- **Connect** collapses each network's list like legacy, with "EXPAND ... LIST". It is painted collapsed by CSS under `html.js` (a post-paint collapse cost a layout shift of 0.336 and a performance score of 70, now 85); with script off every entry shows. The faded second entry is computed per theme to keep 4.6:1 (BC 34%). Links with a summary keep an underline. The bar colour is the Hub theme token `sectionBar` (#2B5580). Headings are `h2`, not legacy's `h3` (C273).
+- **Search** puts results before the filters in the document (P4-R15) and has no Language or City facets (C285, C286).
+- **Live** is consent-first, with the phone Live button as legacy's 40 px icon so the phone header stays one row while live (be9a534, C218, C278). The button is hidden without script.
+- **Directory defaults** are role-level; named staff go in through the Hub (C276).
+- **Subscribe** uses a radio group, refuses an empty "customize" in the browser, and a prefill never becomes "all news" (C290).
+- **Archive** pages take the listing look (C274); the HTML sitemap lists pages, categories and months (C275).
+
+### Performance and accessibility notes (implementer-reported, local fixture, Lighthouse mobile)
+- Gate is performance 80. Most plan 4 pages scored 83-87: `/contacts/` 86, `/privacy/` 81 after the italic preload (86 without italic text), `/live/` 83, `/sitemap/` 85, `/archive/` 85, `/ministries/health/factsheets/` 83, `/sectors/economy/` 85, `/connect/` 85 across three runs after the layout-shift fix.
+- `/subscribe/` sits at exactly 80 on every run (LCP 5.4 s: the intro paragraph after render-blocking CSS and fonts). `/privacy/` and `/contacts/` have the same text-page baseline (about 80-81). It is the site-wide baseline for text pages, not a task regression [I: the reviewer compared several pages; it was not bisected].
+- BC Sans Italic is preloaded only on pages that use italics (P4-R6, C294); a page with italics and no preload scored 79.
+- axe found 0 violations on every page the implementers ran.
+
+### Gate results (boxs.ca) -- for the controller to fill
+
+Run after the batch G deploy. Record the `main` ratios; any failure becomes a named fix task before plan 5.
+
+1. `npm run parity -- --target https://boxs.ca --pages home,contacts,live,privacy,factsheets,stories,ministry-factsheets,ministries,sectors,themes,topics,sector,search,subscribe,connect,archive --ours search=/search/?q=<word>`
+   - Expected: every strict region <= 0.03 at both widths, structure rows `ok` or `legacy-absent`, axe 0 serious/critical.
+   - Result: _not run yet_
+
+   | page | width | header | landAck | footer | main (report only) |
+   |---|---|---|---|---|---|
+   | _to fill_ | | | | | |
+
+   Structure rows: _to fill_ (data-only FAILs on an empty boxs.ca, such as listings with no cards, are expected; record which and why).
+2. `npm run site:quality`: _not run yet_ (expect PASS).
+3. `npx vitest run --project node`: _not run yet_ (last implementer count 5629 passed, 10 skipped at 62a9ebe).
+4. `npx vitest run --project staff-web`: _not run yet_.
+5. `npm run check`: _not run yet_ (expect exit 0).
+6. `npm run parity:urls -- --base https://boxs.ca` (Task 23 is done): _not run yet_ (expect 100%).
+7. A live-on check: with a stream on, screenshot the header at 390, 768 and 1280 (the phone header must stay one row).
+
+### Open items carried out of plan 4
+- Owner questions (the plan's six, with P4-R2 and P4-R9 defaults applied, plus three new):
+  1. **Live webcast.** Is the production stream URL https, and does its host allow cross-origin requests (hls.js needs it in Chrome and Firefox)? Is vendoring hls.js acceptable (default: yes, P4-R9)?
+  2. **Licence PDF** (`news.gov.bc.ca/files/News_Footage_License_British_Columbia.pdf`): after DNS moves it depends on plan 3's `/files/*` question. Should the default point elsewhere?
+  3. **Directory defaults.** Named staff and cells are not committed (P4-R2); staff enter them in the Hub. Confirm that stays.
+  4. **Intergovernmental Relations Secretariat:** should its minister name stay hidden on `/contacts/`? If Core holds one, a per-ministry flag is needed (C277).
+  5. **Search Language and City facets:** needed? Each needs a new search dimension (C285).
+  6. **Older-archive links:** confirm `archive.news.gov.bc.ca` stays up, over https, after cutover.
+  7. **New: tap-to-call.** Phone numbers in Hub rich text (the Notice of Collection, the directory intro) are plain text because the allow-list has no `tel:` (P4-R7). Widen the allow-list?
+  8. **New: italic button.** The Hub rich-text editor has no Italic button, so the first Hub edit of the privacy text or the Notice drops BC's italics (act titles). Add Italic to the settings editor (the allow-list already allows `em`, `i`); plan 5 or sooner?
+  9. **New: production stream https/CORS.** The same facts as question 1, to check on the production host before the Live page is relied on: the stream URL must be https (the page refuses anything else) and must send CORS headers.
+- The Resources link (`/contacts/`) is data in the Hub; it needs a staff sign-in.
+- A legacy carousel import re-run replaces slides wholesale, including their action labels, as for every other slide field.

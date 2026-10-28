@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { expectAccessibleStructure } from "../../test/structure";
-import { site } from "../../test/fixtures";
+import { bcSettings, site } from "../../test/fixtures";
 import type { GovernmentTermDto } from "../dto";
 import type { IndexedPost } from "../post-index";
 import { renderArchiveIndex, renderArchiveMonth, renderTermPage, renderTermsIndex, termRangeLabel } from "./archive";
@@ -60,6 +60,36 @@ describe("archives", () => {
   it("the index links to the archive by government term", () => {
     const doc = expectAccessibleStructure(renderArchiveIndex([{ month: "2026-10", count: 1 }], site, {}));
     expect(doc.querySelector('main a[href="/archive/terms/"]')?.textContent).toBe("Browse by government term");
+  });
+});
+
+describe("archive search control", () => {
+  const post = (month: string): IndexedPost => ({ key: "A", kind: "releases", headline: "A", summary: null, publishDate: `${month}-02T09:00:00-08:00`, month, categories: [] });
+  const control = (html: string) => expectAccessibleStructure(html).querySelector("main .home-body > div.news-control");
+  it("a month page ends with Search News filtered to that month, then div.clear", () => {
+    const c = control(renderArchiveMonth("2026-10", [post("2026-10")], site, {}))!;
+    expect(c.querySelector("a.read-more")!.textContent).toBe("Search News");
+    expect(c.querySelector("a.read-more")!.getAttribute("href")).toBe("/search/?from=2026-10-01&to=2026-10-31");
+    expect(c.querySelector(":scope > .clear")).not.toBeNull();
+  });
+  it("month ends: February in a leap and a common year, and a 30-day month", () => {
+    const to = (m: string) => control(renderArchiveMonth(m, [post(m)], site, {}))!.querySelector("a")!.getAttribute("href");
+    expect(to("2028-02")).toBe("/search/?from=2028-02-01&to=2028-02-29");
+    expect(to("2027-02")).toBe("/search/?from=2027-02-01&to=2027-02-28");
+    expect(to("2026-04")).toBe("/search/?from=2026-04-01&to=2026-04-30");
+    expect(to("2026-12")).toBe("/search/?from=2026-12-01&to=2026-12-31");
+  });
+  it("a term page links to its range, open or closed; the label is the setting's, escaped", () => {
+    const t = { slug: "t", label: null, startDate: "2024-11-18", endDate: null, legacyArchiveUrl: null };
+    expect(control(renderTermPage(t, [post("2025-01")], site, {}))!.querySelector("a")!.getAttribute("href")).toBe("/search/?from=2024-11-18");
+    expect(control(renderTermPage({ ...t, endDate: "2025-03-01" }, [], site, {}))!.querySelector("a")!.getAttribute("href")).toBe("/search/?from=2024-11-18&to=2025-03-01");
+    const settings = bcSettings();
+    settings.navigation.labels.searchNews = "Find <news>";
+    expect(control(renderArchiveMonth("2026-10", [post("2026-10")], site, { settings }))!.querySelector("a")!.textContent).toBe("Find <news>");
+  });
+  it("under a base path the link carries it", () => {
+    const sub = { ...site, baseUrl: "https://example.test/site" };
+    expect(control(renderArchiveMonth("2026-10", [post("2026-10")], sub, {}))!.querySelector("a")!.getAttribute("href")).toBe("/site/search/?from=2026-10-01&to=2026-10-31");
   });
 });
 

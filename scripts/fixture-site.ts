@@ -62,6 +62,7 @@ export const FIXTURE_PAGES = [
   "/live/",
   "/subscribe/",
   "/subscribe/manage/",
+  "/sitemap/",
   "/404.html",
 ];
 

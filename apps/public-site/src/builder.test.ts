@@ -512,12 +512,94 @@ describe("site builder", () => {
     await builder.renderPage("sitemap:pages", {});
     expect(html(storage, "sitemaps/pages.xml")).not.toContain("/biography/");
     expect(html(storage, "sitemaps/pages.xml")).toContain("<loc>https://news.example/ministries/health/</loc>");
+    expect(html(storage, "sitemap/index.html")).not.toContain("/biography/");
+    expect(html(storage, "sitemap/index.html")).toContain('href="/ministries/health/"');
     // A ministry with no minister never gets one; a vanished ministry loses all three files.
     await builder.renderPage("category:ministries:finance", {});
     expect(storage.files.has("ministries/finance/biography/index.html")).toBe(false);
     for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) await storage.write(f, "x");
     await builder.renderPage("category:ministries:gone", {});
     for (const f of ["ministries/gone/index.html", "ministries/gone/feed.xml", "ministries/gone/biography/index.html"]) expect(storage.files.has(f), f).toBe(false);
+  });
+
+  it("sitemap/index.html: one h1, the groups in order, base-path links; XML lists the same paths", async () => {
+    const { storage, api, builder } = setup(new Map([["K1", post({ key: "K1", publishDate: "2026-10-05T10:00:00-07:00" })], ["K0", post({ key: "K0", publishDate: "2026-08-05T10:00:00-07:00" })]]));
+    api.sectors = [category({ key: "economy", name: "Economy <&>" })];
+    api.tags = [category({ key: "covid-19", name: "COVID-19" })];
+    api.minister = async (key) => (key.toLowerCase() === "health" ? { headline: "Hon. A", summary: "s", details: "<p>Bio.</p>", photo: null } : null);
+    await builder.buildAll({});
+    const doc = new JSDOM(html(storage, "sitemap/index.html")).window.document;
+    expect(doc.querySelectorAll("h1").length).toBe(1);
+    expect(doc.querySelector("#main-content-release.home-body > h1")!.textContent).toBe("Site map");
+    const main = doc.querySelector("#main-content-release")!;
+    expect([...main.querySelectorAll(":scope > h2")].map((h) => h.textContent)).toEqual(["Pages", "Ministries", "Sectors", "Topics", "Archive"]);
+    const links = (heading: string) => {
+      const h2 = [...main.querySelectorAll(":scope > h2")].find((h) => h.textContent === heading)!;
+      return [...h2.nextElementSibling!.querySelectorAll("li > a")].map((a) => [a.textContent, a.getAttribute("href")]);
+    };
+    expect(links("Pages").map((l) => l[0])).toEqual(["Home", "Ministries", "Sectors", "Themes", "Topics", "Releases", "Stories", "Factsheets & Opinion Editorials", "Updates", "Media contacts", "Live Webcast", "Connect", "Subscribe", "Search", "Privacy", "Archive"]);
+    expect(links("Ministries")).toEqual(expect.arrayContaining([["Health", "/ministries/health/"], ["Health: Biography", "/ministries/health/biography/"], ["Health: Factsheets", "/ministries/health/factsheets/"], ["Finance: Factsheets", "/ministries/finance/factsheets/"]]));
+    expect(links("Ministries").map((l) => l[1])).not.toContain("/ministries/finance/biography/");
+    expect(links("Sectors")).toEqual([["Economy <&>", "/sectors/economy/"]]);
+    expect(links("Archive").slice(0, 3)).toEqual([["Archive by government term", "/archive/terms/"], ["October 2026", "/archive/2026/10/"], ["August 2026", "/archive/2026/08/"]]);
+    expect(html(storage, "sitemap/index.html")).toContain("Economy &lt;&amp;&gt;");
+    // The XML lists every HTML path except the robots-blocked Search and Subscribe, and adds /sitemap/ itself.
+    const xmlPaths = [...html(storage, "sitemaps/pages.xml").matchAll(/<loc>https:\/\/news\.example(\/[^<]*)<\/loc>/g)].map((m) => m[1]!);
+    const htmlPaths = [...doc.querySelectorAll("#main-content-release li > a")].map((a) => a.getAttribute("href")!);
+    expect([...xmlPaths].sort()).toEqual([...htmlPaths.filter((x) => x !== "/search/" && x !== "/subscribe/"), "/sitemap/"].sort());
+  });
+
+  it("sitemap/index.html honours the base path", async () => {
+    const storage = memoryStorage();
+    const builder = createSiteBuilder({ newsApi: fakeNewsApi(new Map()), storage, index: postIndex(tdb.db), site: { ...site, baseUrl: "https://news.example/hub" }, assetsDir: null });
+    await builder.rebuild(["sitemap:pages"], {});
+    const hrefs = [...new JSDOM(html(storage, "sitemap/index.html")).window.document.querySelectorAll("#main-content-release li > a")].map((a) => a.getAttribute("href")!);
+    expect(hrefs.length).toBeGreaterThan(10);
+    expect(hrefs.filter((h) => !h.startsWith("/hub/"))).toEqual([]);
+  });
+
+  it("sitemap:pages fetches each sector, theme and tag list once per run; a Themes group lists its pages", async () => {
+    const { storage, api, builder } = setup(new Map());
+    api.themes = [category({ key: "climate", name: "Climate", kind: "themes" })];
+    const fetched: string[] = [];
+    const categories = api.categories;
+    api.categories = async (kind) => { fetched.push(kind); return categories(kind); };
+    await builder.renderPage("sitemap:pages", {}, {});
+    expect(fetched.sort()).toEqual(["sectors", "tags", "themes"]);
+    const doc = new JSDOM(html(storage, "sitemap/index.html")).window.document;
+    const h2 = [...doc.querySelectorAll("#main-content-release > h2")].find((h) => h.textContent === "Themes")!;
+    expect([...h2.nextElementSibling!.querySelectorAll("li > a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([["Climate", "/themes/climate/"]]);
+  });
+
+  it("sitemap labels follow the settings: a custom Subscribe text (with or without the trailing slash) and Media Contacts heading", async () => {
+    for (const url of ["/subscribe/", "/subscribe"]) {
+      const { storage, builder } = setup(new Map());
+      const settings = bcSettings();
+      settings.navigation.headerLinks = [{ text: "Get updates", url }];
+      settings.contactsPage.heading = "Press <office>";
+      await builder.renderPage("sitemap:pages", { settings });
+      const hrefs = new Map([...new JSDOM(html(storage, "sitemap/index.html")).window.document.querySelectorAll("#main-content-release li > a")].map((a) => [a.getAttribute("href")!, a.textContent!]));
+      expect(hrefs.get("/subscribe/"), url).toBe("Get updates");
+      expect(hrefs.get("/contacts/"), url).toBe("Press <office>");
+    }
+    const { storage, builder } = setup(new Map());
+    const settings = bcSettings();
+    settings.navigation.headerLinks = [];
+    await builder.renderPage("sitemap:pages", { settings });
+    expect(html(storage, "sitemap/index.html")).toContain('<a href="/subscribe/">Subscribe</a>');
+  });
+
+  it("a bio page appearing re-queues sitemap:pages and both files change", async () => {
+    const { storage, api, builder } = setup(new Map());
+    await builder.renderPage("sitemap:pages", {});
+    const [xml0, html0] = [html(storage, "sitemaps/pages.xml"), html(storage, "sitemap/index.html")];
+    expect(html0).not.toContain("Health: Biography");
+    api.minister = async () => ({ headline: "Hon. A", summary: "s", details: "<p>Bio.</p>", photo: null });
+    expect(await builder.renderPage("category:ministries:health", {})).toEqual(["sitemap:pages"]);
+    await builder.renderPage("sitemap:pages", {});
+    expect(html(storage, "sitemaps/pages.xml")).not.toBe(xml0);
+    expect(html(storage, "sitemap/index.html")).not.toBe(html0);
+    expect(html(storage, "sitemap/index.html")).toContain('href="/ministries/health/biography/"');
   });
 
   it("a ministry's factsheets page: its factsheets (and a factsheet top post) newest first, an empty message when none, vanished ministry removes it, sitemap lists every ministry's", async () => {
@@ -809,6 +891,7 @@ describe("site builder", () => {
     const doc = new JSDOM(html(storage, "connect/index.html")).window.document;
     expect([...doc.querySelectorAll("div#rss li a")].map((a) => [a.textContent, a.getAttribute("href")])).toEqual([
       ["BC Gov News", "/feed.xml"],
+      ["Factsheets & Opinion Editorials", "/feeds/factsheets.xml"],
       ["COVID-19", "/tags/covid-19/feed.xml"],
       ["Economy", "/sectors/economy/feed.xml"],
       ["Finance", "/ministries/finance/feed.xml"],
@@ -824,7 +907,7 @@ describe("site builder", () => {
     const builder = createSiteBuilder({ newsApi: api, storage, index: postIndex(tdb.db), site: { ...site, baseUrl: "https://x.example/site" }, assetsDir: null });
     await builder.renderPage("connect", {});
     const doc = new JSDOM(String(storage.files.get("connect/index.html"))).window.document;
-    expect([...doc.querySelectorAll("div#rss li a")].map((a) => a.getAttribute("href"))).toEqual(["/site/feed.xml", "/site/ministries/health/feed.xml"]);
+    expect([...doc.querySelectorAll("div#rss li a")].map((a) => a.getAttribute("href"))).toEqual(["/site/feed.xml", "/site/feeds/factsheets.xml", "/site/ministries/health/feed.xml"]);
   });
 
   it("every generated HTML page passes the structure check", async () => {
